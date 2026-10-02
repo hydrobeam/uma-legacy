@@ -3,6 +3,7 @@
 !/.gitignore
 !/build.sh
 !/BUILD.md
+!/README.md
 !/pkg/
 /pkg/*
 !/pkg/loopopt/
@@ -15,6 +16,7 @@
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
 !/pkg/loopopt/README.md
+!/pkg/loopopt/results/
 !/pkg/loopopt/card_events.json
 !/pkg/loopopt/data.json
 !/pkg/loopopt/data_xmas_vodka.json
@@ -51,7 +53,6 @@
 !/val/jobs_noR.json
 !/val/ref__*.out
 !/val/ref_times.txt
-!/pkgroot/
 master.mdb
 __pycache__/
 !/pkg/loopopt/validation/

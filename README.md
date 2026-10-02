@@ -72,4 +72,10 @@ Legacy Loop Planner.html   ready-to-use page (solver + data embedded)
 webapp/                    page source: template, worker, build script
 pkg/loopopt/               Rust solver, data.json, web_skills.json, job files, results, tests
 pkg/loopopt/export/        Python exporters (master.mdb -> data.json, web_skills.json)
+jp/                        Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
+val/                       validation jobs and reference outputs (./build.sh val TAG)
+build.sh, BUILD.md         one entry point for every build step
+.git/                      full history; releases are tagged vN to match the published page version
 ```
+
+`Legacy Loop Planner.html` is a build output (`webapp/dist/index.html`) and is not tracked by git.
