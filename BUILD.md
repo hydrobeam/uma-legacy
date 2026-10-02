@@ -13,7 +13,7 @@
 
 Browser checks: `cd webapp && python3 pwdeck.py && python3 pwera.py` (Playwright, Chromium). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
 
-Manual card entries: Global ones live in `pkg/loopopt/card_events.json` (entries whose `src` does not start with lowercase "gametora" survive `events`), GM ones in `jp/export/manual_gm*.json`.
+Manual card entries: Global ones live in `pkg/loopopt/card_events.json` (every entry except the generated ones, `src` exactly "gametora training_events", survives `events`), GM ones in `jp/export/manual_gm*.json`.
 
 `val/ref__*` holds the current reference outputs; when a data change moves results on purpose, rerun `val`, check the diff, then copy the new outputs over `ref__*` in the same commit. Releases are tagged `vN` to match the published page version.
 

@@ -49,7 +49,6 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
         out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), "status": "complete", "src": "gametora training_events"}
 manual = json.load(open('manual_gm_nodates.json'))['cards']
 for k, v in manual.items():
-    if v.get('src', '').startswith('gametora'): continue
     if 'always' in v or 'disabled' in v: out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}
 doc = {"about": json.load(open('manual_gm_nodates.json'))['about'], "cards": dict(sorted(out.items()))}
 json.dump(doc, open('../card_events_nodates.json', 'w'), ensure_ascii=False, indent=1)

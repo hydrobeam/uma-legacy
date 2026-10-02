@@ -1,6 +1,14 @@
 {
  "about": "Local cache of support-card event skill hints (JP, Grand Masters era). One entry per card id. 'chain': [[link, [skill names]]] where the player can pick the skill (choice) or it is the success outcome; 'always': skills given whenever the card is in the deck (pal recreation finales); 'chance': [[skill, probability per run]]; 'disabled': events that do not fire in independent training; 'status': complete | partial | unknown; 'src': where it came from. Skill names must match the in-game Global names (web_skills.json). Add cards here instead of re-fetching sites. GM variant: first-year pal date events are assumed to fire.",
  "cards": {
+  "10074": {
+   "name": "[Acupuncturist] Sasami Anshinzawa",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes"
+  },
   "20001": {
    "name": "[Well, Look Who's Home] Fuji Kiseki",
    "chain": [
