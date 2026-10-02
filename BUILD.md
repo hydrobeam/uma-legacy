@@ -18,3 +18,4 @@ Manual card entries: Global ones live in `pkg/loopopt/card_events.json` (entries
 `val/ref__*` holds the current reference outputs; when a data change moves results on purpose, rerun `val`, check the diff, then copy the new outputs over `ref__*` in the same commit. Releases are tagged `vN` to match the published page version.
 
 Zips are a clone of this repository (history and tags included) plus the built `Legacy Loop Planner.html`.
+Before zipping: clone, `git remote remove origin`, `git gc --aggressive`, copy in the built page.
