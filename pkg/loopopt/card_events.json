@@ -2024,6 +2024,12 @@
    "status": "complete",
    "src": "gametora training_events"
   },
+  "30067": {
+   "name": "[Esteemed and Adored] Heirs to the Throne",
+   "always": [],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): no target skills"
+  },
   "30068": {
    "name": "[Cutie Pie with Shining Eyes] Curren Chan",
    "chain": [
@@ -2353,6 +2359,14 @@
    "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure; outcomes 50/50 by the 'di' convention). Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
    "status": "complete",
    "src": "GameTora training_events_friend 830080001, decoded"
+  },
+  "30081": {
+   "name": "[Passing the Dream On] Team Sirius",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_group 830081005 (date, progress 1/1, single outcome): Risky Business hint +2"
   },
   "30082": {
    "name": "[Little Cupcakes, Big Emotions] Nishino Flower",
