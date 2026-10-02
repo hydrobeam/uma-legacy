@@ -1,0 +1,4218 @@
+{
+ "about": "Local cache of support-card event skill hints (JP, Grand Masters era). One entry per card id. 'chain': [[link, [skill names]]] where the player can pick the skill (choice) or it is the success outcome; 'always': skills given whenever the card is in the deck (pal recreation finales); 'chance': [[skill, probability per run]]; 'disabled': events that do not fire in independent training; 'status': complete | partial | unknown; 'src': where it came from. Skill names must match the in-game Global names (web_skills.json). Add cards here instead of re-fetching sites. GM variant: first-year pal date events are assumed to fire.",
+ "cards": {
+  "20001": {
+   "name": "[Well, Look Who's Home] Fuji Kiseki",
+   "chain": [
+    [
+     2,
+     [
+      "Flustered End Closers"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20002": {
+   "name": "[Nothing Hard Work Can't Solve!] Daiwa Scarlet",
+   "chain": [
+    [
+     2,
+     [
+      "Tactical Tweak"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20003": {
+   "name": "[Reach the Top!] Hishi Amazon",
+   "chain": [
+    [
+     2,
+     [
+      "Masterful Gambit"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20004": {
+   "name": "[Nothing Escapes the Vice Prez] Air Groove",
+   "chain": [
+    [
+     2,
+     [
+      "Straightaway Acceleration"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20005": {
+   "name": "[Digital's Recharge Station] Agnes Digital",
+   "chain": [
+    [
+     2,
+     [
+      "Frenzied End Closers"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20006": {
+   "name": "[Trial Initiation] Biwa Hayahide",
+   "chain": [
+    [
+     2,
+     [
+      "Pressure"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20007": {
+   "name": "[Cute + Cute = ?] Mayano Top Gun",
+   "chain": [
+    [
+     2,
+     [
+      "Focus"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20008": {
+   "name": "[My Solo Drawn to Raindrop Drums] Manhattan Cafe",
+   "chain": [
+    [
+     2,
+     [
+      "Studious"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20009": {
+   "name": "[Pal-Assisted Training] Mihono Bourbon",
+   "chain": [
+    [
+     2,
+     [
+      "Front Runner Straightaways ○"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Corner Recovery ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20010": {
+   "name": "[On and Off the Court] Mejiro Ryan",
+   "chain": [
+    [
+     2,
+     [
+      "Nimble Navigator"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20011": {
+   "name": "[City Girl 101] Yukino Bijin",
+   "chain": [],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20012": {
+   "name": "[Experimental Studies on Subject A] Agnes Tachyon",
+   "chain": [
+    [
+     2,
+     [
+      "Subdued Front Runners"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20013": {
+   "name": "[5:00 a.m.—Right on Schedule] Eishin Flash",
+   "chain": [
+    [
+     2,
+     [
+      "Homestretch Haste"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20014": {
+   "name": "[Poolside High Tides] Narita Taishin",
+   "chain": [
+    [
+     2,
+     [
+      "I Can See Right Through You"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20015": {
+   "name": "[A Marvelous ☆ Plan] Marvelous Sunday",
+   "chain": [],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20016": {
+   "name": "[Fate's Forecast] Matikanefukukitaru",
+   "chain": [
+    [
+     2,
+     [
+      "Right-Handed ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20017": {
+   "name": "[Fighting for Fortune] Meisho Doto",
+   "chain": [
+    [
+     2,
+     [
+      "Prepared to Pass"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20018": {
+   "name": "[Ignore the Stares] Mejiro Dober",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Slick Surge",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20019": {
+   "name": "[It's Just Water] Nice Nature",
+   "chain": [
+    [
+     2,
+     [
+      "Extra Tank"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20020": {
+   "name": "[First-Rate Plan] King Halo",
+   "chain": [],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20021": {
+   "name": "[Trainers' Teamwork] Aoi Kiryuin",
+   "always": [],
+   "status": "complete",
+   "src": "umamusu.wiki"
+  },
+  "20022": {
+   "name": "[Now Dat's What I Call Grilled Squid!] Tamamo Cross",
+   "chain": [
+    [
+     2,
+     [
+      "Late Surger Corners ○",
+      "Pace Chaser Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20023": {
+   "name": "[Lamplit Training of a Witch-to-Be] Sweep Tosho",
+   "chain": [
+    [
+     1,
+     [
+      "Lucky Seven"
+     ]
+    ],
+    [
+     2,
+     [
+      "Levelheaded",
+      "Lone Wolf"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Maverick ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20024": {
+   "name": "[Let's Get This Party Lit!] Daitaku Helios",
+   "chain": [
+    [
+     2,
+     [
+      "Straight Descent",
+      "Watchful Eye"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20025": {
+   "name": "[Never Skip Warm-Ups] Ikuno Dictus",
+   "chain": [
+    [
+     2,
+     [
+      "Frenzied End Closers",
+      "Frenzied Front Runners"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20026": {
+   "name": "[Messing Around] Nice Nature",
+   "chain": [
+    [
+     2,
+     [
+      "Long Shot ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20027": {
+   "name": "[Lifting Your Spirits] Nishino Flower",
+   "chain": [
+    [
+     2,
+     [
+      "Straightaway Acceleration",
+      "Straightaway Adept"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20028": {
+   "name": "[The Perfect Book for You] Zenno Rob Roy",
+   "chain": [
+    [
+     2,
+     [
+      "Sharp Gaze"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20029": {
+   "name": "[The World's My Oyster] Seeking the Pearl",
+   "chain": [
+    [
+     1,
+     [
+      "Lucky Seven"
+     ]
+    ],
+    [
+     2,
+     [
+      "Shifting Gears"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20030": {
+   "name": "[You Earned It!] Ines Fujin",
+   "chain": [
+    [
+     2,
+     [
+      "Final Push",
+      "Medium Straightaways ○",
+      "Standard Distance ○",
+      "Sympathy"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20031": {
+   "name": "[///WARNING GATE///] Shinko Windy",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Shifting Gears",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20032": {
+   "name": "[Laughing through the Mud] Inari One",
+   "chain": [
+    [
+     2,
+     [
+      "Oi Racecourse ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20033": {
+   "name": "[Mud-Caked Compañero] El Condor Pasa",
+   "chain": [
+    [
+     2,
+     [
+      "Pace Chaser Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20034": {
+   "name": "[My Heart Will Go On] Mejiro Ardan",
+   "chain": [],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20035": {
+   "name": "[Turf as Nails] Tosen Jordan",
+   "chain": [
+    [
+     2,
+     [
+      "Ramp Up"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20037": {
+   "name": "[Grma, Ramen ♪] Fine Motion",
+   "chain": [
+    [
+     2,
+     [
+      "Steadfast"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20038": {
+   "name": "[The Brightest Star Shines On] Sirius Symboli",
+   "chain": [
+    [
+     2,
+     [
+      "Shrewd Step"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20039": {
+   "name": "[An Annoying Supervisor] Vodka",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Mile Corners ○",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20040": {
+   "name": "[Hot Hearts and Cool Drinks] Mejiro Ryan",
+   "chain": [
+    [
+     2,
+     [
+      "Late Surger Straightaways ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20041": {
+   "name": "[Aim for the Brightest] Admire Vega",
+   "chain": [
+    [
+     2,
+     [
+      "End Closer Savvy ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20042": {
+   "name": "[The Perfect Morning Greeting!] Sakura Bakushin O",
+   "chain": [
+    [
+     2,
+     [
+      "Tail Held High"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20043": {
+   "name": "[At the End of the Day] Special Week",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Head-On",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20044": {
+   "name": "[Cozy Cute Memory ♪] Curren Chan",
+   "chain": [
+    [
+     1,
+     [
+      "Shrewd Step"
+     ]
+    ],
+    [
+     2,
+     [
+      "Sprint Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20045": {
+   "name": "[Almost... an Umadol?! ♡] Smart Falcon",
+   "chain": [
+    [
+     1,
+     [
+      "Leader's Pride"
+     ]
+    ],
+    [
+     2,
+     [
+      "Top Pick"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20046": {
+   "name": "[Reckless Witch Training] Sweep Tosho",
+   "chain": [
+    [
+     1,
+     [
+      "Trick (Rear)"
+     ]
+    ],
+    [
+     2,
+     [
+      "End Closer Straightaways ○",
+      "Subdued End Closers"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20047": {
+   "name": "[Step! Smile! Wink!] Tokai Teio",
+   "chain": [
+    [
+     2,
+     [
+      "Medium Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20048": {
+   "name": "[I Love You... Dear Food] Oguri Cap",
+   "chain": [
+    [
+     2,
+     [
+      "Wet Conditions ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20049": {
+   "name": "[Going for Gold] Gold City",
+   "chain": [
+    [
+     2,
+     [
+      "Snowy Days ○",
+      "Straightaway Recovery"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20050": {
+   "name": "[Bobbing with the Waves] Seiun Sky",
+   "chain": [
+    [
+     1,
+     [
+      "Hesitant Late Surgers"
+     ]
+    ],
+    [
+     2,
+     [
+      "Second Wind"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20051": {
+   "name": "[The 3rd Miracle] K.S.Miracle",
+   "chain": [
+    [
+     1,
+     [
+      "Sprint Straightaways ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20052": {
+   "name": "[Go, Go! Tsuyoshi!] Tsurumaru Tsuyoshi",
+   "chain": [
+    [
+     2,
+     [
+      "Late Surger Straightaways ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20053": {
+   "name": "[Stop, Prez!] Narita Top Road",
+   "chain": [
+    [
+     1,
+     [
+      "Inner Post Proficiency ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20054": {
+   "name": "[Mighty Fotografia] T.M. Opera O",
+   "chain": [
+    [
+     2,
+     [
+      "Preferred Position"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20055": {
+   "name": "[A Clip to Keep Your Heart Warm] Aston Machan",
+   "chain": [
+    [
+     1,
+     [
+      "Countermeasure",
+      "Maverick ○",
+      "Meticulous Measures"
+     ]
+    ],
+    [
+     2,
+     [
+      "Intimidate",
+      "Mad Dash"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20056": {
+   "name": "[Dead End: Blocking the Path] Jungle Pocket",
+   "chain": [
+    [
+     1,
+     [
+      "Eager"
+     ]
+    ],
+    [
+     2,
+     [
+      "Straightaway Spurt"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20057": {
+   "name": "[Gentle and Sleek] Mejiro Dober",
+   "chain": [
+    [
+     2,
+     [
+      "Kyoto Racecourse ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20058": {
+   "name": "[Your Laugh After School] Symboli Rudolf",
+   "chain": [
+    [
+     2,
+     [
+      "Corner Recovery ○",
+      "Right-Handed ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20059": {
+   "name": "[Ah, Wonderful Saccharinity] Agnes Tachyon",
+   "chain": [
+    [
+     1,
+     [
+      "Risky Business"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20060": {
+   "name": "[Try a Sweet Swim Ring] Hishi Akebono",
+   "chain": [
+    [
+     2,
+     [
+      "Sprint Straightaways ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20061": {
+   "name": "[Golshi's House Specialty] Gold Ship",
+   "chain": [
+    [
+     1,
+     [
+      "End Closer Savvy ○",
+      "Risky Business"
+     ]
+    ],
+    [
+     2,
+     [
+      "After-School Stroll",
+      "Inside Scoop"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20062": {
+   "name": "[One Bomb Drive ♪] Maruzensky",
+   "chain": [
+    [
+     1,
+     [
+      "Unyielding Spirit"
+     ]
+    ],
+    [
+     2,
+     [
+      "Dodging Danger",
+      "Mile Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20063": {
+   "name": "[Summer Evening Shower] Silence Suzuka",
+   "chain": [
+    [
+     1,
+     [
+      "Leader's Pride"
+     ]
+    ],
+    [
+     2,
+     [
+      "Front Runner Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20064": {
+   "name": "[Gods of Luck Are Early to Rise] Copano Rickey",
+   "chain": [
+    [
+     1,
+     [
+      "Muddy ○",
+      "Sharp Turns ○"
+     ]
+    ],
+    [
+     2,
+     [
+      "Solid Steps"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "20065": {
+   "name": "[The Splendid Aftertaste of Good Tea] Grass Wonder",
+   "chain": [
+    [
+     1,
+     [
+      "Flustered Pace Chasers"
+     ]
+    ],
+    [
+     2,
+     [
+      "Slick Surge"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30001": {
+   "name": "[The Brightest Star in Japan!] Special Week",
+   "chain": [
+    [
+     1,
+     [
+      "Soft Step"
+     ]
+    ],
+    [
+     2,
+     [
+      "Straight Descent"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Homestretch Haste",
+       0.5
+      ],
+      [
+       "In Body and Mind",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30002": {
+   "name": "[Beyond This Shining Moment] Silence Suzuka",
+   "chain": [
+    [
+     1,
+     [
+      "Restart"
+     ]
+    ],
+    [
+     2,
+     [
+      "Focus"
+     ]
+    ],
+    [
+     3,
+     [
+      "Unrestrained"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30003": {
+   "name": "[Dream Big!] Tokai Teio",
+   "chain": [
+    [
+     3,
+     [
+      "Rushing Gale!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30004": {
+   "name": "[Breakaway Battleship] Gold Ship",
+   "chain": [
+    [
+     1,
+     [
+      "Early Start"
+     ]
+    ],
+    [
+     2,
+     [
+      "End Closer Savvy ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Corner Connoisseur",
+      "Risky Business"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30005": {
+   "name": "[Wild Rider] Vodka",
+   "chain": [
+    [
+     2,
+     [
+      "Updrafters"
+     ]
+    ],
+    [
+     3,
+     [
+      "Breath of Fresh Air"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30006": {
+   "name": "[Fairest Fleur] Grass Wonder",
+   "chain": [
+    [
+     1,
+     [
+      "Late Surger Savvy ○",
+      "Tether"
+     ]
+    ],
+    [
+     3,
+     [
+      "Furious Feat"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30007": {
+   "name": "[Champion's Passion] El Condor Pasa",
+   "chain": [
+    [
+     3,
+     [
+      "Killer Tunes"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Stamina to Spare"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30008": {
+   "name": "[Foolproof Plan] Seiun Sky",
+   "chain": [
+    [
+     1,
+     [
+      "Dodging Danger"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Escape Artist",
+       0.5
+      ],
+      [
+       "Fast-Paced",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Second Wind"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30009": {
+   "name": "[Split the Sky, White Lightning!] Tamamo Cross",
+   "chain": [
+    [
+     2,
+     [
+      "Tail Held High"
+     ]
+    ],
+    [
+     3,
+     [
+      "Fast & Furious"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30010": {
+   "name": "[Wave of Gratitude] Fine Motion",
+   "chain": [
+    [
+     3,
+     [
+      "Prepared to Pass",
+      "Speed Star"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30011": {
+   "name": "[Watch My Star Fly!] Ines Fujin",
+   "chain": [
+    [
+     3,
+     [
+      "Restless",
+      [
+       "Moxie",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30012": {
+   "name": "[BNWinner!] Winning Ticket",
+   "chain": [
+    [
+     2,
+     [
+      "Fighter"
+     ]
+    ],
+    [
+     3,
+     [
+      "On Your Left!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30013": {
+   "name": "[7 More Centimeters] Air Shakur",
+   "chain": [
+    [
+     1,
+     [
+      "Intense Gaze"
+     ]
+    ],
+    [
+     2,
+     [
+      "Straightaway Spurt"
+     ]
+    ],
+    [
+     3,
+     [
+      "Unyielding"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30014": {
+   "name": "[Run(my)way] Gold City",
+   "chain": [
+    [
+     1,
+     [
+      "Go with the Flow"
+     ]
+    ],
+    [
+     3,
+     [
+      "Keen Eye"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30015": {
+   "name": "[Eat Fast! Yum Fast!] Sakura Bakushin O",
+   "chain": [
+    [
+     3,
+     [
+      "Turbo Sprint"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30016": {
+   "name": "[Piece of Mind] Super Creek",
+   "chain": [
+    [
+     3,
+     [
+      "Swinging Maestro"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30017": {
+   "name": "[My Umadol Way! ☆] Smart Falcon",
+   "chain": [
+    [
+     1,
+     [
+      "Groundwork"
+     ]
+    ],
+    [
+     2,
+     [
+      "Top Pick"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Center Stage",
+       0.5
+      ],
+      [
+       "Prudent Positioning",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Focus"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30018": {
+   "name": "[Even the Littlest Bud] Nishino Flower",
+   "chain": [
+    [
+     1,
+     [
+      "Countermeasure"
+     ]
+    ],
+    [
+     3,
+     [
+      "Beeline Burst",
+      "Straightaway Adept"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30019": {
+   "name": "[Urara's Day Off!] Haru Urara",
+   "chain": [
+    [
+     3,
+     [
+      "Unruffled"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30020": {
+   "name": "[Double Carrot Punch!] Biko Pegasus",
+   "chain": [
+    [
+     3,
+     [
+      "Plan X"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30021": {
+   "name": "[Tracen Reception] Tazuna Hayakawa",
+   "always": [],
+   "disabled": [
+    [
+     "Tail Held High",
+     "first-year date event, bugged in independent training"
+    ]
+   ],
+   "status": "complete",
+   "src": "user + umamusu.wiki"
+  },
+  "30022": {
+   "name": "[Your Team Ace] Mejiro McQueen",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Cooldown",
+       0.5
+      ],
+      [
+       "Deep Breaths",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30023": {
+   "name": "[Showered in Joy] Rice Shower",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Adrenaline Rush",
+       0.3333333333333333
+      ],
+      [
+       "Extra Tank",
+       0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30024": {
+   "name": "[Get Lots of Hugs for Me] Oguri Cap",
+   "chain": [
+    [
+     2,
+     [
+      "Outer Swell",
+      "Stamina to Spare"
+     ]
+    ],
+    [
+     3,
+     [
+      "Furious Feat"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30025": {
+   "name": "[The Setting Sun and Rising Stars] Special Week",
+   "chain": [
+    [
+     2,
+     [
+      "Shake It Out"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Gourmand",
+       0.5
+      ],
+      [
+       "Hydrate",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30026": {
+   "name": "[Turbo Booooost!] Twin Turbo",
+   "chain": [
+    [
+     3,
+     [
+      "Watchful Eye",
+      [
+       "Early Lead",
+       0.5
+      ],
+      [
+       "Taking the Lead",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ],
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30027": {
+   "name": "[Go Ahead and Laugh] Mejiro Palmer",
+   "chain": [
+    [
+     1,
+     [
+      "Front Runner Straightaways ○",
+      "Pace Strategy"
+     ]
+    ],
+    [
+     2,
+     [
+      "Front Runner Savvy ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lone Wolf",
+      [
+       "Keeping the Lead",
+       0.5
+      ],
+      [
+       "Vanguard Spirit",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30028": {
+   "name": "[Fire at My Heels] Kitasan Black",
+   "chain": [
+    [
+     2,
+     [
+      "Straightaway Adept"
+     ]
+    ],
+    [
+     3,
+     [
+      "Professor of Curvature"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30029": {
+   "name": "[The Will to Overtake] Satono Diamond",
+   "chain": [
+    [
+     1,
+     [
+      "All I've Got"
+     ]
+    ],
+    [
+     3,
+     [
+      "Iron Will"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30030": {
+   "name": "[Just Keep Going] Matikanetannhauser",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Calm in a Crowd",
+       0.5
+      ],
+      [
+       "Unruffled",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30031": {
+   "name": "[Hometown Cheers] Yukino Bijin",
+   "chain": [
+    [
+     1,
+     [
+      "Hydrate",
+      "Inner Post Proficiency ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "No Stopping Me!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30032": {
+   "name": "[Fiery Discipline] Yaeno Muteki",
+   "chain": [
+    [
+     1,
+     [
+      "Hesitant Late Surgers",
+      "Subdued Late Surgers"
+     ]
+    ],
+    [
+     3,
+     [
+      "It's On!"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Playtime's Over!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30033": {
+   "name": "[Dreams <I>Do</I> Come True!] Winning Ticket",
+   "chain": [
+    [
+     3,
+     [
+      "In Body and Mind"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30034": {
+   "name": "[Happiness Just around the Bend] Rice Shower",
+   "chain": [
+    [
+     3,
+     [
+      "Swinging Maestro"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Passing Pro"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30036": {
+   "name": "[Planned Perfection] Riko Kashimoto",
+   "always": [],
+   "status": "complete",
+   "src": "umamusu.wiki (Ramp Up from a random event; covered by scenario)"
+  },
+  "30037": {
+   "name": "[The Unequivocal Emperor] Symboli Rudolf",
+   "chain": [
+    [
+     2,
+     [
+      "Corner Acceleration ○",
+      "Corner Adept ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Swinging Maestro"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30038": {
+   "name": "[Peak Sakura Season] Sakura Chiyono O",
+   "chain": [
+    [
+     1,
+     [
+      "Stamina to Spare"
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       "Medium Straightaways ○",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Speed Star"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30039": {
+   "name": "[Princess Bride] Kawakami Princess",
+   "chain": [
+    [
+     1,
+     [
+      "Tether"
+     ]
+    ],
+    [
+     3,
+     [
+      "Center Stage"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30040": {
+   "name": "[Who Wants the First Bite?] Hishi Akebono",
+   "chain": [
+    [
+     1,
+     [
+      "Sunny Days ○"
+     ]
+    ],
+    [
+     2,
+     [
+      "Gap Closer",
+      "Hydrate"
+     ]
+    ],
+    [
+     3,
+     [
+      "Dodging Danger",
+      "Sixth Sense"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30041": {
+   "name": "[My Thoughts, My Desires] Mejiro Dober",
+   "chain": [
+    [
+     3,
+     [
+      "The Bigger Picture"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30042": {
+   "name": "[Head-on Fight!] Bamboo Memory",
+   "chain": [
+    [
+     1,
+     [
+      "Competitive Spirit ○"
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       "Homestretch Haste",
+       0.3333333333333333
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Outer Swell",
+       0.5
+      ],
+      [
+       "Rising Dragon",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Hesitant Late Surgers"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30043": {
+   "name": "[43, 8, 1] Nakayama Festa",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "All I've Got",
+       0.3333333333333333
+      ],
+      [
+       "Come What May",
+       0.3333333333333333
+      ],
+      [
+       "Uma Stan",
+       0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30044": {
+   "name": "[Two Pieces] Narita Brian",
+   "chain": [
+    [
+     3,
+     [
+      "Shatterproof"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30045": {
+   "name": "[It's All Mine!] Sweep Tosho",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Straightaway Spurt",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Crusader"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30046": {
+   "name": "[Full-Blown Tantrum] Winning Ticket",
+   "chain": [
+    [
+     1,
+     [
+      "Triple 7s"
+     ]
+    ],
+    [
+     2,
+     [
+      "1,500,000 CC",
+      "Medium Straightaways ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Hard Worker"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Maverick ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30047": {
+   "name": "[Mini☆Vacation] Daiwa Scarlet",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Preferred Position",
+       0.5
+      ],
+      [
+       "Race Planner",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30048": {
+   "name": "[Winning Pitch] Mejiro Ryan",
+   "chain": [
+    [
+     3,
+     [
+      "Unyielding"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Pace Chaser Savvy ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30052": {
+   "name": "[From the Ground Up] Light Hello",
+   "always": [
+    "See Ya Later!"
+   ],
+   "status": "complete",
+   "src": "user + umamusu.wiki (recreation 5)"
+  },
+  "30053": {
+   "name": "[Hands Up, Crook!] Taiki Shuttle",
+   "chain": [
+    [
+     3,
+     [
+      "Mile Maven"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30054": {
+   "name": "[Daring to Dream] Nice Nature",
+   "chain": [
+    [
+     3,
+     [
+      "On Your Left!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30055": {
+   "name": "[Paint the Sky Red] Seiun Sky",
+   "chain": [
+    [
+     2,
+     [
+      "Frenzied Pace Chasers"
+     ]
+    ],
+    [
+     3,
+     [
+      "Vanguard Spirit"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30056": {
+   "name": "[Tonight, We Waltz] King Halo",
+   "chain": [
+    [
+     1,
+     [
+      "Stop Right There!",
+      "Uma Stan"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Blinding Flash",
+       0.5
+      ],
+      [
+       "Gap Closer",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30057": {
+   "name": "[That Time I Became the Strongest] Gold Ship",
+   "chain": [
+    [
+     2,
+     [
+      "Long Straightaways ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Maverick ○",
+      [
+       "Innate Experience",
+       0.5
+      ],
+      [
+       "Inside Scoop",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30058": {
+   "name": "[Regal Racers] Tokai Teio",
+   "chain": [
+    [
+     3,
+     [
+      "Adrenaline Rush"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30059": {
+   "name": "[Fugue of Fortune] Mihono Bourbon",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Final Push",
+       0.5
+      ],
+      [
+       "Unrestrained",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30060": {
+   "name": "[Constellation of Stars] Twin Turbo",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Killer Tunes",
+       0.5
+      ],
+      [
+       "Up-Tempo",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30061": {
+   "name": "[Our Resounding Steps] Biwa Hayahide",
+   "chain": [
+    [
+     2,
+     [
+      "Corner Recovery ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Cooldown"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30062": {
+   "name": "[Winning Dream] Silence Suzuka",
+   "chain": [
+    [
+     1,
+     [
+      "Hydrate",
+      "Soft Step"
+     ]
+    ],
+    [
+     3,
+     [
+      "Concentration"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30063": {
+   "name": "[Warm Heart, Soft Steps] Ikuno Dictus",
+   "chain": [
+    [
+     2,
+     [
+      "Go with the Flow"
+     ]
+    ],
+    [
+     3,
+     [
+      "The Bigger Picture"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30064": {
+   "name": "[Beware! Halloween Night!] Tamamo Cross",
+   "chain": [
+    [
+     3,
+     [
+      "15,000,000 CC"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Wet Conditions ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30065": {
+   "name": "[Magical Heroine] Zenno Rob Roy",
+   "chain": [
+    [
+     2,
+     [
+      "Left-Handed ○",
+      "Right-Handed ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lie in Wait"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30066": {
+   "name": "[The Ghost Finds Halloween Magic] Mihono Bourbon",
+   "chain": [
+    [
+     1,
+     [
+      "Moxie"
+     ]
+    ],
+    [
+     3,
+     [
+      "Taking the Lead"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30067": {
+   "name": "[Esteemed and Adored] Heirs to the Throne",
+   "always": [],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): no target skills"
+  },
+  "30068": {
+   "name": "[Cutie Pie with Shining Eyes] Curren Chan",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Stop Right There!",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Meticulous Measures",
+       0.5
+      ],
+      [
+       "Perfect Prep!",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Playtime's Over!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30069": {
+   "name": "[The Whistling Arrow's Taunt] Narita Brian",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Up-Tempo",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Beeline Burst"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30070": {
+   "name": "[Dancing Light into the Night] Yukino Bijin",
+   "chain": [
+    [
+     2,
+     [
+      "Snowy Days ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Corner Connoisseur"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Playtime's Over!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30071": {
+   "name": "[Make! Some! NOISE!] Daitaku Helios",
+   "chain": [
+    [
+     1,
+     [
+      "Early Lead"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Escape Artist",
+       0.5
+      ],
+      [
+       "Fast-Paced",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Pace Chaser Corners ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30072": {
+   "name": "[Party Formation] Mayano Top Gun",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Head-On",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Restless"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Competitive Spirit ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30073": {
+   "name": "[Strict Shopper] Narita Taishin",
+   "chain": [
+    [
+     2,
+     [
+      "Passing Pro",
+      "Soft Step"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Sleeping Lion",
+       0.5
+      ],
+      [
+       "Standing By",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30074": {
+   "name": "[Dazzling Day in the Snow] Marvelous Sunday",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Fast & Furious",
+       0.5
+      ],
+      [
+       "Position Pilfer",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Cloudy Days ○"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30075": {
+   "name": "[My Solo Spun in Spiraling Runs] Manhattan Cafe",
+   "chain": [
+    [
+     2,
+     [
+      "Long Corners ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Stamina Siphon"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30076": {
+   "name": "[Searching for Unseen Sights] Silence Suzuka",
+   "chain": [
+    [
+     3,
+     [
+      "Trackblazer"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30077": {
+   "name": "[Lucky Star in the Sky] Admire Vega",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Flustered Pace Chasers",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Daring Strike"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30078": {
+   "name": "[Touching Sleeves Is Good Luck! ♪] Matikanefukukitaru",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Lucky Seven",
+       0.3333333333333333
+      ],
+      [
+       "Super Lucky Seven",
+       0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ],
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30079": {
+   "name": "[Leaping into the Unknown] Meisho Doto",
+   "chain": [
+    [
+     1,
+     [
+      "Medium Corners ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Killer Tunes"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30080": {
+   "name": "[This Might Sting!] Sasami Anshinzawa",
+   "disabled": [
+    [
+     "Uma Stan",
+     "first-year date event, bugged in independent training"
+    ]
+   ],
+   "chance": [
+    [
+     "Nothing Ventured",
+     0.5
+    ],
+    [
+     "Risky Business",
+     1.0
+    ]
+   ],
+   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure; outcomes 50/50 by the 'di' convention). Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
+   "status": "complete",
+   "src": "GameTora training_events_friend 830080001, decoded"
+  },
+  "30081": {
+   "name": "[Passing the Dream On] Team Sirius",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): a member date gives Risky Business"
+  },
+  "30082": {
+   "name": "[Little Cupcakes, Big Emotions] Nishino Flower",
+   "chain": [
+    [
+     2,
+     [
+      "Shifting Gears"
+     ]
+    ],
+    [
+     3,
+     [
+      "Determined Descent"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30083": {
+   "name": "[Super! Sonic! Flower Power!] Sakura Bakushin O",
+   "chain": [
+    [
+     1,
+     [
+      "Groundwork"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "In High Spirits",
+       0.5
+      ],
+      [
+       "Light as a Feather",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30084": {
+   "name": "[My Way] Tosen Jordan",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Breath of Fresh Air",
+       0.5
+      ],
+      [
+       "Straightaway Recovery",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30085": {
+   "name": "[A Fan's Joy] Agnes Digital",
+   "chain": [
+    [
+     2,
+     [
+      "Focus",
+      "Hydrate"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lead the Charge!",
+      "Uma Stan"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30086": {
+   "name": "[Peachy Silhouette] Narita Top Road",
+   "chain": [
+    [
+     1,
+     [
+      "Pace Chaser Savvy ○"
+     ]
+    ],
+    [
+     2,
+     [
+      "Pressure"
+     ]
+    ],
+    [
+     3,
+     [
+      "Firm Course Menace"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30087": {
+   "name": "[Little by Little] Mejiro Bright",
+   "chain": [
+    [
+     2,
+     [
+      "Early Start"
+     ]
+    ],
+    [
+     3,
+     [
+      "Overwhelming Pressure"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30088": {
+   "name": "[Special Dreamers!] Satono Diamond",
+   "chain": [
+    [
+     1,
+     [
+      "Sympathy"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Be Still",
+       0.5
+      ],
+      [
+       "Lie in Wait",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30089": {
+   "name": "[A MORE MARVELOUS WORLD! ☆] Marvelous Sunday",
+   "chain": [
+    [
+     3,
+     [
+      "Adrenaline Rush"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30090": {
+   "name": "[Enchaînement] Symboli Rudolf",
+   "chain": [
+    [
+     2,
+     [
+      "Soft Step"
+     ]
+    ],
+    [
+     3,
+     [
+      "Burning Soul"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30091": {
+   "name": "[Escorte Étoile] Sirius Symboli",
+   "chain": [
+    [
+     2,
+     [
+      "Late Surger Savvy ○"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "From the Brink",
+       0.5
+      ],
+      [
+       "Take the Chance",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Playtime's Over!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30092": {
+   "name": "[Mag!c Number] Air Shakur",
+   "chain": [
+    [
+     1,
+     [
+      "Eager"
+     ]
+    ],
+    [
+     2,
+     [
+      "End Closer Straightaways ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Serenity"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30093": {
+   "name": "[Number 1 Outfit] Daiwa Scarlet",
+   "chain": [
+    [
+     1,
+     [
+      "Feature Act",
+      "Up-Tempo"
+     ]
+    ],
+    [
+     3,
+     [
+      "Neck and Neck"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30094": {
+   "name": "[Make These Feelings Reach You!] Bamboo Memory",
+   "chain": [
+    [
+     1,
+     [
+      "Position Pilfer"
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Full of Vigor",
+       0.5
+      ],
+      [
+       "Pumped",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30095": {
+   "name": "[Cheer that Changed the World] Seeking the Pearl",
+   "chain": [
+    [
+     2,
+     [
+      "Light as a Feather",
+      "Updrafters"
+     ]
+    ],
+    [
+     3,
+     [
+      "Dauntless"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30096": {
+   "name": "[Go Go☆Princess!] Kawakami Princess",
+   "chain": [
+    [
+     3,
+     [
+      "Unyielding"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30097": {
+   "name": "[Dear Mr. C.B.] Mr. C.B.",
+   "chain": [
+    [
+     2,
+     [
+      "Intense Gaze",
+      [
+       "Corner Recovery ○",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Daring Strike"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30098": {
+   "name": "[Sunny Passion ♪] Haru Urara",
+   "chain": [
+    [
+     3,
+     [
+      "Hard Worker"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30099": {
+   "name": "[Beloved Orchid Bouquet] Ikuno Dictus",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Full Throttle",
+       0.5
+      ],
+      [
+       "Keep Going!",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30100": {
+   "name": "[Day I Dreamed Of] Rice Shower",
+   "chain": [
+    [
+     2,
+     [
+      "Kyoto Racecourse ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Shatterproof"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30101": {
+   "name": "[Q≠0] Agnes Tachyon",
+   "chain": [
+    [
+     1,
+     [
+      "Pace Chaser Straightaways ○",
+      [
+       "Murmur",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Unstoppable"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30102": {
+   "name": "[Twinkle in Your Eyes ∞] El Condor Pasa",
+   "chain": [
+    [
+     3,
+     [
+      "Speed Star"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30103": {
+   "name": "[Machitan☆Adventure] Matikanetannhauser",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Ramp Up",
+       0.5
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       "Flustered Late Surgers",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "It's On!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30104": {
+   "name": "[\"Rhodonite and the Dreamstone\"] Zenno Rob Roy",
+   "chain": [
+    [
+     1,
+     [
+      "Studious"
+     ]
+    ],
+    [
+     2,
+     [
+      "Tactical Tweak"
+     ]
+    ],
+    [
+     3,
+     [
+      "Clairvoyance"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30105": {
+   "name": "[Take Hold of Our Dreams!] Special Week",
+   "chain": [
+    [
+     2,
+     [
+      "Feature Act",
+      "Straightaway Recovery"
+     ]
+    ],
+    [
+     3,
+     [
+      "Overwhelming Pressure"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30106": {
+   "name": "[Tailwind to My Goals] Air Groove",
+   "chain": [
+    [
+     1,
+     [
+      "Fearless"
+     ]
+    ],
+    [
+     2,
+     [
+      "Take the Chance",
+      "Updrafters"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lie in Wait"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30107": {
+   "name": "[Sentimental Flare ♪] Maruzensky",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Focus",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Top Runner"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30108": {
+   "name": "[Trusting the Dice] Nakayama Festa",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Nothing Ventured",
+       0.25
+      ],
+      [
+       "Risky Business",
+       0.25
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30109": {
+   "name": "[A Good Heart Blossoms to Its Fullest] Sakura Chiyono O",
+   "chain": [
+    [
+     3,
+     [
+      [
+       "Acceleration",
+       0.5
+      ],
+      [
+       "Step on the Gas!",
+       0.5
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30110": {
+   "name": "[It's on the House] Manhattan Cafe",
+   "chain": [
+    [
+     3,
+     [
+      "Of Calm Mind"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30111": {
+   "name": "[Teio-Oo-Oo!!!] Tokai Teio",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Preferred Position",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Professor of Curvature"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30112": {
+   "name": "[TT Ignition!] Twin Turbo",
+   "chain": [
+    [
+     3,
+     [
+      "Givin' It 1000%"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30113": {
+   "name": "[Uchronia Architect] Biwa Hayahide",
+   "chain": [
+    [
+     2,
+     [
+      "Prepared to Pass"
+     ]
+    ],
+    [
+     3,
+     [
+      "VIP Pass"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30114": {
+   "name": "[Ah, Such Majesty] Daiichi Ruby",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Late Surger Corners ○",
+       0.5
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      "Sprinting Gear"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lightning Surge"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30115": {
+   "name": "[Moonlit Devil ♪] Mejiro Palmer",
+   "chain": [
+    [
+     2,
+     [
+      "Front Runner Corners ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Taking the Lead"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Passing Pro"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30116": {
+   "name": "[Sunlit Angel ♪] Daitaku Helios",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Front Runner Straightaways ○",
+       0.5
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       "Tail Held High",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Perfect Spot!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30117": {
+   "name": "[Onwards, Demon Queen Lackeys!] Shinko Windy",
+   "chain": [
+    [
+     2,
+     [
+      "Full Tilt"
+     ]
+    ],
+    [
+     3,
+     [
+      "Maestro of the Mud"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30118": {
+   "name": "[A Win Foreshadowed] Symboli Kris S",
+   "chain": [
+    [
+     2,
+     [
+      "Competitive Spirit ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Claw Forward"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30119": {
+   "name": "[Hopeful Petals Dancing in the Night] Mejiro Ardan",
+   "chain": [
+    [
+     3,
+     [
+      "Race Planner"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30120": {
+   "name": "[Pious Flame, Heavens Scorcher] Yaeno Muteki",
+   "chain": [
+    [
+     1,
+     [
+      [
+       "Hydrate",
+       0.5
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      "Left-Handed ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Killer Tunes"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30121": {
+   "name": "[U & Me] Mihono Bourbon",
+   "chain": [
+    [
+     1,
+     [
+      "Fast-Paced"
+     ]
+    ],
+    [
+     3,
+     [
+      "Trackblazer"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30122": {
+   "name": "[Danke Schön] Eishin Flash",
+   "chain": [
+    [
+     2,
+     [
+      "Position Pilfer"
+     ]
+    ],
+    [
+     3,
+     [
+      "Sharp Streak"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30123": {
+   "name": "[Glad Tidings] Narita Brian",
+   "chain": [
+    [
+     2,
+     [
+      "My True Strength"
+     ]
+    ],
+    [
+     3,
+     [
+      "Hot Pursuit"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30124": {
+   "name": "[Are You Merry?] Air Groove",
+   "chain": [
+    [
+     2,
+     [
+      "Pace Strategy",
+      "Studious"
+     ]
+    ],
+    [
+     3,
+     [
+      "Fast & Furious"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30125": {
+   "name": "[Don't Stop Anymore!] Sakura Laurel",
+   "chain": [
+    [
+     2,
+     [
+      "Be Still"
+     ]
+    ],
+    [
+     3,
+     [
+      "Dauntless"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30126": {
+   "name": "[To Winds Untraveled] Yamanin Zephyr",
+   "chain": [
+    [
+     2,
+     [
+      "Slipstream"
+     ]
+    ],
+    [
+     3,
+     [
+      "Ambitious Breeze"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30127": {
+   "name": "[Outrunning Misfortune] Special Week",
+   "chain": [
+    [
+     2,
+     [
+      "Free-Spirited"
+     ]
+    ],
+    [
+     3,
+     [
+      "No Stopping Me!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30128": {
+   "name": "[Capricious Excellence] Sweep Tosho",
+   "chain": [
+    [
+     1,
+     [
+      "Intense Gaze",
+      [
+       "Restraint",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      "Razor-Sharp Steps"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30129": {
+   "name": "[From Icy Blues to Verdant Hues] Grass Wonder",
+   "chain": [
+    [
+     1,
+     [
+      "Pressure"
+     ]
+    ],
+    [
+     3,
+     [
+      "Cooldown"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30130": {
+   "name": "[To You] K.S.Miracle",
+   "chain": [
+    [
+     2,
+     [
+      "Corner Acceleration ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Neck and Neck"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30131": {
+   "name": "[Marvelous☆Chocolate Show] Marvelous Sunday",
+   "chain": [
+    [
+     2,
+     [
+      "Straightaway Recovery"
+     ]
+    ],
+    [
+     3,
+     [
+      "Indomitable"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30132": {
+   "name": "[Transform! Garçon Form!] Biko Pegasus",
+   "chain": [
+    [
+     1,
+     [
+      "Frenzied Late Surgers"
+     ]
+    ],
+    [
+     2,
+     [
+      "Slick Surge"
+     ]
+    ],
+    [
+     3,
+     [
+      "Sharp Arc"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30133": {
+   "name": "[Fondente Smile] Hishi Akebono",
+   "chain": [
+    [
+     2,
+     [
+      "Sunny Days ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Plan X"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30134": {
+   "name": "[Radiant] Mejiro Ramonu",
+   "chain": [
+    [
+     1,
+     [
+      "Fighting Spirit",
+      "Unyielding Spirit"
+     ]
+    ],
+    [
+     3,
+     [
+      "Superb Gait"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30135": {
+   "name": "[Hold Aloft the Blazing Torch] Katsuragi Ace",
+   "chain": [
+    [
+     2,
+     [
+      "Final Push"
+     ]
+    ],
+    [
+     3,
+     [
+      "Unyielding"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30136": {
+   "name": "[Unyielding Resolve] Symboli Kris S",
+   "chain": [
+    [
+     2,
+     [
+      "Hawkeye"
+     ]
+    ],
+    [
+     3,
+     [
+      "Burning Soul"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30137": {
+   "name": "[Chasing Eternal Glory] Progenitors and Guides",
+   "always": [
+    "Uma Stan"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): Darley Arabian date gives Straightaway Adept + Uma Stan"
+  },
+  "30138": {
+   "name": "[Don't Close Your Eyes Now] Nice Nature",
+   "chain": [
+    [
+     1,
+     [
+      "Tail Held High"
+     ]
+    ],
+    [
+     2,
+     [
+      "Nimble Navigator"
+     ]
+    ],
+    [
+     3,
+     [
+      "Perfect Spot!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30139": {
+   "name": "[Heart Aflutter in the Evening Breeze] Mejiro McQueen",
+   "chain": [
+    [
+     1,
+     [
+      "All Set"
+     ]
+    ],
+    [
+     2,
+     [
+      "My True Strength"
+     ]
+    ],
+    [
+     3,
+     [
+      "Light-Footed as a Hare"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30140": {
+   "name": "[Soaring Waltz] Tokai Teio",
+   "chain": [
+    [
+     2,
+     [
+      "Pace Chaser Corners ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Lightning Step"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30141": {
+   "name": "[Mission: Nourishing the Soul] Mihono Bourbon",
+   "chain": [
+    [
+     1,
+     [
+      "Front Runner Savvy ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Solid Preparation"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30142": {
+   "name": "[Among Cherry Blossoms in Bloom] Sakura Laurel",
+   "chain": [
+    [
+     1,
+     [
+      "Unrestrained Passion"
+     ]
+    ],
+    [
+     3,
+     [
+      "On Your Left!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30143": {
+   "name": "[The View at Journey's End] Ikuno Dictus",
+   "chain": [
+    [
+     1,
+     [
+      "Studious"
+     ]
+    ],
+    [
+     3,
+     [
+      "Hard Worker"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30145": {
+   "name": "[Welcome to Umayuru] Tanino Gimlet",
+   "chain": [
+    [
+     3,
+     [
+      "Sturm und Drang"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30146": {
+   "name": "[Run Forth! Dash On! Ever Forward!] Oguri Cap",
+   "chain": [
+    [
+     2,
+     [
+      [
+       "Triple 7s",
+       0.5
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       "Solid Strike",
+       0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30147": {
+   "name": "[The Frontier] Jungle Pocket",
+   "chain": [
+    [
+     3,
+     [
+      "Rising Pulse"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30148": {
+   "name": "[Something Blue] Daiwa Scarlet",
+   "chain": [
+    [
+     2,
+     [
+      "Fast-Paced"
+     ]
+    ],
+    [
+     3,
+     [
+      "Can't Even Catch My Shadow"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30149": {
+   "name": "[Haute Couture Memory] Aston Machan",
+   "chain": [
+    [
+     1,
+     [
+      "Intimidate"
+     ]
+    ],
+    [
+     2,
+     [
+      "Dodging Danger"
+     ]
+    ],
+    [
+     3,
+     [
+      "Concentration"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30150": {
+   "name": "[Heart Ignition!] Vodka",
+   "chain": [
+    [
+     2,
+     [
+      "Sharp Gaze"
+     ]
+    ],
+    [
+     3,
+     [
+      "15,000,000 CC"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30151": {
+   "name": "[Chill Chill Night] Mayano Top Gun",
+   "chain": [
+    [
+     3,
+     [
+      "No Stopping Me!"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "No Stopping Me!"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30152": {
+   "name": "[All'alba Vincerò!] T.M. Opera O",
+   "chain": [
+    [
+     2,
+     [
+      "Corner Adept ○",
+      "Deep Breaths"
+     ]
+    ],
+    [
+     3,
+     [
+      "Beast Mode",
+      "Beeline Burst"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30153": {
+   "name": "[Gentle Moon] Gold City",
+   "chain": [
+    [
+     2,
+     [
+      "Shifting Gears"
+     ]
+    ],
+    [
+     3,
+     [
+      "High Voltage",
+      "Summer Gust"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30154": {
+   "name": "[As the Seagulls Soar] Mejiro Palmer",
+   "chain": [
+    [
+     3,
+     [
+      "Send It! ☆"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Send It! ☆"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30155": {
+   "name": "[#Summer #NewMe] Daitaku Helios",
+   "chain": [
+    [
+     2,
+     [
+      "Sympathy"
+     ]
+    ],
+    [
+     3,
+     [
+      "Staggering Lead"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30156": {
+   "name": "[Lifelong Wonder] Wonder Acute",
+   "chain": [
+    [
+     2,
+     [
+      "Tail Held High"
+     ]
+    ],
+    [
+     3,
+     [
+      "Dancer in the Dirt"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     2,
+     [
+      "Dancer in the Dirt"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30157": {
+   "name": "[The Bubbles We Gaze upon Together] Manhattan Cafe",
+   "chain": [
+    [
+     2,
+     [
+      "Late Surger Corners ○"
+     ]
+    ],
+    [
+     3,
+     [
+      "Claw Forward",
+      "Cooldown"
+     ]
+    ]
+   ],
+   "end": [
+    [
+     1,
+     [
+      "Tail Held High"
+     ]
+    ],
+    [
+     2,
+     []
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30158": {
+   "name": "[Summer Splash] Jungle Pocket",
+   "chain": [
+    [
+     3,
+     [
+      "Rampaging Passion"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30159": {
+   "name": "[Seaside Bloom] Air Groove",
+   "chain": [
+    [
+     2,
+     [
+      "Straightaway Acceleration"
+     ]
+    ],
+    [
+     3,
+     [
+      "Speed Star"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  }
+ }
+}

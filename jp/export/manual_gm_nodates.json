@@ -1,0 +1,89 @@
+{
+ "about": "Local cache of support-card event skill hints (JP, Grand Masters era). One entry per card id. 'chain': [[link, [skill names]]] where the player can pick the skill (choice) or it is the success outcome; 'always': skills given whenever the card is in the deck (pal recreation finales); 'chance': [[skill, probability per run]]; 'disabled': events that do not fire in independent training; 'status': complete | partial | unknown; 'src': where it came from. Skill names must match the in-game Global names (web_skills.json). Add cards here instead of re-fetching sites. GM variant: first-year pal date events are assumed to fire.",
+ "cards": {
+  "20021": {
+   "name": "[Trainers' Teamwork] Aoi Kiryuin",
+   "always": [],
+   "status": "complete",
+   "src": "umamusu.wiki"
+  },
+  "30021": {
+   "name": "[Tracen Reception] Tazuna Hayakawa",
+   "always": [],
+   "disabled": [
+    [
+     "Tail Held High",
+     "first-year date event, bugged in independent training"
+    ]
+   ],
+   "status": "complete",
+   "src": "user + umamusu.wiki"
+  },
+  "30036": {
+   "name": "[Planned Perfection] Riko Kashimoto",
+   "always": [],
+   "status": "complete",
+   "src": "umamusu.wiki (Ramp Up from a random event; covered by scenario)"
+  },
+  "30052": {
+   "name": "[From the Ground Up] Light Hello",
+   "always": [
+    "See Ya Later!"
+   ],
+   "status": "complete",
+   "src": "user + umamusu.wiki (recreation 5)"
+  },
+  "30080": {
+   "name": "[This Might Sting!] Sasami Anshinzawa",
+   "disabled": [
+    [
+     "Uma Stan",
+     "first-year date event, bugged in independent training"
+    ]
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 830080001, decoded",
+   "chance": [
+    [
+     "Nothing Ventured",
+     0.5
+    ],
+    [
+     "Risky Business",
+     1.0
+    ]
+   ],
+   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure; outcomes 50/50 by the 'di' convention). Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then."
+  },
+  "10074": {
+   "name": "[Acupuncturist] Sasami Anshinzawa",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "gametora friend events (R variant of recreation finale)"
+  },
+  "30137": {
+   "name": "[Chasing Eternal Glory] Progenitors and Guides",
+   "always": [
+    "Uma Stan"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): Darley Arabian date gives Straightaway Adept + Uma Stan"
+  },
+  "30081": {
+   "name": "[Passing the Dream On] Team Sirius",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): a member date gives Risky Business"
+  },
+  "30067": {
+   "name": "[Esteemed and Adored] Heirs to the Throne",
+   "always": [],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): no target skills"
+  }
+ }
+}

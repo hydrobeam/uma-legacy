@@ -1,0 +1,936 @@
+<title>Legacy Loop Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: settings rail on the left (roster, skills, rank), results column on the right; stacks at phone width. */
+:root {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --ink: #18202e;
+  --muted: #5b6577;
+  --line: #d9dee7;
+  --accent: #2448b8;
+  --accent-soft: #e4eafb;
+  --gold: #a87a0c;
+  --gold-soft: #fbf0d2;
+  --out: #b4392f;
+  --out-soft: #f8e3e1;
+  --req: #1d7a55;
+  --req-soft: #dcf1e7;
+  --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r: 10px;
+  --av-l: 86%; --av-c: 40%;
+  --k-speed: #2f6fd6; --k-stamina: #d0453b; --k-power: #d97a1e; --k-guts: #cf4f8d; --k-wit: #2f9a62; --k-pal: #b88a12; --k-group: #8a6ad1; --k-other: #6b7385;
+  --r-ssr: #c99a1a; --r-sr: #8f9aa8; --r-r: #a8714a;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10141c; --panel: #171d28; --ink: #e8ecf4; --muted: #9aa4b6; --line: #2a3344;
+  --accent: #8ea8ff; --accent-soft: #1e2a4a; --gold: #e3b54a; --gold-soft: #3a2e10;
+  --out: #ff8a7e; --out-soft: #3d1f1c; --req: #6fd6a6; --req-soft: #173628; --av-l: 30%; --av-c: 35%; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #10141c; --panel: #171d28; --ink: #e8ecf4; --muted: #9aa4b6; --line: #2a3344;
+  --accent: #8ea8ff; --accent-soft: #1e2a4a; --gold: #e3b54a; --gold-soft: #3a2e10;
+  --out: #ff8a7e; --out-soft: #3d1f1c; --req: #6fd6a6; --req-soft: #173628; --av-l: 30%; --av-c: 35%; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 48px; }
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 960px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.tag { color: var(--muted); max-width: 70ch; margin: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.rail { display: grid; gap: 14px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+@media (max-width: 960px) { .rail { position: static; } }
+h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.between { justify-content: space-between; }
+.hint { color: var(--muted); font-size: 0.82rem; margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; background: var(--bg); }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
+.btn:hover { border-color: var(--accent); }
+.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 1rem; width: 100%; }
+.run:disabled { opacity: .6; cursor: progress; }
+input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
+input[type="search"] { width: 100%; }
+/* roster chips: three states */
+.roster { display: flex; flex-wrap: wrap; gap: 6px; max-height: 300px; overflow: auto; padding: 2px; }
+.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 0.83rem; line-height: 1.3; }
+.chip[data-s="out"] { background: var(--out-soft); border-color: var(--out); color: var(--out); text-decoration: line-through; }
+.chip[data-s="req"] { background: var(--req-soft); border-color: var(--req); color: var(--req); font-weight: 700; }
+.outfits summary { font-size: 0.88rem; }
+.olist { display: grid; gap: 8px; margin-top: 8px; max-height: 320px; overflow: auto; padding-right: 4px; }
+.orow { display: grid; gap: 4px; }
+.orow .on { font-size: 0.82rem; font-weight: 700; }
+.orow .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.of[aria-pressed="false"] { background: var(--out-soft); border-color: var(--out); color: var(--out); text-decoration: line-through; }
+.chip .n { font-family: var(--font-data); font-size: 0.72rem; color: var(--muted); margin-left: 5px; text-decoration: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.78rem; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; border: 1px solid var(--line); vertical-align: -1px; }
+.legend .l-out::before { background: var(--out-soft); border-color: var(--out); }
+.legend .l-req::before { background: var(--req-soft); border-color: var(--req); }
+/* target skills */
+.targets { display: grid; gap: 8px; }
+.tgt { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
+.tgt .name { font-weight: 700; }
+.tgt .gold { color: var(--gold); font-size: 0.8rem; font-weight: 500; }
+.tgt .ctrl { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: end; font-size: 0.78rem; color: var(--muted); }
+.tgt .ctrl label { display: grid; gap: 2px; }
+.tgt .ctrl select, .tgt .ctrl input { width: 100%; font-size: 0.85rem; padding: 4px 6px; }
+.x { border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.x:hover { color: var(--out); }
+.adder { position: relative; }
+.sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 240px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 0.88rem; }
+.sugg button:hover, .sugg button:focus { background: var(--accent-soft); }
+.sugg small { color: var(--gold); margin-left: 6px; }
+.extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; }
+/* results */
+.results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.status { color: var(--muted); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.badge { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.stale { border: 1px solid var(--gold); background: var(--gold-soft); border-radius: 8px; padding: 8px 12px; }
+.badge.ex { background: var(--gold-soft); color: var(--gold); }
+.loop { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.loop > * { min-width: 0; }
+.loop.first { border-color: var(--accent); border-width: 2px; }
+.lhead { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; }
+.rank { font-family: var(--font-data); color: var(--muted); font-size: 0.9rem; }
+.odds { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
+.odds small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+.sub { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.85rem; }
+.members { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 620px) { .members { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mem { border-top: 3px solid var(--line); padding-top: 6px; display: grid; gap: 3px; align-content: start; min-width: 0; }
+.mem.covers { border-top-color: var(--accent); }
+.mem .nm { font-weight: 700; line-height: 1.25; }
+.mem .of { font-size: 0.8rem; color: var(--muted); }
+.mem .own { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); }
+.spark { display: inline-block; font-size: 0.74rem; border-radius: 6px; padding: 1px 6px; border: 1px solid var(--line); margin: 2px 4px 0 0; }
+.spark.g { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); font-weight: 700; }
+.stars { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--muted); }
+.stars b { font-family: var(--font-data); color: var(--ink); font-weight: 500; }
+details summary { cursor: pointer; font-weight: 700; font-size: 0.88rem; color: var(--accent); }
+.tablewrap { overflow-x: auto; margin-top: 8px; }
+table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; min-width: 560px; }
+.sched th, .sched td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.sched th:first-child, .sched td:first-child, .sched td.when, .sched th.when { text-align: left; }
+.sched td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.sched td:first-child { font-family: var(--font-ui); }
+.sched tr.year td { border-bottom: 0; padding-top: 10px; font-family: var(--font-ui); font-weight: 700; color: var(--muted); text-align: left; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.sched .dot { color: var(--line); }
+.sched .goal { color: var(--accent); font-weight: 600; }
+.sched .alt { font-family: var(--font-ui); color: var(--muted); font-size: 0.76rem; text-align: left; }
+.sched caption { text-align: left; font-weight: 700; padding: 6px 0; caption-side: top; }
+.err { color: var(--out); font-weight: 500; }
+.foot { max-width: 1320px; margin: 26px auto 0; color: var(--muted); font-size: 0.82rem; display: grid; gap: 6px; }
+.foot p { margin: 0; max-width: 90ch; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle; }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
+.cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chip .av, .chip .cav { margin-right: 6px; }
+.chip.card { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center; }
+.chip.card .cav { grid-row: span 2; margin: 0; }
+.dc { display: inline-flex; align-items: center; gap: 6px; }
+.mem .head { display: flex; gap: 8px; align-items: center; }
+.why { justify-self: start; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; color: var(--accent); font-weight: 600; }
+.why:hover { border-color: var(--accent); }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 0; width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
+.dlg { display: grid; gap: 14px; padding: 18px; overflow: auto; max-height: calc(100vh - 50px); }
+.dlg h3 { margin: 0; font-size: 1.15rem; font-weight: 900; text-wrap: balance; }
+.dlg h4 { margin: 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.dlg p { margin: 0; max-width: 75ch; }
+.dlg .x { position: sticky; top: 0; justify-self: end; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.tbl th, .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl tbody tr.sel { background: var(--accent-soft); }
+.tbl tbody tr.pick { cursor: pointer; }
+.tbl tbody tr.pick:hover { background: var(--accent-soft); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (min-width: 900px) { .split { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); } .split > .view { position: sticky; top: 0; } }
+.split .tbl td:nth-child(3), .split .tbl th:nth-child(3) { display: none; }
+.tree { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.node { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 3px; min-width: 0; font-size: 0.82rem; }
+.node .who { display: flex; gap: 6px; align-items: center; font-weight: 700; min-width: 0; }
+.node .who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .num { font-family: var(--font-data); color: var(--muted); }
+.node.t { grid-column: 1 / -1; justify-self: center; min-width: min(280px, 100%); border-color: var(--accent); }
+.node.p { grid-column: span 2; }
+.node b { font-family: var(--font-data); color: var(--ink); }
+.odds-list { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 0.85rem; }
+.odds-list .src { color: var(--muted); font-size: 0.78rem; }
+.odds-list b { font-family: var(--font-data); text-align: right; }
+.imgdrop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; }
+.cards { display: grid; gap: 10px; max-height: 360px; overflow: auto; padding-right: 4px; }
+.cgroup h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+.cgroup .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.card { text-align: left; border-radius: 8px; display: grid; gap: 1px; max-width: 100%; }
+.chip.card .cn { font-weight: 600; }
+.chip.card .cg { font-size: 0.72rem; color: var(--muted); }
+.chip.card[aria-pressed="false"] { background: var(--out-soft); border-color: var(--out); color: var(--out); }
+.chip.card[aria-pressed="false"] .cn { text-decoration: line-through; }
+.deck { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.deck .dcards { display: flex; flex-wrap: wrap; gap: 6px; }
+.dc { font-size: 0.8rem; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+.dc.pal { border-color: var(--req); color: var(--req); }
+.dc.bor { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.dodds { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); }
+.dodds b { color: var(--ink); font-family: var(--font-data); font-weight: 600; }
+.nodeck .tgt .ctrl label.dk { display: none; }
+.nodeck .tgt .ctrl { grid-template-columns: minmax(0, 1fr); }
+.howto { max-width: 1320px; margin: 0 auto 14px; font-size: 0.88rem; color: var(--muted); }
+.howto summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.howto ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; max-width: 90ch; }
+.unbuilt { max-width: 1320px; margin: 0 auto 14px; padding: 12px 14px; border: 1px solid var(--out); border-radius: 10px; color: var(--out); font-weight: 500; }
+</style>
+
+<header class="top">
+  <h1>Legacy Loop Planner</h1>
+  <span class="row" style="margin-left:auto"><button class="btn" id="ex-open">Export / import</button><button class="btn" id="img-open">Portraits &amp; card art</button></span>
+  <p class="tag" id="tagline">Pick the umas you own and the skills you want sparked onto your veterans. It searches every four-uma self-copy-free loop and schedules the races.</p>
+</header>
+
+
+<div class="wrap">
+  <aside class="rail">
+    <section class="panel" aria-labelledby="h-era">
+      <div class="row between">
+        <h2 id="h-era">Game data</h2>
+        <div class="seg" role="group" aria-label="Game data">
+          <button id="era-global" aria-pressed="true">Global today</button>
+          <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
+        </div>
+      </div>
+      <p class="hint" id="era-hint"></p>
+      <div class="extras">
+        <label><input type="checkbox" id="x-rcards" checked> Use R cards (training hints only; like a pal they take no chain slot)</label>
+        <label><input type="checkbox" id="x-dates"> Pal first-year dates fire (Tazuna: Tail Held High, Anshinzawa SSR: Uma Stan). They don't in Unity Cup independent training.</label>
+        <label class="row" for="x-rand" style="gap:10px"><span style="font-size:.88rem">Random event hints</span>
+          <select id="x-rand">
+            <option value="0">Not counted</option>
+            <option value="0.5">Fire half the time</option>
+            <option value="1">Always fire</option>
+          </select></label>
+      </div>
+      <p class="hint">Random events that can hint a target: Vodka (Nimble Navigator), Nice Nature (Ramp Up), Seeking the Pearl (Uma Stan), McQueen [Fair Lady of the Waves] (Playtime's Over!), Riko pal cards (Ramp Up), and in the GM era Hishi Amazon [Hungry Veil] (Nimble Navigator) and Progenitors and Guides (Ramp Up). How often they fire is not known.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-mode">
+      <div class="row between">
+        <h2 id="h-mode">Optimise for</h2>
+        <div class="seg" role="group" aria-label="Optimise for">
+          <button id="mode-skills" aria-pressed="true">Skill sparks</button>
+          <button id="mode-aff" aria-pressed="false">Affinity only</button>
+        </div>
+      </div>
+      <p class="hint" id="mode-hint">Odds that every target skill lands as a spark on the new veteran, with the loop's race schedule.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-roster">
+      <div class="row between"><h2 id="h-roster">Umas</h2>
+        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
+      <input type="search" id="r-filter" placeholder="Filter by name" aria-label="Filter umas">
+      <div class="legend"><span>Owned</span><span class="l-out">Not owned</span><span class="l-req">Must include</span><span>Tap to cycle</span></div>
+      <div class="roster" id="roster"></div>
+      <p class="hint" id="r-count"></p>
+      <details class="outfits" id="outfits-box">
+        <summary id="o-sum">Outfits</summary>
+        <p class="hint">Tap an outfit you don't own. Outfits decide which skills a trainee can buy without a hint; race odds are the same across outfits.</p>
+        <div class="olist" id="olist"></div>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="h-skills" id="skills-panel">
+      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">Unity Cup example</button></div>
+      <div class="targets" id="targets"></div>
+      <div class="adder">
+        <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
+        <div class="sugg" id="t-sugg" hidden></div>
+      </div>
+      <label class="row" for="rank" style="gap:10px"><span style="font-size:.88rem">Lineage rank</span>
+        <select id="rank">
+          <option value="0.45,0.50,0.05">B to SS (spark stars 45/50/5%)</option>
+          <option value="0.20,0.70,0.10">SS to UE (20/70/10%)</option>
+          <option value="0.175,0.70,0.125">UE and up (17.5/70/12.5%)</option>
+        </select></label>
+      <div class="extras">
+        <label><input type="checkbox" id="x-teio" checked> Tokai Teio gets Head-On from career events</label>
+        <label><input type="checkbox" id="x-zephyr" checked> Yamanin Zephyr gets Slipstream</label>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-deck" id="deck-panel">
+      <div class="row between"><h2 id="h-deck">Support deck</h2>
+        <div class="seg" role="group" aria-label="Support deck">
+          <button id="dk-opt" aria-pressed="true">Find best deck</button>
+          <button id="dk-fixed" aria-pressed="false">Set odds by hand</button>
+        </div></div>
+      <div id="dk-body">
+        <p class="hint">Tap the cards you don't own. Listed: pals, and every SR/SSR that can give one of your target skills (training hints or chain events). Other cards only fill slots, so they are not listed.</p>
+        <div class="row"><input type="search" id="c-filter" placeholder="Filter cards" aria-label="Filter cards" style="flex:1"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button></div>
+        <div class="cards" id="cards"></div>
+        <p class="hint" id="c-count"></p>
+        <div class="extras"><label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card (the search picks which)</label></div>
+        <label class="row" for="c-top" style="gap:10px"><span style="font-size:.88rem">Decks to show</span>
+          <select id="c-top"><option value="1">1 (fastest, ~5–10 s)</option><option value="3">3 (~10–20 s)</option></select></label>
+      </div>
+      <p class="hint" id="dk-fixed-hint" hidden>Using the deck hint % typed on each target skill.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-aff" id="aff-panel" hidden>
+      <h2 id="h-aff">Breeding scheme</h2>
+      <div class="seg" role="group" aria-label="Breeding scheme">
+        <button id="sch-scf" aria-pressed="true">Self-copy-free (12 runs)</button>
+        <button id="sch-rot" aria-pressed="false">Rotation</button>
+      </div>
+    </section>
+
+    <button class="run" id="run">Find best loops</button>
+  </aside>
+
+  <main class="results" id="results" aria-live="polite"></main>
+</div>
+
+<dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>
+<dialog id="ex-dlg" aria-labelledby="ex-title"><div class="dlg">
+  <button class="btn x" id="ex-close">Close</button>
+  <h3 id="ex-title">Export or import</h3>
+  <p>The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load someone else's settings, paste their text here and press Load settings.</p>
+  <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results" style="width:100%;font-family:var(--font-data);font-size:.78rem;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+  <div class="row"><button class="btn" id="ex-copy">Copy</button><button class="btn" id="ex-load">Load settings</button><span class="hint" id="ex-msg"></span></div>
+</div></dialog>
+<dialog id="img-dlg" aria-labelledby="img-title"><div class="dlg">
+  <button class="btn x" id="img-close">Close</button>
+  <h3 id="img-title">Portraits and card art</h3>
+  <p>The page ships without game art and shows coloured initials and card-type badges instead. To see real portraits and card images, add your own image files here. They stay in this browser only and are never uploaded.</p>
+  <div class="imgdrop">
+    <p><b>Name each file by its game id:</b> 4 digits for an uma (1001.png is Special Week), 6 digits for an outfit (100102.png is Special Week [Hopp'n♪Happy Heart]), 5 digits for a support card (30116.png is Daitaku Helios SSR [Sunlit Angel ♪]). Any image type works; extra words in the name are ignored as long as the id is the only number.</p>
+    <div class="row"><label class="btn" for="img-files" style="cursor:pointer">Add image files…</label><input type="file" id="img-files" accept="image/*" multiple hidden>
+      <label class="btn" for="img-dir" style="cursor:pointer">Add a folder…</label><input type="file" id="img-dir" webkitdirectory multiple hidden>
+      <button class="btn" id="img-clear">Remove all</button></div>
+    <p class="hint" id="img-count"></p>
+  </div>
+  <h4>Hosting the page yourself</h4>
+  <input type="text" id="img-tpl" placeholder="img/{kind}/{id}.png" aria-label="Image URL pattern">
+</div></dialog>
+
+<footer class="foot">
+  <p><strong>Model.</strong> Each target spark sits on all six legacies with stars from the chosen rank. A skill is acquired if guaranteed, on the trainee's own outfit skill list (fully awakened), hinted by the deck, or inherited: proc = 1 − Π(1 − base × (1 + affinity/100)), grandparents at half rate, two inspirations. It then becomes a spark 35% of the time as a white, 70% as a gold. Odds average the 12 runs of the self-copy-free cycle.</p>
+  <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: 1 + hint frequency/25 per run, each a uniform draw over the card's hint options. Chain events: a Poisson(7.1) number per run, each advancing a random remaining chain slot of a non-pal card (fits 81% / 59% / 50% full-chain completion with 6 / 8 / 9 slots); pals add no chain slots. Event rewards: GameTora training-event data; a reward on only one outcome counts at 50%. Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together and the result is exact for this model.</p>
+  <p><strong>Search.</strong> Every foursome gets a guaranteed ceiling from exact pairwise bounds; loops are scheduled best-first until no remaining ceiling can beat the 5th result. Schedules maximise affinity with grandparent slots at half weight. Win odds per race: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90), minus 0/0/5/20/30/50 for the 1st to 6th+ race in a row, capped at 0–100%. Data: Global master.mdb, relocated venues count as the same race. The Grand Masters-era option uses a JP master.mdb cut at L'Arc's launch (24 Aug 2023), with group cards counted as pals.</p>
+</footer>
+
+<script type="application/json" id="data-cards">__CARDS__</script>
+<script type="application/json" id="data-umas">__UMAS__</script>
+<script type="application/json" id="data-skills">__SKILLCAT__</script>
+<script type="application/json" id="data-hints">__HINTS__</script>
+<script type="application/json" id="data-cards-gm">__CARDS_GM__</script>
+<script type="application/json" id="data-umas-gm">__UMAS_GM__</script>
+<script type="application/json" id="data-skills-gm">__SKILLCAT_GM__</script>
+<script type="application/json" id="data-hints-gm">__HINTS_GM__</script>
+<script type="text/plain" id="engine-data-gm">__DATA_GM__</script>
+<script type="application/json" id="data-example">__EXAMPLE__</script>
+<script type="text/plain" id="engine-data">__DATA__</script>
+<script type="text/plain" id="engine-wasm">__WASM__</script>
+<script type="text/plain" id="engine-worker">__WORKER__</script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  if ($('data-umas').textContent.trim().startsWith('__')) {
+    const b = document.createElement('div'); b.className = 'unbuilt';
+    b.textContent = 'This is the unbuilt template, so it has no roster or solver. Open "Legacy Loop Planner.html" (or dist/index.html) instead, or run python3 build.py.';
+    document.querySelector('header.top').after(b); return;
+  }
+  // Game data: Global today, or JP data cut at L'Arc's launch (24 Aug 2023), the Grand Masters era. Switching
+  // reloads the page with the other data set; owned umas, outfits and cards are kept per data set.
+  let ERA = 'global'; try { ERA = localStorage.getItem('llp:era') === 'gm' ? 'gm' : 'global'; } catch {}
+  const SFX = ERA === 'gm' ? '-gm' : '';
+  const CARDS = JSON.parse($('data-cards' + SFX).textContent);     // [{id,name,rar,pal,links,hf,whites,ev:[[group,level,link,p]]}]
+  const UMAS = JSON.parse($('data-umas' + SFX).textContent);
+  const HINTS = JSON.parse($('data-hints' + SFX).textContent);    // {trainee:[[id,group,p]], deck:[[card,group,level,p]]}
+  const CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
+  // ---------- portraits and card art (user-supplied, kept in this browser) ----------
+  const IMG = new Map();                      // 'uma:1001' | 'outfit:100102' | 'card:30116' -> object URL
+  let imgTpl = ''; try { imgTpl = localStorage.getItem('llp:imgtpl') || ''; } catch {}
+  const idb = () => new Promise((res, rej) => { try { const r = indexedDB.open('llp-images', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
+  const kindOf = (id) => { const n = String(id).length; return n === 4 ? 'uma' : n === 6 ? 'outfit' : n === 5 ? 'card' : null; };
+  async function loadImages() {
+    try { const db = await idb(); const tx = db.transaction('files', 'readonly'); const st = tx.objectStore('files');
+      await new Promise((res) => { const rq = st.openCursor(); rq.onsuccess = () => { const c = rq.result; if (!c) return res();
+        if (!IMG.has(c.key)) IMG.set(c.key, URL.createObjectURL(c.value)); c.continue(); }; rq.onerror = () => res(); });
+    } catch {}
+    $('img-count').textContent = IMG.size ? `${IMG.size} images loaded.` : 'No images added yet.';
+  }
+  async function addImages(files) {
+    let n = 0; let db = null; try { db = await idb(); } catch {}
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) continue;
+      const nums = (f.name.replace(/\.[^.]+$/, '').match(/\d+/g) || []); if (nums.length !== 1) continue;
+      const k = kindOf(nums[0]); if (!k) continue; const key = k + ':' + nums[0];
+      if (IMG.has(key)) URL.revokeObjectURL(IMG.get(key));
+      IMG.set(key, URL.createObjectURL(f)); n++;
+      if (db) try { db.transaction('files', 'readwrite').objectStore('files').put(f, key); } catch {}
+    }
+    $('img-count').textContent = `${IMG.size} images loaded` + (n ? ` (${n} just added).` : '. None of those files had a usable id in the name.');
+    refreshAll();
+  }
+  function srcFor(kind, id) { const k = kind + ':' + id; if (IMG.has(k)) return IMG.get(k); return imgTpl ? imgTpl.replace('{kind}', kind).replace('{id}', id) : null; }
+  function initials(name) { const w = name.replace(/[^A-Za-z .]/g, '').split(/[ .]+/).filter(Boolean); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase(); }
+  function umaAv(charaId, outfitId, size) {
+    const el = document.createElement('span'); el.className = 'av'; el.style.width = el.style.height = size + 'px'; el.style.fontSize = Math.round(size * 0.38) + 'px';
+    el.style.setProperty('--h', String((charaId * 47) % 360)); el.textContent = initials(NAME.get(charaId) || '?');
+    const tries = [outfitId && srcFor('outfit', outfitId), srcFor('uma', charaId)].filter(Boolean);
+    const next = () => { const s = tries.shift(); if (!s) return; const im = new Image(); im.alt = ''; im.onload = () => { el.textContent = ''; el.appendChild(im); }; im.onerror = next; im.src = s; };
+    next(); return el;
+  }
+  const KABBR = { speed: 'SPD', stamina: 'STA', power: 'POW', guts: 'GUT', wit: 'WIT', pal: 'PAL', group: 'GRP', other: '·' };
+  function cardAv(c, size) {
+    const el = document.createElement('span'); el.className = 'cav'; el.style.width = el.style.height = size + 'px'; el.style.fontSize = Math.max(7, Math.round(size * 0.3)) + 'px';
+    const kind = (c && c.kind) || 'other'; el.style.setProperty('--k', `var(--k-${kind})`);
+    el.style.setProperty('--rr', c ? `var(--r-${({ 3: 'ssr', 2: 'sr', 1: 'r' })[c.rar] || 'r'})` : 'transparent');
+    el.textContent = KABBR[kind] || '·'; el.title = c ? c.name : '';
+    const s = c && srcFor('card', c.id); if (s) { const im = new Image(); im.alt = ''; im.onload = () => { el.textContent = ''; el.appendChild(im); }; im.src = s; }
+    return el;
+  }
+  let refreshAll = () => {};       // [{id,name,outfits:[{id,label}]}]
+  const CAT = JSON.parse($('data-skills' + SFX).textContent);      // [[group, white, gold|null]]
+  const EXAMPLE = JSON.parse($('data-example').textContent); // precomputed default result
+  const SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
+  const NAME = new Map(UMAS.map(u => [u.id, u.name]));
+  const PRESET = [
+    { group: 20159, guaranteed: 0 }, { group: 20049, guaranteed: 2 }, { group: 20166, guaranteed: 0, deck_gold: 1 }, { group: 20046, guaranteed: 2 },
+    { group: 20161, guaranteed: 0, deck_white: 0.5 }, { group: 21010, guaranteed: 0 }, { group: 20165, guaranteed: 0, deck_gold: 0.8 },
+    { group: 20203, guaranteed: 0, deck_gold: 1 },
+  ];
+  const PER_ERA = new Set(['roster', 'outfits', 'cardsOff']);
+  const skey = (k) => 'llp:' + (ERA === 'gm' && PER_ERA.has(k) ? 'gm:' : '') + k;
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(skey(k)); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(skey(k), JSON.stringify(v)); } catch {} },
+  };
+  const state = {
+    mode: store.get('mode', 'skills'),
+    roster: store.get('roster', {}),          // id -> 'out' | 'req'
+    outfits: store.get('outfits', {}),        // card id -> false when not owned
+    targets: store.get('targets', PRESET.map(t => ({ ...t }))),
+    rank: store.get('rank', '0.45,0.50,0.05'),
+    teio: store.get('teio', true), zephyr: store.get('zephyr', true),
+    scheme: store.get('scheme', 'scf'),
+    deck: store.get('deck', 'opt'),
+    cardsOff: store.get('cardsOff', {}),      // card id -> false when not owned
+    borrow: store.get('borrow', true),
+    decksTop: store.get('decksTop', '1'),
+    dates: store.get('dates', false), rand: store.get('rand', '0'), rcards: store.get('rcards', true),
+  };
+  let shown = false;   // results on screen; any settings change after that marks them out of date
+  function markStale() {
+    if (!shown) return; const box = $('results'); if (box.querySelector('.stale')) return;
+    const n = document.createElement('div'); n.className = 'status stale';
+    n.innerHTML = '<span class="badge ex">Out of date</span> Your settings changed after these results. Press <b>Find best loops</b> to update them.';
+    box.prepend(n);
+  }
+  // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
+  // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
+  try { if (!localStorage.getItem('llp:targetsV2')) {
+    for (const t of state.targets) if ((t.group === 20166 || t.group === 20203) && t.guaranteed === 2) { t.guaranteed = 0; t.deck_gold = 1; }
+    localStorage.setItem('llp:targetsV2', '1'); localStorage.setItem('llp:targets', JSON.stringify(state.targets)); } } catch {}
+  const save = () => { markStale(); for (const k of ['mode', 'roster', 'outfits', 'targets', 'rank', 'teio', 'zephyr', 'scheme', 'deck', 'cardsOff', 'borrow', 'decksTop', 'dates', 'rand', 'rcards']) store.set(k, state[k]); };
+  // ---------- game data ----------
+  $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
+  const setEra = (e) => { if (e === ERA) return; try { localStorage.setItem('llp:era', e); } catch {} location.reload(); };
+  $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
+  $('era-hint').textContent = ERA === 'gm'
+    ? `JP data up to L'Arc's launch (24 Aug 2023): ${UMAS.length} umas. Group cards (Team Sirius, Progenitors and Guides) count as pals and give the skills from their dates. Grand Masters itself guarantees none of the targets, so set No Stopping Me! and It's On! to "None" unless you're modelling Unity Cup, and pick a higher lineage rank (GM legacies rank above SS).`
+    : `Global data today: ${UMAS.length} umas.`;
+  $('x-dates').checked = state.dates; $('x-dates').onchange = (e) => { state.dates = e.target.checked; save(); };
+  $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); if (typeof renderCards === 'function') renderCards(); };
+  $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
+  // extra job fields from the event options
+  function eventFields(deck) {
+    const r = +state.rand, f = {};
+    if (r > 0) {
+      f.trainee_hints = HINTS.trainee.map(([id, g, p]) => [id, g, p * r]);
+      if (deck) f.odds_events = HINTS.deck.map(([c, g, lv, p]) => [c, g, lv, p * r]);
+    }
+    if (deck && state.dates) f.events = [[30021, 20161, 1, 0], [30080, 20159, 1, 0]].filter(e => CARD_BY_ID.has(e[0]));
+    if (deck && !state.rcards) f.exclude_cards = CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id);
+    return f;
+  }
+
+  // ---------- roster ----------
+  const order = [...UMAS].sort((a, b) => a.name.localeCompare(b.name));
+  function renderRoster() {
+    const f = $('r-filter').value.trim().toLowerCase();
+    const box = $('roster'); box.textContent = '';
+    for (const u of order) {
+      if (f && !u.name.toLowerCase().includes(f)) continue;
+      const b = document.createElement('button');
+      b.className = 'chip'; b.dataset.s = state.roster[u.id] || 'own';
+      b.appendChild(umaAv(u.id, null, 18)); b.appendChild(document.createTextNode(u.name));
+      const os = u.outfits || [], on = os.filter(o => state.outfits[o.id] !== false).length;
+      if (os.length > 1 && b.dataset.s !== 'out') { const sp = document.createElement('span'); sp.className = 'n'; sp.textContent = on + '/' + os.length; b.appendChild(sp); }
+      if (os.length && on === 0 && b.dataset.s === 'own') b.dataset.s = 'out';
+      b.setAttribute('aria-label', u.name + ': ' + ({ own: 'owned', out: 'not owned', req: 'must include' })[b.dataset.s]);
+      b.onclick = () => { const cur = state.roster[u.id] || 'own'; const nx = cur === 'own' ? 'out' : cur === 'out' ? 'req' : 'own';
+        if (nx === 'own') delete state.roster[u.id]; else state.roster[u.id] = nx; save(); renderRoster(); };
+      box.appendChild(b);
+    }
+    const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = Object.values(state.roster).filter(v => v === 'req').length;
+    renderOutfits();
+    $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} owned` + (req ? ` · ${req} must be in the loop` : '');
+  }
+  const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
+  function renderOutfits() {
+    const multi = order.filter(u => (u.outfits || []).length > 1);
+    const off = Object.values(state.outfits).filter(v => v === false).length;
+    $('o-sum').textContent = `Outfits (${multi.length} umas have more than one${off ? ', ' + off + ' not owned' : ''})`;
+    const box = $('olist'); box.textContent = '';
+    for (const u of multi) {
+      const row = document.createElement('div'); row.className = 'orow';
+      const nm = document.createElement('span'); nm.className = 'on'; nm.textContent = u.name; row.appendChild(nm);
+      const chips = document.createElement('div'); chips.className = 'chips';
+      for (const o of u.outfits) {
+        const b = document.createElement('button'); b.className = 'chip of'; b.textContent = o.label;
+        b.setAttribute('aria-pressed', state.outfits[o.id] === false ? 'false' : 'true');
+        b.setAttribute('aria-label', u.name + ' ' + o.label + (state.outfits[o.id] === false ? ': not owned' : ': owned'));
+        b.onclick = () => { if (state.outfits[o.id] === false) delete state.outfits[o.id]; else state.outfits[o.id] = false; save(); renderRoster(); };
+        chips.appendChild(b);
+      }
+      row.appendChild(chips); box.appendChild(row);
+    }
+  }
+  $('r-filter').oninput = renderRoster;
+  $('r-all').onclick = () => { state.roster = Object.fromEntries(Object.entries(state.roster).filter(([, v]) => v === 'req')); state.outfits = {}; save(); renderRoster(); };
+  $('r-none').onclick = () => { for (const u of UMAS) if (state.roster[u.id] !== 'req') state.roster[u.id] = 'out'; save(); renderRoster(); };
+
+  // ---------- targets ----------
+  function renderTargets() {
+    const box = $('targets'); box.textContent = '';
+    state.targets.forEach((t, i) => {
+      const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
+      const el = document.createElement('div'); el.className = 'tgt';
+      el.innerHTML = `<div class="row between"><div><span class="name"></span> <span class="gold"></span></div><button class="x" aria-label="Remove">×</button></div>
+        <div class="ctrl">
+          <label>Guaranteed outside the deck<select data-k="guaranteed"><option value="0">None</option><option value="1">White</option>${s.gd ? '<option value="2">Gold</option>' : ''}</select></label>
+          <label class="dk">Deck hint, white %<input type="number" min="0" max="100" step="5" data-k="deck_white"></label>
+          <label class="dk">${s.gd ? 'Deck hint, gold %' : 'No gold version'}<input type="number" min="0" max="100" step="5" data-k="deck_gold" ${s.gd ? '' : 'disabled'}></label>
+        </div>`;
+      el.querySelector('.name').textContent = s.w;
+      el.querySelector('.gold').textContent = s.gd ? '· gold: ' + s.gd : '';
+      const sel = el.querySelector('select'); sel.value = String(t.guaranteed || 0); sel.id = 'g-' + t.group;
+      const dw = el.querySelector('[data-k="deck_white"]'), dg = el.querySelector('[data-k="deck_gold"]');
+      dw.id = 'dw-' + t.group; dg.id = 'dg-' + t.group;
+      dw.value = Math.round((t.deck_white || 0) * 100); dg.value = Math.round((t.deck_gold || 0) * 100);
+      const sync = () => { const g = +sel.value; dw.disabled = g > 0; dg.disabled = g === 2 || !s.gd; };
+      sync();
+      sel.onchange = () => { t.guaranteed = +sel.value; sync(); save(); };
+      dw.onchange = () => { t.deck_white = Math.min(100, Math.max(0, +dw.value || 0)) / 100; save(); };
+      dg.onchange = () => { t.deck_gold = Math.min(100, Math.max(0, +dg.value || 0)) / 100; save(); };
+      el.querySelector('.x').onclick = () => { state.targets.splice(i, 1); save(); renderTargets(); };
+      box.appendChild(el);
+    });
+    if (!state.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one below.</p>';
+    renderCards();
+  }
+
+  // ---------- support cards ----------
+  const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
+  const cardTitle = (c) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + ' ' + RAR[c.rar], ti: m[1] } : { nm: c.name, ti: '' }; };
+  function cardGives(c, groups) {
+    const out = [];
+    for (const g of c.whites) if (groups.has(g)) out.push((SK.get(g) || { w: g }).w + ' hint');
+    for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const s = SK.get(g) || { w: g, gd: g };
+      out.push((lv === 2 ? s.gd : s.w) + (link ? ' (chain ' + link + (p < 1 ? ', ' + Math.round(p * 100) + '%' : '') + ')' : (p < 1 ? ' (' + Math.round(p * 100) + '%)' : ''))); }
+    return out;
+  }
+  function renderCards() {
+    const groups = new Set(state.targets.filter(t => (t.guaranteed || 0) !== 2).map(t => t.group));
+    const f = $('c-filter').value.trim().toLowerCase();
+    const box = $('cards'); box.textContent = '';
+    const sections = [['Pals', c => c.pal], ['SSR', c => !c.pal && c.rar === 3], ['SR', c => !c.pal && c.rar === 2], ['R (no chain slot)', c => !c.pal && c.rar === 1 && state.rcards]];
+    let shown = 0, off = 0;
+    for (const [label, pick] of sections) {
+      const list = CARDS.filter(pick).map(c => ({ c, gives: cardGives(c, groups) })).filter(x => x.c.pal || x.gives.length)
+        .sort((a, b) => b.gives.length - a.gives.length || a.c.name.localeCompare(b.c.name));
+      const vis = list.filter(x => !f || x.c.name.toLowerCase().includes(f));
+      if (!vis.length) continue;
+      const sec = document.createElement('div'); sec.className = 'cgroup';
+      sec.innerHTML = `<h3>${label}</h3><div class="chips"></div>`;
+      const chips = sec.querySelector('.chips');
+      for (const { c, gives } of vis) {
+        const t = cardTitle(c); const b = document.createElement('button'); b.className = 'chip card';
+        const own = state.cardsOff[c.id] !== false; if (!own) off++;
+        b.setAttribute('aria-pressed', own ? 'true' : 'false');
+        b.innerHTML = '<span class="cn"></span><span class="cg"></span>'; b.prepend(cardAv(c, 30));
+        b.querySelector('.cn').textContent = t.nm + (t.ti ? ' · ' + t.ti : '');
+        b.querySelector('.cg').textContent = gives.length ? gives.join(' · ') : (c.pal ? 'pal: no chain slots' : '');
+        b.setAttribute('aria-label', t.nm + ' ' + t.ti + (own ? ': owned' : ': not owned'));
+        b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); };
+        chips.appendChild(b); shown++;
+      }
+      box.appendChild(sec);
+    }
+    const allOff = Object.values(state.cardsOff).filter(v => v === false).length;
+    $('c-count').textContent = `${shown} cards listed` + (allOff ? ` · ${allOff} not owned` : ' · all owned');
+  }
+  $('c-filter').oninput = renderCards;
+  $('c-all').onclick = () => { state.cardsOff = {}; save(); renderCards(); };
+  $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); renderCards(); };
+  $('c-borrow').checked = state.borrow; $('c-borrow').onchange = (e) => { state.borrow = e.target.checked; save(); };
+  $('c-top').value = state.decksTop; $('c-top').onchange = (e) => { state.decksTop = e.target.value; save(); };
+  function setDeck(m) {
+    state.deck = m; save();
+    $('dk-opt').setAttribute('aria-pressed', m === 'opt'); $('dk-fixed').setAttribute('aria-pressed', m === 'fixed');
+    $('dk-body').hidden = m !== 'opt'; $('dk-fixed-hint').hidden = m === 'opt';
+    $('skills-panel').classList.toggle('nodeck', m === 'opt');
+  }
+  $('dk-opt').onclick = () => setDeck('opt'); $('dk-fixed').onclick = () => setDeck('fixed');
+  const addIn = $('t-add'), sugg = $('t-sugg');
+  addIn.oninput = () => {
+    const f = addIn.value.trim().toLowerCase(); sugg.textContent = '';
+    if (f.length < 2) { sugg.hidden = true; return; }
+    const have = new Set(state.targets.map(t => t.group));
+    const hits = CAT.filter(([g, w, gd]) => !have.has(g) && (w.toLowerCase().includes(f) || (gd && gd.toLowerCase().includes(f)))).slice(0, 30);
+    for (const [g, w, gd] of hits) {
+      const b = document.createElement('button'); b.textContent = w;
+      if (gd) { const sm = document.createElement('small'); sm.textContent = 'gold: ' + gd; b.appendChild(sm); }
+      b.onclick = () => { state.targets.push({ group: g, guaranteed: 0 }); addIn.value = ''; sugg.hidden = true; save(); renderTargets(); };
+      sugg.appendChild(b);
+    }
+    sugg.hidden = !hits.length;
+  };
+  addIn.onkeydown = (e) => { if (e.key === 'Escape') sugg.hidden = true; if (e.key === 'ArrowDown' && sugg.firstChild) { e.preventDefault(); sugg.firstChild.focus(); } };
+  document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
+  $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ ...t })); save(); renderTargets(); };
+  $('rank').value = state.rank; $('rank').onchange = (e) => { state.rank = e.target.value; save(); };
+  $('x-teio').checked = state.teio; $('x-teio').onchange = (e) => { state.teio = e.target.checked; save(); };
+  $('x-zephyr').checked = state.zephyr; $('x-zephyr').onchange = (e) => { state.zephyr = e.target.checked; save(); };
+
+  // ---------- mode ----------
+  function setMode(m) {
+    state.mode = m; save();
+    $('mode-skills').setAttribute('aria-pressed', m === 'skills'); $('mode-aff').setAttribute('aria-pressed', m === 'aff');
+    $('skills-panel').hidden = m !== 'skills'; $('aff-panel').hidden = m !== 'aff'; $('deck-panel').hidden = m !== 'skills';
+    $('mode-hint').textContent = m === 'skills' ? 'Odds that every target skill lands as a spark on the new veteran, with the loop’s race schedule.'
+      : 'Highest expected affinity per four runs (relations plus shared G1 wins), with the race schedule.';
+  }
+  $('mode-skills').onclick = () => setMode('skills'); $('mode-aff').onclick = () => setMode('aff');
+  function setScheme(s) { state.scheme = s; save(); $('sch-scf').setAttribute('aria-pressed', s === 'scf'); $('sch-rot').setAttribute('aria-pressed', s === 'rot'); }
+  $('sch-scf').onclick = () => setScheme('scf'); $('sch-rot').onclick = () => setScheme('rot');
+
+  // ---------- results ----------
+  const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
+  const runs90 = (p) => p > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - p)).toLocaleString() : '—';
+  function schedTable(m, rows) {
+    const wrap = document.createElement('div'); wrap.className = 'tablewrap';
+    const t = document.createElement('table'); t.className = 'sched';
+    const head = '<tr><th>G1</th><th class="when">When</th>' + m.map(x => `<th>${esc(x.short)}</th>`).join('') + '<th>Runners</th></tr>';
+    const body = (list) => { let out = '', y = -1;
+      for (const r of list) {
+        if (r.year !== y) { y = r.year; out += `<tr class="year"><td colspan="${m.length + 3}">${['Junior', 'Classic', 'Senior'][y]}</td></tr>`; }
+        out += `<tr><td>${esc(r.race)}</td><td class="when">${esc(r.when)}</td>` + r.cells.map(c => c ? `<td class="${c.goal ? 'goal' : ''}">${c.goal ? '*' : ''}${c.p}</td>` : '<td class="dot">·</td>').join('')
+          + `<td>${r.runners}/${m.length}</td></tr>`;
+      } return out; };
+    const shared = rows.filter(r => r.shared), opt = rows.filter(r => !r.shared);
+    t.innerHTML = `<caption>Shared G1s (these build affinity)</caption><thead>${head}</thead><tbody>${body(shared)}</tbody>`;
+    wrap.appendChild(t);
+    if (opt.length) {
+      const t2 = document.createElement('table'); t2.className = 'sched';
+      t2.innerHTML = `<caption>Optional G1s (one runner, no affinity; free to run, skip freely)</caption><thead>${head}</thead><tbody>${body(opt)}</tbody>`;
+      wrap.appendChild(t2);
+    }
+    const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'Number = win % at that attempt (streak penalty included). * = goal race. · = not running it. Turns not listed are rest.' + (rows.some(r => r.alts && r.alts.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : '');
+    wrap.appendChild(note);
+    return wrap;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+  function loopCard(l, i, meta, proven) {
+    const n = meta.targets.length, dist = meta.rank.split(',').map(Number), p2 = dist[1] + dist[2];
+    const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
+    card.innerHTML = `<div class="lhead"><span class="rank">#${i + 1}</span><span class="odds">${fmtIn(l.p_all)}<small>runs, all ${n} land</small></span>
+      <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
+    if (meta.deck) {
+      const d = meta.deck; const dk = document.createElement('div'); dk.className = 'deck';
+      const pals = new Set(d.pal_cards || []);
+      const cs = d.cards.map((nm, ci) => { const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
+        const endAt = (d.end_chain_at || [])[ci] || 0;
+        const c = (d.card_ids && CARD_BY_ID.get(d.card_ids[ci])) || CARDS.find(x => x.name === base); const t = c ? cardTitle(c) : { nm: base, ti: '' };
+        return `<span class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" title="${esc(t.ti)}">${esc(t.nm)}${t.ti ? ' · ' + esc(t.ti) : ''}${endAt ? ` <i>(take the chain-ending choice at link ${endAt})</i>` : ''}${bor ? ' (borrow)' : pals.has(base) ? ' (pal)' : ''}</span>`; }).join('');
+      const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
+        const parts = []; if (o.gold > 0.005) parts.push(`${esc(s.gd || s.w)} <b>${Math.round(o.gold * 100)}%</b>`); if (o.white > 0.005) parts.push(`${esc(s.w)} <b>${Math.round(o.white * 100)}%</b>`); return parts.join(' · '); }).join('</span><span>');
+      dk.innerHTML = `<div class="row between"><b>Deck · ${d.pals} pal${d.pals === 1 ? '' : 's'}${d.borrowed ? ' · borrow 1' : ''}</b></div><div class="dcards">${cs}</div>` +
+        (odds ? `<div class="dodds"><span>From the deck, every run: </span><span>${odds}</span></div>` : '<div class="dodds">This deck gives none of the targets.</div>');
+      dk.querySelectorAll('.dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 18)); });
+      card.appendChild(dk);
+    }
+    const mem = document.createElement('div'); mem.className = 'members';
+    l.members.forEach((m, k) => {
+      const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem' + (o.covers.length ? ' covers' : '');
+      const outfit = o.outfits.length ? o.outfits.map(x => x.label).join(' or ') : 'any outfit';
+      d.innerHTML = `<div class="head"><span class="nm"></span></div><span class="of"></span><span class="sk"></span><span class="own">own runs ${fmtIn(l.per_trainee[k])}</span>`;
+      d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
+      d.querySelector('.head').prepend(umaAv(m.id, o.outfits.length === 1 ? o.outfits[0].id : null, 38));
+      const sk = d.querySelector('.sk');
+      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('span');
+        sp.className = 'spark' + (c.level === 2 ? ' g' : ''); sp.textContent = c.level === 2 ? (s.gd || s.w) : s.w; sk.appendChild(sp); }
+      mem.appendChild(d);
+    });
+    card.appendChild(mem);
+    if (l.detail) { const wb = document.createElement('button'); wb.className = 'why'; wb.textContent = 'How this loop works';
+      wb.onclick = () => openWhy(l, meta); card.appendChild(wb); }
+    const stars = document.createElement('div'); stars.className = 'stars';
+    stars.innerHTML = `<span>All ${n} at 2★+: <b>${fmtIn(l.p_all * Math.pow(p2, n))}</b></span><span>Average inheritance proc: <b>${(l.mean_proc * 100).toFixed(1)}%</b></span>`;
+    card.appendChild(stars);
+    const det = document.createElement('details'); if (i === 0) det.open = true;
+    det.innerHTML = '<summary>Race schedule</summary>'; det.appendChild(schedTable(l.members, l.schedule));
+    card.appendChild(det);
+    return card;
+  }
+  // ---------- "how this loop works" ----------
+  function openWhy(l, meta) {
+    const D = l.detail, M = l.members, body = $('why-body'); body.textContent = '';
+    const nm = (i) => M[i].short || M[i].name;
+    const outfitOf = (i) => (l.outfits[i].outfits.length === 1 ? l.outfits[i].outfits[0].id : null);
+    const pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+    const head = document.createElement('div'); head.className = 'row between';
+    head.innerHTML = `<h3 id="why-title">How ${M.map(m => esc(m.name)).join(' / ')} works</h3>`;
+    const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
+    body.appendChild(head);
+    const intro = document.createElement('p');
+    intro.innerHTML = `Every veteran in the loop is bred from two others and inherits from six legacies: two parents and four grandparents. A legacy passes on a skill spark with chance <b>${pct(D.base)} × (1 + affinity ÷ 100)</b>, halved for grandparents, and each career rolls inheritance twice. Affinity is relation points (shared relation groups between the umas) plus <b>3 per G1 both of them won</b>, and the race schedule exists to raise that second part. Bought gold skills become sparks ${pct(D.gen_gold, 0)} of the time, whites ${pct(D.gen_white, 0)}. The loop's odds are the average of its 12 careers.`;
+    body.appendChild(intro);
+    // pairs
+    const h1 = document.createElement('h4'); h1.textContent = 'Pairs'; body.appendChild(h1);
+    const pt = document.createElement('div'); pt.className = 'tablewrap';
+    pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th>Expected G1s won together</th><th>From races (×3)</th></tr></thead><tbody>` +
+      D.pairs.map(p => `<tr><td>${esc(nm(p.a))} & ${esc(nm(p.b))}</td><td>${p.rel}</td><td>${p.wins.toFixed(1)}</td><td>${(3 * p.wins).toFixed(1)}</td></tr>`).join('') + '</tbody></table>';
+    body.appendChild(pt);
+    // careers
+    const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (tap one)'; body.appendChild(h2);
+    const ct = document.createElement('div'); ct.className = 'tablewrap';
+    const tb = document.createElement('table'); tb.className = 'tbl';
+    tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Shared grandparent</th><th>Inherits</th><th>All land</th></tr></thead>';
+    const tbody = document.createElement('tbody'); tb.appendChild(tbody); ct.appendChild(tb);
+    const split = document.createElement('div'); split.className = 'split'; split.appendChild(ct);
+    const view = document.createElement('div'); view.className = 'view'; view.style.display = 'grid'; view.style.gap = '12px'; split.appendChild(view); body.appendChild(split);
+    const rows = D.lineages.map((L, i) => {
+      const tr = document.createElement('tr'); tr.className = 'pick';
+      tr.innerHTML = `<td>${esc(nm(L.t))}</td><td>${esc(nm(L.p[0]))} + ${esc(nm(L.p[1]))}</td><td>${esc(nm(L.x))}</td><td>${pct(L.q)}</td><td>${fmtIn(L.p_all)}</td>`;
+      tr.onclick = () => show(i); tbody.appendChild(tr); return tr;
+    });
+    const deckOdds = new Map(((meta.deck && meta.deck.odds) || []).map(o => [o.group, o]));
+    const fixedOdds = new Map((meta.targets || []).map(t => [t.group, { white: t.deck_white || 0, gold: t.deck_gold || 0 }]));
+    function show(i) {
+      rows.forEach((r, k) => r.classList.toggle('sel', k === i));
+      const L = D.lineages[i]; view.textContent = '';
+      const tree = document.createElement('div'); tree.className = 'tree';
+      const node = (cls, who, html) => { const n = document.createElement('div'); n.className = 'node ' + cls;
+        const w = document.createElement('div'); w.className = 'who'; w.appendChild(umaAv(M[who].id, outfitOf(who), 26)); const s = document.createElement('span'); s.textContent = M[who].name; w.appendChild(s);
+        n.appendChild(w); const t = document.createElement('div'); t.innerHTML = html; n.appendChild(t); return n; };
+      tree.appendChild(node('t', L.t, `<span class="num">Trainee · inherits each target skill with chance <b>${pct(L.q)}</b> per career</span>`));
+      const slot = (s) => `<span class="num">affinity <b>${s.aff.toFixed(1)}</b><br>${s.rel.toFixed(1)} rel + ${s.race.toFixed(1)} races<br>spark <b>${pct(s.proc, 2)}</b> / roll</span>`;
+      const P = L.slots.filter(s => s.kind === 'parent'), G = L.slots.filter(s => s.kind === 'grandparent');
+      tree.appendChild(node('p', P[0].who[0], '<span class="hint">Parent</span><br>' + slot(P[0]))); tree.appendChild(node('p', P[1].who[0], '<span class="hint">Parent</span><br>' + slot(P[1])));
+      for (const g of G) tree.appendChild(node('g', g.who[1], `<span class="hint">Grandparent (${esc(nm(g.who[0]))})</span><br>` + slot(g)));
+      view.appendChild(tree);
+      const miss = L.slots.reduce((a, s) => a * (1 - s.proc), 1);
+      const f = document.createElement('p'); f.className = 'hint';
+      f.innerHTML = `Chance no legacy passes a given spark in one roll: ${L.slots.map(s => (1 - s.proc).toFixed(3)).join(' × ')} = ${miss.toFixed(3)}. Two rolls: 1 − ${miss.toFixed(3)}² = <b>${pct(L.q)}</b>.`;
+      view.appendChild(f);
+      const h = document.createElement('h4'); h.textContent = `Target skills on ${M[L.t].name}'s career`; view.appendChild(h);
+      const ol = document.createElement('div'); ol.className = 'odds-list';
+      for (const sk of L.skills) {
+        const s = SK.get(sk.group) || { w: sk.group, gd: null }; const dk = deckOdds.get(sk.group) || (meta.deck ? { white: 0, gold: 0 } : fixedOdds.get(sk.group)) || { white: 0, gold: 0 };
+        let src;
+        if (sk.outfit === 2) src = `on ${M[L.t].name}'s outfit as gold → spark ${pct(D.gen_gold, 0)}`;
+        else if (sk.outfit === 1) src = `on ${M[L.t].name}'s outfit as white → spark ${pct(D.gen_white, 0)}` + (dk.gold > 0 ? `, gold from the deck ${pct(dk.gold, 0)}` : '');
+        else { const parts = []; if (dk.gold > 0) parts.push(`gold from the deck ${pct(dk.gold, 0)}`); if (dk.white > 0) parts.push(`white hint from the deck ${pct(dk.white, 0)}`); parts.push(`inherited ${pct(L.q, 0)}`); src = parts.join(' · '); }
+        const a = document.createElement('div'); a.innerHTML = `${esc(s.w)}${s.gd ? ' / ' + esc(s.gd) : ''}<div class="src">${esc(src)}</div>`;
+        const b = document.createElement('b'); b.textContent = pct(sk.p, 1); ol.appendChild(a); ol.appendChild(b);
+      }
+      if (L.fixed_gold) { const a = document.createElement('div'); a.innerHTML = `${L.fixed_gold} skill${L.fixed_gold > 1 ? 's' : ''} guaranteed as gold<div class="src">each becomes a spark ${pct(D.gen_gold, 0)} of the time</div>`;
+        const b = document.createElement('b'); b.textContent = pct(Math.pow(D.gen_gold, L.fixed_gold), 1); ol.appendChild(a); ol.appendChild(b); }
+      const a = document.createElement('div'); a.innerHTML = '<b style="font-family:var(--font-ui)">All targets land on this career</b>'; const b = document.createElement('b'); b.textContent = fmtIn(L.p_all);
+      ol.appendChild(a); ol.appendChild(b); view.appendChild(ol);
+    }
+    let best = 0; D.lineages.forEach((L, i) => { if (L.p_all > D.lineages[best].p_all) best = i; }); show(best);
+    $('why-dlg').showModal();
+  }
+  $('why-dlg').addEventListener('click', (e) => { if (e.target === $('why-dlg')) $('why-dlg').close(); });
+  function renderDeck(res, meta) {
+    const box = $('results'); box.textContent = '';
+    const st = document.createElement('div'); st.className = 'status';
+    if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
+    if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, every uma and card owned, rank B to SS. Change the settings and run your own.';
+    else st.textContent = `Scored ${res.decks_built.toLocaleString()} decks (the rest lose to a card swap) and bounded ${(res.foursomes_ranked ?? res.foursomes).toLocaleString()} of ${res.foursomes.toLocaleString()} foursomes (the rest can't win) in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + '. Each result is a deck with its own best loop.';
+    box.appendChild(st);
+    const g = (meta.targets || []).filter(t => t.guaranteed > 0).map(t => { const s = SK.get(t.group) || { w: t.group, gd: null }; return t.guaranteed === 2 ? (s.gd || s.w) : s.w; });
+    if (g.length && !meta.example) { const n = document.createElement('p'); n.className = 'hint';
+      n.textContent = `Treated as guaranteed without any card (set under Target skills): ${g.join(', ')}. Change a skill to "None" if it should come from the deck.`; box.appendChild(n); }
+    res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck }, i === 0 && res.proven)));
+  }
+  function renderSkills(res, meta) {
+    const box = $('results'); box.textContent = '';
+    const st = document.createElement('div'); st.className = 'status';
+    if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, full roster, rank B to SS. Change the settings and run your own.';
+    else st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + '. The rest are ruled out by their ceilings.';
+    box.appendChild(st);
+    if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
+    res.loops.forEach((l, i) => box.appendChild(loopCard(l, i, meta, i === 0 && res.proven_top)));
+  }
+  function renderAff(res, meta) {
+    const box = $('results'); box.textContent = '';
+    const st = document.createElement('div'); st.className = 'status';
+    st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + '.';
+    box.appendChild(st);
+    if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
+    res.loops.forEach((l, i) => {
+      const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
+      card.innerHTML = `<div class="lhead"><span class="rank">#${i + 1}</span><span class="odds">${l.score.toFixed(1)}<small>affinity per 4 runs</small></span>
+        <span class="sub">${(l.score / 4).toFixed(1)} per run · base ${Math.round(l.base)} + G1 bonus ${(l.score - l.base).toFixed(1)} · ceiling ${l.ceiling.toFixed(1)}</span></div>`;
+      const mem = document.createElement('div'); mem.className = 'members';
+      for (const m of l.members) { const d = document.createElement('div'); d.className = 'mem'; d.innerHTML = '<span class="nm"></span>'; d.querySelector('.nm').textContent = m.name; mem.appendChild(d); }
+      card.appendChild(mem);
+      const det = document.createElement('details'); if (i === 0) det.open = true;
+      det.innerHTML = '<summary>Race schedule</summary>'; det.appendChild(schedTable(l.members, l.schedule));
+      card.appendChild(det); box.appendChild(card);
+    });
+  }
+
+  // ---------- engine (Web Worker; WebAssembly with a pure-JS fallback) ----------
+  let worker = null, ready = null, engine = 'wasm', seq = 0; const pending = new Map();
+  function startEngine() {
+    if (ready) return ready;
+    ready = new Promise((resolve, reject) => {
+      try {
+        const src = $('engine-worker').textContent;
+        worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      } catch (e) { reject(new Error('This browser blocked the background worker the solver runs in.')); return; }
+      worker.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === 'ready') { engine = m.engine; resolve(); }
+        else if (m.type === 'error') { reject(new Error(m.message)); }
+        else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p(m); }
+      };
+      worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
+      worker.postMessage({ type: 'init', wasm: $('engine-wasm').textContent.trim(), data: $(ERA === 'gm' ? 'engine-data-gm' : 'engine-data').textContent });
+    });
+    return ready;
+  }
+  function run(job) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, res); worker.postMessage({ type: 'run', id, job }); })); }
+
+  $('run').onclick = async () => {
+    const btn = $('run'); btn.disabled = true;
+    const box = $('results'); box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching all foursomes… a few seconds.</div>';
+    const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
+    const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
+    const require = Object.entries(state.roster).filter(([, v]) => v === 'req').map(([k]) => +k);
+    try {
+      if (state.mode === 'skills') {
+        if (!state.targets.length) throw new Error('Add at least one target skill.');
+        const extra = []; if (state.teio) extra.push([1003, 20190, 1]); if (state.zephyr) extra.push([1078, 20165, 1]);
+        if (state.deck === 'opt') {
+          const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
+          const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
+          const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
+          box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
+          const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
+            owned_cards, borrow: state.borrow, top_decks: +state.decksTop, ...eventFields(true) };
+          const m = await run(job);
+          lastRender = () => renderDeck(m.r, { ms: m.ms, engine, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
+        } else {
+          const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0, deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 }));
+          const job = { cmd: 'skills', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra, top: 5, ...eventFields(false) };
+          const m = await run(job);
+          lastRender = () => renderSkills(m.r, { ms: m.ms, engine, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
+        }
+      } else {
+        const m = await run({ cmd: 'affinity', scheme: state.scheme, exclude, require, top: 5 });
+        renderAff(m.r, { ms: m.ms, engine }); shown = true; lastResult = { kind: 'aff', r: m.r, meta: {} };
+      }
+    } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
+    btn.disabled = false;
+  };
+
+  // ---------- export / import ----------
+  let lastResult = null;   // {kind, r, meta}
+  const SETTINGS = ['mode', 'roster', 'outfits', 'targets', 'rank', 'teio', 'zephyr', 'scheme', 'deck', 'cardsOff', 'borrow', 'decksTop', 'dates', 'rand', 'rcards'];
+  function exportText() {
+    const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
+    const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
+    const readable = {
+      targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: ['no', 'white', 'gold'][t.guaranteed || 0], ...(state.deck === 'fixed' ? { deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 } : {}) })),
+      umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
+      umas_required: UMAS.filter(u => state.roster[u.id] === 'req').map(u => u.name),
+      cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
+      borrow: state.borrow, deck: state.deck === 'opt' ? 'find best deck' : 'odds by hand',
+      game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', pal_first_year_dates: state.dates, random_event_hints: +state.rand, r_cards: state.rcards,
+    };
+    let results = null;
+    if (lastResult) {
+      const { kind, r, meta } = lastResult;
+      const loopSum = (l) => ({ all_land: fmtIn(l.p_all), at_least_n_minus_1: fmtIn(l.p_minus1),
+        umas: l.members.map((m, k) => m.name + (l.outfits[k].outfits.length ? ' ' + l.outfits[k].outfits.map(o => o.label).join('/') : '')) });
+      if (kind === 'deck') results = { example: !!meta.example, decks: (r.top || []).map(t => ({ ...loopSum(t.loop), deck: t.deck.cards, pals: t.deck.pals, borrowed: t.deck.borrowed,
+        deck_odds: t.deck.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => ({ skill: nmG(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })) })),
+        decks_searched: r.decks_built, proven: r.proven };
+      else if (kind === 'skills') results = { example: !!meta.example, loops: (r.loops || []).map(loopSum), proven: r.proven_top };
+      else results = { loops: (r.loops || []).map(l => ({ score: +l.score.toFixed(2), umas: l.members.map(m => m.name) })) };
+    }
+    return JSON.stringify({ app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } }, null, 1);
+  }
+  $('ex-open').onclick = () => { $('ex-text').value = exportText(); $('ex-msg').textContent = ''; $('ex-dlg').showModal(); };
+  $('ex-close').onclick = () => $('ex-dlg').close();
+  $('ex-dlg').addEventListener('click', (e) => { if (e.target === $('ex-dlg')) $('ex-dlg').close(); });
+  $('ex-copy').onclick = () => {
+    const t = $('ex-text'); const done = () => { $('ex-msg').textContent = 'Copied.'; };
+    const fallback = () => { t.focus(); t.select(); $('ex-msg').textContent = 'Selected. Press Ctrl+C (or ⌘C) to copy.'; };
+    try { navigator.clipboard.writeText(t.value).then(done, fallback); } catch { fallback(); }
+  };
+  $('ex-load').onclick = () => {
+    try { const o = JSON.parse($('ex-text').value); if (!o || !o.settings) throw new Error('no settings');
+      const era = o.settings.era === 'gm' ? 'gm' : 'global';
+      if (era !== ERA) {   // settings for the other data set: store them under its keys, then switch
+        try { for (const k of SETTINGS) if (k in o.settings) localStorage.setItem('llp:' + (era === 'gm' && PER_ERA.has(k) ? 'gm:' : '') + k, JSON.stringify(o.settings[k]));
+          localStorage.setItem('llp:era', era); } catch {}
+        location.reload(); return;
+      }
+      for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
+      save(); setMode(state.mode); setScheme(state.scheme); setDeck(state.deck);
+      $('rank').value = state.rank; $('x-teio').checked = state.teio; $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop;
+      $('x-dates').checked = state.dates; $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
+      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded. Press Find best loops.';
+    } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
+  };
+  $('img-open').onclick = () => $('img-dlg').showModal(); $('img-close').onclick = () => $('img-dlg').close();
+  $('img-dlg').addEventListener('click', (e) => { if (e.target === $('img-dlg')) $('img-dlg').close(); });
+  $('img-files').onchange = (e) => addImages([...e.target.files]); $('img-dir').onchange = (e) => addImages([...e.target.files]);
+  $('img-clear').onclick = async () => { for (const u of IMG.values()) URL.revokeObjectURL(u); IMG.clear();
+    try { const db = await idb(); db.transaction('files', 'readwrite').objectStore('files').clear(); } catch {}
+    $('img-count').textContent = 'No images added yet.'; refreshAll(); };
+  $('img-tpl').value = imgTpl; $('img-tpl').onchange = (e) => { imgTpl = e.target.value.trim(); try { localStorage.setItem('llp:imgtpl', imgTpl); } catch {} refreshAll(); };
+  let lastRender = null;
+  refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
+  setMode(state.mode); setScheme(state.scheme); setDeck(state.deck); renderRoster(); renderTargets();
+  loadImages().then(() => { if (IMG.size) refreshAll(); });
+  if (ERA === 'global') { lastRender = () => (EXAMPLE.top ? renderDeck : renderSkills)(EXAMPLE, { example: true, targets: PRESET, rank: '0.45,0.50,0.05' }); lastRender(); shown = true; lastResult = { kind: EXAMPLE.top ? 'deck' : 'skills', r: EXAMPLE, meta: { example: true } }; }
+  else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
+  // warm the engine in the background so the first search starts immediately
+  setTimeout(() => startEngine().catch(() => {}), 300);
+})();
+</script>
