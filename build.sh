@@ -5,7 +5,8 @@
 #   native   release binary + tests
 #   wasm     wasm + wasm-opt + wasm2js fallback + example.json
 #   page     webapp/dist/index.html (embeds wasm, fallback, both eras' data)
-#   val TAG  run the 24 validation jobs with the current binary into val/TAG__*.out, compare with val/ref__*
+#   val TAG  run the 24 validation jobs (shared deck, then per-uma decks) with the current binary into
+#            val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   all      data events native wasm page
 set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
@@ -25,7 +26,9 @@ step_wasm() {
            && npx wasm2js -O2 $WFLAGS loopopt.opt.wasm -o loopopt.wasm2js.mjs && node example.mjs | tail -1)
 }
 step_page() { (cd "$W" && python3 build.py); }
-step_val() { local tag="${1:?val needs a tag}"; bash "$R/val/runall.sh" "$C/target/release/loopopt" "$tag" > "$R/val/${tag}_times.txt"; python3 "$R/val/cmp.py" "$tag"; }
+step_val() { local tag="${1:?val needs a tag}"
+  bash "$R/val/runall.sh" "$C/target/release/loopopt" "$tag" > "$R/val/${tag}_times.txt"; python3 "$R/val/cmp2.py" "$tag" ref
+  python3 "$R/val/run_pu.py" "$C/target/release/loopopt" "${tag}pu" > "$R/val/${tag}pu_times.txt"; python3 "$R/val/cmp2.py" "${tag}pu" refpu; }
 [ $# -eq 0 ] && set -- native wasm page
 while [ $# -gt 0 ]; do
   case "$1" in

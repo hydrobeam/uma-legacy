@@ -184,7 +184,8 @@ Extra fields (on top of the skills-mode fields; scenario-guaranteed skills stay 
 | `owned_cards` | card ids you own (empty = all) | `[]` |
 | `borrow` | allow one card you don't own (friend card); the search picks it | `false` |
 | `exclude_cards` / `lock_cards` | cards never / always used | `[]` |
-| `top_decks` | distinct decks returned, each with its best loop | 1 |
+| `top_decks` | distinct decks returned, each with its best loop (with `per_uma`: loops returned) | 1 |
+| `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all three lineages she heads | `false` |
 | `pals` | only decks with exactly this many pals | any |
 | `schedule` | experiment: `"solo"` (each uma maximises her own race wins), `"goals"` (career objectives only) or `"none"` (shared wins ignored) instead of loop-optimised schedules | optimised |
 | `lambda` | mean chain events per run | 7.1 |
@@ -196,6 +197,10 @@ Model: training hints 1 + hint_frequency/25 per run, uniform over the card's hin
 - decks are enumerated one chain-kind key at a time (the key fixes every card's chain odds). Under a key, a card that another card beats on every target and can legally replace (same kind, character rules, borrow limit) gives a swapped deck at least as good; decks with `top_decks` such swaps are skipped, branches whose swaps survive every later addition are cut, and cards with enough such dominators never enter that key's decks;
 - with `top_decks` > 1, a first pass finds the decks no other deck beats, and the full pass drops any deck that `top_decks` of them beat;
 - foursomes are generated in bands of a separable bound (each uma heads 3 of the 12 lineages, so a loop's ceiling is at most a quarter of the sum of its members' best per-trainee values at their highest possible inheritance chance); only those that can still beat the `top_decks`-th best get a real ceiling (each trainee with its own best deck at a rounded-up inheritance chance), and the best-first search solves schedules until no ceiling can win.
+
+Character rule: no trainee runs a card of her own character, or a group card she belongs to (`charas` in web_cards.json: the card's character plus the group's members). With one shared deck the search first ignores the rule; when a returned deck blocks one of its loop's members u, the space is split into loops without u and loops with u whose decks hold no card blocking u, and both halves are searched again until every answer obeys the rule (a half whose unconstrained best cannot beat the current k-th legal result is dropped). Most runs need one search; checked against brute force over every deck on small owned sets (`val/owncheck.py`).
+
+Per-uma decks (`per_uma`): a loop's value is fixed/12 · Σ over the four umas of the best legal deck's summed value over her three lineages. Every uma's best deck lies on the skyline of decks no deck beats on every coordinate, thinned per class of umas whose outfits leave the same targets open (a target her outfits always give as gold doesn't matter to her). Where a thinned list holds a deck that blocks the uma, her legal decks come from a second deck search without the blocking cards, run the first time a foursome with her is solved. Ceilings use the whole skyline, which no legal deck beats, so the answer is exact; checked against brute force (every foursome × every deck) in `val/permcheck.py`.
 
 "Proven" is relative to the schedules the optimiser finds for the loops it solves.
 

@@ -53,6 +53,12 @@
 !/val/jobs_noR.json
 !/val/ref__*.out
 !/val/ref_times.txt
+!/val/refpu__*.out
+!/val/refpu_times.txt
+!/val/run_pu.py
+!/val/owncheck.py
+!/val/permcheck.py
+!/val/permcheck_big.py
 master.mdb
 __pycache__/
 !/pkg/loopopt/validation/

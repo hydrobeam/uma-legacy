@@ -267,7 +267,8 @@ impl<'a> Model<'a> {
     /// expected shared G1 wins, then per lineage the six legacy slots (relation part, race part, affinity, proc),
     /// the per-career inheritance chance q, each target's landing chance and P(all land).
     /// `deck` = per-uncertain-target (white, gold) deck odds; None uses the job's own deck fields.
-    pub(crate) fn detail(&self, f: [usize; 4], o: &dyn Fn(usize, usize) -> f64, deck: Option<(&[f64], &[f64])>) -> Value {
+    /// `deck`: per member (dw, dg) deck odds, or None for the job's own deck fields.
+    pub(crate) fn detail(&self, f: [usize; 4], o: &dyn Fn(usize, usize) -> f64, deck: Option<[(&[f64], &[f64]); 4]>) -> Value {
         let d = self.d;
         let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
         let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
@@ -288,8 +289,8 @@ impl<'a> Model<'a> {
                 }
             }
             let q = 1.0 - miss.powi(INSPIRATIONS);
-            let (pv, k) = match deck { Some((w, g)) => self.trainee_d(f[t], q, w, g), None => self.trainee(f[t], q) };
-            let probs = match deck { Some((w, g)) => self.skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g), None => self.skill_probs(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q) };
+            let (pv, k) = match deck.map(|dk| dk[t]) { Some((w, g)) => self.trainee_d(f[t], q, w, g), None => self.trainee(f[t], q) };
+            let probs = match deck.map(|dk| dk[t]) { Some((w, g)) => self.skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g), None => self.skill_probs(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q) };
             let skills: Vec<Value> = self.uncertain.iter().zip(&probs).zip(&self.opts[f[t]][k].0)
                 .map(|((&i, p), lv)| json!({"group": self.job.targets[i].group, "p": p, "outfit": lv})).collect();
             lins.push(json!({"t": t, "p": [p1, p2], "x": x, "slots": slots, "q": q, "p_all": self.fixed() * pv, "skills": skills,

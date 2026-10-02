@@ -9,7 +9,7 @@
 | `native` | release binary, tests | cargo |
 | `wasm` | wasm32 build (build-std), wasm-opt -O3, wasm2js fallback, example.json | rust-src, node (`webapp/node_modules`) |
 | `page` | `webapp/dist/index.html` with wasm, fallback and both eras embedded | |
-| `val TAG` | 24 validation jobs into `val/TAG__*.out`, compared with `val/ref__*` | native |
+| `val TAG` | 24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*` | native |
 
 Browser checks: `cd webapp && python3 pwdeck.py && python3 pwera.py` (Playwright, Chromium). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
 
@@ -19,3 +19,5 @@ Manual card entries: Global ones live in `pkg/loopopt/card_events.json` (entries
 
 Zips are a clone of this repository (history and tags included) plus the built `Legacy Loop Planner.html`.
 Before zipping: clone, `git remote remove origin`, `git gc --aggressive`, copy in the built page.
+
+Exactness checks against brute force on small owned sets: `python3 val/owncheck.py BIN 3 "Yaeno Muteki"` (character rule, shared deck) and `python3 val/permcheck.py BIN 3` (per-uma decks; `permcheck_big.py` is the 8-uma, 10-card version, ~25 min).
