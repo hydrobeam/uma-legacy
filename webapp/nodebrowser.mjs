@@ -208,6 +208,31 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async settings(b) {
+    // a browser with the old per-key settings: everything carries over into llp:settings, old keys are removed
+    const pg = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
+      const set = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+      set('llp:roster', { 1001: 'out' }); set('llp:gm:roster', { 1002: 'out' }); set('llp:cardsOff', { 30052: false });
+      set('llp:targets', [{ group: 20166, guaranteed: 2, deck_gold: 1 }, { group: 20159, guaranteed: 0, deck_white: 0.5 }]);
+      set('llp:rank', '0.45,0.50,0.05'); set('llp:rsort', 'rel'); set('llp:rdir', 'asc'); localStorage.setItem('llp:era', 'global'); } catch {} } });
+    const st = await pg.evaluate(() => ({ keys: Object.keys(localStorage).filter(k => k.startsWith('llp:')), s: JSON.parse(localStorage.getItem('llp:settings')) }));
+    check('migration: one llp:settings object, old keys removed', st.keys.length === 1 && st.keys[0] === 'llp:settings' && st.s.v === 1, st.keys.join(','));
+    check('migration: per-era roster kept apart', st.s.global.roster['1001'] === 'out' && st.s.gm.roster['1002'] === 'out');
+    check('migration: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));
+    check('migration: card ownership kept', await pg.evaluate(() => document.querySelectorAll('#cards .ct[aria-pressed="false"]').length === 1));
+    check('migration: old preset gold fixed, hand-set odds dropped', JSON.stringify(st.s.common.targets) === JSON.stringify([{ group: 20166, guaranteed: 0 }, { group: 20159, guaranteed: 0 }]));
+    check('migration: old star mix remapped', (await pg.inputValue('#rank')) === '0.50,0.45,0.05');
+    check('migration: roster sort reset to newest first', (await pg.locator('#rs').innerText()) === 'Release ↓');
+    // changes persist across a reload
+    await pg.locator('#roster .ut .up').nth(3).click(); await settle(pg); await pg.reload(); await settle(pg);
+    check('a change survives a reload', (await pg.locator('#roster .ut[data-s="out"]').count()) >= 1 + (await pg.locator('#roster .ut[data-uma="1001"]').count()));
+    // export, then import the same text
+    await pg.click('#ex-open'); const text = await pg.inputValue('#ex-text');
+    await pg.fill('#ex-text', text); await pg.click('#ex-load');
+    check('export then import: settings load', (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global');
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);
