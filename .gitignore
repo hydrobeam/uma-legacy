@@ -46,7 +46,6 @@
 !/webapp/example.mjs
 !/webapp/example.json
 !/webapp/node*.mjs
-!/webapp/pw*.py
 !/webapp/images.py
 !/webapp/package.json
 !/webapp/package-lock.json

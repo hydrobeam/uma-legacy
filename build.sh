@@ -7,6 +7,7 @@
 #   page     webapp/dist/index.html (embeds wasm, both eras' data and webapp/img)
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
+#   test     browser regression suite on webapp/dist/index.html (webapp/nodebrowser.mjs; Chromium + Firefox)
 #   val TAG  run the 24 validation jobs (shared deck, then per-uma decks) with the current binary into
 #            val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   all      data events native wasm page (not images: it needs the game install)
@@ -29,6 +30,7 @@ step_wasm() {
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
            && node example.mjs | tail -1)
 }
+step_test() { node "$W/nodebrowser.mjs"; }
 step_page() { (cd "$W" && "${PY[@]}" build.py); }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 step_val() { local tag="${1:?val needs a tag}"
@@ -39,7 +41,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     all) step_data; step_events; step_native; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
-    data|events|native|wasm|page|images) "step_$1" ;;
+    data|events|native|wasm|page|images|test) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done

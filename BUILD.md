@@ -15,7 +15,7 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 | `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (icons 96 px, cards 192 px: 2x their largest display) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |
 | `val TAG` | 24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*` | native |
 
-Browser checks: `cd webapp && uv run pwdeck.py && uv run pwera.py` (these need Playwright for Python, which the project environment does not include). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
+Browser checks: `./build.sh test` runs `webapp/nodebrowser.mjs` (Node Playwright, Chromium and Firefox, ~45 s): first search and odds, auto-search and restart, roster, card picker, panels, borrowed card, popups, phone layout, GM era, WCAG AAA contrast. `node webapp/nodebrowser.mjs chromium roster` runs a subset. Run it after any page change. WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
 
 Manual card entries (pal and group cards, written by hand; the build script decodes only SR/SSR chains): Global ones live in `pkg/loopopt/card_events.json` (every entry except the generated ones, `src` exactly "gametora training_events", survives `events`), GM ones in `jp/export/manual_gm*.json`.
 
