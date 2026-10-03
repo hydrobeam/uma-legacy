@@ -70,9 +70,6 @@ provably only rescaled odds.
    (recovers ×1.094 for a true ×1.1 at 24k observations).
 4. **Hint levels from inheritance.** One run showed Ramp Up Lv 5 from a single 2★ proc; the per-proc level rule is
    unknown. Receipts would settle it. It matters only if the model ever uses hint levels.
-5. **Adopt measured deck-side rates?** uma-it-optimizer measured Unity training hints ≈ 3.04 + 0.038·hint_frequency
-   (we assume 1 + hf/25) and chain completion (final link ≈ 24.5%, pal multipliers ×0.22/0.69/1.06/1.69). Not
-   adopted; would change rankings. Decide with receipt data in hand.
 6. **Per-lineage carrier counts.** The model assumes every target spark sits on all six ancestors (a running loop).
    For bootstrapping a loop or a rented parent without a spark, generation should use 1.1ⁿ with the lineage's real
    n. Only worth it if the owner uses the tool to build loops from scratch.

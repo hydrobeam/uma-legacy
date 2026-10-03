@@ -2,8 +2,8 @@
 Chain links come from master.mdb (single_mode_story_data.show_progress_1 for the event's story id).
 Reward codes index dict/evrew with an offset of 36 (verified: every card's bond reward decodes to its own
 character, and King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match the wiki).
-A skill in every outcome of some choice is certain when the link fires; a skill only in one outcome
-(success or failure, split by 'di') is stored with chance 0.5. Pal entries and bug notes are kept by hand."""
+A skill in every outcome of some choice is certain when the link fires; a skill in k of a choice's n outcomes
+(split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os
 G = '../gametora/'
 OFF = 36
@@ -41,7 +41,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
                 if all(ends): has_end = True
                 names = {n for b in branches for n in b}
                 for n in names:
-                    p = 1.0 if all(n in b for b in branches) else 1.0 / len(branches)
+                    p = sum(n in b for b in branches) / len(branches)   # in k of n outcomes: k/n (outcomes equally likely)
                     tgt[n] = max(tgt.get(n, 0), p)
             if best: chain.append([lk, sorted([n if p == 1 else [n, p] for n, p in best.items()], key=str)])
             if has_end: ends_out.append([lk, sorted([n if p == 1 else [n, p] for n, p in endb.items()], key=str)])
