@@ -675,8 +675,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
 
     // ---- dominance coordinates ----
     // For a target the trainee's outfit does not give, the metric's landing chance is
-    //   p = 0.35 + 0.35*g - 0.35*(1 - q)*(1 - h),   g = P(gold hint), h = P(any hint) = 1 - (1 - w)*(1 - g);
-    // with the white on the outfit p = 0.35 + 0.35*g, and with the gold it is constant. So the metric only
+    //   p = W + W*g - W*(1 - q)*(1 - h)  (W = GEN_WHITE),   g = P(gold hint), h = P(any hint) = 1 - (1 - w)*(1 - g);
+    // with the white on the outfit p = W + W*g, and with the gold it is constant. So the metric only
     // rises with g and h, and a deck at least as high in every (g, h) is never worse. (w, g) dominance implies
     // (g, h) dominance, so this prunes at least as much. Coordinates no relevant card can move are dropped,
     // and h == g when no card gives the white.

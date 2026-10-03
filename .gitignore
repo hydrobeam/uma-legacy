@@ -58,6 +58,7 @@
 !/val/umadump/
 !/val/umadump_carriers.py
 !/val/spark_gen_fit.py
+!/val/cmp_ratio.py
 !/val/refpu_times.txt
 !/val/run_pu.py
 !/val/owncheck.py

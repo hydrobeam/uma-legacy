@@ -10,7 +10,8 @@
 //!     pair(P1,P2), 3 per G1 shared with the other parent, and for each of P's own parents G the trio (T,P,G) plus
 //!     3 per G1 shared with G; a grandparent G under P counts trio(T,P,G) plus 3 per G1 shared with P. In a loop P's
 //!     own parents are the other parent and the fourth member, so the parents' shared G1s count twice for each;
-//!   - it then lands as a spark with GEN_GOLD if the gold version is bought, else GEN_WHITE.
+//!   - it then lands as a spark with GEN_GOLD if the gold version is bought, else GEN_WHITE (20% / 40% x 1.1^6: all six
+//!     ancestors carry the spark in a running loop).
 //! Metric: P(all targets land on the veteran), averaged over the 12 lineages.
 //! Search: exact upper bound per foursome (pair overlaps -> pairwise ceilings PB), then best-first with real
 //! schedules (affinity-optimised: in the 12-lineage cycle every pair's shared G1s weigh the same) until the next
@@ -18,8 +19,11 @@
 use super::*;
 use serde_json::{json, Value};
 
-pub(crate) const GEN_WHITE: f64 = 0.35;
-pub(crate) const GEN_GOLD: f64 = 0.70;
+/// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
+/// the six ancestors already carrying that spark (aoneko_pochi's curve; hakuraku.moe/notes/spark_generation fits it to
+/// ~1.2M white/gold observations from CM10-CM12 room data, p >= 0.84). In a running loop all six carry every target.
+pub(crate) const GEN_WHITE: f64 = 0.2 * 1.771561;
+pub(crate) const GEN_GOLD: f64 = 0.4 * 1.771561;
 /// Grandparents' base rate relative to parents'. 1: they fire less only because their affinity is lower (receipts:
 /// halving predicted half of what fired).
 const GP_RATE: f64 = 1.0;
@@ -460,7 +464,8 @@ mod tests {
     fn skills() -> SkillsRaw { serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap() }
 
     /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
-    /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283.
+    /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283; with
+    /// the rounded 35%/70% spark generation (before the x1.1^6 curve) it was 1 in 140.4.
     #[test]
     fn skills_port_matches_python() {
         let d = data(); let sk = skills();
@@ -474,7 +479,7 @@ mod tests {
         let mut s = ids.clone(); s.sort();
         assert_eq!(s, vec![1007, 1019, 1021, 1034], "best loop {ids:?}");
         let inv = 1.0 / l["p_all"].as_f64().unwrap();
-        assert!((inv - 140.4).abs() < 1.0, "1 in {inv}");
+        assert!((inv - 127.3).abs() < 1.0, "1 in {inv}");
         assert_eq!(r["proven_top"], json!(true));
     }
 
@@ -490,7 +495,7 @@ mod tests {
         let l = &r["loops"][0];
         let mut ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect(); ids.sort();
         assert_eq!(ids, vec![1009, 1014, 1019, 1029]);
-        assert!((1.0 / l["p_all"].as_f64().unwrap() - 185.7).abs() < 1.0);
+        { let inv = 1.0 / l["p_all"].as_f64().unwrap(); assert!((inv - 168.4).abs() < 1.0, "1 in {inv}"); }
         // every outfit of an uma excluded -> that uma is not owned
         let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902], "top": 1})).unwrap();
         let r2 = run_skills(d, &sk, &job2);
