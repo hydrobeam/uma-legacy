@@ -30,6 +30,15 @@ DECK_HINTS = [[10060, RU, 1, 0.5], [30036, RU, 1, 0.5], [30137, RU, 1, 1.0]]
 def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
+    # release dates for the roster's and card picker's default order; without master.mdb, id order
+    mdb = os.path.join(dirp, 'export', 'master.mdb'); rel = {}
+    if os.path.exists(mdb):
+        con = sqlite3.connect(f'file:{mdb}?mode=ro', uri=True)
+        # an outfit's release = the start of the first gacha it appeared in; else its uma's start date
+        rel = dict(con.execute('select c.id, c2.start_date from card_data c join chara_data c2 on c2.id = c.chara_id'))
+        rel.update(con.execute('select a.card_id, min(d.start_date) from gacha_available a join gacha_data d on d.id = a.gacha_id group by a.card_id'))
+        rel.update(con.execute('select id, start_date from support_card_data'))   # support cards carry their own date
+        con.close()
     look = {}
     for g, w, gd in skills['skills']:
         look[w] = (g, 1)
@@ -52,16 +61,8 @@ def era(dirp, events_file):
         # pals, group cards, R cards (no chain events: hints only, no chain slot) and SR/SSR cards with chains
         if not c['pal'] and c['links'] == 0 and c['rarity'] != 1: continue
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
-        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''),
+        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], [])})
-    # outfit release dates for the roster's default order; without master.mdb, card id order
-    mdb = os.path.join(dirp, 'export', 'master.mdb'); rel = {}
-    if os.path.exists(mdb):
-        con = sqlite3.connect(f'file:{mdb}?mode=ro', uri=True)
-        # an outfit's release = the start of the first gacha it appeared in; else its uma's start date
-        rel = dict(con.execute('select c.id, c2.start_date from card_data c join chara_data c2 on c2.id = c.chara_id'))
-        rel.update(con.execute('select a.card_id, min(d.start_date) from gacha_available a join gacha_data d on d.id = a.gacha_id group by a.card_id'))
-        con.close()
     umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     uma_ids = {u['id'] for u in umas}; outfit_ids = {o['id'] for u in umas for o in u['outfits']}; card_ids = {c['id'] for c in cards['cards']}
     hints = {'trainee': [h for h in TRAINEE_HINTS if h[0] in uma_ids or h[0] in outfit_ids],
