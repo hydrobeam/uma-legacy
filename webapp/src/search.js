@@ -64,7 +64,8 @@ export async function doSearch() {
   const require = Object.entries(state.roster).filter(([, v]) => v === 'req').map(([k]) => +k);
   try {
     if (!state.targets.length) throw new Error('Add at least one target skill.');
-    const extra = []; if (state.teio) extra.push([1003, 20190, 1]); if (state.zephyr) extra.push([1078, 20165, 1]);
+    // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
+    const extra = [[1003, 20190, 1]]; if (state.zephyr) extra.push([1078, 20165, 1]);
     const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
     const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
     const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];

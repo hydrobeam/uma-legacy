@@ -28,7 +28,7 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init } = {}) {
   });
   if (init) await ctx.addInitScript(init);
   const pg = await ctx.newPage(); pg.errors = [];
-  pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && pg.errors.push(m.text()));
+  pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));   // web-font fetch aborts are network noise
   await pg.goto(URL); await settle(pg);
   return pg;
 }

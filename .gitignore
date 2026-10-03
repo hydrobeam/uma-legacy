@@ -68,6 +68,7 @@
 !/val/event_audit.py
 !/val/refpu_times.txt
 !/val/run_pu.py
+!/val/secret_events.py
 !/val/owncheck.py
 !/val/permcheck.py
 !/val/permcheck_big.py

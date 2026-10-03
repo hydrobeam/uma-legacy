@@ -41,6 +41,5 @@ export function initTargets() {
   document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
   $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ ...t })); save(); renderTargets(); };
   $('rank').value = state.rank; $('rank').onchange = (e) => { state.rank = e.target.value; save(); };
-  $('x-teio').checked = state.teio; $('x-teio').onchange = (e) => { state.teio = e.target.checked; save(); };
   $('x-zephyr').checked = state.zephyr; $('x-zephyr').onchange = (e) => { state.zephyr = e.target.checked; save(); };
 }
