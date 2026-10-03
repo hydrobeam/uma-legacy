@@ -3,13 +3,15 @@
 #   data     Global + GM-era exports (needs pkg/loopopt/export/master.mdb, jp/export/master.mdb)
 #   events   card event caches from the GameTora files + manual entries (Global and both GM variants)
 #   native   release binary + tests
+#   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
+#            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
 #   wasm     wasm + wasm-opt + example.json
 #   page     webapp/dist/index.html (embeds wasm, both eras' data and webapp/img)
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   val TAG  run the 24 validation jobs (shared deck, then per-uma decks) with the current binary into
 #            val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
-#   all      data events native wasm page (not images: it needs the game install)
+#   all      data events native pb wasm page (not images: it needs the game install)
 # Python runs in the project's uv environment (pyproject.toml, uv.lock; .venv is created on first use).
 set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
@@ -29,6 +31,7 @@ step_wasm() {
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
            && node example.mjs | tail -1)
 }
+step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
 step_page() { (cd "$W" && "${PY[@]}" build.py); }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 step_val() { local tag="${1:?val needs a tag}"
@@ -37,9 +40,9 @@ step_val() { local tag="${1:?val needs a tag}"
 [ $# -eq 0 ] && set -- native wasm page
 while [ $# -gt 0 ]; do
   case "$1" in
-    all) step_data; step_events; step_native; step_wasm; step_page ;;
+    all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
-    data|events|native|wasm|page|images) "step_$1" ;;
+    data|events|native|pb|wasm|page|images) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done

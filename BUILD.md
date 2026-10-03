@@ -10,6 +10,7 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 | `data` | Global + GM-era exports (data.json, web_skills.json, web_cards.json) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
 | `events` | card event caches from `pkg/loopopt/gametora/` + manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary, tests | cargo |
+| `pb` | the exact pairwise affinity ceilings of every uma pair, stored as `pb` in both `data.json` files (`export/add_pb.py`, via `loopopt pbtable`); saves 15-25% of a typical search. The table carries a fingerprint of the umas, goals and streak penalties; when it does not match (data re-exported, `PB_VERSION` bumped) the solver ignores it and computes the ceilings itself, and `cargo test` warns until `pb` is rerun | native |
 | `wasm` | wasm32 build (build-std), wasm-opt -O3, example.json | rust-src, node (`webapp/node_modules`) |
 | `page` | `webapp/dist/index.html` with wasm, both eras and `webapp/img` embedded | |
 | `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (icons 96 px, cards 192 px: 2x their largest display) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |

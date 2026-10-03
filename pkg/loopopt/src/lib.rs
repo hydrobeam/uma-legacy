@@ -84,7 +84,11 @@ struct OptRaw { prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #
 #[derive(Deserialize)]
 struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>> }
 #[derive(Deserialize)]
-struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pen: Vec<i32> }
+struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw> }
+/// Precomputed pairwise ceilings (`loopopt pbtable`, merged into data.json by `./build.sh pb`): `fp` is
+/// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a as 16-hex-digit f64 bit patterns.
+#[derive(Deserialize, Serialize)]
+struct PbRaw { fp: String, rows: Vec<String> }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Choice { Rest, Opt(u8) }
@@ -106,7 +110,41 @@ struct Uma {
 struct Ent { race: i32, rest: bool, bit: u32, p: [f64; 7] }
 const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
-struct Data { nr: usize, umas: Vec<Uma>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pk: Vec<[f64; 7]>, race_names: Vec<String> }
+struct Data { nr: usize, umas: Vec<Uma>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pk: Vec<[f64; 7]>, race_names: Vec<String>,
+    pbt: Option<Vec<f64>> }   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
+
+/// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
+/// stop matching and are recomputed.
+const PB_VERSION: u64 = 1;
+/// Fingerprint of everything a pairwise ceiling depends on: every uma's id, options (race, bp) per turn and goals,
+/// the streak penalties and the race count. Fx over fixed-width words, so native and wasm agree.
+fn pb_fingerprint(raw: &DataRaw) -> String {
+    use std::hash::Hasher;
+    let mut h = Fx::default();
+    h.write_u64(PB_VERSION); h.write_u64(raw.race_names.len() as u64);
+    for &p in &raw.pen { h.write_u64(p as i64 as u64); }
+    for u in &raw.umas {
+        h.write_u64(u.id as u64); h.write_u64(u.turns.len() as u64);
+        for l in &u.turns { h.write_u64(l.len() as u64); for op in l { h.write_u64(op.race as i64 as u64); h.write_u64(op.bp as i64 as u64); } }
+        h.write_u64(u.goals.len() as u64);
+        for g in &u.goals { h.write_u64(g.len() as u64); for &(t, o) in g { h.write_u64(t as u64); h.write_u64(o as u64); } }
+    }
+    format!("{:016x}", h.finish())
+}
+fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
+    let pr = raw.pb.as_ref()?;
+    let n = raw.umas.len();
+    if pr.fp != pb_fingerprint(raw) || pr.rows.len() != n { return None; }
+    let mut t = vec![0.0f64; n * n];
+    for (a, row) in pr.rows.iter().enumerate() {
+        if row.len() != 16 * (n - 1 - a) { return None; }
+        for (k, b) in (a + 1..n).enumerate() {
+            let v = f64::from_bits(u64::from_str_radix(&row[16 * k..16 * k + 16], 16).ok()?);
+            t[a * n + b] = v; t[b * n + a] = v;
+        }
+    }
+    Some(t)
+}
 
 // pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
 fn pk(d: &Data, bp: i32, k: usize) -> f64 { d.pk[(bp + 20) as usize][k] }
@@ -117,6 +155,7 @@ fn load(path: &str) -> Data { load_str(&std::fs::read_to_string(path).unwrap()) 
 fn load_str(json: &str) -> Data {
 
     let raw: DataRaw = serde_json::from_str(json).unwrap();
+    let pbt = pb_table_from(&raw);
     // dp_exact relies on: every race offered twice to an uma is offered exactly 24 turns apart (Classic/Senior),
     // never twice in the Junior year, and never more than twice.
     for u in &raw.umas {
@@ -173,7 +212,7 @@ fn load_str(json: &str) -> Data {
         umas.push(Uma { id: u.id, name: u.name, opts: u.turns, forced, bits, full: (1u32 << nb) - 1,
             pm: miss.iter().map(|m| 1.0 - m).collect(), ent, chl });
     }
-    Data { nr, umas, pair: raw.pair, tri: raw.tri, pk: pkt, race_names: raw.race_names }
+    Data { nr, umas, pair: raw.pair, tri: raw.tri, pk: pkt, race_names: raw.race_names, pbt }
 }
 
 type Sched = [Choice; NT];
@@ -960,9 +999,24 @@ fn pair_ceilings(d: &Data, pool: &[usize]) -> Vec<Vec<f64>> {
     ph!(6);
     let n = d.umas.len();
     let mut pb = vec![vec![0.0f64; n]; n];
+    if let Some(t) = &d.pbt {
+        for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { pb[a][b] = t[a * n + b]; pb[b][a] = t[b * n + a]; } }
+        return pb;
+    }
     let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None, None).map(|r| r.1).unwrap_or(0.0);
     for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { let v = br(a, b).min(br(b, a)); pb[a][b] = v; pb[b][a] = v; } }
     pb
+}
+/// The full pairwise-ceiling table of a data.json, as stored in its "pb" field (computed fresh, ignoring any table).
+fn pb_table_json(json: &str) -> serde_json::Value {
+    let raw: DataRaw = serde_json::from_str(json).unwrap();
+    let fp = pb_fingerprint(&raw);
+    let mut d = load_str(json); d.pbt = None;
+    let n = d.umas.len();
+    let all: Vec<usize> = (0..n).collect();
+    let pb = pair_ceilings(&d, &all);
+    let rows: Vec<String> = (0..n).map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[a][b].to_bits())).collect()).collect();
+    serde_json::to_value(PbRaw { fp, rows }).unwrap()
 }
 
 /// Guaranteed ceiling for foursome f: no schedules can score above this.
@@ -1078,6 +1132,11 @@ fn print_best(d: &Data, jobs: &Jobs, pool: &[usize], cand: &[(f64, [usize; 4])],
 
 pub fn cli_main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 3 && args[1] == "pbtable" {
+        // print the pairwise-ceiling table for a data.json (./build.sh pb merges it in as "pb")
+        println!("{}", pb_table_json(&std::fs::read_to_string(&args[2]).unwrap()));
+        return;
+    }
     let job_text = std::fs::read_to_string(&args[2]).unwrap();
     let mut jobs: Jobs = serde_json::from_str(&job_text).unwrap();
     let t_load = Instant::now();
@@ -1351,6 +1410,25 @@ mod tests {
                 let v2 = wval(&w, &probs(d, u, &s2));
                 assert!(v2 <= best + 1e-9, "{}: random schedule {v2} beats best response {best}", u.name);
             }
+        }
+    }
+
+    /// A stored pairwise-ceiling table that matches its data.json is bit-equal to a fresh computation, and a table
+    /// stops matching when the data changes. (A stale table is only a warning: the solver ignores it.)
+    #[test]
+    fn stored_pb_tables_match_fresh() {
+        for path in [concat!(env!("CARGO_MANIFEST_DIR"), "/data.json"), concat!(env!("CARGO_MANIFEST_DIR"), "/../../jp/data.json")] {
+            let txt = std::fs::read_to_string(path).unwrap();
+            let d = load_str(&txt);
+            let Some(t) = d.pbt.as_ref() else { eprintln!("warning: {path} has no current pb table (run ./build.sh pb)"); continue; };
+            let mut fresh = load_str(&txt); fresh.pbt = None;
+            let n = d.umas.len();
+            let pool: Vec<usize> = (0..n).collect();
+            let pb = pair_ceilings(&fresh, &pool);
+            for a in 0..n { for b in 0..n { if a != b { assert_eq!(t[a * n + b].to_bits(), pb[a][b].to_bits(), "{path} PB({a},{b})"); } } }
+            let mut v: serde_json::Value = serde_json::from_str(&txt).unwrap();
+            v["pen"][2] = serde_json::json!(v["pen"][2].as_i64().unwrap() + 1);
+            assert!(load_str(&v.to_string()).pbt.is_none(), "{path}: a table survived a data change");
         }
     }
 
