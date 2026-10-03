@@ -95,7 +95,7 @@ type Kind = (u8, u8);
 /// topological order. Entries are sorted first so the floating-point summation order is canonical.
 fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     crate::ph!(3);
-    thread_local! { static CM: std::cell::RefCell<HashMap<(Vec<Kind>, u64), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(HashMap::new()); }
+    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, u64), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(Default::default()); }
     let mut ks: Vec<Kind> = kinds.to_vec(); ks.sort();
     let key = (ks, lambda.to_bits());
     if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) { return r; }
@@ -786,7 +786,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // higher chance of missing the gold and no higher chance of missing every hint; exact ties go to the lower
     // index), as owned / borrowed character masks.
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
-    let mut key_cache: HashMap<u64, KeyData> = HashMap::new();
+    let mut key_cache: crate::FxMap<u64, KeyData> = Default::default();
     let make_key = |code: u64| -> KeyData {
         crate::ph!(17);
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
@@ -870,9 +870,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let t0 = Instant::now();
     // One enumeration pass keeping the decks that fewer than `kq` others beat. With `s1` (the kq = 1 result and
     // its deck identities) a deck is dropped at once when kq decks of that set, other than itself, beat it.
-    let mut run_enum = |kq: usize, s1: Option<&(Kept, std::collections::HashSet<Vec<u64>>)>| -> Vec<DeckEval> {
+    let mut run_enum = |kq: usize, s1: Option<&(Kept, crate::FxSet<Vec<u64>>)>| -> Vec<DeckEval> {
     crate::ph!(4);
-    let mut groups: HashMap<(usize, usize), Kept> = HashMap::new();
+    let mut groups: crate::FxMap<(usize, usize), Kept> = Default::default();
     let kmax = kq;
     // every chain-kind count vector (fillers included in the (2, 2) count) with at most deck_size chain slots
     let mut counts: Vec<Vec<usize>> = vec![vec![]];
@@ -1010,7 +1010,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         sorted.sort_by_key(|x| std::cmp::Reverse(sig_of(&x.dv, false)));      // similar decks share blocks
         let mut kk = Kept::new(nd);
         for x in sorted { kk.insert(x.clone()); }
-        let ids: std::collections::HashSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, x.plain, x.filler)).collect();
+        let ids: crate::FxSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, x.plain, x.filler)).collect();
         if std::env::var("DECK_DEBUG").is_ok() { eprintln!("pass 1: {} decks no other beats, {:.2}s", s1.len(), t0.elapsed().as_secs_f64()); }
         run_enum(kmax, Some(&(kk, ids)))
     };
@@ -1385,7 +1385,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     };
     // the full coordinate set needs no thinning: the skyline is already thin on it
     let full: Vec<(usize, bool)> = (0..nu).flat_map(|k| [(k, true), (k, false)]).collect();
-    let mut class_ix: HashMap<Vec<(usize, bool)>, usize> = HashMap::new();
+    let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = Default::default();
     let mut class_sky: Vec<Vec<usize>> = vec![];
     let mut ucls: Vec<usize> = vec![usize::MAX; n];
     let ph7 = crate::PhT(7, Instant::now());

@@ -51,6 +51,30 @@ pub(crate) fn ph_report() {
         eprintln!("PH {:>22} {:>9.4}s  calls {:>9}", PH_NAMES[i], PH[i].load(Relaxed) as f64 / 1e9, n); }
 }
 
+/// FxHash (rustc's hasher): one rotate-xor-multiply per word. Only for in-process maps keyed by our own data
+/// (no untrusted keys), where SipHash's DoS resistance buys nothing. Results never depend on map iteration order.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Fx(u64);
+impl Fx {
+    #[inline(always)] fn add(&mut self, x: u64) { self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x517c_c1b7_2722_0a95); }
+}
+impl std::hash::Hasher for Fx {
+    #[inline] fn write(&mut self, b: &[u8]) {
+        let mut c = b.chunks_exact(8);
+        for w in &mut c { self.add(u64::from_le_bytes(w.try_into().unwrap())); }
+        let r = c.remainder();
+        if !r.is_empty() { let mut t = [0u8; 8]; t[..r.len()].copy_from_slice(r); self.add(u64::from_le_bytes(t)); }
+    }
+    #[inline] fn write_u8(&mut self, x: u8) { self.add(x as u64); }
+    #[inline] fn write_u16(&mut self, x: u16) { self.add(x as u64); }
+    #[inline] fn write_u32(&mut self, x: u32) { self.add(x as u64); }
+    #[inline] fn write_u64(&mut self, x: u64) { self.add(x); }
+    #[inline] fn write_usize(&mut self, x: usize) { self.add(x as u64); }
+    #[inline] fn finish(&self) -> u64 { self.0 }
+}
+pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, std::hash::BuildHasherDefault<Fx>>;
+pub(crate) type FxSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<Fx>>;
+
 const NT: usize = 72;
 const NS: usize = 7; // streak state 0 (rested) ..= 6 (6+)
 const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
@@ -157,8 +181,10 @@ type Sched = [Choice; NT];
 fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
     let t0 = Instant::now(); let r = probs_inner(d, u, s); prof(2, t0); r
 }
-fn probs_inner(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
-    let mut miss = vec![1.0f64; d.nr];
+fn probs_inner(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> { let mut v = vec![]; probs_into(d, u, s, &mut v); v }
+/// probs into a reused buffer (same arithmetic as `probs`, so bit-identical)
+fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
+    miss.clear(); miss.resize(d.nr, 1.0);
     let mut k = 0usize;
     for t in 0..NT {
         match s[t] {
@@ -172,7 +198,6 @@ fn probs_inner(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
         }
     }
     for m in miss.iter_mut() { *m = 1.0 - *m; }
-    miss
 }
 
 fn feasible(u: &Uma, s: &Sched) -> bool {
@@ -402,24 +427,30 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
 /// Best-response memo, active only inside `optimize` (one per thread, cleared per call). dp_exact + the evaluation below
 /// are a pure, deterministic function of (uma, force, exact weight bits), so a hit returns exactly what a fresh solve
 /// would. Within one optimize() call ~99% of best-response calls repeat an earlier one.
-type BrKey = (u32, u16, Box<[u64]>);
-thread_local! { static BR_MEMO: std::cell::RefCell<Option<std::collections::HashMap<BrKey, Option<(Sched, f64)>>>> = const { std::cell::RefCell::new(None) }; }
+/// Key: [uma id << 16 | force code, weight bits...], built in `key` (reused) so a hit allocates nothing.
+#[derive(Default)]
+struct BrMemo { map: FxMap<Box<[u64]>, Option<(Sched, f64)>>, key: Vec<u64> }
+thread_local! { static BR_MEMO: std::cell::RefCell<Option<BrMemo>> = const { std::cell::RefCell::new(None) }; }
 
 /// Best response (exact): wraps dp_exact and cross-checks its value against direct evaluation.
 fn best_response(d: &Data, u: &Uma, wr: &[f64], _cur: Option<&Sched>, force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
     BR_MEMO.with(|mm| {
-        if mm.borrow().is_none() { return best_response_solve(d, u, wr, force); }
+        let mut g = mm.borrow_mut();
+        let Some(m) = g.as_mut() else { drop(g); return best_response_solve(d, u, wr, force); };
         let fk: u16 = match force { None => u16::MAX, Some((t, Choice::Rest)) => (t * 256 + 255) as u16, Some((t, Choice::Opt(o))) => (t * 256 + o as usize) as u16 };
-        let key: BrKey = (u.id, fk, wr.iter().map(|x| x.to_bits()).collect());
-        if let Some(r) = mm.borrow().as_ref().unwrap().get(&key) { return *r; }
+        m.key.clear();
+        m.key.push((u.id as u64) << 16 | fk as u64);
+        m.key.extend(wr.iter().map(|x| x.to_bits()));
+        if let Some(r) = m.map.get(&m.key[..]) { return *r; }
         let r = best_response_solve(d, u, wr, force);
-        mm.borrow_mut().as_mut().unwrap().insert(key, r);
+        let k: Box<[u64]> = m.key.as_slice().into();
+        m.map.insert(k, r);
         r
     })
 }
 
 /// Enables the best-response memo for the current thread until dropped (restores the previous state).
-struct MemoScope(Option<std::collections::HashMap<BrKey, Option<(Sched, f64)>>>);
+struct MemoScope(Option<BrMemo>);
 impl MemoScope {
     fn new() -> Self { MemoScope(BR_MEMO.with(|m| m.borrow_mut().replace(Default::default()))) }
 }
@@ -509,13 +540,20 @@ fn score_ps(lp: &Loop, p: &[Vec<f64>]) -> f64 {
 }
 
 fn weights(d: &Data, lp: &Loop, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
-    let mut w = vec![0.0; d.nr];
+    let mut w = vec![]; weights_into(d, lp, ps, i, &mut w); w
+}
+fn weights_into(d: &Data, lp: &Loop, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
+    w.clear(); w.resize(d.nr, 0.0);
     for j in 0..4 { if j != i { for r in 0..d.nr { w[r] += 3.0 * lp.c[i][j] * ps[j][r]; } } }
-    w
 }
 
 fn ascent(d: &Data, lp: &Loop, s: &mut [Sched; 4]) -> f64 {
     let mut ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
+    ascent_ps(d, lp, s, &mut ps)
+}
+/// `ascent` with the members' probs supplied (ps[i] must equal probs(s[i])); ps is kept equal to probs(s[i]).
+fn ascent_ps(d: &Data, lp: &Loop, s: &mut [Sched; 4], ps: &mut [Vec<f64>]) -> f64 {
+    let mut w: Vec<f64> = Vec::with_capacity(d.nr);
     // stale[i]: some partner's schedule changed since member i was last solved (or she was never solved here).
     // If not stale, her weights are bit-identical to her last solve, so the deterministic best response is the same
     // schedule: either it was rejected then (and would be again) or it was accepted and now equals s[i] exactly
@@ -527,18 +565,18 @@ fn ascent(d: &Data, lp: &Loop, s: &mut [Sched; 4]) -> f64 {
             if !stale[i] { continue; }
             stale[i] = false;
             let u = &d.umas[lp.m[i]];
-            let w = weights(d, lp, &ps, i);
+            weights_into(d, lp, ps, i, &mut w);
             let curv = wval(&w, &ps[i]);
             if let Some((ns, nv)) = best_response(d, u, &w, Some(&s[i]), None) {
                 if nv > curv + 1e-9 {
-                    s[i] = ns; ps[i] = probs(d, u, &ns); improved = true;
+                    s[i] = ns; probs_into(d, u, &ns, &mut ps[i]); improved = true;
                     for j in 0..4 { if j != i { stale[j] = true; } }
                 }
             }
         }
         if !improved { break; }
     }
-    score_ps(lp, &ps) // ps[i] == probs(s[i]) is maintained above
+    score_ps(lp, ps) // ps[i] == probs(s[i]) is maintained above
 }
 
 /// Coordinated moves: force a subset of >=2 members onto the same race (or rest) at one turn, then re-ascend.
@@ -546,6 +584,8 @@ fn group_moves(d: &Data, lp: &Loop, s: &mut [Sched; 4], margin: f64, stats: &mut
     let mut cur = score(d, lp, s);
     // probs of the current *s, refreshed whenever *s changes (probs is deterministic, so this equals recomputing per mask)
     let mut ps_s: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
+    let mut ps: Vec<Vec<f64>> = ps_s.clone();
+    let mut w: Vec<f64> = Vec::with_capacity(d.nr);
     loop {
         let mut improved = false;
         for t in 0..NT {
@@ -579,22 +619,22 @@ fn group_moves(d: &Data, lp: &Loop, s: &mut [Sched; 4], margin: f64, stats: &mut
                     if non == 0 && tg.is_some() && sz != nmv { continue; }
                     let mut ns = *s;
                     let mut ok = true;
-                    let mut ps: Vec<Vec<f64>> = ps_s.clone();
+                    ps.clone_from(&ps_s);
                     for b in 0..nmv {
                         if mask & (1 << b) == 0 { continue; }
                         let i = movable[b];
                         let u = &d.umas[lp.m[i]];
-                        let w = weights(d, lp, &ps, i);
+                        weights_into(d, lp, &ps, i, &mut w);
                         match best_response(d, u, &w, Some(&ns[i]), Some((t, ch[i].unwrap()))) {
-                            Some((x, _)) => { ns[i] = x; ps[i] = probs(d, u, &x); }
+                            Some((x, _)) => { ns[i] = x; probs_into(d, u, &x, &mut ps[i]); }
                             None => { ok = false; break; }
                         }
                     }
                     if !ok { continue; }
                     *stats += 1;
                     if score_ps(lp, &ps) < cur - margin { continue; } // ps[i] == probs(ns[i]) here
-                    let v = ascent(d, lp, &mut ns);
-                    if v > cur + 1e-7 { cur = v; *s = ns; improved = true; ps_s = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect(); }
+                    let v = ascent_ps(d, lp, &mut ns, &mut ps); // ps == probs(ns) before and after
+                    if v > cur + 1e-7 { cur = v; *s = ns; improved = true; ps_s.clone_from(&ps); }
                 }
             }
         }
@@ -702,7 +742,7 @@ fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, marg
                 for x in w.iter_mut() { *x *= 0.2 + 1.6 * rng.unif(); }
                 if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None, None) { ns[i] = x; ps[i] = probs(d, &d.umas[lp.m[i]], &x); }
             }
-            ascent(d, &lp, &mut ns);
+            ascent_ps(d, &lp, &mut ns, &mut ps);
             let nv = group_moves(d, &lp, &mut ns, margin, &mut evals);
             if nv > v + 1e-7 { v = nv; s = ns; }
         }
