@@ -152,9 +152,8 @@ fn pk(d: &Data, bp: i32, k: usize) -> f64 { d.pk[(bp + 20) as usize][k] }
 fn load(path: &str) -> Data { load_str(&std::fs::read_to_string(path).unwrap()) }
 /// Win chance of an attempt = clamp(bp - pen[k], 0, 100)%, where the exporter sets bp = 110 - grade costs
 /// (distance + surface; A 0, B 10, C 20, D 30, E 40, F 60, G 90) and pen = streak penalties from data.json.
-fn load_str(json: &str) -> Data {
-
-    let raw: DataRaw = serde_json::from_str(json).unwrap();
+fn load_str(json: &str) -> Data { load_raw(serde_json::from_str(json).unwrap()) }
+fn load_raw(raw: DataRaw) -> Data {
     let pbt = pb_table_from(&raw);
     // dp_exact relies on: every race offered twice to an uma is offered exactly 24 turns apart (Classic/Senior),
     // never twice in the Junior year, and never more than twice.
