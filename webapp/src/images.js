@@ -1,7 +1,7 @@
 // ---------- character icons, card art and skill icons: files in img/ next to the page (from the game's own files) ----------
 // All lazy: the browser fetches an image only when it scrolls near the view (loading is set before src).
-import { SHIPPED, SKILLICON, NAME } from './data.js';
-export function srcFor(kind, id) { return SHIPPED.has(kind + ':' + id) ? `img/${kind}/${id}.webp` : null; }
+import { SHIPPED, IMG_EXT, SKILLICON, NAME } from './data.js';
+export function srcFor(kind, id) { return SHIPPED.has(kind + ':' + id) ? `img/${kind}/${id}.${IMG_EXT[kind]}` : null; }
 if (SHIPPED.has('ui:friend_frame')) document.documentElement.style.setProperty('--friend-frame', `url(${srcFor('ui', 'friend_frame')})`);
 export function skillIcon(group) { const s = srcFor('skill', SKILLICON[group]); if (!s) return null;
   const im = new Image(); im.className = 'sic'; im.alt = ''; im.loading = 'lazy'; im.src = s; return im; }

@@ -11,13 +11,16 @@ example = json.load(open(os.path.join(H, 'example.json')))
 # keys ('card:30116', ...) so it asks only for images that exist. None is fine (the page shows initials).
 DIST = os.path.join(H, 'dist')
 shutil.rmtree(os.path.join(DIST, 'img'), ignore_errors=True)
-images = []
+# images are AVIF (UI sprites lossless WebP); one extension per kind, given to the page with the key list
+images = []; ext = {}; isize = 0
 for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
-        if not f.endswith('.webp'): continue
+        stem, e = os.path.splitext(f)
+        if e not in ('.avif', '.webp'): continue
+        assert ext.setdefault(kind, e[1:]) == e[1:], f'img/{kind} mixes formats ({f}); rerun ./build.sh images'
         os.makedirs(os.path.join(DIST, 'img', kind), exist_ok=True)
-        shutil.copyfile(os.path.join(d, f), os.path.join(DIST, 'img', kind, f)); images.append(f'{kind}:{f[:-5]}')
+        shutil.copyfile(os.path.join(d, f), os.path.join(DIST, 'img', kind, f)); images.append(f'{kind}:{stem}'); isize += os.path.getsize(os.path.join(d, f))
 sip = os.path.join(H, 'img', 'skill_icons.json')   # skill group -> icon id (images.py)
 skill_icons = json.load(open(sip)) if os.path.exists(sip) else {}
 # schedule rows name their race; the page maps names to race ids for the banners (same 34 G1s in both eras)
@@ -90,7 +93,7 @@ css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
 for k, v in [('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
-             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA__', G['engine']),
+             ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA__', G['engine']),
              ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
@@ -101,5 +104,4 @@ open(os.path.join(DIST, 'loopopt.wasm'), 'wb').write(wasm)
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
 open(os.path.join(DIST, 'data-gm.json'), 'w').write(gm_ui)
 open(os.path.join(DIST, 'engine-gm.json'), 'w').write(M['engine'])
-isize = sum(os.path.getsize(os.path.join(DIST, 'img', *k.split(':', 1)) + '.webp') for k in images)
 print(f"dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")

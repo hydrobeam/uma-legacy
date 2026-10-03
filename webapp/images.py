@@ -1,8 +1,9 @@
 """Card art and character icons for the page, taken from the game's locally decrypted asset bundles.
 
 Collects every uma, outfit and support card id the page can show (both eras' exports), finds its bundle, decodes the
-texture with UnityPy and writes a small WebP to webapp/img/{uma,outfit,card}/{id}.webp, plus img/manifest.json
-(the bundle each image came from, and every id with no bundle). Images already extracted are kept unless --force.
+texture with UnityPy and writes a small AVIF (quality 55) to webapp/img/{kind}/{id}.avif (UI sprites: lossless WebP),
+plus img/manifest.json (the bundle each image came from, and every id with no bundle). Images already extracted are
+kept unless --force; an older WebP of the same image is removed when its AVIF is written.
 
   uma      chara/chr{chara}/chr_icon_{chara}                 round default icon ("any outfit")
   outfit   chara/chr{chara}/chr_icon_{chara}_{dress}_01      dress = card_rarity_data.race_dress_id of the outfit
@@ -134,7 +135,7 @@ def main(force):
             elif kind == 'skill': rel = f'outgame/skillicon/utx_ico_skill_{i}'
             elif kind == 'race': rel = f'race/racetitle/thumb/thum_race_rt_000_{i}_00'
             else: rel = f'supportcard/support{i}/support_card_s_{i}'
-            dst = os.path.join(OUT, kind, f'{i}.webp')
+            dst = os.path.join(OUT, kind, f'{i}.avif')
             src = os.path.join(ASSETS, rel)
             if not os.path.exists(src): manifest['missing'][f'{kind}:{i}'] = rel; continue
             manifest['images'][f'{kind}:{i}'] = rel
@@ -143,7 +144,9 @@ def main(force):
             if im is None: manifest['missing'][f'{kind}:{i}'] = rel + ' (no texture)'; del manifest['images'][f'{kind}:{i}']; continue
             if kind in INSET: im = icon_crop(im, INSET[kind])
             sz = SIZE[kind] if isinstance(SIZE[kind], tuple) else (SIZE[kind], SIZE[kind])
-            im.resize(sz, Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
+            im.resize(sz, Image.LANCZOS).save(dst, 'AVIF', quality=55, speed=6)
+            old = dst[:-5] + '.webp'   # the earlier WebP of the same image
+            if os.path.exists(old): os.remove(old)
             done += 1
     done += ui_sprites(force, manifest)
     json.dump(manifest, open(os.path.join(OUT, 'manifest.json'), 'w'), indent=1, sort_keys=True)

@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.wasm': 'application/wasm', '.webp': 'image/webp', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.wasm': 'application/wasm', '.webp': 'image/webp', '.avif': 'image/avif', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain' };
 
 export function serveDist(port = 0, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {

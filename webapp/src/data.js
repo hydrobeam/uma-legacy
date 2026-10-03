@@ -22,7 +22,9 @@ export async function loadData() {
   setData(await r.json());
 }
 export const EXAMPLE = parse('data-example');       // precomputed default result
-export const SHIPPED = new Set(parse('data-img'));  // images in dist/img: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
+const IMG = parse('data-img');
+export const SHIPPED = new Set(IMG.keys);   // images in dist/img: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
+export const IMG_EXT = IMG.ext;             // file extension per kind: avif, webp for the UI sprites
 export const SKILLICON = parse('data-skillicon');   // skill group -> icon id
 export const RACEIDS = parse('data-raceids');       // race name -> race id (banner key)
 export const PRESET = [
