@@ -320,7 +320,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
         </div>
       </div>
-      <p class="hint" id="era-hint"></p>
       <div class="extras">
         <label><input type="checkbox" id="x-rcards" checked> Use R cards</label>
         <label class="row" for="x-rand" style="gap:10px"><span style="font-size:.88rem">Random event hints</span>
@@ -330,7 +329,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
             <option value="1">Always fire</option>
           </select></label>
       </div>
-      <p class="hint">Random events that can hint a target: Vodka (Nimble Navigator), Nice Nature (Ramp Up), Seeking the Pearl (Uma Stan), McQueen [Fair Lady of the Waves] (Playtime's Over!), Riko pal cards (Ramp Up), and in the GM era Hishi Amazon [Hungry Veil] (Nimble Navigator) and Progenitors and Guides (Ramp Up). How often they fire is not known.</p>
     </section>
 
     <section class="panel" aria-labelledby="h-roster">
@@ -518,9 +516,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => { if (e === ERA) return; try { localStorage.setItem('llp:era', e); } catch {} location.reload(); };
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
-  $('era-hint').textContent = ERA === 'gm'
-    ? `JP data up to L'Arc's launch (24 Aug 2023): ${UMAS.length} umas. Group cards (Team Sirius, Progenitors and Guides) count as pals and give the skills from their dates. Grand Masters itself guarantees none of the targets, so set No Stopping Me! and It's On! to "None" unless you're modelling Unity Cup, and pick a higher lineage rank (GM legacies rank above SS).`
-    : `Global data today: ${UMAS.length} umas.`;
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); if (typeof renderCards === 'function') renderCards(); };
   $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
   // extra job fields from the event options
