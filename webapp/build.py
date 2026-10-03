@@ -7,7 +7,7 @@ worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
 # character icons and card art extracted by images.py: {'card:30116': base64 WebP}; none is fine (the page shows initials)
 images = {}
-for kind in ('uma', 'outfit', 'card', 'skill', 'race'):
+for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if f.endswith('.webp'): images[f'{kind}:{f[:-5]}'] = base64.b64encode(open(os.path.join(d, f), 'rb').read()).decode()

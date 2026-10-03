@@ -11,6 +11,8 @@ texture with UnityPy and writes a small WebP to webapp/img/{uma,outfit,card}/{id
   low in its 256 px texture, so the crop starts from the visible area (alpha bounding box) and keeps the top.
   card     supportcard/support{id}/support_card_s_{id}       card thumbnail with its rarity frame
   race     race/racetitle/thumb/thum_race_rt_000_{race}_00   race banner (title art, 512x256), for the schedule view
+  ui       sprites from the UI atlases: the friend-slot frame (atlas/singlecommon, utx_frm_friend_support_00_sl, a
+           9-slice, kept lossless for CSS border-image) and the friend icon (atlas/common, utx_ico_itemlist_friend_00)
   skill    outgame/skillicon/utx_ico_skill_{icon}            skill icon of each catalogue skill's white version
                                                              (skill_data.icon_id, lowest rarity in the group);
                                                              img/skill_icons.json maps skill group -> icon
@@ -84,6 +86,25 @@ def icon_crop(im, inset):
     return im.crop((left, y0, left + side, y0 + side))
 
 
+UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_sl'), 'friend_icon': ('atlas/common', 'utx_ico_itemlist_friend_00')}
+
+
+def ui_sprites(force, manifest):
+    os.makedirs(os.path.join(OUT, 'ui'), exist_ok=True); n = 0
+    for key, (atlas, name) in UI_SPRITES.items():
+        dst = os.path.join(OUT, 'ui', key + '.webp')
+        if os.path.exists(dst) and not force: manifest['images']['ui:' + key] = f'{atlas} {name}'; continue
+        for f in (atlas + '/' + atlas.split('/')[-1], atlas + '/' + atlas.split('/')[-1] + '_tex'):
+            path = os.path.join(ASSETS, f)
+            if not os.path.exists(path): continue
+            for obj in UnityPy.load(path).objects:
+                if obj.type.name == 'Sprite' and obj.read().m_Name == name:
+                    obj.read().image.convert('RGBA').save(dst, 'WEBP', lossless=True); manifest['images']['ui:' + key] = f'{atlas} {name}'; n += 1; break
+            if os.path.exists(dst): break
+        if not os.path.exists(dst): manifest['missing']['ui:' + key] = f'{atlas} {name}'
+    return n
+
+
 def texture(path):
     for obj in UnityPy.load(path).objects:
         if obj.type.name == 'Texture2D':
@@ -121,6 +142,7 @@ def main(force):
             sz = SIZE[kind] if isinstance(SIZE[kind], tuple) else (SIZE[kind], SIZE[kind])
             im.resize(sz, Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
             done += 1
+    done += ui_sprites(force, manifest)
     json.dump(manifest, open(os.path.join(OUT, 'manifest.json'), 'w'), indent=1, sort_keys=True)
     n = sum(len(v) for v in w.values())
     print(f'{n} ids: {done} extracted, {skipped} kept, {len(manifest["missing"])} missing (see img/manifest.json)')

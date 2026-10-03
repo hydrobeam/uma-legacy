@@ -247,7 +247,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 8px; }
 /* deck cards are their art alone (click for name and ownership); without art the name shows */
 .dc .cav.art { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; box-shadow: none; }
-.dc.bor .cav.art { box-shadow: 0 0 0 3px var(--accent); }
+.dc.bor { position: relative; container-type: inline-size; }   /* cqw = card width = the square image's height */
+.dc.bor .cav.art { border-style: solid; border-width: 6px 6px 20px; border-image: var(--friend-frame) 37 37 75 37 / 6px 6px 20px stretch; border-radius: 10px; }
+.dc.bor .cav.art img { border-radius: 4px; }
+.dc.bor:has(.cav.art)::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); width: 18px; height: 16px; top: calc(100cqw - 18px);
+  background: var(--friend-icon) center / contain no-repeat; pointer-events: none; }
 .dc.off .cav { filter: grayscale(1); opacity: 0.5; }
 .dc:hover .cav.art { filter: brightness(1.07); }
 .dc.off:hover .cav.art { filter: grayscale(1); }
@@ -421,6 +425,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   const SKILLICON = JSON.parse($('data-skillicon').textContent);   // skill group -> icon id
   function skillIcon(group) { const s = srcFor('skill', SKILLICON[group]); if (!s) return null;
     const im = new Image(); im.className = 'sic'; im.alt = ''; im.src = s; return im; }
+  for (const [v, k] of [['--friend-frame', 'ui:friend_frame'], ['--friend-icon', 'ui:friend_icon']]) if (SHIPPED[k]) document.documentElement.style.setProperty(v, `url(data:image/webp;base64,${SHIPPED[k]})`);
   function srcFor(kind, id) { const b = SHIPPED[kind + ':' + id]; return b ? 'data:image/webp;base64,' + b : null; }
   function initials(name) { const w = name.replace(/[^A-Za-z .]/g, '').split(/[ .]+/).filter(Boolean); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase(); }
   function umaAv(charaId, outfitId, size) {
@@ -734,6 +739,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const D = meta.decks, M = l.members;
       const key = (d) => d.cards.join('|');
       const same = !D || D.every(d => key(d) === key(meta.deck));
+      const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
       const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
         const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
         const endAt = (d.end_chain_at || [])[ci] || 0;
@@ -750,7 +756,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           return parts.join(' · '); }).join('</span><span>');
         return odds ? `<div class="dodds"><span>${lead}</span><span>${odds}</span></div>` : '<div class="dodds">This deck gives none of the targets.</div>'; };
       const block = (d, title, lead) => { const dk = document.createElement('div'); dk.className = 'deck';
-        dk.innerHTML = `<div class="row between"><b>${title} · ${d.pals} pal${d.pals === 1 ? '' : 's'}${d.borrowed ? ' · borrow 1' : ''}</b></div><div class="dcards">${d.cards.map((_, ci) => chip(d, ci)).join('')}</div>` + oddsOf(d, lead);
+        dk.innerHTML = `<div class="row between"><b>${title}</b></div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d, lead);
         return dk; };
       if (same) card.appendChild(block(meta.deck, D ? 'Deck for all four' : 'Deck', 'From the deck, every run: '));
       else {
@@ -763,9 +769,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           const whoT = who.length === 1 ? `${esc(who[0])}'s deck` : `Deck for ${who.map(esc).join(', ')}`; const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
           const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
           const dk = document.createElement('div'); dk.className = 'deck swap';
-          dk.innerHTML = `<div class="row between"><b>${whoT}${d.borrowed ? ' · borrow 1' : ''}</b></div>` +
-            `<div class="dcards"><span class="swl o">Out</span>${out.map(ci => chip(meta.deck, ci)).join('') || '<span class="hint">nothing</span>'}</div>` +
-            `<div class="dcards"><span class="swl i">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
+          dk.innerHTML = `<div class="row between"><b>${whoT}</b></div>` +
+            `<div class="dcards"><span class="swl o">Out</span>${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('') || '<span class="hint">nothing</span>'}</div>` +
+            `<div class="dcards"><span class="swl i">In</span>${lastBor(d, inn).map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
           card.appendChild(dk); });
       }
       card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); });
