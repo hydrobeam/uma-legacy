@@ -4,16 +4,16 @@
 
 1. Toolchain: Rust (stable) with `rust-src` (the wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1`; with the
    `wasm32-unknown-unknown` target installed it also works without build-std), Node + npm (`cd webapp && npm ci`
-   for binaryen's `wasm-opt`), Python 3 (stdlib only; Playwright + Chromium for the optional browser
-   checks `webapp/pw*.py`).
+   for binaryen's `wasm-opt`), uv (Python environment from `pyproject.toml`/`uv.lock`: UnityPy and Pillow for the
+   image step, everything else is stdlib; Playwright + Chromium for the optional browser checks `webapp/pw*.py`).
 2. Data: the handoff zip already has the Global `master.mdb` at `pkg/loopopt/export/master.mdb` and the JP one
    (SimpleSandman/UmaMusumeMetaMasterMDB `master/master.mdb`, 2026-09-30) at `jp/export/master.mdb`. Neither is
    tracked by git; keep them out of commits. After a game update, replace them from the same sources.
 3. `./build.sh all` (data, events, native + tests, wasm, page). Expect 29 tests passing, "178 cards written" /
    "222 cards written" twice from `events`, and `webapp/dist/index.html` about 13.6 MB.
-4. `python3 val/event_audit.py` → "every target hint is accounted for".
-5. Optional full check: `./build.sh val check` (about 6 minutes on 2 cores) and `python3 val/cmp2.py check ref`
-   / `python3 val/cmp2.py checkpu refpu`: everything should match the references (they are v22/v23 outputs).
+4. `uv run val/event_audit.py` → "every target hint is accounted for".
+5. Optional full check: `./build.sh val check` (about 6 minutes on 2 cores) and `uv run val/cmp2.py check ref`
+   / `uv run val/cmp2.py checkpu refpu`: everything should match the references (they are v22/v23 outputs).
 6. Decide hosting (section 6) and push the repo to the owner's GitHub.
 
 ## 2. Current results (v23, per-uma decks, star mix below SS)
@@ -66,7 +66,7 @@ provably only rescaled odds.
    skills bought" to "all affordable bought"; Unity Cup median best case is 17,428 (just under SS), Grand Concert
    18,094. Whether the owner's loop veterans clear 17,500 decides the default; ask.
 3. **Measure spark generation and star mix on the owner's own veterans.** Run umadump snapshot → send
-   `trained_chara_data.json` → `python3 val/spark_gen_fit.py trained_chara_data.json`. Tested on synthetic data
+   `trained_chara_data.json` → `uv run val/spark_gen_fit.py trained_chara_data.json`. Tested on synthetic data
    (recovers ×1.094 for a true ×1.1 at 24k observations).
 4. **Hint levels from inheritance.** One run showed Ramp Up Lv 5 from a single 2★ proc; the per-proc level rule is
    unknown. Receipts would settle it. It matters only if the model ever uses hint levels.

@@ -1,10 +1,16 @@
-"""Assemble the single-file web app: wasm (base64), data, skill catalog, precomputed example."""
+"""Assemble the single-file web app: wasm (base64), data, skill catalog, precomputed example, images (img/, from images.py)."""
 import json, base64, subprocess, os
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
 worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
+# character icons and card art extracted by images.py: {'card:30116': base64 WebP}; none is fine (the page shows initials)
+images = {}
+for kind in ('uma', 'outfit', 'card'):
+    d = os.path.join(H, 'img', kind)
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if f.endswith('.webp'): images[f'{kind}:{f[:-5]}'] = base64.b64encode(open(os.path.join(d, f), 'rb').read()).decode()
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
 # Random events that hint a target (GameTora training_events: chara 'shared', char_card, friend, group), at the rate
 # "always fires"; the page scales them. Trainee: (chara id or outfit id, group, chance). Deck: (card, group, level, chance).
@@ -49,10 +55,10 @@ M = era(J, 'card_events_nodates.json')      # GM era: pal first-year dates are a
 html = open(os.path.join(H, 'index.template.html')).read()
 for k, v in [('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__CARDS_GM__', M['cards']), ('__UMAS_GM__', M['umas']), ('__SKILLCAT_GM__', M['skills']), ('__HINTS_GM__', M['hints']),
-             ('__EXAMPLE__', js(example)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
+             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
              ('__WASM__', base64.b64encode(wasm).decode()), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
 os.makedirs(os.path.join(H, 'dist'), exist_ok=True)
 open(os.path.join(H, 'dist', 'index.html'), 'w').write(html)
-print('dist/index.html', round(len(html.encode()) / 1e6, 2), 'MB')
+print('dist/index.html', round(len(html.encode()) / 1e6, 2), 'MB,', len(images), 'images')

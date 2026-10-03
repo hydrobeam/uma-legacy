@@ -18,10 +18,10 @@ npx wasm-opt -O3 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-flo
   ../pkg/loopopt/target/wasm32-unknown-unknown/release/loopopt.wasm -o loopopt.opt.wasm
 
 # 3. data (after a game update): re-export from the Global master.mdb
-cd ../pkg/loopopt/export && python3 build_base.py && python3 export_rs.py && python3 export_web.py
+cd ../pkg/loopopt/export && uv run build_base.py && uv run export_rs.py && uv run export_web.py
 
 # 4. example result shown on first load, then assemble dist/index.html
-cd ../../../webapp && node example.mjs && python3 build.py
+cd ../../../webapp && node example.mjs && uv run build.py
 ```
 
 ## Deploy (Cloudflare Pages)
@@ -31,5 +31,6 @@ are needed: the page uses plain Web Workers, not SharedArrayBuffer.
 ## Files
 - `index.template.html` UI (roster, target skills, rank, results, schedules)
 - `worker.template.js` solver worker (WebAssembly)
-- `build.py` assembles `dist/index.html` with the wasm, data and example embedded
+- `build.py` assembles `dist/index.html` with the wasm, data, example and images embedded
+- `images.py` extracts character icons and card art from the game's decrypted asset bundles into `img/` (`./build.sh images`)
 - `example.mjs` precomputes the example shown before the first search

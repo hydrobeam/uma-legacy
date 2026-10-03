@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: runall.sh BIN TAG
 S="$(cd "$(dirname "$0")/.." && pwd)"
-python3 - "$1" "$2" "$S" <<'PY'
+uv run --quiet --project "$S" python - "$1" "$2" "$S" <<'PY'
 import json,subprocess,sys,time
 b,tag,S=sys.argv[1],sys.argv[2],sys.argv[3]+'/'
 for d,j in json.load(open(S+'val/jobs.json')):

@@ -4,6 +4,9 @@
 !/build.sh
 !/BUILD.md
 !/README.md
+!/pyproject.toml
+!/uv.lock
+!/.python-version
 !/docs/
 !/inputs/
 !/pkg/
@@ -44,6 +47,7 @@
 !/webapp/example.json
 !/webapp/node*.mjs
 !/webapp/pw*.py
+!/webapp/images.py
 !/webapp/package.json
 !/webapp/package-lock.json
 !/val/

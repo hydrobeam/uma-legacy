@@ -1,0 +1,13 @@
+[project]
+name = "legacy-loop-planner-tools"
+version = "0"
+description = "Python side of the Legacy Loop Planner: master.mdb exporters, event builders, validation, image extraction"
+requires-python = ">=3.12"
+dependencies = [
+    "UnityPy",   # reads the game's (already decrypted) asset bundles: card art and character icons
+    "Pillow",    # resize and encode those images as WebP
+    "apsw-sqlite3mc>=3.53.4.0",
+]
+
+[tool.uv]
+package = false

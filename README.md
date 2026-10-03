@@ -54,13 +54,13 @@ Job fields and the model are in `pkg/loopopt/README.md`. Saved result sheets are
 
 ## Rebuilding
 
-- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, example), `page` (`webapp/dist/index.html`), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
-- Step details for the wasm build are in `webapp/README.md`.
+- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, example), `page` (`webapp/dist/index.html`), `images` (character icons and card art from the game's decrypted files), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
+- Step details for the wasm build are in `webapp/README.md`. Python runs through uv (`uv run script.py`), in the environment `pyproject.toml` and `uv.lock` define.
 - **Game data update:** put your own copy of the Global `master.mdb` (from the game's local data folder) in `pkg/loopopt/export/`, then:
 
   ```bash
   cd pkg/loopopt/export
-  python3 build_base.py && python3 export_rs.py && python3 export_web.py
+  uv run build_base.py && uv run export_rs.py && uv run export_web.py
   ```
 
   `master.mdb` is not included in this zip.

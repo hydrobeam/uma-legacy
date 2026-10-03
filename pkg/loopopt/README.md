@@ -67,9 +67,9 @@ A foursome whose ceiling is below a score already achieved cannot beat it.
 
 ```bash
 # 1. export data (needs Python 3 + the global master.mdb next to the export scripts)
-cd export && python3 build_base.py && python3 export_rs.py            # writes ../data.json
+cd export && uv run build_base.py && uv run export_rs.py            # writes ../data.json
 # alternate outfits: e.g. [Fiery Aqua Vitae] (Christmas) Vodka
-OUTFIT=1008:100802 python3 build_base.py && OUT=../data_xmas_vodka.json python3 export_rs.py
+OUTFIT=1008:100802 uv run build_base.py && OUT=../data_xmas_vodka.json uv run export_rs.py
 
 # 2. build
 cargo build --release
@@ -233,7 +233,7 @@ An independent adversarial review (separate agent, its own MILP and SQL, 576 bes
 The load step now asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair exactly 24 turns apart.
 
 **Reproduce:**
-- `cd validation && python3 check_scores.py` checks score parity; it needs only the built binary.
+- `cd validation && uv run check_scores.py` checks score parity; it needs only the built binary.
 - `dp_vs_milp.py` (best response vs MILP) needs scipy plus the `export/` modules and master.mdb on the path.
 - `independent_check.py` is the spec-only checker used on `results/final_loops.json`.
 
