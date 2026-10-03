@@ -10,6 +10,7 @@ texture with UnityPy and writes a small WebP to webapp/img/{uma,outfit,card}/{id
   Both icon kinds are cropped to a square inside their ring or frame (the page draws them as circles). The icon sits
   low in its 256 px texture, so the crop starts from the visible area (alpha bounding box) and keeps the top.
   card     supportcard/support{id}/support_card_s_{id}       card thumbnail with its rarity frame
+  race     race/racetitle/thumb/thum_race_rt_000_{race}_00   race banner (title art, 512x256), for the schedule view
   skill    outgame/skillicon/utx_ico_skill_{icon}            skill icon of each catalogue skill's white version
                                                              (skill_data.icon_id, lowest rarity in the group);
                                                              img/skill_icons.json maps skill group -> icon
@@ -26,14 +27,14 @@ H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(H)
 ASSETS = os.environ.get('UMA_DECRYPTED', os.path.expanduser(
     '~/.local/share/Steam/steamapps/compatdata/3224770/pfx/drive_c/users/steamuser/AppData/LocalLow/Cygames/Umamusume/decrypted'))
 OUT = os.path.join(H, 'img')
-SIZE = {'uma': 96, 'outfit': 192, 'card': 192, 'skill': 48}   # 2x the largest display: portraits/cards ~96 px, icons 38 px, skill icons ~20 px
+SIZE = {'uma': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128)}   # 2x the largest display (race banners ~128x64)
 INSET = {'uma': 26, 'outfit': 22}   # px of the 256 px icon cut inside the visible area: the white ring / the frame
 ERAS = [('pkg/loopopt', 'pkg/loopopt/export/master.mdb'), ('jp', 'jp/export/master.mdb')]
 
 
 def wanted():
     """{kind: {id: chara}} over both eras, plus the catalogue's skill groups."""
-    w = {'uma': {}, 'outfit': {}, 'card': {}, 'groups': set()}
+    w = {'uma': {}, 'outfit': {}, 'card': {}, 'race': {}, 'groups': set()}
     for d, _ in ERAS:
         data = json.load(open(os.path.join(R, d, 'data.json')))
         skills = json.load(open(os.path.join(R, d, 'web_skills.json')))
@@ -45,6 +46,7 @@ def wanted():
         for c in cards['cards']:
             w['card'][c['id']] = c['chara']
         w['groups'].update(g for g, *_ in skills['skills'])
+        for r in data['races']: w['race'][r] = None   # thumbnail id = race id for every G1 (checked against master.mdb)
     return w
 
 
@@ -106,6 +108,7 @@ def main(force):
                 if i not in dress: manifest['missing'][f'{kind}:{i}'] = 'no dress id in either master.mdb'; continue
                 rel = f'chara/chr{chara}/chr_icon_{chara}_{dress[i]}_01'
             elif kind == 'skill': rel = f'outgame/skillicon/utx_ico_skill_{i}'
+            elif kind == 'race': rel = f'race/racetitle/thumb/thum_race_rt_000_{i}_00'
             else: rel = f'supportcard/support{i}/support_card_s_{i}'
             dst = os.path.join(OUT, kind, f'{i}.webp')
             src = os.path.join(ASSETS, rel)
@@ -115,7 +118,8 @@ def main(force):
             im = texture(src)
             if im is None: manifest['missing'][f'{kind}:{i}'] = rel + ' (no texture)'; del manifest['images'][f'{kind}:{i}']; continue
             if kind in INSET: im = icon_crop(im, INSET[kind])
-            im.resize((SIZE[kind], SIZE[kind]), Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
+            sz = SIZE[kind] if isinstance(SIZE[kind], tuple) else (SIZE[kind], SIZE[kind])
+            im.resize(sz, Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
             done += 1
     json.dump(manifest, open(os.path.join(OUT, 'manifest.json'), 'w'), indent=1, sort_keys=True)
     n = sum(len(v) for v in w.values())

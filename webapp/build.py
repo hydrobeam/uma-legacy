@@ -7,12 +7,20 @@ worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
 # character icons and card art extracted by images.py: {'card:30116': base64 WebP}; none is fine (the page shows initials)
 images = {}
-for kind in ('uma', 'outfit', 'card', 'skill'):
+for kind in ('uma', 'outfit', 'card', 'skill', 'race'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if f.endswith('.webp'): images[f'{kind}:{f[:-5]}'] = base64.b64encode(open(os.path.join(d, f), 'rb').read()).decode()
 sip = os.path.join(H, 'img', 'skill_icons.json')   # skill group -> icon id (images.py)
 skill_icons = json.load(open(sip)) if os.path.exists(sip) else {}
+# schedule rows name their race; the page maps names to race ids for the banners (same 34 G1s in both eras)
+# keyed by both the full name and the chart's short name (pkg/loopopt/src/lib.rs chart_race_name: aliases, else 22 chars)
+CHART_ALIAS = {'Tokyo Yushun (Japanese Derby)': 'Japanese Derby', 'Asahi Hai Futurity Stakes': 'Asahi Hai FS', 'Mile Championship Nambu Hai': 'MCS Nambu Hai',
+               'Hanshin Juvenile Fillies': 'Hanshin JF', 'Zen-Nippon Junior Yushun': 'Zen-Nippon Jr Yushun'}
+race_ids = {}
+for dd in (P, J):
+    dj = json.load(open(os.path.join(dd, 'data.json')))
+    for nm, rid in zip(dj['race_names'], dj['races']): race_ids[nm] = rid; race_ids[CHART_ALIAS.get(nm, nm[:22])] = rid
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
 # Random events that hint a target (GameTora training_events: chara 'shared', char_card, friend, group), at the rate
 # "always fires"; the page scales them. Trainee: (chara id or outfit id, group, chance). Deck: (card, group, level, chance).
@@ -57,7 +65,7 @@ M = era(J, 'card_events_nodates.json')      # GM era: pal first-year dates are a
 html = open(os.path.join(H, 'index.template.html')).read()
 for k, v in [('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__CARDS_GM__', M['cards']), ('__UMAS_GM__', M['umas']), ('__SKILLCAT_GM__', M['skills']), ('__HINTS_GM__', M['hints']),
-             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
+             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
              ('__WASM__', base64.b64encode(wasm).decode()), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
