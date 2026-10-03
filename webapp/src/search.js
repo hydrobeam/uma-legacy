@@ -33,10 +33,23 @@ function eventFields(deck) {
 
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 let worker = null, ready = null, seq = 0, busy = false; const pending = new Map();
-function killEngine() { if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); busy = false; }
+// The wasm is compiled once here and the compiled module handed to every worker, so a restart skips decoding and
+// compiling it (about 50 ms per restart, measured on Node). Where that fails, the worker gets the base64 as before.
+let wasmModule = null, engineGen = 0;   // engineGen: a kill during the compile wait cancels that start
+function compiled() {
+  if (!wasmModule) wasmModule = (async () => {
+    const bin = atob($('engine-wasm').textContent.trim()), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return WebAssembly.compile(bytes);
+  })().catch(() => null);
+  return wasmModule;
+}
+function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); busy = false; }
 function startEngine() {
   if (ready) return ready;
-  ready = new Promise((resolve, reject) => {
+  const gen = engineGen;
+  ready = compiled().then((module) => new Promise((resolve, reject) => {
+    if (gen !== engineGen) { reject(new Error('superseded')); return; }
     try {
       const src = $('engine-worker').textContent;
       worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
@@ -48,8 +61,10 @@ function startEngine() {
       else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p(m); }
     };
     worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
-    worker.postMessage({ type: 'init', wasm: $('engine-wasm').textContent.trim(), data: $(ERA === 'gm' ? 'engine-data-gm' : 'engine-data').textContent });
-  });
+    const data = $(ERA === 'gm' ? 'engine-data-gm' : 'engine-data').textContent;
+    try { if (!module) throw 0; worker.postMessage({ type: 'init', module, data }); }
+    catch { worker.postMessage({ type: 'init', wasm: $('engine-wasm').textContent.trim(), data }); }   // module not transferable here
+  }));
   return ready;
 }
 function run(job) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, res); worker.postMessage({ type: 'run', id, job }); })); }

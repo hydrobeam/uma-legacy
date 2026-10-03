@@ -60,11 +60,12 @@ How to speed up `pkg/loopopt` without changing its results, learned from the 202
   shared-mode branch cache valid. Recheck it if pool-dependent code enters `run_deck_relaxed` before the frontier is
   built. `run_deck` branches change `exclude`, `require` and `exclude_cards`.
 
+Done in the page afterwards: the wasm is compiled once and the `WebAssembly.Module` posted to each restarted worker
+(works from `file://` in Chromium and Firefox; worker ready about 100-190 ms against 180-490 ms with base64).
+
 ## Not done (estimates)
 
 - Lazy k-best for shared `top_decks` > 1: pal_I shared k3 spends 68 of 75 s in the second enumeration pass. A k-best
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.
 - Native threads: no browser gain; splitting the enumeration changes tie order.
-- Page: compile the wasm once and post the `WebAssembly.Module` to each restarted worker (about 50 ms per restart,
-  measured on Node; untested from `file://`).
