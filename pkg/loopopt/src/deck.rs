@@ -278,15 +278,10 @@ fn sig_of(v: &[f64], query: bool) -> Sig {
 #[inline]
 fn sig_ge(e: Sig, q: Sig) -> bool { ((e | SIG_GUARD) - q) & SIG_GUARD == SIG_GUARD }
 
-/// Field-wise max / min of two signatures (levels only, guard bits clear).
+/// Field-wise max of two signatures (levels only, guard bits clear).
 fn sig_max(a: Sig, b: Sig) -> Sig {
     let mut m: Sig = 0;
     for c in 0..SIG_FIELDS { let sh = FB * c; m |= ((a >> sh) & (LEVELS - 1)).max((b >> sh) & (LEVELS - 1)) << sh; }
-    m
-}
-fn sig_min(a: Sig, b: Sig) -> Sig {
-    let mut m: Sig = 0;
-    for c in 0..SIG_FIELDS { let sh = FB * c; m |= ((a >> sh) & (LEVELS - 1)).min((b >> sh) & (LEVELS - 1)) << sh; }
     m
 }
 
@@ -297,7 +292,25 @@ const NBUCKET: usize = 128;
 /// coordinates, ids) plus, per block of BLOCK decks, the field-wise max entry signature, so a whole block that
 /// cannot hold a dominator is skipped with one test.
 #[derive(Default)]
-struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, bmax: Vec<Sig>, bmin: Vec<Sig> }
+struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, bmax: Vec<Sig> }
+impl Bucket {
+    /// rebuild the block maxima from block `from` on
+    fn rebuild_bmax(&mut self, from: usize) {
+        self.bmax.truncate(from);
+        for blk in from..self.esig.len().div_ceil(BLOCK) {
+            let end = ((blk + 1) * BLOCK).min(self.esig.len());
+            self.bmax.push(self.esig[blk * BLOCK..end].iter().fold(0, |m, &e| sig_max(m, e)));
+        }
+    }
+}
+/// Bit k set when entry signature es[k] passes the signature test against query q (branch-free, so the loop
+/// vectorises); callers then visit the set bits in index order, the same order as a plain scan.
+#[inline]
+fn cand_mask(es: &[Sig], q: Sig) -> u64 {
+    let mut m = 0u64;
+    for (k, &e) in es.iter().enumerate() { m |= (sig_ge(e, q) as u64) << k; }
+    m
+}
 
 /// Kept decks of one pal count. A dominator's coordinate sum is at least the deck's (less float slack), so a
 /// query only visits buckets at or above the deck's sum.
@@ -330,9 +343,10 @@ impl Kept {
             let bk = &self.buckets[bi];
             for (blk, &m) in bk.bmax.iter().enumerate() {
                 if !sig_ge(m, xq) { continue; }
-                let end = ((blk + 1) * BLOCK).min(bk.list.len());
-                for i in blk * BLOCK..end {
-                    if !sig_ge(bk.esig[i], xq) { continue; }
+                let start = blk * BLOCK;
+                let mut cm = cand_mask(&bk.esig[start..(start + BLOCK).min(bk.esig.len())], xq);
+                while cm != 0 {
+                    let i = start + cm.trailing_zeros() as usize; cm &= cm - 1;
                     *tests += 1;
                     let row = &bk.flat[i * nd..(i + 1) * nd];
                     if dominates(row, x) {
@@ -356,9 +370,11 @@ impl Kept {
             let bk = &self.buckets[bi];
             for (blk, &m) in bk.bmax.iter().enumerate() {
                 if !sig_ge(m, xq) { continue; }
-                let end = ((blk + 1) * BLOCK).min(bk.list.len());
-                for i in blk * BLOCK..end {
-                    if sig_ge(bk.esig[i], xq) && dominates(&bk.flat[i * nd..(i + 1) * nd], x) { n += 1; if n >= need { return n; } }
+                let start = blk * BLOCK;
+                let mut cm = cand_mask(&bk.esig[start..(start + BLOCK).min(bk.esig.len())], xq);
+                while cm != 0 {
+                    let i = start + cm.trailing_zeros() as usize; cm &= cm - 1;
+                    if dominates(&bk.flat[i * nd..(i + 1) * nd], x) { n += 1; if n >= need { return n; } }
                 }
             }
         }
@@ -387,30 +403,42 @@ impl Kept {
         let id = self.next_uid; self.next_uid += 1;
         let bk = &mut self.buckets[bi];
         let i = bk.list.len();
-        if i % BLOCK == 0 { bk.bmax.push(e); bk.bmin.push(q); } else { let l = bk.bmax.len() - 1; bk.bmax[l] = sig_max(bk.bmax[l], e); bk.bmin[l] = sig_min(bk.bmin[l], q); }
+        if i % BLOCK == 0 { bk.bmax.push(e); } else { let l = bk.bmax.len() - 1; bk.bmax[l] = sig_max(bk.bmax[l], e); }
         bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(&x.dv); bk.uid.push(id); bk.list.push(x);
         self.n += 1;
     }
-    /// drop kept decks that x dominates (only decks with sum <= s + slack can be)
+    /// drop kept decks that x dominates (only decks with sum <= s + slack can be), in place, keeping the order of
+    /// the rest
     fn remove_dominated_by(&mut self, x: &[f64], xe: Sig, s: f64) {
         let nd = self.nd;
         let top = self.bucket_of(s + SUM_EPS);
         for bi in 0..=top {
-            let hit = |bk: &Bucket, i: usize| sig_ge(xe, bk.qsig[i]) && dominates(x, &bk.flat[i * nd..(i + 1) * nd]);
-            let bk = &self.buckets[bi];
-            if !(0..bk.list.len()).any(|i| hit(bk, i)) { continue; }
-            let old = std::mem::take(&mut self.buckets[bi]);
-            let keep: Vec<bool> = (0..old.list.len()).map(|i| !hit(&old, i)).collect();
-            let mut nb = Bucket::default();
-            for (i, d) in old.list.into_iter().enumerate() {
-                if !keep[i] { self.n -= 1; continue; }
-                let e = old.esig[i];
-                let j = nb.list.len();
-                let q = old.qsig[i];
-                if j % BLOCK == 0 { nb.bmax.push(e); nb.bmin.push(q); } else { let l = nb.bmax.len() - 1; nb.bmax[l] = sig_max(nb.bmax[l], e); nb.bmin[l] = sig_min(nb.bmin[l], q); }
-                nb.esig.push(e); nb.qsig.push(q); nb.flat.extend_from_slice(&old.flat[i * nd..(i + 1) * nd]); nb.uid.push(old.uid[i]); nb.list.push(d);
+            let bk = &mut self.buckets[bi];
+            let len = bk.qsig.len();
+            // the first deck x dominates: entry test (x's entry signature over the deck's query one) first
+            let mut first = None;
+            'scan: for start in (0..len).step_by(64) {
+                let qs = &bk.qsig[start..(start + 64).min(len)];
+                let mut m = 0u64;
+                for (k, &q) in qs.iter().enumerate() { m |= (sig_ge(xe, q) as u64) << k; }
+                while m != 0 {
+                    let i = start + m.trailing_zeros() as usize; m &= m - 1;
+                    if dominates(x, &bk.flat[i * nd..(i + 1) * nd]) { first = Some(i); break 'scan; }
+                }
             }
-            self.buckets[bi] = nb;
+            let Some(f) = first else { continue };
+            // compact [f, len): kept decks move down in order, dropped ones end up past `w` and are truncated
+            let mut w = f;
+            for r in f + 1..len {
+                if sig_ge(xe, bk.qsig[r]) && dominates(x, &bk.flat[r * nd..(r + 1) * nd]) { continue; }
+                bk.list.swap(w, r);
+                bk.esig[w] = bk.esig[r]; bk.qsig[w] = bk.qsig[r]; bk.uid[w] = bk.uid[r];
+                bk.flat.copy_within(r * nd..(r + 1) * nd, w * nd);
+                w += 1;
+            }
+            self.n -= len - w;
+            bk.list.truncate(w); bk.esig.truncate(w); bk.qsig.truncate(w); bk.uid.truncate(w); bk.flat.truncate(w * nd);
+            bk.rebuild_bmax(f / BLOCK);
         }
     }
     fn into_list(self) -> Vec<DeckEval> { self.buckets.into_iter().flat_map(|b| b.list).collect() }
