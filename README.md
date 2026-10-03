@@ -14,10 +14,8 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
 
 1. **Umas.** A grid of portraits. Tap a portrait to cycle *owned → not owned → must include*. If you own few, press **None owned** and tap the ones you have.
 2. **Outfits.** Umas with several outfits show small outfit thumbnails under the portrait; tap one you don't own. Outfit skill lists decide most results (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
-3. **Target skills.** Type to add a skill. For each one set:
-   - *Guaranteed source*: white or gold from the scenario or a card.
-   - *Deck hint %*: chance your deck hands you the hint, e.g. 54% with 3 pals, 81% with 4.
-   - Leave both at 0 for inherit-only.
+3. **Target skills.** Type to add a skill. For each one set *Guaranteed outside the deck* if the scenario hands you its
+   white or gold anyway (Unity Cup: No Stopping Me!, It's On!). The deck's hints are worked out by the search.
 
    **Unity Cup example** loads the 8-skill set used in our runs.
 4. **Lineage rank.** Star mix of the sparks on your legacies: *Below SS* (rank score 6,500–17,499, stars 50/45/5%) or *SS and up* (17,500+, 20/70/10%), from hakuraku.moe's room-match data. An Independent Training veteran reaches SS only if you spend nearly all its skill points.
@@ -28,9 +26,9 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
    - each trainee's own odds;
    - the race schedule. Shared G1s build affinity; optional G1s are free extra race sparks. "A/B" means either race, same odds, but every runner must pick the same one.
 
-**Support deck.** With "Find best deck" on, tap the cards you don't own (pals, group cards, R cards and every SR/SSR that can give a target are listed; R cards have no chain events, so like pals they take no chain slot and can be switched off) and choose whether one friend card may be borrowed. The search returns the best deck(s), pals and borrowed card marked, each with its own best loop and the odds each target gets from the deck. With "A deck per uma" on (the default), each trainee gets her own best deck: Digital, whose outfit already carries Superstan, drops King Halo for a card that helps her, say. The result shows the deck most of the loop shares and each other uma's swaps. No uma runs a card of herself or a group card she belongs to. One search usually takes 1–15 s, three results up to about 2 minutes. "Set odds by hand" uses the per-skill deck hint % instead.
+**Support deck.** Tap the cards you don't own (only cards that can give a target are listed) and choose whether one friend card may be borrowed. R cards give training hints only and can be switched off under Game data. The search returns the best deck(s), pals and borrowed card marked, each with its own best loop and the odds each target gets from the deck. With "A deck per uma" on (the default), each trainee gets her own best deck: Digital, whose outfit already carries Superstan, drops King Halo for a card that helps her, say. The result shows the deck most of the loop shares and each other uma's swaps. No uma runs a card of herself or a group card she belongs to. One search usually takes 1–15 s, three results up to about 2 minutes.
 
-**Game data.** "Global today" or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023: 83 umas, group cards such as Progenitors and Guides count as pals). Switching reloads the page; owned umas, outfits and cards are kept separately for each. Two event options apply to both: whether pal first-year dates fire (they don't in Unity Cup independent training) and how often random events that hint a target fire (unknown, so off by default). For a GM loop, set No Stopping Me! and It's On! to "None" and pick a higher lineage rank.
+**Game data.** "Global today" or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023: 83 umas, group cards such as Progenitors and Guides count as pals). Switching reloads the page; owned umas, outfits and cards are kept separately for each. Pal first-year date events are left out (they don't fire in Unity Cup independent training). How often random events that hint a target fire is an option (unknown, so off by default). For a GM loop, set No Stopping Me! and It's On! to "None" and pick a higher lineage rank.
 
 Settings are saved in your browser on that device. Nothing is uploaded.
 

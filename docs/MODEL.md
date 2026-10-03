@@ -19,7 +19,7 @@ assumption the odds rest on, where it came from, and how sure we are. "Measured"
 | Win chance in IT | 110 − cost(distance) − cost(surface) − streak penalty, clamped; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90; penalty by races in a row 0,0,5,20,30,50 | community table (`inputs/user/reference_tables/`) | community |
 | Training hints | 1 + hint_frequency/25 per run, uniform over the card's hint options | assumed | uma-it-optimizer measured ≈ 3.04 + 0.038·hf hints in Unity Cup; not adopted |
 | Chain events | Poisson(λ = 7.1) per run, each advancing a random remaining chain slot of a non-pal card; split outcomes 50% | assumed | uma-it-optimizer measured Unity SSR final-link completion ≈ 24.5% and pal multipliers ×0.22/0.69/1.06/1.69; not adopted |
-| Pal first-year dates | don't fire in Unity Cup IT (Tazuna: Tail Held High; Anshinzawa: Uma Stan; SSR and R); a page option re-enables them | owner | owner-stated |
+| Pal first-year dates | don't fire in Unity Cup IT (Tazuna: Tail Held High; Anshinzawa: Uma Stan; SSR and R); always left out (the page option was removed 2026-10-03; the data keeps them disabled with a reason) | owner | owner-stated |
 | Pal / group card events | hand-entered, each with a source, audited by `val/event_audit.py` against GameTora | GameTora caches + owner + umamusu.wiki | audited 2026-10-03, all target hints accounted for |
 | Character rule | no trainee runs a card of her character or a group card she belongs to | owner | game rule |
 | Per-uma decks | each trainee uses her own best legal deck (default on) | owner request | exact per model; brute-force checked |

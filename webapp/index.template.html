@@ -67,7 +67,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
 /* roster chips: three states */
-.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 2px; align-items: start; }
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 12px 4px 4px; scrollbar-gutter: stable; align-items: start; }
 /* uma tile: portrait (tap cycles owned / not owned / must include), outfit thumbnails, name as a subtitle */
 .ut { display: grid; gap: 4px; min-width: 0; }
 .ut .up { position: relative; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; display: block; }
@@ -187,7 +187,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .odds-list .src { color: var(--muted); font-size: 0.78rem; }
 .odds-list b { font-family: var(--font-data); text-align: right; }
 .imgdrop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; }
-.cards { display: grid; gap: 14px; max-height: min(640px, 70vh); overflow: auto; padding: 4px 4px 4px 2px; }
+.cards { display: grid; gap: 14px; max-height: min(640px, 70vh); overflow: auto; padding: 4px 12px 4px 4px; scrollbar-gutter: stable; }
 .cgroup h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px; font-weight: 700; }
 .cgroup .ctiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px 10px; align-items: start; }
 /* card tile: art, name and title as a subtitle, then the target skills it can give (why it is listed) */
@@ -200,7 +200,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .ct .gv { font-size: 0.74rem; line-height: 1.3; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .ct .gv.g { background: var(--gold-soft); color: var(--gold); }
 .ct .gv small { font-weight: 500; opacity: 0.8; }
-.ct .gv.none { background: none; color: var(--muted); padding-left: 0; font-weight: 500; }
 .ct[aria-pressed="false"] .cav { filter: grayscale(1); opacity: 0.45; }
 .ct[aria-pressed="false"] .cn, .ct[aria-pressed="false"] .cti { color: var(--muted); text-decoration: line-through; }
 .ct[aria-pressed="false"] .gv { opacity: 0.55; }
@@ -244,7 +243,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .sw input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dodds { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); }
 .dodds b { color: var(--ink); font-family: var(--font-data); font-weight: 600; }
-.nodeck .tgt .ctrl label.dk { display: none; }
 .nodeck .tgt .ctrl { grid-template-columns: minmax(0, 1fr); }
 .nodeck .tgt .ctrl label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .nodeck .tgt .ctrl select { width: auto; min-width: 7em; }
@@ -280,8 +278,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       </div>
       <p class="hint" id="era-hint"></p>
       <div class="extras">
-        <label><input type="checkbox" id="x-rcards" checked> Use R cards (training hints only; like a pal they take no chain slot)</label>
-        <label><input type="checkbox" id="x-dates"> Pal first-year dates fire (Tazuna: Tail Held High, Anshinzawa: Uma Stan, SSR and R). They don't in Unity Cup independent training.</label>
+        <label><input type="checkbox" id="x-rcards" checked> Use R cards</label>
         <label class="row" for="x-rand" style="gap:10px"><span style="font-size:.88rem">Random event hints</span>
           <select id="x-rand">
             <option value="0">Not counted</option>
@@ -321,23 +318,17 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     </section>
 
     <section class="panel" aria-labelledby="h-deck" id="deck-panel">
-      <div class="row between"><h2 id="h-deck">Support deck</h2>
-        <div class="seg" role="group" aria-label="Support deck">
-          <button id="dk-opt" aria-pressed="true">Find best deck</button>
-          <button id="dk-fixed" aria-pressed="false">Set odds by hand</button>
-        </div></div>
+      <h2 id="h-deck">Support deck</h2>
       <div id="dk-body">
-        <p class="hint">Tap the cards you don't own. Listed: pals, group cards, and every R/SR/SSR that can give one of your target skills (training hints or chain events). Other cards only fill slots, so they are not listed.</p>
+        <p class="hint">Tap the cards you don't own. Only cards that can give a target skill are listed.</p>
         <div class="row"><input type="search" id="c-filter" placeholder="Filter cards" aria-label="Filter cards" style="flex:1"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button></div>
         <div class="cards" id="cards"></div>
         <p class="hint" id="c-count"></p>
-        <div class="extras"><label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card (the search picks which)</label>
-          <label><input type="checkbox" id="c-peruma" checked> A deck per uma: each trainee runs her own best deck (off: one deck for all four)</label></div>
-        <p class="hint">No uma can run a card of herself, or a group card she belongs to (Special Week and Team Sirius, say).</p>
+        <div class="extras"><label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>
+          <label><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label></div>
         <label class="row" for="c-top" style="gap:10px"><span style="font-size:.88rem">Results to show</span>
-          <select id="c-top"><option value="1">1 (fastest, ~5–10 s)</option><option value="3">3 (~10–20 s)</option></select></label>
+          <select id="c-top"><option value="1">1</option><option value="3">3 (slower)</option></select></label>
       </div>
-      <p class="hint" id="dk-fixed-hint" hidden>Using the deck hint % typed on each target skill.</p>
     </section>
 
     <button class="run" id="run">Find best loops</button>
@@ -357,7 +348,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 
 <footer class="foot">
   <p><strong>Model.</strong> Each target spark sits on all six legacies with stars from the chosen rank: 50/45/5% for 1/2/3 stars below rank score 17,500 and 20/70/10% from 17,500 up (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">room-match data</a>); a spark's base rate is 3/6/9% by stars. A skill is acquired if guaranteed, on the trainee's own outfit skill list (fully awakened), hinted by the deck, or inherited: proc = 1 − Π(1 − base × (1 + affinity/100)) over the six legacies, two inspirations. Each legacy's affinity follows <a href="https://github.com/Acrith/uma-it-optimizer" target="_blank" rel="noopener">uma-it-optimizer</a>'s fit to 8,155 Independent Training receipts: a parent counts its relation points with the trainee, the full relation with the other parent, its trios with the trainee and its own parents, and 3 per G1 shared with the other parent and with each of its own parents; a grandparent counts its trio with the trainee and its child, plus 3 per G1 shared with that child. It then becomes a spark 35.4% of the time as a white, 70.9% as a gold: 20% and 40%, ×1.1 for each of the six ancestors already carrying it (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">fit to room-match data</a>). Odds average the 12 runs of the self-copy-free cycle.</p>
-  <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: 1 + hint frequency/25 per run, each a uniform draw over the card's hint options. Chain events: a Poisson(7.1) number per run, each advancing a random remaining chain slot of a non-pal card (fits 81% / 59% / 50% full-chain completion with 6 / 8 / 9 slots); pals add no chain slots. Event rewards: GameTora training-event data; a reward on only one outcome counts at 50%. Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together and the result is exact for this model.</p>
+  <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: 1 + hint frequency/25 per run, each a uniform draw over the card's hint options. Chain events: a Poisson(7.1) number per run, each advancing a random remaining chain slot of a non-pal card (fits 81% / 59% / 50% full-chain completion with 6 / 8 / 9 slots). Event rewards: GameTora training-event data; a reward on only one outcome counts at 50%. Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together and the result is exact for this model.</p>
   <p><strong>Search.</strong> Every foursome gets a guaranteed ceiling from exact pairwise bounds; loops are scheduled best-first until no remaining ceiling can beat the 5th result. Schedules maximise the expected shared G1 wins, every pair weighted alike (each pair carries the same weight across the 12 careers). Win odds per race: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90), minus 0/0/5/20/30/50 for the 1st to 6th+ race in a row, capped at 0–100%. Data: Global master.mdb, relocated venues count as the same race. The Grand Masters-era option uses a JP master.mdb cut at L'Arc's launch (24 Aug 2023), with group cards counted as pals. Character icons and card art are from the game's own files, © Cygames.</p>
   <p class="row"><button class="btn" id="ex-open">Export / import settings</button></p>
 </footer>
@@ -404,8 +395,10 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const el = document.createElement('span'); el.className = 'av'; el.style.width = el.style.height = size + 'px'; el.style.fontSize = Math.round(size * 0.38) + 'px';
     el.style.setProperty('--h', String((charaId * 47) % 360)); el.textContent = initials(NAME.get(charaId) || '?');
     const tries = [outfitId && srcFor('outfit', outfitId), srcFor('uma', charaId)].filter(Boolean);
-    const next = () => { const s = tries.shift(); if (!s) return; const im = new Image(); im.alt = ''; im.onload = () => { el.textContent = ''; el.appendChild(im); }; im.onerror = next; im.src = s; };
-    next(); return el;
+    // the image goes in at once (embedded data, no network); initials come back only if every source fails
+    const next = () => { const s = tries.shift(); el.textContent = ''; if (!s) { el.textContent = initials(NAME.get(charaId) || '?'); return; }
+      const im = new Image(); im.alt = ''; im.decoding = 'sync'; im.onerror = next; im.src = s; el.appendChild(im); };
+    if (tries.length) next(); return el;
   }
   const KABBR = { speed: 'SPD', stamina: 'STA', power: 'POW', guts: 'GUT', wit: 'WIT', pal: 'PAL', group: 'GRP', other: '·' };
   function cardAv(c, size) {
@@ -413,7 +406,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const kind = (c && c.kind) || 'other'; el.style.setProperty('--k', `var(--k-${kind})`);
     el.style.setProperty('--rr', c ? `var(--r-${({ 3: 'ssr', 2: 'sr', 1: 'r' })[c.rar] || 'r'})` : 'transparent');
     el.textContent = KABBR[kind] || '·'; el.title = c ? c.name : '';
-    const s = c && srcFor('card', c.id); if (s) { const im = new Image(); im.alt = ''; im.onload = () => { el.textContent = ''; el.classList.add('art'); el.appendChild(im); }; im.src = s; }
+    const s = c && srcFor('card', c.id);
+    if (s) { const im = new Image(); im.alt = ''; im.decoding = 'sync'; im.src = s; el.textContent = ''; el.classList.add('art'); el.appendChild(im);
+      im.onerror = () => { im.remove(); el.classList.remove('art'); el.textContent = KABBR[kind] || '·'; }; }
     return el;
   }
   let refreshAll = () => {};       // [{id,name,outfits:[{id,label}]}]
@@ -422,9 +417,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   const SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
   const NAME = new Map(UMAS.map(u => [u.id, u.name]));
   const PRESET = [
-    { group: 20159, guaranteed: 0 }, { group: 20049, guaranteed: 2 }, { group: 20166, guaranteed: 0, deck_gold: 1 }, { group: 20046, guaranteed: 2 },
-    { group: 20161, guaranteed: 0, deck_white: 0.5 }, { group: 21010, guaranteed: 0 }, { group: 20165, guaranteed: 0, deck_gold: 0.8 },
-    { group: 20203, guaranteed: 0, deck_gold: 1 },
+    { group: 20159, guaranteed: 0 }, { group: 20049, guaranteed: 2 }, { group: 20166, guaranteed: 0 }, { group: 20046, guaranteed: 2 },
+    { group: 20161, guaranteed: 0 }, { group: 21010, guaranteed: 0 }, { group: 20165, guaranteed: 0 }, { group: 20203, guaranteed: 0 },
   ];
   const PER_ERA = new Set(['roster', 'outfits', 'cardsOff']);
   const skey = (k) => 'llp:' + (ERA === 'gm' && PER_ERA.has(k) ? 'gm:' : '') + k;
@@ -456,7 +450,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
   // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
   try { if (!localStorage.getItem('llp:targetsV2')) {
-    for (const t of state.targets) if ((t.group === 20166 || t.group === 20203) && t.guaranteed === 2) { t.guaranteed = 0; t.deck_gold = 1; }
+    for (const t of state.targets) if ((t.group === 20166 || t.group === 20203) && t.guaranteed === 2) { t.guaranteed = 0; }
     localStorage.setItem('llp:targetsV2', '1'); localStorage.setItem('llp:targets', JSON.stringify(state.targets)); } } catch {}
   const save = () => { markStale(); for (const k of ['mode', 'roster', 'outfits', 'targets', 'rank', 'teio', 'zephyr', 'scheme', 'deck', 'cardsOff', 'borrow', 'decksTop', 'perUma', 'dates', 'rand', 'rcards']) store.set(k, state[k]); };
   // ---------- game data ----------
@@ -466,7 +460,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   $('era-hint').textContent = ERA === 'gm'
     ? `JP data up to L'Arc's launch (24 Aug 2023): ${UMAS.length} umas. Group cards (Team Sirius, Progenitors and Guides) count as pals and give the skills from their dates. Grand Masters itself guarantees none of the targets, so set No Stopping Me! and It's On! to "None" unless you're modelling Unity Cup, and pick a higher lineage rank (GM legacies rank above SS).`
     : `Global data today: ${UMAS.length} umas.`;
-  $('x-dates').checked = state.dates; $('x-dates').onchange = (e) => { state.dates = e.target.checked; save(); };
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); if (typeof renderCards === 'function') renderCards(); };
   $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
   // extra job fields from the event options
@@ -476,34 +469,41 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       f.trainee_hints = HINTS.trainee.map(([id, g, p]) => [id, g, p * r]);
       if (deck) f.odds_events = HINTS.deck.map(([c, g, lv, p]) => [c, g, lv, p * r]);
     }
-    if (deck && state.dates) f.events = [[30021, 20161, 1, 0], [10021, 20161, 1, 0], [30080, 20159, 1, 0], [10074, 20159, 1, 0]].filter(e => CARD_BY_ID.has(e[0]));
     if (deck && !state.rcards) f.exclude_cards = CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id);
     return f;
   }
 
   // ---------- roster ----------
   const order = [...UMAS].sort((a, b) => a.name.localeCompare(b.name));
+  const ST_LABEL = { own: 'owned', out: 'not owned', req: 'must include' };
+  function umaState(u) { const os = u.outfits || []; const st = state.roster[u.id] || 'own';
+    return st === 'own' && os.length && os.every(o => state.outfits[o.id] === false) ? 'out' : st; }
+  function rosterCount() {
+    const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = Object.values(state.roster).filter(v => v === 'req').length;
+    $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} owned` + (req ? ` · ${req} must be in the loop` : '');
+  }
   function renderRoster() {
     const f = $('r-filter').value.trim().toLowerCase();
     const box = $('roster'); box.textContent = '';
     for (const u of order) {
       if (f && !u.name.toLowerCase().includes(f)) continue;
-      const os = u.outfits || [], on = os.filter(o => state.outfits[o.id] !== false).length;
-      let st = state.roster[u.id] || 'own'; if (os.length && on === 0 && st === 'own') st = 'out';
-      const t = document.createElement('div'); t.className = 'ut'; t.dataset.s = st;
+      const os = u.outfits || [];
+      const t = document.createElement('div'); t.className = 'ut';
       const b = document.createElement('button'); b.className = 'up'; b.type = 'button';
       b.appendChild(umaAv(u.id, os.length ? os[0].id : null, 96));
-      b.setAttribute('aria-label', u.name + ': ' + ({ own: 'owned', out: 'not owned', req: 'must include' })[st]); b.title = b.getAttribute('aria-label');
+      const paint = () => { const st = umaState(u); t.dataset.s = st; b.setAttribute('aria-label', u.name + ': ' + ST_LABEL[st]); b.title = b.getAttribute('aria-label'); };
+      paint();
       b.onclick = () => { const cur = state.roster[u.id] || 'own'; const nx = cur === 'own' ? 'out' : cur === 'out' ? 'req' : 'own';
-        if (nx === 'own') delete state.roster[u.id]; else state.roster[u.id] = nx; save(); renderRoster(); };
+        if (nx === 'own') delete state.roster[u.id]; else state.roster[u.id] = nx; save(); paint(); rosterCount(); };
       t.appendChild(b);
       const ob = document.createElement('div'); ob.className = 'uo';
       if (os.length > 1) {
         for (const o of os) {
-          const x = document.createElement('button'); x.type = 'button'; const own = state.outfits[o.id] !== false;
-          x.appendChild(umaAv(u.id, o.id, 24)); x.setAttribute('aria-pressed', own ? 'true' : 'false');
-          x.setAttribute('aria-label', u.name + ' ' + o.label + (own ? ': owned' : ': not owned')); x.title = o.label + (own ? '' : ' (not owned)');
-          x.onclick = () => { if (state.outfits[o.id] === false) delete state.outfits[o.id]; else state.outfits[o.id] = false; save(); renderRoster(); };
+          const x = document.createElement('button'); x.type = 'button'; x.appendChild(umaAv(u.id, o.id, 24));
+          const paintO = () => { const own = state.outfits[o.id] !== false; x.setAttribute('aria-pressed', own ? 'true' : 'false');
+            x.setAttribute('aria-label', u.name + ' ' + o.label + (own ? ': owned' : ': not owned')); x.title = o.label + (own ? '' : ' (not owned)'); };
+          paintO();
+          x.onclick = () => { if (state.outfits[o.id] === false) delete state.outfits[o.id]; else state.outfits[o.id] = false; save(); paintO(); paint(); rosterCount(); };
           ob.appendChild(x);
         }
       }
@@ -511,8 +511,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
       box.appendChild(t);
     }
-    const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = Object.values(state.roster).filter(v => v === 'req').length;
-    $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} owned` + (req ? ` · ${req} must be in the loop` : '');
+    rosterCount();
   }
   const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
   $('r-filter').oninput = renderRoster;
@@ -528,19 +527,10 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       el.innerHTML = `<div class="row between"><div><span class="name"></span></div><button class="x" aria-label="Remove">×</button></div>
         <div class="ctrl">
           <label>Guaranteed outside the deck<select data-k="guaranteed"><option value="0">None</option><option value="1">White</option>${s.gd ? '<option value="2">Gold</option>' : ''}</select></label>
-          <label class="dk">Deck hint, white %<input type="number" min="0" max="100" step="5" data-k="deck_white"></label>
-          <label class="dk">${s.gd ? 'Deck hint, gold %' : 'No gold version'}<input type="number" min="0" max="100" step="5" data-k="deck_gold" ${s.gd ? '' : 'disabled'}></label>
         </div>`;
       const nm = el.querySelector('.name'); nm.textContent = s.w; const ic = skillIcon(t.group); if (ic) nm.prepend(ic);
       const sel = el.querySelector('select'); sel.value = String(t.guaranteed || 0); sel.id = 'g-' + t.group;
-      const dw = el.querySelector('[data-k="deck_white"]'), dg = el.querySelector('[data-k="deck_gold"]');
-      dw.id = 'dw-' + t.group; dg.id = 'dg-' + t.group;
-      dw.value = Math.round((t.deck_white || 0) * 100); dg.value = Math.round((t.deck_gold || 0) * 100);
-      const sync = () => { const g = +sel.value; dw.disabled = g > 0; dg.disabled = g === 2 || !s.gd; };
-      sync();
-      sel.onchange = () => { t.guaranteed = +sel.value; sync(); save(); };
-      dw.onchange = () => { t.deck_white = Math.min(100, Math.max(0, +dw.value || 0)) / 100; save(); };
-      dg.onchange = () => { t.deck_gold = Math.min(100, Math.max(0, +dg.value || 0)) / 100; save(); };
+      sel.onchange = () => { t.guaranteed = +sel.value; save(); };
       el.querySelector('.x').onclick = () => { state.targets.splice(i, 1); save(); renderTargets(); };
       box.appendChild(el);
     });
@@ -562,7 +552,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const groups = new Set(state.targets.filter(t => (t.guaranteed || 0) !== 2).map(t => t.group));
     const f = $('c-filter').value.trim().toLowerCase();
     const box = $('cards'); box.textContent = '';
-    const sections = [['Pals', c => c.pal], ['SSR', c => !c.pal && c.rar === 3], ['SR', c => !c.pal && c.rar === 2], ['R (no chain slot)', c => !c.pal && c.rar === 1 && state.rcards]];
+    const sections = [['Pals', c => c.pal], ['SSR', c => !c.pal && c.rar === 3], ['SR', c => !c.pal && c.rar === 2], ['R', c => !c.pal && c.rar === 1 && state.rcards]];
     let shown = 0, off = 0;
     for (const [label, pick] of sections) {
       const list = CARDS.filter(pick).map(c => ({ c, gives: cardGives(c, groups) })).filter(x => x.c.pal || x.gives.length)
@@ -574,19 +564,23 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const chips = sec.querySelector('.ctiles');
       for (const { c, gives } of vis) {
         const t = cardTitle(c); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
-        const own = state.cardsOff[c.id] !== false; if (!own) off++;
-        b.setAttribute('aria-pressed', own ? 'true' : 'false');
+        if (state.cardsOff[c.id] === false) off++;
         b.innerHTML = `<span class="cn">${esc(t.nm)}</span>` + (t.ti ? `<span class="cti">${esc(t.ti)}</span>` : '') +
           `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
-            : `<span class="gv none">${c.pal ? 'pal: no chain slot' : ''}</span>`}</span>`;
+            : ''}</span>`;
         b.prepend(cardAv(c, 112));
-        b.setAttribute('aria-label', t.nm + ' ' + t.ti + (own ? ': owned' : ': not owned'));
-        b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); };
+        const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false');
+          b.setAttribute('aria-label', t.nm + ' ' + t.ti + (own ? ': owned' : ': not owned')); };
+        paint();
+        b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paint(); cardCount(); };
         chips.appendChild(b); shown++;
       }
       box.appendChild(sec);
     }
-    const allOff = Object.values(state.cardsOff).filter(v => v === false).length;
+    cardCount();
+  }
+  function cardCount() {
+    const shown = $('cards').querySelectorAll('.ct').length, allOff = Object.values(state.cardsOff).filter(v => v === false).length;
     $('c-count').textContent = `${shown} cards listed` + (allOff ? ` · ${allOff} not owned` : ' · all owned');
   }
   $('c-filter').oninput = renderCards;
@@ -595,13 +589,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   $('c-borrow').checked = state.borrow; $('c-borrow').onchange = (e) => { state.borrow = e.target.checked; save(); };
   $('c-top').value = state.decksTop; $('c-top').onchange = (e) => { state.decksTop = e.target.value; save(); };
   $('c-peruma').checked = state.perUma; $('c-peruma').onchange = (e) => { state.perUma = e.target.checked; save(); };
-  function setDeck(m) {
-    state.deck = m; save();
-    $('dk-opt').setAttribute('aria-pressed', m === 'opt'); $('dk-fixed').setAttribute('aria-pressed', m === 'fixed');
-    $('dk-body').hidden = m !== 'opt'; $('dk-fixed-hint').hidden = m === 'opt';
-    $('skills-panel').classList.toggle('nodeck', m === 'opt');
-  }
-  $('dk-opt').onclick = () => setDeck('opt'); $('dk-fixed').onclick = () => setDeck('fixed');
+  function setDeck() { state.deck = 'opt'; $('skills-panel').classList.add('nodeck'); }   // the deck is always searched
   const addIn = $('t-add'), sugg = $('t-sugg');
   addIn.oninput = () => {
     const f = addIn.value.trim().toLowerCase(); sugg.textContent = '';
@@ -752,7 +740,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     });
     const oddsMap = (d) => new Map(((d && d.odds) || []).map(o => [o.group, o]));
     const deckOddsT = (t) => oddsMap(meta.decks ? meta.decks[t] : meta.deck);
-    const fixedOdds = new Map((meta.targets || []).map(t => [t.group, { white: t.deck_white || 0, gold: t.deck_gold || 0 }]));
     function show(i) {
       rows.forEach((r, k) => r.classList.toggle('sel', k === i));
       const L = D.lineages[i]; view.textContent = '';
@@ -774,7 +761,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const ol = document.createElement('div'); ol.className = 'odds-list';
       const deckOdds = deckOddsT(L.t);
       for (const sk of L.skills) {
-        const s = SK.get(sk.group) || { w: sk.group, gd: null }; const dk = deckOdds.get(sk.group) || (meta.deck ? { white: 0, gold: 0 } : fixedOdds.get(sk.group)) || { white: 0, gold: 0 };
+        const s = SK.get(sk.group) || { w: sk.group, gd: null }; const dk = deckOdds.get(sk.group) || { white: 0, gold: 0 };
         let src;
         if (sk.outfit === 2) src = `on ${M[L.t].name}'s outfit as gold → spark ${pct(D.gen_gold, 1)}`;
         else if (sk.outfit === 1) src = `on ${M[L.t].name}'s outfit as white → spark ${pct(D.gen_white, 1)}` + (dk.gold > 0 ? `, gold from the deck ${pct(dk.gold, 0)}` : '');
@@ -803,15 +790,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     if (g.length && !meta.example) { const n = document.createElement('p'); n.className = 'hint';
       n.textContent = `Treated as guaranteed without any card (set under Target skills): ${g.join(', ')}. Change a skill to "None" if it should come from the deck.`; box.appendChild(n); }
     res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null }, i === 0 && res.proven)));
-  }
-  function renderSkills(res, meta) {
-    const box = $('results'); box.textContent = '';
-    const st = document.createElement('div'); st.className = 'status';
-    if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, full roster, lineage below SS. Change the settings and run your own.';
-    else st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + '. The rest are ruled out by their ceilings.';
-    box.appendChild(st);
-    if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
-    res.loops.forEach((l, i) => box.appendChild(loopCard(l, i, meta, i === 0 && res.proven_top)));
   }
 
   // ---------- engine (Web Worker running the WebAssembly solver) ----------
@@ -845,21 +823,14 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     try {
       if (!state.targets.length) throw new Error('Add at least one target skill.');
       const extra = []; if (state.teio) extra.push([1003, 20190, 1]); if (state.zephyr) extra.push([1078, 20165, 1]);
-      if (state.deck === 'opt') {
-        const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
-        const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
-        const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
-        box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
-        const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
-          owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
-        const m = await run(job);
-        lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
-      } else {
-        const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0, deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 }));
-        const job = { cmd: 'skills', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra, top: 5, ...eventFields(false) };
-        const m = await run(job);
-        lastRender = () => renderSkills(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
-      }
+      const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
+      const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
+      const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
+      box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
+      const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
+        owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
+      const m = await run(job);
+      lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
       const top = box.getBoundingClientRect().top; if (top < 0 || top > innerHeight) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
     btn.disabled = false;
@@ -872,12 +843,12 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
     const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
     const readable = {
-      targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: ['no', 'white', 'gold'][t.guaranteed || 0], ...(state.deck === 'fixed' ? { deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 } : {}) })),
+      targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: ['no', 'white', 'gold'][t.guaranteed || 0] })),
       umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
       umas_required: UMAS.filter(u => state.roster[u.id] === 'req').map(u => u.name),
       cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
-      borrow: state.borrow, deck: state.deck === 'opt' ? (state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for all four)') : 'odds by hand',
-      game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', pal_first_year_dates: state.dates, random_event_hints: +state.rand, r_cards: state.rcards,
+      borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for all four)',
+      game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', random_event_hints: +state.rand, r_cards: state.rcards,
     };
     let results = null;
     if (lastResult) {
@@ -910,9 +881,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         location.reload(); return;
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
-      save(); setMode(); setDeck(state.deck);
+      save(); setMode(); setDeck();
       $('rank').value = state.rank; $('x-teio').checked = state.teio; $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
-      $('x-dates').checked = state.dates; $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
+      $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded. Press Find best loops.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
@@ -941,8 +912,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
   let lastRender = null;
   refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
-  setMode(); setDeck(state.deck); renderRoster(); renderTargets();
-  if (ERA === 'global') { lastRender = () => (EXAMPLE.top ? renderDeck : renderSkills)(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: EXAMPLE.top ? 'deck' : 'skills', r: EXAMPLE, meta: { example: true } }; }
+  setMode(); setDeck(); renderRoster(); renderTargets();
+  if (ERA === 'global') { lastRender = () => renderDeck(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: 'deck', r: EXAMPLE, meta: { example: true } }; }
   else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
   // warm the engine in the background so the first search starts immediately
   setTimeout(() => startEngine().catch(() => {}), 300);

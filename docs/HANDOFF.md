@@ -86,7 +86,8 @@ provably only rescaled odds.
 - The tool is for Independent Training only. Unity Cup is the default scenario model; the GM-era JP data is a
   secondary mode.
 - The player is assumed to set prioritized skills so event choices reach the counted hints.
-- Pal first-year dates don't fire in Unity Cup IT (owner); a page option models them firing.
+- Pal first-year dates don't fire in Unity Cup IT (owner); always left out. The page option was removed (2026-10-03);
+  if that changes in the game, the owner will ask for the app to be updated.
 
 ## 7. Not included, and why
 
