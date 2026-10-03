@@ -16,4 +16,8 @@ for cid, sd in _jp.execute("select a.card_id, min(g.start_date) from gacha_avail
     _rel[cid] = sd
 for cid, sd in _jp.execute("select card_id, min(start_date) from exchange_ticket_detail where card_type=1 group by card_id"):
     _rel[cid] = min(_rel.get(cid, sd), sd)
+# outfits given as main-story rewards have no gacha or ticket date; count them as released (owner, 2026-10-03:
+# Special Week [Ruler of Japan], main story part 7 episode 13, belongs in the GM era)
+for (cid,) in _jp.execute("select add_reward_id_1 from main_story_data where add_reward_category_1=50"):
+    _rel.setdefault(cid, 0)
 def outfit_released(cid): return _rel.get(cid, 10**12) < CUT
