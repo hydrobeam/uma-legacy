@@ -157,8 +157,19 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .chip[data-s="out"] .av { filter: grayscale(1); opacity: 0.55; }
 .cav.art { box-shadow: none; background: none; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
-.why { justify-self: start; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; color: var(--accent); font-weight: 600; }
-.why:hover { border-color: var(--accent); }
+.whyd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.whyd > summary { margin-bottom: 2px; }
+.whyt td { vertical-align: top; }
+.whyt td b { display: block; font-family: var(--font-data); font-weight: 600; }
+.whyt td small { display: block; font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.whyt td small.o { color: var(--gold); } .whyt td small.d { color: var(--accent); }
+@media (max-width: 620px) {
+  .whyt { font-size: 0.76rem; }
+  .whyt th, .whyt td { padding: 4px 3px; }
+  .whyt td small { font-size: 0.64rem; white-space: normal; }
+  .whyt td:first-child { overflow-wrap: anywhere; }
+}
+.linkbtn { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
 dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 0; width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
 dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dlg { display: grid; gap: 14px; padding: 18px; overflow: auto; max-height: calc(100vh - 50px); }
@@ -640,6 +651,29 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
+  // "Why these odds": per target and trainee, the chance it lands and where it comes from (full breakdown on request)
+  function whyBlock(l, meta) {
+    const D = l.detail, M = l.members, nm = (i) => M[i].short || M[i].name, pct = (x) => Math.round(x * 100) + '%';
+    const det = document.createElement('details'); det.className = 'whyd';
+    const qs = D.lineages.map(L => L.q), qlo = Math.min(...qs), qhi = Math.max(...qs);
+    const groups = D.lineages[0].skills.map(sk => sk.group);
+    const deckOdds = (t) => new Map((((meta.decks ? meta.decks[t] : meta.deck) || {}).odds || []).map(o => [o.group, o]));
+    const cell = (t, g) => {
+      const Ls = D.lineages.filter(L => L.t === t), sks = Ls.map(L => L.skills.find(sk => sk.group === g));
+      const p = sks.reduce((a, sk) => a + sk.p, 0) / sks.length, o = sks[0].outfit, dk = deckOdds(t).get(g);
+      const h = dk ? 1 - (1 - dk.white) * (1 - dk.gold) : 0;
+      const src = o === 2 ? 'outfit, gold' : o === 1 ? 'outfit' : h > 0.005 ? 'deck ' + pct(h) : 'inherited';
+      return `<td><b>${pct(p)}</b><small class="${o ? 'o' : h > 0.005 ? 'd' : ''}">${src}</small></td>`; };
+    const gold = (meta.targets || []).filter(t => t.guaranteed === 2).map(t => (SK.get(t.group) || {}).gd || (SK.get(t.group) || {}).w);
+    det.innerHTML = `<summary>Why these odds</summary>
+      <p class="hint">Chance each target becomes a spark on the veteran, and where it comes from (deck % = chance the deck hints it). Inherited alone: ${pct(qlo)}–${pct(qhi)} per career.</p>
+      <div class="tablewrap"><table class="tbl whyt"><thead><tr><th>Target</th>${M.map((_, t) => `<th>${esc(nm(t))}</th>`).join('')}</tr></thead><tbody>` +
+      groups.map(g => `<tr><td>${esc((SK.get(g) || { w: g }).w)}</td>${M.map((_, t) => cell(t, g)).join('')}</tr>`).join('') + `</tbody></table></div>` +
+      (gold.length ? `<p class="hint">${gold.map(esc).join(' and ')} come${gold.length > 1 ? '' : 's'} from the scenario: each becomes a spark ${pct(D.gen_gold)} of the time.</p>` : '') +
+      `<button type="button" class="linkbtn">Full breakdown (affinity per legacy)</button>`;
+    det.querySelector('.linkbtn').onclick = () => openWhy(l, meta);
+    return det;
+  }
   function loopCard(l, i, meta, proven) {
     const n = meta.targets.length, dist = meta.rank.split(',').map(Number), p2 = dist[1] + dist[2];
     const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
@@ -699,8 +733,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     });
     const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
     card.insertBefore(mem, firstDeck);
-    if (l.detail) { const wb = document.createElement('button'); wb.className = 'why'; wb.textContent = 'How this loop works';
-      wb.onclick = () => openWhy(l, meta); card.insertBefore(wb, firstDeck); }
+    if (l.detail) card.appendChild(whyBlock(l, meta));
     const det = document.createElement('details'); if (i === 0) det.open = true;
     det.innerHTML = '<summary>Race schedule</summary>'; det.appendChild(schedTable(l.members, l.schedule));
     card.appendChild(det);
