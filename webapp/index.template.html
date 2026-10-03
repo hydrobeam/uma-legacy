@@ -806,7 +806,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const st = document.createElement('div'); st.className = 'status';
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
     if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, every uma and card owned, lineage below SS. Change the settings and run your own.';
-    else st.textContent = `Scored ${res.decks_built.toLocaleString()} decks (the rest lose to a card swap) and bounded ${(res.foursomes_ranked ?? res.foursomes).toLocaleString()} of ${res.foursomes.toLocaleString()} foursomes (the rest can't win) in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + (res.per_uma ? '. Each result is a loop, each uma with her own best deck.' : '. Each result is a deck with its own best loop.');
+    else st.textContent = `Scored ${res.decks_built.toLocaleString()} decks (the rest lose to a card swap) and bounded ${(res.foursomes_ranked ?? res.foursomes).toLocaleString()} of ${res.foursomes.toLocaleString()} foursomes (the rest can't win) in ${(meta.ms / 1000).toFixed(1)} s` + (res.per_uma ? '. Each result is a loop, each uma with her own best deck.' : '. Each result is a deck with its own best loop.');
     box.appendChild(st);
     const g = (meta.targets || []).filter(t => t.guaranteed > 0).map(t => { const s = SK.get(t.group) || { w: t.group, gd: null }; return t.guaranteed === 2 ? (s.gd || s.w) : s.w; });
     if (g.length && !meta.example) { const n = document.createElement('p'); n.className = 'hint';
@@ -817,7 +817,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const box = $('results'); box.textContent = '';
     const st = document.createElement('div'); st.className = 'status';
     if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, full roster, lineage below SS. Change the settings and run your own.';
-    else st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + '. The rest are ruled out by their ceilings.';
+    else st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + '. The rest are ruled out by their ceilings.';
     box.appendChild(st);
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
     res.loops.forEach((l, i) => box.appendChild(loopCard(l, i, meta, i === 0 && res.proven_top)));
@@ -825,7 +825,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   function renderAff(res, meta) {
     const box = $('results'); box.textContent = '';
     const st = document.createElement('div'); st.className = 'status';
-    st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + (meta.engine === 'js' ? ' (compatibility engine)' : '') + '.';
+    st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + '.';
     box.appendChild(st);
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
     res.loops.forEach((l, i) => {
@@ -841,8 +841,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     });
   }
 
-  // ---------- engine (Web Worker; WebAssembly with a pure-JS fallback) ----------
-  let worker = null, ready = null, engine = 'wasm', seq = 0; const pending = new Map();
+  // ---------- engine (Web Worker running the WebAssembly solver) ----------
+  let worker = null, ready = null, seq = 0; const pending = new Map();
   function startEngine() {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -852,7 +852,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       } catch (e) { reject(new Error('This browser blocked the background worker the solver runs in.')); return; }
       worker.onmessage = (e) => {
         const m = e.data;
-        if (m.type === 'ready') { engine = m.engine; resolve(); }
+        if (m.type === 'ready') resolve();
         else if (m.type === 'error') { reject(new Error(m.message)); }
         else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p(m); }
       };
@@ -881,16 +881,16 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
             owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
           const m = await run(job);
-          lastRender = () => renderDeck(m.r, { ms: m.ms, engine, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
+          lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
         } else {
           const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0, deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 }));
           const job = { cmd: 'skills', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra, top: 5, ...eventFields(false) };
           const m = await run(job);
-          lastRender = () => renderSkills(m.r, { ms: m.ms, engine, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
+          lastRender = () => renderSkills(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
         }
       } else {
         const m = await run({ cmd: 'affinity', scheme: state.scheme, exclude, require, top: 5 });
-        renderAff(m.r, { ms: m.ms, engine }); shown = true; lastResult = { kind: 'aff', r: m.r, meta: {} };
+        renderAff(m.r, { ms: m.ms }); shown = true; lastResult = { kind: 'aff', r: m.r, meta: {} };
       }
     } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
     btn.disabled = false;

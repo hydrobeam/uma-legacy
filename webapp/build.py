@@ -1,11 +1,9 @@
-"""Assemble the single-file web app: wasm (base64), pure-JS fallback, data, skill catalog, precomputed example."""
-import json, base64, subprocess, os, re
+"""Assemble the single-file web app: wasm (base64), data, skill catalog, precomputed example."""
+import json, base64, subprocess, os
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
-fb = open(os.path.join(H, 'loopopt.wasm2js.mjs')).read()
-fb = re.sub(r'^export var .*$', '', fb, flags=re.M)
-worker = open(os.path.join(H, 'worker.template.js')).read().replace('/*FALLBACK*/', fb)
+worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
 # Random events that hint a target (GameTora training_events: chara 'shared', char_card, friend, group), at the rate

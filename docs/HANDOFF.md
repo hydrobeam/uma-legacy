@@ -4,7 +4,7 @@
 
 1. Toolchain: Rust (stable) with `rust-src` (the wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1`; with the
    `wasm32-unknown-unknown` target installed it also works without build-std), Node + npm (`cd webapp && npm ci`
-   for binaryen's `wasm-opt`/`wasm2js`), Python 3 (stdlib only; Playwright + Chromium for the optional browser
+   for binaryen's `wasm-opt`), Python 3 (stdlib only; Playwright + Chromium for the optional browser
    checks `webapp/pw*.py`).
 2. Data: the handoff zip already has the Global `master.mdb` at `pkg/loopopt/export/master.mdb` and the JP one
    (SimpleSandman/UmaMusumeMetaMasterMDB `master/master.mdb`, 2026-09-30) at `jp/export/master.mdb`. Neither is

@@ -3,8 +3,8 @@
 #   data     Global + GM-era exports (needs pkg/loopopt/export/master.mdb, jp/export/master.mdb)
 #   events   card event caches from the GameTora files + manual entries (Global and both GM variants)
 #   native   release binary + tests
-#   wasm     wasm + wasm-opt + wasm2js fallback + example.json
-#   page     webapp/dist/index.html (embeds wasm, fallback, both eras' data)
+#   wasm     wasm + wasm-opt + example.json
+#   page     webapp/dist/index.html (embeds wasm and both eras' data)
 #   val TAG  run the 24 validation jobs (shared deck, then per-uma decks) with the current binary into
 #            val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   all      data events native wasm page
@@ -23,7 +23,7 @@ step_native() { (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test -
 step_wasm() {
   (cd "$C" && RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown -Z build-std=std,panic_abort 2>&1 | tail -1)
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
-           && npx wasm2js -O2 $WFLAGS loopopt.opt.wasm -o loopopt.wasm2js.mjs && node example.mjs | tail -1)
+           && node example.mjs | tail -1)
 }
 step_page() { (cd "$W" && python3 build.py); }
 step_val() { local tag="${1:?val needs a tag}"

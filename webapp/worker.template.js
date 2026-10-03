@@ -1,4 +1,4 @@
-// Solver worker: WebAssembly first; if the page's security policy refuses to compile it, a pure-JS build of the same code.
+// Solver worker: the Rust solver compiled to WebAssembly.
 let ex = null;
 const enc = new TextEncoder(), dec = new TextDecoder();
 function callRaw(text) {
@@ -15,16 +15,17 @@ self.onmessage = async (e) => {
   const m = e.data;
   try {
     if (m.type === 'init') {
-      let engine = 'wasm';
       try {
         const bin = atob(m.wasm); const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         const { instance } = await WebAssembly.instantiate(bytes, {});
         ex = instance.exports;
-      } catch (err) { engine = 'js'; ex = loadFallback(); }
+      } catch (err) {
+        throw new Error('This browser or the site hosting the page refused to run WebAssembly, which the solver needs. Open the page file directly in a current browser.');
+      }
       const r = callRaw('{"cmd":"init",' + m.data.trim().slice(1));
       if (r.error) throw new Error(r.error);
-      self.postMessage({ type: 'ready', engine });
+      self.postMessage({ type: 'ready' });
     } else if (m.type === 'run') {
       const t = performance.now();
       const r = callRaw(JSON.stringify(m.job));
@@ -32,7 +33,3 @@ self.onmessage = async (e) => {
     }
   } catch (err) { self.postMessage({ type: 'error', message: String(err && err.message || err) }); }
 };
-function loadFallback() {
-/*FALLBACK*/
-  return retasmFunc;
-}

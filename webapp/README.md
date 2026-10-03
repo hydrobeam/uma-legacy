@@ -1,8 +1,8 @@
 # Legacy Loop Planner (web)
 
-Single static page. The Rust solver (`../pkg/loopopt`) is compiled to WebAssembly and runs in a Web Worker;
-if a host's security policy refuses to compile WebAssembly, the worker falls back to a pure-JS build of the
-same code (wasm2js), about 6x slower.
+Single static page. The Rust solver (`../pkg/loopopt`) is compiled to WebAssembly and runs in a Web Worker.
+A host whose security policy refuses to compile WebAssembly can't run it; the page then says so. (A pure-JS
+wasm2js fallback existed until v23; it was 8.8 MB of the page and 3.6-6x slower, so it was dropped.)
 
 ## Build
 ```bash
@@ -12,12 +12,10 @@ RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib \
   --target wasm32-unknown-unknown -Z build-std=std,panic_abort
 # (with the wasm32 target installed via rustup you can drop RUSTC_BOOTSTRAP and -Z build-std)
 
-# 2. optimise + JS fallback (binaryen from npm)
+# 2. optimise (binaryen from npm)
 cd ../../webapp && npm i binaryen
 npx wasm-opt -O3 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals \
   ../pkg/loopopt/target/wasm32-unknown-unknown/release/loopopt.wasm -o loopopt.opt.wasm
-npx wasm2js -O2 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals \
-  loopopt.opt.wasm -o loopopt.wasm2js.mjs
 
 # 3. data (after a game update): re-export from the Global master.mdb
 cd ../pkg/loopopt/export && python3 build_base.py && python3 export_rs.py && python3 export_web.py
@@ -32,6 +30,6 @@ are needed: the page uses plain Web Workers, not SharedArrayBuffer.
 
 ## Files
 - `index.template.html` UI (roster, target skills, rank, results, schedules)
-- `worker.template.js` solver worker (WebAssembly, JS fallback spliced in at build)
-- `build.py` assembles `dist/index.html` with the wasm, fallback, data and example embedded
+- `worker.template.js` solver worker (WebAssembly)
+- `build.py` assembles `dist/index.html` with the wasm, data and example embedded
 - `example.mjs` precomputes the example shown before the first search

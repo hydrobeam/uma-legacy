@@ -54,7 +54,7 @@ Job fields and the model are in `pkg/loopopt/README.md`. Saved result sheets are
 
 ## Rebuilding
 
-- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, wasm2js fallback, example), `page` (`webapp/dist/index.html`), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
+- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, example), `page` (`webapp/dist/index.html`), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
 - Step details for the wasm build are in `webapp/README.md`.
 - **Game data update:** put your own copy of the Global `master.mdb` (from the game's local data folder) in `pkg/loopopt/export/`, then:
 

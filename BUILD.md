@@ -7,8 +7,8 @@
 | `data` | Global + GM-era exports (data.json, web_skills.json, web_cards.json) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
 | `events` | card event caches from `pkg/loopopt/gametora/` + manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary, tests | cargo |
-| `wasm` | wasm32 build (build-std), wasm-opt -O3, wasm2js fallback, example.json | rust-src, node (`webapp/node_modules`) |
-| `page` | `webapp/dist/index.html` with wasm, fallback and both eras embedded | |
+| `wasm` | wasm32 build (build-std), wasm-opt -O3, example.json | rust-src, node (`webapp/node_modules`) |
+| `page` | `webapp/dist/index.html` with wasm and both eras embedded | |
 | `val TAG` | 24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*` | native |
 
 Browser checks: `cd webapp && python3 pwdeck.py && python3 pwera.py` (Playwright, Chromium). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
