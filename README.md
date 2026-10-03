@@ -1,19 +1,19 @@
 # Legacy Loop Planner
 
-Finds the best four-uma legacy loop (Uma Musume, Global) for either affinity or a set of target skill sparks, and gives each uma's race schedule.
+Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for landing a set of target skill sparks in Independent Training, and gives each uma's race schedule.
 
 ## Quick start: use the page
 
 1. Unzip.
 2. Double-click **`Legacy Loop Planner.html`**. It opens in any modern browser (Chrome, Edge, Firefox, Safari), works offline, and needs no install or server. The whole solver is inside that one file.
-3. Follow the "How to use" steps at the top of the page.
+3. Follow "Using the page" below.
 
 `webapp/index.template.html` is the source the page is built from. Opened on its own it has no roster and no solver, and it says so.
 
 ## Using the page
 
-1. **Umas.** Tap a name to cycle *owned → not owned → must include*. If you own few, press **None owned** and tap the ones you have.
-2. **Outfits.** Open the Outfits list and switch off alt outfits you don't own. Outfit skill lists decide most results (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
+1. **Umas.** A grid of portraits. Tap a portrait to cycle *owned → not owned → must include*. If you own few, press **None owned** and tap the ones you have.
+2. **Outfits.** Umas with several outfits show small outfit thumbnails under the portrait; tap one you don't own. Outfit skill lists decide most results (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
 3. **Target skills.** Type to add a skill. For each one set:
    - *Guaranteed source*: white or gold from the scenario or a card.
    - *Deck hint %*: chance your deck hands you the hint, e.g. 54% with 3 pals, 81% with 4.
@@ -34,7 +34,7 @@ Finds the best four-uma legacy loop (Uma Musume, Global) for either affinity or 
 
 Settings are saved in your browser on that device. Nothing is uploaded.
 
-**Affinity only** mode ignores skills and maximises total affinity. The skill modes' inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts ([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)).
+Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts ([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)).
 
 ## Host it (optional)
 

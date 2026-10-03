@@ -45,7 +45,10 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
-.rail { display: grid; gap: 14px; }
+.rail { display: flex; flex-direction: column; gap: 14px; align-self: stretch; min-width: 0; }
+.rail > .run { margin-top: auto; }
+@media (max-width: 960px) { .rail > .run { position: fixed; left: 16px; right: 16px; width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  body { padding-bottom: 92px; } }
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .between { justify-content: space-between; }
@@ -64,16 +67,26 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
 /* roster chips: three states */
-.roster { display: flex; flex-wrap: wrap; gap: 6px; max-height: 300px; overflow: auto; padding: 2px; }
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 2px; align-items: start; }
+/* uma tile: portrait (tap cycles owned / not owned / must include), outfit thumbnails, name as a subtitle */
+.ut { display: grid; gap: 4px; min-width: 0; }
+.ut .up { position: relative; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; display: block; }
+.ut .up .av { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 12px; font-size: 1.4rem !important; display: grid; }
+.ut .up:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ut[data-s="out"] .up .av { filter: grayscale(1); opacity: 0.45; }
+.ut[data-s="req"] .up .av { box-shadow: 0 0 0 3px var(--req); }
+.ut[data-s="req"] .up::after { content: "must"; position: absolute; top: 4px; right: 4px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: #fff; background: var(--req); border-radius: 999px; padding: 1px 6px; }
+.ut .uo { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; }   /* reserved on every tile so names line up */
+.ut .uo button { padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; line-height: 0; }
+.ut .uo button[aria-pressed="false"] .av { filter: grayscale(1); opacity: 0.4; }
+.ut .uo button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.ut[data-s="out"] .un { color: var(--muted); text-decoration: line-through; }
+.ut[data-s="req"] .un { color: var(--req); }
 .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 0.83rem; line-height: 1.3; }
 .chip[data-s="out"] { background: var(--out-soft); border-color: var(--out); color: var(--out); text-decoration: line-through; }
 .chip[data-s="req"] { background: var(--req-soft); border-color: var(--req); color: var(--req); font-weight: 700; }
-.outfits summary { font-size: 0.88rem; }
-.olist { display: grid; gap: 8px; margin-top: 8px; max-height: 320px; overflow: auto; padding-right: 4px; }
-.orow { display: grid; gap: 4px; }
-.orow .on { font-size: 0.82rem; font-weight: 700; }
-.orow .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip.of[aria-pressed="false"] { background: var(--out-soft); border-color: var(--out); color: var(--out); text-decoration: line-through; }
 .chip .n { font-family: var(--font-data); font-size: 0.72rem; color: var(--muted); margin-left: 5px; text-decoration: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.78rem; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; border: 1px solid var(--line); vertical-align: -1px; }
@@ -83,7 +96,7 @@ input[type="search"] { width: 100%; }
 .targets { display: grid; gap: 8px; }
 .tgt { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
 .tgt .name { font-weight: 700; }
-.tgt .gold { color: var(--gold); font-size: 0.8rem; font-weight: 500; }
+.sic { width: 20px; height: 20px; vertical-align: -4px; margin-right: 6px; flex: none; }
 .tgt .ctrl { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: end; font-size: 0.78rem; color: var(--muted); }
 .tgt .ctrl label { display: grid; gap: 2px; }
 .tgt .ctrl select, .tgt .ctrl input { width: 100%; font-size: 0.85rem; padding: 4px 6px; }
@@ -93,7 +106,6 @@ input[type="search"] { width: 100%; }
 .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 240px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
 .sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 0.88rem; }
 .sugg button:hover, .sugg button:focus { background: var(--accent-soft); }
-.sugg small { color: var(--gold); margin-left: 6px; }
 .extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; }
 /* results */
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
@@ -118,8 +130,6 @@ input[type="search"] { width: 100%; }
 .mem .own { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); }
 .spark { display: inline-block; font-size: 0.74rem; border-radius: 6px; padding: 1px 6px; border: 1px solid var(--line); margin: 2px 4px 0 0; }
 .spark.g { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); font-weight: 700; }
-.stars { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--muted); }
-.stars b { font-family: var(--font-data); color: var(--ink); font-weight: 500; }
 details summary { cursor: pointer; font-weight: 700; font-size: 0.88rem; color: var(--accent); }
 .tablewrap { overflow-x: auto; margin-top: 8px; }
 table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
@@ -144,10 +154,8 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .chip .av, .chip .cav { margin-right: 6px; }
-.chip[data-s="out"] .av, .chip.of[aria-pressed="false"] .av, .chip.card[aria-pressed="false"] .cav { filter: grayscale(1); opacity: 0.55; }
+.chip[data-s="out"] .av { filter: grayscale(1); opacity: 0.55; }
 .cav.art { box-shadow: none; background: none; }
-.chip.card { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center; }
-.chip.card .cav { grid-row: span 2; margin: 0; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
 .why { justify-self: start; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; color: var(--accent); font-weight: 600; }
 .why:hover { border-color: var(--accent); }
@@ -179,14 +187,23 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .odds-list .src { color: var(--muted); font-size: 0.78rem; }
 .odds-list b { font-family: var(--font-data); text-align: right; }
 .imgdrop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; }
-.cards { display: grid; gap: 10px; max-height: 360px; overflow: auto; padding-right: 4px; }
-.cgroup h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
-.cgroup .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip.card { text-align: left; border-radius: 8px; display: grid; gap: 1px; max-width: 100%; }
-.chip.card .cn { font-weight: 600; }
-.chip.card .cg { font-size: 0.72rem; color: var(--muted); }
-.chip.card[aria-pressed="false"] { background: var(--out-soft); border-color: var(--out); color: var(--out); }
-.chip.card[aria-pressed="false"] .cn { text-decoration: line-through; }
+.cards { display: grid; gap: 14px; max-height: min(640px, 70vh); overflow: auto; padding: 4px 4px 4px 2px; }
+.cgroup h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px; font-weight: 700; }
+.cgroup .ctiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px 10px; align-items: start; }
+/* card tile: art, name and title as a subtitle, then the target skills it can give (why it is listed) */
+.ct { display: grid; gap: 3px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.ct .cav { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; font-size: 1rem !important; }
+.ct:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.ct .cn { font-size: 0.8rem; font-weight: 700; line-height: 1.25; }
+.ct .cti { font-size: 0.72rem; color: var(--muted); line-height: 1.25; }
+.ct .cg { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.ct .gv { font-size: 0.74rem; line-height: 1.3; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ct .gv.g { background: var(--gold-soft); color: var(--gold); }
+.ct .gv small { font-weight: 500; opacity: 0.8; }
+.ct .gv.none { background: none; color: var(--muted); padding-left: 0; font-weight: 500; }
+.ct[aria-pressed="false"] .cav { filter: grayscale(1); opacity: 0.45; }
+.ct[aria-pressed="false"] .cn, .ct[aria-pressed="false"] .cti { color: var(--muted); text-decoration: line-through; }
+.ct[aria-pressed="false"] .gv { opacity: 0.55; }
 .deck { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .deck .dcards { display: grid; grid-template-columns: repeat(6, minmax(0, 96px)); gap: 10px; align-items: start; }
 .deck .dcards > .swl, .deck .dcards > .hint { grid-column: 1 / -1; }
@@ -275,29 +292,14 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       <p class="hint">Random events that can hint a target: Vodka (Nimble Navigator), Nice Nature (Ramp Up), Seeking the Pearl (Uma Stan), McQueen [Fair Lady of the Waves] (Playtime's Over!), Riko pal cards (Ramp Up), and in the GM era Hishi Amazon [Hungry Veil] (Nimble Navigator) and Progenitors and Guides (Ramp Up). How often they fire is not known.</p>
     </section>
 
-    <section class="panel" aria-labelledby="h-mode">
-      <div class="row between">
-        <h2 id="h-mode">Optimise for</h2>
-        <div class="seg" role="group" aria-label="Optimise for">
-          <button id="mode-skills" aria-pressed="true">Skill sparks</button>
-          <button id="mode-aff" aria-pressed="false">Affinity only</button>
-        </div>
-      </div>
-      <p class="hint" id="mode-hint">Odds that every target skill lands as a spark on the new veteran, with the loop's race schedule.</p>
-    </section>
-
     <section class="panel" aria-labelledby="h-roster">
       <div class="row between"><h2 id="h-roster">Umas</h2>
         <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
       <input type="search" id="r-filter" placeholder="Filter by name" aria-label="Filter umas">
-      <div class="legend"><span>Owned</span><span class="l-out">Not owned</span><span class="l-req">Must include</span><span>Tap to cycle</span></div>
+      <div class="legend"><span>Owned</span><span class="l-out">Not owned</span><span class="l-req">Must include</span><span>Tap a portrait to cycle; tap an outfit you don't own</span></div>
       <div class="roster" id="roster"></div>
       <p class="hint" id="r-count"></p>
-      <details class="outfits" id="outfits-box">
-        <summary id="o-sum">Outfits</summary>
-        <p class="hint">Tap an outfit you don't own. Outfits decide which skills a trainee can buy without a hint; race odds are the same across outfits.</p>
-        <div class="olist" id="olist"></div>
-      </details>
+      <p class="hint">Outfits decide which skills a trainee can buy without a hint; race odds are the same across outfits.</p>
     </section>
 
     <section class="panel" aria-labelledby="h-skills" id="skills-panel">
@@ -338,14 +340,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       <p class="hint" id="dk-fixed-hint" hidden>Using the deck hint % typed on each target skill.</p>
     </section>
 
-    <section class="panel" aria-labelledby="h-aff" id="aff-panel" hidden>
-      <h2 id="h-aff">Breeding scheme</h2>
-      <div class="seg" role="group" aria-label="Breeding scheme">
-        <button id="sch-scf" aria-pressed="true">Self-copy-free (12 runs)</button>
-        <button id="sch-rot" aria-pressed="false">Rotation</button>
-      </div>
-    </section>
-
     <button class="run" id="run">Find best loops</button>
   </aside>
 
@@ -379,6 +373,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 <script type="text/plain" id="engine-data-gm">__DATA_GM__</script>
 <script type="application/json" id="data-example">__EXAMPLE__</script>
 <script type="application/json" id="data-img">__IMG__</script>
+<script type="application/json" id="data-skillicon">__SKILLICON__</script>
 <script type="text/plain" id="engine-data">__DATA__</script>
 <script type="text/plain" id="engine-wasm">__WASM__</script>
 <script type="text/plain" id="engine-worker">__WORKER__</script>
@@ -400,6 +395,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   const CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
   // ---------- character icons and card art, shipped with the page (from the game's own files) ----------
   const SHIPPED = JSON.parse($('data-img').textContent);   // 'uma:1001' | 'outfit:100102' | 'card:30116' -> base64 WebP
+  const SKILLICON = JSON.parse($('data-skillicon').textContent);   // skill group -> icon id
+  function skillIcon(group) { const s = srcFor('skill', SKILLICON[group]); if (!s) return null;
+    const im = new Image(); im.className = 'sic'; im.alt = ''; im.src = s; return im; }
   function srcFor(kind, id) { const b = SHIPPED[kind + ':' + id]; return b ? 'data:image/webp;base64,' + b : null; }
   function initials(name) { const w = name.replace(/[^A-Za-z .]/g, '').split(/[ .]+/).filter(Boolean); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase(); }
   function umaAv(charaId, outfitId, size) {
@@ -490,41 +488,33 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const box = $('roster'); box.textContent = '';
     for (const u of order) {
       if (f && !u.name.toLowerCase().includes(f)) continue;
-      const b = document.createElement('button');
-      b.className = 'chip'; b.dataset.s = state.roster[u.id] || 'own';
-      b.appendChild(umaAv(u.id, null, 22)); b.appendChild(document.createTextNode(u.name));
       const os = u.outfits || [], on = os.filter(o => state.outfits[o.id] !== false).length;
-      if (os.length > 1 && b.dataset.s !== 'out') { const sp = document.createElement('span'); sp.className = 'n'; sp.textContent = on + '/' + os.length; b.appendChild(sp); }
-      if (os.length && on === 0 && b.dataset.s === 'own') b.dataset.s = 'out';
-      b.setAttribute('aria-label', u.name + ': ' + ({ own: 'owned', out: 'not owned', req: 'must include' })[b.dataset.s]);
+      let st = state.roster[u.id] || 'own'; if (os.length && on === 0 && st === 'own') st = 'out';
+      const t = document.createElement('div'); t.className = 'ut'; t.dataset.s = st;
+      const b = document.createElement('button'); b.className = 'up'; b.type = 'button';
+      b.appendChild(umaAv(u.id, os.length ? os[0].id : null, 96));
+      b.setAttribute('aria-label', u.name + ': ' + ({ own: 'owned', out: 'not owned', req: 'must include' })[st]); b.title = b.getAttribute('aria-label');
       b.onclick = () => { const cur = state.roster[u.id] || 'own'; const nx = cur === 'own' ? 'out' : cur === 'out' ? 'req' : 'own';
         if (nx === 'own') delete state.roster[u.id]; else state.roster[u.id] = nx; save(); renderRoster(); };
-      box.appendChild(b);
+      t.appendChild(b);
+      const ob = document.createElement('div'); ob.className = 'uo';
+      if (os.length > 1) {
+        for (const o of os) {
+          const x = document.createElement('button'); x.type = 'button'; const own = state.outfits[o.id] !== false;
+          x.appendChild(umaAv(u.id, o.id, 24)); x.setAttribute('aria-pressed', own ? 'true' : 'false');
+          x.setAttribute('aria-label', u.name + ' ' + o.label + (own ? ': owned' : ': not owned')); x.title = o.label + (own ? '' : ' (not owned)');
+          x.onclick = () => { if (state.outfits[o.id] === false) delete state.outfits[o.id]; else state.outfits[o.id] = false; save(); renderRoster(); };
+          ob.appendChild(x);
+        }
+      }
+      t.appendChild(ob);
+      const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
+      box.appendChild(t);
     }
     const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = Object.values(state.roster).filter(v => v === 'req').length;
-    renderOutfits();
     $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} owned` + (req ? ` · ${req} must be in the loop` : '');
   }
   const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
-  function renderOutfits() {
-    const multi = order.filter(u => (u.outfits || []).length > 1);
-    const off = Object.values(state.outfits).filter(v => v === false).length;
-    $('o-sum').textContent = `Outfits (${multi.length} umas have more than one${off ? ', ' + off + ' not owned' : ''})`;
-    const box = $('olist'); box.textContent = '';
-    for (const u of multi) {
-      const row = document.createElement('div'); row.className = 'orow';
-      const nm = document.createElement('span'); nm.className = 'on'; nm.textContent = u.name; row.appendChild(nm);
-      const chips = document.createElement('div'); chips.className = 'chips';
-      for (const o of u.outfits) {
-        const b = document.createElement('button'); b.className = 'chip of'; b.appendChild(umaAv(u.id, o.id, 22)); b.appendChild(document.createTextNode(o.label));
-        b.setAttribute('aria-pressed', state.outfits[o.id] === false ? 'false' : 'true');
-        b.setAttribute('aria-label', u.name + ' ' + o.label + (state.outfits[o.id] === false ? ': not owned' : ': owned'));
-        b.onclick = () => { if (state.outfits[o.id] === false) delete state.outfits[o.id]; else state.outfits[o.id] = false; save(); renderRoster(); };
-        chips.appendChild(b);
-      }
-      row.appendChild(chips); box.appendChild(row);
-    }
-  }
   $('r-filter').oninput = renderRoster;
   $('r-all').onclick = () => { state.roster = Object.fromEntries(Object.entries(state.roster).filter(([, v]) => v === 'req')); state.outfits = {}; save(); renderRoster(); };
   $('r-none').onclick = () => { for (const u of UMAS) if (state.roster[u.id] !== 'req') state.roster[u.id] = 'out'; save(); renderRoster(); };
@@ -535,14 +525,13 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     state.targets.forEach((t, i) => {
       const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
       const el = document.createElement('div'); el.className = 'tgt';
-      el.innerHTML = `<div class="row between"><div><span class="name"></span> <span class="gold"></span></div><button class="x" aria-label="Remove">×</button></div>
+      el.innerHTML = `<div class="row between"><div><span class="name"></span></div><button class="x" aria-label="Remove">×</button></div>
         <div class="ctrl">
           <label>Guaranteed outside the deck<select data-k="guaranteed"><option value="0">None</option><option value="1">White</option>${s.gd ? '<option value="2">Gold</option>' : ''}</select></label>
           <label class="dk">Deck hint, white %<input type="number" min="0" max="100" step="5" data-k="deck_white"></label>
           <label class="dk">${s.gd ? 'Deck hint, gold %' : 'No gold version'}<input type="number" min="0" max="100" step="5" data-k="deck_gold" ${s.gd ? '' : 'disabled'}></label>
         </div>`;
-      el.querySelector('.name').textContent = s.w;
-      el.querySelector('.gold').textContent = s.gd ? '· gold: ' + s.gd : '';
+      const nm = el.querySelector('.name'); nm.textContent = s.w; const ic = skillIcon(t.group); if (ic) nm.prepend(ic);
       const sel = el.querySelector('select'); sel.value = String(t.guaranteed || 0); sel.id = 'g-' + t.group;
       const dw = el.querySelector('[data-k="deck_white"]'), dg = el.querySelector('[data-k="deck_gold"]');
       dw.id = 'dw-' + t.group; dg.id = 'dg-' + t.group;
@@ -562,11 +551,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   // ---------- support cards ----------
   const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
   const cardTitle = (c) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + ' ' + RAR[c.rar], ti: m[1] } : { nm: c.name, ti: '' }; };
-  function cardGives(c, groups) {
+  function cardGives(c, groups) {   // [{t: skill, s: source note, g: gold}]
     const out = [];
-    for (const g of c.whites) if (groups.has(g)) out.push((SK.get(g) || { w: g }).w + ' hint');
-    for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const s = SK.get(g) || { w: g, gd: g };
-      out.push((lv === 2 ? s.gd : s.w) + (link ? ' (chain ' + link + (p < 1 ? ', ' + Math.round(p * 100) + '%' : '') + ')' : (p < 1 ? ' (' + Math.round(p * 100) + '%)' : ''))); }
+    for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'hint', g: false });
+    for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const sk = SK.get(g) || { w: g, gd: g };
+      out.push({ t: lv === 2 ? sk.gd : sk.w, s: link ? 'chain ' + link + (p < 1 ? ', ' + Math.round(p * 100) + '%' : '') : (p < 1 ? Math.round(p * 100) + '%' : 'event'), g: lv === 2 }); }
     return out;
   }
   function renderCards() {
@@ -581,15 +570,16 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const vis = list.filter(x => !f || x.c.name.toLowerCase().includes(f));
       if (!vis.length) continue;
       const sec = document.createElement('div'); sec.className = 'cgroup';
-      sec.innerHTML = `<h3>${label}</h3><div class="chips"></div>`;
-      const chips = sec.querySelector('.chips');
+      sec.innerHTML = `<h3>${label}</h3><div class="ctiles"></div>`;
+      const chips = sec.querySelector('.ctiles');
       for (const { c, gives } of vis) {
-        const t = cardTitle(c); const b = document.createElement('button'); b.className = 'chip card';
+        const t = cardTitle(c); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
         const own = state.cardsOff[c.id] !== false; if (!own) off++;
         b.setAttribute('aria-pressed', own ? 'true' : 'false');
-        b.innerHTML = '<span class="cn"></span><span class="cg"></span>'; b.prepend(cardAv(c, 30));
-        b.querySelector('.cn').textContent = t.nm + (t.ti ? ' · ' + t.ti : '');
-        b.querySelector('.cg').textContent = gives.length ? gives.join(' · ') : (c.pal ? 'pal: no chain slots' : '');
+        b.innerHTML = `<span class="cn">${esc(t.nm)}</span>` + (t.ti ? `<span class="cti">${esc(t.ti)}</span>` : '') +
+          `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
+            : `<span class="gv none">${c.pal ? 'pal: no chain slot' : ''}</span>`}</span>`;
+        b.prepend(cardAv(c, 112));
         b.setAttribute('aria-label', t.nm + ' ' + t.ti + (own ? ': owned' : ': not owned'));
         b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); };
         chips.appendChild(b); shown++;
@@ -619,8 +609,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const have = new Set(state.targets.map(t => t.group));
     const hits = CAT.filter(([g, w, gd]) => !have.has(g) && (w.toLowerCase().includes(f) || (gd && gd.toLowerCase().includes(f)))).slice(0, 30);
     for (const [g, w, gd] of hits) {
-      const b = document.createElement('button'); b.textContent = w;
-      if (gd) { const sm = document.createElement('small'); sm.textContent = 'gold: ' + gd; b.appendChild(sm); }
+      const b = document.createElement('button'); b.textContent = w; const ic = skillIcon(g); if (ic) b.prepend(ic);
       b.onclick = () => { state.targets.push({ group: g, guaranteed: 0 }); addIn.value = ''; sugg.hidden = true; save(); renderTargets(); };
       sugg.appendChild(b);
     }
@@ -633,17 +622,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   $('x-teio').checked = state.teio; $('x-teio').onchange = (e) => { state.teio = e.target.checked; save(); };
   $('x-zephyr').checked = state.zephyr; $('x-zephyr').onchange = (e) => { state.zephyr = e.target.checked; save(); };
 
-  // ---------- mode ----------
-  function setMode(m) {
-    state.mode = m; save();
-    $('mode-skills').setAttribute('aria-pressed', m === 'skills'); $('mode-aff').setAttribute('aria-pressed', m === 'aff');
-    $('skills-panel').hidden = m !== 'skills'; $('aff-panel').hidden = m !== 'aff'; $('deck-panel').hidden = m !== 'skills';
-    $('mode-hint').textContent = m === 'skills' ? 'Odds that every target skill lands as a spark on the new veteran, with the loop’s race schedule.'
-      : 'Highest expected affinity per four runs (relations plus shared G1 wins), with the race schedule.';
-  }
-  $('mode-skills').onclick = () => setMode('skills'); $('mode-aff').onclick = () => setMode('aff');
-  function setScheme(s) { state.scheme = s; save(); $('sch-scf').setAttribute('aria-pressed', s === 'scf'); $('sch-rot').setAttribute('aria-pressed', s === 'rot'); }
-  $('sch-scf').onclick = () => setScheme('scf'); $('sch-rot').onclick = () => setScheme('rot');
+  // ---------- mode ----------  (the page searches skill sparks only; the solver's affinity-only search is kept, unused here)
+  function setMode() { state.mode = 'skills'; }
 
   // ---------- results ----------
   const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
@@ -710,7 +690,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           const whoT = who.length === 1 ? `${esc(who[0])}'s deck` : `Deck for ${who.map(esc).join(', ')}`; const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
           const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
           const dk = document.createElement('div'); dk.className = 'deck swap';
-          dk.innerHTML = `<div class="row between"><b>${whoT} · ${d.pals} pal${d.pals === 1 ? '' : 's'}${d.borrowed ? ' · borrow 1' : ''}</b></div>` +
+          dk.innerHTML = `<div class="row between"><b>${whoT}${d.borrowed ? ' · borrow 1' : ''}</b></div>` +
             `<div class="dcards"><span class="swl o">Out</span>${out.map(ci => chip(meta.deck, ci)).join('') || '<span class="hint">nothing</span>'}</div>` +
             `<div class="dcards"><span class="swl i">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
           card.appendChild(dk); });
@@ -731,9 +711,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     });
     const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
     card.insertBefore(mem, firstDeck);
-    const stars = document.createElement('div'); stars.className = 'stars';
-    stars.innerHTML = `<span>All ${n} at 2★+: <b>${fmtIn(l.p_all * Math.pow(p2, n))}</b></span><span>Average inheritance proc: <b>${(l.mean_proc * 100).toFixed(1)}%</b></span>`;
-    card.insertBefore(stars, firstDeck);
     if (l.detail) { const wb = document.createElement('button'); wb.className = 'why'; wb.textContent = 'How this loop works';
       wb.onclick = () => openWhy(l, meta); card.insertBefore(wb, firstDeck); }
     const det = document.createElement('details'); if (i === 0) det.open = true;
@@ -836,24 +813,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
     res.loops.forEach((l, i) => box.appendChild(loopCard(l, i, meta, i === 0 && res.proven_top)));
   }
-  function renderAff(res, meta) {
-    const box = $('results'); box.textContent = '';
-    const st = document.createElement('div'); st.className = 'status';
-    st.textContent = `Searched ${res.searched} of ${res.foursomes.toLocaleString()} foursomes in ${(meta.ms / 1000).toFixed(1)} s` + '.';
-    box.appendChild(st);
-    if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
-    res.loops.forEach((l, i) => {
-      const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
-      card.innerHTML = `<div class="lhead"><span class="rank">#${i + 1}</span><span class="odds">${l.score.toFixed(1)}<small>affinity per 4 runs</small></span>
-        <span class="sub">${(l.score / 4).toFixed(1)} per run · base ${Math.round(l.base)} + G1 bonus ${(l.score - l.base).toFixed(1)} · ceiling ${l.ceiling.toFixed(1)}</span></div>`;
-      const mem = document.createElement('div'); mem.className = 'members';
-      for (const m of l.members) { const d = document.createElement('div'); d.className = 'mem'; d.innerHTML = '<span class="nm"></span>'; d.querySelector('.nm').textContent = m.name; mem.appendChild(d); }
-      card.appendChild(mem);
-      const det = document.createElement('details'); if (i === 0) det.open = true;
-      det.innerHTML = '<summary>Race schedule</summary>'; det.appendChild(schedTable(l.members, l.schedule));
-      card.appendChild(det); box.appendChild(card);
-    });
-  }
 
   // ---------- engine (Web Worker running the WebAssembly solver) ----------
   let worker = null, ready = null, seq = 0; const pending = new Map();
@@ -884,27 +843,22 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
     const require = Object.entries(state.roster).filter(([, v]) => v === 'req').map(([k]) => +k);
     try {
-      if (state.mode === 'skills') {
-        if (!state.targets.length) throw new Error('Add at least one target skill.');
-        const extra = []; if (state.teio) extra.push([1003, 20190, 1]); if (state.zephyr) extra.push([1078, 20165, 1]);
-        if (state.deck === 'opt') {
-          const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
-          const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
-          const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
-          box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
-          const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
-            owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
-          const m = await run(job);
-          lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
-        } else {
-          const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0, deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 }));
-          const job = { cmd: 'skills', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra, top: 5, ...eventFields(false) };
-          const m = await run(job);
-          lastRender = () => renderSkills(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
-        }
+      if (!state.targets.length) throw new Error('Add at least one target skill.');
+      const extra = []; if (state.teio) extra.push([1003, 20190, 1]); if (state.zephyr) extra.push([1078, 20165, 1]);
+      if (state.deck === 'opt') {
+        const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
+        const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
+        const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
+        box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
+        const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
+          owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
+        const m = await run(job);
+        lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
       } else {
-        const m = await run({ cmd: 'affinity', scheme: state.scheme, exclude, require, top: 5 });
-        renderAff(m.r, { ms: m.ms }); shown = true; lastResult = { kind: 'aff', r: m.r, meta: {} };
+        const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0, deck_white: t.deck_white || 0, deck_gold: t.deck_gold || 0 }));
+        const job = { cmd: 'skills', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra, top: 5, ...eventFields(false) };
+        const m = await run(job);
+        lastRender = () => renderSkills(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'skills', r: m.r, meta: {} };
       }
       const top = box.getBoundingClientRect().top; if (top < 0 || top > innerHeight) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
@@ -956,7 +910,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         location.reload(); return;
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
-      save(); setMode(state.mode); setScheme(state.scheme); setDeck(state.deck);
+      save(); setMode(); setDeck(state.deck);
       $('rank').value = state.rank; $('x-teio').checked = state.teio; $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
       $('x-dates').checked = state.dates; $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded. Press Find best loops.';
@@ -987,7 +941,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
   let lastRender = null;
   refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
-  setMode(state.mode); setScheme(state.scheme); setDeck(state.deck); renderRoster(); renderTargets();
+  setMode(); setDeck(state.deck); renderRoster(); renderTargets();
   if (ERA === 'global') { lastRender = () => (EXAMPLE.top ? renderDeck : renderSkills)(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: EXAMPLE.top ? 'deck' : 'skills', r: EXAMPLE, meta: { example: true } }; }
   else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
   // warm the engine in the background so the first search starts immediately
