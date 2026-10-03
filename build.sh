@@ -44,7 +44,7 @@ step_deploy() {
   if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/ jp/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
   step_page
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
-     --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" ${DEPLOY_DIRTY:+--commit-dirty=true})
+     --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty=$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false))
 }
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
