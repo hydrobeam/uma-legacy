@@ -29,6 +29,7 @@
   --k-speed: #2f6fd6; --k-stamina: #d0453b; --k-power: #d97a1e; --k-guts: #cf4f8d; --k-wit: #2f9a62; --k-pal: #b88a12; --k-group: #8a6ad1; --k-other: #6b7385;
   --r-ssr: #c99a1a; --r-sr: #8f9aa8; --r-r: #a8714a;
   --yr0: #0b5a4d; --yr1: #2f3f99; --yr2: #8a3c0c;
+  --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
   color-scheme: light;   /* light only, by the owner's choice */
 }
 * { box-sizing: border-box; }
@@ -111,6 +112,8 @@ input[type="search"] { width: 100%; }
 .loop > * { min-width: 0; }
 .loop.first { border-color: var(--accent); border-width: 2px; }
 .lhead { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; }
+.rnote { margin-left: auto; font-size: 0.78rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.loop > .stale { font-size: 0.82rem; padding: 6px 10px; }
 .rank { font-family: var(--font-data); color: var(--muted); font-size: 0.9rem; }
 .odds { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
 .odds small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: .5em; }
@@ -173,6 +176,11 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .ag-slot.on { border-color: var(--accent); }
 .ag-when { margin-top: auto; flex: none; font-size: 0.66rem; font-weight: 600; text-align: center; padding: 1px 2px; background: var(--accent-soft); color: var(--muted); }
 .ag-slot.on .ag-when { color: var(--accent); }
+.ag-slot.on.opt { border-color: var(--opt); border-width: 2px; }
+.ag-slot.on.opt .ag-when { background: var(--opt); color: #fff; }
+.agkey { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 0.78rem; color: var(--ink); }
+.agkey i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 2px solid var(--accent); background: var(--accent-soft); }
+.agkey i.op { border-color: var(--opt); background: var(--opt); }
 .ag-race { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 3px 3px 2px; }
 .ag-race .banner { flex: 1 1 0; min-height: 0; width: 100%; object-fit: contain; display: block; }
 .ag-nm { flex: none; font-size: 0.64rem; font-weight: 700; line-height: 1.2; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -461,8 +469,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   function markStale() {
     if (!shown) return; const box = $('results'); if (box.querySelector('.stale')) return;
     const n = document.createElement('div'); n.className = 'status stale';
-    n.innerHTML = '<span class="badge ex">Out of date</span> Your settings changed after these results. Press <b>Find best loops</b> to update them.';
-    box.prepend(n);
+    n.innerHTML = '<span class="badge ex">Out of date</span> Settings changed since this search. Press <b>Find best loops</b> to update.';
+    const first = box.querySelector('.loop'); if (first) first.prepend(n); else box.prepend(n);   // inside the card: no shift
   }
   // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
   // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
@@ -673,6 +681,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       if (av) b.appendChild(av); b.appendChild(document.createTextNode(label)); b.onclick = () => show(key); tabs.appendChild(b); return b; };
     const btns = M.map((m, k) => tabBtn(k, m.short || m.name, umaAv(m.id, outfitOf(k), 28)));
     btns.push(tabBtn('all', 'All four', null));
+    const key = document.createElement('span'); key.className = 'agkey';
+    key.innerHTML = '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(key);
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const slotOf = (w) => { const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(w); return m ? MONTHS.indexOf(m[3]) * 2 + (m[2] === 'L' ? 1 : 0) : -1; };
     function cell(r, k) {   // one scheduled race in a slot
@@ -700,7 +710,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           if (y === 0 && sI < 12) { slot.className = 'ag-slot none'; grid.appendChild(slot); continue; }   // the career starts in Junior July
           slot.className = 'ag-slot';
           const r = rows.find(x => x.year === y && x.cells[key] && slotOf(x.when) === sI);
-          if (r) { slot.classList.add('on'); slot.appendChild(cell(r, key)); }
+          if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
           const lb = document.createElement('div'); lb.className = 'ag-when'; lb.textContent = (sI % 2 ? 'Late ' : 'Early ') + MONTHS[sI >> 1]; slot.appendChild(lb);
           grid.appendChild(slot);
         }
@@ -714,7 +724,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const n = meta.targets.length, dist = meta.rank.split(',').map(Number), p2 = dist[1] + dist[2];
     const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
     card.innerHTML = `<div class="lhead"><span class="odds">${fmtIn(l.p_all)}<small>runs, all ${n} land</small></span>
-      <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
+      <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${meta.note ? `<span class="rnote">${meta.note}</span>` : ''}${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
     if (meta.deck) {
       const D = meta.decks, M = l.members;
       const key = (d) => d.cards.join('|');
@@ -828,15 +838,12 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   function renderDeck(res, meta) {
     closePop();
     const box = $('results'); box.textContent = '';
-    const st = document.createElement('div'); st.className = 'status';
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
-    if (meta.example) st.innerHTML = '<span class="badge ex">Example</span> Unity Cup skill set, every uma and card owned, lineage below SS. Change the settings and run your own.';
-    else st.textContent = `Scored ${res.decks_built.toLocaleString()} decks (the rest lose to a card swap) and bounded ${(res.foursomes_ranked ?? res.foursomes).toLocaleString()} of ${res.foursomes.toLocaleString()} foursomes (the rest can't win) in ${(meta.ms / 1000).toFixed(1)} s` + (res.per_uma ? '. Each result is a loop, each uma with her own best deck.' : '. Each result is a deck with its own best loop.');
-    box.appendChild(st);
-    const g = (meta.targets || []).filter(t => t.guaranteed > 0).map(t => { const s = SK.get(t.group) || { w: t.group, gd: null }; return t.guaranteed === 2 ? (s.gd || s.w) : s.w; });
-    if (g.length && !meta.example) { const n = document.createElement('p'); n.className = 'hint';
-      n.textContent = `Treated as guaranteed without any card (set under Target skills): ${g.join(', ')}. Change a skill to "None" if it should come from the deck.`; box.appendChild(n); }
-    res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null }, i === 0 && res.proven)));
+    if (!res.top.length) { const st = document.createElement('div'); st.className = 'status'; st.textContent = 'No loop fits these settings.'; box.appendChild(st); return; }
+    // one line, inside the first card, so the results column starts level with the settings column
+    const note = meta.example ? '<span class="badge ex">Example</span> Unity Cup skills, everything owned'
+      : `Scored ${res.decks_built.toLocaleString()} decks across ${res.foursomes.toLocaleString()} loops in ${(meta.ms / 1000).toFixed(1)} s`;
+    res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null, note: i === 0 ? note : '' }, i === 0 && res.proven)));
   }
 
   // ---------- engine (Web Worker running the WebAssembly solver) ----------
