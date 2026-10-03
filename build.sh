@@ -11,7 +11,7 @@
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox)
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
-#   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default legacy-loop-planner;
+#   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/ jp/
 #   val TAG  run the 24 validation jobs (shared deck, and the 23 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
@@ -43,7 +43,7 @@ step_deploy() {
   local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg jp)
   if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/ jp/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
   step_page
-  (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-legacy-loop-planner}" --branch "${CF_PAGES_BRANCH:-main}" \
+  (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" ${DEPLOY_DIRTY:+--commit-dirty=true})
 }
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
