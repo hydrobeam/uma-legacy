@@ -41,9 +41,9 @@ header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: w
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .rail { display: flex; flex-direction: column; gap: 14px; align-self: stretch; min-width: 0; }
-.rail > .run { margin-top: auto; }
-@media (max-width: 960px) { .rail > .run { position: fixed; left: 16px; right: 16px; width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
-  body { padding-bottom: 92px; } }
+.rail > .runbox { margin-top: auto; position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 3; display: grid; gap: 0; }
+@media (max-width: 960px) { .rail > .runbox { position: fixed; left: 16px; right: 16px; width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  body { padding-bottom: 124px; } }
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .between { justify-content: space-between; }
@@ -56,8 +56,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
-.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 1rem; width: 100%;
-  position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 3; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 0 0 10px 10px; font-weight: 700; font-size: 1rem; width: 100%;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+.runnote { margin: 0; padding: 5px 12px; font-size: 0.8rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; }
+.runnote:empty { display: none; }
+.runnote:empty + .run { border-radius: 10px; }
+.runnote.stale { background: var(--gold-soft); border-color: var(--gold); color: var(--ink); font-weight: 600; }
 .run:disabled { opacity: .6; cursor: progress; }
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
@@ -112,8 +116,6 @@ input[type="search"] { width: 100%; }
 .loop > * { min-width: 0; }
 .loop.first { border-color: var(--accent); border-width: 2px; }
 .lhead { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; }
-.rnote { margin-left: auto; font-size: 0.78rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
-.loop > .stale { font-size: 0.82rem; padding: 6px 10px; }
 .rank { font-family: var(--font-data); color: var(--muted); font-size: 0.9rem; }
 .odds { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
 .odds small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: .5em; }
@@ -159,7 +161,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .mem .memb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .mem.off .av { filter: grayscale(1); opacity: 0.5; }
 .mem.off .nm { text-decoration: line-through; color: var(--muted); }
-.cpop .sw + .sw { margin-top: 2px; }
 .sbtn { justify-self: start; font-weight: 600; color: var(--accent); }
 .stabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .stab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px;
@@ -360,7 +361,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       </div>
     </section>
 
-    <button class="run" id="run">Find best loops</button>
+    <div class="runbox"><p class="runnote" id="run-note" aria-live="polite"></p><button class="run" id="run">Find best loops</button></div>
   </aside>
 
   <main class="results" id="results" aria-live="polite"></main>
@@ -472,12 +473,10 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     dates: store.get('dates', false), rand: store.get('rand', '0'), rcards: store.get('rcards', true),
   };
   let shown = false;   // results on screen; any settings change after that marks them out of date
-  function markStale() {
-    if (!shown) return; const box = $('results'); if (box.querySelector('.stale')) return;
-    const n = document.createElement('div'); n.className = 'status stale';
-    n.innerHTML = '<span class="badge ex">Out of date</span> Settings changed since this search. Press <b>Find best loops</b> to update.';
-    const first = box.querySelector('.loop'); if (first) first.prepend(n); else box.prepend(n);   // inside the card: no shift
-  }
+  let stale = false, runNote = '';   // the line on the Find best loops button: last search, or "settings changed"
+  function paintRunNote() { const n = $('run-note'); n.classList.toggle('stale', stale);
+    n.textContent = stale ? 'Settings changed since the last search' : runNote; }
+  function markStale() { if (!shown || stale) return; stale = true; paintRunNote(); }
   // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
   // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
   try { if (!localStorage.getItem('llp:targetsV2')) {
@@ -730,7 +729,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const n = meta.targets.length, dist = meta.rank.split(',').map(Number), p2 = dist[1] + dist[2];
     const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
     card.innerHTML = `<div class="lhead"><span class="odds">${fmtIn(l.p_all)}<small>runs, all ${n} land</small></span>
-      <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${meta.note ? `<span class="rnote">${meta.note}</span>` : ''}${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
+      <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
     if (meta.deck) {
       const D = meta.decks, M = l.members;
       const key = (d) => d.cards.join('|');
@@ -769,7 +768,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
             `<div class="dcards"><span class="swl i">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
           card.appendChild(dk); });
       }
-      card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); }); markOwn();
+      card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); });
     }
     const mem = document.createElement('div'); mem.className = 'members';
     l.members.forEach((m, k) => {
@@ -785,7 +784,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       mem.appendChild(d);
     });
     const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
-    queueMicrotask(markOwn);
     card.insertBefore(mem, firstDeck);
     const acts = document.createElement('div'); acts.className = 'row lacts';
     const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'btn sbtn'; sb.textContent = 'Race schedule'; sb.onclick = () => openSched(l); acts.appendChild(sb);
@@ -848,10 +846,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const box = $('results'); box.textContent = '';
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
     if (!res.top.length) { const st = document.createElement('div'); st.className = 'status'; st.textContent = 'No loop fits these settings.'; box.appendChild(st); return; }
-    // one line, inside the first card, so the results column starts level with the settings column
-    const note = meta.example ? '<span class="badge ex">Example</span> Unity Cup skills, everything owned'
-      : `Scored ${res.decks_built.toLocaleString()} decks across ${res.foursomes.toLocaleString()} loops in ${(meta.ms / 1000).toFixed(1)} s`;
-    res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null, note: i === 0 ? note : '' }, i === 0 && res.proven)));
+    runNote = meta.example ? 'Showing an example: Unity Cup skills, everything owned'
+      : `Searched ${res.decks_built.toLocaleString()} decks and ${res.foursomes.toLocaleString()} loops in ${(meta.ms / 1000).toFixed(1)} s`;
+    paintRunNote();
+    res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null }, i === 0 && res.proven)));
+    markOwn();   // grey out anything marked not owned since the search (needs the cards on the page)
   }
 
   // ---------- engine (Web Worker running the WebAssembly solver) ----------
@@ -892,7 +891,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
         owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
       const m = await run(job);
-      lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
+      stale = false; lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
       const top = box.getBoundingClientRect().top; if (top < 0 || top > innerHeight) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
     btn.disabled = false;
@@ -963,18 +962,23 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     const r = el.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
     pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, vw - w - 8))) + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
   }
+  // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
+  // (another outfit would be a different trainee); with "any outfit" it is the uma.
   function openUmaPop(btn) {
     closePop(); popFor = btn; btn.setAttribute('aria-expanded', 'true');
     const d = btn.closest('.mem'), u = UMAS.find(x => x.id === +d.dataset.uma), oid = d.dataset.outfit ? +d.dataset.outfit : null;
-    pop.setAttribute('aria-label', u ? u.name : '');
-    pop.innerHTML = `<div><b>${esc(u ? u.name : '')}</b><div class="ct">${esc(d.dataset.outfitLabel)}</div></div>` +
-      `<label class="sw"><input type="checkbox" role="switch" data-act="uma"${u && umaState(u) !== 'out' ? ' checked' : ''}>Owned</label>` +
-      (oid ? `<label class="sw"><input type="checkbox" role="switch" data-act="outfit"${state.outfits[oid] !== false ? ' checked' : ''}>This outfit owned</label>` : '');
+    const owned = () => oid ? umaState(u) !== 'out' && state.outfits[oid] !== false : umaState(u) !== 'out';
+    const title = u.name + (oid ? ' ' + d.dataset.outfitLabel : '');
+    pop.setAttribute('aria-label', title);
+    pop.innerHTML = `<div><b>${esc(u.name)}</b><div class="ct">${esc(d.dataset.outfitLabel)}</div></div>` +
+      `<label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>`;
     placePop(btn);
-    const su = pop.querySelector('[data-act="uma"]'), so = pop.querySelector('[data-act="outfit"]');
-    su.onchange = () => { if (su.checked) { if (state.roster[u.id] === 'out') delete state.roster[u.id]; for (const o of u.outfits || []) if (state.outfits[o.id] === false && (!oid || o.id === oid)) delete state.outfits[o.id]; }
-      else state.roster[u.id] = 'out'; save(); renderRoster(); markOwn(); if (so) so.checked = state.outfits[oid] !== false; };
-    if (so) so.onchange = () => { if (so.checked) delete state.outfits[oid]; else state.outfits[oid] = false; save(); renderRoster(); markOwn(); su.checked = umaState(u) !== 'out'; };
+    const sw = pop.querySelector('[data-act="uma"]');
+    sw.onchange = () => {
+      if (sw.checked) { if (state.roster[u.id] === 'out') delete state.roster[u.id]; if (oid) delete state.outfits[oid];
+        else for (const o of u.outfits || []) delete state.outfits[o.id]; }
+      else if (oid) state.outfits[oid] = false; else state.roster[u.id] = 'out';
+      save(); renderRoster(); markOwn(); sw.checked = owned(); };
   }
   function openPop(el) {
     closePop(); popFor = el; el.setAttribute('aria-expanded', 'true');
@@ -995,7 +999,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     if (!e.target.closest('.cpop')) closePop(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
   let lastRender = null;
-  refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
+  refreshAll = () => { renderRoster(); renderCards(); if (lastRender) lastRender(); };
   setMode(); setDeck(); renderRoster(); renderTargets();
   if (ERA === 'global') { lastRender = () => renderDeck(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: 'deck', r: EXAMPLE, meta: { example: true } }; }
   else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
