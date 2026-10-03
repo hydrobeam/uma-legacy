@@ -29,17 +29,24 @@ pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
     OUT.with(|o| { *o.borrow_mut() = out.into_bytes(); o.borrow().as_ptr() })
 }
 
+/// The init request, parsed straight into the solver's input types (no intermediate `Value` tree for the large
+/// data table). `cards` stays a `Value` so a card table that does not parse only disables the deck search.
+#[derive(serde::Deserialize)]
+struct InitReq { data: DataRaw, skills: SkillsRaw, #[serde(default)] cards: serde_json::Value, #[serde(default)] events: serde_json::Value }
+#[derive(serde::Deserialize)]
+struct Head { #[serde(default)] cmd: String }
+
 fn handle(req: &str) -> serde_json::Value {
+    if req.starts_with("{\"cmd\":\"init\"") || matches!(serde_json::from_str::<Head>(req), Ok(h) if h.cmd == "init") {
+        let r: InitReq = match serde_json::from_str(req) { Ok(r) => r, Err(e) => return serde_json::json!({"error": format!("bad init request: {e}")}) };
+        let d = load_raw(r.data);
+        let n = d.umas.len();
+        if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { DECK.with(|x| *x.borrow_mut() = Some((cr, r.events))); }
+        STATE.with(|s| *s.borrow_mut() = Some((d, r.skills)));
+        return serde_json::json!({"ok": true, "umas": n});
+    }
     let v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
     match v["cmd"].as_str().unwrap_or("") {
-        "init" => {
-            let d = load_str(&v["data"].to_string());
-            let sk: SkillsRaw = match serde_json::from_value(v["skills"].clone()) { Ok(s) => s, Err(e) => return serde_json::json!({"error": format!("bad skills table: {e}")}) };
-            let n = d.umas.len();
-            if let Ok(cr) = serde_json::from_value::<super::deck::CardsRaw>(v["cards"].clone()) { DECK.with(|x| *x.borrow_mut() = Some((cr, v["events"].clone()))); }
-            STATE.with(|s| *s.borrow_mut() = Some((d, sk)));
-            serde_json::json!({"ok": true, "umas": n})
-        }
         "skills" => STATE.with(|s| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             match serde_json::from_value::<SkillJob>(v.clone()) { Ok(job) => run_skills(d, sk, &job), Err(e) => serde_json::json!({"error": format!("bad job: {e}")}) }

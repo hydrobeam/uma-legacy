@@ -90,7 +90,68 @@ fn d_rar() -> u8 { 2 }   // SR: R cards have no chain events, so this only filte
 type Kind = (u8, u8);
 
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
+/// Dense, deterministic, memoised version of `chain_marginals_ref`. States are mixed-radix indices over the
+/// entries' progress; every transition raises the index, so one pass in index order is a topological order.
+/// Entries are sorted first so the floating-point summation order is canonical (the HashMap reference sums in
+/// iteration order, which varied from run to run in the last bits).
 fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, u64), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(Default::default()); }
+    let mut ks: Vec<Kind> = kinds.to_vec(); ks.sort();
+    let key = (ks, lambda.to_bits());
+    if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) { return r; }
+    let r = chain_marginals_dense(&key.0, lambda);
+    CM.with(|c| c.borrow_mut().insert(key, r.clone()));
+    r
+}
+fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+    let n = kinds.len();
+    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    if n == 0 { return out; }
+    let emax = 60usize;
+    let mut pois = vec![0.0f64; emax + 1];
+    pois[0] = (-lambda).exp();
+    for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
+    let total: usize = kinds.iter().map(|&(_, stop)| stop as usize).sum();
+    let last = emax.min(total);
+    let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
+    let mut stride = vec![0usize; n]; let mut nst = 1usize;
+    for i in 0..n { stride[i] = nst; nst *= kinds[i].1 as usize + 1; }
+    let mut p = vec![0.0f64; nst]; p[0] = 1.0;
+    // done[e][i][k] = P(after e events entry i has >= k+1 links done)
+    let mut done = vec![0.0f64; (last + 1) * n * width];
+    let mut s = vec![0u8; n]; let mut lvl = 0usize;
+    for idx in 0..nst {
+        let pi = p[idx];
+        if pi != 0.0 && lvl <= last {
+            if lvl >= 1 { let b = lvl * n * width; for i in 0..n { for k in 0..s[i] as usize { done[b + i * width + k] += pi; } } }
+            if lvl < last {
+                let mut wsum = 0.0f64;
+                for i in 0..n { if s[i] < kinds[i].1 { wsum += (kinds[i].0 - s[i]) as f64; } }
+                if wsum > 0.0 {
+                    for i in 0..n { if s[i] < kinds[i].1 { let w = (kinds[i].0 - s[i]) as f64; p[idx + stride[i]] += pi * w / wsum; } }
+                }
+            }
+        }
+        // odometer increment of s, tracking the level
+        for i in 0..n { if s[i] < kinds[i].1 { s[i] += 1; lvl += 1; break; } lvl -= s[i] as usize; s[i] = 0; }
+    }
+    let mut fired = vec![vec![0.0f64; width]; n];
+    for e in 1..=last {
+        let pe = pois[e] + if e == last { 1.0 - pois[..=e].iter().sum::<f64>() } else { 0.0 };
+        let b = e * n * width;
+        for i in 0..n { for k in 0..width { fired[i][k] += pe * done[b + i * width + k]; } }
+    }
+    for i in 0..n {
+        let kd = kinds[i];
+        out.entry(kd).or_insert_with(|| (0..kd.1 as usize).map(|k| fired[i][k]).collect());
+    }
+    out
+}
+
+/// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds
+/// (reference implementation, for the tests).
+#[cfg(test)]
+fn chain_marginals_ref(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     let n = kinds.len();
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
@@ -218,26 +279,64 @@ fn sig_of(v: &[f64], query: bool) -> Sig {
 #[inline]
 fn sig_ge(e: Sig, q: Sig) -> bool { ((e | SIG_GUARD) - q) & SIG_GUARD == SIG_GUARD }
 
-/// Field-wise max / min of two signatures (levels only, guard bits clear).
-fn sig_max(a: Sig, b: Sig) -> Sig {
-    let mut m: Sig = 0;
-    for c in 0..SIG_FIELDS { let sh = FB * c; m |= ((a >> sh) & (LEVELS - 1)).max((b >> sh) & (LEVELS - 1)) << sh; }
-    m
-}
-fn sig_min(a: Sig, b: Sig) -> Sig {
-    let mut m: Sig = 0;
-    for c in 0..SIG_FIELDS { let sh = FB * c; m |= ((a >> sh) & (LEVELS - 1)).min((b >> sh) & (LEVELS - 1)) << sh; }
-    m
-}
-
-const BLOCK: usize = 32;
 const NBUCKET: usize = 128;
 
 /// Decks whose coordinate sums fall in one slice of [0, nd]: flat arrays (entry and query signatures,
-/// coordinates, ids) plus, per block of BLOCK decks, the field-wise max entry signature, so a whole block that
-/// cannot hold a dominator is skipped with one test.
+/// coordinates, ids) plus a level index of the entry signatures: for each word of 64 decks and each signature
+/// field f and level l >= 1, the bits of the decks whose field f is at least l. ANDing one word per field of a
+/// query gives the decks that pass the signature test, 64 at a time; they are then visited in index order, the
+/// same order as a plain scan.
 #[derive(Default)]
-struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, bmax: Vec<Sig>, bmin: Vec<Sig> }
+/// `lq` is the mirror index of the query signatures (bit set when field f is at most l, l < LEVELS - 1), for the
+/// removal test "x's entry signature over the deck's query one".
+struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, lv: Vec<u64>, lq: Vec<u64> }
+const LVW: usize = SIG_FIELDS * (LEVELS as usize - 1);   // index words per 64 decks
+impl Bucket {
+    #[inline]
+    fn index_set(&mut self, i: usize, e: Sig, q: Sig) {
+        let w = i / 64;
+        if self.lv.len() < (w + 1) * LVW { self.lv.resize((w + 1) * LVW, 0); self.lq.resize((w + 1) * LVW, 0); }
+        let bit = 1u64 << (i % 64);
+        let base = w * LVW;
+        const L1: usize = LEVELS as usize - 1;
+        for f in 0..SIG_FIELDS {
+            let l = ((e >> (FB * f)) & (LEVELS - 1)) as usize;
+            for k in 0..l { self.lv[base + f * L1 + k] |= bit; }
+            let l = ((q >> (FB * f)) & (LEVELS - 1)) as usize;
+            for k in l..L1 { self.lq[base + f * L1 + k] |= bit; }
+        }
+    }
+    /// rebuild the level index from deck `from` on (after the arrays were compacted)
+    fn reindex_from(&mut self, from: usize) {
+        let w0 = from / 64;
+        self.lv.truncate((w0 + 1) * LVW); self.lq.truncate((w0 + 1) * LVW);
+        if self.lv.len() == (w0 + 1) * LVW {
+            let keep = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
+            for x in &mut self.lv[w0 * LVW..] { *x &= keep; }
+            for x in &mut self.lq[w0 * LVW..] { *x &= keep; }
+        }
+        if self.esig.len() <= w0 * 64 { self.lv.truncate(w0 * LVW); self.lq.truncate(w0 * LVW); }
+        for i in from..self.esig.len() { let (e, q) = (self.esig[i], self.qsig[i]); self.index_set(i, e, q); }
+    }
+    /// decks of word w that pass the signature test for the query whose level-index offsets are `qo`
+    #[inline]
+    fn cand_word(&self, w: usize, qo: &[usize]) -> u64 {
+        let n = self.esig.len() - w * 64;
+        let mut m = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
+        let base = w * LVW;
+        for &o in qo { m &= self.lv[base + o]; if m == 0 { break; } }
+        m
+    }
+}
+/// Level-index offsets of a query signature: one per field whose level is at least 1.
+fn query_offsets(q: Sig, out: &mut [usize; SIG_FIELDS]) -> usize {
+    let mut n = 0;
+    for f in 0..SIG_FIELDS {
+        let l = ((q >> (FB * f)) & (LEVELS - 1)) as usize;
+        if l > 0 { out[n] = f * (LEVELS as usize - 1) + l - 1; n += 1; }
+    }
+    n
+}
 
 /// Kept decks of one pal count. A dominator's coordinate sum is at least the deck's (less float slack), so a
 /// query only visits buckets at or above the deck's sum.
@@ -266,13 +365,13 @@ impl Kept {
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
         self.found.clear();
+        let mut qo = [0usize; SIG_FIELDS]; let nq = query_offsets(xq, &mut qo);
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
-            for (blk, &m) in bk.bmax.iter().enumerate() {
-                if !sig_ge(m, xq) { continue; }
-                let end = ((blk + 1) * BLOCK).min(bk.list.len());
-                for i in blk * BLOCK..end {
-                    if !sig_ge(bk.esig[i], xq) { continue; }
+            for w in 0..bk.esig.len().div_ceil(64) {
+                let mut cm = bk.cand_word(w, &qo[..nq]);
+                while cm != 0 {
+                    let i = w * 64 + cm.trailing_zeros() as usize; cm &= cm - 1;
                     *tests += 1;
                     let row = &bk.flat[i * nd..(i + 1) * nd];
                     if dominates(row, x) {
@@ -292,13 +391,14 @@ impl Kept {
         let nd = self.nd;
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
+        let mut qo = [0usize; SIG_FIELDS]; let nq = query_offsets(xq, &mut qo);
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
-            for (blk, &m) in bk.bmax.iter().enumerate() {
-                if !sig_ge(m, xq) { continue; }
-                let end = ((blk + 1) * BLOCK).min(bk.list.len());
-                for i in blk * BLOCK..end {
-                    if sig_ge(bk.esig[i], xq) && dominates(&bk.flat[i * nd..(i + 1) * nd], x) { n += 1; if n >= need { return n; } }
+            for w in 0..bk.esig.len().div_ceil(64) {
+                let mut cm = bk.cand_word(w, &qo[..nq]);
+                while cm != 0 {
+                    let i = w * 64 + cm.trailing_zeros() as usize; cm &= cm - 1;
+                    if dominates(&bk.flat[i * nd..(i + 1) * nd], x) { n += 1; if n >= need { return n; } }
                 }
             }
         }
@@ -327,35 +427,62 @@ impl Kept {
         let id = self.next_uid; self.next_uid += 1;
         let bk = &mut self.buckets[bi];
         let i = bk.list.len();
-        if i % BLOCK == 0 { bk.bmax.push(e); bk.bmin.push(q); } else { let l = bk.bmax.len() - 1; bk.bmax[l] = sig_max(bk.bmax[l], e); bk.bmin[l] = sig_min(bk.bmin[l], q); }
+        bk.index_set(i, e, q);
         bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(&x.dv); bk.uid.push(id); bk.list.push(x);
         self.n += 1;
     }
-    /// drop kept decks that x dominates (only decks with sum <= s + slack can be)
+    /// drop kept decks that x dominates (only decks with sum <= s + slack can be), in place, keeping the order of
+    /// the rest
     fn remove_dominated_by(&mut self, x: &[f64], xe: Sig, s: f64) {
         let nd = self.nd;
         let top = self.bucket_of(s + SUM_EPS);
+        // lq offsets of x's entry signature: fields below the top level constrain the deck's query field
+        let mut xo = [0usize; SIG_FIELDS]; let mut nx = 0;
+        for f in 0..SIG_FIELDS {
+            let l = ((xe >> (FB * f)) & (LEVELS - 1)) as usize;
+            if l < LEVELS as usize - 1 { xo[nx] = f * (LEVELS as usize - 1) + l; nx += 1; }
+        }
         for bi in 0..=top {
-            let hit = |bk: &Bucket, i: usize| sig_ge(xe, bk.qsig[i]) && dominates(x, &bk.flat[i * nd..(i + 1) * nd]);
-            let bk = &self.buckets[bi];
-            if !(0..bk.list.len()).any(|i| hit(bk, i)) { continue; }
-            let old = std::mem::take(&mut self.buckets[bi]);
-            let keep: Vec<bool> = (0..old.list.len()).map(|i| !hit(&old, i)).collect();
-            let mut nb = Bucket::default();
-            for (i, d) in old.list.into_iter().enumerate() {
-                if !keep[i] { self.n -= 1; continue; }
-                let e = old.esig[i];
-                let j = nb.list.len();
-                let q = old.qsig[i];
-                if j % BLOCK == 0 { nb.bmax.push(e); nb.bmin.push(q); } else { let l = nb.bmax.len() - 1; nb.bmax[l] = sig_max(nb.bmax[l], e); nb.bmin[l] = sig_min(nb.bmin[l], q); }
-                nb.esig.push(e); nb.qsig.push(q); nb.flat.extend_from_slice(&old.flat[i * nd..(i + 1) * nd]); nb.uid.push(old.uid[i]); nb.list.push(d);
+            let bk = &mut self.buckets[bi];
+            let len = bk.qsig.len();
+            // the first deck x dominates: entry test (x's entry signature over the deck's query one) first
+            let mut first = None;
+            'scan: for start in (0..len).step_by(64) {
+                let n = len - start;
+                let mut m = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
+                let base = start / 64 * LVW;
+                for &o in &xo[..nx] { if m == 0 { break; } m &= bk.lq[base + o]; }
+                while m != 0 {
+                    let i = start + m.trailing_zeros() as usize; m &= m - 1;
+                    if dominates(x, &bk.flat[i * nd..(i + 1) * nd]) { first = Some(i); break 'scan; }
+                }
             }
-            self.buckets[bi] = nb;
+            let Some(f) = first else { continue };
+            // compact [f, len): kept decks move down in order, dropped ones end up past `w` and are truncated
+            let mut w = f;
+            for r in f + 1..len {
+                if sig_ge(xe, bk.qsig[r]) && dominates(x, &bk.flat[r * nd..(r + 1) * nd]) { continue; }
+                bk.list.swap(w, r);
+                bk.esig[w] = bk.esig[r]; bk.qsig[w] = bk.qsig[r]; bk.uid[w] = bk.uid[r];
+                bk.flat.copy_within(r * nd..(r + 1) * nd, w * nd);
+                w += 1;
+            }
+            self.n -= len - w;
+            bk.list.truncate(w); bk.esig.truncate(w); bk.qsig.truncate(w); bk.uid.truncate(w); bk.flat.truncate(w * nd);
+            bk.reindex_from(f);
         }
     }
     fn into_list(self) -> Vec<DeckEval> { self.buckets.into_iter().flat_map(|b| b.list).collect() }
 }
 
+/// The order k_filter(list, 1, nd).into_list() produces when it keeps every deck: stable by
+/// (bucket of the sum ascending, sum descending), ties in input order.
+fn kfilter_order(mut g: Vec<DeckEval>, nd: usize) -> Vec<DeckEval> {
+    g.sort_by(|a, b| b.s.partial_cmp(&a.s).unwrap());
+    let kept = Kept::new(nd);
+    g.sort_by_key(|x| kept.bucket_of(x.s));
+    g
+}
 /// Keep each deck unless `kmax` decks scoring at least as high in every coordinate are kept before it (sorted
 /// pass). A dominator's coordinate sum is at least the deck's, so only kept decks above that sum are checked.
 fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Kept {
@@ -372,8 +499,49 @@ fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Kept {
 
 /// One candidate deck. `dw`/`dg` are the per-target white/gold hint odds the metric uses; `dv` are the
 /// coordinates used for dominance (see `run_deck`), all higher-is-better, and `s` is their sum.
+/// Deck frontiers already enumerated inside one `run_deck` (its branches change the uma pool, which the
+/// enumeration does not depend on: the pool only orders the plain pals, a display matter), keyed by the job
+/// without its uma-pool fields. Each entry: the frontier and the counters the output reports.
+type EnumEntry = (String, Vec<DeckEval>, usize, usize);
+thread_local! { static ENUM_CACHE: std::cell::RefCell<Option<Vec<EnumEntry>>> = const { std::cell::RefCell::new(None) }; }
+struct EnumScope(Option<Vec<EnumEntry>>);
+impl EnumScope { fn new() -> Self { EnumScope(ENUM_CACHE.with(|c| c.borrow_mut().replace(vec![]))) } }
+impl Drop for EnumScope { fn drop(&mut self) { let prev = self.0.take(); ENUM_CACHE.with(|c| *c.borrow_mut() = prev); } }
+fn enum_key(v: &Value) -> String {
+    let mut k = v.clone();
+    if let Some(o) = k.as_object_mut() { for f in ["exclude", "require", "owned"] { o.remove(f); } }
+    k.to_string()
+}
+
 #[derive(Clone)]
 struct DeckEval { pals: usize, borrowed: Option<usize>, cards: Vec<usize>, ends: Vec<u8>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64>, dv: Vec<f64>, s: f64 }
+
+/// A deck's per-target (white, gold) hint odds.
+trait Odds { fn dw(&self) -> &[f64]; fn dg(&self) -> &[f64]; }
+impl Odds for DeckEval { fn dw(&self) -> &[f64] { &self.dw } fn dg(&self) -> &[f64] { &self.dg } }
+impl Odds for PDeck { fn dw(&self) -> &[f64] { &self.dw } fn dg(&self) -> &[f64] { &self.dg } }
+/// A cluster of decks (indices into the list it was built from) with their componentwise maximum odds.
+struct Cl { mdw: Vec<f64>, mdg: Vec<f64>, mem: Vec<usize> }
+/// Clusters of at most 16 decks by recursive median splits on the widest odds coordinate.
+fn split<D: Odds>(sky: &[D], ix: &mut [usize], nu: usize, out: &mut Vec<Cl>) {
+    if ix.len() <= 16 {
+        let mut mdw = vec![0.0f64; nu]; let mut mdg = vec![0.0f64; nu];
+        for &j in ix.iter() { for k in 0..nu { mdw[k] = mdw[k].max(sky[j].dw()[k]); mdg[k] = mdg[k].max(sky[j].dg()[k]); } }
+        out.push(Cl { mdw, mdg, mem: ix.to_vec() });
+        return;
+    }
+    let coord = |j: usize, c: usize| if c < nu { sky[j].dw()[c] } else { sky[j].dg()[c - nu] };
+    let mut lo = vec![f64::INFINITY; 2 * nu]; let mut hi = vec![f64::NEG_INFINITY; 2 * nu];
+    for &j in ix.iter() { for k in 0..nu {
+        lo[k] = lo[k].min(sky[j].dw()[k]); hi[k] = hi[k].max(sky[j].dw()[k]);
+        lo[nu + k] = lo[nu + k].min(sky[j].dg()[k]); hi[nu + k] = hi[nu + k].max(sky[j].dg()[k]);
+    } }
+    let c = (0..2 * nu).max_by(|&a, &b| (hi[a] - lo[a]).partial_cmp(&(hi[b] - lo[b])).unwrap()).unwrap();
+    let mid = ix.len() / 2;
+    ix.select_nth_unstable_by(mid, |&a, &b| coord(a, c).partial_cmp(&coord(b, c)).unwrap());
+    let (l, r) = ix.split_at_mut(mid);
+    split(sky, l, nu, out); split(sky, r, nu, out);
+}
 
 /// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode.
 #[derive(Clone, Serialize, Deserialize)]
@@ -420,6 +588,7 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
     let mut root: Option<Value> = None;
     let (mut searches, mut decks_built, mut proven) = (0usize, 0u64, true);
     let mut stack: Vec<Value> = vec![v.clone()];
+    let _enum_cache = EnumScope::new();
     while let Some(job) = stack.pop() {
         let out = run_deck_relaxed(d, sk, cr, &job);
         if out.get("error").is_some() { if root.is_none() { return out; } continue; }   // e.g. a half with < 4 umas
@@ -713,7 +882,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // higher chance of missing the gold and no higher chance of missing every hint; exact ties go to the lower
     // index), as owned / borrowed character masks.
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
-    let mut key_cache: HashMap<u64, KeyData> = HashMap::new();
+    let mut key_cache: crate::FxMap<u64, KeyData> = Default::default();
     let make_key = |code: u64| -> KeyData {
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
         for &kd in &kinds_all { for _ in 0..(c % 7) { ks.push(kd); } c /= 7; }
@@ -796,8 +965,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let t0 = Instant::now();
     // One enumeration pass keeping the decks that fewer than `kq` others beat. With `s1` (the kq = 1 result and
     // its deck identities) a deck is dropped at once when kq decks of that set, other than itself, beat it.
-    let mut run_enum = |kq: usize, s1: Option<&(Kept, std::collections::HashSet<Vec<u64>>)>| -> Vec<DeckEval> {
-    let mut groups: HashMap<(usize, usize), Kept> = HashMap::new();
+    let mut run_enum = |kq: usize, s1: Option<&(Kept, crate::FxSet<Vec<u64>>)>| -> Vec<DeckEval> {
+    let mut groups: crate::FxMap<(usize, usize), Kept> = Default::default();
     let kmax = kq;
     // every chain-kind count vector (fillers included in the (2, 2) count) with at most deck_size chain slots
     let mut counts: Vec<Vec<usize>> = vec![vec![]];
@@ -913,23 +1082,32 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let mut front: Vec<DeckEval> = vec![];
     let mut gkeys: Vec<(usize, usize)> = groups.keys().copied().collect(); gkeys.sort();
     for pc in &gkeys {
-        let kept = k_filter(groups.remove(pc).unwrap().into_list(), kmax, coords.len()).into_list();
+        let list = groups.remove(pc).unwrap().into_list();
+        // with kmax = 1 the online set is already an antichain (every insert drops what it dominates and is
+        // rejected when dominated), so k_filter would keep every deck and only reorder: reproduce its order
+        let kept = if kmax == 1 { kfilter_order(list, coords.len()) } else { k_filter(list, kmax, coords.len()).into_list() };
         front.extend(kept);
     }
     front
     };
     // top_decks > 1: first the decks no other deck beats (fast), then the full pass filtered against them
-    let front: Vec<DeckEval> = if kmax == 1 { run_enum(1, None) } else {
+    let ekey = ENUM_CACHE.with(|c| c.borrow().is_some()).then(|| enum_key(v));
+    let cached = ekey.as_ref().and_then(|k| ENUM_CACHE.with(|c| c.borrow().as_ref().unwrap().iter().find(|e| &e.0 == k).map(|e| (e.1.clone(), e.2, e.3))));
+    let hit = cached.is_some();
+    let front: Vec<DeckEval> = if let Some((f, nd_, ns_)) = cached { n_decks = nd_; n_swapped = ns_; f } else if kmax == 1 { run_enum(1, None) } else {
         let s1 = run_enum(1, None);
         let nd = coords.len();
         let mut sorted: Vec<&DeckEval> = s1.iter().collect();
         sorted.sort_by_key(|x| std::cmp::Reverse(sig_of(&x.dv, false)));      // similar decks share blocks
         let mut kk = Kept::new(nd);
         for x in sorted { kk.insert(x.clone()); }
-        let ids: std::collections::HashSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, x.plain, x.filler)).collect();
+        let ids: crate::FxSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, x.plain, x.filler)).collect();
         if std::env::var("DECK_DEBUG").is_ok() { eprintln!("pass 1: {} decks no other beats, {:.2}s", s1.len(), t0.elapsed().as_secs_f64()); }
         run_enum(kmax, Some(&(kk, ids)))
     };
+    if let (Some(k), false) = (ekey, hit) {
+        ENUM_CACHE.with(|c| { let mut c = c.borrow_mut(); let l = c.as_mut().unwrap(); if l.len() >= 4 { l.remove(0); } l.push((k, front.clone(), n_decks, n_swapped)); });
+    }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("tests {} scans {} avg_lim {:.0} dom_in_scan {} ring {} swapped {} subtrees {} s1 {}", st_tests, st_full, 0.0, st_dom, st_ring, n_swapped, n_subtrees, st_s1); }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("rel {} decks {} enum {:.2}s", nrel, n_decks, t0.elapsed().as_secs_f64()); }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("front {} pareto {:.2}s", front.len(), t0.elapsed().as_secs_f64()); }
@@ -941,7 +1119,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // coordinate, so for any loop the best value over the frontier is reached on this skyline; the ceilings
     // below (which only bound that best value) are built from it. Every frontier deck is still scored when a
     // loop is solved.
-    let sky: Vec<usize> = {
+    // (with top_decks = 1 the frontier is already an antichain, so it is its own skyline)
+    let sky: Vec<usize> = if kmax_top(&dj) == 1 { (0..front.len()).collect() } else {
         let tagged: Vec<DeckEval> = front.iter().enumerate().map(|(i, x)| { let mut y = x.clone(); y.cards = vec![i]; y }).collect();
         let mut v: Vec<usize> = k_filter(tagged, 1, coords.len()).into_list().into_iter().map(|y| y.cards[0]).collect();
         v.sort();
@@ -1049,12 +1228,25 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         i
     };
     // filled on demand: only the umas and grid points the generated foursomes touch are ever computed
+    let bcl: Vec<Cl> = { let mut ix = sky.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&front, &mut ix, nu, &mut out); } out };
     let btab_c: std::cell::RefCell<Vec<[f64; NG]>> = std::cell::RefCell::new(vec![[f64::NAN; NG]; n]);
     let btab = |u: usize, i: usize| -> f64 {
         let v = btab_c.borrow()[u][i];
         if !v.is_nan() { return v; }
         let q = grid[i];
-        let v = sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max);
+        // T rises with every odds coordinate (0 <= q <= 1), so T at a cluster's maximum odds bounds its decks:
+        // clusters go best bound first and stop once a bound (with 1e-9 relative slack for rounding) is below the
+        // best value; a maximum does not depend on visit order, so the value is the same bit for bit
+        let v = if (0.0..=1.0).contains(&q) {
+            let mut bs: Vec<(f64, usize)> = bcl.iter().enumerate().map(|(ci, c)| (model.trainee_fast(u, q, &c.mdw, &c.mdg), ci)).collect();
+            bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            let mut best = 0.0f64;
+            for (b, ci) in bs {
+                if b * (1.0 + 1e-9) < best { break; }
+                for &j in &bcl[ci].mem { best = best.max(model.trainee_fast(u, q, &front[j].dw, &front[j].dg)); }
+            }
+            best
+        } else { sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max) };
         btab_c.borrow_mut()[u][i] = v; v
     };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("q range {:.4}..{:.4} table {:.2}s", qlo, qhi, tq.elapsed().as_secs_f64()); }
@@ -1295,7 +1487,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     };
     // the full coordinate set needs no thinning: the skyline is already thin on it
     let full: Vec<(usize, bool)> = (0..nu).flat_map(|k| [(k, true), (k, false)]).collect();
-    let mut class_ix: HashMap<Vec<(usize, bool)>, usize> = HashMap::new();
+    let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = Default::default();
     let mut class_sky: Vec<Vec<usize>> = vec![];
     let mut ucls: Vec<usize> = vec![usize::MAX; n];
     for &u in &pool {
@@ -1306,6 +1498,26 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         ucls[u] = ci;
     }
     let uview = |u: usize| -> &Vec<usize> { &class_sky[ucls[u]] };
+    // Clusters of each class's decks (recursive median splits on the widest odds coordinate) with their
+    // componentwise maximum odds. T(u, q, deck) rises with every deck odds coordinate (for 0 <= q <= 1, since a
+    // white is worth less than a gold), so T at a cluster's maximum bounds every member; maxima over a class are
+    // found cluster by cluster, best bound first, skipping clusters whose bound (with 1e-9 relative slack for
+    // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
+    // result is the same value bit for bit.
+    let class_cl: Vec<Vec<Cl>> = class_sky.iter().map(|v| { let mut ix = v.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&sky, &mut ix, nu, &mut out); } out }).collect();
+    // max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
+    let bb_max = |u: usize, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64| -> f64 {
+        let cls = &class_cl[ucls[u]];
+        if cls.is_empty() { return uview(u).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max); }
+        let mut bs: Vec<(f64, usize)> = cls.iter().enumerate().map(|(i, c)| (val(&c.mdw, &c.mdg), i)).collect();
+        bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        let mut best = init;
+        for (b, i) in bs {
+            if b * (1.0 + 1e-9) < best { break; }
+            for &j in &cls[i].mem { best = best.max(val(&sky[j].dw, &sky[j].dg)); }
+        }
+        best
+    };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("classes {} sizes {:?} ({:.2}s)", class_sky.len(), class_sky.iter().map(|c| c.len()).collect::<Vec<_>>(), tq.elapsed().as_secs_f64()); }
     // B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
     let btab_c: std::cell::RefCell<Vec<[f64; NG]>> = std::cell::RefCell::new(vec![[f64::NAN; NG]; n]);
@@ -1313,7 +1525,9 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         let v = btab_c.borrow()[u][i];
         if !v.is_nan() { return v; }
         let q = grid[i];
-        let v = uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(model.trainee_fast(u, q, &zero, &zero), f64::max);
+        let init = model.trainee_fast(u, q, &zero, &zero);
+        let v = if (0.0..=1.0).contains(&q) { bb_max(u, init, &|dw, dg| model.trainee_fast(u, q, dw, dg)) }
+            else { uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(init, f64::max) };
         btab_c.borrow_mut()[u][i] = v; v
     };
     // legal deck sets: the skyline itself unless one of its decks blocks the uma
@@ -1360,8 +1574,10 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         let mut tot = 0.0;
         for t in 0..4 {
             let qs: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
-            tot += uview(f[t]).iter().map(|&j| qs.iter().map(|&q| model.trainee_fast(f[t], q, &sky[j].dw, &sky[j].dg)).sum::<f64>())
-                .fold(qs.iter().map(|&q| model.trainee_fast(f[t], q, &zero, &zero)).sum::<f64>(), f64::max);
+            let init = qs.iter().map(|&q| model.trainee_fast(f[t], q, &zero, &zero)).sum::<f64>();
+            let val = |dw: &[f64], dg: &[f64]| qs.iter().map(|&q| model.trainee_fast(f[t], q, dw, dg)).sum::<f64>();
+            tot += if qs.iter().all(|q| (0.0..=1.0).contains(q)) { bb_max(f[t], init, &val) }
+                else { uview(f[t]).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max) };
         }
         fixed * tot / 12.0 * (1.0 + 1e-12)
     };
@@ -1506,6 +1722,19 @@ mod tests {
             let a = m.metric_fast(*f, &qa, &dw, &dg); let b = m.metric_d(*f, &qv, &dw, &dg);
             assert!((a - b).abs() < 1e-15 * b.max(1.0), "{a} vs {b}");
         }
+    }
+    /// dense chain_marginals equals the reference to float noise
+    #[test]
+    fn chain_marginals_dense_matches_ref() {
+        let kinds: Vec<Kind> = vec![(2,2),(3,3),(3,2),(3,1),(4,4),(4,3),(5,5),(5,4),(5,2)];
+        let mut worst = 0.0f64; let mut cnt = 0;
+        fn ms(v: &[Kind], st: usize, left: usize, cur: &mut Vec<Kind>, f: &mut dyn FnMut(&[Kind])) { if !cur.is_empty() { f(cur); } if left == 0 { return; } for i in st..v.len() { cur.push(v[i]); ms(v, i, left - 1, cur, f); cur.pop(); } }
+        ms(&kinds, 0, 6, &mut vec![], &mut |ks| {
+            let a = chain_marginals_ref(ks, 7.1); let b = chain_marginals_dense(ks, 7.1); cnt += 1;
+            for (k, v) in &a { for (x, y) in v.iter().zip(&b[k]) { worst = worst.max((x - y).abs()); } }
+        });
+        eprintln!("{cnt} multisets, max |dense - ref| = {worst:e}");
+        assert!(worst < 1e-14);
     }
     /// The character rule: a card blocks its own character and, for a group card, every member.
     #[test]

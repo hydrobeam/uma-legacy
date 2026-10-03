@@ -10,6 +10,7 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 | `data` | Global + GM-era exports (data.json, web_skills.json, web_cards.json) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
 | `events` | card event caches from `pkg/loopopt/gametora/` + manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary, tests | cargo |
+| `pb` | the exact pairwise affinity ceilings of every uma pair, stored as `pb` in both `data.json` files (`export/add_pb.py`, via `loopopt pbtable`); saves 15-25% of a typical search. The table carries a fingerprint of the umas, goals and streak penalties; when it does not match (data re-exported, `PB_VERSION` bumped) the solver ignores it and computes the ceilings itself, and `cargo test` warns until `pb` is rerun | native |
 | `wasm` | wasm32 build (build-std), wasm-opt -O3, example.json | rust-src, node (`webapp/node_modules`) |
 | `page` | `webapp/dist/index.html`: the template, `webapp/src/style.css` and the `webapp/src/*.js` modules bundled by esbuild (one inline IIFE, unminified), with wasm, both eras and `webapp/img` embedded | node (`webapp/node_modules`, installed by `npm ci` on first use) |
 | `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (icons 96 px, cards 192 px: 2x their largest display) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |
@@ -19,6 +20,8 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 Browser checks: `./build.sh test` runs `webapp/nodebrowser.mjs` (Node Playwright, Chromium and Firefox, ~45 s): first search and odds, auto-search and restart, roster, card picker, panels, borrowed card, popups, phone layout, GM era, WCAG AAA contrast. `node webapp/nodebrowser.mjs chromium roster` runs a subset. Run it after any page change. WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
 
 Manual card entries (pal and group cards, written by hand; the build script decodes only SR/SSR chains): Global ones live in `pkg/loopopt/card_events.json` (every entry except the generated ones, `src` exactly "gametora training_events", survives `events`), GM ones in `jp/export/manual_gm*.json`.
+
+Speeding up the solver: follow `docs/PERF.md` (protocol, measurement, pitfalls); results must stay byte-identical.
 
 `val/ref__*` holds the current reference outputs; when a data change moves results on purpose, rerun `val`, check the diff, then copy the new outputs over `ref__*` in the same commit. Releases are tagged `vN` to match the published page version.
 

@@ -73,6 +73,9 @@ OUTFIT=1008:100802 uv run build_base.py && OUT=../data_xmas_vodka.json uv run ex
 
 # 2. build
 cargo build --release
+# optional, after any export: store the exact pairwise ceilings in data.json ("pb", with a fingerprint of the
+# umas/goals/penalties; ignored when stale) so searches skip computing them (../../build.sh pb does both eras)
+uv run export/add_pb.py target/release/loopopt data.json
 
 # 3. run a job file
 target/release/loopopt data.json jobs/best_no_oguri_yukino_inari.json > result.json
