@@ -37,17 +37,17 @@ pub static PROF: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
 fn prof(i: usize, t: Instant) { PROF[i].fetch_add(t.elapsed().as_nanos() as u64, Relaxed); PROF[i+4].fetch_add(1, Relaxed); }
 /// PROTOTYPE phase timers (perf review): inclusive nanoseconds and call counts per phase, printed by the CLI when
 /// LOOPOPT_PROF is set.
-pub static PH: [AtomicU64; 48] = [const { AtomicU64::new(0) }; 48];
-pub(crate) const PH_NAMES: [&str; 24] = ["load", "model+sources", "card dominance", "chain_marginals", "enumeration+pareto",
+pub static PH: [AtomicU64; 50] = [const { AtomicU64::new(0) }; 50];
+pub(crate) const PH_NAMES: [&str; 25] = ["load", "model+sources", "card dominance", "chain_marginals", "enumeration+pareto",
     "skyline", "pair_ceilings", "class thinning", "btab fill", "band gen", "relaxed()", "optimize()", "best_for()",
-    "alt deck search", "output json", "shared ceilings", "shared front scoring", "make_key", "run_deck_relaxed", "out:ring+last", "out:count", "out:remove+insert", "k_filter", "out:all"];
+    "alt deck search", "output json", "shared ceilings", "shared front scoring", "make_key", "run_deck_relaxed", "out:ring+last", "out:count", "out:remove+insert", "k_filter", "out:all", "class clusters"];
 pub(crate) struct PhT(pub usize, pub Instant);
-impl Drop for PhT { fn drop(&mut self) { PH[self.0].fetch_add(self.1.elapsed().as_nanos() as u64, Relaxed); PH[self.0 + 24].fetch_add(1, Relaxed); } }
+impl Drop for PhT { fn drop(&mut self) { PH[self.0].fetch_add(self.1.elapsed().as_nanos() as u64, Relaxed); PH[self.0 + 25].fetch_add(1, Relaxed); } }
 #[macro_export]
 macro_rules! ph { ($i:expr) => { let _ph = $crate::PhT($i, Instant::now()); } }
 pub(crate) fn ph_report() {
     if std::env::var("LOOPOPT_PROF").is_err() { return; }
-    for i in 0..24 { let n = PH[i + 24].load(Relaxed); if n == 0 { continue; }
+    for i in 0..25 { let n = PH[i + 25].load(Relaxed); if n == 0 { continue; }
         eprintln!("PH {:>22} {:>9.4}s  calls {:>9}", PH_NAMES[i], PH[i].load(Relaxed) as f64 / 1e9, n); }
 }
 
@@ -1158,7 +1158,7 @@ pub fn cli_main() {
             deck::apply_events_db(&mut v, &sk, &db);
         }
         let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
-        PH[0].fetch_add(load_ns + t_load.elapsed().as_nanos() as u64 - load_ns, Relaxed); PH[24].fetch_add(1, Relaxed);
+        PH[0].fetch_add(load_ns + t_load.elapsed().as_nanos() as u64 - load_ns, Relaxed); PH[25].fetch_add(1, Relaxed);
         let t0 = Instant::now();
         let mut out = deck::run_deck(&d, &sk, &cr, &v);
         out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());

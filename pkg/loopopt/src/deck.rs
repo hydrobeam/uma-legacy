@@ -1198,7 +1198,19 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         if !v.is_nan() { return v; }
         crate::ph!(8);
         let q = grid[i];
-        let v = sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max);
+        // T rises with every odds coordinate (0 <= q <= 1), so T at a cluster's maximum odds bounds its decks:
+        // clusters go best bound first and stop once a bound (with 1e-9 relative slack for rounding) is below the
+        // best value; a maximum does not depend on visit order, so the value is the same bit for bit
+        let v = if (0.0..=1.0).contains(&q) {
+            let mut bs: Vec<(f64, usize)> = clusters.iter().enumerate().map(|(ci, c)| (model.trainee_fast(u, q, &c.w, &c.g), ci)).collect();
+            bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            let mut best = 0.0f64;
+            for (b, ci) in bs {
+                if b * (1.0 + 1e-9) < best { break; }
+                for &j in &clusters[ci].kids { best = best.max(model.trainee_fast(u, q, &front[j].dw, &front[j].dg)); }
+            }
+            best
+        } else { sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max) };
         btab_c.borrow_mut()[u][i] = v; v
     };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("q range {:.4}..{:.4} table {:.2}s", qlo, qhi, tq.elapsed().as_secs_f64()); }
@@ -1456,6 +1468,46 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     }
     drop(ph7);
     let uview = |u: usize| -> &Vec<usize> { &class_sky[ucls[u]] };
+    // Clusters of each class's decks (recursive median splits on the widest odds coordinate) with their
+    // componentwise maximum odds. T(u, q, deck) rises with every deck odds coordinate (for 0 <= q <= 1, since a
+    // white is worth less than a gold), so T at a cluster's maximum bounds every member; maxima over a class are
+    // found cluster by cluster, best bound first, skipping clusters whose bound (with 1e-9 relative slack for
+    // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
+    // result is the same value bit for bit.
+    let ph24 = crate::PhT(24, Instant::now());
+    struct Cl { mdw: Vec<f64>, mdg: Vec<f64>, mem: Vec<usize> }
+    fn split(sky: &[PDeck], ix: &mut [usize], nu: usize, out: &mut Vec<Cl>) {
+        if ix.len() <= 16 {
+            let mut mdw = vec![0.0f64; nu]; let mut mdg = vec![0.0f64; nu];
+            for &j in ix.iter() { for k in 0..nu { mdw[k] = mdw[k].max(sky[j].dw[k]); mdg[k] = mdg[k].max(sky[j].dg[k]); } }
+            out.push(Cl { mdw, mdg, mem: ix.to_vec() });
+            return;
+        }
+        let coord = |j: usize, c: usize| if c < nu { sky[j].dw[c] } else { sky[j].dg[c - nu] };
+        let c = (0..2 * nu).max_by(|&a, &b| {
+            let r = |c: usize| { let (lo, hi) = ix.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &j| (lo.min(coord(j, c)), hi.max(coord(j, c)))); hi - lo };
+            r(a).partial_cmp(&r(b)).unwrap()
+        }).unwrap();
+        let mid = ix.len() / 2;
+        ix.select_nth_unstable_by(mid, |&a, &b| coord(a, c).partial_cmp(&coord(b, c)).unwrap());
+        let (l, r) = ix.split_at_mut(mid);
+        split(sky, l, nu, out); split(sky, r, nu, out);
+    }
+    let class_cl: Vec<Vec<Cl>> = class_sky.iter().map(|v| { let mut ix = v.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&sky, &mut ix, nu, &mut out); } out }).collect();
+    drop(ph24);
+    // max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
+    let bb_max = |u: usize, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64| -> f64 {
+        let cls = &class_cl[ucls[u]];
+        if cls.is_empty() { return uview(u).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max); }
+        let mut bs: Vec<(f64, usize)> = cls.iter().enumerate().map(|(i, c)| (val(&c.mdw, &c.mdg), i)).collect();
+        bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        let mut best = init;
+        for (b, i) in bs {
+            if b * (1.0 + 1e-9) < best { break; }
+            for &j in &cls[i].mem { best = best.max(val(&sky[j].dw, &sky[j].dg)); }
+        }
+        best
+    };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("classes {} sizes {:?} ({:.2}s)", class_sky.len(), class_sky.iter().map(|c| c.len()).collect::<Vec<_>>(), tq.elapsed().as_secs_f64()); }
     // B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
     let btab_c: std::cell::RefCell<Vec<[f64; NG]>> = std::cell::RefCell::new(vec![[f64::NAN; NG]; n]);
@@ -1464,7 +1516,9 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         if !v.is_nan() { return v; }
         crate::ph!(8);
         let q = grid[i];
-        let v = uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(model.trainee_fast(u, q, &zero, &zero), f64::max);
+        let init = model.trainee_fast(u, q, &zero, &zero);
+        let v = if (0.0..=1.0).contains(&q) { bb_max(u, init, &|dw, dg| model.trainee_fast(u, q, dw, dg)) }
+            else { uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(init, f64::max) };
         btab_c.borrow_mut()[u][i] = v; v
     };
     // legal deck sets: the skyline itself unless one of its decks blocks the uma
@@ -1514,8 +1568,10 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         let mut tot = 0.0;
         for t in 0..4 {
             let qs: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
-            tot += uview(f[t]).iter().map(|&j| qs.iter().map(|&q| model.trainee_fast(f[t], q, &sky[j].dw, &sky[j].dg)).sum::<f64>())
-                .fold(qs.iter().map(|&q| model.trainee_fast(f[t], q, &zero, &zero)).sum::<f64>(), f64::max);
+            let init = qs.iter().map(|&q| model.trainee_fast(f[t], q, &zero, &zero)).sum::<f64>();
+            let val = |dw: &[f64], dg: &[f64]| qs.iter().map(|&q| model.trainee_fast(f[t], q, dw, dg)).sum::<f64>();
+            tot += if qs.iter().all(|q| (0.0..=1.0).contains(q)) { bb_max(f[t], init, &val) }
+                else { uview(f[t]).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max) };
         }
         fixed * tot / 12.0 * (1.0 + 1e-12)
     };
