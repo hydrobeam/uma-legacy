@@ -8,7 +8,7 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
 2. Double-click **`Legacy Loop Planner.html`**. It opens in any modern browser (Chrome, Edge, Firefox, Safari), works offline, and needs no install or server. The whole solver is inside that one file.
 3. Follow "Using the page" below.
 
-`webapp/index.template.html` is the source the page is built from. Opened on its own it has no roster and no solver, and it says so.
+The page is built from `webapp/index.template.html` (markup), `webapp/src/` (stylesheet and script modules) and the embedded data; the template on its own is not a working page.
 
 ## Using the page
 

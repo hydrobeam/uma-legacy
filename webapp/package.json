@@ -11,5 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "binaryen": "^132.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

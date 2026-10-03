@@ -4,7 +4,7 @@
 #   events   card event caches from the GameTora files + manual entries (Global and both GM variants)
 #   native   release binary + tests
 #   wasm     wasm + wasm-opt + example.json
-#   page     webapp/dist/index.html (embeds wasm, both eras' data and webapp/img)
+#   page     webapp/dist/index.html (bundles webapp/src with esbuild; embeds wasm, both eras' data and webapp/img)
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   test     browser regression suite on webapp/dist/index.html (webapp/nodebrowser.mjs; Chromium + Firefox)
@@ -31,7 +31,7 @@ step_wasm() {
            && node example.mjs | tail -1)
 }
 step_test() { node "$W/nodebrowser.mjs"; }
-step_page() { (cd "$W" && "${PY[@]}" build.py); }
+step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 step_val() { local tag="${1:?val needs a tag}"
   bash "$R/val/runall.sh" "$C/target/release/loopopt" "$tag" > "$R/val/${tag}_times.txt"; "${PY[@]}" "$R/val/cmp2.py" "$tag" ref

@@ -11,7 +11,7 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 | `events` | card event caches from `pkg/loopopt/gametora/` + manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary, tests | cargo |
 | `wasm` | wasm32 build (build-std), wasm-opt -O3, example.json | rust-src, node (`webapp/node_modules`) |
-| `page` | `webapp/dist/index.html` with wasm, both eras and `webapp/img` embedded | |
+| `page` | `webapp/dist/index.html`: the template, `webapp/src/style.css` and the `webapp/src/*.js` modules bundled by esbuild (one inline IIFE, unminified), with wasm, both eras and `webapp/img` embedded | node (`webapp/node_modules`, installed by `npm ci` on first use) |
 | `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (icons 96 px, cards 192 px: 2x their largest display) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |
 | `val TAG` | 24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*` | native |
 
