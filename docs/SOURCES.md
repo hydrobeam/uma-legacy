@@ -4,8 +4,8 @@
 
 | What | Where | Notes |
 |---|---|---|
-| Global `master.mdb` | the owner's game install (local data folder) | not in git; put at `pkg/loopopt/export/master.mdb` |
-| JP `master.mdb` | https://github.com/SimpleSandman/UmaMusumeMetaMasterMDB (`master/master.mdb`; commit b5f50b5, 2026-09-30 was used) | not in git; put at `jp/export/master.mdb`. The GM-era export cuts by release date (L'Arc launch, 2023-08-24). Older mirrors: SimpleSandman/UmaMusumeMasterMDB (2022), ChihyuenWang/Umamusume-MasterMDB (2024) |
+| Global `master.mdb` | the owner's game install (local data folder) | shipped in the handoff zip at `pkg/loopopt/export/master.mdb` (copy of 2026-10-01); not tracked by git |
+| JP `master.mdb` | https://github.com/SimpleSandman/UmaMusumeMetaMasterMDB (`master/master.mdb`; commit b5f50b5, 2026-09-30 was used) | shipped in the handoff zip at `jp/export/master.mdb`; not tracked by git. The GM-era export cuts by release date (L'Arc launch, 2023-08-24). Older mirrors: SimpleSandman/UmaMusumeMasterMDB (2022), ChihyuenWang/Umamusume-MasterMDB (2024) |
 | GameTora training-event files | `pkg/loopopt/gametora/` (cached; `dict_evrew`, `dict_te_pairs_en`, `skills`, `training_events_{sr,ssr,friend,group,scenario,shared,char_card}`) | the only source of event rewards. Reward code k → `dict_evrew[k-36]`. Choice = `[label, rewards]`. Titles: master.mdb `text_data` category 181 by story id |
 
 ## Models we adopted or checked against

@@ -6,8 +6,9 @@
    `wasm32-unknown-unknown` target installed it also works without build-std), Node + npm (`cd webapp && npm ci`
    for binaryen's `wasm-opt`/`wasm2js`), Python 3 (stdlib only; Playwright + Chromium for the optional browser
    checks `webapp/pw*.py`).
-2. Data: copy the Global `master.mdb` to `pkg/loopopt/export/master.mdb` and the JP one
-   (SimpleSandman/UmaMusumeMetaMasterMDB, `master/master.mdb`) to `jp/export/master.mdb`. Neither is in git.
+2. Data: the handoff zip already has the Global `master.mdb` at `pkg/loopopt/export/master.mdb` and the JP one
+   (SimpleSandman/UmaMusumeMetaMasterMDB `master/master.mdb`, 2026-09-30) at `jp/export/master.mdb`. Neither is
+   tracked by git; keep them out of commits. After a game update, replace them from the same sources.
 3. `./build.sh all` (data, events, native + tests, wasm, page). Expect 29 tests passing, "178 cards written" /
    "222 cards written" twice from `events`, and `webapp/dist/index.html` about 13.6 MB.
 4. `python3 val/event_audit.py` → "every target hint is accounted for".
@@ -86,14 +87,8 @@ provably only rescaled odds.
   secondary mode.
 - The player is assumed to set prioritized skills so event choices reach the counted hints.
 - Pal first-year dates don't fire in Unity Cup IT (owner); a page option models them firing.
-- Visual assets: the earlier session declined to extract or republish game art (from uma.moe, GameTora or game
-  files) into the page; the owner disagreed and pushed back several times. The page has no images; any change
-  there is the owner's decision to raise with the new session.
-- Memory rules the owner removed earlier (a "no hacking/modding/reverse engineering" hard rule) are gone; the
-  project reads public master data and community data only.
 
 ## 7. Not included, and why
 
-- `master.mdb` files: game data, on the owner's machine.
 - Scratch experiments from the old workspace (`_gpexp`, `_affexp`, `_hintexp`, `_allexp`, `_x_*`): superseded;
   their conclusions are in the commits for v19–v21.
