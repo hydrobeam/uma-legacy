@@ -78,9 +78,9 @@ input[type="search"] { width: 100%; }
 .rtools { gap: 6px; }
 .tkey { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--ink); }
 .tkey span { display: inline-flex; align-items: center; gap: 6px; }
-.tkey i { display: inline-block; width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #e9a37a, #6f8fd6); }
-.tkey i.k-out { filter: grayscale(1); opacity: 0.45; }
-.tkey i.k-req { box-shadow: 0 0 0 2px var(--req); }
+.tkey i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
+.tkey i.k-out { background: #a3a9b3; }
+.tkey i.k-req { background: var(--req); }
 .sortdd { position: relative; flex: none; }
 .sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); padding: 4px; }
@@ -339,7 +339,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" style="flex:1">
         <div class="sortdd" id="rs-dd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort umas"></button>
           <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
-      <div class="tkey" aria-hidden="true"><span><i class="k-own"></i>Owned</span><span><i class="k-out"></i>Not owned</span><span><i class="k-req"></i>Must include</span></div>
+      <div class="tkey" aria-hidden="true"><span><i class="k-out"></i>Not owned</span><span><i class="k-req"></i>Must include</span></div>
       <div class="roster" id="roster"></div>
       <p class="hint" id="r-count"></p>
       <p class="hint">Outfits decide which skills a trainee can buy without a hint; race odds are the same across outfits.</p>
