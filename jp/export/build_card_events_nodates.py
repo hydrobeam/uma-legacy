@@ -21,13 +21,14 @@ out = {}
 for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
     for cid, evs in json.load(open(glob.glob(G + f)[0])):
         if cid not in glob_cards: continue
-        chain = []; ends_out = []
+        chain = []; ends_out = []; risk = []
         for e in evs:
             lk = link.get(int(e[2]))
             if not lk: continue
-            best = {}; endb = {}; has_end = False
+            best = {}; endb = {}; has_end = False; first = True
             for ch in e[1]:
                 if not (isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list)): continue
+                top, first = first, False   # IT takes the first choice unless a prioritized skill is elsewhere
                 branches = [[]]; ends = [False]
                 for k in ch[1]:
                     r = reward(k)
@@ -36,8 +37,11 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
                     if r and r[0] == 'sk' and r[2] in skname: branches[-1].append(skname[r[2]])
                     if r and r[0] == 'sr': branches[-1].extend(skname[x['d']] for x in r[2] if x['d'] in skname)
                 # 'ee' ends the card's event chain. A choice that ends it on every outcome is a separate "end the
-                # chain here" option; one that ends it on only some outcomes is treated as unsafe and left out.
-                if any(ends) and not all(ends): continue
+                # chain here" option. One that ends it on only some outcomes is not offered as a choice; when it is
+                # IT's default (first) choice, the chain stops at this link on k of its n outcomes (stop_risk).
+                if any(ends) and not all(ends):
+                    if top: risk.append([lk, sum(ends), len(ends)])
+                    continue
                 tgt = endb if all(ends) else best
                 if all(ends): has_end = True
                 names = {n for b in branches for n in b}
@@ -46,7 +50,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
                     tgt[n] = max(tgt.get(n, 0), p)
             if best: chain.append([lk, sorted([n if p == 1 else [n, p] for n, p in best.items()], key=str)])
             if has_end: ends_out.append([lk, sorted([n if p == 1 else [n, p] for n, p in endb.items()], key=str)])
-        out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), "status": "complete", "src": "gametora training_events"}
+        out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), "status": "complete", "src": "gametora training_events"}
 manual = json.load(open('manual_gm_nodates.json'))['cards']
 for k, v in manual.items():
     if any(x in v for x in ('always', 'disabled', 'chance')): out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}

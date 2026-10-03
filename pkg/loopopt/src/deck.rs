@@ -44,6 +44,8 @@ pub(crate) struct DeckJob {
     /// (card, link, group, 1 | 2, chance given the link fires)
     #[serde(default)] pub end_links: Vec<(u32, u8)>,
     #[serde(default)] pub ends: Vec<(u32, u8, u32, u8, f64)>,
+    /// links where IT's default choice ends a card's chain on some outcomes: (card, link, k outcomes, of n)
+    #[serde(default)] pub stop_risk: Vec<(u32, u8, u8, u8)>,
     #[serde(default)] pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck
     #[serde(default)] pub borrow: bool,
@@ -87,7 +89,12 @@ fn d_rar() -> u8 { 2 }   // SR: R cards have no chain events, so this only filte
 /// Chain kind of a deck entry: (chain length, link the chain stops at). A card played normally stops at its last
 /// link; a card whose chain the player ends early (a choice that ends the chain) stops sooner. While it runs, an
 /// entry is picked with weight = links it has left (length - done); once it reaches its stop it is out.
-type Kind = (u8, u8);
+/// A deck entry's chain kind: (chain links, link it stops after, stop risk). Stop risk: links where IT's default
+/// choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 = none), only links before the stop.
+type Kind = (u8, u8, u32);
+fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
+    risk.iter().filter(|r| r.0 >= 1 && r.0 < stop && r.0 <= 4 && r.2 > 0).fold(0u32, |c, r| c | ((((r.1 as u32) << 4) | r.2 as u32) << (8 * (r.0 as u32 - 1))))
+}
 
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
 /// Dense, deterministic, memoised version of `chain_marginals_ref`. States are mixed-radix indices over the
@@ -99,9 +106,43 @@ fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     let mut ks: Vec<Kind> = kinds.to_vec(); ks.sort();
     let key = (ks, lambda.to_bits());
     if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) { return r; }
-    let r = chain_marginals_dense(&key.0, lambda);
+    let r = if key.0.iter().any(|k| k.2 != 0) { chain_marginals_risk(&key.0, lambda) } else { chain_marginals_dense(&key.0, lambda) };
     CM.with(|c| c.borrow_mut().insert(key, r.clone()));
     r
+}
+/// Kinds with a stop risk: the chance that IT's default choice ends a chain at a link is independent of how many
+/// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
+/// plain kind (links, realised stop): the entry competes for events with its full chain until it stops, then frees
+/// its remaining slots, exactly as a chosen early end does. Exact.
+fn chain_marginals_risk(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+    // per entry: [(realised stop, probability)]
+    let alts: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(links, stop, risk)| {
+        let mut v = vec![]; let mut go = 1.0f64;
+        for l in 1..stop.min(5) {
+            let b = (risk >> (8 * (l as u32 - 1))) & 0xff;
+            if b == 0 { continue; }
+            let q = (b >> 4) as f64 / (b & 15) as f64;
+            v.push((l, go * q)); go *= 1.0 - q;
+        }
+        v.push((stop, go)); let _ = links; v
+    }).collect();
+    let n = kinds.len();
+    let mut acc: Vec<Vec<f64>> = kinds.iter().map(|k| vec![0.0; k.1 as usize]).collect();
+    let mut pick = vec![0usize; n];
+    loop {
+        let w: f64 = (0..n).map(|i| alts[i][pick[i]].1).product();
+        if w > 0.0 {
+            let real: Vec<Kind> = (0..n).map(|i| (kinds[i].0, alts[i][pick[i]].0, 0)).collect();
+            let m = chain_marginals(&real, lambda);
+            for i in 0..n { if let Some(v) = m.get(&real[i]) { for (k, x) in v.iter().enumerate() { acc[i][k] += w * x; } } }
+        }
+        let mut i = 0;
+        while i < n { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
+        if i == n { break; }
+    }
+    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    for i in 0..n { out.entry(kinds[i]).or_insert_with(|| acc[i].clone()); }
+    out
 }
 fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     let n = kinds.len();
@@ -111,7 +152,7 @@ fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>>
     let mut pois = vec![0.0f64; emax + 1];
     pois[0] = (-lambda).exp();
     for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
-    let total: usize = kinds.iter().map(|&(_, stop)| stop as usize).sum();
+    let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let last = emax.min(total);
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
     let mut stride = vec![0usize; n]; let mut nst = 1usize;
@@ -159,7 +200,7 @@ fn chain_marginals_ref(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     let mut pois = vec![0.0f64; emax + 1];
     pois[0] = (-lambda).exp();
     for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
-    let total: usize = kinds.iter().map(|&(_, stop)| stop as usize).sum();
+    let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n];      // P(entry i has >= k+1 links done), accumulated over E
     let mut st: HashMap<Vec<u8>, f64> = HashMap::new();
@@ -219,6 +260,7 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
     let mut od: Vec<Value> = v["odds_events"].as_array().cloned().unwrap_or_default();
     let mut el: Vec<Value> = v["end_links"].as_array().cloned().unwrap_or_default();
     let mut en: Vec<Value> = v["ends"].as_array().cloned().unwrap_or_default();
+    let mut sr: Vec<Value> = v["stop_risk"].as_array().cloned().unwrap_or_default();
     if let Some(cards) = db["cards"].as_object() {
         for (id, c) in cards {
             let Ok(id) = id.parse::<u32>() else { continue };
@@ -237,12 +279,13 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
                     if let Some((g, lv)) = look(name) { en.push(json!([id, l, g, lv, p])); }
                 }
             }
+            for r in c["stop_risk"].as_array().into_iter().flatten() { sr.push(json!([id, r[0], r[1], r[2]])); }
             for n in c["always"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(n.as_str().unwrap_or("")) { ev.push(json!([id, g, lv, 0])); } }
             for e in c["chance"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(e[0].as_str().unwrap_or("")) { od.push(json!([id, g, lv, e[1].as_f64().unwrap_or(0.0)])); } }
         }
     }
     v["events"] = Value::Array(ev); v["events_p"] = Value::Array(evp); v["odds_events"] = Value::Array(od);
-    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en);
+    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr);
 }
 
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
@@ -697,18 +740,19 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let useful = !ev_for(c.id).is_empty() || !odds_for(c.id).is_empty() || !train(c).is_empty();
         let locked = dj.lock_cards.contains(&c.id);
         if c.pal {
-            if useful || locked { rel.push(i); kind.push((0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
+            if useful || locked { rel.push(i); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
         } else if c.links == 0 {
             // a card without chain events (R cards): training hints only, and like a pal it takes no chain slot
-            if useful || locked { rel.push(i); kind.push((0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
+            if useful || locked { rel.push(i); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
         } else if c.rarity >= dj.min_rarity {
-            if useful || locked { rel.push(i); kind.push((c.links, c.links)); endk.push(0); srcs.push(make_src(c, None)); }
+            let risk: Vec<(u8, u8, u8)> = dj.stop_risk.iter().filter(|r| r.0 == c.id).map(|r| (r.1, r.2, r.3)).collect();
+            if useful || locked { rel.push(i); kind.push((c.links, c.links, stop_risk_code(&risk, c.links))); endk.push(0); srcs.push(make_src(c, None)); }
             // the same card played to end its chain at link l, as its own entry (one character, so a deck holds
             // at most one of a card's entries)
             for l in end_links_for(c.id) {
                 if l == 0 || l > c.links { continue; }
                 let v = make_src(c, Some(l));
-                if has_src(&v) || locked { rel.push(i); kind.push((c.links, l)); endk.push(l); srcs.push(v); }
+                if has_src(&v) || locked { rel.push(i); kind.push((c.links, l, stop_risk_code(&risk, l))); endk.push(l); srcs.push(v); }
             }
         }
     }
@@ -731,7 +775,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         for c in cards.iter() {
             if !c.pal || is_owned(c.id) || plain_chars.contains(&c.chara) || seen.contains(&c.chara) || rel.iter().any(|&r| cards[r].chara == c.chara) { continue; }
             let best = cards.iter().enumerate().filter(|(_, x)| x.pal && x.chara == c.chara).max_by_key(|(_, x)| x.rarity).unwrap().0;
-            seen.push(c.chara); rel.push(best); kind.push((0, 0)); endk.push(0); srcs.push(make_src(cards[best], None));
+            seen.push(c.chara); rel.push(best); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(cards[best], None));
         }
     }
     let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
@@ -755,8 +799,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let mut robust: Vec<Vec<usize>> = vec![];
     {
         let nrel0 = rel.len();
-        let mut kindset: Vec<Kind> = (0..nrel0).filter(|&j| kind[j] != (0, 0)).map(|j| kind[j]).collect();
-        kindset.push((2, 2)); kindset.sort(); kindset.dedup();
+        let mut kindset: Vec<Kind> = (0..nrel0).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
+        kindset.push((2, 2, 0)); kindset.sort(); kindset.dedup();
         let others = dj.deck_size.saturating_sub(1);
         fn multisets(vals: &[Kind], start: usize, left: usize, cur: &mut Vec<Kind>, out: &mut dyn FnMut(&[Kind])) {
             out(cur);
@@ -764,7 +808,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
             for i in start..vals.len() { cur.push(vals[i]); multisets(vals, i, left - 1, cur, out); cur.pop(); }
         }
         // lowest odds of each link over every possible set of other chain cards
-        let needs_marg = |kd: Kind| (0..nrel0).any(|j| kind[j] != (0, 0) && kind[j] == kd && !srcs[j].chains.is_empty());
+        let needs_marg = |kd: Kind| (0..nrel0).any(|j| kind[j] != (0, 0, 0) && kind[j] == kd && !srcs[j].chains.is_empty());
         let mut min_marg: HashMap<Kind, Vec<f64>> = HashMap::new();
         for &kd in &kindset {
             if !needs_marg(kd) { continue; }
@@ -874,8 +918,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let ebor: Vec<bool> = rel.iter().map(|&r| !is_owned(cards[r].id)).collect();
     // masks of the deck-independent dominators (`robust`), split by whether the dominator is owned
     // Chain-kind key of a deck = multiset of its chain entries' kinds plus fillers (2, 2), coded as counts in base 7.
-    let mut kinds_all: Vec<Kind> = (0..nrel).filter(|&j| kind[j] != (0, 0)).map(|j| kind[j]).collect();
-    kinds_all.push((2, 2)); kinds_all.sort(); kinds_all.dedup();
+    let mut kinds_all: Vec<Kind> = (0..nrel).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
+    kinds_all.push((2, 2, 0)); kinds_all.sort(); kinds_all.dedup();
     let kpos: Vec<u64> = (0..kinds_all.len()).map(|i| 7u64.pow(i as u32)).collect();
     // Per key: each entry's miss chances (white, gold) under the key's chain odds, and for each entry B the
     // entries that beat it on every target under those odds (same kind, so swapping keeps the odds; per target no
@@ -930,10 +974,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     //    deck_size - 1 + top_decks characters never appears.
     // Owned cards only count borrowed dominators when the deck has room for a borrowed card.
     let nk = kinds_all.len();
-    let ki22 = kinds_all.iter().position(|&k| k == (2, 2)).unwrap();
-    let by_kind: Vec<Vec<usize>> = (0..nk).map(|i| (0..nrel).filter(|&j| kind[j] != (0, 0) && kind[j] == kinds_all[i]).collect()).collect();
+    let ki22 = kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
+    let by_kind: Vec<Vec<usize>> = (0..nk).map(|i| (0..nrel).filter(|&j| kind[j] != (0, 0, 0) && kind[j] == kinds_all[i]).collect()).collect();
     // entries without chain slots: pals, group cards and R cards
-    let pal_ents: Vec<usize> = (0..nrel).filter(|&j| kind[j] == (0, 0)).collect();
+    let pal_ents: Vec<usize> = (0..nrel).filter(|&j| kind[j] == (0, 0, 0)).collect();
     let mut n_subtrees = 0usize;
     let mut dv = vec![0.0f64; coords.len()];
     let (mut st_tests, mut st_full, mut st_dom, mut st_ring) = (0usize, 0usize, 0usize, 0usize);
@@ -1726,7 +1770,7 @@ mod tests {
     /// dense chain_marginals equals the reference to float noise
     #[test]
     fn chain_marginals_dense_matches_ref() {
-        let kinds: Vec<Kind> = vec![(2,2),(3,3),(3,2),(3,1),(4,4),(4,3),(5,5),(5,4),(5,2)];
+        let kinds: Vec<Kind> = vec![(2, 2, 0),(3, 3, 0),(3, 2, 0),(3, 1, 0),(4, 4, 0),(4, 3, 0),(5, 5, 0),(5, 4, 0),(5, 2, 0)];
         let mut worst = 0.0f64; let mut cnt = 0;
         fn ms(v: &[Kind], st: usize, left: usize, cur: &mut Vec<Kind>, f: &mut dyn FnMut(&[Kind])) { if !cur.is_empty() { f(cur); } if left == 0 { return; } for i in st..v.len() { cur.push(v[i]); ms(v, i, left - 1, cur, f); cur.pop(); } }
         ms(&kinds, 0, 6, &mut vec![], &mut |ks| {
@@ -1749,15 +1793,31 @@ mod tests {
     /// and first links fire far more often than last links.
     #[test]
     fn chain_model_calibration() {
-        let m = chain_marginals(&[(3, 3), (3, 3)], 7.1);
-        assert!((m[&(3, 3)][2] - 0.81).abs() < 0.03, "{:?}", m);
-        assert!(m[&(3, 3)][0] > 0.97);
-        let m9 = chain_marginals(&[(3, 3), (3, 3), (3, 3)], 7.1);
-        assert!((m9[&(3, 3)][2] - 0.50).abs() < 0.03, "{:?}", m9);
-        let one = chain_marginals(&[(3, 3)], 7.1);
-        assert!(one[&(3, 3)][2] > 0.95);
+        let m = chain_marginals(&[(3, 3, 0), (3, 3, 0)], 7.1);
+        assert!((m[&(3, 3, 0)][2] - 0.81).abs() < 0.03, "{:?}", m);
+        assert!(m[&(3, 3, 0)][0] > 0.97);
+        let m9 = chain_marginals(&[(3, 3, 0), (3, 3, 0), (3, 3, 0)], 7.1);
+        assert!((m9[&(3, 3, 0)][2] - 0.50).abs() < 0.03, "{:?}", m9);
+        let one = chain_marginals(&[(3, 3, 0)], 7.1);
+        assert!(one[&(3, 3, 0)][2] > 0.95);
         // ending a chain early frees its slot: the other card's links fire more often
-        let early = chain_marginals(&[(3, 3), (3, 2)], 7.1);
-        assert!(early[&(3, 3)][2] > m[&(3, 3)][2] && early[&(3, 2)].len() == 2);
+        let early = chain_marginals(&[(3, 3, 0), (3, 2, 0)], 7.1);
+        assert!(early[&(3, 3, 0)][2] > m[&(3, 3, 0)][2] && early[&(3, 2, 0)].len() == 2);
+    }
+    /// Stop risk (IT's default choice ends the chain on some outcomes) is the exact mixture over where it stops.
+    #[test]
+    fn chain_stop_risk_is_a_mixture() {
+        let r12 = stop_risk_code(&[(1, 1, 2), (2, 1, 2)], 3);          // ends on 1 of 2 outcomes at links 1 and 2
+        let r2 = stop_risk_code(&[(2, 1, 2)], 3);
+        assert_eq!(stop_risk_code(&[(2, 1, 2), (3, 1, 2)], 2), 0);     // links at or past the stop don't matter
+        let full = chain_marginals(&[(3, 3, 0)], 7.1)[&(3, 3, 0)].clone();
+        let alone = chain_marginals(&[(3, 3, r12)], 7.1)[&(3, 3, r12)].clone();
+        assert!((alone[0] - full[0]).abs() < 1e-15 && (alone[1] - 0.5 * full[1]).abs() < 1e-15 && (alone[2] - 0.25 * full[2]).abs() < 1e-15, "{alone:?}");
+        // with a partner: 50% the deck is (full, full), 50% the risky card stops after link 2 and frees its slot
+        let mix = chain_marginals(&[(3, 3, 0), (3, 3, r2)], 7.1);
+        let a = chain_marginals(&[(3, 3, 0), (3, 3, 0)], 7.1); let b = chain_marginals(&[(3, 3, 0), (3, 2, 0)], 7.1);
+        for k in 0..3 { assert!((mix[&(3, 3, 0)][k] - (0.5 * a[&(3, 3, 0)][k] + 0.5 * b[&(3, 3, 0)][k])).abs() < 1e-15); }
+        assert!((mix[&(3, 3, r2)][2] - 0.5 * a[&(3, 3, 0)][2]).abs() < 1e-15);
+        assert!(mix[&(3, 3, 0)][2] > a[&(3, 3, 0)][2]);
     }
 }

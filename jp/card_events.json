@@ -1513,6 +1513,18 @@
      []
     ]
    ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2007,6 +2019,13 @@
      [
       "Mile Maven"
      ]
+    ]
+   ],
+   "stop_risk": [
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",
@@ -2577,6 +2596,18 @@
     [
      2,
      []
+    ]
+   ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",
@@ -3298,6 +3329,18 @@
      ]
     ]
    ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3983,6 +4026,13 @@
      ]
     ]
    ],
+   "stop_risk": [
+    [
+     2,
+     1,
+     2
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -4224,6 +4274,13 @@
      [
       "Rampaging Passion"
      ]
+    ]
+   ],
+   "stop_risk": [
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",

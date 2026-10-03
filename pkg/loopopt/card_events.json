@@ -1320,6 +1320,18 @@
      []
     ]
    ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1794,6 +1806,13 @@
      [
       "Mile Maven"
      ]
+    ]
+   ],
+   "stop_risk": [
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",
@@ -2364,6 +2383,18 @@
     [
      2,
      []
+    ]
+   ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",
@@ -3086,6 +3117,18 @@
      [
       "Givin' It 1000%"
      ]
+    ]
+   ],
+   "stop_risk": [
+    [
+     1,
+     1,
+     2
+    ],
+    [
+     2,
+     1,
+     2
     ]
    ],
    "status": "complete",
