@@ -4,7 +4,7 @@ import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK } from './data.js';
 import { state, ui } from './state.js';
 import { save } from './search.js';
-import { noOutfit, renderRoster } from './roster.js';
+import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
 import { fmtIn } from './results.js';
 function exportText() {
@@ -13,7 +13,7 @@ function exportText() {
   const readable = {
     targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: ['no', 'white', 'gold'][t.guaranteed || 0] })),
     umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
-    umas_required: UMAS.filter(u => state.roster[u.id] === 'req').map(u => u.name),
+    umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for all four)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', random_event_hints: +state.rand, r_cards: state.rcards,

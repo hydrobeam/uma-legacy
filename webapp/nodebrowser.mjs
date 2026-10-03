@@ -112,13 +112,13 @@ const TESTS = {
     const byName = [...all].sort((a, c) => a.n.localeCompare(c.n))[0].n;
     check('Name sorts A to Z', (await pg.locator('#rs').innerText()) === 'Name ↑' && await firstTile() === byName, await firstTile());
     await pg.keyboard.press('Escape'); check('Escape closes the menu', await pg.locator('#rs-menu').isHidden());
-    // cycle an uma with several outfits: one outfit out, then must include (all her tiles), then owned
+    // cycle an uma with several outfits: one outfit out, then must include (that outfit only), then owned
     const multi = umas.find(u => u.outfits.length > 1);
     const states = () => pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s).join(','), multi.id);
     const tile = pg.locator(`#roster .ut[data-uma="${multi.id}"] .up`).first();
     await tile.click(); const s1 = await states(); await tile.click(); const s2 = await states(); await tile.click(); const s3 = await states();
     check('tile cycle: that outfit not owned', s1.split(',').filter(x => x === 'out').length === 1, s1);
-    check('tile cycle: must include marks all her tiles', s2.split(',').every(x => x === 'req'), s2);
+    check('tile cycle: must include marks only that outfit', s2.split(',').filter(x => x === 'req').length === 1 && s2.split(',').filter(x => x === 'own').length === s2.split(',').length - 1, s2);
     check('tile cycle: back to owned', s3.split(',').every(x => x === 'own'), s3);
     check('greyed, never crossed out', !(await pg.evaluate(() => [...document.querySelectorAll('.ut .un, .ut .uol, .ct .cn')].some(e => getComputedStyle(e).textDecorationLine.includes('line-through')))));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

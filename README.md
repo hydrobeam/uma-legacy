@@ -12,7 +12,7 @@ The page is built from `webapp/index.template.html` (markup), `webapp/src/` (sty
 
 ## Using the page
 
-1. **Umas.** One tile per outfit, sorted by release (or by name; either direction). Tap a tile to cycle *owned → not owned → must include*: owned is per outfit, must include is per uma. If you own few, press **None owned** and tap the ones you have.
+1. **Umas.** One tile per outfit, sorted by release (or by name; either direction). Tap a tile to cycle *owned → not owned → must include*, all per outfit: a must-include outfit puts that uma in the loop in that outfit (mark several of her outfits to allow any of them). If you own few, press **None owned** and tap the ones you have.
 2. **Outfits** decide most results through their skill lists (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
 3. **Target skills.** Type to add a skill. For each one set *Guaranteed outside the deck* if the scenario hands you its
    white or gold anyway (Unity Cup: No Stopping Me!, It's On!). The deck's hints are worked out by the search.

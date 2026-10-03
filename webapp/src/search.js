@@ -5,7 +5,7 @@ import { $ } from './dom.js';
 import { ERA } from './settings.js';
 import { CARDS, UMAS, HINTS } from './data.js';
 import { state, ui, writeSaved } from './state.js';
-import { noOutfit } from './roster.js';
+import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
 export function paintRunNote() {
@@ -90,7 +90,9 @@ export async function doSearch() {
   const box = $('results');
   const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
-  const require = Object.entries(state.roster).filter(([, v]) => v === 'req').map(([k]) => +k);
+  // must include per outfit: the uma is required, and her outfits that aren't marked are left out
+  for (const u of UMAS) { const r = reqOutfits(u); if (r.length) for (const o of u.outfits) if (!r.includes(o) && !exclude_outfits.includes(o.id)) exclude_outfits.push(o.id); }
+  const require = UMAS.filter(isRequired).map(u => u.id);
   try {
     if (!state.targets.length) throw new Error('Add at least one target skill.');
     // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
