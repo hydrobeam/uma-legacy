@@ -12,8 +12,8 @@
 3. `./build.sh all` (data, events, native + tests, wasm, page). Expect 29 tests passing, "178 cards written" /
    "222 cards written" twice from `events`, and `webapp/dist/index.html` about 13.6 MB.
 4. `uv run val/event_audit.py` → "every target hint is accounted for".
-5. Optional full check: `./build.sh val check` (about 6 minutes on 2 cores) and `uv run val/cmp2.py check ref`
-   / `uv run val/cmp2.py checkpu refpu`: everything should match the references (they are v22/v23 outputs).
+5. Optional full check: `./build.sh val check` (parallel, about 3.5 minutes; it runs `val/cmp2.py` itself)
+   for both modes: everything should match the references.
 6. Decide hosting (section 6) and push the repo to the owner's GitHub.
 
 ## 2. Current results (v23, per-uma decks, star mix below SS)

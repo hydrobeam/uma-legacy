@@ -8,8 +8,9 @@
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   test     browser regression suite on webapp/dist/index.html (webapp/nodebrowser.mjs; Chromium + Firefox)
-#   val TAG  run the 24 validation jobs (shared deck, then per-uma decks) with the current binary into
-#            val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
+#   val TAG  run the 24 validation jobs (shared deck, and the 23 deck jobs again with per-uma decks) in parallel with
+#            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
+#   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
 #   all      data events native wasm page (not images: it needs the game install)
 # Python runs in the project's uv environment (pyproject.toml, uv.lock; .venv is created on first use).
 set -euo pipefail
@@ -33,14 +34,15 @@ step_wasm() {
 step_test() { node "$W/nodebrowser.mjs"; }
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
-step_val() { local tag="${1:?val needs a tag}"
-  bash "$R/val/runall.sh" "$C/target/release/loopopt" "$tag" > "$R/val/${tag}_times.txt"; "${PY[@]}" "$R/val/cmp2.py" "$tag" ref
-  "${PY[@]}" "$R/val/run_pu.py" "$C/target/release/loopopt" "${tag}pu" > "$R/val/${tag}pu_times.txt"; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
+step_val() { local tag="${1:?val needs a tag}"; shift || true
+  "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
+  "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
 [ $# -eq 0 ] && set -- native wasm page
 while [ $# -gt 0 ]; do
   case "$1" in
     all) step_data; step_events; step_native; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
+    valq) step_val "${2:-}" --quick; shift ;;
     data|events|native|wasm|page|images|test) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
