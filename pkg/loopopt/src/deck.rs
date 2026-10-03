@@ -516,6 +516,33 @@ fn enum_key(v: &Value) -> String {
 #[derive(Clone)]
 struct DeckEval { pals: usize, borrowed: Option<usize>, cards: Vec<usize>, ends: Vec<u8>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64>, dv: Vec<f64>, s: f64 }
 
+/// A deck's per-target (white, gold) hint odds.
+trait Odds { fn dw(&self) -> &[f64]; fn dg(&self) -> &[f64]; }
+impl Odds for DeckEval { fn dw(&self) -> &[f64] { &self.dw } fn dg(&self) -> &[f64] { &self.dg } }
+impl Odds for PDeck { fn dw(&self) -> &[f64] { &self.dw } fn dg(&self) -> &[f64] { &self.dg } }
+/// A cluster of decks (indices into the list it was built from) with their componentwise maximum odds.
+struct Cl { mdw: Vec<f64>, mdg: Vec<f64>, mem: Vec<usize> }
+/// Clusters of at most 16 decks by recursive median splits on the widest odds coordinate.
+fn split<D: Odds>(sky: &[D], ix: &mut [usize], nu: usize, out: &mut Vec<Cl>) {
+    if ix.len() <= 16 {
+        let mut mdw = vec![0.0f64; nu]; let mut mdg = vec![0.0f64; nu];
+        for &j in ix.iter() { for k in 0..nu { mdw[k] = mdw[k].max(sky[j].dw()[k]); mdg[k] = mdg[k].max(sky[j].dg()[k]); } }
+        out.push(Cl { mdw, mdg, mem: ix.to_vec() });
+        return;
+    }
+    let coord = |j: usize, c: usize| if c < nu { sky[j].dw()[c] } else { sky[j].dg()[c - nu] };
+    let mut lo = vec![f64::INFINITY; 2 * nu]; let mut hi = vec![f64::NEG_INFINITY; 2 * nu];
+    for &j in ix.iter() { for k in 0..nu {
+        lo[k] = lo[k].min(sky[j].dw()[k]); hi[k] = hi[k].max(sky[j].dw()[k]);
+        lo[nu + k] = lo[nu + k].min(sky[j].dg()[k]); hi[nu + k] = hi[nu + k].max(sky[j].dg()[k]);
+    } }
+    let c = (0..2 * nu).max_by(|&a, &b| (hi[a] - lo[a]).partial_cmp(&(hi[b] - lo[b])).unwrap()).unwrap();
+    let mid = ix.len() / 2;
+    ix.select_nth_unstable_by(mid, |&a, &b| coord(a, c).partial_cmp(&coord(b, c)).unwrap());
+    let (l, r) = ix.split_at_mut(mid);
+    split(sky, l, nu, out); split(sky, r, nu, out);
+}
+
 /// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode.
 #[derive(Clone, Serialize, Deserialize)]
 struct PDeck { names: Vec<String>, ids: Vec<u32>, ends: Vec<u8>, plain_ids: Vec<u32>, pal_names: Vec<String>, pals: usize, borrowed: Option<String>, dw: Vec<f64>, dg: Vec<f64> }
@@ -1213,6 +1240,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         i
     };
     // filled on demand: only the umas and grid points the generated foursomes touch are ever computed
+    let bcl: Vec<Cl> = { let mut ix = sky.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&front, &mut ix, nu, &mut out); } out };
     let btab_c: std::cell::RefCell<Vec<[f64; NG]>> = std::cell::RefCell::new(vec![[f64::NAN; NG]; n]);
     let btab = |u: usize, i: usize| -> f64 {
         let v = btab_c.borrow()[u][i];
@@ -1223,12 +1251,12 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         // clusters go best bound first and stop once a bound (with 1e-9 relative slack for rounding) is below the
         // best value; a maximum does not depend on visit order, so the value is the same bit for bit
         let v = if (0.0..=1.0).contains(&q) {
-            let mut bs: Vec<(f64, usize)> = clusters.iter().enumerate().map(|(ci, c)| (model.trainee_fast(u, q, &c.w, &c.g), ci)).collect();
+            let mut bs: Vec<(f64, usize)> = bcl.iter().enumerate().map(|(ci, c)| (model.trainee_fast(u, q, &c.mdw, &c.mdg), ci)).collect();
             bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
             let mut best = 0.0f64;
             for (b, ci) in bs {
                 if b * (1.0 + 1e-9) < best { break; }
-                for &j in &clusters[ci].kids { best = best.max(model.trainee_fast(u, q, &front[j].dw, &front[j].dg)); }
+                for &j in &bcl[ci].mem { best = best.max(model.trainee_fast(u, q, &front[j].dw, &front[j].dg)); }
             }
             best
         } else { sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max) };
@@ -1496,26 +1524,6 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     // rounding) is below the best value so far. The maximum of a set does not depend on visit order, so the
     // result is the same value bit for bit.
     let ph24 = crate::PhT(24, Instant::now());
-    struct Cl { mdw: Vec<f64>, mdg: Vec<f64>, mem: Vec<usize> }
-    fn split(sky: &[PDeck], ix: &mut [usize], nu: usize, out: &mut Vec<Cl>) {
-        if ix.len() <= 16 {
-            let mut mdw = vec![0.0f64; nu]; let mut mdg = vec![0.0f64; nu];
-            for &j in ix.iter() { for k in 0..nu { mdw[k] = mdw[k].max(sky[j].dw[k]); mdg[k] = mdg[k].max(sky[j].dg[k]); } }
-            out.push(Cl { mdw, mdg, mem: ix.to_vec() });
-            return;
-        }
-        let coord = |j: usize, c: usize| if c < nu { sky[j].dw[c] } else { sky[j].dg[c - nu] };
-        let mut lo = vec![f64::INFINITY; 2 * nu]; let mut hi = vec![f64::NEG_INFINITY; 2 * nu];
-        for &j in ix.iter() { for k in 0..nu {
-            lo[k] = lo[k].min(sky[j].dw[k]); hi[k] = hi[k].max(sky[j].dw[k]);
-            lo[nu + k] = lo[nu + k].min(sky[j].dg[k]); hi[nu + k] = hi[nu + k].max(sky[j].dg[k]);
-        } }
-        let c = (0..2 * nu).max_by(|&a, &b| (hi[a] - lo[a]).partial_cmp(&(hi[b] - lo[b])).unwrap()).unwrap();
-        let mid = ix.len() / 2;
-        ix.select_nth_unstable_by(mid, |&a, &b| coord(a, c).partial_cmp(&coord(b, c)).unwrap());
-        let (l, r) = ix.split_at_mut(mid);
-        split(sky, l, nu, out); split(sky, r, nu, out);
-    }
     let class_cl: Vec<Vec<Cl>> = class_sky.iter().map(|v| { let mut ix = v.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&sky, &mut ix, nu, &mut out); } out }).collect();
     drop(ph24);
     // max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
