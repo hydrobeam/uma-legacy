@@ -12,8 +12,8 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
 
 ## Using the page
 
-1. **Umas.** A grid of portraits. Tap a portrait to cycle *owned → not owned → must include*. If you own few, press **None owned** and tap the ones you have.
-2. **Outfits.** Umas with several outfits show small outfit thumbnails under the portrait; tap one you don't own. Outfit skill lists decide most results (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
+1. **Umas.** One tile per outfit, sorted by release (or by name; either direction). Tap a tile to cycle *owned → not owned → must include*: owned is per outfit, must include is per uma. If you own few, press **None owned** and tap the ones you have.
+2. **Outfits** decide most results through their skill lists (Gold Ship [Red Strife] = Uma Stan, Digital [Full-Color Fangirling] = Superstan, Tamamo / Inari = Tail Nine).
 3. **Target skills.** Type to add a skill. For each one set *Guaranteed outside the deck* if the scenario hands you its
    white or gold anyway (Unity Cup: No Stopping Me!, It's On!). The deck's hints are worked out by the search.
 

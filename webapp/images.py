@@ -11,8 +11,8 @@ texture with UnityPy and writes a small WebP to webapp/img/{uma,outfit,card}/{id
   low in its 256 px texture, so the crop starts from the visible area (alpha bounding box) and keeps the top.
   card     supportcard/support{id}/support_card_s_{id}       card thumbnail with its rarity frame
   race     race/racetitle/thumb/thum_race_rt_000_{race}_00   race banner (title art, 512x256), for the schedule view
-  ui       sprites from the UI atlases: the friend-slot frame (atlas/singlecommon, utx_frm_friend_support_00_sl, a
-           9-slice, kept lossless for CSS border-image) and the friend icon (atlas/common, utx_ico_itemlist_friend_00)
+  ui       the friend-slot frame from the UI atlases (atlas/singlecommon, utx_frm_friend_support_00_sl, a 9-slice,
+           kept lossless for CSS border-image)
   skill    outgame/skillicon/utx_ico_skill_{icon}            skill icon of each catalogue skill's white version
                                                              (skill_data.icon_id, lowest rarity in the group);
                                                              img/skill_icons.json maps skill group -> icon
@@ -86,7 +86,7 @@ def icon_crop(im, inset):
     return im.crop((left, y0, left + side, y0 + side))
 
 
-UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_sl'), 'friend_icon': ('atlas/common', 'utx_ico_itemlist_friend_00')}
+UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_sl')}
 
 
 def ui_sprites(force, manifest):

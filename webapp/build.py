@@ -1,5 +1,5 @@
 """Assemble the single-file web app: wasm (base64), data, skill catalog, precomputed example, images (img/, from images.py)."""
-import json, base64, subprocess, os
+import json, base64, subprocess, os, sqlite3
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
@@ -54,7 +54,15 @@ def era(dirp, events_file):
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
         ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], [])})
-    umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1]} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
+    # outfit release dates for the roster's default order; without master.mdb, card id order
+    mdb = os.path.join(dirp, 'export', 'master.mdb'); rel = {}
+    if os.path.exists(mdb):
+        con = sqlite3.connect(f'file:{mdb}?mode=ro', uri=True)
+        # an outfit's release = the start of the first gacha it appeared in; else its uma's start date
+        rel = dict(con.execute('select c.id, c2.start_date from card_data c join chara_data c2 on c2.id = c.chara_id'))
+        rel.update(con.execute('select a.card_id, min(d.start_date) from gacha_available a join gacha_data d on d.id = a.gacha_id group by a.card_id'))
+        con.close()
+    umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     uma_ids = {u['id'] for u in umas}; outfit_ids = {o['id'] for u in umas for o in u['outfits']}; card_ids = {c['id'] for c in cards['cards']}
     hints = {'trainee': [h for h in TRAINEE_HINTS if h[0] in uma_ids or h[0] in outfit_ids],
              'deck': [h for h in DECK_HINTS if h[0] in card_ids]}
