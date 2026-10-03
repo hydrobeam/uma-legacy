@@ -36,6 +36,17 @@ let worker = null, ready = null, seq = 0, busy = false; const pending = new Map(
 // The wasm (loopopt.wasm next to the page) is fetched and compiled once here and the compiled module handed to every
 // worker, so a restart skips fetching and compiling it. Where a module can't be posted, the worker gets the bytes.
 let wasmModule = null, engineGen = 0;   // engineGen: a kill during the compile wait cancels that start
+// the solver's data for the active era: inline for Global, engine-gm.json for the GM era
+let engineData = null;
+function eraEngineData() {
+  if (!engineData) {
+    engineData = ERA !== 'gm' ? Promise.resolve($('engine-data').textContent)
+      : fetch('engine-gm.json').then(r => { if (!r.ok) throw 0; return r.text(); })
+        .catch(() => { throw new Error('Could not load engine-gm.json (the Grand Masters-era solver data).'); });
+    engineData.catch(() => { engineData = null; });
+  }
+  return engineData;
+}
 function compiled() {
   if (!wasmModule) wasmModule = (async () => {
     let bytes;
@@ -51,7 +62,7 @@ function killEngine() { engineGen++; if (worker) worker.terminate(); worker = nu
 function startEngine() {
   if (ready) return ready;
   const gen = engineGen;
-  ready = compiled().then(({ module, bytes }) => new Promise((resolve, reject) => {
+  ready = Promise.all([compiled(), eraEngineData()]).then(([{ module, bytes }, data]) => new Promise((resolve, reject) => {
     if (gen !== engineGen) { reject(new Error('superseded')); return; }
     try {
       const src = $('engine-worker').textContent;
@@ -64,7 +75,6 @@ function startEngine() {
       else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p(m); }
     };
     worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
-    const data = $(ERA === 'gm' ? 'engine-data-gm' : 'engine-data').textContent;
     try { if (!module) throw 0; worker.postMessage({ type: 'init', module, data }); }
     catch { worker.postMessage({ type: 'init', bytes, data }); }   // module not transferable here
   }));

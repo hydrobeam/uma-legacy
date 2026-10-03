@@ -36,7 +36,8 @@ are needed: the page uses plain Web Workers, not SharedArrayBuffer.
   (race schedule popup), `affinity.js`, `popover.js` (deck card / member panel), `io.js` (export/import), `images.js`, `dom.js`
 - `worker.template.js` solver worker (WebAssembly)
 - `build.py` bundles `src/` with esbuild (`node_modules/.bin/esbuild`; `npm ci`) and assembles `dist/`: `index.html` with
-  the stylesheet, script, data and example inlined, `loopopt.wasm`, and `img/`
+  the stylesheet, script, Global data and example inlined, `loopopt.wasm`, `data-gm.json` / `engine-gm.json` (GM era,
+  fetched only when selected), and `img/`
 - `serve.mjs` a minimal static server for `dist/` (`./build.sh serve`; also used by the browser suite)
 - `images.py` extracts character icons and card art from the game's decrypted asset bundles into `img/` (`./build.sh images`)
 - `example.mjs` precomputes the example shown before the first search

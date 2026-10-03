@@ -205,7 +205,7 @@ const TESTS = {
   async gm(b) {
     const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:era', 'gm'); } } catch {} } });
     await pg.reload(); await settle(pg);
-    const umas = await json(pg, 'data-umas-gm'); const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
+    const umas = (await pg.evaluate(() => fetch('data-gm.json').then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
     check('GM era: roster from the GM data', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
     check('GM era: the search runs', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0, await odds(pg));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

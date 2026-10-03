@@ -90,13 +90,16 @@ css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
 for k, v in [('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
-             ('__CARDS_GM__', M['cards']), ('__UMAS_GM__', M['umas']), ('__SKILLCAT_GM__', M['skills']), ('__HINTS_GM__', M['hints']),
-             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
+             ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA__', G['engine']),
              ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
 os.makedirs(DIST, exist_ok=True)
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 open(os.path.join(DIST, 'loopopt.wasm'), 'wb').write(wasm)
+# the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
+gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
+open(os.path.join(DIST, 'data-gm.json'), 'w').write(gm_ui)
+open(os.path.join(DIST, 'engine-gm.json'), 'w').write(M['engine'])
 isize = sum(os.path.getsize(os.path.join(DIST, 'img', *k.split(':', 1)) + '.webp') for k in images)
-print(f"dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
+print(f"dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
