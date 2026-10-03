@@ -154,6 +154,12 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .chip[data-s="out"] .av { filter: grayscale(1); opacity: 0.55; }
 .cav.art { box-shadow: none; background: none; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
+.mem .memb { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.mem .memb:hover .nm { text-decoration: underline; }
+.mem .memb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.mem.off .av { filter: grayscale(1); opacity: 0.5; }
+.mem.off .nm { text-decoration: line-through; color: var(--muted); }
+.cpop .sw + .sw { margin-top: 2px; }
 .sbtn { justify-self: start; font-weight: 600; color: var(--accent); }
 .stabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .stab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px;
@@ -769,7 +775,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     l.members.forEach((m, k) => {
       const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem' + (o.covers.length ? ' covers' : '');
       const outfit = o.outfits.length ? o.outfits.map(x => x.label).join(' or ') : 'any outfit';
-      d.innerHTML = `<div class="head"><span class="nm"></span></div><span class="of"></span><span class="sk"></span><span class="own">own runs ${fmtIn(l.per_trainee[k])}</span>`;
+      d.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span><span class="own">own runs ${fmtIn(l.per_trainee[k])}</span>`;
+      d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit;
       d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
       d.querySelector('.head').prepend(umaAv(m.id, o.outfits.length === 1 ? o.outfits[0].id : null, 38));
       const sk = d.querySelector('.sk');
@@ -778,6 +785,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       mem.appendChild(d);
     });
     const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
+    queueMicrotask(markOwn);
     card.insertBefore(mem, firstDeck);
     const acts = document.createElement('div'); acts.className = 'row lacts';
     const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'btn sbtn'; sb.textContent = 'Race schedule'; sb.onclick = () => openSched(l); acts.appendChild(sb);
@@ -945,7 +953,29 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.body.appendChild(pop);
   let popFor = null;
   function closePop() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
-  function markOwn() { document.querySelectorAll('.deck .dc').forEach(e => e.classList.toggle('off', !e.classList.contains('bor') && state.cardsOff[+e.dataset.cid] === false)); }
+  function markOwn() {
+    document.querySelectorAll('.deck .dc').forEach(e => e.classList.toggle('off', !e.classList.contains('bor') && state.cardsOff[+e.dataset.cid] === false));
+    document.querySelectorAll('.mem[data-uma]').forEach(e => { const u = UMAS.find(x => x.id === +e.dataset.uma);
+      e.classList.toggle('off', !!u && (umaState(u) === 'out' || (e.dataset.outfit && state.outfits[+e.dataset.outfit] === false))); });
+  }
+  function placePop(el) {
+    pop.hidden = false;
+    const r = el.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
+    pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, vw - w - 8))) + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  }
+  function openUmaPop(btn) {
+    closePop(); popFor = btn; btn.setAttribute('aria-expanded', 'true');
+    const d = btn.closest('.mem'), u = UMAS.find(x => x.id === +d.dataset.uma), oid = d.dataset.outfit ? +d.dataset.outfit : null;
+    pop.setAttribute('aria-label', u ? u.name : '');
+    pop.innerHTML = `<div><b>${esc(u ? u.name : '')}</b><div class="ct">${esc(d.dataset.outfitLabel)}</div></div>` +
+      `<label class="sw"><input type="checkbox" role="switch" data-act="uma"${u && umaState(u) !== 'out' ? ' checked' : ''}>Owned</label>` +
+      (oid ? `<label class="sw"><input type="checkbox" role="switch" data-act="outfit"${state.outfits[oid] !== false ? ' checked' : ''}>This outfit owned</label>` : '');
+    placePop(btn);
+    const su = pop.querySelector('[data-act="uma"]'), so = pop.querySelector('[data-act="outfit"]');
+    su.onchange = () => { if (su.checked) { if (state.roster[u.id] === 'out') delete state.roster[u.id]; for (const o of u.outfits || []) if (state.outfits[o.id] === false && (!oid || o.id === oid)) delete state.outfits[o.id]; }
+      else state.roster[u.id] = 'out'; save(); renderRoster(); markOwn(); if (so) so.checked = state.outfits[oid] !== false; };
+    if (so) so.onchange = () => { if (so.checked) delete state.outfits[oid]; else state.outfits[oid] = false; save(); renderRoster(); markOwn(); su.checked = umaState(u) !== 'out'; };
+  }
   function openPop(el) {
     closePop(); popFor = el; el.setAttribute('aria-expanded', 'true');
     const c = CARD_BY_ID.get(+el.dataset.cid), t = c ? cardTitle(c) : { nm: el.dataset.name, ti: '' };
@@ -955,14 +985,14 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     pop.innerHTML = `<div><b>${esc(t.nm)}</b>${t.ti ? `<div class="ct">${esc(t.ti)}</div>` : ''}</div>` + (role ? `<div>${role}</div>` : '') +
       (el.dataset.end ? `<div>Take the chain-ending choice at link ${el.dataset.end}.</div>` : '') +
       (c && !bor ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${own ? ' checked' : ''}>Owned</label>` : '');
-    pop.hidden = false;
-    const r = el.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
-    pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, vw - w - 8))) + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+    placePop(el);
     const sw = pop.querySelector('[data-act="own"]');
     if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); markOwn(); };
   }
-  document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc');
-    if (d) { if (popFor === d) closePop(); else openPop(d); return; } if (!e.target.closest('.cpop')) closePop(); });
+  document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc'), mb = e.target.closest('.mem .memb');
+    if (d) { if (popFor === d) closePop(); else openPop(d); return; }
+    if (mb) { if (popFor === mb) closePop(); else openUmaPop(mb); return; }
+    if (!e.target.closest('.cpop')) closePop(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
   let lastRender = null;
   refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
