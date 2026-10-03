@@ -56,13 +56,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
-.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 0 0 10px 10px; font-weight: 700; font-size: 1rem; width: 100%;
-  box-shadow: 0 6px 18px rgba(0,0,0,.22); }
-.runnote { margin: 0; padding: 5px 12px; font-size: 0.8rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; }
+.runnote { margin: 0; padding: 8px 12px; font-size: 0.82rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.16); display: flex; align-items: center; gap: 8px; }
 .runnote:empty { display: none; }
-.runnote:empty + .run { border-radius: 10px; }
-.runnote.stale { background: var(--gold-soft); border-color: var(--gold); color: var(--ink); font-weight: 600; }
-.run:disabled { opacity: .6; cursor: progress; }
+.runnote.busy { border-color: var(--accent); font-weight: 600; }
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
 /* roster chips: three states */
@@ -119,7 +116,6 @@ input[type="search"] { width: 100%; }
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .status { color: var(--muted); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .badge { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-.stale { border: 1px solid var(--gold); background: var(--gold-soft); border-radius: 8px; padding: 8px 12px; }
 .badge.ex { background: var(--gold-soft); color: var(--gold); }
 .loop { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .loop > * { min-width: 0; }
@@ -383,7 +379,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       </div>
     </section>
 
-    <div class="runbox"><p class="runnote" id="run-note" aria-live="polite"></p><button class="run" id="run">Find best loops</button></div>
+    <div class="runbox"><p class="runnote" id="run-note" role="status" aria-live="polite"></p></div>
   </aside>
 
   <main class="results" id="results" aria-live="polite"></main>
@@ -498,18 +494,26 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     decksTop: store.get('decksTop', '1'), perUma: store.get('perUma', true),
     dates: store.get('dates', false), rand: store.get('rand', '0'), rcards: store.get('rcards', true),
   };
-  let shown = false;   // results on screen; any settings change after that marks them out of date
-  let stale = false, runNote = '';   // the line on the Find best loops button: last search, or "settings changed"
-  function paintRunNote() { const n = $('run-note'); n.classList.toggle('stale', stale);
-    n.textContent = stale ? 'Settings changed since the last search' : runNote; }
-  function markStale() { if (!shown || stale) return; stale = true; paintRunNote(); }
+  // The search runs by itself: any change to a setting schedules one (after a short pause, so a run of clicks is one
+  // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
+  let runNote = '', searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
+  function paintRunNote() {
+    const n = $('run-note'); n.classList.toggle('busy', searching);
+    if (!searching) { n.textContent = runNote; return; }
+    const sec = Math.floor((performance.now() - searchT0) / 1000);
+    n.innerHTML = '<span class="spin" aria-hidden="true"></span>' + 'Searching…' + (sec >= 1 ? ` ${sec} s` : '') + (sec >= 2 && lastRender ? ' · the results shown are from before your change' : '');
+  }
+  function scheduleSearch() {
+    clearTimeout(pauseTimer); pauseTimer = setTimeout(doSearch, 450);
+    if (!searching) { searching = true; searchT0 = performance.now(); paintRunNote(); }
+  }
   if (!store.get('rsortv2', false)) { if (state.rsort === 'rel' && state.rdir === 'asc') state.rdir = 'desc'; store.set('rdir', state.rdir); store.set('rsortv2', true); }
   // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
   // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
   try { if (!localStorage.getItem('llp:targetsV2')) {
     for (const t of state.targets) if ((t.group === 20166 || t.group === 20203) && t.guaranteed === 2) { t.guaranteed = 0; }
     localStorage.setItem('llp:targetsV2', '1'); localStorage.setItem('llp:targets', JSON.stringify(state.targets)); } } catch {}
-  const save = () => { markStale(); for (const k of ['mode', 'roster', 'outfits', 'targets', 'rank', 'teio', 'zephyr', 'scheme', 'deck', 'cardsOff', 'borrow', 'decksTop', 'perUma', 'dates', 'rand', 'rcards', 'rsort', 'rdir', 'csort', 'cdir']) store.set(k, state[k]); };
+  const save = () => { scheduleSearch(); for (const k of ['mode', 'roster', 'outfits', 'targets', 'rank', 'teio', 'zephyr', 'scheme', 'deck', 'cardsOff', 'borrow', 'decksTop', 'perUma', 'dates', 'rand', 'rcards', 'rsort', 'rdir', 'csort', 'cdir']) store.set(k, state[k]); };
   // ---------- game data ----------
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => { if (e === ERA) return; try { localStorage.setItem('llp:era', e); } catch {} location.reload(); };
@@ -910,7 +914,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   }
 
   // ---------- engine (Web Worker running the WebAssembly solver) ----------
-  let worker = null, ready = null, seq = 0; const pending = new Map();
+  let worker = null, ready = null, seq = 0, busy = false; const pending = new Map();
+  function killEngine() { if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); busy = false; }
   function startEngine() {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -931,9 +936,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   }
   function run(job) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, res); worker.postMessage({ type: 'run', id, job }); })); }
 
-  $('run').onclick = async () => {
-    const btn = $('run'); btn.disabled = true;
-    const box = $('results'); box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching all foursomes… a few seconds.</div>';
+  async function doSearch() {
+    const my = ++searchId;
+    if (busy) killEngine();   // a search is still running: stop it and start over
+    searching = true; searchT0 = performance.now(); paintRunNote(); clearInterval(searchTick); searchTick = setInterval(paintRunNote, 1000);
+    const box = $('results');
     const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
     const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
     const require = Object.entries(state.roster).filter(([, v]) => v === 'req').map(([k]) => +k);
@@ -943,15 +950,13 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
       const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
       const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
-      box.innerHTML = '<div class="status"><span class="spin" aria-hidden="true"></span> Searching decks and loops together… usually a few seconds.</div>';
       const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
         owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
-      const m = await run(job);
-      stale = false; lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); shown = true; lastResult = { kind: 'deck', r: m.r, meta: {} };
-      const top = box.getBoundingClientRect().top; if (top < 0 || top > innerHeight) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
-    btn.disabled = false;
-  };
+      busy = true; const m = await run(job); if (my !== searchId) return;   // superseded: a newer search owns the page
+      busy = false; lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); lastRender(); lastResult = { kind: 'deck', r: m.r, meta: {} };
+    } catch (e) { if (my !== searchId) return; busy = false; box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); runNote = ''; }
+    searching = false; clearInterval(searchTick); paintRunNote();
+  }
 
   // ---------- export / import ----------
   let lastResult = null;   // {kind, r, meta}
@@ -1001,7 +1006,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       save(); setMode(); setDeck();
       $('rank').value = state.rank; $('x-teio').checked = state.teio; $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
       $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
-      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded. Press Find best loops.';
+      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
   // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
@@ -1065,9 +1070,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   let lastRender = null;
   refreshAll = () => { renderRoster(); renderCards(); if (lastRender) lastRender(); };
   setMode(); setDeck(); renderRoster(); renderTargets();
-  if (ERA === 'global') { lastRender = () => renderDeck(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: 'deck', r: EXAMPLE, meta: { example: true } }; }
-  else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
+  if (ERA === 'global') { lastRender = () => renderDeck(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); lastResult = { kind: 'deck', r: EXAMPLE, meta: { example: true } }; }
+  else $('results').innerHTML = '';
   // warm the engine in the background so the first search starts immediately
-  setTimeout(() => startEngine().catch(() => {}), 300);
+  setTimeout(doSearch, 0);   // the first search, with the saved settings
 })();
 </script>

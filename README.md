@@ -19,7 +19,7 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
 
    **Unity Cup example** loads the 8-skill set used in our runs.
 4. **Lineage rank.** Star mix of the sparks on your legacies: *Below SS* (rank score 6,500–17,499, stars 50/45/5%) or *SS and up* (17,500+, 20/70/10%), from hakuraku.moe's room-match data. An Independent Training veteran reaches SS only if you spend nearly all its skill points.
-5. **Find best loops.** It returns the top 5 loops. For each loop you get:
+5. **Results** update by themselves: any change starts a new search after a short pause (a change during a search restarts it). For each loop you get:
    - odds that all targets land, and all but one;
    - runs for a 90% chance;
    - each uma's outfit and the targets it covers;
