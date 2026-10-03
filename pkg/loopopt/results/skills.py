@@ -53,8 +53,21 @@ data = json.load(open(os.path.join(CRATE, 'data.json')))
 ids = [u['id'] for u in data['umas']]
 names = {u['id']: u['name'] for u in data['umas']}
 n = len(ids)
-P = np.array(data['pair'], dtype=float)
-T3 = np.array(data['tri'], dtype=float)
+def rel_tables(d):
+    """pair / trio relation tables from data.json: stored tables (old files) or rebuilt from its relation groups."""
+    if 'tri' in d: return d['pair'], d['tri']
+    n = len(d['umas']); P = [[0] * n for _ in range(n)]; T = [[[0] * n for _ in range(n)] for _ in range(n)]
+    for pts, m in d['relations']:
+        for a in m:
+            for b in m:
+                if a == b: continue
+                P[a][b] += pts
+                for c in m:
+                    if c != a and c != b: T[a][b][c] += pts
+    return P, T
+_p, _t = rel_tables(data)
+P = np.array(_p, dtype=float)
+T3 = np.array(_t, dtype=float)
 pbj = json.load(open(os.path.join(HERE, 'pb.json')))
 assert pbj['ids'] == ids
 PB = np.array(pbj['pb'])

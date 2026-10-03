@@ -68,7 +68,24 @@ struct OptRaw { prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #
 #[derive(Deserialize)]
 struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>> }
 #[derive(Deserialize)]
-struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw> }
+struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>,
+    /// relation groups: (points, roster indices); pair / tri are rebuilt from them (older data.json files carry the tables)
+    #[serde(default)] relations: Option<Vec<(i32, Vec<usize>)>>,
+    #[serde(default)] pair: Option<Vec<Vec<i32>>>, #[serde(default)] tri: Option<Vec<Vec<Vec<i32>>>>,
+    pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw> }
+/// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
+fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<Vec<i32>>>) {
+    let mut p = vec![vec![0i32; n]; n];
+    let mut t = vec![vec![vec![0i32; n]; n]; n];
+    for (pts, m) in rels {
+        for &a in m { for &b in m {
+            if a == b { continue; }
+            p[a][b] += pts;
+            for &c in m { if c != a && c != b { t[a][b][c] += pts; } }
+        } }
+    }
+    (p, t)
+}
 /// Precomputed pairwise ceilings (`loopopt pbtable`, merged into data.json by `./build.sh pb`): `fp` is
 /// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a as 16-hex-digit f64 bit patterns.
 #[derive(Deserialize, Serialize)]
@@ -139,6 +156,7 @@ fn load(path: &str) -> Data { load_str(&std::fs::read_to_string(path).unwrap()) 
 fn load_str(json: &str) -> Data { load_raw(serde_json::from_str(json).unwrap()) }
 fn load_raw(raw: DataRaw) -> Data {
     let pbt = pb_table_from(&raw);
+    let n_umas = raw.umas.len();
     // dp_exact relies on: every race offered twice to an uma is offered exactly 24 turns apart (Classic/Senior),
     // never twice in the Junior year, and never more than twice.
     for u in &raw.umas {
@@ -195,7 +213,12 @@ fn load_raw(raw: DataRaw) -> Data {
         umas.push(Uma { id: u.id, name: u.name, opts: u.turns, forced, bits, full: (1u32 << nb) - 1,
             pm: miss.iter().map(|m| 1.0 - m).collect(), ent, chl });
     }
-    Data { nr, umas, pair: raw.pair, tri: raw.tri, pk: pkt, race_names: raw.race_names, pbt }
+    let (pair, tri) = match (raw.pair, raw.tri, &raw.relations) {
+        (Some(p), Some(t), _) => (p, t),
+        (_, _, Some(r)) => rel_tables(n_umas, r),
+        _ => panic!("data.json has neither relations nor pair/tri tables"),
+    };
+    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt }
 }
 
 type Sched = [Choice; NT];

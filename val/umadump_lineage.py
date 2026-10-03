@@ -118,8 +118,21 @@ for m in range(4):
 json.dump(vets, open(out_path, 'w'), indent=1, ensure_ascii=False)
 
 # ---- our model on exactly these veterans ----
-pr = lambda a, b: D['pair'][idx[a]][idx[b]]
-tr = lambda a, b, c: D['tri'][idx[a]][idx[b]][idx[c]]
+def rel_tables(d):
+    """pair / trio relation tables from data.json: stored tables (old files) or rebuilt from its relation groups."""
+    if 'tri' in d: return d['pair'], d['tri']
+    n = len(d['umas']); P = [[0] * n for _ in range(n)]; T = [[[0] * n for _ in range(n)] for _ in range(n)]
+    for pts, m in d['relations']:
+        for a in m:
+            for b in m:
+                if a == b: continue
+                P[a][b] += pts
+                for c in m:
+                    if c != a and c != b: T[a][b][c] += pts
+    return P, T
+PAIR, TRI = rel_tables(D)
+pr = lambda a, b: PAIR[idx[a]][idx[b]]
+tr = lambda a, b, c: TRI[idx[a]][idx[b]][idx[c]]
 def lineage(t, p1, p2, x, o):
     slots = []
     for par, other in ((p1, p2), (p2, p1)):
