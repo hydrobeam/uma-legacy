@@ -1,4 +1,7 @@
+<!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Legacy Loop Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +16,7 @@
   --line: #d9dee7;
   --accent: #2448b8;
   --accent-soft: #e4eafb;
-  --gold: #a87a0c;
+  --gold: #876106;
   --gold-soft: #fbf0d2;
   --out: #b4392f;
   --out-soft: #f8e3e1;
@@ -36,14 +39,13 @@
   --out: #ff8a7e; --out-soft: #3d1f1c; --req: #6fd6a6; --req-soft: #173628; --av-l: 30%; --av-c: 35%; color-scheme: dark; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 48px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 48px; }
 .wrap { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 22px; align-items: start; }
 @media (max-width: 960px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
-.rail { display: grid; gap: 14px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
-@media (max-width: 960px) { .rail { position: static; } }
+.rail { display: grid; gap: 14px; }
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .between { justify-content: space-between; }
@@ -56,7 +58,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
-.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 1rem; width: 100%; }
+.run { background: var(--accent); color: var(--panel); border: 0; padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 1rem; width: 100%;
+  position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 3; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
 .run:disabled { opacity: .6; cursor: progress; }
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
@@ -104,7 +107,7 @@ input[type="search"] { width: 100%; }
 .lhead { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; }
 .rank { font-family: var(--font-data); color: var(--muted); font-size: 0.9rem; }
 .odds { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
-.odds small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+.odds small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: .5em; }
 .sub { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.85rem; }
 .members { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 620px) { .members { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -119,13 +122,14 @@ input[type="search"] { width: 100%; }
 .stars b { font-family: var(--font-data); color: var(--ink); font-weight: 500; }
 details summary { cursor: pointer; font-weight: 700; font-size: 0.88rem; color: var(--accent); }
 .tablewrap { overflow-x: auto; margin-top: 8px; }
-table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; min-width: 560px; }
+table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .sched th, .sched td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 .sched th:first-child, .sched td:first-child, .sched td.when, .sched th.when { text-align: left; }
 .sched td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .sched td:first-child { font-family: var(--font-ui); }
 .sched tr.year td { border-bottom: 0; padding-top: 10px; font-family: var(--font-ui); font-weight: 700; color: var(--muted); text-align: left; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.sched .dot { color: var(--line); }
+.sched td:first-child { white-space: normal; }
+.sched .dot { color: var(--muted); opacity: .45; }
 .sched .goal { color: var(--accent); font-weight: 600; }
 .sched .alt { font-family: var(--font-ui); color: var(--muted); font-size: 0.76rem; text-align: left; }
 .sched caption { text-align: left; font-weight: 700; padding: 6px 0; caption-side: top; }
@@ -187,6 +191,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .deck .dcards { display: grid; grid-template-columns: repeat(6, minmax(0, 96px)); gap: 10px; align-items: start; }
 .deck .dcards > .swl, .deck .dcards > .hint { grid-column: 1 / -1; }
 .deck.swap { border-style: dashed; }
+/* swap rows: label in its own column so OUT card i sits over the IN card that replaces it */
+.deck.swap .dcards { grid-template-columns: 2.6em repeat(6, minmax(0, 96px)); }
+.deck.swap .dcards > .swl { grid-column: auto; align-self: center; }
+.deck.swap .dcards > .hint { grid-column: 2 / -1; align-self: center; }
+.deck .swl.o { color: var(--out); } .deck .swl.i { color: var(--req); }
 .deck .swl { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #888); min-width: 2.2em; }
 .dc { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font: inherit; font-size: 0.75rem; color: inherit; background: none;
   border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 8px; }
@@ -220,6 +229,20 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dodds b { color: var(--ink); font-family: var(--font-data); font-weight: 600; }
 .nodeck .tgt .ctrl label.dk { display: none; }
 .nodeck .tgt .ctrl { grid-template-columns: minmax(0, 1fr); }
+.nodeck .tgt .ctrl label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.nodeck .tgt .ctrl select { width: auto; min-width: 7em; }
+.tgt > .row { flex-wrap: nowrap; align-items: flex-start; }
+/* phone: the nested paddings (body, loop, deck) left 39 px per card and a 560 px table in a 306 px box */
+@media (max-width: 620px) {
+  .loop { padding: 12px; }
+  .deck { padding: 8px; }
+  .deck .dcards { gap: 6px; }
+  .deck.swap .dcards { grid-template-columns: 2.4em repeat(6, minmax(0, 1fr)); }
+  table.sched { font-size: 0.74rem; }
+  .sched th, .sched td { padding: 4px 3px; }
+  .sched tr:not(.year) > :last-child { display: none; }
+  .x { padding: 8px 10px; margin: -6px -8px 0 0; }
+}
 .unbuilt { max-width: 1320px; margin: 0 auto 14px; padding: 12px 14px; border: 1px solid var(--out); border-radius: 10px; color: var(--out); font-weight: 500; }
 </style>
 
@@ -688,8 +711,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
           const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
           const dk = document.createElement('div'); dk.className = 'deck swap';
           dk.innerHTML = `<div class="row between"><b>${whoT} · ${d.pals} pal${d.pals === 1 ? '' : 's'}${d.borrowed ? ' · borrow 1' : ''}</b></div>` +
-            `<div class="dcards"><span class="swl">Out</span>${out.map(ci => chip(meta.deck, ci)).join('') || '<span class="hint">nothing</span>'}</div>` +
-            `<div class="dcards"><span class="swl">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
+            `<div class="dcards"><span class="swl o">Out</span>${out.map(ci => chip(meta.deck, ci)).join('') || '<span class="hint">nothing</span>'}</div>` +
+            `<div class="dcards"><span class="swl i">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
           card.appendChild(dk); });
       }
       card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); }); markOwn();
@@ -706,12 +729,13 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         sp.className = 'spark' + (c.level === 2 ? ' g' : ''); sp.textContent = c.level === 2 ? (s.gd || s.w) : s.w; sk.appendChild(sp); }
       mem.appendChild(d);
     });
-    card.appendChild(mem);
-    if (l.detail) { const wb = document.createElement('button'); wb.className = 'why'; wb.textContent = 'How this loop works';
-      wb.onclick = () => openWhy(l, meta); card.appendChild(wb); }
+    const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
+    card.insertBefore(mem, firstDeck);
     const stars = document.createElement('div'); stars.className = 'stars';
     stars.innerHTML = `<span>All ${n} at 2★+: <b>${fmtIn(l.p_all * Math.pow(p2, n))}</b></span><span>Average inheritance proc: <b>${(l.mean_proc * 100).toFixed(1)}%</b></span>`;
-    card.appendChild(stars);
+    card.insertBefore(stars, firstDeck);
+    if (l.detail) { const wb = document.createElement('button'); wb.className = 'why'; wb.textContent = 'How this loop works';
+      wb.onclick = () => openWhy(l, meta); card.insertBefore(wb, firstDeck); }
     const det = document.createElement('details'); if (i === 0) det.open = true;
     det.innerHTML = '<summary>Race schedule</summary>'; det.appendChild(schedTable(l.members, l.schedule));
     card.appendChild(det);
@@ -882,6 +906,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         const m = await run({ cmd: 'affinity', scheme: state.scheme, exclude, require, top: 5 });
         renderAff(m.r, { ms: m.ms }); shown = true; lastResult = { kind: 'aff', r: m.r, meta: {} };
       }
+      const top = box.getBoundingClientRect().top; if (top < 0 || top > innerHeight) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     } catch (e) { box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); }
     btn.disabled = false;
   };
