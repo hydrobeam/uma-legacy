@@ -286,30 +286,36 @@ const NBUCKET: usize = 128;
 /// query gives the decks that pass the signature test, 64 at a time; they are then visited in index order, the
 /// same order as a plain scan.
 #[derive(Default)]
-struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, lv: Vec<u64> }
+/// `lq` is the mirror index of the query signatures (bit set when field f is at most l, l < LEVELS - 1), for the
+/// removal test "x's entry signature over the deck's query one".
+struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, lv: Vec<u64>, lq: Vec<u64> }
 const LVW: usize = SIG_FIELDS * (LEVELS as usize - 1);   // index words per 64 decks
 impl Bucket {
     #[inline]
-    fn index_set(&mut self, i: usize, e: Sig) {
+    fn index_set(&mut self, i: usize, e: Sig, q: Sig) {
         let w = i / 64;
-        if self.lv.len() < (w + 1) * LVW { self.lv.resize((w + 1) * LVW, 0); }
+        if self.lv.len() < (w + 1) * LVW { self.lv.resize((w + 1) * LVW, 0); self.lq.resize((w + 1) * LVW, 0); }
         let bit = 1u64 << (i % 64);
         let base = w * LVW;
+        const L1: usize = LEVELS as usize - 1;
         for f in 0..SIG_FIELDS {
             let l = ((e >> (FB * f)) & (LEVELS - 1)) as usize;
-            for k in 0..l { self.lv[base + f * (LEVELS as usize - 1) + k] |= bit; }
+            for k in 0..l { self.lv[base + f * L1 + k] |= bit; }
+            let l = ((q >> (FB * f)) & (LEVELS - 1)) as usize;
+            for k in l..L1 { self.lq[base + f * L1 + k] |= bit; }
         }
     }
     /// rebuild the level index from deck `from` on (after the arrays were compacted)
     fn reindex_from(&mut self, from: usize) {
         let w0 = from / 64;
-        self.lv.truncate((w0 + 1) * LVW);
+        self.lv.truncate((w0 + 1) * LVW); self.lq.truncate((w0 + 1) * LVW);
         if self.lv.len() == (w0 + 1) * LVW {
             let keep = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
             for x in &mut self.lv[w0 * LVW..] { *x &= keep; }
+            for x in &mut self.lq[w0 * LVW..] { *x &= keep; }
         }
-        if self.esig.len() <= w0 * 64 { self.lv.truncate(w0 * LVW); }
-        for i in from..self.esig.len() { let e = self.esig[i]; self.index_set(i, e); }
+        if self.esig.len() <= w0 * 64 { self.lv.truncate(w0 * LVW); self.lq.truncate(w0 * LVW); }
+        for i in from..self.esig.len() { let (e, q) = (self.esig[i], self.qsig[i]); self.index_set(i, e, q); }
     }
     /// decks of word w that pass the signature test for the query whose level-index offsets are `qo`
     #[inline]
@@ -420,7 +426,7 @@ impl Kept {
         let id = self.next_uid; self.next_uid += 1;
         let bk = &mut self.buckets[bi];
         let i = bk.list.len();
-        bk.index_set(i, e);
+        bk.index_set(i, e, q);
         bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(&x.dv); bk.uid.push(id); bk.list.push(x);
         self.n += 1;
     }
@@ -429,15 +435,22 @@ impl Kept {
     fn remove_dominated_by(&mut self, x: &[f64], xe: Sig, s: f64) {
         let nd = self.nd;
         let top = self.bucket_of(s + SUM_EPS);
+        // lq offsets of x's entry signature: fields below the top level constrain the deck's query field
+        let mut xo = [0usize; SIG_FIELDS]; let mut nx = 0;
+        for f in 0..SIG_FIELDS {
+            let l = ((xe >> (FB * f)) & (LEVELS - 1)) as usize;
+            if l < LEVELS as usize - 1 { xo[nx] = f * (LEVELS as usize - 1) + l; nx += 1; }
+        }
         for bi in 0..=top {
             let bk = &mut self.buckets[bi];
             let len = bk.qsig.len();
             // the first deck x dominates: entry test (x's entry signature over the deck's query one) first
             let mut first = None;
             'scan: for start in (0..len).step_by(64) {
-                let qs = &bk.qsig[start..(start + 64).min(len)];
-                let mut m = 0u64;
-                for (k, &q) in qs.iter().enumerate() { m |= (sig_ge(xe, q) as u64) << k; }
+                let n = len - start;
+                let mut m = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
+                let base = start / 64 * LVW;
+                for &o in &xo[..nx] { if m == 0 { break; } m &= bk.lq[base + o]; }
                 while m != 0 {
                     let i = start + m.trailing_zeros() as usize; m &= m - 1;
                     if dominates(x, &bk.flat[i * nd..(i + 1) * nd]) { first = Some(i); break 'scan; }
