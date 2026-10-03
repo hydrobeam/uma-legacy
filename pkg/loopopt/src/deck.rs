@@ -499,6 +499,20 @@ fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Kept {
 
 /// One candidate deck. `dw`/`dg` are the per-target white/gold hint odds the metric uses; `dv` are the
 /// coordinates used for dominance (see `run_deck`), all higher-is-better, and `s` is their sum.
+/// Deck frontiers already enumerated inside one `run_deck` (its branches change the uma pool, which the
+/// enumeration does not depend on: the pool only orders the plain pals, a display matter), keyed by the job
+/// without its uma-pool fields. Each entry: the frontier and the counters the output reports.
+type EnumEntry = (String, Vec<DeckEval>, usize, usize);
+thread_local! { static ENUM_CACHE: std::cell::RefCell<Option<Vec<EnumEntry>>> = const { std::cell::RefCell::new(None) }; }
+struct EnumScope(Option<Vec<EnumEntry>>);
+impl EnumScope { fn new() -> Self { EnumScope(ENUM_CACHE.with(|c| c.borrow_mut().replace(vec![]))) } }
+impl Drop for EnumScope { fn drop(&mut self) { let prev = self.0.take(); ENUM_CACHE.with(|c| *c.borrow_mut() = prev); } }
+fn enum_key(v: &Value) -> String {
+    let mut k = v.clone();
+    if let Some(o) = k.as_object_mut() { for f in ["exclude", "require", "owned"] { o.remove(f); } }
+    k.to_string()
+}
+
 #[derive(Clone)]
 struct DeckEval { pals: usize, borrowed: Option<usize>, cards: Vec<usize>, ends: Vec<u8>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64>, dv: Vec<f64>, s: f64 }
 
@@ -547,6 +561,7 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
     let mut root: Option<Value> = None;
     let (mut searches, mut decks_built, mut proven) = (0usize, 0u64, true);
     let mut stack: Vec<Value> = vec![v.clone()];
+    let _enum_cache = EnumScope::new();
     while let Some(job) = stack.pop() {
         let out = run_deck_relaxed(d, sk, cr, &job);
         if out.get("error").is_some() { if root.is_none() { return out; } continue; }   // e.g. a half with < 4 umas
@@ -1061,7 +1076,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     front
     };
     // top_decks > 1: first the decks no other deck beats (fast), then the full pass filtered against them
-    let front: Vec<DeckEval> = if kmax == 1 { run_enum(1, None) } else {
+    let ekey = ENUM_CACHE.with(|c| c.borrow().is_some()).then(|| enum_key(v));
+    let cached = ekey.as_ref().and_then(|k| ENUM_CACHE.with(|c| c.borrow().as_ref().unwrap().iter().find(|e| &e.0 == k).map(|e| (e.1.clone(), e.2, e.3))));
+    let hit = cached.is_some();
+    let front: Vec<DeckEval> = if let Some((f, nd_, ns_)) = cached { n_decks = nd_; n_swapped = ns_; f } else if kmax == 1 { run_enum(1, None) } else {
         let s1 = run_enum(1, None);
         let nd = coords.len();
         let mut sorted: Vec<&DeckEval> = s1.iter().collect();
@@ -1072,6 +1090,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         if std::env::var("DECK_DEBUG").is_ok() { eprintln!("pass 1: {} decks no other beats, {:.2}s", s1.len(), t0.elapsed().as_secs_f64()); }
         run_enum(kmax, Some(&(kk, ids)))
     };
+    if let (Some(k), false) = (ekey, hit) {
+        ENUM_CACHE.with(|c| { let mut c = c.borrow_mut(); let l = c.as_mut().unwrap(); if l.len() >= 4 { l.remove(0); } l.push((k, front.clone(), n_decks, n_swapped)); });
+    }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("tests {} scans {} avg_lim {:.0} dom_in_scan {} ring {} swapped {} subtrees {} s1 {}", st_tests, st_full, 0.0, st_dom, st_ring, n_swapped, n_subtrees, st_s1); }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("rel {} decks {} enum {:.2}s", nrel, n_decks, t0.elapsed().as_secs_f64()); }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("front {} pareto {:.2}s", front.len(), t0.elapsed().as_secs_f64()); }
