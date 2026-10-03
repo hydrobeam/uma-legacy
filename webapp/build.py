@@ -1,5 +1,5 @@
 """Assemble the single-file web app: wasm (base64), data, skill catalog, precomputed example, images (img/, from images.py)."""
-import json, base64, subprocess, os, sqlite3
+import json, base64, subprocess, os, sqlite3, glob
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
@@ -27,6 +27,9 @@ def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).repla
 NN, RU, US, PO = 20049, 20046, 20159, 20166
 TRAINEE_HINTS = [[1008, NN, 1.0], [1060, RU, 1.0], [1042, US, 1.0], [101202, NN, 0.5], [101303, PO, 1 / 3]]
 DECK_HINTS = [[10060, RU, 1, 0.5], [30036, RU, 1, 0.5], [30137, RU, 1, 1.0]]
+# GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
+_gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
+GT_URL = {c['support_id']: c['url_name'] for c in json.load(open(_gt[-1]))} if _gt else {}
 def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
@@ -61,7 +64,7 @@ def era(dirp, events_file):
         # pals, group cards, R cards (no chain events: hints only, no chain slot) and SR/SSR cards with chains
         if not c['pal'] and c['links'] == 0 and c['rarity'] != 1: continue
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
-        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']),
+        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], [])})
     umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     uma_ids = {u['id'] for u in umas}; outfit_ids = {o['id'] for u in umas for o in u['outfits']}; card_ids = {c['id'] for c in cards['cards']}

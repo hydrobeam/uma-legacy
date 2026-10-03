@@ -1036,13 +1036,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       else if (oid) state.outfits[oid] = false; else state.roster[u.id] = 'out';
       save(); renderRoster(); markOwn(); sw.checked = owned(); };
   }
-  // GameTora's card page: /umamusume/supports/<id>-<character name, lowercase, punctuation dropped>. Group cards use
-  // other names there (checked: 30067, 30137 404), so those open the support list.
-  const GT_NO_PAGE = new Set([30067, 30137]);
+  // GameTora's card page, by the url_name in its own card list (build.py; group cards have names a slug can't guess).
+  // Fallback for a card missing from that list: id + character name, lowercase, punctuation dropped.
   function gametoraUrl(c) {
-    if (GT_NO_PAGE.has(c.id)) return 'https://gametora.com/umamusume/supports';
-    const nm = c.name.replace(/^\[.*?\]\s*/, '').toLowerCase().replace(/[.']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    return `https://gametora.com/umamusume/supports/${c.id}-${nm}`;
+    const nm = c.gt || c.id + '-' + c.name.replace(/^\[.*?\]\s*/, '').toLowerCase().replace(/[.']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return 'https://gametora.com/umamusume/supports/' + nm;
   }
   function openPop(el) {
     closePop(); popFor = el; el.setAttribute('aria-expanded', 'true');
