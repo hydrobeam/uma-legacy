@@ -22,7 +22,7 @@ export function openSched(l) {
   function cell(r, k) {   // one scheduled race in a slot
     const c = r.cells[k], names = r.race.split('/'), el = document.createElement('div'); el.className = 'ag-race' + (r.shared ? '' : ' opt');
     const id = RACEIDS[names[0]], src = id && srcFor('race', id);
-    if (src) el.appendChild(Object.assign(new Image(), { className: 'banner', alt: '', src }));
+    if (src) el.appendChild(Object.assign(new Image(), { className: 'banner', alt: '', loading: 'lazy', src }));
     const nmEl = document.createElement('div'); nmEl.className = 'ag-nm'; nmEl.textContent = names.join(' or '); el.appendChild(nmEl);
     const others = M.map((_, j) => j).filter(j => j !== k && r.cells[j]);
     const p = document.createElement('span'); p.className = 'ag-p'; p.textContent = c.p + '%'; el.appendChild(p);
