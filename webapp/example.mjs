@@ -8,5 +8,5 @@ function call(obj){ const b=enc.encode(JSON.stringify(obj)); const p=ex.alloc(b.
 const J=(f)=>JSON.parse(fs.readFileSync(P+f));
 call({cmd:'init',data:J('data.json'),skills:J('web_skills.json'),cards:J('web_cards.json'),events:J('card_events.json')});
 const r=call({cmd:'deck',targets:[{group:20159},{group:20049,guaranteed:2},{group:20166},{group:20046,guaranteed:2},{group:20161},{group:21010},{group:20165},{group:20203}],
-  extra:[[1003,20190,1],[1078,20165,1]],star_dist:[0.45,0.5,0.05],borrow:true,top_decks:1,per_uma:true});
+  extra:[[1003,20190,1],[1078,20165,1]],star_dist:[0.5,0.45,0.05],borrow:true,top_decks:1,per_uma:true});
 fs.writeFileSync('example.json', JSON.stringify(r)); console.log(r.error||'', r.top.map(t=>Math.round(1/t.loop.p_all)));

@@ -45,7 +45,8 @@ pub(crate) struct Target {
 #[derive(Deserialize)]
 pub(crate) struct SkillJob {
     pub targets: Vec<Target>,
-    /// 1/2/3-star shares of the lineage's sparks (rank A: 0.45, 0.50, 0.05)
+    /// 1/2/3-star shares of the lineage's sparks: 0.50/0.45/0.05 below rank score 17,500, 0.20/0.70/0.10 from 17,500 up
+    /// (hakuraku.moe/notes/spark_generation: 528,637 and 196,646 white sparks from CM10-CM12 room data)
     #[serde(default = "dstar")] pub star_dist: [f64; 3],
     #[serde(default)] pub owned: Vec<u32>,
     #[serde(default)] pub exclude: Vec<u32>,
@@ -61,7 +62,7 @@ pub(crate) struct SkillJob {
     #[serde(default = "diters")] pub iters: usize,
     #[serde(default = "dseed")] pub seed: u64,
 }
-fn dstar() -> [f64; 3] { [0.45, 0.50, 0.05] }
+fn dstar() -> [f64; 3] { [0.50, 0.45, 0.05] }
 fn dtop5() -> usize { 5 }
 fn diters() -> usize { 30 }
 fn dseed() -> u64 { 3 }
@@ -465,7 +466,7 @@ mod tests {
 
     /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
     /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283; with
-    /// the rounded 35%/70% spark generation (before the x1.1^6 curve) it was 1 in 140.4.
+    /// the rounded 35%/70% spark generation (before the x1.1^6 curve) it was 1 in 140.4, and 127.3 with the 45/50/5 star mix.
     #[test]
     fn skills_port_matches_python() {
         let d = data(); let sk = skills();
@@ -479,7 +480,7 @@ mod tests {
         let mut s = ids.clone(); s.sort();
         assert_eq!(s, vec![1007, 1019, 1021, 1034], "best loop {ids:?}");
         let inv = 1.0 / l["p_all"].as_f64().unwrap();
-        assert!((inv - 127.3).abs() < 1.0, "1 in {inv}");
+        assert!((inv - 130.7).abs() < 1.0, "1 in {inv}");
         assert_eq!(r["proven_top"], json!(true));
     }
 
@@ -495,7 +496,7 @@ mod tests {
         let l = &r["loops"][0];
         let mut ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect(); ids.sort();
         assert_eq!(ids, vec![1009, 1014, 1019, 1029]);
-        { let inv = 1.0 / l["p_all"].as_f64().unwrap(); assert!((inv - 168.4).abs() < 1.0, "1 in {inv}"); }
+        { let inv = 1.0 / l["p_all"].as_f64().unwrap(); assert!((inv - 172.6).abs() < 1.0, "1 in {inv}"); }
         // every outfit of an uma excluded -> that uma is not owned
         let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902], "top": 1})).unwrap();
         let r2 = run_skills(d, &sk, &job2);
