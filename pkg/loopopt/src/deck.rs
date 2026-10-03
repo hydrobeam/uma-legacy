@@ -1484,10 +1484,12 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
             return;
         }
         let coord = |j: usize, c: usize| if c < nu { sky[j].dw[c] } else { sky[j].dg[c - nu] };
-        let c = (0..2 * nu).max_by(|&a, &b| {
-            let r = |c: usize| { let (lo, hi) = ix.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &j| (lo.min(coord(j, c)), hi.max(coord(j, c)))); hi - lo };
-            r(a).partial_cmp(&r(b)).unwrap()
-        }).unwrap();
+        let mut lo = vec![f64::INFINITY; 2 * nu]; let mut hi = vec![f64::NEG_INFINITY; 2 * nu];
+        for &j in ix.iter() { for k in 0..nu {
+            lo[k] = lo[k].min(sky[j].dw[k]); hi[k] = hi[k].max(sky[j].dw[k]);
+            lo[nu + k] = lo[nu + k].min(sky[j].dg[k]); hi[nu + k] = hi[nu + k].max(sky[j].dg[k]);
+        } }
+        let c = (0..2 * nu).max_by(|&a, &b| (hi[a] - lo[a]).partial_cmp(&(hi[b] - lo[b])).unwrap()).unwrap();
         let mid = ix.len() / 2;
         ix.select_nth_unstable_by(mid, |&a, &b| coord(a, c).partial_cmp(&coord(b, c)).unwrap());
         let (l, r) = ix.split_at_mut(mid);
