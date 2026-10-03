@@ -49,7 +49,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
 manual = json.load(open('../card_events.json'))['cards']
 for k, v in manual.items():
     if v.get('src', '') == 'gametora training_events': continue   # generated above, not a manual entry
-    if 'always' in v or 'disabled' in v: out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}
+    if any(x in v for x in ('always', 'disabled', 'chance')): out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}
 doc = {"about": json.load(open('../card_events.json'))['about'], "cards": dict(sorted(out.items()))}
 json.dump(doc, open('../card_events.json', 'w'), ensure_ascii=False, indent=1)
 print(len(out), 'cards written')

@@ -1,6 +1,33 @@
 {
  "about": "Local cache of support-card event skill hints (JP, Grand Masters era). One entry per card id. 'chain': [[link, [skill names]]] where the player can pick the skill (choice) or it is the success outcome; 'always': skills given whenever the card is in the deck (pal recreation finales); 'chance': [[skill, probability per run]]; 'disabled': events that do not fire in independent training; 'status': complete | partial | unknown; 'src': where it came from. Skill names must match the in-game Global names (web_skills.json). Add cards here instead of re-fetching sites. GM variant: first-year pal date events are assumed to fire.",
  "cards": {
+  "10060": {
+   "name": "[Tracen Academy] Riko Kashimoto",
+   "chance": [
+    [
+     "Ramp Up",
+     0.5
+    ]
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention"
+  },
+  "10074": {
+   "name": "[Acupuncturist] Sasami Anshinzawa",
+   "always": [
+    "Risky Business"
+   ],
+   "status": "complete",
+   "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes"
+  },
+  "10083": {
+   "name": "[Event Producer] Light Hello",
+   "always": [
+    "Playtime's Over!"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 830052001 (At Rainbow Cove), R variant: Playtime's Over! hint +3 or +1 on both outcomes"
+  },
   "20021": {
    "name": "[Trainers' Teamwork] Aoi Kiryuin",
    "always": [],
@@ -21,9 +48,14 @@
   },
   "30036": {
    "name": "[Planned Perfection] Riko Kashimoto",
-   "always": [],
    "status": "complete",
-   "src": "umamusu.wiki (Ramp Up from a random event; covered by scenario)"
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention",
+   "chance": [
+    [
+     "Ramp Up",
+     0.5
+    ]
+   ]
   },
   "30052": {
    "name": "[From the Ground Up] Light Hello",
@@ -31,7 +63,13 @@
     "See Ya Later!"
    ],
    "status": "complete",
-   "src": "user + umamusu.wiki (recreation 5)"
+   "src": "GameTora training_events_friend 830052001 (At Rainbow Cove, the SSR's card event): See Ya Later! hint +3 or +1 on both outcomes"
+  },
+  "30067": {
+   "name": "[Esteemed and Adored] Heirs to the Throne",
+   "always": [],
+   "status": "complete",
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): no target skills"
   },
   "30080": {
    "name": "[This Might Sting!] Sasami Anshinzawa",
@@ -55,22 +93,6 @@
    ],
    "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure; outcomes 50/50 by the 'di' convention). Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then."
   },
-  "10074": {
-   "name": "[Acupuncturist] Sasami Anshinzawa",
-   "always": [
-    "Risky Business"
-   ],
-   "status": "complete",
-   "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes"
-  },
-  "30137": {
-   "name": "[Chasing Eternal Glory] Progenitors and Guides",
-   "always": [
-    "Uma Stan"
-   ],
-   "status": "complete",
-   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): Darley Arabian date gives Straightaway Adept + Uma Stan"
-  },
   "30081": {
    "name": "[Passing the Dream On] Team Sirius",
    "always": [
@@ -79,11 +101,13 @@
    "status": "complete",
    "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): a member date gives Risky Business"
   },
-  "30067": {
-   "name": "[Esteemed and Adored] Heirs to the Throne",
-   "always": [],
+  "30137": {
+   "name": "[Chasing Eternal Glory] Progenitors and Guides",
+   "always": [
+    "Uma Stan"
+   ],
    "status": "complete",
-   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): no target skills"
+   "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): Darley Arabian date gives Straightaway Adept + Uma Stan"
   }
  }
 }

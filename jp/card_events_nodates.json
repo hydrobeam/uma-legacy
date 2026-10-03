@@ -1,6 +1,17 @@
 {
  "about": "Local cache of support-card event skill hints (JP, Grand Masters era). One entry per card id. 'chain': [[link, [skill names]]] where the player can pick the skill (choice) or it is the success outcome; 'always': skills given whenever the card is in the deck (pal recreation finales); 'chance': [[skill, probability per run]]; 'disabled': events that do not fire in independent training; 'status': complete | partial | unknown; 'src': where it came from. Skill names must match the in-game Global names (web_skills.json). Add cards here instead of re-fetching sites. GM variant: first-year pal date events are assumed to fire.",
  "cards": {
+  "10060": {
+   "name": "[Tracen Academy] Riko Kashimoto",
+   "chance": [
+    [
+     "Ramp Up",
+     0.5
+    ]
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention"
+  },
   "10074": {
    "name": "[Acupuncturist] Sasami Anshinzawa",
    "always": [
@@ -8,6 +19,14 @@
    ],
    "status": "complete",
    "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes"
+  },
+  "10083": {
+   "name": "[Event Producer] Light Hello",
+   "always": [
+    "Playtime's Over!"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 830052001 (At Rainbow Cove), R variant: Playtime's Over! hint +3 or +1 on both outcomes"
   },
   "20001": {
    "name": "[Well, Look Who's Home] Fuji Kiseki",
@@ -1668,9 +1687,14 @@
   },
   "30036": {
    "name": "[Planned Perfection] Riko Kashimoto",
-   "always": [],
+   "chance": [
+    [
+     "Ramp Up",
+     0.5
+    ]
+   ],
    "status": "complete",
-   "src": "umamusu.wiki (Ramp Up from a random event; covered by scenario)"
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention"
   },
   "30037": {
    "name": "[The Unequivocal Emperor] Symboli Rudolf",
@@ -1968,7 +1992,7 @@
     "See Ya Later!"
    ],
    "status": "complete",
-   "src": "user + umamusu.wiki (recreation 5)"
+   "src": "GameTora training_events_friend 830052001 (At Rainbow Cove, the SSR's card event): See Ya Later! hint +3 or +1 on both outcomes"
   },
   "30053": {
    "name": "[Hands Up, Crook!] Taiki Shuttle",
