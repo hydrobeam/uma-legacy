@@ -34,7 +34,7 @@ Finds the best four-uma legacy loop (Uma Musume, Global) for either affinity or 
 
 Settings are saved in your browser on that device. Nothing is uploaded.
 
-**Affinity only** mode ignores skills and maximises affinity, with grandparent slots at half weight.
+**Affinity only** mode ignores skills and maximises total affinity. The skill modes' inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts ([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)).
 
 ## Host it (optional)
 

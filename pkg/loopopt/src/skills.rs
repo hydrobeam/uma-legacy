@@ -4,17 +4,25 @@
 //!   - every target skill's spark sits on all 6 legacies, with stars drawn from a rank distribution
 //!     (expected base rate is exact because legacies are independent and proc is linear in the base rate);
 //!   - a skill is acquired if guaranteed, on T's own outfit skill list, hinted by the deck, or proc'd from the lineage
-//!     (P = 1 - prod(1 - base*(1+aff/100)*(gp ? GP_RATE : 1))^INSPIRATIONS);
+//!     (P = 1 - prod(1 - base*(1+aff/100))^INSPIRATIONS over the six legacies, parents and grandparents alike);
+//!   - each legacy's affinity follows uma-it-optimizer's fit on 8,155 Independent Training receipts
+//!     (github.com/Acrith/uma-it-optimizer, tools/loop/affinity.py): a parent P counts pair(T,P), the whole
+//!     pair(P1,P2), 3 per G1 shared with the other parent, and for each of P's own parents G the trio (T,P,G) plus
+//!     3 per G1 shared with G; a grandparent G under P counts trio(T,P,G) plus 3 per G1 shared with P. In a loop P's
+//!     own parents are the other parent and the fourth member, so the parents' shared G1s count twice for each;
 //!   - it then lands as a spark with GEN_GOLD if the gold version is bought, else GEN_WHITE.
 //! Metric: P(all targets land on the veteran), averaged over the 12 lineages.
 //! Search: exact upper bound per foursome (pair overlaps -> pairwise ceilings PB), then best-first with real
-//! schedules (affinity-optimised, grandparents at half weight) until the next bound is below the k-th best.
+//! schedules (affinity-optimised: in the 12-lineage cycle every pair's shared G1s weigh the same) until the next
+//! bound is below the k-th best.
 use super::*;
 use serde_json::{json, Value};
 
 pub(crate) const GEN_WHITE: f64 = 0.35;
 pub(crate) const GEN_GOLD: f64 = 0.70;
-const GP_RATE: f64 = 0.5;
+/// Grandparents' base rate relative to parents'. 1: they fire less only because their affinity is lower (receipts:
+/// halving predicted half of what fired).
+const GP_RATE: f64 = 1.0;
 const INSPIRATIONS: i32 = 2;
 
 #[derive(Deserialize, Clone)]
@@ -139,10 +147,10 @@ impl<'a> Model<'a> {
         let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
         let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
         lineages().iter().map(|&(t, p1, p2, x)| {
-            let shared = pr(p1, p2) / 2.0 + 1.5 * o(p1, p2);
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
-                let ap = pr(t, par) + shared;
+                let ap = pr(t, par) + pr(p1, p2) + 3.0 * o(par, other)
+                    + tr(t, par, other) + 3.0 * o(par, other) + tr(t, par, x) + 3.0 * o(par, x);
                 miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
                 for g in [other, x] {
                     let ag = tr(t, par, g) + 3.0 * o(par, g);
@@ -157,10 +165,11 @@ impl<'a> Model<'a> {
         let d = self.d;
         let mut out = [0.0f64; 12];
         for (l, &(t, p1, p2, x)) in self.lin.iter().enumerate() {
-            let shared = d.pair[f[p1]][f[p2]] as f64 / 2.0 + 1.5 * o(p1, p2);
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
-                let ap = d.pair[f[t]][f[par]] as f64 + shared;
+                let ap = d.pair[f[t]][f[par]] as f64 + d.pair[f[p1]][f[p2]] as f64 + 3.0 * o(par, other)
+                    + d.tri[f[t]][f[par]][f[other]] as f64 + 3.0 * o(par, other)
+                    + d.tri[f[t]][f[par]][f[x]] as f64 + 3.0 * o(par, x);
                 miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
                 for g in [other, x] {
                     let ag = d.tri[f[t]][f[par]][f[g]] as f64 + 3.0 * o(par, g);
@@ -183,10 +192,11 @@ impl<'a> Model<'a> {
         let mut best = 0.0f64;
         for i in 0..others.len() { for j in i + 1..others.len() {
             let (p1, p2) = (others[i], others[j]);
-            let shared = d.pair[p1][p2] as f64 / 2.0 + 1.5 * pb[p1][p2];
             let mut miss = 1.0f64;
             for (par, other, xm) in [(p1, p2, xmax[i]), (p2, p1, xmax[j])] {
-                let ap = d.pair[t][par] as f64 + shared;
+                // the fourth member's terms take their best value over every fourth member, in both slots
+                let ap = d.pair[t][par] as f64 + d.pair[p1][p2] as f64 + 3.0 * pb[par][other]
+                    + d.tri[t][par][other] as f64 + 3.0 * pb[par][other] + xm;
                 miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
                 let ag = d.tri[t][par][other] as f64 + 3.0 * pb[par][other];
                 miss *= 1.0 - (GP_RATE * self.base * (1.0 + ag / 100.0)).min(1.0);
@@ -276,10 +286,10 @@ impl<'a> Model<'a> {
         for a in 0..4 { for b in a + 1..4 { pairs.push(json!({"a": a, "b": b, "rel": pr(a, b), "wins": o(a, b)})); } }
         let mut lins = vec![];
         for &(t, p1, p2, x) in &lineages() {
-            let shared_rel = pr(p1, p2) / 2.0; let shared_race = 1.5 * o(p1, p2);
             let mut slots = vec![]; let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
-                let rel = pr(t, par) + shared_rel; let race = shared_race; let aff = rel + race;
+                let rel = pr(t, par) + pr(p1, p2) + tr(t, par, other) + tr(t, par, x);
+                let race = 3.0 * o(par, other) + 3.0 * o(par, other) + 3.0 * o(par, x); let aff = rel + race;
                 let proc = (self.base * (1.0 + aff / 100.0)).min(1.0); miss *= 1.0 - proc;
                 slots.push(json!({"kind": "parent", "who": [par], "rel": rel, "race": race, "aff": aff, "proc": proc}));
                 for g in [other, x] {
@@ -405,7 +415,8 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
         })
     }).collect();
     let next_bound = if next < cand.len() { cand[next].0 } else { 0.0 };
-    let proven_top = done.len() >= 2 && done.iter().skip(1).all(|x| x.1 < done[0].0) && next_bound < done[0].0 || done.len() == 1 && next_bound < done[0].0;
+    // solved loops are known exactly; the best is proven once no unsolved ceiling reaches it
+    let proven_top = !done.is_empty() && next_bound < done[0].0;
     json!({"loops": loops, "searched": done.len(), "foursomes": cand.len(), "next_bound": next_bound, "proven_top": proven_top})
 }
 
@@ -448,7 +459,8 @@ mod tests {
     }
     fn skills() -> SkillsRaw { serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap() }
 
-    /// The Rust port reproduces the Python skills.py results (Unity Cup targets, rank A, Nothing Ventured guaranteed).
+    /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
+    /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283.
     #[test]
     fn skills_port_matches_python() {
         let d = data(); let sk = skills();
@@ -462,11 +474,11 @@ mod tests {
         let mut s = ids.clone(); s.sort();
         assert_eq!(s, vec![1007, 1019, 1021, 1034], "best loop {ids:?}");
         let inv = 1.0 / l["p_all"].as_f64().unwrap();
-        assert!((inv - 283.0).abs() < 2.0, "1 in {inv}");
+        assert!((inv - 140.4).abs() < 1.0, "1 in {inv}");
         assert_eq!(r["proven_top"], json!(true));
     }
 
-    /// Excluding one outfit (Summer Special Week) changes only that outfit's skills: reproduces the CLI result.
+    /// Excluding one outfit (Summer Special Week) changes only that outfit's skills: regression anchor from the CLI.
     #[test]
     fn outfit_exclusion() {
         let d = data(); let sk = skills();
@@ -477,8 +489,8 @@ mod tests {
         let r = run_skills(d, &sk, &job);
         let l = &r["loops"][0];
         let mut ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect(); ids.sort();
-        assert_eq!(ids, vec![1006, 1007, 1014, 1019]);
-        assert!((1.0 / l["p_all"].as_f64().unwrap() - 369.0).abs() < 2.0);
+        assert_eq!(ids, vec![1009, 1014, 1019, 1029]);
+        assert!((1.0 / l["p_all"].as_f64().unwrap() - 185.7).abs() < 1.0);
         // every outfit of an uma excluded -> that uma is not owned
         let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902], "top": 1})).unwrap();
         let r2 = run_skills(d, &sk, &job2);

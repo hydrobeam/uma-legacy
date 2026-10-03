@@ -206,7 +206,7 @@ Per-uma decks (`per_uma`): a loop's value is fixed/12 · Σ over the four umas o
 
 Typical time natively, R cards included: under 1 s for one deck with the Unity Cup golds guaranteed, 3–11 s with none guaranteed (Global; GM era about 3 s), up to about 100 s for three decks; the browser is about 1.5× slower. Dominance tests use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
-Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, grandparents at half rate, base 4.8% for rank B–SS); an acquired skill becomes a spark 35% of the time as a white, 70% as a gold. Odds are averaged over the 12 lineages.
+Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.8% for rank B–SS). Each legacy's affinity follows uma-it-optimizer's fit to 8,155 Independent Training receipts (github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor (halving them predicted half of what fired). In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. Before this, the model used umaishow's split (a parent took half the parent–parent relation and shared G1s) with grandparents halved, which put every spark chance at about half the measured level. An acquired skill becomes a spark 35% of the time as a white, 70% as a gold. Odds are averaged over the 12 lineages.
 
 ## 4. Validation
 
@@ -269,6 +269,6 @@ Rejected: a speculative work queue in `best`, which was slower at the current sp
 ## 6. Limits
 
 - **The ranking among searched survivors is heuristic.** The search reproduces every known optimum and the deep search found nothing better, but no proof is given that a survivor's true optimum isn't higher. The ceilings are 30–110 points loose, so certifying would need a much tighter relaxation.
-- **Model assumptions (§1) are user-supplied or community-derived:** the win formula, the affinity model, and treating grandparent spark rates like parents'. The code doesn't validate them.
+- **Model assumptions (§1) are user-supplied or community-derived:** the win formula and the affinity-only objective. The skill modes' per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
 - **Junior G1s need 1,000 fans and a debut win gives 700.** Unless a fan bonus applies, add one extra Junior race the uma wins, before Early Nov. This doesn't change affinity.
 - **Base-outfit aptitudes by default.** Use `OUTFIT=chara:card` for alternate outfits (Vodka 100802, Daiwa 100902, Urara 105202); this needs a re-export.
