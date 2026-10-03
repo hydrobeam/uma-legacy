@@ -278,38 +278,57 @@ fn sig_of(v: &[f64], query: bool) -> Sig {
 #[inline]
 fn sig_ge(e: Sig, q: Sig) -> bool { ((e | SIG_GUARD) - q) & SIG_GUARD == SIG_GUARD }
 
-/// Field-wise max of two signatures (levels only, guard bits clear).
-fn sig_max(a: Sig, b: Sig) -> Sig {
-    let mut m: Sig = 0;
-    for c in 0..SIG_FIELDS { let sh = FB * c; m |= ((a >> sh) & (LEVELS - 1)).max((b >> sh) & (LEVELS - 1)) << sh; }
-    m
-}
-
-const BLOCK: usize = 32;
 const NBUCKET: usize = 128;
 
 /// Decks whose coordinate sums fall in one slice of [0, nd]: flat arrays (entry and query signatures,
-/// coordinates, ids) plus, per block of BLOCK decks, the field-wise max entry signature, so a whole block that
-/// cannot hold a dominator is skipped with one test.
+/// coordinates, ids) plus a level index of the entry signatures: for each word of 64 decks and each signature
+/// field f and level l >= 1, the bits of the decks whose field f is at least l. ANDing one word per field of a
+/// query gives the decks that pass the signature test, 64 at a time; they are then visited in index order, the
+/// same order as a plain scan.
 #[derive(Default)]
-struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, bmax: Vec<Sig> }
+struct Bucket { list: Vec<DeckEval>, esig: Vec<Sig>, qsig: Vec<Sig>, flat: Vec<f64>, uid: Vec<u64>, lv: Vec<u64> }
+const LVW: usize = SIG_FIELDS * (LEVELS as usize - 1);   // index words per 64 decks
 impl Bucket {
-    /// rebuild the block maxima from block `from` on
-    fn rebuild_bmax(&mut self, from: usize) {
-        self.bmax.truncate(from);
-        for blk in from..self.esig.len().div_ceil(BLOCK) {
-            let end = ((blk + 1) * BLOCK).min(self.esig.len());
-            self.bmax.push(self.esig[blk * BLOCK..end].iter().fold(0, |m, &e| sig_max(m, e)));
+    #[inline]
+    fn index_set(&mut self, i: usize, e: Sig) {
+        let w = i / 64;
+        if self.lv.len() < (w + 1) * LVW { self.lv.resize((w + 1) * LVW, 0); }
+        let bit = 1u64 << (i % 64);
+        let base = w * LVW;
+        for f in 0..SIG_FIELDS {
+            let l = ((e >> (FB * f)) & (LEVELS - 1)) as usize;
+            for k in 0..l { self.lv[base + f * (LEVELS as usize - 1) + k] |= bit; }
         }
     }
+    /// rebuild the level index from deck `from` on (after the arrays were compacted)
+    fn reindex_from(&mut self, from: usize) {
+        let w0 = from / 64;
+        self.lv.truncate((w0 + 1) * LVW);
+        if self.lv.len() == (w0 + 1) * LVW {
+            let keep = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
+            for x in &mut self.lv[w0 * LVW..] { *x &= keep; }
+        }
+        if self.esig.len() <= w0 * 64 { self.lv.truncate(w0 * LVW); }
+        for i in from..self.esig.len() { let e = self.esig[i]; self.index_set(i, e); }
+    }
+    /// decks of word w that pass the signature test for the query whose level-index offsets are `qo`
+    #[inline]
+    fn cand_word(&self, w: usize, qo: &[usize]) -> u64 {
+        let n = self.esig.len() - w * 64;
+        let mut m = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
+        let base = w * LVW;
+        for &o in qo { m &= self.lv[base + o]; if m == 0 { break; } }
+        m
+    }
 }
-/// Bit k set when entry signature es[k] passes the signature test against query q (branch-free, so the loop
-/// vectorises); callers then visit the set bits in index order, the same order as a plain scan.
-#[inline]
-fn cand_mask(es: &[Sig], q: Sig) -> u64 {
-    let mut m = 0u64;
-    for (k, &e) in es.iter().enumerate() { m |= (sig_ge(e, q) as u64) << k; }
-    m
+/// Level-index offsets of a query signature: one per field whose level is at least 1.
+fn query_offsets(q: Sig, out: &mut [usize; SIG_FIELDS]) -> usize {
+    let mut n = 0;
+    for f in 0..SIG_FIELDS {
+        let l = ((q >> (FB * f)) & (LEVELS - 1)) as usize;
+        if l > 0 { out[n] = f * (LEVELS as usize - 1) + l - 1; n += 1; }
+    }
+    n
 }
 
 /// Kept decks of one pal count. A dominator's coordinate sum is at least the deck's (less float slack), so a
@@ -339,14 +358,13 @@ impl Kept {
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
         self.found.clear();
+        let mut qo = [0usize; SIG_FIELDS]; let nq = query_offsets(xq, &mut qo);
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
-            for (blk, &m) in bk.bmax.iter().enumerate() {
-                if !sig_ge(m, xq) { continue; }
-                let start = blk * BLOCK;
-                let mut cm = cand_mask(&bk.esig[start..(start + BLOCK).min(bk.esig.len())], xq);
+            for w in 0..bk.esig.len().div_ceil(64) {
+                let mut cm = bk.cand_word(w, &qo[..nq]);
                 while cm != 0 {
-                    let i = start + cm.trailing_zeros() as usize; cm &= cm - 1;
+                    let i = w * 64 + cm.trailing_zeros() as usize; cm &= cm - 1;
                     *tests += 1;
                     let row = &bk.flat[i * nd..(i + 1) * nd];
                     if dominates(row, x) {
@@ -366,14 +384,13 @@ impl Kept {
         let nd = self.nd;
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
+        let mut qo = [0usize; SIG_FIELDS]; let nq = query_offsets(xq, &mut qo);
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
-            for (blk, &m) in bk.bmax.iter().enumerate() {
-                if !sig_ge(m, xq) { continue; }
-                let start = blk * BLOCK;
-                let mut cm = cand_mask(&bk.esig[start..(start + BLOCK).min(bk.esig.len())], xq);
+            for w in 0..bk.esig.len().div_ceil(64) {
+                let mut cm = bk.cand_word(w, &qo[..nq]);
                 while cm != 0 {
-                    let i = start + cm.trailing_zeros() as usize; cm &= cm - 1;
+                    let i = w * 64 + cm.trailing_zeros() as usize; cm &= cm - 1;
                     if dominates(&bk.flat[i * nd..(i + 1) * nd], x) { n += 1; if n >= need { return n; } }
                 }
             }
@@ -403,7 +420,7 @@ impl Kept {
         let id = self.next_uid; self.next_uid += 1;
         let bk = &mut self.buckets[bi];
         let i = bk.list.len();
-        if i % BLOCK == 0 { bk.bmax.push(e); } else { let l = bk.bmax.len() - 1; bk.bmax[l] = sig_max(bk.bmax[l], e); }
+        bk.index_set(i, e);
         bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(&x.dv); bk.uid.push(id); bk.list.push(x);
         self.n += 1;
     }
@@ -438,7 +455,7 @@ impl Kept {
             }
             self.n -= len - w;
             bk.list.truncate(w); bk.esig.truncate(w); bk.qsig.truncate(w); bk.uid.truncate(w); bk.flat.truncate(w * nd);
-            bk.rebuild_bmax(f / BLOCK);
+            bk.reindex_from(f);
         }
     }
     fn into_list(self) -> Vec<DeckEval> { self.buckets.into_iter().flat_map(|b| b.list).collect() }
