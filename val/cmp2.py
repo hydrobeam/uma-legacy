@@ -1,4 +1,5 @@
 import json,sys,glob,os
+V=os.path.dirname(os.path.abspath(__file__))+'/'
 tag=sys.argv[1]; bad=0; n=0
 def load(p):
     t=open(p).read()

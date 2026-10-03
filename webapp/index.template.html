@@ -219,7 +219,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       <p class="hint" id="era-hint"></p>
       <div class="extras">
         <label><input type="checkbox" id="x-rcards" checked> Use R cards (training hints only; like a pal they take no chain slot)</label>
-        <label><input type="checkbox" id="x-dates"> Pal first-year dates fire (Tazuna: Tail Held High, Anshinzawa SSR: Uma Stan). They don't in Unity Cup independent training.</label>
+        <label><input type="checkbox" id="x-dates"> Pal first-year dates fire (Tazuna: Tail Held High, Anshinzawa: Uma Stan, SSR and R). They don't in Unity Cup independent training.</label>
         <label class="row" for="x-rand" style="gap:10px"><span style="font-size:.88rem">Random event hints</span>
           <select id="x-rand">
             <option value="0">Not counted</option>
@@ -469,7 +469,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       f.trainee_hints = HINTS.trainee.map(([id, g, p]) => [id, g, p * r]);
       if (deck) f.odds_events = HINTS.deck.map(([c, g, lv, p]) => [c, g, lv, p * r]);
     }
-    if (deck && state.dates) f.events = [[30021, 20161, 1, 0], [30080, 20159, 1, 0]].filter(e => CARD_BY_ID.has(e[0]));
+    if (deck && state.dates) f.events = [[30021, 20161, 1, 0], [10021, 20161, 1, 0], [30080, 20159, 1, 0], [10074, 20159, 1, 0]].filter(e => CARD_BY_ID.has(e[0]));
     if (deck && !state.rcards) f.exclude_cards = CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id);
     return f;
   }

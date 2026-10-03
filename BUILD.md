@@ -13,11 +13,15 @@
 
 Browser checks: `cd webapp && python3 pwdeck.py && python3 pwera.py` (Playwright, Chromium). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.
 
-Manual card entries: Global ones live in `pkg/loopopt/card_events.json` (every entry except the generated ones, `src` exactly "gametora training_events", survives `events`), GM ones in `jp/export/manual_gm*.json`.
+Manual card entries (pal and group cards, written by hand; the build script decodes only SR/SSR chains): Global ones live in `pkg/loopopt/card_events.json` (every entry except the generated ones, `src` exactly "gametora training_events", survives `events`), GM ones in `jp/export/manual_gm*.json`.
 
 `val/ref__*` holds the current reference outputs; when a data change moves results on purpose, rerun `val`, check the diff, then copy the new outputs over `ref__*` in the same commit. Releases are tagged `vN` to match the published page version.
 
-Zips are a clone of this repository (history and tags included) plus the built `Legacy Loop Planner.html`.
+Zips (used before the repo moved to GitHub) are a clone of this repository (history and tags included) plus the built `Legacy Loop Planner.html`.
 Before zipping: clone, `git remote remove origin`, `git gc --aggressive`, copy in the built page.
 
 Exactness checks against brute force on small owned sets: `python3 val/owncheck.py BIN 3 "Yaeno Muteki"` (character rule, shared deck) and `python3 val/permcheck.py BIN 3` (per-uma decks; `permcheck_big.py` is the 8-uma, 10-card version, ~25 min).
+
+Audit the manual entries against GameTora after any change to them or to the GameTora caches: `python3 val/event_audit.py` (exit 1 lists every target hint a pal or group card can give that its entry does not account for).
+
+When every value is expected to scale by one factor (a constant change), compare a run with `python3 val/cmp_ratio.py TAG ref` instead of `cmp2.py`.

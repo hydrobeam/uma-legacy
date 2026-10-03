@@ -1,7 +1,7 @@
 """usage: owncheck.py BIN [K] [Required Uma,Other Uma]
 Brute-force check of the character rule: every 6-card deck from a small owned set, each with its best legal
 loop (deck locked, blocked umas excluded), against run_deck's branching answer. usage: owncheck.py BIN [K]"""
-import json, itertools, subprocess, sys, os, concurrent.futures as cf
+import tempfile, json, itertools, subprocess, sys, os, concurrent.futures as cf
 S = os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/'
 BIN, K = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 3
 REQ = sys.argv[3].split(',') if len(sys.argv) > 3 else []
@@ -13,6 +13,7 @@ OWN = [cid('[Tracen Academy] Yaeno'), cid('Tonight, We Waltz'), cid('Sunlit Ange
        cid('[Tracen Academy] Mr. C.B.'), cid('[Tracen Academy] Inari'), cid('Split the Sky'), cid('Team Sirius'), cid('[Tracen Academy] Gold Ship')]
 base = json.load(open(S + 'jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN, top_decks=K, require=[uid[n] for n in REQ])
 def run(job):
+    p = os.path.join(tempfile.gettempdir(), f'_oc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json')
     json.dump(job, open(p, 'w')); out = subprocess.run([BIN, 'data.json', p], cwd=S, capture_output=True, text=True).stdout; os.remove(p)
     return json.loads(out[out.index('{'):])
 def blocked(deck): return sorted({u for n in UMAS for u in [uid[n]] if any(cards[c]['chara'] == u or u in cards[c].get('charas', []) for c in deck)})

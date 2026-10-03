@@ -20,7 +20,7 @@ Finds the best four-uma legacy loop (Uma Musume, Global) for either affinity or 
    - Leave both at 0 for inherit-only.
 
    **Unity Cup example** loads the 8-skill set used in our runs.
-4. **Lineage rank.** Star mix of the sparks on your legacies. Unity Cup tops out at A: use *B to SS*.
+4. **Lineage rank.** Star mix of the sparks on your legacies: *Below SS* (rank score 6,500–17,499, stars 50/45/5%) or *SS and up* (17,500+, 20/70/10%), from hakuraku.moe's room-match data. An Independent Training veteran reaches SS only if you spend nearly all its skill points.
 5. **Find best loops.** It returns the top 5 loops. For each loop you get:
    - odds that all targets land, and all but one;
    - runs for a 90% chance;
@@ -47,14 +47,14 @@ cd pkg/loopopt
 cargo build --release
 target/release/loopopt data.json jobs/skills_unity8.json       # skill-target search (example job)
 target/release/loopopt data.json jobs/best_full_roster.json   # affinity search
-cargo test --release                                          # 26 tests
+cargo test --release                                          # 29 tests
 ```
 
 Job fields and the model are in `pkg/loopopt/README.md`. Saved result sheets are in `pkg/loopopt/results/`.
 
 ## Rebuilding
 
-- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, wasm2js fallback, example), `page` (`webapp/dist/index.html`), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs compared with `val/ref__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
+- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, wasm2js fallback, example), `page` (`webapp/dist/index.html`), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
 - Step details for the wasm build are in `webapp/README.md`.
 - **Game data update:** put your own copy of the Global `master.mdb` (from the game's local data folder) in `pkg/loopopt/export/`, then:
 
@@ -75,6 +75,7 @@ pkg/loopopt/export/        Python exporters (master.mdb -> data.json, web_skills
 jp/                        Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
 val/                       validation jobs and reference outputs (./build.sh val TAG)
 build.sh, BUILD.md         one entry point for every build step
+inputs/                    reference material handed over by hand (saved pages, tables, the owner's export)
 .git/                      full history; releases are tagged vN to match the published page version
 ```
 
