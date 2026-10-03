@@ -80,7 +80,12 @@ input[type="search"] { width: 100%; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
 .ut[data-s="out"] .uol { text-decoration: line-through; }
 .rtools { gap: 6px; }
-.rtools .seg button { padding: 5px 10px; }
+.sortdd { position: relative; flex: none; }
+.sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); padding: 4px; }
+.sortmenu button { text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 0.88rem; color: var(--ink); cursor: pointer; }
+.sortmenu button:hover, .sortmenu button:focus-visible { background: var(--accent-soft); }
+.sortmenu button[aria-checked="true"] { font-weight: 700; color: var(--accent); }
 .ut[data-s="out"] .un { color: var(--muted); text-decoration: line-through; }
 .ut[data-s="req"] .un { color: var(--req); }
 .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 0.83rem; line-height: 1.3; }
@@ -327,8 +332,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       <div class="row between"><h2 id="h-roster">Umas</h2>
         <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
       <div class="row rtools"><input type="search" id="r-filter" placeholder="Filter by name or outfit" aria-label="Filter umas" style="flex:1">
-        <div class="seg" role="group" aria-label="Sort umas"><button id="rs-rel" aria-pressed="true">Release</button><button id="rs-name" aria-pressed="false">Name</button></div>
-        <button class="btn" id="rs-dir" type="button"></button></div>
+        <div class="sortdd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false"></button>
+          <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
       <div class="legend"><span>Owned</span><span class="l-out">Not owned</span><span class="l-req">Must include</span><span>Tap a tile to cycle</span></div>
       <div class="roster" id="roster"></div>
       <p class="hint" id="r-count"></p>
@@ -476,7 +481,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
     deck: store.get('deck', 'opt'),
     cardsOff: store.get('cardsOff', {}),      // card id -> false when not owned
     borrow: store.get('borrow', true),
-    rsort: store.get('rsort', 'rel'), rdir: store.get('rdir', 'asc'),   // roster order: release or name, ascending or descending
+    rsort: store.get('rsort', 'rel'), rdir: store.get('rdir', 'desc'),   // roster order: release (newest first by default) or name
     decksTop: store.get('decksTop', '1'), perUma: store.get('perUma', true),
     dates: store.get('dates', false), rand: store.get('rand', '0'), rcards: store.get('rcards', true),
   };
@@ -485,6 +490,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   function paintRunNote() { const n = $('run-note'); n.classList.toggle('stale', stale);
     n.textContent = stale ? 'Settings changed since the last search' : runNote; }
   function markStale() { if (!shown || stale) return; stale = true; paintRunNote(); }
+  if (!store.get('rsortv2', false)) { if (state.rsort === 'rel' && state.rdir === 'asc') state.rdir = 'desc'; store.set('rdir', state.rdir); store.set('rsortv2', true); }
   // one-time fix for targets saved by older versions: their Unity Cup preset marked See Ya Later! and Nothing
   // Ventured as guaranteed golds (from cards). Those now come from the deck search (Light Hello / Anshinzawa SSR).
   try { if (!localStorage.getItem('llp:targetsV2')) {
@@ -552,13 +558,22 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         save(); box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach(x => x._paint()); rosterCount(); };
       box.appendChild(t);
     }
-    $('rs-rel').setAttribute('aria-pressed', state.rsort !== 'name'); $('rs-name').setAttribute('aria-pressed', state.rsort === 'name');
-    $('rs-dir').textContent = state.rsort === 'name' ? (dir > 0 ? 'A → Z' : 'Z → A') : (dir > 0 ? 'Oldest first' : 'Newest first');
+    const arrow = state.rdir === 'desc' ? '↓' : '↑', how = { 'rel-desc': 'newest first', 'rel-asc': 'oldest first', 'name-asc': 'A to Z', 'name-desc': 'Z to A' };
+    $('rs').textContent = (state.rsort === 'name' ? 'Name ' : 'Release ') + arrow; $('rs').title = 'Sorted ' + how[state.rsort + '-' + state.rdir];
+    $('rs-menu').querySelectorAll('button').forEach(b => { const on = b.dataset.k === state.rsort; b.setAttribute('aria-checked', on);
+      b.textContent = (b.dataset.k === 'rel' ? 'Release' : 'Name') + (on ? ' ' + arrow : '');
+      b.title = on ? 'Click to reverse' : (b.dataset.k === 'rel' ? 'Newest first' : 'A to Z'); });
     rosterCount();
   }
-  $('rs-rel').onclick = () => { state.rsort = 'rel'; store.set('rsort', 'rel'); renderRoster(); };
-  $('rs-name').onclick = () => { state.rsort = 'name'; store.set('rsort', 'name'); renderRoster(); };
-  $('rs-dir').onclick = () => { state.rdir = state.rdir === 'desc' ? 'asc' : 'desc'; store.set('rdir', state.rdir); renderRoster(); };
+  // sort menu: pick Release or Name; picking the active one again reverses it (release starts newest first, name A to Z)
+  const rsMenu = (open) => { $('rs-menu').hidden = !open; $('rs').setAttribute('aria-expanded', open); };
+  $('rs').onclick = () => rsMenu($('rs-menu').hidden);
+  $('rs-menu').querySelectorAll('button').forEach(b => b.onclick = () => {
+    if (b.dataset.k === state.rsort) state.rdir = state.rdir === 'desc' ? 'asc' : 'desc';
+    else { state.rsort = b.dataset.k; state.rdir = b.dataset.k === 'rel' ? 'desc' : 'asc'; }
+    store.set('rsort', state.rsort); store.set('rdir', state.rdir); rsMenu(false); renderRoster(); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.sortdd')) rsMenu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('rs-menu').hidden) { rsMenu(false); $('rs').focus(); } });
   const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
   $('r-filter').oninput = renderRoster;
   $('r-all').onclick = () => { state.roster = Object.fromEntries(Object.entries(state.roster).filter(([, v]) => v === 'req')); state.outfits = {}; save(); renderRoster(); };
