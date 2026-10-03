@@ -398,8 +398,7 @@ impl Kept {
         for bi in 0..=top {
             let hit = |bk: &Bucket, i: usize| sig_ge(xe, bk.qsig[i]) && dominates(x, &bk.flat[i * nd..(i + 1) * nd]);
             let bk = &self.buckets[bi];
-            // PROTOTYPE: skip whole blocks whose field-wise minimum query signature x cannot reach
-            if !bk.bmin.iter().enumerate().any(|(blk, &mn)| sig_ge(xe, mn) && (blk * BLOCK..((blk + 1) * BLOCK).min(bk.list.len())).any(|i| hit(bk, i))) { continue; }
+            if !(0..bk.list.len()).any(|i| hit(bk, i)) { continue; }
             let old = std::mem::take(&mut self.buckets[bi]);
             let keep: Vec<bool> = (0..old.list.len()).map(|i| !hit(&old, i)).collect();
             let mut nb = Bucket::default();
