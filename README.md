@@ -36,7 +36,7 @@ Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to 
 
 ## Host it (optional)
 
-Upload the whole `webapp/dist/` folder anywhere that serves static files: Cloudflare Pages, GitHub Pages, Netlify. No special headers are needed.
+`./build.sh deploy` uploads `webapp/dist/` to Cloudflare Pages (one-time setup in BUILD.md). Any static host works too: upload the whole `webapp/dist/` folder; no special headers are needed.
 
 ## Command line (Rust)
 

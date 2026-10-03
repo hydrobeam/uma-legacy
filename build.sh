@@ -11,6 +11,8 @@
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox)
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
+#   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default legacy-loop-planner;
+#            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/ jp/
 #   val TAG  run the 24 validation jobs (shared deck, and the 23 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
@@ -36,6 +38,14 @@ step_wasm() {
 }
 step_test() { node "$W/nodebrowser.mjs"; }
 step_serve() { node "$W/serve.mjs" "${PORT:-8000}"; }
+# Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
+step_deploy() {
+  local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg jp)
+  if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/ jp/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
+  step_page
+  (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-legacy-loop-planner}" --branch "${CF_PAGES_BRANCH:-main}" \
+     --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" ${DEPLOY_DIRTY:+--commit-dirty=true})
+}
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
@@ -48,7 +58,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    data|events|native|pb|wasm|page|images|test|serve) "step_$1" ;;
+    data|events|native|pb|wasm|page|images|test|serve|deploy) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done

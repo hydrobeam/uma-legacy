@@ -92,7 +92,12 @@ app = subprocess.run([ESBUILD, os.path.join(H, 'src', 'main.js'), '--bundle', '-
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
-for k, v in [('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
+# version shown in the footer: the git tag (and commits since it), "-dirty" with uncommitted changes to what the page
+# is built from (webapp/, pkg/, jp/; edits elsewhere, e.g. docs, don't count)
+def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, text=True, check=True).stdout.strip()
+try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg', '../jp') else '')
+except Exception: VERSION = 'unknown'
+for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA__', G['engine']),
              ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
@@ -104,4 +109,7 @@ open(os.path.join(DIST, 'loopopt.wasm'), 'wb').write(wasm)
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
 open(os.path.join(DIST, 'data-gm.json'), 'w').write(gm_ui)
 open(os.path.join(DIST, 'engine-gm.json'), 'w').write(M['engine'])
-print(f"dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
+# hosting (Cloudflare Pages reads _headers): not listed by search engines, short cache so a new deploy shows quickly
+open(os.path.join(DIST, '_headers'), 'w').write('/*\n  X-Robots-Tag: noindex\n  Cache-Control: public, max-age=300\n')
+open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nDisallow: /\n')
+print(f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
