@@ -17,11 +17,7 @@ self.onmessage = async (e) => {
     if (m.type === 'init') {
       try {
         if (m.module) ex = (await WebAssembly.instantiate(m.module, {})).exports;   // compiled once by the page
-        else {
-          const bin = atob(m.wasm); const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          ex = (await WebAssembly.instantiate(bytes, {})).instance.exports;
-        }
+        else ex = (await WebAssembly.instantiate(m.bytes, {})).instance.exports;
       } catch (err) {
         throw new Error('This browser or the site hosting the page refused to run WebAssembly, which the solver needs. Open the page file directly in a current browser.');
       }

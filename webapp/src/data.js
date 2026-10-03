@@ -8,7 +8,7 @@ export const UMAS = parse('data-umas' + SFX);       // [{id,name,outfits:[{id,la
 export const HINTS = parse('data-hints' + SFX);     // {trainee:[[id,group,p]], deck:[[card,group,level,p]]}
 export const CAT = parse('data-skills' + SFX);      // [[group, white, gold|null]]
 export const EXAMPLE = parse('data-example');       // precomputed default result
-export const SHIPPED = parse('data-img');           // 'uma:1001' | 'outfit:100102' | 'card:30116' -> base64 WebP
+export const SHIPPED = new Set(parse('data-img'));  // images in dist/img: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
 export const SKILLICON = parse('data-skillicon');   // skill group -> icon id
 export const RACEIDS = parse('data-raceids');       // race name -> race id (banner key)
 export const CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));

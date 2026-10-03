@@ -20,7 +20,7 @@ npx wasm-opt -O3 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-flo
 # 3. data (after a game update): re-export from the Global master.mdb
 cd ../pkg/loopopt/export && uv run build_base.py && uv run export_rs.py && uv run export_web.py
 
-# 4. example result shown on first load, then assemble dist/index.html
+# 4. example result shown on first load, then assemble dist/ (index.html, loopopt.wasm, img/); serve it with ./build.sh serve
 cd ../../../webapp && npm ci && node example.mjs && uv run build.py
 ```
 
@@ -35,7 +35,8 @@ are needed: the page uses plain Web Workers, not SharedArrayBuffer.
   `search.js` (auto-search, worker), `roster.js`, `targets.js`, `cards.js`, `sortmenu.js`, `results.js`, `agenda.js`
   (race schedule popup), `affinity.js`, `popover.js` (deck card / member panel), `io.js` (export/import), `images.js`, `dom.js`
 - `worker.template.js` solver worker (WebAssembly)
-- `build.py` bundles `src/` with esbuild (`node_modules/.bin/esbuild`; `npm ci`) and assembles `dist/index.html` with the
-  stylesheet, script, wasm, data, example and images embedded
+- `build.py` bundles `src/` with esbuild (`node_modules/.bin/esbuild`; `npm ci`) and assembles `dist/`: `index.html` with
+  the stylesheet, script, data and example inlined, `loopopt.wasm`, and `img/`
+- `serve.mjs` a minimal static server for `dist/` (`./build.sh serve`; also used by the browser suite)
 - `images.py` extracts character icons and card art from the game's decrypted asset bundles into `img/` (`./build.sh images`)
 - `example.mjs` precomputes the example shown before the first search

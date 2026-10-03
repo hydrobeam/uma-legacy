@@ -1,4 +1,5 @@
-// Browser regression suite for the built page (webapp/dist/index.html). Node + Playwright (local or global install).
+// Browser regression suite for the built page (webapp/dist, served on a local port; LLP_URL tests another address).
+// Node + Playwright (local or global install).
 //   node webapp/nodebrowser.mjs                 every test, Chromium and Firefox
 //   node webapp/nodebrowser.mjs chromium roster only the named browsers / tests (any order)
 // Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
@@ -7,9 +8,11 @@ import { createRequire } from 'module';
 import { execSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { serveDist } from './serve.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const URL = 'file://' + path.join(HERE, 'dist', 'index.html');
+const local = process.env.LLP_URL ? null : await serveDist();
+const URL = process.env.LLP_URL || local.url;
 let pw;
 try { pw = createRequire(import.meta.url)('playwright'); }
 catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('playwright'); }

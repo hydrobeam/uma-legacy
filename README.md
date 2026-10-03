@@ -5,7 +5,7 @@ Finds the best four-uma legacy loop and support decks (Uma Musume, Global) for l
 ## Quick start: use the page
 
 1. Unzip.
-2. Double-click **`Legacy Loop Planner.html`**. It opens in any modern browser (Chrome, Edge, Firefox, Safari), works offline, and needs no install or server. The whole solver is inside that one file.
+2. The page is the folder `webapp/dist/` (`index.html`, `loopopt.wasm`, `img/`). It fetches its solver and images, so serve the folder instead of opening the file: `./build.sh serve` (or any static server, e.g. `python3 -m http.server -d webapp/dist`), then open http://localhost:8000. Any modern browser; works offline once served locally.
 3. Follow "Using the page" below.
 
 The page is built from `webapp/index.template.html` (markup), `webapp/src/` (stylesheet and script modules) and the embedded data; the template on its own is not a working page.
@@ -36,7 +36,7 @@ Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to 
 
 ## Host it (optional)
 
-Upload `Legacy Loop Planner.html` anywhere that serves static files: GitHub Pages, Cloudflare Pages, Netlify. Rename it to `index.html` if you want it at the site root. No special headers are needed.
+Upload the whole `webapp/dist/` folder anywhere that serves static files: Cloudflare Pages, GitHub Pages, Netlify. No special headers are needed.
 
 ## Command line (Rust)
 
@@ -52,7 +52,7 @@ Job fields and the model are in `pkg/loopopt/README.md`. Saved result sheets are
 
 ## Rebuilding
 
-- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, example), `page` (`webapp/dist/index.html`), `images` (character icons and card art from the game's decrypted files), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. Copy `webapp/dist/index.html` over `Legacy Loop Planner.html` afterwards.
+- **Everything** goes through `./build.sh [step...]` at the top level: `native` (binary + tests), `wasm` (wasm, wasm-opt, example), `page` (`webapp/dist/index.html`), `images` (character icons and card art from the game's decrypted files), `events` (card event caches), `data` (master.mdb exports), `val TAG` (24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*`). No step = `native wasm page`. `serve` serves the result on http://localhost:8000.
 - Step details for the wasm build are in `webapp/README.md`. Python runs through uv (`uv run script.py`), in the environment `pyproject.toml` and `uv.lock` define.
 - **Game data update:** put your own copy of the Global `master.mdb` (from the game's local data folder) in `pkg/loopopt/export/`, then:
 
@@ -66,7 +66,6 @@ Job fields and the model are in `pkg/loopopt/README.md`. Saved result sheets are
 ## Layout
 
 ```
-Legacy Loop Planner.html   ready-to-use page (solver + data embedded)
 webapp/                    page source: template, worker, build script
 pkg/loopopt/               Rust solver, data.json, web_skills.json, job files, results, tests
 pkg/loopopt/export/        Python exporters (master.mdb -> data.json, web_skills.json)
@@ -77,4 +76,4 @@ inputs/                    reference material handed over by hand (saved pages, 
 .git/                      full history; releases are tagged vN to match the published page version
 ```
 
-`Legacy Loop Planner.html` is a build output (`webapp/dist/index.html`) and is not tracked by git.
+The page (`webapp/dist/`) is a build output and is not tracked by git.

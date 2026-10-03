@@ -6,10 +6,11 @@
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
 #   wasm     wasm + wasm-opt + example.json
-#   page     webapp/dist/index.html (bundles webapp/src with esbuild; embeds wasm, both eras' data and webapp/img)
+#   page     webapp/dist: index.html (webapp/src bundled with esbuild, both eras' data), loopopt.wasm, img/
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
-#   test     browser regression suite on webapp/dist/index.html (webapp/nodebrowser.mjs; Chromium + Firefox)
+#   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox)
+#   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
 #   val TAG  run the 24 validation jobs (shared deck, and the 23 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
@@ -34,6 +35,7 @@ step_wasm() {
            && node example.mjs | tail -1)
 }
 step_test() { node "$W/nodebrowser.mjs"; }
+step_serve() { node "$W/serve.mjs" "${PORT:-8000}"; }
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
@@ -46,7 +48,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    data|events|native|pb|wasm|page|images|test) "step_$1" ;;
+    data|events|native|pb|wasm|page|images|test|serve) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done

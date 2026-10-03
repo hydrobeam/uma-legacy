@@ -1,17 +1,23 @@
-"""Assemble the single-file web app: the page (template, src/style.css, src/*.js bundled by esbuild), wasm (base64), data,
-skill catalog, precomputed example, images (img/, from images.py)."""
-import json, base64, subprocess, os, sqlite3, glob
+"""Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, data, skill catalog,
+precomputed example), loopopt.wasm, and img/ (character icons, card art, skill icons, race banners, UI sprites from
+images.py). Served over http(s): the page fetches the wasm and the images, so it is not meant to be opened as a file."""
+import json, subprocess, os, sqlite3, glob, shutil
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
 worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
-# character icons and card art extracted by images.py: {'card:30116': base64 WebP}; none is fine (the page shows initials)
-images = {}
+# character icons and card art extracted by images.py, copied to dist/img/<kind>/<id>.webp; the page gets the list of
+# keys ('card:30116', ...) so it asks only for images that exist. None is fine (the page shows initials).
+DIST = os.path.join(H, 'dist')
+shutil.rmtree(os.path.join(DIST, 'img'), ignore_errors=True)
+images = []
 for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
-        if f.endswith('.webp'): images[f'{kind}:{f[:-5]}'] = base64.b64encode(open(os.path.join(d, f), 'rb').read()).decode()
+        if not f.endswith('.webp'): continue
+        os.makedirs(os.path.join(DIST, 'img', kind), exist_ok=True)
+        shutil.copyfile(os.path.join(d, f), os.path.join(DIST, 'img', kind, f)); images.append(f'{kind}:{f[:-5]}')
 sip = os.path.join(H, 'img', 'skill_icons.json')   # skill group -> icon id (images.py)
 skill_icons = json.load(open(sip)) if os.path.exists(sip) else {}
 # schedule rows name their race; the page maps names to race ids for the banners (same 34 G1s in both eras)
@@ -86,9 +92,11 @@ html = open(os.path.join(H, 'index.template.html')).read()
 for k, v in [('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__CARDS_GM__', M['cards']), ('__UMAS_GM__', M['umas']), ('__SKILLCAT_GM__', M['skills']), ('__HINTS_GM__', M['hints']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js(images)), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA_GM__', M['engine']), ('__DATA__', G['engine']),
-             ('__WASM__', base64.b64encode(wasm).decode()), ('__WORKER__', worker)]:
+             ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
-os.makedirs(os.path.join(H, 'dist'), exist_ok=True)
-open(os.path.join(H, 'dist', 'index.html'), 'w').write(html)
-print('dist/index.html', round(len(html.encode()) / 1e6, 2), 'MB,', len(images), 'images')
+os.makedirs(DIST, exist_ok=True)
+open(os.path.join(DIST, 'index.html'), 'w').write(html)
+open(os.path.join(DIST, 'loopopt.wasm'), 'wb').write(wasm)
+isize = sum(os.path.getsize(os.path.join(DIST, 'img', *k.split(':', 1)) + '.webp') for k in images)
+print(f"dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
