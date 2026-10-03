@@ -12,7 +12,7 @@ created on first use). Run any script as `uv run path/to/script.py`; nothing goe
 | `native` | release binary, tests | cargo |
 | `wasm` | wasm32 build (build-std), wasm-opt -O3, example.json | rust-src, node (`webapp/node_modules`) |
 | `page` | `webapp/dist/index.html` with wasm, both eras and `webapp/img` embedded | |
-| `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (96 px) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |
+| `images` | character icons and card art into `webapp/img/{uma,outfit,card}/{id}.webp` (icons 96 px, cards 192 px: 2x their largest display) from the game's decrypted asset bundles; only new ids are extracted (`IMAGES_FORCE=1` redoes all); `img/manifest.json` lists each image's bundle and anything missing. `webapp/img/` is never committed (game art); a build without it shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), already decrypted |
 | `val TAG` | 24 validation jobs, shared deck then per-uma decks, compared with `val/ref__*` and `val/refpu__*` | native |
 
 Browser checks: `cd webapp && uv run pwdeck.py && uv run pwera.py` (these need Playwright for Python, which the project environment does not include). WASM timings: `node nodebench.mjs loopopt.opt.wasm global pal_A2 pal_U pal_UF pal_F`.

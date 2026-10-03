@@ -23,7 +23,7 @@ H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(H)
 ASSETS = os.environ.get('UMA_DECRYPTED', os.path.expanduser(
     '~/.local/share/Steam/steamapps/compatdata/3224770/pfx/drive_c/users/steamuser/AppData/LocalLow/Cygames/Umamusume/decrypted'))
 OUT = os.path.join(H, 'img')
-SIZE = 96                 # 2x the largest avatar on the page (38 px)
+SIZE = {'uma': 96, 'outfit': 96, 'card': 192}   # 2x the largest display: icons 38 px, deck cards 96 px (source textures are 256 px)
 INSET = {'uma': 26, 'outfit': 22}   # px of the 256 px icon cut inside the visible area: the white ring / the frame
 ERAS = [('pkg/loopopt', 'pkg/loopopt/export/master.mdb'), ('jp', 'jp/export/master.mdb')]
 
@@ -93,7 +93,7 @@ def main(force):
             im = texture(src)
             if im is None: manifest['missing'][f'{kind}:{i}'] = rel + ' (no texture)'; del manifest['images'][f'{kind}:{i}']; continue
             if kind in INSET: im = icon_crop(im, INSET[kind])
-            im.resize((SIZE, SIZE), Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
+            im.resize((SIZE[kind], SIZE[kind]), Image.LANCZOS).save(dst, 'WEBP', quality=82, method=6)
             done += 1
     json.dump(manifest, open(os.path.join(OUT, 'manifest.json'), 'w'), indent=1, sort_keys=True)
     n = sum(len(v) for v in w.values())

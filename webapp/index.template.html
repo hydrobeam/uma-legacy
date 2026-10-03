@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Legacy Loop Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,7 +41,6 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); fo
 @media (max-width: 960px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
-.tag { color: var(--muted); max-width: 70ch; margin: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .rail { display: grid; gap: 14px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
 @media (max-width: 960px) { .rail { position: static; } }
@@ -144,7 +144,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; min-wi
 .cav.art { box-shadow: none; background: none; }
 .chip.card { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center; }
 .chip.card .cav { grid-row: span 2; margin: 0; }
-.dc { display: inline-flex; align-items: center; gap: 6px; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
 .why { justify-self: start; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; color: var(--accent); font-weight: 600; }
 .why:hover { border-color: var(--accent); }
@@ -185,26 +184,47 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .chip.card[aria-pressed="false"] { background: var(--out-soft); border-color: var(--out); color: var(--out); }
 .chip.card[aria-pressed="false"] .cn { text-decoration: line-through; }
 .deck { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
-.deck .dcards { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.deck .dcards { display: grid; grid-template-columns: repeat(6, minmax(0, 96px)); gap: 10px; align-items: start; }
+.deck .dcards > .swl, .deck .dcards > .hint { grid-column: 1 / -1; }
 .deck.swap { border-style: dashed; }
 .deck .swl { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #888); min-width: 2.2em; }
-.dc { font-size: 0.8rem; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
-.dc.pal { border-color: var(--req); color: var(--req); }
-.dc.bor { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.dc { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font: inherit; font-size: 0.75rem; color: inherit; background: none;
+  border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 8px; }
+/* deck cards are their art alone (click for name and ownership); without art the name shows */
+.dc .cav.art { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; box-shadow: none; }
+.dc.bor .cav.art { box-shadow: 0 0 0 3px var(--accent); }
+.dc.off .cav { filter: grayscale(1); opacity: 0.5; }
+.dc:hover .cav.art { filter: brightness(1.07); }
+.dc.off:hover .cav.art { filter: grayscale(1); }
+.dc:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dc:has(.cav.art) .dn { display: none; }
+.dc:not(:has(.cav.art)) { border: 1px solid var(--line); padding: 4px 6px; }
+.dc.pal:not(:has(.cav.art)) { border-color: var(--req); color: var(--req); }
+.dc.bor:not(:has(.cav.art)) { border-color: var(--accent); color: var(--accent); }
+.dc .cav:not(.art) { width: 22px !important; height: 22px !important; font-size: 7px !important; }
+.dc i { font-size: 0.7rem; font-style: normal; color: var(--muted); }
+.cpop { position: absolute; z-index: 50; max-width: 300px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 0.85rem; display: grid; gap: 6px; }
+.cpop[hidden] { display: none; }
+.cpop .ct { color: var(--muted); }
+/* ownership switch */
+.sw { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-weight: 600; }
+.sw input { appearance: none; -webkit-appearance: none; margin: 0; width: 34px; height: 20px; border-radius: 999px; background: var(--line);
+  position: relative; cursor: pointer; transition: background 0.15s; flex: none; }
+.sw input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+.sw input:checked { background: var(--req); }
+.sw input:checked::after { transform: translateX(14px); }
+.sw input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dodds { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); }
 .dodds b { color: var(--ink); font-family: var(--font-data); font-weight: 600; }
 .nodeck .tgt .ctrl label.dk { display: none; }
 .nodeck .tgt .ctrl { grid-template-columns: minmax(0, 1fr); }
-.howto { max-width: 1320px; margin: 0 auto 14px; font-size: 0.88rem; color: var(--muted); }
-.howto summary { cursor: pointer; font-weight: 600; color: var(--accent); }
-.howto ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; max-width: 90ch; }
 .unbuilt { max-width: 1320px; margin: 0 auto 14px; padding: 12px 14px; border: 1px solid var(--out); border-radius: 10px; color: var(--out); font-weight: 500; }
 </style>
 
 <header class="top">
   <h1>Legacy Loop Planner</h1>
-  <span class="row" style="margin-left:auto"><button class="btn" id="ex-open">Export / import</button><button class="btn" id="img-open">Portraits &amp; card art</button></span>
-  <p class="tag" id="tagline">Pick the umas you own and the skills you want sparked onto your veterans. It searches every four-uma self-copy-free loop and schedules the races.</p>
 </header>
 
 
@@ -317,25 +337,12 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results" style="width:100%;font-family:var(--font-data);font-size:.78rem;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
   <div class="row"><button class="btn" id="ex-copy">Copy</button><button class="btn" id="ex-load">Load settings</button><span class="hint" id="ex-msg"></span></div>
 </div></dialog>
-<dialog id="img-dlg" aria-labelledby="img-title"><div class="dlg">
-  <button class="btn x" id="img-close">Close</button>
-  <h3 id="img-title">Portraits and card art</h3>
-  <p>The page ships with character icons and card art taken from the game's own files. To replace any of them, add your own image files here. They stay in this browser only and are never uploaded.</p>
-  <div class="imgdrop">
-    <p><b>Name each file by its game id:</b> 4 digits for an uma (1001.png is Special Week), 6 digits for an outfit (100102.png is Special Week [Hopp'n♪Happy Heart]), 5 digits for a support card (30116.png is Daitaku Helios SSR [Sunlit Angel ♪]). Any image type works; extra words in the name are ignored as long as the id is the only number.</p>
-    <div class="row"><label class="btn" for="img-files" style="cursor:pointer">Add image files…</label><input type="file" id="img-files" accept="image/*" multiple hidden>
-      <label class="btn" for="img-dir" style="cursor:pointer">Add a folder…</label><input type="file" id="img-dir" webkitdirectory multiple hidden>
-      <button class="btn" id="img-clear">Remove all</button></div>
-    <p class="hint" id="img-count"></p>
-  </div>
-  <h4>Hosting the page yourself</h4>
-  <input type="text" id="img-tpl" placeholder="img/{kind}/{id}.png" aria-label="Image URL pattern">
-</div></dialog>
 
 <footer class="foot">
   <p><strong>Model.</strong> Each target spark sits on all six legacies with stars from the chosen rank: 50/45/5% for 1/2/3 stars below rank score 17,500 and 20/70/10% from 17,500 up (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">room-match data</a>); a spark's base rate is 3/6/9% by stars. A skill is acquired if guaranteed, on the trainee's own outfit skill list (fully awakened), hinted by the deck, or inherited: proc = 1 − Π(1 − base × (1 + affinity/100)) over the six legacies, two inspirations. Each legacy's affinity follows <a href="https://github.com/Acrith/uma-it-optimizer" target="_blank" rel="noopener">uma-it-optimizer</a>'s fit to 8,155 Independent Training receipts: a parent counts its relation points with the trainee, the full relation with the other parent, its trios with the trainee and its own parents, and 3 per G1 shared with the other parent and with each of its own parents; a grandparent counts its trio with the trainee and its child, plus 3 per G1 shared with that child. It then becomes a spark 35.4% of the time as a white, 70.9% as a gold: 20% and 40%, ×1.1 for each of the six ancestors already carrying it (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">fit to room-match data</a>). Odds average the 12 runs of the self-copy-free cycle.</p>
   <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: 1 + hint frequency/25 per run, each a uniform draw over the card's hint options. Chain events: a Poisson(7.1) number per run, each advancing a random remaining chain slot of a non-pal card (fits 81% / 59% / 50% full-chain completion with 6 / 8 / 9 slots); pals add no chain slots. Event rewards: GameTora training-event data; a reward on only one outcome counts at 50%. Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together and the result is exact for this model.</p>
   <p><strong>Search.</strong> Every foursome gets a guaranteed ceiling from exact pairwise bounds; loops are scheduled best-first until no remaining ceiling can beat the 5th result. Schedules maximise the expected shared G1 wins, every pair weighted alike (each pair carries the same weight across the 12 careers). Win odds per race: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90), minus 0/0/5/20/30/50 for the 1st to 6th+ race in a row, capped at 0–100%. Data: Global master.mdb, relocated venues count as the same race. The Grand Masters-era option uses a JP master.mdb cut at L'Arc's launch (24 Aug 2023), with group cards counted as pals. Character icons and card art are from the game's own files, © Cygames.</p>
+  <p class="row"><button class="btn" id="ex-open">Export / import settings</button></p>
 </footer>
 
 <script type="application/json" id="data-cards">__CARDS__</script>
@@ -368,35 +375,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   const UMAS = JSON.parse($('data-umas' + SFX).textContent);
   const HINTS = JSON.parse($('data-hints' + SFX).textContent);    // {trainee:[[id,group,p]], deck:[[card,group,level,p]]}
   const CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
-  // ---------- portraits and card art: shipped with the page (from the game's own files), user files override ----------
+  // ---------- character icons and card art, shipped with the page (from the game's own files) ----------
   const SHIPPED = JSON.parse($('data-img').textContent);   // 'uma:1001' | 'outfit:100102' | 'card:30116' -> base64 WebP
-  const IMG = new Map();                      // user-added files, same keys -> object URL
-  let imgTpl = ''; try { imgTpl = localStorage.getItem('llp:imgtpl') || ''; } catch {}
-  const idb = () => new Promise((res, rej) => { try { const r = indexedDB.open('llp-images', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
-  const kindOf = (id) => { const n = String(id).length; return n === 4 ? 'uma' : n === 6 ? 'outfit' : n === 5 ? 'card' : null; };
-  async function loadImages() {
-    try { const db = await idb(); const tx = db.transaction('files', 'readonly'); const st = tx.objectStore('files');
-      await new Promise((res) => { const rq = st.openCursor(); rq.onsuccess = () => { const c = rq.result; if (!c) return res();
-        if (!IMG.has(c.key)) IMG.set(c.key, URL.createObjectURL(c.value)); c.continue(); }; rq.onerror = () => res(); });
-    } catch {}
-    $('img-count').textContent = IMG.size ? `${IMG.size} images loaded.` : 'No images added yet.';
-  }
-  async function addImages(files) {
-    let n = 0; let db = null; try { db = await idb(); } catch {}
-    for (const f of files) {
-      if (!f.type.startsWith('image/')) continue;
-      const nums = (f.name.replace(/\.[^.]+$/, '').match(/\d+/g) || []); if (nums.length !== 1) continue;
-      const k = kindOf(nums[0]); if (!k) continue; const key = k + ':' + nums[0];
-      if (IMG.has(key)) URL.revokeObjectURL(IMG.get(key));
-      IMG.set(key, URL.createObjectURL(f)); n++;
-      if (db) try { db.transaction('files', 'readwrite').objectStore('files').put(f, key); } catch {}
-    }
-    $('img-count').textContent = `${IMG.size} images loaded` + (n ? ` (${n} just added).` : '. None of those files had a usable id in the name.');
-    refreshAll();
-  }
-  function srcFor(kind, id) { const k = kind + ':' + id; if (IMG.has(k)) return IMG.get(k); if (SHIPPED[k]) return 'data:image/webp;base64,' + SHIPPED[k];
-    return imgTpl ? imgTpl.replace('{kind}', kind).replace('{id}', id) : null; }
+  function srcFor(kind, id) { const b = SHIPPED[kind + ':' + id]; return b ? 'data:image/webp;base64,' + b : null; }
   function initials(name) { const w = name.replace(/[^A-Za-z .]/g, '').split(/[ .]+/).filter(Boolean); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase(); }
   function umaAv(charaId, outfitId, size) {
     const el = document.createElement('span'); el.className = 'av'; el.style.width = el.style.height = size + 'px'; el.style.fontSize = Math.round(size * 0.38) + 'px';
@@ -681,7 +662,10 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
         const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
         const endAt = (d.end_chain_at || [])[ci] || 0;
         const c = (d.card_ids && CARD_BY_ID.get(d.card_ids[ci])) || CARDS.find(x => x.name === base); const t = c ? cardTitle(c) : { nm: base, ti: '' };
-        return `<span class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" title="${esc(t.ti)}">${esc(t.nm)}${t.ti ? ' · ' + esc(t.ti) : ''}${endAt ? ` <i>(take the chain-ending choice at link ${endAt})</i>` : ''}${bor ? ' (borrow)' : pals.has(base) ? ' (pal)' : ''}</span>`; };
+        const tag = bor ? 'borrow' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '');
+        return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
+          ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
+          `<span class="dn">${esc(full)}</span>${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
       const oddsOf = (d, lead) => { const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
           // gold, then any hint at all (white or gold): the two numbers the landing odds depend on
           const h = 1 - (1 - o.white) * (1 - o.gold), parts = [];
@@ -708,7 +692,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
             `<div class="dcards"><span class="swl">In</span>${inn.map(ci => chip(d, ci)).join('') || '<span class="hint">nothing</span>'}</div>` + oddsOf(d, who.length === 1 ? 'From her deck, every run: ' : 'From this deck, every run: ');
           card.appendChild(dk); });
       }
-      card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 24)); });
+      card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); }); markOwn();
     }
     const mem = document.createElement('div'); mem.className = 'members';
     l.members.forEach((m, k) => {
@@ -807,6 +791,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   }
   $('why-dlg').addEventListener('click', (e) => { if (e.target === $('why-dlg')) $('why-dlg').close(); });
   function renderDeck(res, meta) {
+    closePop();
     const box = $('results'); box.textContent = '';
     const st = document.createElement('div'); st.className = 'status';
     if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
@@ -952,17 +937,32 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded. Press Find best loops.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
-  $('img-open').onclick = () => $('img-dlg').showModal(); $('img-close').onclick = () => $('img-dlg').close();
-  $('img-dlg').addEventListener('click', (e) => { if (e.target === $('img-dlg')) $('img-dlg').close(); });
-  $('img-files').onchange = (e) => addImages([...e.target.files]); $('img-dir').onchange = (e) => addImages([...e.target.files]);
-  $('img-clear').onclick = async () => { for (const u of IMG.values()) URL.revokeObjectURL(u); IMG.clear();
-    try { const db = await idb(); db.transaction('files', 'readwrite').objectStore('files').clear(); } catch {}
-    $('img-count').textContent = 'No images added yet.'; refreshAll(); };
-  $('img-tpl').value = imgTpl; $('img-tpl').onchange = (e) => { imgTpl = e.target.value.trim(); try { localStorage.setItem('llp:imgtpl', imgTpl); } catch {} refreshAll(); };
+  // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
+  const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.body.appendChild(pop);
+  let popFor = null;
+  function closePop() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
+  function markOwn() { document.querySelectorAll('.deck .dc').forEach(e => e.classList.toggle('off', !e.classList.contains('bor') && state.cardsOff[+e.dataset.cid] === false)); }
+  function openPop(el) {
+    closePop(); popFor = el; el.setAttribute('aria-expanded', 'true');
+    const c = CARD_BY_ID.get(+el.dataset.cid), t = c ? cardTitle(c) : { nm: el.dataset.name, ti: '' };
+    const bor = el.classList.contains('bor'), own = c && state.cardsOff[c.id] !== false;
+    const role = bor ? "Borrowed from a friend: you don't need to own it." : el.classList.contains('pal') ? 'Pal card.' : '';
+    pop.setAttribute('aria-label', t.nm);
+    pop.innerHTML = `<div><b>${esc(t.nm)}</b>${t.ti ? `<div class="ct">${esc(t.ti)}</div>` : ''}</div>` + (role ? `<div>${role}</div>` : '') +
+      (el.dataset.end ? `<div>Take the chain-ending choice at link ${el.dataset.end}.</div>` : '') +
+      (c && !bor ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${own ? ' checked' : ''}>Owned</label>` : '');
+    pop.hidden = false;
+    const r = el.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
+    pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, vw - w - 8))) + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+    const sw = pop.querySelector('[data-act="own"]');
+    if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); markOwn(); };
+  }
+  document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc');
+    if (d) { if (popFor === d) closePop(); else openPop(d); return; } if (!e.target.closest('.cpop')) closePop(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
   let lastRender = null;
   refreshAll = () => { const st = !!$('results').querySelector('.stale'); renderRoster(); renderCards(); if (lastRender) lastRender(); if (st) markStale(); };
   setMode(state.mode); setScheme(state.scheme); setDeck(state.deck); renderRoster(); renderTargets();
-  loadImages().then(() => { if (IMG.size) refreshAll(); });
   if (ERA === 'global') { lastRender = () => (EXAMPLE.top ? renderDeck : renderSkills)(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); lastRender(); shown = true; lastResult = { kind: EXAMPLE.top ? 'deck' : 'skills', r: EXAMPLE, meta: { example: true } }; }
   else $('results').innerHTML = '<div class="status">Grand Masters-era data loaded. Set your targets and press <b>Find best loops</b>.</div>';
   // warm the engine in the background so the first search starts immediately
