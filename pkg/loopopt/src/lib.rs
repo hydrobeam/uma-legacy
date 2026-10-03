@@ -35,6 +35,21 @@ impl Instant { fn now() -> Self { Instant } fn elapsed(&self) -> std::time::Dura
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 pub static PROF: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
 fn prof(i: usize, t: Instant) { PROF[i].fetch_add(t.elapsed().as_nanos() as u64, Relaxed); PROF[i+4].fetch_add(1, Relaxed); }
+/// PROTOTYPE phase timers (perf review): inclusive nanoseconds and call counts per phase, printed by the CLI when
+/// LOOPOPT_PROF is set.
+pub static PH: [AtomicU64; 48] = [const { AtomicU64::new(0) }; 48];
+pub(crate) const PH_NAMES: [&str; 24] = ["load", "model+sources", "card dominance", "chain_marginals", "enumeration+pareto",
+    "skyline", "pair_ceilings", "class thinning", "btab fill", "band gen", "relaxed()", "optimize()", "best_for()",
+    "alt deck search", "output json", "shared ceilings", "shared front scoring", "make_key", "run_deck_relaxed", "out:ring+last", "out:count", "out:remove+insert", "k_filter", "out:all"];
+pub(crate) struct PhT(pub usize, pub Instant);
+impl Drop for PhT { fn drop(&mut self) { PH[self.0].fetch_add(self.1.elapsed().as_nanos() as u64, Relaxed); PH[self.0 + 24].fetch_add(1, Relaxed); } }
+#[macro_export]
+macro_rules! ph { ($i:expr) => { let _ph = $crate::PhT($i, Instant::now()); } }
+pub(crate) fn ph_report() {
+    if std::env::var("LOOPOPT_PROF").is_err() { return; }
+    for i in 0..24 { let n = PH[i + 24].load(Relaxed); if n == 0 { continue; }
+        eprintln!("PH {:>22} {:>9.4}s  calls {:>9}", PH_NAMES[i], PH[i].load(Relaxed) as f64 / 1e9, n); }
+}
 
 const NT: usize = 72;
 const NS: usize = 7; // streak state 0 (rested) ..= 6 (6+)
@@ -654,6 +669,7 @@ fn fill_optional(d: &Data, lp: &Loop, s: &mut [Sched; 4], v: f64) -> f64 {
 }
 
 fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, margin: f64, init: &[[Sched; 4]]) -> Res {
+    ph!(11);
     let t0 = Instant::now();
     let _memo = MemoScope::new();
     let orders: Vec<[usize; 4]> = if parse_scheme(scheme).0 { vec![m] } else { vec![m, [m[0], m[2], m[1], m[3]], [m[0], m[1], m[3], m[2]]] };
@@ -901,6 +917,7 @@ fn dt() -> usize { 2 }
 /// Exact pairwise ceilings PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)) for all pairs in `pool`.
 /// Valid because P_b <= PM_b elementwise and P_a >= 0, so <P_a,P_b> <= <P_a,PM_b> <= BR_a(PM_b).
 fn pair_ceilings(d: &Data, pool: &[usize]) -> Vec<Vec<f64>> {
+    ph!(6);
     let n = d.umas.len();
     let mut pb = vec![vec![0.0f64; n]; n];
     let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None, None).map(|r| r.1).unwrap_or(0.0);
@@ -1023,7 +1040,9 @@ pub fn cli_main() {
     let args: Vec<String> = std::env::args().collect();
     let job_text = std::fs::read_to_string(&args[2]).unwrap();
     let mut jobs: Jobs = serde_json::from_str(&job_text).unwrap();
+    let t_load = Instant::now();
     let d = load(&args[1]);
+    let load_ns = t_load.elapsed().as_nanos() as u64;
     if jobs.mode == "skills" {
         // skill-target search; needs "skills_file" (web_skills.json) plus the SkillJob fields
         let v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
@@ -1041,10 +1060,15 @@ pub fn cli_main() {
             deck::apply_events_db(&mut v, &sk, &db);
         }
         let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
+        PH[0].fetch_add(load_ns + t_load.elapsed().as_nanos() as u64 - load_ns, Relaxed); PH[24].fetch_add(1, Relaxed);
         let t0 = Instant::now();
         let mut out = deck::run_deck(&d, &sk, &cr, &v);
         out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
-        println!("{}", out);
+        let t_out = Instant::now();
+        let txt = out.to_string();
+        PH[14].fetch_add(t_out.elapsed().as_nanos() as u64, Relaxed);
+        println!("{}", txt);
+        ph_report();
         return;
     }
     if jobs.scheme != "scf" && jobs.scheme != "rot" { eprintln!("error: \"scheme\" must be \"scf\" or \"rot\""); std::process::exit(2); }

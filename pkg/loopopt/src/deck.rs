@@ -90,7 +90,67 @@ fn d_rar() -> u8 { 2 }   // SR: R cards have no chain events, so this only filte
 type Kind = (u8, u8);
 
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
+/// PROTOTYPE (perf): dense, deterministic, memoised version of `chain_marginals_ref`. States are mixed-radix
+/// indices over the entries' progress; every transition raises the index, so one pass in index order is a
+/// topological order. Entries are sorted first so the floating-point summation order is canonical.
 fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+    crate::ph!(3);
+    thread_local! { static CM: std::cell::RefCell<HashMap<(Vec<Kind>, u64), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(HashMap::new()); }
+    let mut ks: Vec<Kind> = kinds.to_vec(); ks.sort();
+    let key = (ks, lambda.to_bits());
+    if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) { return r; }
+    let r = chain_marginals_dense(&key.0, lambda);
+    CM.with(|c| c.borrow_mut().insert(key, r.clone()));
+    r
+}
+fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+    let n = kinds.len();
+    let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
+    if n == 0 { return out; }
+    let emax = 60usize;
+    let mut pois = vec![0.0f64; emax + 1];
+    pois[0] = (-lambda).exp();
+    for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
+    let total: usize = kinds.iter().map(|&(_, stop)| stop as usize).sum();
+    let last = emax.min(total);
+    let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
+    let mut stride = vec![0usize; n]; let mut nst = 1usize;
+    for i in 0..n { stride[i] = nst; nst *= kinds[i].1 as usize + 1; }
+    let mut p = vec![0.0f64; nst]; p[0] = 1.0;
+    // done[e][i][k] = P(after e events entry i has >= k+1 links done)
+    let mut done = vec![0.0f64; (last + 1) * n * width];
+    let mut s = vec![0u8; n]; let mut lvl = 0usize;
+    for idx in 0..nst {
+        let pi = p[idx];
+        if pi != 0.0 && lvl <= last {
+            if lvl >= 1 { let b = lvl * n * width; for i in 0..n { for k in 0..s[i] as usize { done[b + i * width + k] += pi; } } }
+            if lvl < last {
+                let mut wsum = 0.0f64;
+                for i in 0..n { if s[i] < kinds[i].1 { wsum += (kinds[i].0 - s[i]) as f64; } }
+                if wsum > 0.0 {
+                    for i in 0..n { if s[i] < kinds[i].1 { let w = (kinds[i].0 - s[i]) as f64; p[idx + stride[i]] += pi * w / wsum; } }
+                }
+            }
+        }
+        // odometer increment of s, tracking the level
+        for i in 0..n { if s[i] < kinds[i].1 { s[i] += 1; lvl += 1; break; } lvl -= s[i] as usize; s[i] = 0; }
+    }
+    let mut fired = vec![vec![0.0f64; width]; n];
+    for e in 1..=last {
+        let pe = pois[e] + if e == last { 1.0 - pois[..=e].iter().sum::<f64>() } else { 0.0 };
+        let b = e * n * width;
+        for i in 0..n { for k in 0..width { fired[i][k] += pe * done[b + i * width + k]; } }
+    }
+    for i in 0..n {
+        let kd = kinds[i];
+        out.entry(kd).or_insert_with(|| (0..kd.1 as usize).map(|k| fired[i][k]).collect());
+    }
+    out
+}
+
+/// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
+#[allow(dead_code)]
+fn chain_marginals_ref(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     let n = kinds.len();
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
@@ -338,7 +398,8 @@ impl Kept {
         for bi in 0..=top {
             let hit = |bk: &Bucket, i: usize| sig_ge(xe, bk.qsig[i]) && dominates(x, &bk.flat[i * nd..(i + 1) * nd]);
             let bk = &self.buckets[bi];
-            if !(0..bk.list.len()).any(|i| hit(bk, i)) { continue; }
+            // PROTOTYPE: skip whole blocks whose field-wise minimum query signature x cannot reach
+            if !bk.bmin.iter().enumerate().any(|(blk, &mn)| sig_ge(xe, mn) && (blk * BLOCK..((blk + 1) * BLOCK).min(bk.list.len())).any(|i| hit(bk, i))) { continue; }
             let old = std::mem::take(&mut self.buckets[bi]);
             let keep: Vec<bool> = (0..old.list.len()).map(|i| !hit(&old, i)).collect();
             let mut nb = Bucket::default();
@@ -356,9 +417,18 @@ impl Kept {
     fn into_list(self) -> Vec<DeckEval> { self.buckets.into_iter().flat_map(|b| b.list).collect() }
 }
 
+/// PROTOTYPE: the order k_filter(list, 1, nd).into_list() produces when it keeps every deck: stable by
+/// (bucket of the sum ascending, sum descending), ties in input order.
+fn kfilter_order(mut g: Vec<DeckEval>, nd: usize) -> Vec<DeckEval> {
+    g.sort_by(|a, b| b.s.partial_cmp(&a.s).unwrap());
+    let kept = Kept::new(nd);
+    g.sort_by_key(|x| kept.bucket_of(x.s));
+    g
+}
 /// Keep each deck unless `kmax` decks scoring at least as high in every coordinate are kept before it (sorted
 /// pass). A dominator's coordinate sum is at least the deck's, so only kept decks above that sum are checked.
 fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Kept {
+    crate::ph!(22);
     g.sort_by(|a, b| b.s.partial_cmp(&a.s).unwrap());
     let mut kept = Kept::new(nd);
     let mut tests = 0usize;
@@ -474,6 +544,8 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
 }
 
 fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
+    crate::ph!(18);
+    let ph1 = crate::PhT(1, Instant::now());
     let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let model = Model::new(d, sk, &sj);
@@ -584,7 +656,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let pal_fixed = dj.pals.is_some();
     // per kept card, the kept cards that beat it whatever the deck (same test as above), for subtree pruning
     let mut robust: Vec<Vec<usize>> = vec![];
+    drop(ph1);
     {
+        crate::ph!(2);
         let nrel0 = rel.len();
         let mut kindset: Vec<Kind> = (0..nrel0).filter(|&j| kind[j] != (0, 0)).map(|j| kind[j]).collect();
         kindset.push((2, 2)); kindset.sort(); kindset.dedup();
@@ -715,6 +789,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
     let mut key_cache: HashMap<u64, KeyData> = HashMap::new();
     let make_key = |code: u64| -> KeyData {
+        crate::ph!(17);
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
         for &kd in &kinds_all { for _ in 0..(c % 7) { ks.push(kd); } c /= 7; }
         let marg = chain_marginals(&ks, dj.lambda);
@@ -797,6 +872,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // One enumeration pass keeping the decks that fewer than `kq` others beat. With `s1` (the kq = 1 result and
     // its deck identities) a deck is dropped at once when kq decks of that set, other than itself, beat it.
     let mut run_enum = |kq: usize, s1: Option<&(Kept, std::collections::HashSet<Vec<u64>>)>| -> Vec<DeckEval> {
+    crate::ph!(4);
     let mut groups: HashMap<(usize, usize), Kept> = HashMap::new();
     let kmax = kq;
     // every chain-kind count vector (fillers included in the (2, 2) count) with at most deck_size chain slots
@@ -836,6 +912,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                     false
                 };
                 let mut out = |sel: &[usize], chm: u128, nb: usize| {
+                    crate::ph!(23);
                     let pals = sel.iter().filter(|&&j| cards[rel[j]].pal).count() + plain;
                     if let Some(p) = dj.pals { if p != pals { return; } }
                     if !locked.iter().all(|l| sel.iter().any(|&j| rel[j] == *l)) { return; }
@@ -864,9 +941,11 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                     // others match or beat on every coordinate is at or below each of them for every loop.
                     let nd = coords.len();
                     let g = groups.entry((0, 0)).or_insert_with(|| Kept::new(nd));
+                    let ph19 = crate::PhT(19, Instant::now());
                     if kmax == 1 && g.has_last && dominates(&g.lastrow, &dv) { return; }
                     if kmax == 1 && nd > 0 && (0..g.rlen).any(|r| dominates(&g.recent[r * nd..(r + 1) * nd], &dv)) { st_ring += 1; return; }
                     if kmax > 1 && g.rlen >= kmax && g.count_recent(&dv) >= kmax { st_ring += 1; return; }
+                    drop(ph19);
                     let xq = sig_of(&dv, true);
                     if let Some((s1k, ids)) = s1 {
                         // kq decks of the set beat it: drop it, unless it is one of them (then it needs one more)
@@ -875,12 +954,15 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                             if !own || s1k.count_ro(&dv, xq, s, kmax + 1) > kmax { st_s1 += 1; return; }
                         }
                     }
+                    let ph20 = crate::PhT(20, Instant::now());
                     let n = g.count(&dv, xq, s, kmax, &mut st_tests);
+                    drop(ph20);
                     st_full += 1;
                     if n > 0 && (kmax > 1 || n >= kmax) && nd > 0 { g.remember_found(); }
                     if n >= kmax { st_dom += 1; return; }
                     let mut so: Vec<usize> = sel.to_vec(); so.sort();       // entry order, for display
                     let x = DeckEval { pals, borrowed, cards: so.iter().map(|&j| rel[j]).collect(), ends: so.iter().map(|&j| endk[j]).collect(), plain, filler, dw: mw[..nu].to_vec(), dg: mg[..nu].to_vec(), dv: dv.clone(), s };
+                    let _ph21 = crate::PhT(21, Instant::now());
                     if kmax == 1 { g.remove_dominated_by(&dv, sig_of(&dv, false), s); }
                     g.insert(x);
                     if kmax > 1 && g.len() > g.cap {
@@ -913,7 +995,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let mut front: Vec<DeckEval> = vec![];
     let mut gkeys: Vec<(usize, usize)> = groups.keys().copied().collect(); gkeys.sort();
     for pc in &gkeys {
-        let kept = k_filter(groups.remove(pc).unwrap().into_list(), kmax, coords.len()).into_list();
+        let list = groups.remove(pc).unwrap().into_list();
+        // PROTOTYPE: with kmax = 1 the online set is already an antichain (every insert drops what it dominates and
+        // is rejected when dominated), so k_filter keeps every deck and only reorders: reproduce its order.
+        let kept = if kmax == 1 && std::env::var("NO_KF_SKIP").is_err() { kfilter_order(list, coords.len()) } else { k_filter(list, kmax, coords.len()).into_list() };
         front.extend(kept);
     }
     front
@@ -941,7 +1026,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // coordinate, so for any loop the best value over the frontier is reached on this skyline; the ceilings
     // below (which only bound that best value) are built from it. Every frontier deck is still scored when a
     // loop is solved.
-    let sky: Vec<usize> = {
+    let sky: Vec<usize> = if kmax_top(&dj) == 1 && std::env::var("NO_KF_SKIP").is_err() { (0..front.len()).collect() } else {
+        crate::ph!(5);
         let tagged: Vec<DeckEval> = front.iter().enumerate().map(|(i, x)| { let mut y = x.clone(); y.cards = vec![i]; y }).collect();
         let mut v: Vec<usize> = k_filter(tagged, 1, coords.len()).into_list().into_iter().map(|y| y.cards[0]).collect();
         v.sort();
@@ -1053,6 +1139,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let btab = |u: usize, i: usize| -> f64 {
         let v = btab_c.borrow()[u][i];
         if !v.is_nan() { return v; }
+        crate::ph!(8);
         let q = grid[i];
         let v = sky.iter().map(|&j| model.trainee_fast(u, q, &front[j].dw, &front[j].dg)).fold(0.0, f64::max);
         btab_c.borrow_mut()[u][i] = v; v
@@ -1072,6 +1159,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         (0..c).fold(1usize, |acc, i| acc * (m - i) / (i + 1)) };
     // generate foursomes with  lo <= sum M < hi  (same summation order for both tests, so bands never overlap)
     let band = |lo: f64, hi: f64, out: &mut Vec<(f64, [usize; 4])>| {
+        crate::ph!(9);
         for a in 0..k {
             if a + 3 >= k || mv[a] + mv[a + 1] + mv[a + 2] + mv[a + 3] < lo { break; }
             for b in a + 1..k {
@@ -1131,12 +1219,14 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let (_, f) = cand[next]; next += 1; scanned += 1;
         // tight ceiling: each skyline deck scored on its own (still with the pairwise-ceiling overlaps), through
         // the group / super-cluster / cluster maxima first
+        let ph15 = crate::PhT(15, Instant::now());
         let qpb = model.lineage_q_arr(f, &|x, y| pb[f[x]][f[y]]);
         let cur = kth_val;
         let gpass: Vec<(usize, usize)> = gvec.iter().filter(|(_, w, g)| model.metric_fast(f, &qpb, w, g) >= cur).map(|(k, ..)| *k).collect();
         let pass = supers.iter().any(|sg| gpass.contains(&sg.gk) && model.metric_fast(f, &qpb, &sg.w, &sg.g) >= cur
             && sg.kids.iter().any(|&ci| { let c = &clusters[ci]; model.metric_fast(f, &qpb, &c.w, &c.g) >= cur
                 && c.kids.iter().any(|&i| model.metric_fast(f, &qpb, &front[i].dw, &front[i].dg) >= cur) }));
+        drop(ph15);
         if !pass { continue; }
         let r = match &fixed_s {
             Some(fs) => Res { val: 0.0, s: std::array::from_fn(|i| fs[f[i]].unwrap()), order: [0, 1, 2, 3], evals: 0, secs: 0.0 },
@@ -1146,6 +1236,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let qs = model.lineage_q(f, &|x, y| if no_race { 0.0 } else { wval(&ps[x], &ps[y]) });
         let qa: [f64; 12] = std::array::from_fn(|i| qs[i]);
         let si = solved.len();
+        let _ph16 = crate::PhT(16, Instant::now());
         for (di, x) in front.iter().enumerate() {
             let val = model.metric_fast(f, &qa, &x.dw, &x.dg);
             let e = best.entry(x.pals).or_insert((f64::NEG_INFINITY, 0, 0));
@@ -1298,6 +1389,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     let mut class_ix: HashMap<Vec<(usize, bool)>, usize> = HashMap::new();
     let mut class_sky: Vec<Vec<usize>> = vec![];
     let mut ucls: Vec<usize> = vec![usize::MAX; n];
+    let ph7 = crate::PhT(7, Instant::now());
     for &u in &pool {
         let co = ucoords(u);
         let ci = match class_ix.get(&co) { Some(&c) => c, None => {
@@ -1305,6 +1397,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
             class_ix.insert(co, class_sky.len() - 1); class_sky.len() - 1 } };
         ucls[u] = ci;
     }
+    drop(ph7);
     let uview = |u: usize| -> &Vec<usize> { &class_sky[ucls[u]] };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("classes {} sizes {:?} ({:.2}s)", class_sky.len(), class_sky.iter().map(|c| c.len()).collect::<Vec<_>>(), tq.elapsed().as_secs_f64()); }
     // B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
@@ -1312,6 +1405,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     let btab = |u: usize, i: usize| -> f64 {
         let v = btab_c.borrow()[u][i];
         if !v.is_nan() { return v; }
+        crate::ph!(8);
         let q = grid[i];
         let v = uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(model.trainee_fast(u, q, &zero, &zero), f64::max);
         btab_c.borrow_mut()[u][i] = v; v
@@ -1322,6 +1416,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     let alt_built = std::cell::Cell::new(0u64);
     let ensure = |u: usize| {
         if !needs_alt[u] || alt.borrow().contains_key(&u) { return; }
+        crate::ph!(13);
         let uid = d.umas[u].id;
         let mut job = v.clone();
         job["deck_only"] = json!(true); job["per_uma"] = json!(false); job["top_decks"] = json!(1);
@@ -1346,6 +1441,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         best
     };
     let best_for = |u: usize, qs: &[f64]| -> (f64, Option<PDeck>) {
+        crate::ph!(12);
         let view: Vec<&PDeck> = uview(u).iter().map(|&j| &sky[j]).collect();
         let (s, j) = scan(u, qs, &view);
         if !needs_alt[u] || j.map_or(true, |j| !view[j].blocks(d.umas[u].id, &card_of)) { return (s, j.map(|j| view[j].clone())); }
@@ -1357,6 +1453,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     };
     // ceiling with each uma's best skyline deck (legal or not), the same deck across her lineages
     let relaxed = |f: [usize; 4], qa: &[f64; 12]| -> f64 {
+        crate::ph!(10);
         let mut tot = 0.0;
         for t in 0..4 {
             let qs: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
@@ -1373,6 +1470,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     let nreq = req.len();
     let total_foursomes: usize = { let m = k - nreq.min(k); let c = 4usize.saturating_sub(nreq); (0..c).fold(1usize, |acc, i| acc * (m - i) / (i + 1)) };
     let band = |lo: f64, hi: f64, out: &mut Vec<(f64, [usize; 4])>| {
+        crate::ph!(9);
         for a in 0..k {
             if a + 3 >= k || mv[a] + mv[a + 1] + mv[a + 2] + mv[a + 3] < lo { break; }
             for b in a + 1..k {
@@ -1449,6 +1547,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     order.sort_by(|&a, &b| solved[b].4.partial_cmp(&solved[a].4).unwrap());
     let empty_deck = PDeck { names: vec![], ids: vec![], ends: vec![], plain_ids: vec![], pal_names: vec![], pals: 0, borrowed: None, dw: zero.clone(), dg: zero.clone() };
     let top: Vec<Value> = order.iter().take(kloops).map(|&si| {
+        crate::ph!(14);
         let (f, r, qs, decks, v) = &solved[si];
         let dk: Vec<&PDeck> = decks.iter().map(|x| x.as_ref().unwrap_or(&empty_deck)).collect();
         let mut minus1 = 0.0; let mut per = vec![(0.0, 0usize); 4]; let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
@@ -1506,6 +1605,33 @@ mod tests {
             let a = m.metric_fast(*f, &qa, &dw, &dg); let b = m.metric_d(*f, &qv, &dw, &dg);
             assert!((a - b).abs() < 1e-15 * b.max(1.0), "{a} vs {b}");
         }
+    }
+    /// PROTOTYPE: dense chain_marginals equals the reference to float noise
+    #[test]
+    fn chain_marginals_dense_matches_ref() {
+        let kinds: Vec<Kind> = vec![(2,2),(3,3),(3,2),(3,1),(4,4),(4,3),(5,5),(5,4),(5,2)];
+        let mut worst = 0.0f64; let mut cnt = 0;
+        fn ms(v: &[Kind], st: usize, left: usize, cur: &mut Vec<Kind>, f: &mut dyn FnMut(&[Kind])) { if !cur.is_empty() { f(cur); } if left == 0 { return; } for i in st..v.len() { cur.push(v[i]); ms(v, i, left - 1, cur, f); cur.pop(); } }
+        ms(&kinds, 0, 6, &mut vec![], &mut |ks| {
+            let a = chain_marginals_ref(ks, 7.1); let b = chain_marginals_dense(ks, 7.1); cnt += 1;
+            for (k, v) in &a { for (x, y) in v.iter().zip(&b[k]) { worst = worst.max((x - y).abs()); } }
+        });
+        eprintln!("{cnt} multisets, max |dense - ref| = {worst:e}");
+        assert!(worst < 1e-14);
+    }
+    /// PROTOTYPE: is chain_marginals bit-reproducible across HashMap seeds?
+    #[test]
+    fn chain_marginals_repro() {
+        let sets: Vec<Vec<Kind>> = vec![vec![(3,3),(3,3),(3,3),(4,4),(2,2)], vec![(5,5),(3,3),(3,2),(4,4),(4,3),(2,2)], vec![(3,3),(4,4),(5,5),(5,4),(2,2),(2,2)]];
+        let mut ndiff = 0;
+        for ks in &sets {
+            let r0 = chain_marginals_ref(ks, 7.1);
+            for _ in 0..200 {
+                let r = chain_marginals_ref(ks, 7.1);
+                for (k, v) in &r0 { if r[k].iter().zip(v).any(|(a, b)| a.to_bits() != b.to_bits()) { ndiff += 1; } }
+            }
+        }
+        eprintln!("chain_marginals bit differences across reruns: {ndiff}");
     }
     /// The character rule: a card blocks its own character and, for a group card, every member.
     #[test]
