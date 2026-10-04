@@ -313,6 +313,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Pace Chaser Corners ○"
+       ]
+      ],
+      [
+       [
+        "Late Surger Corners ○"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -341,6 +358,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Levelheaded"
+       ]
+      ],
+      [
+       [
+        "Lone Wolf"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -355,6 +389,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Straight Descent"
+       ]
+      ],
+      [
+       [
+        "Watchful Eye"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -366,6 +417,23 @@
      [
       "Frenzied End Closers",
       "Frenzied Front Runners"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Frenzied Front Runners"
+       ]
+      ],
+      [
+       [
+        "Frenzied End Closers"
+       ]
+      ]
      ]
     ]
    ],
@@ -393,6 +461,23 @@
      [
       "Straightaway Acceleration",
       "Straightaway Adept"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Straightaway Adept"
+       ]
+      ],
+      [
+       [
+        "Straightaway Acceleration"
+       ]
+      ]
      ]
     ]
    ],
@@ -453,6 +538,25 @@
       "Medium Straightaways ○",
       "Standard Distance ○",
       "Sympathy"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Medium Straightaways ○",
+        "Sympathy"
+       ]
+      ],
+      [
+       [
+        "Final Push",
+        "Standard Distance ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -672,6 +776,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Subdued End Closers"
+       ]
+      ],
+      [
+       [
+        "End Closer Straightaways ○"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -709,6 +830,23 @@
      [
       "Snowy Days ○",
       "Straightaway Recovery"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Straightaway Recovery"
+       ]
+      ],
+      [
+       [
+        "Snowy Days ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -805,6 +943,43 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Meticulous Measures"
+       ]
+      ],
+      [
+       [
+        "Countermeasure"
+       ]
+      ],
+      [
+       [
+        "Maverick ○"
+       ]
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       [
+        "Intimidate"
+       ]
+      ],
+      [
+       [
+        "Mad Dash"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -848,6 +1023,19 @@
      [
       "Corner Recovery ○",
       "Right-Handed ○"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Corner Recovery ○",
+        "Right-Handed ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -898,6 +1086,41 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Risky Business"
+       ]
+      ],
+      [
+       [
+        "End Closer Savvy ○"
+       ]
+      ]
+     ]
+    ],
+    [
+     2,
+     [
+      [
+       [
+        "Inside Scoop"
+       ]
+      ],
+      [
+       [
+        "After-School Stroll"
+       ]
+      ],
+      [
+       []
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -915,6 +1138,23 @@
      [
       "Dodging Danger",
       "Mile Corners ○"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Dodging Danger"
+       ]
+      ],
+      [
+       [
+        "Mile Corners ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -954,6 +1194,23 @@
      2,
      [
       "Solid Steps"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Sharp Turns ○"
+       ]
+      ],
+      [
+       [
+        "Muddy ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -1012,6 +1269,21 @@
     [
      2,
      []
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Homestretch Haste"
+       ],
+       [
+        "In Body and Mind"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",
@@ -1078,6 +1350,19 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Corner Connoisseur",
+        "Risky Business"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1114,6 +1399,19 @@
      3,
      [
       "Furious Feat"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Late Surger Savvy ○",
+        "Tether"
+       ]
+      ]
      ]
     ]
    ],
@@ -1172,6 +1470,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Fast-Paced"
+       ],
+       [
+        "Escape Artist"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1205,6 +1518,19 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Prepared to Pass",
+        "Speed Star"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1218,6 +1544,22 @@
       [
        "Moxie",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Moxie",
+        "Restless"
+       ],
+       [
+        "Restless"
+       ]
       ]
      ]
     ]
@@ -1351,6 +1693,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Prudent Positioning"
+       ],
+       [
+        "Center Stage"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1368,6 +1725,19 @@
      [
       "Beeline Burst",
       "Straightaway Adept"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Beeline Burst",
+        "Straightaway Adept"
+       ]
+      ]
      ]
     ]
    ],
@@ -1429,6 +1799,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Cooldown"
+       ],
+       [
+        "Deep Breaths"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1445,6 +1830,24 @@
       [
        "Extra Tank",
        0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Extra Tank"
+       ],
+       [
+        "Adrenaline Rush"
+       ],
+       [
+        "Adrenaline Rush"
+       ]
       ]
      ]
     ]
@@ -1466,6 +1869,23 @@
      3,
      [
       "Furious Feat"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Stamina to Spare"
+       ]
+      ],
+      [
+       [
+        "Outer Swell"
+       ]
+      ]
      ]
     ]
    ],
@@ -1491,6 +1911,21 @@
       [
        "Hydrate",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Hydrate"
+       ],
+       [
+        "Gourmand"
+       ]
       ]
      ]
     ]
@@ -1538,6 +1973,26 @@
      2
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Early Lead"
+       ],
+       [
+        "Taking the Lead"
+       ]
+      ],
+      [
+       [
+        "Watchful Eye"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1568,6 +2023,41 @@
       [
        "Vanguard Spirit",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Front Runner Straightaways ○"
+       ]
+      ],
+      [
+       [
+        "Pace Strategy"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Keeping the Lead"
+       ],
+       [
+        "Vanguard Spirit"
+       ]
+      ],
+      [
+       [
+        "Lone Wolf"
+       ]
       ]
      ]
     ]
@@ -1630,6 +2120,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Unruffled"
+       ],
+       [
+        "Calm in a Crowd"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1647,6 +2152,23 @@
      3,
      [
       "No Stopping Me!"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Inner Post Proficiency ○"
+       ]
+      ],
+      [
+       [
+        "Hydrate"
+       ]
+      ]
      ]
     ]
    ],
@@ -1675,6 +2197,19 @@
      2,
      [
       "Playtime's Over!"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Hesitant Late Surgers",
+        "Subdued Late Surgers"
+       ]
+      ]
      ]
     ]
    ],
@@ -1740,6 +2275,23 @@
      3,
      [
       "Swinging Maestro"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Corner Acceleration ○"
+       ]
+      ],
+      [
+       [
+        "Corner Adept ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -1817,6 +2369,34 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Hydrate"
+       ]
+      ],
+      [
+       [
+        "Gap Closer"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Dodging Danger",
+        "Sixth Sense"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1873,6 +2453,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Rising Dragon"
+       ],
+       [
+        "Outer Swell"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1893,6 +2488,24 @@
       [
        "Uma Stan",
        0.3333333333333333
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Uma Stan"
+       ],
+       [
+        "Come What May"
+       ],
+       [
+        "All I've Got"
+       ]
       ]
      ]
     ]
@@ -1966,6 +2579,19 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "1,500,000 CC",
+        "Medium Straightaways ○"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -1990,6 +2616,21 @@
     [
      1,
      []
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Race Planner"
+       ],
+       [
+        "Preferred Position"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",
@@ -2100,6 +2741,36 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Stop Right There!"
+       ]
+      ],
+      [
+       [
+        "Uma Stan"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Gap Closer"
+       ],
+       [
+        "Blinding Flash"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2123,6 +2794,26 @@
       [
        "Inside Scoop",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Inside Scoop"
+       ],
+       [
+        "Innate Experience"
+       ]
+      ],
+      [
+       [
+        "Maverick ○"
+       ]
       ]
      ]
     ]
@@ -2166,6 +2857,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Unrestrained"
+       ],
+       [
+        "Final Push"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2190,6 +2896,21 @@
     [
      1,
      []
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Killer Tunes"
+       ],
+       [
+        "Up-Tempo"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",
@@ -2228,6 +2949,23 @@
      3,
      [
       "Concentration"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Hydrate"
+       ]
+      ],
+      [
+       [
+        "Soft Step"
+       ]
+      ]
      ]
     ]
    ],
@@ -2297,6 +3035,26 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Right-Handed ○"
+       ]
+      ],
+      [
+       [
+        "Left-Handed ○"
+       ]
+      ],
+      [
+       []
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2356,6 +3114,21 @@
      1,
      [
       "Playtime's Over!"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Perfect Prep!"
+       ],
+       [
+        "Meticulous Measures"
+       ]
+      ]
      ]
     ]
    ],
@@ -2442,6 +3215,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Escape Artist"
+       ],
+       [
+        "Fast-Paced"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2499,6 +3287,36 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Soft Step"
+       ]
+      ],
+      [
+       [
+        "Passing Pro"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Sleeping Lion"
+       ],
+       [
+        "Standing By"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2524,6 +3342,21 @@
      2,
      [
       "Cloudy Days ○"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Fast & Furious"
+       ],
+       [
+        "Position Pilfer"
+       ]
+      ]
      ]
     ]
    ],
@@ -2621,6 +3454,24 @@
      2,
      1,
      2
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Super Lucky Seven"
+       ],
+       [
+        "Super Lucky Seven"
+       ],
+       [
+        "Lucky Seven"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",
@@ -2729,6 +3580,21 @@
      []
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "In High Spirits"
+       ],
+       [
+        "Light as a Feather"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2745,6 +3611,21 @@
       [
        "Straightaway Recovery",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Breath of Fresh Air"
+       ],
+       [
+        "Straightaway Recovery"
+       ]
       ]
      ]
     ]
@@ -2767,6 +3648,44 @@
      [
       "Lead the Charge!",
       "Uma Stan"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Hydrate"
+       ]
+      ],
+      [
+       [
+        "Focus"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Lead the Charge!"
+       ],
+       [
+        "Lead the Charge!"
+       ]
+      ],
+      [
+       [
+        "Uma Stan"
+       ],
+       [
+        "Uma Stan"
+       ]
+      ]
      ]
     ]
    ],
@@ -2836,6 +3755,21 @@
       [
        "Lie in Wait",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Be Still"
+       ],
+       [
+        "Lie in Wait"
+       ]
       ]
      ]
     ]
@@ -2912,6 +3846,21 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Take the Chance"
+       ],
+       [
+        "From the Brink"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2957,6 +3906,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Feature Act"
+       ]
+      ],
+      [
+       [
+        "Up-Tempo"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -2989,6 +3955,21 @@
      []
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Full of Vigor"
+       ],
+       [
+        "Pumped"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3006,6 +3987,23 @@
      3,
      [
       "Dauntless"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Updrafters"
+       ]
+      ],
+      [
+       [
+        "Light as a Feather"
+       ]
+      ]
      ]
     ]
    ],
@@ -3045,6 +4043,24 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Corner Recovery ○"
+       ],
+       []
+      ],
+      [
+       [
+        "Intense Gaze"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3074,6 +4090,21 @@
       [
        "Keep Going!",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Keep Going!"
+       ],
+       [
+        "Full Throttle"
+       ]
       ]
      ]
     ]
@@ -3117,6 +4148,25 @@
      3,
      [
       "Unstoppable"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       []
+      ],
+      [
+       [
+        "Murmur",
+        "Pace Chaser Straightaways ○"
+       ],
+       [
+        "Pace Chaser Straightaways ○"
+       ]
+      ]
      ]
     ]
    ],
@@ -3209,6 +4259,23 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Feature Act"
+       ]
+      ],
+      [
+       [
+        "Straightaway Recovery"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3232,6 +4299,23 @@
      3,
      [
       "Lie in Wait"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Take the Chance"
+       ]
+      ],
+      [
+       [
+        "Updrafters"
+       ]
+      ]
      ]
     ]
    ],
@@ -3277,6 +4361,27 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Nothing Ventured"
+       ],
+       [
+        "Risky Business"
+       ],
+       [
+        "Nothing Ventured"
+       ],
+       [
+        "Risky Business"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3293,6 +4398,21 @@
       [
        "Step on the Gas!",
        0.5
+      ]
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Step on the Gas!"
+       ],
+       [
+        "Acceleration"
+       ]
       ]
      ]
     ]
@@ -3618,6 +4738,22 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Pace Strategy",
+        "Studious"
+       ]
+      ],
+      [
+       []
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -3695,6 +4831,25 @@
      3,
      [
       "Razor-Sharp Steps"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       [
+        "Intense Gaze"
+       ],
+       [
+        "Intense Gaze",
+        "Restraint"
+       ]
+      ],
+      [
+       []
+      ]
      ]
     ]
    ],
@@ -3816,6 +4971,26 @@
      3,
      [
       "Superb Gait"
+     ]
+    ]
+   ],
+   "alts": [
+    [
+     1,
+     [
+      [
+       []
+      ],
+      [
+       [
+        "Fighting Spirit",
+        "Unyielding Spirit"
+       ]
+      ],
+      [
+       [],
+       []
+      ]
      ]
     ]
    ],
@@ -4154,6 +5329,38 @@
      ]
     ]
    ],
+   "alts": [
+    [
+     2,
+     [
+      [
+       [
+        "Deep Breaths"
+       ]
+      ],
+      [
+       [
+        "Corner Adept ○"
+       ]
+      ]
+     ]
+    ],
+    [
+     3,
+     [
+      [
+       [
+        "Beast Mode"
+       ]
+      ],
+      [
+       [
+        "Beeline Burst"
+       ]
+      ]
+     ]
+    ]
+   ],
    "status": "complete",
    "src": "gametora training_events"
   },
@@ -4178,6 +5385,23 @@
     [
      2,
      []
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Summer Gust"
+       ]
+      ],
+      [
+       [
+        "High Voltage"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",
@@ -4277,6 +5501,23 @@
     [
      2,
      []
+    ]
+   ],
+   "alts": [
+    [
+     3,
+     [
+      [
+       [
+        "Claw Forward"
+       ]
+      ],
+      [
+       [
+        "Cooldown"
+       ]
+      ]
+     ]
     ]
    ],
    "status": "complete",

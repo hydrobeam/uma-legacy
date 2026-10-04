@@ -16,7 +16,7 @@
 //! them. Foursomes are visited in descending order of a ceiling computed with the best odds any deck gives per
 //! target; a foursome is solved only while its ceiling for some pal count can still beat that pal count's best.
 use super::*;
-use crate::skills::{atleast, chart_rows, lineages, member_json, Model, SkillJob, SkillsRaw, GEN_GOLD};
+use crate::skills::{chart_rows, lineages, member_json, Model, SkillJob, SkillsRaw, GEN_GOLD};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -46,6 +46,10 @@ pub(crate) struct DeckJob {
     #[serde(default)] pub ends: Vec<(u32, u8, u32, u8, f64)>,
     /// links where IT's default choice ends a card's chain on some outcomes: (card, link, k outcomes, of n)
     #[serde(default)] pub stop_risk: Vec<(u32, u8, u8, u8)>,
+    /// events that name two or more skills, in full: (card, link, [choice][outcome] -> (skill group, 1 | 2)), the
+    /// choices that keep the chain going, outcomes equally likely. At these links they replace `events` /
+    /// `events_p`, which credit every skill on its own.
+    #[serde(default)] pub alts: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
     #[serde(default)] pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck
     #[serde(default)] pub borrow: bool,
@@ -227,29 +231,235 @@ fn chain_marginals_ref(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
     out
 }
 
-/// Target sources of one deck entry (a card, or a card whose chain the player ends early): training hints
-/// (target, chance), chain rewards grouped per (target, level) as (link, chance given the link fires) sorted by
-/// link, and rewards that do not depend on the chain (target, level, chance).
-#[derive(Clone, Default)]
-struct Src { train: Vec<(usize, f64)>, chains: Vec<(usize, u8, Vec<(u8, f64)>)>, fixed: Vec<(usize, u8, f64)> }
+/// One random event outcome per firing: (chance, target rewards (target, 1 white | 2 gold)) per outcome. The chances
+/// sum to at most 1 (the rest gives nothing); a reward with chance p on its own is [(p, [(k, lvl)])].
+type Group = Vec<(f64, Vec<(usize, u8)>)>;
+/// Per target a group touches: (k, P(gold for k), P(any hint for k)).
+fn group_gh(g: &Group) -> Vec<(usize, f64, f64)> {
+    let mut v: Vec<(usize, f64, f64)> = vec![];
+    for (w, out) in g {
+        let mut seen: Vec<(usize, u8)> = vec![];
+        for &(k, lvl) in out { match seen.iter_mut().find(|x| x.0 == k) { Some(x) => x.1 = x.1.max(lvl), None => seen.push((k, lvl)) } }
+        for (k, lvl) in seen {
+            let e = match v.iter().position(|x| x.0 == k) { Some(i) => &mut v[i], None => { v.push((k, 0.0, 0.0)); v.last_mut().unwrap() } };
+            if lvl >= 2 { e.1 += w; }
+            e.2 += w;
+        }
+    }
+    v.sort_by_key(|x| x.0);
+    v
+}
 
-/// Multiply an entry's miss chances into mw (white) / mg (gold); m[l - 1] = P(chain link l fires).
+/// Final-state distribution of the chain process behind `chain_marginals`: (links done per entry, probability).
+/// Memoised per sorted kind list; `kinds` must be sorted. Exact: a state at level L (L events taken) is final
+/// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
+/// where they stop, as in `chain_marginals_risk`.
+fn chain_states(kinds: &[Kind], lambda: f64) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
+    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<Kind>, u64), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(Default::default()); }
+    let key = (kinds.to_vec(), lambda.to_bits());
+    if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) { return r; }
+    let n = kinds.len();
+    let alts: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(_, stop, risk)| {
+        let mut v = vec![]; let mut go = 1.0f64;
+        for l in 1..stop.min(5) {
+            let b = (risk >> (8 * (l as u32 - 1))) & 0xff;
+            if b == 0 { continue; }
+            let q = (b >> 4) as f64 / (b & 15) as f64;
+            v.push((l, go * q)); go *= 1.0 - q;
+        }
+        v.push((stop, go)); v
+    }).collect();
+    let mut acc: crate::FxMap<Vec<u8>, f64> = Default::default();
+    let mut pick = vec![0usize; n];
+    loop {
+        let w: f64 = (0..n).map(|i| alts[i][pick[i]].1).product();
+        if w > 0.0 {
+            let stops: Vec<u8> = (0..n).map(|i| alts[i][pick[i]].0).collect();
+            let total: usize = stops.iter().map(|&x| x as usize).sum();
+            let mut pois = vec![0.0f64; total + 1];
+            pois[0] = (-lambda).exp();
+            for e in 1..=total { pois[e] = pois[e - 1] * lambda / e as f64; }
+            let mut stride = vec![0usize; n]; let mut nst = 1usize;
+            for i in 0..n { stride[i] = nst; nst *= stops[i] as usize + 1; }
+            let mut p = vec![0.0f64; nst]; p[0] = 1.0;
+            let mut s = vec![0u8; n];
+            for idx in 0..nst {
+                let mut r = idx; let mut lvl = 0usize;
+                for i in 0..n { s[i] = (r % (stops[i] as usize + 1)) as u8; r /= stops[i] as usize + 1; lvl += s[i] as usize; }
+                let pi = p[idx];
+                if pi == 0.0 { continue; }
+                let mut wsum = 0.0f64;
+                for i in 0..n { if s[i] < stops[i] { wsum += (kinds[i].0 - s[i]) as f64; } }
+                let fin = if wsum > 0.0 {
+                    for i in 0..n { if s[i] < stops[i] { p[idx + stride[i]] += pi * (kinds[i].0 - s[i]) as f64 / wsum; } }
+                    pois[lvl]
+                } else { (1.0 - pois[..lvl].iter().sum::<f64>()).max(0.0) };
+                *acc.entry(s.clone()).or_insert(0.0) += w * pi * fin;
+            }
+        }
+        let mut i = 0;
+        while i < n { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
+        if i == n { break; }
+    }
+    let mut v: Vec<(Vec<u8>, f64)> = acc.into_iter().collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    let r = std::rc::Rc::new(v);
+    CS.with(|c| c.borrow_mut().insert(key, r.clone()));
+    r
+}
+
+/// Exact chances that all targets land, and all but one, for trainee `u` with one deck, at each inheritance chance in
+/// `qs`: (P(all), P(all but one), outfit option index in `model.opts[u]`) per q, with the outfit that gives the
+/// higher P(all).
+/// `ents`: the deck's entries (sources, chain kind); `filler`: cards without target hints, which still take chain
+/// slots (as 2-link SRs). The per-target odds (`src_miss`) are the marginals of the same model; the metric the
+/// search ranks by multiplies them as if targets were independent. They are not: chain cards share one run's
+/// chain events (a run with many completes several chains, a short one starves them all), and one event's
+/// outcomes can give one target or another. Here: the distribution of chain progress (`chain_states`); given it,
+/// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
+/// Training hints stay independent per target, as in the marginal model.
+fn joint_trainee(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, lambda: f64, n_targets: usize) -> Vec<(f64, f64, usize)> {
+    use crate::skills::GEN_WHITE;
+    let nu = model.uncertain.len();
+    // per-target miss factors (no gold, no hint) of the groups that touch one target; the others are "coupled"
+    fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
+        let gh = group_gh(g);
+        if gh.len() >= 2 { coupled.push(g); return; }
+        for (k, pg, ph) in gh { ng[k] *= 1.0 - pg; nh[k] *= 1.0 - ph; }
+    }
+    // sources that do not depend on the chain
+    let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut bc: Vec<&Group> = vec![];
+    for (src, _) in ents {
+        for &(k, p) in &src.train { bh[k] *= 1.0 - p; }
+        for g in &src.fixed { take(g, &mut bc, &mut bg, &mut bh); }
+    }
+    // chain entries sorted by kind (with fillers) for the memoised state distribution; per entry and links done,
+    // the cumulative factors and coupled groups of the links fired so far
+    let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
+    for _ in 0..filler { ch.push(((2, 2, 0), None)); }
+    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds, lambda) };
+    let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = ch.iter().map(|&(kd, e)| e.map(|i| {
+        let src = &ents[i].0;
+        let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
+        let mut out = vec![(g.clone(), h.clone(), c.clone())];
+        for l in 1..=kd.1 {
+            for (cl, grp) in &src.chains { if *cl == l { take(grp, &mut c, &mut g, &mut h); } }
+            out.push((g.clone(), h.clone(), c.clone()));
+        }
+        out
+    })).collect();
+    let opts = &model.opts[u];
+    let no = opts.len(); let nq = qs.len();
+    let nfix = model.n_fixed_gold as usize;
+    let fixed = model.fixed_factor();
+    let mut acc = vec![(0.0f64, 0.0f64); nq * no];
+    let (mut ng, mut nh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut coupled: Vec<&Group> = vec![];
+    let mut alts: Vec<Vec<(f64, &[(usize, u8)])>> = vec![];
+    let mut pick: Vec<usize> = vec![];
+    let mut dist = [0.0f64; 40];
+    for (prog, w) in states.iter() {
+        ng.copy_from_slice(&bg); nh.copy_from_slice(&bh);
+        coupled.clear(); coupled.extend(bc.iter().copied());
+        for (pos, l) in lv.iter().enumerate() {
+            let Some(l) = l else { continue };
+            let (g, h, c) = &l[prog[pos] as usize];
+            for k in 0..nu { ng[k] *= g[k]; nh[k] *= h[k]; }
+            coupled.extend(c.iter().copied());
+        }
+        // outcomes of the coupled groups: each group's outcomes plus "nothing" (the rest of its weight)
+        alts.clear();
+        for g in &coupled {
+            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
+            let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
+            if rest > 1e-15 { v.push((rest, &[][..])); }
+            alts.push(v);
+        }
+        pick.clear(); pick.resize(alts.len(), 0);
+        loop {
+            let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product::<f64>() * w;
+            let mut fg = [false; 32]; let mut fh = [false; 32];
+            for i in 0..alts.len() { for &(k, lvl) in alts[i][pick[i]].1 { fh[k] = true; if lvl >= 2 { fg[k] = true; } } }
+            for (qi, &q) in qs.iter().enumerate() {
+                for (o, (st, _)) in opts.iter().enumerate() {
+                    let ew = &model.ews[u][o];
+                    // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
+                    let mut all = fixed;
+                    dist[..=nu + nfix].iter_mut().for_each(|x| *x = 0.0); dist[0] = 1.0;
+                    for k in 0..nu {
+                        let pg = if fg[k] { 1.0 } else { 1.0 - ng[k] };
+                        let pnh = if fh[k] { 0.0 } else { nh[k] };
+                        let f = match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
+                            _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - pnh * (1.0 - ew[k]) * (1.0 - q)) };
+                        all *= f;
+                        for j in (0..=k).rev() { dist[j + 1] += dist[j] * f; dist[j] *= 1.0 - f; }
+                    }
+                    for _ in 0..nfix { for j in (0..=nu + nfix).rev() { if j + 1 < dist.len() { dist[j + 1] += dist[j] * GEN_GOLD; } dist[j] *= 1.0 - GEN_GOLD; } }
+                    let m1: f64 = dist[n_targets.saturating_sub(1).min(nu + nfix)..=nu + nfix].iter().sum();
+                    let a = &mut acc[qi * no + o];
+                    a.0 += wc * all; a.1 += wc * m1;
+                }
+            }
+            let mut i = 0;
+            while i < alts.len() { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
+            if i == alts.len() { break; }
+        }
+    }
+    (0..nq).map(|qi| {
+        let mut b = 0;
+        for o in 1..no { if acc[qi * no + o].0 > acc[qi * no + b].0 { b = o; } }
+        (acc[qi * no + b].0, acc[qi * no + b].1, b)
+    }).collect()
+}
+
+/// Target sources of one deck entry (a card, a card whose chain the player ends early, or a card taking a given
+/// choice where an event offers targets on different choices): training hints (target, chance), outcome groups that
+/// do not depend on the chain, and chain outcome groups with their link, sorted by link. `fm` / `cm` are the same
+/// per target as miss factors (1 - P(gold), 1 - P(any hint)), the chain ones per link in link order.
+#[derive(Clone, Default)]
+struct Src { train: Vec<(usize, f64)>, fixed: Vec<Group>, chains: Vec<(u8, Group)>,
+             fm: Vec<(usize, f64, f64)>, cm: Vec<(usize, Vec<(u8, f64, f64)>)> }
+impl Src {
+    fn finish(mut self) -> Self {
+        self.chains.sort_by_key(|x| x.0);
+        self.fm = self.fixed.iter().flat_map(|g| group_gh(g)).map(|(k, g, h)| (k, 1.0 - g, 1.0 - h)).collect();
+        let mut cm: Vec<(usize, Vec<(u8, f64, f64)>)> = vec![];
+        for (l, g) in &self.chains {
+            for (k, pg, ph) in group_gh(g) {
+                let e = match cm.iter().position(|x| x.0 == k) { Some(i) => &mut cm[i].1, None => { cm.push((k, vec![])); &mut cm.last_mut().unwrap().1 } };
+                match e.last_mut() { Some(x) if x.0 == *l => { x.1 *= 1.0 - pg; x.2 *= 1.0 - ph; } _ => e.push((*l, 1.0 - pg, 1.0 - ph)) }
+            }
+        }
+        cm.sort_by_key(|x| x.0);
+        self.cm = cm;
+        self
+    }
+    fn is_empty(&self) -> bool { self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty() }
+}
+
+/// Multiply an entry's miss chances into mw / mg; m[l - 1] = P(chain link l fires). mg gets P(no gold hint) and mw
+/// P(no white hint | no gold hint) = P(no hint) / P(no gold hint), both exact for the entry: its sources are
+/// independent of each other, while a skill's gold and white from one event (e.g. on different outcomes) are not.
 /// Links fire in order, so a skill offered at several links comes from the earliest one that fires:
 /// P(miss) = 1 - sum_l P(link l fires) * (P(not from links < l) - P(not from links <= l)).
-/// It falls with every m[l], so the lowest possible link odds bound the miss chance from above.
+/// Both misses fall with every m[l], so the lowest possible link odds bound them from above.
 fn src_miss(s: &Src, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
-    for &(k, p) in &s.train { mw[k] *= 1.0 - p; }
-    for &(k, lvl, p) in &s.fixed { if lvl >= 2 { mg[k] *= 1.0 - p; } else { mw[k] *= 1.0 - p; } }
-    for (k, lvl, evs) in &s.chains {
-        let (mut cum, mut miss, mut i) = (1.0f64, 1.0f64, 0usize);
-        while i < evs.len() {
-            let l = evs[i].0; let mut nc = cum;
-            while i < evs.len() && evs[i].0 == l { nc *= 1.0 - evs[i].1; i += 1; }
+    let mut eg = [1.0f64; 32]; let mut eh = [1.0f64; 32];
+    for &(k, p) in &s.train { eh[k] *= 1.0 - p; }
+    for &(k, ng, nh) in &s.fm { eg[k] *= ng; eh[k] *= nh; }
+    for (k, links) in &s.cm {
+        let (mut cg, mut ch, mut xg, mut xh) = (1.0f64, 1.0f64, 1.0f64, 1.0f64);
+        for &(l, ng, nh) in links {
             let ml = m.get(l as usize - 1).copied().unwrap_or(0.0);
-            miss -= ml * (cum - nc); cum = nc;
+            let (ncg, nch) = (cg * ng, ch * nh);
+            xg -= ml * (cg - ncg); xh -= ml * (ch - nch); cg = ncg; ch = nch;
         }
-        if *lvl >= 2 { mg[*k] *= miss; } else { mw[*k] *= miss; }
+        eg[*k] *= xg; eh[*k] *= xh;
     }
+    for k in 0..mw.len() { mg[k] *= eg[k]; mw[k] *= if eg[k] > 0.0 { eh[k] / eg[k] } else { 1.0 }; }
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
@@ -261,6 +471,7 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
     let mut el: Vec<Value> = v["end_links"].as_array().cloned().unwrap_or_default();
     let mut en: Vec<Value> = v["ends"].as_array().cloned().unwrap_or_default();
     let mut sr: Vec<Value> = v["stop_risk"].as_array().cloned().unwrap_or_default();
+    let mut al: Vec<Value> = v["alts"].as_array().cloned().unwrap_or_default();
     if let Some(cards) = db["cards"].as_object() {
         for (id, c) in cards {
             let Ok(id) = id.parse::<u32>() else { continue };
@@ -280,13 +491,25 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
                 }
             }
             for r in c["stop_risk"].as_array().into_iter().flatten() { sr.push(json!([id, r[0], r[1], r[2]])); }
+            for a in c["alts"].as_array().into_iter().flatten() {
+                let chs: Vec<Vec<Vec<(u32, u8)>>> = a[1].as_array().into_iter().flatten().map(|ch| ch.as_array().into_iter().flatten()
+                    .map(|out| out.as_array().into_iter().flatten().filter_map(|n| look(n.as_str().unwrap_or(""))).collect()).collect()).collect();
+                al.push(json!([id, a[0], chs]));
+            }
             for n in c["always"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(n.as_str().unwrap_or("")) { ev.push(json!([id, g, lv, 0])); } }
             for e in c["chance"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(e[0].as_str().unwrap_or("")) { od.push(json!([id, g, lv, e[1].as_f64().unwrap_or(0.0)])); } }
         }
     }
     v["events"] = Value::Array(ev); v["events_p"] = Value::Array(evp); v["odds_events"] = Value::Array(od);
-    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr);
+    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr); v["alts"] = Value::Array(al);
 }
+
+/// The search ranks decks and loops by the product of per-target odds; the reported ones are then scored exactly
+/// (`joint_trainee`), and so are the decks and loops whose ranking value is at least this share of the best. On the
+/// reference setups the exact value was 1.00-1.19 times the product (the most for 0-1-pal decks), so 0.8 covers a
+/// gap well beyond that.
+const JOINT_BAND: f64 = 0.8;
+thread_local! { static JCOUNT: std::cell::Cell<usize> = std::cell::Cell::new(0); }
 
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
 const DOM_EPS: f64 = 1e-12;
@@ -557,7 +780,7 @@ fn enum_key(v: &Value) -> String {
 }
 
 #[derive(Clone)]
-struct DeckEval { pals: usize, borrowed: Option<usize>, cards: Vec<usize>, ends: Vec<u8>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64>, dv: Vec<f64>, s: f64 }
+struct DeckEval { pals: usize, borrowed: Option<usize>, cards: Vec<usize>, ends: Vec<u8>, vars: Vec<u32>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64>, dv: Vec<f64>, s: f64 }
 
 /// A deck's per-target (white, gold) hint odds.
 trait Odds { fn dw(&self) -> &[f64]; fn dg(&self) -> &[f64]; }
@@ -588,15 +811,113 @@ fn split<D: Odds>(sky: &[D], ix: &mut [usize], nu: usize, out: &mut Vec<Cl>) {
 
 /// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode.
 #[derive(Clone, Serialize, Deserialize)]
-struct PDeck { names: Vec<String>, ids: Vec<u32>, ends: Vec<u8>, plain_ids: Vec<u32>, pal_names: Vec<String>, pals: usize, borrowed: Option<String>, dw: Vec<f64>, dg: Vec<f64> }
+struct PDeck { names: Vec<String>, ids: Vec<u32>, ends: Vec<u8>, #[serde(default)] vars: Vec<u32>, #[serde(default)] choices: Vec<String>, plain_ids: Vec<u32>, pal_names: Vec<String>, pals: usize, borrowed: Option<String>, dw: Vec<f64>, dg: Vec<f64> }
 impl PDeck {
     fn out(&self, unc: &[u32]) -> Value {
         let odds: Vec<Value> = (0..unc.len()).map(|k| json!({"group": unc[k], "white": self.dw[k], "gold": self.dg[k]})).collect();
         json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,
-               "card_ids": self.ids, "end_chain_at": self.ends, "plain_ids": self.plain_ids})
+               "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
     }
     fn blocks(&self, uma: u32, card_of: &HashMap<u32, &Card>) -> bool {
         self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).map_or(false, |c| c.blocks(uma)))
+    }
+}
+
+/// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact
+/// evaluation of the decks it reports.
+struct Sources<'a> { dj: &'a DeckJob, unc: &'a [u32] }
+impl<'a> Sources<'a> {
+    fn ev_for(&self, id: u32) -> Vec<(usize, u8, u8, f64)> {
+        let unc = self.unc;
+        let mut v: Vec<(usize, u8, u8, f64)> = self.dj.events.iter().filter(|e| e.0 == id).filter_map(|e| unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3, 1.0))).collect();
+        v.extend(self.dj.events_p.iter().filter(|e| e.0 == id).filter_map(|e| unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3, e.4))));
+        v
+    }
+    fn odds_for(&self, id: u32) -> Vec<(usize, u8, f64)> { self.dj.odds_events.iter().filter(|e| e.0 == id).filter_map(|e| self.unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3))).collect() }
+    fn train(&self, c: &Card) -> Vec<(usize, f64)> {
+        if c.opts == 0 { return vec![]; }
+        let h = 1.0 + c.hf / 25.0;
+        let p = 1.0 - (1.0 - 1.0 / c.opts as f64).powf(h);
+        self.unc.iter().enumerate().filter(|(_, g)| c.whites.contains(g)).map(|(k, _)| (k, p)).collect()
+    }
+    /// early-end options: links where a card has a choice that ends its chain, and the target rewards of that choice
+    fn end_links(&self, id: u32) -> Vec<u8> { let mut v: Vec<u8> = self.dj.end_links.iter().filter(|e| e.0 == id).map(|e| e.1).collect(); v.sort(); v.dedup(); v }
+    fn end_rew(&self, id: u32, l: u8) -> Vec<(usize, u8, f64)> { self.dj.ends.iter().filter(|e| e.0 == id && e.1 == l).filter_map(|e| self.unc.iter().position(|&g| g == e.2).map(|k| (k, e.3, e.4))).collect() }
+    /// The choices worth taking at an event listed in `alts` (None: not listed), as outcome groups over the targets:
+    /// those with a target that no other choice beats on every target (P(gold) and P(any hint)); of two with the same
+    /// odds, both are kept unless their outcomes are the same (then the first).
+    fn choices(&self, id: u32, link: u8) -> Option<Vec<Group>> {
+        let a = self.dj.alts.iter().find(|a| a.0 == id && a.1 == link)?;
+        let nu = self.unc.len();
+        let gs: Vec<Group> = a.2.iter().map(|ch| {
+            let n = ch.len().max(1) as f64;
+            ch.iter().map(|out| {
+                let mut r: Vec<(usize, u8)> = out.iter().filter_map(|&(g, lv)| self.unc.iter().position(|&x| x == g).map(|k| (k, lv))).collect();
+                r.sort(); r.dedup(); (1.0 / n, r)
+            }).filter(|(_, r)| !r.is_empty()).collect()
+        }).collect();
+        let prof: Vec<Vec<(f64, f64)>> = gs.iter().map(|g| { let mut p = vec![(0.0, 0.0); nu]; for (k, pg, ph) in group_gh(g) { p[k] = (pg, ph); } p }).collect();
+        let beats = |j: usize, i: usize| prof[j].iter().zip(&prof[i]).all(|(a, b)| a.0 >= b.0 && a.1 >= b.1) && (prof[j] != prof[i] || (gs[j] == gs[i] && j < i));
+        Some((0..gs.len()).filter(|&i| !gs[i].is_empty() && !(0..gs.len()).any(|j| j != i && !gs[j].is_empty() && beats(j, i))).map(|i| gs[i].clone()).collect())
+    }
+    fn in_range(link: u8, stop: Option<u8>) -> bool { match stop { Some(st) => link < st, None => true } }
+    /// links (before the entry's stop) where two or more choices are worth taking, with how many
+    fn var_links(&self, c: &Card, stop: Option<u8>) -> Vec<(u8, usize)> {
+        if c.pal { return vec![]; }
+        let mut v: Vec<(u8, usize)> = self.dj.alts.iter().filter(|a| a.0 == c.id && Self::in_range(a.1, stop))
+            .filter_map(|a| { let n = self.choices(c.id, a.1).map_or(0, |x| x.len()); (n >= 2).then_some((a.1, n)) }).collect();
+        v.sort(); v.dedup(); v
+    }
+    /// The entry's choice variants: the choice taken at each `var_links` link, 4 bits per link in link order.
+    fn variants(&self, c: &Card, stop: Option<u8>) -> Vec<u32> {
+        let mut out = vec![0u32];
+        for (pos, &(_, n)) in self.var_links(c, stop).iter().enumerate() {
+            out = out.iter().flat_map(|&v| (0..n.min(16)).map(move |i| v | ((i as u32) << (4 * pos)))).collect();
+        }
+        out
+    }
+    fn has_alts(&self, id: u32) -> bool { self.dj.alts.iter().any(|a| a.0 == id && self.choices(id, a.1).map_or(false, |x| !x.is_empty())) }
+    /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
+    /// then the ending choice's rewards at that link), taking choice variant `var`.
+    fn src(&self, c: &Card, stop: Option<u8>, var: u32) -> Src {
+        let one = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
+        let mut s = Src { train: self.train(c), ..Default::default() };
+        s.fixed = self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect();
+        let alt_links: Vec<u8> = self.dj.alts.iter().filter(|a| a.0 == c.id).map(|a| a.1).collect();
+        for (k, lvl, link, f) in self.ev_for(c.id) {
+            if link == 0 { s.fixed.push(one(k, lvl, f)); continue; }
+            if c.pal || alt_links.contains(&link) || !Self::in_range(link, stop) { continue; }   // pals have no chain slots
+            s.chains.push((link, one(k, lvl, f)));
+        }
+        if !c.pal {
+            let vl = self.var_links(c, stop);
+            let mut ls = alt_links.clone(); ls.sort(); ls.dedup();
+            for l in ls {
+                if !Self::in_range(l, stop) { continue; }
+                let ch = self.choices(c.id, l).unwrap_or_default();
+                let i = vl.iter().position(|x| x.0 == l).map_or(0, |pos| ((var >> (4 * pos)) & 15) as usize);
+                if let Some(g) = ch.get(i) { s.chains.push((l, g.clone())); }
+            }
+        }
+        if let Some(st) = stop { for (k, lvl, f) in self.end_rew(c.id, st) { s.chains.push((st, one(k, lvl, f))); } }
+        s.finish()
+    }
+    fn kind(&self, c: &Card, stop: Option<u8>) -> Kind {
+        if c.pal || c.links == 0 { return (0, 0, 0); }
+        let risk: Vec<(u8, u8, u8)> = self.dj.stop_risk.iter().filter(|r| r.0 == c.id).map(|r| (r.1, r.2, r.3)).collect();
+        let st = stop.unwrap_or(c.links);
+        (c.links, st, stop_risk_code(&risk, st))
+    }
+    /// "link 1: Uma Stan" for each link where the variant picks between choices ("" when there is none)
+    fn label(&self, c: &Card, stop: Option<u8>, var: u32, sk: &SkillsRaw) -> String {
+        let name = |k: usize, lvl: u8| sk.skills.iter().find(|x| x.0 == self.unc[k]).map(|x| if lvl >= 2 { x.2.clone().unwrap_or(x.1.clone()) } else { x.1.clone() }).unwrap_or_default();
+        self.var_links(c, stop).iter().enumerate().map(|(pos, &(l, _))| {
+            let i = ((var >> (4 * pos)) & 15) as usize;
+            let g = self.choices(c.id, l).unwrap_or_default().get(i).cloned().unwrap_or_default();
+            let mut ns: Vec<String> = vec![];
+            for (_, out) in &g { for &(k, lvl) in out { let n = name(k, lvl); if !ns.contains(&n) { ns.push(n); } } }
+            format!("link {}: {}", l, ns.join(", "))
+        }).collect::<Vec<_>>().join("; ")
     }
 }
 
@@ -624,7 +945,9 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
             .find(|&u| deck.iter().any(|id| card_of.get(id).map_or(false, |c| c.blocks(u))))
     };
     let deck_key = |t: &Value| -> String { let mut n: Vec<String> = t["cards"].as_array().map(|a| a.iter().map(|x| x.to_string()).collect()).unwrap_or_default(); n.sort(); n.join("|") };
-    let pv = |t: &Value| t["loop"]["p_all"].as_f64().unwrap_or(0.0);
+    // the search's ranking value (product of per-target odds) drives the split; the result is ordered by exact odds
+    let pv = |t: &Value| t["loop"]["rank_value"].as_f64().or(t["loop"]["p_all"].as_f64()).unwrap_or(0.0);
+    let pj = |t: &Value| t["loop"]["p_all"].as_f64().unwrap_or(0.0);
 
     let mut legal: Vec<(String, Value)> = vec![];                 // distinct decks, best legal loop each
     let mut by_pals: HashMap<u64, Value> = HashMap::new();
@@ -675,9 +998,11 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
     }
     let mut out = root.unwrap_or_else(|| json!({"error": "no search ran"}));
     legal.sort_by(|a, b| pv(&b.1).partial_cmp(&pv(&a.1)).unwrap());
-    out["top"] = Value::Array(legal.into_iter().take(k).map(|e| e.1).collect());
+    let mut top: Vec<Value> = legal.into_iter().take(k).map(|e| e.1).collect();
+    top.sort_by(|a, b| pj(b).partial_cmp(&pj(a)).unwrap());
+    out["top"] = Value::Array(top);
     let mut best: Vec<Value> = by_pals.into_values().collect();
-    best.sort_by(|a, b| pv(b).partial_cmp(&pv(a)).unwrap());
+    best.sort_by(|a, b| pj(b).partial_cmp(&pj(a)).unwrap());
     out["best"] = Value::Array(best);
     out["decks_built"] = json!(decks_built);
     out["searches"] = json!(searches);
@@ -695,64 +1020,36 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let owned_c = |id: u32| (is_owned(id) || dj.borrow) && !dj.exclude_cards.contains(&id);
 
     // ---- card sources ----
-    let ev_for = |id: u32| -> Vec<(usize, u8, u8, f64)> {
-        let mut v: Vec<(usize, u8, u8, f64)> = dj.events.iter().filter(|e| e.0 == id).filter_map(|e| unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3, 1.0))).collect();
-        v.extend(dj.events_p.iter().filter(|e| e.0 == id).filter_map(|e| unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3, e.4))));
-        v };
-    let odds_for = |id: u32| -> Vec<(usize, u8, f64)> { dj.odds_events.iter().filter(|e| e.0 == id).filter_map(|e| unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3))).collect() };
-    let train = |c: &Card| -> Vec<(usize, f64)> {
-        if c.opts == 0 { return vec![]; }
-        let h = 1.0 + c.hf / 25.0;
-        let p = 1.0 - (1.0 - 1.0 / c.opts as f64).powf(h);
-        unc.iter().enumerate().filter(|(_, g)| c.whites.contains(g)).map(|(k, _)| (k, p)).collect()
-    };
+    let srcb = Sources { dj: &dj, unc: &unc };
     let cards: Vec<&Card> = cr.cards.iter().filter(|c| owned_c(c.id)).collect();
-    // early-end options: links where a card has a choice that ends its chain, and the target rewards of that choice
-    let end_links_for = |id: u32| -> Vec<u8> { let mut v: Vec<u8> = dj.end_links.iter().filter(|e| e.0 == id).map(|e| e.1).collect(); v.sort(); v.dedup(); v };
-    let end_rew = |id: u32, l: u8| -> Vec<(usize, u8, f64)> { dj.ends.iter().filter(|e| e.0 == id && e.1 == l).filter_map(|e| unc.iter().position(|&g| g == e.2).map(|k| (k, e.3, e.4))).collect() };
-    // sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
-    // then the ending choice's rewards at that link)
-    let make_src = |c: &Card, stop: Option<u8>| -> Src {
-        let mut s = Src { train: train(c), chains: vec![], fixed: odds_for(c.id) };
-        let mut ch: Vec<(usize, u8, u8, f64)> = vec![];
-        for (k, lvl, link, f) in ev_for(c.id) {
-            if link == 0 { s.fixed.push((k, lvl, f)); continue; }
-            if c.pal { continue; }                       // pals have no chain slots
-            match stop { Some(st) if link >= st => {}, _ => ch.push((k, lvl, link, f)) }
-        }
-        if let Some(st) = stop { for (k, lvl, f) in end_rew(c.id, st) { ch.push((k, lvl, st, f)); } }
-        ch.sort_by(|a, b| (a.0, a.1, a.2).cmp(&(b.0, b.1, b.2)));
-        for (k, lvl, link, f) in ch {
-            match s.chains.last_mut() { Some(g) if g.0 == k && g.1 == lvl => g.2.push((link, f)), _ => s.chains.push((k, lvl, vec![(link, f)])) }
-        }
-        s
-    };
-    let has_src = |s: &Src| !s.train.is_empty() || !s.chains.is_empty() || !s.fixed.is_empty();
-    // deck entries: card index (`rel`), chain kind, early-end link (0 = played normally) and sources
+    // deck entries: card index (`rel`), chain kind, early-end link (0 = played normally), choice variant and sources
     let mut rel: Vec<usize> = vec![];
     let mut kind: Vec<Kind> = vec![];
     let mut endk: Vec<u8> = vec![];
+    let mut vark: Vec<u32> = vec![];
     let mut srcs: Vec<Src> = vec![];
     let mut plain_names: Vec<String> = vec![];
     let mut plain_ids: Vec<u32> = vec![];
     let mut plain_chars: Vec<u32> = vec![];
     for (i, c) in cards.iter().enumerate() {
-        let useful = !ev_for(c.id).is_empty() || !odds_for(c.id).is_empty() || !train(c).is_empty();
+        let useful = !srcb.ev_for(c.id).is_empty() || !srcb.odds_for(c.id).is_empty() || !srcb.train(c).is_empty() || srcb.has_alts(c.id);
         let locked = dj.lock_cards.contains(&c.id);
-        if c.pal {
-            if useful || locked { rel.push(i); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
-        } else if c.links == 0 {
-            // a card without chain events (R cards): training hints only, and like a pal it takes no chain slot
-            if useful || locked { rel.push(i); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(c, None)); }
+        if c.pal || c.links == 0 {
+            // pals, and cards without chain events (R cards): like a pal, an R card takes no chain slot
+            if useful || locked { rel.push(i); kind.push((0, 0, 0)); endk.push(0); vark.push(0); srcs.push(srcb.src(c, None, 0)); }
         } else if c.rarity >= dj.min_rarity {
-            let risk: Vec<(u8, u8, u8)> = dj.stop_risk.iter().filter(|r| r.0 == c.id).map(|r| (r.1, r.2, r.3)).collect();
-            if useful || locked { rel.push(i); kind.push((c.links, c.links, stop_risk_code(&risk, c.links))); endk.push(0); srcs.push(make_src(c, None)); }
-            // the same card played to end its chain at link l, as its own entry (one character, so a deck holds
-            // at most one of a card's entries)
-            for l in end_links_for(c.id) {
+            // one entry per choice variant (an event offering targets on different choices: the player prioritises
+            // one); the same card played to end its chain at link l is its own entry too. One character, so a deck
+            // holds at most one of a card's entries.
+            if useful || locked {
+                for v in srcb.variants(c, None) { rel.push(i); kind.push(srcb.kind(c, None)); endk.push(0); vark.push(v); srcs.push(srcb.src(c, None, v)); }
+            }
+            for l in srcb.end_links(c.id) {
                 if l == 0 || l > c.links { continue; }
-                let v = make_src(c, Some(l));
-                if has_src(&v) || locked { rel.push(i); kind.push((c.links, l, stop_risk_code(&risk, l))); endk.push(l); srcs.push(v); }
+                for v in srcb.variants(c, Some(l)) {
+                    let x = srcb.src(c, Some(l), v);
+                    if !x.is_empty() || locked { rel.push(i); kind.push(srcb.kind(c, Some(l))); endk.push(l); vark.push(v); srcs.push(x); }
+                }
             }
         }
     }
@@ -775,7 +1072,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         for c in cards.iter() {
             if !c.pal || is_owned(c.id) || plain_chars.contains(&c.chara) || seen.contains(&c.chara) || rel.iter().any(|&r| cards[r].chara == c.chara) { continue; }
             let best = cards.iter().enumerate().filter(|(_, x)| x.pal && x.chara == c.chara).max_by_key(|(_, x)| x.rarity).unwrap().0;
-            seen.push(c.chara); rel.push(best); kind.push((0, 0, 0)); endk.push(0); srcs.push(make_src(cards[best], None));
+            seen.push(c.chara); rel.push(best); kind.push((0, 0, 0)); endk.push(0); vark.push(0); srcs.push(srcb.src(cards[best], None, 0));
         }
     }
     let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
@@ -884,6 +1181,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         kind.retain(|_| { let k = keep[j]; j += 1; k });
         let mut j = 0;
         endk.retain(|_| { let k = keep[j]; j += 1; k });
+        let mut j = 0;
+        vark.retain(|_| { let k = keep[j]; j += 1; k });
     }
 
     // ---- dominance coordinates ----
@@ -896,8 +1195,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let mut has_w = vec![false; nu]; let mut has_g = vec![false; nu];
     for sr in &srcs {
         for &(k, _) in &sr.train { has_w[k] = true; }
-        for (k, lvl, _) in &sr.chains { if *lvl >= 2 { has_g[*k] = true; } else { has_w[*k] = true; } }
-        for &(k, lvl, _) in &sr.fixed { if lvl >= 2 { has_g[k] = true; } else { has_w[k] = true; } }
+        for g in sr.fixed.iter().chain(sr.chains.iter().map(|x| &x.1)) {
+            for (_, out) in g { for &(k, lvl) in out { if lvl >= 2 { has_g[k] = true; } else { has_w[k] = true; } } }
+        }
     }
     let coords: Vec<(usize, bool)> = (0..nu).flat_map(|k| {
         let mut v = vec![];
@@ -951,8 +1251,15 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let mut n_decks = 0usize;
     let size = dj.deck_size;
     let kmax = kmax_top(&dj);
-    let ident = |cards: &[usize], ends: &[u8], plain: usize, filler: usize| -> Vec<u64> {
-        let mut v: Vec<u64> = cards.iter().zip(ends).map(|(&c, &e)| ((c as u64) << 8) | e as u64).collect();
+    let ident_of = |c: usize, e: u8, x: u32| ((c as u64 + 3) << 40) | ((x as u64) << 8) | e as u64;
+    let ident = |cards: &[usize], ends: &[u8], vars: &[u32], plain: usize, filler: usize| -> Vec<u64> {
+        let mut v: Vec<u64> = cards.iter().zip(ends).zip(vars).map(|((&c, &e), &x)| ident_of(c, e, x)).collect();
+        v.sort(); v.push((1 << 40) + plain as u64); v.push((2 << 40) + filler as u64); v
+    };
+    // the same identity straight from a selection of entries
+    let ident_sel = |sel: &[usize], plain: usize, filler: usize| -> Vec<u64> {
+        let mut v: Vec<u64> = Vec::with_capacity(sel.len() + 2);
+        v.extend(sel.iter().map(|&j| ident_of(rel[j], endk[j], vark[j])));
         v.sort(); v.push((1 << 40) + plain as u64); v.push((2 << 40) + filler as u64); v
     };
     let mut st_s1 = 0usize;
@@ -1084,7 +1391,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                     if let Some((s1k, ids)) = s1 {
                         // kq decks of the set beat it: drop it, unless it is one of them (then it needs one more)
                         if s1k.count_ro(&dv, xq, s, kmax) >= kmax {
-                            let own = ids.contains(&ident(&sel.iter().map(|&j| rel[j]).collect::<Vec<_>>(), &sel.iter().map(|&j| endk[j]).collect::<Vec<_>>(), plain, filler));
+                            let own = ids.contains(&ident_sel(sel, plain, filler));
                             if !own || s1k.count_ro(&dv, xq, s, kmax + 1) > kmax { st_s1 += 1; return; }
                         }
                     }
@@ -1093,7 +1400,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                     if n > 0 && (kmax > 1 || n >= kmax) && nd > 0 { g.remember_found(); }
                     if n >= kmax { st_dom += 1; return; }
                     let mut so: Vec<usize> = sel.to_vec(); so.sort();       // entry order, for display
-                    let x = DeckEval { pals, borrowed, cards: so.iter().map(|&j| rel[j]).collect(), ends: so.iter().map(|&j| endk[j]).collect(), plain, filler, dw: mw[..nu].to_vec(), dg: mg[..nu].to_vec(), dv: dv.clone(), s };
+                    let x = DeckEval { pals, borrowed, cards: so.iter().map(|&j| rel[j]).collect(), ends: so.iter().map(|&j| endk[j]).collect(), vars: so.iter().map(|&j| vark[j]).collect(), plain, filler, dw: mw[..nu].to_vec(), dg: mg[..nu].to_vec(), dv: dv.clone(), s };
                     if kmax == 1 { g.remove_dominated_by(&dv, sig_of(&dv, false), s); }
                     g.insert(x);
                     if kmax > 1 && g.len() > g.cap {
@@ -1145,7 +1452,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         sorted.sort_by_key(|x| std::cmp::Reverse(sig_of(&x.dv, false)));      // similar decks share blocks
         let mut kk = Kept::new(nd);
         for x in sorted { kk.insert(x.clone()); }
-        let ids: crate::FxSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, x.plain, x.filler)).collect();
+        let ids: crate::FxSet<Vec<u64>> = s1.iter().map(|x| ident(&x.cards, &x.ends, &x.vars, x.plain, x.filler)).collect();
         if std::env::var("DECK_DEBUG").is_ok() { eprintln!("pass 1: {} decks no other beats, {:.2}s", s1.len(), t0.elapsed().as_secs_f64()); }
         run_enum(kmax, Some(&(kk, ids)))
     };
@@ -1173,15 +1480,18 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("skyline {} of {}", sky.len(), front.len()); }
     if dj.deck_only || dj.per_uma {
         let pd: Vec<PDeck> = sky.iter().map(|&i| { let x = &front[i];
-            let mut names: Vec<String> = x.cards.iter().zip(&x.ends).map(|(&i, &e)| {
+            let mut names: Vec<String> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| {
                 let mut n = cards[i].name.clone();
+                let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
+                if !lb.is_empty() { n = format!("{} ({})", n, lb); }
                 if e > 0 { n = format!("{} (end chain at link {})", n, e); }
                 if Some(i) == x.borrowed { n = format!("{} (borrowed)", n); }
                 n
             }).collect();
             names.extend(plain_names.iter().take(x.plain).cloned());
             for _ in 0..x.filler { names.push("(any SR without target hints)".into()); }
-            PDeck { names, ids: x.cards.iter().map(|&i| cards[i].id).collect(), ends: x.ends.clone(), plain_ids: plain_ids.iter().take(x.plain).copied().collect(),
+            let choices: Vec<String> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| srcb.label(cards[i], (e > 0).then_some(e), v, sk)).collect();
+            PDeck { names, ids: x.cards.iter().map(|&i| cards[i].id).collect(), ends: x.ends.clone(), vars: x.vars.clone(), choices, plain_ids: plain_ids.iter().take(x.plain).copied().collect(),
                     pal_names: x.cards.iter().filter(|&&i| cards[i].pal).map(|&i| cards[i].name.clone()).chain(plain_names.iter().take(x.plain).cloned()).collect(),
                     pals: x.pals, borrowed: x.borrowed.map(|i| cards[i].name.clone()), dw: x.dw.clone(), dg: x.dg.clone() } }).collect();
         if dj.deck_only { return json!({"sky": pd}); }
@@ -1401,8 +1711,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // ---- output ----
     let lin = lineages();
     let deck_json = |x: &DeckEval| -> Value {
-        let mut names: Vec<String> = x.cards.iter().zip(&x.ends).map(|(&i, &e)| {
+        let mut names: Vec<String> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| {
             let mut n = cards[i].name.clone();
+            let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
+            if !lb.is_empty() { n = format!("{} ({})", n, lb); }
             if e > 0 { n = format!("{} (end chain at link {})", n, e); }
             if Some(i) == x.borrowed { n = format!("{} (borrowed)", n); }
             n
@@ -1413,18 +1725,24 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let pal_names: Vec<String> = x.cards.iter().filter(|&&i| cards[i].pal).map(|&i| cards[i].name.clone()).chain(plain_names.iter().take(x.plain).cloned()).collect();
         json!({"pals": x.pals, "cards": names, "odds": odds, "pal_cards": pal_names, "borrowed": x.borrowed.map(|i| cards[i].name.clone()),
                "card_ids": x.cards.iter().map(|&i| cards[i].id).collect::<Vec<_>>(), "end_chain_at": x.ends.clone(),
+               "choices": x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| srcb.label(cards[i], (e > 0).then_some(e), v, sk)).collect::<Vec<_>>(),
                "plain_ids": plain_ids.iter().take(x.plain).copied().collect::<Vec<_>>()})
     };
+    // exact odds for a reported (deck, loop); `v` is the search's ranking value (the product of per-target odds)
     let loop_json = |f: [usize; 4], r: &Res, qs: &[f64], x: &DeckEval, v: f64| -> Value {
-        let mut minus1 = 0.0; let mut per = vec![(0.0, 0usize); 4]; let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
-        for (&(t, ..), &q) in lin.iter().zip(qs) {
-            let (val, kk) = model.trainee_d(f[t], q, &x.dw, &x.dg);
-            let mut ps = vec![GEN_GOLD; model.n_fixed_gold as usize];
-            ps.extend(model.skill_probs_d(&model.opts[f[t]][kk].0, &model.ews[f[t]][kk], q, &x.dw, &x.dg));
-            minus1 += atleast(&ps, sj.targets.len().saturating_sub(1));
-            per[t].0 += model.fixed_pub() * val; per[t].1 += 1; picks[t].push(kk);
+        let ents: Vec<(Src, Kind)> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &vv)| {
+            let st = (e > 0).then_some(e); (srcb.src(cards[i], st, vv), srcb.kind(cards[i], st)) }).collect();
+        let mut per_l = vec![(0.0, 0.0, 0usize); 12];
+        for t in 0..4 {
+            let ls: Vec<usize> = (0..12).filter(|&l| lin[l].0 == t).collect();
+            let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
+            let j = joint_trainee(&model, f[t], &qt, &ents, x.filler, dj.lambda, sj.targets.len());
+            for (i, &l) in ls.iter().enumerate() { per_l[l] = j[i]; }
         }
-        minus1 /= lin.len() as f64;
+        let pj = per_l.iter().map(|y| y.0).sum::<f64>() / 12.0;
+        let minus1 = per_l.iter().map(|y| y.1).sum::<f64>() / 12.0;
+        let mut per = vec![(0.0, 0usize); 4]; let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
+        for (l, &(t, ..)) in lin.iter().enumerate() { per[t].0 += per_l[l].0; per[t].1 += 1; picks[t].push(per_l[l].2); }
         let outfits: Vec<Value> = (0..4).map(|i| {
             let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
             let (st, cs) = &model.opts[f[i]][kk];
@@ -1433,8 +1751,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         }).collect();
         let s4 = [r.s[0], r.s[1], r.s[2], r.s[3]];
         let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let detail = model.detail(f, &|a, b| wval(&ps[a], &ps[b]), Some([(&x.dw[..], &x.dg[..]); 4]));
-        json!({"members": member_json(d, &f), "p_all": v, "p_minus1": minus1, "outfits": outfits,
+        let mut detail = model.detail(f, &|a, b| wval(&ps[a], &ps[b]), Some([(&x.dw[..], &x.dg[..]); 4]));
+        if let Some(ls) = detail["lineages"].as_array_mut() { for (l, y) in ls.iter_mut().enumerate() { y["rank_value"] = y["p_all"].clone(); y["p_all"] = json!(per_l[l].0); } }
+        json!({"members": member_json(d, &f), "p_all": pj, "p_minus1": minus1, "rank_value": v, "outfits": outfits,
                "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
                "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64, "schedule": chart_rows(d, &f, &s4), "detail": detail})
     };
@@ -1451,8 +1770,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     by_pals.sort_by(|a, b| b["loop"]["p_all"].as_f64().partial_cmp(&a["loop"]["p_all"].as_f64()).unwrap());
     let mut order: Vec<usize> = (0..front.len()).filter(|&i| deck_best[i].0 > f64::NEG_INFINITY).collect();
     order.sort_by(|&a, &b| deck_best[b].0.partial_cmp(&deck_best[a].0).unwrap());
-    let top: Vec<Value> = order.iter().take(kdeck).map(|&di| { let (v, si) = deck_best[di]; let (f, r, qs) = &solved[si];
+    // the top decks by the search's ranking, reported with exact odds and in their order
+    let mut top: Vec<Value> = order.iter().take(kdeck).map(|&di| { let (v, si) = deck_best[di]; let (f, r, qs) = &solved[si];
         json!({"deck": deck_json(&front[di]), "loop": loop_json(*f, r, qs, &front[di], v)}) }).collect();
+    top.sort_by(|a, b| b["loop"]["p_all"].as_f64().partial_cmp(&a["loop"]["p_all"].as_f64()).unwrap());
     let next_bound = (if next < cand.len() { cand[next].0 } else { 0.0 }).max(if hi_sum > 0.0 { sep(hi_sum) } else { 0.0 });
     json!({"top": top, "best": by_pals, "decks_built": n_decks, "decks_on_frontier": front.len(), "foursomes": total_foursomes,
            "foursomes_ranked": generated, "foursomes_scanned": scanned, "foursomes_solved": solved.len(), "next_bound": next_bound,
@@ -1524,7 +1845,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         let tagged: Vec<DeckEval> = list.iter().enumerate().map(|(i, x)| {
             let dv: Vec<f64> = co.iter().map(|&(k, g)| if g { x.dg[k] } else { 1.0 - (1.0 - x.dw[k]) * (1.0 - x.dg[k]) }).collect();
             let s = dv.iter().sum();
-            DeckEval { pals: 0, borrowed: None, cards: vec![i], ends: vec![], plain: 0, filler: 0, dw: vec![], dg: vec![], dv, s }
+            DeckEval { pals: 0, borrowed: None, cards: vec![i], ends: vec![], vars: vec![], plain: 0, filler: 0, dw: vec![], dg: vec![], dv, s }
         }).collect();
         let mut v: Vec<usize> = k_filter(tagged, 1, co.len()).into_list().into_iter().map(|y| y.cards[0]).collect();
         v.sort(); v
@@ -1707,19 +2028,60 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("per-uma search {:.2}s scanned {} solved {} legal-deck searches {}", tq.elapsed().as_secs_f64(), scanned, solved.len(), alt_built.get()); }
     let mut order: Vec<usize> = (0..solved.len()).collect();
     order.sort_by(|&a, &b| solved[b].4.partial_cmp(&solved[a].4).unwrap());
-    let empty_deck = PDeck { names: vec![], ids: vec![], ends: vec![], plain_ids: vec![], pal_names: vec![], pals: 0, borrowed: None, dw: zero.clone(), dg: zero.clone() };
-    let top: Vec<Value> = order.iter().take(kloops).map(|&si| {
-        let (f, r, qs, decks, v) = &solved[si];
-        let dk: Vec<&PDeck> = decks.iter().map(|x| x.as_ref().unwrap_or(&empty_deck)).collect();
-        let mut minus1 = 0.0; let mut per = vec![(0.0, 0usize); 4]; let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
-        for (&(t, ..), &q) in lin.iter().zip(qs) {
-            let (val, kk) = model.trainee_d(f[t], q, &dk[t].dw, &dk[t].dg);
-            let mut ps = vec![GEN_GOLD; model.n_fixed_gold as usize];
-            ps.extend(model.skill_probs_d(&model.opts[f[t]][kk].0, &model.ews[f[t]][kk], q, &dk[t].dw, &dk[t].dg));
-            minus1 += atleast(&ps, sj.targets.len().saturating_sub(1));
-            per[t].0 += model.fixed_pub() * val; per[t].1 += 1; picks[t].push(kk);
+    let empty_deck = PDeck { names: vec![], ids: vec![], ends: vec![], vars: vec![], choices: vec![], plain_ids: vec![], pal_names: vec![], pals: 0, borrowed: None, dw: zero.clone(), dg: zero.clone() };
+    // ---- exact odds for the loops reported ----
+    // The search ranked by the product of per-target odds. The loops within JOINT_BAND of the k-th best are scored
+    // exactly, each trainee with the legal deck (among those within JOINT_BAND of her best by the product) that
+    // gives her lineages the highest exact P(all); they are then ordered by it.
+    let srcb = Sources { dj, unc: &unc };
+    let ntar = sj.targets.len();
+    let ents_of = |x: &PDeck| -> (Vec<(Src, Kind)>, usize) {
+        let e: Vec<(Src, Kind)> = x.ids.iter().enumerate().filter_map(|(i, id)| card_of.get(id).map(|c| {
+            let st = x.ends.get(i).copied().filter(|&e| e > 0); let v = x.vars.get(i).copied().unwrap_or(0);
+            (srcb.src(c, st, v), srcb.kind(c, st)) })).collect();
+        (e, dj.deck_size.saturating_sub(x.ids.len() + x.plain_ids.len()))
+    };
+    let joint_pick = |u: usize, qt: &[f64], chosen: &Option<PDeck>| -> (Vec<(f64, f64, usize)>, Option<PDeck>) {
+        let pv = |x: &PDeck| qt.iter().map(|&q| model.trainee_fast(u, q, &x.dw, &x.dg)).sum::<f64>();
+        let a = alt.borrow();
+        let list: Vec<&PDeck> = match a.get(&u) { Some(l) => l.iter().collect(), None => uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(d.umas[u].id, &card_of)).collect() };
+        let bpv = chosen.as_ref().map_or(0.0, |x| pv(x));
+        let mut cands: Vec<(f64, &PDeck)> = list.into_iter().map(|x| (pv(x), x)).filter(|(v, _)| *v >= JOINT_BAND * bpv).collect();
+        cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        if let Some(c) = chosen { if !cands.iter().any(|x| x.1.ids == c.ids && x.1.ends == c.ends && x.1.vars == c.vars) { cands.insert(0, (bpv, c)); } }
+        let mut best: Option<(f64, Vec<(f64, f64, usize)>, Option<PDeck>)> = None;
+        if cands.is_empty() { return (joint_trainee(model, u, qt, &[], 0, dj.lambda, ntar), None); }
+        for (_, x) in cands {
+            let (e, fl) = ents_of(x);
+            JCOUNT.with(|c| c.set(c.get() + 1));
+            let j = joint_trainee(model, u, qt, &e, fl, dj.lambda, ntar);
+            let sv: f64 = j.iter().map(|y| y.0).sum();
+            if best.as_ref().map_or(true, |b| sv > b.0) { best = Some((sv, j, Some(x.clone()))); }
         }
-        minus1 /= lin.len() as f64;
+        let b = best.unwrap(); (b.1, b.2)
+    };
+    let kv = order.get(kloops.min(order.len()) - 1).map_or(0.0, |&si| solved[si].4);
+    let mut scored: Vec<(f64, usize, Vec<(f64, f64, usize)>, Vec<Option<PDeck>>)> = order.iter().take(kloops + 8)
+        .filter(|&&si| solved[si].4 >= JOINT_BAND * kv).map(|&si| {
+        let (f, _, qs, decks, _) = &solved[si];
+        let mut per_l = vec![(0.0, 0.0, 0usize); 12]; let mut dks = vec![];
+        for t in 0..4 {
+            let ls: Vec<usize> = (0..12).filter(|&l| lin_t[l] == t).collect();
+            let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
+            let (j, x) = joint_pick(f[t], &qt, &decks[t]);
+            for (i, &l) in ls.iter().enumerate() { per_l[l] = j[i]; }
+            dks.push(x);
+        }
+        (per_l.iter().map(|x| x.0).sum::<f64>() / 12.0, si, per_l, dks)
+    }).collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    if std::env::var("DECK_DEBUG").is_ok() { eprintln!("exact scoring: {} loops, {} decks scored, {:.3}s total", scored.len(), JCOUNT.with(|c| c.get()), tq.elapsed().as_secs_f64()); }
+    let top: Vec<Value> = scored.iter().take(kloops).map(|(pj, si, per_l, jdecks)| {
+        let (f, r, qs, _, v) = &solved[*si];
+        let dk: Vec<&PDeck> = jdecks.iter().map(|x| x.as_ref().unwrap_or(&empty_deck)).collect();
+        let mut per = vec![(0.0, 0usize); 4]; let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
+        for (l, &(t, ..)) in lin.iter().enumerate() { per[t].0 += per_l[l].0; per[t].1 += 1; picks[t].push(per_l[l].2); }
+        let minus1 = per_l.iter().map(|x| x.1).sum::<f64>() / 12.0;
         let outfits: Vec<Value> = (0..4).map(|i| {
             let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
             let (st, cs) = &model.opts[f[i]][kk];
@@ -1728,8 +2090,9 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         }).collect();
         let s4 = [r.s[0], r.s[1], r.s[2], r.s[3]];
         let pss: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let detail = model.detail(*f, &|a, b| wval(&pss[a], &pss[b]), Some(std::array::from_fn(|t| (&dk[t].dw[..], &dk[t].dg[..]))));
-        let lp = json!({"members": member_json(d, f), "p_all": v, "p_minus1": minus1, "outfits": outfits,
+        let mut detail = model.detail(*f, &|a, b| wval(&pss[a], &pss[b]), Some(std::array::from_fn(|t| (&dk[t].dw[..], &dk[t].dg[..]))));
+        if let Some(ls) = detail["lineages"].as_array_mut() { for (l, x) in ls.iter_mut().enumerate() { x["rank_value"] = x["p_all"].clone(); x["p_all"] = json!(per_l[l].0); } }
+        let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "rank_value": v, "outfits": outfits,
                "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
                "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64, "schedule": chart_rows(d, f, &s4), "detail": detail});
         // the deck most members share, for displays that show one deck
@@ -1819,5 +2182,89 @@ mod tests {
         for k in 0..3 { assert!((mix[&(3, 3, 0)][k] - (0.5 * a[&(3, 3, 0)][k] + 0.5 * b[&(3, 3, 0)][k])).abs() < 1e-15); }
         assert!((mix[&(3, 3, r2)][2] - 0.5 * a[&(3, 3, 0)][2]).abs() < 1e-15);
         assert!(mix[&(3, 3, 0)][2] > a[&(3, 3, 0)][2]);
+    }
+
+    fn job_with(v: Value) -> DeckJob { serde_json::from_value(v).unwrap() }
+    fn halo() -> Card {
+        let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+        cr.cards.into_iter().find(|c| c.id == 30056).unwrap()
+    }
+    /// An event offering targets on different choices gives one deck entry per choice, each with one choice's
+    /// rewards; with only one of them a target, the card keeps a single entry with that choice.
+    #[test]
+    fn choices_become_variants() {
+        let c = halo();
+        // King Halo [Tonight, We Waltz], link 1: Stop Right There! (choice 1) or Uma Stan (choice 2)
+        let dj = job_with(json!({"alts": [[30056, 1, [[[[20102, 1]]], [[[20159, 1]]]]]], "events": [[30056, 20102, 1, 1], [30056, 20159, 1, 1]]}));
+        let unc = [20159u32, 20102];
+        let sb = Sources { dj: &dj, unc: &unc };
+        let vs = sb.variants(&c, None);
+        assert_eq!(vs.len(), 2);
+        for (i, &v) in vs.iter().enumerate() {
+            let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
+            src_miss(&sb.src(&c, None, v), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+            // with every link firing, exactly one of the two whites is certain
+            let got: Vec<bool> = mw.iter().map(|&x| x < 1e-12).collect();
+            assert_eq!(got.iter().filter(|&&x| x).count(), 1, "variant {i}: {mw:?}");
+        }
+        let one = [20159u32];
+        let sb1 = Sources { dj: &dj, unc: &one };
+        assert_eq!(sb1.variants(&c, None), vec![0]);
+        let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
+        src_miss(&sb1.src(&c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+        assert!(mw[0] < 1e-12 && mg[0] == 1.0);
+    }
+    /// One event's outcomes exclude each other: a gold on two of four outcomes and its white on the other two give
+    /// a hint whenever the link fires (independent 50% chances would give 75%).
+    #[test]
+    fn outcomes_of_one_event_are_exclusive() {
+        let c = halo();
+        let dj = job_with(json!({"alts": [[30056, 3, [[[[20203, 2]], [[20203, 1]], [[20203, 2]], [[20203, 1]]]]]]}));
+        let unc = [20203u32];
+        let sb = Sources { dj: &dj, unc: &unc };
+        let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
+        src_miss(&sb.src(&c, None, 0), &[1.0, 1.0, 0.8], &mut mw, &mut mg);
+        assert!((mg[0] - 0.6).abs() < 1e-12, "{mg:?}");                  // P(no gold) = 1 - 0.8 * 0.5
+        assert!((mg[0] * mw[0] - 0.2).abs() < 1e-12, "{mw:?}");          // P(no hint) = 1 - 0.8
+    }
+    /// The final-state distribution has the same per-link marginals as `chain_marginals`, stop risk included.
+    #[test]
+    fn chain_states_match_marginals() {
+        let r = stop_risk_code(&[(2, 1, 2)], 3);
+        for ks in [vec![(3, 3, 0)], vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)], vec![(3, 2, 0), (3, 3, r), (4, 4, 0)], vec![(2, 2, 0); 6]] {
+            let mut ks: Vec<Kind> = ks; ks.sort();
+            let st = chain_states(&ks, 7.1);
+            assert!((st.iter().map(|x| x.1).sum::<f64>() - 1.0).abs() < 1e-12);
+            let m = chain_marginals(&ks, 7.1);
+            for (i, kd) in ks.iter().enumerate() {
+                for l in 1..=kd.1 {
+                    let p: f64 = st.iter().filter(|x| x.0[i] >= l).map(|x| x.1).sum();
+                    assert!((p - m[kd][l as usize - 1]).abs() < 1e-12, "{ks:?} entry {i} link {l}: {p} vs {}", m[kd][l as usize - 1]);
+                }
+            }
+        }
+    }
+    /// With no chain cards and no event touching two targets, every source is independent: the exact value equals
+    /// the product of per-target odds the search ranks by.
+    #[test]
+    fn joint_equals_product_without_correlation() {
+        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+        let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+        let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+        let m = Model::new(&d, &sk, &sj);
+        let nu = m.uncertain.len();
+        let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
+        let a = Src { train: vec![(0, 0.3), (2, 0.2)], fixed: vec![g1(1, 2, 0.5), g1(3, 2, 0.5), g1(3, 1, 1.0)], ..Default::default() }.finish();
+        let b = Src { train: vec![(1, 0.4)], fixed: vec![g1(0, 2, 0.25)], ..Default::default() }.finish();
+        let (mut mw, mut mg) = (vec![1.0; nu], vec![1.0; nu]);
+        for x in [&a, &b] { src_miss(x, &[], &mut mw, &mut mg); }
+        let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect(); let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
+        for u in [0usize, 5, 20] {
+            for q in [0.3, 0.75] {
+                let j = joint_trainee(&m, u, &[q], &[(a.clone(), (0, 0, 0)), (b.clone(), (0, 0, 0))], 0, 7.1, sj.targets.len());
+                let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);
+                assert!((j[0].0 - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].0);
+            }
+        }
     }
 }

@@ -72,6 +72,7 @@
 !/val/secret_events.py
 !/val/owncheck.py
 !/val/permcheck.py
+!/val/joint_check.py
 !/val/permcheck_big.py
 master.mdb
 __pycache__/

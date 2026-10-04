@@ -35,3 +35,7 @@ Exactness checks against brute force on small owned sets: `uv run val/owncheck.p
 Audit the manual entries against GameTora after any change to them or to the GameTora caches: `uv run val/event_audit.py` (exit 1 lists every target hint a pal or group card can give that its entry does not account for).
 
 When every value is expected to scale by one factor (a constant change), compare a run with `uv run val/cmp_ratio.py TAG ref` instead of `cmp2.py`.
+
+The reported odds are exact over what targets share (chain events, an event's outcomes); `uv run val/joint_check.py TAG` recomputes every deck result's `p_all` of a validation run independently in Python (agreement within 1e-3; the solver keeps one card's training hints independent across targets, the check draws them jointly, which accounts for the last 0.03%). Run it after touching the event data or `joint_trainee`. The brute-force checks compare the search's ranking value (`rank_value`) and also report how far the re-scored exact odds fall from the best exact odds over every deck.
+
+The card-event builders (Global and both JP variants) share one event decoder, `pkg/loopopt/export/event_choices.py`.

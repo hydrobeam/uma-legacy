@@ -21,15 +21,19 @@ def one(deck):
     job = dict(base, lock_cards=list(deck), top_decks=1, exclude=blocked(deck))
     o = run(job)
     if 'error' in o or not o['top']: return (0.0, deck, None)
-    t = o['top'][0]; return (t['loop']['p_all'], deck, [m['name'] for m in t['loop']['members']])
+    t = o['top'][0]; return (t['loop']['rank_value'], deck, [m['name'] for m in t['loop']['members']], t['loop']['p_all'])
 decks = [d for d in itertools.combinations(OWN, 6) if len({cards[c]['chara'] for c in d}) == 6]
 with cf.ThreadPoolExecutor(4) as ex: res = sorted(ex.map(one, decks), key=lambda r: -r[0])
 fast = run(base)
+fast['top'].sort(key=lambda t: -t['loop']['rank_value'])   # reported in exact-odds order; the search ranks by rank_value
 print('decks', len(decks), 'searches', fast.get('searches'))
 for i in range(K):
     b, f = res[i], fast['top'][i] if i < len(fast['top']) else None
-    fv = f['loop']['p_all'] if f else 0
+    fv = f['loop']['rank_value'] if f else 0
     print(f'#{i+1} brute 1 in {1/b[0]:.2f} {b[2]} {[cards[c]["name"] for c in b[1]]}')
     print(f'    fast  1 in {1/fv:.2f} {[m["name"] for m in f["loop"]["members"]] if f else None} {f["deck"]["cards"] if f else None}')
     print('    ', 'OK' if abs(b[0] - fv) <= 1e-12 * b[0] else 'MISMATCH')
 relaxed = run(dict(base, exclude=[]))
+# exact odds: the best over every deck (each with its best loop by the ranking value) vs the best reported
+jb = max((r for r in res if len(r) > 3), key=lambda r: r[3])
+print(f'exact odds: best brute deck 1 in {1/jb[3]:.2f}, best reported 1 in {1/max(t["loop"]["p_all"] for t in fast["top"]):.2f}')

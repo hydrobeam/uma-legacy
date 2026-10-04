@@ -5,6 +5,7 @@ character, and King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match th
 A skill in every outcome of some choice is certain when the link fires; a skill in k of a choice's n outcomes
 (split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os
+from event_choices import decode, fmt
 G = '../gametora/'
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
@@ -20,36 +21,16 @@ out = {}
 for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
     for cid, evs in json.load(open(glob.glob(G + f)[0])):
         if cid not in glob_cards: continue
-        chain = []; ends_out = []; risk = []
+        chain = []; ends_out = []; risk = []; alts = []
         for e in evs:
             lk = link.get(int(e[2]))
             if not lk: continue
-            best = {}; endb = {}; has_end = False; first = True
-            for ch in e[1]:
-                if not (isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list)): continue
-                top, first = first, False   # IT takes the first choice unless a prioritized skill is elsewhere
-                branches = [[]]; ends = [False]
-                for k in ch[1]:
-                    r = reward(k)
-                    if r and r[0] == 'di': branches.append([]); ends.append(False); continue
-                    if r and r[0] == 'ee': ends[-1] = True
-                    if r and r[0] == 'sk' and r[2] in skname: branches[-1].append(skname[r[2]])
-                    if r and r[0] == 'sr': branches[-1].extend(skname[x['d']] for x in r[2] if x['d'] in skname)
-                # 'ee' ends the card's event chain. A choice that ends it on every outcome is a separate "end the
-                # chain here" option. One that ends it on only some outcomes is not offered as a choice; when it is
-                # IT's default (first) choice, the chain stops at this link on k of its n outcomes (stop_risk).
-                if any(ends) and not all(ends):
-                    if top: risk.append([lk, sum(ends), len(ends)])
-                    continue
-                tgt = endb if all(ends) else best
-                if all(ends): has_end = True
-                names = {n for b in branches for n in b}
-                for n in names:
-                    p = sum(n in b for b in branches) / len(branches)   # in k of n outcomes: k/n (outcomes equally likely)
-                    tgt[n] = max(tgt.get(n, 0), p)
-            if best: chain.append([lk, sorted([n if p == 1 else [n, p] for n, p in best.items()], key=str)])
-            if has_end: ends_out.append([lk, sorted([n if p == 1 else [n, p] for n, p in endb.items()], key=str)])
-        out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), "status": "complete", "src": "gametora training_events"}
+            best, endb, has_end, rk, alt = decode(e[1], reward, skname)
+            if rk: risk.append([lk, *rk])
+            if best: chain.append([lk, fmt(best)])
+            if has_end: ends_out.append([lk, fmt(endb)])
+            if alt: alts.append([lk, alt])
+        out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), **({"alts": sorted(alts)} if alts else {}), "status": "complete", "src": "gametora training_events"}
 manual = json.load(open('../card_events.json'))['cards']
 for k, v in manual.items():
     if v.get('src', '') == 'gametora training_events': continue   # generated above, not a manual entry

@@ -14,20 +14,21 @@ function loopCard(l, i, meta, proven) {
   const n = meta.targets.length;
   const card = document.createElement('article'); card.className = 'loop' + (i === 0 ? ' first' : '');
   card.innerHTML = `<div class="lhead"><span class="odds">${fmtIn(l.p_all)}<small>runs, all ${n} land</small></span>
-    <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${proven ? '<span class="badge" title="No other deck and loop can beat it for this model, given the race schedules found for the loops it solved.">Proven best</span>' : ''}</div>`;
+    <span class="sub">at least ${n - 1}: ${fmtIn(l.p_minus1)} · 90% chance by ${runs90(l.p_all)} runs</span>${proven ? '<span class="badge" title="The search ranks decks and loops by multiplying each target&#39;s odds; nothing can beat this one on that ranking, given the race schedules found for the loops it solved. The odds shown are exact for the model.">Proven best</span>' : ''}</div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
     const same = !D || D.every(d => key(d) === key(meta.deck));
     const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
     const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
-      const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
-      const endAt = (d.end_chain_at || [])[ci] || 0;
+      const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d: [^()]*\)$/, '');
+      const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || '';   // pick: the choice to prioritise, e.g. "link 1: Uma Stan"
+      const tagPick = pick ? ' · prioritise ' + pick : '';
       const c = (d.card_ids && CARD_BY_ID.get(d.card_ids[ci])) || CARDS.find(x => x.name === base); const t = c ? cardTitle(c) : { nm: base, ti: '' };
-      const tag = bor ? 'borrow' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '');
+      const tag = bor ? 'borrow' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick;
       return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
         ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
-        `<span class="dn">${esc(full)}</span>${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
+        `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
     const oddsOf = (d, lead) => { const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
         // gold, then any hint at all (white or gold): the two numbers the landing odds depend on
         const h = 1 - (1 - o.white) * (1 - o.gold), parts = [];
