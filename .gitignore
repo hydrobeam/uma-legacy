@@ -49,7 +49,6 @@
 !/webapp/node*.mjs
 !/webapp/serve.mjs
 !/webapp/images.py
-!/webapp/prerender.mjs
 !/webapp/icons.py
 !/webapp/icons.mjs
 !/webapp/icons/

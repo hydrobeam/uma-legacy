@@ -4,15 +4,17 @@
 import { $ } from './dom.js';
 import { UMAS } from './data.js';
 import { state, writeSaved } from './state.js';
-import { srcFor } from './images.js';
-import { ERA } from './settings.js';
-import { rosterTiles, compareTiles, tileState as coreState, tileLabel, tileHTML, initials, EAGER } from './rostercore.js';
+import { umaAv } from './images.js';
 import { save } from './search.js';
 import { paintSort, sortMenu } from './sortmenu.js';
+const ST_LABEL = { own: 'owned', out: 'not owned', req: 'must include' };
 export function umaState(u) { const os = u.outfits || []; const st = state.roster[u.id] || 'own';
   return st === 'own' && os.length && os.every(o => state.outfits[o.id] === false) ? 'out' : st; }
 export const noOutfit = (u) => (u.outfits || []).length > 0 && u.outfits.every(o => state.outfits[o.id] === false);
-const tileState = (u, o) => coreState(state.roster, state.outfits, u.id, o ? o.id : null);
+function tileState(u, o) {
+  if (state.roster[u.id] === 'out' || (o && state.outfits[o.id] === false)) return 'out';
+  return (o ? state.outfits[o.id] === 'req' : state.roster[u.id] === 'req') ? 'req' : 'own';
+}
 // must include, per outfit: the uma is required and only her marked outfits are allowed (any of them). An uma
 // without separate outfits is marked as a whole (roster 'req').
 export const reqOutfits = (u) => (u.outfits || []).filter(o => state.outfits[o.id] === 'req');
@@ -31,45 +33,39 @@ function rosterCount() {
   const nO = UMAS.reduce((a, u) => a + Math.max(1, (u.outfits || []).length), 0), offO = UMAS.reduce((a, u) => a + ((u.outfits && u.outfits.length) ? u.outfits : [null]).filter(o => tileState(u, o) === 'out').length, 0);
   $('r-count').textContent = `${nO - offO} of ${nO} outfits owned · ${UMAS.length - out} of ${UMAS.length} umas` + (req ? ` · ${req} must be in the loop` : '');
 }
-// Tile elements by uma and outfit, kept across renders (a re-sort or filter moves them, images stay loaded). The first
-// render takes over the pre-rendered Global roster (the build writes it into the page; rosterearly.js has already put
-// it in the saved order and states), so the first screen's portraits are requested from the HTML itself.
-const els = new Map(); let adopted = false;
-const tkey = (uid, oid) => uid + ':' + (oid || '');
-const portrait = (u, o) => (o && srcFor('outfit', o.id)) || srcFor('uma', u.id);
-function wire(t, u, o, box) {
-  const b = t.querySelector('.up');
-  t._paint = () => { const st = tileState(u, o); t.dataset.s = st; const l = tileLabel(u.name, o && o.label, st); b.setAttribute('aria-label', l); b.title = l; };
-  // a portrait that fails falls back to the uma's own icon, then to initials
-  const im = t.querySelector('.av img');
-  if (im) { const fail = () => { const alt = o && srcFor('uma', u.id);
-      if (alt && !im.src.endsWith(alt)) im.src = alt; else { const av = im.parentElement; im.remove(); av.textContent = initials(u.name); } };
-    im.addEventListener('error', fail); if (im.complete && im.naturalWidth === 0 && im.getAttribute('src')) fail(); }
-  b.onclick = () => {
-    const st = tileState(u, o);
-    if (st === 'own') { if (o) state.outfits[o.id] = false; else state.roster[u.id] = 'out'; }
-    else if (st === 'out') {
-      if (!o) state.roster[u.id] = 'req';
-      else {   // a whole-uma 'not owned' becomes per outfit, so only this tile changes
-        if (state.roster[u.id] === 'out') { delete state.roster[u.id]; for (const x of u.outfits) if (state.outfits[x.id] === undefined) state.outfits[x.id] = false; }
-        state.outfits[o.id] = 'req';
-      }
-    }
-    else if (o) delete state.outfits[o.id]; else delete state.roster[u.id];
-    save(); box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach(x => x._paint && x._paint()); rosterCount(); };
-}
 export function renderRoster() {
   const f = $('r-filter').value.trim().toLowerCase();
-  const box = $('roster');
-  if (!adopted) { adopted = true; if (ERA === 'global') for (const t of box.querySelectorAll('.ut')) els.set(tkey(t.dataset.uma, t.dataset.o), t); }
-  const tiles = rosterTiles(UMAS).filter(({ u, o }) => !f || u.name.toLowerCase().includes(f) || (o && o.label.toLowerCase().includes(f)));
-  tiles.sort(compareTiles(state.rsort, state.rdir));
-  const out = tiles.map((t, i) => {
-    const { u, o } = t, k = tkey(u.id, o && o.id); let el = els.get(k);
-    if (!el) { const tpl = document.createElement('template'); tpl.innerHTML = tileHTML(t, { src: portrait(u, o), eager: i < EAGER, state: tileState(u, o) }); el = tpl.content.firstElementChild; els.set(k, el); }
-    if (!el._paint) wire(el, u, o, box);
-    el._paint(); return el; });
-  if (out.length !== box.children.length || out.some((el, i) => box.children[i] !== el)) box.replaceChildren(...out);   // unchanged: left in place
+  const box = $('roster'); box.textContent = '';
+  const tiles = [];
+  for (const u of UMAS) for (const o of (u.outfits && u.outfits.length ? u.outfits : [null])) {
+    if (f && !u.name.toLowerCase().includes(f) && !(o && o.label.toLowerCase().includes(f))) continue;
+    tiles.push({ u, o, rel: o ? o.rel : 0, key: u.name + ' ' + (o ? o.label : '') });
+  }
+  const dir = state.rdir === 'desc' ? -1 : 1;
+  tiles.sort((a, b) => dir * (state.rsort === 'name' ? a.key.localeCompare(b.key) : (a.rel - b.rel) || ((a.o ? a.o.id : 0) - (b.o ? b.o.id : 0))));
+  const EAGER = 8;   // the first two rows are on screen at load (phone and desktop): their portraits load at once
+  tiles.forEach(({ u, o }, i) => {
+    const t = document.createElement('div'); t.className = 'ut'; t.dataset.uma = u.id;
+    const b = document.createElement('button'); b.className = 'up'; b.type = 'button';
+    b.appendChild(umaAv(u.id, o ? o.id : null, 96, i < EAGER)); t.appendChild(b);
+    const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
+    if (o) { const ol = document.createElement('div'); ol.className = 'uol'; ol.textContent = o.label; t.appendChild(ol); }
+    t._paint = () => { const st = tileState(u, o); t.dataset.s = st; b.setAttribute('aria-label', u.name + (o ? ' ' + o.label : '') + ': ' + ST_LABEL[st]); b.title = b.getAttribute('aria-label'); };
+    t._paint();
+    b.onclick = () => {
+      const st = tileState(u, o);
+      if (st === 'own') { if (o) state.outfits[o.id] = false; else state.roster[u.id] = 'out'; }
+      else if (st === 'out') {
+        if (!o) state.roster[u.id] = 'req';
+        else {   // a whole-uma 'not owned' becomes per outfit, so only this tile changes
+          if (state.roster[u.id] === 'out') { delete state.roster[u.id]; for (const x of u.outfits) if (state.outfits[x.id] === undefined) state.outfits[x.id] = false; }
+          state.outfits[o.id] = 'req';
+        }
+      }
+      else if (o) delete state.outfits[o.id]; else delete state.roster[u.id];
+      save(); box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach(x => x._paint()); rosterCount(); };
+    box.appendChild(t);
+  });
   paintSort('rs', 'r');
   rosterCount();
 }

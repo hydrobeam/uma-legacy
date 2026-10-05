@@ -341,25 +341,6 @@ const TESTS = {
     check('None owned + no borrowing: the job allows no card and the odds drop', job.owned_cards.length === 1 && job.owned_cards[0] === 0 && !job.borrow && (await odds(pg)) !== all, (await odds(pg)) + ' vs ' + all);
     await ctx.close();
   },
-  async prerender(b) {
-    // the Global roster is in the HTML itself (its first portraits discoverable, eager), shown from the first frame in the
-    // saved order and states, and the page script takes those tiles over instead of rebuilding them
-    const ctx = await b.newContext(); const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(e.message));
-    const html = await (await pg.request.get(URL)).text(); const box = html.slice(html.indexOf('id="roster"'), html.indexOf('</script>', html.indexOf('id="roster"')));
-    check('the roster\'s portraits are in the page HTML, the first ones eager and high priority', (box.match(/<img /g) || []).length > 50 && (box.match(/fetchpriority="high"/g) || []).length === 8);
-    await pg.goto(URL); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
-    await pg.click('#rs'); await pg.click('#rs-menu button[data-k="name"]'); await pg.click('#rs-menu button[data-k="name"]'); await pg.keyboard.press('Escape');   // name, Z to A
-    await pg.locator('#roster .ut >> nth=0 >> button').click(); await pg.waitForTimeout(700);   // the first tile not owned
-    const want = await pg.evaluate(() => [...document.querySelectorAll('#roster .ut')].slice(0, 6).map(t => t.dataset.uma + ':' + t.dataset.o + ':' + t.dataset.s).join(' '));
-    await ctx.addInitScript(() => { requestAnimationFrame(() => { const ts = [...document.querySelectorAll('#roster .ut')];
-      window.__first = ts.slice(0, 6).map(t => t.dataset.uma + ':' + t.dataset.o + ':' + t.dataset.s).join(' '); window.__firstEls = ts.slice(0, 6); }); });
-    await pg.reload(); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
-    const first = await pg.evaluate(() => window.__first);
-    check('reload: the first frame already shows the saved sort and states', first === want, first + ' vs ' + want);
-    check('the page script keeps the pre-rendered tiles (same elements, no rebuild)', await pg.evaluate(() => { const ts = [...document.querySelectorAll('#roster .ut')]; return window.__firstEls.every((el, i) => ts[i] === el); }));
-    check('no page errors', !errs.length, errs.join(' | '));
-    await ctx.close();
-  },
   async reload(b) {
     // a reload with non-default settings shows their last result from the first frame (not the default example), and
     // the fresh identical result doesn't redraw it
