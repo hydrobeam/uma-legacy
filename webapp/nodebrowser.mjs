@@ -404,13 +404,12 @@ const TESTS = {
     await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma'); await settle(pg);
     const r = await pg.evaluate(() => { const L = [...document.querySelectorAll('#results .loop')], key = (l) => [...l.querySelectorAll('.mem')].map(m => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
       const deck = (l) => [...l.querySelector('.deck .dcards').querySelectorAll('.dc')].map(d => d.dataset.cid);
-      const d1 = new Set(deck(L[0]));
       return L.map((l, i) => ({ rank: (l.querySelector('.rank') || {}).textContent, same: !!l.querySelector('.same'), mem: l.querySelectorAll('.mem').length,
         sameAs1: i > 0 && !l.querySelector('.same') && key(l) === key(L[0]),
-        newOk: [...l.querySelectorAll('.deck .dcards .dc')].every(d => d.classList.contains('new') === (i > 0 && !d1.has(d.dataset.cid))) })); });
+        noNew: !l.querySelector('.dc.new, .dnew') })); });
     check('three results: ranked #1, #2, #3', r.map(x => x.rank).join() === '#1,#2,#3', JSON.stringify(r));
     check('a result with #1\'s loop says "Same loop as #1" instead of repeating the umas', r.some(x => x.same) && r.every(x => x.same ? x.mem === 0 : x.mem === 4) && !r.some(x => x.sameAs1), JSON.stringify(r));
-    check('#2 and #3 mark exactly the cards #1\'s deck lacks', r.every(x => x.newOk), JSON.stringify(r));
+    check('#2 and #3 mark no cards as new', r.every(x => x.noNew), JSON.stringify(r));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },

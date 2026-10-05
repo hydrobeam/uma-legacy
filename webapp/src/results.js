@@ -22,17 +22,16 @@ function loopCard(l, meta, ctx) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
     const same = !D || D.every(d => key(d) === key(meta.deck));
-    const refCards = ref ? new Set(ref.deck.cards) : null;   // #2 and #3: the cards of their main deck that #1's doesn't have are marked
     const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
-    const chip = (d, ci, mark) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
+    const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
       const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d: [^()]*\)$/, '');
       const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || '';   // pick: the choice to prioritise, e.g. "link 1: Uma Stan"
-      const tagPick = pick ? ' · prioritise ' + pick : '', isNew = mark && refCards && !refCards.has(nm);
+      const tagPick = pick ? ' · prioritise ' + pick : '';
       const c = (d.card_ids && CARD_BY_ID.get(d.card_ids[ci])) || CARDS.find(x => x.name === base); const t = c ? cardTitle(c) : { nm: base, ti: '' };
-      const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick + (isNew ? ' · not in #1’s deck' : '');
-      return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}${isNew ? ' new' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
+      const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick;
+      return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
         ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
-        `<span class="dn">${esc(full)}</span>${isNew ? '<span class="dnew" aria-hidden="true">new</span>' : ''}${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
+        `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
     // per target the deck can hint: the gold's odds, then the white's (a gold hint counts for the white too, so the
     // white's number is the chance of at least the white): the two numbers the landing odds depend on; each with its icon
     const icon = (g, gold) => { const i = skillIcon(g, gold); return i ? i.outerHTML : ''; };
@@ -48,7 +47,7 @@ function loopCard(l, meta, ctx) {
       return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
     const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
     const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
-      dk.innerHTML = `<div class="row between"><span class="dtitle"><b>${title}</b>${info}</span>${ref && [...d.cards].some(c => !refCards.has(c)) ? '<span class="hint"><span class="dnew">new</span> not in #1’s deck</span>' : ''}</div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci, true)).join('')}</div>` + oddsOf(d);
+      dk.innerHTML = `<div class="row between"><span class="dtitle"><b>${title}</b>${info}</span></div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
       return dk; };
     if (same) card.appendChild(block(meta.deck, D ? 'Deck for all four' : 'Deck'));
     else {
