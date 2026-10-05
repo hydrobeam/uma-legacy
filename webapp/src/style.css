@@ -38,6 +38,9 @@ header.top h1 a.home { color: inherit; text-decoration: none; }
 /* the brand: the favicon's sparkles, then "uma-legacy" */
 h1.brand, h1.brand a.home { display: inline-flex; align-items: center; gap: 0.3em; }
 h1.brand .logo { width: 1.25em; height: 1.25em; flex: none; }
+/* "uma" in the logo's own colours (stat blue, aptitude pink, unique green): the brand, by the owner's choice, below
+   the AAA contrast the rest of the page meets (the suite's audit skips these three letters) */
+h1.brand .bu { color: #28a8d8; } h1.brand .bm { color: #e84898; } h1.brand .ba { color: #68a808; }
 /* the "How this works" page */
 .about { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; line-height: 1.6; }
 .about h2 { margin: 0 0 12px; font-size: 1.6rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
@@ -258,7 +261,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .foot p { margin: 0; max-width: 90ch; }
 .foot .model { display: grid; gap: 6px; }
 .foot .model[open] summary { margin-bottom: 4px; }
-.intro { margin: 0; flex-basis: 100%; color: var(--muted); font-size: 0.95rem; max-width: 70ch; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
