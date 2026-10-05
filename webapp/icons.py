@@ -1,0 +1,14 @@
+"""Favicon files from webapp/icons/favicon.svg (a red star with a loop arrow; drawn for the site, no game art):
+favicon.ico (16/32/48), favicon-32.png, apple-touch-icon.png (180, opaque on the page background; iOS turns
+transparency black). Renders through icons.mjs (Chromium via Playwright). usage: uv run webapp/icons.py"""
+import os, subprocess
+from PIL import Image
+H = os.path.dirname(os.path.abspath(__file__)); I = os.path.join(H, 'icons')
+subprocess.run(['node', os.path.join(H, 'icons.mjs')], check=True)
+ims = {n: Image.open(os.path.join(I, f'_{n}.png')).convert('RGBA') for n in (16, 32, 48, 180)}
+ims[48].save(os.path.join(I, 'favicon.ico'), sizes=[(16, 16), (32, 32), (48, 48)], append_images=[ims[16], ims[32]])
+ims[32].save(os.path.join(I, 'favicon-32.png'))
+bg = Image.new('RGBA', (180, 180), (0xf3, 0xf5, 0xf8, 255)); bg.alpha_composite(ims[180].resize((150, 150), Image.LANCZOS), (15, 17))
+bg.convert('RGB').save(os.path.join(I, 'apple-touch-icon.png'))
+for n in ims: os.remove(os.path.join(I, f'_{n}.png'))
+print({f: os.path.getsize(os.path.join(I, f)) for f in sorted(os.listdir(I))})

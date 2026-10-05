@@ -34,8 +34,8 @@ export function renderCards() {
         `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
           : ''}</span>`;
       b.prepend(cardAv(c, 112));
-      const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false');
-        b.setAttribute('aria-label', t.nm + ' ' + t.ti + (own ? ': owned' : ': not owned')); };
+      // a toggle: pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it
+      const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false'); };
       paint();
       b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paint(); cardCount(); };
       chips.appendChild(b);

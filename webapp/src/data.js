@@ -2,8 +2,10 @@
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
 const parse = (id) => JSON.parse($(id).textContent);
+// Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder.
+export const ASSETS = parse('data-assets');
 // The active era's data, set by loadData() before the page starts. Global's is inline in the page; the GM era's is
-// fetched (data-gm.json) only when that era is selected (switching era reloads the page).
+// fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
 export let CARDS;   // [{id,name,rar,pal,links,hf,whites,ev:[[group,level,link,p]]}]
 export let UMAS;    // [{id,name,outfits:[{id,label,rel}]}]
 export let HINTS;   // {trainee:[[id,group,p]], deck:[[card,group,level,p]]}
@@ -17,13 +19,14 @@ function setData(d) {
 }
 export async function loadData() {
   if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), hints: parse('data-hints'), skills: parse('data-skills') }); return; }
-  let r; try { r = await fetch('data-gm.json'); } catch { r = null; }
-  if (!r || !r.ok) throw new Error('Could not load data-gm.json (the Grand Masters-era data). Open the page through a web server (./build.sh serve).');
+  let r; try { r = await fetch(ASSETS.dataGm); } catch { r = null; }
+  if (!r || !r.ok) throw new Error('Could not load the Grand Masters-era data. Open the page through a web server (./build.sh serve).');
   setData(await r.json());
 }
 export const EXAMPLE = parse('data-example');       // precomputed default result
 const IMG = parse('data-img');
-export const SHIPPED = new Set(IMG.keys);   // images in dist/img: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
+export const SHIPPED = new Set(IMG.keys);   // images in dist/<IMG_BASE>: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
+export const IMG_BASE = IMG.base;           // the fingerprinted image folder, e.g. 'assets/img.1a2b3c4d5e/'
 export const IMG_EXT = IMG.ext;             // file extension per kind: avif, webp for the UI sprites
 const SKI = parse('data-skillicon');
 export const SKILLICON = SKI.white, SKILLICON_GOLD = SKI.gold;   // skill group -> icon id of its white / gold version

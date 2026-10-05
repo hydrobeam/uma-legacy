@@ -176,7 +176,7 @@ const TESTS = {
     await pg.context().close();
     // without the logo files (images not built, or a failed fetch) the button and tiles show the name on a badge
     const p2 = await b.newContext().then(c => c.newPage());
-    await p2.route('**/img/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800); await p2.click('#x-scen');
+    await p2.route('**/img.*/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800); await p2.click('#x-scen');
     const badges = await p2.evaluate(() => [...document.querySelectorAll('#scen-dd .slogo')].map(l => (l.querySelector('img') ? 'img' : '') + (l.querySelector('b') || {}).textContent).join(','));
     check('missing logos fall back to name badges', badges === 'Unity Cup,Unity Cup,Grand Concert,URA Finale,Trackblazer', badges);
     const sz = await p2.evaluate(() => new Set([...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })).size);
@@ -321,6 +321,22 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async delivery(b) {
+    // self-hosted fonts (no third-party requests), a real favicon, the solver's files fingerprinted, the first roster
+    // portraits eager, and accessible names that start with the visible text (voice control)
+    const ctx = await b.newContext(); const pg = await ctx.newPage(); const hosts = new Set(); const urls = [];
+    pg.on('request', r => { const u = new globalThis.URL(r.url()); if (u.protocol.startsWith('http')) { hosts.add(u.host); urls.push(u.pathname); } });
+    await pg.goto(URL); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
+    check('no third-party requests (fonts self-hosted)', hosts.size === 1, [...hosts].join(' '));
+    check('the solver data and binary come from fingerprinted files', urls.some(u => /^\/assets\/engine-global\.[0-9a-f]{10}\.json$/.test(u)) && urls.some(u => /^\/assets\/loopopt\.[0-9a-f]{10}\.wasm$/.test(u)), urls.filter(u => u.startsWith('/assets/') && !u.includes('/img.')).join(' '));
+    check('page fonts are the self-hosted subsets', await pg.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some(f => f.family.includes('Zen Kaku') && f.status === 'loaded'); }));
+    const ico = await pg.request.get(new globalThis.URL('favicon.ico', URL).href);
+    check('favicon.ico is an icon, not the page', ico.ok() && /image\//.test(ico.headers()['content-type'] || ''), ico.headers()['content-type']);
+    check('the first roster portraits load eagerly', await pg.evaluate(() => { const im = [...document.querySelectorAll('#roster .av img')]; return im.length > 8 && im.slice(0, 8).every(i => i.loading === 'eager') && im.slice(8).every(i => i.loading === 'lazy'); }));
+    check('sort buttons are named by their visible text first', await pg.evaluate(() => ['rs', 'cs'].every(id => { const e = document.getElementById(id); return e.getAttribute('aria-label').startsWith(e.textContent.trim()); })));
+    check('card tiles take their name from their visible text', await pg.evaluate(() => [...document.querySelectorAll('#cards .ct')].every(e => !e.hasAttribute('aria-label') && e.hasAttribute('aria-pressed'))));
+    await ctx.close();
+  },
   async eraswitch(b) {
     // the era buttons: the Grand Masters-era data opens on Grand Masters (rank SS, no Unity golds) and searches with it;
     // back on Global the scenario is Unity Cup again (golds guaranteed, rank below SS)
@@ -338,7 +354,7 @@ const TESTS = {
   async gm(b) {
     const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:era', 'gm'); } } catch {} } });
     await pg.reload(); await settle(pg);
-    const umas = (await pg.evaluate(() => fetch('data-gm.json').then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
+    const umas = (await pg.evaluate(() => fetch(JSON.parse(document.getElementById('data-assets').textContent).dataGm).then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
     check('GM era: roster from the GM data', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
     check('GM era: the search runs', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0, await odds(pg));
     // the GM era offers Grand Masters as a fifth tile (same size as the others), and its search carries it
@@ -400,7 +416,7 @@ const TESTS = {
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await pg.waitForTimeout(200); fails.push(...await pg.evaluate(AUDIT));
     check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
     await pg.context().close();
-    const p2 = await b.newContext().then(c => c.newPage()); await p2.route('**/img/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800);
+    const p2 = await b.newContext().then(c => c.newPage()); await p2.route('**/img.*/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800);
     await p2.click('#x-scen'); const bf = (await p2.evaluate(AUDIT)).filter(x => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x));
     check('contrast: scenario badges (no logo files) meet WCAG AAA', !bf.length, bf.join(' | '));
     await p2.context().close();

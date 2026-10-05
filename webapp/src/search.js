@@ -3,7 +3,7 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, HINTS } from './data.js';
+import { CARDS, UMAS, HINTS, ASSETS } from './data.js';
 import { state, ui, writeSaved } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
@@ -33,16 +33,15 @@ function eventFields(deck) {
 
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 let worker = null, ready = null, seq = 0, busy = false; const pending = new Map();
-// The wasm (loopopt.wasm next to the page) is fetched and compiled once here and the compiled module handed to every
+// The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
 // worker, so a restart skips fetching and compiling it. Where a module can't be posted, the worker gets the bytes.
 let wasmModule = null, engineGen = 0;   // engineGen: a kill during the compile wait cancels that start
-// the solver's data for the active era: inline for Global, engine-gm.json for the GM era
+// the solver's data for the active era (its own file, preloaded by the page head)
 let engineData = null;
 function eraEngineData() {
   if (!engineData) {
-    engineData = ERA !== 'gm' ? Promise.resolve($('engine-data').textContent)
-      : fetch('engine-gm.json').then(r => { if (!r.ok) throw 0; return r.text(); })
-        .catch(() => { throw new Error('Could not load engine-gm.json (the Grand Masters-era solver data).'); });
+    engineData = fetch(ASSETS.engine[ERA === 'gm' ? 'gm' : 'global']).then(r => { if (!r.ok) throw 0; return r.text(); })
+      .catch(() => { throw new Error('Could not load the solver data. Open the page through a web server (./build.sh serve), not as a file.'); });
     engineData.catch(() => { engineData = null; });
   }
   return engineData;
@@ -50,7 +49,7 @@ function eraEngineData() {
 function compiled() {
   if (!wasmModule) wasmModule = (async () => {
     let bytes;
-    try { const r = await fetch('loopopt.wasm'); if (!r.ok) throw 0; bytes = await r.arrayBuffer(); }
+    try { const r = await fetch(ASSETS.wasm); if (!r.ok) throw 0; bytes = await r.arrayBuffer(); }
     catch { throw new Error('Could not load loopopt.wasm. Open the page through a web server (./build.sh serve), not as a file.'); }
     let module = null; try { module = await WebAssembly.compile(bytes); } catch { module = null; }
     return { module, bytes };

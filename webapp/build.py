@@ -1,7 +1,11 @@
-"""Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, data, skill catalog,
-precomputed example), loopopt.wasm, and img/ (character icons, card art, skill icons, race banners, scenario logos, UI
-sprites from images.py). Served over http(s): the page fetches the wasm and the images, so it is not meant to be opened as a file."""
-import json, subprocess, os, sqlite3, glob, shutil
+"""Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, the page's data,
+skill catalog, precomputed example) and assets/: the solver (loopopt.wasm), its data per era, the GM era's page data,
+images (character icons, card art, skill icons, race banners, scenario logos, UI sprites from images.py) and fonts
+(fonts.py). Every file in assets/ carries a fingerprint of its content in its name (images: one fingerprint over the
+whole set, as a folder name), so it is served with a one-year immutable cache and an update simply gets new names;
+index.html keeps a 5-minute cache and always points at the current names. Favicons (icons.py) sit at the root.
+Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
+import json, subprocess, os, sqlite3, glob, shutil, hashlib
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
@@ -10,17 +14,30 @@ example = json.load(open(os.path.join(H, 'example.json')))
 # character icons and card art extracted by images.py, copied to dist/img/<kind>/<id>.webp; the page gets the list of
 # keys ('card:30116', ...) so it asks only for images that exist. None is fine (the page shows initials).
 DIST = os.path.join(H, 'dist')
-shutil.rmtree(os.path.join(DIST, 'img'), ignore_errors=True)
-# images are AVIF (UI sprites lossless WebP); one extension per kind, given to the page with the key list
-images = []; ext = {}; isize = 0
+for old in ('img', 'assets', 'licenses'): shutil.rmtree(os.path.join(DIST, old), ignore_errors=True)
+for old in ('loopopt.wasm', 'data-gm.json', 'engine-gm.json'):
+    if os.path.exists(os.path.join(DIST, old)): os.remove(os.path.join(DIST, old))
+os.makedirs(os.path.join(DIST, 'assets'), exist_ok=True)
+def fingerprint(name, data):
+    """write assets/<stem>.<hash><ext> (hash of the content) and return its path relative to the page"""
+    data = data.encode() if isinstance(data, str) else data
+    stem, e = os.path.splitext(name); rel = f'assets/{stem}.{hashlib.sha256(data).hexdigest()[:10]}{e}'
+    open(os.path.join(DIST, rel), 'wb').write(data); return rel
+# images are AVIF (UI sprites lossless WebP); one extension per kind, given to the page with the key list. They are
+# copied to assets/img.<hash>/<kind>/<id>.<ext>, the hash taken over every file's name and content: any change gives
+# the whole set a new folder (images change only when images.py is rerun)
+images = []; ext = {}; isize = 0; files = []; ih = hashlib.sha256()
 for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'scen', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         stem, e = os.path.splitext(f)
         if e not in ('.avif', '.webp'): continue
         assert ext.setdefault(kind, e[1:]) == e[1:], f'img/{kind} mixes formats ({f}); rerun ./build.sh images'
-        os.makedirs(os.path.join(DIST, 'img', kind), exist_ok=True)
-        shutil.copyfile(os.path.join(d, f), os.path.join(DIST, 'img', kind, f)); images.append(f'{kind}:{stem}'); isize += os.path.getsize(os.path.join(d, f))
+        src = os.path.join(d, f); ih.update(f'{kind}/{f}'.encode()); ih.update(open(src, 'rb').read())
+        files.append((kind, f, src)); images.append(f'{kind}:{stem}'); isize += os.path.getsize(src)
+IMG_BASE = f'assets/img.{ih.hexdigest()[:10]}/'
+for kind, f, src in files:
+    os.makedirs(os.path.join(DIST, IMG_BASE, kind), exist_ok=True); shutil.copyfile(src, os.path.join(DIST, IMG_BASE, kind, f))
 # skill group -> icon id of its white and of its gold version (images.py)
 def _icons(f): f = os.path.join(H, 'img', f); return json.load(open(f)) if os.path.exists(f) else {}
 skill_icons = {'white': _icons('skill_icons.json'), 'gold': _icons('skill_icons_gold.json')}
@@ -98,19 +115,36 @@ html = open(os.path.join(H, 'index.template.html')).read()
 def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, text=True, check=True).stdout.strip()
 try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg', '../jp') else '')
 except Exception: VERSION = 'unknown'
-for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
-             ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)), ('__DATA__', G['engine']),
-             ('__WORKER__', worker)]:
-    assert '</script' not in v.lower(), k
-    html = html.replace(k, v, 1)
-os.makedirs(DIST, exist_ok=True)
-open(os.path.join(DIST, 'index.html'), 'w').write(html)
-open(os.path.join(DIST, 'loopopt.wasm'), 'wb').write(wasm)
 # the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
-open(os.path.join(DIST, 'data-gm.json'), 'w').write(gm_ui)
-open(os.path.join(DIST, 'engine-gm.json'), 'w').write(M['engine'])
-# hosting (Cloudflare Pages reads _headers): not listed by search engines, short cache so a new deploy shows quickly
-open(os.path.join(DIST, '_headers'), 'w').write('/*\n  X-Robots-Tag: noindex\n  Cache-Control: public, max-age=300\n')
+ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': fingerprint('engine-global.json', G['engine']), 'gm': fingerprint('engine-gm.json', M['engine'])},
+          'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE}
+# fonts (fonts.py): self-hosted subsets, declared here; the Latin 400/700 of the UI font are preloaded
+FM = json.load(open(os.path.join(H, 'fonts', 'fonts.json')))
+faces = []; preloads = []
+for f in FM['fonts']:
+    url = fingerprint(f['file'], open(os.path.join(H, 'fonts', f['file']), 'rb').read())
+    faces.append(f'@font-face {{ font-family: "{f["family"]}"; font-style: normal; font-weight: {f["weight"]}; font-display: swap; src: url({url}) format("woff2"); unicode-range: {f["range"]}; }}')
+    if f['preload']: preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
+os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
+for name in ('OFL-ZenKakuGothicNew.txt', 'OFL-IBMPlexMono.txt'): shutil.copyfile(os.path.join(H, 'fonts', name), os.path.join(DIST, 'licenses', name))
+# every character the page can show should be in a font subset (else the browser falls back to a system font)
+def _covered(rng): return [tuple(int(x, 16) for x in r[2:].split('-')) if '-' in r else (int(r[2:], 16),) * 2 for r in rng.split(',')]
+cover = [iv for f in FM['fonts'] if f['family'].startswith('Zen') for iv in _covered(f['range'])]
+missing = sorted({c for c in html + gm_ui if ord(c) > 0x7e and ord(c) not in (0xfe0e, 0xfe0f) and not any(a <= ord(c) <= b for a, b in cover)})
+if missing: print(f'warning: {len(missing)} characters not in the font subsets (rerun uv run webapp/fonts.py): {"".join(missing[:40])}')
+css = '\n'.join(faces) + '\n' + css
+for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
+             ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
+             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
+    assert '</script' not in v.lower(), k
+    html = html.replace(k, v, 1)
+assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
+open(os.path.join(DIST, 'index.html'), 'w').write(html)
+for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))
+# hosting (Cloudflare Pages reads _headers): not listed by search engines; the page 5 minutes so a new deploy shows
+# quickly; fingerprinted assets a year, immutable (their names change with their content)
+open(os.path.join(DIST, '_headers'), 'w').write('/*\n  X-Robots-Tag: noindex\n  Cache-Control: public, max-age=300\n'
+                                                 '/assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n')
 open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nDisallow: /\n')
-print(f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, img/ {len(images)} files {isize / 1e6:.2f} MB")
+print(f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(G['engine'].encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, {IMG_BASE} {len(images)} files {isize / 1e6:.2f} MB, {len(faces)} font files")

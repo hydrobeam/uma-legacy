@@ -43,10 +43,11 @@ export function renderRoster() {
   }
   const dir = state.rdir === 'desc' ? -1 : 1;
   tiles.sort((a, b) => dir * (state.rsort === 'name' ? a.key.localeCompare(b.key) : (a.rel - b.rel) || ((a.o ? a.o.id : 0) - (b.o ? b.o.id : 0))));
-  for (const { u, o } of tiles) {
+  const EAGER = 8;   // the first two rows are on screen at load (phone and desktop): their portraits load at once
+  tiles.forEach(({ u, o }, i) => {
     const t = document.createElement('div'); t.className = 'ut'; t.dataset.uma = u.id;
     const b = document.createElement('button'); b.className = 'up'; b.type = 'button';
-    b.appendChild(umaAv(u.id, o ? o.id : null, 96)); t.appendChild(b);
+    b.appendChild(umaAv(u.id, o ? o.id : null, 96, i < EAGER)); t.appendChild(b);
     const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
     if (o) { const ol = document.createElement('div'); ol.className = 'uol'; ol.textContent = o.label; t.appendChild(ol); }
     t._paint = () => { const st = tileState(u, o); t.dataset.s = st; b.setAttribute('aria-label', u.name + (o ? ' ' + o.label : '') + ': ' + ST_LABEL[st]); b.title = b.getAttribute('aria-label'); };
@@ -64,7 +65,7 @@ export function renderRoster() {
       else if (o) delete state.outfits[o.id]; else delete state.roster[u.id];
       save(); box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach(x => x._paint()); rosterCount(); };
     box.appendChild(t);
-  }
+  });
   paintSort('rs', 'r');
   rosterCount();
 }

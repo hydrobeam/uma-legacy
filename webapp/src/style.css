@@ -136,7 +136,9 @@ input[type="search"] { width: 100%; }
 .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 240px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
 .sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 0.88rem; }
 .sugg button:hover, .sugg button:focus { background: var(--accent-soft); }
-.extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; }
+.extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; min-height: 26px; }
+/* checkboxes: 18 px boxes in rows at least 26 px apart, so each tap target clears 24 px (WCAG 2.5.8) */
+.extras input[type=checkbox] { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
 /* results */
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .status { color: var(--muted); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
