@@ -59,12 +59,12 @@ function loopCard(l, meta, ctx) {
       M.forEach((m, k) => { if (key(D[k]) === key(meta.deck) || seen.has(key(D[k]))) return; seen.add(key(D[k]));
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
-        const whoT = who.length === 1 ? `${who[0]}’s deck` : `The deck for ${who.join(', ')}`;
+        const whoT = who.length === 1 ? `${who[0]}’s deck` : who.slice(0, -1).join(', ') + ' and ' + who.at(-1);   // "X’s deck swaps …", "X and Y swap …"
         const faces = M.map((x, j) => [x, j]).filter(([, j]) => key(D[j]) === key(d)).map(([x, j]) => { const of = l.outfits[j].outfits; return umaAv(x.id, of.length === 1 ? of[0].id : null, 64).outerHTML; }).join('');
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
-        dk.innerHTML = `<div class="swrow"><span class="swho" title="${esc(whoT)}">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">swaps</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
+        dk.innerHTML = `<div class="swrow"><span class="swho" title="${esc(whoT)}">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
           `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${info}</div>` + oddsOf(d);
         card.appendChild(dk); });
     }

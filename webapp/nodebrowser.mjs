@@ -93,7 +93,7 @@ const TESTS = {
     await oi.click();
     check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
     const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.title, shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
-    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && /deck/.test(x.label) && x.shown === ''), JSON.stringify(sw));
+    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.shown === ''), JSON.stringify(sw));
     const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
     // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)
