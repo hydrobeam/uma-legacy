@@ -321,6 +321,22 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async reload(b) {
+    // a reload with non-default settings shows their last result from the first frame (not the default example), and
+    // the fresh identical result doesn't redraw it
+    const ctx = await b.newContext(); const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(e.message));
+    await pg.goto(URL); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
+    await pg.click('#x-scen'); await pg.click('#scen-menu .stile[data-v="gc"]'); await pg.waitForTimeout(600); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
+    const mine = await odds(pg);
+    await ctx.addInitScript(() => { window.__seen = []; const snap = () => { const o = document.querySelector('#results .loop .odds'); window.__seen.push(o ? o.textContent : '');
+      if (o && !o.__mark) o.__mark = 1; if (performance.now() < 6000) requestAnimationFrame(snap); }; requestAnimationFrame(snap); });
+    await pg.reload(); await pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
+    const seen = [...new Set(await pg.evaluate(() => window.__seen))];
+    check('reload: the saved settings\' result from the first frame, never the default example', seen.length === 1 && seen[0] === mine && mine !== '' && !/1 in 139runs/.test(seen[0]), seen.join(' | '));
+    check('reload: an identical fresh result is not redrawn', await pg.evaluate(() => document.querySelector('#results .loop .odds').__mark === 1));
+    check('no page errors', !errs.length, errs.join(' | '));
+    await ctx.close();
+  },
   async delivery(b) {
     // self-hosted fonts (no third-party requests), a real favicon, the solver's files fingerprinted, the first roster
     // portraits eager, and accessible names that start with the visible text (voice control)
@@ -376,7 +392,7 @@ const TESTS = {
       set('llp:roster', { 1001: 'out' }); set('llp:gm:roster', { 1002: 'out' }); set('llp:cardsOff', { 30052: false });
       set('llp:targets', [{ group: 20166, guaranteed: 2, deck_gold: 1 }, { group: 20159, guaranteed: 0, deck_white: 0.5 }]);
       set('llp:rank', '0.45,0.50,0.05'); set('llp:rsort', 'rel'); set('llp:rdir', 'asc'); localStorage.setItem('llp:era', 'global'); } catch {} } });
-    const st = await pg.evaluate(() => ({ keys: Object.keys(localStorage).filter(k => k.startsWith('llp:')), s: JSON.parse(localStorage.getItem('llp:settings')) }));
+    const st = await pg.evaluate(() => ({ keys: Object.keys(localStorage).filter(k => k.startsWith('llp:') && !k.startsWith('llp:last:')), s: JSON.parse(localStorage.getItem('llp:settings')) }));
     check('migration: one llp:settings object, old keys removed', st.keys.length === 1 && st.keys[0] === 'llp:settings' && st.s.v === 2, st.keys.join(','));
     check('migration: per-era roster kept apart', st.s.global.roster['1001'] === 'out' && st.s.gm.roster['1002'] === 'out');
     check('migration: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));

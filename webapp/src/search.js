@@ -3,8 +3,8 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, HINTS, ASSETS } from './data.js';
-import { state, ui, writeSaved } from './state.js';
+import { CARDS, UMAS, HINTS, ASSETS, EXAMPLE } from './data.js';
+import { state, ui, writeSaved, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
@@ -82,27 +82,56 @@ function startEngine() {
 }
 function run(job) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, res); worker.postMessage({ type: 'run', id, job }); })); }
 
-export async function doSearch() {
-  const my = ++searchId;
-  if (busy) killEngine();   // a search is still running: stop it and start over
-  searching = true; searchT0 = performance.now(); paintRunNote(); clearInterval(searchTick); searchTick = setInterval(paintRunNote, 1000);
-  const box = $('results');
+// The search job for the current settings (throws when there is no target). Used by the search and by firstResult.
+function buildJob() {
+  if (!state.targets.length) throw new Error('Add at least one target skill.');
   const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   // must include per outfit: the uma is required, and her outfits that aren't marked are left out
   for (const u of UMAS) { const r = reqOutfits(u); if (r.length) for (const o of u.outfits) if (!r.includes(o) && !exclude_outfits.includes(o.id)) exclude_outfits.push(o.id); }
   const require = UMAS.filter(isRequired).map(u => u.id);
+  // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
+  const extra = [[1003, 20190, 1]]; if (state.zephyr) extra.push([1078, 20165, 1]);
+  const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
+  const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
+  const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
+  const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
+    owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
+  return { job, targets };
+}
+// The last result per era is kept in localStorage with the job that produced it (plus the solver's and data's
+// fingerprints), so a reload with unchanged settings shows it at once instead of the default example, and a fresh
+// identical result isn't redrawn.
+const LAST = () => 'llp:last:' + ERA;
+const jobKey = (job) => JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], job]);
+let shown = { key: null, r: null, example: false };   // the result on screen
+function defaultKey() {   // the job of the default settings (the precomputed example's)
+  const cur = JSON.stringify(state); Object.assign(state, JSON.parse(JSON.stringify(DEFAULTS)));
+  try { return jobKey(buildJob().job); } catch { return null; } finally { Object.assign(state, JSON.parse(cur)); }
+}
+// What to show before the first search finishes: the remembered result of these exact settings, else the precomputed
+// example when the settings are the defaults (Global), else nothing.
+export function firstResult() {
+  let b; try { b = buildJob(); } catch { return null; }
+  const key = jobKey(b.job);
+  try { const c = JSON.parse(localStorage.getItem(LAST()) || 'null');
+    if (c && c.key === key) { shown = { key, r: JSON.stringify(c.r), example: false }; return { r: c.r, ms: c.ms, targets: b.targets }; } } catch {}
+  if (ERA === 'global' && key === defaultKey()) { shown = { key, r: null, example: true }; return { r: EXAMPLE, example: true, targets: b.targets }; }
+  return null;
+}
+export async function doSearch() {
+  const my = ++searchId;
+  if (busy) killEngine();   // a search is still running: stop it and start over
+  searching = true; searchT0 = performance.now(); paintRunNote(); clearInterval(searchTick); searchTick = setInterval(paintRunNote, 1000);
+  const box = $('results');
   try {
-    if (!state.targets.length) throw new Error('Add at least one target skill.');
-    // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
-    const extra = [[1003, 20190, 1]]; if (state.zephyr) extra.push([1078, 20165, 1]);
-    const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
-    const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
-    const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
-    const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
-      owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
+    const { job, targets } = buildJob();
     busy = true; const m = await run(job); if (my !== searchId) return;   // superseded: a newer search owns the page
-    busy = false; ui.lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); ui.lastRender(); ui.lastResult = { kind: 'deck', r: m.r, meta: {} };
+    busy = false; ui.lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); ui.lastResult = { kind: 'deck', r: m.r, meta: {} };
+    const key = jobKey(job), str = JSON.stringify(m.r);
+    if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();   // an identical result already on screen stays
+    shown = { key, r: str, example: false };
+    try { localStorage.setItem(LAST(), JSON.stringify({ key, ms: m.ms, r: m.r })); } catch {}
   } catch (e) { if (my !== searchId) return; busy = false; box.innerHTML = ''; const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; box.appendChild(p); ui.runNote = ''; }
   searching = false; clearInterval(searchTick); paintRunNote();
 }

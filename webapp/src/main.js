@@ -2,9 +2,9 @@
 // dist/index.html, next to the data, images, wasm and worker it embeds.
 import { $ } from './dom.js';
 import { SAVED, ERA } from './settings.js';
-import { EXAMPLE, PRESET, loadData } from './data.js';
+import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
-import { save, doSearch } from './search.js';
+import { save, doSearch, firstResult } from './search.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';
@@ -28,7 +28,11 @@ function start() {
   for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)
-  if (ERA === 'global') { ui.lastRender = () => renderDeck(EXAMPLE, { example: true, targets: PRESET, rank: '0.50,0.45,0.05' }); ui.lastRender(); ui.lastResult = { kind: 'deck', r: EXAMPLE, meta: { example: true } }; }
+  // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
+  // (showing the default example under other settings flashed a result that wasn't theirs)
+  const first = firstResult();
+  if (first) { ui.lastRender = () => renderDeck(first.r, first.example ? { example: true, targets: PRESET, rank: '0.50,0.45,0.05' } : { ms: first.ms, targets: first.targets, rank: state.rank });
+    ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} }; }
   else $('results').innerHTML = '';
   setTimeout(doSearch, 0);   // the first search, with the saved settings (also warms the engine)
 }
