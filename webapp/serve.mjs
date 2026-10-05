@@ -13,6 +13,7 @@ export function serveDist(port = 0, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p.endsWith('/')) p += 'index.html';
+    else if (!path.extname(p)) p += '.html';   // /about -> about.html, as Cloudflare Pages serves it
     const f = path.normalize(path.join(DIST, p));
     if (!f.startsWith(DIST + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(f, (err, buf) => {

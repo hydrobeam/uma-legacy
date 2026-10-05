@@ -646,6 +646,17 @@ const TESTS = {
     check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     await p2.context().close();
   },
+  async about(b) {
+    // "How this works": a link in the header to its own page (/about), which links back
+    const pg = await open(b);
+    await pg.locator('header.top .tnav a', { hasText: 'How this works' }).click(); await pg.waitForLoadState();
+    check('header link opens /about', new globalThis.URL(pg.url()).pathname === '/about' && /How this works/i.test(await pg.locator('main.about h2').innerText()));
+    check('/about carries the model text and the version', /Model\./.test(await pg.locator('main.about').innerText()) && /Version v?\S+/.test(await pg.locator('main.about').innerText()));
+    if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    await pg.locator('header.top .tnav a').click(); await pg.waitForSelector('#targets');
+    check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
+    await pg.context().close();
+  },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);

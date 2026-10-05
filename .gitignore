@@ -42,6 +42,7 @@
 !/webapp/README.md
 !/webapp/build.py
 !/webapp/index.template.html
+!/webapp/about.template.html
 !/webapp/src/
 !/webapp/worker.template.js
 !/webapp/example.mjs

@@ -144,6 +144,11 @@ for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), (
     html = html.replace(k, v, 1)
 assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
+# "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
+about = open(os.path.join(H, 'about.template.html')).read()
+for k, v in [('__VERSION__', VERSION), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads))]: about = about.replace(k, v, 1)
+assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
+open(os.path.join(DIST, 'about.html'), 'w').write(about)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))
 # hosting (Cloudflare Pages reads _headers): indexable (owner, 2026-10-05; the page names its canonical address); the page 5 minutes so a new deploy shows
 # quickly; fingerprinted assets a year, immutable (their names change with their content)
