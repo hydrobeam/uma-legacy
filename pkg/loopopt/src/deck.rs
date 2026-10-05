@@ -1,12 +1,13 @@
 //! Joint deck + loop search for skill targets.
 //!
 //! Deck model (per training run):
-//!   - training hints: each card gives h = 1 + hint_frequency/25 hints, each a uniform draw over its hint options
-//!     (skills + one stat option), so P(card hints skill s) = 1 - (1 - 1/opts)^h when s is in its pool;
-//!   - chain events: the number of chain events in a run is Poisson(lambda); each one advances a chain picked
-//!     uniformly among the remaining chain slots of the non-pal cards (a card with more links left is picked
-//!     more often; links fire in order). Pals have no chain slots. lambda = 7.1 fits 6 slots -> 81%,
-//!     8 -> 59%, 9 -> 50% full-chain completion;
+//!   - training hints: each card gives h = base(scenario) x (1 + hint_frequency/100) draws, each uniform over its
+//!     skill options still below Lv 5 (the stat option is never drawn; a skill at Lv 5 leaves the pool, so a card
+//!     giving +5 levels per draw never repeats one), `hint_miss`; a card's draws hint two of its targets together less
+//!     often than independent odds would say;
+//!   - chain events: the number in a run is Binomial(CHAIN_N, CHAIN_P); each advances a chain picked among the
+//!     remaining chain slots of the non-pal cards (a card with more links left is picked more often; links fire in
+//!     order). Pals and R cards have no chain slots. Both fitted on uma-it Independent Training runs (docs/MODEL.md);
 //!   - event rewards come from the job (`events`): (card, skill group, 1 white | 2 gold, link; 0 = whenever the
 //!     card is in the deck, e.g. pal golds).
 //! Deck hint odds per target: 1 - prod(1 - p) over sources, separately for white and gold.
@@ -21,7 +22,11 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Clone)]
-pub(crate) struct Card { pub id: u32, pub name: String, pub chara: u32, pub rarity: u8, pub pal: bool, pub links: u8, pub hf: f64, pub opts: u32, pub whites: Vec<u32>,
+pub(crate) struct Card { pub id: u32, pub name: String, pub chara: u32, pub rarity: u8, pub pal: bool, pub links: u8, pub hf: f64,
+    /// training-hint options that are skills (the stat option is never drawn in Independent Training)
+    #[serde(default)] pub nskill: u32, pub whites: Vec<u32>,
+    /// hint levels per training-hint draw at max limit break (1 + hint-level effect); a skill at Lv 5 leaves the pool
+    #[serde(default = "d_hinc")] pub hinc: u32,
     /// characters who cannot train with this card: its own character and, for a group card, every member
     #[serde(default)] pub charas: Vec<u32> }
 impl Card {
@@ -32,7 +37,11 @@ pub(crate) struct CardsRaw { pub cards: Vec<Card> }
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
-    #[serde(default = "d_lambda")] pub lambda: f64,
+    /// chain events per run: Binomial(n, p); defaults CHAIN_N, CHAIN_P (for experiments)
+    #[serde(default)] pub chain_events: Option<(u32, f64)>,
+    /// Independent Training scenario: "unity" (default), "gc" (Grand Concert), "ura", "trackblazer", "grandmasters" (JP); sets how many
+    /// training-hint draws a card gives (`hint_base`)
+    #[serde(default = "d_scenario")] pub scenario: String,
     #[serde(default = "d_size")] pub deck_size: usize,
     /// (card id, skill group, 1 white | 2 gold, chain link 1..; 0 = whenever the card is in the deck)
     #[serde(default)] pub events: Vec<(u32, u32, u8, u8)>,
@@ -86,7 +95,52 @@ fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
 }
 fn d_one() -> usize { 1 }
 fn kmax_top(dj: &DeckJob) -> usize { if dj.per_uma || dj.deck_only { 1 } else { dj.top_decks.max(1) } }
-fn d_lambda() -> f64 { 7.1 }
+fn d_scenario() -> String { "unity".into() }
+fn d_hinc() -> u32 { 1 }
+/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 879 uma-it Independent Training runs whose chain
+/// progress is readable from event hints (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
+/// variance = mean, fits much worse). It slightly underestimates decks with two chain cards: both chains finish in
+/// 82% of such runs, 75% predicted.
+const CHAIN_N: u32 = 21;
+const CHAIN_P: f64 = 0.35;
+/// Training-hint draws per run for a card with hint frequency 0, by scenario (h = base x (1 + hf/100)); fitted on the
+/// same runs' training hints with the Lv-5 cap (`hint_miss`; max-limit-break card-runs, 92 uploaders; 90%: Unity
+/// 2.66-2.75, Grand Concert 2.03-2.13, URA 1.48-1.73; Trackblazer has too few runs and Grand Masters (JP) none, both use
+/// the pooled 2.30).
+pub(crate) fn hint_base(scenario: &str) -> f64 {
+    match scenario { "gc" => 2.08, "ura" => 1.60, "trackblazer" | "grandmasters" => 2.30, _ => 2.70 }
+}
+/// P(none of `k` given skills of a card's pool is drawn) in `t` training-hint draws over its `n` skills, each draw
+/// uniform over the skills still below Lv 5; a skill leaves the pool after `cap` draws (ceil(5 / hint levels per
+/// draw)), so a +5 card never draws a skill twice. Exact over how many draws each other skill has taken.
+fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
+    if k == 0 { return 1.0; }
+    if k >= n { return if t == 0 { 1.0 } else { 0.0 }; }
+    if t <= cap { return (1.0 - k as f64 / n as f64).powi(t as i32); }   // no skill can leave the pool before the last draw
+    // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool)
+    let mut st: HashMap<Vec<u8>, f64> = HashMap::new();
+    let mut s0 = vec![0u8; cap + 1]; s0[0] = (n - k) as u8; st.insert(s0, 1.0);
+    for _ in 0..t {
+        let mut nx: HashMap<Vec<u8>, f64> = HashMap::new();
+        for (s, p) in &st {
+            let avail = (n - k - s[cap] as usize + k) as f64;   // k > 0: never empty
+            for j in 0..cap {
+                if s[j] == 0 { continue; }
+                let mut u = s.clone(); u[j] -= 1; u[j + 1] += 1;
+                *nx.entry(u).or_insert(0.0) += p * s[j] as f64 / avail;
+            }
+        }
+        st = nx;
+    }
+    st.values().sum()
+}
+/// `miss_draws` at a fractional draw count h: IT gives a near-fixed whole number of draws per setup, so h is read as
+/// floor(h) or floor(h) + 1 draws with the fractional part as the weight of the second.
+pub(crate) fn hint_miss(k: usize, n: usize, h: f64, hinc: u32) -> f64 {
+    let cap = (5 + hinc.max(1) as usize - 1) / hinc.max(1) as usize;
+    let t0 = h.max(0.0).floor(); let f = h - t0; let t0 = t0 as usize;
+    (1.0 - f) * miss_draws(k, n, t0, cap) + if f > 0.0 { f * miss_draws(k, n, t0 + 1, cap) } else { 0.0 }
+}
 fn d_size() -> usize { 6 }
 fn d_rar() -> u8 { 2 }   // SR: R cards have no chain events, so this only filters chain cards
 
@@ -100,17 +154,26 @@ fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
     risk.iter().filter(|r| r.0 >= 1 && r.0 < stop && r.0 <= 4 && r.2 > 0).fold(0u32, |c, r| c | ((((r.1 as u32) << 4) | r.2 as u32) << (8 * (r.0 as u32 - 1))))
 }
 
+thread_local! { static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = std::cell::Cell::new((CHAIN_N, CHAIN_P)); }
+/// P(N = e) chain events per run for e = 0..=n, N ~ Binomial of the job in progress (default CHAIN_N, CHAIN_P).
+fn event_pmf(n: usize) -> Vec<f64> {
+    let (bn, bp) = CHAIN_EVENTS.with(|c| c.get());
+    (0..=n).map(|e| if e as u32 <= bn { binom_coef(bn, e as u32) * bp.powi(e as i32) * (1.0 - bp).powi((bn - e as u32) as i32) } else { 0.0 }).collect()
+}
+fn binom_coef(n: u32, k: u32) -> f64 { (0..k).fold(1.0f64, |a, i| a * (n - i) as f64 / (i + 1) as f64) }
+/// Cache key of the event-count distribution in use.
+fn pmf_key() -> u64 { CHAIN_EVENTS.with(|c| { let (n, p) = c.get(); ((n as u64) << 52) ^ p.to_bits() }) }
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
 /// Dense, deterministic, memoised version of `chain_marginals_ref`. States are mixed-radix indices over the
 /// entries' progress; every transition raises the index, so one pass in index order is a topological order.
 /// Entries are sorted first so the floating-point summation order is canonical (the HashMap reference sums in
 /// iteration order, which varied from run to run in the last bits).
-fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, u64), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(Default::default()); }
     let mut ks: Vec<Kind> = kinds.to_vec(); ks.sort();
-    let key = (ks, lambda.to_bits());
+    let key = (ks, pmf_key());
     if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) { return r; }
-    let r = if key.0.iter().any(|k| k.2 != 0) { chain_marginals_risk(&key.0, lambda) } else { chain_marginals_dense(&key.0, lambda) };
+    let r = if key.0.iter().any(|k| k.2 != 0) { chain_marginals_risk(&key.0) } else { chain_marginals_dense(&key.0) };
     CM.with(|c| c.borrow_mut().insert(key, r.clone()));
     r
 }
@@ -118,7 +181,7 @@ fn chain_marginals(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
 /// chain events the run gets, so the run is a mixture over where each risky entry would stop. Each realisation is a
 /// plain kind (links, realised stop): the entry competes for events with its full chain until it stops, then frees
 /// its remaining slots, exactly as a chosen early end does. Exact.
-fn chain_marginals_risk(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+fn chain_marginals_risk(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     // per entry: [(realised stop, probability)]
     let alts: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(links, stop, risk)| {
         let mut v = vec![]; let mut go = 1.0f64;
@@ -137,7 +200,7 @@ fn chain_marginals_risk(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> 
         let w: f64 = (0..n).map(|i| alts[i][pick[i]].1).product();
         if w > 0.0 {
             let real: Vec<Kind> = (0..n).map(|i| (kinds[i].0, alts[i][pick[i]].0, 0)).collect();
-            let m = chain_marginals(&real, lambda);
+            let m = chain_marginals(&real);
             for i in 0..n { if let Some(v) = m.get(&real[i]) { for (k, x) in v.iter().enumerate() { acc[i][k] += w * x; } } }
         }
         let mut i = 0;
@@ -148,14 +211,12 @@ fn chain_marginals_risk(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> 
     for i in 0..n { out.entry(kinds[i]).or_insert_with(|| acc[i].clone()); }
     out
 }
-fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     let n = kinds.len();
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
     let emax = 60usize;
-    let mut pois = vec![0.0f64; emax + 1];
-    pois[0] = (-lambda).exp();
-    for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
+    let pois = event_pmf(emax);
     let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let last = emax.min(total);
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
@@ -196,14 +257,12 @@ fn chain_marginals_dense(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>>
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds
 /// (reference implementation, for the tests).
 #[cfg(test)]
-fn chain_marginals_ref(kinds: &[Kind], lambda: f64) -> HashMap<Kind, Vec<f64>> {
+fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     let n = kinds.len();
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
     let emax = 60usize;
-    let mut pois = vec![0.0f64; emax + 1];
-    pois[0] = (-lambda).exp();
-    for e in 1..=emax { pois[e] = pois[e - 1] * lambda / e as f64; }
+    let pois = event_pmf(emax);
     let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n];      // P(entry i has >= k+1 links done), accumulated over E
@@ -254,9 +313,9 @@ fn group_gh(g: &Group) -> Vec<(usize, f64, f64)> {
 /// Memoised per sorted kind list; `kinds` must be sorted. Exact: a state at level L (L events taken) is final
 /// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
 /// where they stop, as in `chain_marginals_risk`.
-fn chain_states(kinds: &[Kind], lambda: f64) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
+fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
     thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<Kind>, u64), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(Default::default()); }
-    let key = (kinds.to_vec(), lambda.to_bits());
+    let key = (kinds.to_vec(), pmf_key());
     if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) { return r; }
     let n = kinds.len();
     let alts: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(_, stop, risk)| {
@@ -276,9 +335,7 @@ fn chain_states(kinds: &[Kind], lambda: f64) -> std::rc::Rc<Vec<(Vec<u8>, f64)>>
         if w > 0.0 {
             let stops: Vec<u8> = (0..n).map(|i| alts[i][pick[i]].0).collect();
             let total: usize = stops.iter().map(|&x| x as usize).sum();
-            let mut pois = vec![0.0f64; total + 1];
-            pois[0] = (-lambda).exp();
-            for e in 1..=total { pois[e] = pois[e - 1] * lambda / e as f64; }
+            let pois = event_pmf(total);
             let mut stride = vec![0usize; n]; let mut nst = 1usize;
             for i in 0..n { stride[i] = nst; nst *= stops[i] as usize + 1; }
             let mut p = vec![0.0f64; nst]; p[0] = 1.0;
@@ -318,7 +375,7 @@ fn chain_states(kinds: &[Kind], lambda: f64) -> std::rc::Rc<Vec<(Vec<u8>, f64)>>
 /// outcomes can give one target or another. Here: the distribution of chain progress (`chain_states`); given it,
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// Training hints stay independent per target, as in the marginal model.
-fn joint_trainee(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, lambda: f64, n_targets: usize) -> Vec<(f64, f64, usize)> {
+fn joint_trainee(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     // per-target miss factors (no gold, no hint) of the groups that touch one target; the others are "coupled"
@@ -340,7 +397,7 @@ fn joint_trainee(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], fill
     for _ in 0..filler { ch.push(((2, 2, 0), None)); }
     ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
-    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds, lambda) };
+    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
     let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = ch.iter().map(|&(kd, e)| e.map(|i| {
         let src = &ents[i].0;
         let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
@@ -834,11 +891,33 @@ impl<'a> Sources<'a> {
         v
     }
     fn odds_for(&self, id: u32) -> Vec<(usize, u8, f64)> { self.dj.odds_events.iter().filter(|e| e.0 == id).filter_map(|e| self.unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3))).collect() }
+    /// Training-hint draws per run: base(scenario) x (1 + hint frequency / 100), each uniform over the card's skill
+    /// options still below Lv 5. Per target in the pool: P(hinted) = 1 - hint_miss(1).
+    fn draws(&self, c: &Card) -> f64 { hint_base(&self.dj.scenario) * (1.0 + c.hf / 100.0) }
     fn train(&self, c: &Card) -> Vec<(usize, f64)> {
-        if c.opts == 0 { return vec![]; }
-        let h = 1.0 + c.hf / 25.0;
-        let p = 1.0 - (1.0 - 1.0 / c.opts as f64).powf(h);
+        if c.nskill == 0 { return vec![]; }
+        let p = 1.0 - hint_miss(1, c.nskill as usize, self.draws(c), c.hinc);
         self.unc.iter().enumerate().filter(|(_, g)| c.whites.contains(g)).map(|(k, _)| (k, p)).collect()
+    }
+    /// A card's training hints over two or more of its targets as one outcome group: one outcome per non-empty set S
+    /// of targets hinted, P(exactly S) = sum over U in S of (-1)^(|S|-|U|) hint_miss(m - |U|) (m targets in the
+    /// pool), so the draws that hint one target cannot also hint another. Each target's own chance is unchanged.
+    fn train_group(&self, c: &Card, tr: &[(usize, f64)]) -> Group {
+        let (m, n, h) = (tr.len(), c.nskill as usize, self.draws(c));
+        let miss = |unhit: usize| hint_miss(unhit, n, h, c.hinc);   // P(none of `unhit` given targets hinted)
+        let mut g: Group = vec![];
+        for sm in 1u32..(1 << m) {
+            let mut w = 0.0f64; let ssz = sm.count_ones() as i32;
+            let mut u = sm;
+            loop {                                                    // every subset U of S (including the empty set)
+                let usz = u.count_ones() as i32;
+                w += if (ssz - usz) % 2 == 0 { 1.0 } else { -1.0 } * miss(m - usz as usize);
+                if u == 0 { break; }
+                u = (u - 1) & sm;
+            }
+            g.push((w.max(0.0), (0..m).filter(|i| sm >> i & 1 == 1).map(|i| (tr[i].0, 1u8)).collect()));
+        }
+        g
     }
     /// early-end options: links where a card has a choice that ends its chain, and the target rewards of that choice
     fn end_links(&self, id: u32) -> Vec<u8> { let mut v: Vec<u8> = self.dj.end_links.iter().filter(|e| e.0 == id).map(|e| e.1).collect(); v.sort(); v.dedup(); v }
@@ -881,8 +960,10 @@ impl<'a> Sources<'a> {
     /// then the ending choice's rewards at that link), taking choice variant `var`.
     fn src(&self, c: &Card, stop: Option<u8>, var: u32) -> Src {
         let one = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-        let mut s = Src { train: self.train(c), ..Default::default() };
+        let mut s = Src::default();
         s.fixed = self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect();
+        let tr = self.train(c);
+        if tr.len() >= 2 { s.fixed.push(self.train_group(c, &tr)); } else { s.train = tr; }
         let alt_links: Vec<u8> = self.dj.alts.iter().filter(|a| a.0 == c.id).map(|a| a.1).collect();
         for (k, lvl, link, f) in self.ev_for(c.id) {
             if link == 0 { s.fixed.push(one(k, lvl, f)); continue; }
@@ -1013,6 +1094,7 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
 fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let model = Model::new(d, sk, &sj);
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let nu = unc.len();
@@ -1112,7 +1194,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
             let mut mins = vec![1.0f64; kd.1 as usize];
             multisets(&kindset, 0, others, &mut vec![], &mut |o| {
                 let mut key = vec![kd]; key.extend_from_slice(o);
-                let m = chain_marginals(&key, dj.lambda);
+                let m = chain_marginals(&key);
                 for k in 0..kd.1 as usize { mins[k] = mins[k].min(m[&kd][k]); }
             });
             min_marg.insert(kd, mins);
@@ -1230,7 +1312,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let make_key = |code: u64| -> KeyData {
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
         for &kd in &kinds_all { for _ in 0..(c % 7) { ks.push(kd); } c /= 7; }
-        let marg = chain_marginals(&ks, dj.lambda);
+        let marg = chain_marginals(&ks);
         let empty: Vec<f64> = vec![];
         let mut mw = vec![1.0f64; nrel * nu]; let mut mg = vec![1.0f64; nrel * nu];
         for j in 0..nrel { src_miss(&srcs[j], marg.get(&kind[j]).unwrap_or(&empty), &mut mw[j * nu..(j + 1) * nu], &mut mg[j * nu..(j + 1) * nu]); }
@@ -1736,7 +1818,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         for t in 0..4 {
             let ls: Vec<usize> = (0..12).filter(|&l| lin[l].0 == t).collect();
             let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
-            let j = joint_trainee(&model, f[t], &qt, &ents, x.filler, dj.lambda, sj.targets.len());
+            let j = joint_trainee(&model, f[t], &qt, &ents, x.filler, sj.targets.len());
             for (i, &l) in ls.iter().enumerate() { per_l[l] = j[i]; }
         }
         let pj = per_l.iter().map(|y| y.0).sum::<f64>() / 12.0;
@@ -2050,11 +2132,11 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         if let Some(c) = chosen { if !cands.iter().any(|x| x.1.ids == c.ids && x.1.ends == c.ends && x.1.vars == c.vars) { cands.insert(0, (bpv, c)); } }
         let mut best: Option<(f64, Vec<(f64, f64, usize)>, Option<PDeck>)> = None;
-        if cands.is_empty() { return (joint_trainee(model, u, qt, &[], 0, dj.lambda, ntar), None); }
+        if cands.is_empty() { return (joint_trainee(model, u, qt, &[], 0, ntar), None); }
         for (_, x) in cands {
             let (e, fl) = ents_of(x);
             JCOUNT.with(|c| c.set(c.get() + 1));
-            let j = joint_trainee(model, u, qt, &e, fl, dj.lambda, ntar);
+            let j = joint_trainee(model, u, qt, &e, fl, ntar);
             let sv: f64 = j.iter().map(|y| y.0).sum();
             if best.as_ref().map_or(true, |b| sv > b.0) { best = Some((sv, j, Some(x.clone()))); }
         }
@@ -2137,7 +2219,7 @@ mod tests {
         let mut worst = 0.0f64; let mut cnt = 0;
         fn ms(v: &[Kind], st: usize, left: usize, cur: &mut Vec<Kind>, f: &mut dyn FnMut(&[Kind])) { if !cur.is_empty() { f(cur); } if left == 0 { return; } for i in st..v.len() { cur.push(v[i]); ms(v, i, left - 1, cur, f); cur.pop(); } }
         ms(&kinds, 0, 6, &mut vec![], &mut |ks| {
-            let a = chain_marginals_ref(ks, 7.1); let b = chain_marginals_dense(ks, 7.1); cnt += 1;
+            let a = chain_marginals_ref(ks); let b = chain_marginals_dense(ks); cnt += 1;
             for (k, v) in &a { for (x, y) in v.iter().zip(&b[k]) { worst = worst.max((x - y).abs()); } }
         });
         eprintln!("{cnt} multisets, max |dense - ref| = {worst:e}");
@@ -2152,20 +2234,71 @@ mod tests {
         let halo = cr.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
         assert!(halo.blocks(halo.chara) && !halo.blocks(1001));
     }
-    /// Calibration: lambda 7.1 reproduces the observed full-chain completion (6 -> 81%, 9 -> 50%) within 3 points,
-    /// and first links fire far more often than last links.
+    /// Calibration against the uma-it runs the event count was fitted on: a 3-link card next to one other finishes its
+    /// chain 89% of the time (observed; the binomial gives 86.6%), next to two others 60%, and alone almost always.
     #[test]
     fn chain_model_calibration() {
-        let m = chain_marginals(&[(3, 3, 0), (3, 3, 0)], 7.1);
-        assert!((m[&(3, 3, 0)][2] - 0.81).abs() < 0.03, "{:?}", m);
-        assert!(m[&(3, 3, 0)][0] > 0.97);
-        let m9 = chain_marginals(&[(3, 3, 0), (3, 3, 0), (3, 3, 0)], 7.1);
-        assert!((m9[&(3, 3, 0)][2] - 0.50).abs() < 0.03, "{:?}", m9);
-        let one = chain_marginals(&[(3, 3, 0)], 7.1);
-        assert!(one[&(3, 3, 0)][2] > 0.95);
+        let m = chain_marginals(&[(3, 3, 0), (3, 3, 0)]);
+        assert!((m[&(3, 3, 0)][2] - 0.866).abs() < 0.01, "{:?}", m);
+        assert!(m[&(3, 3, 0)][0] > 0.99);
+        let m9 = chain_marginals(&[(3, 3, 0), (3, 3, 0), (3, 3, 0)]);
+        assert!(m9[&(3, 3, 0)][2] > 0.45 && m9[&(3, 3, 0)][2] < 0.62, "{:?}", m9);
+        let one = chain_marginals(&[(3, 3, 0)]);
+        assert!(one[&(3, 3, 0)][2] > 0.99);
         // ending a chain early frees its slot: the other card's links fire more often
-        let early = chain_marginals(&[(3, 3, 0), (3, 2, 0)], 7.1);
+        let early = chain_marginals(&[(3, 3, 0), (3, 2, 0)]);
         assert!(early[&(3, 3, 0)][2] > m[&(3, 3, 0)][2] && early[&(3, 2, 0)].len() == 2);
+        let pm = event_pmf(30);
+        assert!((pm.iter().sum::<f64>() - 1.0).abs() < 1e-12 && (pm.iter().enumerate().map(|(e, p)| e as f64 * p).sum::<f64>() - 7.35).abs() < 1e-9);
+    }
+    /// A card's training draws over two targets in its pool: each target keeps its own chance 1 - (1 - 1/n)^h, both
+    /// are hinted together less often than independent chances would say, and the outcomes are a distribution.
+    #[test]
+    fn training_draws_over_two_targets() {
+        let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+        let c = cr.cards.iter().find(|c| c.nskill > 0 && c.whites.contains(&20046) && c.whites.contains(&20161)).expect("a card with Ramp Up and Tail Held High");
+        let dj = job_with(json!({}));
+        let unc = [20046u32, 20161];
+        let sb = Sources { dj: &dj, unc: &unc };
+        let tr = sb.train(c); assert_eq!(tr.len(), 2);
+        let g = sb.train_group(c, &tr);
+        assert!(g.iter().map(|x| x.0).sum::<f64>() <= 1.0 + 1e-12);
+        let gh = group_gh(&g);
+        for (k, _, ph) in &gh { assert!((ph - tr[*k].1).abs() < 1e-12, "{gh:?} vs {tr:?}"); }
+        let both = g.iter().filter(|x| x.1.len() == 2).map(|x| x.0).sum::<f64>();
+        assert!(both < tr[0].1 * tr[1].1);
+        let h = 2.70 * (1.0 + c.hf / 100.0);
+        assert!((tr[0].1 - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12);        // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
+        let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
+        src_miss(&sb.src(c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+        for k in 0..2 { assert!((1.0 - mw[k] * mg[k] - tr[k].1).abs() < 1e-9 || mg[k] < 1.0, "{mw:?} {mg:?} {tr:?}"); assert!(mw[k] * mg[k] < 1.0); }
+    }
+    /// The Lv-5 cap: a skill leaves a card's pool after ceil(5 / levels per draw) draws. Checked against brute-force
+    /// enumeration of every draw sequence, and on cases worked by hand (a +5 card draws without replacement).
+    #[test]
+    fn training_draws_leave_maxed_skills() {
+        fn brute(k: usize, n: usize, t: usize, cap: usize, cnt: &mut Vec<usize>) -> f64 {
+            if t == 0 { return 1.0; }
+            let avail: Vec<usize> = (0..n).filter(|&i| cnt[i] < cap).collect();
+            if avail.is_empty() { return 1.0; }
+            let mut p = 0.0;
+            for &i in &avail {
+                if i < k { continue; }                       // skills 0..k are the given ones: drawing one fails
+                cnt[i] += 1; p += brute(k, n, t - 1, cap, cnt) / avail.len() as f64; cnt[i] -= 1;
+            }
+            p
+        }
+        for n in 2..=6 { for k in 1..=n { for t in 0..=6 { for cap in 1..=5 {
+            let b = brute(k, n, t, cap, &mut vec![0; n]);
+            assert!((miss_draws(k, n, t, cap) - b).abs() < 1e-12, "k {k} n {n} t {t} cap {cap}: {} vs {b}", miss_draws(k, n, t, cap));
+        }}}}
+        assert!((miss_draws(1, 5, 4, 1) - 0.2).abs() < 1e-12);           // 4 of 5 skills, no repeats
+        assert_eq!(miss_draws(2, 5, 4, 1), 0.0);                          // only 3 others to absorb 4 draws
+        assert!((miss_draws(2, 5, 3, 1) - 0.1).abs() < 1e-12);           // 1 / C(5, 3)
+        assert!((miss_draws(1, 7, 2, 2) - (6.0f64 / 7.0).powi(2)).abs() < 1e-12);   // 2 draws, cap 2: no skill leaves before the last
+        // fractional h: floor / ceil mixture; levels per draw 1 -> cap 5, 3 or 4 -> 2, 5 -> 1
+        assert!((hint_miss(1, 5, 4.25, 5) - (0.75 * 0.2 + 0.25 * 0.0)).abs() < 1e-12);
+        assert!((hint_miss(1, 5, 2.0, 1) - 0.64).abs() < 1e-12);
     }
     /// Stop risk (IT's default choice ends the chain on some outcomes) is the exact mixture over where it stops.
     #[test]
@@ -2173,12 +2306,12 @@ mod tests {
         let r12 = stop_risk_code(&[(1, 1, 2), (2, 1, 2)], 3);          // ends on 1 of 2 outcomes at links 1 and 2
         let r2 = stop_risk_code(&[(2, 1, 2)], 3);
         assert_eq!(stop_risk_code(&[(2, 1, 2), (3, 1, 2)], 2), 0);     // links at or past the stop don't matter
-        let full = chain_marginals(&[(3, 3, 0)], 7.1)[&(3, 3, 0)].clone();
-        let alone = chain_marginals(&[(3, 3, r12)], 7.1)[&(3, 3, r12)].clone();
+        let full = chain_marginals(&[(3, 3, 0)])[&(3, 3, 0)].clone();
+        let alone = chain_marginals(&[(3, 3, r12)])[&(3, 3, r12)].clone();
         assert!((alone[0] - full[0]).abs() < 1e-15 && (alone[1] - 0.5 * full[1]).abs() < 1e-15 && (alone[2] - 0.25 * full[2]).abs() < 1e-15, "{alone:?}");
         // with a partner: 50% the deck is (full, full), 50% the risky card stops after link 2 and frees its slot
-        let mix = chain_marginals(&[(3, 3, 0), (3, 3, r2)], 7.1);
-        let a = chain_marginals(&[(3, 3, 0), (3, 3, 0)], 7.1); let b = chain_marginals(&[(3, 3, 0), (3, 2, 0)], 7.1);
+        let mix = chain_marginals(&[(3, 3, 0), (3, 3, r2)]);
+        let a = chain_marginals(&[(3, 3, 0), (3, 3, 0)]); let b = chain_marginals(&[(3, 3, 0), (3, 2, 0)]);
         for k in 0..3 { assert!((mix[&(3, 3, 0)][k] - (0.5 * a[&(3, 3, 0)][k] + 0.5 * b[&(3, 3, 0)][k])).abs() < 1e-15); }
         assert!((mix[&(3, 3, r2)][2] - 0.5 * a[&(3, 3, 0)][2]).abs() < 1e-15);
         assert!(mix[&(3, 3, 0)][2] > a[&(3, 3, 0)][2]);
@@ -2233,9 +2366,9 @@ mod tests {
         let r = stop_risk_code(&[(2, 1, 2)], 3);
         for ks in [vec![(3, 3, 0)], vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)], vec![(3, 2, 0), (3, 3, r), (4, 4, 0)], vec![(2, 2, 0); 6]] {
             let mut ks: Vec<Kind> = ks; ks.sort();
-            let st = chain_states(&ks, 7.1);
+            let st = chain_states(&ks);
             assert!((st.iter().map(|x| x.1).sum::<f64>() - 1.0).abs() < 1e-12);
-            let m = chain_marginals(&ks, 7.1);
+            let m = chain_marginals(&ks);
             for (i, kd) in ks.iter().enumerate() {
                 for l in 1..=kd.1 {
                     let p: f64 = st.iter().filter(|x| x.0[i] >= l).map(|x| x.1).sum();
@@ -2261,7 +2394,7 @@ mod tests {
         let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect(); let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
         for u in [0usize, 5, 20] {
             for q in [0.3, 0.75] {
-                let j = joint_trainee(&m, u, &[q], &[(a.clone(), (0, 0, 0)), (b.clone(), (0, 0, 0))], 0, 7.1, sj.targets.len());
+                let j = joint_trainee(&m, u, &[q], &[(a.clone(), (0, 0, 0)), (b.clone(), (0, 0, 0))], 0, sj.targets.len());
                 let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);
                 assert!((j[0].0 - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].0);
             }

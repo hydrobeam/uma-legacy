@@ -1,17 +1,37 @@
 """Independent check of the solver's exact landing odds (`joint_trainee` in deck.rs).
 
 For every deck result of a validation run, recompute P(all targets land) from the job, the card data and the
-reported decks and loops, jointly over the chain process (Poisson events, each advancing a random remaining chain
-slot, weight = links left, stop-risk mixture) and over each event's outcomes, and compare with the reported p_all.
-Written separately from the Rust code: final chain states by plain forward iteration, and the joint expectation by
-inclusion-exclusion over per-target "no gold" / "no hint" requirements. Training hints from one card are drawn
-jointly here (P(no hint for a set A) = (1 - |A|/opts)^h) and independently per target in the solver, so the two
-differ by that alone (well under 0.1% on the reference setups).
+reported decks and loops, jointly over the chain process (Binomial(21, 0.35) events, each advancing a random remaining
+chain slot, weight = links left, stop-risk mixture), over each event's outcomes and over one card's training draws
+(P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
+skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100)), and compare with the
+reported p_all. Written separately from the Rust code: final chain states by plain forward iteration, and the joint
+expectation by inclusion-exclusion over per-target "no gold" / "no hint" requirements.
 
 usage: uv run val/joint_check.py TAG        (val/TAG__*.out and val/TAGpu__*.out)"""
-import itertools, json, math, os, sys
+import functools, itertools, json, math, os, sys
 V = os.path.dirname(os.path.abspath(__file__)); S = os.path.dirname(V)
 GW, GG = 0.2 * 1.771561, 0.4 * 1.771561
+
+
+def draws_miss(k, n, t, cap):
+    """P(none of k given skills drawn in t draws over n, each uniform over the skills drawn fewer than cap times), by
+    recursion over the other skills' draw counts (sorted tuple; written independently of the solver's histogram DP)"""
+    @functools.lru_cache(None)
+    def go(st, t):
+        if t == 0: return 1.0
+        av = [i for i, c in enumerate(st) if c < cap]
+        if not av and not k: return 1.0
+        tot = 0.0
+        for i in av:
+            c = list(st); c[i] += 1; tot += go(tuple(sorted(c)), t - 1)
+        return tot / (len(av) + k)
+    return go(tuple([0] * (n - k)), t)
+
+
+def hint_miss(k, n, h, hinc):
+    cap = -(-5 // max(1, hinc)); t0 = math.floor(h); f = h - t0
+    return (1 - f) * draws_miss(k, n, t0, cap) + (f * draws_miss(k, n, t0 + 1, cap) if f else 0.0)
 
 
 def check(out, job, d):
@@ -22,7 +42,11 @@ def check(out, job, d):
         if gd: look[gd] = (g, 2)
     cards = {c['id']: c for c in rd(job['cards_file'])['cards']}
     db = rd(job.get('events_file', 'card_events.json'))['cards']
-    lam = job.get('lambda', 7.1)
+    # the solver's model, restated: chain events ~ Binomial(n, p); training draws h = base(scenario) x (1 + hf/100)
+    # over the card's skill options (nskill)
+    bn, bp = job.get('chain_events') or (21, 0.35)
+    base = {'gc': 2.08, 'ura': 1.60, 'trackblazer': 2.30, 'grandmasters': 2.30}.get(job.get('scenario', 'unity'), 2.70)
+    pmf = lambda e: math.comb(bn, e) * bp ** e * (1 - bp) ** (bn - e) if 0 <= e <= bn else 0.0
     unc = [t['group'] for t in job['targets'] if t.get('guaranteed', 0) != 2]
     nfix = len(job['targets']) - len(unc); K = len(unc)
     nm = lambda x: (x, 1.0) if isinstance(x, str) else (x[0], x[1])
@@ -51,7 +75,7 @@ def check(out, job, d):
 
     def card_src(cid, end, label):
         c = cards[cid]; e = db.get(str(cid), {})
-        tr = [unc.index(g) for g in c['whites'] if g in unc] if c['opts'] else []
+        tr = [unc.index(g) for g in c['whites'] if g in unc] if c['nskill'] else []
         fixed = []
         for n in e.get('always', []):
             if tk(n): fixed.append([(1.0, [tk(n)])])
@@ -80,9 +104,10 @@ def check(out, job, d):
                     for n, p in map(nm, names):
                         if tk(n): chain.setdefault(lk, []).append([(p, [tk(n)])])
             kind = (c['links'], stop, tuple(tuple(r) for r in e.get('stop_risk', []) if r[0] < stop and r[0] <= 4))
-        return dict(train=(tr, 1 + c['hf'] / 25, c['opts']), fixed=fixed, chain=chain, kind=kind)
+        return dict(train=(tr, base * (1 + c['hf'] / 100), c['nskill'], c.get('hinc', 1)), fixed=fixed, chain=chain, kind=kind)
 
-    names = {g: (w, gd) for g, w, gd in rd(job['skills_file'])['skills']}
+    skills_db = rd(job['skills_file'])
+    names = {g: (w, gd) for g, w, gd in skills_db['skills']}
     nm_of = lambda k, l: names[unc[k]][1] if l == 2 and names[unc[k]][1] else names[unc[k]][0]
 
     def grp_ok(groups, req):
@@ -105,11 +130,11 @@ def check(out, job, d):
             if w == 0: continue
             cur = {tuple([0] * n): 1.0}; e = 0
             while True:
-                pe = math.exp(-lam) * lam ** e / math.factorial(e)
+                pe = pmf(e)
                 nxt = {}
                 for s, p in cur.items():
                     ws = [(kinds[i][0] - s[i]) if s[i] < stops[i] else 0 for i in range(n)]
-                    if not sum(ws): res[s] = res.get(s, 0) + w * p * (1 - sum(math.exp(-lam) * lam ** x / math.factorial(x) for x in range(e))); continue
+                    if not sum(ws): res[s] = res.get(s, 0) + w * p * (1 - sum(pmf(x) for x in range(e))); continue
                     res[s] = res.get(s, 0) + w * p * pe
                     for i in range(n):
                         if ws[i]: t = list(s); t[i] += 1; t = tuple(t); nxt[t] = nxt.get(t, 0) + p * ws[i] / sum(ws)
@@ -128,9 +153,9 @@ def check(out, job, d):
             if req in memo: return memo[req]
             pr = 1.0
             for s in srcs:
-                tr, h, o = s['train']
+                tr, h, o, hinc = s['train']
                 n = sum(1 for k in tr if req[k] == 2)
-                if n: pr *= (1 - n / o) ** h
+                if n: pr *= hint_miss(n, o, h, hinc)
                 pr *= grp_ok(s['fixed'], req)
             tot = 0.0
             for st, p in dist.items():
@@ -158,11 +183,23 @@ def check(out, job, d):
     for top in out.get('top', []):
         lp = top['loop']; decks = top.get('decks') or [top['deck']] * 4
         pm = [deck_eval(dk) for dk in decks]
-        # trainee events that hint a target's white (job `trainee_hints`: chara id or outfit id, group, chance)
-        def ew(t):
-            ids = {lp['members'][t]['id']} | {o['id'] for o in lp['outfits'][t]['outfits']}
-            return [1 - math.prod(1 - h[2] for h in job.get('trainee_hints', []) if h[0] in ids and h[1] == g) for g in unc]
-        mine = sum(lineage(pm[L['t']], [s['outfit'] for s in L['skills']], L['q'], ew(L['t'])) for L in lp['detail']['lineages']) / 12
+        # each lineage at the trainee's best outfit, as the solver does: per outfit the targets it carries (and the job's
+        # `extra` / white guarantees), and the trainee events that hint a target's white (`trainee_hints`)
+        def options(t):
+            uid = lp['members'][t]['id']
+            outs = [o for o in skills_db['cards'].get(str(uid), []) if o[0] not in job.get('exclude_outfits', [])] or [[0, 'any', []]]
+            res = []
+            for o in outs:
+                lv = []
+                for i, g in enumerate(unc):
+                    l = max([x[1] for x in o[2] if x[0] == g] + [x[2] for x in job.get('extra', []) if x[0] == uid and x[1] == g] + [0])
+                    if job['targets'][[t_['group'] for t_ in job['targets']].index(g)].get('guaranteed', 0) == 1: l = max(l, 1)
+                    lv.append(l)
+                ids = {uid, o[0]}
+                ew = [1 - math.prod(1 - h[2] for h in job.get('trainee_hints', []) if h[0] in ids and h[1] == g) for g in unc]
+                res.append((lv, ew))
+            return res
+        mine = sum(max(lineage(pm[L['t']], lv, L['q'], ew) for lv, ew in options(L['t'])) for L in lp['detail']['lineages']) / 12
         worst = max(worst, abs(mine / lp['p_all'] - 1))
     return worst
 
