@@ -81,6 +81,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
+.btn:active { background: var(--accent-soft); border-color: var(--accent); }
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
 /* roster chips: three states */
@@ -95,7 +96,7 @@ input[type="search"] { width: 100%; }
 .ut[data-s="req"] .up::after { content: "must"; position: absolute; top: 4px; right: 4px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .04em; color: #fff; background: var(--req); border-radius: 999px; padding: 1px 6px; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
-.ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
+.ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
 /* the roster and card boxes scroll: their bottom edge fades while there is more below (main.js sets .more) */
 .roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
@@ -232,6 +233,9 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .err { color: var(--out); font-weight: 500; }
 .foot { max-width: 1320px; margin: 26px auto 0; color: var(--muted); font-size: 0.82rem; display: grid; gap: 6px; }
 .foot p { margin: 0; max-width: 90ch; }
+.foot .model { display: grid; gap: 6px; }
+.foot .model[open] summary { margin-bottom: 4px; }
+.intro { margin: 0; flex-basis: 100%; color: var(--muted); font-size: 0.95rem; max-width: 70ch; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
@@ -398,3 +402,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 @media (max-width: 400px) { .sched th.mh .hn { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .sched th.mh .av { margin: 0 auto; } }
 @media (max-width: 620px) { .swrow > b { flex: 1 0 100%; } }   /* phone: "X's deck" on its own line, then "swaps [card] → [card]" */
+/* phone: buttons, selects and search boxes at least 44 px high (touch); the portraits and cards are larger already */
+@media (max-width: 620px) {
+  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], .sugg button, .sortmenu button, .x, .rowbtn { min-height: 44px; }
+  .tgt .x { width: 44px; height: 44px; }
+  .mem .memb { min-height: 44px; }
+  .extras label { min-height: 44px; align-items: center; }
+  .extras input[type=checkbox] { margin: 0; }
+}

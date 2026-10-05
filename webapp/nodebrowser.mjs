@@ -257,7 +257,8 @@ const TESTS = {
     const tile = pg.locator('#cards .ct').first(); const img = await tile.evaluate(t => { t.__img = t.querySelector('img'); return !!t.__img; });
     await tile.click();
     check('toggling a card keeps its image element (no flicker)', img && await tile.evaluate(t => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false'));
-    check('the count line follows', /1 not owned/.test(await pg.locator('#c-count').innerText()), await pg.locator('#c-count').innerText());
+    const cnt = /^(\d+) of (\d+) listed cards owned$/.exec(await pg.locator('#c-count').innerText());
+    check('the count line follows ("N of M listed cards owned")', !!cnt && +cnt[1] === +cnt[2] - 1, await pg.locator('#c-count').innerText());
     await tile.click();
     // R cards are off by default: the R section holds only the R pals until they are switched on
     const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
@@ -456,6 +457,9 @@ const TESTS = {
   async phone(b) {
     const pg = await open(b, { w: 390, h: 844, mobile: true });
     check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
+    const small = await pg.evaluate(() => [...document.querySelectorAll('.rail button, .rail select, .rail input[type=search], #rhead button, #rhead select, .loop .lacts button, .mem .memb')]
+      .filter(e => e.offsetParent && !e.closest('.roster, .cards')).map(e => [e.id || e.className || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 44));
+    check('phone: buttons, selects and search boxes are at least 44 px high', !small.length, JSON.stringify(small.slice(0, 6)));
     // results first: above the settings, and first in the document (reading and Tab order), the result in the first screen
     const order = await pg.evaluate(() => { const c = document.getElementById('rcol'), r = document.querySelector('.rail'), o = document.querySelector('#results .loop .odds').getBoundingClientRect();
       return { above: c.getBoundingClientRect().top < r.getBoundingClientRect().top, dom: !!(c.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING), odds: Math.round(o.bottom), h: innerHeight }; });
@@ -510,6 +514,7 @@ const TESTS = {
     const done = () => pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
     await pg.goto(URL); await done(); const all = await odds(pg);
     await pg.click('#c-none'); await pg.click('#c-borrow'); await pg.waitForTimeout(700); await done();
+    check('None owned: the count says "0 of N listed cards owned"', /^0 of \d+ listed cards owned$/.test(await pg.locator('#c-count').innerText()), await pg.locator('#c-count').innerText());
     const job = await pg.evaluate(() => window.__jobs.at(-1));
     check('None owned + no borrowing: the job allows no card and the odds drop', job.owned_cards.length === 1 && job.owned_cards[0] === 0 && !job.borrow && (await odds(pg)) !== all, (await odds(pg)) + ' vs ' + all);
     await ctx.close();

@@ -46,8 +46,9 @@ export function renderCards() {
   cardCount();
 }
 function cardCount() {
-  const shown = $('cards').querySelectorAll('.ct').length, allOff = Object.values(state.cardsOff).filter(v => v === false).length;
-  $('c-count').textContent = `${shown} cards listed` + (allOff ? ` · ${allOff} not owned` : ' · all owned');
+  // the cards listed (those that give a target, and pals) and how many of them are owned
+  const cs = [...$('cards').querySelectorAll('.ct')], own = cs.filter(c => c.getAttribute('aria-pressed') === 'true').length;
+  $('c-count').textContent = `${own} of ${cs.length} listed cards owned`;
 }
 export function initCards() {
   sortMenu('cs', 'c', () => renderCards());
