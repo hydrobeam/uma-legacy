@@ -137,10 +137,14 @@ for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), (
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
 assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
+# the logo: the favicon's three sparkles inline in the title (gradient ids prefixed so they can't clash)
+LOGO = re.sub(r'\bid="g(\d)"', r'id="lg\1"', open(os.path.join(H, 'icons', 'favicon.svg')).read()).replace('url(#g', 'url(#lg')
+LOGO = LOGO.replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="false" ', 1).strip()
+html = html.replace('__LOGO__', LOGO, 1)
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__VERSION__', VERSION), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads))]: about = about.replace(k, v, 1)
+for k, v in [('__VERSION__', VERSION), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))

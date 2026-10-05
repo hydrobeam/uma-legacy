@@ -35,6 +35,9 @@ header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: w
 .tnav { margin-left: auto; }
 .tnav a { font-weight: 600; color: var(--accent); }
 header.top h1 a.home { color: inherit; text-decoration: none; }
+/* the brand: the favicon's sparkles, then "uma-legacy" */
+h1.brand, h1.brand a.home { display: inline-flex; align-items: center; gap: 0.3em; }
+h1.brand .logo { width: 1.25em; height: 1.25em; flex: none; }
 /* the "How this works" page */
 .about { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; line-height: 1.6; }
 .about h2 { margin: 0 0 12px; font-size: 1.6rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
