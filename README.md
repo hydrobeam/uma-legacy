@@ -20,7 +20,7 @@ The page is built from `webapp/index.template.html` (markup), `webapp/src/` (sty
 
    **8/8 example** loads the 8-skill set used in our runs, with the scenario's guaranteed golds.
 4. **Lineage rank** (in Game data, next to the scenario). Star mix of the sparks on your legacies: *Below SS* (rank score 6,500–17,499, stars 50/45/5%) or *SS* (17,500+, 20/70/10%), from hakuraku.moe's room-match data. An Independent Training veteran reaches SS only if you spend nearly all its skill points. Picking a scenario sets its usual rank: SS for Grand Concert (79% of uma-it runs reach 17,500 with every skill point spent) and Grand Masters (no data; assumed), below SS for URA Finale (0%), Unity Cup (47%) and Trackblazer (0%). Change it afterwards if yours differs.
-5. **Results** update by themselves: any change starts a new search after a short pause (a change during a search restarts it). For each loop you get:
+5. **Results** update by themselves: any change starts a new search after a short pause (a change during a search restarts it). The status line above them says what is going on (searching, done, or what keeps the settings from being searched, with the button that fixes it); **Stop** there ends a long search and keeps the results on screen. On a wide screen the results stay in view while you edit the settings; on a phone they come first, and the button at the bottom of the screen takes you back to them. **Results to show** (in the status line) gives up to three, numbered; one with #1's loop says so instead of repeating the umas, and the cards its deck has that #1's lacks are marked *new*. For each loop you get:
    - odds that all targets land, and all but one;
    - runs for a 90% chance;
    - each uma's outfit and the targets it covers;
