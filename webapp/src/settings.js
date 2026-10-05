@@ -5,7 +5,7 @@
 // reloads the page with the other data set.
 export const SKEY = 'llp:settings', SV = 2;
 export const PER_ERA = ['roster', 'outfits', 'cardsOff'];
-export const COMMON = ['targets', 'rank', 'zephyr', 'borrow', 'decksTop', 'perUma', 'rand', 'rcards', 'scen', 'rsort', 'rdir', 'csort', 'cdir'];
+export const COMMON = ['targets', 'rank', 'borrow', 'decksTop', 'perUma', 'rand', 'rcards', 'scen', 'rsort', 'rdir', 'csort', 'cdir'];
 export const SETTINGS = [...COMMON, ...PER_ERA];   // exported and imported (older exports may carry more keys; those are ignored)
 function migrate() {   // from the per-key layout (llp:<key>, llp:gm:<key>, llp:era) and its one-time fixes
   const raw = (k) => { try { return localStorage.getItem(k); } catch { return null; } };

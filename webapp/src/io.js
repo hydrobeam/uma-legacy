@@ -52,7 +52,7 @@ export function initIO() {
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
-      paintRank(); $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
+      paintRank(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
       $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }

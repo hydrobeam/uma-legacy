@@ -77,5 +77,4 @@ export function initTargets() {
   });
   document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
   $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ group: t.group, guaranteed: 0 })); scenarioGolds(null, state.scen); save(); renderTargets(); };
-  $('x-zephyr').checked = state.zephyr; $('x-zephyr').onchange = (e) => { state.zephyr = e.target.checked; save(); };
 }
