@@ -370,7 +370,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 /* deck cards are their art alone (click for name and ownership); without art the name shows */
 .dc .cav.art { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; box-shadow: none; }
 .dc.bor { position: relative; container-type: inline-size; }   /* cqw = card width = the square image's height */
-.dc.bor:has(.cav.art) { margin-bottom: 12px; }   /* room for the frame's band under the art */
+.dc.bor:has(.cav.art) .cav.art { margin-bottom: 12px; }   /* room for the frame's band under the art, above any caption */
 .dc.bor .cav.art { background: #ff669f; border-radius: 0; }   /* square, the frame's pink behind the art's transparent rounded corners: no gap */
 /* The friend frame (80x120 9-slice: ~10 px pink on top, 8 on the sides, 45 at the bottom around a rounded hole) sits
    around the art: 3 px of pink outside the top and sides, a 12 px band below, and the hole's transparent rounded
@@ -404,11 +404,27 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .sw input:checked { background: var(--req); }
 .sw input:checked::after { transform: translateX(14px); }
 .sw input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dodds { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); }
-.dodds .dsk { display: inline-flex; align-items: center; gap: 4px; }
-.dodds .dsk .sic { width: 18px; height: 18px; margin: 0; vertical-align: 0; flex: none; }
-.dodds b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
-.dodds .dlab { color: var(--ink); font-weight: 600; }
+/* hint odds: a small frame opened by the (i) button, one tile per hint (icon, bar, percentage) */
+.dtitle { display: inline-flex; align-items: center; gap: 8px; }
+.oinfo { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 1px solid var(--accent); background: var(--panel); color: var(--accent);
+  font: italic 700 0.8rem/1 Georgia, serif; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
+.oinfo[aria-expanded="true"] { background: var(--accent); color: var(--panel); }
+.oinfo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dodds { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 8px 16px; font-size: 0.8rem; color: var(--muted);
+  border: 1px solid var(--line); background: var(--bg); padding: 8px 10px; }
+.dodds[hidden] { display: none; }
+.dodds .dlab { grid-column: 1 / -1; color: var(--muted); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.dodds .dsk { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "ic nm pc" "ic bar bar"; align-items: center; gap: 2px 6px; }
+.dodds .dsk .sic { grid-area: ic; width: 20px; height: 20px; margin: 0; vertical-align: 0; }
+.dodds .dnm { grid-area: nm; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dodds .dsk > b { grid-area: pc; }
+.dodds .dbar { grid-area: bar; height: 5px; background: var(--line); overflow: hidden; }
+.dodds .dbar > span { display: block; height: 100%; background: var(--accent); }
+.dodds .dsk.g .dbar > span { background: var(--gold); }
+.dodds b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.swrow > .oinfo { min-height: 0; align-self: center; display: inline-grid; }
+.swho { display: inline-flex; gap: 4px; }
+.swho .av { border-radius: 50%; }
 /* phone: the nested paddings (body, loop, deck) left 39 px per card and a 560 px table in a 306 px box */
 @media (max-width: 620px) {
   .loop { padding: 12px; }

@@ -85,6 +85,15 @@ const TESTS = {
     // the deck's odds per target: each with its skill icon, the white named (no "any hint"), no lead text
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length, text: l.innerText }; });
     check('deck odds: a skill icon on every entry, no "any hint" or lead text', dd.n > 0 && dd.icons === dd.n && !/any hint|every run/i.test(dd.text), JSON.stringify(dd));
+    // the odds sit in a frame the (i) button opens; a swap row names its uma by her character icon
+    const oi = pg.locator('#results .loop .deck .oinfo').first();
+    check('deck odds start closed', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
+    await oi.click();
+    check('(i) opens the deck odds (aria-expanded, names and percentages)', (await oi.getAttribute('aria-expanded')) === 'true' && await pg.evaluate(() => { const o = document.querySelector('#results .loop .dodds'); return !o.hidden && o.querySelectorAll('.dnm').length > 0 && /\d+%/.test(o.innerText); }));
+    await oi.click();
+    check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
+    const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.title, shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
+    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && /deck/.test(x.label) && x.shown === ''), JSON.stringify(sw));
     const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
     // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)

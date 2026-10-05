@@ -36,14 +36,19 @@ function loopCard(l, meta, ctx) {
     // per target the deck can hint: the gold's odds, then the white's (a gold hint counts for the white too, so the
     // white's number is the chance of at least the white): the two numbers the landing odds depend on; each with its icon
     const icon = (g, gold) => { const i = skillIcon(g, gold); return i ? i.outerHTML : ''; };
-    const oddsOf = (d) => { const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
+    // shown on demand (the (i) button by the deck's title): one tile per hint: icon, name and percentage over a bar
+    // (the icons alone don't tell skills apart: the game draws one icon per effect type)
+    const oddsOf = (d) => { const tile = (g, gold, name, p, tip) => { const pc = Math.round(p * 100);
+        return `<span class="dsk${gold ? ' g' : ''}" title="${esc(tip || name)}: ${pc}%">${icon(g, gold)}<span class="dnm">${esc(name)}</span><span class="dbar" aria-hidden="true"><span style="width:${pc}%"></span></span><b>${pc}%</b></span>`; };
+      const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
         const h = 1 - (1 - o.white) * (1 - o.gold), parts = [];
-        if (o.gold > 0.005) parts.push(`<span class="dsk">${icon(o.group, true)}${esc(s.gd || s.w)} <b>${Math.round(o.gold * 100)}%</b></span>`);
-        if (h - o.gold > 0.005) parts.push(`<span class="dsk" title="${o.gold > 0.005 ? esc(s.w) + ' or its gold' : ''}">${icon(o.group, false)}${esc(s.w)} <b>${Math.round(h * 100)}%</b></span>`);
+        if (o.gold > 0.005) parts.push(tile(o.group, true, s.gd || s.w, o.gold));
+        if (h - o.gold > 0.005) parts.push(tile(o.group, false, s.w, h, o.gold > 0.005 ? s.w + ' or its gold' : ''));
         return parts.join(''); }).join('');
-      return odds ? `<div class="dodds"><span class="dlab">Hint odds from this deck:</span>${odds}</div>` : '<div class="dodds">This deck gives none of the targets.</div>'; };
+      return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
+    const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
     const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
-      dk.innerHTML = `<div class="row between"><b>${title}</b>${ref && [...d.cards].some(c => !refCards.has(c)) ? '<span class="hint"><span class="dnew">new</span> not in #1’s deck</span>' : ''}</div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci, true)).join('')}</div>` + oddsOf(d);
+      dk.innerHTML = `<div class="row between"><span class="dtitle"><b>${title}</b>${info}</span>${ref && [...d.cards].some(c => !refCards.has(c)) ? '<span class="hint"><span class="dnew">new</span> not in #1’s deck</span>' : ''}</div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci, true)).join('')}</div>` + oddsOf(d);
       return dk; };
     if (same) card.appendChild(block(meta.deck, D ? 'Deck for all four' : 'Deck'));
     else {
@@ -53,13 +58,18 @@ function loopCard(l, meta, ctx) {
       const seen = new Set();
       M.forEach((m, k) => { if (key(D[k]) === key(meta.deck) || seen.has(key(D[k]))) return; seen.add(key(D[k]));
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
-        const whoT = who.length === 1 ? `${esc(who[0])}’s deck` : `The deck for ${who.map(esc).join(', ')}`; const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
+        // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
+        const whoT = who.length === 1 ? `${who[0]}’s deck` : `The deck for ${who.join(', ')}`;
+        const faces = M.map((x, j) => [x, j]).filter(([, j]) => key(D[j]) === key(d)).map(([x, j]) => { const of = l.outfits[j].outfits; return umaAv(x.id, of.length === 1 ? of[0].id : null, 40).outerHTML; }).join('');
+        const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
-        dk.innerHTML = `<div class="swrow"><b>${whoT}</b><span class="swt">swaps</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span></div>` + oddsOf(d);
+        dk.innerHTML = `<div class="swrow"><span class="swho" title="${esc(whoT)}">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">swaps</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
+          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${info}</div>` + oddsOf(d);
         card.appendChild(dk); });
     }
+    card.querySelectorAll('.deck .oinfo').forEach(b => b.onclick = () => { const o = b.closest('.deck').querySelector('.dodds');
+      o.hidden = !o.hidden; b.setAttribute('aria-expanded', String(!o.hidden)); });
     card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); });
   }
   let mem;
