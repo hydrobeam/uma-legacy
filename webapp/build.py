@@ -103,32 +103,6 @@ def era(dirp, events_file):
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'hints': js(hints)}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year dates are added by the page's toggle
-def skill_text():
-    """{group: [white, gold]} for both eras' catalogs, each [game description, GameTora's plain-English condition, SP
-    cost] or null: a skill's details panel. Skill ids from master.mdb skill_data (white: the group's lowest rarity, gold:
-    rarity 2, as images.py picks the icons; Global first, then JP). The description is the game's own (Global text_data
-    category 48; GameTora's desc_en for JP-only skills); condition and cost from the cached GameTora skill list, which
-    lists an inherited unique (9xxxxx) only as its original (1xxxxx): its condition is taken from there, its cost left
-    out (the inherited version costs differently). Without master.mdb, empty."""
-    gts = sorted(glob.glob(os.path.join(P, 'gametora', 'skills.*.json')))
-    gt = {x['id']: x for x in json.load(open(gts[-1]))} if gts else {}
-    cons = [sqlite3.connect(f'file:{m}?mode=ro', uri=True) for m in (os.path.join(P, 'export', 'master.mdb'), os.path.join(J, 'export', 'master.mdb')) if os.path.exists(m)]
-    groups = sorted({g for e in (P, J) for g, _, _ in json.load(open(os.path.join(e, 'web_skills.json')))['skills']})
-    def one(sql, g):
-        for ci, con in enumerate(cons):
-            row = con.execute(sql, (g,)).fetchone()
-            if not row: continue
-            i = row[0]; x = gt.get(i) or gt.get(i - 800000) or {}   # an inherited unique (9xxxxx): GameTora lists the original
-            desc = con.execute('select text from text_data where category = 48 and "index" = ?', (i,)).fetchone() if ci == 0 else None
-            desc = desc[0] if desc else x.get('desc_en')
-            if desc or x: return [desc or '', x.get('endesc') or '', x.get('cost') if i in gt else None]
-        return None
-    out = {}
-    for g in groups:
-        v = [one('select id from skill_data where group_id = ? order by rarity, id limit 1', g), one('select id from skill_data where group_id = ? and rarity = 2 order by id limit 1', g)]
-        if v[0] or v[1]: out[g] = v
-    return out
-SKILL_TEXT = skill_text()
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
@@ -145,7 +119,7 @@ except Exception: VERSION = 'unknown'
 # the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
 ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': fingerprint('engine-global.json', G['engine']), 'gm': fingerprint('engine-gm.json', M['engine'])},
-          'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE, 'skillText': fingerprint('skills.json', js(SKILL_TEXT))}
+          'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE}
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
 # it (its own @font-face rule; the woff2 only, fingerprinted); anything else (symbols, the JP era's untranslated names)
 # falls back to the system font per glyph. The UI font's 400 and 700 are preloaded.

@@ -3,7 +3,7 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, HINTS, ASSETS, EXAMPLE } from './data.js';
+import { CARDS, UMAS, HINTS, ASSETS, EXAMPLE, SCEN_GOLDS } from './data.js';
 import { state, ui, writeSaved, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
@@ -134,7 +134,8 @@ function buildJob() {
   const require = UMAS.filter(isRequired).map(u => u.id);
   // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
   const extra = [[1003, 20190, 1]]; if (state.zephyr) extra.push([1078, 20165, 1]);
-  const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
+  const sg = SCEN_GOLDS[state.scen || 'unity'] || [];   // guaranteed outside the deck: the scenario's golds only
+  const targets = state.targets.map(t => ({ group: t.group, guaranteed: sg.includes(t.group) ? 2 : 0 }));
   const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
   // the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
   const owned_cards = offN ? (offN === CARDS.length ? [0] : CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id)) : [];

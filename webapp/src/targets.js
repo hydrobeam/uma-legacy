@@ -14,24 +14,23 @@ export function scenarioGolds(from, to) {
     else if (was.includes(t.group) && t.guaranteed === 2) t.guaranteed = 0;
   }
 }
-// one compact row per target: icon and name (with its gold when the gold is guaranteed), what is guaranteed outside
-// the deck (one column header for every row), remove. focus: after a removal, the row index whose remove button gets
-// the focus (the next row's, else the last row's, else the add box), so the keyboard doesn't fall back to the page top
+// What is guaranteed outside the deck follows the scenario alone (Unity Cup's golds); everything else the search
+// works out itself (outfits, decks, events), so the player doesn't set it. Fixes saved hand-set values too.
+export function scenGuarantees() { const g = SCEN_GOLDS[state.scen || 'unity'] || []; for (const t of state.targets) t.guaranteed = g.includes(t.group) ? 2 : 0; }
+// one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
+// remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
+// row's, else the add box), so the keyboard doesn't fall back to the page top
 export function renderTargets(focus = null) {
   const box = $('targets'); box.textContent = '';
-  $('t-head').hidden = !state.targets.length;
+  scenGuarantees();
   state.targets.forEach((t, i) => {
     const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
-    const el = document.createElement('div'); el.className = 'tgt';
-    el.innerHTML = `<span class="name"></span><select data-k="guaranteed"><option value="0">None</option><option value="1">White</option>${s.gd ? '<option value="2">Gold</option>' : ''}</select>` +
-      `<button class="x" type="button">×</button>`;
+    const el = document.createElement('div'); el.className = 'tgt'; el.id = 'g-' + t.group; el.dataset.g = String(t.guaranteed || 0);
+    el.innerHTML = `<span class="name"></span><button class="x" type="button">×</button>`;
     const nm = el.querySelector('.name');
-    const paint = () => { nm.textContent = '';
-      const ic = skillIcon(t.group, t.guaranteed === 2); if (ic) nm.appendChild(ic);
-      nm.append(s.w); if (t.guaranteed === 2 && s.gd) { const g = document.createElement('span'); g.className = 'tg'; g.textContent = ' → ' + s.gd; nm.appendChild(g); } };
-    paint();
-    const sel = el.querySelector('select'); sel.value = String(t.guaranteed || 0); sel.id = 'g-' + t.group; sel.setAttribute('aria-label', s.w + ': guaranteed outside the deck');
-    sel.onchange = () => { t.guaranteed = +sel.value; paint(); save(); };
+    const ic = skillIcon(t.group, t.guaranteed === 2); if (ic) nm.appendChild(ic);
+    nm.append(s.w); if (t.guaranteed === 2 && s.gd) { const g = document.createElement('span'); g.className = 'tg'; g.textContent = ' → ' + s.gd; g.title = 'Guaranteed by the scenario'; nm.appendChild(g); }
+    nm.title = s.w + (t.guaranteed === 2 && s.gd ? ' → ' + s.gd + ' (guaranteed by the scenario)' : '');
     const x = el.querySelector('.x'); x.setAttribute('aria-label', 'Remove ' + s.w); x.title = 'Remove ' + s.w;
     x.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
     box.appendChild(el);

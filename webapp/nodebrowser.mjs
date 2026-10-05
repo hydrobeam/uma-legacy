@@ -111,14 +111,14 @@ const TESTS = {
     await pickScen(pg, 'ura'); await settle(pg);
     check('scenario switch searches again with the URA job', await pg.evaluate((n) => window.__runs.length > n && window.__runs.at(-1).scenario === 'ura', n0));
     // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the 8/8 example takes them too
-    check('URA drops the Unity golds', (await pg.inputValue('#g-20049')) === '0' && (await pg.inputValue('#g-20046')) === '0');
+    check('URA drops the Unity golds', (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0');
     await pg.click('#t-preset');
-    check('8/8 example under URA: eight targets, no guaranteed golds', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.inputValue('#g-20049')) === '0');
+    check('8/8 example under URA: eight targets, no guaranteed golds', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#g-20049', 'data-g')) === '0');
     await settle(pg);
     await pg.reload(); await settle(pg);
     check('scenario survives a reload', (await scen(pg)) === 'ura' && (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: URA Finale');
     await pickScen(pg, 'unity');
-    check('Unity Cup marks No Stopping Me! and It\'s On! as guaranteed golds', (await pg.inputValue('#g-20049')) === '2' && (await pg.inputValue('#g-20046')) === '2');
+    check('Unity Cup marks No Stopping Me! and It\'s On! as guaranteed golds', (await pg.getAttribute('#g-20049', 'data-g')) === '2' && (await pg.getAttribute('#g-20046', 'data-g')) === '2');
     await settle(pg);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
@@ -301,14 +301,9 @@ const TESTS = {
     check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
     await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape');
     check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));
-    // an outfit skill under a member: its icon, and a panel with the game's description and why she has it
+    // an outfit skill under a member: its icon, a plain label (no panel)
     const sp = pg.locator('.loop').first().locator('.mem .spark').first();
-    check('outfit skill shows its skill icon', (await sp.locator('img.sic').count()) === 1);
-    await sp.click(); await pg.waitForFunction(() => !/Loading/.test(document.querySelector('.cpop').textContent));
-    const sx = await pg.locator('.cpop').innerText();
-    check('outfit skill panel: name, description, why she has it', sx.includes((await sp.innerText()).trim()) && /velocity|stamina|speed|position|maneuver|recover|acceler/i.test(sx) && /own skill list/.test(sx), sx.slice(0, 120));
-    await pg.keyboard.press('Escape');
-    check('Escape closes the skill panel and returns the focus', await pg.evaluate(() => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('spark')));
+    check('outfit skill shows its skill icon, not clickable', (await sp.locator('img.sic').count()) === 1 && await sp.evaluate(e => e.tagName === 'SPAN'));
     const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1); await mb.click(); await pg.waitForTimeout(100);
     check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
     await pg.locator('.cpop .sw').click(); await pg.waitForTimeout(100);
@@ -328,10 +323,12 @@ const TESTS = {
     // the target list by keyboard: removing keeps the focus in the list, the add box takes Enter and the arrows
     const pg = await open(b);
     const skl = await json(pg, 'data-skills'), gold = (g) => skl.find(x => x[0] === g)[2], white = (g) => skl.find(x => x[0] === g)[1];
-    check('one column header for "Guaranteed outside the deck", one line per target', (await pg.locator('#t-head').innerText()).includes('Guaranteed outside the deck')
-      && !(await pg.locator('#targets').innerText()).includes('Guaranteed outside'));
-    await pg.selectOption('#g-20159', '2');
-    check('a target guaranteed as Gold shows "white → gold"', (await pg.locator('#targets .tgt').first().innerText()).includes(white(20159) + ' → ' + gold(20159)), await pg.locator('#targets .tgt').first().innerText());
+    // guarantees follow the scenario (no per-target control); the add box sits above the list, two targets per row
+    const lay = await pg.evaluate(() => { const t = [...document.querySelectorAll('#targets .tgt')].map(e => e.getBoundingClientRect());
+      return { selects: document.querySelectorAll('#targets select').length, head: !!document.getElementById('t-head'), rows: new Set(t.map(r => Math.round(r.top))).size, n: t.length,
+        addFirst: document.getElementById('t-add').getBoundingClientRect().bottom <= Math.min(...t.map(r => r.top)) }; });
+    check('targets: no guaranteed selector or column header, add box first, two per row', lay.selects === 0 && !lay.head && lay.addFirst && lay.rows === Math.ceil(lay.n / 2), JSON.stringify(lay));
+    check('a gold the scenario guarantees shows "white → gold"', (await pg.locator('#g-20049').innerText()).includes(white(20049) + ' → ' + gold(20049)), await pg.locator('#g-20049').innerText());
     await pg.locator('#targets .x').nth(2).focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(100);
     check('removing a target by keyboard moves the focus to the next remove button', (await pg.locator('#targets .tgt').count()) === 7
       && await pg.evaluate(() => document.activeElement.classList.contains('x') && [...document.querySelectorAll('#targets .x')].indexOf(document.activeElement) === 2));
@@ -586,10 +583,10 @@ const TESTS = {
     await pg.click('#era-gm'); await pg.waitForLoadState('load'); await settle(pg);
     check('switching to the GM era selects Grand Masters', (await pg.getAttribute('#x-scen', 'data-value')) === 'grandmasters' && (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     check('the GM-era search runs with Grand Masters', /Searched/.test(await note(pg)) && await pg.evaluate(() => window.__runs.length > 0 && window.__runs.at(-1).scenario === 'grandmasters'));
-    check('Grand Masters gives no guaranteed golds', (await pg.inputValue('#g-20049')) === '0' && (await pg.inputValue('#g-20046')) === '0');
+    check('Grand Masters gives no guaranteed golds', (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0');
     await pg.click('#era-global'); await pg.waitForLoadState('load'); await settle(pg);
     check('back on Global: Unity Cup with its golds, rank below SS', (await pg.getAttribute('#x-scen', 'data-value')) === 'unity' && (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05'
-      && (await pg.inputValue('#g-20049')) === '2' && await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
+      && (await pg.getAttribute('#g-20049', 'data-g')) === '2' && await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -644,7 +641,7 @@ const TESTS = {
     const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
       localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { scen: 'grandmasters', rank: '0.20,0.70,0.10', targets: [{ group: 20049, guaranteed: 0 }, { group: 20046, guaranteed: 0 }, { group: 20159, guaranteed: 0 }] }, global: {}, gm: {} })); } catch {} } });
     check('Grand Masters saved, Global data active: Unity Cup is used (its golds and rank)', (await p3.getAttribute('#x-scen', 'data-value')) === 'unity'
-      && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' && (await p3.inputValue('#g-20049')) === '2');
+      && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' && (await p3.getAttribute('#g-20049', 'data-g')) === '2');
     await p3.context().close();
     check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     await p2.context().close();

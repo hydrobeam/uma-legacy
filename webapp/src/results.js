@@ -17,7 +17,7 @@ function loopCard(l, meta, ctx) {
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
   const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
   card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>
-    <span class="sub">${n > 1 ? `at least ${n - 1} of ${n}: <span class="num">${fmtIn(l.p_minus1)}</span> · ` : ''}90% sure within <span class="num">${runs90(l.p_all)}</span> runs</span>${ctx.proven ? '<span class="badge" title="The search ranks decks and loops by multiplying each target&#39;s odds; nothing can beat this one on that ranking, given the race schedules found for the loops it solved. The odds shown are exact for the model.">Proven best</span>' : ''}</div>`;
+    <span class="sub">${n > 1 ? `at least ${n - 1} of ${n}: <span class="num">${fmtIn(l.p_minus1)}</span> · ` : ''}90% sure within <span class="num">${runs90(l.p_all)}</span> runs</span></div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
@@ -60,7 +60,7 @@ function loopCard(l, meta, ctx) {
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
         const whoT = who.length === 1 ? `${who[0]}’s deck` : `The deck for ${who.join(', ')}`;
-        const faces = M.map((x, j) => [x, j]).filter(([, j]) => key(D[j]) === key(d)).map(([x, j]) => { const of = l.outfits[j].outfits; return umaAv(x.id, of.length === 1 ? of[0].id : null, 40).outerHTML; }).join('');
+        const faces = M.map((x, j) => [x, j]).filter(([, j]) => key(D[j]) === key(d)).map(([x, j]) => { const of = l.outfits[j].outfits; return umaAv(x.id, of.length === 1 ? of[0].id : null, 64).outerHTML; }).join('');
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
@@ -88,10 +88,9 @@ function loopCard(l, meta, ctx) {
       const sk = d.querySelector('.sk');
       if (o.covers.length) { const cap = document.createElement('span'); cap.className = 'skl'; cap.textContent = 'On her outfit:'; sk.appendChild(cap);
  }
-      // each a button (icon + name) opening the skill's details (popover.js)
-      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('button'); sp.type = 'button';
-        sp.className = 'spark' + (c.level === 2 ? ' g' : ''); sp.dataset.group = c.group; sp.dataset.level = c.level;
-        sp.setAttribute('aria-haspopup', 'dialog'); sp.setAttribute('aria-expanded', 'false');
+      // each its icon and name
+      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('span');
+        sp.className = 'spark' + (c.level === 2 ? ' g' : '');
         const ic = skillIcon(c.group, c.level === 2); if (ic) sp.appendChild(ic);
         sp.append(c.level === 2 ? (s.gd || s.w) : s.w); sk.appendChild(sp); }
       mem.appendChild(d);
