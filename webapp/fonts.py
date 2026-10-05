@@ -20,6 +20,7 @@ FONTS = [('Zen Kaku Gothic New', 400, 'zenkakugothicnew/ZenKakuGothicNew-Regular
          ('IBM Plex Mono', 600, 'ibmplexmono/IBMPlexMono-SemiBold')]
 LICENSES = {'OFL-ZenKakuGothicNew.txt': 'zenkakugothicnew', 'OFL-IBMPlexMono.txt': 'ibmplexmono'}
 BASE = [(0x20, 0x7e), (0xa0, 0xff), (0x2010, 0x2027), (0x2030, 0x205e), (0x2190, 0x21ff)]
+CJK_BLOCKS = 'U+3000-30FF,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FF00-FFEF'   # CJK punctuation, kana, kanji, fullwidth forms
 cjk = lambda c: 0x2e80 <= c <= 0x9fff or 0xf900 <= c <= 0xfaff or 0xff00 <= c <= 0xffef
 
 
@@ -63,7 +64,10 @@ def main():
             out = os.path.join(OUT, f'{short}-{w}-{part}.woff2')
             subprocess.run([sys.executable, '-m', 'fontTools.subset', src, '--unicodes=' + ranges(cps), '--flavor=woff2', '--layout-features=*',
                             '--no-hinting', '--desubroutinize', '--output-file=' + out], check=True)
-            manifest.append({'family': fam, 'weight': w, 'file': os.path.basename(out), 'range': ranges(cps), 'preload': short == 'zen' and part == 'latin' and w in (400, 700)})
+            # range: what the page declares (the CJK file by Unicode block: a short rule, fetched only when such text is
+            # shown, a character missing from it falls back per glyph); cover: exactly what the file holds (build check)
+            manifest.append({'family': fam, 'weight': w, 'file': os.path.basename(out), 'range': CJK_BLOCKS if part == 'cjk' else ranges(cps),
+                             'cover': ranges(cps), 'preload': short == 'zen' and part == 'latin' and w in (400, 700)})
             print(f'{os.path.basename(out):24s} {os.path.getsize(out) / 1e3:6.1f} KB')
     json.dump({'chars': sorted(chars), 'fonts': manifest}, open(os.path.join(OUT, 'fonts.json'), 'w'), separators=(',', ':'))
 

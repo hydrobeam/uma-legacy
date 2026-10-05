@@ -130,7 +130,7 @@ os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Op
 for name in ('OFL-ZenKakuGothicNew.txt', 'OFL-IBMPlexMono.txt'): shutil.copyfile(os.path.join(H, 'fonts', name), os.path.join(DIST, 'licenses', name))
 # every character the page can show should be in a font subset (else the browser falls back to a system font)
 def _covered(rng): return [tuple(int(x, 16) for x in r[2:].split('-')) if '-' in r else (int(r[2:], 16),) * 2 for r in rng.split(',')]
-cover = [iv for f in FM['fonts'] if f['family'].startswith('Zen') for iv in _covered(f['range'])]
+cover = [iv for f in FM['fonts'] if f['family'].startswith('Zen') for iv in _covered(f.get('cover', f['range']))]
 missing = sorted({c for c in html + gm_ui if ord(c) > 0x7e and ord(c) not in (0xfe0e, 0xfe0f) and not any(a <= ord(c) <= b for a, b in cover)})
 if missing: print(f'warning: {len(missing)} characters not in the font subsets (rerun uv run webapp/fonts.py): {"".join(missing[:40])}')
 css = '\n'.join(faces) + '\n' + css
