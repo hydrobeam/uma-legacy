@@ -2,10 +2,12 @@
 // Node + Playwright (local or global install). LLP_SHOTS=dir saves pictures of the scenario button and picker there.
 //   node webapp/nodebrowser.mjs                 every test, Chromium and Firefox
 //   node webapp/nodebrowser.mjs chromium roster only the named browsers / tests (any order)
-// Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
+// Both browsers run at once, each with LLP_JOBS test groups in parallel (default 4; LLP_JOBS=1 runs them one by one);
+// a group's lines print together when it ends. Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
 // update does not break the suite; the one fixed number is the Global default search (1 in 139, R cards off, Unity Cup).
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
+import { AsyncLocalStorage } from 'async_hooks';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { serveDist } from './serve.mjs';
@@ -20,7 +22,9 @@ catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('pla
 const argv = process.argv.slice(2);
 const BROWSERS = ['chromium', 'firefox'].filter(b => !argv.some(a => ['chromium', 'firefox'].includes(a)) || argv.includes(b));
 let failed = 0, passed = 0;
-const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; console.log(`${ok ? '  ok  ' : '  FAIL'} ${name}${detail ? ' · ' + detail : ''}`); };
+const LOG = new AsyncLocalStorage();   // the running group's buffered lines (groups run in parallel)
+const say = (line) => { const buf = LOG.getStore(); if (buf) buf.push(line); else console.log(line); };
+const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; say(`${ok ? '  ok  ' : '  FAIL'} ${name}${detail ? ' · ' + detail : ''}`); };
 
 // ---------- helpers
 async function open(browser, { w = 1440, h = 900, mobile = false, init } = {}) {
@@ -642,10 +646,16 @@ const TESTS = {
 };
 
 const pick = Object.keys(TESTS).filter(t => !argv.some(a => a in TESTS) || argv.includes(t));
-for (const name of BROWSERS) {
-  const b = await pw[name].launch();
-  for (const t of pick) { console.log(`[${name}] ${t}`); try { await TESTS[t](b); } catch (e) { failed++; console.log('  FAIL ' + t + ' threw: ' + String(e).split('\n')[0]); } }
+const JOBS = Math.max(1, +process.env.LLP_JOBS || 4);
+await Promise.all(BROWSERS.map(async (name) => {
+  const b = await pw[name].launch(), queue = [...pick];
+  const worker = async () => { for (let t; (t = queue.shift());) {
+    const buf = [], t0 = Date.now();
+    await LOG.run(buf, async () => { try { await TESTS[t](b); } catch (e) { failed++; say('  FAIL ' + t + ' threw: ' + String(e).split('\n')[0]); } });
+    console.log(`[${name}] ${t} (${((Date.now() - t0) / 1000).toFixed(1)} s)\n` + buf.join('\n'));
+  } };
+  await Promise.all(Array.from({ length: JOBS }, worker));
   await b.close();
-}
+}));
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
