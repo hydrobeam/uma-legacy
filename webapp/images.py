@@ -125,7 +125,10 @@ def icon_crop(im, inset):
 
 UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_sl'),
               # support-card type icons, shown on the art's top-right corner as in the game (atlas/common utx_ico_obtain_00..06)
-              **{'type_' + k: ('atlas/common', f'utx_ico_obtain_0{i}') for i, k in enumerate(['speed', 'stamina', 'power', 'guts', 'wit', 'pal', 'group'])}}
+              **{'type_' + k: ('atlas/common', f'utx_ico_obtain_0{i}') for i, k in enumerate(['speed', 'stamina', 'power', 'guts', 'wit', 'pal', 'group'])},
+              # rank badges for the lineage rank control: utx_ico_statusrank_NN is single_mode_rank id NN+1 (10 B, 15 S+, 16 SS)
+              'rank_b': ('atlas/statusrank', 'utx_ico_statusrank_10'), 'rank_splus': ('atlas/statusrank', 'utx_ico_statusrank_15'),
+              'rank_ss': ('atlas/statusrank', 'utx_ico_statusrank_16')}
 
 
 def ui_sprites(force, manifest):

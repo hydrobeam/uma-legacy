@@ -83,6 +83,16 @@ input[type="search"] { width: 100%; }
 .gamerow { position: relative; gap: 10px 16px; }   /* the scenario picker hangs below this row, across the panel */
 .scendd { position: static; }
 .extras .rankctl { gap: 8px; font-size: 0.88rem; align-items: center; }
+/* lineage rank: the game's rank badges (B, S+, SS) in a two-option toggle */
+.rankseg button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px; }
+.rankseg button[aria-checked="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.rankseg .rk { font-weight: 700; color: var(--ink); }
+.rankseg .rk.img { display: inline-flex; height: 22px; }
+.rankseg .rk.img img { height: 22px; width: auto; }
+.rankseg button[aria-checked="false"] .rk.img img { opacity: 0.45; filter: saturate(0.5); }   /* the unchosen option recedes */
+.rankseg .rkdash { color: var(--muted); }
+.rankseg .rkup { font-size: 0.78rem; margin-left: 2px; }
+.rankseg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .scenpick.five { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* five tiles: 2 + 2 + one centred, all the same size */
 .scenpick.five .stile { grid-column: span 2; }
 .scenpick.five .stile:last-child { grid-column: 2 / span 2; }

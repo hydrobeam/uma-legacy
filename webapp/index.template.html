@@ -45,11 +45,11 @@ __CSS__
               <button class="scenbtn" id="x-scen" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="scen-menu" aria-label="Scenario"><span class="slogo"></span></button></div>
             <div class="scenpick" id="scen-menu" role="menu" aria-labelledby="x-scen-l" hidden></div>
           </div>
-          <label class="row rankctl" for="rank"><span>Lineage rank</span>
-            <select id="rank">
-              <option value="0.50,0.45,0.05" title="Below SS: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars">Below SS</option>
-              <option value="0.20,0.70,0.10" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars">SS</option>
-            </select></label>
+          <div class="row rankctl"><span id="rank-l">Lineage rank</span>
+            <div class="seg rankseg" id="rank" role="radiogroup" aria-labelledby="rank-l">
+              <button type="button" role="radio" data-v="0.50,0.45,0.05" aria-label="B to S+" title="B to S+: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars"><span class="rk" data-r="b">B</span><span class="rkdash">–</span><span class="rk" data-r="splus">S+</span></button>
+              <button type="button" role="radio" data-v="0.20,0.70,0.10" aria-label="SS and up" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars"><span class="rk" data-r="ss">SS</span><span class="rkup">and up</span></button>
+            </div></div>
         </div>
         <label><input type="checkbox" id="x-rcards"> Use R cards</label>
         <label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>

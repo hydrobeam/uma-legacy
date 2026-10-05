@@ -161,13 +161,18 @@ const TESTS = {
     // the lineage rank sits in the Game data panel and follows the scenario: Grand Concert SS, Unity Cup below SS
     check('the lineage rank control is in the Game data panel', await pg.evaluate(() => !!document.getElementById('rank').closest('section[aria-labelledby="h-era"]')));
     await pickScen(pg, 'gc'); await settle(pg);
-    check('picking Grand Concert sets the rank to SS', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
+    check('picking Grand Concert sets the rank to SS', (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
     await pickScen(pg, 'unity'); await settle(pg);
-    check('picking Unity Cup sets it back to below SS', (await pg.inputValue('#rank')) === '0.50,0.45,0.05');
-    await pg.selectOption('#rank', '0.20,0.70,0.10'); await settle(pg); await pickScen(pg, 'unity'); await pg.waitForTimeout(400);
-    check('a rank changed by hand sticks (re-picking the scenario leaves it)', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
+    check('picking Unity Cup sets it back to below SS', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05');
+    await pg.click('#rank button[data-v="0.20,0.70,0.10"]'); await settle(pg); await pickScen(pg, 'unity'); await pg.waitForTimeout(400);
+    check('a rank changed by hand sticks (re-picking the scenario leaves it)', (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
     await pg.reload(); await settle(pg);
-    check('… and survives a reload', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && (await scen(pg)) === 'unity');
+    check('… and survives a reload', (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && (await scen(pg)) === 'unity');
+    // the rank toggle is a radio group: game badges, arrow keys move the choice
+    await pg.focus('#rank button[aria-checked="true"]'); await pg.keyboard.press('ArrowLeft'); await pg.waitForTimeout(200);
+    check('lineage rank: arrow keys switch it, aria-checked follows, badges shown', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05'
+      && (await pg.getAttribute('#rank button[data-v="0.50,0.45,0.05"]', 'aria-checked')) === 'true' && (await pg.locator('#rank .rk.img img').count()) === 3);
+    await pg.keyboard.press('ArrowRight'); await settle(pg);
     await pickScen(pg, 'trackblazer'); await settle(pg);
     await pg.click('#ex-open');
     check('export names the scenario', JSON.parse(await pg.inputValue('#ex-text')).readable.scenario === 'Trackblazer');
@@ -361,11 +366,11 @@ const TESTS = {
     // back on Global the scenario is Unity Cup again (golds guaranteed, rank below SS)
     const pg = await open(b);
     await pg.click('#era-gm'); await pg.waitForLoadState('load'); await settle(pg);
-    check('switching to the GM era selects Grand Masters', (await pg.getAttribute('#x-scen', 'data-value')) === 'grandmasters' && (await pg.inputValue('#rank')) === '0.20,0.70,0.10');
+    check('switching to the GM era selects Grand Masters', (await pg.getAttribute('#x-scen', 'data-value')) === 'grandmasters' && (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     check('the GM-era search runs with Grand Masters', /Searched/.test(await note(pg)) && await pg.evaluate(() => window.__runs.length > 0 && window.__runs.at(-1).scenario === 'grandmasters'));
     check('Grand Masters gives no guaranteed golds', (await pg.inputValue('#g-20049')) === '0' && (await pg.inputValue('#g-20046')) === '0');
     await pg.click('#era-global'); await pg.waitForLoadState('load'); await settle(pg);
-    check('back on Global: Unity Cup with its golds, rank below SS', (await pg.getAttribute('#x-scen', 'data-value')) === 'unity' && (await pg.inputValue('#rank')) === '0.50,0.45,0.05'
+    check('back on Global: Unity Cup with its golds, rank below SS', (await pg.getAttribute('#x-scen', 'data-value')) === 'unity' && (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05'
       && (await pg.inputValue('#g-20049')) === '2' && await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
@@ -401,7 +406,7 @@ const TESTS = {
     check('migration: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));
     check('migration: card ownership kept', await pg.evaluate(() => document.querySelectorAll('#cards .ct[aria-pressed="false"]').length === 1));
     check('migration: old preset gold fixed, hand-set odds dropped', JSON.stringify(st.s.common.targets) === JSON.stringify([{ group: 20166, guaranteed: 0 }, { group: 20159, guaranteed: 0 }]));
-    check('migration: old star mix remapped', (await pg.inputValue('#rank')) === '0.50,0.45,0.05');
+    check('migration: old star mix remapped', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05');
     check('migration: roster sort reset to newest first', (await pg.locator('#rs').innerText()) === 'Release ↓');
     // changes persist across a reload
     await pg.locator('#roster .ut .up').nth(3).click(); await settle(pg); await pg.reload(); await settle(pg);
@@ -418,9 +423,9 @@ const TESTS = {
     const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
       localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { scen: 'grandmasters', rank: '0.20,0.70,0.10', targets: [{ group: 20049, guaranteed: 0 }, { group: 20046, guaranteed: 0 }, { group: 20159, guaranteed: 0 }] }, global: {}, gm: {} })); } catch {} } });
     check('Grand Masters saved, Global data active: Unity Cup is used (its golds and rank)', (await p3.getAttribute('#x-scen', 'data-value')) === 'unity'
-      && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.inputValue('#rank')) === '0.50,0.45,0.05' && (await p3.inputValue('#g-20049')) === '2');
+      && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' && (await p3.inputValue('#g-20049')) === '2');
     await p3.context().close();
-    check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.inputValue('#rank')) === '0.20,0.70,0.10');
+    check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     await p2.context().close();
   },
   async contrast(b) {

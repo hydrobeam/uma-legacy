@@ -6,14 +6,18 @@ import { $ } from './dom.js';
 import { SCENARIOS, SCEN_GOLDS, SK, RANKS } from './data.js';
 import { ERA } from './settings.js';
 import { state, writeSaved } from './state.js';
-import { scenLogo, skillIcon } from './images.js';
+import { scenLogo, skillIcon, srcFor } from './images.js';
 import { save } from './search.js';
 import { renderTargets, scenarioGolds } from './targets.js';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 const LIST = SCENARIOS.filter(s => !s.era || s.era === ERA);
 export const scenarioOf = (v) => LIST.find(s => s.v === v) || LIST[0];
-// the lineage rank control: its tooltip names the chosen star mix
-export function paintRank() { const r = $('rank'); r.value = state.rank; r.title = (r.selectedOptions[0] || {}).title || ''; }
+// the lineage rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges; data-value carries the
+// chosen star mix, each option's tooltip its rank score range and star mix
+export function paintRank() {
+  const r = $('rank'); r.dataset.value = state.rank;
+  r.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.rank; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1; });
+}
 // switch to scenario v: its guaranteed golds and its default lineage rank (both can be changed by hand afterwards)
 function setScenario(v) {
   const was = state.scen, sc = scenarioOf(v); state.scen = sc.v; scenarioGolds(was, sc.v);
@@ -42,7 +46,14 @@ export function initScenario() {
   // a scenario this era does not offer (Grand Masters, saved while the GM-era data was active; the choice is shared by
   // both eras) becomes the first one offered, Unity Cup, as if picked
   if (scenarioOf(state.scen).v !== state.scen) { setScenario(scenarioOf(state.scen).v); writeSaved(); }
-  $('rank').onchange = (e) => { state.rank = e.target.value; paintRank(); save(); };
+  const rk = $('rank'), pickRank = (v) => { if (v === state.rank) return; state.rank = v; paintRank(); save(); };
+  rk.querySelectorAll('.rk').forEach(el => { const s = srcFor('ui', 'rank_' + el.dataset.r); if (!s) return;   // badge images (text stays without them)
+    const im = new Image(); im.alt = ''; im.src = s; im.onerror = () => im.remove(); el.textContent = ''; el.classList.add('img'); el.appendChild(im); });
+  rk.querySelectorAll('button').forEach(b => b.onclick = () => pickRank(b.dataset.v));
+  rk.addEventListener('keydown', (e) => {   // radio group: arrows move and select
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return; e.preventDefault();
+    const bs = [...rk.querySelectorAll('button')], i = bs.findIndex(b => b.dataset.v === state.rank), n = bs[(i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? bs.length - 1 : 1)) % bs.length];
+    pickRank(n.dataset.v); n.focus(); });
   paintRank();
   menu.classList.toggle('five', LIST.length === 5);
   for (const sc of LIST) {
