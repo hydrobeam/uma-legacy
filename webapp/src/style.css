@@ -91,7 +91,6 @@ input[type="search"] { width: 100%; }
 .rankseg .rk.img img { height: 22px; width: auto; }
 .rankseg button[aria-checked="false"] .rk.img img { opacity: 0.45; filter: saturate(0.5); }   /* the unchosen option recedes */
 .rankseg .rkdash { color: var(--muted); }
-.rankseg .rkup { font-size: 0.78rem; margin-left: 2px; }
 .rankseg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .scenpick.five { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* five tiles: 2 + 2 + one centred, all the same size */
 .scenpick.five .stile { grid-column: span 2; }
