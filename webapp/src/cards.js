@@ -1,6 +1,6 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
 import { $, esc } from './dom.js';
-import { CARDS, SK } from './data.js';
+import { CARDS, SK, SCENARIOS } from './data.js';
 import { state } from './state.js';
 import { cardAv } from './images.js';
 import { save } from './search.js';
@@ -34,6 +34,9 @@ export function renderCards() {
         `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
           : ''}</span>`;
       b.prepend(cardAv(c, 112));
+      // a card the chosen scenario bans (Team Sirius in Unity Cup and Grand Concert): the search leaves it out
+      const ban = (c.ban || []).includes(state.scen || 'unity');
+      if (ban) { b.classList.add('ban'); const n = document.createElement('span'); n.className = 'cban'; n.textContent = 'Not allowed in ' + (SCENARIOS.find(s => s.v === (state.scen || 'unity')) || {}).name; b.appendChild(n); }
       // a toggle: pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it
       const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false'); };
       paint();

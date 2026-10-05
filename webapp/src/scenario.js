@@ -9,6 +9,7 @@ import { state, writeSaved } from './state.js';
 import { scenLogo, skillIcon, srcFor } from './images.js';
 import { save } from './search.js';
 import { renderTargets, scenarioGolds } from './targets.js';
+import { renderCards } from './cards.js';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 const LIST = SCENARIOS.filter(s => !s.era || s.era === ERA);
 export const scenarioOf = (v) => LIST.find(s => s.v === v) || LIST[0];
@@ -82,7 +83,7 @@ export function initScenario() {
   };
   const close = (refocus) => { if (menu.hidden) return; open(false); if (refocus) btn.focus(); };
   function pick(v) {
-    if (v !== state.scen) { setScenario(v); save(); renderTargets(); paintScen(); }
+    if (v !== state.scen) { setScenario(v); save(); renderTargets(); renderCards(); paintScen(); }
     close(true);
   }
   btn.onclick = () => (menu.hidden ? open(true) : close(false));

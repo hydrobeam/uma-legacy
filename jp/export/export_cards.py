@@ -32,5 +32,10 @@ for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_c
     links = q("select max(show_progress_2) from single_mode_story_data where support_card_id=?", sid)[0][0] or 0
     out.append({"id": sid, "name": cn[sid], "chara": chara, "rarity": rar, "pal": typ in (2, 3), "links": links,
                 "hf": (max(0, hf[0][0]) if hf else 0) + uhf, "opts": opts, "nskill": nskill, "hinc": 1 + (max(0, hl[0][0]) if hl and hl[0][0] is not None else 0) + uhl, "whites": whites, "charas": sorted(members.get(sid, set()) | {chara}), "kind": 'pal' if typ == 2 else 'group' if typ == 3 else KIND.get(cmd, 'other')})
-json.dump({"cards": out}, open(OUT + '/web_cards.json', 'w'), ensure_ascii=False, separators=(',', ':'))
-print(len(out), 'cards;', sum(x['pal'] for x in out), 'pals')
+# cards the game bans from a scenario's deck (single_mode_restrict_support: Team Sirius in Unity Cup and Grand
+# Concert), keyed by the solver's scenario names (single_mode_scenario ids 1-5; later JP scenarios are out of scope)
+SCEN = {1: 'ura', 2: 'unity', 3: 'gc', 4: 'trackblazer', 5: 'grandmasters'}; have = {c['id'] for c in out}; restrict = {}
+for sc, sid in q("select scenario_id, support_card_id from single_mode_restrict_support order by scenario_id, support_card_id"):
+    if sc in SCEN and sid in have: restrict.setdefault(SCEN[sc], []).append(sid)
+json.dump({"cards": out, "restrict": restrict}, open(OUT + '/web_cards.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+print(len(out), 'cards;', sum(x['pal'] for x in out), 'pals; restricted', restrict)

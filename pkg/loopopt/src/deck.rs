@@ -33,7 +33,10 @@ impl Card {
     pub(crate) fn blocks(&self, uma: u32) -> bool { self.chara == uma || self.charas.contains(&uma) }
 }
 #[derive(Deserialize)]
-pub(crate) struct CardsRaw { pub cards: Vec<Card> }
+pub(crate) struct CardsRaw { pub cards: Vec<Card>,
+    /// cards the game bans from a scenario's deck, by scenario name (master.mdb single_mode_restrict_support via
+    /// export_cards.py: Team Sirius in "unity" and "gc")
+    #[serde(default)] pub restrict: HashMap<String, Vec<u32>> }
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
@@ -107,6 +110,9 @@ const CHAIN_P: f64 = 0.35;
 /// same runs' training hints with the Lv-5 cap (`hint_miss`; max-limit-break card-runs, 92 uploaders; 90%: Unity
 /// 2.66-2.75, Grand Concert 2.03-2.13, URA 1.48-1.73; Trackblazer has too few runs and Grand Masters (JP) none, both use
 /// the pooled 2.30).
+fn scenario_name(s: &str) -> &str {
+    match s { "unity" => "Unity Cup", "gc" => "Grand Concert", "ura" => "URA Finale", "trackblazer" => "Trackblazer", "grandmasters" => "Grand Masters", x => x }
+}
 pub(crate) fn hint_base(scenario: &str) -> f64 {
     match scenario { "gc" => 2.08, "ura" => 1.60, "trackblazer" | "grandmasters" => 2.30, _ => 2.70 }
 }
@@ -1115,7 +1121,12 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let nu = unc.len();
     let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
-    let owned_c = |id: u32| (is_owned(id) || dj.borrow) && !dj.exclude_cards.contains(&id);
+    // a card the scenario bans can't be in the deck, owned, borrowed or locked
+    let banned: &[u32] = cr.restrict.get(&dj.scenario).map_or(&[], |v| v.as_slice());
+    if let Some(c) = dj.lock_cards.iter().find(|id| banned.contains(id)).and_then(|id| cr.cards.iter().find(|c| c.id == *id)) {
+        return json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", c.name, scenario_name(&dj.scenario))});
+    }
+    let owned_c = |id: u32| (is_owned(id) || dj.borrow) && !dj.exclude_cards.contains(&id) && !banned.contains(&id);
 
     // ---- card sources ----
     let srcb = Sources { dj: &dj, unc: &unc };
@@ -2338,6 +2349,14 @@ mod tests {
         assert!(mix[&(3, 3, 0)][2] > a[&(3, 3, 0)][2]);
     }
 
+    /// The game's scenario bans reach the solver with the card data: Team Sirius out of Unity Cup and Grand Concert
+    /// decks, allowed in URA Finale and Trackblazer.
+    #[test]
+    fn scenario_bans_exported() {
+        let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+        for sc in ["unity", "gc"] { assert!(cr.restrict.get(sc).map_or(false, |v| v.contains(&30081)), "{sc}: {:?}", cr.restrict); }
+        for sc in ["ura", "trackblazer"] { assert!(!cr.restrict.get(sc).map_or(false, |v| v.contains(&30081))); }
+    }
     fn job_with(v: Value) -> DeckJob { serde_json::from_value(v).unwrap() }
     fn halo() -> Card {
         let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();

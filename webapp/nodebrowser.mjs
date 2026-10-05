@@ -263,6 +263,13 @@ const TESTS = {
     const pg = await open(b);
     const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map(h => h.textContent));
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
+    // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
+    const sirius = () => pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
+    check('Team Sirius: "Not allowed in Unity Cup" in the card picker', (await sirius()) === 'Not allowed in Unity Cup', String(await sirius()));
+    check('… and in no Unity Cup result deck', await pg.evaluate(() => ![...document.querySelectorAll('#results .dc')].some(d => d.dataset.cid === '30081')));
+    await pickScen(pg, 'ura'); await settle(pg);
+    check('Team Sirius allowed again in URA Finale', (await sirius()) === '');
+    await pickScen(pg, 'unity'); await settle(pg);
     const sep = await pg.evaluate(() => { const c = document.getElementById('cards'), r = c.previousElementSibling.getBoundingClientRect(), cs = getComputedStyle(c);
       return { gap: Math.round(c.getBoundingClientRect().top - r.bottom), pad: parseFloat(cs.paddingTop) }; });
     check('the card list scrolls apart from its search row (gap like the roster\'s), its tiles\' rings and focus outline inside it', sep.gap >= 10 && sep.pad >= 5, JSON.stringify(sep));

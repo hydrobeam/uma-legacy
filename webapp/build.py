@@ -93,7 +93,8 @@ def era(dirp, events_file):
         if not c['pal'] and c['links'] == 0 and c['rarity'] != 1: continue
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
         ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
-                         'whites': c['whites'], 'ev': evsum.get(c['id'], [])})
+                         'whites': c['whites'], 'ev': evsum.get(c['id'], []),
+                         'ban': [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]})   # scenarios that bar it from the deck
     umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     uma_ids = {u['id'] for u in umas}; outfit_ids = {o['id'] for u in umas for o in u['outfits']}; card_ids = {c['id'] for c in cards['cards']}
     hints = {'trainee': [h for h in TRAINEE_HINTS if h[0] in uma_ids or h[0] in outfit_ids],
