@@ -77,14 +77,14 @@ function loopCard(l, meta, ctx) {
   else {
     mem = document.createElement('div'); mem.className = 'members';
     l.members.forEach((m, k) => {
-      const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem' + (o.covers.length ? ' covers' : '');
+      const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem';
       const outfit = o.outfits.length ? o.outfits.map(x => x.label).join(' or ') : 'any outfit';
       d.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span>` +
         `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(l.per_trainee[k])}</span></span>`;
       d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit;
       d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
       d.querySelector('.head').prepend(umaAv(m.id, o.outfits.length === 1 ? o.outfits[0].id : null, 38));
-      // targets on her own outfit's skill list (she has them when she is the trainee): the reason for the blue top border
+      // targets on her own outfit's skill list (she has them when she is the trainee)
       const sk = d.querySelector('.sk');
       if (o.covers.length) { const cap = document.createElement('span'); cap.className = 'skl'; cap.textContent = 'On her outfit:'; sk.appendChild(cap);
  }
