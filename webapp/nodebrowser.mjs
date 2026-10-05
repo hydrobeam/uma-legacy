@@ -329,6 +329,18 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async nonecards(b) {
+    // "None owned" on support cards: no owned card reaches the solver (an empty owned list used to mean "all owned")
+    const ctx = await b.newContext(); const pg = await ctx.newPage();
+    await ctx.addInitScript(() => { window.__jobs = []; const W = window.Worker; window.Worker = function (...a) { const w = new W(...a); const pm = w.postMessage.bind(w);
+      w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__jobs.push(m.job); return pm(m, ...r); }; return w; }; });
+    const done = () => pg.waitForFunction(() => /Searched/.test(document.getElementById('run-note').textContent), null, { timeout: 60000 });
+    await pg.goto(URL); await done(); const all = await odds(pg);
+    await pg.click('#c-none'); await pg.click('#c-borrow'); await pg.waitForTimeout(700); await done();
+    const job = await pg.evaluate(() => window.__jobs.at(-1));
+    check('None owned + no borrowing: the job allows no card and the odds drop', job.owned_cards.length === 1 && job.owned_cards[0] === 0 && !job.borrow && (await odds(pg)) !== all, (await odds(pg)) + ' vs ' + all);
+    await ctx.close();
+  },
   async prerender(b) {
     // the Global roster is in the HTML itself (its first portraits discoverable, eager), shown from the first frame in the
     // saved order and states, and the page script takes those tiles over instead of rebuilding them

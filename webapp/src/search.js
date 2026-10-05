@@ -94,7 +94,8 @@ function buildJob() {
   const extra = [[1003, 20190, 1]]; if (state.zephyr) extra.push([1078, 20165, 1]);
   const targets = state.targets.map(t => ({ group: t.group, guaranteed: t.guaranteed || 0 }));
   const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
-  const owned_cards = offN ? CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id) : [];
+  // the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
+  const owned_cards = offN ? (offN === CARDS.length ? [0] : CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id)) : [];
   const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
     owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
   return { job, targets };
