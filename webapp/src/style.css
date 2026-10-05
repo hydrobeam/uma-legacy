@@ -28,6 +28,9 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 48px; }
 .wrap { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 22px; align-items: start; }
 @media (max-width: 960px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+/* keyboard: the first Tab stop jumps past the settings to the results */
+.skip { position: absolute; left: 16px; top: -200px; z-index: 100; background: var(--panel); color: var(--accent); font-weight: 700; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 8px; }
+.skip:focus { top: 8px; }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
@@ -155,19 +158,22 @@ input[type="search"] { width: 100%; }
 .legend .l-out::before { background: var(--out-soft); border-color: var(--out); }
 .legend .l-req::before { background: var(--req-soft); border-color: var(--req); }
 /* target skills */
-.targets { display: grid; gap: 8px; }
-.tgt { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
-.tgt .name { font-weight: 700; }
+/* one line per target: name, what is guaranteed outside the deck (one header over the column), remove */
+.targets { display: grid; gap: 4px; }
+.thead { display: flex; justify-content: space-between; gap: 8px; font-size: 0.75rem; color: var(--muted); padding: 0 44px 0 10px; margin-bottom: -6px; }
+.tgt { border: 1px solid var(--line); border-radius: 8px; padding: 3px 4px 3px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.tgt .name { font-weight: 700; min-width: 0; }
+.tgt select { font-size: 0.85rem; padding: 4px 6px; min-width: 6.5em; }
+.tg { color: var(--gold); }
 .sic { width: 20px; height: 20px; vertical-align: -4px; margin-right: 6px; flex: none; }
-.tgt .ctrl { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: end; font-size: 0.78rem; color: var(--muted); }
-.tgt .ctrl label { display: grid; gap: 2px; }
-.tgt .ctrl select, .tgt .ctrl input { width: 100%; font-size: 0.85rem; padding: 4px 6px; }
 .x { border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 6px; }
 .x:hover { color: var(--out); }
+.tgt .x { width: 32px; height: 32px; padding: 0; }
 .adder { position: relative; }
 .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 240px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
 .sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 0.88rem; }
 .sugg button:hover, .sugg button:focus { background: var(--accent-soft); }
+.sugg .snote { margin: 0; padding: 7px 10px; font-size: 0.85rem; color: var(--muted); }
 .extras label { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; min-height: 26px; }
 /* checkboxes: 18 px boxes in rows at least 26 px apart, so each tap target clears 24 px (WCAG 2.5.8) */
 .extras input[type=checkbox] { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
@@ -277,6 +283,8 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .tbl th:first-child, .tbl td:first-child { text-align: left; }
 .tbl tbody tr.sel { background: var(--accent-soft); }
 .tbl tbody tr.pick { cursor: pointer; }
+.rowbtn { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.rowbtn[aria-pressed="true"] { font-weight: 700; text-decoration: none; }
 .tbl tbody tr.pick:hover { background: var(--accent-soft); }
 .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (min-width: 900px) { .split { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); } .split > .view { position: sticky; top: 0; } }
@@ -343,6 +351,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .cpop { position: absolute; z-index: 50; max-width: 300px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
   border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 0.85rem; display: grid; gap: 6px; }
 .cpop[hidden] { display: none; }
+.cpop:focus { outline: none; }
 .cpop .ctt { color: var(--muted); }
 .cpop .pgives { display: flex; flex-wrap: wrap; gap: 4px; }
 .cpop .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -361,10 +370,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dodds .dsk .sic { width: 18px; height: 18px; margin: 0; vertical-align: 0; flex: none; }
 .dodds b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
 .dodds .dlab { color: var(--ink); font-weight: 600; }
-.nodeck .tgt .ctrl { grid-template-columns: minmax(0, 1fr); }
-.nodeck .tgt .ctrl label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.nodeck .tgt .ctrl select { width: auto; min-width: 7em; }
-.tgt > .row { flex-wrap: nowrap; align-items: flex-start; }
 /* phone: the nested paddings (body, loop, deck) left 39 px per card and a 560 px table in a 306 px box */
 @media (max-width: 620px) {
   .loop { padding: 12px; }
@@ -373,5 +378,5 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   table.sched { font-size: 0.74rem; }
   .sched th, .sched td { padding: 4px 3px; }
   .sched tr:not(.year) > :last-child { display: none; }
-  .x { padding: 8px 10px; margin: -6px -8px 0 0; }
+  .x { padding: 8px 10px; }
 }

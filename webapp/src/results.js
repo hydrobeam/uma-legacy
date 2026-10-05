@@ -4,7 +4,7 @@ import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon } from './images.js';
 import { cardTitle } from './cards.js';
-import { closePop, markOwn } from './popover.js';
+import { closePop, markOwn, popHasFocus } from './popover.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
@@ -92,10 +92,12 @@ function loopCard(l, meta, ctx) {
   return card;
 }
 export function renderDeck(res, meta) {
-  closePop();
-  const box = $('results'); box.textContent = '';
+  // focus inside the old result (an open panel's Owned switch, say) would fall back to the page top: keep it in the results
+  const box = $('results'), refocus = popHasFocus() || box.contains(document.activeElement);
+  closePop(); box.textContent = '';
   ui.headline = fmtIn(res.top[0].loop.p_all);   // only results with loops reach this (search.js keeps errors off the page)
   const many = res.top.length > 1;
   res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0], proven: i === 0 && res.proven })));
+  if (refocus) $('rcol').focus({ preventScroll: true });
   markOwn();   // grey out anything marked not owned since the search (needs the cards on the page)
 }

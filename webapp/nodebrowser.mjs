@@ -295,6 +295,76 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async targets(b) {
+    // the target list by keyboard: removing keeps the focus in the list, the add box takes Enter and the arrows
+    const pg = await open(b);
+    const skl = await json(pg, 'data-skills'), gold = (g) => skl.find(x => x[0] === g)[2], white = (g) => skl.find(x => x[0] === g)[1];
+    check('one column header for "Guaranteed outside the deck", one line per target', (await pg.locator('#t-head').innerText()).includes('Guaranteed outside the deck')
+      && !(await pg.locator('#targets').innerText()).includes('Guaranteed outside'));
+    await pg.selectOption('#g-20159', '2');
+    check('a target guaranteed as Gold shows "white → gold"', (await pg.locator('#targets .tgt').first().innerText()).includes(white(20159) + ' → ' + gold(20159)), await pg.locator('#targets .tgt').first().innerText());
+    await pg.locator('#targets .x').nth(2).focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(100);
+    check('removing a target by keyboard moves the focus to the next remove button', (await pg.locator('#targets .tgt').count()) === 7
+      && await pg.evaluate(() => document.activeElement.classList.contains('x') && [...document.querySelectorAll('#targets .x')].indexOf(document.activeElement) === 2));
+    for (let i = 0; i < 7; i++) await pg.keyboard.press('Enter');
+    check('… and to the add box after the last one', (await pg.locator('#targets .tgt').count()) === 0 && await pg.evaluate(() => document.activeElement.id === 't-add'));
+    await pg.fill('#t-add', 'corner'); await pg.waitForTimeout(100);
+    const first = await pg.locator('#t-sugg button').first().innerText();
+    await pg.keyboard.press('ArrowDown'); await pg.keyboard.press('ArrowDown'); await pg.keyboard.press('ArrowUp');
+    const at = await pg.evaluate(() => [...document.querySelectorAll('#t-sugg button')].indexOf(document.activeElement));
+    await pg.keyboard.press('ArrowUp'); const back = await pg.evaluate(() => document.activeElement.id);
+    check('arrows walk the suggestions, Up from the first returns to the box', at === 0 && back === 't-add', at + ' ' + back);
+    await pg.keyboard.press('ArrowDown'); await pg.keyboard.press('Escape');
+    check('Escape on a suggestion closes the list and returns to the box', await pg.locator('#t-sugg').isHidden() && await pg.evaluate(() => document.activeElement.id === 't-add'));
+    await pg.fill('#t-add', 'corner'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(100);
+    check('Enter adds the first match and keeps the focus in the box', (await pg.locator('#targets .tgt').count()) === 1 && (await pg.locator('#targets .tgt').innerText()).includes(first.split(' → ')[0]) && await pg.evaluate(() => document.activeElement.id === 't-add'), first);
+    await pg.fill('#t-add', first.split(' → ')[0].slice(0, 8)); await pg.waitForTimeout(100);
+    check('a skill already listed: "… is already a target"', (await pg.locator('#t-sugg .snote').allInnerTexts()).some(t => t === first.split(' → ')[0] + ' is already a target'));
+    await pg.fill('#t-add', 'zzqx'); await pg.waitForTimeout(100);
+    check('no match: "No skill matches"', /^No skill matches/.test(await pg.locator('#t-sugg').innerText()));
+    // a gold matched by its own name shows with its white
+    const g = skl.find(x => x[2] && !x[1].toLowerCase().includes(x[2].toLowerCase().slice(0, 6)) && !skl.some(y => y !== x && (y[1] + (y[2] || '')).toLowerCase().includes(x[2].toLowerCase())));
+    await pg.fill('#t-add', g[2]); await pg.waitForTimeout(100);
+    check('a match on the gold\'s name shows "white → gold"', (await pg.locator('#t-sugg button').first().innerText()) === g[1] + ' → ' + g[2], g[1] + ' → ' + g[2]);
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
+  async keyboard(b) {
+    const pg = await open(b);
+    const act = () => pg.evaluate(() => { const a = document.activeElement; return a.id || a.className || a.tagName; });
+    await pg.keyboard.press('Tab');
+    const skip = await pg.evaluate(() => { const a = document.activeElement, r = a.getBoundingClientRect(); return { cls: a.className, top: r.top, text: a.textContent }; });
+    await pg.keyboard.press('Enter');
+    check('the first Tab stop is a visible "Skip to results" link that moves the focus to the results', skip.cls === 'skip' && skip.top >= 0 && skip.text === 'Skip to results' && (await act()) === 'rcol', JSON.stringify(skip));
+    // the deck card panel: focus moves in on open; Tab past its end returns to the card
+    await pg.locator('.deck .dc').first().focus(); await pg.keyboard.press('Enter');
+    const inPop = await pg.evaluate(() => document.querySelector('.cpop').contains(document.activeElement) && document.activeElement.getAttribute('role') === 'switch');
+    await pg.keyboard.press('Tab'); await pg.keyboard.press('Tab');
+    check('deck card panel: opening focuses its Owned switch; tabbing out closes it and returns to the card', inPop && await pg.evaluate(() => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('dc')));
+    await pg.locator('.mem .memb').first().focus(); await pg.keyboard.press('Enter');
+    const memIn = await pg.evaluate(() => document.activeElement.getAttribute('role') === 'switch'); await pg.keyboard.press('Shift+Tab');
+    check('member panel: the same (Shift+Tab out returns to her name)', memIn && await pg.evaluate(() => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('memb')));
+    // sort menu: the checked item takes the focus, arrows move, Escape returns
+    await pg.focus('#rs'); await pg.keyboard.press('Enter');
+    const checked = await pg.evaluate(() => document.activeElement.getAttribute('aria-checked'));
+    await pg.keyboard.press('ArrowDown'); const moved = await pg.evaluate(() => document.activeElement.dataset.k);
+    await pg.keyboard.press('Escape');
+    check('sort menu: opens on the checked item, arrows move, Escape closes back to the button', checked === 'true' && moved === 'name' && await pg.locator('#rs-menu').isHidden() && (await act()) === 'rs', checked + ' ' + moved);
+    // schedule tabs: arrows move and select
+    await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await pg.waitForTimeout(200);
+    await pg.locator('#sched-dlg .stab').first().focus(); await pg.keyboard.press('ArrowRight');
+    const tabs = await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .stab')].map(t => [t.getAttribute('aria-selected'), t.tabIndex, t.getAttribute('aria-controls')].join(':')));
+    check('schedule tabs: ArrowRight selects and focuses the next tab, one tab in the Tab order, each controls the panel', tabs[1] === 'true:0:sched-view' && tabs.filter(t => t.startsWith('true')).length === 1
+      && await pg.evaluate(() => document.activeElement === document.querySelectorAll('#sched-dlg .stab')[1]), tabs.join(' '));
+    await pg.keyboard.press('Escape');
+    // affinity: each career is a button
+    await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await pg.waitForTimeout(200);
+    const rb = pg.locator('#why-dlg .rowbtn[aria-pressed="false"]').first(); await rb.focus(); await pg.keyboard.press('Enter');
+    check('affinity: the careers are buttons; Enter shows one', (await pg.locator('#why-dlg .rowbtn').count()) === 12 && await pg.evaluate(() => document.activeElement.getAttribute('aria-pressed') === 'true' && document.activeElement.closest('tr').classList.contains('sel'))
+      && /choose one/i.test(await pg.locator('#why-dlg').innerText()));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
   async three(b) {
     // the result's wording, and three results told apart: #1/#2/#3, "Same loop as #1", the deck cards #1 lacks marked
     const pg = await open(b);

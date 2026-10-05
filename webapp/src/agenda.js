@@ -10,11 +10,18 @@ export function openSched(l) {
   head.innerHTML = '<h3 id="sched-title">Race schedule</h3>';
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('sched-dlg').close(); head.appendChild(close);
   const tabs = document.createElement('div'); tabs.className = 'stabs'; tabs.setAttribute('role', 'tablist');
-  const view = document.createElement('div'); view.className = 'sview';
+  const view = document.createElement('div'); view.className = 'sview'; view.id = 'sched-view'; view.setAttribute('role', 'tabpanel');
+  // tabs: one in the Tab order (the selected), the arrows (and Home/End) move between them and select
   const tabBtn = (key, label, av) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'stab'; b.setAttribute('role', 'tab');
+    b.id = 'stab-' + key; b.setAttribute('aria-controls', 'sched-view');
     if (av) b.appendChild(av); b.appendChild(document.createTextNode(label)); b.onclick = () => show(key); tabs.appendChild(b); return b; };
   const btns = M.map((m, k) => tabBtn(k, m.short || m.name, umaAv(m.id, outfitOf(k), 28)));
   btns.push(tabBtn('all', 'All four', null));
+  const keyOf = (j) => (j === M.length ? 'all' : j);
+  tabs.addEventListener('keydown', (e) => {
+    const i = btns.indexOf(document.activeElement); if (i < 0) return;
+    const to = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
+    if (to === undefined) return; e.preventDefault(); show(keyOf(to)); btns[to].focus(); });
   const key = document.createElement('span'); key.className = 'agkey';
   key.innerHTML = '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(key);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -31,7 +38,8 @@ export function openSched(l) {
     return el;
   }
   function show(key) {
-    btns.forEach((b, j) => b.setAttribute('aria-selected', (j === M.length ? 'all' : j) === key ? 'true' : 'false'));
+    btns.forEach((b, j) => { const on = keyOf(j) === key; b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });
+    view.setAttribute('aria-labelledby', 'stab-' + key);
     view.textContent = '';
     if (key === 'all') { view.appendChild(schedTable(M, rows)); return; }
     const ag = document.createElement('div'); ag.className = 'agenda';

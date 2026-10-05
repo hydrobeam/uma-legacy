@@ -7,9 +7,19 @@ import { umaState, renderRoster } from './roster.js';
 import { cardTitle, cardGives, renderCards } from './cards.js';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
-const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.getElementById('rcol').appendChild(pop);
+// Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
+// the card or name that opened it.
+const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.tabIndex = -1; document.getElementById('rcol').appendChild(pop);
 let popFor = null;
+export const popHasFocus = () => !pop.hidden && pop.contains(document.activeElement);
 export function closePop() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
+const focusables = () => [...pop.querySelectorAll('input, a[href], button')];
+function back() { const t = popFor; closePop(); if (t && t.isConnected) t.focus(); }
+pop.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab') return;
+  const f = focusables(), i = f.indexOf(document.activeElement);
+  if (!f.length || (e.shiftKey ? i <= 0 : i === f.length - 1)) { e.preventDefault(); back(); }
+});
 export function markOwn() {
   document.querySelectorAll('.deck .dc').forEach(e => e.classList.toggle('off', !e.classList.contains('bor') && state.cardsOff[+e.dataset.cid] === false));
   document.querySelectorAll('.mem[data-uma]').forEach(e => { const u = UMAS.find(x => x.id === +e.dataset.uma);
@@ -20,6 +30,7 @@ function placePop(el) {
   const host = pop.offsetParent || document.body, h = host.getBoundingClientRect(), r = el.getBoundingClientRect(), w = pop.offsetWidth;
   pop.style.left = (host.scrollLeft + Math.max(0, Math.min(r.left - h.left, host.clientWidth - w))) + 'px';
   pop.style.top = (host.scrollTop + r.bottom - h.top + 6) + 'px';
+  (focusables()[0] || pop).focus({ preventScroll: true });
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
@@ -68,5 +79,5 @@ export function initPopover() {
     if (d) { if (popFor === d) closePop(); else openPop(d); return; }
     if (mb) { if (popFor === mb) closePop(); else openUmaPop(mb); return; }
     if (!e.target.closest('.cpop')) closePop(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) { const d = popFor; closePop(); d.focus(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) back(); });
 }
