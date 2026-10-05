@@ -1,8 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <path d="M35.56,11.81 A20.5,20.5 0 0 1 52.49,32.72" fill="none" stroke="#30a700" stroke-width="9.5" stroke-linecap="butt"/>
-  <polygon points="61.51,33.03 50.43,40.99 43.47,32.40" fill="#30a700" stroke="#30a700" stroke-width="1.5" stroke-linejoin="round"/>
-  <path d="M47.70,45.18 A20.5,20.5 0 0 1 21.14,49.38" fill="none" stroke="#614abf" stroke-width="9.5" stroke-linecap="butt"/>
-  <polygon points="16.35,57.04 15.00,43.46 25.92,41.73" fill="#614abf" stroke="#614abf" stroke-width="1.5" stroke-linejoin="round"/>
-  <path d="M12.74,39.01 A20.5,20.5 0 0 1 22.38,13.90" fill="none" stroke="#df0c0b" stroke-width="9.5" stroke-linecap="butt"/>
-  <polygon points="18.14,5.93 30.57,11.55 26.61,21.87" fill="#df0c0b" stroke="#df0c0b" stroke-width="1.5" stroke-linejoin="round"/>
+  <defs><radialGradient id="g" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fdffe8"/><stop offset="0.55" stop-color="#e6fa9c"/><stop offset="1" stop-color="#b9e655"/></radialGradient></defs>
+  <path d="M47.75,13.23 A24.5,24.5 0 0 1 47.55,50.93" fill="none" stroke="#30a700" stroke-width="6.5"/>
+  <path d="M47.75,50.77 A24.5,24.5 0 0 1 10.66,44.03" fill="none" stroke="#614abf" stroke-width="6.5"/>
+  <path d="M10.78,44.25 A24.5,24.5 0 0 1 23.62,8.98" fill="none" stroke="#df0c0b" stroke-width="6.5"/>
+  <polygon points="21.06,1.95 34.56,7.63 26.18,16.00" fill="#df0c0b" stroke="#df0c0b" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M32.00,13.00 Q32.57,20.63 40.20,21.20 Q32.57,21.77 32.00,29.40 Q31.43,21.77 23.80,21.20 Q31.43,20.63 32.00,13.00 Z" fill="none" stroke="#a5dc34" stroke-width="3.4" stroke-linejoin="round"/>
+  <path d="M22.60,29.20 Q23.17,36.83 30.80,37.40 Q23.17,37.97 22.60,45.60 Q22.03,37.97 14.40,37.40 Q22.03,36.83 22.60,29.20 Z" fill="none" stroke="#a5dc34" stroke-width="3.4" stroke-linejoin="round"/>
+  <path d="M41.40,29.20 Q41.97,36.83 49.60,37.40 Q41.97,37.97 41.40,45.60 Q40.83,37.97 33.20,37.40 Q40.83,36.83 41.40,29.20 Z" fill="none" stroke="#a5dc34" stroke-width="3.4" stroke-linejoin="round"/>
+  <path d="M32.00,13.00 Q32.57,20.63 40.20,21.20 Q32.57,21.77 32.00,29.40 Q31.43,21.77 23.80,21.20 Q31.43,20.63 32.00,13.00 Z" fill="url(#g)" stroke="#2c8f00" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M22.60,29.20 Q23.17,36.83 30.80,37.40 Q23.17,37.97 22.60,45.60 Q22.03,37.97 14.40,37.40 Q22.03,36.83 22.60,29.20 Z" fill="url(#g)" stroke="#2c8f00" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M41.40,29.20 Q41.97,36.83 49.60,37.40 Q41.97,37.97 41.40,45.60 Q40.83,37.97 33.20,37.40 Q40.83,36.83 41.40,29.20 Z" fill="url(#g)" stroke="#2c8f00" stroke-width="1.6" stroke-linejoin="round"/>
 </svg>
