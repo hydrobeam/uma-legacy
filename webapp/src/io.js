@@ -7,6 +7,7 @@ import { save } from './search.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
 import { fmtIn } from './results.js';
+import { paintScen, paintRank, scenarioOf } from './scenario.js';
 function exportText() {
   const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
   const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
@@ -16,7 +17,7 @@ function exportText() {
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for all four)',
-    game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', random_event_hints: +state.rand, r_cards: state.rcards,
+    game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', random_event_hints: +state.rand, r_cards: state.rcards, scenario: scenarioOf(state.scen).name,
   };
   let results = null;
   if (ui.lastResult) {
@@ -51,8 +52,8 @@ export function initIO() {
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
-      $('rank').value = state.rank; $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
-      $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards;
+      paintRank(); $('x-zephyr').checked = state.zephyr; $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
+      $('x-rand').value = state.rand; $('x-rcards').checked = state.rcards; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };

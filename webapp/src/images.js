@@ -1,9 +1,9 @@
 // ---------- character icons, card art and skill icons: files in img/ next to the page (from the game's own files) ----------
 // All lazy: the browser fetches an image only when it scrolls near the view (loading is set before src).
-import { SHIPPED, IMG_EXT, SKILLICON, NAME } from './data.js';
+import { SHIPPED, IMG_EXT, SKILLICON, SKILLICON_GOLD, NAME } from './data.js';
 export function srcFor(kind, id) { return SHIPPED.has(kind + ':' + id) ? `img/${kind}/${id}.${IMG_EXT[kind]}` : null; }
 if (SHIPPED.has('ui:friend_frame')) document.documentElement.style.setProperty('--friend-frame', `url(${srcFor('ui', 'friend_frame')})`);
-export function skillIcon(group) { const s = srcFor('skill', SKILLICON[group]); if (!s) return null;
+export function skillIcon(group, gold = false) { const s = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]); if (!s) return null;
   const im = new Image(); im.className = 'sic'; im.alt = ''; im.loading = 'lazy'; im.src = s; return im; }
 function initials(name) { const w = name.replace(/[^A-Za-z .]/g, '').split(/[ .]+/).filter(Boolean); return ((w[0] || '?')[0] + (w[1] ? w[1][0] : (w[0] || '')[1] || '')).toUpperCase(); }
 export function umaAv(charaId, outfitId, size) {
@@ -25,5 +25,15 @@ export function cardAv(c, size) {
   if (s) { const im = new Image(); im.alt = ''; im.loading = 'lazy'; im.src = s; el.textContent = ''; el.classList.add('art'); el.appendChild(im);
     im.onerror = () => { im.remove(); el.classList.remove('art'); el.textContent = KABBR[kind] || '·'; };
     const ty = srcFor('ui', 'type_' + kind); if (ty) { const i = document.createElement('i'); i.className = 'ctype'; i.title = kind; i.style.backgroundImage = `url(${ty})`; el.appendChild(i); } }
+  return el;
+}
+// scenario logo (game title art, img/scen/{id}; drawn whole inside its box, aspect kept); without it, or if it fails
+// to load, a badge with the scenario's name on a light shade of its colour
+export function scenLogo(sc) {
+  const el = document.createElement('span'); el.className = 'slogo'; el.setAttribute('aria-hidden', 'true');
+  const badge = () => { el.classList.remove('art'); el.textContent = ''; const b = document.createElement('b'); b.textContent = sc.name; b.style.background = sc.tint; el.appendChild(b); };
+  const s = srcFor('scen', sc.id);
+  if (!s) { badge(); return el; }
+  const im = new Image(); im.alt = ''; im.onerror = badge; im.src = s; el.classList.add('art'); el.appendChild(im);
   return el;
 }

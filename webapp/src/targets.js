@@ -1,10 +1,19 @@
-// ---------- target skills, lineage rank, career-event extras ----------
+// ---------- target skills, career-event extras ----------
 import { $ } from './dom.js';
-import { CAT, SK, PRESET } from './data.js';
+import { CAT, SK, PRESET, SCEN_GOLDS } from './data.js';
 import { state } from './state.js';
 import { skillIcon } from './images.js';
 import { save } from './search.js';
 import { renderCards } from './cards.js';
+// Apply the scenario's guaranteed golds to the target list: targets the new scenario guarantees become guaranteed
+// golds; golds only the old scenario guaranteed go back to none.
+export function scenarioGolds(from, to) {
+  const was = SCEN_GOLDS[from] || [], now = SCEN_GOLDS[to] || [];
+  for (const t of state.targets) {
+    if (now.includes(t.group)) t.guaranteed = 2;
+    else if (was.includes(t.group) && t.guaranteed === 2) t.guaranteed = 0;
+  }
+}
 export function renderTargets() {
   const box = $('targets'); box.textContent = '';
   state.targets.forEach((t, i) => {
@@ -39,7 +48,6 @@ export function initTargets() {
   };
   addIn.onkeydown = (e) => { if (e.key === 'Escape') sugg.hidden = true; if (e.key === 'ArrowDown' && sugg.firstChild) { e.preventDefault(); sugg.firstChild.focus(); } };
   document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
-  $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ ...t })); save(); renderTargets(); };
-  $('rank').value = state.rank; $('rank').onchange = (e) => { state.rank = e.target.value; save(); };
+  $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ group: t.group, guaranteed: 0 })); scenarioGolds(null, state.scen); save(); renderTargets(); };
   $('x-zephyr').checked = state.zephyr; $('x-zephyr').onchange = (e) => { state.zephyr = e.target.checked; save(); };
 }

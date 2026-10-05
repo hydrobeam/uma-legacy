@@ -22,7 +22,7 @@ function scheduleSearch() {
 export const save = () => { scheduleSearch(); writeSaved(); };
 // extra job fields from the event options
 function eventFields(deck) {
-  const r = +state.rand, f = {};
+  const r = +state.rand, f = { scenario: state.scen || 'unity' };
   if (r > 0) {
     f.trainee_hints = HINTS.trainee.map(([id, g, p]) => [id, g, p * r]);
     if (deck) f.odds_events = HINTS.deck.map(([c, g, lv, p]) => [c, g, lv, p * r]);

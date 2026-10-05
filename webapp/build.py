@@ -1,6 +1,6 @@
 """Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, data, skill catalog,
-precomputed example), loopopt.wasm, and img/ (character icons, card art, skill icons, race banners, UI sprites from
-images.py). Served over http(s): the page fetches the wasm and the images, so it is not meant to be opened as a file."""
+precomputed example), loopopt.wasm, and img/ (character icons, card art, skill icons, race banners, scenario logos, UI
+sprites from images.py). Served over http(s): the page fetches the wasm and the images, so it is not meant to be opened as a file."""
 import json, subprocess, os, sqlite3, glob, shutil
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
@@ -13,7 +13,7 @@ DIST = os.path.join(H, 'dist')
 shutil.rmtree(os.path.join(DIST, 'img'), ignore_errors=True)
 # images are AVIF (UI sprites lossless WebP); one extension per kind, given to the page with the key list
 images = []; ext = {}; isize = 0
-for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'ui'):
+for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'scen', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         stem, e = os.path.splitext(f)
@@ -21,8 +21,9 @@ for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'ui'):
         assert ext.setdefault(kind, e[1:]) == e[1:], f'img/{kind} mixes formats ({f}); rerun ./build.sh images'
         os.makedirs(os.path.join(DIST, 'img', kind), exist_ok=True)
         shutil.copyfile(os.path.join(d, f), os.path.join(DIST, 'img', kind, f)); images.append(f'{kind}:{stem}'); isize += os.path.getsize(os.path.join(d, f))
-sip = os.path.join(H, 'img', 'skill_icons.json')   # skill group -> icon id (images.py)
-skill_icons = json.load(open(sip)) if os.path.exists(sip) else {}
+# skill group -> icon id of its white and of its gold version (images.py)
+def _icons(f): f = os.path.join(H, 'img', f); return json.load(open(f)) if os.path.exists(f) else {}
+skill_icons = {'white': _icons('skill_icons.json'), 'gold': _icons('skill_icons_gold.json')}
 # schedule rows name their race; the page maps names to race ids for the banners (same 34 G1s in both eras)
 # keyed by both the full name and the chart's short name (pkg/loopopt/src/lib.rs chart_race_name: aliases, else 22 chars)
 CHART_ALIAS = {'Tokyo Yushun (Japanese Derby)': 'Japanese Derby', 'Asahi Hai Futurity Stakes': 'Asahi Hai FS', 'Mile Championship Nambu Hai': 'MCS Nambu Hai',

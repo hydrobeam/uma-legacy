@@ -1,9 +1,9 @@
 // Browser regression suite for the built page (webapp/dist, served on a local port; LLP_URL tests another address).
-// Node + Playwright (local or global install).
+// Node + Playwright (local or global install). LLP_SHOTS=dir saves pictures of the scenario button and picker there.
 //   node webapp/nodebrowser.mjs                 every test, Chromium and Firefox
 //   node webapp/nodebrowser.mjs chromium roster only the named browsers / tests (any order)
 // Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
-// update does not break the suite; the one fixed number is the Global default search (1 in 142).
+// update does not break the suite; the one fixed number is the Global default search (1 in 139, R cards off, Unity Cup).
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
 import path from 'path';
@@ -27,7 +27,9 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init } = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
   await ctx.addInitScript(() => {   // count worker creations/terminations
     const W = window.Worker; window.__made = 0; window.__killed = 0;
-    window.Worker = function (...a) { const w = new W(...a); window.__made++; const t = w.terminate.bind(w); w.terminate = () => { window.__killed++; t(); }; return w; };
+    window.__runs = [];   // the jobs sent to the engine, in order
+    window.Worker = function (...a) { const w = new W(...a); window.__made++; const t = w.terminate.bind(w); w.terminate = () => { window.__killed++; t(); };
+      const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); }; return w; };
   });
   if (init) await ctx.addInitScript(init);
   const pg = await ctx.newPage(); pg.errors = [];
@@ -43,6 +45,8 @@ async function settle(pg, t = 180000) {   // wait for the current (auto) search 
 const note = (pg) => pg.locator('#run-note').innerText();
 const odds = (pg) => pg.evaluate(() => (document.querySelector('#results .loop .odds') || {}).textContent || '');
 const json = (pg, id) => pg.evaluate((id) => JSON.parse(document.getElementById(id).textContent), id);
+const scen = (pg) => pg.getAttribute('#x-scen', 'data-value');   // the chosen scenario
+async function pickScen(pg, v) { await pg.click('#x-scen'); await pg.click(`#scen-menu .stile[data-v="${v}"]`); }
 
 // WCAG 2 contrast of every visible text run in the open dialog (or the page)
 const AUDIT = () => {
@@ -73,12 +77,113 @@ const TESTS = {
   async load(b) {
     const pg = await open(b);
     check('first search runs by itself', /Searched/.test(await note(pg)), await note(pg));
-    check('Global default search: 1 in 142', /1 in 142/.test(await odds(pg)), await odds(pg));
+    check('Global default search: 1 in 139', /1 in 139/.test(await odds(pg)), await odds(pg));
     const off = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
     check('no button; status bar present', (await pg.locator('#run').count()) === 0 && (await pg.locator('#run-note').count()) === 1);
+    // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
+    // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
+    const n0 = await pg.evaluate(() => window.__runs.length);
+    check('the first search is a Unity Cup job', await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
+    await pickScen(pg, 'ura'); await settle(pg);
+    check('scenario switch searches again with the URA job', await pg.evaluate((n) => window.__runs.length > n && window.__runs.at(-1).scenario === 'ura', n0));
+    // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the 8/8 example takes them too
+    check('URA drops the Unity golds', (await pg.inputValue('#g-20049')) === '0' && (await pg.inputValue('#g-20046')) === '0');
+    await pg.click('#t-preset');
+    check('8/8 example under URA: eight targets, no guaranteed golds', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.inputValue('#g-20049')) === '0');
+    await settle(pg);
+    await pg.reload(); await settle(pg);
+    check('scenario survives a reload', (await scen(pg)) === 'ura' && (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: URA Finale');
+    await pickScen(pg, 'unity');
+    check('Unity Cup marks No Stopping Me! and It\'s On! as guaranteed golds', (await pg.inputValue('#g-20049')) === '2' && (await pg.inputValue('#g-20046')) === '2');
+    await settle(pg);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
+  },
+  async scenario(b) {
+    // the scenario picker: a button showing the chosen scenario's logo, opening a grid of the four
+    const pg = await open(b);
+    const menu = pg.locator('#scen-menu'), tiles = pg.locator('#scen-menu .stile');
+    const btnName = () => pg.getAttribute('#x-scen', 'aria-label');
+    check('picker closed at first; the button is Unity Cup (logo only, named for assistive tech)', (await menu.isHidden()) && (await scen(pg)) === 'unity' && (await btnName()) === 'Scenario: Unity Cup'
+      && (await pg.evaluate(() => JSON.parse(document.getElementById('data-img').textContent).keys.includes('scen:2'))
+        ? (await pg.locator('#x-scen').innerText()).trim() === '' && (await pg.locator('#x-scen img').count()) === 1
+        : (await pg.locator('#x-scen').innerText()).trim() === 'Unity Cup'));
+    const shots = process.env.LLP_SHOTS, bn = b.browserType().name();   // pictures of the button and the open picker, for a look at the logos
+    if (shots) await pg.locator('#x-scen').screenshot({ path: `${shots}/${bn}-scen-button.png` });
+    await pg.click('#x-scen');
+    const t = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect();
+      const sub = t.querySelector('.ssub'), sr = sub.getBoundingClientRect(), pad = parseFloat(getComputedStyle(t).paddingBottom) + parseFloat(getComputedStyle(t).borderBottomWidth);
+      return { v: t.dataset.v, sub: sub.innerText.replace(/\s+/g, ' ').trim(), text: t.innerText, w: Math.round(r.width), h: Math.round(r.height), gap: Math.round(r.bottom - pad - sr.bottom), subH: Math.round(sr.height) }; }));
+    // hint rate as a multiple of URA Finale's (2.70, 2.08, 1.60, 2.30 hints per card over 1.60)
+    const want = { unity: 'Hint rate ×1.69', gc: 'Hint rate ×1.30', ura: 'Hint rate ×1.00', trackblazer: 'Hint rate ×1.44 (estimate)' };
+    check('opens with four tiles, each with its hint rate against URA Finale', !(await menu.isHidden()) && t.length === 4 && t.every(x => x.sub === want[x.v]), t.map(x => x.v + ': ' + x.sub).join(' | '));
+    check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
+    check('every tile is logo + one line, no blank space below', t.every(x => x.subH <= 22 && x.gap <= 1), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
+    const NAMES = { unity: 'Unity Cup', gc: 'Grand Concert', ura: 'URA Finale', trackblazer: 'Trackblazer' };
+    check('no scenario name under the logos (the logo is the name)', (await pg.locator('#scen-menu .stile img').count()) !== 4 || t.every(x => !x.text.includes(NAMES[x.v])), t.map(x => JSON.stringify(x.text)).join(' '));
+    // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
+    const golds = await pg.evaluate(() => { const skl = JSON.parse(document.getElementById('data-skills').textContent), gi = JSON.parse(document.getElementById('data-skillicon').textContent).gold;
+      const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
+      return { want: [20049, 20046].map(x => ({ name: skl.find(s => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })), group: g && g.getAttribute('aria-label'),
+        got: g ? [...g.querySelectorAll('img')].map(i => ({ alt: i.alt, title: i.title, src: i.getAttribute('src'), h: Math.round(i.getBoundingClientRect().height) })) : [],
+        text: g ? g.innerText.trim() : null, others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length }; });
+    check('Unity Cup tile: No Stopping Me! and It\'s On! as gold icons on the rate line, no visible names', golds.group === 'Guaranteed in every run' && golds.others === 0 && golds.text === ''
+      && golds.got.length === 2 && golds.want.every((w, i) => golds.got[i].alt === w.name && golds.got[i].title === w.name && golds.got[i].src.endsWith(w.src) && golds.got[i].h <= 18), JSON.stringify(golds.got));
+    check('the word "golds" appears nowhere on the page', !/\bgolds\b/i.test(await pg.evaluate(() => document.body.innerText)));
+    check('logos keep their aspect (object-fit: contain)', await pg.evaluate(() => [...document.querySelectorAll('#scen-dd .slogo img')].every(i => i.naturalWidth > 0 && getComputedStyle(i).objectFit === 'contain')));
+    check('the open picker marks the chosen tile and focuses it', await pg.evaluate(() => { const t = document.activeElement; return t.classList.contains('stile') && t.dataset.v === 'unity' && t.getAttribute('aria-checked') === 'true'; })
+      && (await pg.getAttribute('#x-scen', 'aria-expanded')) === 'true');
+    if (shots) await menu.screenshot({ path: `${shots}/${bn}-scen-picker.png` });
+    const r0 = await pg.evaluate(() => window.__runs.length);
+    await tiles.nth(0).click(); await pg.waitForTimeout(400);
+    check('re-picking the chosen scenario closes the picker and does not search', (await menu.isHidden()) && (await pg.evaluate(() => window.__runs.length)) === r0 && !/Searching/.test(await note(pg)));
+    await pg.keyboard.press('ArrowDown');   // focus is back on the button
+    check('arrow key on the button opens the picker', !(await menu.isHidden()));
+    await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowDown');
+    check('arrows move between tiles (two columns)', await pg.evaluate(() => document.activeElement.dataset.v) === 'trackblazer');
+    await pg.keyboard.press('Escape');
+    check('Escape closes it and returns focus to the button', (await menu.isHidden()) && await pg.evaluate(() => document.activeElement.id === 'x-scen'));
+    await pg.click('#x-scen'); await pg.click('header.top h1');
+    check('a click outside closes it', await menu.isHidden());
+    // only the button and the grid count as inside: the label, the row's empty space and the rank control all close it
+    const shut = [];
+    await pg.click('#x-scen'); await pg.click('#x-scen-l'); shut.push(await menu.isHidden());
+    await pg.click('#x-scen'); const bb = await pg.locator('#x-scen').boundingBox(); await pg.mouse.click(bb.x + bb.width + 8, bb.y + bb.height / 2); shut.push(await menu.isHidden());
+    await pg.click('#x-scen'); await pg.click('.rankctl > span'); shut.push(await menu.isHidden());
+    check('clicks on the label, beside the button, on the rank control close it', shut.every(Boolean), shut.join(','));
+    await pg.click('#x-scen'); await pg.keyboard.press('End'); await pg.keyboard.press('Enter'); await settle(pg);
+    check('Enter on a tile picks it and closes the picker', (await menu.isHidden()) && (await scen(pg)) === 'trackblazer' && (await btnName()) === 'Scenario: Trackblazer');
+    check('… and searches with it', await pg.evaluate(() => window.__runs.at(-1).scenario === 'trackblazer'));
+    // the lineage rank sits in the Game data panel and follows the scenario: Grand Concert SS, Unity Cup below SS
+    check('the lineage rank control is in the Game data panel', await pg.evaluate(() => !!document.getElementById('rank').closest('section[aria-labelledby="h-era"]')));
+    await pickScen(pg, 'gc'); await settle(pg);
+    check('picking Grand Concert sets the rank to SS', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
+    await pickScen(pg, 'unity'); await settle(pg);
+    check('picking Unity Cup sets it back to below SS', (await pg.inputValue('#rank')) === '0.50,0.45,0.05');
+    await pg.selectOption('#rank', '0.20,0.70,0.10'); await settle(pg); await pickScen(pg, 'unity'); await pg.waitForTimeout(400);
+    check('a rank changed by hand sticks (re-picking the scenario leaves it)', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
+    await pg.reload(); await settle(pg);
+    check('… and survives a reload', (await pg.inputValue('#rank')) === '0.20,0.70,0.10' && (await scen(pg)) === 'unity');
+    await pickScen(pg, 'trackblazer'); await settle(pg);
+    await pg.click('#ex-open');
+    check('export names the scenario', JSON.parse(await pg.inputValue('#ex-text')).readable.scenario === 'Trackblazer');
+    const text = (await pg.inputValue('#ex-text')).replace('"scen": "trackblazer"', '"scen": "gc"');
+    await pg.fill('#ex-text', text); await pg.click('#ex-load'); await pg.click('#ex-close');
+    check('import updates the button', (await scen(pg)) === 'gc' && (await btnName()) === 'Scenario: Grand Concert');
+    await settle(pg);
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+    // without the logo files (images not built, or a failed fetch) the button and tiles show the name on a badge
+    const p2 = await b.newContext().then(c => c.newPage());
+    await p2.route('**/img/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800); await p2.click('#x-scen');
+    const badges = await p2.evaluate(() => [...document.querySelectorAll('#scen-dd .slogo')].map(l => (l.querySelector('img') ? 'img' : '') + (l.querySelector('b') || {}).textContent).join(','));
+    check('missing logos fall back to name badges', badges === 'Unity Cup,Unity Cup,Grand Concert,URA Finale,Trackblazer', badges);
+    const sz = await p2.evaluate(() => new Set([...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })).size);
+    check('… and the tiles stay the same size', sz === 1);
+    check('Grand Masters is not offered with the Global data', (await p2.locator('#scen-menu .stile').count()) === 4 && (await p2.locator('#scen-menu .stile[data-v="grandmasters"]').count()) === 0);
+    check('… and the Unity Cup golds fall back to their names', (await p2.locator('#scen-menu .stile[data-v="unity"] .sgold').count()) === 2 || (await p2.locator('#scen-menu .sgolds img').count()) === 2);
+    await p2.context().close();
   },
   async autosearch(b) {
     const pg = await open(b);
@@ -88,7 +193,9 @@ const TESTS = {
     await settle(pg);
     check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
     // a slow search (3 results, one shared deck), changed mid-run: the worker is killed and the new search finishes
-    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma'); await pg.waitForTimeout(1500);
+    const r0 = await pg.evaluate(() => window.__runs.length);
+    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
+    await pg.waitForFunction((n) => window.__runs.length > n, r0); await pg.waitForTimeout(100);   // the slow search is running
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
     await pg.click('#c-peruma'); await pg.selectOption('#c-top', '1'); await settle(pg);
@@ -128,16 +235,21 @@ const TESTS = {
     const pg = await open(b);
     const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map(h => h.textContent));
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
+    const sep = await pg.evaluate(() => { const c = document.getElementById('cards'), r = c.previousElementSibling.getBoundingClientRect(), cs = getComputedStyle(c);
+      return { gap: Math.round(c.getBoundingClientRect().top - r.bottom), pad: parseFloat(cs.paddingTop) }; });
+    check('the card list scrolls apart from its search row (gap like the roster\'s), its tiles\' rings and focus outline inside it', sep.gap >= 10 && sep.pad >= 5, JSON.stringify(sep));
     check('default card sort: release, newest first', (await pg.locator('#cs').innerText()) === 'Release ↓');
     const tile = pg.locator('#cards .ct').first(); const img = await tile.evaluate(t => { t.__img = t.querySelector('img'); return !!t.__img; });
     await tile.click();
     check('toggling a card keeps its image element (no flicker)', img && await tile.evaluate(t => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false'));
     check('the count line follows', /1 not owned/.test(await pg.locator('#c-count').innerText()), await pg.locator('#c-count').innerText());
     await tile.click();
-    await pg.click('#x-rcards');   // R cards off: R pals stay
+    // R cards are off by default: the R section holds only the R pals until they are switched on
     const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
-    const rCount = await pg.evaluate(() => { const g = [...document.querySelectorAll('#cards .cgroup')].find(x => x.querySelector('h3').textContent === 'R'); return g ? g.querySelectorAll('.ct').length : 0; });
-    check('with R cards off, the R section keeps the R pals', rCount === rpals, rCount + ' of ' + rpals);
+    const rCount = () => pg.evaluate(() => { const g = [...document.querySelectorAll('#cards .cgroup')].find(x => x.querySelector('h3').textContent === 'R'); return g ? g.querySelectorAll('.ct').length : 0; });
+    check('R cards off by default; the R section keeps the R pals', !(await pg.locator('#x-rcards').isChecked()) && (await rCount()) === rpals, (await rCount()) + ' of ' + rpals);
+    await pg.click('#x-rcards');
+    check('switching R cards on lists them', (await rCount()) > rpals);
     check('every card image carries its type icon', (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
@@ -197,6 +309,13 @@ const TESTS = {
       vis = vis && await pg.evaluate(() => { const r = document.getElementById('run-note').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); }
     check('phone: the status bar stays on screen', vis);
     await pg.evaluate(() => scrollTo(0, 0));
+    await pg.click('#x-scen');
+    check('phone: the open scenario picker fits the screen', await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect();
+      return r.width > 0 && r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }));
+    const ph = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(), s = t.querySelector('.ssub').getBoundingClientRect();
+      return Math.round(r.width) + 'x' + Math.round(r.height) + ' line ' + Math.round(s.height); }));
+    check('phone: the scenario tiles are the same size, each logo + one line', new Set(ph.map(x => x.split(' ')[0])).size === 1 && ph.every(x => +x.split(' ').at(-1) <= 22), ph.join(' | '));
+    await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await pg.waitForTimeout(250);
     check('phone: agenda stacks without the blank Junior half-year', (await pg.locator('#sched-dlg .ag-slot.none:visible').count()) === 0);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
@@ -208,6 +327,15 @@ const TESTS = {
     const umas = (await pg.evaluate(() => fetch('data-gm.json').then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
     check('GM era: roster from the GM data', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
     check('GM era: the search runs', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0, await odds(pg));
+    // the GM era offers Grand Masters as a fifth tile (same size as the others), and its search carries it
+    await pg.click('#x-scen');
+    const gt = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return { v: t.dataset.v, sub: t.querySelector('.ssub').innerText.replace(/\s+/g, ' ').trim(), size: Math.round(r.width) + 'x' + Math.round(r.height), x: Math.round(r.left + r.width / 2) }; }));
+    const mid = await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect(); return Math.round(r.left + r.width / 2); });
+    check('GM era: five equal tiles, Grand Masters last and centred', gt.length === 5 && gt[4].v === 'grandmasters' && gt[4].sub === 'Hint rate ×1.44 (estimate)' && new Set(gt.map(t => t.size)).size === 1 && Math.abs(gt[4].x - mid) <= 1, JSON.stringify(gt));
+    if (process.env.LLP_SHOTS) await pg.locator('#scen-menu').screenshot({ path: `${process.env.LLP_SHOTS}/${b.browserType().name()}-scen-picker-gm.png` });
+    await pg.click('#scen-menu .stile[data-v="grandmasters"]'); await settle(pg);
+    check('GM era: picking Grand Masters searches with it, at rank SS', await pg.evaluate(() => window.__runs.at(-1).scenario === 'grandmasters' && window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1')
+      && (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: Grand Masters');
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -219,7 +347,7 @@ const TESTS = {
       set('llp:targets', [{ group: 20166, guaranteed: 2, deck_gold: 1 }, { group: 20159, guaranteed: 0, deck_white: 0.5 }]);
       set('llp:rank', '0.45,0.50,0.05'); set('llp:rsort', 'rel'); set('llp:rdir', 'asc'); localStorage.setItem('llp:era', 'global'); } catch {} } });
     const st = await pg.evaluate(() => ({ keys: Object.keys(localStorage).filter(k => k.startsWith('llp:')), s: JSON.parse(localStorage.getItem('llp:settings')) }));
-    check('migration: one llp:settings object, old keys removed', st.keys.length === 1 && st.keys[0] === 'llp:settings' && st.s.v === 1, st.keys.join(','));
+    check('migration: one llp:settings object, old keys removed', st.keys.length === 1 && st.keys[0] === 'llp:settings' && st.s.v === 2, st.keys.join(','));
     check('migration: per-era roster kept apart', st.s.global.roster['1001'] === 'out' && st.s.gm.roster['1002'] === 'out');
     check('migration: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));
     check('migration: card ownership kept', await pg.evaluate(() => document.querySelectorAll('#cards .ct[aria-pressed="false"]').length === 1));
@@ -235,18 +363,33 @@ const TESTS = {
     check('export then import: settings load', (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global');
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
+    // settings saved before R cards became opt-in: a saved "on" (almost always the old default) is reset once
+    const p2 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
+      localStorage.setItem('llp:settings', JSON.stringify({ v: 1, era: 'global', common: { rcards: true, rank: '0.20,0.70,0.10' }, global: {}, gm: {} })); } catch {} } });
+    const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
+      localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { scen: 'grandmasters', rank: '0.20,0.70,0.10', targets: [{ group: 20049, guaranteed: 0 }, { group: 20046, guaranteed: 0 }, { group: 20159, guaranteed: 0 }] }, global: {}, gm: {} })); } catch {} } });
+    check('Grand Masters saved, Global data active: Unity Cup is used (its golds and rank)', (await p3.getAttribute('#x-scen', 'data-value')) === 'unity'
+      && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.inputValue('#rank')) === '0.50,0.45,0.05' && (await p3.inputValue('#g-20049')) === '2');
+    await p3.context().close();
+    check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.inputValue('#rank')) === '0.20,0.70,0.10');
+    await p2.context().close();
   },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);
     await pg.locator('#roster .ut .up').nth(1).click(); await pg.locator('#cards .ct').nth(1).click(); await settle(pg);
     const fails = [...await pg.evaluate(AUDIT)];
+    await pg.click('#x-scen'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.deck .dc').first().click(); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /cpop|sw|gtl|ctt/.test(x))); await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await pg.waitForTimeout(200); fails.push(...await pg.evaluate(AUDIT));
     await pg.locator('#sched-dlg .stab').nth(4).click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await pg.waitForTimeout(200); fails.push(...await pg.evaluate(AUDIT));
     check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
     await pg.context().close();
+    const p2 = await b.newContext().then(c => c.newPage()); await p2.route('**/img/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800);
+    await p2.click('#x-scen'); const bf = (await p2.evaluate(AUDIT)).filter(x => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x));
+    check('contrast: scenario badges (no logo files) meet WCAG AAA', !bf.length, bf.join(' | '));
+    await p2.context().close();
   },
 };
 

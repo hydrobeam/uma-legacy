@@ -7,6 +7,7 @@ import { state, ui, writeSaved } from './state.js';
 import { save, doSearch } from './search.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
+import { initScenario } from './scenario.js';
 import { initCards, renderCards } from './cards.js';
 import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
@@ -21,6 +22,7 @@ loadData().then(start, (e) => { const p = document.createElement('p'); p.classNa
 function start() {
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); renderCards(); };
   $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
+  initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
   initRoster(); initCards(); initTargets(); initIO(); initPopover();
   for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
