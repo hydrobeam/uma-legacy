@@ -364,10 +364,13 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 /* deck cards are their art alone (click for name and ownership); without art the name shows */
 .dc .cav.art { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; box-shadow: none; }
 .dc.bor { position: relative; container-type: inline-size; }   /* cqw = card width = the square image's height */
-.dc.bor .cav.art { border-radius: 10px; }
-/* the frame is drawn over the full-size art: its transparent inner corners show the art, not a gap */
-.dc.bor:has(.cav.art)::after { content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 100cqw; box-sizing: border-box; pointer-events: none;
-  border-style: solid; border-width: 6px 6px 16px; border-image: var(--friend-frame) 37 37 75 37 / 6px 6px 16px stretch; }
+.dc.bor:has(.cav.art) { margin-bottom: 12px; }   /* room for the frame's band under the art */
+.dc.bor .cav.art { background: #ff669f; border-radius: 0; }   /* square, the frame's pink behind the art's transparent rounded corners: no gap */
+/* The friend frame (80x120 9-slice: ~10 px pink on top, 8 on the sides, 45 at the bottom around a rounded hole) sits
+   around the art: 3 px of pink outside the top and sides, a 12 px band below, and the hole's transparent rounded
+   corners over the art's own corners. Border widths = slice x pink wanted / pink in the slice (37/10*3, 37/8*3, 75/45*12). */
+.dc.bor:has(.cav.art)::after { content: ''; position: absolute; left: -3px; top: -3px; width: calc(100% + 6px); height: calc(100cqw + 15px); box-sizing: border-box; pointer-events: none;
+  border-style: solid; border-width: 11px 14px 20px; border-image: var(--friend-frame) 37 37 75 37 / 11px 14px 20px stretch; }
 .dc.off .cav { filter: grayscale(1); opacity: 0.5; }
 .dc:hover .cav.art { filter: brightness(1.07); }
 .dc.off:hover .cav.art { filter: grayscale(1); }
