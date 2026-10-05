@@ -107,6 +107,11 @@ ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
 app = subprocess.run([ESBUILD, os.path.join(H, 'src', 'main.js'), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
                      check=True, capture_output=True, text=True).stdout
+# the Global roster written into the page (prerender.mjs, the page's own tile markup from src/rostercore.js), so its
+# portraits are requested from the HTML and it paints before the page script runs; the inline script after it
+# (src/rosterearly.js) puts it in the saved order and states before the first paint
+early = subprocess.run([ESBUILD, os.path.join(H, 'src', 'rosterearly.js'), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
+                       check=True, capture_output=True, text=True).stdout
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
@@ -134,9 +139,11 @@ for pkg, w in FONTS:
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
 for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
 css = '\n'.join(faces) + '\n' + css
+roster_html = subprocess.run(['node', os.path.join(H, 'prerender.mjs')], check=True, capture_output=True, text=True,
+                             input=json.dumps({'umas': json.loads(G['umas']), 'shipped': images, 'ext': ext, 'base': IMG_BASE})).stdout
 for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
-             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
+             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__ROSTER__', roster_html), ('__ROSTEREARLY__', early), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
 assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
