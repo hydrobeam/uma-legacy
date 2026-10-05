@@ -38,8 +38,11 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 /* results column: a status line (search progress, errors, Stop, how many results), then the result cards. On a wide
    screen it stays in view while the settings beside it scroll (sticky, scrolling on its own when taller than the window) */
 .rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
-@media (min-width: 961px) { .rcol { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow: auto; }
-  .rhead { position: sticky; top: 0; z-index: 4; } }
+/* desktop: the results stay in view while the rail is edited. No inner scroll box (the wheel always scrolls the page):
+   the column sticks at the top when it fits the window, and when it is taller it scrolls with the page until its end
+   shows, then sticks by its bottom (--rtop, set by main.js from its height); the status row stays at the top */
+@media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; }
+  .rhead { position: sticky; top: 8px; z-index: 4; } }
 .rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 42px; padding: 5px 10px; background: var(--bg);
   border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; }
 .runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }

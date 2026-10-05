@@ -13,6 +13,10 @@ import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
 import { initIO } from './io.js';
 
+// ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
+{ const rcol = document.querySelector('.rcol');
+  if (rcol) { const fit = () => rcol.style.setProperty('--rtop', Math.min(12, innerHeight - rcol.offsetHeight - 12) + 'px');
+    new ResizeObserver(fit).observe(rcol); addEventListener('resize', fit); } }
 // ---------- game data ----------
 $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
 const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); location.reload(); };
