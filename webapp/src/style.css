@@ -64,7 +64,11 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
   .runpill:not([hidden]) { display: flex; position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 30;
     align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; font-size: 0.9rem; font-weight: 600; text-align: left; color: var(--ink); background: var(--panel);
     border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.16); font-variant-numeric: tabular-nums; }
-  body { padding-bottom: 124px; } }
+  html.rin .runpill:not([hidden]) { display: none; }
+  body { padding-bottom: 124px; }
+  .rcol { order: -1; }   /* results first (the inline script in the page also moves them first in the document) */
+  .rail .roster, .rail .cards { max-height: 55vh; }   /* shorter boxes: always some page outside them to scroll the page with */
+}
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .between { justify-content: space-between; }
@@ -93,6 +97,8 @@ input[type="search"] { width: 100%; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
 .rtools { gap: 6px; }
+/* the roster and card boxes scroll: their bottom edge fades while there is more below (main.js sets .more) */
+.roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
 .tkey { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--ink); }
 .tkey span { display: inline-flex; align-items: center; gap: 6px; }
 .tkey i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
@@ -391,3 +397,4 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 /* a narrow phone: the schedule table's member columns keep only their portraits (the names stay for screen readers) */
 @media (max-width: 400px) { .sched th.mh .hn { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .sched th.mh .av { margin: 0 auto; } }
+@media (max-width: 620px) { .swrow > b { flex: 1 0 100%; } }   /* phone: "X's deck" on its own line, then "swaps [card] → [card]" */

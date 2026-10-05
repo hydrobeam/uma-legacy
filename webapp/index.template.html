@@ -112,6 +112,14 @@ __CSS__
     </div>
     <div class="results" id="results"></div>
   </main>
+  <script>
+  // phone (the columns stacked): the results come first, before the settings, in the reading and Tab order too (the
+  // stylesheet orders them first as well, so the first frame is right either way); "rin": the results are in view
+  // (main.js keeps it current), which hides the floating status button
+  (function () { var m = matchMedia('(max-width: 960px)'), w = document.querySelector('.wrap'), r = document.getElementById('rcol');
+    function place() { if (m.matches) w.prepend(r); else w.append(r); }
+    place(); if (m.addEventListener) m.addEventListener('change', place); document.documentElement.classList.add('rin'); })();
+  </script>
 </div>
 
 <dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>

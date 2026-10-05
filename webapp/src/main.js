@@ -26,8 +26,12 @@ function start() {
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
   initRoster(); initCards(); initTargets(); initIO(); initPopover();
-  // phone: the floating status button takes you back up to the results
+  // phone: the floating status button shows while the results are out of view, and takes you back up to them
+  if (window.IntersectionObserver) new IntersectionObserver((es) => document.documentElement.classList.toggle('rin', es[0].isIntersecting)).observe($('rcol'));
   $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };
+  // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
+  for (const id of ['roster', 'cards']) { const el = $(id), upd = () => el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true }); addEventListener('resize', upd); }
   for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)

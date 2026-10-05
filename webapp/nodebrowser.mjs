@@ -456,10 +456,26 @@ const TESTS = {
   async phone(b) {
     const pg = await open(b, { w: 390, h: 844, mobile: true });
     check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
-    const H = await pg.evaluate(() => document.documentElement.scrollHeight); let vis = true;
-    for (const f of [0, 0.5, 1]) { await pg.evaluate((y) => scrollTo(0, y), f * H); await pg.waitForTimeout(60);
-      vis = vis && await pg.evaluate(() => { const r = document.getElementById('run-pill').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); }
-    check('phone: the status bar stays on screen', vis);
+    // results first: above the settings, and first in the document (reading and Tab order), the result in the first screen
+    const order = await pg.evaluate(() => { const c = document.getElementById('rcol'), r = document.querySelector('.rail'), o = document.querySelector('#results .loop .odds').getBoundingClientRect();
+      return { above: c.getBoundingClientRect().top < r.getBoundingClientRect().top, dom: !!(c.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING), odds: Math.round(o.bottom), h: innerHeight }; });
+    check('phone: the results come before the settings (on screen and in the Tab order), the odds in the first screen', order.above && order.dom && order.odds < order.h, JSON.stringify(order));
+    if (b.browserType().name() === 'chromium') { const cls = await pg.evaluate(() => new Promise(r => { let v = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) v += e.value; }).observe({ type: 'layout-shift', buffered: true }); setTimeout(() => r(v), 200); }));
+      check('phone: the page barely shifts while loading (CLS < 0.05)', cls < 0.05, cls.toFixed(4)); }
+    // the floating status button: shown only while the results are out of view, on screen wherever the page is scrolled
+    const H = await pg.evaluate(() => document.documentElement.scrollHeight); const seen = [];
+    for (const f of [0, 0.5, 1]) { await pg.evaluate((y) => scrollTo(0, y), f * H); await pg.waitForTimeout(150);
+      seen.push(await pg.evaluate(() => { const p = document.getElementById('run-pill'), r = p.getBoundingClientRect(), c = document.getElementById('rcol').getBoundingClientRect();
+        const resIn = c.bottom > 0 && c.top < innerHeight, shown = getComputedStyle(p).display !== 'none'; return shown === !resIn && (!shown || (r.top >= 0 && r.bottom <= innerHeight)); })); }
+    check('phone: the status button shows (on screen) exactly when the results are out of view', seen.every(Boolean), seen.join(','));
+    check('phone: it shows the headline odds', /^1 in 139 · see result/.test(await pg.locator('#run-pill').innerText()), await pg.locator('#run-pill').innerText());
+    // edit a setting far down, then the button takes you back to the result
+    const ct = pg.locator('#cards .ct').nth(2); await ct.scrollIntoViewIfNeeded(); await ct.click(); await settle(pg); await ct.click(); await settle(pg);
+    await pg.click('#run-pill'); await pg.waitForTimeout(900);
+    check('phone: after editing a card, the status button scrolls back to the results', await pg.evaluate(() => { const r = document.getElementById('rcol').getBoundingClientRect(); return Math.abs(r.top) < 40 && document.activeElement.id === 'rcol'; }));
+    // the roster and card boxes: shorter than the screen, their bottom edge fading while there is more below
+    const boxes = await pg.evaluate(() => ['roster', 'cards'].map(id => { const e = document.getElementById(id); return { h: e.clientHeight / innerHeight, more: e.classList.contains('more') }; }));
+    check('phone: the roster and card boxes are at most 55% of the screen high and show that they scroll', boxes.every(x => x.h <= 0.56 && x.more), JSON.stringify(boxes));
     await pg.evaluate(() => scrollTo(0, 0));
     await pg.click('#x-scen');
     check('phone: the open scenario picker fits the screen', await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect();
@@ -481,6 +497,8 @@ const TESTS = {
     check('phone: the affinity\'s Close stays on screen too', await closeVis());
     await pg.keyboard.press('Escape');
     await pg.click('#ex-open'); check('the export dialog\'s Close sits in the same header row as the others', await pg.evaluate(() => document.getElementById('ex-close').closest('.dhead') !== null)); await pg.keyboard.press('Escape');
+    await pg.setViewportSize({ width: 1280, height: 800 }); await pg.waitForTimeout(150);
+    check('widened to desktop, the results go back beside (after) the settings', await pg.evaluate(() => !!(document.querySelector('.rail').compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
