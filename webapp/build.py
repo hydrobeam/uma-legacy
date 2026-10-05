@@ -134,7 +134,9 @@ for pkg, w in FONTS:
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
 for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
 css = '\n'.join(faces) + '\n' + css
-for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
+# the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
+SITE = os.environ.get('SITE_URL', 'https://uma-legacy.pages.dev').rstrip('/')
+for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
