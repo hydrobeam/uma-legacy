@@ -32,7 +32,7 @@ function loopCard(l, meta, ctx) {
       const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick + (isNew ? ' · not in #1’s deck' : '');
       return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}${isNew ? ' new' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
         ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
-        `<span class="dn">${esc(full)}</span>${isNew ? '<span class="dnew" aria-hidden="true">new</span>' : ''}${bor ? '<i>borrowed</i>' : ''}${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
+        `<span class="dn">${esc(full)}</span>${isNew ? '<span class="dnew" aria-hidden="true">new</span>' : ''}${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
     // per target the deck can hint: the gold's odds, then the white's (a gold hint counts for the white too, so the
     // white's number is the chance of at least the white): the two numbers the landing odds depend on; each with its icon
     const icon = (g, gold) => { const i = skillIcon(g, gold); return i ? i.outerHTML : ''; };
