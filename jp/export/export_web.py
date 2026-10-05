@@ -5,7 +5,8 @@ import sqlite3, json, os, re
 from jpnames import names, outfit_released
 c = sqlite3.connect('master.mdb')
 q = lambda s, *a: c.execute(s, a).fetchall()
-B = json.load(open('base.json')); roster = B['roster']
+from jpnames import BASE, OUT
+B = json.load(open(BASE)); roster = B['roster']
 sname = names(47)
 cname = names(5)
 sk = {i: (r, g) for i, r, g in q('select id, rarity, group_id from skill_data')}
@@ -28,5 +29,5 @@ for cid, ch, ass in q('select id, chara_id, available_skill_set_id from card_dat
             cov[g] = max(cov.get(g, 0), 2 if r == 2 else 1)
     label = re.match(r'(\[.*?\])', cname.get(cid, '')).group(1) if re.match(r'\[.*?\]', cname.get(cid, '')) else str(cid)
     cards.setdefault(ch, []).append([cid, label, sorted(cov.items())])
-json.dump({'cards': cards, 'skills': catalog}, open('../web_skills.json', 'w'), ensure_ascii=False)
+json.dump({'cards': cards, 'skills': catalog}, open(OUT + '/web_skills.json', 'w'), ensure_ascii=False)
 print(len(catalog), 'skills,', sum(len(v) for v in cards.values()), 'outfits for', len(cards), 'umas')

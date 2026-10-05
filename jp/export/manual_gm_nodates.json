@@ -126,6 +126,30 @@
    ],
    "status": "complete",
    "src": "GameTora training_events/group via page reader, decoded with dict/evrew (date events, show_progress 1): Darley Arabian date gives Straightaway Adept + Uma Stan"
+  },
+  "30207": {
+   "name": "[謹製ッ！特大夢にんじん！]秋川理事長",
+   "always": [
+    "Superstan"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 830207001 (展望ッ！これからのわたしと君と, the last outing, as Light Hello's At Rainbow Cove): Superstan hint +3 or +1 on both outcomes. JP, released 2024-06-26 (after the GM-era cut; used by later cuts)"
+  },
+  "10109": {
+   "name": "[トレセン学園]秋川理事長",
+   "always": [
+    "Uma Stan"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_friend 830207001, R variant: Uma Stan hint +3 on both outcomes. JP, released 2024-06-26"
+  },
+  "30241": {
+   "name": "[導きの光]伝説の体現者",
+   "always": [
+    "Tail Held High"
+   ],
+   "status": "complete",
+   "src": "GameTora training_events_group 830241020 (あの頃と今を繋げて, the fourth outing): the first (default) choice gives a Tail Held High hint, one outcome. Its random events also hint Slipstream (三栄冠のお散歩, choice 1) and Uma Stan (かつての学び舎, choice 3); random events are not counted. JP group card (St. Lite, Speed Symboli, Haiseiko), released 2025-02-24"
   }
  }
 }

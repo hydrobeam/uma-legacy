@@ -7,7 +7,7 @@ A skill in every outcome of some choice is certain when the link fires; a skill 
 import json, sqlite3, glob, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../pkg/loopopt/export'))
 from event_choices import decode, fmt
-from jpnames import names, CUT
+from jpnames import names, CUT, OUT
 G = '../../pkg/loopopt/gametora/'   # the same GameTora files as Global
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
@@ -35,7 +35,8 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
         out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), **({"alts": sorted(alts)} if alts else {}), "status": "complete", "src": "gametora training_events"}
 manual = json.load(open('manual_gm.json'))['cards']
 for k, v in manual.items():
+    if int(k) not in glob_cards: continue   # released after the cut
     if any(x in v for x in ('always', 'disabled', 'chance')): out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}
 doc = {"about": json.load(open('manual_gm.json'))['about'], "cards": dict(sorted(out.items()))}
-json.dump(doc, open('../card_events.json', 'w'), ensure_ascii=False, indent=1)
+json.dump(doc, open(OUT + '/card_events.json', 'w'), ensure_ascii=False, indent=1)
 print(len(out), 'cards written')

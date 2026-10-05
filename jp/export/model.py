@@ -4,7 +4,8 @@ c=sqlite3.connect('master.mdb')
 q=lambda s,*a: c.execute(s,a).fetchall()
 from jpnames import names
 RN=names(32)
-B=json.load(open('base.json'))
+from jpnames import BASE
+B=json.load(open(BASE))
 ROSTER=B['roster']; NAME={int(k):v for k,v in B['name'].items()}
 APT={int(k):v for k,v in B['apt'].items()}   # (short,mile,mid,long,turf,dirt) codes 1..8 = G..S
 def off(code): # S,A ->0, B->1 ... G->6

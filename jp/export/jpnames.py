@@ -1,9 +1,13 @@
 """JP master.mdb helpers: the Grand Masters-era cutoff (L'Arc's JP start) and English names taken from the
-Global master.mdb by the same ids (JP-only entries keep their Japanese text)."""
-import sqlite3
+Global master.mdb by the same ids (JP-only entries keep their Japanese text).
+Other cuts: JP_CUT=<unix time> (content released before it), JP_OUT=<folder> for the exported files (default ..),
+JP_BASE=<file> for the intermediate roster file (default base.json)."""
+import sqlite3, os
 GLOBAL = '../../pkg/loopopt/export/master.mdb'
 _jp = sqlite3.connect('master.mdb'); _gl = sqlite3.connect(GLOBAL)
-CUT = _jp.execute("select start_date from single_mode_scenario where id=6").fetchone()[0]   # L'Arc start
+CUT = int(os.environ.get('JP_CUT') or _jp.execute("select start_date from single_mode_scenario where id=6").fetchone()[0])   # L'Arc start
+OUT = os.environ.get('JP_OUT', '..')
+BASE = os.environ.get('JP_BASE', 'base.json')
 def names(cat):
     jp = dict(_jp.execute('select "index", text from text_data where category=?', (cat,)).fetchall())
     en = dict(_gl.execute('select "index", text from text_data where category=?', (cat,)).fetchall())

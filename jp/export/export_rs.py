@@ -34,7 +34,7 @@ for ch in ROSTER:
 # least two roster members. pair(a,b) / tri(a,b,c) = sum of the points of the groups holding all of them (distinct umas);
 # the solver rebuilds both tables at load (lib.rs rel_tables). Same numbers as rel.pair / rel.tri.
 RELS=[[pt[t],m] for t in sorted(pt) for m in [[i for i,ch in enumerate(ROSTER) if t in mem.get(ch,set())]] if len(m)>=2]
-json.dump({'races':races,'race_names':[RN[r] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(os.environ.get('OUT','../data.json'),'w'))
+json.dump({'races':races,'race_names':[RN[r] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(os.environ.get('OUT') or os.environ.get('JP_OUT', '..') + '/data.json','w'))
 print('races',len(races),'umas',len(umas),'max options/turn',max(len(l) for u in umas for l in u['turns']),
       'multi-turn goal groups',sum(1 for u in umas for g in u['goals'] if len({t for t,_ in g})>1),
       'same-turn multi-option groups',sum(1 for u in umas for g in u['goals'] if len(g)>1 and len({t for t,_ in g})==1))
