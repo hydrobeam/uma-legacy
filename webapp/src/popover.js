@@ -5,7 +5,9 @@ import { state } from './state.js';
 import { save } from './search.js';
 import { umaState, renderRoster } from './roster.js';
 import { cardTitle, cardGives, renderCards } from './cards.js';
-const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.body.appendChild(pop);
+// The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
+// column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
+const pop = document.createElement('div'); pop.className = 'cpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.getElementById('rcol').appendChild(pop);
 let popFor = null;
 export function closePop() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
 export function markOwn() {
@@ -15,8 +17,9 @@ export function markOwn() {
 }
 function placePop(el) {
   pop.hidden = false;
-  const r = el.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
-  pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, vw - w - 8))) + 'px'; pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  const host = pop.offsetParent || document.body, h = host.getBoundingClientRect(), r = el.getBoundingClientRect(), w = pop.offsetWidth;
+  pop.style.left = (host.scrollLeft + Math.max(0, Math.min(r.left - h.left, host.clientWidth - w))) + 'px';
+  pop.style.top = (host.scrollTop + r.bottom - h.top + 6) + 'px';
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
@@ -33,7 +36,10 @@ function openUmaPop(btn) {
   sw.onchange = () => {
     if (sw.checked) { if (state.roster[u.id] === 'out') delete state.roster[u.id]; if (oid) delete state.outfits[oid];
       else for (const o of u.outfits || []) delete state.outfits[o.id]; }
-    else if (oid) state.outfits[oid] = false; else state.roster[u.id] = 'out';
+    // not owned can't also be must include: the uma as a whole drops her must-include marks (an outfit's own mark is
+    // replaced by its not-owned one; her other marked outfits still stand)
+    else if (oid) state.outfits[oid] = false;
+    else { state.roster[u.id] = 'out'; for (const o of u.outfits || []) if (state.outfits[o.id] === 'req') delete state.outfits[o.id]; }
     save(); renderRoster(); markOwn(); sw.checked = owned(); };
 }
 // GameTora's card page, by the url_name in its own card list (build.py; group cards have names a slug can't guess).

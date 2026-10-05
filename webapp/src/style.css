@@ -32,8 +32,35 @@ header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: w
 h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .rail { display: flex; flex-direction: column; gap: 14px; align-self: stretch; min-width: 0; }
-.rail > .runbox { margin-top: auto; position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 3; display: grid; gap: 0; }
-@media (max-width: 960px) { .rail > .runbox { position: fixed; left: 16px; right: 16px; width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+/* results column: a status line (search progress, errors, Stop, how many results), then the result cards. On a wide
+   screen it stays in view while the settings beside it scroll (sticky, scrolling on its own when taller than the window) */
+.rcol { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; outline: none; }
+@media (min-width: 961px) { .rcol { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow: auto; }
+  .rhead { position: sticky; top: 0; z-index: 4; } }
+.rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 42px; padding: 5px 10px; background: var(--bg);
+  border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; }
+.runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.runnote:empty { display: none; }
+.rhead[data-kind="busy"] { background: var(--accent-soft); border-color: var(--accent); }
+.rhead[data-kind="busy"] .runnote { color: var(--ink); font-weight: 600; }
+.rhead[data-kind="error"] { background: var(--out-soft); border-color: var(--out); border-left-width: 5px; }
+.rhead[data-kind="error"] .runnote { color: var(--ink); font-weight: 600; }   /* --out on --out-soft is 6.5:1, short of AAA */
+.rhead[data-kind="empty"], .rhead[data-kind="stopped"] { background: var(--panel); border-color: var(--line); }
+.rhead[data-kind="empty"] .runnote, .rhead[data-kind="stopped"] .runnote { color: var(--ink); }
+.ract:empty { display: none; }
+.rtop { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+/* while a search runs (after a moment, so a quick one doesn't flicker) and when the settings can't be searched, the
+   results on screen are no longer those of the settings: dimmed, not wiped */
+#results { transition: opacity 0.15s; }
+#results[aria-busy="true"] { opacity: 0.5; transition: opacity 0.25s 0.8s; }
+#results.stale { opacity: 0.45; }
+@media (prefers-reduced-motion: reduce) { #results, #results[aria-busy="true"] { transition: none; } }
+/* phone: the status line's copy floats at the bottom of the screen as a button back to the results */
+.runpill { display: none; }
+@media (max-width: 960px) {
+  .runpill:not([hidden]) { display: flex; position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 30;
+    align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; font-size: 0.9rem; font-weight: 600; text-align: left; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.16); font-variant-numeric: tabular-nums; }
   body { padding-bottom: 124px; } }
 h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0; font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -47,10 +74,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
-.runnote { margin: 0; padding: 8px 12px; font-size: 0.82rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.16); display: flex; align-items: center; gap: 8px; }
-.runnote:empty { display: none; }
-.runnote.busy { border-color: var(--accent); font-weight: 600; }
 input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
 /* roster chips: three states */

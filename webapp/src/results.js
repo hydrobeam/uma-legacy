@@ -4,7 +4,6 @@ import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon } from './images.js';
 import { cardTitle } from './cards.js';
-import { paintRunNote } from './search.js';
 import { closePop, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
@@ -83,11 +82,7 @@ function loopCard(l, i, meta, proven) {
 export function renderDeck(res, meta) {
   closePop();
   const box = $('results'); box.textContent = '';
-  if (res.error) { const e = document.createElement('p'); e.className = 'err'; e.textContent = res.error; box.appendChild(e); return; }
-  if (!res.top.length) { const st = document.createElement('div'); st.className = 'status'; st.textContent = 'No loop fits these settings.'; box.appendChild(st); return; }
-  ui.runNote = meta.example ? 'Showing an example: Unity Cup skills, everything owned'
-    : `Searched ${res.decks_built.toLocaleString()} decks and ${res.foursomes.toLocaleString()} loops in ${(meta.ms / 1000).toFixed(1)} s`;
-  paintRunNote();
+  ui.headline = fmtIn(res.top[0].loop.p_all);   // only results with loops reach this (search.js keeps errors off the page)
   res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, i, { ...meta, deck: t.deck, decks: t.decks || null }, i === 0 && res.proven)));
   markOwn();   // grey out anything marked not owned since the search (needs the cards on the page)
 }

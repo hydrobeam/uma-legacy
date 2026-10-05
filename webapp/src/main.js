@@ -4,7 +4,7 @@ import { $ } from './dom.js';
 import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
-import { save, doSearch, firstResult } from './search.js';
+import { save, doSearch, firstResult, paintRunNote } from './search.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';
@@ -18,13 +18,16 @@ $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-g
 const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); location.reload(); };
 $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
 // everything below needs the era's data (inline for Global, fetched for the GM era)
-loadData().then(start, (e) => { const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; $('results').replaceChildren(p); });
+if (ERA === 'gm') { ui.status = { kind: 'loading', text: 'Loading the JP Grand Masters-era data…' }; paintRunNote(); }   // fetched: about a second
+loadData().then(start, (e) => { ui.status = { kind: 'error', text: e.message }; paintRunNote(); });
 function start() {
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); renderCards(); };
   $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
   initRoster(); initCards(); initTargets(); initIO(); initPopover();
+  // phone: the floating status button takes you back up to the results
+  $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };
   for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)
@@ -32,7 +35,7 @@ function start() {
   // (showing the default example under other settings flashed a result that wasn't theirs)
   const first = firstResult();
   if (first) { ui.lastRender = () => renderDeck(first.r, first.example ? { example: true, targets: PRESET, rank: '0.50,0.45,0.05' } : { ms: first.ms, targets: first.targets, rank: state.rank });
-    ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} }; }
-  else $('results').innerHTML = '';
+    ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
+    ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : { kind: 'done', text: 'Your last result for these settings' }; }
   setTimeout(doSearch, 0);   // the first search, with the saved settings (also warms the engine)
 }

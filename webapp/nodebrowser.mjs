@@ -81,8 +81,15 @@ const TESTS = {
     // the deck's odds per target: each with its skill icon, the white named (no "any hint"), no lead text
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length, text: l.innerText }; });
     check('deck odds: a skill icon on every entry, no "any hint" or lead text', dd.n > 0 && dd.icons === dd.n && !/any hint|every run/i.test(dd.text), JSON.stringify(dd));
-    const off = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
+    const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
+    // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)
+    await pg.evaluate(() => scrollTo(0, 1600)); await pg.waitForTimeout(100);
+    const st = await pg.evaluate(() => { const c = document.getElementById('rcol').getBoundingClientRect(), l = document.querySelector('#results .loop').getBoundingClientRect(), n = document.getElementById('run-note').getBoundingClientRect();
+      return { top: Math.round(c.top), bottom: Math.round(c.bottom), loop: Math.round(l.top), note: Math.round(n.top), y: scrollY, h: innerHeight }; });
+    check('desktop: scrolled down the settings, the status line and the result stay on screen', st.y > 1000 && st.top >= 0 && st.top <= 20 && st.note >= 0 && st.loop < st.h && st.bottom <= st.h, JSON.stringify(st));
+    await pg.evaluate(() => scrollTo(0, 0));
+    check('"Results to show" sits in the results header', await pg.evaluate(() => !!document.getElementById('c-top').closest('#rhead')));
     check('no button; status bar present', (await pg.locator('#run').count()) === 0 && (await pg.locator('#run-note').count()) === 1);
     // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
     // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
@@ -277,6 +284,47 @@ const TESTS = {
     check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
     await pg.locator('.cpop .sw').click(); await pg.waitForTimeout(100);
     check('member Owned switch updates the roster and greys her', (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0);
+    await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
+    // must include, then Owned off in her panel: she is not owned and no longer must include (no contradiction left)
+    const m0 = pg.locator('.loop').first().locator('.mem').first(), uid = await m0.getAttribute('data-uma'), anyOutfit = !(await m0.getAttribute('data-outfit'));
+    const tile = pg.locator(`#roster .ut[data-uma="${uid}"] .up`).first(); await tile.click(); await tile.click(); await settle(pg);
+    const marked = await pg.locator(`#roster .ut[data-uma="${uid}"][data-s="req"]`).count();
+    await pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`).click(); await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
+    const after = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), uid);
+    check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', anyOutfit && marked === 1 && after.every(x => x === 'out') && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
+  async states(b) {
+    // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
+    const pg = await open(b);
+    const head = () => pg.evaluate(() => ({ kind: document.getElementById('rhead').dataset.kind, note: document.getElementById('run-note').textContent, act: document.getElementById('r-act').innerText,
+      loops: document.querySelectorAll('#results .loop').length, stale: document.getElementById('results').classList.contains('stale') }));
+    while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
+    await pg.waitForTimeout(700); let h = await head();
+    check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
+    await pg.click('#r-act button'); await settle(pg); h = await head();
+    check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /Searched/.test(h.note) && !h.stale, JSON.stringify(h));
+    await pg.click('#r-none'); await pg.waitForTimeout(700); h = await head();
+    check('no umas owned: a neutral status with "Mark all umas owned"', h.kind === 'empty' && /at least 4 umas/.test(h.note) && /Mark all umas owned/.test(h.act) && h.loops > 0, JSON.stringify(h));
+    await pg.click('#r-act button'); await settle(pg);
+    // contradictory settings (an import can carry them): the status says what is wrong, the result stays
+    const u = (await json(pg, 'data-umas')).find(x => x.outfits.length > 1);
+    await pg.click('#ex-open'); const ex = JSON.parse(await pg.inputValue('#ex-text'));
+    ex.settings.roster = { [u.id]: 'out' }; ex.settings.outfits = { [u.outfits[0].id]: 'req' };
+    await pg.fill('#ex-text', JSON.stringify(ex)); await pg.click('#ex-load'); await pg.click('#ex-close'); await pg.waitForTimeout(700); h = await head();
+    check('must include but not owned: an error naming her, in the status line; results kept', h.kind === 'error' && h.note.includes(u.name + ' is marked Must include but not owned') && h.loops > 0 && h.stale, JSON.stringify(h));
+    if (b.browserType().name() === 'chromium') { const cf = (await pg.evaluate(AUDIT)).filter(x => /^p\.runnote/.test(x)); check('contrast: the error status line meets WCAG AAA', !cf.length, cf.join(' | ')); }
+    await pg.click('#r-all'); await settle(pg);
+    // Stop: a slow search (three results, one shared deck) is stopped; the results stay and the worker is killed
+    const r0 = await pg.evaluate(() => window.__runs.length);
+    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
+    await pg.waitForFunction((n) => window.__runs.length > n, r0);
+    check('while searching: the results are marked busy and a Stop button shows', await pg.evaluate(() => document.getElementById('results').getAttribute('aria-busy') === 'true') && (await pg.locator('#r-act button').innerText()) === 'Stop');
+    const k0 = await pg.evaluate(() => window.__killed); await pg.click('#r-act button'); await pg.waitForTimeout(300); h = await head();
+    check('Stop kills the search and keeps the results', (await pg.evaluate(() => window.__killed)) > k0 && h.kind === 'stopped' && h.loops > 0 && !(await busy(pg)), JSON.stringify(h));
+    await pg.click('#r-act button'); await settle(pg);
+    check('… and "Search again" runs it', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) === 3);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -314,7 +362,7 @@ const TESTS = {
     check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
     const H = await pg.evaluate(() => document.documentElement.scrollHeight); let vis = true;
     for (const f of [0, 0.5, 1]) { await pg.evaluate((y) => scrollTo(0, y), f * H); await pg.waitForTimeout(60);
-      vis = vis && await pg.evaluate(() => { const r = document.getElementById('run-note').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); }
+      vis = vis && await pg.evaluate(() => { const r = document.getElementById('run-pill').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); }
     check('phone: the status bar stays on screen', vis);
     await pg.evaluate(() => scrollTo(0, 0));
     await pg.click('#x-scen');

@@ -7,8 +7,9 @@ const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
 // roster: uma id -> 'out' | 'req' ('req' only for umas without separate outfits); outfits: id -> false (not owned) | 'req'
 // (must include this outfit); cardsOff: id -> false when not owned
 export const state = Object.fromEntries([...COMMON, ...PER_ERA].map(k => [k, saved(k) !== undefined ? saved(k) : DEFAULTS[k]]));
-// runNote: the status line after a search; lastRender: redraws the results on screen; lastResult: {kind, r, meta} for export
-export const ui = { runNote: '', lastRender: null, lastResult: null };
+// status: the status line when no search runs (search.js paintRunNote); headline: the top result's odds ("1 in 139"),
+// for the phone's floating button; lastRender: redraws the results on screen; lastResult: {kind, r, meta} for export
+export const ui = { status: { kind: 'loading', text: '' }, headline: '', lastRender: null, lastResult: null };
 export function writeSaved() {
   SAVED.common = Object.fromEntries(COMMON.map(k => [k, state[k]])); SAVED[ERA] = Object.fromEntries(PER_ERA.map(k => [k, state[k]]));
   persist();

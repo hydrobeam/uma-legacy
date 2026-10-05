@@ -95,15 +95,21 @@ __CSS__
           <div class="sortmenu" id="cs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
         <div class="cards" id="cards"></div>
         <p class="hint" id="c-count"></p>
-        <label class="row" for="c-top" style="gap:10px"><span style="font-size:.88rem">Results to show</span>
-          <select id="c-top"><option value="1">1</option><option value="3">3 (slower)</option></select></label>
       </div>
     </section>
 
-    <div class="runbox"><p class="runnote" id="run-note" role="status" aria-live="polite"></p></div>
+    <button class="runpill" id="run-pill" type="button" hidden></button>
   </aside>
 
-  <main class="results" id="results" aria-live="polite"></main>
+  <main class="rcol" id="rcol" tabindex="-1" aria-label="Results">
+    <div class="rhead" id="rhead">
+      <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
+      <span class="ract" id="r-act"></span>
+      <label class="rtop" for="c-top">Results to show
+        <select id="c-top"><option value="1">1</option><option value="3">3 (up to a minute)</option></select></label>
+    </div>
+    <div class="results" id="results"></div>
+  </main>
 </div>
 
 <dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>
