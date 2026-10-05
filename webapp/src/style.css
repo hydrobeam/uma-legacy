@@ -44,8 +44,11 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
   border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; }
 .runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .runnote:empty { display: none; }
-.rhead[data-kind="busy"] { background: var(--accent-soft); border-color: var(--accent); }
-.rhead[data-kind="busy"] .runnote { color: var(--ink); font-weight: 600; }
+/* a search's banner look comes on only after a moment (as the dim): a 0.2 s search doesn't flash the row */
+.rhead { transition: background-color 0.15s, border-color 0.15s; }
+.rhead[data-kind="busy"] { background: var(--accent-soft); border-color: var(--accent); transition-delay: 0.6s; }
+.rhead[data-kind="busy"] .runnote { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .rhead { transition: none; } }
 .rhead[data-kind="error"] { background: var(--out-soft); border-color: var(--out); border-left-width: 5px; }
 .rhead[data-kind="error"] .runnote { color: var(--ink); font-weight: 600; }   /* --out on --out-soft is 6.5:1, short of AAA */
 .rhead[data-kind="empty"], .rhead[data-kind="stopped"] { background: var(--panel); border-color: var(--line); }

@@ -567,7 +567,10 @@ const TESTS = {
   },
   async gm(b) {
     const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:era', 'gm'); } } catch {} } });
-    await pg.reload(); await settle(pg);
+    await pg.route('**/assets/data-gm.*', async (r) => { await new Promise(x => setTimeout(x, 1500)); await r.continue(); });   // a slow fetch of the GM era's data
+    await pg.reload(); await pg.waitForTimeout(500);
+    check('GM era: while its data loads, the status line says so', /Loading the JP Grand Masters-era data/.test(await note(pg)), await note(pg));
+    await settle(pg); await pg.unroute('**/assets/data-gm.*');
     const umas = (await pg.evaluate(() => fetch(JSON.parse(document.getElementById('data-assets').textContent).dataGm).then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
     check('GM era: roster from the GM data', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
     check('GM era: the search runs', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0, await odds(pg));
