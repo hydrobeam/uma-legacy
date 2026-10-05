@@ -13,6 +13,4 @@ dependencies = [
 package = false
 
 [dependency-groups]
-dev = [
-    "fonttools>=4.66.1",
-]
+dev = []

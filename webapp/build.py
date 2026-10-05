@@ -1,11 +1,11 @@
 """Assemble the web app in dist/: index.html (template, src/style.css, src/*.js bundled by esbuild, the page's data,
 skill catalog, precomputed example) and assets/: the solver (loopopt.wasm), its data per era, the GM era's page data,
 images (character icons, card art, skill icons, race banners, scenario logos, UI sprites from images.py) and fonts
-(fonts.py). Every file in assets/ carries a fingerprint of its content in its name (images: one fingerprint over the
+(the Fontsource packages' Latin subsets). Every file in assets/ carries a fingerprint of its content in its name (images: one fingerprint over the
 whole set, as a folder name), so it is served with a one-year immutable cache and an update simply gets new names;
 index.html keeps a 5-minute cache and always points at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
-import json, subprocess, os, sqlite3, glob, shutil, hashlib
+import json, subprocess, os, sqlite3, glob, shutil, hashlib, re
 H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
 J = os.path.join(H, '..', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
@@ -119,20 +119,20 @@ except Exception: VERSION = 'unknown'
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
 ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': fingerprint('engine-global.json', G['engine']), 'gm': fingerprint('engine-gm.json', M['engine'])},
           'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE}
-# fonts (fonts.py): self-hosted subsets, declared here; the Latin 400/700 of the UI font are preloaded
-FM = json.load(open(os.path.join(H, 'fonts', 'fonts.json')))
+# fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
+# it (its own @font-face rule; the woff2 only, fingerprinted); anything else (symbols, the JP era's untranslated names)
+# falls back to the system font per glyph. The UI font's 400 and 700 are preloaded.
+FONTS = [('zen-kaku-gothic-new', w) for w in (400, 500, 700, 900)] + [('ibm-plex-mono', w) for w in (400, 500, 600)]
 faces = []; preloads = []
-for f in FM['fonts']:
-    url = fingerprint(f['file'], open(os.path.join(H, 'fonts', f['file']), 'rb').read())
-    faces.append(f'@font-face {{ font-family: "{f["family"]}"; font-style: normal; font-weight: {f["weight"]}; font-display: swap; src: url({url}) format("woff2"); unicode-range: {f["range"]}; }}')
-    if f['preload']: preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
+for pkg, w in FONTS:
+    d = os.path.join(H, 'node_modules', '@fontsource', pkg)
+    rule = open(os.path.join(d, f'latin-{w}.css')).read()
+    woff2 = re.search(r"url\(\./files/([^)]+\.woff2)\)", rule).group(1)
+    url = fingerprint(woff2, open(os.path.join(d, 'files', woff2), 'rb').read())
+    faces.append(re.sub(r"src: [^;]+;", f"src: url({url}) format('woff2');", rule).strip())
+    if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
-for name in ('OFL-ZenKakuGothicNew.txt', 'OFL-IBMPlexMono.txt'): shutil.copyfile(os.path.join(H, 'fonts', name), os.path.join(DIST, 'licenses', name))
-# every character the page can show should be in a font subset (else the browser falls back to a system font)
-def _covered(rng): return [tuple(int(x, 16) for x in r[2:].split('-')) if '-' in r else (int(r[2:], 16),) * 2 for r in rng.split(',')]
-cover = [iv for f in FM['fonts'] if f['family'].startswith('Zen') for iv in _covered(f.get('cover', f['range']))]
-missing = sorted({c for c in html + gm_ui if ord(c) > 0x7e and ord(c) not in (0xfe0e, 0xfe0f) and not any(a <= ord(c) <= b for a, b in cover)})
-if missing: print(f'warning: {len(missing)} characters not in the font subsets (rerun uv run webapp/fonts.py): {"".join(missing[:40])}')
+for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
 css = '\n'.join(faces) + '\n' + css
 for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
