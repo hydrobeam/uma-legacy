@@ -1,6 +1,6 @@
-"""Favicon files from webapp/icons/favicon.svg (drawn for the site, no game art): a ring in URA Finale green, Grand Concert
-blue-violet and Trackblazer red (sampled from their logos) ending in one arrowhead, around three sparkles styled on the
-URA Finale logo's (a 3-star spark):
+"""Favicon files from webapp/icons/favicon.svg (drawn for the site, no game art): three sparkles styled on the URA Finale
+logo's, a little off kilter, one per spark type in the game's own spark colours (stat blue, aptitude pink, unique green;
+atlas/singlecommon utx_frm_factor_s_02..04 and the atlas/common utx_ico_factor_* badges):
 favicon.ico (16/32/48), favicon-32.png, apple-touch-icon.png (180, opaque on the page background; iOS turns
 transparency black). Renders through icons.mjs (Chromium via Playwright). usage: uv run webapp/icons.py"""
 import os, subprocess
