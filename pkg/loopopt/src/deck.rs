@@ -880,6 +880,22 @@ impl PDeck {
     }
 }
 
+/// Order for exact ties between deck entries: card order, except that one character's entries take her positions in
+/// order of rarity (highest first; stable), so an SSR wins an exact tie with her own R card ([Planned Perfection] over
+/// [Tracen Academy] Riko Kashimoto, the same event) and ties between different characters keep card order.
+fn tie_rank(rel: &[usize], cards: &[&Card]) -> Vec<usize> {
+    let mut rank: Vec<usize> = (0..rel.len()).collect();
+    let mut by: Vec<(u32, Vec<usize>)> = vec![];
+    for (j, &r) in rel.iter().enumerate() {
+        match by.iter_mut().find(|x| x.0 == cards[r].chara) { Some(x) => x.1.push(j), None => by.push((cards[r].chara, vec![j])) }
+    }
+    for (_, js) in &by {
+        let mut s = js.clone(); s.sort_by_key(|&j| std::cmp::Reverse(cards[rel[j]].rarity));
+        for (&pos, &j) in js.iter().zip(&s) { rank[j] = pos; }
+    }
+    rank
+}
+
 /// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact
 /// evaluation of the decks it reports.
 struct Sources<'a> { dj: &'a DeckJob, unc: &'a [u32] }
@@ -1212,8 +1228,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let hi: Vec<(Vec<f64>, Vec<f64>)> = (0..nrel0).map(|j| miss(j, false)).collect();
         let strength = |j: usize| (0..nu).map(|k| 2.0 - lo[j].0[k] - lo[j].1[k]).sum::<f64>();
         let mut order: Vec<usize> = (0..nrel0).collect();
-        // equal strength: the higher rarity first (an exact tie keeps the SSR over its R twin), then card order
-        order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(cards[rel[b]].rarity.cmp(&cards[rel[a]].rarity)).then(a.cmp(&b)));
+        let tr = tie_rank(&rel, &cards);
+        order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(tr[a].cmp(&tr[b])));
         let need = dj.deck_size.saturating_sub(1) + kmax_top(&dj);
         let mut keep = vec![true; nrel0];
         let mut done: Vec<usize> = vec![];
@@ -1246,7 +1262,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                 if kind[a] != kind[b] || (pal_fixed && ca.pal != cb.pal) { return false; }
                 let le = (0..nu).all(|k| hi[a].0[k] <= lo[b].0[k] && hi[a].1[k] <= lo[b].1[k]);
                 let eq = (0..nu).all(|k| hi[a].0[k] == lo[b].0[k] && hi[a].1[k] == lo[b].1[k]);
-                le && (!eq || (ca.rarity, std::cmp::Reverse(a)) > (cb.rarity, std::cmp::Reverse(b)))   // ties: higher rarity, then lower index
+                le && (!eq || tr[a] < tr[b])
             }).map(|(ni, _)| ni).collect()
         }).collect();
         if std::env::var("DECK_DEBUG_PAIRS").is_ok() {
@@ -1305,9 +1321,10 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let kpos: Vec<u64> = (0..kinds_all.len()).map(|i| 7u64.pow(i as u32)).collect();
     // Per key: each entry's miss chances (white, gold) under the key's chain odds, and for each entry B the
     // entries that beat it on every target under those odds (same kind, so swapping keeps the odds; per target no
-    // higher chance of missing the gold and no higher chance of missing every hint; exact ties go to the higher
-    // rarity, then the lower index, so an SSR beats its identical R), as owned / borrowed character masks.
+    // higher chance of missing the gold and no higher chance of missing every hint; exact ties go by `tie_rank`), as
+    // owned / borrowed character masks.
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
+    let tr2 = tie_rank(&rel, &cards);
     let mut key_cache: crate::FxMap<u64, KeyData> = Default::default();
     let make_key = |code: u64| -> KeyData {
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
@@ -1325,7 +1342,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
             let le = mg[ra.clone()].iter().zip(&mg[rb.clone()]).all(|(x, y)| x <= y) && mh[ra.clone()].iter().zip(&mh[rb.clone()]).all(|(x, y)| x <= y);
             if !le { continue; }
             let eq = mg[ra.clone()] == mg[rb.clone()] && mh[ra] == mh[rb];
-            if eq && (cards[rel[a]].rarity, std::cmp::Reverse(a)) < (cards[rel[b]].rarity, std::cmp::Reverse(b)) { continue; }
+            if eq && tr2[a] > tr2[b] { continue; }
             if ebor[a] { d_bor[b] |= ebit[a]; } else { d_own[b] |= ebit[a]; }
         } }
         KeyData { mw, mg, d_own, d_bor }
