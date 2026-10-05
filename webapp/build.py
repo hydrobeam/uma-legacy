@@ -54,7 +54,8 @@ def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).repla
 # "always fires"; the page scales them. Trainee: (chara id or outfit id, group, chance). Deck: (card, group, level, chance).
 NN, RU, US, PO = 20049, 20046, 20159, 20166
 TRAINEE_HINTS = [[1008, NN, 1.0], [1060, RU, 1.0], [1042, US, 1.0], [101202, NN, 0.5], [101303, PO, 1 / 3]]
-DECK_HINTS = [[10060, RU, 1, 0.5], [30036, RU, 1, 0.5], [30137, RU, 1, 1.0]]
+# (Riko Kashimoto's Ramp Up is not here: card_events.json credits it at 0.5 always; listing it too counted it twice)
+DECK_HINTS = [[30137, RU, 1, 1.0]]
 # GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
 _gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
 GT_URL = {c['support_id']: c['url_name'] for c in json.load(open(_gt[-1]))} if _gt else {}
