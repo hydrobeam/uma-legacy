@@ -1,4 +1,5 @@
-"""Favicon files from webapp/icons/favicon.svg (a red star with a loop arrow; drawn for the site, no game art):
+"""Favicon files from webapp/icons/favicon.svg (three arrows chasing round a loop, in the URA Finale green, Grand Concert
+blue-violet and Trackblazer red sampled from their logos; drawn for the site, no game art):
 favicon.ico (16/32/48), favicon-32.png, apple-touch-icon.png (180, opaque on the page background; iOS turns
 transparency black). Renders through icons.mjs (Chromium via Playwright). usage: uv run webapp/icons.py"""
 import os, subprocess

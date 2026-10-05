@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <polygon points="32.00,4.00 40.52,22.27 60.53,24.73 45.79,38.48 49.63,58.27 32.00,48.50 14.37,58.27 18.21,38.48 3.47,24.73 23.48,22.27" fill="#e0283f" stroke="#b0142c" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M36.10,27.90 A8.2,8.2 0 1 1 27.90,27.90" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
-  <polygon points="32.75,25.10 26.64,31.90 23.80,26.99" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M35.56,11.81 A20.5,20.5 0 0 1 52.49,32.72" fill="none" stroke="#30a700" stroke-width="9.5" stroke-linecap="butt"/>
+  <polygon points="61.51,33.03 50.43,40.99 43.47,32.40" fill="#30a700" stroke="#30a700" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M47.70,45.18 A20.5,20.5 0 0 1 21.14,49.38" fill="none" stroke="#614abf" stroke-width="9.5" stroke-linecap="butt"/>
+  <polygon points="16.35,57.04 15.00,43.46 25.92,41.73" fill="#614abf" stroke="#614abf" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M12.74,39.01 A20.5,20.5 0 0 1 22.38,13.90" fill="none" stroke="#df0c0b" stroke-width="9.5" stroke-linecap="butt"/>
+  <polygon points="18.14,5.93 30.57,11.55 26.61,21.87" fill="#df0c0b" stroke="#df0c0b" stroke-width="1.5" stroke-linejoin="round"/>
 </svg>
