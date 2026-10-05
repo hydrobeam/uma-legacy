@@ -6,7 +6,7 @@ export function openWhy(l) {
   const nm = (i) => M[i].short || M[i].name;
   const outfitOf = (i) => (l.outfits[i].outfits.length === 1 ? l.outfits[i].outfits[0].id : null);
   const total = (L) => L.slots.reduce((a, x) => a + x.aff, 0);
-  const head = document.createElement('div'); head.className = 'row between';
+  const head = document.createElement('div'); head.className = 'row between dhead';
   head.innerHTML = '<h3 id="why-title">Affinity</h3>';
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
   body.appendChild(head);

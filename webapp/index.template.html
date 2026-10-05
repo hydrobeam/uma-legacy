@@ -117,8 +117,7 @@ __CSS__
 <dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>
 <dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
 <dialog id="ex-dlg" aria-labelledby="ex-title"><div class="dlg">
-  <button class="btn x" id="ex-close">Close</button>
-  <h3 id="ex-title">Export or import</h3>
+  <div class="row between dhead"><h3 id="ex-title">Export or import</h3><button class="btn" id="ex-close">Close</button></div>
   <p>The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load someone else's settings, paste their text here and press Load settings.</p>
   <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results" style="width:100%;font-family:var(--font-data);font-size:.78rem;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
   <div class="row"><button class="btn" id="ex-copy">Copy</button><button class="btn" id="ex-load">Load settings</button><span class="hint" id="ex-msg"></span></div>
