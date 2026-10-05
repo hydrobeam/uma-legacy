@@ -78,6 +78,9 @@ const TESTS = {
     const pg = await open(b);
     check('first search runs by itself', /Searched/.test(await note(pg)), await note(pg));
     check('Global default search: 1 in 139', /1 in 139/.test(await odds(pg)), await odds(pg));
+    // the deck's odds per target: each with its skill icon, the white named (no "any hint"), no lead text
+    const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length, text: l.innerText }; });
+    check('deck odds: a skill icon on every entry, no "any hint" or lead text', dd.n > 0 && dd.icons === dd.n && !/any hint|every run/i.test(dd.text), JSON.stringify(dd));
     const off = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
     check('no button; status bar present', (await pg.locator('#run').count()) === 0 && (await pg.locator('#run-note').count()) === 1);
