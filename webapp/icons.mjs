@@ -13,8 +13,9 @@ for (const n of [16, 32, 48, 180]) {
   await pg.setContent(`<html><body style="margin:0;background:transparent">${svg.replace('<svg ', `<svg width="${n}" height="${n}" `)}</body></html>`);
   await pg.screenshot({ path: path.join(D, `_${n}.png`), omitBackground: true, clip: { x: 0, y: 0, width: n, height: n } });
 }
-// the link-preview image (Open Graph, 1200x630): the sparkles centred on the page's background
-await pg.setViewportSize({ width: 1200, height: 630 });
-await pg.setContent(`<html><body style="margin:0;width:1200px;height:630px;display:grid;place-items:center;background:#f3f5f8">${svg.replace('<svg ', '<svg width="440" height="440" ')}</body></html>`);
-await pg.screenshot({ path: path.join(D, '_og.png'), clip: { x: 0, y: 0, width: 1200, height: 630 } });
+// the link-preview image: a 512x512 square of the sparkles on the page's background, shown as a compact thumbnail beside
+// the text (twitter:card summary; Facebook and LinkedIn show images under 600 px wide as a small square too)
+await pg.setViewportSize({ width: 512, height: 512 });
+await pg.setContent(`<html><body style="margin:0;width:512px;height:512px;display:grid;place-items:center;background:#f3f5f8">${svg.replace('<svg ', '<svg width="400" height="400" ')}</body></html>`);
+await pg.screenshot({ path: path.join(D, '_og.png'), clip: { x: 0, y: 0, width: 512, height: 512 } });
 await b.close();
