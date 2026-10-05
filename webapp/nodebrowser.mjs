@@ -306,6 +306,8 @@ const TESTS = {
     check('outfit skill shows its skill icon, not clickable', (await sp.locator('img.sic').count()) === 1 && await sp.evaluate(e => e.tagName === 'SPAN'));
     const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1); await mb.click(); await pg.waitForTimeout(100);
     check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
+    const uh = await pg.locator('.cpop .gtl').getAttribute('href');
+    check('member panel: GameTora character link', /^https:\/\/gametora\.com\/umamusume\/characters\/\d{6}-[a-z0-9-]+$/.test(uh || ''), uh);
     await pg.locator('.cpop .sw').click(); await pg.waitForTimeout(100);
     check('member Owned switch updates the roster and greys her', (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0);
     await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);

@@ -53,6 +53,8 @@ def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).repla
 # GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
 _gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
 GT_URL = {c['support_id']: c['url_name'] for c in json.load(open(_gt[-1]))} if _gt else {}
+# GameTora's character slug (its character pages are /characters/<outfit id>-<slug>), from her support cards' url_name
+GT_CHAR = {c['char_id']: c['url_name'].split('-', 1)[1] for c in json.load(open(_gt[-1])) if c.get('char_id') and '-' in c.get('url_name', '')} if _gt else {}
 def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
@@ -90,7 +92,7 @@ def era(dirp, events_file):
         ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], []),
                          'ban': [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]})   # scenarios that bar it from the deck
-    umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
+    umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine}
 G = era(P, 'card_events.json')

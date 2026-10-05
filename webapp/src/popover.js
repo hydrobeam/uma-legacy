@@ -41,7 +41,8 @@ function openUmaPop(btn) {
   const title = u.name + (oid ? ' ' + d.dataset.outfitLabel : '');
   pop.setAttribute('aria-label', title);
   pop.innerHTML = `<div><b>${esc(u.name)}</b><div class="ctt">${esc(d.dataset.outfitLabel)}</div></div>` +
-    `<label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>`;
+    `<div class="pfoot"><label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>` +
+    `<a class="gtl" href="${umaUrl(u, oid)}" target="_blank" rel="noopener">GameTora ↗︎</a></div>`;
   placePop(btn);
   const sw = pop.querySelector('[data-act="uma"]');
   sw.onchange = () => {
@@ -52,6 +53,12 @@ function openUmaPop(btn) {
     else if (oid) state.outfits[oid] = false;
     else { state.roster[u.id] = 'out'; for (const o of u.outfits || []) if (state.outfits[o.id] === 'req') delete state.outfits[o.id]; }
     save(); renderRoster(); markOwn(); sw.checked = owned(); };
+}
+// GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name (build.py),
+// else made from her name; with "any outfit" her original outfit (<chara id>01)
+function umaUrl(u, oid) {
+  const slug = u.gt || u.name.toLowerCase().replace(/[.']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `https://gametora.com/umamusume/characters/${oid || u.id * 100 + 1}-${slug}`;
 }
 // GameTora's card page, by the url_name in its own card list (build.py; group cards have names a slug can't guess).
 // Fallback for a card missing from that list: id + character name, lowercase, punctuation dropped.
