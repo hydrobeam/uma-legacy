@@ -2069,8 +2069,12 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
     let mut next = 0; let mut scanned = 0; let mut generated = cand.len();
     let mut kth_val = f64::NEG_INFINITY;
     loop {
-        if !(next < cand.len() && cand[next].0 >= kth_val) {
-            if hi_sum <= 0.0 || sep(hi_sum) <= kth_val { break; }
+        // Ceilings carry a (1 + 1e-12) guard against rounding, so a loop whose ceiling beats the k-th value by no more
+        // than that only ties it and cannot change the result. Without this, a job whose targets are all guaranteed
+        // (every loop has the same value) solved every foursome.
+        let beats = |c: f64| c > kth_val * (1.0 + 4e-12);
+        if !(next < cand.len() && beats(cand[next].0)) {
+            if hi_sum <= 0.0 || !beats(sep(hi_sum)) { break; }
             let kth_lo = if kth_val > f64::NEG_INFINITY { kth_val * 12.0 / (3.0 * fixed) * (1.0 - 1e-9) } else { 0.0 };
             let lo = kth_lo.max(hi_sum * 0.85);
             let lo = if lo < smax * 1e-6 { 0.0 } else { lo };
@@ -2085,7 +2089,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         }
         let (_, f) = cand[next]; next += 1; scanned += 1;
         let qpb = model.lineage_q_arr(f, &|x, y| pb[f[x]][f[y]]);
-        if relaxed(f, &qpb) < kth_val { continue; }
+        if !beats(relaxed(f, &qpb)) { continue; }
         let r = match &fixed_s {
             Some(fs) => Res { val: 0.0, s: std::array::from_fn(|i| fs[f[i]].unwrap()), order: [0, 1, 2, 3], evals: 0, secs: 0.0 },
             None => optimize(d, f, "scf@0.5", sj.iters, sj.seed, 60.0, &[]),
@@ -2094,7 +2098,7 @@ fn run_multi(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value, model: &Model, 
         let qs = model.lineage_q(f, &|x, y| if no_race { 0.0 } else { wval(&ps[x], &ps[y]) });
         let qa: [f64; 12] = std::array::from_fn(|i| qs[i]);
         // the exact ceiling only needs the skyline: skip the legal-deck searches when it cannot win
-        if relaxed(f, &qa) < kth_val { continue; }
+        if !beats(relaxed(f, &qa)) { continue; }
         let mut tot = 0.0; let mut decks: Vec<Option<PDeck>> = vec![];
         for t in 0..4 {
             let qt: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
