@@ -128,9 +128,10 @@ input[type="search"] { width: 100%; }
 .sortmenu button[aria-checked="true"] { font-weight: 700; color: var(--accent); }
 /* scenario picker: the button is the chosen scenario's logo; the grid below it spans the panel, four equal tiles.
    Logos are drawn whole inside fixed boxes (object-fit: contain), never stretched. */
-.gamerow { position: relative; gap: 10px 16px; }   /* the scenario picker hangs below this row, across the panel */
+.gamerow { position: relative; display: grid; grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 10px 20px; margin-bottom: 4px; }   /* the scenario picker hangs below this row, across the panel */
+.gctl { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 0.88rem; }   /* label above its control */
 .scendd { position: static; }
-.extras .rankctl { gap: 8px; font-size: 0.88rem; align-items: center; }
+.extras .rankctl { gap: 4px; font-size: 0.88rem; align-items: flex-start; }
 /* lineage rank: the game's rank badges (B, S+, SS) in a two-option toggle */
 .rankseg button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px; }
 .rankseg button[aria-checked="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
@@ -185,6 +186,8 @@ input[type="search"] { width: 100%; }
 .targets > .hint { grid-column: 1 / -1; }
 .tgt { border: 1px solid var(--line); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
 .tgt .name { font-weight: 700; font-size: 0.85rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tgt.gold { border-color: var(--gold); background: var(--gold-soft); }
+.tgt.gold .name { color: var(--gold); }
 .tg { color: var(--gold); }
 .sic { width: 20px; height: 20px; vertical-align: -4px; margin-right: 6px; flex: none; }
 .x { border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 6px; }

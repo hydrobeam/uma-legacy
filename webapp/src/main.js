@@ -26,7 +26,6 @@ if (ERA === 'gm') { ui.status = { kind: 'loading', text: 'Loading the JP Grand M
 loadData().then(start, (e) => { ui.status = { kind: 'error', text: e.message }; paintRunNote(); });
 function start() {
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); renderCards(); };
-  $('x-rand').value = state.rand; $('x-rand').onchange = (e) => { state.rand = e.target.value; save(); };
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
   initRoster(); initCards(); initTargets(); initIO(); initPopover();

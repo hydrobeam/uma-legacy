@@ -8,17 +8,16 @@ export const ASSETS = parse('data-assets');
 // fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
 export let CARDS;   // [{id,name,rar,pal,links,hf,whites,ev:[[group,level,link,p]]}]
 export let UMAS;    // [{id,name,outfits:[{id,label,rel}]}]
-export let HINTS;   // {trainee:[[id,group,p]], deck:[[card,group,level,p]]}
 export let CAT;     // [[group, white, gold|null]]
 export let CARD_BY_ID, SK, NAME;
 function setData(d) {
-  CARDS = d.cards; UMAS = d.umas; HINTS = d.hints; CAT = d.skills;
+  CARDS = d.cards; UMAS = d.umas; CAT = d.skills;
   CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
   SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
   NAME = new Map(UMAS.map(u => [u.id, u.name]));
 }
 export async function loadData() {
-  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), hints: parse('data-hints'), skills: parse('data-skills') }); return; }
+  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills') }); return; }
   let r; try { r = await fetch(ASSETS.dataGm); } catch { r = null; }
   if (!r || !r.ok) throw new Error('Could not load the Grand Masters-era data. Open the page through a web server (./build.sh serve).');
   setData(await r.json());

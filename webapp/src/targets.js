@@ -27,10 +27,11 @@ export function renderTargets(focus = null) {
     const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
     const el = document.createElement('div'); el.className = 'tgt'; el.id = 'g-' + t.group; el.dataset.g = String(t.guaranteed || 0);
     el.innerHTML = `<span class="name"></span><button class="x" type="button">×</button>`;
-    const nm = el.querySelector('.name');
-    const ic = skillIcon(t.group, t.guaranteed === 2); if (ic) nm.appendChild(ic);
-    nm.append(s.w); if (t.guaranteed === 2 && s.gd) { const g = document.createElement('span'); g.className = 'tg'; g.textContent = ' → ' + s.gd; g.title = 'Guaranteed by the scenario'; nm.appendChild(g); }
-    nm.title = s.w + (t.guaranteed === 2 && s.gd ? ' → ' + s.gd + ' (guaranteed by the scenario)' : '');
+    const nm = el.querySelector('.name'), gold = t.guaranteed === 2 && !!s.gd;
+    // a gold the scenario guarantees shows as that gold (It's On! for Ramp Up), in gold
+    if (gold) el.classList.add('gold');
+    const ic = skillIcon(t.group, gold); if (ic) nm.appendChild(ic);
+    nm.append(gold ? s.gd : s.w); nm.title = gold ? `${s.gd} (gold of ${s.w}): guaranteed by the scenario` : s.w;
     const x = el.querySelector('.x'); x.setAttribute('aria-label', 'Remove ' + s.w); x.title = 'Remove ' + s.w;
     x.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
     box.appendChild(el);

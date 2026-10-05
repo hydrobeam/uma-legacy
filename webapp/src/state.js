@@ -2,7 +2,7 @@
 import { PER_ERA, COMMON, SAVED, ERA, persist } from './settings.js';
 import { PRESET } from './data.js';
 export const DEFAULTS = { targets: PRESET.map(t => ({ ...t })), rank: '0.50,0.45,0.05', borrow: true, decksTop: '1', perUma: true,
-  rand: '0', rcards: false, scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
+  rcards: false, scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
 const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
 // roster: uma id -> 'out' | 'req' ('req' only for umas without separate outfits); outfits: id -> false (not owned) | 'req'
 // (must include this outfit); cardsOff: id -> false when not owned

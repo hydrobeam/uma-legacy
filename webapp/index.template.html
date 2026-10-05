@@ -55,11 +55,11 @@ __CSS__
       <div class="extras">
         <div class="row gamerow">
           <div class="scendd" id="scen-dd">
-            <div class="row" style="gap:10px"><span id="x-scen-l" style="font-size:.88rem">Scenario</span>
+            <div class="gctl"><span id="x-scen-l">Scenario</span>
               <button class="scenbtn" id="x-scen" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="scen-menu" aria-label="Scenario"><span class="slogo"></span></button></div>
             <div class="scenpick" id="scen-menu" role="menu" aria-labelledby="x-scen-l" hidden></div>
           </div>
-          <div class="row rankctl"><span id="rank-l">Lineage rank</span>
+          <div class="gctl rankctl"><span id="rank-l">Lineage rank</span>
             <div class="seg rankseg" id="rank" role="radiogroup" aria-labelledby="rank-l">
               <button type="button" role="radio" data-v="0.50,0.45,0.05" aria-label="B to S+" title="B to S+: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars"><span class="rk" data-r="b">B</span><span class="rkdash">–</span><span class="rk" data-r="splus">S+</span></button>
               <button type="button" role="radio" data-v="0.20,0.70,0.10" aria-label="SS" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars"><span class="rk" data-r="ss">SS</span></button>
@@ -68,13 +68,16 @@ __CSS__
         <label><input type="checkbox" id="x-rcards"> Use R cards</label>
         <label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>
         <label><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
-        <label class="row" for="x-rand" style="gap:10px"><span style="font-size:.88rem">Random event hints</span>
-          <select id="x-rand">
-            <option value="0">Not counted</option>
-            <option value="0.5">Fire half the time</option>
-            <option value="1">Always fire</option>
-          </select></label>
       </div>
+    </section>
+
+    <section class="panel nodeck" aria-labelledby="h-skills" id="skills-panel">
+      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">8/8 example</button></div>
+      <div class="adder">
+        <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
+        <div class="sugg" id="t-sugg" hidden></div>
+      </div>
+      <div class="targets" id="targets"></div>
     </section>
 
     <section class="panel" aria-labelledby="h-roster">
@@ -89,14 +92,6 @@ __CSS__
       <p class="hint" id="r-count"></p>
     </section>
 
-    <section class="panel nodeck" aria-labelledby="h-skills" id="skills-panel">
-      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">8/8 example</button></div>
-      <div class="adder">
-        <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
-        <div class="sugg" id="t-sugg" hidden></div>
-      </div>
-      <div class="targets" id="targets"></div>
-    </section>
 
     <section class="panel" aria-labelledby="h-deck" id="deck-panel">
       <div class="row between"><h2 id="h-deck">Support deck</h2>
@@ -148,7 +143,6 @@ __CSS__
 <script type="application/json" id="data-cards">__CARDS__</script>
 <script type="application/json" id="data-umas">__UMAS__</script>
 <script type="application/json" id="data-skills">__SKILLCAT__</script>
-<script type="application/json" id="data-hints">__HINTS__</script>
 <script type="application/json" id="data-example">__EXAMPLE__</script>
 <script type="application/json" id="data-img">__IMG__</script>
 <script type="application/json" id="data-skillicon">__SKILLICON__</script>

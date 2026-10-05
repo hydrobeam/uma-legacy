@@ -3,7 +3,7 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, HINTS, ASSETS, EXAMPLE, SCEN_GOLDS } from './data.js';
+import { CARDS, UMAS, ASSETS, EXAMPLE, SCEN_GOLDS } from './data.js';
 import { state, ui, writeSaved, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
@@ -53,13 +53,9 @@ function scheduleSearch() {
 }
 // every setting change: save it and search again
 export const save = () => { scheduleSearch(); writeSaved(); };
-// extra job fields from the event options
+// extra job fields: the scenario, and R cards left out unless asked for
 function eventFields(deck) {
-  const r = +state.rand, f = { scenario: state.scen || 'unity' };
-  if (r > 0) {
-    f.trainee_hints = HINTS.trainee.map(([id, g, p]) => [id, g, p * r]);
-    if (deck) f.odds_events = HINTS.deck.map(([c, g, lv, p]) => [c, g, lv, p * r]);
-  }
+  const f = { scenario: state.scen || 'unity' };
   if (deck && !state.rcards) f.exclude_cards = CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id);
   return f;
 }

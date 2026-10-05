@@ -92,8 +92,8 @@ const TESTS = {
     check('(i) opens the deck odds (aria-expanded, names and percentages)', (await oi.getAttribute('aria-expanded')) === 'true' && await pg.evaluate(() => { const o = document.querySelector('#results .loop .dodds'); return !o.hidden && o.querySelectorAll('.dnm').length > 0 && /\d+%/.test(o.innerText); }));
     await oi.click();
     check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
-    const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.title, shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
-    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.shown === ''), JSON.stringify(sw));
+    const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.av')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
+    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
     // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)
@@ -328,7 +328,7 @@ const TESTS = {
       return { selects: document.querySelectorAll('#targets select').length, head: !!document.getElementById('t-head'), rows: new Set(t.map(r => Math.round(r.top))).size, n: t.length,
         addFirst: document.getElementById('t-add').getBoundingClientRect().bottom <= Math.min(...t.map(r => r.top)) }; });
     check('targets: no guaranteed selector or column header, add box first, two per row', lay.selects === 0 && !lay.head && lay.addFirst && lay.rows === Math.ceil(lay.n / 2), JSON.stringify(lay));
-    check('a gold the scenario guarantees shows "white → gold"', (await pg.locator('#g-20049').innerText()).includes(white(20049) + ' → ' + gold(20049)), await pg.locator('#g-20049').innerText());
+    check('a gold the scenario guarantees shows as the gold itself, in gold', (await pg.locator('#g-20049 .name').innerText()).trim() === gold(20049) && await pg.locator('#g-20049').evaluate(e => e.classList.contains('gold')), await pg.locator('#g-20049').innerText());
     await pg.locator('#targets .x').nth(2).focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(100);
     check('removing a target by keyboard moves the focus to the next remove button', (await pg.locator('#targets .tgt').count()) === 7
       && await pg.evaluate(() => document.activeElement.classList.contains('x') && [...document.querySelectorAll('#targets .x')].indexOf(document.activeElement) === 2));

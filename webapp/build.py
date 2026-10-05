@@ -50,12 +50,6 @@ for dd in (P, J):
     dj = json.load(open(os.path.join(dd, 'data.json')))
     for nm, rid in zip(dj['race_names'], dj['races']): race_ids[nm] = rid; race_ids[CHART_ALIAS.get(nm, nm[:22])] = rid
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-# Random events that hint a target (GameTora training_events: chara 'shared', char_card, friend, group), at the rate
-# "always fires"; the page scales them. Trainee: (chara id or outfit id, group, chance). Deck: (card, group, level, chance).
-NN, RU, US, PO = 20049, 20046, 20159, 20166
-TRAINEE_HINTS = [[1008, NN, 1.0], [1060, RU, 1.0], [1042, US, 1.0], [101202, NN, 0.5], [101303, PO, 1 / 3]]
-# (Riko Kashimoto's Ramp Up is not here: card_events.json credits it at 0.5 always; listing it too counted it twice)
-DECK_HINTS = [[30137, RU, 1, 1.0]]
 # GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
 _gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
 GT_URL = {c['support_id']: c['url_name'] for c in json.load(open(_gt[-1]))} if _gt else {}
@@ -97,11 +91,8 @@ def era(dirp, events_file):
                          'whites': c['whites'], 'ev': evsum.get(c['id'], []),
                          'ban': [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]})   # scenarios that bar it from the deck
     umas = [{'id': u['id'], 'name': u['name'], 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
-    uma_ids = {u['id'] for u in umas}; outfit_ids = {o['id'] for u in umas for o in u['outfits']}; card_ids = {c['id'] for c in cards['cards']}
-    hints = {'trainee': [h for h in TRAINEE_HINTS if h[0] in uma_ids or h[0] in outfit_ids],
-             'deck': [h for h in DECK_HINTS if h[0] in card_ids]}
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
-    return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'hints': js(hints)}
+    return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year dates are added by the page's toggle
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
@@ -118,7 +109,7 @@ def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, tex
 try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg', '../jp') else '')
 except Exception: VERSION = 'unknown'
 # the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
-gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"hints":' + M['hints'] + '}'
+gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + '}'
 ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': fingerprint('engine-global.json', G['engine']), 'gm': fingerprint('engine-gm.json', M['engine'])},
           'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE}
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
@@ -138,7 +129,7 @@ for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono'): shutil.copyfile(os.path.joi
 css = '\n'.join(faces) + '\n' + css
 # the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
 SITE = os.environ.get('SITE_URL', 'https://uma-legacy.pages.dev').rstrip('/')
-for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']), ('__HINTS__', G['hints']),
+for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
