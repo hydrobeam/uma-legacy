@@ -295,6 +295,27 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async three(b) {
+    // the result's wording, and three results told apart: #1/#2/#3, "Same loop as #1", the deck cards #1 lacks marked
+    const pg = await open(b);
+    const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
+      own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
+    check('headline: "1 in 139 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
+      /^1 in 139 runs to land all 8$/.test(head.odds) && /^at least 7 of 8: 1 in 15\.7 · 90% sure within 319 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
+    check('members: "as trainee: 1 in …"', head.own.length === 4 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x)), head.own.join(' | '));
+    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma'); await settle(pg);
+    const r = await pg.evaluate(() => { const L = [...document.querySelectorAll('#results .loop')], key = (l) => [...l.querySelectorAll('.mem')].map(m => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
+      const deck = (l) => [...l.querySelector('.deck .dcards').querySelectorAll('.dc')].map(d => d.dataset.cid);
+      const d1 = new Set(deck(L[0]));
+      return L.map((l, i) => ({ rank: (l.querySelector('.rank') || {}).textContent, same: !!l.querySelector('.same'), mem: l.querySelectorAll('.mem').length,
+        sameAs1: i > 0 && !l.querySelector('.same') && key(l) === key(L[0]),
+        newOk: [...l.querySelectorAll('.deck .dcards .dc')].every(d => d.classList.contains('new') === (i > 0 && !d1.has(d.dataset.cid))) })); });
+    check('three results: ranked #1, #2, #3', r.map(x => x.rank).join() === '#1,#2,#3', JSON.stringify(r));
+    check('a result with #1\'s loop says "Same loop as #1" instead of repeating the umas', r.some(x => x.same) && r.every(x => x.same ? x.mem === 0 : x.mem === 4) && !r.some(x => x.sameAs1), JSON.stringify(r));
+    check('#2 and #3 mark exactly the cards #1\'s deck lacks', r.every(x => x.newOk), JSON.stringify(r));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
   async states(b) {
     // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
     const pg = await open(b);
@@ -335,6 +356,7 @@ const TESTS = {
     const rows = await pg.evaluate(() => [...document.querySelectorAll('.deck .dcards')].map(r => [...r.querySelectorAll('.dc')]).filter(r => r.some(x => x.classList.contains('bor'))).map(r => r.findIndex(x => x.classList.contains('bor')) === r.length - 1));
     check('a deck borrows a card when the pals are not owned', rows.length > 0);
     check('the borrowed card is last in its row', rows.every(Boolean));
+    check('the borrowed card says so under its art', await pg.evaluate(() => [...document.querySelectorAll('.dc.bor')].every(d => [...d.querySelectorAll('i')].some(i => i.textContent === 'borrowed'))));
     check('the borrowed card has the friend frame', await pg.evaluate(() => { const d = document.querySelector('.dc.bor'); return !!d && getComputedStyle(d, '::after').borderImageSource.startsWith('url'); }));
     check('deck headers carry no counts', !(await pg.evaluate(() => [...document.querySelectorAll('.deck b')].some(x => /· \d+ pal|borrow 1/.test(x.textContent)))));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
