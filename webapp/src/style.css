@@ -261,6 +261,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle; }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av { outline: 1px solid color-mix(in srgb, var(--line) 70%, transparent); outline-offset: -1px; }   /* a faint edge against the background */
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav.art { position: relative; }
