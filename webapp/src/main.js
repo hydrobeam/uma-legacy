@@ -7,7 +7,7 @@ import { state, ui, writeSaved } from './state.js';
 import { save, doSearch } from './search.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
-import { initScenario } from './scenario.js';
+import { initScenario, eraScenario } from './scenario.js';
 import { initCards, renderCards } from './cards.js';
 import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
@@ -15,7 +15,7 @@ import { initIO } from './io.js';
 
 // ---------- game data ----------
 $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
-const setEra = (e) => { if (e === ERA) return; SAVED.era = e; writeSaved(); location.reload(); };
+const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); location.reload(); };
 $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
 // everything below needs the era's data (inline for Global, fetched for the GM era)
 loadData().then(start, (e) => { const p = document.createElement('p'); p.className = 'err'; p.textContent = e.message; $('results').replaceChildren(p); });

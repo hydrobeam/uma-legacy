@@ -19,6 +19,13 @@ function setScenario(v) {
   const was = state.scen, sc = scenarioOf(v); state.scen = sc.v; scenarioGolds(was, sc.v);
   state.rank = sc.ss ? RANKS.ss : RANKS.below; paintRank();
 }
+// Switching to the JP Grand Masters-era data opens on its newest scenario, Grand Masters (with its golds and rank
+// defaults); switching back to Global turns it into Unity Cup on load (initScenario).
+export function eraScenario(era) {
+  const sc = SCENARIOS.find(s => s.v === 'grandmasters');
+  if (era !== 'gm' || !sc || state.scen === sc.v) return;
+  const was = state.scen; state.scen = sc.v; scenarioGolds(was, sc.v); state.rank = sc.ss ? RANKS.ss : RANKS.below;
+}
 const goldNames = (sc) => (SCEN_GOLDS[sc.v] || []).map(g => [g, (SK.get(g) || {}).gd]).filter(([, n]) => n);
 // the tile's (and button's) accessible name: the logo is the only visible name
 const label = (sc) => { const g = goldNames(sc).map(([, n]) => n);

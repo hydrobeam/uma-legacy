@@ -321,6 +321,20 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async eraswitch(b) {
+    // the era buttons: the Grand Masters-era data opens on Grand Masters (rank SS, no Unity golds) and searches with it;
+    // back on Global the scenario is Unity Cup again (golds guaranteed, rank below SS)
+    const pg = await open(b);
+    await pg.click('#era-gm'); await pg.waitForLoadState('load'); await settle(pg);
+    check('switching to the GM era selects Grand Masters', (await pg.getAttribute('#x-scen', 'data-value')) === 'grandmasters' && (await pg.inputValue('#rank')) === '0.20,0.70,0.10');
+    check('the GM-era search runs with Grand Masters', /Searched/.test(await note(pg)) && await pg.evaluate(() => window.__runs.length > 0 && window.__runs.at(-1).scenario === 'grandmasters'));
+    check('Grand Masters gives no guaranteed golds', (await pg.inputValue('#g-20049')) === '0' && (await pg.inputValue('#g-20046')) === '0');
+    await pg.click('#era-global'); await pg.waitForLoadState('load'); await settle(pg);
+    check('back on Global: Unity Cup with its golds, rank below SS', (await pg.getAttribute('#x-scen', 'data-value')) === 'unity' && (await pg.inputValue('#rank')) === '0.50,0.45,0.05'
+      && (await pg.inputValue('#g-20049')) === '2' && await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
   async gm(b) {
     const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:era', 'gm'); } } catch {} } });
     await pg.reload(); await settle(pg);
