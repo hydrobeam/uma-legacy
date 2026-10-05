@@ -26,7 +26,7 @@ cd ../../../webapp && npm ci && node example.mjs && uv run build.py
 
 ## Deploy (Cloudflare Pages)
 `./build.sh deploy` uploads `dist/` with wrangler (pinned in `package.json`); see BUILD.md for the one-time login and
-project creation. The build writes `dist/_headers` (noindex, 5-minute cache) and `dist/robots.txt`. No other headers
+project creation. The build writes `dist/_headers` (5-minute cache for the page, one year for the fingerprinted `assets/`) and `dist/robots.txt` (indexing allowed). No other headers
 are needed: the page uses plain Web Workers, not SharedArrayBuffer.
 
 ## Files

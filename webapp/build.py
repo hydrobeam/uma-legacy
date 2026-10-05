@@ -142,9 +142,9 @@ for k, v in [('__VERSION__', VERSION), ('__CSS__', css), ('__APP__', app), ('__C
 assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))
-# hosting (Cloudflare Pages reads _headers): not listed by search engines; the page 5 minutes so a new deploy shows
+# hosting (Cloudflare Pages reads _headers): indexable (owner, 2026-10-05; the page names its canonical address); the page 5 minutes so a new deploy shows
 # quickly; fingerprinted assets a year, immutable (their names change with their content)
-open(os.path.join(DIST, '_headers'), 'w').write('/*\n  X-Robots-Tag: noindex\n  Cache-Control: public, max-age=300\n'
+open(os.path.join(DIST, '_headers'), 'w').write('/*\n  Cache-Control: public, max-age=300\n'
                                                  '/assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n')
-open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nDisallow: /\n')
+open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nAllow: /\n')
 print(f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(G['engine'].encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, {IMG_BASE} {len(images)} files {isize / 1e6:.2f} MB, {len(faces)} font files")
