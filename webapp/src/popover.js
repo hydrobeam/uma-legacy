@@ -1,6 +1,7 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { esc } from './dom.js';
-import { UMAS, CARD_BY_ID } from './data.js';
+import { UMAS, CARD_BY_ID, SK, ASSETS } from './data.js';
+import { skillIcon } from './images.js';
 import { state } from './state.js';
 import { save } from './search.js';
 import { umaState, renderRoster } from './roster.js';
@@ -74,10 +75,33 @@ function openPop(el) {
   const sw = pop.querySelector('[data-act="own"]');
   if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); markOwn(); };
 }
+// a loop member's outfit skill: the game's description, GameTora's plain-English condition and SP cost (build.py
+// skill_text, fetched on the first open), and why she has it
+let skillText = null;
+const loadSkillText = () => skillText || (skillText = fetch(ASSETS.skillText).then(r => r.ok ? r.json() : {}).catch(() => { skillText = null; return {}; }));
+async function openSkillPop(btn) {
+  closePop(); popFor = btn; btn.setAttribute('aria-expanded', 'true');
+  const g = +btn.dataset.group, gold = btn.dataset.level === '2', s = SK.get(g) || { w: String(g), gd: null };
+  const name = gold ? (s.gd || s.w) : s.w, d = btn.closest('.mem'), ic = skillIcon(g, gold);
+  pop.setAttribute('aria-label', name);
+  const who = d ? d.querySelector('.nm').textContent + (d.dataset.outfitLabel !== 'any outfit' ? ' ' + d.dataset.outfitLabel : '') : 'She';
+  const why = `${esc(who)} has ${gold ? 'the gold' : 'it'} on her own skill list, so she has it whenever she is the trainee.`;
+  const paint = (t) => {
+    const v = t && t[g] && t[g][gold ? 1 : 0];
+    pop.innerHTML = `<div class="psk">${ic ? ic.outerHTML : ''}<b>${esc(name)}</b></div>` +
+      (v ? (v[0] ? `<div>${esc(v[0])}</div>` : '') + (v[1] ? `<div class="ctt">${esc(v[1])}</div>` : '') + (v[2] ? `<div class="ctt">${v[2]} SP</div>` : '') : (t ? '' : '<div class="ctt">Loading…</div>')) +
+      `<div>${why}</div>`;
+  };
+  paint(null); placePop(btn);
+  const t = await loadSkillText();
+  if (popFor === btn) { paint(t); pop.focus({ preventScroll: true }); }
+}
 export function initPopover() {
   document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc'), mb = e.target.closest('.mem .memb');
     if (d) { if (popFor === d) closePop(); else openPop(d); return; }
     if (mb) { if (popFor === mb) closePop(); else openUmaPop(mb); return; }
+    const sb = e.target.closest('.mem .spark');
+    if (sb) { if (popFor === sb) closePop(); else openSkillPop(sb); return; }
     if (!e.target.closest('.cpop')) closePop(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) back(); });
 }

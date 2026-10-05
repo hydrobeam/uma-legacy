@@ -78,8 +78,12 @@ function loopCard(l, meta, ctx) {
       const sk = d.querySelector('.sk');
       if (o.covers.length) { const cap = document.createElement('span'); cap.className = 'skl'; cap.textContent = 'On her outfit:'; sk.appendChild(cap);
  }
-      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('span');
-        sp.className = 'spark' + (c.level === 2 ? ' g' : ''); sp.textContent = c.level === 2 ? (s.gd || s.w) : s.w; sp.title = (c.level === 2 ? 'Gold skill' : 'Skill') + ' on her own outfit: she has it when she is the trainee'; sk.appendChild(sp); }
+      // each a button (icon + name) opening the skill's details (popover.js)
+      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('button'); sp.type = 'button';
+        sp.className = 'spark' + (c.level === 2 ? ' g' : ''); sp.dataset.group = c.group; sp.dataset.level = c.level;
+        sp.setAttribute('aria-haspopup', 'dialog'); sp.setAttribute('aria-expanded', 'false');
+        const ic = skillIcon(c.group, c.level === 2); if (ic) sp.appendChild(ic);
+        sp.append(c.level === 2 ? (s.gd || s.w) : s.w); sk.appendChild(sp); }
       mem.appendChild(d);
     });
   }

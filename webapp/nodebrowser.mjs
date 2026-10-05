@@ -285,6 +285,14 @@ const TESTS = {
     check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
     await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape');
     check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));
+    // an outfit skill under a member: its icon, and a panel with the game's description and why she has it
+    const sp = pg.locator('.loop').first().locator('.mem .spark').first();
+    check('outfit skill shows its skill icon', (await sp.locator('img.sic').count()) === 1);
+    await sp.click(); await pg.waitForFunction(() => !/Loading/.test(document.querySelector('.cpop').textContent));
+    const sx = await pg.locator('.cpop').innerText();
+    check('outfit skill panel: name, description, why she has it', sx.includes((await sp.innerText()).trim()) && /velocity|stamina|speed|position|maneuver|recover|acceler/i.test(sx) && /own skill list/.test(sx), sx.slice(0, 120));
+    await pg.keyboard.press('Escape');
+    check('Escape closes the skill panel and returns the focus', await pg.evaluate(() => document.querySelector('.cpop').hidden && document.activeElement.classList.contains('spark')));
     const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1); await mb.click(); await pg.waitForTimeout(100);
     check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
     await pg.locator('.cpop .sw').click(); await pg.waitForTimeout(100);

@@ -218,7 +218,13 @@ input[type="search"] { width: 100%; }
 .mem .sk { display: grid; gap: 4px; }   /* like a support card's hint boxes: one per line, full width */
 .mem .sk:empty { display: none; }
 .mem .sk .skl { font-size: 0.72rem; color: var(--muted); }
-.spark { font-size: 0.74rem; line-height: 1.3; padding: 1px 6px; border-radius: 0; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.spark { display: flex; align-items: center; gap: 5px; font: inherit; font-size: 0.74rem; line-height: 1.3; padding: 1px 6px 1px 2px; text-align: left; cursor: pointer;
+  border-radius: 0; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.spark .sic { width: 20px; height: 20px; flex: none; }
+.spark:hover { filter: brightness(0.97); text-decoration: underline; }
+.spark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cpop .psk { display: flex; align-items: center; gap: 8px; }
+.cpop .psk .sic { width: 32px; height: 32px; flex: none; }
 .spark.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 details summary { cursor: pointer; font-weight: 700; font-size: 0.88rem; color: var(--accent); }
 .tablewrap { overflow-x: auto; margin-top: 8px;
