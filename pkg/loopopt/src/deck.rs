@@ -1212,7 +1212,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         let hi: Vec<(Vec<f64>, Vec<f64>)> = (0..nrel0).map(|j| miss(j, false)).collect();
         let strength = |j: usize| (0..nu).map(|k| 2.0 - lo[j].0[k] - lo[j].1[k]).sum::<f64>();
         let mut order: Vec<usize> = (0..nrel0).collect();
-        order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(a.cmp(&b)));
+        // equal strength: the higher rarity first (an exact tie keeps the SSR over its R twin), then card order
+        order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(cards[rel[b]].rarity.cmp(&cards[rel[a]].rarity)).then(a.cmp(&b)));
         let need = dj.deck_size.saturating_sub(1) + kmax_top(&dj);
         let mut keep = vec![true; nrel0];
         let mut done: Vec<usize> = vec![];
@@ -1243,10 +1244,9 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
                 if a == b { return false; }
                 let ca = cards[rel[a]];
                 if kind[a] != kind[b] || (pal_fixed && ca.pal != cb.pal) { return false; }
-                let _ = (ca, cb);
                 let le = (0..nu).all(|k| hi[a].0[k] <= lo[b].0[k] && hi[a].1[k] <= lo[b].1[k]);
                 let eq = (0..nu).all(|k| hi[a].0[k] == lo[b].0[k] && hi[a].1[k] == lo[b].1[k]);
-                le && (!eq || a < b)
+                le && (!eq || (ca.rarity, std::cmp::Reverse(a)) > (cb.rarity, std::cmp::Reverse(b)))   // ties: higher rarity, then lower index
             }).map(|(ni, _)| ni).collect()
         }).collect();
         if std::env::var("DECK_DEBUG_PAIRS").is_ok() {
@@ -1305,8 +1305,8 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     let kpos: Vec<u64> = (0..kinds_all.len()).map(|i| 7u64.pow(i as u32)).collect();
     // Per key: each entry's miss chances (white, gold) under the key's chain odds, and for each entry B the
     // entries that beat it on every target under those odds (same kind, so swapping keeps the odds; per target no
-    // higher chance of missing the gold and no higher chance of missing every hint; exact ties go to the lower
-    // index), as owned / borrowed character masks.
+    // higher chance of missing the gold and no higher chance of missing every hint; exact ties go to the higher
+    // rarity, then the lower index, so an SSR beats its identical R), as owned / borrowed character masks.
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
     let mut key_cache: crate::FxMap<u64, KeyData> = Default::default();
     let make_key = |code: u64| -> KeyData {
@@ -1325,7 +1325,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
             let le = mg[ra.clone()].iter().zip(&mg[rb.clone()]).all(|(x, y)| x <= y) && mh[ra.clone()].iter().zip(&mh[rb.clone()]).all(|(x, y)| x <= y);
             if !le { continue; }
             let eq = mg[ra.clone()] == mg[rb.clone()] && mh[ra] == mh[rb];
-            if eq && a > b { continue; }
+            if eq && (cards[rel[a]].rarity, std::cmp::Reverse(a)) < (cards[rel[b]].rarity, std::cmp::Reverse(b)) { continue; }
             if ebor[a] { d_bor[b] |= ebit[a]; } else { d_own[b] |= ebit[a]; }
         } }
         KeyData { mw, mg, d_own, d_bor }
