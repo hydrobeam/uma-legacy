@@ -4,7 +4,7 @@
 //   node webapp/nodebrowser.mjs chromium roster only the named browsers / tests (any order)
 // Both browsers run at once, each with LLP_JOBS test groups in parallel (default 4; LLP_JOBS=1 runs them one by one);
 // a group's lines print together when it ends. Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
-// update does not break the suite; the one fixed number is the Global default search (1 in 139, R cards off, Unity Cup).
+// update does not break the suite; the one fixed number is the Global default search (1 in 119, R cards off, Unity Cup).
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
@@ -104,8 +104,8 @@ const TESTS = {
     // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
-    check('headline: "1 in 139 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
-      /^1 in 139 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 15\.7 · a 90% chance within 319 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
+    check('headline: "1 in 119 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
+      /^1 in 119 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 13\.9 · a 90% chance within 273 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
     check('members: "as trainee: 1 in …"', head.own.length === 4 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x)), head.own.join(' | '));
     // the deck's odds per target, each with its skill icon
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length }; });
@@ -538,7 +538,7 @@ const TESTS = {
       seen.push(await until(pg, () => { const p = document.getElementById('run-pill'), r = p.getBoundingClientRect(), c = document.getElementById('rcol').getBoundingClientRect();
         const resIn = c.bottom > 0 && c.top < innerHeight, shown = getComputedStyle(p).display !== 'none'; return shown === !resIn && (!shown || (r.top >= 0 && r.bottom <= innerHeight)); })); }
     check('phone: the status button shows (on screen) exactly when the results are out of view', seen.every(Boolean), seen.join(','));
-    check('phone: it shows the headline odds', /^1 in 139 · see result/.test(await pg.locator('#run-pill').innerText()), await pg.locator('#run-pill').innerText());
+    check('phone: it shows the headline odds', /^1 in 119 · see result/.test(await pg.locator('#run-pill').innerText()), await pg.locator('#run-pill').innerText());
     // edit a setting far down, then the button takes you back to the result
     const ct = pg.locator('#cards .ct').nth(2); await ct.scrollIntoViewIfNeeded(); await ct.click(); await settle(pg); await ct.click(); await settle(pg);
     await pg.click('#run-pill');   // a smooth scroll

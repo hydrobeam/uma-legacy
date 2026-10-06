@@ -3491,14 +3491,14 @@
    "chance": [
     [
      "Nothing Ventured",
-     0.5
+     0.75
     ],
     [
      "Risky Business",
      1.0
     ]
    ],
-   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure; outcomes 50/50 by the 'di' convention). Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
+   "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure), which IT takes when Risky Business is prioritised (about 80 of 85 uma-it runs). Choice 2 succeeds 0.76 of the time, measured on uma-it runs (59/78 with Risky Business prioritised; 106/139 over all choice-2 runs, 2026-10-06; docs/MODEL.md), not the 50/50 the 'di' convention gives. Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
    "status": "complete",
    "src": "GameTora training_events_friend 830080001, decoded; GM: date event fires (assumed taken)"
   },
