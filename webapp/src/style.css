@@ -235,12 +235,15 @@ input[type="search"] { width: 100%; }
 .same { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .members { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 620px) { .members { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.mem { display: grid; gap: 3px; align-content: start; min-width: 0; }
+/* each member spans four shared rows (name, outfit, her outfit's skills, as trainee), so the rows line up across
+   the members whatever each one holds */
+.mem { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 3px; align-content: start; min-width: 0; }
+.mem > .head { grid-row: 1; } .mem > .of { grid-row: 2; } .mem > .sk { grid-row: 3; } .mem > .own { grid-row: 4; align-self: start; }
 .mem .nm { font-weight: 700; line-height: 1.25; }
 .mem .of { font-size: 0.8rem; color: var(--muted); }
 .mem .own { font-size: 0.78rem; color: var(--muted); }
-.mem .sk { display: grid; gap: 4px; }   /* like a support card's hint boxes: one per line, full width */
-.mem .sk:empty { display: none; }
+.mem .sk { display: grid; gap: 4px; align-content: start; }   /* like a support card's hint boxes: one per line, full width */
+.mem .sk:not(:empty) { margin: 4px 0 2px; }   /* a little room under the outfit name */
 .spark { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; line-height: 1.3; padding: 1px 6px 1px 2px;
   border-radius: 0; border: 1px solid var(--hint-edge); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold, as the target tiles */
 .spark .sic { width: 20px; height: 20px; flex: none; }
