@@ -54,3 +54,19 @@ is the card, page crediting, or chance in the smaller groups.
 - Vodka's Nimble Navigator as the trainee (23 of 25 runs) is a trainee event, not this; random events from the
   trainee's own side are not measured here beyond that.
 - Only Global scenarios; Trackblazer has 28 readings.
+
+## Rarity, training frequency and the target cards (2,264 runs, 2026-10-05)
+
+- **Specialty priority** (a proxy for being trained with): +0.026 logit per 10 points, [−0.007, +0.065], likelihood
+  ratio 1.5. Not adopted.
+- **Random events on offer:** −0.043 logit per event [−0.062, −0.021]: 15.7% at 8 on offer, 12.5% at 14, a little
+  flatter than the first fit.
+- **The cards that hint the default targets:** Vodka (Nimble Navigator) 21/228 = 9.2% across R, SR and SSR (SR 10/104,
+  SSR 9/107) against 15.0% predicted for those decks; Nice Nature's SSR (Ramp Up) 16/121 = 13.2% against 15.2%.
+  Seeking the Pearl (Uma Stan, on the bottom choice) has no readings.
+
+Impact on the planner, tested by crediting those events at 0.17 (`odds_events`, plus 0.9 for the trainee's own):
+odds up by at most 1.7% (owner and all-owned rosters, Unity Cup, Grand Concert, URA Finale), no best loop changes,
+and some decks swap one filler card for a Seeking the Pearl card. Not added to the model: the gain is within the
+model's other uncertainties, and it would rest on Pearl's unmeasured rate and the assumption that Uma Stan is
+prioritised.
