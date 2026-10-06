@@ -94,6 +94,7 @@ const TESTS = {
     await oi.click();
     check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
     const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.av')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
+    check('a label marks where the swap rows start', await pg.evaluate(() => { const h = document.querySelector('#results .loop .swhead'), s = document.querySelector('#results .loop .deck.swap'); return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); }));
     check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');

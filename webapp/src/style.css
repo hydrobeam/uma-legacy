@@ -432,6 +432,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dodds .dsk.g .dbar > span { background: var(--gold); }
 .dodds b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
 .swrow > .oinfo { min-height: 0; align-self: flex-start; margin-top: 21px; display: inline-grid; }   /* centred on the 64 px card row */
+.swhead { margin: 2px 0 -6px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .swho { display: inline-flex; gap: 6px; }
 .swho .av { border-radius: 12px; }   /* square portraits, as in the uma picker */
 /* phone: the nested paddings (body, loop, deck) left 39 px per card and a 560 px table in a 306 px box */
