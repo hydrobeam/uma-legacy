@@ -323,3 +323,16 @@ Not modelled: other sources (sparks, events) pushing a skill to Lv 5 before the 
 from the card's pool and sends those draws to the card's other skills. That is the likely cause of the spark deficit
 in section 2 (and of the partial redirection seen in the verification), and it makes a card's hints slightly more
 likely to land on targets a spark did not already max.
+
+## Refit on the larger run set (2026-10-05)
+
+|---|---|---|---|---|---|---|
+| Unity Cup | 2.708 | 2.61–2.79 | 8,754 | 490 | 60 | 2.70 |
+| Grand Concert | 2.026 | 1.99–2.06 | 25,111 | 1,251 | 126 | 2.08 |
+| URA Finale | 1.596 | 1.50–1.69 | 9,722 | 514 | 37 | 1.60 |
+| Trackblazer | 1.814 | 1.68–1.95 | 3,349 | 118 | 17 | 2.30 (pooled placeholder) |
+
+Adopted: Unity Cup 2.70, Grand Concert 2.03, URA Finale 1.60, Trackblazer 1.81 (now measured). Grand Masters keeps 2.30
+as a placeholder (no runs). The Lv-5 cap still beats drawing with replacement (+17.5 log-likelihood; +5 cards 1.22 →
+0.97 observed/predicted). The chain-event count (`docs/CHAIN_EVENTS.md`) refit on 1,792 runs gives means 7.52 / 6.84 /
+7.20 / 7.92 for 1 / 2 / 3 / 4 pals (variances 4.0–5.3); Binomial(21, 0.35) (7.35, 4.8) stays.

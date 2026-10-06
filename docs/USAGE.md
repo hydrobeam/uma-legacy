@@ -11,7 +11,7 @@ words; this file is the reference for the controls.
   Masters. It sets how often support cards give training hints (the picker shows each as a multiple of URA Finale's
   rate), which golds it hands out whatever the deck (Unity Cup: No Stopping Me! and It's On!), and which cards the
   game bans from the deck (Team Sirius in Unity Cup and Grand Concert). Grand Masters has no measured hint rate and
-  uses Trackblazer's estimate.
+  uses a placeholder.
 - *Lineage rank*: the star mix of the sparks on your legacies, *B to S+* (rank score 6,500–17,499: 50/45/5% for
   1/2/3 stars) or *SS* (17,500+: 20/70/10%), from hakuraku.moe's room-match data. Picking a scenario sets its usual
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.

@@ -36,7 +36,7 @@ export const RACEIDS = parse('data-raceids');       // race name -> race id (ban
 export const SCEN_GOLDS = { unity: [20049, 20046] };
 // the scenario picker's tiles, in its order. id: Global single_mode_scenario id (logo img/scen/{id}); base: training
 // hints per card per run at hint frequency 0 (pkg/loopopt/src/deck.rs hint_base), shown as a multiple of URA Finale's
-// (the original scenario); est: the base is an estimate from few runs; tint: a light shade of the game's
+// (the original scenario); est: no measured base (Grand Masters: a placeholder); tint: a light shade of the game's
 // label colour (single_mode_scenario.label_bg_color) behind the name badge shown when the logo is missing; a tile also
 // lists the scenario's guaranteed golds (SCEN_GOLDS). ss: picking the scenario sets the lineage rank to SS (else below
 // SS): the share of uma-it runs whose rank score reaches 17,500 with every skill point spent is URA Finale 0%, Unity Cup
@@ -44,9 +44,9 @@ export const SCEN_GOLDS = { unity: [20049, 20046] };
 // (assumed SS). era: offered only with that era's data (Grand Masters: the JP Grand Masters era).
 export const SCENARIOS = [
   { v: 'unity', id: 2, name: 'Unity Cup', base: 2.70, ss: false, tint: '#c5ecff' },
-  { v: 'gc', id: 3, name: 'Grand Concert', base: 2.08, ss: true, tint: '#ebe3ff' },
+  { v: 'gc', id: 3, name: 'Grand Concert', base: 2.03, ss: true, tint: '#ebe3ff' },
   { v: 'ura', id: 1, name: 'URA Finale', base: 1.60, ss: false, tint: '#e6f4c9' },
-  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: 2.30, est: true, ss: false, tint: '#faeebf' },
+  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: 1.81, ss: false, tint: '#faeebf' },
   { v: 'grandmasters', id: 5, name: 'Grand Masters', base: 2.30, est: true, ss: true, era: 'gm', tint: '#f3e1d2' },
 ];
 // lineage rank: the star mix of the legacies' sparks (state.rank), below SS (rank score 6,500-17,499) or SS (17,500+)

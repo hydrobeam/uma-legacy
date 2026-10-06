@@ -154,8 +154,8 @@ const TESTS = {
     const t = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect();
       const sub = t.querySelector('.ssub'), sr = sub.getBoundingClientRect(), pad = parseFloat(getComputedStyle(t).paddingBottom) + parseFloat(getComputedStyle(t).borderBottomWidth);
       return { v: t.dataset.v, sub: sub.innerText.replace(/\s+/g, ' ').trim(), w: Math.round(r.width), h: Math.round(r.height), gap: Math.round(r.bottom - pad - sr.bottom), subH: Math.round(sr.height) }; }));
-    // hint rate as a multiple of URA Finale's (2.70, 2.08, 1.60, 2.30 hints per card over 1.60)
-    const want = { unity: 'Hint rate ×1.69', gc: 'Hint rate ×1.30', ura: 'Hint rate ×1.00', trackblazer: 'Hint rate ×1.44 (estimate)' };
+    // hint rate as a multiple of URA Finale's (2.70, 2.03, 1.60, 1.81 hints per card over 1.60)
+    const want = { unity: 'Hint rate ×1.69', gc: 'Hint rate ×1.27', ura: 'Hint rate ×1.00', trackblazer: 'Hint rate ×1.13' };
     check('opens with four tiles, each with its hint rate against URA Finale', !(await menu.isHidden()) && t.length === 4 && t.every(x => x.sub === want[x.v]), t.map(x => x.v + ': ' + x.sub).join(' | '));
     check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
     check('every tile is logo + one line, no blank space below', t.every(x => x.subH <= 22 && x.gap <= 1), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
