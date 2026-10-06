@@ -23,7 +23,6 @@
   --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
   --shade: rgba(24, 32, 46, .22);   /* the scroll-edge shadow */
   --img-edge: color-mix(in srgb, var(--line) 80%, var(--ink) 20%);   /* the faint edge round portraits */
-  --card-edge: transparent;   /* card art: no edge in light (its frame is the edge) */
   color-scheme: light;
 }
 /* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
@@ -34,7 +33,7 @@
   --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
   --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444;
   --av-l: 30%; --av-c: 35%; --shade: rgba(255, 255, 255, .18);
-  --img-edge: #e3e8ef; --card-edge: #e3e8ef;   /* a near-white edge round portraits and card art */
+  --img-edge: #e3e8ef;   /* a near-white edge round portraits (card art keeps only its own frame) */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -270,7 +269,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav .ctype { position: absolute; top: 0; right: 3%; width: 26.4%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }
-.cav.art { position: relative; box-shadow: none; background: none; outline: 1px solid var(--card-edge); outline-offset: 0; }
+.cav.art { position: relative; box-shadow: none; background: none; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
 .mem .memb { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
 .mem .memb:hover .nm { text-decoration: underline; }
