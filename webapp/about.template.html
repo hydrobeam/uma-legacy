@@ -71,14 +71,15 @@ sparks, not affinity.</p>
 
 <h3>The deck</h3>
 <ul>
-<li>Every card is at max limit break.</li>
-<li><strong>Training hints:</strong> base × (1 + hint frequency / 100) per career, each a uniform draw over the card's
-hintable skills. Base: Unity Cup 2.70, Grand Concert 2.03, Trackblazer 1.81, URA Finale 1.60. A card with 30% hint
-frequency hints about 3.5 times in Unity Cup; with five hintable skills, a given one comes up in about half of
-careers.</li>
-<li><strong>Chain events:</strong> about 7 per career (Binomial(21, 0.35)), shared among the non-pal cards' story
-chains in order. Three 3-link cards (9 links) usually leave some last links unplayed. Pals have their own storyline and
-take none.</li>
+<li><strong>Training hints:</strong> how often a card hints is an estimate from watching real shared IT runs. It scales
+with the card's hint frequency: base × (1 + hint frequency / 100) hints per career, each a random pick among the card's
+skills still below hint level 5. The base differs by scenario: Unity Cup 2.70, Grand Concert 2.03, Trackblazer 1.81,
+URA Finale 1.60 (Grand Masters 2.30, a placeholder). A card with 30% hint frequency hints about 3.5 times in Unity Cup;
+with five hintable skills, a given one comes up in about half of careers.</li>
+<li><strong>Chain events:</strong> the number of story-chain events in a career is random, also estimated from real
+runs: like 21 tries that each succeed 35% of the time, 7.35 on average and between 5 and 10 in 83% of careers. Each one
+advances a non-pal card's chain, picked at random, a card with more links left more often; the same in every scenario.
+Three 3-link cards (9 links) usually leave some last links unplayed. Pals have their own storyline and take none.</li>
 <li><strong>Event outcomes:</strong> equal shares unless measured. Measured at 75%: Sasami Anshinzawa SSR's Nothing
 Ventured, Riko Kashimoto SSR's Ramp Up, Seiun Sky [Foolproof Plan]'s Fast-Paced, Smart Falcon [My Umadol Way! ☆]'s
 Center Stage.</li>
@@ -110,12 +111,6 @@ up.</li>
 affinity / 100), base 3/6/9% by stars. Grandparents use the full rate.</li>
 <li><strong>Affinity:</strong> the umas' relation points plus 3 for each G1 both won.</li>
 <li><strong>Every card at max limit break.</strong></li>
-<li><strong>Training hints:</strong> base × (1 + hint frequency / 100) draws per career, each a uniform draw over the
-card's skills still below hint level 5. Each scenario has its own base: Unity Cup 2.70, Grand Concert 2.03, Trackblazer
-1.81, URA Finale 1.60.</li>
-<li><strong>Chain events:</strong> the number of story-chain events in a career is random, like 21 tries that each succeed
-35% of the time: 7.35 on average, between 5 and 10 in 83% of careers. Each one advances a non-pal card's chain, picked
-at random, a card with more links left more often. The same in every scenario.</li>
 <li><strong>IT's event choices:</strong> IT takes the top choice unless a prioritised skill sits only on another choice,
 and priorities are set to reach the hints counted.</li>
 <li><strong>Pal events:</strong> pal finales always fire; pal first-year date events don't fire in IT.</li>
