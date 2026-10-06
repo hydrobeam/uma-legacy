@@ -6,7 +6,8 @@ import { cardAv } from './images.js';
 import { save } from './search.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
-export const cardTitle = (c) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + ' ' + RAR[c.rar], ti: m[1] } : { nm: c.name, ti: '' }; };
+// rar: append the rarity ("Daitaku Helios SSR"); the card list leaves it out, its frame and section heading show it
+export const cardTitle = (c, rar = true) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + (rar ? ' ' + RAR[c.rar] : ''), ti: m[1] } : { nm: c.name, ti: '' }; };
 export function cardGives(c, groups) {   // [{t: skill, s: source note, g: gold}]
   const out = [];
   for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'hint', g: false });
@@ -29,7 +30,7 @@ export function renderCards() {
     sec.innerHTML = `<h3>${label}</h3><div class="ctiles"></div>`;
     const chips = sec.querySelector('.ctiles');
     for (const { c, gives } of vis) {
-      const t = cardTitle(c); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
+      const t = cardTitle(c, false); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
       b.innerHTML = `<span class="cn">${esc(t.nm)}</span>` + (t.ti ? `<span class="cti">${esc(t.ti)}</span>` : '') +
         `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
           : ''}</span>`;

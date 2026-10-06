@@ -268,6 +268,7 @@ const TESTS = {
     const pg = await open(b);
     const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map(h => h.textContent));
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
+    check('card names carry no rarity (the frame and section show it)', await pg.evaluate(() => ![...document.querySelectorAll('#cards .ct .cn')].some(e => / (SSR|SR|R)$/.test(e.textContent))));
     // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
     const sirius = () => pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
     check('Team Sirius: "Not allowed in Unity Cup" in the card picker', (await sirius()) === 'Not allowed in Unity Cup', String(await sirius()));
@@ -453,7 +454,7 @@ const TESTS = {
   },
   async borrowed(b) {
     const pg = await open(b);
-    for (const nm of ['Light Hello SSR', 'Sasami Anshinzawa SSR']) await pg.locator('#cards .ct', { hasText: nm }).first().click();
+    for (const nm of ['Light Hello', 'Sasami Anshinzawa']) await pg.locator('#cards .cgroup').first().locator('.ct', { hasText: nm }).first().click();   // the SSR section
     await settle(pg);
     const rows = await pg.evaluate(() => [...document.querySelectorAll('.deck .dcards')].map(r => [...r.querySelectorAll('.dc')]).filter(r => r.some(x => x.classList.contains('bor'))).map(r => r.findIndex(x => x.classList.contains('bor')) === r.length - 1));
     check('a deck borrows a card when the pals are not owned', rows.length > 0);
