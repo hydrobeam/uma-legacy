@@ -310,6 +310,9 @@ const TESTS = {
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
     const notes = await pg.evaluate(() => [...document.querySelectorAll('#cards .gv')].map(g => [g.querySelector('small').textContent, g.title]));
     check('card hint notes in plain words, each with a tooltip', notes.length > 0 && notes.every(([n, t]) => /^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n) && t.length > 0), JSON.stringify(notes.filter(([n]) => !/^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n)).slice(0, 3)));
+    const art = await pg.evaluate(() => { const s = new Set(); let over = 0; for (const t of document.querySelectorAll('#cards .ct')) { const c = t.querySelector('.cav').getBoundingClientRect();
+      s.add(Math.round(c.width)); if (c.width > t.getBoundingClientRect().width + 0.5) over++; } return { sizes: [...s], over }; });
+    check('card list: every card picture is the same size and inside its tile, loaded or not', art.sizes.length === 1 && !art.over, JSON.stringify(art));
     check('card names carry no rarity (the frame and section show it)', await pg.evaluate(() => ![...document.querySelectorAll('#cards .ct .cn')].some(e => / (SSR|SR|R)$/.test(e.textContent))));
     // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
     const sirius = () => pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
@@ -554,6 +557,9 @@ const TESTS = {
     check('phone: after editing a card, the status button scrolls back to the results', await until(pg, () => { const r = document.getElementById('rcol').getBoundingClientRect(); return Math.abs(r.top) < 40 && document.activeElement.id === 'rcol'; }));
     // the roster and card boxes: shorter than the screen, their bottom edge fading while there is more below
     const boxes = await pg.evaluate(() => ['roster', 'cards'].map(id => { const e = document.getElementById(id); return { h: e.clientHeight / innerHeight, more: e.classList.contains('more') }; }));
+    const part = await pg.evaluate(() => { const s = new Set(); let over = 0; for (const t of document.querySelectorAll('#cards .ct')) { const c = t.querySelector('.cav').getBoundingClientRect();
+      s.add(Math.round(c.width)); if (c.width > t.getBoundingClientRect().width + 0.5) over++; } return { sizes: [...s], over }; });
+    check('phone: every card picture is the same size and inside its tile, loaded or not', part.sizes.length === 1 && !part.over, JSON.stringify(part));
     check('phone: the roster and card boxes are at most 55% of the screen high and show that they scroll', boxes.every(x => x.h <= 0.56 && x.more), JSON.stringify(boxes));
     await pg.evaluate(() => scrollTo(0, 0));
     await pg.click('#x-scen');

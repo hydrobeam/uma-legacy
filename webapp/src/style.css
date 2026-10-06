@@ -340,6 +340,9 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .cgroup .ctiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; align-items: start; }
 /* card tile: art, name and title as a subtitle, then the target skills it can give (why it is listed) */
 .ct { display: grid; gap: 3px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+/* the tile is one column the grid cell's width; the art's box never sizes itself from its (still loading) image */
+.ct { grid-template-columns: minmax(0, 1fr); width: 100%; }
+.ct .cav { min-width: 0; }
 .ct .cav { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 8px; font-size: 1rem !important; }
 .ct:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 .ct .cn { font-size: 0.8rem; font-weight: 700; line-height: 1.25; }
