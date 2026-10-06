@@ -237,7 +237,7 @@ const TESTS = {
     // a slow search (3 results, one shared deck), changed mid-run: the worker is killed and the new search finishes
     const r0 = await pg.evaluate(() => window.__runs.length);
     await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
-    await pg.waitForFunction((n) => window.__runs.length > n, r0);   // the slow search is running
+    await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a quick job from the first change alone)
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
     await pg.click('#c-peruma'); await pg.selectOption('#c-top', '1'); await settle(pg);
