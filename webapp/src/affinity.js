@@ -7,17 +7,20 @@ export function openWhy(l) {
   const outfitOf = (i) => (l.outfits[i].outfits.length === 1 ? l.outfits[i].outfits[0].id : null);
   const total = (L) => L.slots.reduce((a, x) => a + x.aff, 0);
   const head = document.createElement('div'); head.className = 'row between dhead';
-  head.innerHTML = '<h3 id="why-title">Affinity</h3>';
+  head.innerHTML = '<h3 id="why-title" class="row">Affinity <button type="button" class="oinfo" aria-expanded="false" aria-controls="why-math" aria-label="How affinity is calculated" title="How affinity is calculated">i</button></h3>';
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
   body.appendChild(head);
-  // the formula, in the legacy roles of one career: trainee T, parents P1 and P2, each parent P's own parents GP1 and GP2
+  // in words, then the formula (behind the (i) by the title), in the legacy roles of one career: trainee T, parents
+  // P1 and P2, each parent P's own parents GP1 and GP2
   const intro = document.createElement('div'); intro.className = 'afx';
-  intro.innerHTML = `<p class="hint">Each legacy's affinity, for trainee T with parents P1 and P2 (P is either; P2 the other one) and each parent's own parents GP1 and GP2:</p>
+  intro.innerHTML = `<p>A parent's affinity is how well she matches the trainee, the other parent, and her own two parents (each as a trio with the trainee), plus 3 for every G1 she won together with the other parent or with one of her own parents. A grandparent counts only her trio with the trainee and her child, plus 3 for every G1 she won together with that child. The higher a legacy's affinity, the more often it passes a skill on: each spark's chance is its base × (1 + affinity / 100), so affinity 100 doubles it.</p>
+    <div class="afx" id="why-math" hidden><p class="hint">Each legacy's affinity, for trainee T with parents P1 and P2 (P is either; P2 the other one) and each parent's own parents GP1 and GP2:</p>
     <p class="fx">Parent P = rel(T–P) + rel(P1–P2) + rel(T–P–GP1) + rel(T–P–GP2)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 3 × [G1(P–P2) + G1(P–GP1) + G1(P–GP2)]</p>
     <p class="fx">Grandparent GP (under P) = rel(T–P–GP) + 3 × G1(P–GP)</p>
-    <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can.</p>
-    <p>In words: a parent's affinity is how well she matches the trainee, the other parent, and her own two parents (each as a trio with the trainee), plus 3 for every G1 she won together with the other parent or with one of her own parents. A grandparent counts only her trio with the trainee and her child, plus 3 for every G1 she won together with that child. The higher a legacy's affinity, the more often it passes a skill on: each spark's chance is its base × (1 + affinity / 100), so affinity 100 doubles it.</p>`;
+    <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can.</p></div>`;
   body.appendChild(intro);
+  const ib = head.querySelector('.oinfo'), math = intro.querySelector('#why-math');
+  ib.onclick = () => { math.hidden = !math.hidden; ib.setAttribute('aria-expanded', String(!math.hidden)); };
   // an uma as her portrait; hover, focus or tap shows her name beside it
   const face = (i, size = 26) => { const f = document.createElement('span'); f.className = 'aface'; f.tabIndex = 0; f.title = M[i].name;
     f.appendChild(umaAv(M[i].id, outfitOf(i), size)); const n = document.createElement('span'); n.className = 'an'; n.textContent = nm(i); f.appendChild(n); return f.outerHTML; };
@@ -29,7 +32,7 @@ export function openWhy(l) {
   const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);
   const ct = document.createElement('div'); ct.className = 'tablewrap';
   const tb = document.createElement('table'); tb.className = 'tbl';
-  tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Grandparents (each parent\u2019s two)</th><th>Affinity</th></tr></thead>';
+  tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Grandparents</th><th>Affinity</th></tr></thead>';
   const tbody = document.createElement('tbody'); tb.appendChild(tbody); ct.appendChild(tb);
   const split = document.createElement('div'); split.className = 'split'; split.appendChild(ct);
   const view = document.createElement('div'); view.className = 'view'; view.style.display = 'grid'; view.style.gap = '12px'; split.appendChild(view); body.appendChild(split);
@@ -52,7 +55,7 @@ export function openWhy(l) {
     const slot = (x) => `<span class="num">affinity <b>${x.aff.toFixed(0)}</b><br>${x.rel.toFixed(0)} relations + ${x.race.toFixed(0)} races</span>`;
     const P = L.slots.filter(x => x.kind === 'parent'), G = L.slots.filter(x => x.kind === 'grandparent');
     tree.appendChild(node('p', P[0].who[0], '<span class="hint">Parent</span><br>' + slot(P[0]))); tree.appendChild(node('p', P[1].who[0], '<span class="hint">Parent</span><br>' + slot(P[1])));
-    for (const g of G) tree.appendChild(node('g', g.who[1], `<span class="hint">Grandparent (${esc(nm(g.who[0]))})</span><br>` + slot(g)));
+    for (const g of G) tree.appendChild(node('g', g.who[1], '<span class="hint">Grandparent</span><br>' + slot(g)));
     view.appendChild(tree);
   }
   // a tap on a portrait (phones) shows its name; another tap, or a tap elsewhere, hides it

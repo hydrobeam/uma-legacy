@@ -515,6 +515,9 @@ const TESTS = {
     check('affinity: 6 pairs and 12 careers', rows.join(',') === '6,12', rows.join(','));
     const af = await pg.evaluate(() => ({ faces: document.querySelectorAll('#why-dlg .aface').length, fx: [...document.querySelectorAll('#why-dlg .fx')].map(e => e.textContent).join(' | '), hidden: getComputedStyle(document.querySelector('#why-dlg .aface .an')).display }));
     check('affinity: umas as portraits (names hidden until asked; four grandparents per career), the formula with P, P2, GP1, GP2', af.faces >= 6 * 2 + 12 * 6 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
+    const ib = pg.locator('#why-dlg .oinfo'), mathVis = () => pg.locator('#why-math').isVisible();
+    const m0 = await mathVis(); await ib.click(); const m1 = await mathVis(); await ib.click();
+    check('affinity: the formula sits behind the (i) by the title (closed, opens, closes)', !m0 && m1 && !(await mathVis()) && (await ib.getAttribute('aria-expanded')) === 'false', JSON.stringify([m0, m1]));
     const pos = () => pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl td')].slice(0, 40).map(td => Math.round(td.getBoundingClientRect().left) + ',' + Math.round(td.getBoundingClientRect().top)).join(' '));
     const before = await pos(); await pg.locator('#why-dlg .aface').nth(3).hover();
     check('affinity: hovering a portrait shows the name without moving the table', (await pos()) === before && await pg.locator('#why-dlg .aface').nth(3).locator('.an').isVisible());
