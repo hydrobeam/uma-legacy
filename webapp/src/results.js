@@ -47,7 +47,7 @@ function loopCard(l, meta, ctx) {
         return parts.join(''); }).join('');
       return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
     // what a swap changes: the hint odds that move against the shared deck (the gold's, then at least the white's),
-    // largest change first; two shown, the rest in the tooltip
+    // largest change first; two shown, a click on the list shows them all (and again folds it)
     const deltas = (d) => { const base = new Map(meta.deck.odds.map(o => [o.group, o])), out = [];
       const h = (o) => o ? 1 - (1 - o.white) * (1 - o.gold) : 0;
       for (const o of d.odds) { const b = base.get(o.group), s = SK.get(o.group) || { w: o.group, gd: null };
@@ -56,7 +56,8 @@ function loopCard(l, meta, ctx) {
       out.sort((x, y) => Math.abs(y.z - y.a) - Math.abs(x.z - x.a));
       if (!out.length) return '';
       const pc = (p) => Math.round(p * 100) + '%', one = (x) => `<span class="swd1${x.z < x.a ? ' down' : ''}">${icon(x.g, x.gold)}${esc(x.nm)} <b>${pc(x.a)} → ${pc(x.z)}</b></span>`;
-      return `<span class="swd" title="${esc(out.map(x => `${x.nm}: ${pc(x.a)} → ${pc(x.z)}`).join('\n'))}">${out.slice(0, 2).map(one).join('')}${out.length > 2 ? `<span class="swmore">+${out.length - 2} more</span>` : ''}</span>`; };
+      if (out.length <= 2) return `<span class="swd">${out.map(one).join('')}</span>`;
+      return `<button type="button" class="swd more" aria-expanded="false">${out.map((x, i) => i < 2 ? one(x) : one(x).replace('class="swd1', 'class="swd1 extra')).join('')}<span class="swmore" data-n="${out.length - 2}">+${out.length - 2} more</span></button>`; };
     const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
     // a member's portrait (her outfit's when the loop fixes one), with her name as its tooltip
     const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size); av.title = M[k].name + (of.length === 1 ? ' ' + of[0].label : ''); return av.outerHTML; };
@@ -83,6 +84,8 @@ function loopCard(l, meta, ctx) {
           `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d)}</div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }
+    card.querySelectorAll('.swd.more').forEach(b => b.onclick = () => { const open = b.getAttribute('aria-expanded') !== 'true';
+      b.setAttribute('aria-expanded', String(open)); const m = b.querySelector('.swmore'); m.textContent = open ? 'Show less' : `+${m.dataset.n} more`; });
     card.querySelectorAll('.deck .oinfo').forEach(b => b.onclick = () => { const o = b.closest('.deck').querySelector('.dodds');
       o.hidden = !o.hidden; b.setAttribute('aria-expanded', String(!o.hidden)); });
     card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); });

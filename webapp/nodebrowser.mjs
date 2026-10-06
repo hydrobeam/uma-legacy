@@ -120,6 +120,10 @@ const TESTS = {
     const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.av')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
     const swd = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap')].map(d => [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim())));
     check('each swap row says what it changes ("Skill a% → b%")', swd.length > 0 && swd.every(r => r.length > 0 && r.every(t => /\d+% → \d+%$/.test(t))), JSON.stringify(swd));
+    const more = pg.locator('#results .loop .swd.more').first();
+    if (await more.count()) { const n0 = await more.locator('.swd1:visible').count(); await more.click();
+      check('clicking a swap\'s changes shows them all, again folds them', (await more.locator('.swd1:visible').count()) > n0 && (await more.getAttribute('aria-expanded')) === 'true'
+        && (await more.click(), (await more.locator('.swd1:visible').count()) === n0)); }
     check('a label marks where the swap rows start', await pg.evaluate(() => { const h = document.querySelector('#results .loop .swhead'), s = document.querySelector('#results .loop .deck.swap'); return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); }));
     check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     const al = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
