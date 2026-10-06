@@ -269,7 +269,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav.art { position: relative; }
-.cav .ctype { position: absolute; top: 3%; right: 3%; width: 24%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }
+.cav .ctype { position: absolute; top: 0; right: 3%; width: 26.4%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }
 .chip .av, .chip .cav { margin-right: 6px; }
 .chip[data-s="out"] .av { filter: grayscale(1); opacity: 0.55; }
 .cav.art { box-shadow: none; background: none; }
