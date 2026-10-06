@@ -257,6 +257,21 @@ impl<'a> Model<'a> {
         best
     }
     pub(crate) fn fixed_factor(&self) -> f64 { self.fixed() }
+    /// `trainee_fast` for one outfit option `o` of trainee `u`.
+    #[inline]
+    pub(crate) fn outfit_fast(&self, u: usize, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+        let (st, ew) = (&self.sts[u][o], &self.ews[u][o]);
+        let mut p = 1.0f64;
+        for k in 0..st.len() {
+            let v = st[k];
+            p *= if v == 2 { GEN_GOLD } else {
+                let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
+                dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
+            };
+        }
+        p
+    }
+    pub(crate) fn n_outfits(&self, u: usize) -> usize { self.sts[u].len() }
     /// Per-skill landing odds with deck hint odds supplied per uncertain target (white, gold) instead of the job's.
     pub(crate) fn skill_probs_d(&self, st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
         st.iter().enumerate().map(|(k, &v)| {
