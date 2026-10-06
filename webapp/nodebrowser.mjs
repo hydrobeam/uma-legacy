@@ -598,7 +598,7 @@ const TESTS = {
     await pg.context().close();
   },
   async gm(b) {
-    const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:era', 'gm'); } } catch {} } });
+    const pg = await open(b, { init: () => { try { if (!sessionStorage.getItem('gm')) { sessionStorage.setItem('gm', '1'); localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'gm' })); } } catch {} } });
     await pg.route('**/assets/data-gm.*', async (r) => { await new Promise(x => setTimeout(x, 1500)); await r.continue(); });   // a slow fetch of the GM era's data
     await pg.reload(); await pg.waitForTimeout(500);
     check('GM era: while its data loads, the status line says so', /Loading the JP Grand Masters-era data/.test(await note(pg)), await note(pg));
@@ -619,20 +619,11 @@ const TESTS = {
     await pg.context().close();
   },
   async settings(b) {
-    // a browser with the old per-key settings: everything carries over into llp:settings, old keys are removed
+    // saved settings load: roster and cards per data set, the rest shared
     const pg = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
-      const set = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-      set('llp:roster', { 1001: 'out' }); set('llp:gm:roster', { 1002: 'out' }); set('llp:cardsOff', { 30052: false });
-      set('llp:targets', [{ group: 20166, guaranteed: 2, deck_gold: 1 }, { group: 20159, guaranteed: 0, deck_white: 0.5 }]);
-      set('llp:rank', '0.45,0.50,0.05'); set('llp:rsort', 'rel'); set('llp:rdir', 'asc'); localStorage.setItem('llp:era', 'global'); } catch {} } });
-    const st = await pg.evaluate(() => ({ keys: Object.keys(localStorage).filter(k => k.startsWith('llp:') && !k.startsWith('llp:last:')), s: JSON.parse(localStorage.getItem('llp:settings')) }));
-    check('migration: one llp:settings object, old keys removed', st.keys.length === 1 && st.keys[0] === 'llp:settings' && st.s.v === 2, st.keys.join(','));
-    check('migration: per-era roster kept apart', st.s.global.roster['1001'] === 'out' && st.s.gm.roster['1002'] === 'out');
-    check('migration: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));
-    check('migration: card ownership kept', await pg.evaluate(() => document.querySelectorAll('#cards .ct[aria-pressed="false"]').length === 1));
-    check('migration: old preset gold fixed, hand-set odds dropped', JSON.stringify(st.s.common.targets) === JSON.stringify([{ group: 20166, guaranteed: 0 }, { group: 20159, guaranteed: 0 }]));
-    check('migration: old star mix remapped', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05');
-    check('migration: roster sort reset to newest first', (await pg.locator('#rs').innerText()) === 'Release ↓');
+      localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { rank: '0.20,0.70,0.10' }, global: { roster: { 1001: 'out' }, cardsOff: { 30052: false } }, gm: { roster: { 1002: 'out' } } })); } catch {} } });
+    check('saved settings load: the uma marked not owned shows not owned', await pg.evaluate(() => [...document.querySelectorAll('#roster .ut[data-uma="1001"]')].every(t => t.dataset.s === 'out')));
+    check('… card ownership and rank too', await pg.evaluate(() => document.querySelectorAll('#cards .ct[aria-pressed="false"]').length === 1) && (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
     // changes persist across a reload
     await pg.locator('#roster .ut .up').nth(3).click(); await settle(pg); await pg.reload(); await settle(pg);
     check('a change survives a reload', (await pg.locator('#roster .ut[data-s="out"]').count()) >= 1 + (await pg.locator('#roster .ut[data-uma="1001"]').count()));
@@ -642,16 +633,11 @@ const TESTS = {
     check('export then import: settings load', (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global');
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
-    // settings saved before R cards became opt-in: a saved "on" (almost always the old default) is reset once
-    const p2 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
-      localStorage.setItem('llp:settings', JSON.stringify({ v: 1, era: 'global', common: { rcards: true, rank: '0.20,0.70,0.10' }, global: {}, gm: {} })); } catch {} } });
     const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
-      localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { scen: 'grandmasters', rank: '0.20,0.70,0.10', targets: [{ group: 20049, guaranteed: 0 }, { group: 20046, guaranteed: 0 }, { group: 20159, guaranteed: 0 }] }, global: {}, gm: {} })); } catch {} } });
+      localStorage.setItem('llp:settings', JSON.stringify({ v: 2, era: 'global', common: { scen: 'grandmasters', rank: '0.20,0.70,0.10', targets: [{ group: 20049 }, { group: 20046 }, { group: 20159 }] }, global: {}, gm: {} })); } catch {} } });
     check('Grand Masters saved, Global data active: Unity Cup is used (its golds and rank)', (await p3.getAttribute('#x-scen', 'data-value')) === 'unity'
       && await p3.evaluate(() => window.__runs.at(-1).scenario === 'unity') && (await p3.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05' && (await p3.getAttribute('#g-20049', 'data-g')) === '2');
     await p3.context().close();
-    check('v1 settings: R cards reset to off, other settings kept', !(await p2.locator('#x-rcards').isChecked()) && (await p2.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10');
-    await p2.context().close();
   },
   async about(b) {
     // "How this works": a link in the header to its own page (/about), which links back

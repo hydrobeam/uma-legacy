@@ -1,7 +1,7 @@
 // ---------- deck card panel: name, role, ownership (the same setting as the card picker) ----------
 import { esc } from './dom.js';
 import { UMAS, CARD_BY_ID } from './data.js';
-import { state } from './state.js';
+import { state, goldGiven } from './state.js';
 import { save } from './search.js';
 import { umaState, renderRoster } from './roster.js';
 import { cardTitle, cardGives, renderCards } from './cards.js';
@@ -70,7 +70,7 @@ function openPop(el) {
   closePop(); popFor = el; el.setAttribute('aria-expanded', 'true');
   const c = CARD_BY_ID.get(+el.dataset.cid), t = c ? cardTitle(c) : { nm: el.dataset.name, ti: '' };
   const bor = el.classList.contains('bor'), own = c && state.cardsOff[c.id] !== false;
-  const groups = new Set(state.targets.filter(x => (x.guaranteed || 0) !== 2).map(x => x.group)), gives = c ? cardGives(c, groups) : [];
+  const groups = new Set(state.targets.filter(x => !goldGiven(x.group)).map(x => x.group)), gives = c ? cardGives(c, groups) : [];
   pop.setAttribute('aria-label', t.nm);
   pop.innerHTML = `<div><b>${esc(t.nm)}</b>${t.ti ? `<div class="ctt">${esc(t.ti)}</div>` : ''}</div>` + (bor ? '<div>Borrowed.</div>' : '') +
     (gives.length ? `<div class="pgives">${gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')}</div>` : '') +

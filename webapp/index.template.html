@@ -24,7 +24,7 @@ __FONTPRELOAD__
 // start the solver's downloads while the page is still being parsed: the wasm and the active era's data
 (function () {
   var A = __ASSETS__, gm = false;
-  try { var o = JSON.parse(localStorage.getItem('llp:settings') || 'null'); gm = o ? o.era === 'gm' : localStorage.getItem('llp:era') === 'gm'; } catch (e) {}
+  try { var o = JSON.parse(localStorage.getItem('llp:settings') || 'null'); gm = !!o && o.era === 'gm'; } catch (e) {}
   [A.wasm].concat(gm ? [A.engine.gm, A.dataGm] : [A.engine.global]).forEach(function (h) {
     var l = document.createElement('link'); l.rel = 'preload'; l.as = 'fetch'; l.crossOrigin = 'anonymous'; l.href = h; document.head.appendChild(l);
   });

@@ -2,7 +2,7 @@
 import { $ } from './dom.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK } from './data.js';
-import { state, ui } from './state.js';
+import { state, ui, goldGiven } from './state.js';
 import { save } from './search.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
@@ -12,7 +12,7 @@ function exportText() {
   const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
   const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
   const readable = {
-    targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: ['no', 'white', 'gold'][t.guaranteed || 0] })),
+    targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: goldGiven(t.group) ? 'gold' : 'no' })),
     umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
@@ -21,15 +21,13 @@ function exportText() {
   };
   let results = null;
   if (ui.lastResult) {
-    const { kind, r, meta } = ui.lastResult;
+    const { r, meta } = ui.lastResult;
     const loopSum = (l) => ({ all_land: fmtIn(l.p_all), at_least_n_minus_1: fmtIn(l.p_minus1),
       umas: l.members.map((m, k) => m.name + (l.outfits[k].outfits.length ? ' ' + l.outfits[k].outfits.map(o => o.label).join('/') : '')) });
-    if (kind === 'deck') results = { example: !!meta.example, decks: (r.top || []).map(t => ({ ...loopSum(t.loop), deck: t.deck.cards, pals: t.deck.pals, borrowed: t.deck.borrowed,
+    results = { example: !!meta.example, decks: (r.top || []).map(t => ({ ...loopSum(t.loop), deck: t.deck.cards, pals: t.deck.pals, borrowed: t.deck.borrowed,
       ...(t.decks ? { deck_per_uma: Object.fromEntries(t.loop.members.map((m, k) => [m.name, t.decks[k].cards])) } : {}),
       deck_odds: t.deck.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => ({ skill: nmG(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })) })),
       decks_searched: r.decks_built, proven: r.proven };
-    else if (kind === 'skills') results = { example: !!meta.example, loops: (r.loops || []).map(loopSum), proven: r.proven_top };
-    else results = { loops: (r.loops || []).map(l => ({ score: +l.score.toFixed(2), umas: l.members.map(m => m.name) })) };
   }
   return JSON.stringify({ app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } }, null, 1);
 }

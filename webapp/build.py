@@ -14,9 +14,7 @@ example = json.load(open(os.path.join(H, 'example.json')))
 # character icons and card art extracted by images.py, copied to dist/img/<kind>/<id>.webp; the page gets the list of
 # keys ('card:30116', ...) so it asks only for images that exist. None is fine (the page shows initials).
 DIST = os.path.join(H, 'dist')
-for old in ('img', 'assets', 'licenses'): shutil.rmtree(os.path.join(DIST, old), ignore_errors=True)
-for old in ('loopopt.wasm', 'data-gm.json', 'engine-gm.json'):
-    if os.path.exists(os.path.join(DIST, old)): os.remove(os.path.join(DIST, old))
+shutil.rmtree(DIST, ignore_errors=True)   # dist/ holds build output only: start clean, so nothing stale is deployed
 os.makedirs(os.path.join(DIST, 'assets'), exist_ok=True)
 def fingerprint(name, data):
     """write assets/<stem>.<hash><ext> (hash of the content) and return its path relative to the page"""
@@ -52,9 +50,10 @@ for dd in (P, J):
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
 # GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
 _gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
-GT_URL = {c['support_id']: c['url_name'] for c in json.load(open(_gt[-1]))} if _gt else {}
+_gtc = json.load(open(_gt[-1])) if _gt else []
+GT_URL = {c['support_id']: c['url_name'] for c in _gtc}
 # GameTora's character slug (its character pages are /characters/<outfit id>-<slug>), from her support cards' url_name
-GT_CHAR = {c['char_id']: c['url_name'].split('-', 1)[1] for c in json.load(open(_gt[-1])) if c.get('char_id') and '-' in c.get('url_name', '')} if _gt else {}
+GT_CHAR = {c['char_id']: c['url_name'].split('-', 1)[1] for c in _gtc if c.get('char_id') and '-' in c.get('url_name', '')}
 def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
@@ -89,14 +88,14 @@ def era(dirp, events_file):
         # pals, group cards, R cards (no chain events: hints only, no chain slot) and SR/SSR cards with chains
         if not c['pal'] and c['links'] == 0 and c['rarity'] != 1: continue
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
-        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'links': c['links'], 'hf': c['hf'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
+        ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], []),
-                         'ban': [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]})   # scenarios that bar it from the deck
+                         **({'ban': ban} if (ban := [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]) else {})})   # scenarios that bar it from the deck
     umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine}
 G = era(P, 'card_events.json')
-M = era(J, 'card_events_nodates.json')      # GM era: pal first-year dates are added by the page's toggle
+M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
@@ -136,15 +135,15 @@ for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), (
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
-assert '__' + 'DATA__' not in html and '__ASSETS__' not in html
 # the logo: the favicon's three sparkles inline in the title (gradient ids prefixed so they can't clash)
 LOGO = re.sub(r'\bid="g(\d)"', r'id="lg\1"', open(os.path.join(H, 'icons', 'favicon.svg')).read()).replace('url(#g', 'url(#lg')
 LOGO = LOGO.replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="false" ', 1).strip()
 html = html.replace('__LOGO__', LOGO, 1)
+assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A-Z]+__', html)   # every placeholder filled (esbuild's @__PURE__ marks aside)
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__VERSION__', VERSION), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
+for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))

@@ -6,7 +6,7 @@ const parse = (id) => JSON.parse($(id).textContent);
 export const ASSETS = parse('data-assets');
 // The active era's data, set by loadData() before the page starts. Global's is inline in the page; the GM era's is
 // fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
-export let CARDS;   // [{id,name,rar,pal,links,hf,whites,ev:[[group,level,link,p]]}]
+export let CARDS;   // [{id,name,rar,pal,kind,rel,gt,whites,ev:[[group,level,link,p]],ban?:[scenario]}]
 export let UMAS;    // [{id,name,outfits:[{id,label,rel}]}]
 export let CAT;     // [[group, white, gold|null]]
 export let CARD_BY_ID, SK, NAME;
@@ -54,8 +54,5 @@ export const RANKS = { below: '0.50,0.45,0.05', ss: '0.20,0.70,0.10' };
 const URA_BASE = SCENARIOS.find(s => s.v === 'ura').base;
 // mult: "Hint rate ×1.69" (the tile's line, which adds "(estimate)" itself); rate: with "(estimate)" (tooltips, labels)
 for (const s of SCENARIOS) { s.mult = `Hint rate ×${(s.base / URA_BASE).toFixed(2)}`; s.rate = s.mult + (s.est ? ' (estimate)' : ''); }
-// the 8/8 example: the default eight targets (guarantees follow the scenario, see scenarioGolds)
-export const PRESET = [
-  { group: 20159, guaranteed: 0 }, { group: 20049, guaranteed: 2 }, { group: 20166, guaranteed: 0 }, { group: 20046, guaranteed: 2 },
-  { group: 20161, guaranteed: 0 }, { group: 21010, guaranteed: 0 }, { group: 20165, guaranteed: 0 }, { group: 20203, guaranteed: 0 },
-];
+// the 8/8 example: the default eight targets, as skill groups (what the scenario guarantees: state.js goldGiven)
+export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];

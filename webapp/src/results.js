@@ -11,7 +11,7 @@ export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).
 const runs90 = (p) => p > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - p)).toLocaleString() : '—';
 const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
 // one result: its odds, the four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
-// only one result is shown), top: the #1 result (to say what differs from it), proven}
+// only one result is shown), top: the #1 result (to say what differs from it)}
 function loopCard(l, meta, ctx) {
   const n = meta.targets.length;
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
@@ -24,10 +24,11 @@ function loopCard(l, meta, ctx) {
     const same = !D || D.every(d => key(d) === key(meta.deck));
     const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
     const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
-      const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d: [^()]*\)$/, '');
+      const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
       const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || '';   // pick: the choice to prioritise, e.g. "link 1: Uma Stan"
       const tagPick = pick ? ' · prioritise ' + pick : '';
-      const c = (d.card_ids && CARD_BY_ID.get(d.card_ids[ci])) || CARDS.find(x => x.name === base); const t = c ? cardTitle(c) : { nm: base, ti: '' };
+      const c = CARD_BY_ID.get(d.card_ids[ci]) || CARDS.find(x => x.name === base);   // plain pals have a name but no entry in card_ids
+      const t = c ? cardTitle(c) : { nm: base, ti: '' };
       const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick;
       return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
         ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
@@ -111,7 +112,7 @@ export function renderDeck(res, meta) {
   closePop(); box.textContent = '';
   ui.headline = fmtIn(res.top[0].loop.p_all);   // only results with loops reach this (search.js keeps errors off the page)
   const many = res.top.length > 1;
-  res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0], proven: i === 0 && res.proven })));
+  res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0] })));
   if (refocus) $('rcol').focus({ preventScroll: true });
   markOwn();   // grey out anything marked not owned since the search (needs the cards on the page)
 }

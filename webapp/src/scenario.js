@@ -8,7 +8,7 @@ import { ERA } from './settings.js';
 import { state, writeSaved } from './state.js';
 import { scenLogo, skillIcon, srcFor } from './images.js';
 import { save } from './search.js';
-import { renderTargets, scenarioGolds } from './targets.js';
+import { renderTargets } from './targets.js';
 import { renderCards } from './cards.js';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
 const LIST = SCENARIOS.filter(s => !s.era || s.era === ERA);
@@ -21,7 +21,7 @@ export function paintRank() {
 }
 // switch to scenario v: its guaranteed golds and its default lineage rank (both can be changed by hand afterwards)
 function setScenario(v) {
-  const was = state.scen, sc = scenarioOf(v); state.scen = sc.v; scenarioGolds(was, sc.v);
+  const sc = scenarioOf(v); state.scen = sc.v;
   state.rank = sc.ss ? RANKS.ss : RANKS.below; paintRank();
 }
 // Switching to the JP Grand Masters-era data opens on its newest scenario, Grand Masters (with its golds and rank
@@ -29,7 +29,7 @@ function setScenario(v) {
 export function eraScenario(era) {
   const sc = SCENARIOS.find(s => s.v === 'grandmasters');
   if (era !== 'gm' || !sc || state.scen === sc.v) return;
-  const was = state.scen; state.scen = sc.v; scenarioGolds(was, sc.v); state.rank = sc.ss ? RANKS.ss : RANKS.below;
+  state.scen = sc.v; state.rank = sc.ss ? RANKS.ss : RANKS.below;
 }
 const goldNames = (sc) => (SCEN_GOLDS[sc.v] || []).map(g => [g, (SK.get(g) || {}).gd]).filter(([, n]) => n);
 // the tile's (and button's) accessible name: the logo is the only visible name

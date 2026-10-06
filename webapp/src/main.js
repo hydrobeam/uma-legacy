@@ -41,7 +41,7 @@ function start() {
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
   // (showing the default example under other settings flashed a result that wasn't theirs)
   const first = firstResult();
-  if (first) { ui.lastRender = () => renderDeck(first.r, first.example ? { example: true, targets: PRESET, rank: '0.50,0.45,0.05' } : { ms: first.ms, targets: first.targets, rank: state.rank });
+  if (first) { ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });
     ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
     ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : { kind: 'done', text: 'Your last result for these settings' }; }
   setTimeout(doSearch, 0);   // the first search, with the saved settings (also warms the engine)

@@ -1,7 +1,7 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
 import { $, esc } from './dom.js';
 import { CARDS, SK, SCENARIOS } from './data.js';
-import { state } from './state.js';
+import { state, goldGiven } from './state.js';
 import { cardAv } from './images.js';
 import { save } from './search.js';
 import { paintSort, sortMenu } from './sortmenu.js';
@@ -16,7 +16,7 @@ export function cardGives(c, groups) {   // [{t: skill, s: source note, g: gold}
   return out;
 }
 export function renderCards() {
-  const groups = new Set(state.targets.filter(t => (t.guaranteed || 0) !== 2).map(t => t.group));
+  const groups = new Set(state.targets.filter(t => !goldGiven(t.group)).map(t => t.group));   // what the deck still has to give
   const f = $('c-filter').value.trim().toLowerCase();
   const box = $('cards'); box.textContent = '';
   const sections = [['SSR', c => c.rar === 3], ['SR', c => c.rar === 2], ['R', c => c.rar === 1 && (c.pal || state.rcards)]];   // R pals stay usable without R cards

@@ -1,33 +1,20 @@
 // ---------- target skills, career-event extras ----------
 import { $ } from './dom.js';
-import { CAT, SK, PRESET, SCEN_GOLDS } from './data.js';
-import { state } from './state.js';
+import { CAT, SK, PRESET } from './data.js';
+import { state, goldGiven } from './state.js';
 import { skillIcon } from './images.js';
 import { save } from './search.js';
 import { renderCards } from './cards.js';
-// Apply the scenario's guaranteed golds to the target list: targets the new scenario guarantees become guaranteed
-// golds; golds only the old scenario guaranteed go back to none.
-export function scenarioGolds(from, to) {
-  const was = SCEN_GOLDS[from] || [], now = SCEN_GOLDS[to] || [];
-  for (const t of state.targets) {
-    if (now.includes(t.group)) t.guaranteed = 2;
-    else if (was.includes(t.group) && t.guaranteed === 2) t.guaranteed = 0;
-  }
-}
-// What is guaranteed outside the deck follows the scenario alone (Unity Cup's golds); everything else the search
-// works out itself (outfits, decks, events), so the player doesn't set it. Fixes saved hand-set values too.
-export function scenGuarantees() { const g = SCEN_GOLDS[state.scen || 'unity'] || []; for (const t of state.targets) t.guaranteed = g.includes(t.group) ? 2 : 0; }
 // one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
 // row's, else the add box), so the keyboard doesn't fall back to the page top
 export function renderTargets(focus = null) {
   const box = $('targets'); box.textContent = '';
-  scenGuarantees();
   state.targets.forEach((t, i) => {
     const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
-    const el = document.createElement('div'); el.className = 'tgt'; el.id = 'g-' + t.group; el.dataset.g = String(t.guaranteed || 0);
+    const el = document.createElement('div'); el.className = 'tgt'; el.id = 'g-' + t.group; el.dataset.g = goldGiven(t.group) ? '2' : '0';
     el.innerHTML = `<span class="name"></span><button class="x" type="button">×</button>`;
-    const nm = el.querySelector('.name'), gold = t.guaranteed === 2 && !!s.gd;
+    const nm = el.querySelector('.name'), gold = goldGiven(t.group) && !!s.gd;
     // a gold the scenario guarantees shows as that gold (It's On! for Ramp Up), in gold
     if (gold) el.classList.add('gold');
     const ic = skillIcon(t.group, gold); if (ic) nm.appendChild(ic);
@@ -43,7 +30,7 @@ export function renderTargets(focus = null) {
 export function initTargets() {
   const addIn = $('t-add'), sugg = $('t-sugg');
   const items = () => [...sugg.querySelectorAll('button')];
-  const add = (g) => { state.targets.push({ group: g, guaranteed: 0 }); addIn.value = ''; sugg.hidden = true; save(); renderTargets(); addIn.focus(); };
+  const add = (g) => { state.targets.push({ group: g }); addIn.value = ''; sugg.hidden = true; save(); renderTargets(); addIn.focus(); };
   const note = (text) => { const p = document.createElement('p'); p.className = 'snote'; p.textContent = text; sugg.appendChild(p); };
   addIn.oninput = () => {
     const f = addIn.value.trim().toLowerCase(); sugg.textContent = '';
@@ -77,5 +64,5 @@ export function initTargets() {
     else if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? bs[i - 1] : addIn).focus(); }
   });
   document.addEventListener('click', (e) => { if (!sugg.contains(e.target) && e.target !== addIn) sugg.hidden = true; });
-  $('t-preset').onclick = () => { state.targets = PRESET.map(t => ({ group: t.group, guaranteed: 0 })); scenarioGolds(null, state.scen); save(); renderTargets(); };
+  $('t-preset').onclick = () => { state.targets = PRESET.map(group => ({ group })); save(); renderTargets(); };
 }

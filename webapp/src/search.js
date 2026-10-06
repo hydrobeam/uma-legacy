@@ -3,8 +3,8 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, ASSETS, EXAMPLE, SCEN_GOLDS, loadFail } from './data.js';
-import { state, ui, writeSaved, DEFAULTS } from './state.js';
+import { CARDS, UMAS, ASSETS, EXAMPLE, loadFail } from './data.js';
+import { state, ui, writeSaved, DEFAULTS, goldGiven } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
@@ -40,7 +40,7 @@ export function paintRunNote() {
   const p = $('run-pill'); p.hidden = !n.textContent; p.textContent = pill;
 }
 // Stop: the running search (or the one about to start) is dropped and its worker killed; the results on screen stay
-export function stopSearch() {
+function stopSearch() {
   if (!searching) return;
   searchId++; clearTimeout(pauseTimer); if (busy) killEngine();
   searching = false; clearInterval(searchTick);
@@ -53,12 +53,6 @@ function scheduleSearch() {
 }
 // every setting change: save it and search again
 export const save = () => { scheduleSearch(); writeSaved(); };
-// extra job fields: the scenario, and R cards left out unless asked for
-function eventFields(deck) {
-  const f = { scenario: state.scen || 'unity' };
-  if (deck && !state.rcards) f.exclude_cards = CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id);
-  return f;
-}
 
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 let worker = null, ready = null, seq = 0, busy = false; const pending = new Map();
@@ -128,17 +122,16 @@ function buildJob() {
   const owned = UMAS.length - exclude.length;
   if (owned < 4) throw new Blocked('empty', `Mark at least 4 umas as owned to search (${owned} owned now).`, { label: 'Mark all umas owned', click: 'r-all' });
   const require = UMAS.filter(isRequired).map(u => u.id);
-  // Tokai Teio's Head-On (her Triple Crown event; all three races are her career goals) is always counted
-  // skills a career always gives an uma outside her outfit and the deck: Yamanin Zephyr's Slipstream comes with a goal
-  // race (GameTora's event data lacks it)
+  // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;
+  // all three races are her career goals) and Yamanin Zephyr's Slipstream (a goal race's; GameTora's event data lacks it)
   const extra = [[1003, 20190, 1], [1078, 20165, 1]];
-  const sg = SCEN_GOLDS[state.scen || 'unity'] || [];   // guaranteed outside the deck: the scenario's golds only
-  const targets = state.targets.map(t => ({ group: t.group, guaranteed: sg.includes(t.group) ? 2 : 0 }));
+  const targets = state.targets.map(t => ({ group: t.group, guaranteed: goldGiven(t.group) ? 2 : 0 }));   // only the scenario guarantees anything
   const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
   // the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
   const owned_cards = offN ? (offN === CARDS.length ? [0] : CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id)) : [];
   const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
-    owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...eventFields(true) };
+    owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, scenario: state.scen || 'unity',
+    ...(state.rcards ? {} : { exclude_cards: CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id) }) };   // R cards are opt-in
   return { job, targets };
 }
 // The last result per era is kept in localStorage with the job that produced it (plus the solver's and data's
@@ -174,7 +167,7 @@ export async function doSearch() {
     busy = false;
     if (m.r.error || !m.r.top || !m.r.top.length) ui.status = { kind: 'error', text: m.r.error ? 'Not searched: ' + m.r.error : 'No result: no loop fits these settings.' };
     else {
-      ui.lastRender = () => renderDeck(m.r, { ms: m.ms, targets, rank: state.rank }); ui.lastResult = { kind: 'deck', r: m.r, meta: {} };
+      ui.lastRender = () => renderDeck(m.r, { targets }); ui.lastResult = { kind: 'deck', r: m.r, meta: {} };
       const key = jobKey(job), str = JSON.stringify(m.r);
       if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();   // an identical result already on screen stays
       shown = { key, r: str, example: false };
