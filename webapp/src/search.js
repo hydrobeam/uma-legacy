@@ -3,7 +3,7 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, ASSETS, EXAMPLE, SCEN_GOLDS } from './data.js';
+import { CARDS, UMAS, ASSETS, EXAMPLE, SCEN_GOLDS, loadFail } from './data.js';
 import { state, ui, writeSaved, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
@@ -70,7 +70,7 @@ let engineData = null;
 function eraEngineData() {
   if (!engineData) {
     engineData = fetch(ASSETS.engine[ERA === 'gm' ? 'gm' : 'global']).then(r => { if (!r.ok) throw 0; return r.text(); })
-      .catch(() => { throw new Error('Could not load the solver data. Open the page through a web server (./build.sh serve), not as a file.'); });
+      .catch(() => { throw new Error(loadFail('the solver data')); });
     engineData.catch(() => { engineData = null; });
   }
   return engineData;
@@ -79,7 +79,7 @@ function compiled() {
   if (!wasmModule) wasmModule = (async () => {
     let bytes;
     try { const r = await fetch(ASSETS.wasm); if (!r.ok) throw 0; bytes = await r.arrayBuffer(); }
-    catch { throw new Error('Could not load loopopt.wasm. Open the page through a web server (./build.sh serve), not as a file.'); }
+    catch { throw new Error(loadFail('the solver')); }
     let module = null; try { module = await WebAssembly.compile(bytes); } catch { module = null; }
     return { module, bytes };
   })();

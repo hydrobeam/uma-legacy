@@ -16,10 +16,12 @@ function setData(d) {
   SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
   NAME = new Map(UMAS.map(u => [u.id, u.name]));
 }
+// a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
+export const loadFail = (what) => `Could not load ${what}. Check your connection and reload the page.` + (location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '');
 export async function loadData() {
   if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills') }); return; }
   let r; try { r = await fetch(ASSETS.dataGm); } catch { r = null; }
-  if (!r || !r.ok) throw new Error('Could not load the Grand Masters-era data. Open the page through a web server (./build.sh serve).');
+  if (!r || !r.ok) throw new Error(loadFail('the Grand Masters-era data'));
   setData(await r.json());
 }
 export const EXAMPLE = parse('data-example');       // precomputed default result

@@ -19,7 +19,7 @@ self.onmessage = async (e) => {
         if (m.module) ex = (await WebAssembly.instantiate(m.module, {})).exports;   // compiled once by the page
         else ex = (await WebAssembly.instantiate(m.bytes, {})).instance.exports;
       } catch (err) {
-        throw new Error('This browser or the site hosting the page refused to run WebAssembly, which the solver needs. Open the page file directly in a current browser.');
+        throw new Error('This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.');
       }
       const r = callRaw('{"cmd":"init",' + m.data.trim().slice(1));
       if (r.error) throw new Error(r.error);
