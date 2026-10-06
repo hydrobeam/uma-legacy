@@ -127,8 +127,13 @@ for pkg, w in FONTS:
     faces.append(re.sub(r"src: [^;]+;", f"src: url({url}) format('woff2');", rule).strip())
     if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
-for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
+for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
 css = '\n'.join(faces) + '\n' + css
+# /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
+# fetches it only on a page that draws math, so only /about gets the face
+_d = os.path.join(H, 'node_modules', '@fontsource', 'stix-two-math')
+MATHFACE = re.sub(r"src: [^;]+;", "src: url(" + fingerprint('stix-two-math-latin-400-normal.woff2', open(os.path.join(_d, 'files', 'stix-two-math-latin-400-normal.woff2'), 'rb').read()) + ") format('woff2');",
+                  open(os.path.join(_d, 'latin-400.css')).read()).strip()
 # the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
 SITE = os.environ.get('SITE_URL', 'https://uma-legacy.pages.dev').rstrip('/')
 for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
@@ -144,7 +149,7 @@ assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
+for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', MATHFACE + '\n' + css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))

@@ -485,3 +485,6 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .facebtn { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 8px; line-height: 0; }
 .facebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .facebtn:hover .av { filter: brightness(1.06); }
+/* /about formulas (MathML, rendered natively) */
+.about math { font-family: "STIX Two Math", math; font-size: 1.1em; }
+.about math[display="block"] { margin: 8px 0 10px; overflow-x: auto; overflow-y: hidden; max-width: 100%; }

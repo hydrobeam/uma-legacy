@@ -47,7 +47,7 @@ Superstan.</li>
 <ol>
 <li><strong>8/8 legacies:</strong> both parents are 8/8, and so are all four grandparents: each carries every target
 spark, as in a running loop. A loop still being built has fewer carriers and lower odds.</li>
-<li><strong>Spark generation:</strong> P(spark) = b × 1.1<sup>n</sup>, with b = 20% for a white or 40% for a gold, and n the
+<li><strong>Spark generation:</strong> <math><mrow><mi>P</mi><mrow><mo>(</mo><mtext>spark</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mi>b</mi><mo>×</mo><msup><mn>1.1</mn><mi>n</mi></msup></math>, with b = 20% for a white or 40% for a gold, and n the
 number of the six ancestors already carrying that spark. In a running loop n = 6: 35.4% and 70.9%.</li>
 <li><strong>Star mix of legacy sparks:</strong> 50/45/5% for 1/2/3 stars below SS; 20/70/10% at SS.</li>
 <li><strong>Every card at max limit break.</strong></li>
@@ -89,7 +89,7 @@ sparks, not affinity.</p>
 <ul>
 <li><strong>Training hints:</strong> the game doesn't publish how often a card hints. These rates are inferred from what
 real shared IT runs show, not read from the game's data, so they are estimates. The rate scales
-with the card's hint frequency: base × (1 + hint frequency / 100) hints per career, each a random pick among the card's
+with the card's hint frequency: <math><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><mtext>hint frequency</mtext><mn>100</mn></mfrac><mo>)</mo></mrow></math> hints per career, each a random pick among the card's
 skills still below hint level 5. The base differs by scenario: Unity Cup 2.70, Grand Concert 2.03, Trackblazer 1.81,
 URA Finale 1.60 (Grand Masters 2.30, a placeholder). A card with 30% hint frequency hints about 3.5 times in Unity Cup;
 with five hintable skills, a given one comes up in about half of careers.</li>
@@ -119,39 +119,38 @@ After 119 careers, 37% of players still have none.</li>
 <h3>Spark inheritance odds</h3>
 <p>A career has two inspirations, in April of the second and third years. At each one, every legacy (two parents and four
 grandparents) rolls each of its sparks separately:</p>
-<div class="afx"><p class="fx">P(pass) = base × (1 + affinity / 100)</p></div>
+<math display="block"><mrow><mi>P</mi><mrow><mo>(</mo><mtext>pass</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><mtext>affinity</mtext><mn>100</mn></mfrac><mo>)</mo></mrow></math>
 <ul>
 <li><strong>Base</strong> by spark type and stars (1/2/3★): skill (white) 3/6/9%, race 1/2/3%, unique (green) 5/10/15%,
 aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 <li><strong>Stars</strong> of a target spark: 50/45/5% below SS, an average base of 4.65%; 20/70/10% at SS, 5.7%.</li>
 <li><strong>Affinity</strong> is that legacy's own, so parents pass sparks far more often than grandparents.</li>
 </ul>
-<p>A target is inherited when any of the twelve rolls (six legacies, two inspirations) passes:
-P = 1 − Π (1 − P(pass)).</p>
+<p>A target is inherited when any of the twelve rolls (six legacies, two inspirations) passes, with P<sub>i</sub> each roll's P(pass):</p>
+<math display="block"><mi>P</mi><mo>=</mo><mn>1</mn><mo>−</mo><munderover><mo>∏</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>P</mi><mi>i</mi></msub><mo>)</mo></mrow></math>
 <p>Example: a parent at affinity 286 passes a given skill spark about 18% of the time per inspiration, a grandparent at
 87 about 9%. A skill all six legacies carry is inherited in about 78% of careers.</p>
 
 <h3>The model, in detail</h3>
   <p><strong>Model.</strong> The odds of one career, for a trainee T with parents P1 and P2 and their four parents:</p>
   <ul>
-  <li><strong>Inheritance.</strong> A target is inherited with P = 1 − Π (1 − b × (1 + affinity / 100))² over the six
-  legacies, two inspirations each; b = 4.65% below SS, 5.7% at SS (the star mix averaged over 3/6/9%).</li>
-  <li><strong>Affinity per legacy.</strong> Parent P: pair(T, P) + pair(P1, P2) + trio(T, P, G) for each of P's own
-  parents G, + 3 per G1 P shares with the other parent and with each G. Grandparent G under P: trio(T, P, G) + 3 per G1
-  G shares with P. pair and trio are the game's relation points; in a loop P's own parents are the other parent and the
-  fourth uma, so the parents' shared G1s count in both terms.</li>
+  <li><strong>Inheritance.</strong> Over the six legacies ℓ with affinity a<sub>ℓ</sub>, two inspirations each; b = 4.65%
+  below SS, 5.7% at SS (the star mix averaged over 3/6/9%):<math display="block"><msub><mi>P</mi><mtext>inherit</mtext></msub><mo>=</mo><mn>1</mn><mo>−</mo><munderover><mo>∏</mo><mrow><mi>ℓ</mi><mo>=</mo><mn>1</mn></mrow><mn>6</mn></munderover><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>b</mi><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>a</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo></mrow><mn>2</mn></msup></math></li>
+  <li><strong>Affinity per legacy.</strong> For parent P (the other parent P′, P's own parents G) and grandparent G under
+  P; pair and trio are the game's relation points, w the G1 wins two umas share:<math display="block"><msub><mi>A</mi><mi>P</mi></msub><mo>=</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><msub><mi>P</mi><mn>1</mn></msub><mo>,</mo><msub><mi>P</mi><mn>2</mn></msub><mo>)</mo></mrow></mrow><mo>+</mo><munder><mo>∑</mo><mi>G</mi></munder><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mrow><mo>[</mo><mrow><mtext>w</mtext><mrow><mo>(</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow></mrow><mo>+</mo><munder><mo>∑</mo><mi>G</mi></munder><mrow><mtext>w</mtext><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow><mo>]</mo></mrow></math><math display="block"><msub><mi>A</mi><mi>G</mi></msub><mo>=</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mrow><mtext>w</mtext><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow></math>In a loop P's own parents
+  are the other parent and the fourth uma, so the parents' shared G1s count in both terms.</li>
   <li><strong>Acquiring a target.</strong> Guaranteed by the scenario, on the trainee's own outfit skill list, hinted by the
   deck, or inherited. Each source gives the gold or the white; the target's gold chance and white-only chance are kept
   apart.</li>
-  <li><strong>Landing.</strong> P(target) = P(gold) × 0.709 + P(white, no gold) × 0.354. The career lands all targets
+  <li><strong>Landing.</strong><math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>target</mtext><mo>)</mo></mrow><mo>=</mo><mn>0.709</mn><msub><mi>P</mi><mtext>gold</mtext></msub><mo>+</mo><mn>0.354</mn><msub><mi>P</mi><mtext>white only</mtext></msub></math>The career lands all targets
   with the product over targets, corrected for what targets share (below).</li>
   <li><strong>The loop's odds</strong> are the average over its 12 careers (4 trainees × 3 parent pairs); each uma heads 3
   of them.</li>
   </ul>
   <p><strong>Deck.</strong> Six cards, every card at max limit break; group cards count as pals.</p>
   <ul>
-  <li><strong>Training hints.</strong> h = base × (1 + hint frequency / 100) draws per career (the floor or ceiling of h,
-  weighted by its fraction). Each draw picks uniformly among the card's skills still below hint level 5; a skill leaves
+  <li><strong>Training hints.</strong> h draws per career (the floor or ceiling of h, weighted by its
+  fraction):<math display="block"><mi>h</mi><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><mtext>hint frequency</mtext><mn>100</mn></mfrac><mo>)</mo></mrow></math> Each draw picks uniformly among the card's skills still below hint level 5; a skill leaves
   the pool once it reaches level 5, so a card giving +5 levels per hint never repeats one. One card's draws over several
   targets are computed jointly: a card can't hint every target in its pool at once. Base: Unity Cup 2.70, Grand Concert
   2.03, Trackblazer 1.81, URA Finale 1.60, Grand Masters 2.30 (placeholder).</li>
@@ -175,10 +174,10 @@ P = 1 − Π (1 − P(pass)).</p>
   <p><strong>Race schedules.</strong> Each uma's schedule is chosen to maximise the loop's expected shared G1 wins, every
   pair weighted alike.</p>
   <ul>
-  <li>Win chance of one attempt: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90) − streak
-  penalty (0/0/5/20/30/50 for the 1st to 6th+ race in a row, any race counts, a rest resets it), clamped to 0–100%. A race
-  run in both Classic and Senior counts once: P(win) = 1 − (1 − p₁)(1 − p₂). Two umas' wins are independent, so their
-  expected shared wins are Σ P<sub>i</sub>(race) × P<sub>j</sub>(race).</li>
+  <li>Win chance of one attempt:<math display="block"><mi>p</mi><mo>=</mo><mfrac><mrow><mtext>clamp</mtext><mrow><mo>(</mo><mn>110</mn><mo>−</mo><msub><mi>c</mi><mtext>distance</mtext></msub><mo>−</mo><msub><mi>c</mi><mtext>surface</mtext></msub><mo>−</mo><msub><mi>s</mi><mi>k</mi></msub><mo>,</mo><mn>0</mn><mo>,</mo><mn>100</mn><mo>)</mo></mrow></mrow><mn>100</mn></mfrac></math>with the aptitude cost c for distance and surface (A 0, B 10, C 20, D 30, E 40, F 60,
+  G 90) and the streak penalty s<sub>k</sub> for the k-th race in a row (0/0/5/20/30/50, 6th and later 50; any race
+  counts, a rest resets it). A race run in both Classic and Senior counts once: <math><mi>P</mi><mrow><mo>(</mo><mtext>win</mtext><mo>)</mo></mrow><mo>=</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>p</mi><mn>1</mn></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>p</mi><mn>2</mn></msub><mo>)</mo></mrow></math>. Two umas' wins are
+  independent, so the expected shared wins of umas i and j over races r are <math><mi>E</mi><mrow><mo>[</mo><mtext>shared wins</mtext><mo>]</mo></mrow><mo>=</mo><munder><mo>∑</mo><mi>r</mi></munder><msub><mi>P</mi><mi>i</mi></msub><mrow><mo>(</mo><mi>r</mi><mo>)</mo></mrow><msub><mi>P</mi><mi>j</mi></msub><mrow><mo>(</mo><mi>r</mi><mo>)</mo></mrow></math>.</li>
   <li>One uma's best schedule against the other three is solved exactly by dynamic programming: Junior turns in order, then
   each Classic turn together with the Senior turn 24 later, tracking both streaks and which career goals are met.</li>
   <li>The four schedules are improved in turns (each uma re-solved against the others until none improves), then by
