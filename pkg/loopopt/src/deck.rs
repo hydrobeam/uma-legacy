@@ -386,6 +386,162 @@ fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// Training hints stay independent per target, as in the marginal model.
 fn joint_trainee(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize) -> Vec<(f64, f64, usize)> {
+    let r = joint_fast(model, u, qs, ents, filler, n_targets, true);
+    static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
+        let x = joint_trainee_ref(model, u, qs, ents, filler, n_targets);
+        for (a, b) in r.iter().zip(&x) {
+            let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
+            assert!(rel(a.0, b.0) < 1e-11 && rel(a.1, b.1) < 1e-11, "joint mismatch: {:?} vs {:?}", a, b);
+        }
+    }
+    r
+}
+
+/// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
+/// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
+/// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
+/// enumerated per cluster of targets they connect (clusters are independent given the chain state).
+fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
+    use crate::skills::GEN_WHITE;
+    let nu = model.uncertain.len();
+    fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
+        let gh = group_gh(g);
+        if gh.len() >= 2 { coupled.push(g); return; }
+        for (k, pg, ph) in gh { ng[k] *= 1.0 - pg; nh[k] *= 1.0 - ph; }
+    }
+    let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut bc: Vec<&Group> = vec![];
+    for (src, _) in ents {
+        for &(k, p) in &src.train { bh[k] *= 1.0 - p; }
+        for g in &src.fixed { take(g, &mut bc, &mut bg, &mut bh); }
+    }
+    let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
+    for _ in 0..filler { ch.push(((2, 2, 0), None)); }
+    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
+    // per position with target sources: per links done, (cumulative miss gold, miss any, coupled groups so far)
+    let mut lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>, Vec<u8>)> = vec![];
+    for (pos, &(kd, e)) in ch.iter().enumerate() {
+        let Some(i) = e else { continue };
+        let src = &ents[i].0;
+        if src.chains.is_empty() { continue; }
+        let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
+        let mut out = vec![(g.clone(), h.clone(), c.clone())];
+        // class of each links-done count: the first count with the same factors
+        let mut cls = vec![0u8];
+        for l in 1..=kd.1 {
+            let mut changed = false;
+            for (cl, grp) in &src.chains { if *cl == l { take(grp, &mut c, &mut g, &mut h); changed = true; } }
+            if changed { out.push((g.clone(), h.clone(), c.clone())); }
+            cls.push((out.len() - 1) as u8);
+        }
+        if out.len() > 1 { lv.push((pos, out, cls)); }
+    }
+    // collapsed states: classes of the positions in `lv`, weights summed in state order
+    let mut coll: crate::FxMap<Vec<u8>, f64> = Default::default();
+    let mut order: Vec<Vec<u8>> = vec![];
+    for (prog, w) in states.iter() {
+        let key: Vec<u8> = lv.iter().map(|(pos, _, cls)| cls[prog[*pos] as usize]).collect();
+        match coll.get_mut(&key) { Some(x) => *x += w, None => { coll.insert(key.clone(), *w); order.push(key); } }
+    }
+    let opts = &model.opts[u];
+    let no = opts.len(); let nq = qs.len();
+    let nfix = model.n_fixed_gold as usize;
+    let fixed = model.fixed_factor();
+    let mut acc = vec![(0.0f64, 0.0f64); nq * no];
+    // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
+    let nqo = nq * no;
+    let mut fv = vec![[0.0f64; 3]; nqo * nu];
+    let (mut ng, mut nh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut coupled: Vec<&Group> = vec![];
+    let mut cl_of = vec![usize::MAX; nu];
+    let mut lvl = vec![0u8; nu];
+    for key in &order {
+        let w = coll[key];
+        ng.copy_from_slice(&bg); nh.copy_from_slice(&bh);
+        coupled.clear(); coupled.extend(bc.iter().copied());
+        for (j, (_, out, _)) in lv.iter().enumerate() {
+            let (g, h, c) = &out[key[j] as usize];
+            for k in 0..nu { ng[k] *= g[k]; nh[k] *= h[k]; }
+            coupled.extend(c.iter().copied());
+        }
+        for (qi, &q) in qs.iter().enumerate() {
+            for (o, (st, _)) in opts.iter().enumerate() {
+                let ew = &model.ews[u][o];
+                let base = (qi * no + o) * nu;
+                for k in 0..nu {
+                    let f = |pg: f64, pnh: f64| match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
+                        _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - pnh * (1.0 - ew[k]) * (1.0 - q)) };
+                    fv[base + k] = [f(1.0 - ng[k], nh[k]), f(1.0 - ng[k], 0.0), f(1.0, 0.0)];
+                }
+            }
+        }
+        // clusters of targets joined by coupled groups (union-find over targets)
+        let mut par: Vec<usize> = (0..nu).collect();
+        fn root(p: &mut [usize], mut x: usize) -> usize { while p[x] != x { p[x] = p[p[x]]; x = p[x]; } x }
+        for g in &coupled {
+            let ts = group_gh(g);
+            for w2 in ts.windows(2) { let (a, b) = (root(&mut par, w2[0].0), root(&mut par, w2[1].0)); if a != b { par[a.max(b)] = a.min(b); } }
+        }
+        cl_of.iter_mut().for_each(|x| *x = usize::MAX);
+        let mut clusters: Vec<(Vec<usize>, Vec<&Group>)> = vec![];
+        for g in &coupled {
+            let r = root(&mut par, group_gh(g)[0].0);
+            let ci = match cl_of[r] { usize::MAX => { clusters.push((vec![], vec![])); cl_of[r] = clusters.len() - 1; clusters.len() - 1 } c => c };
+            clusters[ci].1.push(g);
+        }
+        for k in 0..nu { if cl_of[root(&mut par, k)] != usize::MAX { let ci = cl_of[root(&mut par, k)]; clusters[ci].0.push(k); } }
+        let in_cl: Vec<bool> = (0..nu).map(|k| cl_of[root(&mut par, k)] != usize::MAX).collect();
+        // per (q, outfit): (P(all land), P(exactly one misses)) of each independent unit, combined
+        let mut ua = vec![1.0f64; nqo]; let mut ub = vec![0.0f64; nqo];
+        let push = |ua: &mut [f64], ub: &mut [f64], i: usize, a: f64, b: f64| { ub[i] = ub[i] * a + ua[i] * b; ua[i] *= a; };
+        for i in 0..nqo {
+            for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f); } }
+        }
+        for (ts, gs) in &clusters {
+            let alts: Vec<Vec<(f64, &[(usize, u8)])>> = gs.iter().map(|g| {
+                let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
+                let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
+                if rest > 1e-15 { v.push((rest, &[][..])); }
+                v
+            }).collect();
+            let mut ca = vec![0.0f64; nqo]; let mut cb = vec![0.0f64; nqo];
+            let mut pick = vec![0usize; alts.len()];
+            loop {
+                let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product();
+                for &k in ts { lvl[k] = 0; }
+                for i in 0..alts.len() { for &(k, l) in alts[i][pick[i]].1 { lvl[k] = lvl[k].max(if l >= 2 { 2 } else { 1 }); } }
+                for i in 0..nqo {
+                    let (mut a, mut b) = (1.0f64, 0.0f64);
+                    for &k in ts { let f = fv[i * nu + k][lvl[k] as usize]; b = b * f + a * (1.0 - f); a *= f; }
+                    ca[i] += wc * a; cb[i] += wc * b;
+                }
+                let mut i = 0;
+                while i < alts.len() { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
+                if i == alts.len() { break; }
+            }
+            for i in 0..nqo { push(&mut ua, &mut ub, i, ca[i], cb[i]); }
+        }
+        for i in 0..nqo {
+            let (mut a, mut b) = (ua[i], ub[i]);
+            if m1 { for _ in 0..nfix { b = b * GEN_GOLD + a * (1.0 - GEN_GOLD); a *= GEN_GOLD; } } else { a *= fixed; }
+            // P(at least n_targets - 1 land) over nu + nfix targets
+            let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
+            acc[i].0 += w * a; acc[i].1 += w * if m1 { m } else { 0.0 };
+        }
+    }
+    (0..nq).map(|qi| {
+        let mut b = 0;
+        for o in 1..no { if acc[qi * no + o].0 > acc[qi * no + b].0 { b = o; } }
+        (acc[qi * no + b].0, acc[qi * no + b].1, b)
+    }).collect()
+}
+
+/// Reference form of `joint_trainee`: every chain state, every combination of coupled outcomes. `JOINT_CHECK=1` runs
+/// it beside the fast form on every call and panics on a relative difference above 1e-11.
+fn joint_trainee_ref(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     // per-target miss factors (no gold, no hint) of the groups that touch one target; the others are "coupled"
@@ -2441,6 +2597,35 @@ mod tests {
             }
         }
     }
+    /// The collapsed-state form equals the full enumeration (chains, coupled outcomes, a stop risk, fillers).
+    #[test]
+    fn joint_fast_matches_reference() {
+        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+        let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+        let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+        let m = Model::new(&d, &sk, &sj);
+        let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
+        let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
+        // chain cards with single-target and coupled outcomes, a coupled fixed event, a stop risk, fillers
+        let a = Src { train: vec![(0, 0.3)], chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))], ..Default::default() }.finish();
+        let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
+        let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
+        let e = Src { fixed: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
+        let risk = stop_risk_code(&[(2, 1, 2)], 3);
+        let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, risk)), (e, (0, 0, 0))];
+        for fill in [0usize, 2] {
+            for u in [0usize, 5, 20] {
+                let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true);
+                let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
+                for (p, r) in x.iter().zip(&y) {
+                    assert!((p.0 - r.0).abs() < 1e-13 && (p.1 - r.1).abs() < 1e-13 && p.2 == r.2, "fill {fill} uma {u}: {:?} vs {:?}", p, r);
+                }
+                let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false);
+                for (p, r) in z.iter().zip(&y) { assert!((p.0 - r.0).abs() < 1e-13); }
+            }
+        }
+    }
+
     /// With no chain cards and no event touching two targets, every source is independent: the exact value equals
     /// the product of per-target odds the search ranks by.
     #[test]
