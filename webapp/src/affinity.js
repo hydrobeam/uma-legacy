@@ -10,13 +10,20 @@ export function openWhy(l) {
   head.innerHTML = '<h3 id="why-title">Affinity</h3>';
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
   body.appendChild(head);
-  const intro = document.createElement('p'); intro.className = 'hint';
-  intro.textContent = 'Each legacy\u2019s affinity is its relation points plus 3 for every G1 it won together with its partners: a parent with the other parent and its own parents, a grandparent with its child. Higher affinity, more inheritance. The race schedule exists to raise the race part.';
+  // the formula, in the legacy roles of one career: trainee T, parents P1 and P2, each parent P's own parents GP1 and GP2
+  const intro = document.createElement('div'); intro.className = 'afx';
+  intro.innerHTML = `<p class="hint">Each legacy's affinity, for trainee T with parents P1 and P2 (P is either; P2 the other one) and each parent's own parents GP1 and GP2:</p>
+    <p class="fx">Parent P = rel(T–P) + rel(P1–P2) + rel(T–P–GP1) + rel(T–P–GP2)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 3 × [G1(P–P2) + G1(P–GP1) + G1(P–GP2)]</p>
+    <p class="fx">Grandparent GP (under P) = rel(T–P–GP) + 3 × G1(P–GP)</p>
+    <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can. Higher affinity, more inheritance: each legacy passes a spark with chance base × (1 + affinity / 100).</p>`;
   body.appendChild(intro);
+  // an uma as her portrait; hover, focus or tap shows her name beside it
+  const face = (i, size = 26) => { const f = document.createElement('span'); f.className = 'aface'; f.tabIndex = 0; f.title = M[i].name;
+    f.appendChild(umaAv(M[i].id, outfitOf(i), size)); const n = document.createElement('span'); n.className = 'an'; n.textContent = nm(i); f.appendChild(n); return f.outerHTML; };
   const h1 = document.createElement('h4'); h1.textContent = 'Pairs'; body.appendChild(h1);
   const pt = document.createElement('div'); pt.className = 'tablewrap';
   pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th>G1s won together</th><th>Race affinity (×3)</th></tr></thead><tbody>` +
-    D.pairs.map(p => `<tr><td>${esc(nm(p.a))} & ${esc(nm(p.b))}</td><td>${p.rel}</td><td>${p.wins.toFixed(0)}</td><td>${(3 * p.wins).toFixed(0)}</td></tr>`).join('') + '</tbody></table>';
+    D.pairs.map(p => `<tr><td class="afaces">${face(p.a)}<span class="amp">&amp;</span>${face(p.b)}</td><td>${p.rel}</td><td>${p.wins.toFixed(0)}</td><td>${(3 * p.wins).toFixed(0)}</td></tr>`).join('') + '</tbody></table>';
   body.appendChild(pt);
   const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);
   const ct = document.createElement('div'); ct.className = 'tablewrap';
@@ -28,7 +35,7 @@ export function openWhy(l) {
   const rows = D.lineages.map((L, i) => {
     const tr = document.createElement('tr'); tr.className = 'pick';
     // the trainee's name is a button (keyboard, assistive tech: pressed = the career shown); the whole row takes clicks too
-    tr.innerHTML = `<td><button type="button" class="rowbtn" aria-pressed="false" aria-label="${esc(nm(L.t))}: parents ${esc(nm(L.p[0]))} and ${esc(nm(L.p[1]))}">${esc(nm(L.t))}</button></td><td>${esc(nm(L.p[0]))} + ${esc(nm(L.p[1]))}</td><td>${esc(nm(L.x))}</td><td>${total(L).toFixed(0)}</td>`;
+    tr.innerHTML = `<td><button type="button" class="rowbtn" aria-pressed="false" aria-label="${esc(nm(L.t))}: parents ${esc(nm(L.p[0]))} and ${esc(nm(L.p[1]))}">${umaAv(M[L.t].id, outfitOf(L.t), 26).outerHTML}<span class="an">${esc(nm(L.t))}</span></button></td><td class="afaces">${face(L.p[0])}<span class="amp">+</span>${face(L.p[1])}</td><td class="afaces">${face(L.x)}</td><td>${total(L).toFixed(0)}</td>`;
     tr.onclick = () => show(i); tbody.appendChild(tr); return tr;
   });
   function show(i) {
@@ -45,6 +52,8 @@ export function openWhy(l) {
     for (const g of G) tree.appendChild(node('g', g.who[1], `<span class="hint">Grandparent (${esc(nm(g.who[0]))})</span><br>` + slot(g)));
     view.appendChild(tree);
   }
+  // a tap on a portrait (phones) shows its name; another tap, or a tap elsewhere, hides it
+  body.addEventListener('click', (e) => { const f = e.target.closest('.aface'); body.querySelectorAll('.aface.open').forEach(x => { if (x !== f) x.classList.remove('open'); }); if (f) f.classList.toggle('open'); });
   let best = 0; D.lineages.forEach((L, i) => { if (total(L) > total(D.lineages[best])) best = i; }); show(best);
   $('why-dlg').showModal();
 }

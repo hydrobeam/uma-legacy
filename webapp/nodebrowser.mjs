@@ -476,6 +476,10 @@ const TESTS = {
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
     check('affinity: 6 pairs and 12 careers', rows.join(',') === '6,12', rows.join(','));
+    const af = await pg.evaluate(() => ({ faces: document.querySelectorAll('#why-dlg .aface').length, fx: [...document.querySelectorAll('#why-dlg .fx')].map(e => e.textContent).join(' | '), hidden: getComputedStyle(document.querySelector('#why-dlg .aface .an')).display }));
+    check('affinity: umas as portraits (names hidden until asked), the formula with P, P2, GP1, GP2', af.faces >= 6 * 2 + 12 * 3 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
+    await pg.locator('#why-dlg .aface').first().click();
+    check('affinity: tapping a portrait shows her name', await pg.locator('#why-dlg .aface.open .an').first().isVisible());
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
