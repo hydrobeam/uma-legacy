@@ -64,6 +64,10 @@ and priorities are set to reach the hints counted.</li>
 <li>The race scheduler does not account for pink (aptitude) sparks from legacies, so optimal loops may vary depending on
 which pink sparks are available on chosen parents.</li>
 <li>The exact choices IT takes at events are still unclear.</li>
+<li><strong>Search:</strong> results are ranked by exact odds. To save time, a deck is scored exactly only if its odds with
+targets treated as independent come within 20% of the best result; this assumes linked targets never raise a deck's odds
+by more than 25% (the most seen is 17%). When a search runs long the margin shrinks, and the status line says so. Race
+schedules are the optimiser's best found, not proven best.</li>
 <li>The counted hints rely on the player's IT priorities; the deck card names the one the planner knows (Sasami
 Anshinzawa SSR: prioritise Risky Business).</li>
 <li><strong>Not modelled:</strong> random character events from support cards (about one career in six; under 2% on
@@ -169,9 +173,11 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   the owned outfit that gives the career the best value.</p>
 
   <p><strong>5. Career and loop.</strong> Scenario-guaranteed golds (<math><msub><mi>n</mi><mtext>gold</mtext></msub></math> of them) each spark 0.709 of the
-  time; the career's value is the product over the open targets, and the loop's value the mean of its 12 careers:</p>
-  <math display="block"><mi>V</mi><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>∏</mo><mrow><mi>k</mi></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math><math display="block"><mi>L</mi><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munderover><mo>∑</mo><mrow><mi>c</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><msub><mi>V</mi><mi>c</mi></msub></math>
-  <p>The product treats targets as independent; step 11 corrects it.</p>
+  time. A career's value <math><mi>V</mi></math> is its chance of landing every target: exact over how the targets' hints depend on each
+  other (step 11). Treating the open targets as independent gives the product</p>
+  <math display="block"><mover><mi>V</mi><mo>^</mo></mover><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>∏</mo><mrow><mi>k</mi></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math>
+  <p>which the search only uses to bound its work (step 10). A loop's value is the mean over its 12 careers:</p>
+  <math display="block"><mi>L</mi><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munderover><mo>∑</mo><mrow><mi>c</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><msub><mi>V</mi><mi>c</mi></msub></math>
 
   <p><strong>Deck. 6. A deck's hint odds.</strong> Six cards at max limit break; group cards count as pals. Per target <math><mi>k</mi></math>,
   every source <math><mi>j</mi></math> in the deck gives a gold chance <math><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math> and a chance of any hint <math><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math>; sources are
@@ -217,7 +223,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   serves all 12 careers. With a deck per uma (the default), each uma <math><mi>u</mi></math> uses her own best legal deck from <math><msub><mi>𝒟</mi><mi>u</mi></msub></math>,
   the same in the 3 careers she heads:</p>
   <math display="block"><msub><mi>L</mi><mtext>shared</mtext></msub><mo>=</mo><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><mi>𝒟</mi></mrow></munder></mrow><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math><math display="block"><msub><mi>L</mi><mtext>per uma</mtext></msub><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>u</mi></munder><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder></mrow><munder><mo>∑</mo><mrow><mi>c</mi><mo>:</mo><msub><mi>T</mi><mi>c</mi></msub><mo>=</mo><mi>u</mi></mrow></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math>
-  <p>No trainee uses a card of herself or a group card she belongs to; scenario bans apply; one card may be borrowed. The
+  <p><math><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math> is career <math><mi>c</mi></math>'s exact value with deck <math><mi>D</mi></math>. No trainee uses a card of herself or a group card she belongs to; scenario bans apply; one card may be borrowed. The
   result shows the deck most umas use, then each other uma's swaps against it. "Results to show" returns up to three: with
   a shared deck, three distinct decks, each with its best loop; with a deck per uma, the three best loops.</p>
 
@@ -232,34 +238,82 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   until none improves, then by group moves (two or more umas forced onto one race together), then by 30 rounds of
   randomised restarts; a last pass adds every optional G1 that costs no shared wins.</p>
 
-  <p><strong>Search. 10. Pruning and the stop rule.</strong></p>
+  <p><strong>Search. 10. Exact ranking, pruning and the stop rule.</strong> Write <math><mi>V</mi><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>q</mi><mo>,</mo><mi>D</mi><mo>)</mo></mrow></math> for the exact value of a
+  career with trainee <math><mi>u</mi></math>, deck <math><mi>D</mi></math> and inheritance chance <math><mi>q</mi></math> (step 11), and <math><mover><mi>V</mi><mo>^</mo></mover><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>q</mi><mo>,</mo><mi>D</mi><mo>)</mo></mrow></math> for step 5's product. Loops and decks
+  are ranked by <math><mi>V</mi></math>. <math><mover><mi>V</mi><mo>^</mo></mover></math> is cheap and rises with every deck odd, so it bounds groups of decks and loops at once, under one
+  assumption:</p>
+  <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>=</mo><mn>1.25</mn></math>
+  <p>The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored is 1.17 (Grand Masters, decks with 0–1 pals); on Global jobs, 1.04. Every
+  deck scored is checked against it, and the largest ratio seen is reported with the result.</p>
+  <p>Why not rank by exact odds alone: on the Global default (Unity Cup, everything owned), one trainee has 15.1 million
+  legal decks, even with interchangeable cards merged. Listing them takes 3–4 s and scoring each exactly 21–25 µs, so the
+  best deck for one trainee at one inheritance chance takes about 6 minutes natively. The search needs that value for
+  every uma it considers (68 in that pool) at several chances: hours to days per search. The exact value of a half-built
+  deck says nothing about its completions; <math><mover><mi>V</mi><mo>^</mo></mover></math> of a half-built deck bounds every completion (it rises with every deck
+  odd), so whole branches of millions of decks are cut at once. The proven bound <math><mi>U</mi></math> below costs about 3 µs a deck (45 s for all
+  15.1 million) and cannot bound a half-built deck either.</p>
   <ul>
-  <li>Decks are compared per open target on <math><mrow><mo>(</mo><mi>g</mi><mo>,</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>g</mi><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>w</mi><mo>)</mo></mrow><mo>)</mo></mrow></math>, which every career's value rises with. A deck that
-  another beats or matches on every target is dropped (the skyline); a card that another legal card beats on every
-  target never enters those decks. With a deck per uma, each uma's best deck is on the skyline of decks for the targets
-  her outfits leave open.</li>
-  <li><p>Every foursome <math><mi>F</mi></math> gets a ceiling. Exact pairwise bounds on <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> (each uma's best schedule against a partner at
-  her best case on every race) give each career's highest possible <math><msubsup><mi>q</mi><mi>c</mi><mtext>max</mtext></msubsup></math>; <math><msub><mi>B</mi><mi>u</mi></msub><mrow><mo>(</mo><mi>q</mi><mo>)</mo></mrow></math> is
-  uma <math><mi>u</mi></math>'s best career value over the skyline at inheritance chance <math><mi>q</mi></math>, which rises with <math><mi>q</mi></math>:</p>
+  <li><p><strong>Every legal deck.</strong> Decks are enumerated by their combination of chain kinds (step 7: links, the link
+  the card stops at, its stop risk; fillers count as 2-link cards), which fixes the chain odds of every card in them. Only
+  legal decks enter: for a trainee, none of her own cards; with one shared deck, none of any member's. Cards that are
+  interchangeable for the trainees (the same rewards on every target some outfit of theirs leaves open, or none) are
+  merged. A partial deck is dropped when the best value any completion could reach, times <math><mi>ρ</mi></math>, is below the best exact value
+  found. For each outfit and chance, two bounds, the lower used: each target at the best miss chances the remaining picks
+  could give it (per kind group, the product of the <math><mi>r</mi></math> lowest), and the partial deck's product times the best ratios
+  <math><msub><mi>r</mi><mi>j</mi></msub><mo>=</mo><mover><mi>V</mi><mo>^</mo></mover><mrow><mo>(</mo><mrow><mo>{</mo><mi>j</mi><mo>}</mo></mrow><mo>)</mo></mrow><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover><mrow><mo>(</mo><mo>∅</mo><mo>)</mo></mrow></math> of the cards still to add. The second holds because <math><mo>log</mo><mspace width="0.1em"/><mover><mi>V</mi><mo>^</mo></mover></math> is submodular in the set of
+  cards: a card gains less the more the deck already holds.</p></li>
+  <li><p><strong>A proven filter.</strong> Before a deck is scored exactly, it is bounded by <math><mi>U</mi><mo>≥</mo><mi>V</mi></math>. Let <math><mi>x</mi></math> be the vector of links done
+  after <math><mi>N</mi><mo>=</mo><mi>n</mi></math> chain events. For every combination of chain kinds and every <math><mi>n</mi></math>, it is checked exactly, over the
+  distribution of step 7, that <math><mi>x</mi></math> is negatively upper-orthant dependent:</p>
+  <math display="block"><mi>P</mi><mrow><mo>(</mo><mi>x</mi><mo>≥</mo><mi>t</mi><mo>∣</mo><mi>n</mi><mo>)</mo></mrow><mo>≤</mo><munder><mo>∏</mo><mi>i</mi></munder><mi>P</mi><mrow><mo>(</mo><msub><mi>x</mi><mi>i</mi></msub><mo>≥</mo><msub><mi>t</mi><mi>i</mi></msub><mo>∣</mo><mi>n</mi><mo>)</mo></mrow><mspace width="1em"/><mtext>for every threshold vector</mtext><mspace width="0.3em"/><mi>t</mi></math>
+  <p>Each card's chain is grouped with the targets it feeds; group <math><mi>c</mi></math>'s factor <math><msub><mi>Φ</mi><mi>c</mi></msub></math> (the product of its targets' <math><msub><mi>s</mi><mi>k</mi></msub></math>, other
+  sources included) rises with that card's progress alone, and is a positive combination of indicators <math><mrow><mo>{</mo><msub><mi>x</mi><mi>i</mi></msub><mo>≥</mo><mi>t</mi><mo>}</mo></mrow></math>, so</p>
+  <math display="block"><mi>V</mi><mo>≤</mo><mi>U</mi><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>max</mo><mtext>outfit</mtext></munder><munder><mo>∑</mo><mi>n</mi></munder><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>n</mi><mo>)</mo></mrow><munder><mo>∏</mo><mi>c</mi></munder><mi>E</mi><mrow><mo>[</mo><msub><mi>Φ</mi><mi>c</mi></msub><mo>∣</mo><mi>n</mi><mo>]</mo></mrow><munder><mo>∏</mo><mrow><mi>k</mi><mspace width="0.3em"/><mtext>not fed by a chain</mtext></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math>
+  <p>Event outcomes enter at their marginal chances: outcomes that exclude each other are negatively associated and only
+  lower the product. A target fed by two cards' chains puts both cards in one group; the check is then made over every
+  up-set of that pair's progress (any rising function of two coordinates is a positive combination of up-set indicators).
+  Decks with three cards feeding one target, or two such pairs, are scored exactly without the filter. <math><mi>U</mi></math> is within 0.2% of <math><mi>V</mi></math>
+  on the reference setups and filters out almost every candidate.</p></li>
+  <li><p><strong>Exact per-uma tables.</strong> <math><msub><mi>B</mi><mi>u</mi></msub><mrow><mo>(</mo><mi>q</mi><mo>)</mo></mrow><mo>=</mo><munder><mo>max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder><mi>V</mi><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>q</mi><mo>,</mo><mi>D</mi><mo>)</mo></mrow></math> on 64 chances evenly spaced from the lowest
+  possible <math><mi>q</mi></math> to the highest; <math><mi>V</mi></math> rises with <math><mi>q</mi></math>, so with each career's chance rounded up to the grid a foursome's ceiling is</p>
   <math display="block"><mtext>ceiling</mtext><mrow><mo>(</mo><mi>F</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>B</mi><msub><mi>T</mi><mi>c</mi></msub></msub><mrow><mo>(</mo><msubsup><mi>q</mi><mi>c</mi><mtext>max</mtext></msubsup><mo>)</mo></mrow></math>
-  <p>Foursomes are solved best ceiling first (schedules, then decks), and the search stops when no remaining ceiling can
-  beat the last result shown. That is a guarantee relative to the schedules the optimiser finds, which are not proven
-  optimal.</p></li>
-  <li><strong>Character rule with one shared deck:</strong> the search first ignores who can use which card; when an answer
-  breaks the rule it splits into loops without that uma and loops whose decks avoid the blocking cards, and searches
-  both.</li>
+  <p>with <math><msubsup><mi>q</mi><mi>c</mi><mtext>max</mtext></msubsup></math> from exact pairwise bounds on <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> (each uma's best schedule against a partner at her
+  best case on every race), valid for any schedule. A cell is computed only when a ceiling that could still win needs it;
+  until then, the lowest computed cell at a higher grid point stands in, or <math><mi>ρ</mi></math> times the product ceiling. While a ceiling still
+  beats the result to beat, its loosest term is computed: first at that uma's highest grid point, then halfway down
+  towards the one needed. Each cell is one exact deck search: the trainee's best legal skyline decks are scored, then
+  every legal deck whose <math><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover></math> reaches the best exact value found.</p></li>
+  <li><p><strong>Loops.</strong> Foursomes are generated in bands of a separable bound (each uma heads 3 careers, so a loop's
+  ceiling is at most a quarter of the sum of its members' best values at their highest chance) and solved best ceiling
+  first: a foursome's schedules are optimised only if its ceiling can beat the result to beat, then its ceiling is
+  recomputed at its schedules' chances, and only then its exact value. The search stops when no remaining ceiling can
+  beat the last result shown (the third with three results).</p></li>
+  <li><p><strong>One shared deck.</strong> A loop's value is the best exact sum over its 12 careers among decks legal for all
+  four. Its ceiling is the lower of the per-uma tables' (each trainee's best deck bounds her share of any shared deck) and
+  <math><mi>ρ</mi></math> times the best single skyline deck's product over the 12 careers. With three results (distinct decks, each with its
+  best loop), each loop keeps every deck at or above the third-best distinct deck found so far.</p></li>
+  <li><p><strong>What the answer is checked against.</strong> The search at <math><mi>ρ</mi><mo>=</mo><mn>1.25</mn></math> runs within a fixed amount of work
+  (counted in steps of the search, not seconds, so the answer does not depend on the machine). If it runs out, the search
+  reruns at <math><mi>ρ</mi></math> = 1.12, then 1.05, reusing every exact value, table cell and schedule already computed; if none finishes,
+  loops are ranked by the product and each shown result is scored exactly. The status line says which applies. The page
+  first shows the product-ranked result, then the exact one. Either way the guarantee is relative to the schedules the
+  optimiser finds, which are not proven optimal.</p></li>
   </ul>
 
-  <p><strong>11. Exact scoring.</strong> The search ranks by step 5's product. Chain cards share one career's chain
-  events, so their rewards land or miss together, and one event's outcomes can give one target or another. The results
-  shown, and every candidate whose ranking value is at least 80% of the best's, are rescored exactly: over the joint
-  distribution of chain progress (every entry's links done), given which every source is independent, except outcome
-  groups touching two or more targets, which are enumerated. The odds shown are these exact values: 0–8% above the
-  product on the reference setups, up to 19% for decks with 0–1 pals. "7 of 8 or better" comes from the same
-  distribution.</p>
+  <p><strong>11. Exact scoring.</strong> Chain cards share one career's chain events, so their rewards land or miss
+  together, and one event's outcomes can give one target or another. Let <math><mi>x</mi></math> be the final chain progress (links done per card)
+  with probability <math><mi>π</mi><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow></math> from step 7: <math><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>ℓ</mi><mo>)</mo></mrow></math> times the chance of reaching <math><mi>x</mi></math>, where <math><mi>ℓ</mi></math> is the number of links done in <math><mi>x</mi></math>,
+  or <math><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>≥</mo><mi>ℓ</mi><mo>)</mo></mrow></math> when every card has stopped. Given <math><mi>x</mi></math>, every source is independent, except events whose outcomes touch two
+  or more targets; let <math><mi>O</mi></math> be those events' outcomes. Then</p>
+  <math display="block"><mi>V</mi><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>max</mo><mtext>outfit</mtext></munder><munder><mo>∑</mo><mi>x</mi></munder><mi>π</mi><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow><munder><mo>∑</mo><mi>O</mi></munder><mi>P</mi><mrow><mo>(</mo><mi>O</mi><mo>)</mo></mrow><munder><mo>∏</mo><mi>k</mi></munder><msub><mi>s</mi><mi>k</mi></msub><mrow><mo>(</mo><mi>x</mi><mo>,</mo><mi>O</mi><mo>)</mo></mrow></math>
+  <p>with <math><msub><mi>s</mi><mi>k</mi></msub><mrow><mo>(</mo><mi>x</mi><mo>,</mo><mi>O</mi><mo>)</mo></mrow></math> step 4's formula, its hint odds from the sources given <math><mi>x</mi></math> (each card's links up to its progress) and
+  <math><mi>O</mi></math> (a target an outcome gives is hinted for sure). Progress that changes no target's odds is merged, and the outcome
+  events are enumerated per cluster of targets they join (clusters are independent given <math><mi>x</mi></math>). The outfit is chosen per
+  career by the exact value. "7 of 8 or better" is the same sum with the chance that at most one target misses. The odds
+  shown are these exact values: 0–8% above the product on the reference setups, up to 19% for decks with 0–1 pals.</p>
 
-  <p>Typical time: under a second with Unity Cup's golds given, 3–11 s without; up to about 100 s for three results.
-  The browser is about 1.5× slower.</p>
+  <p>Typical time: the product-ranked result shows in well under a second, the exact one usually 2–5 s later; up to
+  about 35 s for three results with one shared deck.</p>
 
   <p><strong>Data.</strong> Global master.mdb; card events from GameTora. The Grand Masters-era option uses a JP
   master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>

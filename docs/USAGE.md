@@ -16,8 +16,12 @@ words; this file is the reference for the controls.
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
 - *Borrow one friend's card*, *A separate deck
   for each uma* (on by default).
-- The status line: searching, done ("Searched N decks and M loops in T s"), or what keeps the settings from being
-  searched, with the button that fixes it; **Stop** ends a long search and keeps the results. **Results to show**
+- The status line: searching; then "Checking the exact odds…" with the first result already shown (ranked by the
+  odds with targets treated as independent); done ("Searched N decks and M loops in T s." and what the result was checked against:
+  "nothing else does better" on exact odds, or every deck within 11% / 5% of it, by odds with targets treated as
+  independent, when the full check ran out of time); or
+  what keeps the settings from being searched, with the button that fixes it; **Stop** ends a long search and keeps the
+  results (stopped during the exact check, the first result stays, marked as not checked). **Results to show**
   gives up to three, numbered.
 
 **Target skills.** Type to add a skill; **8/8 example** loads the eight targets used in our runs. A gold the scenario
