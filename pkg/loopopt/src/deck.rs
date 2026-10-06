@@ -131,11 +131,12 @@ fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
     if k == 0 { return 1.0; }
     if k >= n { return if t == 0 { 1.0 } else { 0.0 }; }
     if t <= cap { return (1.0 - k as f64 / n as f64).powi(t as i32); }   // no skill can leave the pool before the last draw
-    // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool)
-    let mut st: HashMap<Vec<u8>, f64> = HashMap::new();
+    // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool); a sorted map, so
+    // sums run in one order (a std HashMap's order changes from run to run, and so did the last bits of every result)
+    let mut st: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
     let mut s0 = vec![0u8; cap + 1]; s0[0] = (n - k) as u8; st.insert(s0, 1.0);
     for _ in 0..t {
-        let mut nx: HashMap<Vec<u8>, f64> = HashMap::new();
+        let mut nx: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
         for (s, p) in &st {
             let avail = (n - k - s[cap] as usize + k) as f64;   // k > 0: never empty
             for j in 0..cap {
