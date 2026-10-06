@@ -674,7 +674,9 @@ const TESTS = {
     const pg = await open(b);
     await pg.locator('header.top .tnav a', { hasText: 'How this works' }).click(); await pg.waitForLoadState();
     check('header link opens /about', new globalThis.URL(pg.url()).pathname === '/about' && /How this works/i.test(await pg.locator('main.about h2').innerText()));
-    check('/about carries the model text and the version', /Model\./.test(await pg.locator('main.about').innerText()) && /Version v?\S+/.test(await pg.locator('main.about').innerText()));
+    const spec = pg.locator('main.about details.spec');
+    check('/about: the detailed model starts folded and opens to the model text; the version shows', !(await spec.getAttribute('open') !== null) && !/Model\./.test(await pg.locator('main.about').innerText())
+      && await (async () => { await spec.locator('summary').click(); return /Model\./.test(await spec.innerText()); })() && /Version v?\S+/.test(await pg.locator('main.about').innerText()));
     if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     await pg.locator('header.top .tnav a').click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');

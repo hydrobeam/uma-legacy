@@ -89,7 +89,7 @@ sparks, not affinity.</p>
 <ul>
 <li><strong>Training hints:</strong> the game doesn't publish how often a card hints. These rates are inferred from what
 real shared IT runs show, not read from the game's data, so they are estimates. The rate scales
-with the card's hint frequency: <math><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><mtext>hint frequency</mtext><mn>100</mn></mfrac><mo>)</mo></mrow></math> hints per career, each a random pick among the card's
+with the card's hint frequency: <math><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> hints per career, each a random pick among the card's
 skills still below hint level 5. The base differs by scenario: Unity Cup 2.70, Grand Concert 2.03, Trackblazer 1.81,
 URA Finale 1.60 (Grand Masters 2.30, a placeholder). A card with 30% hint frequency hints about 3.5 times in Unity Cup;
 with five hintable skills, a given one comes up in about half of careers.</li>
@@ -126,56 +126,58 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 <li><strong>Stars</strong> of a target spark: 50/45/5% below SS, an average base of 4.65%; 20/70/10% at SS, 5.7%.</li>
 <li><strong>Affinity</strong> is that legacy's own, so parents pass sparks far more often than grandparents.</li>
 </ul>
-<p>A target is inherited when any of the twelve rolls (six legacies, two inspirations) passes, with P<sub>i</sub> each roll's P(pass):</p>
+<p>A target is inherited when any of the twelve rolls (six legacies, two inspirations) passes, with <math><msub><mi>P</mi><mi>i</mi></msub></math> each roll's <math><mi>P</mi><mrow><mo>(</mo><mtext>pass</mtext><mo>)</mo></mrow></math>:</p>
 <math display="block"><mi>P</mi><mo>=</mo><mn>1</mn><mo>−</mo><munderover><mo>∏</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>P</mi><mi>i</mi></msub><mo>)</mo></mrow></math>
 <p>Example: a parent at affinity 286 passes a given skill spark about 18% of the time per inspiration, a grandparent at
 87 about 9%. A skill all six legacies carry is inherited in about 78% of careers.</p>
 
 <h3>The model, in detail</h3>
-  <p>Enough to reimplement the planner. Symbols: T the trainee, P a parent and P′ the other parent, X the fourth uma
-  of the loop; k a target, D a deck.</p>
+  <p class="hint">Very technical: the full model and search, written so another person or program could reimplement the
+  planner. Nothing here is needed to use it.</p>
+  <details class="spec"><summary>Show the model</summary>
+  <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>P</mi></math> a parent and <math><msup><mi>P</mi><mo>′</mo></msup></math> the other parent, <math><mi>X</mi></math> the fourth uma
+  of the loop; <math><mi>k</mi></math> a target, <math><mi>D</mi></math> a deck.</p>
 
-  <p><strong>Model. 1. Careers.</strong> A loop of four umas has 12 careers: a trainee T (4 ways) and the uma X who sits
-  out (3 ways). The other two are the parents; each parent P's own parents are P′ and X (the grandparents). Each uma
+  <p><strong>Model. 1. Careers.</strong> A loop of four umas has 12 careers: a trainee <math><mi>T</mi></math> (4 ways) and the uma <math><mi>X</mi></math> who sits
+  out (3 ways). The other two are the parents; each parent <math><mi>P</mi></math>'s own parents are <math><msup><mi>P</mi><mo>′</mo></msup></math> and <math><mi>X</mi></math> (the grandparents). Each uma
   heads 3 careers.</p>
 
   <p><strong>2. Affinity of each legacy.</strong> pair and trio are the game's relation points (the sum over the relation
-  groups all of them belong to); w(i, j) is the expected number of G1s both i and j win, from their schedules (step 9):</p>
+  groups all of them belong to); <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> is the expected number of G1s both <math><mi>i</mi></math> and <math><mi>j</mi></math> win, from their schedules (step 9):</p>
   <math display="block"><msub><mi>A</mi><mi>P</mi></msub><mo>=</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>X</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mrow><mo>[</mo><mn>2</mn><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow><mo>+</mo><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>X</mi><mo>)</mo></mrow><mo>]</mo></mrow></math><math display="block"><msub><mi>A</mi><mi>G</mi></msub><mo>=</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow><mo>,</mo><mtext>  G ∈ {P′, X}</mtext></math>
 
   <p><strong>3. Inheritance chance.</strong> Every target spark sits on all six legacies (two parents, four
-  grandparents), with stars drawn from the rank's mix s<sub>1</sub>/s<sub>2</sub>/s<sub>3</sub> (50/45/5% below SS,
+  grandparents), with stars drawn from the rank's mix <math><msub><mi>s</mi><mn>1</mn></msub><mo>/</mo><msub><mi>s</mi><mn>2</mn></msub><mo>/</mo><msub><mi>s</mi><mn>3</mn></msub></math> (50/45/5% below SS,
   20/70/10% at SS). The chance that one roll passes a spark averages the 3/6/9% bases over that mix; two inspirations, so
-  the chance that a target is inherited at least once in the career is the same q for every target:</p>
+  the chance that a target is inherited at least once in the career is the same <math><mi>q</mi></math> for every target:</p>
   <math display="block"><mi>b</mi><mo>=</mo><mn>0.03</mn><msub><mi>s</mi><mn>1</mn></msub><mo>+</mo><mn>0.06</mn><msub><mi>s</mi><mn>2</mn></msub><mo>+</mo><mn>0.09</mn><msub><mi>s</mi><mn>3</mn></msub></math><math display="block"><mi>q</mi><mo>=</mo><mn>1</mn><mo>−</mo><msup><mrow><mo>(</mo><munder><mo>∏</mo><mrow><mi>ℓ</mi></mrow></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mrow><mi>min</mi><mrow><mo>(</mo><mn>1</mn><mo>,</mo><mi>b</mi><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo></mrow></mrow><mo>)</mo></mrow><mo>)</mo></mrow><mn>2</mn></msup></math>
 
-  <p><strong>4. One target's spark chance.</strong> For target k: g<sub>k</sub> the deck's chance of a gold hint,
-  w<sub>k</sub> its chance of a white hint given no gold hint (step 6), e<sub>k</sub> the chance the trainee's own events
-  hint it. A skill the trainee learns becomes a spark 0.709 of the time as a gold and 0.354 as a white (0.2 or 0.4 ×
-  1.1<sup>6</sup>):</p>
+  <p><strong>4. One target's spark chance.</strong> For target <math><mi>k</mi></math>: <math><msub><mi>g</mi><mi>k</mi></msub></math> the deck's chance of a gold hint,
+  <math><msub><mi>w</mi><mi>k</mi></msub></math> its chance of a white hint given no gold hint (step 6), <math><msub><mi>e</mi><mi>k</mi></msub></math> the chance the trainee's own events
+  hint it. A skill the trainee learns becomes a spark 0.709 of the time as a gold and 0.354 as a white (<math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math> or <math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math>):</p>
   <math display="block"><msub><mi>s</mi><mi>k</mi></msub><mo>=</mo><mn>0.709</mn><msub><mi>g</mi><mi>k</mi></msub><mo>+</mo><mn>0.354</mn><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>g</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>[</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>w</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>e</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>q</mi><mo>)</mo></mrow><mo>]</mo></mrow></math>
-  <p>If the trainee's outfit has the target as a gold, s<sub>k</sub> = 0.709; as a white, the bracket is 1. Each uma uses
+  <p>If the trainee's outfit has the target as a gold, <math><msub><mi>s</mi><mi>k</mi></msub><mo>=</mo><mn>0.709</mn></math>; as a white, the bracket is 1. Each uma uses
   the owned outfit that gives the career the best value.</p>
 
-  <p><strong>5. Career and loop.</strong> Scenario-guaranteed golds (n<sub>gold</sub> of them) each spark 0.709 of the
+  <p><strong>5. Career and loop.</strong> Scenario-guaranteed golds (<math><msub><mi>n</mi><mtext>gold</mtext></msub></math> of them) each spark 0.709 of the
   time; the career's value is the product over the open targets, and the loop's value the mean of its 12 careers:</p>
   <math display="block"><mi>V</mi><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>∏</mo><mrow><mi>k</mi></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math><math display="block"><mi>L</mi><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munderover><mo>∑</mo><mrow><mi>c</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><msub><mi>V</mi><mi>c</mi></msub></math>
   <p>The product treats targets as independent; step 11 corrects it.</p>
 
-  <p><strong>Deck. 6. A deck's hint odds.</strong> Six cards at max limit break; group cards count as pals. Per target k,
-  every source j in the deck gives a gold chance g<sub>kj</sub> and a chance of any hint h<sub>kj</sub>; sources are
+  <p><strong>Deck. 6. A deck's hint odds.</strong> Six cards at max limit break; group cards count as pals. Per target <math><mi>k</mi></math>,
+  every source <math><mi>j</mi></math> in the deck gives a gold chance <math><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math> and a chance of any hint <math><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub></math>; sources are
   independent:</p>
   <math display="block"><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow><mo>,</mo><mtext>   </mtext><msub><mi>w</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow></mrow><mrow><mn>1</mn><mo>−</mo><msub><mi>g</mi><mi>k</mi></msub></mrow></mfrac></math>
   <ul>
-  <li><p><strong>Training hints.</strong> h = base × (1 + hint frequency / 100) draws per career, read as ⌊h⌋ or ⌊h⌋ + 1 draws
+  <li><p><strong>Training hints.</strong> <math><mi>h</mi><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> draws per career, read as <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow></math> or <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow><mo>+</mo><mn>1</mn></math> draws
   with the fraction as the weight of the second. Base: Unity Cup 2.70, Grand Concert 2.03, Trackblazer 1.81, URA Finale
-  1.60, Grand Masters 2.30 (placeholder). Each draw picks uniformly among the card's n hintable skills still below hint
-  level 5; a skill leaves the pool after <math><mi>c</mi><mo>=</mo><mrow><mo>⌈</mo><mfrac><mn>5</mn><mtext>levels per hint</mtext></mfrac><mo>⌉</mo></mrow></math> draws. With k of the n skills being targets and t draws:</p>
-  <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no target hinted</mtext><mo>)</mo></mrow><mo>=</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mfrac><mi>k</mi><mi>n</mi></mfrac><mo>)</mo></mrow><mi>t</mi></msup><mo>,</mo><mtext>  </mtext><mi>t</mi><mo>≤</mo><mi>c</mi></math>
-  <p>(beyond c draws the shrinking pool is followed exactly, state by state). A card's draws over several targets are
+  1.60, Grand Masters 2.30 (placeholder). Each draw picks uniformly among the card's <math><mi>n</mi></math> hintable skills still below hint
+  level 5; a skill leaves the pool after <math><mi>ν</mi><mo>=</mo><mrow><mo>⌈</mo><mn>5</mn><mo>/</mo><mtext>levels per hint</mtext><mo>⌉</mo></mrow></math> draws. With <math><mi>k</mi></math> of the <math><mi>n</mi></math> skills being targets and <math><mi>t</mi></math> draws:</p>
+  <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no target hinted</mtext><mo>)</mo></mrow><mo>=</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mfrac><mi>k</mi><mi>n</mi></mfrac><mo>)</mo></mrow><mi>t</mi></msup><mo>,</mo><mtext>  </mtext><mi>t</mi><mo>≤</mo><mi>ν</mi></math>
+  <p>(beyond <math><mi>ν</mi></math> draws the shrinking pool is followed exactly, state by state). A card's draws over several targets are
   one joint distribution.</p></li>
-  <li><p><strong>Story chains.</strong> A card's chain link l fires with chance m<sub>l</sub> (step 7); links fire in order,
-  so with x<sub>l</sub> the chance link l's reward gives the target, a skill offered at several links counts from the
+  <li><p><strong>Story chains.</strong> A card's chain link <math><mi>l</mi></math> fires with chance <math><msub><mi>m</mi><mi>l</mi></msub></math> (step 7); links fire in order,
+  so with <math><msub><mi>x</mi><mi>l</mi></msub></math> the chance link <math><mi>l</mi></math>'s reward gives the target, a skill offered at several links counts from the
   earliest that fires:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no hint from the card</mtext><mo>)</mo></mrow><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∑</mo><mi>l</mi></munder><msub><mi>m</mi><mi>l</mi></msub><mrow><mo>[</mo><munder><mo>∏</mo><mrow><msup><mi>l</mi><mo>′</mo></msup><mo>&lt;</mo><mi>l</mi></mrow></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>x</mi><msup><mi>l</mi><mo>′</mo></msup></msub><mo>)</mo></mrow><mo>−</mo><munder><mo>∏</mo><mrow><msup><mi>l</mi><mo>′</mo></msup><mo>≤</mo><mi>l</mi></mrow></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>x</mi><msup><mi>l</mi><mo>′</mo></msup></msub><mo>)</mo></mrow><mo>]</mo></mrow></math></li>
   <li><strong>Fixed events</strong> (pal events and other events that don't depend on the chain) give their chance
@@ -189,21 +191,21 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <li><strong>Pals.</strong> Pal finales always fire; first-year date events are left out.</li>
   </ul>
 
-  <p><strong>7. Chain progress.</strong> The number of chain events N in a career is Binomial(21, 0.35), a model chosen
+  <p><strong>7. Chain progress.</strong> The number of chain events <math><mi>N</mi></math> in a career is <math><mi>N</mi><mo>∼</mo><mtext>Binomial</mtext><mrow><mo>(</mo><mn>21</mn><mo>,</mo><mn>0.35</mn><mo>)</mo></mrow></math>, a model chosen
   from data gathered from shared Independent Training runs (how far each card's chain got, read from the event hints on
   each run's page):</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mi>N</mi><mo>=</mo><mi>e</mi><mo>)</mo></mrow><mo>=</mo><mrow><mrow><mo>(</mo><mfrac linethickness="0"><mn>21</mn><mi>e</mi></mfrac><mo>)</mo></mrow></mrow><msup><mn>0.35</mn><mi>e</mi></msup><msup><mn>0.65</mn><mrow><mn>21</mn><mo>−</mo><mi>e</mi></mrow></msup></math>
-  <p>Each event advances one chain entry i (a non-pal card with L<sub>i</sub> links, d<sub>i</sub> done), picked with
+  <p>Each event advances one chain entry <math><mi>i</mi></math> (a non-pal card with <math><msub><mi>L</mi><mi>i</mi></msub></math> links, <math><msub><mi>d</mi><mi>i</mi></msub></math> done), picked with
   weight equal to its links left; an entry that reached its stop is out, and events left over when every entry has
   stopped are lost:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>entry&#160;</mtext><mi>i</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mrow><msub><mi>L</mi><mi>i</mi></msub><mo>−</mo><msub><mi>d</mi><mi>i</mi></msub></mrow><mrow><munder><mo>∑</mo><mi>j</mi></munder><mrow><mo>(</mo><msub><mi>L</mi><mi>j</mi></msub><mo>−</mo><msub><mi>d</mi><mi>j</mi></msub><mo>)</mo></mrow></mrow></mfrac></math>
   <p>A card played to an early end (a choice that ends its chain) is an entry that stops at that link, its remaining
-  links freed for the others. If IT's default choice ends a chain on k of n outcomes, the entry stops there with chance
-  k/n, as an exact mixture over where it stops. m<sub>l</sub> is the chance entry i's link l fires, computed exactly over
-  N and the picks; pals and R cards take no chain events.</p>
+  links freed for the others. If IT's default choice ends a chain on a share of its outcomes, the entry stops there with that
+  chance, as an exact mixture over where it stops. <math><msub><mi>m</mi><mi>l</mi></msub></math> is the chance entry <math><mi>i</mi></math>'s link <math><mi>l</mi></math> fires, computed exactly over
+  <math><mi>N</mi></math> and the picks; pals and R cards take no chain events.</p>
 
-  <p><strong>8. One deck for the loop, or one per uma.</strong> With a shared deck, one deck D from the legal decks 𝒟
-  serves all 12 careers. With a deck per uma (the default), each uma u uses her own best legal deck from 𝒟<sub>u</sub>,
+  <p><strong>8. One deck for the loop, or one per uma.</strong> With a shared deck, one deck <math><mi>D</mi></math> from the legal decks <math><mi>𝒟</mi></math>
+  serves all 12 careers. With a deck per uma (the default), each uma <math><mi>u</mi></math> uses her own best legal deck from <math><msub><mi>𝒟</mi><mi>u</mi></msub></math>,
   the same in the 3 careers she heads:</p>
   <math display="block"><msub><mi>L</mi><mtext>shared</mtext></msub><mo>=</mo><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><mi>𝒟</mi></mrow></munder></mrow><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math><math display="block"><msub><mi>L</mi><mtext>per uma</mtext></msub><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>u</mi></munder><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder></mrow><munder><mo>∑</mo><mrow><mi>c</mi><mo>:</mo><msub><mi>T</mi><mi>c</mi></msub><mo>=</mo><mi>u</mi></mrow></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math>
   <p>No trainee uses a card of herself or a group card she belongs to; scenario bans apply; one card may be borrowed. The
@@ -211,10 +213,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   a shared deck, three distinct decks, each with its best loop; with a deck per uma, the three best loops.</p>
 
   <p><strong>9. Race schedules.</strong> Each uma's schedule is chosen to maximise the loop's expected shared G1 wins
-  Σ w(i, j), every pair weighted alike. Win chance of one attempt, with aptitude cost c (A 0, B 10, C 20, D 30, E 40,
-  F 60, G 90) and streak penalty s<sub>k</sub> for the k-th race in a row (0/0/5/20/30/50; any race counts, a rest resets
+  <math><munder><mo>∑</mo><mrow><mi>i</mi><mo>&lt;</mo><mi>j</mi></mrow></munder><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math>, every pair weighted alike. Win chance of one attempt, with aptitude cost <math><mi>κ</mi></math> (A 0, B 10, C 20, D 30, E 40,
+  F 60, G 90) and streak penalty <math><msub><mi>σ</mi><mi>n</mi></msub></math> for the <math><mi>n</mi></math>-th race in a row (0/0/5/20/30/50; any race counts, a rest resets
   it):</p>
-  <math display="block"><mi>p</mi><mo>=</mo><mfrac><mrow><mtext>clamp</mtext><mrow><mo>(</mo><mn>110</mn><mo>−</mo><msub><mi>c</mi><mtext>dist</mtext></msub><mo>−</mo><msub><mi>c</mi><mtext>surf</mtext></msub><mo>−</mo><msub><mi>s</mi><mi>k</mi></msub><mo>,</mo><mn>0</mn><mo>,</mo><mn>100</mn><mo>)</mo></mrow></mrow><mn>100</mn></mfrac></math>
+  <math display="block"><mi>p</mi><mo>=</mo><mfrac><mrow><mtext>clamp</mtext><mrow><mo>(</mo><mn>110</mn><mo>−</mo><msub><mi>κ</mi><mtext>dist</mtext></msub><mo>−</mo><msub><mi>κ</mi><mtext>surf</mtext></msub><mo>−</mo><msub><mi>σ</mi><mi>n</mi></msub><mo>,</mo><mn>0</mn><mo>,</mo><mn>100</mn><mo>)</mo></mrow></mrow><mn>100</mn></mfrac></math>
   <p>A race run in Classic and Senior counts once: <math><mi>P</mi><mrow><mo>(</mo><mtext>win</mtext><mo>)</mo></mrow><mo>=</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>p</mi><mn>1</mn></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>p</mi><mn>2</mn></msub><mo>)</mo></mrow></math>; two umas' wins are independent: <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow><mo>=</mo><munder><mo>∑</mo><mi>r</mi></munder><msub><mi>P</mi><mi>i</mi></msub><mrow><mo>(</mo><mi>r</mi><mo>)</mo></mrow><msub><mi>P</mi><mi>j</mi></msub><mrow><mo>(</mo><mi>r</mi><mo>)</mo></mrow></math>. One uma's best
   schedule against fixed partners is exact dynamic programming (Junior turns in order, then each Classic turn with the
   Senior turn 24 later, tracking both streaks and which career goals are met). The four schedules are improved in turns
@@ -223,13 +225,13 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>Search. 10. Pruning and the stop rule.</strong></p>
   <ul>
-  <li>Decks are compared per open target on (g, 1 − (1 − g)(1 − w)), which every career's value rises with. A deck that
+  <li>Decks are compared per open target on <math><mrow><mo>(</mo><mi>g</mi><mo>,</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>g</mi><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>w</mi><mo>)</mo></mrow><mo>)</mo></mrow></math>, which every career's value rises with. A deck that
   another beats or matches on every target is dropped (the skyline); a card that another legal card beats on every
   target never enters those decks. With a deck per uma, each uma's best deck is on the skyline of decks for the targets
   her outfits leave open.</li>
-  <li><p>Every foursome F gets a ceiling. Exact pairwise bounds on w(i, j) (each uma's best schedule against a partner at
-  her best case on every race) give each career's highest possible q<sub>c</sub><sup>max</sup>; B<sub>u</sub>(q) is
-  uma u's best career value over the skyline at inheritance chance q, which rises with q:</p>
+  <li><p>Every foursome <math><mi>F</mi></math> gets a ceiling. Exact pairwise bounds on <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> (each uma's best schedule against a partner at
+  her best case on every race) give each career's highest possible <math><msubsup><mi>q</mi><mi>c</mi><mtext>max</mtext></msubsup></math>; <math><msub><mi>B</mi><mi>u</mi></msub><mrow><mo>(</mo><mi>q</mi><mo>)</mo></mrow></math> is
+  uma <math><mi>u</mi></math>'s best career value over the skyline at inheritance chance <math><mi>q</mi></math>, which rises with <math><mi>q</mi></math>:</p>
   <math display="block"><mtext>ceiling</mtext><mrow><mo>(</mo><mi>F</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>B</mi><msub><mi>T</mi><mi>c</mi></msub></msub><mrow><mo>(</mo><msubsup><mi>q</mi><mi>c</mi><mtext>max</mtext></msubsup><mo>)</mo></mrow></math>
   <p>Foursomes are solved best ceiling first (schedules, then decks), and the search stops when no remaining ceiling can
   beat the last result shown. That is a guarantee relative to the schedules the optimiser finds, which are not proven
@@ -252,6 +254,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>Data.</strong> Global master.mdb; card events from GameTora. The Grand Masters-era option uses a JP
   master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>
+
+  </details>
 
 <h3>Sources</h3>
 <p>Game data: the Global master.mdb (and a JP one for the Grand Masters era). Card events: GameTora. Spark and
