@@ -148,6 +148,18 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p class="hint">Very technical: the full model and search, written so another person or program could reimplement the
   planner. Nothing here is needed to use it.</p>
   <details class="spec"><summary>Show the model</summary>
+  <p><strong>In short.</strong></p>
+  <ol>
+  <li>For a loop of four umas, each uma's race schedule is chosen to maximise the G1s they win together. That sets each
+  legacy's affinity, and so each career's chance of inheriting a target (steps 1–3, 9).</li>
+  <li>A career's value is its chance of landing every target, from the trainee's outfit, the deck's hints (training,
+  events, story chains) and inheritance. A loop's value is the average of its 12 careers (steps 4–8).</li>
+  <li>Exact odds account for targets that land together (chain cards share one career's chain events), but they are slow.
+  A fast estimate that treats targets as independent picks which loops and decks are worth scoring exactly (steps 10–13).</li>
+  <li>The search goes through loops from the most promising down, finds each trainee's best deck by exact odds, and stops
+  when nothing left can beat the results shown. The status line says how thoroughly the answer was checked (steps
+  14–20).</li>
+  </ol>
   <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>P</mi></math> a parent and <math><msup><mi>P</mi><mo>′</mo></msup></math> the other parent, <math><mi>X</mi></math> the fourth uma
   of the loop; <math><mi>k</mi></math> a target, <math><mi>D</mi></math> a deck.</p>
 
