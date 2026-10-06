@@ -107,6 +107,9 @@ const TESTS = {
     check('headline: "1 in 119 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
       /^1 in 119 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 13\.9 · a 90% chance within 273 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
     check('members: "as trainee: 1 in …"', head.own.length === 4 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x)), head.own.join(' | '));
+    // a pal whose credited event choice needs a priority says so, derived from the event data (Anshinzawa SSR's finale)
+    const anshin = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .dc[data-cid="30080"] i')].map(i => i.textContent));
+    check('deck: Sasami Anshinzawa SSR says "prioritise Risky Business"', anshin.includes('prioritise Risky Business'), JSON.stringify(anshin));
     // the deck's odds per target, each with its skill icon
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length }; });
     check('deck odds: a skill icon on every entry', dd.n > 0 && dd.icons === dd.n, JSON.stringify(dd));

@@ -6,7 +6,7 @@ A skill in every outcome of some choice is certain when the link fires; a skill 
 (split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../pkg/loopopt/export'))
-from event_choices import decode, fmt
+from event_choices import decode, fmt, manual_entry
 from jpnames import names, CUT, OUT
 G = '../../pkg/loopopt/gametora/'   # the same GameTora files as Global
 OFF = 36
@@ -36,7 +36,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
 manual = json.load(open('manual_gm_nodates.json'))['cards']
 for k, v in manual.items():
     if int(k) not in glob_cards: continue   # released after the cut
-    if any(x in v for x in ('always', 'disabled', 'chance')): out[k] = {**out.get(k, {}), **{x: v[x] for x in v if x in ('name', 'always', 'disabled', 'chance', 'note')}, "status": "complete", "src": v.get('src', '')}
+    if any(x in v for x in ('always', 'disabled', 'chance')): out[k] = {**out.get(k, {}), **manual_entry(k, v, G, reward, skname)}
 doc = {"about": json.load(open('manual_gm_nodates.json'))['about'], "cards": dict(sorted(out.items()))}
 json.dump(doc, open(OUT + '/card_events_nodates.json', 'w'), ensure_ascii=False, indent=1)
 print(len(out), 'cards written')

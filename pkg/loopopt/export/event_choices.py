@@ -40,3 +40,53 @@ def decode(choices, reward, skname):
 
 def fmt(d):
     return sorted([n if p == 1 else [n, p] for n, p in d.items()], key=str)
+
+
+def skills_of(ch, reward, skname):
+    """Every skill a choice ([label, rewards]) can hint, on any of its outcomes."""
+    out = set()
+    for k in ch[1]:
+        r = reward(k)
+        if r and r[0] == 'sk' and r[2] in skname: out.add(skname[r[2]])
+        if r and r[0] == 'sr': out.update(skname[x['d']] for x in r[2] if x['d'] in skname)
+    return out
+
+
+def pal_event(gdir, sid, cid):
+    """The choices of pal or group event `sid` (a story id) as card `cid` sees them: its per-card variant when it has one."""
+    import glob, json
+    for f in ('training_events_friend.*.json', 'training_events_group.*.json'):
+        for ent in json.load(open(glob.glob(gdir + f)[0])):
+            for sec in ent[1:]:
+                for e in sec or []:
+                    if not e or str(e[2]) != str(sid): continue
+                    var = e[3][1] if len(e) > 3 and len(e[3]) > 1 and isinstance(e[3][1], list) else []
+                    return next((v[1][1] for v in var if v[0] == cid), e[1])
+    return None
+
+
+def prioritise(choices, k, reward, skname):
+    steer it to choice k (1-based) are those on choice k and on no choice above it. [] for k = 1; None when there is
+    none (IT cannot be steered there)."""
+    chs = [ch for ch in choices if isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list)]
+    if k == 1: return []
+    above = set().union(*[skills_of(ch, reward, skname) for ch in chs[:k - 1]])
+    own = sorted(skills_of(chs[k - 1], reward, skname) - above)
+    return own or None
+
+
+MANUAL_KEYS = ('name', 'always', 'disabled', 'chance', 'note', 'event')
+
+
+def manual_entry(cid, v, gdir, reward, skname):
+    """A hand-entered (pal or group) card entry as the builders store it. `event: [story id, choice]` names the event and
+    choice the entry models; `prioritise` is derived from it: the skills a player must prioritise for IT to take that choice."""
+    e = {x: v[x] for x in v if x in MANUAL_KEYS}
+    if 'event' in v:
+        sid, k = v['event']
+        chs = pal_event(gdir, sid, int(cid))
+        if chs is None: raise SystemExit(f'card {cid}: event {sid} not in the GameTora files')
+        p = prioritise(chs, k, reward, skname)
+        if p is None: raise SystemExit(f'card {cid}: no skill steers IT to choice {k} of event {sid}')
+        if p: e['prioritise'] = p
+    return {**e, "status": "complete", "src": v.get('src', '')}

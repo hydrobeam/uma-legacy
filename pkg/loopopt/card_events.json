@@ -3153,6 +3153,13 @@
     ]
    ],
    "note": "final date 830080001: take choice 2 (Nothing Ventured hint on success, Risky Business hint on failure), which IT takes when Risky Business is prioritised. Nothing Ventured 0.75: measured on uma-it runs with Risky Business prioritised (58/77, 2026-10-06; docs/MODEL.md), not the 50/50 the 'di' convention gives. Risky Business is listed at 1.0 because the model only counts the white when the gold misses, and here it always lands then.",
+   "event": [
+    830080001,
+    2
+   ],
+   "prioritise": [
+    "Risky Business"
+   ],
    "status": "complete",
    "src": "GameTora training_events_friend 830080001, decoded"
   },

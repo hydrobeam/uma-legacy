@@ -90,6 +90,7 @@ def era(dirp, events_file):
         if not c['pal'] and c['links'] > 0 and c['rarity'] < 2: continue
         ui_cards.append({'id': c['id'], 'name': c['name'], 'rar': c['rarity'], 'pal': c['pal'], 'kind': c.get('kind', ''), 'rel': rel.get(c['id'], c['id']), 'gt': GT_URL.get(c['id']),
                          'whites': c['whites'], 'ev': evsum.get(c['id'], []),
+                         **({'pri': pri} if (pri := events['cards'].get(str(c['id']), {}).get('prioritise')) else {}),   # skills to prioritise for IT to take the event choice the model credits
                          **({'ban': ban} if (ban := [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]) else {})})   # scenarios that bar it from the deck
     umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})

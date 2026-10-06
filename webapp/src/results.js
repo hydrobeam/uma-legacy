@@ -25,9 +25,11 @@ function loopCard(l, meta, ctx) {
     const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
     const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
       const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
-      const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || '';   // pick: the choice to prioritise, e.g. "link 1: Uma Stan"
-      const tagPick = pick ? ' · prioritise ' + pick : '';
       const c = CARD_BY_ID.get(d.card_ids[ci]) || CARDS.find(x => x.name === base);   // plain pals have a name but no entry in card_ids
+      // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
+      // credited event choice needs (derived from the event data: c.pri)
+      const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || (c && c.pri ? c.pri.join(', ') : '');
+      const tagPick = pick ? ' · prioritise ' + pick : '';
       const t = c ? cardTitle(c) : { nm: base, ti: '' };
       const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick;
       return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +

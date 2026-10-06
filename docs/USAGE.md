@@ -38,7 +38,7 @@ automatically after a change* off in Settings, a change waits for the Search but
 - the odds that every target lands, that all but one land, and how many careers give a 90% chance;
 - each uma with her outfit, the targets on her own skill list, and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
-- the deck, with pals and the borrowed card marked; the (i) button shows the chance of each hint it gives. With a
+- the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
   deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
 - **Race schedule** (shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
   but every runner must pick the same one) and **Affinity** (where each legacy's affinity comes from).
