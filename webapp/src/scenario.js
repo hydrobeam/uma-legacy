@@ -65,7 +65,7 @@ export function initScenario() {
   menu.classList.toggle('five', LIST.length === 5);
   for (const sc of LIST) {
     const t = document.createElement('button'); t.type = 'button'; t.className = 'stile'; t.setAttribute('role', 'menuitemradio'); t.dataset.v = sc.v; t.tabIndex = -1;
-    t.setAttribute('aria-label', label(sc));
+    t.setAttribute('aria-label', label(sc)); t.title = label(sc);   // the same hover text as the button shows for the chosen one
     const sub = document.createElement('span'); sub.className = 'ssub'; sub.textContent = sc.mult;
     if (sc.est) {   // "(estimate)", shortened to "(est.)" when the tiles are narrow (phone) so the line stays one line
       const e = document.createElement('span'); e.className = 'sest'; e.innerHTML = '(<span class="sest-l">estimate</span><abbr class="sest-s" title="estimate">est.</abbr>)'; sub.appendChild(e); }
