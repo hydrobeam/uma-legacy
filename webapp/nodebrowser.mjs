@@ -40,6 +40,15 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init, before }
   await pg.goto(URL); await settle(pg);
   return pg;
 }
+// a click that, when it times out, says what covers the target or whether it is missing (for intermittent failures)
+async function clickSay(pg, loc, label) {
+  try { await loc.click({ timeout: 15000 }); }
+  catch (e) {
+    const why = await loc.count() ? await loc.evaluate(el => { const r = el.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return `covered by ${top ? top.tagName.toLowerCase() + '.' + top.className : 'nothing'} at ${Math.round(r.left)},${Math.round(r.top)}; busy ${document.getElementById('run-note').classList.contains('busy')}`; }) : 'not on the page';
+    throw new Error(`click on ${label} timed out: ${why}`);
+  }
+}
 const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').classList.contains('busy'));
 // wait for the current (auto) search to finish. A setting change marks the status line busy at once (the search
 // itself starts after a short pause), so no fixed sleep is needed; after a page load, the page's first job must have
@@ -331,9 +340,9 @@ const TESTS = {
     await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
     // must include, then Owned off in her panel: she is not owned and no longer must include (no contradiction left)
     const m0 = pg.locator('.loop').first().locator('.mem').first(), uid = await m0.getAttribute('data-uma'), anyOutfit = !(await m0.getAttribute('data-outfit'));
-    const tile = pg.locator(`#roster .ut[data-uma="${uid}"] .up`).first(); await tile.click(); await tile.click(); await settle(pg);
+    const tile = pg.locator(`#roster .ut[data-uma="${uid}"] .up`).first(); await clickSay(pg, tile, 'her roster tile'); await clickSay(pg, tile, 'her roster tile again'); await settle(pg);
     const marked = await pg.locator(`#roster .ut[data-uma="${uid}"][data-s="req"]`).count();
-    await pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`).click(); await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
+    await clickSay(pg, pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`), 'her name in the result'); await clickSay(pg, pg.locator('.cpop .sw'), 'the Owned switch'); await pg.keyboard.press('Escape'); await settle(pg);
     const after = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), uid);
     check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', anyOutfit && marked === 1 && after.every(x => x === 'out') && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
