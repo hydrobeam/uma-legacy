@@ -47,13 +47,13 @@ function stopSearch() {
   ui.status = { kind: 'stopped', text: 'Stopped. The results below are from before your change.', act: { label: 'Search again', run: doSearch } };
   paintRunNote();
 }
-// auto-search on (default): a change searches after a 1 s pause (a change during the pause or the search restarts it);
+// auto-search on (default): a change searches after a 0.55 s pause (a change during the pause or the search restarts it);
 // off: the results stay, marked out of date, until the Search button
 function scheduleSearch() {
   clearTimeout(pauseTimer);
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
   if (busy) { searchId++; killEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
-  pauseTimer = setTimeout(doSearch, 1000);
+  pauseTimer = setTimeout(doSearch, 550);
   if (!searching) { searching = true; searchT0 = performance.now(); paintRunNote(); }
 }
 // every setting change: save it and search again

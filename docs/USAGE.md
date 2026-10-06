@@ -33,7 +33,7 @@ the ones you have, is quickest when you own few. Outfits decide most results thr
 **Support deck.** Tap the cards you don't own; only cards that can give a target are listed, each with what it
 gives. No uma runs a card of herself or a group card she belongs to.
 
-**Results** update by themselves a second after any change (a change during a search restarts it); with *Search
+**Results** update by themselves 0.55 s after any change (a change during a search restarts it); with *Search
 automatically after a change* off in Settings, a change waits for the Search button. For each loop:
 - the odds that every target lands, that all but one land, and how many careers give a 90% chance;
 - each uma with her outfit, the targets on her own skill list, and her odds as the trainee (click her name for her
