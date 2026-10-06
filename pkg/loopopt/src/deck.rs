@@ -784,9 +784,36 @@ fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
 /// outcomes are taken at their marginal chances.
 ///   U = sum_n P(N = n) prod_cards E[prod_{k fed by its chain} phi_k(X_card) | n] prod_{other k} phi_k
 /// Not covered (None): a target fed by two cards' chains, or a key that fails the orthant check.
+/// A group's target indicators (which targets one firing hints) are negatively upper-orthant dependent: for every set
+/// S of its targets, P(all of S hinted) <= prod over S of P(k hinted). True for outcomes that each give one target
+/// (they exclude each other); not for an outcome giving two targets together. Training draws over several targets
+/// are checked the same way. Cached per group (by its bits).
+fn group_nuod(g: &Group) -> bool {
+    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(Default::default()); }
+    let key: Vec<(u64, Vec<(usize, u8)>)> = g.iter().map(|(p, o)| (p.to_bits(), o.clone())).collect();
+    if let Some(r) = GN.with(|c| c.borrow().get(&key).copied()) { return r; }
+    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect(); ts.sort(); ts.dedup();
+    // per outcome, the targets it hints as a bit set
+    let outs: Vec<(f64, u32)> = g.iter().map(|(p, o)| (*p, o.iter().fold(0u32, |m, x| m | 1 << ts.iter().position(|&t| t == x.0).unwrap()))).collect();
+    let marg: Vec<f64> = (0..ts.len()).map(|i| outs.iter().filter(|o| o.1 >> i & 1 == 1).map(|o| o.0).sum()).collect();
+    let ok = ts.len() > 20 || (1u32..1 << ts.len()).filter(|s| s.count_ones() >= 2).all(|s| {
+        let joint: f64 = outs.iter().filter(|o| o.1 & s == s).map(|o| o.0).sum();
+        joint <= (0..ts.len()).filter(|i| s >> i & 1 == 1).map(|i| marg[i]).product::<f64>() * (1.0 + 1e-12) + 1e-15
+    });
+    GN.with(|c| c.borrow_mut().insert(key, ok));
+    ok
+}
+
 fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
+    // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
+    // marginals below could understate a group whose outcomes hint targets together
+    for (src, _) in ents {
+        for g in src.fixed.iter().chain(src.chains.iter().map(|x| &x.1)) {
+            if group_gh(g).len() >= 2 && !group_nuod(g) { if std::env::var("UPPER_WHY").is_ok() { eprintln!("why: group {:?}", g); } return None; }
+        }
+    }
     let (mut ng0, mut nh0) = (vec![1.0f64; nu], vec![1.0f64; nu]);
     for (src, _) in ents {
         for &(k, p) in &src.train { nh0[k] *= 1.0 - p; }
@@ -3126,6 +3153,14 @@ mod tests {
             }
         }
         assert!(covered >= 30, "bound covered only {covered} cases");
+    }
+
+    /// Groups whose outcomes each hint one target pass the orthant check; an outcome hinting two targets together fails.
+    #[test]
+    fn group_orthant_check() {
+        assert!(group_nuod(&vec![(0.5, vec![(0, 2)]), (0.3, vec![(1, 1)])]));
+        assert!(!group_nuod(&vec![(0.5, vec![(0, 1), (1, 1)]), (0.3, vec![(1, 1)])]));
+        assert!(group_nuod(&vec![(0.2, vec![(0, 1), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])]));   // 0.2 <= 0.5 * 0.5
     }
 
     /// With no chain cards and no event touching two targets, every source is independent: the exact value equals
