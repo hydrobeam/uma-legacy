@@ -22,15 +22,18 @@
   --yr0: #0b5a4d; --yr1: #2f3f99; --yr2: #8a3c0c;
   --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
   --shade: rgba(24, 32, 46, .22);   /* the scroll-edge shadow */
+  --img-edge: color-mix(in srgb, var(--line) 80%, var(--ink) 20%);   /* the faint edge round portraits */
+  --card-edge: transparent;   /* card art: no edge in light (its frame is the edge) */
   color-scheme: light;
 }
 /* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
    7:1 (WCAG AAA); the card-type, rarity and year colours and the brand stay as they are */
 :root[data-theme="dark"] {
-  --bg: #0f131a; --panel: #181e28; --ink: #e9edf3; --muted: #b9c2cf; --line: #3b4554;
-  --accent: #a9c1ff; --accent-soft: #1f2b4d; --gold: #f2cf73; --gold-soft: #3a2f12; --out: #ffb0a6; --out-soft: #46221f;
-  --req: #8fe0b8; --req-soft: #14352a; --opt: #dcbaf5; --opt-soft: #30213f;
+  --bg: #090c11; --panel: #171d28; --ink: #f4f6f9; --muted: #ccd4df; --line: #5c687d;   /* lines 3:1 on the panels */
+  --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
+  --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444;
   --av-l: 30%; --av-c: 35%; --shade: rgba(0, 0, 0, .6);
+  --img-edge: #9aa6ba; --card-edge: #9aa6ba;   /* a light edge round portraits and card art */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -261,12 +264,12 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
-  outline: 1px solid color-mix(in srgb, var(--line) 80%, var(--ink) 20%); outline-offset: 0;   /* a faint edge just outside the portrait */ }
+  outline: 1px solid var(--img-edge); outline-offset: 0;   /* a faint edge just outside the portrait */ }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav .ctype { position: absolute; top: 0; right: 3%; width: 26.4%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }
-.cav.art { position: relative; box-shadow: none; background: none; }
+.cav.art { position: relative; box-shadow: none; background: none; outline: 1px solid var(--card-edge); outline-offset: 0; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
 .mem .memb { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
 .mem .memb:hover .nm { text-decoration: underline; }
