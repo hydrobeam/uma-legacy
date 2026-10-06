@@ -136,7 +136,26 @@ MATHFACE = re.sub(r"src: [^;]+;", "src: url(" + fingerprint('stix-two-math-latin
                   open(os.path.join(_d, 'latin-400.css')).read()).strip()
 # the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
 SITE = os.environ.get('SITE_URL', 'https://uma-legacy.pages.dev').rstrip('/')
-for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
+# light / dark: the visitor's choice (the header's button, saved in this browser), else the system's preference, followed
+# live until the button is used; set on <html> before the first paint (no light flash), on both pages
+THEMEJS = '''
+(function () {
+  var K = 'llp:theme', t = null, d = document.documentElement, m = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  try { t = localStorage.getItem(K); } catch (e) {}
+  if (t !== 'dark' && t !== 'light') t = null;
+  function set() { var v = t || (m && m.matches ? 'dark' : 'light'), b = document.getElementById('theme-btn'); d.setAttribute('data-theme', v);
+    if (b) { b.setAttribute('aria-pressed', String(v === 'dark')); b.title = v === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'; } }
+  set(); if (m && m.addEventListener) m.addEventListener('change', function () { if (!t) set(); });
+  document.addEventListener('DOMContentLoaded', set);
+  document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('#theme-btn')) return;
+    t = d.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(K, t); } catch (x) {} set(); });
+})();
+'''
+THEMEBTN = ('<button type="button" class="themebtn" id="theme-btn" aria-label="Dark mode" aria-pressed="false" title="Switch to dark mode">'
+            '<svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/></svg>'
+            '<svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+            '<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg></button>')
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
              ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
@@ -149,7 +168,7 @@ assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', MATHFACE + '\n' + css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', MATHFACE + '\n' + css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))

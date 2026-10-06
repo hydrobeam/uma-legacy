@@ -32,7 +32,7 @@ export function cardAv(c, size) {
 // to load, a badge with the scenario's name on a light shade of its colour
 export function scenLogo(sc) {
   const el = document.createElement('span'); el.className = 'slogo'; el.setAttribute('aria-hidden', 'true');
-  const badge = () => { el.classList.remove('art'); el.textContent = ''; const b = document.createElement('b'); b.textContent = sc.name; b.style.background = sc.tint; el.appendChild(b); };
+  const badge = () => { el.classList.remove('art'); el.textContent = ''; const b = document.createElement('b'); b.textContent = sc.name; b.style.background = sc.tint; b.style.color = '#18202e';   /* dark text on the light tint, in either theme */ el.appendChild(b); };
   const s = srcFor('scen', sc.id);
   if (!s) { badge(); return el; }
   const im = new Image(); im.alt = ''; im.onerror = badge; im.src = s; el.classList.add('art'); el.appendChild(im);

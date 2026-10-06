@@ -21,7 +21,17 @@
   --r-ssr: #c99a1a; --r-sr: #8f9aa8; --r-r: #a8714a;
   --yr0: #0b5a4d; --yr1: #2f3f99; --yr2: #8a3c0c;
   --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
-  color-scheme: light;   /* light only, by the owner's choice */
+  --shade: rgba(24, 32, 46, .22);   /* the scroll-edge shadow */
+  color-scheme: light;
+}
+/* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
+   7:1 (WCAG AAA); the card-type, rarity and year colours and the brand stay as they are */
+:root[data-theme="dark"] {
+  --bg: #0f131a; --panel: #181e28; --ink: #e9edf3; --muted: #b9c2cf; --line: #3b4554;
+  --accent: #a9c1ff; --accent-soft: #1f2b4d; --gold: #f2cf73; --gold-soft: #3a2f12; --out: #ffb0a6; --out-soft: #46221f;
+  --req: #8fe0b8; --req-soft: #14352a; --opt: #dcbaf5; --opt-soft: #30213f;
+  --av-l: 30%; --av-c: 35%; --shade: rgba(0, 0, 0, .6);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -32,7 +42,15 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .skip { position: absolute; left: 16px; top: -200px; z-index: 100; background: var(--panel); color: var(--accent); font-weight: 700; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 8px; }
 .skip:focus { top: 8px; }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
-.tnav { margin-left: auto; }
+.tnav { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
+/* light / dark: one button, the moon in light mode and the sun in dark */
+.themebtn { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); cursor: pointer; align-self: center; }
+.themebtn:hover { border-color: var(--accent); color: var(--accent); }
+.themebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.themebtn svg { width: 18px; height: 18px; }
+:root[data-theme="dark"] .themebtn .i-moon, :root:not([data-theme="dark"]) .themebtn .i-sun { display: none; }
+@media (max-width: 620px) { .themebtn { width: 44px; height: 44px; } }
 .tnav a { font-weight: 600; color: var(--accent); }
 header.top h1 a.home { color: inherit; text-decoration: none; }
 /* the brand: the favicon's sparkles, then "uma-legacy" */
@@ -110,7 +128,7 @@ input[type="search"] { width: 100%; }
 .ut[data-s="out"] .up .av { filter: grayscale(1); opacity: 0.45; }
 .ut[data-s="req"] .up .av { box-shadow: 0 0 0 3px var(--req); }
 .ut[data-s="req"] .up::after { content: "must"; position: absolute; top: 4px; right: 4px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .04em; color: #fff; background: var(--req); border-radius: 999px; padding: 1px 6px; }
+  letter-spacing: .04em; color: var(--panel); background: var(--req); border-radius: 999px; padding: 1px 6px; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
@@ -223,10 +241,10 @@ input[type="search"] { width: 100%; }
 .spark.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 .tablewrap { overflow-x: auto; margin-top: 8px;
   /* scroll shadows: a shade at an edge with more table beyond it (the covers scroll with the content, the shades don't) */
-  background: linear-gradient(to right, var(--panel) 30%, rgba(255,255,255,0)) left / 32px 100% no-repeat local,
-    linear-gradient(to left, var(--panel) 30%, rgba(255,255,255,0)) right / 32px 100% no-repeat local,
-    radial-gradient(farthest-side at 0 50%, rgba(24,32,46,.22), rgba(24,32,46,0)) left / 10px 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, rgba(24,32,46,.22), rgba(24,32,46,0)) right / 10px 100% no-repeat scroll; }
+  background: linear-gradient(to right, var(--panel) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--panel) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--shade), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--shade), transparent) right / 10px 100% no-repeat scroll; }
 table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .sched th, .sched td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 .sched th:first-child, .sched td:first-child, .sched td.when, .sched th.when { text-align: left; }
@@ -280,7 +298,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .ag-slot.on.opt .ag-when b { color: inherit; }
 .ag-slot.on .ag-when { color: var(--accent); }
 .ag-slot.on.opt { border-color: var(--opt); border-width: 2px; }
-.ag-slot.on.opt .ag-when { background: var(--opt); color: #fff; }
+.ag-slot.on.opt .ag-when { background: var(--opt); color: var(--panel); }
 .agkey { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 0.78rem; color: var(--ink); }
 .agkey i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 2px solid var(--accent); background: var(--accent-soft); }
 .agkey i.op { border-color: var(--opt); background: var(--opt); }

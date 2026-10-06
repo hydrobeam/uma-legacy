@@ -25,8 +25,8 @@ const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; say(
 
 // ---------- helpers
 // before(pg): runs before the page loads (routes, request listeners)
-async function open(browser, { w = 1440, h = 900, mobile = false, init, before } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
+async function open(browser, { w = 1440, h = 900, mobile = false, init, before, scheme = 'light' } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
   await ctx.addInitScript(() => {   // count worker creations/terminations
     const W = window.Worker; window.__made = 0; window.__killed = 0;
     window.__runs = [];   // the jobs sent to the engine, in order
@@ -684,6 +684,42 @@ const TESTS = {
     if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     await pg.locator('header.top .tnav a').click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
+    await pg.context().close();
+  },
+  async dark(b) {
+    // dark mode: the system's preference until the header button is used, then the visitor's choice, kept in this browser
+    const pg = await open(b, { scheme: 'dark' });
+    const theme = () => pg.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    check('dark: with no saved choice the page follows a dark system preference', (await theme()) === 'dark'
+      && await pg.evaluate(() => getComputedStyle(document.body).backgroundColor !== 'rgb(243, 245, 248)' && document.getElementById('theme-btn').getAttribute('aria-pressed') === 'true'));
+    await pg.emulateMedia({ colorScheme: 'light' });
+    await pg.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light', null, { timeout: 3000 }).catch(() => {});   // the change event arrives asynchronously
+    check('dark: … and follows the system when it changes', (await theme()) === 'light');
+    await pg.emulateMedia({ colorScheme: 'dark' });
+    await pg.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3000 }).catch(() => {});
+    if (b.browserType().name() === 'chromium') {
+      await pg.waitForTimeout(300);   // the results' fade back from the searching dim
+      const fails = [...await pg.evaluate(AUDIT)];
+      await pg.click('#x-scen'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
+      await pg.click('#rank-q'); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /rtab|rfoot|gpop/.test(x))); await pg.keyboard.press('Escape');
+      await pg.locator('.deck .dc').first().click(); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /cpop|sw|gtl|ctt/.test(x))); await pg.keyboard.press('Escape');
+      await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg'); fails.push(...await pg.evaluate(AUDIT));
+      await pg.locator('#sched-dlg .stab').nth(4).click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
+      await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
+      check('dark: every text run meets WCAG AAA (page, scenario picker, rank popup, card popup, schedule, affinity)', !fails.length, fails.slice(0, 5).join(' | '));
+    }
+    await pg.click('#theme-btn');
+    check('dark: the header button switches to light and remembers it', (await theme()) === 'light' && await pg.evaluate(() => localStorage.getItem('llp:theme') === 'light'));
+    await pg.reload(); await settle(pg);
+    check('dark: … the choice outlives a reload and beats the system preference', (await theme()) === 'light');
+    await pg.emulateMedia({ colorScheme: 'light' }); await pg.emulateMedia({ colorScheme: 'dark' }); await pg.waitForTimeout(300);
+    check('dark: … and a system change no longer overrides it', (await theme()) === 'light');
+    await pg.click('#theme-btn');
+    check('dark: the button switches back to dark', (await theme()) === 'dark');
+    await pg.goto(URL.replace(/\/?$/, '/') + 'about'); await pg.waitForLoadState('load');
+    check('dark: /about takes the same choice', (await theme()) === 'dark');
+    if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('dark: /about meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
   async contrast(b) {
