@@ -26,6 +26,12 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'ready' });
     } else if (m.type === 'run') {
       const t = performance.now();
+      // a deck search runs twice: first ranked by per-target odds (fast, posted at once), then by exact odds
+      if ((m.job.cmd === 'deck' || m.job.mode === 'deck') && m.job.exact !== false) {
+        const r0 = callRaw(JSON.stringify(Object.assign({}, m.job, { exact: false })));
+        self.postMessage({ type: 'interim', id: m.id, r: r0, ms: performance.now() - t });
+        if (r0.error) { self.postMessage({ type: 'result', id: m.id, r: r0, ms: performance.now() - t }); return; }
+      }
       const r = callRaw(JSON.stringify(m.job));
       self.postMessage({ type: 'result', id: m.id, r, ms: performance.now() - t });
     }

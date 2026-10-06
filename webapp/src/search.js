@@ -8,6 +8,8 @@ import { state, ui, writeSaved, DEFAULTS, goldGiven } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
+// 'check': the fast result is on screen and the exact check is running
+let phase = 'search';
 // The status line heading the results (and its copy in the phone's floating button): while a search runs, its time and
 // a Stop button; otherwise ui.status: {kind: 'done' | 'example' | 'error' | 'empty' | 'stopped' | 'loading', text,
 // act: {label, click: id of the button it presses} or {label, run: function}}. Whenever the results on screen are not those of the current
@@ -29,9 +31,10 @@ export function paintRunNote() {
   if (searching) {
     const sec = Math.floor((performance.now() - searchT0) / 1000), t = sec >= 1 ? ` ${sec} s` : '';
     // the seconds are hidden from screen readers: the live region would read them out every second
-    n.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Searching…<span aria-hidden="true">' + t + '</span>' +
-      (sec >= 1 && shown ? '. The results below are from before your change.' : '') + '</span>';
-    setAct('stop', 'Stop', stopSearch); pill = 'Searching…' + t;
+    const what = phase === 'check' ? 'Checking the exact odds…' : 'Searching…';
+    n.innerHTML = '<span class="spin" aria-hidden="true"></span><span>' + what + '<span aria-hidden="true">' + t + '</span>' +
+      (phase === 'check' ? (t ? '. ' : ' ') + 'The result below may still change.' : sec >= 1 && shown ? '. The results below are from before your change.' : '') + '</span>';
+    setAct('stop', 'Stop', stopSearch); pill = what + t;
   } else {
     n.textContent = st.text;
     if (st.act) setAct(st.act.click || st.act.label, st.act.label, st.act.run || (() => $(st.act.click).click())); else setAct(null);
@@ -43,8 +46,11 @@ export function paintRunNote() {
 function stopSearch() {
   if (!searching) return;
   searchId++; clearTimeout(pauseTimer); if (busy) killEngine();
-  searching = false; clearInterval(searchTick);
-  ui.status = { kind: 'stopped', text: 'Stopped. The results below are from before your change.', act: { label: 'Search again', run: doSearch } };
+  const checking = phase === 'check';
+  searching = false; phase = 'search'; clearInterval(searchTick);
+  ui.status = checking
+    ? { kind: 'done', text: 'Stopped the exact check: the result below is ranked by odds with targets treated as independent.', act: { label: 'Search again', run: doSearch } }
+    : { kind: 'stopped', text: 'Stopped. The results below are from before your change.', act: { label: 'Search again', run: doSearch } };
   paintRunNote();
 }
 // auto-search on (default): a change searches after a 0.55 s pause (a change during the pause or the search restarts it);
@@ -53,7 +59,7 @@ function scheduleSearch() {
   clearTimeout(pauseTimer);
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
   if (busy) { searchId++; killEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
-  pauseTimer = setTimeout(doSearch, 550);
+  pauseTimer = setTimeout(doSearch, 550); phase = 'search';
   // "Searching…" during the pause, but the seconds count only once the search runs (doSearch starts the clock)
   clearInterval(searchTick); searching = true; searchT0 = performance.now(); paintRunNote();
 }
@@ -100,7 +106,8 @@ function startEngine() {
       const m = e.data;
       if (m.type === 'ready') resolve();
       else if (m.type === 'error') { reject(new Error(m.message)); }
-      else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p(m); }
+      else if (m.type === 'interim') { const p = pending.get(m.id); p && p.interim && p.interim(m); }
+      else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p.done(m); }
     };
     worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
     try { if (!module) throw 0; worker.postMessage({ type: 'init', module, data }); }
@@ -109,7 +116,8 @@ function startEngine() {
   ready.catch(() => { if (gen === engineGen) ready = null; });   // a failed start is retried by the next search
   return ready;
 }
-function run(job) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, res); worker.postMessage({ type: 'run', id, job }); })); }
+// interim: called with the fast first pass of a deck search, before the exact one resolves the promise
+function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job }); })); }
 
 // Settings the search cannot start from: an empty state (nothing to search yet, with the button that fixes it) or an
 // error (contradictory settings), said in the status line.
@@ -156,9 +164,17 @@ export function firstResult() {
   let b; try { b = buildJob(); } catch { return null; }
   const key = jobKey(b.job);
   try { const c = JSON.parse(localStorage.getItem(LAST()) || 'null');
-    if (c && c.key === key && c.r && c.r.top && c.r.top.length) { shown = { key, r: JSON.stringify(c.r), example: false }; return { r: c.r, ms: c.ms, targets: b.targets }; } } catch {}
+    if (c && c.key === key && c.r && c.r.top && c.r.top.length) { shown = { key, r: JSON.stringify(c.r.top), example: false }; return { r: c.r, ms: c.ms, targets: b.targets }; } } catch {}
   if (ERA === 'global' && key === defaultKey()) { shown = { key, r: null, example: true }; return { r: EXAMPLE, example: true, targets: b.targets }; }
   return null;
+}
+// What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the
+// cap aimed for; see the model notes on /about)
+export function certText(e) {
+  if (!e) return '';
+  if (e.rho >= e.rho_target) return 'Checked on exact odds: nothing else does better.';
+  if (e.rho > 1) return `Checked on exact odds against every deck within ${Math.round((1 - 1 / e.rho) * 100)}% of it (by odds with targets treated as independent; the full check ran out of time).`;
+  return 'Ranked by odds with targets treated as independent, then scored exactly; the exact check ran out of time.';
 }
 export async function doSearch() {
   const my = ++searchId; clearTimeout(pauseTimer);
@@ -169,15 +185,24 @@ export async function doSearch() {
   searching = true; searchT0 = performance.now(); paintRunNote(); clearInterval(searchTick); searchTick = setInterval(paintRunNote, 1000);
   try {
     const { job, targets } = b;
-    busy = true; const m = await run(job); if (my !== searchId) return;   // superseded: a newer search owns the page
-    busy = false;
-    if (m.r.error || !m.r.top || !m.r.top.length) ui.status = { kind: 'error', text: m.r.error ? 'Not searched: ' + m.r.error : 'No result: no loop fits these settings.' };
-    else {
-      ui.lastRender = () => renderDeck(m.r, { targets }); ui.lastResult = { kind: 'deck', r: m.r, meta: {} };
-      const key = jobKey(job), str = JSON.stringify(m.r);
-      if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();   // an identical result already on screen stays
+    const key = jobKey(job);
+    // a result is drawn unless the same loops and decks are already on screen
+    const draw = (r) => {
+      ui.lastRender = () => renderDeck(r, { targets }); ui.lastResult = { kind: 'deck', r, meta: {} };
+      const str = JSON.stringify(r.top);
+      if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();
       shown = { key, r: str, example: false };
-      ui.status = { kind: 'done', text: `Searched ${m.r.decks_built.toLocaleString()} decks and ${m.r.foursomes.toLocaleString()} loops in ${(m.ms / 1000).toFixed(1)} s` };
+    };
+    const ok = (r) => !r.error && r.top && r.top.length;
+    phase = 'search';
+    busy = true;
+    const m = await run(job, (mi) => { if (my !== searchId || !ok(mi.r)) return; draw(mi.r); phase = 'check'; paintRunNote(); });
+    if (my !== searchId) return;   // superseded: a newer search owns the page
+    busy = false; phase = 'search';
+    if (!ok(m.r)) ui.status = { kind: 'error', text: m.r.error ? 'Not searched: ' + m.r.error : 'No result: no loop fits these settings.' };
+    else {
+      draw(m.r);
+      ui.status = { kind: 'done', text: `Searched ${m.r.decks_built.toLocaleString()} decks and ${m.r.foursomes.toLocaleString()} loops in ${(m.ms / 1000).toFixed(1)} s. ` + certText(m.r.exact) };
       try { localStorage.setItem(LAST(), JSON.stringify({ key, ms: m.ms, r: m.r })); } catch {}
     }
   } catch (e) { if (my !== searchId) return; busy = false; ui.status = { kind: 'error', text: e.message }; }

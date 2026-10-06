@@ -101,6 +101,7 @@ const TESTS = {
   async load(b) {
     const pg = await open(b);
     check('first search runs by itself', /Searched/.test(await note(pg)), await note(pg));
+    check('… and its status says what the result was checked against', /Checked on exact odds|Ranked by odds with targets treated as independent/.test(await note(pg)), await note(pg));
     // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
@@ -261,6 +262,9 @@ const TESTS = {
     const made0 = await pg.evaluate(() => window.__made);
     await pg.evaluate(() => [...document.querySelectorAll('#cards .ct')].slice(0, 5).forEach(b => b.click()));   // five changes inside one pause
     check('a change shows "Searching…"', /Searching/.test(await note(pg)));
+    // the fast pass is drawn first, with the status saying the exact check is still running
+    const checking = await pg.waitForFunction(() => /Checking the exact odds/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 }).then(() => true, () => false);
+    check('the first pass shows while the exact check runs', checking && (await pg.locator('#results .loop').count()) > 0, await note(pg));
     await settle(pg);
     check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
     // a slow search (3 results, one shared deck), changed mid-run: the worker is killed and the new search finishes
@@ -269,7 +273,7 @@ const TESTS = {
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a quick job from the first change alone)
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
-    await pg.waitForFunction(() => /Searching…\s*\d+ s/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 });   // its clock is running
+    await pg.waitForFunction(() => /(Searching|Checking the exact odds)…\s*\d+ s/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 });   // its clock is running
     await pg.click('#c-peruma'); const paused = await note(pg);
     check('a change mid-search clears the clock: it counts again only once the new search runs', /Searching/.test(paused) && !/\d+ s/.test(paused), paused);
     await pg.selectOption('#c-top', '1'); await settle(pg);
@@ -477,7 +481,10 @@ const TESTS = {
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a job from the first change alone)
     check('while searching: the results are marked busy and a Stop button shows', await pg.evaluate(() => document.getElementById('results').getAttribute('aria-busy') === 'true') && (await pg.locator('#r-act button').innerText()) === 'Stop');
     const k0 = await pg.evaluate(() => window.__killed); await pg.click('#r-act button'); h = await head();
-    check('Stop kills the search and keeps the results', (await pg.evaluate(() => window.__killed)) > k0 && h.kind === 'stopped' && h.loops > 0 && !(await busy(pg)), JSON.stringify(h));
+    // stopped before the first pass is drawn: the old results stay, dimmed; stopped during the exact check: the first
+    // pass stays, current, and the status says it was not checked
+    const stoppedOk = h.kind === 'stopped' || (h.kind === 'done' && /Stopped the exact check/.test(h.note) && !h.stale);
+    check('Stop kills the search and keeps the results', (await pg.evaluate(() => window.__killed)) > k0 && stoppedOk && h.loops > 0 && !(await busy(pg)), JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg);
     check('… and "Search again" runs it', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) === 3);
     const r = await pg.evaluate(() => { const L = [...document.querySelectorAll('#results .loop')], key = (l) => [...l.querySelectorAll('.mem')].map(m => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
