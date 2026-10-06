@@ -676,7 +676,7 @@ const TESTS = {
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await pg.waitForTimeout(200); fails.push(...await pg.evaluate(AUDIT));
     check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
     await pg.context().close();
-    const p2 = await b.newContext().then(c => c.newPage()); await p2.route('**/img.*/scen/**', r => r.abort()); await p2.goto(URL); await p2.waitForTimeout(800);
+    const p2 = await b.newContext().then(c => c.newPage()); await p2.route('**/img.*/scen/**', r => r.abort()); await p2.goto(URL); await settle(p2);   // the first search done: results not dimmed
     await p2.click('#x-scen'); const bf = (await p2.evaluate(AUDIT)).filter(x => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x));
     check('contrast: scenario badges (no logo files) meet WCAG AAA', !bf.length, bf.join(' | '));
     await p2.context().close();
