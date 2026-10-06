@@ -29,7 +29,7 @@
 /* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
    7:1 (WCAG AAA); the card-type, rarity and year colours and the brand stay as they are */
 :root[data-theme="dark"] {
-  --bg: #1b212c; --panel: #000000;   /* black panels on a dimmed page, mirroring light mode's white on grey */
+  --bg: #10141b; --panel: #000000;   /* black panels on a dimmed page, mirroring light mode's white on grey */
    --ink: #f4f6f9; --muted: #ccd4df; --line: #5c687d;   /* lines 3:1 on the panels */
   --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
   --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444;
