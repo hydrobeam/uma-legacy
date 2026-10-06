@@ -1453,11 +1453,11 @@
      [
       [
        "Escape Artist",
-       0.5
+       0.25
       ],
       [
        "Fast-Paced",
-       0.5
+       0.75
       ]
      ]
     ]
@@ -1486,7 +1486,18 @@
     ]
    ],
    "status": "complete",
-   "src": "gametora training_events"
+   "src": "gametora training_events",
+   "alt_w": [
+    [
+     3,
+     [
+      [
+       0.75,
+       0.25
+      ]
+     ]
+    ]
+   ]
   },
   "30009": {
    "name": "[Split the Sky, White Lightning!] Tamamo Cross",
@@ -1676,11 +1687,11 @@
      [
       [
        "Center Stage",
-       0.5
+       0.75
       ],
       [
        "Prudent Positioning",
-       0.5
+       0.25
       ]
      ]
     ]
@@ -1709,7 +1720,18 @@
     ]
    ],
    "status": "complete",
-   "src": "gametora training_events"
+   "src": "gametora training_events",
+   "alt_w": [
+    [
+     3,
+     [
+      [
+       0.25,
+       0.75
+      ]
+     ]
+    ]
+   ]
   },
   "30018": {
    "name": "[Even the Littlest Bud] Nishino Flower",
@@ -2255,11 +2277,11 @@
    "chance": [
     [
      "Ramp Up",
-     0.5
+     0.75
     ]
    ],
    "status": "complete",
-   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention"
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline). Ramp Up 0.75: measured on uma-it runs, 527/585 = 0.90 when the top choice is taken; IT takes the bottom choice (Lone Wolf) when Lone Wolf is prioritised; set to 0.75 (docs/MODEL.md)"
   },
   "30037": {
    "name": "[The Unequivocal Emperor] Symboli Rudolf",

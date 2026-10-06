@@ -90,3 +90,28 @@ def manual_entry(cid, v, gdir, reward, skname):
         if p is None: raise SystemExit(f'card {cid}: no skill steers IT to choice {k} of event {sid}')
         if p: e['prioritise'] = p
     return {**e, "status": "complete", "src": v.get('src', '')}
+
+
+def apply_shares(out, path):
+    """Measured outcome shares (event_shares.json) onto generated entries: each listed skill's `chain` share at that link
+    becomes its measured share, and `alt_w` gives the solver each choice's outcome weights (equal where none is listed)."""
+    import json
+    for cid, lst in json.load(open(path))['cards'].items():
+        e = out.get(cid)
+        if not e: continue
+        for s in lst:
+            lk, k, sh = s['link'], s['choice'], s['shares']
+            if abs(sum(sh.values()) - 1) > 1e-9: raise SystemExit(f'card {cid} link {lk}: shares do not add to 1')
+            for l, names in e.get('chain', []):
+                if l != lk: continue
+                for i, n in enumerate(names):
+                    nm = n[0] if isinstance(n, list) else n
+                    if nm in sh: names[i] = nm if sh[nm] >= 1 else [nm, sh[nm]]
+            alt = next((a for l, a in e.get('alts', []) if l == lk), None)
+            if alt is None or k > len(alt): raise SystemExit(f'card {cid} link {lk}: no choice {k} in alts')
+            w = [[1 / len(ch)] * len(ch) for ch in alt]
+            for j, o in enumerate(alt[k - 1]):
+                hits = [sh[n] for n in o if n in sh]
+                if len(hits) != 1: raise SystemExit(f'card {cid} link {lk} outcome {j + 1}: needs exactly one listed skill, has {o}')
+                w[k - 1][j] = hits[0]
+            e.setdefault('alt_w', []).append([lk, w])

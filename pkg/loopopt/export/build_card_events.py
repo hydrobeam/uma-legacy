@@ -5,7 +5,7 @@ character, and King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match th
 A skill in every outcome of some choice is certain when the link fires; a skill in k of a choice's n outcomes
 (split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os
-from event_choices import decode, fmt, manual_entry
+from event_choices import decode, fmt, manual_entry, apply_shares
 G = '../gametora/'
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
@@ -31,6 +31,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
             if has_end: ends_out.append([lk, fmt(endb)])
             if alt: alts.append([lk, alt])
         out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), **({"alts": sorted(alts)} if alts else {}), "status": "complete", "src": "gametora training_events"}
+apply_shares(out, '../event_shares.json')   # measured outcome shares replace the equal-outcome convention
 manual = json.load(open('../card_events.json'))['cards']
 for k, v in manual.items():
     if v.get('src', '') == 'gametora training_events': continue   # generated above, not a manual entry

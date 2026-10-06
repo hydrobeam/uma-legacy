@@ -54,11 +54,11 @@
   "30036": {
    "name": "[Planned Perfection] Riko Kashimoto",
    "status": "complete",
-   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline); 0.5 by the 'di' convention",
+   "src": "GameTora training_events_friend 809006004 (Unexpected Side): top choice gives the Ramp Up hint +3 on one of its two outcomes (Maverick ○ +5 on the other, which ends the storyline). Ramp Up 0.75: measured on uma-it runs, 527/585 = 0.90 when the top choice is taken; IT takes the bottom choice (Lone Wolf) when Lone Wolf is prioritised; set to 0.75 (docs/MODEL.md)",
    "chance": [
     [
      "Ramp Up",
-     0.5
+     0.75
     ]
    ]
   },

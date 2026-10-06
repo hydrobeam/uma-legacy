@@ -23,6 +23,7 @@
 !/pkg/loopopt/README.md
 !/pkg/loopopt/results/
 !/pkg/loopopt/card_events.json
+!/pkg/loopopt/event_shares.json
 !/pkg/loopopt/data.json
 !/pkg/loopopt/data_xmas_vodka.json
 !/pkg/loopopt/web_cards.json

@@ -62,6 +62,9 @@ pub(crate) struct DeckJob {
     /// choices that keep the chain going, outcomes equally likely. At these links they replace `events` /
     /// `events_p`, which credit every skill on its own.
     #[serde(default)] pub alts: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
+    /// measured outcome weights for `alts` events: (card, link, [choice][outcome] -> share); an event not listed here
+    /// keeps equally likely outcomes (event_shares.json, applied by the event builders)
+    #[serde(default)] pub alt_w: Vec<(u32, u8, Vec<Vec<f64>>)>,
     #[serde(default)] pub owned_cards: Vec<u32>,
     /// allow one card the player does not own (a friend's card) in the deck
     #[serde(default)] pub borrow: bool,
@@ -536,6 +539,7 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
     let mut en: Vec<Value> = v["ends"].as_array().cloned().unwrap_or_default();
     let mut sr: Vec<Value> = v["stop_risk"].as_array().cloned().unwrap_or_default();
     let mut al: Vec<Value> = v["alts"].as_array().cloned().unwrap_or_default();
+    let mut aw: Vec<Value> = v["alt_w"].as_array().cloned().unwrap_or_default();
     if let Some(cards) = db["cards"].as_object() {
         for (id, c) in cards {
             let Ok(id) = id.parse::<u32>() else { continue };
@@ -560,12 +564,13 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
                     .map(|out| out.as_array().into_iter().flatten().filter_map(|n| look(n.as_str().unwrap_or(""))).collect()).collect()).collect();
                 al.push(json!([id, a[0], chs]));
             }
+            for a in c["alt_w"].as_array().into_iter().flatten() { aw.push(json!([id, a[0], a[1]])); }
             for n in c["always"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(n.as_str().unwrap_or("")) { ev.push(json!([id, g, lv, 0])); } }
             for e in c["chance"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(e[0].as_str().unwrap_or("")) { od.push(json!([id, g, lv, e[1].as_f64().unwrap_or(0.0)])); } }
         }
     }
     v["events"] = Value::Array(ev); v["events_p"] = Value::Array(evp); v["odds_events"] = Value::Array(od);
-    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr); v["alts"] = Value::Array(al);
+    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr); v["alts"] = Value::Array(al); v["alt_w"] = Value::Array(aw);
 }
 
 /// The search ranks decks and loops by the product of per-target odds; the reported ones are then scored exactly
@@ -950,12 +955,14 @@ impl<'a> Sources<'a> {
     /// odds, both are kept unless their outcomes are the same (then the first).
     fn choices(&self, id: u32, link: u8) -> Option<Vec<Group>> {
         let a = self.dj.alts.iter().find(|a| a.0 == id && a.1 == link)?;
+        let w = self.dj.alt_w.iter().find(|w| w.0 == id && w.1 == link).map(|w| &w.2);   // measured shares, else equal
         let nu = self.unc.len();
-        let gs: Vec<Group> = a.2.iter().map(|ch| {
+        let gs: Vec<Group> = a.2.iter().enumerate().map(|(ci, ch)| {
             let n = ch.len().max(1) as f64;
-            ch.iter().map(|out| {
+            ch.iter().enumerate().map(|(oi, out)| {
                 let mut r: Vec<(usize, u8)> = out.iter().filter_map(|&(g, lv)| self.unc.iter().position(|&x| x == g).map(|k| (k, lv))).collect();
-                r.sort(); r.dedup(); (1.0 / n, r)
+                r.sort(); r.dedup();
+                (w.and_then(|w| w.get(ci)).and_then(|c| c.get(oi)).copied().unwrap_or(1.0 / n), r)
             }).filter(|(_, r)| !r.is_empty()).collect()
         }).collect();
         let prof: Vec<Vec<(f64, f64)>> = gs.iter().map(|g| { let mut p = vec![(0.0, 0.0); nu]; for (k, pg, ph) in group_gh(g) { p[k] = (pg, ph); } p }).collect();
@@ -2405,6 +2412,17 @@ mod tests {
         src_miss(&sb.src(&c, None, 0), &[1.0, 1.0, 0.8], &mut mw, &mut mg);
         assert!((mg[0] - 0.6).abs() < 1e-12, "{mg:?}");                  // P(no gold) = 1 - 0.8 * 0.5
         assert!((mg[0] * mw[0] - 0.2).abs() < 1e-12, "{mw:?}");          // P(no hint) = 1 - 0.8
+    }
+    /// Measured outcome shares (`alt_w`) replace equal outcomes: 3:1 between two skills, link firing 80%.
+    #[test]
+    fn outcome_shares_weight_alts() {
+        let c = halo();
+        let dj = job_with(json!({"alts": [[30056, 3, [[[[20102, 1]], [[20159, 1]]]]]], "alt_w": [[30056, 3, [[0.75, 0.25]]]]}));
+        let unc = [20102u32, 20159];
+        let sb = Sources { dj: &dj, unc: &unc };
+        let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
+        src_miss(&sb.src(&c, None, 0), &[1.0, 1.0, 0.8], &mut mw, &mut mg);
+        assert!((mw[0] - (1.0 - 0.8 * 0.75)).abs() < 1e-12 && (mw[1] - (1.0 - 0.8 * 0.25)).abs() < 1e-12, "{mw:?}");
     }
     /// The final-state distribution has the same per-link marginals as `chain_marginals`, stop risk included.
     #[test]

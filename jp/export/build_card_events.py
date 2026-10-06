@@ -6,7 +6,7 @@ A skill in every outcome of some choice is certain when the link fires; a skill 
 (split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../pkg/loopopt/export'))
-from event_choices import decode, fmt, manual_entry
+from event_choices import decode, fmt, manual_entry, apply_shares
 from jpnames import names, CUT, OUT
 G = '../../pkg/loopopt/gametora/'   # the same GameTora files as Global
 OFF = 36
@@ -33,6 +33,7 @@ for f in ['training_events_sr.*.json', 'training_events_ssr.*.json']:
             if has_end: ends_out.append([lk, fmt(endb)])
             if alt: alts.append([lk, alt])
         out[str(cid)] = {"name": cname.get(cid, str(cid)), "chain": sorted(chain), **({"end": sorted(ends_out)} if ends_out else {}), **({"stop_risk": sorted(risk)} if risk else {}), **({"alts": sorted(alts)} if alts else {}), "status": "complete", "src": "gametora training_events"}
+apply_shares(out, '../../pkg/loopopt/event_shares.json')   # measured outcome shares replace the equal-outcome convention
 manual = json.load(open('manual_gm.json'))['cards']
 for k, v in manual.items():
     if int(k) not in glob_cards: continue   # released after the cut
