@@ -52,6 +52,7 @@ function stopSearch() {
 function scheduleSearch() {
   clearTimeout(pauseTimer);
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
+  if (busy) { searchId++; killEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
   pauseTimer = setTimeout(doSearch, 1000);
   if (!searching) { searching = true; searchT0 = performance.now(); paintRunNote(); }
 }
