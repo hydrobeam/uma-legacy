@@ -1103,10 +1103,15 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
     let mut out = root.unwrap_or_else(|| json!({"error": "no search ran"}));
     legal.sort_by(|a, b| pv(&b.1).partial_cmp(&pv(&a.1)).unwrap());
     let mut top: Vec<Value> = legal.into_iter().take(k).map(|e| e.1).collect();
-    top.sort_by(|a, b| pj(b).partial_cmp(&pj(a)).unwrap());
+    // exact odds first; results equal up to the last bits (one summation order against another) go by their cards, so
+    // a tie is reported in the same order every run (a total order: the odds rounded to 11 significant digits, then the key)
+    let order = |t: &Value| { let p: f64 = format!("{:.10e}", pj(t)).parse().unwrap_or(0.0);
+        let mut c: Vec<String> = t["deck"]["cards"].as_array().map(|a| a.iter().map(|x| x.to_string()).collect()).unwrap_or_default(); c.sort(); (p, c.join("|")) };
+    let by_order = |a: &Value, b: &Value| { let (pa, ka) = order(a); let (pb, kb) = order(b); pb.partial_cmp(&pa).unwrap().then(ka.cmp(&kb)) };
+    top.sort_by(by_order);
     out["top"] = Value::Array(top);
     let mut best: Vec<Value> = by_pals.into_values().collect();
-    best.sort_by(|a, b| pj(b).partial_cmp(&pj(a)).unwrap());
+    best.sort_by(by_order);
     out["best"] = Value::Array(best);
     out["decks_built"] = json!(decks_built);
     out["searches"] = json!(searches);

@@ -15,7 +15,8 @@ export function openWhy(l) {
   intro.innerHTML = `<p class="hint">Each legacy's affinity, for trainee T with parents P1 and P2 (P is either; P2 the other one) and each parent's own parents GP1 and GP2:</p>
     <p class="fx">Parent P = rel(T–P) + rel(P1–P2) + rel(T–P–GP1) + rel(T–P–GP2)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 3 × [G1(P–P2) + G1(P–GP1) + G1(P–GP2)]</p>
     <p class="fx">Grandparent GP (under P) = rel(T–P–GP) + 3 × G1(P–GP)</p>
-    <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can. Higher affinity, more inheritance: each legacy passes a spark with chance base × (1 + affinity / 100).</p>`;
+    <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can.</p>
+    <p>In words: a parent's affinity is how well she matches the trainee, the other parent, and her own two parents (each as a trio with the trainee), plus 3 for every G1 she won together with the other parent or with one of her own parents. A grandparent counts only her trio with the trainee and her child, plus 3 for every G1 she won together with that child. The higher a legacy's affinity, the more often it passes a skill on: each spark's chance is its base × (1 + affinity / 100), so affinity 100 doubles it.</p>`;
   body.appendChild(intro);
   // an uma as her portrait; hover, focus or tap shows her name beside it
   const face = (i, size = 26) => { const f = document.createElement('span'); f.className = 'aface'; f.tabIndex = 0; f.title = M[i].name;
@@ -28,14 +29,16 @@ export function openWhy(l) {
   const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);
   const ct = document.createElement('div'); ct.className = 'tablewrap';
   const tb = document.createElement('table'); tb.className = 'tbl';
-  tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Grandparent</th><th>Affinity</th></tr></thead>';
+  tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Grandparents (each parent\u2019s two)</th><th>Affinity</th></tr></thead>';
   const tbody = document.createElement('tbody'); tb.appendChild(tbody); ct.appendChild(tb);
   const split = document.createElement('div'); split.className = 'split'; split.appendChild(ct);
   const view = document.createElement('div'); view.className = 'view'; view.style.display = 'grid'; view.style.gap = '12px'; split.appendChild(view); body.appendChild(split);
+  // a career's four grandparents, two under each parent (grouped, the parent named in the group's tooltip)
+  const gps = (L) => L.p.map(p => `<span class="agp" title="${esc(nm(p))}\u2019s parents">${L.slots.filter(x => x.kind === 'grandparent' && x.who[0] === p).map(x => face(x.who[1])).join('')}</span>`).join('<span class="amp">·</span>');
   const rows = D.lineages.map((L, i) => {
     const tr = document.createElement('tr'); tr.className = 'pick';
     // the trainee's name is a button (keyboard, assistive tech: pressed = the career shown); the whole row takes clicks too
-    tr.innerHTML = `<td><button type="button" class="rowbtn" aria-pressed="false" aria-label="${esc(nm(L.t))}: parents ${esc(nm(L.p[0]))} and ${esc(nm(L.p[1]))}">${umaAv(M[L.t].id, outfitOf(L.t), 26).outerHTML}<span class="an">${esc(nm(L.t))}</span></button></td><td class="afaces">${face(L.p[0])}<span class="amp">+</span>${face(L.p[1])}</td><td class="afaces">${face(L.x)}</td><td>${total(L).toFixed(0)}</td>`;
+    tr.innerHTML = `<td><button type="button" class="rowbtn" aria-pressed="false" aria-label="${esc(nm(L.t))}: parents ${esc(nm(L.p[0]))} and ${esc(nm(L.p[1]))}" title="${esc(M[L.t].name)}">${umaAv(M[L.t].id, outfitOf(L.t), 26).outerHTML}<span class="an">${esc(nm(L.t))}</span></button></td><td class="afaces">${face(L.p[0])}<span class="amp">+</span>${face(L.p[1])}</td><td class="afaces">${gps(L)}</td><td>${total(L).toFixed(0)}</td>`;
     tr.onclick = () => show(i); tbody.appendChild(tr); return tr;
   });
   function show(i) {

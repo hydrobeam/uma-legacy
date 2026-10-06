@@ -339,7 +339,9 @@ pub(crate) fn chart_rows(d: &Data, m: &[usize], s: &[Sched]) -> Value {
         let mut cnt = 0;
         let cells: Vec<Value> = (0..n).map(|i| match s[i][t] {
             Choice::Opt(o) => { let op = &d.umas[m[i]].opts[t][o as usize];
-                if op.race == race { cnt += 1; json!({"p": (pk(d, op.bp, ks[i][t]) * 100.0).round(), "goal": op.goal}) } else { Value::Null } }
+                if op.race == race { cnt += 1; let k = ks[i][t];
+                    // what costs win chance: the aptitude grades (distance + surface, out of 110) and the k-th race in a row
+                    json!({"p": (pk(d, op.bp, k) * 100.0).round(), "goal": op.goal, "apt": 110 - op.bp, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)}) } else { Value::Null } }
             Choice::Rest => Value::Null,
         }).collect();
         let shared = runners[race as usize].iter().filter(|x| **x).count() >= 2;

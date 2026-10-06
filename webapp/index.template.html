@@ -58,18 +58,17 @@ __CSS__
               <button class="scenbtn" id="x-scen" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="scen-menu" aria-label="Scenario"><span class="slogo"></span></button></div>
             <div class="scenpick" id="scen-menu" role="menu" aria-labelledby="x-scen-l" hidden></div>
           </div>
-          <div class="gctl rankctl"><span class="glab"><span id="rank-l">Lineage rank</span><button type="button" class="qinfo" id="rank-q" aria-expanded="false" aria-controls="rank-note" aria-label="What lineage rank means" title="What lineage rank means"><span aria-hidden="true">?</span></button></span>
+          <div class="gctl rankctl"><span class="glab"><span id="rank-l">Lineage rank</span><button type="button" class="qinfo" id="rank-q" aria-expanded="false" aria-controls="rank-note" aria-label="What lineage rank means" title="What lineage rank means"><span aria-hidden="true">?</span></button><span class="gpop" id="rank-note" role="tooltip" hidden><table class="rtab"><thead><tr><th></th><th>B–S+</th><th>SS</th></tr></thead><tbody>
+            <tr><th>1★ sparks</th><td>50%</td><td>20%</td></tr><tr><th>2★</th><td>45%</td><td>70%</td></tr><tr><th>3★</th><td>5%</td><td>10%</td></tr>
+            <tr class="rsum"><th>Base chance per legacy</th><td>4.65%</td><td>5.70%</td></tr></tbody></table><span class="rfoot">SS: rank score 17,500+</span></span></span>
             <div class="seg rankseg" id="rank" role="radiogroup" aria-labelledby="rank-l">
               <button type="button" role="radio" data-v="0.50,0.45,0.05" aria-label="B to S+" title="B to S+: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars"><span class="rk" data-r="b">B</span><span class="rkdash">–</span><span class="rk" data-r="splus">S+</span></button>
               <button type="button" role="radio" data-v="0.20,0.70,0.10" aria-label="SS" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars"><span class="rk" data-r="ss">SS</span></button>
             </div></div>
         </div>
-        <p class="gnote" id="rank-note" hidden>The rank your loop's veterans finish at. Veterans at SS (rank score 17,500 and up) carry
-          more 2- and 3-star sparks (20/70/10% for 1/2/3 stars, against 50/45/5% below SS), so they pass skills on more often.
-          Picking a scenario sets its usual rank; change it if yours differs.</p>
         <label><input type="checkbox" id="x-rcards"> Use R cards</label>
         <label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>
-        <label><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
+        <label title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for all four"><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
       </div>
       <div class="rhead" id="rhead">
         <p class="runnote" id="run-note" role="status" aria-live="polite"></p>

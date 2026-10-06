@@ -8,11 +8,18 @@ import { paintSort, sortMenu } from './sortmenu.js';
 const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
 // rar: append the rarity ("Daitaku Helios SSR"); the card list leaves it out, its frame and section heading show it
 export const cardTitle = (c, rar = true) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + (rar ? ' ' + RAR[c.rar] : ''), ti: m[1] } : { nm: c.name, ti: '' }; };
-export function cardGives(c, groups) {   // [{t: skill, s: source note, g: gold}]
+// how a card gives a target, as a short note and a one-line tooltip: from training with it, from an event, or from its
+// n-th story event (they come in order, so a later one needs the earlier ones first); "half the time": the event gives
+// it on one of two outcomes
+const ORD = ['', '1st', '2nd', '3rd', '4th', '5th'];
+const share = (p) => p >= 1 ? '' : p === 0.5 ? 'half the time' : `${Math.round(p * 100)}% of the time`;
+export function cardGives(c, groups) {   // [{t: skill, s: note, tip: tooltip, g: gold}]
   const out = [];
-  for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'hint', g: false });
-  for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const sk = SK.get(g) || { w: g, gd: g };
-    out.push({ t: lv === 2 ? sk.gd : sk.w, s: link ? 'chain ' + link + (p < 1 ? ', ' + Math.round(p * 100) + '%' : '') : (p < 1 ? Math.round(p * 100) + '%' : 'event'), g: lv === 2 }); }
+  for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'training', tip: 'From training with this card', g: false });
+  for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const sk = SK.get(g) || { w: g, gd: g }, sh = share(p);
+    const s = (link ? `${ORD[link] || link + 'th'} event` : 'event') + (sh ? ' · ' + sh : '');
+    const tip = (link ? `Its ${ORD[link] || link + 'th'} story event (they come in order)` : 'One of its events') + (sh ? `, ${sh} (one outcome of ${Math.round(1 / p)})` : '');
+    out.push({ t: lv === 2 ? sk.gd : sk.w, s, tip, g: lv === 2 }); }
   return out;
 }
 export function renderCards() {
@@ -32,7 +39,7 @@ export function renderCards() {
     for (const { c, gives } of vis) {
       const t = cardTitle(c, false); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
       b.innerHTML = `<span class="cn">${esc(t.nm)}</span>` + (t.ti ? `<span class="cti">${esc(t.ti)}</span>` : '') +
-        `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
+        `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
           : ''}</span>`;
       b.prepend(cardAv(c, 112));
       // a card the chosen scenario bans (Team Sirius in Unity Cup and Grand Concert): the search leaves it out

@@ -80,7 +80,7 @@ function openPop(el) {
   const groups = new Set(state.targets.filter(x => !goldGiven(x.group)).map(x => x.group)), gives = c ? cardGives(c, groups) : [];
   pop.setAttribute('aria-label', t.nm);
   pop.innerHTML = `<div><b>${esc(t.nm)}</b>${t.ti ? `<div class="ctt">${esc(t.ti)}</div>` : ''}</div>` + (bor ? '<div>Borrowed.</div>' : '') +
-    (gives.length ? `<div class="pgives">${gives.map(x => `<span class="gv${x.g ? ' g' : ''}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')}</div>` : '') +
+    (gives.length ? `<div class="pgives">${gives.map(x => `<span class="gv${x.g ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')}</div>` : '') +
     (el.dataset.end ? `<div>Take the chain-ending choice at link ${el.dataset.end}.</div>` : '') +
     `<div class="pfoot">${c && !bor ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${own ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     (c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : '') + '</div>';

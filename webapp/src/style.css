@@ -243,7 +243,7 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
-  outline: 1px solid color-mix(in srgb, var(--line) 70%, transparent); outline-offset: 0;   /* a faint edge just outside the portrait */ }
+  outline: 1px solid color-mix(in srgb, var(--line) 80%, var(--ink) 20%); outline-offset: 0;   /* a faint edge just outside the portrait */ }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -439,16 +439,28 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .qinfo[aria-expanded="true"] span { background: var(--accent); color: var(--panel); }
 .qinfo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
 @media (max-width: 620px) { .qinfo { min-width: 44px; min-height: 44px; margin: -13px; } }   /* phone: a 44 px tap area around the small circle */
-.gnote { margin: 0; font-size: 0.8rem; color: var(--muted); max-width: 46ch; }
+.glab { position: relative; }
+.gpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: max-content; max-width: 240px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 @media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
 /* affinity popup: the formula, and umas as portraits whose names show on hover, focus or tap */
 .afx { display: grid; gap: 4px; margin-bottom: 6px; }
 .afx p { margin: 0; }
 .afx .fx { font-family: var(--font-data); font-size: 0.8rem; background: var(--bg); border: 1px solid var(--line); padding: 4px 8px; overflow-x: auto; white-space: nowrap; max-width: none; width: fit-content; }
 .afaces { white-space: nowrap; }
-.aface { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; border-radius: 999px; cursor: default; }
-.aface .an, .rowbtn .an { display: none; font-size: 0.82rem; }
-.aface:hover .an, .aface:focus .an, .aface.open .an, .pick.sel .rowbtn .an, .rowbtn:hover .an, .rowbtn:focus .an { display: inline; }
+.aface { position: relative; display: inline-flex; vertical-align: middle; border-radius: 999px; cursor: default; }
+.rowbtn { position: relative; }
+/* the name floats above the portrait (no reflow: the table doesn't move) */
+.aface .an, .rowbtn .an { display: none; position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 3; white-space: nowrap;
+  font-size: 0.78rem; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; pointer-events: none; }
+.aface:hover .an, .aface:focus .an, .aface.open .an, .rowbtn:hover .an, .rowbtn:focus-visible .an { display: block; }
+.agp { display: inline-flex; gap: 2px; }
 .aface:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .amp { margin: 0 6px; color: var(--muted); }
 .rowbtn { display: inline-flex; align-items: center; gap: 6px; }
+.rtab { border-collapse: collapse; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.rtab th, .rtab td { padding: 2px 8px; text-align: right; white-space: nowrap; }
+.rtab th:first-child { text-align: left; font-weight: 600; padding-left: 0; }
+.rtab thead th { font-weight: 700; border-bottom: 1px solid var(--line); }
+.rtab .rsum th, .rtab .rsum td { border-top: 1px solid var(--line); font-weight: 700; }
+.rfoot { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }

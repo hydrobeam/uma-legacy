@@ -42,7 +42,11 @@ export function paintScen() {
   btn.querySelector('.slogo').replaceWith(scenLogo(sc));
   $('scen-menu').querySelectorAll('.stile').forEach(t => t.setAttribute('aria-checked', String(t.dataset.v === sc.v)));
 }
-function initRankNote() { const q = $('rank-q'), n = $('rank-note'); q.onclick = () => { n.hidden = !n.hidden; q.setAttribute('aria-expanded', String(!n.hidden)); }; }
+// the ? by Lineage rank: a small popup; Escape or a click elsewhere closes it
+function initRankNote() { const q = $('rank-q'), n = $('rank-note'), set = (open) => { n.hidden = !open; q.setAttribute('aria-expanded', String(open)); };
+  q.onclick = (e) => { e.stopPropagation(); set(n.hidden); };
+  document.addEventListener('click', (e) => { if (!n.hidden && !n.contains(e.target)) set(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !n.hidden) { set(false); q.focus(); } }); }
 export function initScenario() {
   initRankNote();
   const btn = $('x-scen'), menu = $('scen-menu'), dd = $('scen-dd');

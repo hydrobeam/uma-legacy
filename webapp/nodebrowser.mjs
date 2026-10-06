@@ -276,6 +276,8 @@ const TESTS = {
     const pg = await open(b);
     const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map(h => h.textContent));
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
+    const notes = await pg.evaluate(() => [...document.querySelectorAll('#cards .gv')].map(g => [g.querySelector('small').textContent, g.title]));
+    check('card hint notes in plain words, each with a tooltip', notes.length > 0 && notes.every(([n, t]) => /^(training|event|\d(st|nd|rd|th) event)( · (half the time|\d+% of the time))?$/.test(n) && t.length > 0), JSON.stringify(notes.filter(([n]) => !/^(training|event|\d(st|nd|rd|th) event)/.test(n)).slice(0, 3)));
     check('card names carry no rarity (the frame and section show it)', await pg.evaluate(() => ![...document.querySelectorAll('#cards .ct .cn')].some(e => / (SSR|SR|R)$/.test(e.textContent))));
     // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
     const sirius = () => pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
@@ -468,7 +470,7 @@ const TESTS = {
     check('agenda: a note fills the blank Junior half-year', /starts in Junior Year/.test(await pg.locator('#sched-dlg .ag-pre').innerText()));
     check('agenda: fits the window without scrolling', await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }));
     check('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
-    check('agenda: a race\'s win % sits in its turn bar', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+%$/.test(w.textContent))));
+    check('agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) && /^\d+% win: 110/.test(w.querySelector('b').title))));
     await pg.locator('#sched-dlg .stab').nth(4).click(); check('All four shows the comparison table', (await pg.locator('#sched-dlg table.sched').count()) > 0);
     check('All four: turns written as on the member tabs ("Early Apr"), no shared/optional key', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg td.when')].every(t => /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent)))
       && await pg.locator('#sched-dlg .agkey').isHidden());
@@ -477,7 +479,10 @@ const TESTS = {
     const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
     check('affinity: 6 pairs and 12 careers', rows.join(',') === '6,12', rows.join(','));
     const af = await pg.evaluate(() => ({ faces: document.querySelectorAll('#why-dlg .aface').length, fx: [...document.querySelectorAll('#why-dlg .fx')].map(e => e.textContent).join(' | '), hidden: getComputedStyle(document.querySelector('#why-dlg .aface .an')).display }));
-    check('affinity: umas as portraits (names hidden until asked), the formula with P, P2, GP1, GP2', af.faces >= 6 * 2 + 12 * 3 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
+    check('affinity: umas as portraits (names hidden until asked; four grandparents per career), the formula with P, P2, GP1, GP2', af.faces >= 6 * 2 + 12 * 6 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
+    const pos = () => pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl td')].slice(0, 40).map(td => Math.round(td.getBoundingClientRect().left) + ',' + Math.round(td.getBoundingClientRect().top)).join(' '));
+    const before = await pos(); await pg.locator('#why-dlg .aface').nth(3).hover();
+    check('affinity: hovering a portrait shows the name without moving the table', (await pos()) === before && await pg.locator('#why-dlg .aface').nth(3).locator('.an').isVisible());
     await pg.locator('#why-dlg .aface').first().click();
     check('affinity: tapping a portrait shows her name', await pg.locator('#why-dlg .aface.open .an').first().isVisible());
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

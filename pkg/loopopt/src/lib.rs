@@ -112,7 +112,8 @@ struct Ent { race: i32, rest: bool, bit: u32, p: [f64; 7] }
 const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
 struct Data { nr: usize, umas: Vec<Uma>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pk: Vec<[f64; 7]>, race_names: Vec<String>,
-    pbt: Option<Vec<f64>> }   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
+    pbt: Option<Vec<f64>>,   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
+    pen: Vec<i32> }   // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
 /// stop matching and are recomputed.
@@ -218,7 +219,7 @@ fn load_raw(raw: DataRaw) -> Data {
         (_, _, Some(r)) => rel_tables(n_umas, r),
         _ => panic!("data.json has neither relations nor pair/tri tables"),
     };
-    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt }
+    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt, pen: raw.pen }
 }
 
 type Sched = [Choice; NT];

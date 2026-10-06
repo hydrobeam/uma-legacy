@@ -26,6 +26,13 @@ export function openSched(l) {
   keyEl.innerHTML = '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(keyEl);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const slotOf = (w) => { const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(w); return m ? MONTHS.indexOf(m[3]) * 2 + (m[2] === 'L' ? 1 : 0) : -1; };
+  // why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades) minus the penalty for the k-th
+  // race in a row, capped at 100%
+  const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
+  const why = (c) => { if (c.apt === undefined) return ''; const parts = [];
+    if (c.apt > 0) parts.push(`aptitude −${c.apt}`);
+    if (c.pen > 0) parts.push(`${ORD[Math.min(c.row, 6)]} race in a row −${c.pen}`);
+    return `${c.p}% win: 110` + (parts.length ? ', ' + parts.join(', ') : '') + (110 - c.apt - c.pen > 100 ? ', capped at 100' : ''); };
   function cell(r, k) {   // one scheduled race in a slot
     const c = r.cells[k], names = r.race.split('/'), el = document.createElement('div'); el.className = 'ag-race' + (r.shared ? '' : ' opt');
     const id = RACEIDS[names[0]], src = id && srcFor('race', id);
@@ -33,7 +40,7 @@ export function openSched(l) {
     const nmEl = document.createElement('div'); nmEl.className = 'ag-nm'; nmEl.textContent = names.join(' or '); el.appendChild(nmEl);
     const others = M.map((_, j) => j).filter(j => j !== k && r.cells[j]);
     if (c.goal) { const g = document.createElement('span'); g.className = 'ag-goal'; g.textContent = 'Goal'; el.appendChild(g); }
-    el.title = names.join(' or ') + ' · win ' + c.p + '%' + (c.goal ? ' · goal' : '') + (others.length ? ' · with ' + others.map(j => M[j].name).join(', ') : ' · alone (no affinity, optional)');
+    el.title = names.join(' or ') + ' · ' + (why(c) || 'win ' + c.p + '%') + (c.goal ? ' · goal' : '') + (others.length ? ' · with ' + others.map(j => M[j].name).join(', ') : ' · alone (no affinity, optional)');
     return el;
   }
   function show(key) {
@@ -55,7 +62,7 @@ export function openSched(l) {
         if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
         // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
         const lb = document.createElement('div'); lb.className = 'ag-when'; const wn = document.createElement('span'); wn.textContent = (sI % 2 ? 'Late ' : 'Early ') + MONTHS[sI >> 1]; lb.appendChild(wn);
-        if (r) { const p = document.createElement('b'); p.textContent = r.cells[key].p + '%'; lb.appendChild(p); }
+        if (r) { const p = document.createElement('b'); p.textContent = r.cells[key].p + '% win'; p.title = why(r.cells[key]); lb.appendChild(p); }
         slot.appendChild(lb);
         grid.appendChild(slot);
       }
@@ -88,7 +95,7 @@ function schedTable(m, rows, outfitOf) {
     wrap.appendChild(t2);
   }
   wrap.querySelectorAll('th.mh').forEach(th => th.prepend(umaAv(m[+th.dataset.k].id, outfitOf(+th.dataset.k), 22)));
-  const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'Number = win % at that attempt (streak penalty included). * = goal race. · = not running it. Turns not listed are rest.' + (rows.some(r => r.alts && r.alts.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : '');
+  const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest.' + (rows.some(r => r.alts && r.alts.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : '');
   wrap.appendChild(note);
   return wrap;
 }
