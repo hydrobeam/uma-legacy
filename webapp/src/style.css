@@ -58,18 +58,15 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
    shows, then sticks by its bottom (--rtop, set by main.js from its height); the status row stays at the top */
 @media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; } }
 .rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 42px; padding: 5px 10px; background: var(--bg);
-  border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; }
+  border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; transition: background-color 0.15s, border-color 0.15s; }
 .runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
 .runnote:empty { display: none; }
 /* a search's banner look comes on only after a moment (as the dim): a 0.2 s search doesn't flash the row */
-.rhead { transition: background-color 0.15s, border-color 0.15s; }
 .rhead[data-kind="busy"] { background: var(--accent-soft); border-color: var(--accent); transition-delay: 0.6s; }
-.rhead[data-kind="busy"] .runnote { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .rhead { transition: none; } }
 .rhead[data-kind="error"] { background: var(--out-soft); border-color: var(--out); border-left-width: 5px; }
-.rhead[data-kind="error"] .runnote { color: var(--ink); font-weight: 600; }   /* --out on --out-soft is 6.5:1, short of AAA */
+.rhead[data-kind="error"] .runnote { font-weight: 600; }   /* ink, not --out: --out on --out-soft is 6.5:1, short of AAA */
 .rhead[data-kind="empty"], .rhead[data-kind="stopped"] { background: var(--panel); border-color: var(--line); }
-.rhead[data-kind="empty"] .runnote, .rhead[data-kind="stopped"] .runnote { color: var(--ink); }
 .ract:empty { display: none; }
 .rtop { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
 /* while a search runs (after a moment, so a quick one doesn't flicker) and when the settings can't be searched, the
@@ -95,22 +92,21 @@ h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; colo
 .hint { color: var(--muted); font-size: 0.82rem; margin: 0; }
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
-button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; background: var(--bg); }
 .seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-weight: 500; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
 .btn:active { background: var(--accent-soft); border-color: var(--accent); }
-input[type="search"], input[type="number"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
+input[type="search"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 input[type="search"] { width: 100%; }
-/* roster chips: three states */
+/* the uma picker: a grid of portrait tiles */
 .roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 12px 4px 4px; scrollbar-gutter: stable; align-items: start; }
-/* uma tile: portrait (tap cycles owned / not owned / must include), outfit thumbnails, name as a subtitle */
+/* uma tile: portrait (tap cycles owned / not owned / must include), name, outfit as a subtitle */
 .ut { display: grid; gap: 4px; min-width: 0; }
 .ut .up { position: relative; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; display: block; }
 .ut .up .av { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 12px; font-size: 1.4rem !important; display: grid; }
-.ut .up:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ut[data-s="out"] .up .av { filter: grayscale(1); opacity: 0.45; }
 .ut[data-s="req"] .up .av { box-shadow: 0 0 0 3px var(--req); }
 .ut[data-s="req"] .up::after { content: "must"; position: absolute; top: 4px; right: 4px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
@@ -131,11 +127,10 @@ input[type="search"] { width: 100%; }
 .sortmenu button { text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 0.88rem; color: var(--ink); cursor: pointer; }
 .sortmenu button:hover, .sortmenu button:focus-visible { background: var(--accent-soft); }
 .sortmenu button[aria-checked="true"] { font-weight: 700; color: var(--accent); }
-/* scenario picker: the button is the chosen scenario's logo; the grid below it spans the panel, four equal tiles.
+/* scenario picker: the button is the chosen scenario's logo; the grid below it spans the panel, tiles of equal size.
    Logos are drawn whole inside fixed boxes (object-fit: contain), never stretched. */
 .gamerow { position: relative; display: grid; grid-template-columns: auto auto; justify-content: start; align-items: start; gap: 10px 20px; margin-bottom: 4px; }   /* the scenario picker hangs below this row, across the panel */
 .gctl { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 0.88rem; }   /* label above its control */
-.scendd { position: static; }
 .extras .rankctl { gap: 4px; font-size: 0.88rem; align-items: flex-start; }
 /* lineage rank: the game's rank badges (B, S+, SS) in a two-option toggle */
 .rankseg button { display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px; }
@@ -160,7 +155,7 @@ input[type="search"] { width: 100%; }
 .slogo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .slogo b { font-weight: 700; font-size: 0.8rem; line-height: 1.15; text-align: center; color: var(--ink); border-radius: 6px; padding: 3px 7px; }
 .scenbtn .slogo { width: 92px; height: 42px; }
-.scenpick { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px;
+.scenpick { container-type: inline-size; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); padding: 6px; }
 .stile { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; text-align: center; border: 1px solid var(--line); background: var(--panel);
   color: var(--ink); border-radius: 8px; padding: 8px 6px; min-width: 0; outline-offset: 2px; }
@@ -172,21 +167,12 @@ input[type="search"] { width: 100%; }
 .sgolds { display: inline-flex; align-items: center; gap: 3px; }
 .sgolds .sic { width: 16px; height: 16px; margin: 0; vertical-align: 0; }
 .sgold { font-size: 0.72rem; font-weight: 600; color: var(--ink); }
-.scenpick { container-type: inline-size; }
 .sest-s { display: none; text-decoration: none; }
 @container (max-width: 380px) { .sest-l { display: none; } .sest-s { display: inline; } }
 .ut[data-s="out"] .un { color: var(--muted); }
 .ut[data-s="req"] .un { color: var(--req); }
-.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 0.83rem; line-height: 1.3; }
-.chip[data-s="out"] { background: var(--out-soft); border-color: var(--out); color: var(--out); text-decoration: line-through; }
-.chip[data-s="req"] { background: var(--req-soft); border-color: var(--req); color: var(--req); font-weight: 700; }
-.chip .n { font-family: var(--font-data); font-size: 0.72rem; color: var(--muted); margin-left: 5px; text-decoration: none; }
-.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.78rem; color: var(--muted); }
-.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; border: 1px solid var(--line); vertical-align: -1px; }
-.legend .l-out::before { background: var(--out-soft); border-color: var(--out); }
-.legend .l-req::before { background: var(--req-soft); border-color: var(--req); }
 /* target skills */
-/* one line per target: name, what is guaranteed outside the deck (one header over the column), remove */
+/* target tiles, two per row: icon and name (a scenario-guaranteed gold reads as the gold), remove */
 .targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }
 .targets > .hint { grid-column: 1 / -1; }
 .tgt { border: 1px solid var(--line); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
@@ -208,9 +194,6 @@ input[type="search"] { width: 100%; }
 .extras input[type=checkbox] { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
 /* results */
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
-.status { color: var(--muted); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.badge { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-.badge.ex { background: var(--gold-soft); color: var(--gold); }
 .loop { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .loop > * { min-width: 0; }
 .loop.first { border-color: var(--accent); border-width: 2px; }
@@ -237,7 +220,6 @@ input[type="search"] { width: 100%; }
   border-radius: 0; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold, as the target tiles */
 .spark .sic { width: 20px; height: 20px; flex: none; }
 .spark.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
-details summary { cursor: pointer; font-weight: 700; font-size: 0.88rem; color: var(--accent); }
 .tablewrap { overflow-x: auto; margin-top: 8px;
   /* scroll shadows: a shade at an edge with more table beyond it (the covers scroll with the content, the shades don't) */
   background: linear-gradient(to right, var(--panel) 30%, rgba(255,255,255,0)) left / 32px 100% no-repeat local,
@@ -253,26 +235,19 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .sched td:first-child { white-space: normal; }
 .sched .dot { color: var(--muted); }
 .sched .goal { color: var(--accent); font-weight: 600; }
-.sched .alt { color: var(--muted); font-size: 0.76rem; text-align: left; }
 .sched caption { text-align: left; font-weight: 700; padding: 6px 0; caption-side: top; }
-.err { color: var(--out); font-weight: 500; }
 .foot { max-width: 1320px; margin: 26px auto 0; color: var(--muted); font-size: 0.82rem; display: grid; gap: 6px; }
 .foot p { margin: 0; max-width: 90ch; }
-.foot .model { display: grid; gap: 6px; }
-.foot .model[open] summary { margin-bottom: 4px; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
-.av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle; }
+.av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
+  outline: 1px solid color-mix(in srgb, var(--line) 70%, transparent); outline-offset: 0;   /* a faint edge just outside the portrait */ }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.av { outline: 1px solid color-mix(in srgb, var(--line) 70%, transparent); outline-offset: 0; }   /* a faint edge just outside the portrait */
 .cav { display: inline-grid; place-items: center; flex: none; border-radius: 5px; overflow: hidden; color: #fff; font-family: var(--font-data); font-weight: 700; line-height: 1; vertical-align: middle; background: var(--k, var(--k-other)); box-shadow: 0 0 0 2px var(--rr, transparent); }
 .cav img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cav.art { position: relative; }
 .cav .ctype { position: absolute; top: 0; right: 3%; width: 26.4%; aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; }
-.chip .av, .chip .cav { margin-right: 6px; }
-.chip[data-s="out"] .av { filter: grayscale(1); opacity: 0.55; }
-.cav.art { box-shadow: none; background: none; }
+.cav.art { position: relative; box-shadow: none; background: none; }
 .mem .head { display: flex; gap: 8px; align-items: center; }
 .mem .memb { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
 .mem .memb:hover .nm { text-decoration: underline; }
@@ -339,7 +314,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .node.t { grid-column: 1 / -1; justify-self: center; min-width: min(280px, 100%); border-color: var(--accent); }
 .node.p { grid-column: span 2; }
 .node b { color: var(--ink); }
-.imgdrop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; }
 /* the card list scrolls under its search row: kept 12px apart like the roster (the panel's gap), with room inside the
    scroller for what reaches past a tile (the 2px rarity ring, the focus outline 3px out) */
 .cards { display: grid; gap: 14px; max-height: min(640px, 70vh); overflow: auto; padding: 6px 12px 6px 6px; margin-top: 12px; scrollbar-gutter: stable; }
@@ -368,12 +342,11 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .swrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; }
 /* cards line up by their art (a caption under one doesn't shift the row); the words and arrow sit at the art's middle */
 .swrow > :not(.swc) { min-height: 64px; display: inline-flex; align-items: center; }
-.swc { align-items: flex-start; }
 .swt { color: var(--muted); }
-.swc { display: inline-flex; gap: 6px; }
+.swc { display: inline-flex; align-items: flex-start; gap: 6px; }
 .swc .dc { width: 64px; }
 .swa { font-size: 1.2rem; color: var(--muted); }
-/* #2 and #3: the cards #1's deck doesn't have */
+/* a deck card: its art (click for the panel); without art, its name */
 .dc { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font: inherit; font-size: 0.75rem; color: inherit; background: none;
   border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 8px; }
 /* deck cards are their art alone (click for name and ownership); without art the name shows */
@@ -398,7 +371,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .dc i { font-size: 0.7rem; font-style: normal; color: var(--muted); }
 .cpop { position: absolute; z-index: 50; max-width: 300px; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
   border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 0.85rem; display: grid; gap: 6px; }
-.cpop[hidden] { display: none; }
 .cpop:focus { outline: none; }
 .cpop .ctt { color: var(--muted); }
 .cpop .pgives { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -412,16 +384,13 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
 .sw input:checked { background: var(--req); }
 .sw input:checked::after { transform: translateX(14px); }
-.sw input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* hint odds: a small frame opened by the (i) button, one tile per hint (icon, bar, percentage) */
 .dtitle { display: inline-flex; align-items: center; gap: 8px; }
 .oinfo { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 1px solid var(--accent); background: var(--panel); color: var(--accent);
   font: italic 700 0.8rem/1 Georgia, serif; cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
 .oinfo[aria-expanded="true"] { background: var(--accent); color: var(--panel); }
-.oinfo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dodds { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 8px 16px; font-size: 0.8rem; color: var(--muted);
   border: 1px solid var(--line); background: var(--bg); padding: 8px 10px; }
-.dodds[hidden] { display: none; }
 .dodds .dlab { grid-column: 1 / -1; color: var(--muted); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .dodds .dsk { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "ic nm pc" "ic bar bar"; align-items: center; gap: 2px 6px; }
 .dodds .dsk .sic { grid-area: ic; width: 20px; height: 20px; margin: 0; vertical-align: 0; }
@@ -448,7 +417,6 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 /* a narrow phone: the schedule table's member columns keep only their portraits (the names stay for screen readers) */
 @media (max-width: 400px) { .sched th.mh .hn { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .sched th.mh .av { margin: 0 auto; } }
-@media (max-width: 620px) { .swrow > b { flex: 1 0 100%; } }   /* phone: "X's deck" on its own line, then "swaps [card] → [card]" */
 /* phone: buttons, selects and search boxes at least 44 px high (touch); the portraits and cards are larger already */
 @media (max-width: 620px) {
   .btn, .seg button, .stab, .scenbtn, select, input[type="search"], .sugg button, .sortmenu button, .x, .rowbtn { min-height: 44px; }
