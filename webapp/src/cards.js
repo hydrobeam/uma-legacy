@@ -9,16 +9,16 @@ const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
 // rar: append the rarity ("Daitaku Helios SSR"); the card list leaves it out, its frame and section heading show it
 export const cardTitle = (c, rar = true) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + (rar ? ' ' + RAR[c.rar] : ''), ti: m[1] } : { nm: c.name, ti: '' }; };
 // how a card gives a target, as a short note and a one-line tooltip: from training with it, from an event, or from its
-// n-th story event (they come in order, so a later one needs the earlier ones first); "half the time": the event gives
-// it on one of two outcomes
+// n-th story event (they come in order, so a later one needs the earlier ones first); "50%": the event gives
+// it on one of two outcomes (50%)
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th'];
-const share = (p) => p >= 1 ? '' : p === 0.5 ? 'half the time' : `${Math.round(p * 100)}% of the time`;
+const share = (p) => p >= 1 ? '' : `${Math.round(p * 100)}%`;
 export function cardGives(c, groups) {   // [{t: skill, s: note, tip: tooltip, g: gold}]
   const out = [];
-  for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'training', tip: 'From training with this card', g: false });
+  for (const g of c.whites) if (groups.has(g)) out.push({ t: (SK.get(g) || { w: g }).w, s: 'hint', tip: 'Hinted when training with this card', g: false });
   for (const [g, lv, link, p] of c.ev) if (groups.has(g)) { const sk = SK.get(g) || { w: g, gd: g }, sh = share(p);
     const s = (link ? `${ORD[link] || link + 'th'} event` : 'event') + (sh ? ' · ' + sh : '');
-    const tip = (link ? `Its ${ORD[link] || link + 'th'} story event (they come in order)` : 'One of its events') + (sh ? `, ${sh} (one outcome of ${Math.round(1 / p)})` : '');
+    const tip = (link ? `Its ${ORD[link] || link + 'th'} story event (they come in order)` : 'One of its events') + (sh ? `, ${sh} of the time (one outcome of ${Math.round(1 / p)})` : '');
     out.push({ t: lv === 2 ? sk.gd : sk.w, s, tip, g: lv === 2 }); }
   return out;
 }

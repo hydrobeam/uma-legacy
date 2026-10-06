@@ -41,9 +41,9 @@ function placePop(el, beside = false) {
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
 // (another outfit would be a different trainee); with "any outfit" it is the uma.
-function openUmaPop(btn) {
+function openUmaPop(btn, d = btn.closest('.mem')) {   // d: her member block (a portrait elsewhere in the result passes it)
   closePop(); popFor = btn; btn.setAttribute('aria-expanded', 'true');
-  const d = btn.closest('.mem'), u = UMAS.find(x => x.id === +d.dataset.uma), oid = d.dataset.outfit ? +d.dataset.outfit : null;
+  const u = UMAS.find(x => x.id === +d.dataset.uma), oid = d.dataset.outfit ? +d.dataset.outfit : null;
   const owned = () => oid ? umaState(u) !== 'out' && state.outfits[oid] !== false : umaState(u) !== 'out';
   const title = u.name + (oid ? ' ' + d.dataset.outfitLabel : '');
   pop.setAttribute('aria-label', title);
@@ -92,6 +92,8 @@ export function initPopover() {
   document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc'), mb = e.target.closest('.mem .memb');
     if (d) { if (popFor === d) closePop(); else openPop(d); return; }
     if (mb) { if (popFor === mb) closePop(); else openUmaPop(mb); return; }
+    const fb = e.target.closest('.loop .facebtn');   // a portrait in a deck title or swap row: the same panel
+    if (fb) { if (popFor === fb) closePop(); else openUmaPop(fb, fb.closest('.loop').querySelector(`.mem[data-uma="${fb.dataset.uma}"]`)); return; }
     if (!e.target.closest('.cpop')) closePop(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popFor) back(); });
 }

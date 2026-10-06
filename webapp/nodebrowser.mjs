@@ -117,7 +117,7 @@ const TESTS = {
     check('(i) opens the deck odds (aria-expanded, names and percentages)', (await oi.getAttribute('aria-expanded')) === 'true' && await pg.evaluate(() => { const o = document.querySelector('#results .loop .dodds'); return !o.hidden && o.querySelectorAll('.dnm').length > 0 && /\d+%/.test(o.innerText); }));
     await oi.click();
     check('(i) closes them again', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
-    const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.av')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
+    const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.facebtn')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && (n.classList.contains('vh') || n.classList.contains('facebtn')))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
     const swd = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap')].map(d => [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim())));
     check('each swap row says what it changes ("Skill a% → b%")', swd.length > 0 && swd.every(r => r.length > 0 && r.every(t => /\d+% → \d+%$/.test(t))), JSON.stringify(swd));
     const more = pg.locator('#results .loop .swd.more').first();
@@ -303,7 +303,7 @@ const TESTS = {
     const secs = await pg.evaluate(() => [...document.querySelectorAll('#cards .cgroup h3')].map(h => h.textContent));
     check('card sections SSR, SR, R in that order', secs.join(',') === 'SSR,SR,R', secs.join(','));
     const notes = await pg.evaluate(() => [...document.querySelectorAll('#cards .gv')].map(g => [g.querySelector('small').textContent, g.title]));
-    check('card hint notes in plain words, each with a tooltip', notes.length > 0 && notes.every(([n, t]) => /^(training|event|\d(st|nd|rd|th) event)( · (half the time|\d+% of the time))?$/.test(n) && t.length > 0), JSON.stringify(notes.filter(([n]) => !/^(training|event|\d(st|nd|rd|th) event)/.test(n)).slice(0, 3)));
+    check('card hint notes in plain words, each with a tooltip', notes.length > 0 && notes.every(([n, t]) => /^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n) && t.length > 0), JSON.stringify(notes.filter(([n]) => !/^(hint|event|\d(st|nd|rd|th) event)( · \d+%)?$/.test(n)).slice(0, 3)));
     check('card names carry no rarity (the frame and section show it)', await pg.evaluate(() => ![...document.querySelectorAll('#cards .ct .cn')].some(e => / (SSR|SR|R)$/.test(e.textContent))));
     // the game bans Team Sirius from Unity Cup and Grand Concert decks: the picker says so and no result deck holds it
     const sirius = () => pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
@@ -349,6 +349,12 @@ const TESTS = {
     const sp = pg.locator('.loop').first().locator('.mem .spark').first();
     check('outfit skill shows its skill icon', (await sp.locator('img.sic').count()) === 1);
     const mb = pg.locator('.loop').first().locator('.mem .memb').nth(1); await mb.click();
+    await pg.keyboard.press('Escape');
+    const fb = pg.locator('.loop').first().locator('.swho .facebtn').first();
+    if (await fb.count()) { const id = await fb.getAttribute('data-uma'); await fb.click();
+      check('a portrait in a swap row opens the same member panel', !(await pg.locator('.cpop').isHidden()) && (await pg.locator('.cpop input[data-act="uma"]').count()) === 1
+        && (await pg.locator('.cpop b').first().innerText()) === await pg.locator(`.loop .mem[data-uma="${id}"] .nm`).first().innerText());
+      await pg.keyboard.press('Escape'); await mb.click(); }
     check('member panel has one Owned switch', (await pg.locator('.cpop input[role=switch]').count()) === 1);
     const uh = await pg.locator('.cpop .gtl').getAttribute('href');
     check('member panel: GameTora character link', /^https:\/\/gametora\.com\/umamusume\/characters\/\d{6}-[a-z0-9-]+$/.test(uh || ''), uh);

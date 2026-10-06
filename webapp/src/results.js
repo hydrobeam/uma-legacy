@@ -60,7 +60,9 @@ function loopCard(l, meta, ctx) {
       return `<button type="button" class="swd more" aria-expanded="false">${out.map((x, i) => i < 2 ? one(x) : one(x).replace('class="swd1', 'class="swd1 extra')).join('')}<span class="swmore" data-n="${out.length - 2}">+${out.length - 2} more</span></button>`; };
     const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
     // a member's portrait (her outfit's when the loop fixes one), with her name as its tooltip
-    const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size); av.title = M[k].name + (of.length === 1 ? ' ' + of[0].label : ''); return av.outerHTML; };
+    // a member's portrait: a button opening her panel, as her name at the top does
+    const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size), nm = M[k].name + (of.length === 1 ? ' ' + of[0].label : '');
+      return `<button type="button" class="facebtn" data-uma="${M[k].id}" title="${esc(nm)}" aria-label="${esc(nm)}" aria-haspopup="dialog" aria-expanded="false">${av.outerHTML}</button>`; };
     const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
       dk.innerHTML = `<div class="dtitle"><b>${title}</b></div>${info}<div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
       return dk; };
