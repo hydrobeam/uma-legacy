@@ -14,7 +14,7 @@ words; this file is the reference for the controls.
 - *Assumed lineage rank* (the planner doesn't work out the score a deck would reach): the star mix of the sparks on your legacies, *B to S+* (rank score 6,500–17,499: 50/45/5% for
   1/2/3 stars) or *SS* (17,500+: 20/70/10%), from hakuraku.moe's room-match data. Picking a scenario sets its usual
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
-- *Use R cards* (off by default: their training-hint model is untested), *Borrow one friend's card*, *A separate deck
+- *Borrow one friend's card*, *A separate deck
   for each uma* (on by default).
 - The status line: searching, done ("Searched N decks and M loops in T s"), or what keeps the settings from being
   searched, with the button that fixes it; **Stop** ends a long search and keeps the results. **Results to show**

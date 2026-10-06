@@ -2,7 +2,8 @@
 import { PER_ERA, COMMON, SAVED, ERA, persist } from './settings.js';
 import { PRESET, SCEN_GOLDS } from './data.js';
 export const DEFAULTS = { targets: PRESET.map(group => ({ group })), rank: '0.50,0.45,0.05', auto: true, borrow: true, decksTop: '1', perUma: true,
-  rcards: false, scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
+  rcards: false,   // R cards (not pals) stay out: their hint model is untested; no setting turns them on
+  scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
 const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
 // roster: uma id -> 'out' | 'req' ('req' only for umas without separate outfits); outfits: id -> false (not owned) | 'req'
 // (must include this outfit); cardsOff: id -> false when not owned

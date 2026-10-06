@@ -331,12 +331,10 @@ const TESTS = {
     const cnt = /^(\d+) of (\d+) listed cards owned$/.exec(await pg.locator('#c-count').innerText());
     check('the count line follows ("N of M listed cards owned")', !!cnt && +cnt[1] === +cnt[2] - 1, await pg.locator('#c-count').innerText());
     await tile.click();
-    // R cards are off by default: the R section holds only the R pals until they are switched on
+    // R cards are left out (no setting): the R section holds only the R pals
     const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
     const rCount = () => pg.evaluate(() => { const g = [...document.querySelectorAll('#cards .cgroup')].find(x => x.querySelector('h3').textContent === 'R'); return g ? g.querySelectorAll('.ct').length : 0; });
-    check('R cards off by default; the R section keeps the R pals', !(await pg.locator('#x-rcards').isChecked()) && (await rCount()) === rpals, (await rCount()) + ' of ' + rpals);
-    await pg.click('#x-rcards');
-    check('switching R cards on lists them', (await rCount()) > rpals);
+    check('R cards are left out, with no switch; the R section keeps the R pals', (await pg.locator('#x-rcards').count()) === 0 && (await rCount()) === rpals, (await rCount()) + ' of ' + rpals);
     check('every card image carries its type icon', (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();

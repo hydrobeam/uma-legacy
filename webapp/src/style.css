@@ -22,6 +22,8 @@
   --yr0: #0b5a4d; --yr1: #2f3f99; --yr2: #8a3c0c;
   --opt: #6a2d8f; --opt-soft: #f1e7f8;   /* optional G1s: one runner, no affinity */
   --shade: rgba(24, 32, 46, .22);   /* the scroll-edge shadow */
+  --hint-edge: var(--line);   /* white skill boxes (hints, outfit skills, target tiles) */
+  --first-edge: var(--accent);   /* the first result's outline */
   --img-edge: color-mix(in srgb, var(--line) 80%, var(--ink) 20%);   /* the faint edge round portraits */
   color-scheme: light;
 }
@@ -33,6 +35,8 @@
   --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
   --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444;
   --av-l: 30%; --av-c: 35%; --shade: rgba(255, 255, 255, .18);
+  --hint-edge: #aeb9ca;   /* white skill boxes: a lighter edge on the black panels */
+  --first-edge: #6b82bd;   /* the first result's outline, dimmer than the accent */
   --img-edge: #e3e8ef;   /* a near-white edge round portraits (card art keeps only its own frame) */
   color-scheme: dark;
 }
@@ -196,7 +200,7 @@ input[type="search"] { width: 100%; }
 /* target tiles, two per row: icon and name (a scenario-guaranteed gold reads as the gold), remove */
 .targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }
 .targets > .hint { grid-column: 1 / -1; }
-.tgt { border: 1px solid var(--line); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
+.tgt { border: 1px solid var(--hint-edge); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
 .tgt .name { font-weight: 700; font-size: 0.85rem; min-width: 0; display: flex; align-items: center; gap: 6px; line-height: 1.15; }   /* a long name wraps to a second line beside its icon */
 .tgt .name .sic { margin-right: 0; }
 .tgt.gold { border-color: var(--gold); background: var(--gold-soft); }
@@ -218,7 +222,7 @@ input[type="search"] { width: 100%; }
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .loop { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .loop > * { min-width: 0; }
-.loop.first { border-color: var(--accent); border-width: 2px; }
+.loop.first { border-color: var(--first-edge); border-width: 2px; }
 .lhead { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; }
 /* the result's headline: "1 in 139 runs to land all 8" (the number large), then the near-miss odds and the 90% line */
 .rank { align-self: center; font-weight: 700; font-size: 0.85rem; color: var(--panel); background: var(--ink); border-radius: 6px; padding: 1px 7px; font-variant-numeric: tabular-nums; }
@@ -239,7 +243,7 @@ input[type="search"] { width: 100%; }
 .mem .sk:empty { display: none; }
 .mem .sk .skl { font-size: 0.72rem; color: var(--muted); }
 .spark { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; line-height: 1.3; padding: 1px 6px 1px 2px;
-  border-radius: 0; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold, as the target tiles */
+  border-radius: 0; border: 1px solid var(--hint-edge); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold, as the target tiles */
 .spark .sic { width: 20px; height: 20px; flex: none; }
 .spark.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 .tablewrap { overflow-x: auto; margin-top: 8px;
@@ -351,7 +355,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .ct .cn { font-size: 0.8rem; font-weight: 700; line-height: 1.25; }
 .ct .cti { font-size: 0.72rem; color: var(--muted); line-height: 1.25; }
 .ct .cg { display: grid; gap: 4px; margin-top: 2px; }   /* one box per line, each the tile's full width */
-.ct .gv, .cpop .gv { font-size: 0.68rem; line-height: 1.25; padding: 1px 4px; border-radius: 0; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold */
+.ct .gv, .cpop .gv { font-size: 0.68rem; line-height: 1.25; padding: 1px 4px; border-radius: 0; border: 1px solid var(--hint-edge); background: var(--panel); color: var(--ink); font-weight: 600; }   /* white plain, gold gold */
 .ct .gv.g, .cpop .gv.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 .ct .gv small, .cpop .gv small { font-weight: 500; }
 .ct .gv small { display: block; }   /* the note on its own line: every box two lines, the same size */

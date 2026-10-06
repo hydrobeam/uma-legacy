@@ -17,7 +17,7 @@ function exportText() {
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for all four)',
-    game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', r_cards: state.rcards, scenario: scenarioOf(state.scen).name,
+    game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', scenario: scenarioOf(state.scen).name,
   };
   let results = null;
   if (ui.lastResult) {
@@ -51,7 +51,7 @@ export function initIO() {
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
       paintRank(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
-      $('x-rcards').checked = state.rcards; $('x-auto').checked = state.auto !== false; paintScen();
+      $('x-auto').checked = state.auto !== false; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
