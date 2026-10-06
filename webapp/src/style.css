@@ -176,7 +176,8 @@ input[type="search"] { width: 100%; }
 .targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }
 .targets > .hint { grid-column: 1 / -1; }
 .tgt { border: 1px solid var(--line); border-radius: 8px; padding: 2px 2px 2px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; }
-.tgt .name { font-weight: 700; font-size: 0.85rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tgt .name { font-weight: 700; font-size: 0.85rem; min-width: 0; display: flex; align-items: center; gap: 6px; line-height: 1.15; }   /* a long name wraps to a second line beside its icon */
+.tgt .name .sic { margin-right: 0; }
 .tgt.gold { border-color: var(--gold); background: var(--gold-soft); }
 .tgt.gold .name { color: var(--gold); }
 .tg { color: var(--gold); }
