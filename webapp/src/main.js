@@ -25,7 +25,7 @@ $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => se
 if (ERA === 'gm') { ui.status = { kind: 'loading', text: 'Loading the JP Grand Masters-era data…' }; paintRunNote(); }   // fetched: about a second
 loadData().then(start, (e) => { ui.status = { kind: 'error', text: e.message }; paintRunNote(); });
 function start() {
-  $('x-auto').checked = state.auto !== false; $('x-auto').onchange = (e) => { state.auto = e.target.checked; save(); };   // turning it on searches
+  $('x-auto').checked = state.auto !== false; $('x-auto').onchange = (e) => { state.auto = e.target.checked; writeSaved(); if (state.auto && ui.status.kind === 'pending') save(); };   // the switch changes no result: switching it on searches only changes made while it was off
   $('x-rcards').checked = state.rcards; $('x-rcards').onchange = (e) => { state.rcards = e.target.checked; save(); renderCards(); };
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
