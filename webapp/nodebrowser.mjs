@@ -97,11 +97,14 @@ const TESTS = {
     check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     const off = await pg.evaluate(() => Math.round(document.getElementById('rcol').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
     check('results start level with the settings column', Math.abs(off) <= 1, off + ' px');
+    const al = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
+    check('the first result is level with the Settings box', Math.abs(al) <= 1, al + ' px');
+    check('the status line and Results to show sit in the Settings box', await pg.evaluate(() => !!document.querySelector('.rail .panel #run-note') && !!document.querySelector('.rail .panel #c-top')));
     // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)
     await pg.evaluate(() => scrollTo(0, 1600)); await pg.waitForTimeout(100);
     const st = await pg.evaluate(() => { const c = document.getElementById('rcol').getBoundingClientRect(), l = document.querySelector('#results .loop').getBoundingClientRect(), n = document.getElementById('run-note').getBoundingClientRect();
       return { top: Math.round(c.top), bottom: Math.round(c.bottom), loop: Math.round(l.top), note: Math.round(n.top), y: scrollY, h: innerHeight }; });
-    check('desktop: scrolled down the settings, the status line and the result stay on screen', st.y > 1000 && st.top >= 0 && st.top <= 20 && st.note >= 0 && st.loop < st.h && st.bottom <= st.h, JSON.stringify(st));
+    check('desktop: scrolled down the settings, the result stays on screen (the status line is in the Settings box)', st.y > 1000 && st.top >= 0 && st.top <= 20 && st.loop < st.h && st.bottom <= st.h, JSON.stringify(st));
     await pg.evaluate(() => scrollTo(0, 0));
     check('"Results to show" sits in the results header', await pg.evaluate(() => !!document.getElementById('c-top').closest('#rhead')));
     check('no button; status bar present', (await pg.locator('#run').count()) === 0 && (await pg.locator('#run-note').count()) === 1);

@@ -45,7 +45,7 @@ __CSS__
   <aside class="rail">
     <section class="panel" aria-labelledby="h-era">
       <div class="row between">
-        <h2 id="h-era">Game data</h2>
+        <h2 id="h-era">Settings</h2>
         <div class="seg" role="group" aria-label="Game data">
           <button id="era-global" aria-pressed="true">Global today</button>
           <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
@@ -67,6 +67,12 @@ __CSS__
         <label><input type="checkbox" id="x-rcards"> Use R cards</label>
         <label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>
         <label><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
+      </div>
+      <div class="rhead" id="rhead">
+        <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
+        <span class="ract" id="r-act"></span>
+        <label class="rtop" for="c-top">Results to show
+          <select id="c-top"><option value="1">1</option><option value="3">3 (slow)</option></select></label>
       </div>
     </section>
 
@@ -108,12 +114,6 @@ __CSS__
   </aside>
 
   <main class="rcol" id="rcol" tabindex="-1" aria-label="Results">
-    <div class="rhead" id="rhead">
-      <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
-      <span class="ract" id="r-act"></span>
-      <label class="rtop" for="c-top">Results to show
-        <select id="c-top"><option value="1">1</option><option value="3">3 (slow)</option></select></label>
-    </div>
     <div class="results" id="results"></div>
   </main>
   <script>
