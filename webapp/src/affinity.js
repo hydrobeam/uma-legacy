@@ -13,7 +13,7 @@ export function openWhy(l) {
   // in words, then the formula (behind the (i) by the title), in the legacy roles of one career: trainee T, parents
   // P1 and P2, each parent P's own parents GP1 and GP2
   const intro = document.createElement('div'); intro.className = 'afx';
-  intro.innerHTML = `<p>A parent's affinity is how well she matches the trainee, the other parent, and her own two parents (each as a trio with the trainee), plus 3 for every G1 she won together with the other parent or with one of her own parents. A grandparent counts only her trio with the trainee and her child, plus 3 for every G1 she won together with that child. The higher a legacy's affinity, the more often it passes a skill on: each spark's chance is its base × (1 + affinity / 100), so affinity 100 doubles it.</p>
+  intro.innerHTML = `<p>The G1 figures are expected wins, not a count: for each race in the two umas' schedules, the chance both win it (from their win chance in that race), summed. A parent's affinity is how well she matches the trainee, the other parent, and her own two parents (each as a trio with the trainee), plus 3 for every G1 she won together with the other parent or with one of her own parents. A grandparent counts only her trio with the trainee and her child, plus 3 for every G1 she won together with that child. The higher a legacy's affinity, the more often it passes a skill on: each spark's chance is its base × (1 + affinity / 100), so affinity 100 doubles it.</p>
     <div class="afx" id="why-math" hidden><p class="hint">Each legacy's affinity, for trainee T with parents P1 and P2 (P is either; P2 the other one) and each parent's own parents GP1 and GP2:</p>
     <p class="fx">Parent P = rel(T–P) + rel(P1–P2) + rel(T–P–GP1) + rel(T–P–GP2)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 3 × [G1(P–P2) + G1(P–GP1) + G1(P–GP2)]</p>
     <p class="fx">Grandparent GP (under P) = rel(T–P–GP) + 3 × G1(P–GP)</p>
@@ -26,7 +26,7 @@ export function openWhy(l) {
     f.appendChild(umaAv(M[i].id, outfitOf(i), size)); const n = document.createElement('span'); n.className = 'an'; n.textContent = nm(i); f.appendChild(n); return f.outerHTML; };
   const h1 = document.createElement('h4'); h1.textContent = 'Pairs'; body.appendChild(h1);
   const pt = document.createElement('div'); pt.className = 'tablewrap';
-  pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th>G1s won together</th><th>Race affinity (×3)</th></tr></thead><tbody>` +
+  pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th title="Expected number of G1s both win, from their schedules and win chances">G1s won together (expected)</th><th>Race affinity (×3)</th></tr></thead><tbody>` +
     D.pairs.map(p => `<tr><td class="afaces">${face(p.a)}<span class="amp">&amp;</span>${face(p.b)}</td><td>${p.rel}</td><td>${p.wins.toFixed(0)}</td><td>${(3 * p.wins).toFixed(0)}</td></tr>`).join('') + '</tbody></table>';
   body.appendChild(pt);
   const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);

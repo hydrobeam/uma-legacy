@@ -474,7 +474,7 @@ const TESTS = {
     // "Search again" runs it to the end, and the three results are told apart
     const r0 = await pg.evaluate(() => window.__runs.length);
     await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
-    await pg.waitForFunction((n) => window.__runs.length > n, r0);
+    await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a job from the first change alone)
     check('while searching: the results are marked busy and a Stop button shows', await pg.evaluate(() => document.getElementById('results').getAttribute('aria-busy') === 'true') && (await pg.locator('#r-act button').innerText()) === 'Stop');
     const k0 = await pg.evaluate(() => window.__killed); await pg.click('#r-act button'); h = await head();
     check('Stop kills the search and keeps the results', (await pg.evaluate(() => window.__killed)) > k0 && h.kind === 'stopped' && h.loops > 0 && !(await busy(pg)), JSON.stringify(h));

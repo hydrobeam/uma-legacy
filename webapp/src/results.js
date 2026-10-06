@@ -108,8 +108,6 @@ function loopCard(l, meta, ctx) {
       d.querySelector('.head').prepend(umaAv(m.id, o.outfits.length === 1 ? o.outfits[0].id : null, 38));
       // targets on her own outfit's skill list (she has them when she is the trainee)
       const sk = d.querySelector('.sk');
-      if (o.covers.length) { const cap = document.createElement('span'); cap.className = 'skl'; cap.textContent = 'On her outfit:'; sk.appendChild(cap);
- }
       // each its icon and name
       for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('span');
         sp.className = 'spark' + (c.level === 2 ? ' g' : '');
