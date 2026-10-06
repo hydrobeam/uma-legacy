@@ -59,7 +59,7 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 @media (min-width: 961px) { .rcol { position: sticky; top: var(--rtop, 12px); align-self: start; } }
 .rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 42px; padding: 5px 10px; background: var(--bg);
   border: 1px solid transparent; border-radius: 10px; font-size: 0.85rem; }
-.runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.runnote { margin: 0; flex: 1 1 18em; display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
 .runnote:empty { display: none; }
 /* a search's banner look comes on only after a moment (as the dim): a 0.2 s search doesn't flash the row */
 .rhead { transition: background-color 0.15s, border-color 0.15s; }
