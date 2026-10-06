@@ -133,9 +133,82 @@ P = 1 − Π (1 − P(pass)).</p>
 87 about 9%. A skill all six legacies carry is inherited in about 78% of careers.</p>
 
 <h3>The model, in detail</h3>
-  <p><strong>Model.</strong> Each target spark sits on all six legacies with stars from the chosen rank: 50/45/5% for 1/2/3 stars below SS and 20/70/10% at SS (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">room-match data</a>); a spark's base rate is 3/6/9% by stars. A skill is acquired if guaranteed, on the trainee's own outfit skill list (fully awakened), hinted by the deck, or inherited: proc = 1 − Π(1 − base × (1 + affinity/100)) over the six legacies, two inspirations. Each legacy's affinity follows <a href="https://github.com/Acrith/uma-it-optimizer" target="_blank" rel="noopener">uma-it-optimizer</a>'s fit to 8,155 Independent Training receipts: a parent counts its relation points with the trainee, the full relation with the other parent, its trios with the trainee and its own parents, and 3 per G1 shared with the other parent and with each of its own parents; a grandparent counts its trio with the trainee and its child, plus 3 per G1 shared with that child. It then becomes a spark 35.4% of the time as a white, 70.9% as a gold: 20% and 40%, ×1.1 for each of the six ancestors already carrying it (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">fit to room-match data</a>). Odds average the 12 runs of the self-copy-free cycle.</p>
-  <p><strong>Deck.</strong> Six cards, every card at max limit break; group cards count as pals. Training hints: base × (1 + hint frequency/100) draws per run (unique effect included), each a uniform draw over the card's skills still below hint Lv 5 (a skill at Lv 5 leaves the pool, so a card that gives +5 levels per hint never repeats one); the base depends on the scenario (Unity Cup 2.70, Grand Concert 2.03, URA Finale 1.60, Trackblazer 1.81, and Grand Masters, JP Grand Masters-era data only, 2.30 as a placeholder: no runs to measure), and one card's draws cannot hint every target in its pool at once. Chain events: a Binomial(21, 0.35) number per run (mean 7.35, the same in every scenario), each advancing a random remaining chain slot of a non-pal card, a card with more links left more often. Both are fitted to Independent Training runs shared on uma-it (training hints from 62,870 card observations in 2,402 runs, chain progress from 1,792 runs' event hints). A chain whose default choice can end it stops there at that outcome's share. Event rewards: GameTora training-event data; a reward on some of a choice's outcomes counts at its share of them (one of two: 50%) unless the share was measured on uma-it runs (Riko Kashimoto SSR's Ramp Up, Seiun Sky [Foolproof Plan]'s Fast-Paced and Smart Falcon [My Umadol Way! ☆]'s Center Stage: 75%), and an event's outcomes exclude each other. Where an event offers targets on different choices, the deck takes one (the skill to prioritise is shown on the card). Pal finales always fire: Light Hello SSR's gives See Ya Later!; Anshinzawa SSR's gives Nothing Ventured 75% of the time with Risky Business prioritised and Risky Business otherwise (measured on 77 uma-it runs with Risky Business prioritised, not the even split the rule above would give); first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together, ranked by the product of each target's odds; the decks and loops near the top are then scored exactly, so the odds shown include what targets share (chain cards draw on one run's chain events, so their rewards land or miss together: on the reference setups exact odds were 0–8% higher than the product, up to 19% for decks with 0–1 pals).</p>
-  <p><strong>Search.</strong> Every foursome gets a guaranteed ceiling from exact pairwise bounds; loops are scheduled best-first until no remaining ceiling can beat the 5th result. Schedules maximise the expected shared G1 wins, every pair weighted alike (each pair carries the same weight across the 12 careers). Win odds per race: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90), minus 0/0/5/20/30/50 for the 1st to 6th+ race in a row, capped at 0–100%. Data: Global master.mdb, relocated venues count as the same race. The Grand Masters-era option uses a JP master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>
+  <p><strong>Model.</strong> The odds of one career, for a trainee T with parents P1 and P2 and their four parents:</p>
+  <ul>
+  <li><strong>Inheritance.</strong> A target is inherited with P = 1 − Π (1 − b × (1 + affinity / 100))² over the six
+  legacies, two inspirations each; b = 4.65% below SS, 5.7% at SS (the star mix averaged over 3/6/9%).</li>
+  <li><strong>Affinity per legacy.</strong> Parent P: pair(T, P) + pair(P1, P2) + trio(T, P, G) for each of P's own
+  parents G, + 3 per G1 P shares with the other parent and with each G. Grandparent G under P: trio(T, P, G) + 3 per G1
+  G shares with P. pair and trio are the game's relation points; in a loop P's own parents are the other parent and the
+  fourth uma, so the parents' shared G1s count in both terms.</li>
+  <li><strong>Acquiring a target.</strong> Guaranteed by the scenario, on the trainee's own outfit skill list, hinted by the
+  deck, or inherited. Each source gives the gold or the white; the target's gold chance and white-only chance are kept
+  apart.</li>
+  <li><strong>Landing.</strong> P(target) = P(gold) × 0.709 + P(white, no gold) × 0.354. The career lands all targets
+  with the product over targets, corrected for what targets share (below).</li>
+  <li><strong>The loop's odds</strong> are the average over its 12 careers (4 trainees × 3 parent pairs); each uma heads 3
+  of them.</li>
+  </ul>
+  <p><strong>Deck.</strong> Six cards, every card at max limit break; group cards count as pals.</p>
+  <ul>
+  <li><strong>Training hints.</strong> h = base × (1 + hint frequency / 100) draws per career (the floor or ceiling of h,
+  weighted by its fraction). Each draw picks uniformly among the card's skills still below hint level 5; a skill leaves
+  the pool once it reaches level 5, so a card giving +5 levels per hint never repeats one. One card's draws over several
+  targets are computed jointly: a card can't hint every target in its pool at once. Base: Unity Cup 2.70, Grand Concert
+  2.03, Trackblazer 1.81, URA Finale 1.60, Grand Masters 2.30 (placeholder).</li>
+  <li><strong>Chain events.</strong> Binomial(21, 0.35) per career (mean 7.35). Each advances one remaining chain link of
+  a non-pal card, chosen with weight equal to the links that card has left; a card's links fire in order. Pals and R
+  cards take no chain events. A skill offered at several links of one card counts once, from the earliest link that
+  fires.</li>
+  <li><strong>Chain ends.</strong> A choice that ends a card's chain is offered as a separate deck entry: the card's earlier
+  links, that choice's rewards, and its remaining links freed for the other cards. If IT's default choice ends the chain
+  on some outcomes, the chain stops there at that share, as an exact mixture over where it stops.</li>
+  <li><strong>Event outcomes.</strong> One outcome per event, so outcomes exclude each other; 50/50 unless measured
+  (Sasami Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up, Seiun Sky [Foolproof Plan]'s Fast-Paced, Smart Falcon
+  [My Umadol Way! ☆]'s Center Stage: 75%). Where an event offers targets on different choices, the card is offered once
+  per choice worth taking (a choice no other beats on every target) and marked "prioritise X".</li>
+  <li><strong>Pals.</strong> Pal finales always fire; first-year date events are left out. A pal entry names the event
+  and choice it relies on, and the skill to prioritise follows from IT's rule: a skill on that choice and on no choice
+  above it.</li>
+  <li><strong>Rules.</strong> No trainee uses a card of herself or a group card she belongs to; scenario bans apply; one
+  card may be borrowed.</li>
+  </ul>
+  <p><strong>Race schedules.</strong> Each uma's schedule is chosen to maximise the loop's expected shared G1 wins, every
+  pair weighted alike.</p>
+  <ul>
+  <li>Win chance of one attempt: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90) − streak
+  penalty (0/0/5/20/30/50 for the 1st to 6th+ race in a row, any race counts, a rest resets it), clamped to 0–100%. A race
+  run in both Classic and Senior counts once: P(win) = 1 − (1 − p₁)(1 − p₂). Two umas' wins are independent, so their
+  expected shared wins are Σ P<sub>i</sub>(race) × P<sub>j</sub>(race).</li>
+  <li>One uma's best schedule against the other three is solved exactly by dynamic programming: Junior turns in order, then
+  each Classic turn together with the Senior turn 24 later, tracking both streaks and which career goals are met.</li>
+  <li>The four schedules are improved in turns (each uma re-solved against the others until none improves), then by
+  group moves (forcing two or more umas onto the same race together, which no single uma would choose alone), then by 30
+  rounds of randomised restarts. A last pass adds every optional G1 that costs no shared wins.</li>
+  </ul>
+  <p><strong>Search.</strong></p>
+  <ul>
+  <li><strong>Decks</strong> are compared per target on (P(gold hint), P(any hint)), which the odds rise with. A deck that
+  another beats or matches on every target is dropped; a card that another legal card beats on every target never enters
+  those decks. With a deck per uma, each uma takes the best legal deck for her open targets from the decks no other deck
+  beats.</li>
+  <li><strong>Loops.</strong> Every foursome of owned umas and outfits gets a guaranteed ceiling: exact pairwise bounds
+  on shared G1 wins (each pair's best case with the partner at her best odds) combined with each trainee's best deck.
+  Foursomes are solved best ceiling first, and the search stops when no remaining ceiling can beat the last result
+  shown, so nothing unsearched can beat it (given the schedules the optimiser finds, which are not proven optimal).</li>
+  <li><strong>Exact scoring.</strong> The search ranks by the product of per-target odds. That treats targets as
+  independent, but chain cards share one career's chain events, so their rewards land or miss together, and one event's
+  outcomes can give one target or another. The results shown, and every candidate whose ranking value is at least 80% of the best's, are rescored
+  exactly over the distribution of chain progress; the odds shown are these exact values. They ran 0–8% above the
+  product on the reference setups, up to 19% for decks with 0–1 pals.</li>
+  <li><strong>Character rule.</strong> With one shared deck, the search first ignores who can use which card; when an
+  answer breaks the rule it splits into loops without that uma and loops whose decks avoid the blocking cards, and
+  searches both.</li>
+  <li>Typical time: under a second with Unity Cup's golds given, 3–11 s without; up to about 100 s for three results.
+  The browser is about 1.5× slower.</li>
+  </ul>
+  <p><strong>Data.</strong> Global master.mdb; card events from GameTora. The Grand Masters-era option uses a JP
+  master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>
 
 <h3>Sources</h3>
 <p>Game data: the Global master.mdb (and a JP one for the Grand Masters era). Card events: GameTora. Spark and
