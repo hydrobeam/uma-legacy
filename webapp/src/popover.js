@@ -25,11 +25,18 @@ export function markOwn() {
   document.querySelectorAll('.mem[data-uma]').forEach(e => { const u = UMAS.find(x => x.id === +e.dataset.uma);
     e.classList.toggle('off', !!u && (umaState(u) === 'out' || (e.dataset.outfit && state.outfits[+e.dataset.outfit] === false))); });
 }
-function placePop(el) {
+// beside: a deck card's panel opens to its right (else its left) at its top, so it never covers the hint odds under the
+// deck; without room on either side (phones), below it like the others
+function placePop(el, beside = false) {
   pop.hidden = false;
   const host = pop.offsetParent || document.body, h = host.getBoundingClientRect(), r = el.getBoundingClientRect(), w = pop.offsetWidth;
-  pop.style.left = (host.scrollLeft + Math.max(0, Math.min(r.left - h.left, host.clientWidth - w))) + 'px';
-  pop.style.top = (host.scrollTop + r.bottom - h.top + 6) + 'px';
+  const right = r.right - h.left + 8, left = r.left - h.left - 8 - w;
+  if (beside && right + w <= host.clientWidth) { pop.style.left = (host.scrollLeft + right) + 'px'; pop.style.top = (host.scrollTop + r.top - h.top) + 'px'; }
+  else if (beside && left >= 0) { pop.style.left = (host.scrollLeft + left) + 'px'; pop.style.top = (host.scrollTop + r.top - h.top) + 'px'; }
+  else {
+    pop.style.left = (host.scrollLeft + Math.max(0, Math.min(r.left - h.left, host.clientWidth - w))) + 'px';
+    pop.style.top = (host.scrollTop + r.bottom - h.top + 6) + 'px';
+  }
   (focusables()[0] || pop).focus({ preventScroll: true });
 }
 // a member's panel: one "Owned" switch. When the loop uses a specific outfit, that outfit is what is owned or not
@@ -77,7 +84,7 @@ function openPop(el) {
     (el.dataset.end ? `<div>Take the chain-ending choice at link ${el.dataset.end}.</div>` : '') +
     `<div class="pfoot">${c && !bor ? `<label class="sw"><input type="checkbox" role="switch" data-act="own"${own ? ' checked' : ''}>Owned</label>` : '<span></span>'}` +
     (c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : '') + '</div>';
-  placePop(el);
+  placePop(el, true);
   const sw = pop.querySelector('[data-act="own"]');
   if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); markOwn(); };
 }

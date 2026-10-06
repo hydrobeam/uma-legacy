@@ -23,7 +23,7 @@ export function renderTargets(focus = null) {
     x.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
     box.appendChild(el);
   });
-  if (!state.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one below.</p>';
+  if (!state.targets.length) box.innerHTML = '<p class="hint">No target skills yet. Add one above.</p>';
   if (focus !== null) { const xs = box.querySelectorAll('.x'); (xs[Math.min(focus, xs.length - 1)] || $('t-add')).focus(); }
   renderCards();
 }

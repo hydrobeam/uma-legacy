@@ -17,7 +17,7 @@ function loopCard(l, meta, ctx) {
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
   const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
   card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>
-    <span class="sub">${n > 1 ? `at least ${n - 1} of ${n}: <span class="num">${fmtIn(l.p_minus1)}</span> · ` : ''}90% sure within <span class="num">${runs90(l.p_all)}</span> runs</span></div>`;
+    <span class="sub">${n > 1 ? `<span title="How often a career lands every target but one, or all of them">${n - 1} of ${n} or better: <span class="num">${fmtIn(l.p_minus1)}</span></span> · ` : ''}<span title="How many careers give a 90% chance that at least one lands all ${n}">a 90% chance within <span class="num">${runs90(l.p_all)}</span> runs</span></span></div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
@@ -47,14 +47,16 @@ function loopCard(l, meta, ctx) {
         return parts.join(''); }).join('');
       return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
     const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
+    // a member's portrait (her outfit's when the loop fixes one), with her name as its tooltip
+    const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size); av.title = M[k].name + (of.length === 1 ? ' ' + of[0].label : ''); return av.outerHTML; };
     const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
-      dk.innerHTML = `<div class="row between"><span class="dtitle"><b>${title}</b>${info}</span></div><div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
+      dk.innerHTML = `<div class="dtitle"><b>${title}</b></div>${info}<div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
       return dk; };
     if (same) card.appendChild(block(meta.deck, D ? 'Deck for all four' : 'Deck'));
     else {
       // the deck most members share, then each other member's swaps against it, one row each: "X swaps A → B"
-      const users = M.filter((m, k) => key(D[k]) === key(meta.deck)).map(m => m.name);
-      card.appendChild(block(meta.deck, 'Deck for ' + users.join(', ')));
+      const users = M.map((m, k) => k).filter(k => key(D[k]) === key(meta.deck));
+      card.appendChild(block(meta.deck, `Deck for <span class="dwho">${users.map(k => face(k, 36)).join('')}</span><span class="vh">${esc(users.map(k => M[k].name).join(', '))}</span>`));
       const seen = new Set();
       // a label where the swap rows start: each row is another uma's deck, given by what it swaps from the deck above
       if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps'; card.appendChild(h); }
@@ -62,12 +64,12 @@ function loopCard(l, meta, ctx) {
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
         const whoT = who.length === 1 ? `${who[0]}’s deck` : who.slice(0, -1).join(', ') + ' and ' + who.at(-1);   // "X’s deck swaps …", "X and Y swap …"
-        const faces = M.map((x, j) => [x, j]).filter(([, j]) => key(D[j]) === key(d)).map(([x, j]) => { const of = l.outfits[j].outfits; const av = umaAv(x.id, of.length === 1 ? of[0].id : null, 64); av.title = x.name + (of.length === 1 ? ' ' + of[0].label : ''); return av.outerHTML; }).join('');   // each portrait its own tooltip
+        const faces = M.map((x, j) => j).filter(j => key(D[j]) === key(d)).map(j => face(j, 64)).join('');   // each portrait its own tooltip
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
         dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${info}</div>` + oddsOf(d);
+          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span></div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }
     card.querySelectorAll('.deck .oinfo').forEach(b => b.onclick = () => { const o = b.closest('.deck').querySelector('.dodds');

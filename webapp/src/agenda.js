@@ -49,7 +49,7 @@ export function openSched(l) {
       const grid = document.createElement('div'); grid.className = 'ag-grid';
       for (let sI = 0; sI < 24; sI++) {
         const slot = document.createElement('div');
-        if (y === 0 && sI < 12) { slot.className = 'ag-slot none'; grid.appendChild(slot); continue; }   // the career starts in Junior July
+        if (y === 0 && sI < 12) { if (sI === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); } continue; }   // one note fills the blank half-year
         slot.className = 'ag-slot';
         const r = rows.find(x => x.year === y && x.cells[key] && slotOf(x.when) === sI);
         if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }

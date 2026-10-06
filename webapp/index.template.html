@@ -58,12 +58,15 @@ __CSS__
               <button class="scenbtn" id="x-scen" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="scen-menu" aria-label="Scenario"><span class="slogo"></span></button></div>
             <div class="scenpick" id="scen-menu" role="menu" aria-labelledby="x-scen-l" hidden></div>
           </div>
-          <div class="gctl rankctl"><span id="rank-l">Lineage rank</span>
+          <div class="gctl rankctl"><span class="glab"><span id="rank-l">Lineage rank</span><button type="button" class="qinfo" id="rank-q" aria-expanded="false" aria-controls="rank-note" aria-label="What lineage rank means" title="What lineage rank means"><span aria-hidden="true">?</span></button></span>
             <div class="seg rankseg" id="rank" role="radiogroup" aria-labelledby="rank-l">
               <button type="button" role="radio" data-v="0.50,0.45,0.05" aria-label="B to S+" title="B to S+: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars"><span class="rk" data-r="b">B</span><span class="rkdash">–</span><span class="rk" data-r="splus">S+</span></button>
               <button type="button" role="radio" data-v="0.20,0.70,0.10" aria-label="SS" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars"><span class="rk" data-r="ss">SS</span></button>
             </div></div>
         </div>
+        <p class="gnote" id="rank-note" hidden>The rank your loop's veterans finish at. Veterans at SS (rank score 17,500 and up) carry
+          more 2- and 3-star sparks (20/70/10% for 1/2/3 stars, against 50/45/5% below SS), so they pass skills on more often.
+          Picking a scenario sets its usual rank; change it if yours differs.</p>
         <label><input type="checkbox" id="x-rcards"> Use R cards</label>
         <label><input type="checkbox" id="c-borrow" checked> Borrow one friend's card</label>
         <label><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
@@ -77,7 +80,7 @@ __CSS__
     </section>
 
     <section class="panel" aria-labelledby="h-skills">
-      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">8/8 example</button></div>
+      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">Load 8/8 example</button></div>
       <div class="adder">
         <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
         <div class="sugg" id="t-sugg" hidden></div>

@@ -96,7 +96,7 @@ const TESTS = {
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
     check('headline: "1 in 139 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
-      /^1 in 139 runs to land all 8$/.test(head.odds) && /^at least 7 of 8: 1 in 15\.7 · 90% sure within 319 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
+      /^1 in 139 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 15\.7 · a 90% chance within 319 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
     check('members: "as trainee: 1 in …"', head.own.length === 4 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x)), head.own.join(' | '));
     // the deck's odds per target, each with its skill icon
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length }; });
@@ -140,8 +140,11 @@ const TESTS = {
     await pg.context().close();
   },
   async scenario(b) {
-    // the scenario picker: a button showing the chosen scenario's logo, opening a grid of the four
+    // the scenario picker: a button showing the chosen scenario's logo, opening a grid of the scenarios
     const pg = await open(b);
+    await pg.click('#rank-q');
+    check('lineage rank: the ? opens its explanation', !(await pg.locator('#rank-note').isHidden()) && (await pg.getAttribute('#rank-q', 'aria-expanded')) === 'true');
+    await pg.click('#rank-q');
     const menu = pg.locator('#scen-menu'), tiles = pg.locator('#scen-menu .stile');
     const btnName = () => pg.getAttribute('#x-scen', 'aria-label');
     check('picker closed at first; the button is Unity Cup (logo only, named for assistive tech)', (await menu.isHidden()) && (await scen(pg)) === 'unity' && (await btnName()) === 'Scenario: Unity Cup'
@@ -306,6 +309,8 @@ const TESTS = {
     const dc = pg.locator('.deck .dc').first(); await dc.click();
     const href = await pg.locator('.cpop .gtl').getAttribute('href');
     check('deck card panel: GameTora card link', /^https:\/\/gametora\.com\/umamusume\/supports\/\d+-[a-z0-9-]+$/.test(href || ''), href);
+    const side = await pg.evaluate(() => { const c = document.querySelector('.deck .dc').getBoundingClientRect(), p = document.querySelector('.cpop').getBoundingClientRect(); return { beside: p.left >= c.right || p.right <= c.left, top: Math.abs(p.top - c.top) }; });
+    check('deck card panel opens beside the card (desktop), not over the deck below', side.beside && side.top <= 2, JSON.stringify(side));
     const cid = await dc.getAttribute('data-cid');
     await pg.locator('.cpop .sw').click();
     check('deck card Owned switch updates the card picker', await pg.evaluate((id) => [...document.querySelectorAll('#cards .ct')].some(t => t.querySelector('img') && t.getAttribute('aria-pressed') === 'false'), cid));
@@ -460,6 +465,7 @@ const TESTS = {
     check('schedule: a tab per member plus All four', (await pg.locator('#sched-dlg .stab').count()) === 5);
     const grids = await pg.evaluate(() => [...document.querySelectorAll('.ag-grid')].map(g => { const r = g.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); }));
     check('agenda: three identical year grids', grids.length === 3 && new Set(grids).size === 1, grids.join(' '));
+    check('agenda: a note fills the blank Junior half-year', /starts in Junior Year/.test(await pg.locator('#sched-dlg .ag-pre').innerText()));
     check('agenda: fits the window without scrolling', await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }));
     check('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
     check('agenda: a race\'s win % sits in its turn bar', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+%$/.test(w.textContent))));
@@ -508,7 +514,7 @@ const TESTS = {
     check('phone: the scenario tiles are the same size, each logo + one line', new Set(ph.map(x => x.split(' ')[0])).size === 1 && ph.every(x => +x.split(' ').at(-1) <= 22), ph.join(' | '));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg');
-    check('phone: agenda stacks without the blank Junior half-year', (await pg.locator('#sched-dlg .ag-slot.none:visible').count()) === 0);
+    check('phone: agenda stacks without the blank Junior half-year', (await pg.locator('#sched-dlg .ag-pre:visible').count()) === 0);
     await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });
     const closeVis = () => pg.evaluate(() => { const b = [...document.querySelectorAll('dialog[open] .dhead button')].find(x => x.textContent === 'Close'), r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
     check('phone: the schedule\'s Close stays on screen at the bottom of the dialog', await closeVis());

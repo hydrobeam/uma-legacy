@@ -42,7 +42,9 @@ export function paintScen() {
   btn.querySelector('.slogo').replaceWith(scenLogo(sc));
   $('scen-menu').querySelectorAll('.stile').forEach(t => t.setAttribute('aria-checked', String(t.dataset.v === sc.v)));
 }
+function initRankNote() { const q = $('rank-q'), n = $('rank-note'); q.onclick = () => { n.hidden = !n.hidden; q.setAttribute('aria-expanded', String(!n.hidden)); }; }
 export function initScenario() {
+  initRankNote();
   const btn = $('x-scen'), menu = $('scen-menu'), dd = $('scen-dd');
   // a scenario this era does not offer (Grand Masters, saved while the GM-era data was active; the choice is shared by
   // both eras) becomes the first one offered, Unity Cup, as if picked

@@ -16,7 +16,7 @@ export function openWhy(l) {
   const h1 = document.createElement('h4'); h1.textContent = 'Pairs'; body.appendChild(h1);
   const pt = document.createElement('div'); pt.className = 'tablewrap';
   pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th>G1s won together</th><th>Race affinity (×3)</th></tr></thead><tbody>` +
-    D.pairs.map(p => `<tr><td>${esc(nm(p.a))} & ${esc(nm(p.b))}</td><td>${p.rel}</td><td>${p.wins.toFixed(1)}</td><td>${(3 * p.wins).toFixed(1)}</td></tr>`).join('') + '</tbody></table>';
+    D.pairs.map(p => `<tr><td>${esc(nm(p.a))} & ${esc(nm(p.b))}</td><td>${p.rel}</td><td>${p.wins.toFixed(0)}</td><td>${(3 * p.wins).toFixed(0)}</td></tr>`).join('') + '</tbody></table>';
   body.appendChild(pt);
   const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);
   const ct = document.createElement('div'); ct.className = 'tablewrap';
@@ -39,7 +39,7 @@ export function openWhy(l) {
       const w = document.createElement('div'); w.className = 'who'; w.appendChild(umaAv(M[who].id, outfitOf(who), 26)); const s = document.createElement('span'); s.textContent = M[who].name; w.appendChild(s);
       n.appendChild(w); const t = document.createElement('div'); t.innerHTML = html; n.appendChild(t); return n; };
     tree.appendChild(node('t', L.t, `<span class="num">Trainee · six legacies, affinity <b>${total(L).toFixed(0)}</b></span>`));
-    const slot = (x) => `<span class="num">affinity <b>${x.aff.toFixed(1)}</b><br>${x.rel.toFixed(0)} relations + ${x.race.toFixed(1)} races</span>`;
+    const slot = (x) => `<span class="num">affinity <b>${x.aff.toFixed(0)}</b><br>${x.rel.toFixed(0)} relations + ${x.race.toFixed(0)} races</span>`;
     const P = L.slots.filter(x => x.kind === 'parent'), G = L.slots.filter(x => x.kind === 'grandparent');
     tree.appendChild(node('p', P[0].who[0], '<span class="hint">Parent</span><br>' + slot(P[0]))); tree.appendChild(node('p', P[1].who[0], '<span class="hint">Parent</span><br>' + slot(P[1])));
     for (const g of G) tree.appendChild(node('g', g.who[1], `<span class="hint">Grandparent (${esc(nm(g.who[0]))})</span><br>` + slot(g)));
