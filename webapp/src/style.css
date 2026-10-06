@@ -66,7 +66,7 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 @media (prefers-reduced-motion: reduce) { .rhead { transition: none; } }
 .rhead[data-kind="error"] { background: var(--out-soft); border-color: var(--out); border-left-width: 5px; }
 .rhead[data-kind="error"] .runnote { font-weight: 600; }   /* ink, not --out: --out on --out-soft is 6.5:1, short of AAA */
-.rhead[data-kind="empty"], .rhead[data-kind="stopped"] { background: var(--panel); border-color: var(--line); }
+.rhead[data-kind="empty"], .rhead[data-kind="stopped"], .rhead[data-kind="pending"] { background: var(--panel); border-color: var(--line); }
 .ract:empty { display: none; }
 .rtop { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
 /* while a search runs (after a moment, so a quick one doesn't flicker) and when the settings can't be searched, the

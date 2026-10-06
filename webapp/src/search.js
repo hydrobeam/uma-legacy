@@ -24,7 +24,7 @@ export function paintRunNote() {
   n.classList.toggle('busy', searching);
   $('rhead').dataset.kind = searching ? 'busy' : st.kind;
   res.setAttribute('aria-busy', String(searching));
-  res.classList.toggle('stale', !searching && ['error', 'empty', 'stopped'].includes(st.kind));
+  res.classList.toggle('stale', !searching && ['error', 'empty', 'stopped', 'pending'].includes(st.kind));
   let pill;
   if (searching) {
     const sec = Math.floor((performance.now() - searchT0) / 1000), t = sec >= 1 ? ` ${sec} s` : '';
@@ -47,8 +47,12 @@ function stopSearch() {
   ui.status = { kind: 'stopped', text: 'Stopped. The results below are from before your change.', act: { label: 'Search again', run: doSearch } };
   paintRunNote();
 }
+// auto-search on (default): a change searches after a 1 s pause (a change during the pause or the search restarts it);
+// off: the results stay, marked out of date, until the Search button
 function scheduleSearch() {
-  clearTimeout(pauseTimer); pauseTimer = setTimeout(doSearch, 450);
+  clearTimeout(pauseTimer);
+  if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
+  pauseTimer = setTimeout(doSearch, 1000);
   if (!searching) { searching = true; searchT0 = performance.now(); paintRunNote(); }
 }
 // every setting change: save it and search again

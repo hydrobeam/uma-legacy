@@ -1,7 +1,7 @@
 // The page's settings (state, saved) and what is on screen (ui, not saved).
 import { PER_ERA, COMMON, SAVED, ERA, persist } from './settings.js';
 import { PRESET, SCEN_GOLDS } from './data.js';
-export const DEFAULTS = { targets: PRESET.map(group => ({ group })), rank: '0.50,0.45,0.05', borrow: true, decksTop: '1', perUma: true,
+export const DEFAULTS = { targets: PRESET.map(group => ({ group })), rank: '0.50,0.45,0.05', auto: true, borrow: true, decksTop: '1', perUma: true,
   rcards: false, scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
 const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
 // roster: uma id -> 'out' | 'req' ('req' only for umas without separate outfits); outfits: id -> false (not owned) | 'req'

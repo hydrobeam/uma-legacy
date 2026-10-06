@@ -241,6 +241,15 @@ const TESTS = {
   },
   async autosearch(b) {
     const pg = await open(b);
+    // auto-search off: a change waits for the Search button; back on, it searches
+    check('auto-search is on by default', await pg.locator('#x-auto').isChecked());
+    await pg.click('#x-auto'); const n0 = await pg.evaluate(() => window.__runs.length);
+    await pg.locator('#cards .ct').nth(6).click(); await pg.waitForTimeout(1300);
+    check('auto-search off: a change does not search, the status says to press Search', (await pg.evaluate(() => window.__runs.length)) === n0 && /press Search/.test(await note(pg)) && (await pg.locator('#r-act button', { hasText: 'Search' }).count()) === 1);
+    await pg.locator('#r-act button', { hasText: 'Search' }).click(); await settle(pg);
+    check('… the Search button runs it', (await pg.evaluate(() => window.__runs.length)) === n0 + 1 && /Searched/.test(await note(pg)));
+    await pg.locator('#cards .ct').nth(6).click(); await pg.click('#x-auto'); await settle(pg);
+    check('… turning it back on searches the change', (await pg.evaluate(() => window.__runs.length)) === n0 + 2);
     const made0 = await pg.evaluate(() => window.__made);
     for (let i = 0; i < 5; i++) await pg.locator('#cards .ct').nth(i).click();
     check('a change shows "Searching…"', /Searching/.test(await note(pg)));

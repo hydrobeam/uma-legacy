@@ -51,7 +51,7 @@ export function initIO() {
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
       paintRank(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
-      $('x-rcards').checked = state.rcards; paintScen();
+      $('x-rcards').checked = state.rcards; $('x-auto').checked = state.auto !== false; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
