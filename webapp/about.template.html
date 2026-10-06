@@ -49,7 +49,8 @@ Superstan.</li>
 spark, as in a running loop. A loop still being built has fewer carriers and lower odds.</li>
 <li><strong>Spark generation:</strong> <math><mrow><mi>P</mi><mrow><mo>(</mo><mtext>spark</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mi>b</mi><mo>×</mo><msup><mn>1.1</mn><mi>n</mi></msup></math>, with b = 20% for a white or 40% for a gold, and n the
 number of the six ancestors already carrying that spark. In a running loop n = 6: 35.4% and 70.9%.</li>
-<li><strong>Star mix of legacy sparks:</strong> 50/45/5% for 1/2/3 stars below SS; 20/70/10% at SS.</li>
+<li><strong>Assumed lineage rank:</strong> legacy sparks have 50/45/5% for 1/2/3 stars below SS, 20/70/10% at SS. The rank is
+chosen in the settings; the planner doesn't work out the score a deck would reach.</li>
 <li><strong>Every card at max limit break.</strong></li>
 <li><strong>IT's event choices:</strong> IT takes the top choice unless a prioritised skill sits only on another choice,
 and priorities are set to reach the hints counted.</li>
@@ -58,6 +59,7 @@ and priorities are set to reach the hints counted.</li>
 
 <h3>Limitations</h3>
 <ol>
+<li>Only skills are scored: the planner doesn't calculate a career's rank, score or skill points.</li>
 <li>The exact choices IT takes at events are still unclear.</li>
 <li>The counted hints rely on the player's IT priorities; the deck card names the one the planner knows (Sasami
 Anshinzawa SSR: prioritise Risky Business).</li>

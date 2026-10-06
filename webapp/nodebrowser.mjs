@@ -563,6 +563,10 @@ const TESTS = {
       return Math.round(r.width) + 'x' + Math.round(r.height) + ' line ' + Math.round(s.height); }));
     check('phone: the scenario tiles are the same size, each logo + one line', new Set(ph.map(x => x.split(' ')[0])).size === 1 && ph.every(x => +x.split(' ').at(-1) <= 22), ph.join(' | '));
     await pg.keyboard.press('Escape');
+    await pg.click('#rank-q');
+    check('phone: the open lineage-rank popup fits the screen', await pg.evaluate(() => { const r = document.getElementById('rank-note').getBoundingClientRect();
+      return r.width > 0 && r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }));
+    await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg');
     check('phone: agenda stacks without the blank Junior half-year', (await pg.locator('#sched-dlg .ag-pre:visible').count()) === 0);
     await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });

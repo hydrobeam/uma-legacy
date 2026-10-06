@@ -490,3 +490,4 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .about math[display="block"] { font-size: 1.1em; }
 .about math[display="block"] { margin: 8px 0 10px; overflow-x: auto; overflow-y: hidden; max-width: 100%; }
 .about details.spec > summary { cursor: pointer; font-weight: 600; color: var(--accent); margin: 4px 0 10px; }
+@media (max-width: 620px) { .rankctl .gpop { left: auto; right: 0; } }   /* phone: the rank popup opens leftwards, inside the screen */
