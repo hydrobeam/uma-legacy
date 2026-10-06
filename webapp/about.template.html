@@ -31,63 +31,91 @@ __CSS__
 
 <main class="about">
 <h2>How this works</h2>
-<p>You pick the skills you want your veterans to end up with. The planner finds the four umas to loop, the outfit each
-should wear, their race schedules and the support deck each should run, ranked by the chance that a career lands every
-target. It covers Independent Training only.</p>
+<p>You pick the skills you want, and the planner finds the four umas to loop, the outfit each should wear, the races
+each should run and the support deck each should bring, ranked by how often a career ends with every one of those
+skills as a spark on the veteran. It is for Independent Training only.</p>
 
-<h3>The loop</h3>
-<p>Four umas take turns as the trainee. Each career inherits from two of the other three as parents, and their parents
-(also loop umas) count as grandparents, so after a few rounds every ancestor of every trainee carries the target sparks.
-No uma is ever her own ancestor. The odds shown average the twelve possible trainee-and-parents line-ups.</p>
+<h3>The goal: sparks, not just skills</h3>
+<p>A target only counts when the finished veteran carries it as a <strong>spark</strong>, because sparks are what the
+next career inherits. That takes two steps:</p>
+<ol>
+<li><strong>The trainee gets the skill</strong> during the career (the four ways are below).</li>
+<li><strong>The skill turns into a spark</strong> when the career ends. In a running loop that happens about
+<strong>35%</strong> of the time for a white skill and <strong>71%</strong> for a gold.</li>
+</ol>
+<p>The second step is why landing all eight is rare even when every skill is well covered: eight coin flips at 35–71%
+rarely all come up at once. It is also why golds matter: a gold sparks twice as often as its white.</p>
 
-<h3>How a target lands</h3>
-<p>A target skill counts as landed if any one of these gives it:</p>
+<h3>Four ways the trainee gets a skill</h3>
 <ul>
-<li><strong>The scenario.</strong> Unity Cup hands every trainee the No Stopping Me! and It's On! golds. The planner
-applies this by itself; you don't mark anything.</li>
-<li><strong>Her own outfit.</strong> A skill on the trainee's own skill list (fully awakened) is hers whenever she
-trains. That is why outfits matter so much: Agnes Digital [Full-Color Fangirling] carries Superstan, Tamamo Cross and
-Inari One carry Tail Nine. The results list these under each uma. Yamanin Zephyr also always gets Slipstream, from
-one of her goal races.</li>
-<li><strong>A hint from the deck.</strong> Support cards hint skills during training and through their events. The
-(i) button by a deck shows the chance of each hint.</li>
-<li><strong>Inheritance.</strong> Twice per career the legacies pass on their sparks: each spark on each parent or
-grandparent has a small chance, raised by affinity.</li>
+<li><strong>The scenario.</strong> Unity Cup gives every trainee the No Stopping Me! and It's On! golds. The planner
+applies this by itself; those targets show in gold in your list.</li>
+<li><strong>Her own outfit.</strong> A skill on the trainee's own skill list is hers whenever she trains. That is why
+outfits decide so much: Agnes Digital [Full-Color Fangirling] always has Superstan, Tamamo Cross [Fast as Lightning]
+and Inari One [Edomurasaki] always have Tail Nine. The results list these under each uma. (Yamanin Zephyr also
+always gets Slipstream, from one of her goal races.)</li>
+<li><strong>A hint from the deck.</strong> Support cards hint skills when you train with them and through their
+events. The (i) button next to a deck shows each hint's chance.</li>
+<li><strong>Inheritance.</strong> Twice per career, the trainee's parents and grandparents pass on their sparks, each
+with a small chance that affinity raises.</li>
 </ul>
 
-<h3>Affinity and races</h3>
-<p>Affinity is what makes inheritance fire. It comes from how the umas relate to each other (fixed per pair and trio)
-and from G1s they have won together: every G1 two of them both win adds to it. So the planner also writes each uma's
-race schedule, chosen to maximise the G1s the loop shares. Races marked "A/B" are interchangeable, but everyone must
-pick the same one.</p>
+<h3>Why a loop</h3>
+<p>Four umas take turns as the trainee. Each career uses two of the other three as parents, and those parents' own
+parents (also loop umas) as grandparents. For example, when Tamamo trains with Oguri and Inari as parents, her
+grandparents are Oguri's and Inari's parents from their earlier careers, Digital among them. After a few rounds every
+ancestor of every trainee carries the target sparks, which helps both steps: more ancestors to inherit from, and a
+higher chance (the 35% and 71% above) that the skill sparks again. No uma is ever her own ancestor. The odds shown
+average the twelve ways to pick a trainee and her two parents.</p>
+
+<h3>Affinity, and why there is a race schedule</h3>
+<p>Affinity decides how often inheritance fires. It comes from two places: how the umas relate to each other (fixed
+points per pair and trio) and the G1 races they have both won, 3 points per shared G1. For example, Oguri and Digital
+have 30 relation points; if they both win 21 of the same G1s, those add 63 more. The planner writes each uma's race
+schedule to make the loop's shared G1 wins as large as it can (the Affinity button shows the totals).</p>
+<p>What that buys, roughly: a spark has about a 5% base chance per legacy per roll. A parent with affinity 286 raises
+that to about 18%, a grandparent with 87 to about 9%. Over two parents, four grandparents and two rolls, a skill all
+six legacies carry is inherited in about 78% of careers.</p>
+<p>In the schedule, "A or B" means either race, with the same odds, but all four must pick the same one so they share
+the win. Optional G1s are free extra race sparks that don't add affinity.</p>
 
 <h3>The deck</h3>
-<p>Every card is assumed at max limit break. Cards hint skills when you train with them, more often in Unity Cup than
-in URA Finale (the scenario picker shows each scenario's rate), and through their events: chain events that advance a
-few times per career, and pal events. One friend card can be borrowed. By default each trainee gets her own best deck,
-shown as the deck most of the loop shares plus each other uma's swaps. No trainee can run a card of herself or a group
-card she belongs to, and the game bans some cards from some scenarios (Team Sirius from Unity Cup and Grand Concert);
-the planner follows both rules.</p>
+<p>Every card is assumed at max limit break.</p>
+<ul>
+<li><strong>Training hints.</strong> A card hints a few times a career, more often in some scenarios (the picker shows
+each scenario's rate against URA Finale's) and more with higher hint frequency. Each hint picks one of the card's
+skills at random. For example, a card with 30% hint frequency in Unity Cup hints about 3.5 times; if it has five
+hintable skills, a given one of them comes up in about half of careers.</li>
+<li><strong>Chain events.</strong> A card's story events (its "chain", usually 2–3 links) advance in order. A career has
+about 7 of these events in total, shared out among the deck's chain cards, so a deck of three 3-link cards (9 links)
+usually leaves some last links unplayed. Pals (friend cards) have their own storyline and don't use up these events,
+which is one reason pal-heavy decks complete their chains more often.</li>
+<li><strong>Borrowing and per-uma decks.</strong> One friend card can be borrowed. By default each trainee gets her own
+best deck: the result shows the deck most of the loop uses, then each other uma's swaps.</li>
+<li><strong>Rules the game sets.</strong> No trainee can use a card of herself or a group card she belongs to, and some
+scenarios ban cards (Team Sirius in Unity Cup and Grand Concert). The planner follows both.</li>
+</ul>
 
 <h3>Reading a result</h3>
 <ul>
-<li><strong>1 in N runs to land all</strong>: on average, one career in N lands every target. "At least 7 of 8" is the
-same for all but one.</li>
-<li><strong>90% sure within</strong>: how many careers give a 90% chance of at least one complete success.</li>
-<li><strong>As trainee</strong>: each uma's own odds when she is the one training.</li>
-<li><strong>Race schedule</strong> and <strong>Affinity</strong> open each uma's races and where the affinity comes
-from.</li>
+<li><strong>1 in 139 runs to land all 8</strong>: on average, one career in 139 ends with all eight sparks. "At least
+7 of 8" is the same for all but one, which happens far more often.</li>
+<li><strong>90% sure within 319 runs</strong>: after 319 careers, you have a 90% chance of at least one with all eight.
+Odds of 1 in 139 do not mean success by career 139; about a third of players would still be waiting then.</li>
+<li><strong>As trainee</strong>: each uma's own odds when she is the one training. They differ because outfits differ:
+an uma whose outfit already has a target needs one fewer lucky step.</li>
 </ul>
 
 <h3>What it can't know</h3>
-<p>Random events that happen to hint a target (a character's events, triggered by her support card) are not counted
-yet. The hint rate for Grand Masters is a placeholder (there are no runs to measure it). R cards are off by default because the
-training-hint model they rest on is untested. The odds are exact for the model, and the model is fitted to shared
-Independent Training runs, so they are good estimates, not guarantees.</p>
+<p>Random events (a character's events, triggered by her support card) are not counted: they fire in about one career
+in six, and counting them would change the odds by under 2%. The hint rate for Grand Masters is a placeholder (there
+are no runs to measure it). R cards are off by default because the training-hint model they rest on is untested. The
+odds are exact for the model, and the model is fitted to thousands of shared Independent Training runs, so they are
+good estimates, not guarantees.</p>
 
 <h3>The model, in detail</h3>
   <p><strong>Model.</strong> Each target spark sits on all six legacies with stars from the chosen rank: 50/45/5% for 1/2/3 stars below rank score 17,500 and 20/70/10% from 17,500 up (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">room-match data</a>); a spark's base rate is 3/6/9% by stars. A skill is acquired if guaranteed, on the trainee's own outfit skill list (fully awakened), hinted by the deck, or inherited: proc = 1 − Π(1 − base × (1 + affinity/100)) over the six legacies, two inspirations. Each legacy's affinity follows <a href="https://github.com/Acrith/uma-it-optimizer" target="_blank" rel="noopener">uma-it-optimizer</a>'s fit to 8,155 Independent Training receipts: a parent counts its relation points with the trainee, the full relation with the other parent, its trios with the trainee and its own parents, and 3 per G1 shared with the other parent and with each of its own parents; a grandparent counts its trio with the trainee and its child, plus 3 per G1 shared with that child. It then becomes a spark 35.4% of the time as a white, 70.9% as a gold: 20% and 40%, ×1.1 for each of the six ancestors already carrying it (<a href="https://hakuraku.moe/notes/spark_generation" target="_blank" rel="noopener">fit to room-match data</a>). Odds average the 12 runs of the self-copy-free cycle.</p>
-  <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: base × (1 + hint frequency/100) draws per run (unique effect included), each a uniform draw over the card's skills still below hint Lv 5 (a skill at Lv 5 leaves the pool, so a card that gives +5 levels per hint never repeats one); the base depends on the scenario (Unity Cup 2.70, Grand Concert 2.03, URA Finale 1.60, Trackblazer 1.81, and Grand Masters, JP Grand Masters-era data only, 2.30 as a placeholder: no runs to measure), and one card's draws cannot hint every target in its pool at once. Chain events: a Binomial(21, 0.35) number per run (mean 7.35, the same in every scenario), each advancing a random remaining chain slot of a non-pal card, a card with more links left more often. Both are fitted to Independent Training runs shared on uma-it (training hints read from 2,768 card-runs, chain progress from 879 runs' event hints). A chain whose default choice can end it stops there at that outcome's share. Event rewards: GameTora training-event data; a reward on some of a choice's outcomes counts at its share of them (one of two: 50%), and an event's outcomes exclude each other. Where an event offers targets on different choices, the deck takes one (the skill to prioritise is shown on the card). Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together, ranked by the product of each target's odds; the decks and loops near the top are then scored exactly, so the odds shown include what targets share (chain cards draw on one run's chain events, so their rewards land or miss together: on the reference setups exact odds were 0–8% higher than the product, up to 19% for decks with 0–1 pals).</p>
+  <p><strong>Deck.</strong> Six cards, every card at max limit break. Training hints: base × (1 + hint frequency/100) draws per run (unique effect included), each a uniform draw over the card's skills still below hint Lv 5 (a skill at Lv 5 leaves the pool, so a card that gives +5 levels per hint never repeats one); the base depends on the scenario (Unity Cup 2.70, Grand Concert 2.03, URA Finale 1.60, Trackblazer 1.81, and Grand Masters, JP Grand Masters-era data only, 2.30 as a placeholder: no runs to measure), and one card's draws cannot hint every target in its pool at once. Chain events: a Binomial(21, 0.35) number per run (mean 7.35, the same in every scenario), each advancing a random remaining chain slot of a non-pal card, a card with more links left more often. Both are fitted to Independent Training runs shared on uma-it (training hints from 62,870 card observations in 2,402 runs, chain progress from 1,792 runs' event hints). A chain whose default choice can end it stops there at that outcome's share. Event rewards: GameTora training-event data; a reward on some of a choice's outcomes counts at its share of them (one of two: 50%), and an event's outcomes exclude each other. Where an event offers targets on different choices, the deck takes one (the skill to prioritise is shown on the card). Pal finales (Light Hello SSR See Ya Later!, Anshinzawa SSR Nothing Ventured) are certain; first-year date events are left out (they don't fire in independent training). The deck and the loop are searched together, ranked by the product of each target's odds; the decks and loops near the top are then scored exactly, so the odds shown include what targets share (chain cards draw on one run's chain events, so their rewards land or miss together: on the reference setups exact odds were 0–8% higher than the product, up to 19% for decks with 0–1 pals).</p>
   <p><strong>Search.</strong> Every foursome gets a guaranteed ceiling from exact pairwise bounds; loops are scheduled best-first until no remaining ceiling can beat the 5th result. Schedules maximise the expected shared G1 wins, every pair weighted alike (each pair carries the same weight across the 12 careers). Win odds per race: 110 − distance cost − surface cost (A 0, B 10, C 20, D 30, E 40, F 60, G 90), minus 0/0/5/20/30/50 for the 1st to 6th+ race in a row, capped at 0–100%. Data: Global master.mdb, relocated venues count as the same race. The Grand Masters-era option uses a JP master.mdb cut at L'Arc's launch (24 Aug 2023), with group cards counted as pals. Character icons and card art are from the game's own files, © Cygames.</p>
 
 <h3>Sources</h3>
