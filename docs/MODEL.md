@@ -1,6 +1,6 @@
 # Model assumptions and the evidence behind each
 
-The full mechanics (algorithms, job fields, deck model) are in `pkg/loopopt/README.md`. This file lists every
+The full mechanics (algorithms, job fields, deck model) are in `docs/SOLVER.md`. This file lists every
 assumption the odds rest on, where it came from, and how sure we are. "Measured" means fitted to real careers;
 "community" means a widely repeated figure without published data; "assumed" means ours.
 
