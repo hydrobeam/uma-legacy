@@ -29,11 +29,12 @@
 /* dark: set on <html> by the head script (the visitor's choice, else the system's preference); every text pair keeps
    7:1 (WCAG AAA); the card-type, rarity and year colours and the brand stay as they are */
 :root[data-theme="dark"] {
-  --bg: #090c11; --panel: #171d28; --ink: #f4f6f9; --muted: #ccd4df; --line: #5c687d;   /* lines 3:1 on the panels */
+  --bg: #1b212c; --panel: #000000;   /* black panels on a dimmed page, mirroring light mode's white on grey */
+   --ink: #f4f6f9; --muted: #ccd4df; --line: #5c687d;   /* lines 3:1 on the panels */
   --accent: #bdd0ff; --accent-soft: #22305a; --gold: #f6d684; --gold-soft: #3d3113; --out: #ffbcb3; --out-soft: #4a2420;
   --req: #9de8c3; --req-soft: #163a2e; --opt: #e2c6f8; --opt-soft: #332444;
-  --av-l: 30%; --av-c: 35%; --shade: rgba(0, 0, 0, .6);
-  --img-edge: #9aa6ba; --card-edge: #9aa6ba;   /* a light edge round portraits and card art */
+  --av-l: 30%; --av-c: 35%; --shade: rgba(255, 255, 255, .18);
+  --img-edge: #e3e8ef; --card-edge: #e3e8ef;   /* a near-white edge round portraits and card art */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
