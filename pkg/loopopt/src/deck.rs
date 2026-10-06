@@ -962,12 +962,15 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 /// wherever their product-odds ceiling times this could beat the best exact value. Largest ratio seen: 1.17 (Grand
 /// Masters, all owned, 0-1-pal decks); every deck scored reports its ratio (`exact.max_ratio`).
 const EXACT_RHO: f64 = 1.25;
+/// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.
+const EXACT_STEPS: [f64; 3] = [EXACT_RHO, 1.12, 1.05];
 /// Most decks one exact deck search may return; beyond it the answer is the best found and `exact.complete` is false.
-const EXACT_CAP: usize = 20000;
-/// Work budget of the exact per-uma search (decks enumerated + 4 x decks scored exactly, about 1.5 s natively). When it
-/// runs out, the search ranks the remaining loops by product odds (each still scored exactly) and `exact.complete` is
-/// false: jobs where many decks lie within EXACT_RHO of each other (high inheritance chances) can exhaust it.
-const EXACT_BUDGET: usize = 400_000;
+const EXACT_CAP: usize = 50_000;
+/// Work budget of the exact per-uma search, in units of about 0.1 us natively (2 per partial deck tested, 25 per
+/// bound, 200 per exact score, 10,000 per deck search): about 3 s for the pass at EXACT_RHO. A pass that runs out
+/// certifies nothing; the next lower step gets a quarter more (see `run_multi`). Jobs where many decks lie within
+/// the cap of each other (high inheritance chances, few open targets, borrowing) can exhaust it.
+const EXACT_BUDGET: usize = 30_000_000;
 thread_local! { static JCOUNT: std::cell::Cell<usize> = std::cell::Cell::new(0); }
 
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
@@ -1422,7 +1425,7 @@ impl<'a> Sources<'a> {
     }
 }
 
-thread_local! { static UCHK: std::cell::Cell<(usize, f64, usize)> = std::cell::Cell::new((0, 0.0, 0)); }
+thread_local! { static UCHK: std::cell::Cell<(usize, f64, usize)> = std::cell::Cell::new((0, 0.0, 0)); static SPT: std::cell::Cell<(f64, f64, usize, usize)> = std::cell::Cell::new((0.0, 0.0, 0, 0)); }
 /// Every legal deck of one trainee, without the skyline's pruning (which compares product odds only). Used to make
 /// the per-uma search exact: decks are enumerated by chain-kind key, like the skyline search, with an upper bound on
 /// a partial deck's product value (each remaining slot of a kind group at that group's best miss chances per target,
@@ -1440,6 +1443,8 @@ struct DeckSpace<'a> {
     keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>)>>>,
     red: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<usize>>>>,
     gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>>>,
+    /// partial decks tested, over every search (the search's cost)
+    nodes: std::cell::Cell<usize>,
 }
 #[derive(Clone)]
 struct Sel { ents: Vec<usize>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64> }
@@ -1551,6 +1556,7 @@ impl<'a> DeckSpace<'a> {
         let pal_ents: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == (0, 0, 0)).collect();
         let fixed = model.fixed_factor();
         let val = |cl: &(Vec<f64>, f64), dw: &[f64], dg: &[f64]| fixed * cl.0.iter().map(|&q| model.trainee_fast(u, q, dw, dg)).sum::<f64>();
+        let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
         let mut bestv = if best { seed } else { f64::NEG_INFINITY };
         let mut over = false;
@@ -1638,6 +1644,8 @@ impl<'a> DeckSpace<'a> {
         }
         // stable: equal bounds keep enumeration order
         cfgs.sort_by(|a, b| b.root.partial_cmp(&a.root).unwrap());
+        SPT.with(|c| { let mut v = c.get(); v.0 += t_cfg.elapsed().as_secs_f64(); v.2 += cfgs.len(); v.3 += counts.len(); c.set(v); });
+        let t_dfs = Instant::now();
         for cf in &cfgs {
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
@@ -1699,6 +1707,7 @@ impl<'a> DeckSpace<'a> {
                             if list.len() - p < left { break; }
                             let j = list[p];
                             if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) { continue; }
+                            sp.nodes.set(sp.nodes.get() + 1);
                             let (mut w2, mut g2) = (*st.pw.last().unwrap(), *st.pg.last().unwrap());
                             for t in 0..nu { w2[t] *= mw[j * nu + t]; g2[t] *= mg[j * nu + t]; }
                             if !hopeful(g, left - 1, &w2, &g2, bestv()) { continue; }
@@ -1737,6 +1746,7 @@ impl<'a> DeckSpace<'a> {
                 }
             }
         }
+        SPT.with(|c| { let mut v = c.get(); v.1 += t_dfs.elapsed().as_secs_f64(); c.set(v); });
         (out, over)
     }
     fn pdeck(&self, x: &Sel, uid: u32) -> PDeck {
@@ -1940,7 +1950,7 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
         Some(DeckSpace { dj: &dj, unc: unc.clone(), sk, cards: cards.clone(), rel: rel.clone(), kind: kind.clone(), endk: endk.clone(), vark: vark.clone(),
             srcs: srcs.clone(), ebor: rel.iter().map(|&r| !is_owned(cards[r].id)).collect(),
             plain: plain_ids.iter().zip(&plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
-            locked: locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default() })
+            locked: locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default() })
     } else { None };
 
     // ---- card dominance (exact) ----
@@ -2775,24 +2785,28 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         (e, dj.deck_size.saturating_sub(x.ids.len() + x.plain_ids.len()))
     };
     struct Best { sum: f64, deck: Option<PDeck>, per: Vec<(f64, f64, usize)> }
-    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, Vec<u64>), std::rc::Rc<Best>>> = Default::default();
+    // per (uma, chances): the best found, decks already scored or bounded, and the cap it is exact under
+    struct ExEntry { best: Option<(f64, PDeck)>, done: crate::FxSet<(Vec<u32>, Vec<u8>, Vec<u32>, usize)>, seen: crate::FxSet<(Vec<usize>, usize, usize)>, level: f64, result: Option<std::rc::Rc<Best>> }
+    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, Vec<u64>), ExEntry>> = Default::default();
     let n_scored = std::cell::Cell::new(0usize); let n_band = std::cell::Cell::new(0usize);
     let cap_hit = std::cell::Cell::new(false); let max_ratio = std::cell::Cell::new(0.0f64);
     let (t_band, t_score, t_seed) = (std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64));
-    // the cap in force: EXACT_RHO, or 1 (product odds) once the work budget is spent
-    let rho = std::cell::Cell::new(if dj.exact { EXACT_RHO } else { 1.0 }); let work = std::cell::Cell::new(0usize); let n_ufilt = std::cell::Cell::new(0usize); let t_ub = std::cell::Cell::new(0.0f64);
-    let spend = |w: usize| { work.set(work.get() + w); if work.get() > EXACT_BUDGET { rho.set(1.0); } };
-    let exact_best = |u: usize, qs: &[f64]| -> std::rc::Rc<Best> {
+    let work = std::cell::Cell::new(0usize); let n_ufilt = std::cell::Cell::new(0usize); let t_ub = std::cell::Cell::new(0.0f64);
+    let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(EXACT_BUDGET);
+    let budget_c = std::cell::Cell::new(budget);
+    let spend = |w: usize| work.set(work.get() + w);
+    // set when a pass runs out of budget (or a deck search out of room): that pass certifies nothing
+    let aborted = std::cell::Cell::new(false);
+    // Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
+    // and every legal deck whose product value times lv reaches it (each first through the proven bound).
+    let exact_best = |u: usize, qs: &[f64], lv: f64| -> std::rc::Rc<Best> {
         let key = (u, qs.iter().map(|q| q.to_bits()).collect::<Vec<u64>>());
-        if let Some(b) = ex_cache.borrow().get(&key) { return b.clone(); }
+        if let Some(e) = ex_cache.borrow().get(&key) { if e.level >= lv { if let Some(r) = &e.result { return r.clone(); } } }
+        let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExEntry { best: None, done: Default::default(), seen: Default::default(), level: -1.0, result: None });
         let uid = d.umas[u].id;
         let tsum = |x: &PDeck| fixed * qs.iter().map(|&q| model.trainee_fast(u, q, &x.dw, &x.dg)).sum::<f64>();
-        let ident = |x: &PDeck| (x.ids.clone(), x.ends.clone(), x.vars.clone(), x.plain_ids.len());
-        let mut done: Vec<(Vec<u32>, Vec<u8>, Vec<u32>, usize)> = vec![];
-        let mut best: Option<(f64, PDeck)> = None;
-        let mut score = |x: &PDeck, best: &mut Option<(f64, PDeck)>| {
-            if done.contains(&ident(x)) { return; }
-            done.push(ident(x));
+        let score = |x: &PDeck, ent: &mut ExEntry| {
+            if !ent.done.insert((x.ids.clone(), x.ends.clone(), x.vars.clone(), x.plain_ids.len())) { return; }
             let t0 = Instant::now();
             let (e, fl) = ents_of(x);
             let j = joint_fast(model, u, qs, &e, fl, ntar, false);
@@ -2806,91 +2820,103 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
                     }
                 } else { UCHK.with(|c| { let mut v = c.get(); v.2 += 1; c.set(v); }); }
             }
-            n_scored.set(n_scored.get() + 1); spend(4);
+            n_scored.set(n_scored.get() + 1); spend(200);
             for (i, &q) in qs.iter().enumerate() {
                 let p = fixed * model.trainee_fast(u, q, &x.dw, &x.dg);
                 if p > 0.0 { max_ratio.set(max_ratio.get().max(j[i].0 / p)); }
             }
             let sv: f64 = j.iter().map(|y| y.0).sum();
-            if best.as_ref().map_or(true, |b| sv > b.0) { *best = Some((sv, x.clone())); }
+            if ent.best.as_ref().map_or(true, |b| sv > b.0) { ent.best = Some((sv, x.clone())); }
         };
-        // seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
-        let t0 = Instant::now();
-        let mut seeds: Vec<(f64, &PDeck)> = uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(uid, &card_of)).map(|x| (tsum(x), x)).collect();
-        seeds.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
-        for (_, x) in seeds.iter().take(3) { score(x, &mut best); }
-        if best.is_none() {
-            let (r, _) = space.search(model, u, uid, &[(qs.to_vec(), 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
-            if let Some((_, sel)) = r.first() { let x = space.pdeck(sel, uid); score(&x, &mut best); }
+        if ent.level < 0.0 {
+            // seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
+            let t0 = Instant::now();
+            let mut seeds: Vec<(f64, &PDeck)> = uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(uid, &card_of)).map(|x| (tsum(x), x)).collect();
+            seeds.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
+            for (_, x) in seeds.iter().take(3) { score(x, &mut ent); }
+            if ent.best.is_none() {
+                let (r, _) = space.search(model, u, uid, &[(qs.to_vec(), 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+                if let Some((_, sel)) = r.first() { let x = space.pdeck(sel, uid); score(&x, &mut ent); }
+            }
+            ent.level = 1.0;
         }
-        if let (Some((thr, _)), true) = (best.clone(), rho.get() > 1.0) {
-            // every legal deck that might beat it under the assumption
+        // every legal deck that might beat it under the cap lv
+        let mut complete = true;
+        if lv > ent.level { if let Some((thr, _)) = ent.best.clone() {
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
-            let (mut cands, over) = space.search(model, u, uid, &[(qs.to_vec(), thr)], false, f64::NEG_INFINITY, EXACT_RHO, EXACT_CAP);
-            spend(cands.len());
+            let n0 = space.nodes.get();
+            let (mut cands, over) = space.search(model, u, uid, &[(qs.to_vec(), thr)], false, f64::NEG_INFINITY, lv, EXACT_CAP);
+            spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
             t_band.set(t_band.get() + t0.elapsed().as_secs_f64());
-            if over { cap_hit.set(true); }
+            if over { cap_hit.set(true); complete = false; }
             cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            for (v, sel) in &cands {
-                if EXACT_RHO * v * (1.0 + 1e-9) < best.as_ref().unwrap().0 || rho.get() == 1.0 { break; }
+            if complete { for (v, sel) in &cands {
+                if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { break; }
+                if work.get() > budget_c.get() { complete = false; break; }
+                if !ent.seen.insert((sel.ents.clone(), sel.plain, sel.filler)) { continue; }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
                 let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
                 let ubo = upper_na(model, u, qs, &e, sel.filler);
                 t_ub.set(t_ub.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ubo {
-                    spend(1);
-                    if ub.iter().sum::<f64>() * (1.0 + 1e-9) < best.as_ref().unwrap().0 { n_ufilt.set(n_ufilt.get() + 1); continue; }
+                    spend(25);
+                    if ub.iter().sum::<f64>() * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { n_ufilt.set(n_ufilt.get() + 1); continue; }
                 }
                 let x = space.pdeck(sel, uid);
-                score(&x, &mut best);
-            }
-        }
-        let b = match best {
-            Some((sum, x)) => { let (e, fl) = ents_of(&x); let per = joint_fast(model, u, qs, &e, fl, ntar, true); Best { sum, deck: Some(x), per } }
+                score(&x, &mut ent);
+            } }
+            if complete { ent.level = lv; } else { aborted.set(true); }
+        } else { ent.level = lv; } }
+        let b = match &ent.best {
+            Some((sum, x)) => { let (e, fl) = ents_of(x); let per = joint_fast(model, u, qs, &e, fl, ntar, true); Best { sum: *sum, deck: Some(x.clone()), per } }
             None => { let per = joint_fast(model, u, qs, &[], 0, ntar, true); Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per } }
         };
         let b = std::rc::Rc::new(b);
-        ex_cache.borrow_mut().insert(key, b.clone());
+        ent.result = Some(b.clone());
+        ex_cache.borrow_mut().insert(key, ent);
         b
     };
-    // exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] (rises with the chance,
-    // so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may take its own deck)
-    let xtab_c: std::cell::RefCell<Vec<[f64; NG]>> = std::cell::RefCell::new(vec![[f64::NAN; NG]; n]);
-    let xtab = |u: usize, i: usize| -> f64 {
-        let v = xtab_c.borrow()[u][i];
-        if !v.is_nan() { return v; }
-        let v = exact_best(u, &[grid[i]]).sum;
-        xtab_c.borrow_mut()[u][i] = v; v
+    // exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] under the cap it was
+    // computed for (rises with the chance, so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may
+    // take its own deck)
+    let xtab_c: std::cell::RefCell<Vec<[(f64, f64); NG]>> = std::cell::RefCell::new(vec![[(f64::NAN, 0.0); NG]; n]);
+    let xtab = |u: usize, i: usize, lv: f64| -> f64 {
+        let (v, l) = xtab_c.borrow()[u][i];
+        if !v.is_nan() && l >= lv { return v; }
+        let v = exact_best(u, &[grid[i]], lv).sum;
+        // a value from a deck search the budget cut short is not exact under lv: not kept
+        if !aborted.get() { xtab_c.borrow_mut()[u][i] = (v, lv); }
+        v
     };
-    // Ceiling of a cell (uma, grid point): the exact value if computed, else the lowest computed exact value at a higher
-    // grid point, else the product-odds bound times EXACT_RHO; (bound, exact?)
-    let cell = |u: usize, i: usize| -> (f64, bool) {
+    // Ceiling of a cell (uma, grid point) under cap lv: the exact value if computed under lv or more, else the lowest
+    // such value at a higher grid point, else the product-odds bound times lv; (bound, exact?)
+    let cell = |u: usize, i: usize, lv: f64| -> (f64, bool) {
         let row = xtab_c.borrow()[u];
-        let mut b = rho.get() * fixed * btab(u, i) * (1.0 + 1e-12);
-        for j in i..NG { if !row[j].is_nan() { b = b.min(row[j] * (1.0 + 1e-12)); return (b, j == i); } }
+        let mut b = lv * fixed * btab(u, i) * (1.0 + 1e-12);
+        for j in i..NG { if !row[j].0.is_nan() && row[j].1 >= lv { b = b.min(row[j].0 * (1.0 + 1e-12)); return (b, j == i); } }
         (b, false)
     };
     // Exact ceiling of a foursome at chances `qa`, refined lazily: while it beats `kth`, the loosest inexact term is
     // tightened (first computed at the uma's highest grid point, then halfway down towards its own) until the ceiling
     // stops beating `kth` or every term is exact. Each step is one exact deck search for one uma.
-    let exact_ceiling = |f: [usize; 4], qa: &[f64; 12], kth: f64| -> f64 {
+    let exact_ceiling = |f: [usize; 4], qa: &[f64; 12], kth: f64, lv: f64| -> f64 {
         loop {
             let mut tot = 0.0; let mut worst: Option<(f64, usize, usize)> = None;
             for l in 0..12 {
                 let (u, i) = (f[lin_t[l]], gidx(qa[l]));
-                let (b, ex) = cell(u, i); tot += b;
+                let (b, ex) = cell(u, i, lv); tot += b;
                 if !ex && worst.map_or(true, |w| b > w.0) { worst = Some((b, u, i)); }
             }
             let ce = tot / 12.0;
             let Some((_, u, i)) = worst else { return ce };
-            if ce <= kth * (1.0 + 4e-12) { return ce; }
+            if ce <= kth * (1.0 + 4e-12) || aborted.get() { return ce; }
             let row = xtab_c.borrow()[u];
-            let j = (i..NG).find(|&j| !row[j].is_nan());
+            let j = (i..NG).find(|&j| !row[j].0.is_nan() && row[j].1 >= lv);
             let tgt = match j { None => i.max(gidx(qmax[u])), Some(j) => i + (j - i) / 2 };
-            xtab(u, tgt);
+            xtab(u, tgt, lv);
         }
     };
     // ceiling with each uma's best skyline deck (legal or not), the same deck across her lineages
@@ -2934,72 +2960,95 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         }
     };
     let smax = if k >= 4 { mv[0] + mv[1] + mv[2] + mv[3] } else { 0.0 };
-    let mut hi_sum = f64::INFINITY;
-    let lo_sum = smax * 0.85;
-    let mut cand: Vec<(f64, [usize; 4])> = vec![];
-    band(lo_sum, hi_sum, &mut cand);
-    hi_sum = lo_sum;
-    cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
     let kloops = dj.top_decks.max(1);
-    let mut solved: Vec<([usize; 4], Res, Vec<f64>, Vec<std::rc::Rc<Best>>, f64)> = vec![];
-    let mut vals: Vec<f64> = vec![];
-    let mut next = 0; let mut scanned = 0; let mut generated = cand.len();
-    let mut kth_val = f64::NEG_INFINITY;
-    let mut sched_rejects = 0usize;
-    let (mut st_a, mut st_b) = (0usize, 0usize);
-    loop {
-        // Ceilings carry a (1 + 1e-12) guard against rounding, so a loop whose ceiling beats the k-th value by no more
-        // than that only ties it and cannot change the result. Without this, a job whose targets are all guaranteed
-        // (every loop has the same value) solved every foursome. Product-odds ceilings are scaled by EXACT_RHO to bound
-        // exact odds.
-        let beats = |c: f64| c > kth_val * (1.0 + 4e-12);
-        let r_ = rho.get();
-        if !(next < cand.len() && beats(r_ * cand[next].0)) {
-            if hi_sum <= 0.0 || !beats(r_ * sep(hi_sum)) { break; }
-            let kth_lo = if kth_val > f64::NEG_INFINITY { kth_val / r_ * 12.0 / (3.0 * fixed) * (1.0 - 1e-9) } else { 0.0 };
-            let lo = kth_lo.max(hi_sum * 0.85);
-            let lo = if lo < smax * 1e-6 { 0.0 } else { lo };
-            let mut more: Vec<(f64, [usize; 4])> = vec![];
-            band(lo, hi_sum, &mut more);
-            hi_sum = lo; generated += more.len();
-            let mut rest: Vec<(f64, [usize; 4])> = cand.split_off(next);
-            rest.extend(more);
-            rest.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-            cand.extend(rest);
-            continue;
+    // schedules found, per foursome (shared by the passes)
+    let sched_c: std::cell::RefCell<crate::FxMap<[usize; 4], Res>> = Default::default();
+    struct Pass { solved: Vec<([usize; 4], Res, Vec<f64>, Vec<std::rc::Rc<Best>>, f64)>, kth: f64, next_bound: f64, scanned: usize, generated: usize, sched_rejects: usize }
+    // One best-first pass over the foursomes with cap lv: ceilings are exact tables or product ceilings times lv, the
+    // stop rule compares them with the k-th exact value. None when the budget runs out (the pass certifies nothing).
+    let run_pass = |lv: f64| -> Option<Pass> {
+        let mut hi_sum = f64::INFINITY;
+        let lo_sum = smax * 0.85;
+        let mut cand: Vec<(f64, [usize; 4])> = vec![];
+        band(lo_sum, hi_sum, &mut cand);
+        hi_sum = lo_sum;
+        cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+        let mut solved: Vec<([usize; 4], Res, Vec<f64>, Vec<std::rc::Rc<Best>>, f64)> = vec![];
+        let mut vals: Vec<f64> = vec![];
+        let mut next = 0; let mut scanned = 0; let mut generated = cand.len();
+        let mut kth_val = f64::NEG_INFINITY;
+        let mut sched_rejects = 0usize;
+        loop {
+            if aborted.get() { return None; }
+            // Ceilings carry a (1 + 1e-12) guard against rounding, so a loop whose ceiling beats the k-th value by no
+            // more than that only ties it and cannot change the result. Without this, a job whose targets are all
+            // guaranteed (every loop has the same value) solved every foursome.
+            let beats = |c: f64| c > kth_val * (1.0 + 4e-12);
+            if !(next < cand.len() && beats(lv * cand[next].0)) {
+                if hi_sum <= 0.0 || !beats(lv * sep(hi_sum)) { break; }
+                let kth_lo = if kth_val > f64::NEG_INFINITY { kth_val / lv * 12.0 / (3.0 * fixed) * (1.0 - 1e-9) } else { 0.0 };
+                let lo = kth_lo.max(hi_sum * 0.85);
+                let lo = if lo < smax * 1e-6 { 0.0 } else { lo };
+                let mut more: Vec<(f64, [usize; 4])> = vec![];
+                band(lo, hi_sum, &mut more);
+                hi_sum = lo; generated += more.len();
+                let mut rest: Vec<(f64, [usize; 4])> = cand.split_off(next);
+                rest.extend(more);
+                rest.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+                cand.extend(rest);
+                continue;
+            }
+            let (_, f) = cand[next]; next += 1; scanned += 1;
+            let qpb = model.lineage_q_arr(f, &|x, y| pb[f[x]][f[y]]);
+            // cheapest first: the cell bounds as they stand, then the product ceiling with one deck per trainee
+            if !beats((0..12).map(|l| cell(f[lin_t[l]], gidx(qpb[l]), lv).0).sum::<f64>() / 12.0) { continue; }
+            if !beats(lv * relaxed(f, &qpb)) { continue; }
+            // exact ceiling at the pairwise-ceiling chances, valid for any schedule
+            if !beats(exact_ceiling(f, &qpb, kth_val, lv)) { continue; }
+            if aborted.get() { return None; }
+            let r = sched_c.borrow().get(&f).cloned();
+            let r = r.unwrap_or_else(|| {
+                let r = match &fixed_s {
+                    Some(fs) => Res { val: 0.0, s: std::array::from_fn(|i| fs[f[i]].unwrap()), order: [0, 1, 2, 3], evals: 0, secs: 0.0 },
+                    None => optimize(d, f, "scf@0.5", sj.iters, sj.seed, 60.0, &[]),
+                };
+                sched_c.borrow_mut().insert(f, r.clone()); r });
+            let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
+            let qs = model.lineage_q(f, &|x, y| if no_race { 0.0 } else { wval(&ps[x], &ps[y]) });
+            let qa: [f64; 12] = std::array::from_fn(|i| qs[i]);
+            // rejected only with the schedule found: a better schedule could change this one's fate
+            if !beats(exact_ceiling(f, &qa, kth_val, lv)) { sched_rejects += 1; continue; }
+            let mut tot = 0.0; let mut bests = vec![];
+            for t in 0..4 {
+                let qt: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
+                let b = exact_best(f[t], &qt, lv); tot += b.sum; bests.push(b);
+            }
+            if aborted.get() { return None; }
+            let val = tot / 12.0;
+            solved.push((f, r, qs, bests, val));
+            vals.push(val);
+            let mut vs = vals.clone(); vs.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            kth_val = if vs.len() >= kloops { vs[kloops - 1] } else { f64::NEG_INFINITY };
         }
-        let (_, f) = cand[next]; next += 1; scanned += 1;
-        let qpb = model.lineage_q_arr(f, &|x, y| pb[f[x]][f[y]]);
-        // cheapest first: the cell bounds as they stand, then the product ceiling with one deck per trainee
-        if !beats((0..12).map(|l| cell(f[lin_t[l]], gidx(qpb[l])).0).sum::<f64>() / 12.0) { continue; }
-        if !beats(r_ * relaxed(f, &qpb)) { continue; }
-        st_a += 1;
-        // exact ceiling at the pairwise-ceiling chances, valid for any schedule
-        if !beats(exact_ceiling(f, &qpb, kth_val)) { continue; }
-        st_b += 1;
-        let r = match &fixed_s {
-            Some(fs) => Res { val: 0.0, s: std::array::from_fn(|i| fs[f[i]].unwrap()), order: [0, 1, 2, 3], evals: 0, secs: 0.0 },
-            None => optimize(d, f, "scf@0.5", sj.iters, sj.seed, 60.0, &[]),
-        };
-        let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let qs = model.lineage_q(f, &|x, y| if no_race { 0.0 } else { wval(&ps[x], &ps[y]) });
-        let qa: [f64; 12] = std::array::from_fn(|i| qs[i]);
-        // rejected only with the schedule found: a better schedule could change this one's fate
-        if !beats(exact_ceiling(f, &qa, kth_val)) { sched_rejects += 1; continue; }
-        let mut tot = 0.0; let mut bests = vec![];
-        for t in 0..4 {
-            let qt: Vec<f64> = (0..12).filter(|&l| lin_t[l] == t).map(|l| qa[l]).collect();
-            let b = exact_best(f[t], &qt); tot += b.sum; bests.push(b);
-        }
-        let val = tot / 12.0;
-        solved.push((f, r, qs, bests, val));
-        vals.push(val);
-        let mut vs = vals.clone(); vs.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        kth_val = if vs.len() >= kloops { vs[kloops - 1] } else { f64::NEG_INFINITY };
+        let next_bound = lv * (if next < cand.len() { cand[next].0 } else { 0.0 }).max(if hi_sum > 0.0 { sep(hi_sum) } else { 0.0 });
+        Some(Pass { solved, kth: kth_val, next_bound, scanned, generated, sched_rejects })
+    };
+    // Try the caps highest first (EXACT_STEPS): the answer is certified under the first whose pass finishes within the
+    // budget; a lower cap's pass reuses everything computed so far and gets a quarter of the budget more. When none
+    // finishes, a pass with the cap at 1 (product odds: no deck searches) gives the answer.
+    let steps: Vec<f64> = if !dj.exact { vec![] } else if let Ok(x) = std::env::var("EXACT_STEPS") { x.split(',').filter_map(|t| t.parse().ok()).collect() } else { EXACT_STEPS.to_vec() };
+    let mut last: Option<Pass> = None; let mut cert = 1.0f64;
+    let mut allow = budget;
+    for &lv in &steps {
+        budget_c.set(allow);
+        match run_pass(lv) { Some(p) => { last = Some(p); cert = lv; break } None => { aborted.set(false); allow = work.get() + budget / 4; } }
     }
+    let p = match last { Some(p) => p, None => { budget_c.set(usize::MAX); run_pass(1.0).expect("a pass without deck searches") } };
+    let Pass { solved, kth: kth_val, next_bound, scanned, generated, sched_rejects } = p;
     if solved.is_empty() { return json!({"error": "No foursome contains all the required umas."}); }
     if std::env::var("UPPER_CHECK").is_ok() { let v = UCHK.with(|c| c.get()); eprintln!("UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered", v.0, v.1, v.2); }
-    if std::env::var("DECK_DEBUG").is_ok() { eprintln!("per-uma search {:.2}s scanned {} pass-rho {} pass-exact-pb {} solved {} exact: {} band searches, {} decks scored, schedule rejects {}, xtab umas {} cells {} | band {:.2}s score {:.2}s seed-scan {:.2}s bound {:.2}s", tq.elapsed().as_secs_f64(), scanned, st_a, st_b, solved.len(), n_band.get(), n_scored.get(), sched_rejects, xtab_c.borrow().iter().filter(|r| r.iter().any(|x| !x.is_nan())).count(), xtab_c.borrow().iter().map(|r| r.iter().filter(|x| !x.is_nan()).count()).sum::<usize>(), t_band.get(), t_score.get(), t_seed.get(), t_ub.get()); }
+    if std::env::var("DECK_DEBUG").is_ok() { let v = SPT.with(|c| c.get()); eprintln!("deck searches: setup {:.2}s tree {:.2}s configs {} count vectors {}", v.0, v.1, v.2, v.3); }
+    if std::env::var("DECK_DEBUG").is_ok() { eprintln!("per-uma search {:.2}s cap {} scanned {} solved {} exact: {} deck searches, {} decks scored, {} bounded out, schedule rejects {} | band {:.2}s score {:.2}s seed-scan {:.2}s bound {:.2}s", tq.elapsed().as_secs_f64(), cert, scanned, solved.len(), n_band.get(), n_scored.get(), n_ufilt.get(), sched_rejects, t_band.get(), t_score.get(), t_seed.get(), t_ub.get()); }
     let mut order: Vec<usize> = (0..solved.len()).collect();
     // stable: ties keep solve order
     order.sort_by(|&a, &b| solved[b].4.partial_cmp(&solved[a].4).unwrap());
@@ -3031,12 +3080,11 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         let base = (0..4).max_by_key(|&i| (dk.iter().filter(|x| x.names == dk[i].names).count(), 4 - i)).unwrap();
         json!({"loop": lp, "deck": dk[base].out(&unc), "decks": dk.iter().map(|x| x.out(&unc)).collect::<Vec<_>>()})
     }).collect();
-    let next_bound = rho.get() * (if next < cand.len() { cand[next].0 } else { 0.0 }).max(if hi_sum > 0.0 { sep(hi_sum) } else { 0.0 });
-    let budget_out = rho.get() == 1.0;
-    let complete = next_bound <= kth_val * (1.0 + 4e-12) && !cap_hit.get() && !budget_out;
+    let budget_out = dj.exact && cert < EXACT_RHO;
+    let complete = next_bound <= kth_val * (1.0 + 4e-12);
     // what the answer rests on: `rho` the assumed cap on exact / product odds, `max_ratio` the largest seen on any deck
     // scored here; `complete` = the search ended by its stop rule (no unexamined loop or deck can win under the cap)
-    let exact = json!({"rho": EXACT_RHO, "max_ratio": max_ratio.get(), "complete": complete, "decks_scored": n_scored.get(),
+    let exact = json!({"rho": cert, "rho_target": EXACT_RHO, "max_ratio": max_ratio.get(), "complete": complete, "decks_scored": n_scored.get(),
                        "deck_searches": n_band.get(), "loops_solved": solved.len(), "schedule_rejects": sched_rejects, "cap_hit": cap_hit.get(), "budget_out": budget_out, "bound_filtered": n_ufilt.get()});
     let mut out = stats;
     for (key, val) in [("top", json!(top)), ("best", json!([])), ("per_uma", json!(true)), ("foursomes", json!(total_foursomes)),

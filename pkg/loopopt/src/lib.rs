@@ -705,6 +705,7 @@ fn optimistic_start(d: &Data, lp: &Loop) -> [Sched; 4] {
     s
 }
 
+#[derive(Clone)]
 struct Res { val: f64, s: [Sched; 4], order: [usize; 4], evals: u64, secs: f64 }
 
 /// Tie-break pass: each member re-solves against her partners with a tiny bonus (EPS per expected G1 win) on every G1,
