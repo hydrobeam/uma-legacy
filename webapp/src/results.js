@@ -56,7 +56,7 @@ function loopCard(l, meta, ctx) {
       card.appendChild(block(meta.deck, 'Deck for ' + users.join(', ')));
       const seen = new Set();
       // a label where the swap rows start: each row is another uma's deck, given by what it swaps from the deck above
-      if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps from this deck'; card.appendChild(h); }
+      if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps'; card.appendChild(h); }
       M.forEach((m, k) => { if (key(D[k]) === key(meta.deck) || seen.has(key(D[k]))) return; seen.add(key(D[k]));
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
