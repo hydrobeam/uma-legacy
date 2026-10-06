@@ -1,4 +1,4 @@
-// ---------- target skills, career-event extras ----------
+// ---------- target skills ----------
 import { $ } from './dom.js';
 import { CAT, SK, PRESET } from './data.js';
 import { state, goldGiven } from './state.js';

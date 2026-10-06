@@ -76,7 +76,7 @@ __CSS__
       </div>
     </section>
 
-    <section class="panel nodeck" aria-labelledby="h-skills" id="skills-panel">
+    <section class="panel" aria-labelledby="h-skills">
       <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">8/8 example</button></div>
       <div class="adder">
         <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
@@ -88,7 +88,7 @@ __CSS__
     <section class="panel" aria-labelledby="h-roster">
       <div class="row between"><h2 id="h-roster">Umas</h2>
         <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
-      <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" placeholder="Filter by name or outfit" style="flex:1">
+      <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" placeholder="Filter by name or outfit">
         <div class="sortdd" id="rs-dd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort umas"></button>
           <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
       <p class="hint">Tap a portrait: owned → not owned → must include.</p>
@@ -98,11 +98,11 @@ __CSS__
     </section>
 
 
-    <section class="panel" aria-labelledby="h-deck" id="deck-panel">
+    <section class="panel" aria-labelledby="h-deck">
       <div class="row between"><h2 id="h-deck">Support deck</h2>
         <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button></div></div>
-      <div id="dk-body">
-        <div class="row rtools"><input type="search" id="c-filter" aria-label="Filter cards" placeholder="Filter cards" style="flex:1">
+      <div>
+        <div class="row rtools"><input type="search" id="c-filter" aria-label="Filter cards" placeholder="Filter cards">
         <div class="sortdd" id="cs-dd"><button class="btn" id="cs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort cards"></button>
           <div class="sortmenu" id="cs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
         <div class="cards" id="cards"></div>
@@ -131,7 +131,7 @@ __CSS__
 <dialog id="ex-dlg" aria-labelledby="ex-title"><div class="dlg">
   <div class="row between dhead"><h3 id="ex-title">Export or import</h3><button class="btn" id="ex-close">Close</button></div>
   <p>The text below holds your settings and the results on screen. Copy it to share or to paste into a chat. To load someone else's settings, paste their text here and press Load settings.</p>
-  <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results" style="width:100%;font-family:var(--font-data);font-size:.78rem;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+  <textarea id="ex-text" rows="12" spellcheck="false" aria-label="Exported settings and results"></textarea>
   <div class="row"><button class="btn" id="ex-copy">Copy</button><button class="btn" id="ex-load">Load settings</button><span class="hint" id="ex-msg"></span></div>
 </div></dialog>
 

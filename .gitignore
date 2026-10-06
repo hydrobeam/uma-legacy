@@ -47,7 +47,8 @@
 !/webapp/worker.template.js
 !/webapp/example.mjs
 !/webapp/example.json
-!/webapp/node*.mjs
+!/webapp/nodebench.mjs
+!/webapp/nodebrowser.mjs
 !/webapp/serve.mjs
 !/webapp/images.py
 !/webapp/icons.py

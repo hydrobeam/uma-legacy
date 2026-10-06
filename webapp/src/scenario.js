@@ -1,4 +1,4 @@
-// ---------- scenario picker: a button showing the chosen scenario, opening a grid of the four ----------
+// ---------- scenario picker: a button showing the chosen scenario, opening a grid of the scenarios ----------
 // Same pattern as the sort menus (sortmenu.js): role=menu, tiles are menuitemradio buttons. Opening focuses the chosen
 // tile; arrows move between tiles (two columns), Escape or a click outside the button and the grid closes it, and so
 // does focus leaving the picker. Picking a scenario also sets its guaranteed golds and its default lineage rank.
