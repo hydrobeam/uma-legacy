@@ -46,6 +46,17 @@ function loopCard(l, meta, ctx) {
         if (h - o.gold > 0.005) parts.push(tile(o.group, false, s.w, h, o.gold > 0.005 ? s.w + ' or its gold' : ''));
         return parts.join(''); }).join('');
       return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
+    // what a swap changes: the hint odds that move against the shared deck (the gold's, then at least the white's),
+    // largest change first; two shown, the rest in the tooltip
+    const deltas = (d) => { const base = new Map(meta.deck.odds.map(o => [o.group, o])), out = [];
+      const h = (o) => o ? 1 - (1 - o.white) * (1 - o.gold) : 0;
+      for (const o of d.odds) { const b = base.get(o.group), s = SK.get(o.group) || { w: o.group, gd: null };
+        if (Math.abs(o.gold - (b ? b.gold : 0)) >= 0.005) out.push({ g: o.group, gold: true, nm: s.gd || s.w, a: b ? b.gold : 0, z: o.gold });
+        if (Math.abs(h(o) - h(b)) >= 0.005 && (h(o) - o.gold > 0.005 || h(b) - (b ? b.gold : 0) > 0.005)) out.push({ g: o.group, gold: false, nm: s.w, a: h(b), z: h(o) }); }
+      out.sort((x, y) => Math.abs(y.z - y.a) - Math.abs(x.z - x.a));
+      if (!out.length) return '';
+      const pc = (p) => Math.round(p * 100) + '%', one = (x) => `<span class="swd1${x.z < x.a ? ' down' : ''}">${icon(x.g, x.gold)}${esc(x.nm)} <b>${pc(x.a)} → ${pc(x.z)}</b></span>`;
+      return `<span class="swd" title="${esc(out.map(x => `${x.nm}: ${pc(x.a)} → ${pc(x.z)}`).join('\n'))}">${out.slice(0, 2).map(one).join('')}${out.length > 2 ? `<span class="swmore">+${out.length - 2} more</span>` : ''}</span>`; };
     const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
     // a member's portrait (her outfit's when the loop fixes one), with her name as its tooltip
     const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size); av.title = M[k].name + (of.length === 1 ? ' ' + of[0].label : ''); return av.outerHTML; };
@@ -69,7 +80,7 @@ function loopCard(l, meta, ctx) {
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
         dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span></div>${info}` + oddsOf(d);
+          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d)}</div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }
     card.querySelectorAll('.deck .oinfo').forEach(b => b.onclick = () => { const o = b.closest('.deck').querySelector('.dodds');
