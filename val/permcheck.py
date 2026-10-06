@@ -14,7 +14,7 @@ OWN = [cid('[Tracen Academy] Yaeno'), cid('Tonight, We Waltz'), cid('Sunlit Ange
        cid('[Tracen Academy] Inari'), cid('Split the Sky'), cid('[Tracen Academy] Gold Ship')]
 assert not any(str(c) in ends for c in OWN), 'pick cards without chain-ending choices'
 base = json.load(open(S + 'jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN)
-env = dict(os.environ, DECK_RELAXED='1')
+env = dict(os.environ, RULE_OFF='1')
 def run(job, e=None):
     p = SC + f'_pc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json'
     json.dump(job, open(p, 'w')); out = subprocess.run([BIN, 'data.json', p], cwd=S, capture_output=True, text=True, env=e).stdout; os.remove(p)
@@ -28,32 +28,27 @@ def lin_vals(args):
     t = o['top'][0]; L = t['loop']['detail']['lineages']; mem = [m['id'] for m in t['loop']['members']]
     return F, D, mem, [(l['t'], l.get('rank_value', l['p_all']), l['p_all']) for l in L]
 with cf.ThreadPoolExecutor(2) as ex: rows = list(ex.map(lin_vals, [(F, D) for F in fours for D in decks]))
-# The search is exact for its ranking value (the product of per-target odds, `rank_value`); the odds it reports
-# (`p_all`) are exact, with each reported trainee's deck re-picked by them among the decks near her best. Checked:
-# the ranking against brute force (must match), and how far the reported exact odds fall short of the best exact
-# odds over every deck (the cost of re-scoring only near the top).
-best = {}; bestj = {}
+# The search ranks by exact odds (`p_all`); `rank_value` is the product of per-target odds it bounds its work with.
+# Checked against brute force over every foursome and every legal 6-card deck: the reported loops' exact odds must
+# match the best ones (the solver may also use filler slots, which this brute force lacks: then it can only do better).
+best = {}
 for F, D, mem, L in rows:
     for t in range(4):
         if any(blocks(c, mem[t]) for c in D): continue
-        s = sum(p for tt, p, _ in L if tt == t) / 12; sj = sum(p for tt, _, p in L if tt == t) / 12
+        sj = sum(p for tt, _, p in L if tt == t) / 12
         key = (F, t)
-        if s > best.get(key, (-1,))[0]: best[key] = (s, D, mem[t])
-        if sj > bestj.get(key, -1): bestj[key] = sj
+        if sj > best.get(key, (-1,))[0]: best[key] = (sj, D, mem[t])
 vals = sorted(((sum(best[(F, t)][0] for t in range(4)), F) for F in fours if all((F, t) in best for t in range(4))), reverse=True)
-jbest = max(sum(bestj[(F, t)] for t in range(4)) for F in fours if all((F, t) in bestj for t in range(4)))
 fast = run(dict(base, per_uma=True, top_decks=K))
-print('foursomes', len(fours), 'decks', len(decks), 'per-uma searches', fast.get('searches'))
-ftop = sorted(fast['top'], key=lambda t: -t['loop']['rank_value'])
+print('foursomes', len(fours), 'decks', len(decks), 'per-uma searches', fast.get('searches'), 'certified cap', fast.get('exact', {}).get('rho'))
 for i in range(K):
-    b, f = vals[i], ftop[i]
-    print(f'#{i+1} brute 1 in {1/b[0]:.3f} {b[1]}  fast 1 in {1/f["loop"]["rank_value"]:.3f} {[m["name"] for m in f["loop"]["members"]]}',
-          'OK' if abs(b[0] - f['loop']['rank_value']) <= 1e-9 * b[0] else 'MISMATCH')
+    b, f = vals[i], fast['top'][i]
+    fv = f['loop']['p_all']
+    verdict = 'OK' if abs(b[0] - fv) <= 1e-9 * b[0] else ('SOLVER BETTER (filler slots)' if fv > b[0] else 'MISMATCH')
+    print(f'#{i+1} brute 1 in {1/b[0]:.3f} {b[1]}  solver 1 in {1/fv:.3f} {[m["name"] for m in f["loop"]["members"]]}', verdict)
     if i == 0:
         names = {uid[n]: n for n in UMAS}
         for t in range(4):
             s, D, u = best[(b[1], t)]
             fd = f['decks'][[m['id'] for m in f['loop']['members']].index(u)]['card_ids'] if u in [m['id'] for m in f['loop']['members']] else None
             print('   ', names[u], 'brute', sorted(D) == sorted(fd or []), [cards[c]['name'] for c in D])
-fj = fast['top'][0]['loop']['p_all']
-print(f'exact odds: best over every deck and foursome 1 in {1/jbest:.3f}, reported 1 in {1/fj:.3f} ({fj / jbest * 100 - 100:+.3f}%)')
