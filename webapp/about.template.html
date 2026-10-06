@@ -154,7 +154,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   the pool once it reaches level 5, so a card giving +5 levels per hint never repeats one. One card's draws over several
   targets are computed jointly: a card can't hint every target in its pool at once. Base: Unity Cup 2.70, Grand Concert
   2.03, Trackblazer 1.81, URA Finale 1.60, Grand Masters 2.30 (placeholder).</li>
-  <li><strong>Chain events.</strong> Binomial(21, 0.35) per career (mean 7.35). Each advances one remaining chain link of
+  <li><strong>Chain events.</strong> Binomial(21, 0.35) per career (mean 7.35), a model chosen from data gathered from shared Independent Training runs: how far each card's chain got, read from the event hints on each run's page. Each advances one remaining chain link of
   a non-pal card, chosen with weight equal to the links that card has left; a card's links fire in order. Pals and R
   cards take no chain events. A skill offered at several links of one card counts once, from the earliest link that
   fires.</li>
