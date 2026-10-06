@@ -259,7 +259,7 @@ const TESTS = {
     await pg.locator('#cards .ct').nth(6).click(); await pg.click('#x-auto'); await settle(pg);
     check('… turning it back on searches the change', (await pg.evaluate(() => window.__runs.length)) === n0 + 2);
     const made0 = await pg.evaluate(() => window.__made);
-    for (let i = 0; i < 5; i++) await pg.locator('#cards .ct').nth(i).click();
+    await pg.evaluate(() => [...document.querySelectorAll('#cards .ct')].slice(0, 5).forEach(b => b.click()));   // five changes inside one pause
     check('a change shows "Searching…"', /Searching/.test(await note(pg)));
     await settle(pg);
     check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
@@ -269,7 +269,10 @@ const TESTS = {
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a quick job from the first change alone)
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
-    await pg.click('#c-peruma'); await pg.selectOption('#c-top', '1'); await settle(pg);
+    await pg.waitForFunction(() => /Searching…\s*\d+ s/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 });   // its clock is running
+    await pg.click('#c-peruma'); const paused = await note(pg);
+    check('a change mid-search clears the clock: it counts again only once the new search runs', /Searching/.test(paused) && !/\d+ s/.test(paused), paused);
+    await pg.selectOption('#c-top', '1'); await settle(pg);
     check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
     check('the restarted search finishes', /Searched/.test(await note(pg)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

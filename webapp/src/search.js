@@ -54,7 +54,8 @@ function scheduleSearch() {
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
   if (busy) { searchId++; killEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
   pauseTimer = setTimeout(doSearch, 550);
-  if (!searching) { searching = true; searchT0 = performance.now(); paintRunNote(); }
+  // "Searching…" during the pause, but the seconds count only once the search runs (doSearch starts the clock)
+  clearInterval(searchTick); searching = true; searchT0 = performance.now(); paintRunNote();
 }
 // every setting change: save it and search again
 export const save = () => { scheduleSearch(); writeSaved(); };
