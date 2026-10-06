@@ -5,8 +5,7 @@ words; this file is the reference for the controls.
 
 **Settings** (top left)
 - *Game data*: "Global today", or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023). Switching
-  reloads the page; owned umas, outfits and cards are kept separately for each. Group cards such as Progenitors and
-  Guides count as pals in both.
+  reloads the page; owned umas, outfits and cards are kept separately for each.
 - *Scenario*: Unity Cup (default), Grand Concert, URA Finale, Trackblazer; with the Grand Masters-era data also Grand
   Masters. It sets how often support cards give training hints (the picker shows each as a multiple of URA Finale's
   rate), which golds it hands out whatever the deck (Unity Cup: No Stopping Me! and It's On!), and which cards the
@@ -31,7 +30,7 @@ the ones you have, is quickest when you own few. Outfits decide most results thr
 [Full-Color Fangirling] carries Superstan, Tamamo Cross and Inari One carry Tail Nine).
 
 **Support deck.** Tap the cards you don't own; only cards that can give a target are listed, each with what it
-gives. No uma runs a card of herself or a group card she belongs to.
+gives. No uma runs a card of herself or a group card she belongs to. Group cards such as Progenitors and Guides count as pals.
 
 **Results** update by themselves 0.55 s after any change (a change during a search restarts it); with *Search
 automatically after a change* off in Settings, a change waits for the Search button. For each loop:
