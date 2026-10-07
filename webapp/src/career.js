@@ -102,16 +102,23 @@ async function search() {
     }
   } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
   searching = false; clearInterval(tick); renderAll(); paint();
-  if (ahead.state !== 'busy') return;
-  // the outcome look ahead for the career on show; today's best is the main result when the planner had every place
-  const r = shown(), best = last.r.results[0], open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
-  const { rollout: _r, p_now: _p, ...plain } = job;
+  if (ahead.state === 'busy') lookAhead();
+}
+// the outcome look ahead for the career on show; today's best is the main result when the planner had every place.
+// It shares the one worker with the comparison: a comparison cancelled while both were queued takes it down too, and
+// it runs again (aheadId tells the run that counts).
+let aheadId = 0;
+async function lookAhead() {
+  const id = myId, aid = ++aheadId, r = shown(); if (!r) return;
+  const best = last.r.results[0], open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
+  const { rollout: _r, p_now: _p, ...plain } = last.job;
   const job2 = { ...plain, trainees: [r.trainee.id], fix: r.parents, per_trainee: false, top: 1, lookahead: true, ...(open ? { p_now: best.p_all, p_minus1_now: best.p_minus1 } : {}) };
+  ahead = { state: 'busy', r: null };
   try {
     const m2 = await run(job2);
-    if (id !== myId) return;
+    if (id !== myId || aid !== aheadId) return;
     ahead = m2.r.lookahead ? { state: 'done', r: m2.r.lookahead } : { state: 'error', text: m2.r.error || m2.r.lookahead?.error || 'No look ahead.' };
-  } catch (e) { if (id !== myId) return; ahead = { state: 'error', text: e.message }; }
+  } catch (e) { if (id !== myId || aid !== aheadId) return; ahead = { state: 'error', text: e.message }; }
   renderSimulation();
 }
 
@@ -324,7 +331,7 @@ function facesEl(tid, outfit, parents, outfitLabel = null) {
 const parentFace = (i, who) => i >= vets.length ? { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true }
   : { chara: vets[i].chara, outfit: vets[i].outfit, label: `#${i + 1} ${umaName(vets[i].chara)}` };
 const careerText = (r) => `${r.trainee.name} with ${r.parents.map(i => `#${i + 1} ${umaName(vets[i].chara)}`).join(' + ')}`;
-// ---------- after this career: what she could land, and the veteran you got ----------
+// ---------- after this career: what she could land, and the veteran analysis (the veteran you got) ----------
 // The look ahead (a second solver run after the main one) lists her possible outcomes with the best next career each
 // gives; it decides nothing. The decision is per veteran: enter the one you got (it starts as the most likely result)
 // and Compare runs both choices, running this career again or using her in the next one, on the same terms.
@@ -365,6 +372,13 @@ function rolledOutcome(r) {
   return { sparks, wins };
 }
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r)); simulation.r = null; simulation.stale = false; compare(); }
+// A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
+// can't be interrupted, so the worker goes (run() starts a new one). Returns whether the look ahead went with it.
+function cancelCompare() {
+  if (simulation.state !== 'busy') return false;
+  simulationId++; killEngine(); simulation.state = 'ready';
+  return ahead.state === 'busy';
+}
 function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, ...likelyOutcome(r), pinks: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
 function draftJob(v) {
   const pairs = (o) => Object.entries(o).map(([g, s]) => [+g, s]);
@@ -373,9 +387,17 @@ function draftJob(v) {
 }
 // an edit to the entered veteran: the comparison on screen is for the old one
 function editDraft() { if (simulation.r) simulation.stale = true; renderSimulation(); }
-function resetDraft() { const r = shown(); if (!r) return; simulation = { ...simulation, draft: draftOf(r), r: null, stale: false, error: null, state: 'ready' }; renderSimulation(); }
-async function compare() {
-  if (searching || !shown() || simulation.state === 'busy') return;
+function resetDraft() { const r = shown(); if (!r) return; const lost = cancelCompare();
+  simulation = { ...simulation, draft: draftOf(r), r: null, stale: false, error: null, state: 'ready' }; renderSimulation(); if (lost) lookAhead(); }
+// Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now. The look ahead, if the
+// restart took it down, is queued again behind the comparison (runComparison posts its first job before it returns).
+function compare() {
+  if (searching || !shown()) return;
+  const lost = cancelCompare();
+  runComparison();
+  if (lost) lookAhead();
+}
+async function runComparison() {
   const id = ++simulationId, source = myId;
   const base = comparisonJob(), key = JSON.stringify(base);
   simulation.state = 'busy'; simulation.error = null; simulation.stale = false; renderSimulation();
@@ -434,23 +456,24 @@ function aheadEl() {
   return box;
 }
 function simulationBody() {
-  const box = el('div', 'simulation'); box.id = 'simulation';
+  const box = sec('simulation', 'Veteran analysis'); box.id = 'simulation';
   const d = simulation.draft, r = shown(); if (!d || !r) return box;
   const busy = simulation.state === 'busy';
-  box.appendChild(el('h4', '', 'The veteran you got'));
-  const who = el('div', 'simwho'); who.append(umaAv(d.chara, d.outfit, 48), el('b', '', `${umaName(d.chara)} ${r.trainee.outfits[0]?.label || '(any outfit)'}`), el('span', 'simtag', 'Not saved'));
-  box.appendChild(who);
-  box.appendChild(el('p', 'hint', 'It starts as the most likely result of this career. Set it to what she actually landed (click a spark to change its stars, × to remove it, + to add one; her G1 wins open on the calendar) and press Compare, or roll a random result to see how a career might go.'));
-  const controls = el('fieldset', 'simskills'); controls.appendChild(el('legend', '', 'Her sparks'));
+  // her portrait beside her sparks and G1 wins (she starts as the most likely result of this career)
+  const who = el('div', 'simwho'), face = umaAv(d.chara, d.outfit, 96);
+  face.setAttribute('role', 'img'); face.setAttribute('aria-label', `${umaName(d.chara)} ${r.trainee.outfits[0]?.label || '(any outfit)'}`);
+  const side = el('div', 'simside');
+  const controls = el('fieldset', 'simskills'); controls.setAttribute('aria-label', 'Her sparks');
   controls.appendChild(sparksEl(d, 'sim', editDraft));
-  box.appendChild(controls);
   // her G1 wins: her schedule's races on the schedule window's calendar
-  const wb = btn(`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`, 'vwins', () => openWins(d, `${umaName(d.chara)} (not saved)`, { races: scheduledRaces(r), onEdit: editDraft }));
+  const wb = btn(`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`, 'vwins', () => openWins(d, umaName(d.chara), { races: scheduledRaces(r), onEdit: editDraft }));
   wb.id = 'sim-wins'; wb.dataset.k = 'sim:wins'; wb.setAttribute('aria-haspopup', 'dialog');
-  box.appendChild(wb);
+  side.append(controls, wb); who.append(face, side); box.appendChild(who);
   const actions = el('div', 'row');
-  const go = btn('Compare', 'primary', compare); go.id = 'sim-compare'; go.disabled = searching || busy;
-  const roll = btn('Roll a random result', '', rollDraft); roll.id = 'sim-roll'; roll.dataset.k = 'sim:roll'; roll.disabled = searching || busy;
+  // Compare and a roll stay usable while a comparison runs: either one restarts it (not during the main search, whose
+  // result replaces the career on show)
+  const go = btn('Compare', 'primary', compare); go.id = 'sim-compare'; go.dataset.k = 'sim:compare'; go.disabled = searching;
+  const roll = btn('Roll a random result', '', rollDraft); roll.id = 'sim-roll'; roll.dataset.k = 'sim:roll'; roll.disabled = searching;
   const reset = btn('Back to the most likely result', '', resetDraft); reset.id = 'sim-reset'; reset.dataset.k = 'sim:reset';
   const add = btn('Add her to your veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
   actions.append(go, roll, reset, add); box.appendChild(actions);
@@ -492,8 +515,10 @@ function simulationBody() {
   return box;
 }
 function renderSimulation() {
-  $('sim-top').replaceChildren(shown() ? simulationBody() : '');
+  const ae = document.activeElement, k = ae?.dataset?.k, top = $('sim-top');
+  if (top) top.replaceChildren(shown() ? simulationBody() : '');
   const a = $('ahead-sec'); if (a) a.querySelector('.abody').replaceChildren(aheadEl());
+  if (k && k.startsWith('sim:') && !ae.isConnected) document.querySelector(`[data-k="${CSS.escape(k)}"]`)?.focus();
 }
 // the other careers the planner weighed: only what it picked (the places left open), with "Use this". With the rollout,
 // its candidates: each one's odds now and how good the next careers her veterans leave are.
@@ -536,11 +561,12 @@ function altsEl(res) {
 function renderResults() {
   const box = $('results'); box.textContent = '';
   const r = shown(); if (!r) { renderSimulation(); return; }
-  box.append(oddsEl(r));
+  box.append(deckEl(r, 'Deck', schedBtn(r)), oddsEl(r));
   const R = last.r.rollout;
   if (R && R.differs && R.choice) { const best = last.r.results[0];
     box.appendChild(el('p', 'sub pickwhy', `Picked over ${careerText(best)} (${fmtIn(best.p_all)} now): the veterans it leaves give better next careers.`)); }
-  box.append(deckEl(r, 'Deck', schedBtn(r)), targetsEl(r));
+  const top = el('div'); top.id = 'sim-top';
+  box.append(top, targetsEl(r));
   const a = sec('rahead', 'After this career'); a.id = 'ahead-sec'; a.appendChild(el('div', 'abody')); box.appendChild(a);
   const open = !plan.trainee || plan.parents.some(p => !p);
   if (open && (R?.candidates?.length > 1 || last.r.results.length > 1)) box.appendChild(altsEl(last.r));
