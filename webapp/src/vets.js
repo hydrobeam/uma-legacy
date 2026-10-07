@@ -63,10 +63,11 @@ export function drawUmas(box, filter, onPick, only = null) {
 }
 // after an uma is picked for a node that carries sparks: whether to give her the target skills. onChoice(sparks | null:
 // keep what she has)
-export function askSkills(name, hasSparks, onChoice) {
+export function askSkills(name, hasSparks, onChoice, withParents = false) {
   const n = targetGroups().length;
   $('ask-title').textContent = `Add skills to ${name}?`;
-  $('ask-text').textContent = `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them; you can change the stars of each afterwards.`;
+  $('ask-text').textContent = `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them` +
+    (withParents ? ', and so do her own two parents: the same choice goes on them.' : '.') + ' You can change the stars of each afterwards.';
   const box = $('ask-btns'); box.textContent = '';
   const opts = [[`All ${n} at 2★`, () => full(2), true], [`All ${n} at 3★`, () => full(3)], [`All ${n} at 1★`, () => full(1)],
     ...(hasSparks ? [['Keep her current skills', () => null]] : []), ['No skills', () => ({})]];
@@ -161,10 +162,11 @@ export function changeUma(nd, label) {
     askSkills(umaName(id), Object.keys(nd.sparks).length > 0, (sp) => { if (sp) nd.sparks = sp; changed(); });
   });
 }
-// a new veteran by hand for a parent place: she gets `sparks`; her parents are not known yet (no sparks)
+// a new veteran by hand for a parent place: she gets `sparks`, and so do her parents (a looped parent's own parents carry
+// the same sparks), whose umas are not known yet
 export function newVet(chara, sparks) {
   const v = { id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), src: 'hand', chara, borrowed: false, sparks, pinks: {}, wins: [],
-    parents: [{ chara: null, sparks: {}, pinks: {}, wins: [] }, { chara: null, sparks: {}, pinks: {}, wins: [] }] };
+    parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, wins: [] })) };
   vets.push(v); return v;
 }
 // imported veterans replace earlier imports; hand-made ones stay (a plan slot holding a replaced one goes back to the planner)

@@ -1,4 +1,6 @@
 // ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all four ----------
+// One member (the career page): no "All four" tab; `shared` then means a parent won the race (it builds affinity when
+// she is a parent herself), and rows marked `skipped` (G1s she could enter but doesn't) show in their slot.
 import { $, esc } from './dom.js';
 import { RACEIDS } from './data.js';
 import { umaAv, srcFor } from './images.js';
@@ -16,14 +18,16 @@ export function openSched(l) {
     b.id = 'stab-' + key; b.setAttribute('aria-controls', 'sched-view');
     if (av) b.appendChild(av); b.appendChild(document.createTextNode(label)); b.onclick = () => show(key); tabs.appendChild(b); return b; };
   const btns = M.map((m, k) => tabBtn(k, m.short || m.name, umaAv(m.id, outfitOf(k), 28)));
-  btns.push(tabBtn('all', 'All four', null));
+  const single = M.length === 1;
+  if (!single) btns.push(tabBtn('all', 'All four', null));
   const keyOf = (j) => (j === M.length ? 'all' : j);
   tabs.addEventListener('keydown', (e) => {
     const i = btns.indexOf(document.activeElement); if (i < 0) return;
     const to = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
     if (to === undefined) return; e.preventDefault(); show(keyOf(to)); btns[to].focus(); });
   const keyEl = document.createElement('span'); keyEl.className = 'agkey';
-  keyEl.innerHTML = '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(keyEl);
+  keyEl.innerHTML = single ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span><span><i class="sk"></i>Skipped</span>'
+    : '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(keyEl);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const slotOf = (w) => { const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(w); return m ? MONTHS.indexOf(m[3]) * 2 + (m[2] === 'L' ? 1 : 0) : -1; };
   // why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades) minus the penalty for the k-th
@@ -40,7 +44,9 @@ export function openSched(l) {
     const nmEl = document.createElement('div'); nmEl.className = 'ag-nm'; nmEl.textContent = names.join(' or '); el.appendChild(nmEl);
     const others = M.map((_, j) => j).filter(j => j !== k && r.cells[j]);
     if (c.goal) { const g = document.createElement('span'); g.className = 'ag-goal'; g.textContent = 'Goal'; el.appendChild(g); }
-    el.title = names.join(' or ') + ' · ' + (why(c) || 'win ' + c.p + '%') + (c.goal ? ' · goal' : '') + (others.length ? ' · with ' + others.map(j => M[j].name).join(', ') : ' · alone (no affinity, optional)');
+    const won = single && r.parents ? r.parents.map((x, j) => x ? `parent ${j + 1}` : '').filter(Boolean) : [];
+    el.title = names.join(' or ') + ' · ' + (why(c) || 'win ' + c.p + '%') + (c.goal ? ' · goal' : '') + (single ? (won.length ? ' · won by ' + won.join(' and ') : ' · no parent won it')
+      : others.length ? ' · with ' + others.map(j => M[j].name).join(', ') : ' · alone (no affinity, optional)');
     return el;
   }
   function show(key) {
@@ -60,6 +66,10 @@ export function openSched(l) {
         slot.className = 'ag-slot';
         const r = rows.find(x => x.year === y && x.cells[key] && slotOf(x.when) === sI);
         if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
+        // G1s she could enter at this turn but doesn't (another race, or a rest for the streak penalty)
+        const sk = rows.filter(x => x.skipped && x.year === y && slotOf(x.when) === sI);
+        if (sk.length) { const k = document.createElement('div'); k.className = 'ag-skip'; k.textContent = 'Skipped: ' + sk.map(x => x.race).join(', ');
+          k.title = sk.map(x => x.race + ': ' + (x.instead === 'rest' ? 'she rests this turn (races in a row lower her win odds)' : 'she runs ' + x.instead + ' instead')).join('\n'); slot.appendChild(k); }
         // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
         const lb = document.createElement('div'); lb.className = 'ag-when'; const wn = document.createElement('span'); wn.textContent = (sI % 2 ? 'Late ' : 'Early ') + MONTHS[sI >> 1]; lb.appendChild(wn);
         if (r) { const p = document.createElement('b'); p.textContent = r.cells[key].p + '% win'; p.title = why(r.cells[key]); lb.appendChild(p); }

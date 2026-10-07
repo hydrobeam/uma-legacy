@@ -61,17 +61,23 @@ show. Each place is set by hand or left to the planner, which tries every owned 
 most one borrowed) and shows its pick outlined in dashes. **Choose parent** opens the parent picker: one of *Your
 veterans* (those that can't go there are greyed out, with the reason), *A new one (any uma)*, or *Let the planner
 pick*. Picking a new uma, or changing who a grandparent is, asks whether to add the target skills (all at 2★, 3★ or
-1★, keep hers, or none). Under the pedigree: the board (all targets land as sparks, all but one, targets expected);
-the deck as a race card (numbered, each card's art and what it gives toward the targets); the target skills (per
-target the chance the lineage passes it on, how many of the six carry it, the chance it lands as a spark) and the
-aptitude (pink) sparks' chances of being passed on; her race schedule by year: every G1 she can enter, the ones she runs (most G1 wins, a race a parent won counting extra) with their win chances, the rest faded with what she does that turn instead; career goals outlined; gate numbers mark which parent won it; and *After this career*. That section first lists what she could land (every target, all but one named target, or
-a number of targets), each with its chance and the best next career with her as a parent, marked *Better* or *No gain*
-against your best career today; it decides nothing. Below it, *The veteran you got* starts as the most likely result
-(the most likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not).
-Set it to what she actually landed (click a spark for its stars, × to remove, + to add, tick her G1 wins) and press
-**Compare**: it counts careers until one lands every target for both choices, running this career again or using her
-in the next career, the same way for both (one more career, then the best setup it leaves, repeated), and shows the
-next career with her and its deck. An edit after Compare marks the comparison out of date. **Back to the most likely
+1★, keep hers, or none; a new parent's own two parents get the same). Under the pedigree: the odds (all targets land as sparks, all but one, targets expected), the deck, the
+target skills (per target the chance the lineage passes it on, how many of the six carry it, the chance it lands as a
+spark) and the aptitude (pink) sparks' chances of being passed on, the race schedule, and *After this career*. The odds and the deck look as on the loop planner page: click a deck card
+for its panel (owned or not, GameTora); marking it not owned searches again (with borrowing on, it may come back as
+the borrowed card). *Race schedule* opens the planner's schedule window for the trainee: every G1 she can enter, the
+ones she runs as banner cards with their win odds (a race a parent won counts extra and is outlined as building
+affinity), the ones she skips listed in their slot with what she does instead. *After this career* gives the chance
+she improves your best next career, over every set of targets she could land and every star count (exact for the
+next careers checked), what the next career averages when she does, her best case (every target at 3 stars), and why
+not when she can't (usually: today's best career trains her own character, and no veteran parents her own character).
+Below it, *The veteran you got* starts as the most likely result (the most likely set of targets, at the rank's most
+likely star count, and the G1s she more likely wins than not). Set it to what she actually landed (click a spark for
+its stars, × to remove, + to add, tick her G1 wins) and press **Compare**: it counts careers until one lands every
+target for both choices, running this career again or using her in the next career, the same way for both (one more
+career, then the best setup it leaves, repeated), and shows the next career with her and its deck. **Roll a random
+result** draws one from this career's odds (targets, stars by rank, G1 wins by their odds) and compares at once. An
+edit after Compare marks the comparison out of date. **Back to the most likely
 result** resets her; **Add her to your veterans** saves her (with her parents, who become the next career's
 grandparents) and hands every place back to the planner for the next generation.
 With any place left to the planner, its other picks follow (only what it picked), each with **Use this**.

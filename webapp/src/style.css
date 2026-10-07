@@ -312,6 +312,9 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .agkey { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 0.78rem; color: var(--ink); }
 .agkey i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 2px solid var(--accent); background: var(--accent-soft); }
 .agkey i.op { border-color: var(--opt); background: var(--opt); }
+.agkey i.sk { border: 1px dashed var(--muted); background: transparent; }
+.ag-skip { flex: none; font-size: 0.66rem; line-height: 1.2; color: var(--muted); border-top: 1px dashed var(--line); padding: 2px 4px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.ag-slot:not(.on) .ag-skip { -webkit-line-clamp: 5; line-clamp: 5; margin-top: auto; border-top: 0; }
 .ag-race { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 3px 3px 2px; }
 .ag-race .banner { flex: 1 1 0; min-height: 0; width: 100%; object-fit: contain; display: block; }
 /* the race's name: up to two lines before it is cut */
@@ -533,7 +536,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root[data-theme="dark"] { --gate2: #000000; --turf: #2f8a4c; --board: #05080c; }
 .rbhead { padding-bottom: 12px; border-bottom: 5px solid var(--turf); box-shadow: 0 2px 0 var(--bg), 0 4px 0 var(--line); }
 .rb { max-width: 1320px; margin: 0 auto; display: grid; gap: 26px; }
-.rbk { display: inline-block; font-family: var(--font-data); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; background: var(--ink); color: var(--panel); padding: 2px 8px; margin-right: 8px; vertical-align: 0.25em; border-radius: 2px; }
 /* the settings: one ruled strip, the planner's editors behind its buttons */
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
 .rbbar .gamerow { flex-wrap: wrap; gap: 10px 16px; }
@@ -587,39 +589,16 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   .pk::before, .pk > *::before, .pk > *::after { display: none; }
   .pf > .pk { padding-left: 14px; border-left: 2px solid var(--ink); }
 }
-/* the career: a board with the odds, then the deck as a race card, the targets, her calendar, the look ahead */
-.tote { display: flex; flex-wrap: wrap; gap: 8px 34px; background: var(--board); border-radius: 6px; padding: 14px 18px; margin-top: 20px; }
-.tc { display: grid; gap: 2px; }
-.tl { font-family: var(--font-data); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--board-ink); }
-.tv { font-family: var(--font-data); font-weight: 600; font-size: 1.6rem; line-height: 1.1; color: var(--board-lit); font-variant-numeric: tabular-nums; }
-.tc.main .tv { font-size: 2.5rem; }
-.tote.small { margin-top: 0; }
-.tote.small .tv { font-size: 1.35rem; }
-.rbsec { margin-top: 22px; min-width: 0; }
-.rbsec > h3 { margin: 0 0 10px; font-size: 1.2rem; font-weight: 900; border-bottom: 2px solid var(--ink); padding-bottom: 5px; }
-.rbgrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 28px; align-items: start; }
-@media (max-width: 1080px) { .rbgrid { grid-template-columns: minmax(0, 1fr); } }
-.rcard ol { list-style: none; margin: 0; padding: 0; display: grid; }
-.rcard li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.rcard .gate { width: 30px; height: 30px; font-size: 1.05rem; }
-.rct .nm { font-weight: 800; line-height: 1.25; }
-.rcg { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.rcg .gv { font-size: 0.7rem; line-height: 1.25; padding: 1px 5px; border: 1px solid var(--hint-edge); background: var(--panel); color: var(--ink); font-weight: 600; }
-.rcg .gv.g { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
-.rcg .gv small { font-weight: 500; }
-.cyears { display: grid; gap: 10px; }
-.cyear { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
-.cyl { font-family: var(--font-data); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding-top: 4px; }
-.cyr { display: flex; flex-wrap: wrap; gap: 6px; }
-.race { border: 1px solid var(--line); border-radius: 3px; padding: 4px 9px; min-width: 150px; background: var(--panel); }
-.race.goal { border: 2px solid var(--ink); }
-.race.notrun { border-style: dashed; background: var(--bg); color: var(--muted); }
-.race.notrun .rn { font-weight: 600; }
-.rw { display: flex; align-items: center; gap: 4px; }
-.rwhen { font-family: var(--font-data); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-right: auto; }
-.rn { font-weight: 700; font-size: 0.86rem; line-height: 1.25; }
-.rp { font-family: var(--font-data); font-size: 0.74rem; }
-@media (max-width: 620px) { .cyear { grid-template-columns: minmax(0, 1fr); } }
+/* the career under the pedigree: the loop planner's odds line and deck, the targets, the schedule button */
+.rbsec { margin-top: 22px; min-width: 0; display: grid; gap: 8px; justify-items: start; }
+.rbsec > * { justify-self: stretch; }
+.rbsec > .btn { justify-self: start; }
+.rbsec > h3 { margin: 0; font-size: 1.1rem; font-weight: 900; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+#results > .lhead { margin-top: 18px; }
+#results > .deck { margin-top: 12px; }
+.tc { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.tl { font-size: 0.78rem; color: var(--muted); }
+.tv { font-size: 1.2rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ahead { display: grid; gap: 12px; }
 .simulation { display: grid; gap: 14px; min-width: 0; }
 .simwho { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
@@ -637,8 +616,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simresult { display: grid; gap: 12px; }
 .simresult.stale > :not(.note) { opacity: 0.5; }
 .simulation h4 { margin: 8px 0 0; font-size: 1rem; font-weight: 900; }
-.simodds .tl { color: var(--muted); }
-.simodds .tv { color: var(--ink); }
 .simwins summary { cursor: pointer; }
 @media (max-width: 620px) { .simparents, .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }

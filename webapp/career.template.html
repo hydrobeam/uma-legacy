@@ -53,7 +53,7 @@ __CSS__
 
   <main class="rbmain" id="rcol" tabindex="-1" aria-labelledby="h-lin">
     <div class="rbtitle">
-      <h2 id="h-lin"><span class="rbk">Pedigree</span> Next career</h2>
+      <h2 id="h-lin">Next career</h2>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
     </div>
     <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick, outlined in dashes. Numbers 1 to 6 are the six legacies; each shows her affinity.</p>
@@ -62,7 +62,7 @@ __CSS__
   </main>
 
   <section class="rbpool" aria-labelledby="h-vets">
-    <div class="rbtitle"><h2 id="h-vets"><span class="rbk">Paddock</span> Your veterans</h2><span class="hint" id="v-count"></span></div>
+    <div class="rbtitle"><h2 id="h-vets">Your veterans</h2><span class="hint" id="v-count"></span></div>
     <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
     <div class="row">
       <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
@@ -89,6 +89,7 @@ __CSS__
   <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden><input type="search" id="vp-filter" placeholder="Filter by name" aria-label="Filter umas by name"><div class="umapick" id="vp-umas"></div></div>
   <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden><p>The planner tries every one of your veterans in this place and keeps the best.</p><button class="btn primary" type="button" id="vp-auto-go">Let the planner pick this parent</button></div>
 </div></dialog>
+<dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
 <dialog id="pick-dlg" aria-labelledby="pick-title"><div class="dlg">
   <div class="row between dhead"><h3 id="pick-title">Which uma?</h3><button class="btn dclose">Close</button></div>
   <input type="search" id="pick-filter" placeholder="Filter by name" aria-label="Filter umas by name">
