@@ -91,7 +91,8 @@ async function search() {
     if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
     else {
       last = { r: m.r, job, plan: JSON.stringify(plan) };
-      const cert = m.r.proven_top ? 'Checked on exact odds: nothing else does better.' : 'The exact check ran out of time: the order may not be final.';
+      const R = m.r.rollout, rc = R && !R.error && !(R.candidates_proven && R.shortlist_proven) ? ' The pick\'s check of next careers ran out of time: it uses the best found.' : '';
+      const cert = (m.r.proven_top ? 'Checked on exact odds: nothing else does better.' : 'The exact check ran out of time: the order may not be final.') + rc;
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
       const best = m.r.results[0], r = m.r.rollout?.choice || best;
