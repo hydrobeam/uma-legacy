@@ -221,7 +221,7 @@ Skills-mode model: a target is acquired if guaranteed, on the trainee's own outf
 
 The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed), deck.
 Same files as deck mode, plus `legacies`; the skills- and deck-mode fields apply (`owned`/`exclude`/`exclude_outfits`
-choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` and the loop fields are unused).
+choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of the new veteran's sparks in the look ahead; other loop fields are unused).
 `val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 
 | Field | Meaning | Default |
@@ -233,6 +233,8 @@ choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` and t
 | `top` | careers returned | 5 |
 | `lookahead` | add the reroll-or-move-on look ahead for the best career (`lookahead` in the output) | `false` |
 | `p_now` | today's best P(all) over every career, the look ahead's floor (computed when absent) | none |
+| `p_minus1_now` | P(at least n−1) on that same best-all career; pass with `p_now` to avoid recomputing the baseline | none |
+| `policy` | `{stay_trainee, stay_parents: [a,b], p_floor}`: compare that fixed reroll career against the main result using equal continuation horizons; `p_floor` is an already available current-roster all-target probability | none |
 
 Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
 with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
@@ -256,25 +258,43 @@ those ratios. The search stops when the next ceiling is below the k-th best (one
 target `q`, `carriers`, landing chance `p`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
 the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), and `carriers`; reported only: aptitudes
 do not enter the skill odds), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
-`bounded`, `complete`, `proven_top`. The best career also carries `schedule` (her G1s: `turn`, `when`, `year`,
-`race`, win chance `p`, `goal`, `parents` = which parents won it) and `g1_wins` (expected): the trainee races to win the
-G1s her parents won (`best_response` with each race weighted by the parents' wins), since each one she shares with a
-parent adds 3 to her affinity and 3 to the parent's when she is a parent herself.
+`bounded`, `complete`, `proven_top`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
-Look ahead (`lookahead: true`). The new veteran V lands each set S of targets with its exact chance (`JointExt::sets`:
-per chain state the targets are independent apart from the outcome clusters, which are enumerated, so the distribution
-over the 2^n sets is exact for the model); each landed spark's stars come from `star_dist`; her G1 wins are her
-schedule's win chances (shared wins as expected counts); her parents are the career's. f(S) = the best P(all) of a
-next career with V in the pool: the career search with V fixed as a parent (V landing every target) finds the four
-best setups (trainee, partner, deck); each S is scored on each of them (stars averaged: every landing factor is
-affine in q_k and the stars are independent of everything else, so the average is exact for a fixed setup), and f(S)
-is at least `p_now`. A floor: another setup could do better for some S. Expected careers until a veteran lands every
-target, a setup being repeated once chosen: move on with V = 1/f(S); run this career once more and keep the better
-veteran = 1 + Σ_{S' ≠ all} P(S') / max(f(S), f(S')); reroll when lower. Output `lookahead`: `p_now`, `p_all`,
-`careers_now` (1/p_now), `careers_this` (1 + Σ_{S ≠ all} P(S)·min(move on, reroll)), `improve` (P(f(S) > p_now)),
-`setups`, `by_count` (per number landed: `p`, mean `f`, `reroll` share), `miss_one` (per target, landing all but it:
-`p`, `f`, `reroll`), `star_dist`. 12 sample veterans, half their sparks removed: 6 s natively. 12 sample veterans x every trainee (3,564 candidates): 74 solved, 1.8 s natively,
-1.5 s in the browser.
+- `schedule`: every G1 she could enter, in turn order (`turn`, `when`, `year`, `race`, `goal`, `parents` = which
+  parents won it). `run` false for those she skips, with `instead` (the race she runs that turn, or "rest") and `p`
+  null; `p` = her win chance for those she runs. The schedule maximizes expected distinct G1 wins, each race weighted
+  1 plus 1 per parent who won it (`best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
+  she is a parent herself), under goal races, same-turn clashes and streak win penalties. `g1_wins`: expected wins.
+- `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
+  (bit i = job target i), guaranteed golds' spark generation included.
+
+Look ahead (`lookahead: true`; facts, no decision). The new veteran V lands each set S with its exact chance (per chain
+state the targets are independent apart from the outcome clusters, which are enumerated, so the distribution over the
+2^n sets is exact for the model); each landed spark's stars come from `star_dist`; her G1 wins are her schedule's win
+chances (shared wins as expected counts); her parents are the career's. f(S) = the best P(all) of a next career with
+V in the pool: the career search with V fixed as a parent (V landing every target) finds the four best setups
+(trainee, partner, deck); each S is rescored on each of them (stars averaged: every landing factor is affine in q_k
+and the stars are independent of everything else, so the average is exact for a fixed setup), and f(S) is at least
+`p_now`. A floor: another setup could do better for some S. P(at least n-1) is tracked over the same setups, today's
+best-all career as its floor (not optimized for it). Output `lookahead`: `p_now`, `p_minus1_now`, `p_all`, `improve`
+(chance V improves the best next career), `partial_improve` (chance she improves only P(at least n-1)), `setups`,
+`next_proven`, `star_dist`; `by_count` (per number landed: `p`, mean `f`, mean `f_minus1`, `no_gain` share,
+`partial_only` share); `miss_one` (per target, landing all but it: `p`, `f`, `f_minus1`, `near_p_all`, `no_gain`,
+`partial_only`). `p_minus1_now` can be passed with `p_now` to skip recomputing today's best.
+
+Comparison (`policy: {stay_trainee, stay_parents: [a, b], p_floor}`), for one veteran entered in the job's legacies
+and fixed as a parent (`fix`): "stay" runs the career (stay_trainee, stay_parents) again, "advance" runs the main result
+(the best career with her). Each action a is scored the same way: one more career, then the best setup it leaves,
+repeated (derived from that assumption):
+
+    C_a = 1 + sum over S != all of P_a(S) / f_a(S),   P(within two) = P_a(all) + sum over S != all of P_a(S) f_a(S)
+
+with P_a the action's landed-set distribution and f_a its look-ahead continuation, floored at the largest of `p_floor`,
+the stay career's P(all) and the advance career's P(all). Assumed: after the next career no further upgrades (a
+stationary tail); a positive failure chance with f_a(S) = 0 gives null (no finite estimate). Neither action looks
+further ahead than the other; this is an estimate, not the optimal policy. Output `policy`: `stay` and `advance`
+(`expected_careers_estimate`, `p_all`, `p_within_two`, `next_proven`, `setups`, `star_dist`), `actions_proven`,
+`continuation_floor`, `horizon`. Cost: the stay search and two look aheads (about 6 s in the browser on 12 veterans).
 
 ## 4. Validation
 

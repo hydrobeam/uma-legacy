@@ -21,9 +21,8 @@
 //! best ceiling first (best product deck, then every deck whose product value times EXACT_RHO reaches the best exact
 //! value, scored exactly, as in the per-uma search) until the next ceiling is below the top-k exact value. The top k
 //!
-//! Schedule: the trainee races to win the G1s her parents won (the race weights of `best_response` are the parents'
-//! wins), since each G1 the new veteran shares with a parent adds 3 to her affinity and 3 to the parent's when she is
-//! later a parent herself (the loop planner's schedule rule with the other members' wins replaced by the parents').
+//! Schedule: every G1 win counts one, plus one per parent who won that race (`best_response` weights), under the same
+//! goals, race clashes and streak penalties as the loop scheduler; the report lists every G1 she could enter.
 //!
 //! Lookahead (`lookahead: true`, for the best career): the new veteran V lands each set S of targets with its exact
 //! chance (`JointExt::sets`), each landed spark's stars from the rank mix (`star_dist`); her G1 wins are her schedule's
@@ -31,9 +30,10 @@
 //! setups with V as a parent are found for V landing every target (the career search with V fixed as a parent), and
 //! each S is scored on them (stars averaged: every landing factor is affine in q_k and the stars are independent, so
 //! that average is exact for a fixed setup); f(S) is at least today's best P(all) (`p_now`). A lower bound: another
-//! setup could do better for some S. Then, counting careers until a veteran lands every target, with a setup run again
-//! and again once chosen: moving on with V costs 1/f(S); running this career once more and keeping the better
-//! veteran costs 1 + sum over S' (not all) P(S') / max(f(S), f(S')). Reroll when that is lower.
+//! setup could do better for some S. The look ahead reports these facts and decides nothing: whether to use V or run
+//! the career again is `policy`'s question, for one veteran, both choices counted the same way (one more career, then
+//! the best setup it leaves, repeated). P(at least n-1) is tracked over the same setups, today's best-all career as
+//! its floor.
 use super::*;
 
 #[derive(Deserialize, Clone, Default)]
@@ -63,6 +63,13 @@ pub(crate) struct Legacy {
 }
 fn d_top() -> usize { 5 }
 #[derive(Deserialize)]
+struct CareerPolicy {
+    stay_trainee: u32,
+    stay_parents: Vec<usize>,
+    /// Best known all-target career already available in this roster, without the new draft.
+    #[serde(default)] p_floor: f64,
+}
+#[derive(Deserialize)]
 struct CareerJob {
     legacies: Vec<Legacy>,
     /// trainees to consider (chara ids); empty = every owned uma
@@ -72,10 +79,14 @@ struct CareerJob {
     #[serde(default)] fix: Vec<usize>,
     /// one result per trainee (false: the best careers whoever trains, e.g. with the trainee fixed: the best parents)
     #[serde(default = "d_true")] per_trainee: bool,
-    /// the reroll-or-move-on lookahead for the best career
+    /// the next-step lookahead for the best career
     #[serde(default)] lookahead: bool,
     /// today's best P(all) over every career (the lookahead's floor); computed when absent
     #[serde(default)] p_now: Option<f64>,
+    /// P(at least n-1) on today's best-all career, supplied with its all-target floor.
+    #[serde(default)] p_minus1_now: Option<f64>,
+    /// Compare rerolling a particular career with using the new parent, over an equal continuation horizon.
+    #[serde(default)] policy: Option<CareerPolicy>,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
@@ -107,6 +118,17 @@ fn inherit(sl: &[Slot], ntar: usize) -> (Vec<f64>, Vec<i32>) {
         q[k] = 1.0 - miss * miss * mix2;
     }
     (q, nc)
+}
+/// Outcomes are ordered by target bitmask; the last entry is success and requires no continuation.
+fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
+    let full = outcomes.len() - 1;
+    let (mut remaining, mut finite, mut two_runs) = (1.0f64, true, outcomes[full]);
+    for m in 0..full {
+        if outcomes[m] == 0.0 { continue; }
+        two_runs += outcomes[m] * next[m];
+        if next[m] <= 0.0 { finite = false; } else { remaining += outcomes[m] / next[m]; }
+    }
+    (if finite && remaining.is_finite() { Some(remaining) } else { None }, two_runs)
 }
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
@@ -260,23 +282,28 @@ impl<'a> Env<'a> {
                  cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven }
     }
 
-    /// Trainee t's race schedule with parents a and b: the G1s they won weigh one each (a G1 she shares with a parent
-    /// adds affinity when she is a parent herself); the rows of the races she runs, and her win chance per race index.
+    /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
+    /// later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to each of
+    /// them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the shared one.
+    /// Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does that turn.
+    /// Also her win chance per race index.
     fn schedule(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Value, Vec<f64>) {
         let d = self.d; let u = &d.umas[t];
-        let mut wr = vec![0.0f64; d.nr];
+        let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] { for &(r, pr) in &p.me[x].wins { if r < d.nr { wr[r] += pr; } } }
         let Some((s, _)) = best_response(d, u, &wr, None, None) else { return (json!([]), vec![0.0; d.nr]) };
         let wp = probs(d, u, &s);
         let won = |x: usize, r: usize| p.me[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
         let mut rows = vec![]; let mut k = 0usize;
         for tt in 0..NT {
-            match s[tt] {
-                Choice::Rest => k = 0,
-                Choice::Opt(o) => { k = (k + 1).min(6); let op = &u.opts[tt][o as usize];
-                    if op.race >= 0 { let r = op.race as usize;
-                        rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": d.race_names[r], "p": pk(d, op.bp, k), "goal": op.goal,
-                                         "parents": [won(a, r) > 0.0, won(b, r) > 0.0]})); } }
+            let chosen = match s[tt] { Choice::Rest => { k = 0; None } Choice::Opt(o) => { k = (k + 1).min(6); Some(o as usize) } };
+            for (o, op) in u.opts[tt].iter().enumerate() {
+                if op.race < 0 { continue; }
+                let r = op.race as usize; let run = chosen == Some(o);
+                let instead = match chosen { _ if run => Value::Null, None => json!("rest"), Some(c) => json!(u.opts[tt][c].name) };
+                rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": d.race_names[r], "run": run, "instead": instead,
+                                 "p": if run { json!(pk(d, op.bp, k)) } else { Value::Null }, "goal": op.goal,
+                                 "parents": [won(a, r) > 0.0, won(b, r) > 0.0]}));
             }
         }
         (Value::Array(rows), wp)
@@ -291,7 +318,7 @@ impl<'a> Env<'a> {
         let sl = self.slots(p, t, a, b);
         let (q, nc) = inherit(&sl, ntar);
         self.set_trainee(t, &q);
-        let (j, ext) = self.exact(t, &f.sel, &nc, true, false);
+        let (j, ext) = self.exact(t, &f.sel, &nc, true, with_schedule && ntar <= 12);
         let o = j.2;
         let mut pt = vec![0.0f64; ntar];
         for (pos, &i) in self.uncv.iter().enumerate() { pt[i] = ext.marg[o * nu + pos]; }
@@ -315,24 +342,17 @@ impl<'a> Env<'a> {
                 miss *= 1.0 - ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (s.rel + s.race) / 100.0)).min(1.0); } } }
             json!({"group": g, "q": 1.0 - miss * miss, "carriers": n})
         }).collect();
+        let outcomes = if with_schedule && ntar <= 12 { json!(self.outcome_sets(j.2, &ext)) } else { Value::Null };
         let (sched, wp) = if with_schedule { self.schedule(p, t, a, b) } else { (Value::Null, vec![]) };
         json!({"trainee": {"id": uid, "name": d.umas[t].name, "outfits": outfits, "covers": covers},
                "parents": [a, b], "slots": slots, "targets": targets, "p_all": j.0, "p_minus1": j.1, "expected": pt.iter().sum::<f64>(),
-               "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "schedule": sched, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
+               "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "schedule": sched, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
     }
 
-    /// The reroll-or-move-on lookahead for career f (module notes).
-    fn lookahead(&mut self, p: &Pool, legs: &[Legacy], f: &Found, p_now: f64) -> Value {
-        let d = self.d; let ntar = self.ntar; let nu = self.nu;
-        if ntar > 12 { return json!({"error": "the lookahead takes at most 12 targets"}); }
-        let (t, a, b) = (f.t, f.a, f.b);
-        // the chance of each set of targets landing (bit i = job target i): uncertain targets jointly, guaranteed golds apart
-        let (q, nc) = inherit(&self.slots(p, t, a, b), ntar);
-        self.set_trainee(t, &q);
-        let (j, ext) = self.exact(t, &f.sel, &nc, false, true);
-        let su = &ext.sets[(j.2 << nu)..((j.2 + 1) << nu)];
-        let full = (1usize << ntar) - 1;
-        let mut ps = vec![0.0f64; 1 << ntar];
+    /// Joint distribution of full target sets, including guaranteed gold generation.
+    fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
+        let su = &ext.sets[(outfit << self.nu)..((outfit + 1) << self.nu)];
+        let mut ps = vec![0.0f64; 1 << self.ntar];
         for (mu, &x) in su.iter().enumerate() {
             if x == 0.0 { continue; }
             let mut base = 0usize; for (k, &i) in self.uncv.iter().enumerate() { if mu >> k & 1 == 1 { base |= 1 << i; } }
@@ -341,6 +361,20 @@ impl<'a> Env<'a> {
                 part = part.into_iter().flat_map(|(m, w)| [(m, w * (1.0 - g)), (m | 1 << i, w * g)]).collect(); }
             for (m, w) in part { ps[m] += w; }
         }
+        ps
+    }
+
+    /// The next-step lookahead for career f (module notes).
+    fn lookahead(&mut self, p: &Pool, legs: &[Legacy], f: &Found, p_now: f64, p_minus1_now: f64, policy: bool) -> Value {
+        let d = self.d; let ntar = self.ntar;
+        if ntar > 12 { return json!({"error": "the lookahead takes at most 12 targets"}); }
+        let (t, a, b) = (f.t, f.a, f.b);
+        // the chance of each set of targets landing (bit i = job target i): uncertain targets jointly, guaranteed golds apart
+        let (q, nc) = inherit(&self.slots(p, t, a, b), ntar);
+        self.set_trainee(t, &q);
+        let (j, ext) = self.exact(t, &f.sel, &nc, false, true);
+        let full = (1usize << ntar) - 1;
+        let ps = self.outcome_sets(j.2, &ext);
         // the new veteran: this trainee, every target carried (stars from the rank mix), her schedule's win chances, the
         // career's parents as her parents
         let (_, wp) = self.schedule(p, t, a, b);
@@ -353,6 +387,8 @@ impl<'a> Env<'a> {
         let next = self.solve(&p2, &[vi], &owned, true, 4);
         // each setup scored for every landed set
         let mut fs = vec![p_now; 1 << ntar];
+        let mut near = vec![p_minus1_now; 1 << ntar];
+        let mut near_all = vec![p_now; 1 << ntar];
         let mut setups = vec![];
         for s in &next.found {
             let sl = self.slots(&p2, s.t, s.a, s.b);
@@ -364,34 +400,48 @@ impl<'a> Env<'a> {
                 for &i in &vs { for k in 0..ntar { sl2[i].stars[k] = if m >> k & 1 == 1 { 2 } else { 0 }; } }
                 let (q2, nc2) = inherit(&sl2, ntar);
                 self.set_trainee(s.t, &q2);
-                let val = self.exact(s.t, &s.sel, &nc2, false, false).0 .0;
+                let score = self.exact(s.t, &s.sel, &nc2, !policy, false).0;
+                let val = score.0;
+                if score.1 > near[m] { near[m] = score.1; near_all[m] = val; }
                 if m == full { at_full = val; }
                 if val > fs[m] { fs[m] = val; }
             }
             let partner = if s.a == vi { s.b } else { s.a };
             setups.push(json!({"trainee": {"id": d.umas[s.t].id, "name": d.umas[s.t].name}, "partner": partner, "p_all": at_full}));
         }
-        // careers until a veteran lands every target: move on (1/f) or run this career again and keep the better veteran
-        let inv = |x: f64| if x > 0.0 { 1.0 / x } else { f64::INFINITY };
+        // the facts per landed set, the old roster still available
         let pfull = ps[full];
-        let reroll = |m: usize| 1.0 + (0..full).map(|m2| ps[m2] * inv(fs[m].max(fs[m2]))).sum::<f64>();
-        let mut this = 1.0; let mut by: Vec<(f64, f64, f64)> = vec![(0.0, 0.0, 0.0); ntar];   // per landed count: (P, P x f, P where reroll)
+        if policy {
+            // One run now; on failure, repeat the best checked continuation without further upgrades.
+            // Both actions use this same terminal policy. This is a horizon estimate, not an optimal Bellman value.
+            let (remaining, two_runs) = continuation_estimate(&ps, &fs);
+            return json!({"expected_careers_estimate": remaining,
+                "p_all": pfull, "p_within_two": two_runs, "next_proven": next.proven, "setups": setups.len(),
+                "star_dist": self.sj.star_dist});
+        }
+        // (probability, weighted all, weighted near, no-gain mass, near-only improvement mass)
+        let mut by = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64); ntar];
         let mut improve = 0.0;
-        let mut dec = vec![false; full];
+        let mut partial_improve = 0.0;
+        let mut stay = vec![true; full];
         for m in 0..full {
             if ps[m] == 0.0 { continue; }
-            let (mo, rr) = (inv(fs[m]), reroll(m));
-            dec[m] = rr < mo;
-            this += ps[m] * mo.min(rr);
-            let c = (m as u32).count_ones() as usize;
-            by[c].0 += ps[m]; by[c].1 += ps[m] * fs[m]; if dec[m] { by[c].2 += ps[m]; }
-            if fs[m] > p_now * (1.0 + 1e-9) { improve += ps[m]; }
+            stay[m] = fs[m] <= p_now * (1.0 + 1e-9);
+            let near_only = stay[m] && near[m] > p_minus1_now * (1.0 + 1e-9);
+            let c = m.count_ones() as usize;
+            by[c].0 += ps[m]; by[c].1 += ps[m] * fs[m]; by[c].2 += ps[m] * near[m];
+            if stay[m] { by[c].3 += ps[m]; } else { improve += ps[m]; }
+            if near_only { by[c].4 += ps[m]; partial_improve += ps[m]; }
         }
-        let by_count: Vec<Value> = (0..ntar).rev().filter(|&c| by[c].0 > 0.0).map(|c| json!({"landed": c, "p": by[c].0, "f": by[c].1 / by[c].0, "reroll": by[c].2 / by[c].0})).collect();
+        let by_count: Vec<Value> = (0..ntar).rev().filter(|&c| by[c].0 > 0.0).map(|c| json!({
+            "landed": c, "p": by[c].0, "f": by[c].1 / by[c].0, "f_minus1": by[c].2 / by[c].0,
+            "no_gain": by[c].3 / by[c].0, "partial_only": by[c].4 / by[c].0})).collect();
         let miss_one: Vec<Value> = (0..ntar).map(|k| { let m = full & !(1 << k);
-            json!({"group": self.sj.targets[k].group, "p": ps[m], "f": fs[m], "reroll": dec[m], "move_on": inv(fs[m]), "careers_reroll": reroll(m)}) }).collect();
-        json!({"p_now": p_now, "p_all": pfull, "careers_now": inv(p_now), "careers_this": this, "improve": improve, "setups": setups,
-               "next_proven": next.proven, "by_count": by_count, "miss_one": miss_one, "star_dist": self.sj.star_dist})
+            json!({"group": self.sj.targets[k].group, "p": ps[m], "f": fs[m], "f_minus1": near[m],
+                "near_p_all": near_all[m], "no_gain": stay[m], "partial_only": stay[m] && near[m] > p_minus1_now * (1.0 + 1e-9)}) }).collect();
+        json!({"p_now": p_now, "p_minus1_now": p_minus1_now, "p_all": pfull, "improve": improve,
+               "partial_improve": partial_improve, "setups": setups, "next_proven": next.proven,
+               "by_count": by_count, "miss_one": miss_one, "star_dist": self.sj.star_dist})
     }
 }
 
@@ -453,11 +503,63 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let results: Vec<Value> = sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect();
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
            "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": EXACT_RHO});
+    if let Some(policy) = &cj.policy {
+        let stay_t = env.uix(policy.stay_trainee).filter(|t| env.owned.contains(t));
+        if ntar > 12 {
+            out["policy"] = json!({"error": "The remaining-careers estimate supports at most 12 targets."});
+        } else if stay_t.is_none() || policy.stay_parents.len() != 2 || policy.stay_parents.iter().any(|&i| i >= legs.len()) {
+            out["policy"] = json!({"error": "The reroll career needs an eligible trainee and two existing parents."});
+        } else if let Some(advance) = sv.found.first() {
+            let stay = env.solve(&pool, &policy.stay_parents, &[stay_t.unwrap()], false, 1);
+            if let Some(stay_f) = stay.found.first() {
+                let floor = policy.p_floor.max(stay_f.val).max(advance.val);
+                let stay_estimate = env.lookahead(&pool, legs, stay_f, floor, 0.0, true);
+                let advance_estimate = env.lookahead(&pool, legs, advance, floor, 0.0, true);
+                out["policy"] = json!({"stay": stay_estimate, "advance": advance_estimate,
+                    "actions_proven": stay.proven && sv.proven, "continuation_floor": floor,
+                    "horizon": "one run, then repeat the best checked continuation; no further upgrades"});
+            } else {
+                out["policy"] = json!({"error": "No legal reroll career found for those parents."});
+            }
+        }
+    }
     if cj.lookahead { if let Some(f) = sv.found.first() {
         // today's best career over everything (the floor of what the next career can do)
-        let p_now = match cj.p_now { Some(x) => x, None => { let all = env.owned.clone(); env.solve(&pool, &[], &all, true, 1).found.first().map_or(0.0, |x| x.val) } };
-        out["lookahead"] = env.lookahead(&pool, legs, f, p_now);
+        let (p_now, p_minus1_now) = match (cj.p_now, cj.p_minus1_now) {
+            (Some(all), Some(near)) => (all, near),
+            (Some(all), None) if (all - f.val).abs() <= all.abs() * 1e-9 => {
+                let r = env.report(&pool, f, false); (all, r["p_minus1"].as_f64().unwrap())
+            }
+            _ => {
+                let all = env.owned.clone();
+                let best = env.solve(&pool, &[], &all, true, 1);
+                let r = best.found.first().map(|f| env.report(&pool, f, false));
+                (cj.p_now.unwrap_or_else(|| r.as_ref().map_or(0.0, |r| r["p_all"].as_f64().unwrap())),
+                 r.as_ref().map_or(0.0, |r| r["p_minus1"].as_f64().unwrap()))
+            }
+        };
+        out["lookahead"] = env.lookahead(&pool, legs, f, p_now, p_minus1_now, false);
     } }
     out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
     out
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::continuation_estimate;
+    #[test]
+    fn stronger_parent_outputs_can_outweigh_immediate_success() {
+        // Shared tail floor 0.3. Rerolling succeeds less often now, but can produce a much better parent.
+        let (stay, stay_two) = continuation_estimate(&[0.4, 0.4, 0.0, 0.2], &[0.8, 0.3, 0.3, 0.8]);
+        let (advance, advance_two) = continuation_estimate(&[0.7, 0.0, 0.0, 0.3], &[0.3; 4]);
+        assert!((stay.unwrap() - 17.0 / 6.0).abs() < 1e-12);
+        assert!((advance.unwrap() - 10.0 / 3.0).abs() < 1e-12);
+        assert!(stay < advance);
+        assert!(stay_two > advance_two);
+    }
+    #[test]
+    fn failure_without_a_continuation_is_not_a_finite_estimate() {
+        assert_eq!(continuation_estimate(&[0.5, 0.5], &[0.0, 0.8]).0, None);
+        assert_eq!(continuation_estimate(&[0.0, 1.0], &[0.0, 1.0]).0, Some(1.0));
+    }
 }
