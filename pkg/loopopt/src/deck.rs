@@ -1707,6 +1707,45 @@ impl<'a> DeckSpace<'a> {
         cfgs.sort_by(|a, b| b.root.partial_cmp(&a.root).unwrap());
         SPT.with(|c| { let mut v = c.get(); v.0 += t_cfg.elapsed().as_secs_f64(); v.2 += cfgs.len(); v.3 += counts.len(); c.set(v); });
         let t_dfs = Instant::now();
+        // A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
+        // whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
+        // is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
+        // r - 1 owned with its best borrowed one, for the miss chances (lowest first) and the ratios (highest first).
+        struct GB { own: Vec<(Vec<f64>, Vec<f64>)>, one: Vec<(Vec<f64>, Vec<f64>)>, rown: Vec<Vec<f64>>, rone: Vec<Vec<f64>> }
+        let mut gbc: HashMap<(u64, usize), std::rc::Rc<GB>> = HashMap::new();
+        let gb_of = |code: u64, gi: usize, mw: &[f64], mg: &[f64]| -> GB {
+            let l = groups_all[gi];
+            let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.ebor[j]);
+            let mut om = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
+            let mut bm = (vec![1.0f64; nu], vec![1.0f64; nu]);
+            for t in 0..nu {
+                let mut a: Vec<f64> = own.iter().map(|&j| mw[j * nu + t]).collect(); a.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                let mut b: Vec<f64> = own.iter().map(|&j| mg[j * nu + t]).collect(); b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                for r in 1..=size { om[r].0[t] = om[r - 1].0[t] * a.get(r - 1).copied().unwrap_or(1.0); om[r].1[t] = om[r - 1].1[t] * b.get(r - 1).copied().unwrap_or(1.0); }
+                for &j in &bor { bm.0[t] = bm.0[t].min(mw[j * nu + t]); bm.1[t] = bm.1[t].min(mg[j * nu + t]); }
+            }
+            let mut one = om.clone();
+            for r in 1..=size { for t in 0..nu { one[r].0[t] = om[r].0[t].min(om[r - 1].0[t] * bm.0[t]); one[r].1[t] = om[r].1[t].min(om[r - 1].1[t] * bm.1[t]); } }
+            let (mut x, mut y) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+            let mut ratio = |j: usize| -> Vec<f64> {
+                for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
+                oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }).collect()
+            };
+            let ro: Vec<Vec<f64>> = own.iter().map(|&j| ratio(j)).collect();
+            let rb: Vec<Vec<f64>> = bor.iter().map(|&j| ratio(j)).collect();
+            let (mut rown, mut rone) = (vec![], vec![]);
+            for i in 0..oq.len() {
+                let mut r: Vec<f64> = ro.iter().map(|v| v[i]).collect(); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                let best_b = rb.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
+                let mut pre = vec![1.0f64; size + 1];
+                for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
+                let mut p1 = pre.clone();
+                if best_b > f64::NEG_INFINITY { for k in 1..=size { p1[k] = pre[k].max(pre[k - 1] * best_b); } }
+                rown.push(pre); rone.push(p1);
+            }
+            let _ = code;
+            GB { own: om, one, rown, rone }
+        };
         for cf in &cfgs {
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
@@ -1718,6 +1757,21 @@ impl<'a> DeckSpace<'a> {
             let gmin: Vec<&Vec<(Vec<f64>, Vec<f64>)>> = cf.gs.iter().map(|&(i, _)| &cf.gm[i]).collect();
             let rp: Vec<&Vec<Vec<f64>>> = cf.gs.iter().map(|&(i, _)| &cf.rpk[i]).collect();
             let (suf, sp) = (&cf.suf, &cf.sp);
+            // the one-borrowed-card tables of this configuration's groups and their suffixes (`own`: no borrowed card
+            // left to place; `one`: at most one, in one group)
+            let one_b = self.allowed_borrow == 1 && gs.iter().any(|(l, _)| l.iter().any(|&j| self.ebor[j]));
+            let gbs: Vec<std::rc::Rc<GB>> = if one_b { cf.gs.iter().map(|&(i, _)| gbc.entry((cf.code, i)).or_insert_with(|| std::rc::Rc::new(gb_of(cf.code, i, mw, mg))).clone()).collect() } else { vec![] };
+            let ngs = cf.gs.len();
+            let (mut so, mut s1) = (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); ngs + 1], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); ngs + 1]);
+            let (mut po, mut p1) = (vec![vec![1.0f64; oq.len()]; ngs + 1], vec![vec![1.0f64; oq.len()]; ngs + 1]);
+            if one_b { for g in (0..ngs).rev() { let (gb, c) = (&gbs[g], cf.gs[g].1);
+                for t in 0..nu {
+                    so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t]; so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
+                    s1[g].0[t] = (gb.one[c].0[t] * so[g + 1].0[t]).min(gb.own[c].0[t] * s1[g + 1].0[t]);
+                    s1[g].1[t] = (gb.one[c].1[t] * so[g + 1].1[t]).min(gb.own[c].1[t] * s1[g + 1].1[t]);
+                }
+                for i in 0..oq.len() { po[g][i] = gb.rown[i][c] * po[g + 1][i]; p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]); }
+            } }
             let mut cv = vec![0.0f64; clauses.len()];
             let mut pdw = vec![0.0f64; nu]; let mut pdg = vec![0.0f64; nu];
             let ng = gs.len();
@@ -1726,9 +1780,15 @@ impl<'a> DeckSpace<'a> {
                     struct St { sel: Vec<usize>, pw: Vec<[f64; 32]>, pg: Vec<[f64; 32]> }
                     let mut st = St { sel: vec![], pw: vec![[1.0; 32]], pg: vec![[1.0; 32]] };
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
-                    let mut hopeful = |g: usize, left: usize, pw: &[f64; 32], pg: &[f64; 32], bestv: f64| -> bool {
+                    let mut hopeful = |g: usize, left: usize, pw: &[f64; 32], pg: &[f64; 32], bestv: f64, nb: usize| -> bool {
+                        // borrowed cards still allowed (only with the one-borrowed tables)
+                        let can = nb < 1;
                         for t in 0..nu {
-                            let (a, b) = if g < ng { (gmin[g][left].0[t] * suf[g + 1].0[t], gmin[g][left].1[t] * suf[g + 1].1[t]) } else { (1.0, 1.0) };
+                            let (a, b) = if g >= ng { (1.0, 1.0) }
+                                else if !one_b { (gmin[g][left].0[t] * suf[g + 1].0[t], gmin[g][left].1[t] * suf[g + 1].1[t]) }
+                                else if can { let gb = &gbs[g];
+                                    ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
+                                else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
                             dw[t] = 1.0 - pw[t] * a; dg[t] = 1.0 - pg[t] * b;
                             pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t];
                         }
@@ -1736,7 +1796,10 @@ impl<'a> DeckSpace<'a> {
                         for &(ci, i, no) in &og {
                             let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
                             for o in 0..no {
-                                let r = if g < ng { rp[g][i + o][left] * sp[g + 1][i + o] } else { 1.0 };
+                                let ix = i + o;
+                                let r = if g >= ng { 1.0 } else if !one_b { rp[g][ix][left] * sp[g + 1][ix] }
+                                    else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
+                                    else { gbs[g].rown[ix][left] * po[g + 1][ix] };
                                 m = m.max(model.outfit_fast(u, o, q, &dw, &dg).min(model.outfit_fast(u, o, q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
@@ -1757,7 +1820,7 @@ impl<'a> DeckSpace<'a> {
                     }
                     if all_locked & !avail[0][0] != 0 { continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
-                           mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64; 32], &[f64; 32], f64) -> bool,
+                           mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64; 32], &[f64; 32], f64, usize) -> bool,
                            leaf: &mut dyn FnMut(&[usize], &[f64; 32], &[f64; 32]) -> bool, bestv: &dyn Fn() -> f64) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
@@ -1773,7 +1836,7 @@ impl<'a> DeckSpace<'a> {
                             sp.nodes.set(sp.nodes.get() + 1);
                             let (mut w2, mut g2) = (*st.pw.last().unwrap(), *st.pg.last().unwrap());
                             for t in 0..nu { w2[t] *= mw[j * nu + t]; g2[t] *= mg[j * nu + t]; }
-                            if !hopeful(g, left - 1, &w2, &g2, bestv()) { continue; }
+                            if !hopeful(g, left - 1, &w2, &g2, bestv(), nb + sp.ebor[j] as usize) { continue; }
                             st.sel.push(j); st.pw.push(w2); st.pg.push(g2);
                             let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv);
                             st.sel.pop(); st.pw.pop(); st.pg.pop();
