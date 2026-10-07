@@ -738,8 +738,9 @@ const TESTS = {
     // umadump import, the veteran editor, the search and its results
     const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
     await ctx.addInitScript(() => {
-      const W = window.Worker; window.__careerJobs = [];
+      const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
       window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
+        w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
         w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
     });
     const pg = await ctx.newPage(); pg.errors = [];
@@ -764,7 +765,18 @@ const TESTS = {
       && await pg.locator('#results > .deck .dc').count() === 6 && await pg.locator('.rtgt .cartab tbody tr').count() === 8);
     check('career: aptitude (pink) sparks show what they pass on', /Mile \d/.test(await pg.textContent('.pinkres')));
     check('career: the six legacies carry gate numbers 1-6 and their affinity, grandparents labelled plainly', (await pg.$$eval('#tree .pnh .gate', g => g.map(x => x.textContent).join(''))) === '123456'
-      && await pg.locator('#tree .pn .aff').count() === 6 && (await pg.$$eval('#tree .pn.gp .pnl', l => l.every(x => x.textContent === 'Grandparent'))));
+      && await pg.locator('#tree .pn:not(.trainee) .aff').count() === 6 && (await pg.$$eval('#tree .pn.gp .pnl', l => l.every(x => x.textContent === 'Grandparent'))));
+    const affs = await pg.$$eval('#tree .pn .aff', l => l.map(x => +x.textContent.replace(/\D/g, '')));
+    const tsum = await pg.textContent('#tree .pn.trainee .tsum'), [pa, ga] = (tsum.match(/\d+/g) || []).map(Number);
+    check('career: the trainee shows the affinity her six legacies hold, parents\' and grandparents\' parts', /Parents \d+ · grandparents \d+/.test(tsum)
+      && Math.abs(affs[0] - (pa + ga)) <= 1 && Math.abs(affs.slice(1).reduce((a, x) => a + x, 0) - affs[0]) <= 6, tsum + ' ' + affs.join(','));
+    // the planner's pick: the K best careers by odds and the rollout over them
+    const lastJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && j.rollout).at(-1));
+    const lastRes = await pg.evaluate(() => window.__careerResults.filter(r => r.rollout).at(-1));
+    check('career: with places open the planner runs the rollout over the six best careers', lastJob && lastJob.rollout === 6 && lastJob.top === 6 && lastJob.per_trainee === false
+      && lastRes && lastRes.rollout.candidates.length === 6 && Number.isInteger(lastRes.rollout.pick));
+    check('career: … the career on show is its pick, and a line says so only when that is not the highest-odds career',
+      (await pg.locator('.pickwhy').count() > 0) === !!lastRes.rollout.differs && (await pg.textContent('#tree .pn.trainee .nm')) === lastRes.rollout.choice.trainee.name);
     // the deck: a card's panel, as in the planner; marking it not owned searches again without it
     const dc = pg.locator('#results > .deck .dc').first(), dcid = await dc.getAttribute('data-cid');
     await dc.click(); await pg.waitForSelector('.cpop:not([hidden]) [data-act="own"]');
@@ -772,7 +784,9 @@ const TESTS = {
     check('career: a deck card\'s panel marks it not owned; the search drops it or borrows it', await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff[id] === false, dcid)
       && (!(await pg.locator(`#results > .deck .dc[data-cid="${dcid}"]`).count()) || await pg.locator(`#results > .deck .dc.bor[data-cid="${dcid}"]`).count() === 1));
     await pg.click('#o-cards'); await dialog(pg, 'set-cards'); await pg.click('#c-all'); await pg.locator('#set-cards .dclose').click(); await done();
-    // the schedule: the planner's window, one trainee
+    // the schedule: the planner's window, one trainee, from a button beside the deck
+    check('career: the race schedule is a button in the deck\'s title row, not a section', await pg.locator('#results > .deck .dtitle #sched-open').count() === 1
+      && !(await pg.locator('#results h3', { hasText: 'Race schedule' }).count()));
     await pg.click('#sched-open'); await dialog(pg, 'sched-dlg');
     check('career: her schedule opens in the planner\'s schedule window, with the G1s she skips', await pg.locator('#sched-dlg .ag-slot.on').count() > 0 && await pg.locator('#sched-dlg .ag-skip').count() > 0
       && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && !(await pg.locator('#sched-dlg .stab', { hasText: 'All four' }).count()));
@@ -780,8 +794,12 @@ const TESTS = {
     // after this career: a row per result (facts, no verdict), then the veteran you got, compared only on demand
     await pg.waitForSelector('#ahead-sec .ahead', { timeout: 180000 });
     const ahead = await pg.textContent('#ahead-sec .ahead');
-    check('career: after this career, the chance she improves your best next career, over what she lands and her stars, and why not here', /\d.*% chance she improves your best next career/.test(ahead)
-      && /At her best \(every target landed at 3★\)/.test(ahead) && /can't parent a trainee of her own character/.test(ahead), ahead.slice(0, 160));
+    const kv = await pg.$$eval('#ahead-sec .kv dt', l => l.map(x => x.textContent));
+    check('career: after this career, label/value rows: the chance she improves your best next career, today\'s best, and why not here', kv[0] === 'Chance she improves your best next career'
+      && /^\d/.test(await pg.textContent('#ahead-sec .kv dd')) && kv.includes('Your best career today') && kv.includes('Why not') && /can't parent her own character/.test(ahead)
+      && !/At her best|3★/.test(ahead) && !(await pg.locator('#ahead-sec .ahead p').count()), kv.join(' | '));
+    check('career: the veteran you got sits right under the tree, above the odds', await pg.evaluate(() => { const t = document.getElementById('tree'), s = document.getElementById('sim-top'), r = document.getElementById('results');
+      return t.nextElementSibling === s && s.nextElementSibling === r && !!s.querySelector('#simulation #sim-compare'); }));
     const simStars = async (n) => {
       const loc = pg.locator('[data-k="sim:s20159"]');
       if (!(await loc.count())) { await pg.locator('#simulation .vskadd').click(); await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click(); }
@@ -802,7 +820,10 @@ const TESTS = {
     await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
     check('career: Compare counts careers for both choices and shows the next career with her', /Use her in the next career\.|Run this career again\.|Neither choice is better\./.test(await pg.textContent('#sim-verdict'))
       && await pg.locator('#sim-result .simodds').first().locator('.tc').count() === 2 && /within two runs/.test(await pg.textContent('#sim-result'))
-      && /→/.test(await pg.textContent('#sim-result')) && await pg.locator('#sim-result .deck .dc').count() === 6);
+      && /→/.test(await pg.textContent('#sim-result')) && !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')));
+    check('career: … the next career as portraits (trainee, then her two parents, her marked), its deck behind "Show its deck"', await pg.locator('#sim-result .nextc .cface').count() === 3
+      && await pg.locator('#sim-result .nextc .cface .her').count() === 1 && await pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc').count() === 6
+      && /Show its deck/.test(await pg.textContent('#sim-result details.nextdeck summary')));
     check('career: the comparison sends her fixed stars, race indices and her parents', await pg.evaluate(() => {
       const j = window.__careerJobs.filter(j => j.policy).at(-1), v = j.legacies.at(-1);
       return j.policy.stay_parents.length === 2 && j.policy.stay_trainee > 0 && v.sparks.some(([g, s]) => g === 20159 && s === 3)
@@ -832,7 +853,16 @@ const TESTS = {
     await simStars(1);
     check('career: an edit after Compare marks the comparison out of date without running another', /changed her since/.test(await pg.textContent('#sim-result')) && await policyJobs() === nPolicy);
     const alts = await pg.$$eval('.alts li', ls => ls.map(l => l.textContent));
-    check('career: five picks, one per trainee', alts.length === 5 && new Set(alts.map(t => t.split(',')[0])).size === 5, alts.join(' | '));
+    check('career: other picks: the six candidates, each with its odds now and the next careers her veterans give, the pick marked', alts.length === 6
+      && alts.every(t => /1 in [\d,.]+ now/.test(t) && /Next career after her: 1 in/.test(t)) && await pg.locator('.alts li.on', { hasText: 'shown above' }).count() === 1
+      && /repeated: [\d,]+ careers on average; no plan averages fewer than \d+/.test(await pg.textContent('.alts')), alts.join(' | '));
+    // her G1 wins on the schedule window's calendar: her schedule's races only, nothing saved
+    await pg.click('#sim-wins'); await dialog(pg, 'wins-dlg');
+    const simRaces = await pg.locator('#wins-dlg .wbtn').count(), wonBefore = await pg.locator('#wins-dlg .wbtn[aria-pressed="true"]').count();
+    await pg.locator('#wins-dlg .wbtn').first().click();
+    check('career: the entered veteran\'s G1 wins open on the calendar with her schedule\'s races; a click toggles one', simRaces > 0 && await pg.locator('#wins-dlg .agenda .ag-year').count() === 3
+      && Math.abs(await pg.locator('#wins-dlg .wbtn[aria-pressed="true"]').count() - wonBefore) === 1 && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
+    await pg.locator('#wins-dlg .dclose').click();
     const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1).length);
     const cachedRuns = await baselineRuns();
     await pg.getByRole('button', { name: 'Choose trainee' }).click(); await dialog(pg, 'pick-dlg');
@@ -864,6 +894,15 @@ const TESTS = {
     await pg.locator('#add-pop .addsk').first().click();
     check('career: … which comes back at 2 stars', await nsk() === n0 && /2 stars/.test(await pg.locator('#vet-0 .vnode.self .vskb', { hasText: offered[0] }).getAttribute('aria-label')));
     await done();
+    // a pool veteran's G1 wins: every G1 on the calendar; a race held in Classic and Senior is one race
+    await pg.locator('#vet-0 .vnode.self .vwins').click(); await dialog(pg, 'wins-dlg');
+    const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'), wasWon = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins.includes(22));
+    const nRaces = await pg.locator('#wins-dlg .wbtn').count();
+    await arima.first().click();
+    const states = await arima.evaluateAll(l => l.map(b => b.getAttribute('aria-pressed')));
+    check('career: a veteran\'s G1 wins: every G1 at its turns; clicking Arima Kinen toggles both of its turns and saves', nRaces > 34 && states.length === 2 && states.every(x => x === String(!wasWon))
+      && await pg.evaluate(w => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins.includes(22) === w, !wasWon), states.join(','));
+    await arima.last().click(); await pg.locator('#wins-dlg .dclose').click(); await done();
     // parent 1: a new veteran, with the skills prompt
     await pg.locator('.pf').nth(0).getByRole('button', { name: 'Choose parent' }).click(); await dialog(pg, 'vpick-dlg');
     check('career: the parent picker lists your veterans', await pg.locator('#vp-list .vpt').count() === 12);
@@ -894,7 +933,7 @@ const TESTS = {
     await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await done();
     check('career: the chosen trainee is set and the picks list only parents', !(await pg.locator('#tree .pn.trainee').getAttribute('class')).includes('ghost')
       && (await pg.$$eval('.alts li .altw', ws => ws.every(w => /^Parents /.test(w.textContent.trim())))));
-    await pg.locator('.alts li').nth(1).getByRole('button', { name: 'Use this' }).click(); await done();
+    await pg.locator('.alts li').filter({ has: pg.getByRole('button', { name: 'Use this' }) }).first().getByRole('button', { name: 'Use this' }).click(); await done();
     check('career: "Use this" sets the places; with all set the career is just scored', /Scored in/.test(await note()) && !(await pg.locator('.alts').count())
       && await pg.locator('#tree .pn.ghost').count() === 0, await note());
     await pg.locator('.pf').nth(1).getByRole('button', { name: 'Let the planner pick' }).click(); await done();

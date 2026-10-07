@@ -8,6 +8,7 @@ import { ERA } from './settings.js';
 import { UMAS, NAME, SK, CAREER } from './data.js';
 import { state } from './state.js';
 import { umaAv, skillIcon } from './images.js';
+import { winsAgenda } from './agenda.js';
 
 const CKEY = 'llp:career', CV = 2;
 // stars of a skill added by hand: 2, the most common star count of a white spark at SS rank (70% at rank score 17,500+,
@@ -77,20 +78,29 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
   }
   $('ask-dlg').showModal(); box.querySelector('.primary').focus();
 }
-// the G1 wins of one node: a checklist of the races (by index, CAREER.races)
-let winsNode = null;
-function openWins(nd, who) {
-  winsNode = nd; $('wins-title').textContent = 'G1 wins: ' + who;
+// the G1 wins of one node, on the schedule window's calendar: click a race to mark it won or not. `opts.races`: the races
+// offered ([{ix, name, turns, p?}]; default every G1 at its turns); `opts.onEdit`: after each click (default: saved, and
+// the page searches again when the dialog closes)
+let winsDone = null;
+const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
+export function openWins(nd, who, opts = {}) {
+  $('wins-title').textContent = 'G1 wins: ' + who;
+  const races = opts.races || allRaces();
+  $('wins-hint').textContent = opts.races ? 'The G1s her schedule runs. Click a race to mark it won or not won (faded).'
+    : 'Single-race G1s she won: click a race to mark it won or not won (faded). Each one she shares with a parent or the other parent adds 3 affinity.';
+  const edit = opts.onEdit || persist;
   const box = $('wins-list'); box.textContent = '';
-  CAREER.races.forEach((name, i) => {
-    const l = document.createElement('label'); l.className = 'wrace';
-    const c = document.createElement('input'); c.type = 'checkbox'; c.checked = nd.wins.includes(i);
-    c.onchange = () => { const s = new Set(winsNode.wins); c.checked ? s.add(i) : s.delete(i); winsNode.wins = [...s].sort((a, b) => a - b); persist(); };
-    l.append(c, ' ' + name); box.appendChild(l);
+  const cal = winsAgenda(races, (ix) => nd.wins.includes(ix), (ix) => {
+    const s = new Set(nd.wins); s.has(ix) ? s.delete(ix) : s.add(ix); nd.wins = [...s].sort((a, b) => a - b); edit();
+    $('wins-count').textContent = winsText(nd);
   });
+  box.appendChild(cal.el);
+  $('wins-count').textContent = winsText(nd);
+  winsDone = opts.onEdit ? null : changed;
   $('wins-dlg').showModal();
 }
-$('wins-dlg').addEventListener('close', () => { if (winsNode) { winsNode = null; changed(); } });
+const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
+$('wins-dlg').addEventListener('close', () => { const f = winsDone; winsDone = null; if (f) f(); });
 // "+" beside a node's sparks: the target skills she lacks, then the aptitudes she has no spark of
 const pop = $('add-pop'); let popFor = null;
 function closeAdd() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
@@ -151,8 +161,9 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
 }
 export function winsBtn(nd, who) {
   const w = document.createElement('button'); w.type = 'button'; w.className = 'btn vwins';
-  w.textContent = nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
+  w.textContent = winsText(nd);
   w.title = 'G1 wins (race affinity): click to edit'; w.onclick = () => openWins(nd, who);
+  w.setAttribute('aria-haspopup', 'dialog');
   return w;
 }
 // change who a node is: pick the uma, then whether to add the target skills

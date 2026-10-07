@@ -96,7 +96,9 @@ def era(dirp, events_file):
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
     # the career page's veteran import: spark factor group -> skill group, win saddle -> race index, race names by index
     ct = json.load(open(os.path.join(dirp, 'career.json')))
-    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'races': data['race_names']})
+    # and the turns each G1 is held at (0-71: year x 24 + half-month; Classic and Senior runnings share one race index)
+    race_turns = [sorted({t for u in data['umas'] for t, ops in enumerate(u['turns']) for o in ops if o['race'] == r}) for r in range(len(data['race_names']))]
+    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'races': data['race_names'], 'race_turns': race_turns})
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
