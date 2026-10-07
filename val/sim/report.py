@@ -111,6 +111,9 @@ def audit(paths):
         if am:
             print(f'  greedy argmax vs exact career search: {len(am)} pick changes, differs in {sum(a["differs"] for a in am)}'
                   f' (max relative shortfall {max((a["ex_p"] - a["sur_p"]) / a["ex_p"] for a in am if a["ex_p"]):.1e}); pools {min(a["pool"] for a in am)}-{max(a["pool"] for a in am)}')
+            nd = [(x, a['sur_p']) for a in am for x in a['rows'] if x[1] == 0]
+            print(f'  candidates the surrogate holds no deck for (valued by bounds only): {len(nd)}, exact P(all) / pick: max '
+                  f'{max((x[2] / p for x, p in nd), default=0):.3f}, at or above the pick {sum(x[2] >= p for x, p in nd)}')
             for a in [a for a in am if a['differs']][:5]:
                 print(f'    differs at t {a["t"]} pool {a["pool"]}: sur {a["sur"]} {a["sur_p"]:.6e} exact {a["ex"]} {a["ex_p"]:.6e}')
         for k in sorted({x[0] for x in rows}):

@@ -1,0 +1,168 @@
+# Policy simulator results (2026-10-07)
+
+The simulator (`simulate` on a career job, docs/SOLVER.md "Policy simulator", `pkg/loopopt/src/deck/career/sim.rs`)
+measures what `val/policy_sim.mjs` measures, under the solver's model: the expected number of careers until the first
+career whose veteran lands every target, for a decision policy on a fixed starting pool. Per run (derived):
+
+    E = sum over careers t of S_t,  S_0 = 1,  S_{t+1} = S_t (1 - p_t),  stop at S_t < 0.001, plus the tail S_t / p_t
+
+Every number below is a measurement of the model by simulation (seed 1, run indices 0..N-1 under every policy, so the
+same run index faces the same uniforms), with a 95% Student-t interval over runs. "Paired" differences are per run index.
+CRN pairing only holds while two policies make the same picks; once they diverge the paths draw different veterans, so
+paired spreads stay large.
+
+Pools: `career_U5` (`pkg/loopopt/jobs/career_U5.json`: 12 veterans, three each of Oguri Cap, Agnes Digital, Tamamo Cross and Inari One, everything owned, Unity Cup golds guaranteed, default 8 targets, star mix 50/45/5); `owner4` (Fine Motion,
+Kitasan Black, Gold Ship, Special Week) and `owner14` (Gold Ship, Special Week, Agnes Digital, Seiun Sky) from
+`val/policy/pools/`: the owner's roster, cards and veterans, Unity Cup, same targets and star mix.
+
+## Reproduce
+
+    cd pkg/loopopt && cargo build --release
+    uv run val/sim/make_jobs.py /tmp/sim          # writes the job files and queue.txt
+    cd pkg/loopopt && for n in $(cat /tmp/sim/queue.txt); do target/release/loopopt data.json /tmp/sim/$n.json > /tmp/sim/$n.out; done
+    uv run val/sim/report.py runs /tmp/sim/u5_*.out          # E per policy, paired differences
+    uv run val/sim/report.py audit /tmp/sim/u5_*.out         # fidelity audits
+    uv run val/sim/report.py e1 /tmp/sim/e1_*.out            # E1 checks
+
+(Run the queue 5 at a time with `xargs -P 5`; it took about 4 hours of wall time on the i5-1340P with another session
+using 4 cores. The rollout jobs dominate.)
+
+## Verdict
+
+The simulator reproduces the exact model's trajectories bit for bit wherever it was compared (14 whole trajectories of
+greedy and the loop on three pools, plus the planner's first careers), at 20-150 times the speed. On the policy question: on the owner's two pools a plain
+3-uma rotation (`loop`) beats re-running the best career after every career (`greedy`) by a wide, significant margin
+(owner14: 121 careers fewer, 95% CI 95-147; owner4: 2,600 fewer, CI 1,850-3,350); on `career_U5` the two are within
+noise (greedy 12.6 fewer, CI -3.3 to +28.5). One-step rollouts over either base gain nothing measurable on any pool:
+with 4-8 paired samples their candidate scores are noise-dominated, so they deviate from the base pick at random.
+Today's planner (the page's rollout pick, the exact solver per decision) finished one run: 227.2 careers on run index 0,
+where greedy took 273.5 and the loop 381.4. One run, no interval: suggestive, not a measurement of its mean. It costs
+2.2 hours per run in process, which is why the other runs were stopped (three more were at 400-1,100 careers).
+
+## E2: the simulator against the exact model (measured)
+
+| Check | Simulator | Exact | Same? |
+|---|---|---|---|
+| `career_U5` greedy runs 0-3 vs val/policy_sim.mjs (frozen binary, two independent batches) | E 273.494, 242.377, 273.906, 254.189; 1,677 / 1,419 / 1,736 / 1,291 careers | same | bit-identical E (all 17 digits), careers and pick sequences; 2.6-36 s per run against 574-1,862 s |
+| `career_U5` greedy runs 4-5 vs `greedy_exact` (the solver in process per decision) | 472.466, 306.027 | same | bit-identical E and picks (56 and 166 s against 2,212 and 7,447 s; the simulator times include its audits) |
+| `owner14` greedy, 1,000 careers vs `greedy_exact` | 817.0797 | 817.0797 | bit-identical, same picks (7 s against 1,484 s) |
+| `owner4` greedy, 1,000 careers vs `greedy_exact` | 1,225.1583 | 1,225.1583 | bit-identical, same picks (42 s against 6,089 s) |
+| `loop` (margin 0.02) vs the exact loop (margin -1: a fresh full deck search for every career and every keep-or-replace term): U5 runs 1-2, owner14 runs 0-1, owner4 runs 0-1 | 288.17, 235.15; 754.48, 647.80; 837.18, 877.15 | same | bit-identical E and picks, all six (14-132 s against 169-1,509 s) |
+| `planner` in process vs policy_sim's planner, U5 run 0, first 5 careers | picks 1034:2,6 / 1034:1,3 / 1034:2,3, same p | same | bit-identical |
+
+Under `margin: -1` (used for every greedy-based E3 run) the greedy pick is exact by construction: every candidate no
+proof rules out gets a fresh exact deck search, with the same proofs the career search uses. Margins 0, 0.01 and 0.05
+gave bit-identical E on all 48 `career_U5` runs (refreshes 2,328 / 1,347 / 1,139).
+
+The greedy E distribution: mean 279.7 over 48 runs (the three earlier exact long runs, 242, 254 and 274, sit inside it;
+sd 55, range 205-472). E is far from normal: a few runs that stay on a weak best career for long pull the mean up.
+
+## E1: surrogate fidelity (measured)
+
+Exact checks inside simulated greedy runs (margin 0): every 100 / 250 / 300 new veterans, the exact career search's
+pick, and up to 30 of the newest veteran's candidates (ceiling at least 0.3 x the best) with a full exact deck search.
+
+| Pool | Argmax checks | Surrogate pick differs | Lineages | Trainee has a cached deck | Table vs exact, those | Landed-set TV |
+|---|---|---|---|---|---|---|
+| `career_U5` (16 runs, pools 12-1,012) | 122 | 0 | 3,765 | 3,432 | all within 6.5e-16 | 0 |
+| `owner14` (2 runs, pools 14-1,014) | 10 | 0 | 308 | 26 | all within 4.1e-16 | 0 |
+| `owner4` (1 run, pools 4-1,204) | 5 | 0 | 154 | 52 | 45 exact; 7 short by 3.9-4.0% (exact about 0.46 x the best) | up to 0.045 |
+
+Audits inside every E3 experiment (the owner's request): at each greedy pick change the exact career search's pick,
+plus the pick and 3 random candidates with the newest veteran (ceiling at least 0.3 x the best); at each rollout
+decision the chosen and 3 random candidates; every 50 loop careers her deck and the keep-or-replace decision under
+exact values. Rows compare the surrogate's table (her cached decks, no refresh) with a fresh exact deck search.
+
+| Experiment | Greedy pick changes, differs from exact | Pick / loop-career / rollout-candidate rows: table vs exact | Random candidates: no cached deck (bounds only) | Random candidates with a deck: error | Loop keep-or-replace, same under exact |
+|---|---|---|---|---|---|
+| U5 greedy (48 runs) | 830, 0 | 830 picks, max 4.8e-16 | 2,447 of 2,490 (exact at most 0.53 x the pick) | 43, max 5e-16 | |
+| U5 loop (48) | | 1,280 loop careers, max 5.9e-16 | | | 1,232 of 1,232 |
+| U5 rollout_greedy, first career (16) | 274, 0 | 274 picks + 64 rollout candidates, max 4.7e-16 | 12 of 822 | 810: 7 above 1e-9, max 5.5%, TV 0.038 | |
+| U5 rollout_greedy, every 100 (4) | 71, 0 | 71 + 252, max 5.4e-16 | 0 of 213 | 213: 1 above 1e-9 (1.2%) | |
+| U5 rollout_loop (16) | | 415 loop careers + 64 rollout candidates, max 3.8e-16 | | | 415 of 415 |
+| owner14 greedy (16) | 16, 0 (the pick never changes) | 16, 0 | 48 of 48 (exact at most 0.44 x the pick) | | |
+| owner14 loop (16) | | 1,101, max 6.6e-16 | | | 1,085 of 1,085 |
+| owner14 rollout_greedy (8) | 1, 0 | 1 + 32, max 4.1e-16 | 0 of 3 | 3, exact | |
+| owner14 rollout_loop (8) | | 549 + 32, max 6.3e-16 | | | 548 of 548 |
+| owner4 greedy (16) | 98, 0 (pools 4-2,935) | 98, max 6.3e-16 | 73 of 294 (exact at most 0.78 x the pick) | 221: median 2.4%, 99th pct 56%, max 76%; TV up to 0.31 | |
+| owner4 loop (16) | | 1,125, max 6.2e-16 | | | 1,109 of 1,109 |
+| owner4 rollout_greedy (2) | 9, 0 | 9 + 8, max 6.2e-16 | 1 of 27 | 26: 10 above 1e-9, max 1.6%, TV 0.034 | |
+| owner4 rollout_loop (8) | | 545 + 32, max 6.2e-16 | | | 545 of 545 |
+
+Reading: everything that feeds a decision (greedy picks, loop careers, rotation decisions, rollout candidates) was exact
+to rounding in every audited case, and no candidate valued only by bounds was at or above the pick. The tables
+themselves are not a general valuation: on `owner4` a trainee's cached decks miss the best deck of an arbitrary,
+non-competitive lineage by a median 2.4% and up to 76%. The simulator never uses a table value without the refresh
+test (bound above the table by more than the margin: search), which is why its decisions stay exact; anything that
+reads tables as values without that test (for example the planner's f(S) for setups outside its shortlist) would not
+be. With margin 0.02 (the loop runs) a career's deck is guaranteed within 2% of the best (derived); measured: exact.
+
+## E3: policies (measured; expected careers to the first all-target veteran)
+
+Policies: `greedy` = the best career by P(all), re-searched after every career (policy_sim's greedy); `loop` = the
+3-uma rotation of the loop planner's best members, outfits as the career model picks them per career (career_U5:
+Agnes Digital, Tamamo Cross, Inari One, the loop planner's best for its settings, `val/refpu__pkg_loopopt__pal_U.out`;
+owner pools: El Condor Pasa, Agnes Digital, Yamanin Zephyr, none of whom has a veteran in either pool); `rollout_*` =
+at the first career (or every 100 careers) score the base policy's career, the 6 best careers, the best career of the
+4 best trainees and the best career with each of the 2 newest veterans by running each, then the base policy to
+S < 0.001 (0.05 for the every-100 variant), averaged over 8 (U5) or 4 (owner pools) paired samples; run the lowest.
+`repeat` (today's best forever) is exact: 1/p*.
+
+| Pool | Policy | Runs | E | 95% CI | Careers simulated | Final best P(all) | Paired vs greedy (policy - greedy) |
+|---|---|---|---|---|---|---|---|
+| career_U5 | repeat | exact | 587 | | | 1/587 | |
+| | greedy | 48 | 279.7 | 263.6-295.8 | 1,513 | 1/182 | |
+| | loop | 48 | 292.3 | 280.5-304.1 | 1,310 | 1/156 | +12.6 (-3.3 to +28.5); greedy lower in 31 of 48 |
+| | rollout_greedy, first career | 16 | 305.9 | 257.9-353.8 | 1,602 | 1/187 | +15.9 (-28.4 to +60.2); greedy lower in 13 of 16 |
+| | rollout_greedy, every 100 careers | 4 | 260.7 | 236.8-284.5 | 1,522 | 1/200 | -0.3 (-1.6 to +0.9) |
+| | rollout_loop, first career | 16 | 298.7 | 268.7-328.6 | 1,322 | 1/156 | +8.7 (-34.0 to +51.5); vs loop +3.5 (-23.3 to +30.3) |
+| | planner (today's rollout pick, exact) | 1 | 227.2 | (one run) | 1,286 | 1/161 | run 0 only: greedy 273.5 on the same index; stopped runs 1-3 not counted |
+| owner14 | repeat | exact | 817 | | | 1/817 | |
+| | greedy | 16 | 817.1 | (no spread) | 5,641 | 1/817 | |
+| | loop | 16 | 696.1 | 669.9-722.2 | 3,418 | 1/449 | -121.0 (-147.2 to -94.9); loop lower in 16 of 16 |
+| | rollout_greedy, first career | 8 | 817.1 | 817.0-817.3 | 5,641 | 1/817 | +0.1 (-0.1 to +0.2) |
+| | rollout_loop, first career | 8 | 699.1 | 657.3-741.0 | 3,456 | 1/508 | -117.9 (-159.8 to -76.1); vs loop +3.7 (-54.6 to +61.9) |
+| owner4 | repeat | exact | 7,589 | | | 1/7,589 | |
+| | greedy | 16 | 3,361.9 | 2,611.5-4,112.3 | 19,513 | 1/2,088 | |
+| | loop | 16 | 762.0 | 725.6-798.4 | 3,489 | 1/510 | -2,599.9 (-3,346.2 to -1,853.5); loop lower in 16 of 16 |
+| | rollout_greedy, first career | 2 | 1,225.2; 2,970.2 | | 14,244 | 1/1,689 | runs 0-1: greedy 1,225.2 and 4,647.0 (too few runs for an interval) |
+| | rollout_loop, first career | 8 | 709.0 | 669.4-748.6 | 3,430 | 1/444 | -3,033.3 (-4,156.8 to -1,909.9); vs loop -54.5 (-124.3 to +15.2), the base career kept in 4 of 8 |
+
+The tail S/p at the stop (survival below 0.001) is small against E everywhere: mean 0.19 careers on U5 greedy (max
+0.32), 0.16 for the loop, 0.82 on owner14 greedy, 2.5 on owner4 greedy (max 4.9), about 0.5 for the owner-pool loops.
+
+What the numbers say:
+
+- Greedy is myopic where the pool is thin. On owner14 its pick never changes in 5,641 careers in any of 16 runs: E is
+  exactly 1/p* = 817. Reading (not measured separately): the best career's own veterans are of the trainee's
+  character and cannot parent her, and no other career they enable beats 1/817. On owner4 it climbs from 1/7,589 to
+  about 1/2,100 over 19,500 careers. A fixed rotation that trains every member in turn, even at P(all) near 1e-5 at
+  first, builds lineages that reach 1/449 (owner14) and 1/510 (owner4) and wins by 15% and 77%.
+- On `career_U5`, where the pool already holds the loop's three characters, greedy and the loop are within noise;
+  greedy reaches its best (1/182) less high than the loop (1/156) but gets there with fewer careers spent at low odds.
+- Rollouts over greedy cannot find the loop's gain: every continuation is greedy, which on owner14 never moves, so all
+  candidates score the same. Over the loop they gain nothing measurable either.
+- Winner's curse (measured on U5): with 8 paired samples the paired 95% CI of a candidate's score against the base pick
+  is typically ±10 to ±60 careers, wider than any true difference a single career makes, so the rollout picks a
+  non-base career in 15 of 16 runs on noise. More samples or a lower-variance score would be needed before a
+  one-career rollout can show anything.
+
+## Scope: where the surrogate is verified and where it is not
+
+Verified (measured above): three pools (`career_U5`, `owner4`, `owner14`), Unity Cup, the default 8 targets with the two
+Unity golds guaranteed (6 uncertain), star mix 50/45/5 (rank below 17,500), first-year pal dates off; `career_U5` with
+everything owned and the default card set; the owner pools with his roster (16-17 umas excluded, 29-30 outfits
+excluded), his 243 owned cards and 80 excluded cards, `borrow` on; no borrowed veteran in any pool; every owned uma
+as trainee; loops of three members; pools up to 3,750 veterans (loop) and 2,935 (greedy).
+
+Not verified: other scenarios (the JP Grand Masters data, URA, no guarantees), other target sets (up to 10 uncertain
+targets: the corner tables grow to 1,024 entries and nothing here measured them), the SS+ star mix, pools with
+borrowed veterans, 4-member loops, and other rosters. The equality "cached deck = best deck" that made the tables exact
+on U5 and owner14 does not hold in general (owner4's non-competitive lineages, above); the simulator's decisions do
+not depend on it, its speed does (a pool where the best deck changes often would mean many more deck searches).
+
+Model-level assumptions are the solver's and policy_sim's, not checked here: stars independent per target and of the
+landed set, G1 wins drawn per race from the schedule's chances, the last career repeated forever as the tail (bounded
+above), dominated veterans pruned (exact for P(all)), and the loop's own rules (bootstrap, keep-or-replace, each
+career's own schedule; the loop planner coordinates schedules across members, this does not, so its loop is a lower
+estimate of a coordinated loop).
