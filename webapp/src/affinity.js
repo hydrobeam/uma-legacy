@@ -18,6 +18,10 @@ export function openWhy(l) {
     <p class="fx">Parent P = rel(T–P) + rel(P1–P2) + rel(T–P–GP1) + rel(T–P–GP2)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 3 × [G1(P–P2) + G1(P–GP1) + G1(P–GP2)]</p>
     <p class="fx">Grandparent GP (under P) = rel(T–P–GP) + 3 × G1(P–GP)</p>
     <p class="hint">rel: the game's relation points of a pair or trio, fixed by who they are. G1: the G1 races both won, which the race schedule makes as many as it can.</p></div>`;
+  // a three-uma rotation: each parent was bred from the other parent and the trainee's own earlier veteran
+  if (M.length === 3) { const r = document.createElement('p'); r.className = 'hint';
+    r.textContent = 'A three-uma rotation: each member trains from the other two, who were bred from each other and from her own earlier veteran. So she is her own grandparent twice: that legacy has no relation points with her (a trio counts only distinct umas), only the G1s it shares with its child.';
+    intro.appendChild(r); }
   body.appendChild(intro);
   const ib = head.querySelector('.oinfo'), math = intro.querySelector('#why-math');
   ib.onclick = () => { math.hidden = !math.hidden; ib.setAttribute('aria-expanded', String(!math.hidden)); };
@@ -29,14 +33,14 @@ export function openWhy(l) {
   pt.innerHTML = `<table class="tbl"><thead><tr><th>Pair</th><th>Relation points</th><th title="Expected number of G1s both win, from their schedules and win chances">G1s won together (expected)</th><th>Race affinity (×3)</th></tr></thead><tbody>` +
     D.pairs.map(p => `<tr><td class="afaces">${face(p.a)}<span class="amp">&amp;</span>${face(p.b)}</td><td>${p.rel}</td><td>${p.wins.toFixed(0)}</td><td>${(3 * p.wins).toFixed(0)}</td></tr>`).join('') + '</tbody></table>';
   body.appendChild(pt);
-  const h2 = document.createElement('h4'); h2.textContent = 'The 12 careers (choose one)'; body.appendChild(h2);
+  const h2 = document.createElement('h4'); h2.textContent = `The ${D.lineages.length} careers (choose one)`; body.appendChild(h2);
   const ct = document.createElement('div'); ct.className = 'tablewrap';
   const tb = document.createElement('table'); tb.className = 'tbl';
   tb.innerHTML = '<thead><tr><th>Trainee</th><th>Parents</th><th>Grandparents</th><th>Affinity</th></tr></thead>';
   const tbody = document.createElement('tbody'); tb.appendChild(tbody); ct.appendChild(tb);
   const split = document.createElement('div'); split.className = 'split'; split.appendChild(ct);
   const view = document.createElement('div'); view.className = 'view'; view.style.display = 'grid'; view.style.gap = '12px'; split.appendChild(view); body.appendChild(split);
-  // a career's four grandparents, two under each parent (grouped, the parent named in the group's tooltip)
+  // a career's four grandparents (in a rotation two of them are the trainee herself), two under each parent (grouped, the parent named in the group's tooltip)
   const gps = (L) => L.p.map(p => `<span class="agp" title="${esc(nm(p))}\u2019s parents">${L.slots.filter(x => x.kind === 'grandparent' && x.who[0] === p).map(x => face(x.who[1])).join('')}</span>`).join('<span class="amp">·</span>');
   const rows = D.lineages.map((L, i) => {
     const tr = document.createElement('tr'); tr.className = 'pick';
@@ -55,7 +59,7 @@ export function openWhy(l) {
     const slot = (x) => `<span class="num">affinity <b>${x.aff.toFixed(0)}</b><br>${x.rel.toFixed(0)} relations + ${x.race.toFixed(0)} races</span>`;
     const P = L.slots.filter(x => x.kind === 'parent'), G = L.slots.filter(x => x.kind === 'grandparent');
     tree.appendChild(node('p', P[0].who[0], '<span class="hint">Parent</span><br>' + slot(P[0]))); tree.appendChild(node('p', P[1].who[0], '<span class="hint">Parent</span><br>' + slot(P[1])));
-    for (const g of G) tree.appendChild(node('g', g.who[1], '<span class="hint">Grandparent</span><br>' + slot(g)));
+    for (const g of G) tree.appendChild(node('g', g.who[1], `<span class="hint">${g.who[1] === L.t ? 'Grandparent (her own earlier veteran)' : 'Grandparent'}</span><br>` + slot(g)));
     view.appendChild(tree);
   }
   // a tap on a portrait (phones) shows its name; another tap, or a tap elsewhere, hides it

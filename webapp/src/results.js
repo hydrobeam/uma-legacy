@@ -10,7 +10,7 @@ import { openWhy } from './affinity.js';
 export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const runs90 = (p) => p > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - p)).toLocaleString() : '—';
 const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
-// one result: its odds, the four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
+// one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
 // only one result is shown), top: the #1 result (to say what differs from it)}
 function loopCard(l, meta, ctx) {
   const n = meta.targets.length;
@@ -68,7 +68,7 @@ function loopCard(l, meta, ctx) {
     const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
       dk.innerHTML = `<div class="dtitle"><b>${title}</b></div>${info}<div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
       return dk; };
-    if (same) card.appendChild(block(meta.deck, D ? 'Deck for all four' : 'Deck'));
+    if (same) card.appendChild(block(meta.deck, D ? `Deck for all ${M.length === 3 ? 'three' : 'four'}` : 'Deck'));
     else {
       // the deck most members share, then each other member's swaps against it, one row each: "X swaps A → B"
       const users = M.map((m, k) => k).filter(k => key(D[k]) === key(meta.deck));
@@ -97,7 +97,7 @@ function loopCard(l, meta, ctx) {
   let mem;
   if (sameLoop) { mem = document.createElement('p'); mem.className = 'same'; mem.textContent = 'Same loop as #1 (the same umas and outfits); only the deck differs.'; }
   else {
-    mem = document.createElement('div'); mem.className = 'members';
+    mem = document.createElement('div'); mem.className = 'members' + (l.members.length === 3 ? ' n3' : '');
     l.members.forEach((m, k) => {
       const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem';
       const outfit = o.outfits.length ? o.outfits.map(x => x.label).join(' or ') : 'any outfit';

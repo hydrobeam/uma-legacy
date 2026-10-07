@@ -105,9 +105,11 @@ const TESTS = {
     // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
-    check('headline: "1 in 119 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
-      /^1 in 119 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 13\.9 · a 90% chance within 273 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
-    check('members: "as trainee: 1 in …"', head.own.length === 4 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x)), head.own.join(' | '));
+    check('headline: "1 in 107 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
+      /^1 in 107 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 12\.6 · a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
+    // the default result is a three-uma rotation: three members in three columns, a deck for each
+    check('members: three (a rotation), "as trainee: 1 in …", in three columns', head.own.length === 3 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x))
+      && await pg.evaluate(() => { const m = document.querySelector('#results .loop .members'); return m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 3; }), head.own.join(' | '));
     // a pal whose credited event choice needs a priority says so, derived from the event data (Anshinzawa SSR's finale)
     const anshin = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .dc[data-cid="30080"] i')].map(i => i.textContent));
     check('deck: Sasami Anshinzawa SSR says "prioritise Risky Business"', anshin.includes('prioritise Risky Business'), JSON.stringify(anshin));
@@ -491,7 +493,27 @@ const TESTS = {
       return L.map((l, i) => ({ rank: (l.querySelector('.rank') || {}).textContent, same: !!l.querySelector('.same'), mem: l.querySelectorAll('.mem').length,
         sameAs1: i > 0 && !l.querySelector('.same') && key(l) === key(L[0]) })); });
     check('three results: ranked #1, #2, #3', r.map(x => x.rank).join() === '#1,#2,#3', JSON.stringify(r));
-    check('a result with #1\'s loop says "Same loop as #1" instead of repeating the umas', r.some(x => x.same) && r.every(x => x.same ? x.mem === 0 : x.mem === 4) && !r.some(x => x.sameAs1), JSON.stringify(r));
+    check('a result with #1\'s loop says "Same loop as #1" instead of repeating the umas', r.some(x => x.same) && r.every(x => x.same ? x.mem === 0 : x.mem === 3 || x.mem === 4) && !r.some(x => x.sameAs1), JSON.stringify(r));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
+  // three results per uma: the four-uma loops behind the rotation are drawn with four members, the "All four" tab and
+  // the 12 careers
+  async fourloop(b) {
+    const pg = await open(b);
+    await pg.selectOption('#c-top', '3'); await settle(pg);
+    const sizes = await pg.evaluate(() => [...document.querySelectorAll('#results .loop')].map(l => l.querySelectorAll('.mem').length));
+    check('three results: a rotation first, then four-uma loops', sizes.length === 3 && sizes[0] === 3 && sizes.slice(1).every(n => n === 4 || n === 0), JSON.stringify(sizes));
+    const i = sizes.indexOf(4), loop = pg.locator('#results .loop').nth(i);
+    check('a four-uma loop: four members in four columns', i > 0 && await loop.evaluate((l) => { const m = l.querySelector('.members'); return !m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 4; }));
+    await loop.locator('.lacts button', { hasText: 'Race schedule' }).click(); await dialog(pg, 'sched-dlg');
+    check('its schedule: a tab per member plus "All four"', (await pg.locator('#sched-dlg .stab').count()) === 5 && (await pg.locator('#sched-dlg .stab').last().innerText()) === 'All four');
+    await pg.locator('#sched-dlg .stab').last().click();
+    check('All four: a column per member', (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 4);
+    await pg.keyboard.press('Escape');
+    await loop.locator('.lacts button', { hasText: 'Affinity' }).click(); await dialog(pg, 'why-dlg');
+    const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
+    check('its affinity: 6 pairs and 12 careers, no grandparent is the trainee', rows.join(',') === '6,12' && !(await pg.locator('#why-dlg .node.g', { hasText: 'her own earlier veteran' }).count()), rows.join(','));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -510,22 +532,27 @@ const TESTS = {
   async popups(b) {
     const pg = await open(b);
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg');
-    check('schedule: a tab per member plus All four', (await pg.locator('#sched-dlg .stab').count()) === 5);
+    check('schedule: a tab per member of the rotation plus "All three"', (await pg.locator('#sched-dlg .stab').count()) === 4 && (await pg.locator('#sched-dlg .stab').last().innerText()) === 'All three');
     const grids = await pg.evaluate(() => [...document.querySelectorAll('.ag-grid')].map(g => { const r = g.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); }));
     check('agenda: three identical year grids', grids.length === 3 && new Set(grids).size === 1, grids.join(' '));
     check('agenda: a note fills the blank Junior half-year', /starts in Junior Year/.test(await pg.locator('#sched-dlg .ag-pre').innerText()));
     check('agenda: fits the window without scrolling', await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }));
     check('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
     check('agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) && /^\d+% win: 110/.test(w.querySelector('b').title))));
-    await pg.locator('#sched-dlg .stab').nth(4).click(); check('All four shows the comparison table', (await pg.locator('#sched-dlg table.sched').count()) > 0);
-    check('All four: turns written as on the member tabs ("Early Apr"), no shared/optional key', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg td.when')].every(t => /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent)))
+    await pg.locator('#sched-dlg .stab').last().click(); check('All three shows the comparison table, a column per member', (await pg.locator('#sched-dlg table.sched').count()) > 0
+      && (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 3);
+    check('All three: turns written as on the member tabs ("Early Apr"), no shared/optional key', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg td.when')].every(t => /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent)))
       && await pg.locator('#sched-dlg .agkey').isHidden());
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
-    check('affinity: 6 pairs and 12 careers', rows.join(',') === '6,12', rows.join(','));
+    check('affinity: a rotation has 3 pairs and 3 careers', rows.join(',') === '3,3', rows.join(','));
+    // the trainee is her own grandparent under each parent: labelled, no relation points
+    const self = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg .node.g')].filter(n => /her own earlier veteran/.test(n.innerText)).map(n => /(^|\s)0 relations/.test(n.innerText)));
+    check('affinity: in a rotation the trainee is her own grandparent twice, with 0 relation points; the rotation is explained',
+      self.length === 2 && self.every(Boolean) && /three-uma rotation/.test(await pg.locator('#why-dlg .afx').first().innerText()), JSON.stringify(self));
     const af = await pg.evaluate(() => ({ faces: document.querySelectorAll('#why-dlg .aface').length, fx: [...document.querySelectorAll('#why-dlg .fx')].map(e => e.textContent).join(' | '), hidden: getComputedStyle(document.querySelector('#why-dlg .aface .an')).display }));
-    check('affinity: umas as portraits (names hidden until asked; four grandparents per career), the formula with P, P2, GP1, GP2', af.faces >= 6 * 2 + 12 * 6 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
+    check('affinity: umas as portraits (names hidden until asked; four grandparents per career), the formula with P, P2, GP1, GP2', af.faces >= 3 * 2 + 3 * 6 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
     const ib = pg.locator('#why-dlg .oinfo'), mathVis = () => pg.locator('#why-math').isVisible();
     const m0 = await mathVis(); await ib.click(); const m1 = await mathVis(); await ib.click();
     check('affinity: the formula sits behind the (i) by the title (closed, opens, closes)', !m0 && m1 && !(await mathVis()) && (await ib.getAttribute('aria-expanded')) === 'false', JSON.stringify([m0, m1]));
@@ -583,8 +610,8 @@ const TESTS = {
     await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });
     const closeVis = () => pg.evaluate(() => { const b = [...document.querySelectorAll('dialog[open] .dhead button')].find(x => x.textContent === 'Close'), r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
     check('phone: the schedule\'s Close stays on screen at the bottom of the dialog', await closeVis());
-    await pg.locator('#sched-dlg .stab').nth(4).click();
-    check('phone: the All four table fits the 390 px screen', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .tablewrap')].every(w => w.scrollWidth <= w.clientWidth)));
+    await pg.locator('#sched-dlg .stab').last().click();
+    check('phone: the All three table fits the 390 px screen', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .tablewrap')].every(w => w.scrollWidth <= w.clientWidth)));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     await pg.evaluate(() => { const d = document.querySelector('#why-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });
@@ -715,7 +742,7 @@ const TESTS = {
       await pg.click('#rank-q'); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /rtab|rfoot|gpop/.test(x))); await pg.keyboard.press('Escape');
       await pg.locator('.deck .dc').first().click(); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /cpop|sw|gtl|ctt/.test(x))); await pg.keyboard.press('Escape');
       await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg'); fails.push(...await pg.evaluate(AUDIT));
-      await pg.locator('#sched-dlg .stab').nth(4).click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
+      await pg.locator('#sched-dlg .stab').last().click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
       await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
       check('dark: every text run meets WCAG AAA (page, scenario picker, rank popup, card popup, schedule, affinity)', !fails.length, fails.slice(0, 5).join(' | '));
     }
@@ -775,7 +802,7 @@ const TESTS = {
     // the schedule: the planner's window, one trainee
     await pg.click('#sched-open'); await dialog(pg, 'sched-dlg');
     check('career: her schedule opens in the planner\'s schedule window, with the G1s she skips', await pg.locator('#sched-dlg .ag-slot.on').count() > 0 && await pg.locator('#sched-dlg .ag-skip').count() > 0
-      && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && !(await pg.locator('#sched-dlg .stab', { hasText: 'All four' }).count()));
+      && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && !(await pg.locator('#sched-dlg .stab', { hasText: /^All / }).count()));
     await pg.keyboard.press('Escape');
     // after this career: a row per result (facts, no verdict), then the veteran you got, compared only on demand
     await pg.waitForSelector('#ahead-sec .ahead', { timeout: 180000 });
@@ -966,7 +993,7 @@ const TESTS = {
     await pg.click('#x-scen'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.deck .dc').first().click(); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /cpop|sw|gtl|ctt/.test(x))); await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg'); fails.push(...await pg.evaluate(AUDIT));
-    await pg.locator('#sched-dlg .stab').nth(4).click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
+    await pg.locator('#sched-dlg .stab').last().click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT));
     check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
     await pg.context().close();

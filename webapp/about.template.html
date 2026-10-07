@@ -32,7 +32,7 @@ __CSS__
 
 <main class="about">
 <h2>How this works</h2>
-<p>The planner searches four-uma loops, outfits, race schedules and support decks from what you own, and ranks them by
+<p>The planner searches loops of three or four umas, outfits, race schedules and support decks from what you own, and ranks them by
 the chance that one career ends with every target skill as a spark on the veteran. <strong>Independent Training only.</strong></p>
 
 <h3>How the trainee acquires a skill</h3>
@@ -85,6 +85,12 @@ snapshot.</li>
 <p>Four umas take turns as the trainee. Her parents are two of the other three; her grandparents are their parents
 from their own last careers. No uma is her own ancestor. In a running loop all six ancestors carry every target spark.
 The odds shown are the average over the 12 trainee and parent arrangements.</p>
+<p>Three umas can also rotate: each trains from the other two, who were bred from each other and from her own earlier
+veteran. She is then her own grandparent twice; that grandparent has no relation points with her, only the G1s it
+shares with its child. A rotation's odds are the average of its 3 careers, so both kinds compare on the same footing:
+the chance per career when every member trains in turn. A rotation usually wins: its careers are a little worse than a
+loop's best ones (a fourth uma as grandparent adds relation points), but a loop must also train its fourth uma, usually
+the weakest trainee.</p>
 
 <h3>Affinity and races</h3>
 <p>Affinity raises how often a legacy passes its sparks (see Spark inheritance odds). It is the umas' fixed relation
@@ -95,7 +101,7 @@ wins; the Affinity button shows the totals.</p>
 <div class="tablewrap"><table class="tbl wintbl"><thead><tr><th scope="col">Distance ↓ · Surface →</th><th scope="col">S/A</th><th scope="col">B</th><th scope="col">C</th><th scope="col">D</th><th scope="col">E</th><th scope="col">F</th><th scope="col">G</th></tr></thead><tbody><tr><th scope="row">S/A</th><td>100%</td><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>50%</td><td>20%</td></tr><tr><th scope="row">B</th><td>100%</td><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>40%</td><td>10%</td></tr><tr><th scope="row">C</th><td>90%</td><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>30%</td><td>0%</td></tr><tr><th scope="row">D</th><td>80%</td><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>20%</td><td>0%</td></tr><tr><th scope="row">E</th><td>70%</td><td>60%</td><td>50%</td><td>40%</td><td>30%</td><td>10%</td><td>0%</td></tr><tr><th scope="row">F</th><td>50%</td><td>40%</td><td>30%</td><td>20%</td><td>10%</td><td>0%</td><td>0%</td></tr><tr><th scope="row">G</th><td>20%</td><td>10%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td></tr></tbody></table></div>
 <p>A third race in a row costs 5 more points, a fourth 20, a fifth 30, a sixth and later 50 (any race counts; a rest
 resets the streak). A G1 run in both Classic and Senior counts once, won if either attempt wins.</p>
-<p>In a schedule, "A or B" means either race at the same odds; all four umas must run the same one. Optional G1s add race
+<p>In a schedule, "A or B" means either race at the same odds; every uma of the loop must run the same one. Optional G1s add race
 sparks, not affinity.</p>
 
 <h3>The deck</h3>
@@ -122,10 +128,10 @@ Concert.</li>
 
 <h3>Reading a result</h3>
 <ul>
-<li><strong>1 in 119 runs to land all 8</strong>: one career in 119 on average. "7 of 8 or better" counts careers that
+<li><strong>1 in 107 runs to land all 8</strong>: one career in 107 on average. "7 of 8 or better" counts careers that
 miss at most one.</li>
-<li><strong>90% chance within 273 runs</strong>: the number of careers that gives a 90% chance of at least one success.
-After 119 careers, 37% of players still have none.</li>
+<li><strong>90% chance within 245 runs</strong>: the number of careers that gives a 90% chance of at least one success.
+After 107 careers, 37% of players still have none.</li>
 <li><strong>As trainee</strong>: the odds when that uma is the trainee; they differ by outfit.</li>
 </ul>
 
@@ -150,10 +156,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <details class="spec"><summary>Show the model</summary>
   <p><strong>In short.</strong></p>
   <ol>
-  <li>For a loop of four umas, each uma's race schedule is chosen to maximise the G1s they win together. That sets each
+  <li>For a loop of three or four umas, each uma's race schedule is chosen to maximise the G1s they win together. That sets each
   legacy's affinity, and so each career's chance of inheriting a target (steps 1–3, 9).</li>
   <li>A career's value is its chance of landing every target, from the trainee's outfit, the deck's hints (training,
-  events, story chains) and inheritance. A loop's value is the average of its 12 careers (steps 4–8).</li>
+  events, story chains) and inheritance. A loop's value is the average of its careers, 12 or 3 (steps 4–8).</li>
   <li>Exact odds account for targets that land together (chain cards share one career's chain events), but they are slow.
   A fast estimate that treats targets as independent picks which loops and decks are worth scoring exactly (steps 10–13).</li>
   <li>The search goes through loops from the most promising down, finds each trainee's best deck by exact odds, and stops
@@ -161,11 +167,15 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   14–20).</li>
   </ol>
   <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>P</mi></math> a parent and <math><msup><mi>P</mi><mo>′</mo></msup></math> the other parent, <math><mi>X</mi></math> the fourth uma
-  of the loop; <math><mi>k</mi></math> a target, <math><mi>D</mi></math> a deck.</p>
+  of the loop (in a rotation, the trainee herself); <math><mi>k</mi></math> a target, <math><mi>D</mi></math> a deck.</p>
 
   <p><strong>Model. 1. Careers.</strong> A loop of four umas has 12 careers: a trainee <math><mi>T</mi></math> (4 ways) and the uma <math><mi>X</mi></math> who sits
   out (3 ways). The other two are the parents; each parent <math><mi>P</mi></math>'s own parents are <math><msup><mi>P</mi><mo>′</mo></msup></math> and <math><mi>X</mi></math> (the grandparents). Each uma
-  heads 3 careers.</p>
+  heads 3 careers. A three-uma rotation has 3 careers, one per trainee <math><mi>T</mi></math>: her parents are the other two, and each
+  parent's own parents are the other parent and <math><mi>T</mi></math>, so <math><mi>X</mi><mo>=</mo><mi>T</mi></math> below (her own earlier veteran, with her
+  schedule's wins). A trio counts only distinct umas, so <math><mtext>trio</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>T</mi><mo>)</mo><mo>=</mo><mn>0</mn></math>
+  (fitted on 101,536 inspirations from IT runs: counting it as <math><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></math> predicts 16% more
+  passes from such grandparents than seen).</p>
 
   <p><strong>2. Affinity of each legacy.</strong> pair and trio are the game's relation points (the sum over the relation
   groups all of them belong to); <math><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> is the expected number of G1s both <math><mi>i</mi></math> and <math><mi>j</mi></math> win, from their schedules (step 9):</p>
@@ -197,8 +207,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   time. A career's value <math><mi>V</mi></math> is its chance of landing every target: exact over how the targets' hints depend on each
   other (step 19). Treating the open targets as independent gives the product</p>
   <math display="block"><mover><mi>V</mi><mo>^</mo></mover><mo>=</mo><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>∏</mo><mrow><mi>k</mi></mrow></munder><msub><mi>s</mi><mi>k</mi></msub></math>
-  <p>which the search only uses to bound its work (step 10). A loop's value is the mean over its 12 careers:</p>
-  <math display="block"><mi>L</mi><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munderover><mo>∑</mo><mrow><mi>c</mi><mo>=</mo><mn>1</mn></mrow><mn>12</mn></munderover><msub><mi>V</mi><mi>c</mi></msub></math>
+  <p>which the search only uses to bound its work (step 10). A loop's value is the mean over its <math><mi>n</mi></math> careers (12 for four
+  umas, 3 for a rotation), and both kinds are ranked together on it:</p>
+  <math display="block"><mi>L</mi><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><munderover><mo>∑</mo><mrow><mi>c</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><msub><mi>V</mi><mi>c</mi></msub></math>
 
   <p><strong>Deck. 6. Deck entries.</strong> Six slots, every card at max limit break. The cards a deck can use: owned
   ones (or every card, when nothing is marked), plus one card the player doesn't own when borrowing is on; never an
@@ -270,9 +281,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><mi>N</mi></math> and the picks; pals and R cards take no chain events.</p>
 
   <p><strong>8. One deck for the loop, or one per uma.</strong> With a shared deck, one deck <math><mi>D</mi></math> from the legal decks <math><mi>𝒟</mi></math>
-  serves all 12 careers. With a deck per uma (the default), each uma <math><mi>u</mi></math> uses her own best legal deck from <math><msub><mi>𝒟</mi><mi>u</mi></msub></math>,
-  the same in the 3 careers she heads:</p>
-  <math display="block"><msub><mi>L</mi><mtext>shared</mtext></msub><mo>=</mo><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><mi>𝒟</mi></mrow></munder></mrow><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math><math display="block"><msub><mi>L</mi><mtext>per uma</mtext></msub><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>u</mi></munder><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder></mrow><munder><mo>∑</mo><mrow><mi>c</mi><mo>:</mo><msub><mi>T</mi><mi>c</mi></msub><mo>=</mo><mi>u</mi></mrow></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math>
+  serves all the loop's careers. With a deck per uma (the default), each uma <math><mi>u</mi></math> uses her own best legal deck from <math><msub><mi>𝒟</mi><mi>u</mi></msub></math>,
+  the same in the careers she heads (3 in a four-uma loop, 1 in a rotation):</p>
+  <math display="block"><msub><mi>L</mi><mtext>shared</mtext></msub><mo>=</mo><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><mi>𝒟</mi></mrow></munder></mrow><mfrac><mn>1</mn><mi>n</mi></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math><math display="block"><msub><mi>L</mi><mtext>per uma</mtext></msub><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><munder><mo>∑</mo><mi>u</mi></munder><mrow><munder><mo movablelimits="false">max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder></mrow><munder><mo>∑</mo><mrow><mi>c</mi><mo>:</mo><msub><mi>T</mi><mi>c</mi></msub><mo>=</mo><mi>u</mi></mrow></munder><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math>
   <p><math><msub><mi>V</mi><mi>c</mi></msub><mrow><mo>(</mo><mi>D</mi><mo>)</mo></mrow></math> is career <math><mi>c</mi></math>'s exact value with deck <math><mi>D</mi></math>. No trainee uses a card of herself or a group card she belongs to; scenario bans apply; one card may be borrowed. The
   result shows the deck most umas use, then each other uma's swaps against it. "Results to show" returns up to three: with
   a shared deck, three distinct decks, each with its best loop; with a deck per uma, the three best loops. Two decks are the
@@ -283,7 +294,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   races per turn. Goals: a goal tied to one turn forces one of its races there; a goal spanning turns needs one of its
   (turn, race) picks. Aptitudes are those of the uma's first outfit; distance by length: up to 1400 m sprint, 1800 m mile,
   2400 m medium, else long. Each uma's schedule is chosen to maximise the loop's expected shared G1 wins
-  <math><munder><mo>∑</mo><mrow><mi>i</mi><mo>&lt;</mo><mi>j</mi></mrow></munder><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math>, every pair weighted alike. Win chance of one attempt, with aptitude cost <math><mi>κ</mi></math> (A 0, B 10, C 20, D 30, E 40,
+  <math><munder><mo>∑</mo><mrow><mi>i</mi><mo>&lt;</mo><mi>j</mi></mrow></munder><mi>w</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math>, every pair weighted alike: summed
+  over a structure's careers, step 2 counts each pair's <math><mi>w</mi></math> 20 times in a four-uma loop and 10 times in a rotation
+  (per career 6 times for the parents' pair, twice for each parent with <math><mi>X</mi></math>), the same for every pair in both. Win chance of one attempt, with aptitude cost <math><mi>κ</mi></math> (A 0, B 10, C 20, D 30, E 40,
   F 60, G 90) and streak penalty <math><msub><mi>σ</mi><mi>n</mi></msub></math> for the <math><mi>n</mi></math>-th race in a row (0/0/5/20/30/50; any race counts, a rest resets
   it):</p>
   <math display="block"><mi>p</mi><mo>=</mo><mfrac><mrow><mtext>clamp</mtext><mrow><mo>(</mo><mn>110</mn><mo>−</mo><msub><mi>κ</mi><mtext>dist</mtext></msub><mo>−</mo><msub><mi>κ</mi><mtext>surf</mtext></msub><mo>−</mo><msub><mi>σ</mi><mi>n</mi></msub><mo>,</mo><mn>0</mn><mo>,</mo><mn>100</mn><mo>)</mo></mrow></mrow><mn>100</mn></mfrac></math>
@@ -292,7 +305,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   dynamic programming: Junior turns in order with state (streak, goals met); then each Classic turn paired with the
   Senior turn 24 later, tracking both streaks, the goals met and a guessed Classic streak at the end of Classic, which the
   Senior streak starts from and the end state must match. Ties go to resting, then to the earlier-listed race. The search
-  over four schedules:</p>
+  over the loop's schedules:</p>
   <ol>
   <li>Start: each uma's best schedule against her partners' best cases (every race they could run, at streak 1).</li>
   <li>Ascent: each uma in turn re-solves against the others' current schedules; repeat until none improves by more than
@@ -344,11 +357,11 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p>For each uma the skyline is thinned to the numbers her outfits leave open (both where some outfit lacks the skill,
   <math><mi>g</mi></math> alone where they have at most the white). Product tables <math><msub><mover><mi>B</mi><mo>^</mo></mover><mi>u</mi></msub><mo>(</mo><mi>q</mi><mo>)</mo></math> give her best <math><mover><mi>V</mi><mo>^</mo></mover></math> over that view at each grid chance
   (step 15), found through clusters of decks with their per-coordinate maxima, best bound first. A trainee's product
-  ceiling in a loop is her best single skyline deck over her three careers; with a shared deck, the best single skyline
-  deck over the twelve. These bound <math><mover><mi>V</mi><mo>^</mo></mover></math> of every deck, legal or not.</p>
+  ceiling in a loop is her best single skyline deck over her careers; with a shared deck, the best single skyline
+  deck over all the loop's careers. These bound <math><mover><mi>V</mi><mo>^</mo></mover></math> of every deck, legal or not.</p>
 
   <p><strong>12. Every legal deck.</strong> The exact search draws from every legal deck, not the skyline. For one trainee (or
-  the four members with a shared deck) the entries are those no member's character rule excludes; entries interchangeable
+  all the loop's members with a shared deck) the entries are those no member's character rule excludes; entries interchangeable
   for those trainees are merged (the same rewards on every target some outfit of theirs leaves open, or none: of the
   latter, at most six per chain kind are kept, characters no rewarding card uses first), so every deck has an
   equal-valued deck among those enumerated. A deck is a configuration and a choice within it:</p>
@@ -401,34 +414,35 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>15. Exact ceilings.</strong> <math><msub><mi>B</mi><mi>u</mi></msub><mrow><mo>(</mo><mi>q</mi><mo>)</mo></mrow><mo>=</mo><munder><mo>max</mo><mrow><mi>D</mi><mo>∈</mo><msub><mi>𝒟</mi><mi>u</mi></msub></mrow></munder><mi>V</mi><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>q</mi><mo>,</mo><mi>D</mi><mo>)</mo></mrow></math> on 64 chances evenly spaced from the lowest
   possible <math><mi>q</mi></math> (every affinity 0) to the highest any trainee can reach (each uma's highest: her best parents, with the
-  pairwise bounds of step 9 for shared wins and the best possible fourth member in every slot it fills). <math><mi>V</mi></math> rises with
-  <math><mi>q</mi></math>, so with each career's chance rounded up to the grid a foursome's ceiling is</p>
-  <math display="block"><mtext>ceiling</mtext><mrow><mo>(</mo><mi>F</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mn>12</mn></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>B</mi><msub><mi>T</mi><mi>c</mi></msub></msub><mrow><mo>(</mo><msub><mi>q</mi><mi>c</mi></msub><mo>)</mo></mrow></math>
+  pairwise bounds of step 9 for shared wins and the best possible fourth member, or the trainee herself, in every slot it fills). <math><mi>V</mi></math> rises with
+  <math><mi>q</mi></math>, so with each career's chance rounded up to the grid a loop's ceiling is</p>
+  <math display="block"><mtext>ceiling</mtext><mrow><mo>(</mo><mi>F</mi><mo>)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><munder><mo>∑</mo><mi>c</mi></munder><msub><mi>B</mi><msub><mi>T</mi><mi>c</mi></msub></msub><mrow><mo>(</mo><msub><mi>q</mi><mi>c</mi></msub><mo>)</mo></mrow></math>
   <p>Each career may take its own deck here, so this bounds the shared and per-uma values alike. A cell is computed (one
   step 14 search at one chance) only when a ceiling that could still win needs it; until then the lowest computed cell
   at a higher grid point stands in, or <math><mi>ρ</mi></math> times <math><msub><mover><mi>B</mi><mo>^</mo></mover><mi>u</mi></msub></math>. While a ceiling beats the result to beat, its loosest term is
   computed: first at that uma's highest grid point, then halfway down towards the one needed, and so on.</p>
 
-  <p><strong>16. Loops.</strong> With <math><msub><mi>M</mi><mi>u</mi></msub></math> uma <math><mi>u</mi></math>'s best product value at her highest chance, a foursome's value is at most
-  <math><mfrac><mn>3</mn><mn>12</mn></mfrac><mo>∑</mo><msub><mi>M</mi><mi>u</mi></msub></math> times the guaranteed golds' factor (each uma heads three careers). Foursomes are generated in bands of that sum:
+  <p><strong>16. Loops.</strong> With <math><msub><mi>M</mi><mi>u</mi></msub></math> uma <math><mi>u</mi></math>'s best product value at her highest chance, a loop's value is at most
+  the mean of its members' <math><msub><mi>M</mi><mi>u</mi></msub></math> times the guaranteed golds' factor (each uma heads the same number of careers). Loops of
+  both sizes are generated in bands of that mean:
   first down to 85% of the largest sum, then each next band down to where it can no longer beat the result to beat
-  divided by <math><mi>ρ</mi></math>, but at most 15% below the previous band's bottom at a time. Each generated foursome gets a product ceiling from the
-  tables at the chances the pairwise bounds allow. Then, best first, a foursome:</p>
+  divided by <math><mi>ρ</mi></math>, but at most 15% below the previous band's bottom at a time. Each generated loop gets a product ceiling from the
+  tables at the chances the pairwise bounds allow. Then, best first, a loop:</p>
   <ol>
   <li>is dropped if the ceiling from cells already computed can't beat the result to beat, or <math><mi>ρ</mi></math> times its product
   ceiling (step 11) can't;</li>
   <li>is dropped if its exact ceiling (step 15) at the chances the pairwise bounds allow can't, refining cells as needed;</li>
   <li>has its schedules optimised (step 9; cached across passes), and is dropped if its exact ceiling at its schedules'
   chances can't (counted as rejected after scheduling: a better schedule could change its fate);</li>
-  <li>gets its exact value: each member's exact best deck over her three careers (step 14).</li>
+  <li>gets its exact value: each member's exact best deck over her careers (step 14).</li>
   </ol>
-  <p>The search stops when no remaining foursome's product ceiling times <math><mi>ρ</mi></math>, and no ungenerated band's bound times <math><mi>ρ</mi></math>,
+  <p>The search stops when no remaining loop's product ceiling times <math><mi>ρ</mi></math>, and no ungenerated band's bound times <math><mi>ρ</mi></math>,
   can beat the last result shown (the third with three results). Ties keep the earlier-solved loop.</p>
 
-  <p><strong>17. One shared deck.</strong> A loop's value is the best exact sum over its twelve careers among decks legal for
-  all four members (step 14 over the four at once, scored as the sum of their careers, seeded with the best <math><mi>k</mi><mo>+</mo><mn>2</mn></math>
+  <p><strong>17. One shared deck.</strong> A loop's value is the best exact sum over its careers among decks legal for
+  all its members (step 14 over them at once, scored as the sum of their careers, seeded with the best <math><mi>k</mi><mo>+</mo><mn>2</mn></math>
   legal skyline decks for <math><mi>k</mi></math> results). Its ceiling is the lower of
-  step 15's and <math><mi>ρ</mi></math> times the best single skyline deck's product over the twelve careers. With three results, each a
+  step 15's and <math><mi>ρ</mi></math> times the best single skyline deck's product over its careers. With three results, each a
   distinct deck with its best loop, each solved loop keeps every deck at or above the third-best distinct deck found so
   far (on the first loop, its own three best), so a deck's best loop is always among those kept.</p>
 
@@ -457,8 +471,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   better" is the same sum with the chance that at most one target misses (guaranteed golds counted as targets that
   miss with chance 0.291), from each independent unit's chance that all its targets land and that exactly one misses.</p>
 
-  <p><strong>20. What is reported.</strong> Per result: the loop's exact odds (the mean of its twelve careers'), "7 of 8 or
-  better", each trainee's mean over her three careers, the mean inheritance chance, the schedules, each lineage's
+  <p><strong>20. What is reported.</strong> Per result: the loop's exact odds (the mean of its careers'), "7 of 8 or
+  better", each trainee's mean over her careers, the mean inheritance chance, the schedules, each lineage's
   affinities, and the deck or decks. A trainee's outfit shown is the option used in most of her careers. With a deck per
   uma, the deck most members use comes first and each other member's swaps against it. The status line gives the cap
   the result was checked under; the solver also reports the product value of the result, the largest exact/product

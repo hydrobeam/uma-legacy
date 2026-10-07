@@ -1,5 +1,5 @@
-// ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all four ----------
-// One member (the career page): no "All four" tab; `shared` then means a parent won the race (it builds affinity when
+// ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all of them ----------
+// One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds affinity when
 // she is a parent herself), and rows marked `skipped` (G1s she could enter but doesn't) show in their slot.
 import { $, esc } from './dom.js';
 import { RACEIDS } from './data.js';
@@ -19,7 +19,7 @@ export function openSched(l) {
     if (av) b.appendChild(av); b.appendChild(document.createTextNode(label)); b.onclick = () => show(key); tabs.appendChild(b); return b; };
   const btns = M.map((m, k) => tabBtn(k, m.short || m.name, umaAv(m.id, outfitOf(k), 28)));
   const single = M.length === 1;
-  if (!single) btns.push(tabBtn('all', 'All four', null));
+  if (!single) btns.push(tabBtn('all', M.length === 3 ? 'All three' : 'All four', null));
   const keyOf = (j) => (j === M.length ? 'all' : j);
   tabs.addEventListener('keydown', (e) => {
     const i = btns.indexOf(document.activeElement); if (i < 0) return;
@@ -82,7 +82,7 @@ export function openSched(l) {
   }
   body.append(head, tabs, view); show(0); $('sched-dlg').showModal();
 }
-// the "All four" tab: every member's schedule as one table
+// the "All three" / "All four" tab: every member's schedule as one table
 // (turns written as on the member tabs, "Early Apr", the year being the group row; the members' columns headed by their
 // portrait and short name, the name dropped to the screen reader on a narrow phone so the table fits)
 const turn = (w) => { const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(w); return m ? (m[2] === 'E' ? 'Early ' : 'Late ') + m[3] : w; };
