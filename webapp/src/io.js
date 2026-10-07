@@ -3,7 +3,7 @@ import { $ } from './dom.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK } from './data.js';
 import { state, ui, goldGiven } from './state.js';
-import { save } from './search.js';
+import { save } from './save.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
 import { fmtIn } from './results.js';

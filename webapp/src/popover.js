@@ -2,7 +2,7 @@
 import { esc } from './dom.js';
 import { UMAS, CARD_BY_ID } from './data.js';
 import { state, goldGiven } from './state.js';
-import { save } from './search.js';
+import { save } from './save.js';
 import { umaState, renderRoster } from './roster.js';
 import { cardTitle, cardGives, renderCards } from './cards.js';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the

@@ -7,7 +7,7 @@ import { SCENARIOS, SCEN_GOLDS, SK, RANKS } from './data.js';
 import { ERA } from './settings.js';
 import { state, writeSaved } from './state.js';
 import { scenLogo, skillIcon, srcFor } from './images.js';
-import { save } from './search.js';
+import { save } from './save.js';
 import { renderTargets } from './targets.js';
 import { renderCards } from './cards.js';
 // the scenarios this era's data offers (Grand Masters only with the JP Grand Masters-era data)
@@ -16,7 +16,8 @@ export const scenarioOf = (v) => LIST.find(s => s.v === v) || LIST[0];
 // the lineage rank control: a two-option toggle (B to S+ / SS and up) with the game's rank badges; data-value carries the
 // chosen star mix, each option's tooltip its rank score range and star mix
 export function paintRank() {
-  const r = $('rank'); r.dataset.value = state.rank;
+  const r = $('rank'); if (!r) return;   // the career page has no rank control (it uses each legacy's real stars)
+  r.dataset.value = state.rank;
   r.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.rank; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1; });
 }
 // switch to scenario v: its guaranteed golds and its default lineage rank (both can be changed by hand afterwards)
@@ -48,12 +49,12 @@ function initRankNote() { const q = $('rank-q'), n = $('rank-note'), set = (open
   document.addEventListener('click', (e) => { if (!n.hidden && !n.contains(e.target)) set(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !n.hidden) { set(false); q.focus(); } }); }
 export function initScenario() {
-  initRankNote();
+  if ($('rank-q')) initRankNote();
   const btn = $('x-scen'), menu = $('scen-menu'), dd = $('scen-dd');
   // a scenario this era does not offer (Grand Masters, saved while the GM-era data was active; the choice is shared by
   // both eras) becomes the first one offered, Unity Cup, as if picked
   if (scenarioOf(state.scen).v !== state.scen) { setScenario(scenarioOf(state.scen).v); writeSaved(); }
-  const rk = $('rank'), pickRank = (v) => { if (v === state.rank) return; state.rank = v; paintRank(); save(); };
+  const rk = $('rank') || document.createElement('div'), pickRank = (v) => { if (v === state.rank) return; state.rank = v; paintRank(); save(); };
   rk.querySelectorAll('.rk').forEach(el => { const s = srcFor('ui', 'rank_' + el.dataset.r); if (!s) return;   // badge images (text stays without them)
     const im = new Image(); im.alt = ''; im.src = s; im.onerror = () => im.remove(); el.textContent = ''; el.classList.add('img'); el.appendChild(im); });
   rk.querySelectorAll('button').forEach(b => b.onclick = () => pickRank(b.dataset.v));

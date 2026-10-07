@@ -1,0 +1,43 @@
+// ---------- veteran import: umadump's trained_chara_data.json (github.com/Werseter/umadump) ----------
+// Per veteran: card_id (outfit; character = card_id / 100), factor_info_array (sparks: factor_id = factor group * 100 +
+// stars; white skill sparks map to a skill group through CAREER.factors), win_saddle_id_array (single-race G1 saddles
+// map to a race index through CAREER.saddles; titles are left out) and succession_chara_array (her parents at
+// position_id 10 and 20, same fields). A veteran counts as borrowed when owner_viewer_id is set and is not the
+// exporting player's own viewer_id.
+import { CAREER } from './data.js';
+
+function sparksOf(fs) {
+  const out = {};
+  for (const f of fs || []) {
+    const g = CAREER.factors[Math.floor(f.factor_id / 100)];
+    if (g !== undefined) out[g] = Math.max(out[g] || 0, f.factor_id % 100);
+  }
+  return out;
+}
+function winsOf(ws) { return [...new Set((ws || []).map(w => CAREER.saddles[w]).filter(x => x !== undefined))].sort((a, b) => a - b); }
+// aptitude (pink) sparks: factor_id = aptitude group * 100 + stars, the groups in CAREER.pinks
+function pinksOf(fs) {
+  const out = {};
+  for (const f of fs || []) { const g = Math.floor(f.factor_id / 100); if (CAREER.pinks[g] !== undefined) out[g] = Math.max(out[g] || 0, f.factor_id % 100); }
+  return out;
+}
+const node = (x) => ({ chara: Math.floor(x.card_id / 100), outfit: x.card_id, sparks: sparksOf(x.factor_info_array), pinks: pinksOf(x.factor_info_array), wins: winsOf(x.win_saddle_id_array) });
+
+// the list of veterans in an export: the file's array, or the first array of veteran records inside an object
+function records(o) {
+  const isVet = (x) => x && typeof x === 'object' && 'card_id' in x && 'factor_info_array' in x;
+  if (Array.isArray(o)) return o.filter(isVet);
+  if (o && typeof o === 'object') for (const v of Object.values(o)) { const r = records(v); if (r.length) return r; }
+  return [];
+}
+// veterans from export text; throws an Error with a message for the page when it is not an export
+export function parseExport(text) {
+  let o; try { o = JSON.parse(text); } catch { throw new Error('That is not JSON. Pick umadump\'s trained_chara_data.json.'); }
+  const rs = records(o);
+  if (!rs.length) throw new Error('No veterans found. Pick umadump\'s trained_chara_data.json.');
+  return rs.map(r => ({
+    ...node(r), id: 'tc' + (r.trained_chara_id ?? Math.random().toString(36).slice(2)), src: 'import',
+    borrowed: !!r.owner_viewer_id && r.owner_viewer_id !== r.viewer_id,
+    parents: [10, 20].map(pos => { const p = (r.succession_chara_array || []).find(x => x.position_id === pos); return p ? node(p) : { chara: null, sparks: {}, pinks: {}, wins: [] }; }),
+  }));
+}

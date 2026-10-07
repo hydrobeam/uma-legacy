@@ -3,7 +3,7 @@ import { $ } from './dom.js';
 import { CAT, SK, PRESET } from './data.js';
 import { state, goldGiven } from './state.js';
 import { skillIcon } from './images.js';
-import { save } from './search.js';
+import { save } from './save.js';
 import { renderCards } from './cards.js';
 // one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last

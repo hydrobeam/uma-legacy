@@ -10,8 +10,10 @@ export let CARDS;   // [{id,name,rar,pal,kind,rel,gt,whites,ev:[[group,level,lin
 export let UMAS;    // [{id,name,outfits:[{id,label,rel}]}]
 export let CAT;     // [[group, white, gold|null]]
 export let CARD_BY_ID, SK, NAME;
+// the career page's veteran import tables ({factors, saddles, races}); null on the planner page
+export let CAREER = null;
 function setData(d) {
-  CARDS = d.cards; UMAS = d.umas; CAT = d.skills;
+  CARDS = d.cards; UMAS = d.umas; CAT = d.skills; CAREER = d.career || null;
   CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
   SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
   NAME = new Map(UMAS.map(u => [u.id, u.name]));
@@ -19,12 +21,12 @@ function setData(d) {
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
 export const loadFail = (what) => `Could not load ${what}. Check your connection and reload the page.` + (location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '');
 export async function loadData() {
-  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills') }); return; }
+  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills'), career: $('data-career') ? parse('data-career') : null }); return; }
   let r; try { r = await fetch(ASSETS.dataGm); } catch { r = null; }
   if (!r || !r.ok) throw new Error(loadFail('the Grand Masters-era data'));
   setData(await r.json());
 }
-export const EXAMPLE = parse('data-example');       // precomputed default result
+export const EXAMPLE = $('data-example') ? parse('data-example') : null;       // precomputed default result (the planner page)
 const IMG = parse('data-img');
 export const SHIPPED = new Set(IMG.keys);   // images in dist/<IMG_BASE>: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
 export const IMG_BASE = IMG.base;           // the fingerprinted image folder, e.g. 'assets/img.1a2b3c4d5e/'

@@ -5,7 +5,7 @@ import { $ } from './dom.js';
 import { UMAS } from './data.js';
 import { state } from './state.js';
 import { umaAv } from './images.js';
-import { save } from './search.js';
+import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 const ST_LABEL = { own: 'owned', out: 'not owned', req: 'must include' };
 export function umaState(u) { const os = u.outfits || []; const st = state.roster[u.id] || 'own';

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career planner · uma-legacy</title>
+<meta name="description" content="Pick the next Independent Training career from the veterans you have: trainee, parents and deck">
+<meta name="theme-color" content="#e84898">
+<meta property="og:site_name" content="uma-legacy">
+<meta property="og:type" content="website">
+<meta property="og:url" content="__SITE__/career">
+<meta property="og:title" content="Career planner · uma-legacy">
+<meta property="og:description" content="Build a lineage from your veterans, or let the planner pick the parents, and get the odds and deck for every target skill.">
+<meta property="og:image" content="__SITE__/og.png">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://uma-legacy.pages.dev/career">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+__FONTPRELOAD__
+<script>__THEMEJS__</script>
+<script>
+// start the solver's downloads while the page is still being parsed: the wasm and the active era's data
+(function () {
+  var A = __ASSETS__, gm = false;
+  try { var o = JSON.parse(localStorage.getItem('llp:settings') || 'null'); gm = !!o && o.era === 'gm'; } catch (e) {}
+  [A.wasm].concat(gm ? [A.engine.gm, A.dataGm] : [A.engine.global]).forEach(function (h) {
+    var l = document.createElement('link'); l.rel = 'preload'; l.as = 'fetch'; l.crossOrigin = 'anonymous'; l.href = h; document.head.appendChild(l);
+  });
+})();
+</script>
+<style>
+__CSS__
+</style>
+
+<header class="top">
+  <h1 class="brand" aria-label="uma-legacy career planner"><a class="home" href="./">__LOGO__<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></a><span class="sub">Career planner</span></h1>
+  <nav class="tnav"><a href="./">Loop planner</a> <a href="about">How this works</a> __THEMEBTN__</nav>
+</header>
+
+<div class="cwrap">
+  <section class="ctool" aria-label="Settings">
+    <div class="seg" role="group" aria-label="Game data">
+      <button id="era-global" aria-pressed="true">Global today</button>
+      <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
+    </div>
+    <div class="row gamerow">__PANEL_SCEN__</div>
+    <button class="btn tbtn" type="button" id="o-skills" aria-haspopup="dialog">Target skills <b id="o-skills-n"></b></button>
+    <button class="btn tbtn" type="button" id="o-umas" aria-haspopup="dialog">Umas <b id="o-umas-n"></b></button>
+    <button class="btn tbtn" type="button" id="o-cards" aria-haspopup="dialog">Support cards <b id="o-cards-n"></b></button>
+    <label class="tchk"><input type="checkbox" id="c-borrow"> Borrow one friend's card</label>
+    <p class="hint tshare">Shared with the loop planner: a change here changes it there too.</p>
+  </section>
+
+  <main class="lineage" id="rcol" tabindex="-1" aria-labelledby="h-lin">
+    <div class="linhead">
+      <h2 id="h-lin">Next career</h2>
+      <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
+    </div>
+    <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick. The grandparents are each parent's own parents.</p>
+    <div class="ltree" id="tree"></div>
+    <div id="results"></div>
+  </main>
+
+  <section class="pool" aria-labelledby="h-vets">
+    <div class="row between"><h2 id="h-vets">Your veterans</h2><span class="hint" id="v-count"></span></div>
+    <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
+    <div class="row">
+      <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
+      <button class="btn" type="button" id="v-paste">Paste</button>
+      <button class="btn" type="button" id="v-clear">Remove all</button>
+      <span class="hint" id="v-msg" role="status"></span>
+    </div>
+    <div class="vets" id="vets"></div>
+  </section>
+</div>
+
+<dialog id="set-skills" class="setdlg" aria-label="Target skills"><div class="dlg"><div class="row between dhead"><h3>Target skills</h3><button class="btn dclose">Done</button></div>__PANEL_SKILLS__</div></dialog>
+<dialog id="set-umas" class="setdlg" aria-label="Umas"><div class="dlg"><div class="row between dhead"><h3>Umas you own</h3><button class="btn dclose">Done</button></div>__PANEL_ROSTER__</div></dialog>
+<dialog id="set-cards" class="setdlg" aria-label="Support cards"><div class="dlg"><div class="row between dhead"><h3>Support cards you own</h3><button class="btn dclose">Done</button></div>__PANEL_DECK__</div></dialog>
+
+<dialog id="vpick-dlg" aria-labelledby="vpick-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="vpick-title">Choose a parent</h3><button class="btn dclose">Close</button></div>
+  <div class="seg" role="tablist" aria-label="Where the parent comes from">
+    <button type="button" role="tab" id="vp-tab-vets" aria-selected="true" aria-controls="vp-vets">Your veterans</button>
+    <button type="button" role="tab" id="vp-tab-new" aria-selected="false" aria-controls="vp-new">A new one (any uma)</button>
+    <button type="button" role="tab" id="vp-tab-auto" aria-selected="false" aria-controls="vp-auto">Let the planner pick</button>
+  </div>
+  <div id="vp-vets" role="tabpanel" aria-labelledby="vp-tab-vets"><div class="vpgrid" id="vp-list"></div></div>
+  <div id="vp-new" role="tabpanel" aria-labelledby="vp-tab-new" hidden><input type="search" id="vp-filter" placeholder="Filter by name" aria-label="Filter umas by name"><div class="umapick" id="vp-umas"></div></div>
+  <div id="vp-auto" role="tabpanel" aria-labelledby="vp-tab-auto" hidden><p>The planner tries every one of your veterans in this place and keeps the best.</p><button class="btn primary" type="button" id="vp-auto-go">Let the planner pick this parent</button></div>
+</div></dialog>
+<dialog id="pick-dlg" aria-labelledby="pick-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="pick-title">Which uma?</h3><button class="btn dclose">Close</button></div>
+  <input type="search" id="pick-filter" placeholder="Filter by name" aria-label="Filter umas by name">
+  <div class="umapick" id="pick-list"></div>
+</div></dialog>
+<dialog id="ask-dlg" aria-labelledby="ask-title"><div class="dlg">
+  <h3 id="ask-title">Add skills?</h3>
+  <p id="ask-text"></p>
+  <div class="row askrow" id="ask-btns"></div>
+</div></dialog>
+<dialog id="wins-dlg" aria-labelledby="wins-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="wins-title">G1 wins</h3><button class="btn dclose">Done</button></div>
+  <p class="hint">Single-race G1s she won. Each one she shares with a parent or the other parent adds 3 affinity.</p>
+  <div class="winlist" id="wins-list"></div>
+</div></dialog>
+<dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="paste-title">Paste an umadump export</h3><button class="btn dclose">Close</button></div>
+  <p>The contents of umadump's <code>trained_chara_data.json</code>. Imported veterans replace earlier imports; veterans you made here stay.</p>
+  <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump export"></textarea>
+  <div class="row"><button class="btn" id="paste-load">Import</button></div>
+</div></dialog>
+<div class="cpop addpop" id="add-pop" role="dialog" aria-label="Add a spark" tabindex="-1" hidden></div>
+
+<footer class="foot">
+  <p>The model is the loop planner's (<a href="about">How this works</a>), with what your veterans really carry: each legacy's stars per skill, her recorded G1 wins and her parents. A legacy without a spark of a skill passes nothing on, and the new veteran's spark gets 10% more likely per ancestor that has it. Aptitude (pink) sparks don't change the skill odds; the page shows how likely each aptitude is passed on.</p>
+  <p class="row"><span class="hint" id="ver">Version __VERSION__</span></p>
+</footer>
+
+<script type="application/json" id="data-cards">__CARDS__</script>
+<script type="application/json" id="data-umas">__UMAS__</script>
+<script type="application/json" id="data-skills">__SKILLCAT__</script>
+<script type="application/json" id="data-career">__CAREERDATA__</script>
+<script type="application/json" id="data-img">__IMG__</script>
+<script type="application/json" id="data-skillicon">__SKILLICON__</script>
+<script type="application/json" id="data-raceids">__RACEIDS__</script>
+<script type="application/json" id="data-assets">__ASSETS__</script>
+<script type="text/plain" id="engine-worker">__WORKER__</script>
+<script>__APP__</script>

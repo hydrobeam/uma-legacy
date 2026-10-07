@@ -94,14 +94,18 @@ def era(dirp, events_file):
                          **({'ban': ban} if (ban := [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]) else {})})   # scenarios that bar it from the deck
     umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
-    return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine}
+    # the career page's veteran import: spark factor group -> skill group, win saddle -> race index, race names by index
+    ct = json.load(open(os.path.join(dirp, 'career.json')))
+    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'races': data['race_names']})
+    return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
-app = subprocess.run([ESBUILD, os.path.join(H, 'src', 'main.js'), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
-                     check=True, capture_output=True, text=True).stdout
+def bundle(entry): return subprocess.run([ESBUILD, os.path.join(H, 'src', entry), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
+                                         check=True, capture_output=True, text=True).stdout
+app = bundle('main.js')
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
@@ -111,7 +115,7 @@ def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, tex
 try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg', '../jp') else '')
 except Exception: VERSION = 'unknown'
 # the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
-gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + '}'
+gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"career":' + M['career'] + '}'
 ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': fingerprint('engine-global.json', G['engine']), 'gm': fingerprint('engine-gm.json', M['engine'])},
           'dataGm': fingerprint('data-gm.json', gm_ui), 'img': IMG_BASE}
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
@@ -171,6 +175,18 @@ about = open(os.path.join(H, 'about.template.html')).read()
 for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', MATHFACE + '\n' + css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
+# the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
+career = open(os.path.join(H, 'career.template.html')).read()
+# the settings editors (target skills, umas, cards, scenario): the planner template's marked blocks, the same modules
+for name, block in re.findall(r'<!--panel:(\w+)-->(.*?)<!--/panel:\1-->', open(os.path.join(H, 'index.template.html')).read(), re.S):
+    career = career.replace(f'__PANEL_{name.upper()}__', block, 1)
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', bundle('career.js')), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
+             ('__CAREERDATA__', G['career']), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
+             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker), ('__LOGO__', LOGO)]:
+    assert '</script' not in v.lower(), k
+    career = career.replace(k, v, 1)
+assert not re.search(r'__(?!PURE__)[A-Z]+__', career), re.findall(r'__(?!PURE__)[A-Z]+__', career)
+open(os.path.join(DIST, 'career.html'), 'w').write(career)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))
 # hosting (Cloudflare Pages reads _headers): indexable (owner, 2026-10-05; the page names its canonical address); the page 5 minutes so a new deploy shows
 # quickly; fingerprinted assets a year, immutable (their names change with their content)

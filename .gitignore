@@ -28,6 +28,7 @@
 !/pkg/loopopt/data_xmas_vodka.json
 !/pkg/loopopt/web_cards.json
 !/pkg/loopopt/web_skills.json
+!/pkg/loopopt/career.json
 !/jp/
 /jp/*
 !/jp/export/
@@ -36,6 +37,7 @@
 !/jp/data.json
 !/jp/web_cards.json
 !/jp/web_skills.json
+!/jp/career.json
 !/jp/card_events.json
 !/jp/card_events_nodates.json
 !/webapp/
@@ -44,6 +46,7 @@
 !/webapp/build.py
 !/webapp/index.template.html
 !/webapp/about.template.html
+!/webapp/career.template.html
 !/webapp/src/
 !/webapp/worker.template.js
 !/webapp/example.mjs
@@ -69,6 +72,7 @@
 !/val/ref_times.txt
 !/val/refpu__*.out
 !/val/umadump_lineage.py
+!/val/career_job.py
 !/val/umadump/
 !/val/umadump_carriers.py
 !/val/spark_gen_fit.py

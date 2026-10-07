@@ -8,7 +8,7 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 
 | Step | Does | Needs |
 |---|---|---|
-| `data` | Global and Grand Masters-era exports (`data.json`, `web_skills.json`, `web_cards.json` with the scenario card bans) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
+| `data` | Global and Grand Masters-era exports (`data.json`, `web_skills.json`, `web_cards.json` with the scenario card bans, `career.json`: the veteran import's spark-factor and win-saddle tables) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
 | `events` | card event caches from `pkg/loopopt/gametora/` plus the manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary and its tests | cargo |
 | `pb` | exact pairwise affinity ceilings of every uma pair, stored as `pb` in both `data.json` (`export/add_pb.py` via `loopopt pbtable`); a typical search runs faster with it. It carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns until `pb` is rerun | native |
@@ -36,9 +36,10 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`); a browser that refuses WebAssembly gets a
 message saying so. Source map of `src/`: `main.js` (entry), `settings.js` (saved settings), `state.js`, `data.js`,
-`search.js` (auto-search, worker), `roster.js`, `targets.js`, `scenario.js`, `cards.js`, `results.js`, `popover.js`
+`search.js` (auto-search), `save.js` (what a settings change does), `engine.js` (the worker), `job.js` (job fields both pages send), `roster.js`, `targets.js`, `scenario.js`, `cards.js`, `results.js`, `popover.js`
 (card and member panels), `agenda.js` (race schedule), `affinity.js`, `io.js` (export/import), `images.js`,
-`sortmenu.js`, `dom.js`.
+`sortmenu.js`, `dom.js`; the career page: `career.js` (entry, search, results), `vets.js` (veterans and the tree
+editor), `umadump.js` (import).
 
 ## Tests
 

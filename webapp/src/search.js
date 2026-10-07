@@ -3,8 +3,11 @@
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { CARDS, UMAS, ASSETS, EXAMPLE, loadFail } from './data.js';
-import { state, ui, writeSaved, DEFAULTS, goldGiven } from './state.js';
+import { UMAS, ASSETS, EXAMPLE } from './data.js';
+import { run, killEngine } from './engine.js';
+import { save, onSave } from './save.js';
+import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
+import { state, ui, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
@@ -45,7 +48,7 @@ export function paintRunNote() {
 // Stop: the running search (or the one about to start) is dropped and its worker killed; the results on screen stay
 function stopSearch() {
   if (!searching) return;
-  searchId++; clearTimeout(pauseTimer); if (busy) killEngine();
+  searchId++; clearTimeout(pauseTimer); if (busy) stopEngine();
   const checking = phase === 'check';
   searching = false; phase = 'search'; clearInterval(searchTick);
   ui.status = checking
@@ -58,66 +61,17 @@ function stopSearch() {
 function scheduleSearch() {
   clearTimeout(pauseTimer);
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
-  if (busy) { searchId++; killEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
+  if (busy) { searchId++; stopEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
   pauseTimer = setTimeout(doSearch, 550); phase = 'search';
   // "Searching…" during the pause, but the seconds count only once the search runs (doSearch starts the clock)
   clearInterval(searchTick); searching = true; searchT0 = performance.now(); paintRunNote();
 }
 // every setting change: save it and search again
-export const save = () => { scheduleSearch(); writeSaved(); };
+onSave(scheduleSearch);
+export { save };
 
-// A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
-let worker = null, ready = null, seq = 0, busy = false; const pending = new Map();
-// The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
-// worker, so a restart skips fetching and compiling it. Where a module can't be posted, the worker gets the bytes.
-let wasmModule = null, engineGen = 0;   // engineGen: a kill during the compile wait cancels that start
-// the solver's data for the active era (its own file, preloaded by the page head)
-let engineData = null;
-function eraEngineData() {
-  if (!engineData) {
-    engineData = fetch(ASSETS.engine[ERA === 'gm' ? 'gm' : 'global']).then(r => { if (!r.ok) throw 0; return r.text(); })
-      .catch(() => { throw new Error(loadFail('the solver data')); });
-    engineData.catch(() => { engineData = null; });
-  }
-  return engineData;
-}
-function compiled() {
-  if (!wasmModule) wasmModule = (async () => {
-    let bytes;
-    try { const r = await fetch(ASSETS.wasm); if (!r.ok) throw 0; bytes = await r.arrayBuffer(); }
-    catch { throw new Error(loadFail('the solver')); }
-    let module = null; try { module = await WebAssembly.compile(bytes); } catch { module = null; }
-    return { module, bytes };
-  })();
-  wasmModule.catch(() => { wasmModule = null; });   // a failed load is retried on the next search
-  return wasmModule;
-}
-function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); busy = false; }
-function startEngine() {
-  if (ready) return ready;
-  const gen = engineGen;
-  ready = Promise.all([compiled(), eraEngineData()]).then(([{ module, bytes }, data]) => new Promise((resolve, reject) => {
-    if (gen !== engineGen) { reject(new Error('superseded')); return; }
-    try {
-      const src = $('engine-worker').textContent;
-      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-    } catch (e) { reject(new Error('This browser blocked the background worker the solver runs in.')); return; }
-    worker.onmessage = (e) => {
-      const m = e.data;
-      if (m.type === 'ready') resolve();
-      else if (m.type === 'error') { reject(new Error(m.message)); }
-      else if (m.type === 'interim') { const p = pending.get(m.id); p && p.interim && p.interim(m); }
-      else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p.done(m); }
-    };
-    worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
-    try { if (!module) throw 0; worker.postMessage({ type: 'init', module, data }); }
-    catch { worker.postMessage({ type: 'init', bytes, data }); }   // module not transferable here
-  }));
-  ready.catch(() => { if (gen === engineGen) ready = null; });   // a failed start is retried by the next search
-  return ready;
-}
-// interim: called with the fast first pass of a deck search, before the exact one resolves the promise
-function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job }); })); }
+let busy = false;   // a search is running in the engine
+function stopEngine() { killEngine(); busy = false; }
 
 // Settings the search cannot start from: an empty state (nothing to search yet, with the button that fixes it) or an
 // error (contradictory settings), said in the status line.
@@ -136,16 +90,10 @@ function buildJob() {
   const owned = UMAS.length - exclude.length;
   if (owned < 4) throw new Blocked('empty', `Mark at least 4 umas as owned to search (${owned} owned now).`, { label: 'Mark all umas owned', click: 'r-all' });
   const require = UMAS.filter(isRequired).map(u => u.id);
-  // skills a career always gives an uma outside her outfit and the deck: Tokai Teio's Head-On (her Triple Crown event;
-  // all three races are her career goals) and Yamanin Zephyr's Slipstream (a goal race's; GameTora's event data lacks it)
-  const extra = [[1003, 20190, 1], [1078, 20165, 1]];
-  const targets = state.targets.map(t => ({ group: t.group, guaranteed: goldGiven(t.group) ? 2 : 0 }));   // only the scenario guarantees anything
-  const offN = CARDS.filter(c => state.cardsOff[c.id] === false).length;
-  // the solver reads an empty list as "no restriction", so with every card not owned it gets [0], an id no card has
-  const owned_cards = offN ? (offN === CARDS.length ? [0] : CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id)) : [];
-  const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra,
-    owned_cards, borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, scenario: state.scen || 'unity',
-    ...(state.rcards ? {} : { exclude_cards: CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id) }) };   // R cards are opt-in
+  const targets = jobTargets();
+  const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra: EXTRA,
+    owned_cards: ownedCards(), borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, scenario: state.scen || 'unity',
+    ...rcardsOff() };
   return { job, targets };
 }
 // The last result per era is kept in localStorage with the job that produced it (plus the solver's and data's
@@ -178,7 +126,7 @@ export function certText(e) {
 }
 export async function doSearch() {
   const my = ++searchId; clearTimeout(pauseTimer);
-  if (busy) killEngine();   // a search is still running: stop it and start over
+  if (busy) stopEngine();   // a search is still running: stop it and start over
   let b;
   try { b = buildJob(); }
   catch (e) { searching = false; clearInterval(searchTick); ui.status = e.status || { kind: 'error', text: e.message }; paintRunNote(); return; }

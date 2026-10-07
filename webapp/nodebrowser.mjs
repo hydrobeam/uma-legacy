@@ -733,6 +733,100 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
+  async career(b) {
+    // the career planner (/career): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
+    // umadump import, the veteran editor, the search and its results
+    const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+    const pg = await ctx.newPage(); pg.errors = [];
+    pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
+    const note = () => pg.textContent('#run-note');
+    const done = async () => { await pg.waitForTimeout(700);   // past the pause before a search
+      await pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }); };
+    const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
+    await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
+    check('career: with no veterans it asks for parents or an import', /Choose both parents, or import/.test(await note()), await note());
+    check('career: the toolbar shows the shared settings', (await pg.textContent('#o-skills-n')) === '8' && /owned/.test(await pg.textContent('#o-umas-n')));
+    await pg.click('#o-skills'); await dialog(pg, 'set-skills');
+    check('career: Target skills opens the planner\'s skill editor', await pg.locator('#set-skills #targets .tgt').count() === 8);
+    await pg.locator('#set-skills .dclose').click();
+    await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
+    await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
+    check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
+    await done();
+    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*Checked on exact odds/.test(await note()), await note());
+    check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .tnode.ghost').count() === 3 && await pg.locator('#tree .tnode.gp').count() === 4);
+    check('career: the odds, eight target rows and a six-card deck under the tree', /1 in/.test(await pg.textContent('.bigodds'))
+      && await pg.locator('.cdetail .cartab tbody tr').count() === 8 && await pg.locator('.cdetail .cardeck li').count() === 6);
+    check('career: aptitude (pink) sparks show what they pass on', /Mile \d/.test(await pg.textContent('.pinkres')));
+    const alts = await pg.$$eval('.alts li', ls => ls.map(l => l.textContent));
+    check('career: five picks, one per trainee', alts.length === 5 && new Set(alts.map(t => t.split(',')[0])).size === 5, alts.join(' | '));
+    // stars on a pool veteran: a click cycles 1 -> 2 -> 3 -> 1, and is saved
+    const chip = pg.locator('#vet-0 .vnode.self .vskb').first();
+    const stars = async () => +(await chip.getAttribute('aria-label')).match(/(\d) star/)[1];
+    const s0 = await stars(); await chip.click(); const s1 = await stars(); await chip.click(); const s2 = await stars(); await chip.click(); const s3 = await stars();
+    check('career: clicking a skill cycles its stars back round to 1', s1 === s0 % 3 + 1 && s2 === s1 % 3 + 1 && s3 === s2 % 3 + 1, [s0, s1, s2, s3].join(' '));
+    check('career: … the focus stays on it, and the change is saved', await chip.evaluate(e => e === document.activeElement) && await pg.evaluate(() => /"sparks"/.test(localStorage.getItem('llp:career'))));
+    const nsk = () => pg.locator('#vet-0 .vnode.self .vsk:not(.pink)').count(), n0 = await nsk();
+    const first = await chip.getAttribute('aria-label');
+    await pg.locator('#vet-0 .vnode.self .vsk').first().hover();
+    const vis = await pg.locator('#vet-0 .vnode.self .vskx').first().evaluate(e => getComputedStyle(e).visibility);
+    await pg.locator('#vet-0 .vnode.self .vskx').first().click();
+    check('career: the x shows on hover and removes the skill', vis === 'visible' && await nsk() === n0 - 1);
+    await pg.locator('#vet-0 .vnode.self .vskadd').click();
+    const offered = await pg.$$eval('#add-pop .addsk', els => els.map(e => e.textContent));
+    check('career: "+" offers the missing target, then aptitudes', offered.length === 1 && first.startsWith(offered[0]) && await pg.locator('#add-pop .addpk').count() > 0, offered.join(', '));
+    await pg.locator('#add-pop .addsk').first().click();
+    check('career: … which comes back at 2 stars', await nsk() === n0 && /2 stars/.test(await pg.locator('#vet-0 .vnode.self .vskb', { hasText: offered[0] }).getAttribute('aria-label')));
+    await done();
+    // parent 1: a new veteran, with the skills prompt
+    await pg.locator('.pslot').nth(0).getByRole('button', { name: 'Choose parent' }).click(); await dialog(pg, 'vpick-dlg');
+    check('career: the parent picker lists your veterans', await pg.locator('#vp-list .vpt').count() === 12);
+    await pg.click('#vp-tab-new'); await pg.fill('#vp-filter', 'Special Week'); await pg.locator('#vp-umas .upick').first().click();
+    await dialog(pg, 'ask-dlg');
+    check('career: picking a new uma asks whether to add the skills', /Add skills to Special Week/.test(await pg.textContent('#ask-title')));
+    await ask('All 8 at 2★'); await done();
+    const p1 = pg.locator('.pslot').nth(0).locator('.tnode.parent');
+    check('career: … she is parent 1, with the eight targets at 2 stars', /Special Week/.test(await p1.textContent()) && !(await p1.getAttribute('class')).includes('ghost')
+      && await p1.locator('.vskb').evaluateAll(els => els.length === 8 && els.every(e => /2 stars/.test(e.getAttribute('aria-label')))));
+    check('career: … her parents are not known yet, and she joins your veterans', await pg.locator('.pslot').nth(0).locator('.tnode.gp', { hasText: 'Unknown' }).count() === 2
+      && await pg.locator('#vets .vet').count() === 13 && /Parent 1/.test(await pg.locator('#vet-12 .vtop').textContent()));
+    check('career: the planner fills the rest', /Weighed 792 careers/.test(await note()), await note());
+    // a grandparent: pick her uma, then her skills
+    await pg.locator('.pslot').nth(0).locator('.tnode.gp .facebtn').first().click(); await dialog(pg, 'pick-dlg');
+    await pg.fill('#pick-filter', 'Gold Ship'); await pg.locator('#pick-list .upick').first().click(); await ask('All 8 at 3★'); await done();
+    const g1 = pg.locator('.pslot').nth(0).locator('.tnode.gp').first();
+    check('career: a grandparent takes an uma and the skills chosen for her', /Gold Ship/.test(await g1.textContent())
+      && await g1.locator('.vskb').evaluateAll(els => els.length === 8 && els.every(e => /3 stars/.test(e.getAttribute('aria-label')))));
+    // the other parent can't be the same uma
+    await pg.locator('.pslot').nth(1).getByRole('button', { name: 'Choose parent' }).click(); await dialog(pg, 'vpick-dlg');
+    const blocked = await pg.locator('#vp-list .vpt:disabled').count();
+    await pg.locator('#vpick-dlg .dclose').click();
+    check('career: veterans that can\'t be parent 2 are greyed out', blocked === 0 || await pg.locator('#vp-list .vpt:disabled .vptw').count() === blocked);
+    // the trainee
+    await pg.getByRole('button', { name: 'Choose trainee' }).click(); await dialog(pg, 'pick-dlg');
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await done();
+    check('career: the chosen trainee is set and the picks list only parents', !(await pg.locator('#tree .tnode.trainee').getAttribute('class')).includes('ghost')
+      && (await pg.$$eval('.alts li .altw', ws => ws.every(w => /^Parents /.test(w.textContent.trim())))));
+    await pg.locator('.alts li').nth(1).getByRole('button', { name: 'Use this' }).click(); await done();
+    check('career: "Use this" sets the places; with all set the career is just scored', /Scored in/.test(await note()) && !(await pg.locator('.alts').count())
+      && await pg.locator('#tree .tnode.ghost').count() === 0, await note());
+    await pg.locator('.pslot').nth(1).getByRole('button', { name: 'Let the planner pick' }).click(); await done();
+    check('career: "Let the planner pick" hands a place back', await pg.locator('#tree .tnode.ghost').count() === 1 && /Weighed/.test(await note()));
+    // a settings change searches again
+    await pg.click('#o-umas'); await dialog(pg, 'set-umas');
+    const before = await pg.textContent('#o-umas-n');
+    await pg.locator('#set-umas #roster .ut .up').nth(3).click(); await pg.locator('#set-umas .dclose').click(); await done();
+    check('career: the Umas dialog changes the owned umas', (await pg.textContent('#o-umas-n')) !== before, before);
+    await pg.reload(); await done();
+    check('career: the veterans and the chosen places outlive a reload', await pg.locator('#vets .vet').count() === 13
+      && /Special Week/.test(await pg.locator('.pslot').nth(0).textContent()) && /Agnes Digital/.test(await pg.locator('#tree .tnode.trainee').textContent()));
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
+    check('career: a paste that is not an export says so and changes nothing', /No veterans found/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 13);
+    await pg.keyboard.press('Escape');
+    if (b.browserType().name() === 'chromium') { await pg.waitForTimeout(300); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);
