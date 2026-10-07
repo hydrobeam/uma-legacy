@@ -106,6 +106,22 @@ struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool> }
 /// One legacy slot of a lineage: affinity parts and per-target stars.
 #[derive(Clone)]
 struct Slot { parent: bool, legacy: usize, gp: Option<usize>, chara: u32, rel: f64, race: f64, stars: Vec<u8>, pinks: Vec<(u32, u8)>, mix: Option<[f64; 3]> }
+/// Whether legacy `x` is at least as good a parent as legacy `y` in every career (`Env::solve`, dominated veterans):
+/// the same character, stars at least y's on every job target, G1 wins a superset of y's, and the same number of
+/// parents, each (in order) the same character as y's, with stars and wins at least as good the same way. Only fixed
+/// stars and certain wins (the lookahead's new veteran, with random stars and win chances, never compares).
+/// Derived: with partner z and trainee t, swapping y for x keeps every relation term (same characters, grandparents
+/// in the same slots) and raises or keeps every shared-win count (x with z, x with her parents; nothing else changes),
+/// so every slot's affinity and stars are at least as high: each q_k is at least as high (1 - prod (1 - min(1,
+/// 0.03 s (1 + A/100)))^2 rises with every s and A), each carrier count n_k too (so the spark scale C), and with them
+/// the ceiling, the `rise` bounds and every deck's product and exact value (each landing factor rises with q_k). The
+/// same sums and products in the same order, so this holds for the floats as well (correctly rounded operations are
+/// monotone).
+fn dominates(p: &Pool, x: usize, y: usize) -> bool {
+    let ge = |a: &Who, b: &Who| a.chara == b.chara && a.mix.is_none() && b.mix.is_none() && a.stars.iter().zip(&b.stars).all(|(s, t)| s >= t)
+        && a.wins.iter().chain(&b.wins).all(|w| w.1 == 1.0) && b.wins.iter().all(|w| a.wins.iter().any(|v| v.0 == w.0));
+    ge(&p.me[x], &p.me[y]) && p.gp[x].len() == p.gp[y].len() && p.gp[x].iter().zip(&p.gp[y]).all(|(a, b)| ge(a, b))
+}
 /// G1s two legacies both won (expected count when a win is a chance)
 fn shared(a: &Who, b: &Who) -> f64 {
     let (mut i, mut j, mut s) = (0, 0, 0.0f64);
@@ -353,11 +369,29 @@ impl<'a> Env<'a> {
         let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
         // per trainee, where this search's own entries in `ruled` start
         let ruled0: Vec<usize> = self.ruled.iter().map(|r| r.len()).collect();
+        // dominated veterans (`dominates`): per legacy y, the legacies x at least as good in every career; and the
+        // candidates this search took and did not solve (bounded, no deck)
+        let dom: Vec<Vec<usize>> = (0..nl).map(|y| (0..nl).filter(|&x| x != y && dominates(p, x, y)).collect()).collect();
+        let prune = dom.iter().any(|v| !v.is_empty());
+        let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
         while next < cands.len() && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
             let ci = next; next += 1;
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
             let th = thr(&done, &cands, t);
+            if prune { unsolved.insert((cands[ci].t, cands[ci].a, cands[ci].b)); }
             if cands[ci].ub * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
+            // A candidate whose parent has a dominating veteran x, where (t, x, other parent) was taken earlier and not
+            // solved, would end unsolved too: that one was ruled out by its ceiling, a Ref's or a product search's bound,
+            // a search that found no deck clearing the bar, or (in turn) this test, at a bar no higher than now (the bar
+            // only rises), and each of those bounds is at most as high for this candidate (`dominates`: q, C and every
+            // deck's value no higher), so it fails the same test (no deck at all: none here either). So no Ref, no
+            // result, the same counters bar `work`; exact for any `top` and either `per_trainee`, and it uses nothing but
+            // this search's own candidates. A taken-and-solved dominator proves nothing of the kind (this one could still
+            // come out solved, a Ref the later searches start from), so only unsolved ones count.
+            if prune {
+                let key = |x: usize, y: usize| (t as u16, x.min(y) as u16, x.max(y) as u16);
+                if [(a, b), (b, a)].iter().any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y)))) { n_bounded += 1; continue; }
+            }
             let (q, _, c) = self.lineage(p, t, a, b);
             let seen: &[Ref] = if self.use_seen { &self.seen[t] } else { &[] };
             let rb = refs[t].iter().chain(seen).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
@@ -388,6 +422,7 @@ impl<'a> Env<'a> {
                 DeckRes::Done(v, sel, full) => (v, sel, full),
             };
             n_solved += 1;
+            if prune { unsolved.remove(&(cands[ci].t, cands[ci].a, cands[ci].b)); }
             if full { refs[t].push(Ref { q, val, sel: sel.clone() }); } else { complete = false; }
             let val = c * val;
             if per_trainee { if let Some(i) = done.iter().position(|x| cands[x.1].t as usize == t) { if done[i].0 >= val { continue; } done.remove(i); } }
