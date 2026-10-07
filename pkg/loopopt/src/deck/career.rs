@@ -142,11 +142,14 @@ fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x.
 fn interp(v: &[f64], x: &[f64]) -> f64 { interp_in(v, x, &mut vec![]) }
 /// `interp` with a buffer the caller keeps (the rollout evaluates tables millions of times)
+/// Folds coordinate 0 first, halving the table each step: entry i after k folds is the full sweep's entry i << k (the
+/// same multiply-adds on the same values, so the same bits), and only those reach entry 0.
 fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
     cur.clear(); cur.extend_from_slice(v);
-    for (k, &xk) in x.iter().enumerate() {
-        let b = 1usize << k;
-        for c in 0..cur.len() { if c & b == 0 { cur[c] = cur[c] * (1.0 - xk) + cur[c | b] * xk; } }
+    let mut n = cur.len();
+    for &xk in x {
+        n /= 2;
+        for i in 0..n { cur[i] = cur[2 * i] * (1.0 - xk) + cur[2 * i + 1] * xk; }
     }
     cur[0]
 }
@@ -517,7 +520,7 @@ impl<'a> Env<'a> {
         if stars_exact && !policy {
             let w = self.sj.star_dist;
             // per setup: per outfit the corner values (scale 1), the new veteran's affinity, the carriers without her
-            struct Lin { corners: Vec<Vec<f64>>, a_v: f64, nc0: Vec<i32> }
+            struct Lin { corners: Vec<Vec<f64>>, xm: [f64; 4], pw: Vec<[f64; 2]> }
             let mut lins = vec![];
             for s in &next.found {
                 let sl = self.slots(&p2, s.t, s.a, s.b);
@@ -536,10 +539,14 @@ impl<'a> Env<'a> {
                 let sc: f64 = (0..ntar).map(|k| 1.1f64.powi(nc0[k] + 1 - 6)).product();
                 let via = sc * corners.iter().map(|cv| interp(cv, &xs)).fold(0.0f64, f64::max);
                 check = check.max((via - direct).abs() / direct.max(1e-300));
-                lins.push(Lin { corners, a_v, nc0 });
+                // per star count her x factor, per target the spark scale without and with her spark (the loop's terms)
+                let xm4 = [1.0, xm(1), xm(2), xm(3)];
+                let pw: Vec<[f64; 2]> = (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect();
+                lins.push(Lin { corners, xm: xm4, pw });
             }
             // every outcome: per target absent or 1-3 stars
             let mut sig = vec![0u8; ntar];
+            let (mut xs, mut cur) = (vec![0.0f64; self.uncv.len()], vec![]);
             loop {
                 let mut m = 0usize; let mut pr = 1.0f64;
                 for k in 0..ntar { if sig[k] > 0 { m |= 1 << k; pr *= w[sig[k] as usize - 1]; } }
@@ -547,9 +554,9 @@ impl<'a> Env<'a> {
                 if pr > 0.0 {
                     let mut f = p_now;
                     for l in &lins {
-                        let xs: Vec<f64> = self.uncv.iter().map(|&i| if sig[i] == 0 { 1.0 } else { let mm = 1.0 - (0.03 * sig[i] as f64 * (1.0 + l.a_v / 100.0)).min(1.0); mm * mm }).collect();
-                        let sc: f64 = (0..ntar).map(|k| 1.1f64.powi(l.nc0[k] + (sig[k] > 0) as i32 - 6)).product();
-                        let v = sc * l.corners.iter().map(|cv| interp(cv, &xs)).fold(0.0f64, f64::max);
+                        for (x, &i) in xs.iter_mut().zip(&self.uncv) { *x = l.xm[sig[i] as usize]; }
+                        let sc: f64 = (0..ntar).map(|k| l.pw[k][(sig[k] > 0) as usize]).product();
+                        let v = sc * l.corners.iter().map(|cv| interp_in(cv, &xs, &mut cur)).fold(0.0f64, f64::max);
                         if v > f { f = v; }
                         if v > fmax { fmax = v; }
                     }
