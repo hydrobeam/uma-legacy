@@ -823,7 +823,8 @@ const TESTS = {
     check('career: the race schedule is a button in the deck\'s title row, not a section', await pg.locator('#results > .deck .dtitle #sched-open').count() === 1
       && !(await pg.locator('#results h3', { hasText: 'Race schedule' }).count()));
     await pg.click('#sched-open'); await dialog(pg, 'sched-dlg');
-    check('career: her schedule opens in the planner\'s schedule window, with the G1s she skips', await pg.locator('#sched-dlg .ag-slot.on').count() > 0 && await pg.locator('#sched-dlg .ag-skip').count() > 0
+    check('career: her schedule opens in the planner\'s schedule window, with the G1s she skips', await pg.locator('#sched-dlg .ag-slot.on').count() > 0 && await pg.locator('#sched-dlg .ag-skip, #sched-dlg .ag-skipn').count() > 0
+      && !(await pg.locator('#sched-dlg .ag-slot.on .ag-skip').count())   // a turn she races shows the skipped ones as a corner badge, keeping the banner whole
       && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && !(await pg.locator('#sched-dlg .stab', { hasText: /^All / }).count()));
     await pg.keyboard.press('Escape');
     // after this career: a row per result (facts, no verdict); the veteran analysis, compared only on demand

@@ -79,7 +79,7 @@ export function openSched(l) {
     const to = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
     if (to === undefined) return; e.preventDefault(); show(keyOf(to)); btns[to].focus(); });
   const keyEl = document.createElement('span'); keyEl.className = 'agkey';
-  keyEl.innerHTML = single ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span><span><i class="sk"></i>Skipped</span>'
+  keyEl.innerHTML = single ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span><span><i class="sk"></i>Skipped (+N: also that turn)</span>'
     : '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(keyEl);
   // why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades) minus the penalty for the k-th
   // race in a row, capped at 100%
@@ -110,8 +110,12 @@ export function openSched(l) {
       if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
       // G1s she could enter at this turn but doesn't (another race, or a rest for the streak penalty)
       const sk = rows.filter(x => x.skipped && x.year === y && slotOf(x.when) === sI);
-      if (sk.length) { const k = document.createElement('div'); k.className = 'ag-skip'; k.textContent = 'Skipped: ' + sk.map(x => x.race).join(', ');
-        k.title = sk.map(x => x.race + ': ' + (x.instead === 'rest' ? 'she rests this turn (races in a row lower her win odds)' : 'she runs ' + x.instead + ' instead')).join('\n'); slot.appendChild(k); }
+      // a turn she races: a corner badge, so the banner keeps its size; a turn she rests: the names, there is room
+      if (sk.length) { const tip = sk.map(x => x.race + ': ' + (x.instead === 'rest' ? 'she rests this turn (races in a row lower her win odds)' : 'she runs ' + x.instead + ' instead')).join('\n');
+        if (r) { const k = document.createElement('span'); k.className = 'ag-skipn'; k.textContent = '+' + sk.length; k.title = 'Skipped here: ' + tip;
+          const sr = document.createElement('span'); sr.className = 'vh'; sr.textContent = ` (${sk.length} more G1 skipped: ${sk.map(x => x.race).join(', ')})`; k.appendChild(sr);
+          slot.querySelector('.ag-race').appendChild(k); }
+        else { const k = document.createElement('div'); k.className = 'ag-skip'; k.textContent = 'Skipped: ' + sk.map(x => x.race).join(', '); k.title = tip; slot.appendChild(k); } }
       // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
       const lb = whenBar(sI);
       if (r) { const p = document.createElement('b'); p.textContent = r.cells[key].p + '% win'; p.title = why(r.cells[key]); lb.appendChild(p); }
