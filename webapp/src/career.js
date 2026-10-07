@@ -663,7 +663,22 @@ function initSettings() {
 }
 
 // ---------- start ----------
+// Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
+// search outside the page); Import takes the file back
+const EXPORT_APP = 'uma-legacy-veterans';
+function exportVets() {
+  let job = null; try { job = buildJob(); } catch {}
+  const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans: vets, plan, job };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = `uma-legacy-veterans-${ERA}.json`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  $('v-msg').textContent = `Exported ${vets.length} veteran${vets.length === 1 ? '' : 's'}.`;
+}
+function ownExport(text) { try { const o = JSON.parse(text); return o && o.app === EXPORT_APP && Array.isArray(o.veterans) ? o : null; } catch { return null; } }
 function importText(text) {
+  const own = ownExport(text);
+  if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })));
+    $('v-msg').textContent = `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`; return true; }
   try { const list = parseExport(text); importVets(list); const nb = list.filter(v => v.borrowed).length;
     $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}.`; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }
@@ -683,6 +698,7 @@ loadData().then(() => {
   $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $('vpick-dlg').close(); changed(); };
   $('v-file').onchange = async (e) => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
+  $('v-export').onclick = exportVets;
   $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
   $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
   renderAll(); search();
