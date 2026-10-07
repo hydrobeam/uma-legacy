@@ -285,6 +285,9 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .mem .memb:hover .nm { text-decoration: underline; }
 .mem .memb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .mem.off .av { filter: grayscale(1); opacity: 0.5; }
+.mem.forced .av { box-shadow: 0 0 0 3px var(--req); }   /* must include (Umas): the roster's ring */
+.lhead .lkey { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--ink); }
+.lhead .lkey i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 3px var(--req); }
 .mem.off .nm { color: var(--muted); }
 .sbtn { justify-self: start; font-weight: 600; color: var(--accent); }
 .stabs { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -597,14 +600,16 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rbsec > * { justify-self: stretch; }
 .rbsec > .btn { justify-self: start; }
 .rbsec > h3 { margin: 0; font-size: 1.1rem; font-weight: 900; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
-#results > .lhead { margin-top: 18px; }
-#results > .deck { margin-top: 12px; }
+#results > .deck { margin-top: 18px; }
+#results > .lhead { margin-top: 12px; }
 .tc { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .tl { font-size: 0.78rem; color: var(--muted); }
 .tv { font-size: 1.2rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ahead { display: grid; gap: 12px; }
 .simulation { display: grid; gap: 14px; min-width: 0; }
-.simwho { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.simwho { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; }   /* her portrait beside her sparks */
+.simside { display: grid; gap: 8px; min-width: 0; }
+.simside .simskills { min-width: 0; margin: 0; }
 .simtag { font-family: var(--font-data); font-size: 0.72rem; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; }
 .simskills, .simraces { border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
 
@@ -618,7 +623,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simparents .hint { width: 100%; }
 .simresult { display: grid; gap: 12px; }
 .simresult.stale > :not(.note) { opacity: 0.5; }
-.simulation h4 { margin: 8px 0 0; font-size: 1rem; font-weight: 900; }
 .simwins summary { cursor: pointer; }
 @media (max-width: 620px) { .simparents, .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }
@@ -728,5 +732,4 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .altn { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.82rem; color: var(--muted); padding-left: 32px; }
 .tsum { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #sim-top { min-width: 0; }
-#sim-top .simulation { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
 #sim-wins { justify-self: start; }

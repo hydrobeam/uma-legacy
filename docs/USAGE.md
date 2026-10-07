@@ -31,7 +31,7 @@ guarantees shows as that gold, in gold. Nothing else is set by hand: outfits, de
 search.
 
 **Umas.** One tile per outfit. Tap to cycle *owned → not owned → must include*, per outfit: a must-include outfit puts
-that uma in the loop in that outfit (mark several of her outfits to allow any of them). Up to four umas can be must-include; with four, only four-uma loops qualify. **None owned**, then tapping
+that uma in the loop in that outfit (mark several of her outfits to allow any of them). Up to four umas can be must-include; with four, only four-uma loops qualify. In the results a must-include uma has a green ring round her portrait, and the card says *Must include* at its top right. **None owned**, then tapping
 the ones you have, is quickest when you own few. Outfits decide most results through their skill lists (Agnes Digital
 [Full-Color Fangirling] carries Superstan, Tamamo Cross and Inari One carry Tail Nine).
 

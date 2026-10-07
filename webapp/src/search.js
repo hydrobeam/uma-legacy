@@ -115,7 +115,7 @@ export function firstResult() {
   let b; try { b = buildJob(); } catch { return null; }
   const key = jobKey(b.job);
   try { const c = JSON.parse(localStorage.getItem(LAST()) || 'null');
-    if (c && c.key === key && c.r && c.r.top && c.r.top.length) { shown = { key, r: JSON.stringify(c.r.top), example: false }; return { r: c.r, ms: c.ms, targets: b.targets }; } } catch {}
+    if (c && c.key === key && c.r && c.r.top && c.r.top.length) { shown = { key, r: JSON.stringify(c.r.top), example: false }; return { r: c.r, ms: c.ms, targets: b.targets, forced: b.job.require }; } } catch {}
   if (ERA === 'global' && key === defaultKey()) { shown = { key, r: null, example: true }; return { r: EXAMPLE, example: true, targets: b.targets }; }
   return null;
 }
@@ -139,7 +139,7 @@ export async function doSearch() {
     const key = jobKey(job);
     // a result is drawn unless the same loops and decks are already on screen
     const draw = (r) => {
-      ui.lastRender = () => renderDeck(r, { targets }); ui.lastResult = { kind: 'deck', r, meta: {} };
+      ui.lastRender = () => renderDeck(r, { targets, forced: job.require }); ui.lastResult = { kind: 'deck', r, meta: {} };
       const str = JSON.stringify(r.top);
       if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();
       shown = { key, r: str, example: false };

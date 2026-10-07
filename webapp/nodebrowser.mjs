@@ -378,12 +378,17 @@ const TESTS = {
     const m0 = pg.locator('.loop').first().locator('.mem').first(), uid = await m0.getAttribute('data-uma'), anyOutfit = !(await m0.getAttribute('data-outfit'));
     const tile = pg.locator(`#roster .ut[data-uma="${uid}"] .up`).first(); await clickSay(pg, tile, 'her roster tile'); await clickSay(pg, tile, 'her roster tile again'); await settle(pg);
     const marked = await pg.locator(`#roster .ut[data-uma="${uid}"][data-s="req"]`).count();
+    const ring = await pg.evaluate((id) => { const c = document.querySelector('.loop'), f = [...c.querySelectorAll('.mem.forced')].map(m => m.dataset.uma);
+      return f.length === 1 && f[0] === id && /Must include/.test((c.querySelector('.lhead .lkey') || {}).textContent || '')
+        && getComputedStyle(c.querySelector('.mem.forced .av')).boxShadow !== 'none' && /must include/.test(c.querySelector('.mem.forced .memb').textContent); }, uid);
+    check('a must-include uma has the green ring in the result, with the legend at the top right', ring);
     await clickSay(pg, pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`), 'her name in the result'); await clickSay(pg, pg.locator('.cpop .sw'), 'the Owned switch'); await pg.keyboard.press('Escape'); await settle(pg);
     const after = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), uid);
     // (her first tile's outfit is the one marked, so the loop uses it and the switch turns that outfit off; with "any
     // outfit" every tile of hers goes off)
     check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', marked === 1 && after[0] === 'out' && !after.includes('req')
       && (!anyOutfit || after.every(x => x === 'out')) && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
+    check('… and with nothing required, no ring and no legend', !(await pg.locator('.mem.forced, .lhead .lkey').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
