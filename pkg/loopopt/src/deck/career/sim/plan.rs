@@ -438,7 +438,18 @@ pub(in super::super) fn plan<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsR
     // the pick: among the leader and the eligible candidates not separated from it, the highest P(all) now
     let lead = est.leader;
     let same: Vec<usize> = match lead { None => vec![], Some(l) => (0..cs.len()).filter(|&i| elig[i] && !est.g[i].is_empty() && (i == l || !separated(est.x(i), est.x(l)))).collect() };
-    let pick = same.iter().copied().max_by(|&x, &y| cs[x].cur.p.partial_cmp(&cs[y].cur.p).unwrap().then(y.cmp(&x)))
+    // ties: when the leader's estimate comes from the loop future, the loop's own next career (the base policy's action:
+    // rollout with no candidate clearly better follows its base); the rotation continues after the newest veteran when
+    // she is a member (Pasa -> Agnes -> Zephyr -> Pasa ...), else it starts where the loop future starts; otherwise, or
+    // when that member has no candidate among the tied ones, the highest P(all) now
+    let loop_next: Option<usize> = if members.is_empty() { None } else {
+        let newest = legs.last().and_then(|l| s.env.uix(l.chara)).and_then(|u| members.iter().position(|&m| m == u));
+        match newest { Some(k) => Some(members[(k + 1) % members.len()]), None => start.map(|k| members[k]) } };
+    let by_p = |x: &usize, y: &usize| cs[*x].cur.p.partial_cmp(&cs[*y].cur.p).unwrap().then(y.cmp(x));
+    let loop_led = lead.map_or(false, |l| est.loop_wins(l)) && same.len() > 1;
+    let loop_pick = if loop_led { loop_next.and_then(|m| same.iter().copied().filter(|&i| cs[i].cur.t == m).max_by(|x, y| by_p(x, y))) } else { None };
+    let pick_rule = if same.len() <= 1 { "lowest" } else if loop_pick.is_some() { "loop" } else { "odds" };
+    let pick = loop_pick.or_else(|| same.iter().copied().max_by(|x, y| by_p(x, y)))
         .or_else(|| (0..cs.len()).filter(|&i| elig[i]).max_by(|&x, &y| cs[x].cur.p.partial_cmp(&cs[y].cur.p).unwrap()));
     // fidelity: the chosen career's table value (the surrogate) against its exact value (the search's best deck)
     let mut buf = vec![];
@@ -472,7 +483,8 @@ pub(in super::super) fn plan<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsR
     let gi = cs.iter().position(|c| c.greedy);
     let greedy_expected = gi.map(|i| { let mut o = est_json(&est, i); o.insert("option".into(), json!(pos(Some(i)))); o.insert("p_all".into(), json!(cs[i].cur.p)); Value::Object(o) });
     let choice = pick.map(|i| env.report(pool, &cs[i].f, true));
-    json!({"options": opts, "pick": pos(pick), "leader": pos(lead), "about_same": same.len() > 1, "choice": choice, "greedy_expected": greedy_expected,
+    json!({"options": opts, "pick": pos(pick), "leader": pos(lead), "about_same": same.len() > 1, "pick_rule": pick_rule,
+           "loop_next": loop_next.map(|m| json!({"id": env.d.umas[m].id, "name": env.d.umas[m].name})), "choice": choice, "greedy_expected": greedy_expected,
            "loop_members": minfo, "loop_base": mwhy.is_none(), "loop_note": mwhy, "loop_ms": loop_ms,
            "stop": est.stop, "sampling_ms": est.ms, "init_ms": init_ms, "search_ms": tm, "total_ms": now_ms() - t_all, "continuations": est.g.iter().chain(&est.l).map(|x| x.len()).sum::<usize>(),
            "careers_simulated": est.careers, "deck_searches": sim_n.searches, "decks": ndecks, "fidelity": fid, "greedy_check": greedy_vs_exact,

@@ -582,6 +582,7 @@ function optionsEl() {
     const tags = el('span', 'otags');
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
     if (P && r.about_same) tags.appendChild(el('span', 'otag', 'about the same'));
+    if (P && r.chosen && P.pick_rule === 'loop') tags.appendChild(el('span', 'otag', "the loop's next"));
     if (P && r.greedy) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
     const then = el('td', 'obase', P && r.expected != null ? baseText(r) : '');
@@ -594,7 +595,7 @@ function optionsEl() {
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   if (P) { const s = P.settings;
-    box.appendChild(el('p', 'hint', `Expected careers to land: this career, then either the best career by odds after each one or the loop above, whichever needs fewer, simulated on the model (up to ${s.samples_max} runs per option, the same luck for every option and both futures; each run the first ${s.horizon_max} careers, then the best recent career repeated, so the numbers lean high). ± is a 95% interval. The planner takes the lowest; options within error of it are "about the same", and among those it takes the best odds now. Improves your next run: in how many of those runs the best career right after this one beats your best today (with the deck the simulation runs it with), and its odds when it does.`)); }
+    box.appendChild(el('p', 'hint', `Expected careers to land: this career, then either the best career by odds after each one or the loop above, whichever needs fewer, simulated on the model (up to ${s.samples_max} runs per option, the same luck for every option and both futures; each run the first ${s.horizon_max} careers, then the best recent career repeated, so the numbers lean high). ± is a 95% interval. The planner takes the lowest; options within error of it are "about the same", and among those it takes the loop's next career when the loop future is the better one (the member after your newest veteran's), else the best odds now. Improves your next run: in how many of those runs the best career right after this one beats your best today (with the deck the simulation runs it with), and its odds when it does.`)); }
   return box;
 }
 function renderResults() {
