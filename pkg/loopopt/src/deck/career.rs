@@ -192,6 +192,11 @@ struct Env<'a> {
     /// whether `solve` bounds with `seen`: off for the searches whose fully checked decks feed the rollout's cache
     /// (its floors f(S) come from those decks, so they must not depend on what earlier searches proved)
     use_seen: bool,
+    /// per trainee, what her product searches proved (`best_deck` pass 1): (chances q, S) with every legal deck's product
+    /// value at q (fixed factor included, before the spark scale) at most S. Bounds her other candidates (`solve`).
+    ruled: Vec<Vec<(Vec<f64>, f64)>>,
+    /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
+    last_pv: Option<f64>,
 }
 impl<'a> Env<'a> {
     fn uix(&self, id: u32) -> Option<usize> { self.d.umas.iter().position(|u| u.id == id) }
@@ -281,8 +286,12 @@ impl<'a> Env<'a> {
         // branch that cannot reach it and finds nothing when no deck can, and a deck that clears it is the one an
         // unseeded search finds (the seed is below the maximum, so the first deck reaching it is never pruned)
         let seed = if th.is_finite() && th > 0.0 { th / (EXACT_RHO * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
-        let (r, _) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, seed, 1.0, 1);
+        let (r, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, seed, 1.0, 1);
         self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
+        // what it proves (`ruled`): the deck found is the best (the first deck above the seed the search keeps is only
+        // ever replaced by a better one, and a branch is pruned only below the best so far); none found, every deck is
+        // at most the seed. Nothing when the search gave up (`over`, more than 128 card characters).
+        self.last_pv = if over { None } else if let Some(x) = r.first() { Some(x.0) } else if seed > f64::NEG_INFINITY { Some(seed) } else { None };
         let Some((pv, sel)) = r.into_iter().next() else { return if seed > f64::NEG_INFINITY { DeckRes::Bounded } else { DeckRes::NoDeck } };
         // the candidate's own ceiling from its best product deck
         if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
@@ -342,6 +351,8 @@ impl<'a> Env<'a> {
         let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| if !per_trainee { kth(done) } else { done.iter().find(|x| cands[x.1].t as usize == t).map_or(kth(done), |x| x.0.max(kth(done))) };
         // per trainee, her fully checked candidates (`Ref`: chances, exact best value before the spark scale, deck)
         let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
+        // per trainee, where this search's own entries in `ruled` start
+        let ruled0: Vec<usize> = self.ruled.iter().map(|r| r.len()).collect();
         while next < cands.len() && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
             let ci = next; next += 1;
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
@@ -351,9 +362,27 @@ impl<'a> Env<'a> {
             let seen: &[Ref] = if self.use_seen { &self.seen[t] } else { &[] };
             let rb = refs[t].iter().chain(seen).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
             if rb * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
+            // what her earlier product searches proved (`ruled`). Derived: with her chances folded in, target k's factor
+            // in the product value of one outfit and one deck (odds dw, dg) is f(n) = A - B n, n = (1 - e)(1 - q_k),
+            // A = dg G + (1 - dg) W, B = (1 - dg) W (1 - dw) <= A (`outfit_fast` at q = 0; a target the outfit has is
+            // q-free). From q to q' with q'_k > q_k: n' < n, and A >= B gives f(n') / f(n) <= (1 - n') / (1 - n), the
+            // factor `rise` takes ((A - B n')(1 - n) <= (A - B n)(1 - n') <=> A (n' - n) <= B (n' - n)); with q'_k <= q_k
+            // the factor does not grow. So per outfit the product at q' is at most the product at q times that outfit's
+            // ratio product, the best outfit at q' at most S x rise(t, q', q) for every deck, and the fixed gold factor
+            // and the spark scale c' multiply both sides alike. Then the search below would end `Bounded` on either path:
+            // no deck above its seed th / (EXACT_RHO c' (1 + 1e-9)), or its best deck pv' with EXACT_RHO c' pv' (1 + 1e-9)
+            // < th. The slack 2e-9 covers the float rounding of pv' and rise (about 1e-15 each). A skipped candidate is
+            // one that would have been `Bounded`: no Ref, no result, the same counters bar `work` (less of it, so a search
+            // that ran out of its budget before can now get further; none of the checked jobs comes near it). A search whose
+            // decks feed the rollout (`use_seen` off) takes only the proofs of its own candidates, so its work does not
+            // depend on what earlier searches did either.
+            let lo = if self.use_seen { 0 } else { ruled0[t] };
+            if self.ruled[t][lo..].iter().any(|(rq, s)| EXACT_RHO * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
-            let (val, sel, full) = match self.best_deck(t, c, th, &starts, &mut n_scored) {
+            let res = self.best_deck(t, c, th, &starts, &mut n_scored);
+            if let Some(s) = self.last_pv.take() { self.ruled[t].push((q.clone(), s)); }
+            let (val, sel, full) = match res {
                 DeckRes::NoDeck => continue,
                 DeckRes::Bounded => { n_bounded += 1; continue }
                 DeckRes::Done(v, sel, full) => (v, sel, full),
@@ -678,7 +707,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None };
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
     let fp = setup_fp(v);
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }
