@@ -31,14 +31,14 @@ pub(super) const SHORTLIST: usize = 4;
 
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
-struct CDeck { sel: Sel, tab: Vec<Vec<f64>> }
+pub(super) struct CDeck { pub(super) sel: Sel, pub(super) tab: Vec<Vec<f64>> }
 /// The rollout's deck cache: per trainee her decks with corner tables and her fully checked decks (`Ref`, for `rise`)
-pub(super) struct Cache { decks: Vec<Vec<CDeck>>, refs: Vec<Vec<Ref>>, pub tables: usize, pub searches: usize, pub scored: usize }
+pub(super) struct Cache { pub(super) decks: Vec<Vec<CDeck>>, pub(super) refs: Vec<Vec<Ref>>, pub tables: usize, pub searches: usize, pub scored: usize }
 
 impl Cache {
     pub(super) fn new(n: usize) -> Cache { Cache { decks: (0..n).map(|_| vec![]).collect(), refs: vec![vec![]; n], tables: 0, searches: 0, scored: 0 } }
     /// a deck of trainee t (its corner table built now); a deck already cached is skipped
-    fn add(&mut self, env: &mut Env, t: usize, sel: &Sel) {
+    pub(super) fn add(&mut self, env: &mut Env, t: usize, sel: &Sel) {
         if self.decks[t].iter().any(|d| d.sel.ents == sel.ents && d.sel.plain == sel.plain && d.sel.filler == sel.filler) { return; }
         let tab = env.corners(t, sel, &vec![0.0; env.ntar]);
         self.tables += 1;

@@ -36,6 +36,7 @@
 //! its floor.
 use super::*;
 mod rollout;
+mod sim;
 
 #[derive(Deserialize, Clone, Default)]
 pub(crate) struct Ancestor {
@@ -96,12 +97,16 @@ struct CareerJob {
     #[serde(default)] policy: Option<CareerPolicy>,
     /// the planner's pick as a one-step rollout over this many best careers (0: off; `rollout` in the output)
     #[serde(default)] rollout: usize,
+    /// the policy simulator (`sim`): runs instead of the search when present
+    #[serde(default)] simulate: Option<Value>,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
 /// pink sparks, and the star mix when the stars are random.
+#[derive(Clone)]
 struct Who { ix: Option<usize>, chara: u32, wins: Vec<(usize, f64)>, stars: Vec<u8>, pinks: Vec<(u32, u8)>, mix: Option<[f64; 3]> }
 /// The veterans the parents come from, each with her own parents.
+#[derive(Clone)]
 struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool> }
 /// One legacy slot of a lineage: affinity parts and per-target stars.
 #[derive(Clone)]
@@ -751,6 +756,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         c.push((fp, env.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect()));
         if c.len() > 4 { c.remove(0); }
     });
+    if let Some(sm) = &cj.simulate { return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm); }
     let pool = env.pool(legs);
     // the rollout's cache takes the main search's decks when it uses its candidates (see `use_seen`)
     env.use_seen = cj.rollout == 0;
