@@ -81,7 +81,44 @@ function buildJob() {
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: state.borrow,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: all ? 1 : ROLL_K };
+  // the goal's progression, when every place is the planner's: after an 8/8 veteran the career uses her (a second 8/8 of
+  // another uma), after two of different umas it uses both (its 8/8 would be a fully looped parent)
+  const g = goalStage();
+  if (g.fix && !plan.trainee && !plan.parents[0] && !plan.parents[1]) { job.fix = g.fix; job.top = 1; }
   return job;
+}
+// ---------- the goal: a fully looped parent ----------
+// A veteran with a spark of every target ("8/8") whose two parents are 8/8 too: as a parent she brings three full
+// legacies. A career's P(all) is exactly its chance of an 8/8 veteran, so the steps are picked by it: with no 8/8, the
+// plan (building the loop); with one, the best career with her as a parent; with 8/8s of two umas, the best career with
+// both as parents (the pair with the most stars); once a fully looped parent exists, the plan again (more stars).
+const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t => (nd.sparks || {})[t.group] > 0);
+const starSum = (nd) => state.targets.reduce((a, t) => a + ((nd.sparks || {})[t.group] || 0), 0);
+function goalStage() {
+  const looped = vets.findIndex(v => isFull(v) && v.parents.length === 2 && v.parents.every(isFull));
+  if (looped >= 0) return { step: 'looped', at: looped };
+  const full = vets.map((v, i) => ({ v, i })).filter(x => isFull(x.v)).sort((a, b) => starSum(b.v) - starSum(a.v));
+  if (!full.length) return { step: 'build' };
+  // the best pair of 8/8s: different umas, at most one borrowed, most stars
+  let pair = null;
+  for (let a = 0; a < full.length && !pair; a++) for (let b = a + 1; b < full.length; b++) {
+    const x = full[a].v, y = full[b].v;
+    if (x.chara !== y.chara && !(x.borrowed && y.borrowed)) { pair = [full[a].i, full[b].i]; break; }
+  }
+  if (pair) return { step: 'shot', fix: pair };
+  return { step: 'second', fix: [full[0].i], at: full[0].i };
+}
+function goalEl() {
+  const g = goalStage(), box = el('div', 'goalnote'); box.id = 'goal-note';
+  const name = (i) => `#${i + 1} ${umaName(vets[i].chara)}`;
+  const n = state.targets.length;
+  const open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
+  const txt = g.step === 'looped' ? `You have a fully looped parent: ${name(g.at)} (${n}/${n} with ${n}/${n} parents). The planner keeps going for more stars.`
+    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet, so the planner builds the loop.`
+    : g.step === 'second' ? `Goal: a fully looped parent. Step 2: you have one ${n}/${n} (${name(g.at)}); ${open ? 'this career uses her' : 'a career using her'} as a parent to get a ${n}/${n} of another uma.`
+    : `Goal: a fully looped parent. Step 3: you have ${n}/${n}s of two umas (${g.fix.map(name).join(' and ')}); ${open ? 'this career uses both' : 'a career using both'} as parents: its ${n}/${n} would be a fully looped parent.`;
+  box.append(el('strong', '', g.step === 'looped' ? 'Fully looped. ' : `Step ${{ build: 1, second: 2, shot: 3 }[g.step]} of 3. `), txt);
+  return box;
 }
 const ROLL_K = 6;
 // the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
@@ -113,7 +150,8 @@ async function search() {
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
       const best = m.r.results[0], r = best;
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
-      planS = r ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };
+      const gs = goalStage(), stepped = !!gs.fix && !plan.trainee && !plan.parents[0] && !plan.parents[1];
+      planS = r && !stepped ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };   // steps 2 and 3 pick by P(all): no plan
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
@@ -601,7 +639,7 @@ function optionsEl() {
 function renderResults() {
   const box = $('results'); box.textContent = '';
   const r = shown(); if (!r) { renderSimulation(); return; }
-  box.append(deckEl(r, 'Deck', schedBtn(r)), oddsEl(r));
+  box.append(goalEl(), deckEl(r, 'Deck', schedBtn(r)), oddsEl(r));
   const top = el('div'); top.id = 'sim-top';
   box.append(top, targetsEl(r));
   const open = !plan.trainee || plan.parents.some(p => !p);

@@ -809,6 +809,16 @@ const TESTS = {
       && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
       `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
+    // the goal's steps: 8/8 veterans of two different umas -> step 3, the career uses both as parents; then restore
+    const goalEx = JSON.parse(exText), all8 = Object.fromEntries(goalEx.job.targets.map(t => [t.group, 2]));
+    for (const v of goalEx.veterans) for (const g of v.parents) g.sparks = {};   // (the test file's parents carry every spark: they would make a looped parent at once)
+    const two = [0, goalEx.veterans.findIndex(v => v.chara !== goalEx.veterans[0].chara)]; for (const k of two) goalEx.veterans[k].sparks = { ...all8 };
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(goalEx)); await pg.click('#paste-load'); await done();
+    const goalJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.plan && !j.policy).at(-1));
+    check('career: with 8/8 veterans of two umas the goal is at step 3 and the career uses both as parents', /Step 3 of 3/.test(await pg.textContent('#goal-note').catch(() => ''))
+      && goalJob && goalJob.fix.length === 2 && goalJob.fix.includes(0) && goalJob.fix.includes(two[1]), JSON.stringify(goalJob && goalJob.fix));
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load');
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });   // the restored pool's plan
     await done();
     check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*Checked on exact odds/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);
@@ -849,10 +859,10 @@ const TESTS = {
     check('career: Options lists each option with "1 in X" for this career and its expected careers to land (N ± m), the pick marked and shown above', opts.length >= 6
       && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[\d,]+( ± [\d,]+)?$/.test(c[2]) && /^then (best odds|the loop)$/.test(c[3]) && /^Improves your next run: \d+%( \(to 1 in [\d,.]+ when it does\))?$/.test(c[4])) && /^The loop: .+ → .+ → /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
-    check('career: under the tree, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
+    check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
-      return document.getElementById('tree').nextElementSibling === r && at('.deck') === 0 && !!kids[0].querySelector('.dtitle #sched-open') && at('.lhead') === 1
-        && sim === 2 && at('.rtgt') === sim + 1 && kids[sim].querySelector('#simulation > h3')?.textContent === 'Veteran analysis'
+      return document.getElementById('tree').nextElementSibling === r && at('#goal-note') === 0 && at('.deck') === 1 && !!kids[1].querySelector('.dtitle #sched-open') && at('.lhead') === 2
+        && sim === 3 && at('.rtgt') === sim + 1 && kids[sim].querySelector('#simulation > h3')?.textContent === 'Veteran analysis'
         && !!kids[sim].querySelector('#simulation #sim-compare'); }));
     // her portrait beside her sparks and G1 wins, on a wide screen and a phone
     const simLayout = () => pg.evaluate(() => { const w = document.querySelector('#simulation .simwho'), f = w.querySelector(':scope > .av'), s = w.querySelector('.simskills');

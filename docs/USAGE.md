@@ -82,6 +82,13 @@ within error of it are "about the same", and among those it shows the best odds 
 to land: N ± m · then best odds* (or *then the loop*), a 95% interval, for the career on show. With every place set by
 hand, the career is scored and its expected careers simulated.
 
+**The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
+target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
+everything are exactly its chance of an 8/8 veteran, so with every place left to the planner: with no 8/8 yet the
+planner builds the loop (step 1, the plan below); with one 8/8 the career uses her as a parent, for an 8/8 of another uma
+(step 2); with 8/8s of two umas the career uses both (step 3: its 8/8 is a fully looped parent; the pair with the most
+stars). Once you have one, the note says so and the planner goes on for more stars.
+
 Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor

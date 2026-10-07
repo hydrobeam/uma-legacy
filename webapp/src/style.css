@@ -628,6 +628,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simwins summary { cursor: pointer; }
 @media (max-width: 620px) { .simparents, .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }
+.goalnote { margin: 0 0 12px; border-left: 5px solid var(--accent); background: var(--accent-soft); color: var(--ink); padding: 8px 12px; }
 .verdict { display: inline-block; font-family: var(--font-data); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px; color: var(--ink); border-left: 4px solid; }
 .verdict.mo { background: var(--req-soft); border-color: var(--req); }
 .verdict.rr { background: var(--out-soft); border-color: var(--out); }
