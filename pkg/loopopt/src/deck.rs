@@ -1620,7 +1620,7 @@ impl<'a> DeckSpace<'a> {
         let mut counts: Vec<Vec<usize>> = vec![vec![]];
         for _ in 0..nk { counts = counts.into_iter().flat_map(|c| { let used: usize = c.iter().sum(); (0..=size - used).map(move |x| { let mut d = c.clone(); d.push(x); d }) }).collect(); }
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct Cfg { root: f64, code: u64, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gmin: Vec<Vec<(Vec<f64>, Vec<f64>)>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rp: Vec<Vec<Vec<f64>>>, sp: Vec<Vec<f64>> }
+        struct Cfg { root: f64, code: u64, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, sp: Vec<Vec<f64>> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(&pal_ents)).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let lb = |j: usize| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0u8, |b| 1u8 << b);
@@ -1650,7 +1650,7 @@ impl<'a> DeckSpace<'a> {
             let gm = self.gm_cached(set_id, code, &groups_all, mw, mg, nu, size);
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
-            let mut rpk: Option<Vec<Vec<Vec<f64>>>> = None;
+            let mut rpk: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = None;
             let make_rpk = || -> Vec<Vec<Vec<f64>>> { groups_all.iter().map(|l| {
                 let mut x = vec![0.0f64; nu]; let mut y = vec![0.0f64; nu];
                 let rat: Vec<Vec<f64>> = l.iter().map(|&j| {
@@ -1676,17 +1676,21 @@ impl<'a> DeckSpace<'a> {
                     if np > 0 { gs.push((nk, np)); }
                     if all_lk & !gs.iter().fold(0u8, |m, &(i, _)| m | glk[i]) != 0 { continue; }
                     let ng = gs.len();
-                    let gmin: Vec<Vec<(Vec<f64>, Vec<f64>)>> = gs.iter().map(|&(i, _)| gm[i].clone()).collect();
-                    let mut suf: Vec<(Vec<f64>, Vec<f64>)> = vec![(vec![1.0; nu], vec![1.0; nu]); ng + 1];
-                    for g in (0..ng).rev() { for t in 0..nu { suf[g].0[t] = suf[g + 1].0[t] * gmin[g][gs[g].1].0[t]; suf[g].1[t] = suf[g + 1].1[t] * gmin[g][gs[g].1].1[t]; } }
-                    for t in 0..nu { dw[t] = 1.0 - suf[0].0[t]; dg[t] = 1.0 - suf[0].1[t]; }
+                    // the per-target bound first (suf[0], the same products in the same order as the suffix table below),
+                    // the tables only for configurations it lets through
+                    for t in 0..nu {
+                        let (mut a, mut b) = (1.0f64, 1.0f64);
+                        for g in (0..ng).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
+                        dw[t] = 1.0 - a; dg[t] = 1.0 - b;
+                    }
                     let ideal = if best { val(&clauses[0], &dw, &dg) * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rho * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
                     if !ideal { continue; }
-                    if rpk.is_none() { rpk = Some(make_rpk()); }
+                    let mut suf: Vec<(Vec<f64>, Vec<f64>)> = vec![(vec![1.0; nu], vec![1.0; nu]); ng + 1];
+                    for g in (0..ng).rev() { for t in 0..nu { suf[g].0[t] = suf[g + 1].0[t] * gm[gs[g].0][gs[g].1].0[t]; suf[g].1[t] = suf[g + 1].1[t] * gm[gs[g].0][gs[g].1].1[t]; } }
+                    if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
                     let rpk = rpk.as_ref().unwrap();
-                    let rp: Vec<Vec<Vec<f64>>> = gs.iter().map(|&(i, _)| rpk[i].clone()).collect();
                     let mut sp: Vec<Vec<f64>> = vec![vec![1.0; oq.len()]; ng + 1];
-                    for g in (0..ng).rev() { for i in 0..oq.len() { sp[g][i] = sp[g + 1][i] * rp[g][i][gs[g].1]; } }
+                    for g in (0..ng).rev() { for i in 0..oq.len() { sp[g][i] = sp[g + 1][i] * rpk[gs[g].0][i][gs[g].1]; } }
                     // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound
                     let mut cv = vec![0.0f64; clauses.len()];
                     for &(ci, i, no) in &og {
@@ -1695,7 +1699,7 @@ impl<'a> DeckSpace<'a> {
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
-                    cfgs.push(Cfg { root, code, filler, plain, gs, gmin, suf, rp, sp });
+                    cfgs.push(Cfg { root, code, filler, plain, gs, gm: gm.clone(), suf, rpk: rpk.clone(), sp });
                 }
             }
         }
@@ -1710,7 +1714,10 @@ impl<'a> DeckSpace<'a> {
             let (mw, mg) = (&km.0, &km.1);
             let (filler, plain) = (cf.filler, cf.plain);
             let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| (&groups_all[i][..], c)).collect();
-            let (gmin, suf, rp, sp) = (&cf.gmin, &cf.suf, &cf.rp, &cf.sp);
+            // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
+            let gmin: Vec<&Vec<(Vec<f64>, Vec<f64>)>> = cf.gs.iter().map(|&(i, _)| &cf.gm[i]).collect();
+            let rp: Vec<&Vec<Vec<f64>>> = cf.gs.iter().map(|&(i, _)| &cf.rpk[i]).collect();
+            let (suf, sp) = (&cf.suf, &cf.sp);
             let mut cv = vec![0.0f64; clauses.len()];
             let mut pdw = vec![0.0f64; nu]; let mut pdg = vec![0.0f64; nu];
             let ng = gs.len();
