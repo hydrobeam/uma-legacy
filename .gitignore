@@ -84,6 +84,14 @@
 !/val/permcheck.py
 !/val/joint_check.py
 !/val/permcheck_big.py
+!/val/policy_sim.mjs
+!/val/policy/
+/val/policy/*
+!/val/policy/README.md
+!/val/policy/policies.mjs
+!/val/policy/pools/
+!/val/policy/baseline/
+/val/policy/baseline/*/tmp/
 master.mdb
 __pycache__/
 !/pkg/loopopt/validation/
