@@ -20,7 +20,10 @@ import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName
   newVet, importVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport } from './umadump.js';
 
-const pct = (p) => p === 0 ? '0%' : (p * 100 >= 10 ? (p * 100).toFixed(0) : p * 100 >= 1 ? (p * 100).toFixed(1) : (p * 100).toFixed(2)) + '%';
+// under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
+const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
+  if (x < 1e-6) return '<0.000001%';
+  return (x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x.toFixed(Math.min(6, 1 - Math.floor(Math.log10(x))))) + '%'; };
 const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const tName = (g) => { const s = SK.get(g) || { w: 'Skill ' + g, gd: null }; return goldGiven(g) && s.gd ? s.gd : s.w; };
 const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
