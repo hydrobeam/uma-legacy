@@ -531,3 +531,53 @@ pub(in super::super) fn plan_policy<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a 
            "stop": est.stop, "sampling_ms": est.ms, "total_ms": now_ms() - t_all, "careers_simulated": est.careers,
            "horizon_max": pj.horizon_max, "eps": pj.eps})
 }
+
+/// An outsider (a trainee no loop member) is picked over the loop's career only with at least this many times its odds
+const NEXT_OUTSIDE: f64 = 1.5;
+/// The page's next career, exact and without simulation. The loop: the loop planner's best loop for the job's settings
+/// (cached). Candidates: each member other than the newest veteran's (in a rotation the next career trains one of the
+/// others), her best career with any parents (the job's fixed places respected); and the best career by odds overall.
+/// Pick: the member career with the best P(all) (P(all) is also its chance of an 8/8 veteran), unless the best career
+/// overall trains no member and has at least NEXT_OUTSIDE times those odds (then it). Without a loop: the best overall.
+#[allow(clippy::too_many_arguments)]
+pub(in super::super) fn next_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy], pool: &Pool,
+                                      sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
+    let t_all = now_ms();
+    let (members, minfo, mwhy) = rotation(env, d, sk, cr, job, pj);
+    let loop_ms = now_ms() - t_all;
+    let newest = legs.last().and_then(|l| env.uix(l.chara)).filter(|u| members.contains(u));
+    let t1 = now_ms();
+    let budget0 = env.budget;
+    if pj.search_work > 0 { env.budget = pj.search_work; env.hard = pj.search_work; }
+    env.use_seen = true;
+    let mut cands: Vec<(Found, &'static str)> = vec![];
+    for &m in &members {
+        if Some(m) == newest || !trainees.contains(&m) { continue; }
+        let s = env.solve(pool, fix, &[m], false, 1);
+        if let Some(f) = s.found.into_iter().next() { cands.push((f, "loop")); }
+    }
+    env.hard = 0; env.budget = budget0;
+    let search_ms = now_ms() - t1;
+    let best = sv.found[0].clone();
+    let by = |x: &Found, y: &Found| x.val.partial_cmp(&y.val).unwrap();
+    let loop_best = cands.iter().map(|c| c.0.clone()).max_by(|x, y| by(x, y));
+    let outsider = !members.contains(&best.t);
+    let (pick, why) = match &loop_best {
+        Some(l) if outsider && best.val >= NEXT_OUTSIDE * l.val => (best.clone(), "outside"),
+        Some(l) => (l.clone(), "loop"),
+        None => (best.clone(), if members.is_empty() { "no_loop" } else { "best" }),
+    };
+    let same = |x: &Found, y: &Found| (x.t, x.a.min(x.b), x.a.max(x.b)) == (y.t, y.a.min(y.b), y.a.max(y.b));
+    if !cands.iter().any(|c| same(&c.0, &best)) { cands.push((best.clone(), if outsider { "outside" } else { "best" })); }
+    cands.sort_by(|x, y| y.0.val.partial_cmp(&x.0.val).unwrap());
+    let opts: Vec<Value> = cands.iter().map(|(f, role)| {
+        let mut r = env.report(pool, f, false);
+        let o = r.as_object_mut().unwrap();
+        o.insert("role".into(), json!(role)); o.insert("best_odds".into(), json!(same(f, &best))); o.insert("chosen".into(), json!(same(f, &pick)));
+        r
+    }).collect();
+    let choice = env.report(pool, &pick, true);
+    json!({"options": opts, "choice": choice, "rule": why, "outside_margin": NEXT_OUTSIDE, "loop_members": minfo, "loop_note": mwhy,
+           "newest_member": newest.map(|u| json!({"id": d.umas[u].id, "name": d.umas[u].name})),
+           "loop_ms": loop_ms, "search_ms": search_ms, "total_ms": now_ms() - t_all})
+}

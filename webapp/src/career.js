@@ -43,7 +43,7 @@ function paint() {
   else if (planS.state === 'busy' && status.kind === 'done') { const s = Math.floor((performance.now() - planS.t0) / 1000);
     n.textContent = status.text + ' ';
     const sp = el('span'); sp.innerHTML = '<span class="spin" aria-hidden="true"></span>';
-    sp.append('Planning: simulating the careers to land each option…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
+    sp.append('Planning: the loop\'s next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
   else n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
 }
@@ -51,8 +51,7 @@ function paint() {
 function planNote() {
   if (planS.state === 'error') return ` Plan not made: ${planS.text}`;
   if (planS.state !== 'done') return '';
-  const P = planS.r, s = (planS.ms / 1000).toFixed(1);
-  return P.stop === 'budget' ? ` Planned in ${s} s, stopped at its time limit: the expected careers use the runs simulated so far.` : ` Planned in ${s} s.`;
+  return ` Planned in ${(planS.ms / 1000).toFixed(1)} s.`;
 }
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
@@ -128,7 +127,6 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // veteran with its comparison (on demand)
 let planS = { state: 'none', r: null };
 // the plan's sampling time limit (ms of solver time in the browser's worker; the searches before it come on top)
-const PLAN = { budget_ms: 20000 };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0;
@@ -151,28 +149,30 @@ async function search() {
       const best = m.r.results[0], r = best;
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
       const gs = goalStage(), stepped = !!gs.fix && !plan.trainee && !plan.parents[0] && !plan.parents[1];
-      planS = r && !stepped ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };   // steps 2 and 3 pick by P(all): no plan
+      // steps 2 and 3 pick by P(all), and a trainee you chose leaves the plan nothing to pick: no plan
+      planS = r && !stepped && !plan.trainee ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
   searching = false; clearInterval(tick); renderAll(); paint();
   if (planS.state === 'busy') runPlan();
 }
-// The plan: the same job with `plan` (solver: sim/plan.rs). Per option (the K best careers, the best with each recent
-// veteran, each trainee's best) the expected careers to land, simulated; its pick replaces the quick one on show. It
+// The plan: the same job with `next` (solver: sim/plan.rs `next_rule`, exact, no simulation): the loop planner's loop; the
+// best career of each member other than the newest veteran's; the pick the best odds among them, or the best career
+// overall when it trains no member and has at least 1.5x those odds. Its pick replaces the quick one on show. It
 // shares the one worker with the comparison: a comparison cancelled while both were queued takes it down too, and it
 // runs again (planId tells the run that counts).
 let planId = 0;
 async function runPlan() {
   const id = myId, pid = ++planId; if (!last) return;
   const { rollout: _r, p_now: _p, ...plain } = last.job;
-  const job2 = { ...plain, plan: { ...PLAN, top: plain.top } };
+  const job2 = { ...plain, next: {} };
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
     const m2 = await run(job2);
     if (id !== myId || pid !== planId) return;
-    const P = m2.r.plan;
+    const P = m2.r.next;
     planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
   } catch (e) { if (id !== myId || pid !== planId) return; planS = { state: 'error', text: e.message }; }
   clearInterval(tick);
@@ -189,15 +189,17 @@ async function runPlan() {
 const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results[0] ? (planS.state === 'done' && planS.r.choice || last.r.results[0]) : null;
 // the plan's row for a career (null before the plan is made)
 const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(o) === keyOf(r)) || null : null;
-// expected careers to land, with its 95% interval
-const fmtN = (x) => Math.round(x).toLocaleString();
-const careersText = (o) => o.expected == null ? 'not simulated' : fmtN(o.expected) + (o.ci != null ? ` ± ${fmtN(o.ci)}` : '');
-// the future an estimate assumes after the career: the best odds each time, or the loop planner's loop
 const loopChain = (P) => (P?.loop_members || []).map(m => m.short || m.name).join(' → ');
-const baseText = (o) => o.base === 'loop' ? 'then the loop' : 'then best odds';
-// the owner's question: does running it improve the odds of the next run (from the plan's runs: the best career right
-// after it against today's best)
-const improveText = (o) => o.improve_next == null ? '' : `Improves your next run: ${Math.round(o.improve_next * 100)}%` + (o.next_if_improved ? ` (to ${fmtIn(o.next_if_improved)} when it does)` : '');
+// an option's role: a loop member's career, the best odds outside the loop, or the best odds (a member's)
+const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'outside' ? 'outside the loop' : 'best odds now';
+function whyText(r) {
+  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
+  const others = P.newest_member ? ` (your newest veteran is ${P.newest_member.name}'s, so the loop trains another member)` : '';
+  if (!o.chosen) return `Not the planner's pick: ${roleText(o)}.`;
+  return P.rule === 'loop' ? `The planner's pick: the loop's next career, the best odds among the loop members${others}.`
+    : P.rule === 'outside' ? `The planner's pick: outside the loop, with at least ${P.outside_margin}× the odds of the loop's best career.`
+    : `The planner's pick: the best odds.`;
+}
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
   if (plan.parents[k]) return { v: vetById(plan.parents[k]), pick: false };
@@ -340,11 +342,9 @@ function oddsEl(r) {
   h.innerHTML = `<span class="odds"><b></b> runs to land all ${n}</span><span class="sub">${n - 1} of ${n} or better: <span class="num"></span> · <span class="num"></span> of ${n} expected</span>`;
   h.querySelector('.odds b').textContent = fmtIn(r.p_all);
   const nums = h.querySelectorAll('.sub .num'); nums[0].textContent = fmtIn(r.p_minus1); nums[1].textContent = r.expected.toFixed(2);
-  // the plan's number for this career: expected careers to land (this one, then the best by odds after each)
-  const o = planRow(r), x = el('span', 'sub expc', 'Expected careers to land: ');
-  if (o) x.append(el('b', 'num', careersText(o)), ` · ${baseText(o)}`);
-  else x.append(planS.state === 'busy' ? 'simulating…' : 'not simulated');
-  x.id = 'exp-careers'; h.appendChild(x);
+  // why the planner shows this career (once the plan is made)
+  const why = whyText(r);
+  if (why) { const x = el('span', 'sub expc', why); x.id = 'pick-why'; h.appendChild(x); }
   return h;
 }
 // the deck as the loop planner shows it: card art and name; a click opens the card's panel (owned or not, GameTora)
@@ -507,9 +507,8 @@ async function runComparison() {
       simulation.baseline = before.results[0];
       baselineCache = { key, result: simulation.baseline };
     }
-    const current = shown();
-    const m = await run({ ...base, fix: [base.legacies.length], legacies: [...base.legacies, draftJob(simulation.draft)],
-      policy: { stay_trainee: current.trainee.id, stay_parents: current.parents, p_floor: simulation.baseline.p_all }, plan: { ...PLAN } });
+    // exact: the best career with her as a parent, against today's best (no simulation)
+    const m = await run({ ...base, fix: [base.legacies.length], legacies: [...base.legacies, draftJob(simulation.draft)], top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
     simulation.r = m.r; simulation.state = 'done';
@@ -552,24 +551,13 @@ function simulationBody() {
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
-    const next = simulation.r.results[0], before = simulation.baseline, n = state.targets.length, policy = simulation.r.policy;
+    const next = simulation.r.results[0], before = simulation.baseline, n = state.targets.length;
     const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
-    const P = policy?.plan;
-    if (P?.stay && P?.advance) {
-      // the plan's estimator for both choices, on the same simulated runs: within error, about the same
-      verdict.append(el('strong', '', P.about_same ? 'About the same either way.' : P.better === 'advance' ? 'Use her in the next career.' : 'Run this career again.'),
-        ' ' + (P.about_same ? 'The difference in careers to land every target is within the error of the estimate.' : 'It takes fewer careers on average to land every target.'));
-      result.appendChild(verdict);
-      const est = el('div', 'simodds');
-      for (const [label, a] of [['Run this career again', P.stay], ['Use her in the next career', P.advance]]) {
-        const card = el('div', 'tc');
-        card.append(el('span', 'tl', label), el('b', 'tv', `${careersText(a)} careers to land`), el('span', 'hint', `This career: ${fmtIn(a.p_all)}, ${baseText(a)}${a.base === 'loop' ? ` (${loopChain(P)})` : ''}`));
-        est.appendChild(card);
-      }
-      result.appendChild(est);
-      if (P.stop === 'budget') result.appendChild(el('p', 'hint', 'The simulation stopped at its time limit: these use the runs made so far.'));
-      if (!policy.actions_proven) result.appendChild(el('p', 'hint', 'Some searches reached their work limit: this uses the best careers found so far.'));
-    } else { verdict.append(el('strong', '', 'No comparison.'), ' ' + (P?.error || policy?.error || 'The solver returned none.')); result.appendChild(verdict); }
+    // she improves your next run when the best career with her beats your best today
+    const up = next.p_all > before.p_all * (1 + 1e-9);
+    verdict.append(el('strong', '', up ? 'She improves your next run.' : 'She doesn\'t improve your next run.'),
+      ' ' + (up ? `With her as a parent the best career is ${fmtIn(next.p_all)}, against ${fmtIn(before.p_all)} today.` : `The best career with her as a parent is ${fmtIn(next.p_all)}; your best today is ${fmtIn(before.p_all)}. Her value can still come later, as a grandparent.`));
+    result.appendChild(verdict);
     const odds = el('div', 'simodds');
     for (const [label, a, b] of [[`All ${n}: today's best → next with her`, before.p_all, next.p_all], [`At least ${n - 1}: today's best → next with her`, before.p_minus1, next.p_minus1]]) {
       const card = el('div', 'tc'); card.append(el('span', 'tl', label), el('b', 'tv', `${fmtIn(a)} → ${fmtIn(b)}`), el('span', 'hint', `${pct(a)} → ${pct(b)}`)); odds.appendChild(card);
@@ -608,32 +596,26 @@ function useBtn(r) {
 function optionsEl() {
   const box = sec('alts', 'Options');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
-  const P = planS.state === 'done' ? planS.r : null, list = P ? P.options.filter(o => o.eligible) : last.r.results, on = shown();
+  const P = planS.state === 'done' ? planS.r : null, list = P ? P.options : last.r.results, on = shown();
   const tb = el('table', 'cartab optab');
-  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Expected careers to land</th><th scope="col">Then</th><th scope="col">Next run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // the loop the estimates may follow, once
-  if (P) box.appendChild(el('p', 'sub oloop', P.loop_base ? `The loop: ${loopChain(P)} (the loop planner's best loop for your settings). Each option is simulated two ways, then the best odds each career or then this loop, and counts the better.`
-    : `No loop to compare (${P.loop_note || 'none found'}): each option is simulated with the best odds each career.`));
+  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Role</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  // the loop, once
+  if (P) box.appendChild(el('p', 'sub oloop', P.loop_members?.length ? `The loop: ${loopChain(P)} (the loop planner's best loop for your settings).` : `No loop (${P.loop_note || 'none found'}): the best odds.`));
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
     const tags = el('span', 'otags');
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
-    if (P && r.about_same) tags.appendChild(el('span', 'otag', 'about the same'));
-    if (P && r.chosen && P.pick_rule === 'loop') tags.appendChild(el('span', 'otag', "the loop's next"));
-    if (P && r.greedy) tags.appendChild(el('span', 'otag', 'best odds now'));
+    if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    const then = el('td', 'obase', P && r.expected != null ? baseText(r) : '');
-    if (P && r.base === 'loop') then.title = `then the loop: ${loopChain(P)}`;
-    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'oexp', P ? careersText(r) : planS.state === 'busy' ? 'simulating…' : '–'), then, el('td', 'onext', P ? improveText(r) : ''));
+    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'orole', P ? roleText(r) : planS.state === 'busy' ? 'planning…' : '–'));
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
     row.appendChild(act);
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  if (P) { const s = P.settings;
-    box.appendChild(el('p', 'hint', `Expected careers to land: this career, then either the best career by odds after each one or the loop above, whichever needs fewer, simulated on the model (up to ${s.samples_max} runs per option, the same luck for every option and both futures; each run the first ${s.horizon_max} careers, then the best recent career repeated, so the numbers lean high). ± is a 95% interval. The planner takes the lowest; options within error of it are "about the same", and among those it takes a loop member's career when the loop future is the better one (the lowest estimate among the members other than your newest veteran's), else the best odds now. Improves your next run: in how many of those runs the best career right after this one beats your best today (with the deck the simulation runs it with), and its odds when it does.`)); }
+  if (P) box.appendChild(el('p', 'hint', `The planner follows the loop: the next career trains a loop member other than the one whose veteran is newest, the one with the best odds (also her chance of an ${state.targets.length}/${state.targets.length} veteran), with any of your veterans as parents. A career outside the loop is picked only with at least ${P.outside_margin}× those odds. Every number here is exact.`));
   return box;
 }
 function renderResults() {
@@ -643,7 +625,7 @@ function renderResults() {
   const top = el('div'); top.id = 'sim-top';
   box.append(top, targetsEl(r));
   const open = !plan.trainee || plan.parents.some(p => !p);
-  if (open && ((planS.state === 'done' ? planS.r.options.filter(o => o.eligible) : last.r.results).length > 1)) box.appendChild(optionsEl());
+  if (open && ((planS.state === 'done' ? planS.r.options : last.r.results).length > 1)) box.appendChild(optionsEl());
   renderSimulation(); markOwn();
 }
 

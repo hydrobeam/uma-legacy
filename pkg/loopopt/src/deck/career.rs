@@ -101,6 +101,10 @@ struct CareerJob {
     #[serde(default)] simulate: Option<Value>,
     /// the planner's pick on the surrogate simulator (`sim::plan`, `plan` in the output; with `policy`, `policy.plan`)
     #[serde(default)] plan: Option<Value>,
+    /// the page's next career without simulation (`sim::plan::next_rule`): loop members' best careers, an outsider by margin
+    #[serde(default)] next: Option<Value>,
+    /// the page's veteran-analysis comparison (echoed in the output, nothing else)
+    #[serde(default)] compare: bool,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
@@ -775,7 +779,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     env.use_seen = cj.rollout == 0;
     // the page sends a career job, then the same job with `plan`: the plan job reuses that job's main search (the solver
     // worker keeps the last one; a search is deterministic for its job, so the result is the one it would compute)
-    let skey = { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("plan"); } setup_hash(&k.to_string()) };
+    let skey = { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("plan"); o.remove("next"); } setup_hash(&k.to_string()) };
     let sv = match LAST_SOLVE.with(|c| c.borrow().as_ref().filter(|x| x.0 == skey).map(|x| x.1.clone())) {
         Some(s) => s,
         None => { let s = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top); LAST_SOLVE.with(|c| *c.borrow_mut() = Some((skey, s.clone()))); s }
@@ -848,6 +852,12 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }
     if let (Some(pj), None) = (&pj, &cj.policy) { if !sv.found.is_empty() {
         out["plan"] = sim::plan::plan(&mut env, d, sk, cr, v, legs, &pool, &sv, !cj.per_trainee, &cj.fix, &trainees, pj);
+    } }
+    if cj.compare { out["compare"] = json!(true); }
+    if let Some(x) = &cj.next { if !sv.found.is_empty() {
+        out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
+            Ok(nj) => sim::plan::next_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj),
+            Err(e) => json!({"error": format!("next: {e}")}) };
     } }
     if cj.lookahead { if let Some(f) = sv.found.first() {
         // today's best career over everything (the floor of what the next career can do)
