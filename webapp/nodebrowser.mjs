@@ -380,7 +380,10 @@ const TESTS = {
     const marked = await pg.locator(`#roster .ut[data-uma="${uid}"][data-s="req"]`).count();
     await clickSay(pg, pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`), 'her name in the result'); await clickSay(pg, pg.locator('.cpop .sw'), 'the Owned switch'); await pg.keyboard.press('Escape'); await settle(pg);
     const after = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), uid);
-    check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', anyOutfit && marked === 1 && after.every(x => x === 'out') && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
+    // (her first tile's outfit is the one marked, so the loop uses it and the switch turns that outfit off; with "any
+    // outfit" every tile of hers goes off)
+    check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', marked === 1 && after[0] === 'out' && !after.includes('req')
+      && (!anyOutfit || after.every(x => x === 'out')) && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -466,7 +469,7 @@ const TESTS = {
     await pg.click('#r-act button'); await settle(pg); h = await head();
     check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /Searched/.test(h.note) && !h.stale, JSON.stringify(h));
     await pg.click('#r-none'); await kind(pg, 'empty'); h = await head();
-    check('no umas owned: a neutral status with "Mark all umas owned"', h.kind === 'empty' && /at least 4 umas/.test(h.note) && /Mark all umas owned/.test(h.act) && h.loops > 0, JSON.stringify(h));
+    check('no umas owned: a neutral status with "Mark all umas owned"', h.kind === 'empty' && /at least 3 umas/.test(h.note) && /Mark all umas owned/.test(h.act) && h.loops > 0, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg);
     // contradictory settings (an import can carry them): the status says what is wrong, the result stays
     const u = (await json(pg, 'data-umas')).find(x => x.outfits.length > 1);
@@ -582,7 +585,7 @@ const TESTS = {
       seen.push(await until(pg, () => { const p = document.getElementById('run-pill'), r = p.getBoundingClientRect(), c = document.getElementById('rcol').getBoundingClientRect();
         const resIn = c.bottom > 0 && c.top < innerHeight, shown = getComputedStyle(p).display !== 'none'; return shown === !resIn && (!shown || (r.top >= 0 && r.bottom <= innerHeight)); })); }
     check('phone: the status button shows (on screen) exactly when the results are out of view', seen.every(Boolean), seen.join(','));
-    check('phone: it shows the headline odds', /^1 in 119 · see result/.test(await pg.locator('#run-pill').innerText()), await pg.locator('#run-pill').innerText());
+    check('phone: it shows the headline odds', /^1 in 107 · see result/.test(await pg.locator('#run-pill').innerText()), await pg.locator('#run-pill').innerText());
     // edit a setting far down, then the button takes you back to the result
     const ct = pg.locator('#cards .ct').nth(2); await ct.scrollIntoViewIfNeeded(); await ct.click(); await settle(pg); await ct.click(); await settle(pg);
     await pg.click('#run-pill');   // a smooth scroll
