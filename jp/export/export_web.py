@@ -9,7 +9,8 @@ from jpnames import BASE, OUT
 B = json.load(open(BASE)); roster = B['roster']
 sname = names(47)
 cname = names(5)
-sk = {i: (r, g) for i, r, g in q('select id, rarity, group_id from skill_data')}
+# inherited unique skills (unique_skill_id_1 set) come only from a parent's unique spark, never a hint: not targets
+sk = {i: (r, g) for i, r, g in q('select id, rarity, group_id from skill_data where unique_skill_id_1 = 0')}
 # catalog: groups with a white (rarity 1) skill that has a name; gold = rarity 2 in the same group
 groups = {}
 for i, (r, g) in sk.items():

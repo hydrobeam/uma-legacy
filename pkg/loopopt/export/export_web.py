@@ -7,7 +7,8 @@ q = lambda s, *a: c.execute(s, a).fetchall()
 B = json.load(open('base.json')); roster = B['roster']
 sname = {i: t for i, t in q('select "index", text from text_data where category=47')}
 cname = {i: t for i, t in q('select "index", text from text_data where category=5')}
-sk = {i: (r, g) for i, r, g in q('select id, rarity, group_id from skill_data')}
+# inherited unique skills (unique_skill_id_1 set) come only from a parent's unique spark, never a hint: not targets
+sk = {i: (r, g) for i, r, g in q('select id, rarity, group_id from skill_data where unique_skill_id_1 = 0')}
 # catalog: groups with a white (rarity 1) skill that has a name; gold = rarity 2 in the same group
 groups = {}
 for i, (r, g) in sk.items():
