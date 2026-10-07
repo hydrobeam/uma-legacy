@@ -513,7 +513,9 @@ fn best_response_solve(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choi
     Some((s, ev))
 }
 
-struct Loop { m: [usize; 4], c: [[f64; 4]; 4], base: f64 }
+/// A loop of N members for the schedule optimiser: N = 4 (the 12-lineage loop, or a rotation order) or N = 3 (a
+/// three-uma rotation, whose race weights are uniform too: see `skills::lins`).
+struct Loop<const N: usize = 4> { m: [usize; N], c: [[f64; N]; N], base: f64 }
 
 /// Parse a scheme string: "scf" | "rot", optionally "@w" where w = grandparent-slot weight
 /// (grandparent spark base rates as a fraction of parents'; w = 1 is plain total affinity).
@@ -556,58 +558,59 @@ fn legacy_affinities(d: &Data, m: [usize; 4], s: &[Sched], scf: bool) -> Vec<(us
     }
     out
 }
-fn make_loop(d: &Data, m: [usize; 4], scheme: &str) -> Loop {
+fn make_loop<const N: usize>(d: &Data, m: [usize; N], scheme: &str) -> Loop<N> {
     let (scf, w) = parse_scheme(scheme);
+    assert!(scf || N == 4, "rotation orders need four members");
     let (cadj, cdiag, kt) = scheme_weights(scf, w);
-    let mut c = [[0.0; 4]; 4];
+    let mut c = [[0.0; N]; N];
     let base;
     let pr = |a: usize, b: usize| d.pair[a][b] as f64;
     let tr = |a: usize, b: usize, x: usize| d.tri[a][b][x] as f64;
     let mut psum = 0.0; let mut tsum = 0.0;
-    for i in 0..4 { for j in i + 1..4 { psum += pr(m[i], m[j]); for k in j + 1..4 { tsum += tr(m[i], m[j], m[k]); } } }
+    for i in 0..N { for j in i + 1..N { psum += pr(m[i], m[j]); for k in j + 1..N { tsum += tr(m[i], m[j], m[k]); } } }
     // scf: every pair weighted alike. rot (given order): positions two apart are the diagonal. Base is order-invariant.
-    for i in 0..4 { for j in 0..4 { if i != j { c[i][j] = if (i + 2) % 4 == j { cdiag } else { cadj }; } } }
+    for i in 0..N { for j in 0..N { if i != j { c[i][j] = if !scf && (i + 2) % 4 == j { cdiag } else { cadj }; } } }
     base = 2.0 * psum + kt * tsum;
     Loop { m, c, base }
 }
 
-fn score(d: &Data, lp: &Loop, s: &[Sched; 4]) -> f64 {
+fn score<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
     let t0 = Instant::now(); let r = score_inner(d, lp, s); prof(1, t0); r
 }
-fn score_inner(d: &Data, lp: &Loop, s: &[Sched; 4]) -> f64 {
-    let p: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
+fn score_inner<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
+    let p: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
     score_ps(lp, &p)
 }
 /// Score from precomputed probs (p[i] must equal probs(s[i]); probs is deterministic, so the result is bit-identical to `score`).
-fn score_ps(lp: &Loop, p: &[Vec<f64>]) -> f64 {
+fn score_ps<const N: usize>(lp: &Loop<N>, p: &[Vec<f64>]) -> f64 {
     let mut tot = lp.base;
-    for i in 0..4 { for j in i + 1..4 { tot += 3.0 * lp.c[i][j] * wval(&p[i], &p[j]); } }
+    for i in 0..N { for j in i + 1..N { tot += 3.0 * lp.c[i][j] * wval(&p[i], &p[j]); } }
     tot
 }
 
-fn weights(d: &Data, lp: &Loop, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
+fn weights<const N: usize>(d: &Data, lp: &Loop<N>, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
     let mut w = vec![]; weights_into(d, lp, ps, i, &mut w); w
 }
-fn weights_into(d: &Data, lp: &Loop, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
+fn weights_into<const N: usize>(d: &Data, lp: &Loop<N>, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
     w.clear(); w.resize(d.nr, 0.0);
-    for j in 0..4 { if j != i { for r in 0..d.nr { w[r] += 3.0 * lp.c[i][j] * ps[j][r]; } } }
+    for j in 0..N { if j != i { for r in 0..d.nr { w[r] += 3.0 * lp.c[i][j] * ps[j][r]; } } }
 }
 
-fn ascent(d: &Data, lp: &Loop, s: &mut [Sched; 4]) -> f64 {
-    let mut ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
+fn ascent<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N]) -> f64 {
+    let mut ps: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
     ascent_ps(d, lp, s, &mut ps)
 }
 /// `ascent` with the members' probs supplied (ps[i] must equal probs(s[i])); ps is kept equal to probs(s[i]).
-fn ascent_ps(d: &Data, lp: &Loop, s: &mut [Sched; 4], ps: &mut [Vec<f64>]) -> f64 {
+fn ascent_ps<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], ps: &mut [Vec<f64>]) -> f64 {
     let mut w: Vec<f64> = Vec::with_capacity(d.nr);
     // stale[i]: some partner's schedule changed since member i was last solved (or she was never solved here).
     // If not stale, her weights are bit-identical to her last solve, so the deterministic best response is the same
     // schedule: either it was rejected then (and would be again) or it was accepted and now equals s[i] exactly
     // (nv == curv, not a strict improvement). Skipping her therefore cannot change the trajectory.
-    let mut stale = [true; 4];
+    let mut stale = [true; N];
     loop {
         let mut improved = false;
-        for i in 0..4 {
+        for i in 0..N {
             if !stale[i] { continue; }
             stale[i] = false;
             let u = &d.umas[lp.m[i]];
@@ -616,7 +619,7 @@ fn ascent_ps(d: &Data, lp: &Loop, s: &mut [Sched; 4], ps: &mut [Vec<f64>]) -> f6
             if let Some((ns, nv)) = best_response(d, u, &w, Some(&s[i]), None) {
                 if nv > curv + 1e-9 {
                     s[i] = ns; probs_into(d, u, &ns, &mut ps[i]); improved = true;
-                    for j in 0..4 { if j != i { stale[j] = true; } }
+                    for j in 0..N { if j != i { stale[j] = true; } }
                 }
             }
         }
@@ -626,10 +629,10 @@ fn ascent_ps(d: &Data, lp: &Loop, s: &mut [Sched; 4], ps: &mut [Vec<f64>]) -> f6
 }
 
 /// Coordinated moves: force a subset of >=2 members onto the same race (or rest) at one turn, then re-ascend.
-fn group_moves(d: &Data, lp: &Loop, s: &mut [Sched; 4], margin: f64, stats: &mut u64) -> f64 {
+fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margin: f64, stats: &mut u64) -> f64 {
     let mut cur = score(d, lp, s);
     // probs of the current *s, refreshed whenever *s changes (probs is deterministic, so this equals recomputing per mask)
-    let mut ps_s: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
+    let mut ps_s: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
     let mut ps: Vec<Vec<f64>> = ps_s.clone();
     let mut w: Vec<f64> = Vec::with_capacity(d.nr);
     loop {
@@ -637,12 +640,12 @@ fn group_moves(d: &Data, lp: &Loop, s: &mut [Sched; 4], margin: f64, stats: &mut
         for t in 0..NT {
             // candidate targets: each race offered at t by any member, plus rest
             let mut targets: Vec<Option<i32>> = vec![None];
-            for i in 0..4 { for op in &d.umas[lp.m[i]].opts[t] { if op.race >= 0 && !targets.contains(&Some(op.race)) { targets.push(Some(op.race)); } } }
+            for i in 0..N { for op in &d.umas[lp.m[i]].opts[t] { if op.race >= 0 && !targets.contains(&Some(op.race)) { targets.push(Some(op.race)); } } }
             for tg in targets {
                 // choice for each member to hit the target at t (None = can't)
-                let mut ch: [Option<Choice>; 4] = [None; 4];
-                let mut on = [false; 4];
-                for i in 0..4 {
+                let mut ch: [Option<Choice>; N] = [None; N];
+                let mut on = [false; N];
+                for i in 0..N {
                     let u = &d.umas[lp.m[i]];
                     let c = match tg {
                         None => if u.forced[t].is_none() { Some(Choice::Rest) } else { None },
@@ -652,7 +655,7 @@ fn group_moves(d: &Data, lp: &Loop, s: &mut [Sched; 4], margin: f64, stats: &mut
                     ch[i] = c;
                     on[i] = c.map_or(false, |c| s[i][t] == c);
                 }
-                let movable: Vec<usize> = (0..4).filter(|&i| ch[i].is_some() && !on[i]).collect();
+                let movable: Vec<usize> = (0..N).filter(|&i| ch[i].is_some() && !on[i]).collect();
                 let non: usize = on.iter().filter(|x| **x).count();
                 if movable.is_empty() { continue; }
                 if tg.is_none() && non == 0 && movable.len() < 2 { continue; }
@@ -695,28 +698,34 @@ impl Rng {
     fn unif(&mut self) -> f64 { (self.next() >> 11) as f64 / (1u64 << 53) as f64 }
 }
 
-fn optimistic_start(d: &Data, lp: &Loop) -> [Sched; 4] {
-    let ps: Vec<Vec<f64>> = (0..4).map(|i| d.umas[lp.m[i]].pm.clone()).collect();
-    let mut s = [[Choice::Rest; NT]; 4];
-    for i in 0..4 {
+fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
+    let ps: Vec<Vec<f64>> = (0..N).map(|i| d.umas[lp.m[i]].pm.clone()).collect();
+    let mut s = [[Choice::Rest; NT]; N];
+    for i in 0..N {
         let w = weights(d, lp, &ps, i);
         s[i] = best_response(d, &d.umas[lp.m[i]], &w, None, None).expect("infeasible goals").0;
     }
     s
 }
 
+/// Schedules found for a loop, in canonical member order. A three-member structure fills s[0..3] and order[0..3];
+/// s[3] is all rest and order[3] is `NONE`.
 #[derive(Clone)]
 struct Res { val: f64, s: [Sched; 4], order: [usize; 4], evals: u64, secs: f64 }
+/// The empty fourth slot of a three-member structure (members arrays are [usize; 4] with this last).
+pub(crate) const NONE: usize = usize::MAX;
+/// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
+pub(crate) fn members(f: &[usize; 4]) -> &[usize] { if f[3] == NONE { &f[..3] } else { &f[..] } }
 
 /// Tie-break pass: each member re-solves against her partners with a tiny bonus (EPS per expected G1 win) on every G1,
 /// so races that cost no affinity get added (they can still pass down race sparks). Accepted only if the affinity
 /// score does not drop by more than 1e-6; races nobody else runs leave every partner's weights unchanged.
 const FILL_EPS: f64 = 1e-7;
-fn fill_optional(d: &Data, lp: &Loop, s: &mut [Sched; 4], v: f64) -> f64 {
+fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: f64) -> f64 {
     let mut cur = score(d, lp, s);
     debug_assert!((cur - v).abs() < 1e-6);
-    for i in 0..4 {
-        let ps: Vec<Vec<f64>> = (0..4).map(|k| probs(d, &d.umas[lp.m[k]], &s[k])).collect();
+    for i in 0..N {
+        let ps: Vec<Vec<f64>> = (0..N).map(|k| probs(d, &d.umas[lp.m[k]], &s[k])).collect();
         let w: Vec<f64> = weights(d, lp, &ps, i).iter().map(|x| x + FILL_EPS).collect();
         if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None, None) {
             let mut t = *s; t[i] = x;
@@ -734,7 +743,7 @@ fn fill_optional(d: &Data, lp: &Loop, s: &mut [Sched; 4], v: f64) -> f64 {
     };
     loop {
         let mut changed = false;
-        for i in 0..4 {
+        for i in 0..N {
             let u = &d.umas[lp.m[i]];
             for t in 0..NT {
                 if !matches!(s[i][t], Choice::Rest) || u.forced[t].is_some() { continue; }
@@ -755,10 +764,11 @@ fn fill_optional(d: &Data, lp: &Loop, s: &mut [Sched; 4], v: f64) -> f64 {
     cur
 }
 
-fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, margin: f64, init: &[[Sched; 4]]) -> Res {
+fn optimize<const N: usize>(d: &Data, m: [usize; N], scheme: &str, iters: usize, seed: u64, margin: f64, init: &[[Sched; N]]) -> Res {
     let t0 = Instant::now();
     let _memo = MemoScope::new();
-    let orders: Vec<[usize; 4]> = if parse_scheme(scheme).0 { vec![m] } else { vec![m, [m[0], m[2], m[1], m[3]], [m[0], m[1], m[3], m[2]]] };
+    let orders: Vec<[usize; N]> = if parse_scheme(scheme).0 { vec![m] } else {
+        let (mut a, mut b) = (m, m); a.swap(1, 2); b.swap(2, 3); vec![m, a, b] };
     let mut best: Option<Res> = None;
     let mut evals = 0u64;
     for (oi, ord) in orders.iter().enumerate() {
@@ -769,9 +779,9 @@ fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, marg
         v = v.max(group_moves(d, &lp, &mut s, margin, &mut evals));
         for st in init {
             // init schedules given in canonical member order m; map to this order
-            let mut s2 = [[Choice::Rest; NT]; 4];
-            for i in 0..4 { let j = m.iter().position(|x| *x == ord[i]).unwrap(); s2[i] = st[j]; }
-            if (0..4).all(|i| feasible(&d.umas[ord[i]], &s2[i])) {
+            let mut s2 = [[Choice::Rest; NT]; N];
+            for i in 0..N { let j = m.iter().position(|x| *x == ord[i]).unwrap(); s2[i] = st[j]; }
+            if (0..N).all(|i| feasible(&d.umas[ord[i]], &s2[i])) {
                 let mut v2 = ascent(d, &lp, &mut s2);
                 v2 = v2.max(group_moves(d, &lp, &mut s2, margin, &mut evals));
                 if v2 > v { v = v2; s = s2; }
@@ -780,10 +790,10 @@ fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, marg
         // iterated local search: perturb 1-2 members against noisy weights, re-ascend, group moves
         for _ in 0..iters {
             let mut ns = s;
-            let mut ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[lp.m[i]], &ns[i])).collect();
+            let mut ps: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &ns[i])).collect();
             let nmove = 1 + (rng.next() % 2) as usize;
             for _ in 0..nmove {
-                let i = (rng.next() % 4) as usize;
+                let i = (rng.next() % N as u64) as usize;
                 let mut w = weights(d, &lp, &ps, i);
                 for x in w.iter_mut() { *x *= 0.2 + 1.6 * rng.unif(); }
                 if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None, None) { ns[i] = x; ps[i] = probs(d, &d.umas[lp.m[i]], &x); }
@@ -795,12 +805,16 @@ fn optimize(d: &Data, m: [usize; 4], scheme: &str, iters: usize, seed: u64, marg
         // add optional G1s that cost no affinity (race sparks), then map back to canonical member order m
         let v = fill_optional(d, &lp, &mut s, v);
         let mut sc = [[Choice::Rest; NT]; 4];
-        for i in 0..4 { let j = ord.iter().position(|x| *x == m[i]).unwrap(); sc[i] = s[j]; }
-        if best.as_ref().map_or(true, |b| v > b.val + 1e-9) { best = Some(Res { val: v, s: sc, order: *ord, evals: 0, secs: 0.0 }); }
+        let mut order = [NONE; 4];
+        for i in 0..N { let j = ord.iter().position(|x| *x == m[i]).unwrap(); sc[i] = s[j]; order[i] = ord[i]; }
+        if best.as_ref().map_or(true, |b| v > b.val + 1e-9) { best = Some(Res { val: v, s: sc, order, evals: 0, secs: 0.0 }); }
     }
     let mut b = best.unwrap(); b.evals = evals; b.secs = t0.elapsed().as_secs_f64(); b
 }
-
+/// `optimize` for a structure of three or four members (`members` of a [usize; 4] with `NONE` last for three).
+pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], scheme: &str, iters: usize, seed: u64, margin: f64) -> Res {
+    if f[3] == NONE { optimize(d, [f[0], f[1], f[2]], scheme, iters, seed, margin, &[]) } else { optimize(d, *f, scheme, iters, seed, margin, &[]) }
+}
 
 fn when(t: usize) -> String {
     let tt = t; let y = if tt < 24 { "Jr" } else if tt < 48 { "Cl" } else { "Sr" };
@@ -1766,6 +1780,30 @@ mod review_tests {
                 let vs = score(d, &lp_o, &stripped);
                 assert!((vs - v).abs() < 1e-5, "{ids:?} {scheme}: stripped {vs} vs {v}");
                 let _ = lp;
+            }
+        }
+    }
+
+    /// A three-member rotation's schedules: the score is the base plus 3·C·(the sum of its three pairs' shared wins),
+    /// no member gains from re-solving against the other two (a Nash point of the uniform objective), the schedules are
+    /// feasible, and the unused fourth slot is empty.
+    #[test]
+    fn three_member_schedules() {
+        let d = data();
+        for ids in [[1019u32, 1021, 1034], [1006, 1019, 1029], [1007, 1009, 1049]] {
+            let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2])];
+            let r = optimize(d, m, "scf@0.5", 5, 3, 60.0, &[]);
+            assert_eq!(r.order[3], NONE); assert!(r.s[3].iter().all(|c| *c == Choice::Rest));
+            let s3: [Sched; 3] = [r.s[0], r.s[1], r.s[2]];
+            for i in 0..3 { assert!(feasible(&d.umas[m[i]], &s3[i])); }
+            let lp = make_loop(d, m, "scf@0.5");
+            let ps: Vec<Vec<f64>> = (0..3).map(|i| probs(d, &d.umas[m[i]], &s3[i])).collect();
+            let direct = lp.base + 3.0 * 2.0 * (wval(&ps[0], &ps[1]) + wval(&ps[0], &ps[2]) + wval(&ps[1], &ps[2]));
+            assert!((direct - r.val).abs() < 1e-9, "{ids:?}: {direct} vs {}", r.val);
+            for i in 0..3 {
+                let w = weights(d, &lp, &ps, i);
+                let (_, bv) = best_response(d, &d.umas[m[i]], &w, None, None).unwrap();
+                assert!(bv <= wval(&w, &ps[i]) + 1e-6, "{ids:?}: member {i} gains {}", bv - wval(&w, &ps[i]));
             }
         }
     }

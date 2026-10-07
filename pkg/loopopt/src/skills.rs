@@ -12,10 +12,11 @@
 //!     own parents are the other parent and the fourth member, so the parents' shared G1s count twice for each;
 //!   - it then lands as a spark with GEN_GOLD if the gold version is bought, else GEN_WHITE (20% / 40% x 1.1^6: all six
 //!     ancestors carry the spark in a running loop).
-//! Metric: P(all targets land on the veteran), averaged over the 12 lineages.
-//! Search: exact upper bound per foursome (pair overlaps -> pairwise ceilings PB), then best-first with real
-//! schedules (affinity-optimised: in the 12-lineage cycle every pair's shared G1s weigh the same) until the next
-//! bound is below the k-th best.
+//! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
+//! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
+//! together. Search: exact upper bound per structure (pair overlaps -> pairwise ceilings PB), then best-first with real
+//! schedules (affinity-optimised: in both structures every pair's shared G1s weigh the same) until the next bound is
+//! below the k-th best.
 use super::*;
 use serde_json::{json, Value};
 
@@ -61,11 +62,15 @@ pub(crate) struct SkillJob {
     #[serde(default = "dtop5")] pub top: usize,
     #[serde(default = "diters")] pub iters: usize,
     #[serde(default = "dseed")] pub seed: u64,
+    /// structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
+    /// their lineages
+    #[serde(default = "dsizes")] pub sizes: Vec<usize>,
 }
 fn dstar() -> [f64; 3] { [0.50, 0.45, 0.05] }
 fn dtop5() -> usize { 5 }
 fn diters() -> usize { 30 }
 fn dseed() -> u64 { 3 }
+fn dsizes() -> Vec<usize> { vec![3, 4] }
 
 /// SCF lineages over member positions: (trainee, P1, P2, X); P1 bred from (P2, X), P2 from (P1, X).
 pub(crate) fn lineages() -> Vec<(usize, usize, usize, usize)> {
@@ -75,6 +80,23 @@ pub(crate) fn lineages() -> Vec<(usize, usize, usize, usize)> {
         v.push((t, ps[0], ps[1], x)); } }
     v
 }
+/// A lineage over member positions: (trainee T, parent P1, parent P2, X), P1 bred from (P2, X), P2 from (P1, X).
+pub(crate) type Lin = (usize, usize, usize, usize);
+/// The four-member loop's 12 lineages (`lineages()`, as a table).
+const LIN4: [Lin; 12] = [(0, 2, 3, 1), (0, 1, 3, 2), (0, 1, 2, 3), (1, 2, 3, 0), (1, 0, 3, 2), (1, 0, 2, 3),
+                         (2, 1, 3, 0), (2, 0, 3, 1), (2, 0, 1, 3), (3, 1, 2, 0), (3, 0, 2, 1), (3, 0, 1, 2)];
+/// The three-member rotation's 3 lineages: each member trains from the other two, whose own parents are the other
+/// two of the three, so X is the trainee's own character (her own earlier veteran, with her schedule's wins).
+const LIN3: [Lin; 3] = [(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)];
+/// The lineages of a structure of `n` members (3: rotation, 4: the 12-lineage loop). The metric is the mean of P(all)
+/// over them: every member trains equally often, each from the veterans the others produced.
+///
+/// Race weights (derived): with o(a, b) a pair's expected shared G1 wins, a lineage (T, P1, P2, X) counts o(P1, P2) six
+/// times (3 per win in each parent's affinity for the other parent and for her own parent, and in the grandparent
+/// slot under each parent) and o(P1, X), o(P2, X) twice each (parent and grandparent slot). Summed over the 12 loop
+/// lineages every pair gets 6·2 + 2·4 = 20; over the 3 rotation lineages (X = T) every pair gets 6 + 2 + 2 = 10. Both
+/// are uniform, so a structure's schedules maximise the plain sum of its pairs' shared wins either way.
+pub(crate) fn lins(n: usize) -> &'static [Lin] { match n { 4 => &LIN4, 3 => &LIN3, _ => panic!("a structure has 3 or 4 members") } }
 
 pub(crate) struct Model<'a> {
     d: &'a Data,
@@ -86,8 +108,7 @@ pub(crate) struct Model<'a> {
     /// per uma index: every listed outfit is excluded
     pub(crate) no_outfit: Vec<bool>,
     job: &'a SkillJob,
-    /// lineage table and coverage tuples without labels, for the allocation-free hot path
-    lin: Vec<(usize, usize, usize, usize)>,
+    /// coverage tuples without labels, for the allocation-free hot path
     sts: Vec<Vec<Vec<u8>>>,
     /// per uma index, per option: chance the trainee's own events hint each uncertain target's white
     pub(crate) ews: Vec<Vec<Vec<f64>>>,
@@ -124,7 +145,7 @@ impl<'a> Model<'a> {
             opts.push(m); ews.push(mew);
         }
         let sts = opts.iter().map(|m| m.iter().map(|(st, _)| st.clone()).collect()).collect();
-        Model { d, uncertain, n_fixed_gold, base, opts, no_outfit, job, lin: lineages(), sts, ews }
+        Model { d, uncertain, n_fixed_gold, base, opts, no_outfit, job, sts, ews }
     }
 
     pub(crate) fn skill_probs(&self, st: &[u8], ew: &[f64], q: f64) -> Vec<f64> {
@@ -146,12 +167,14 @@ impl<'a> Model<'a> {
     }
     fn fixed(&self) -> f64 { GEN_GOLD.powi(self.n_fixed_gold) }
 
-    /// per-lineage proc q from slot affinities computed with overlap function `o(a, b)` (member positions)
-    pub(crate) fn lineage_q(&self, f: [usize; 4], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
+    /// per-lineage proc q from slot affinities computed with overlap function `o(a, b)` (member positions), for the
+    /// lineages of `lins(f.len())`. In a rotation X = T: tri(T, P, T) = 0 (`rel_tables` counts a group only for distinct
+    /// characters; fitted on 101,536 inspiration trials) and o(P, T) is the overlap with the trainee's own schedule.
+    pub(crate) fn lineage_q(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
         let d = self.d;
         let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
         let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
-        lineages().iter().map(|&(t, p1, p2, x)| {
+        lins(f.len()).iter().map(|&(t, p1, p2, x)| {
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
                 let ap = pr(t, par) + pr(p1, p2) + 3.0 * o(par, other)
@@ -166,10 +189,11 @@ impl<'a> Model<'a> {
         }).collect()
     }
     /// `lineage_q` into a fixed array (no allocation); same numbers.
-    pub(crate) fn lineage_q_arr(&self, f: [usize; 4], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
+    /// (Lineages of `lins(f.len())`; a rotation fills the first 3 entries.)
+    pub(crate) fn lineage_q_arr(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
         let d = self.d;
         let mut out = [0.0f64; 12];
-        for (l, &(t, p1, p2, x)) in self.lin.iter().enumerate() {
+        for (l, &(t, p1, p2, x)) in lins(f.len()).iter().enumerate() {
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
                 let ap = d.pair[f[t]][f[par]] as f64 + d.pair[f[p1]][f[p2]] as f64 + 3.0 * o(par, other)
@@ -188,12 +212,14 @@ impl<'a> Model<'a> {
     /// Upper bound on the inheritance chance q of every lineage whose trainee is `t`, with parents and the fourth
     /// member drawn from `pool` and race overlaps bounded by `pb`. Same arithmetic, in the same order, as
     /// `lineage_q_arr` with o = pb, except that the grandparent slot the fourth member fills takes its best value
-    /// over every possible fourth member. q rises with every affinity, so this is >= every such q.
-    pub(crate) fn q_ub_trainee(&self, t: usize, pool: &[usize], pb: &[Vec<f64>]) -> f64 {
+    /// over every possible fourth member. q rises with every affinity, so this is >= every such q. With `rot` the
+    /// X slot may also be the trainee's own character (a three-member rotation: tri(T, P, T) + 3·o(P, T), the trio 0).
+    pub(crate) fn q_ub_trainee(&self, t: usize, pool: &[usize], pb: &[Vec<f64>], rot: bool) -> f64 {
         let d = self.d;
         let others: Vec<usize> = pool.iter().copied().filter(|&u| u != t).collect();
-        let xmax: Vec<f64> = others.iter().map(|&par| others.iter().filter(|&&x| x != par)
-            .map(|&x| d.tri[t][par][x] as f64 + 3.0 * pb[par][x]).fold(f64::NEG_INFINITY, f64::max)).collect();
+        let xmax: Vec<f64> = others.iter().map(|&par| {
+            let m = others.iter().filter(|&&x| x != par).map(|&x| d.tri[t][par][x] as f64 + 3.0 * pb[par][x]).fold(f64::NEG_INFINITY, f64::max);
+            if rot { m.max(d.tri[t][par][t] as f64 + 3.0 * pb[par][t]) } else { m } }).collect();
         let mut best = 0.0f64;
         for i in 0..others.len() { for j in i + 1..others.len() {
             let (p1, p2) = (others[i], others[j]);
@@ -218,9 +244,10 @@ impl<'a> Model<'a> {
     }
     /// `metric_d` without allocation (hot path of the deck search); same numbers.
     #[inline]
-    pub(crate) fn metric_fast(&self, f: [usize; 4], qs: &[f64; 12], dw: &[f64], dg: &[f64]) -> f64 {
+    pub(crate) fn metric_fast(&self, f: &[usize], qs: &[f64; 12], dw: &[f64], dg: &[f64]) -> f64 {
         let mut sum = 0.0;
-        for (l, &(t, ..)) in self.lin.iter().enumerate() {
+        let lin = lins(f.len());
+        for (l, &(t, ..)) in lin.iter().enumerate() {
             let q = qs[l];
             let mut best = 0.0f64;
             for (st, ew) in self.sts[f[t]].iter().zip(&self.ews[f[t]]) {
@@ -236,7 +263,7 @@ impl<'a> Model<'a> {
             }
             sum += best;
         }
-        self.fixed() * sum / 12.0
+        self.fixed() * sum / lin.len() as f64
     }
     /// Best-outfit product over the uncertain targets for trainee `u` at proc `q` (the per-lineage term of
     /// `metric_fast`, before the fixed-gold factor); increasing in q and in every deck odd.
@@ -288,8 +315,8 @@ impl<'a> Model<'a> {
         }
         best
     }
-    pub(crate) fn metric_d(&self, f: [usize; 4], qs: &[f64], dw: &[f64], dg: &[f64]) -> f64 {
-        let lin = lineages();
+    pub(crate) fn metric_d(&self, f: &[usize], qs: &[f64], dw: &[f64], dg: &[f64]) -> f64 {
+        let lin = lins(f.len());
         self.fixed() * lin.iter().zip(qs).map(|(&(t, ..), &q)| self.trainee_d(f[t], q, dw, dg).0).sum::<f64>() / lin.len() as f64
     }
     pub(crate) fn fixed_pub(&self) -> f64 { self.fixed() }
@@ -298,14 +325,15 @@ impl<'a> Model<'a> {
     /// the per-career inheritance chance q, each target's landing chance and P(all land).
     /// `deck` = per-uncertain-target (white, gold) deck odds; None uses the job's own deck fields.
     /// `deck`: per member (dw, dg) deck odds, or None for the job's own deck fields.
-    pub(crate) fn detail(&self, f: [usize; 4], o: &dyn Fn(usize, usize) -> f64, deck: Option<[(&[f64], &[f64]); 4]>) -> Value {
+    /// `f`: the members (3 or 4); lineages as in `lins(f.len())`, a rotation's X being the trainee.
+    pub(crate) fn detail(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64, deck: Option<&[(&[f64], &[f64])]>) -> Value {
         let d = self.d;
         let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
         let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
         let mut pairs = vec![];
-        for a in 0..4 { for b in a + 1..4 { pairs.push(json!({"a": a, "b": b, "rel": pr(a, b), "wins": o(a, b)})); } }
-        let mut lins = vec![];
-        for &(t, p1, p2, x) in &lineages() {
+        for a in 0..f.len() { for b in a + 1..f.len() { pairs.push(json!({"a": a, "b": b, "rel": pr(a, b), "wins": o(a, b)})); } }
+        let mut lout = vec![];
+        for &(t, p1, p2, x) in lins(f.len()) {
             let mut slots = vec![]; let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
                 let rel = pr(t, par) + pr(p1, p2) + tr(t, par, other) + tr(t, par, x);
@@ -323,13 +351,13 @@ impl<'a> Model<'a> {
             let probs = match deck.map(|dk| dk[t]) { Some((w, g)) => self.skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g), None => self.skill_probs(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q) };
             let skills: Vec<Value> = self.uncertain.iter().zip(&probs).zip(&self.opts[f[t]][k].0)
                 .map(|((&i, p), lv)| json!({"group": self.job.targets[i].group, "p": p, "outfit": lv})).collect();
-            lins.push(json!({"t": t, "p": [p1, p2], "x": x, "slots": slots, "q": q, "p_all": self.fixed() * pv, "skills": skills,
+            lout.push(json!({"t": t, "p": [p1, p2], "x": x, "slots": slots, "q": q, "p_all": self.fixed() * pv, "skills": skills,
                              "fixed_gold": self.n_fixed_gold}));
         }
-        json!({"base": self.base, "gp_rate": GP_RATE, "inspirations": INSPIRATIONS, "gen_white": GEN_WHITE, "gen_gold": GEN_GOLD, "pairs": pairs, "lineages": lins})
+        json!({"base": self.base, "gp_rate": GP_RATE, "inspirations": INSPIRATIONS, "gen_white": GEN_WHITE, "gen_gold": GEN_GOLD, "pairs": pairs, "lineages": lout})
     }
-    fn metric(&self, f: [usize; 4], qs: &[f64]) -> f64 {
-        let lin = lineages();
+    fn metric(&self, f: &[usize], qs: &[f64]) -> f64 {
+        let lin = lins(f.len());
         self.fixed() * lin.iter().zip(qs).map(|(&(t, ..), &q)| self.trainee(f[t], q).0).sum::<f64>() / lin.len() as f64
     }
 }
@@ -370,25 +398,50 @@ pub(crate) fn member_json(d: &Data, m: &[usize]) -> Vec<Value> {
     m.iter().map(|&x| json!({"id": d.umas[x].id, "name": d.umas[x].name, "short": short_name(&d.umas[x].name)})).collect()
 }
 
-/// Skill-target search. Returns the top loops with odds, outfits, per-trainee odds and schedules.
+/// Every structure of the job's sizes over `pool` (positions in canonical order, three members padded with `NONE`)
+/// that contains every uma of `req`.
+pub(crate) fn structures(pool: &[usize], req: &[usize], sizes: &[usize], out: &mut dyn FnMut([usize; 4])) {
+    let k = pool.len();
+    if sizes.contains(&4) {
+        for a in 0..k { for b in a + 1..k { for c in b + 1..k { for e in c + 1..k {
+            let f = [pool[a], pool[b], pool[c], pool[e]];
+            if req.iter().all(|r| f.contains(r)) { out(f); }
+        } } } }
+    }
+    if sizes.contains(&3) && req.len() <= 3 {
+        for a in 0..k { for b in a + 1..k { for c in b + 1..k {
+            let f = [pool[a], pool[b], pool[c], NONE];
+            if req.iter().all(|r| f.contains(r)) { out(f); }
+        } } }
+    }
+}
+/// Checks a job's `sizes` and `require` against the pool: an error message, or the smallest size searched.
+pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<usize, String> {
+    if sizes.is_empty() || sizes.iter().any(|&s| s != 3 && s != 4) { return Err("sizes: list 3 and/or 4".into()); }
+    let lo = *sizes.iter().min().unwrap(); let hi = *sizes.iter().max().unwrap();
+    if req > hi { return Err(format!("At most {hi} umas can be required.")); }
+    if pool < lo { return Err(format!("Pick at least {lo} umas to search.")); }
+    Ok(lo)
+}
+
+/// Skill-target search. Returns the top loops (three-uma rotations and four-uma loops, ranked together) with odds,
+/// outfits, per-trainee odds and schedules.
 pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
     let model = Model::new(d, sk, job);
     let n = d.umas.len();
     let id_ok = |id: u32| (job.owned.is_empty() || job.owned.contains(&id) || job.require.contains(&id)) && !job.exclude.contains(&id);
     let pool: Vec<usize> = (0..n).filter(|&i| id_ok(d.umas[i].id) && !model.no_outfit[i]).collect();
     let req: Vec<usize> = job.require.iter().filter_map(|&id| d.umas.iter().position(|u| u.id == id)).collect();
-    if pool.len() < 4 { return json!({"error": "Pick at least 4 umas to search."}); }
-    if req.len() > 4 { return json!({"error": "At most 4 umas can be required."}); }
+    if let Err(e) = check_sizes(&job.sizes, pool.len(), req.len()) { return json!({"error": e}); }
     let pb = pair_ceilings(d, &pool);
-    let k = pool.len();
     let mut cand: Vec<(f64, [usize; 4])> = vec![];
-    for a in 0..k { for b in a + 1..k { for c in b + 1..k { for e in c + 1..k {
-        let f = [pool[a], pool[b], pool[c], pool[e]];
-        if !req.iter().all(|r| f.contains(r)) { continue; }
-        let qs = model.lineage_q(f, &|x, y| pb[f[x]][f[y]]);
-        cand.push((model.metric(f, &qs), f));
-    } } } }
-    if cand.is_empty() { return json!({"error": "No foursome contains all the required umas."}); }
+    structures(&pool, &req, &job.sizes, &mut |f| {
+        let m = members(&f);
+        let qs = model.lineage_q(m, &|x, y| pb[m[x]][m[y]]);
+        cand.push((model.metric(m, &qs), f));
+    });
+    if cand.is_empty() { return json!({"error": "No loop contains all the required umas."}); }
+    // stable: equal bounds keep generation order (four-member loops first)
     cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
     let top = job.top.max(1);
     let mut done: Vec<(f64, f64, [usize; 4], Res, Vec<f64>)> = vec![];   // (value, bound, f, res, qs)
@@ -397,18 +450,19 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
         let mut v: Vec<f64> = done.iter().map(|x| x.0).collect(); v.sort_by(|a, b| b.partial_cmp(a).unwrap()); v[top - 1] };
     while next < cand.len() && cand[next].0 >= kth(&done) {
         let (ub, f) = cand[next]; next += 1;
-        let r = optimize(d, f, "scf@0.5", job.iters, job.seed, 60.0, &[]);
-        let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let qs = model.lineage_q(f, &|x, y| wval(&ps[x], &ps[y]));
-        let v = model.metric(f, &qs);
+        let m = members(&f);
+        let r = optimize_fam(d, &f, "scf@0.5", job.iters, job.seed, 60.0);
+        let ps: Vec<Vec<f64>> = (0..m.len()).map(|i| probs(d, &d.umas[m[i]], &r.s[i])).collect();
+        let qs = model.lineage_q(m, &|x, y| wval(&ps[x], &ps[y]));
+        let v = model.metric(m, &qs);
         done.push((v, ub, f, r, qs));
     }
     done.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-    let lin = lineages();
     let loops: Vec<Value> = done.iter().take(top).map(|(v, ub, f, r, qs)| {
+        let f = members(f); let nm = f.len(); let lin = lins(nm);
         // per-lineage outfit choice and skill odds
-        let mut minus1 = 0.0; let mut per: Vec<(f64, usize)> = vec![(0.0, 0); 4];
-        let mut picks: Vec<Vec<usize>> = vec![vec![]; 4];
+        let mut minus1 = 0.0; let mut per: Vec<(f64, usize)> = vec![(0.0, 0); nm];
+        let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
         for (&(t, ..), &q) in lin.iter().zip(qs) {
             let (val, kk) = model.trainee(f[t], q);
             let mut ps = vec![GEN_GOLD; model.n_fixed_gold as usize];
@@ -417,7 +471,7 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
             per[t].0 += model.fixed() * val; per[t].1 += 1; picks[t].push(kk);
         }
         minus1 /= lin.len() as f64;
-        let outfits: Vec<Value> = (0..4).map(|i| {
+        let outfits: Vec<Value> = (0..nm).map(|i| {
             let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
             let (st, cards) = &model.opts[f[i]][kk];
             let default_st: Vec<u8> = model.uncertain.iter().map(|&j| if job.targets[j].guaranteed == 1 { 1 } else { 0 }).collect();
@@ -425,14 +479,13 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
                 .map(|(lv, j)| json!({"group": job.targets[*j].group, "level": lv})).collect();
             json!({"outfits": if *st == default_st { vec![] } else { cards.iter().map(|c| json!({"id": c.0, "label": c.1})).collect::<Vec<_>>() }, "covers": covers})
         }).collect();
-        let s4 = [r.s[0], r.s[1], r.s[2], r.s[3]];
-        let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let detail = model.detail(*f, &|x, y| wval(&ps[x], &ps[y]), None);
+        let ps: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
+        let detail = model.detail(f, &|x, y| wval(&ps[x], &ps[y]), None);
         json!({
             "members": member_json(d, f), "p_all": v, "p_minus1": minus1, "bound": ub,
             "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
             "outfits": outfits, "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64,
-            "schedule": chart_rows(d, f, &s4),
+            "schedule": chart_rows(d, f, &r.s[..nm]),
             "detail": detail,
         })
     }).collect();
@@ -490,7 +543,7 @@ mod tests {
         let job: SkillJob = serde_json::from_value(json!({
             "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
                         {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "top": 3})).unwrap();
+            "extra": [[1078,20165,1],[1003,20190,1]], "top": 3, "sizes": [4]})).unwrap();
         let r = run_skills(d, &sk, &job);
         let l = &r["loops"][0];
         let ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect();
@@ -508,7 +561,7 @@ mod tests {
         let job: SkillJob = serde_json::from_value(json!({
             "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
                         {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "exclude": [1034, 1021], "exclude_outfits": [100102], "top": 2})).unwrap();
+            "extra": [[1078,20165,1],[1003,20190,1]], "exclude": [1034, 1021], "exclude_outfits": [100102], "top": 2, "sizes": [4]})).unwrap();
         let r = run_skills(d, &sk, &job);
         let l = &r["loops"][0];
         let mut ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect(); ids.sort();
@@ -518,6 +571,131 @@ mod tests {
         let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902], "top": 1})).unwrap();
         let r2 = run_skills(d, &sk, &job2);
         assert!(r2["loops"][0]["members"].as_array().unwrap().iter().all(|m| m["id"] != json!(1019)));
+    }
+
+    /// The lineage tables: the 12-lineage loop as `lineages()` builds it, and the three-member rotation (each member
+    /// trains from the other two, whose own parents are the other two of the three: X is the trainee herself).
+    #[test]
+    fn rotation_lineage_tables() {
+        assert_eq!(lins(4).to_vec(), lineages());
+        assert_eq!(lins(3).to_vec(), vec![(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)]);
+        for &(t, p1, p2, x) in lins(3) {
+            assert_eq!(x, t);
+            // B's parents are (C, A) and C's are (B, A): the other parent and the trainee
+            assert!(p1 != t && p2 != t && p1 != p2);
+        }
+        // repeated characters: a group counts only for distinct members, so pair(a, a) = 0 and tri(T, P, T) = 0
+        let (p, t) = rel_tables(3, &[(5, vec![0, 1]), (7, vec![0, 1, 2]), (11, vec![0, 2])]);
+        assert_eq!((p[0][1], p[0][2], p[1][2], p[0][0]), (12, 18, 7, 0));
+        assert_eq!((t[0][1][2], t[2][1][0], t[0][1][0], t[0][1][1], t[0][0][1]), (7, 7, 0, 0, 0));
+        let d = data();
+        for a in 0..d.umas.len() { for b in 0..d.umas.len() {
+            assert_eq!(d.tri[a][b][a], 0); assert_eq!(d.tri[a][b][b], 0); assert_eq!(d.tri[a][a][b], 0); } }
+    }
+
+    /// A three-member rotation's slot affinities, written out by hand from the per-legacy formula, against `detail`;
+    /// and the race weights: summed over a structure's lineages each pair's shared wins count 3 × 10 (rotation) or
+    /// 3 × 20 (loop) affinity, uniform over the pairs.
+    #[test]
+    fn rotation_affinities_by_hand() {
+        let d = data(); let sk = skills();
+        let job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20161}]})).unwrap();
+        let m = Model::new(d, &sk, &job);
+        // Agnes Digital, Tamamo Cross, Inari One and made-up shared wins per pair
+        let f = [18usize, 20, 33];
+        let ov = |a: usize, b: usize| -> f64 { match (a.min(b), a.max(b)) { (0, 1) => 2.5, (0, 2) => 4.0, (1, 2) => 7.25, _ => panic!() } };
+        let det = m.detail(&f, &ov, None);
+        let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
+        let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
+        let ls = det["lineages"].as_array().unwrap();
+        assert_eq!(ls.len(), 3);
+        for (l, &(t, b, c, _)) in [(0usize, 1usize, 2usize, 0usize), (1, 0, 2, 1), (2, 0, 1, 2)].iter().enumerate() {
+            let slots = ls[l]["slots"].as_array().unwrap();
+            let got: Vec<(f64, f64)> = slots.iter().map(|x| (x["rel"].as_f64().unwrap(), x["race"].as_f64().unwrap())).collect();
+            // trainee T, parents B (bred from C and T) and C (bred from B and T)
+            let want = [
+                (pr(t, b) + pr(b, c) + tr(t, b, c), 3.0 * ov(b, c) + 3.0 * ov(b, c) + 3.0 * ov(b, t)),   // parent B
+                (tr(t, b, c), 3.0 * ov(b, c)),                                                       // C under B
+                (0.0, 3.0 * ov(b, t)),                                                               // T under B: trio 0
+                (pr(t, c) + pr(b, c) + tr(t, c, b), 3.0 * ov(c, b) + 3.0 * ov(c, b) + 3.0 * ov(c, t)),   // parent C
+                (tr(t, c, b), 3.0 * ov(c, b)),                                                       // B under C
+                (0.0, 3.0 * ov(c, t)),                                                               // T under C
+            ];
+            for (g, w) in got.iter().zip(&want) { assert!((g.0 - w.0).abs() < 1e-12 && (g.1 - w.1).abs() < 1e-12, "lineage {l}: {g:?} vs {w:?}"); }
+            assert_eq!(slots[2]["who"], json!([b, t])); assert_eq!(slots[5]["who"], json!([c, t]));
+            // the inheritance chance from those six affinities
+            let mut miss = 1.0f64;
+            for (k, w) in want.iter().enumerate() { let base = if k % 3 == 0 { m.base } else { GP_RATE * m.base }; miss *= 1.0 - (base * (1.0 + (w.0 + w.1) / 100.0)).min(1.0); }
+            assert!((ls[l]["q"].as_f64().unwrap() - (1.0 - miss * miss)).abs() < 1e-15);
+        }
+        // race weights: a unit of shared wins on one pair moves the summed affinity by 30 (rotation), 60 (loop)
+        for f in [&[18usize, 20, 33][..], &[5, 18, 20, 33][..]] {
+            let n = f.len();
+            let tot = |o: &dyn Fn(usize, usize) -> f64| -> f64 { m.detail(f, o, None)["lineages"].as_array().unwrap().iter()
+                .flat_map(|l| l["slots"].as_array().unwrap().iter().map(|x| x["race"].as_f64().unwrap()).collect::<Vec<_>>()).sum() };
+            for a in 0..n { for b in a + 1..n {
+                let one = tot(&|x: usize, y: usize| if (x.min(y), x.max(y)) == (a, b) { 1.0 } else { 0.0 });
+                assert_eq!(one, if n == 3 { 30.0 } else { 60.0 }, "pair {a}-{b} of {n}");
+            } }
+        }
+    }
+
+    /// A rotation's reported odds against a direct computation: its schedules, each lineage's six affinities from the
+    /// formula, the inheritance chance, the trainee's best-outfit landing odds, the mean over the three trainees.
+    #[test]
+    fn rotation_metric_matches_direct() {
+        let d = data(); let sk = skills();
+        let job: SkillJob = serde_json::from_value(json!({
+            "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
+                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
+            "extra": [[1078,20165,1],[1003,20190,1]], "top": 1, "sizes": [3], "require": [1019, 1021, 1034]})).unwrap();
+        let r = run_skills(d, &sk, &job);
+        let l = &r["loops"][0];
+        let ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect();
+        assert_eq!(ids, vec![1019, 1021, 1034]);
+        assert_eq!(r["foursomes"], json!(1));
+        let m = Model::new(d, &sk, &job);
+        let f = [18usize, 20, 33];
+        let res = optimize(d, f, "scf@0.5", job.iters, job.seed, 60.0, &[]);
+        assert_eq!(res.order[3], NONE);
+        let ps: Vec<Vec<f64>> = (0..3).map(|i| probs(d, &d.umas[f[i]], &res.s[i])).collect();
+        let o = |a: usize, b: usize| wval(&ps[a], &ps[b]);
+        let (pr, tr) = (|a: usize, b: usize| d.pair[f[a]][f[b]] as f64, |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64);
+        let mut sum = 0.0;
+        for (t, b, c) in [(0usize, 1usize, 2usize), (1, 0, 2), (2, 0, 1)] {
+            let affs = [pr(t, b) + pr(b, c) + tr(t, b, c) + 6.0 * o(b, c) + 3.0 * o(b, t), tr(t, b, c) + 3.0 * o(b, c), 3.0 * o(b, t),
+                        pr(t, c) + pr(b, c) + tr(t, c, b) + 6.0 * o(b, c) + 3.0 * o(c, t), tr(t, c, b) + 3.0 * o(b, c), 3.0 * o(c, t)];
+            let miss: f64 = affs.iter().map(|a| 1.0 - (m.base * (1.0 + a / 100.0)).min(1.0)).product();
+            let q = 1.0 - miss * miss;
+            let p = m.fixed() * m.trainee(f[t], q).0;
+            let pt = l["per_trainee"][t].as_f64().unwrap();
+            assert!((p - pt).abs() < 1e-12 * p, "trainee {t}: {p} vs {pt}");
+            sum += p;
+        }
+        let pa = l["p_all"].as_f64().unwrap();
+        assert!((sum / 3.0 - pa).abs() < 1e-12 * pa, "{} vs {pa}", sum / 3.0);
+        assert_eq!(l["detail"]["lineages"].as_array().unwrap().len(), 3);
+        assert_eq!(l["schedule"][0]["cells"].as_array().unwrap().len(), 3);
+    }
+
+    /// Both sizes rank together on the mean over lineages: the combined search's best is the better of the two
+    /// single-size searches' bests, and requiring four umas leaves only loops.
+    #[test]
+    fn sizes_rank_together() {
+        let d = data(); let sk = skills();
+        let base = json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
+                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
+            "extra": [[1078,20165,1],[1003,20190,1]], "top": 1});
+        let run = |sz: Value, req: Value| { let mut j = base.clone(); j["sizes"] = sz; j["require"] = req;
+            run_skills(d, &sk, &serde_json::from_value(j).unwrap()) };
+        let best = |r: &Value| r["loops"][0]["p_all"].as_f64().unwrap();
+        let (both, three, four) = (run(json!([3, 4]), json!([])), run(json!([3]), json!([])), run(json!([4]), json!([])));
+        assert_eq!(best(&both), best(&three).max(best(&four)));
+        assert_eq!(both["foursomes"].as_u64().unwrap(), three["foursomes"].as_u64().unwrap() + four["foursomes"].as_u64().unwrap());
+        let req4 = run(json!([3, 4]), json!([1019, 1021, 1034, 1006]));
+        assert_eq!(req4["loops"][0]["members"].as_array().unwrap().len(), 4);
+        assert_eq!(req4["foursomes"], json!(1));
+        assert!(run(json!([3]), json!([1019, 1021, 1034, 1006]))["error"].is_string());
     }
 
     /// The structured chart agrees with the bound: every schedule cell refers to a race actually run.
