@@ -110,5 +110,9 @@
 [
 "pkg/loopopt",
 "jobs/career_U4.json"
+],
+[
+"pkg/loopopt",
+"jobs/career_U5.json"
 ]
 ]

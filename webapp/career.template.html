@@ -58,6 +58,7 @@ __CSS__
     </div>
     <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick, outlined in dashes. Numbers 1 to 6 are the six legacies; each shows her affinity.</p>
     <div class="ped" id="tree"></div>
+    <div id="sim-top"></div>
     <div id="results"></div>
   </main>
 
@@ -101,9 +102,9 @@ __CSS__
   <div class="row askrow" id="ask-btns"></div>
 </div></dialog>
 <dialog id="wins-dlg" aria-labelledby="wins-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="wins-title">G1 wins</h3><button class="btn dclose">Done</button></div>
-  <p class="hint">Single-race G1s she won. Each one she shares with a parent or the other parent adds 3 affinity.</p>
-  <div class="winlist" id="wins-list"></div>
+  <div class="row between dhead"><h3 id="wins-title">G1 wins</h3><span class="num" id="wins-count"></span><button class="btn dclose">Done</button></div>
+  <p class="hint" id="wins-hint"></p>
+  <div id="wins-list"></div>
 </div></dialog>
 <dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
   <div class="row between dhead"><h3 id="paste-title">Paste an umadump export</h3><button class="btn dclose">Close</button></div>

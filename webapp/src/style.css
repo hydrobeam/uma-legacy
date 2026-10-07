@@ -699,3 +699,32 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the career page's Support cards dialog: 8 tiles a row (the planner's rail fits 4); fewer on a narrow screen */
 .setdlg .cgroup .ctiles { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px 8px; }
 @media (max-width: 900px) { .setdlg .cgroup .ctiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+/* G1 wins on the schedule window's calendar: each race a button; not won = faded banner, muted name */
+.wbtn { border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; border-radius: 5px; }
+.wbtn:hover { background: var(--accent-soft); }
+.wbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wbtn.off .banner { opacity: 0.3; filter: grayscale(1); }
+.wbtn.off .ag-nm { color: var(--muted); font-weight: 600; }
+.wbtn[aria-pressed="true"] .ag-nm::before { content: '✓ '; color: var(--accent); }
+.ag-slot.many .wbtn .banner { display: none; }
+.ag-slot.many .wbtn { flex: 0 0 auto; padding: 1px 3px; }
+#wins-dlg .dhead .num { margin-left: auto; margin-right: 12px; }
+/* label / value rows (after this career, the planner's numbers) */
+.kv { display: grid; grid-template-columns: minmax(0, max-content) auto; gap: 4px 18px; margin: 0; align-items: baseline; }
+.kv dt { color: var(--muted); font-size: 0.9rem; }
+.kv dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.kv dd.big { font-size: 1.35rem; }
+@media (max-width: 620px) { .kv { grid-template-columns: minmax(0, 1fr); gap: 0 0; } .kv dd { margin-bottom: 6px; } }
+/* a career as portraits: trainee, then her two parents */
+.cfaces { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.cface { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 0.88rem; }
+.cface.tr { font-weight: 800; }
+.cface .her { font-family: var(--font-data); font-size: 0.68rem; border: 1px solid var(--accent); color: var(--ink); border-radius: 3px; padding: 0 4px; }
+.cfaces .cwith { color: var(--muted); font-size: 0.82rem; }
+.rbmain .dtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.pickwhy { margin: 6px 0 0; }
+.altn { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.82rem; color: var(--muted); padding-left: 32px; }
+.tsum { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+#sim-top { min-width: 0; }
+#sim-top .simulation { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
+#sim-wins { justify-self: start; }
