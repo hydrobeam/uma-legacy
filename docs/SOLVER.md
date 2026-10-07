@@ -255,6 +255,10 @@ The best next career from the veterans a player has: trainee, two veterans as pa
 Same files as deck mode, plus `legacies`; the skills- and deck-mode fields apply (`owned`/`exclude`/`exclude_outfits`
 choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of the new veteran's sparks in the look ahead; other loop fields are unused).
 `val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
+Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
+as the page's solver worker runs them: a job's fully checked decks are kept per setup (everything but the pool and the
+places) and bound the later jobs' searches, never the searches that feed the rollout's cache, so every output equals
+the job run alone.
 
 | Field | Meaning | Default |
 |---|---|---|
