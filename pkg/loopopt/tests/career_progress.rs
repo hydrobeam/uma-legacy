@@ -80,3 +80,46 @@ fn policy_compares_both_choices() {
     }
     assert!(policy["continuation_floor"].as_f64().unwrap() >= 0.0017);
 }
+
+/// The planner's pick as a rollout on the weak pool (career_U5 = career_U4 with `rollout: 6`): reproducible, the corner
+/// tables equal a direct exact evaluation, and the pick is the one the simulations were run from (DESIGN: Inari One
+/// with parents 2 and 6, 1 in 835, over the 1-in-587 career).
+#[test]
+fn rollout_on_weak_pool() {
+    let job: Value = serde_json::from_str(&fs::read_to_string("jobs/career_U5.json").unwrap()).unwrap();
+    let (a, b) = (run(&job), run(&job));
+    let (ra, rb) = (&a["rollout"], &b["rollout"]);
+    assert!(ra["error"].is_null(), "{}", ra);
+    let qs = |r: &Value| r["candidates"].as_array().unwrap().iter().map(|c| c["q"].as_f64().unwrap().to_bits()).collect::<Vec<_>>();
+    assert_eq!(ra["pick"], rb["pick"]);
+    assert_eq!(qs(ra), qs(rb), "Q is reproducible to the bit");
+    assert!(ra["table_check"].as_f64().unwrap() < 1e-10, "table value vs direct: {}", ra["table_check"]);
+    let cands = ra["candidates"].as_array().unwrap();
+    assert_eq!(cands.len(), 6);
+    let pick = ra["pick"].as_u64().unwrap() as usize;
+    let c = &cands[pick];
+    assert_eq!(c["trainee"]["id"], 1034);
+    assert_eq!(c["parents"], json!([2, 6]));
+    assert!(ra["differs"] == true && c["chosen"] == true);
+    assert!((c["q"].as_f64().unwrap() - 567.98).abs() < 0.01, "Q {}", c["q"]);
+    let p_star = ra["p_star"].as_f64().unwrap();
+    assert!((ra["repeat_careers"].as_f64().unwrap() - 1.0 / p_star).abs() < 1e-9);
+    assert!((1.0 / p_star - 587.48).abs() < 0.01);
+    for (i, x) in cands.iter().enumerate() {
+        let (q, p, ps) = (x["q"].as_f64().unwrap(), x["p_all"].as_f64().unwrap(), x["p_all_sets"].as_f64().unwrap());
+        assert!((p - ps).abs() < 1e-12 * p.max(1e-300) + 1e-15, "the landed-set distribution gives the career's odds");
+        assert!(p <= p_star * (1.0 + 1e-12) && x["gain"].as_f64().unwrap() >= 1.0 - 1e-12);
+        // f >= p* for every failed set, so Q <= 1 + (1 - p) / p*
+        assert!(q >= 1.0 && q <= 1.0 + (1.0 - p) / p_star + 1e-9);
+        assert!(i == pick || q >= c["q"].as_f64().unwrap());
+    }
+    assert_eq!(ra["choice"]["trainee"]["id"], 1034);
+    assert!(ra["choice"]["schedule"].is_array() && ra["choice"]["outcome_sets"].is_array());
+    let (lb, pbar) = (ra["lower_bound"].as_f64().unwrap(), ra["p_bar"].as_f64().unwrap());
+    assert!(pbar >= p_star && lb <= 1.0 / p_star && (lb - (1.0 + (1.0 - p_star) / pbar)).abs() < 1e-9);
+    assert!(ra["p_bar_proven"] == true && ra["shortlist_proven"] == true && ra["candidates_proven"] == true);
+    // the main results are untouched by the rollout
+    let mut plain = job.clone(); plain.as_object_mut().unwrap().remove("rollout");
+    let p0 = run(&plain);
+    assert_eq!(p0["results"], a["results"]);
+}

@@ -35,6 +35,7 @@
 //! the best setup it leaves, repeated). P(at least n-1) is tracked over the same setups, today's best-all career as
 //! its floor.
 use super::*;
+mod rollout;
 
 #[derive(Deserialize, Clone, Default)]
 pub(crate) struct Ancestor {
@@ -62,6 +63,12 @@ pub(crate) struct Legacy {
     #[serde(skip)] mix: Option<[f64; 3]>,
 }
 fn d_top() -> usize { 5 }
+/// The work budget of one career search (units as in the per-uma search: 2 per deck node tested, 200 per exact
+/// scoring, 10,000 per deck search). Measured need for a proven result (2026-10-07, synthetic pools of 12-400
+/// veterans, default 8 targets): 10M-85M, the most at 200 veterans (12 s native); the loop planner's 30M
+/// (EXACT_BUDGET) left pools of 12, 100 and 200 veterans unproven with the same picks. 300M leaves 3.5x headroom
+/// and stops a runaway search after about a minute of native work. `EXACT_BUDGET` in the environment overrides it.
+const CAREER_BUDGET: usize = 300_000_000;
 #[derive(Deserialize)]
 struct CareerPolicy {
     stay_trainee: u32,
@@ -87,6 +94,8 @@ struct CareerJob {
     #[serde(default)] p_minus1_now: Option<f64>,
     /// Compare rerolling a particular career with using the new parent, over an equal continuation horizon.
     #[serde(default)] policy: Option<CareerPolicy>,
+    /// the planner's pick as a one-step rollout over this many best careers (0: off; `rollout` in the output)
+    #[serde(default)] rollout: usize,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
@@ -131,8 +140,10 @@ fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
     (if finite && remaining.is_finite() { Some(remaining) } else { None }, two_runs)
 }
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x.
-fn interp(v: &[f64], x: &[f64]) -> f64 {
-    let mut cur = v.to_vec();
+fn interp(v: &[f64], x: &[f64]) -> f64 { interp_in(v, x, &mut vec![]) }
+/// `interp` with a buffer the caller keeps (the rollout evaluates tables millions of times)
+fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
+    cur.clear(); cur.extend_from_slice(v);
     for (k, &xk) in x.iter().enumerate() {
         let b = 1usize << k;
         for c in 0..cur.len() { if c & b == 0 { cur[c] = cur[c] * (1.0 - xk) + cur[c | b] * xk; } }
@@ -141,7 +152,13 @@ fn interp(v: &[f64], x: &[f64]) -> f64 {
 }
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
-struct Solved { found: Vec<Found>, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
+/// A trainee's fully checked deck: the chances it was found at (job-target order), its exact value there before the
+/// spark scale (the best of every legal deck, under the EXACT_RHO certificate), the deck. Its value bounds every deck
+/// at other chances through `rise`.
+#[derive(Clone)]
+struct Ref { q: Vec<f64>, val: f64, sel: Sel }
+enum DeckRes { NoDeck, Bounded, Done(f64, Sel, bool) }
+struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
 
 struct Env<'a> {
     d: &'a Data, sj: &'a SkillJob, model: Model<'a>, ew0: Vec<Vec<Vec<f64>>>, uncv: Vec<usize>, fixed_t: Vec<usize>, ntar: usize, nu: usize,
@@ -198,26 +215,87 @@ impl<'a> Env<'a> {
         (j, ext)
     }
 
+    /// How far trainee t's best exact value (before the spark scale) can rise from chances q0 to q. A target the
+    /// outfit lacks lands with GG g + GW (1 - g - n (1 - e)(1 - q_k)) per chain state (g: gold hinted, n: no hint,
+    /// e: her own event hint chance); from q0 to q it grows at most by (1 - (1 - e)(1 - q_k)) / (1 - (1 - e)(1 - q0_k))
+    /// (n = 1, g = 0), and not at all when q_k <= q0_k or the outfit has the skill. P(all) is a sum of products of
+    /// these factors, so it grows at most by the product, for every deck: E(q) <= E(q0) x max over outfits of it.
+    fn rise(&self, t: usize, q: &[f64], q0: &[f64]) -> f64 {
+        self.sts0[t].iter().zip(&self.ew0[t]).map(|(st, ew)| self.uncv.iter().enumerate().map(|(k, &i)| {
+            if st[k] > 0 || q[i] <= q0[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - q[i])) / (1.0 - (1.0 - ew[k]) * (1.0 - q0[i])) }
+        }).product::<f64>()).fold(0.0f64, f64::max)
+    }
+    /// The inheritance chances, carriers and spark scale C of trainee t with parents a and b.
+    fn lineage(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, Vec<i32>, f64) {
+        let (q, nc) = inherit(&self.slots(p, t, a, b), self.ntar);
+        let (su, sf) = self.scale(&nc);
+        let c = su.iter().chain(&sf).product::<f64>();
+        (q, nc, c)
+    }
+    /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
+    /// product value at each target's best possible deck odds (None: no legal deck odds for her).
+    fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
+        let (dw, dg) = self.dmax[t].clone()?;
+        self.set_trainee(t, q);
+        let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, &dw, &dg)).fold(0.0f64, f64::max);
+        Some(EXACT_RHO * c * self.model.fixed_factor() * pv)
+    }
+    /// Trainee t's best deck at the chances already folded in (`set_trainee`), as the per-uma search finds it: the best
+    /// product deck, then every deck whose product value times EXACT_RHO reaches the best exact value, scored exactly
+    /// (`upper_na` filters). `c` the spark scale, `th` the value (C x E) the career must beat: below it the search stops
+    /// after the product deck. `starts`: decks scored first (a higher start leaves fewer decks to check). Counts the
+    /// exact scorings in `scored`, its work in `self.work`; `full` is false when the work budget ran out.
+    fn best_deck(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
+        let ntar = self.ntar; let uid = self.d.umas[t].id;
+        let n0 = self.space.nodes.get();
+        let (r, _) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+        self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
+        let Some((pv, sel)) = r.into_iter().next() else { return DeckRes::NoDeck };
+        // the candidate's own ceiling from its best product deck
+        if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
+        let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
+        let mut best = (score(self, &sel), sel); *scored += 1; self.work += 200;
+        for s in starts { let x = score(self, s); *scored += 1; self.work += 200; if x > best.0 { best = (x, (*s).clone()); } }
+        let mut full = false;
+        if self.work <= self.budget {
+            let n0 = self.space.nodes.get();
+            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, EXACT_RHO, EXACT_CAP);
+            self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
+            full = !over;
+            more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+            if full { for (v, s) in more {
+                if EXACT_RHO * v * (1.0 + 1e-9) < best.0 { break; }
+                if self.work > self.budget { full = false; break; }
+                if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler { continue; }
+                let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+                if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) { self.work += 25; if ub[0] * (1.0 + 1e-9) < best.0 { continue; } }
+                let x = score(self, &s); *scored += 1; self.work += 200;
+                if x > best.0 { best = (x, s); }
+            } }
+        }
+        DeckRes::Done(best.0, best.1, full)
+    }
+
     /// The best careers: trainees from `trainees` (uma indices), two legacies of `p` as parents (all of `fix` among
     /// them, at most one borrowed), each with her best deck; `top` of them, one per trainee when `per_trainee`.
+    /// Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions); their chances
+    /// are recomputed when one is solved (the same numbers, so the same results).
     fn solve(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], per_trainee: bool, top: usize) -> Solved {
-        let d = self.d; let ntar = self.ntar;
+        let d = self.d;
         self.work = 0;   // each search has its own work budget
-        struct Cand { t: usize, a: usize, b: usize, ub: f64, c: f64, q: Vec<f64> }
+        struct Cand { ub: f64, t: u16, a: u16, b: u16 }
         let mut cands: Vec<Cand> = vec![];
         let nl = p.me.len();
+        assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize);
         for &t in trainees {
             let tid = d.umas[t].id;
-            let Some((dw, dg)) = self.dmax[t].clone() else { continue };
+            if self.dmax[t].is_none() { continue; }
             for a in 0..nl { for b in a + 1..nl {
                 let (ca, cb) = (p.me[a].chara, p.me[b].chara);
                 if ca == cb || ca == tid || cb == tid || (p.borrowed[a] && p.borrowed[b]) || !fix.iter().all(|&f| f == a || f == b) { continue; }
-                let (q, nc) = inherit(&self.slots(p, t, a, b), ntar);
-                let (su, sf) = self.scale(&nc);
-                let c = su.iter().chain(&sf).product::<f64>();
-                self.set_trainee(t, &q);
-                let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, &dw, &dg)).fold(0.0f64, f64::max);
-                cands.push(Cand { t, a, b, ub: EXACT_RHO * c * self.model.fixed_factor() * pv, c, q });
+                let (q, _, c) = self.lineage(p, t, a, b);
+                let ub = self.ceiling(t, &q, c).unwrap();
+                cands.push(Cand { ub, t: t as u16, a: a as u16, b: b as u16 });
             } }
         }
         cands.sort_by(|x, y| y.ub.partial_cmp(&x.ub).unwrap());
@@ -228,67 +306,36 @@ impl<'a> Env<'a> {
         let (mut n_solved, mut n_bounded, mut n_scored) = (0usize, 0usize, 0usize);
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
-        let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| if !per_trainee { kth(done) } else { done.iter().find(|x| cands[x.1].t == t).map_or(kth(done), |x| x.0.max(kth(done))) };
-        // How far trainee t's best exact value (before the spark scale) can rise from chances q0 to q. A target the
-        // outfit lacks lands with GG g + GW (1 - g - n (1 - e)(1 - q_k)) per chain state (g: gold hinted, n: no hint,
-        // e: her own event hint chance); from q0 to q it grows at most by (1 - (1 - e)(1 - q_k)) / (1 - (1 - e)(1 - q0_k))
-        // (n = 1, g = 0), and not at all when q_k <= q0_k or the outfit has the skill. P(all) is a sum of products of
-        // these factors, so it grows at most by the product, for every deck: E(q) <= E(q0) x max over outfits of it.
-        let rise = |env: &Env, t: usize, q: &[f64], q0: &[f64]| -> f64 {
-            env.sts0[t].iter().zip(&env.ew0[t]).map(|(st, ew)| env.uncv.iter().enumerate().map(|(k, &i)| {
-                if st[k] > 0 || q[i] <= q0[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - q[i])) / (1.0 - (1.0 - ew[k]) * (1.0 - q0[i])) }
-            }).product::<f64>()).fold(0.0f64, f64::max)
-        };
-        // per trainee, her fully checked candidates: (candidate, exact best value before the spark scale, its deck)
-        let mut refs: Vec<Vec<(usize, f64, Sel)>> = vec![vec![]; d.umas.len()];
+        let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| if !per_trainee { kth(done) } else { done.iter().find(|x| cands[x.1].t as usize == t).map_or(kth(done), |x| x.0.max(kth(done))) };
+        // per trainee, her fully checked candidates (`Ref`: chances, exact best value before the spark scale, deck)
+        let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
         while next < cands.len() && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
             let ci = next; next += 1;
-            let (t, c) = (cands[ci].t, cands[ci].c);
+            let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
             let th = thr(&done, &cands, t);
             if cands[ci].ub * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
-            let rb = refs[t].iter().map(|r| c * r.1 * rise(self, t, &cands[ci].q, &cands[r.0].q)).fold(f64::INFINITY, f64::min);
+            let (q, _, c) = self.lineage(p, t, a, b);
+            let rb = refs[t].iter().map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
             if rb * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
-            let uid = d.umas[t].id;
-            self.set_trainee(t, &cands[ci].q);
-            let n0 = self.space.nodes.get();
-            let (r, _) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
-            self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
-            let Some((pv, sel)) = r.into_iter().next() else { continue };
-            // the candidate's own ceiling from its best product deck
-            if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
+            self.set_trainee(t, &q);
+            let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
+            let (val, sel, full) = match self.best_deck(t, c, th, &starts, &mut n_scored) {
+                DeckRes::NoDeck => continue,
+                DeckRes::Bounded => { n_bounded += 1; continue }
+                DeckRes::Done(v, sel, full) => (v, sel, full),
+            };
             n_solved += 1;
-            let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
-            let mut best = (score(self, &sel), sel); n_scored += 1; self.work += 200;
-            // her other checked candidates' decks are good starts (a higher start leaves fewer decks to check)
-            for r in &refs[t] { let x = score(self, &r.2); n_scored += 1; self.work += 200; if x > best.0 { best = (x, r.2.clone()); } }
-            let mut full = false;
-            if self.work <= self.budget {
-                let n0 = self.space.nodes.get();
-                let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, EXACT_RHO, EXACT_CAP);
-                self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
-                full = !over;
-                more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-                if full { for (v, s) in more {
-                    if EXACT_RHO * v * (1.0 + 1e-9) < best.0 { break; }
-                    if self.work > self.budget { full = false; break; }
-                    if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler { continue; }
-                    let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
-                    if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) { self.work += 25; if ub[0] * (1.0 + 1e-9) < best.0 { continue; } }
-                    let x = score(self, &s); n_scored += 1; self.work += 200;
-                    if x > best.0 { best = (x, s); }
-                } }
-            }
-            if full { refs[t].push((ci, best.0, best.1.clone())); } else { complete = false; }
-            let val = c * best.0;
-            if per_trainee { if let Some(i) = done.iter().position(|x| cands[x.1].t == t) { if done[i].0 >= val { continue; } done.remove(i); } }
+            if full { refs[t].push(Ref { q, val, sel: sel.clone() }); } else { complete = false; }
+            let val = c * val;
+            if per_trainee { if let Some(i) = done.iter().position(|x| cands[x.1].t as usize == t) { if done[i].0 >= val { continue; } done.remove(i); } }
             let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
-            done.insert(pos, (val, ci, best.1));
+            done.insert(pos, (val, ci, sel));
         }
         let next_bound = if next < cands.len() { cands[next].ub } else { 0.0 };
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
-        Solved { found: done.into_iter().take(top).map(|(val, ci, sel)| Found { t: cands[ci].t, a: cands[ci].a, b: cands[ci].b, val, ub: cands[ci].ub, sel }).collect(),
-                 cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven }
+        Solved { found: done.into_iter().take(top).map(|(val, ci, sel)| Found { t: cands[ci].t as usize, a: cands[ci].a as usize, b: cands[ci].b as usize, val, ub: cands[ci].ub, sel }).collect(),
+                 refs, cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven, work: self.work }
     }
 
     /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
@@ -362,6 +409,24 @@ impl<'a> Env<'a> {
                "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "schedule": sched, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
     }
 
+    /// Corner table of trainee t with deck `sel`: per outfit, P(all) with every spark-generation scale 1 at the 2^nu
+    /// points q_k = 1 - (1 - q0_k) x_k, x_k in {0, 1} (index bit k = uncertain target k at x_k = 1). Derived: q_k enters
+    /// every landing factor only through (1 - e)(1 - q_k), affinely, and P(all) per outfit is a sum of products with
+    /// one factor per target, so it is multilinear in x and `interp` at any x in [0, 1]^nu gives it exactly.
+    fn corners(&mut self, t: usize, sel: &Sel, q0: &[f64]) -> Vec<Vec<f64>> {
+        let (nu, ntar) = (self.nu, self.ntar);
+        let no = self.model.n_outfits(t);
+        let mut corners = vec![vec![0.0f64; 1 << nu]; no];
+        for c in 0..(1usize << nu) {
+            let mut q = q0.to_vec();
+            for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
+            self.set_trainee(t, &q);
+            let (_, ext) = self.exact(t, sel, &vec![6; ntar], false, false);
+            for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
+        }
+        corners
+    }
+
     /// Joint distribution of full target sets, including guaranteed gold generation.
     fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
         let su = &ext.sets[(outfit << self.nu)..((outfit + 1) << self.nu)];
@@ -377,6 +442,13 @@ impl<'a> Env<'a> {
         ps
     }
 
+    /// The veteran career (t, a, b) leaves, before her result is known: trainee t, a spark of every target with stars
+    /// drawn from the rank mix (`star_dist`), her schedule's win chances `wp`, parents a and b.
+    fn veteran(&self, legs: &[Legacy], t: usize, a: usize, b: usize, wp: Vec<f64>) -> Legacy {
+        let anc = |l: &Legacy| Ancestor { chara: l.chara, sparks: l.sparks.clone(), wins: l.wins.clone(), pinks: l.pinks.clone() };
+        Legacy { chara: self.d.umas[t].id, borrowed: false, sparks: self.sj.targets.iter().map(|x| (x.group, 2)).collect(), wins: vec![], pinks: vec![],
+            parents: vec![anc(&legs[a]), anc(&legs[b])], win_p: wp, mix: Some(self.sj.star_dist) }
+    }
     /// The next-step lookahead for career f (module notes).
     fn lookahead(&mut self, p: &Pool, legs: &[Legacy], f: &Found, p_now: f64, p_minus1_now: f64, policy: bool) -> Value {
         let d = self.d; let ntar = self.ntar;
@@ -391,10 +463,7 @@ impl<'a> Env<'a> {
         // the new veteran: this trainee, every target carried (stars from the rank mix), her schedule's win chances, the
         // career's parents as her parents
         let (_, wp) = self.schedule(p, t, a, b);
-        let anc = |l: &Legacy| Ancestor { chara: l.chara, sparks: l.sparks.clone(), wins: l.wins.clone(), pinks: l.pinks.clone() };
-        let v = Legacy { chara: d.umas[t].id, borrowed: false, sparks: self.sj.targets.iter().map(|x| (x.group, 2)).collect(), wins: vec![], pinks: vec![],
-            parents: vec![anc(&legs[a]), anc(&legs[b])], win_p: wp, mix: Some(self.sj.star_dist) };
-        let mut legs2 = legs.to_vec(); legs2.push(v); let vi = legs2.len() - 1;
+        let mut legs2 = legs.to_vec(); legs2.push(self.veteran(legs, t, a, b, wp)); let vi = legs2.len() - 1;
         let p2 = self.pool(&legs2);
         let owned = self.owned.clone();
         let next = self.solve(&p2, &[vi], &owned, true, 4);
@@ -442,7 +511,7 @@ impl<'a> Env<'a> {
         let mut by_x = vec![(0.0f64, 0.0f64); ntar + 1];   // per number landed: (P, P where she improves)
         let mut check = 0.0f64;
         if stars_exact && !policy {
-            let nu = self.nu; let w = self.sj.star_dist;
+            let w = self.sj.star_dist;
             // per setup: per outfit the corner values (scale 1), the new veteran's affinity, the carriers without her
             struct Lin { corners: Vec<Vec<f64>>, a_v: f64, nc0: Vec<i32> }
             let mut lins = vec![];
@@ -452,15 +521,7 @@ impl<'a> Env<'a> {
                 let a_v = sl[iv].rel + sl[iv].race;
                 let mut sl0 = sl.clone(); for k in 0..ntar { sl0[iv].stars[k] = 0; } sl0[iv].mix = None;
                 let (q0, nc0) = inherit(&sl0, ntar);
-                let no = self.model.n_outfits(s.t);
-                let mut corners = vec![vec![0.0f64; 1 << nu]; no];
-                for c in 0..(1usize << nu) {
-                    let mut q = q0.clone();
-                    for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
-                    self.set_trainee(s.t, &q);
-                    let (_, ext) = self.exact(s.t, &s.sel, &vec![6; ntar], false, false);
-                    for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
-                }
+                let corners = self.corners(s.t, &s.sel, &q0);
                 // the check: every target at 2 stars, against a direct evaluation
                 let mut sl2 = sl0.clone(); for k in 0..ntar { sl2[iv].stars[k] = 2; }
                 let (q2, nc2) = inherit(&sl2, ntar);
@@ -577,10 +638,11 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         Some((dw, dg))
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
-    let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(EXACT_BUDGET);
+    let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0 };
     let pool = env.pool(legs);
     let sv = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
+    if std::env::var("CAREER_WORK").is_ok() { eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven); }
     if sv.cands == 0 { return json!({"error": "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed."}); }
     // the race schedule only for the best career (the one the page shows; each takes a schedule search)
     let results: Vec<Value> = sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect();
@@ -605,6 +667,39 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                 out["policy"] = json!({"error": "No legal reroll career found for those parents."});
             }
         }
+    }
+    if cj.rollout > 0 && !sv.found.is_empty() {
+        let t_r = Instant::now();
+        let k = cj.rollout;
+        out["rollout"] = if ntar > 12 || nu > 10 { json!({"error": "The rollout takes at most 12 targets, 10 of them not guaranteed by the scenario."}) } else {
+            // the K best careers whoever trains (the job's trainees and fixed parents respected)
+            let own;
+            let rsv: &Solved = if !cj.per_trainee && cj.top >= k { &sv } else { own = env.solve(&pool, &cj.fix, &trainees, false, k); &own };
+            let mut cache = rollout::Cache::new(n);
+            cache.absorb(&mut env, &rsv.refs);
+            // today's best career over everything: the floor of every next career, and what repeating it costs
+            let open = cj.fix.is_empty() && trainees.len() == env.owned.len();
+            let (p_star, from, p_proven) = match cj.p_now {
+                Some(x) => (x.max(rsv.found[0].val), "p_now", Value::Null),
+                None if open => (rsv.found[0].val, "candidates", json!(rsv.proven)),
+                None => { let all = env.owned.clone(); let b = env.solve(&pool, &[], &all, false, 1); cache.absorb(&mut env, &b.refs);
+                    (b.found.first().map_or(0.0, |f| f.val).max(rsv.found[0].val), "search", json!(b.proven)) }
+            };
+            let cands = &rsv.found[..k.min(rsv.found.len())];
+            let (rows, pick, sl_proven, check) = env.rollout(&pool, legs, cands, p_star, &mut cache);
+            let (pbar, pbar_t, pbar_proven) = rollout::p_bar_cached(&mut env, v);
+            let list: Vec<Value> = cands.iter().zip(rows).enumerate().map(|(i, (f, row))| {
+                let mut r = env.report(&pool, f, false);
+                if let (Some(o), Some(x)) = (r.as_object_mut(), row.as_object()) { for (key, val) in x { if key != "p_all" { o.insert(key.clone(), val.clone()); } } o.insert("chosen".into(), json!(pick == Some(i))); }
+                r
+            }).collect();
+            let choice = pick.map(|i| env.report(&pool, &cands[i], true));
+            json!({"k": k, "shortlist": rollout::SHORTLIST, "pick": pick, "differs": pick.map_or(false, |i| i != 0), "choice": choice, "candidates": list,
+                   "p_star": p_star, "repeat_careers": 1.0 / p_star, "p_star_from": from, "p_star_proven": p_proven,
+                   "p_bar": pbar, "p_bar_trainee": pbar_t, "p_bar_proven": pbar_proven, "lower_bound": 1.0 + (1.0 - p_star) / pbar,
+                   "candidates_proven": rsv.proven, "shortlist_proven": sl_proven, "decks": cache.n_decks(), "deck_searches": cache.searches, "table_check": check,
+                   "timing_s": t_r.elapsed().as_secs_f64()})
+        };
     }
     if cj.lookahead { if let Some(f) = sv.found.first() {
         // today's best career over everything (the floor of what the next career can do)
