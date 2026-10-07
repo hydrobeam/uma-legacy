@@ -931,19 +931,23 @@ const TESTS = {
     check('career: Compare pressed again while the look ahead runs restarts the comparison and runs the look ahead again to the end', aheadBusy
       && await aheadJobs() === la0 + 1 && await pg.locator('#ahead-sec .ahead').count() === 1, `look ahead running: ${aheadBusy}, look ahead jobs +${await aheadJobs() - la0}`);
     check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
-    // her G1 wins: the schedule window in edit mode, each race she runs a button; an edit after Compare marks it out of
-    // date, nothing is saved to the pool, and the focus goes back to the wins button
+    // her G1 wins: the G1 wins editor (each win in its slot; a click removes it, an empty slot's menu adds one); an edit
+    // after Compare marks it out of date, nothing is saved to the pool, and the focus goes back to the wins button
     const winsN = async () => { const m = (await pg.textContent('#sim-wins')).match(/^(No|\d+) G1 win/); return m[1] === 'No' ? 0 : +m[1]; };
     const pj0 = await policyJobs(), w0 = await winsN();
-    await pg.click('#sim-wins'); await dialog(pg, 'sched-dlg');
-    const wb0 = pg.locator('#sched-dlg .ag-race.wbtn').first(), wk = await wb0.getAttribute('data-k'), wp = await wb0.getAttribute('aria-pressed');
-    const simRaces = await pg.locator('#sched-dlg .ag-race.wbtn').count();
+    await pg.click('#sim-wins'); await dialog(pg, 'wins-dlg');
+    const wb0 = pg.locator('#wins-dlg .ag-race.wbtn').first(), wname = (await wb0.getAttribute('aria-label')).replace(/, won: remove$/, '');
+    const nShown = await pg.locator('#wins-dlg .ag-race.wbtn').count();
     await wb0.click();
-    const wb1 = pg.locator(`#sched-dlg .wbtn[data-k="${wk}"]`);
-    check('career: the entered veteran\'s G1 wins open on the schedule window with her races; a click toggles one and keeps the focus', simRaces > 0
-      && await pg.locator('#sched-dlg .agenda .ag-year').count() === 3 && /G1 wins/.test(await pg.textContent('#sched-title'))
-      && await wb1.getAttribute('aria-pressed') === String(wp !== 'true') && await wb1.evaluate(e => e === document.activeElement)
-      && Math.abs(await winsN() - w0) === 1 && (await pg.textContent('#sched-dlg .scount')).startsWith(String(await winsN() || 'No')), `races ${simRaces}, wins ${w0} -> ${await winsN()}`);
+    const freed = await pg.evaluate(() => document.activeElement.matches('#wins-dlg .ag-add') && document.activeElement.getAttribute('aria-label'));
+    check('career: the entered veteran\'s G1 wins open on the calendar, one per slot; clicking one removes it, its slot offers to add one, the count follows', nShown === w0
+      && await pg.locator('#wins-dlg .agenda .ag-year').count() === 3 && /G1 wins/.test(await pg.textContent('#wins-title')) && /: add a G1 win$/.test(freed || '')
+      && await winsN() === w0 - 1 && (await pg.textContent('#wins-count')).startsWith(String(w0 - 1 || 'No')), `wins ${w0} -> ${await winsN()}, ${freed}`);
+    await pg.keyboard.press('Enter');
+    const picks = await pg.$$eval('#wins-dlg .wmenu:not([hidden]) .wpick', l => l.map(e => e.textContent));
+    await pg.locator('#wins-dlg .wpick', { hasText: wname }).click();
+    check('career: … the empty slot\'s menu lists the G1s held then (her schedule\'s first, with its odds); a pick puts the win back in that slot', picks[0]?.startsWith(wname) && /her schedule · \d+% win/.test(picks[0])
+      && await winsN() === w0 && await pg.evaluate(n => document.activeElement.getAttribute('aria-label') === n + ', won: remove', wname), picks.join(' | '));
     check('career: … which marks the comparison out of date without running another, and saves nothing to your veterans', /changed her since/.test(await pg.textContent('#sim-result'))
       && await policyJobs() === pj0 && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
     await pg.keyboard.press('Escape');
@@ -973,15 +977,19 @@ const TESTS = {
     await pg.locator('#add-pop .addsk').first().click();
     check('career: … which comes back at 2 stars', await nsk() === n0 && /2 stars/.test(await pg.locator('#vet-0 .vnode.self .vskb', { hasText: offered[0] }).getAttribute('aria-label')));
     await done();
-    // a pool veteran's G1 wins: every G1 on the calendar; a race held in Classic and Senior is one race
+    // a pool veteran's G1 wins: the same editor; Arima Kinen (Classic and Senior) is one race, moved from one turn to the other
     await pg.locator('#vet-0 .vnode.self .vwins').click(); await dialog(pg, 'wins-dlg');
-    const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'), wasWon = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins.includes(22));
-    const nRaces = await pg.locator('#wins-dlg .wbtn').count();
-    await arima.first().click();
-    const states = await arima.evaluateAll(l => l.map(b => b.getAttribute('aria-pressed')));
-    check('career: a veteran\'s G1 wins: every G1 at its turns; clicking Arima Kinen toggles both of its turns and saves', nRaces > 34 && states.length === 2 && states.every(x => x === String(!wasWon))
-      && await pg.evaluate(w => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins.includes(22) === w, !wasWon), states.join(','));
-    await arima.last().click(); await pg.locator('#wins-dlg .dclose').click(); await done();
+    const savedWins = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins);
+    const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'), had = (await savedWins()).includes(22), n0w = (await savedWins()).length;
+    if (had) { await arima.click(); }
+    const gone = !(await arima.count()) && (await savedWins()).length === n0w - (had ? 1 : 0);
+    await pg.locator('#wins-dlg .ag-add[aria-label="Senior Year, Late Dec: add a G1 win"]').click();
+    await pg.locator('#wins-dlg .wpick', { hasText: 'Arima Kinen' }).click();
+    check('career: a veteran\'s G1 wins: a click removes Arima Kinen, the Senior Late Dec menu adds it back there, saved', gone && await arima.count() === 1
+      && /Late Dec/.test(await arima.evaluate(e => e.closest('.ag-slot').textContent)) && await arima.evaluate(e => e.closest('.ag-year').classList.contains('y2'))
+      && (await savedWins()).includes(22) && /\d+ G1 win/.test(await pg.textContent('#wins-count')), `had ${had}`);
+    if (!had) await arima.click();
+    await pg.locator('#wins-dlg .dclose').click(); await done();
     // parent 1: a new veteran, with the skills prompt
     await pg.locator('.pf').nth(0).getByRole('button', { name: 'Choose parent' }).click(); await dialog(pg, 'vpick-dlg');
     check('career: the parent picker lists your veterans', await pg.locator('#vp-list .vpt').count() === 12);

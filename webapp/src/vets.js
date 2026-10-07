@@ -78,23 +78,26 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
   }
   $('ask-dlg').showModal(); box.querySelector('.primary').focus();
 }
-// the G1 wins of one node (a pool veteran), on the schedule window's calendar: every G1 at its turns, click a race to
-// mark it won or not; saved on each click, and the page searches again when the dialog closes
+// the G1 wins of one node, on the schedule window's calendar (the editor in agenda.js): each win in its slot, click it to
+// remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
+// the page searches again when the dialog closes. opts (the veteran analysis' draft): {offer, info, hint, onEdit, onClose}
+// (see winsAgenda). nd.winAt {race index: turn} is where a win shows, for display only (the solver reads nd.wins).
 const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
-export function openWins(nd, who) {
+let winsClose = null;
+export function openWins(nd, who, opts = {}) {
+  const opener = document.activeElement;
   $('wins-title').textContent = 'G1 wins: ' + who;
-  $('wins-hint').textContent = 'Single-race G1s she won: click a race to mark it won or not won (faded). Each one she shares with a parent or the other parent adds 3 affinity.';
-  const box = $('wins-list'); box.textContent = '';
-  const cal = winsAgenda(allRaces(), (ix) => nd.wins.includes(ix), (ix) => {
-    const s = new Set(nd.wins); s.has(ix) ? s.delete(ix) : s.add(ix); nd.wins = [...s].sort((a, b) => a - b); persist();
-    $('wins-count').textContent = winsText(nd);
-  });
-  box.appendChild(cal.el);
-  $('wins-count').textContent = winsText(nd);
+  $('wins-hint').textContent = opts.hint || 'Single-race G1s she won. Click a win to remove it; click an empty slot (+) for the G1s held then. Each one she shares with a parent or the other parent adds 3 affinity.';
+  const count = () => { $('wins-count').textContent = winsText(nd); };
+  $('wins-list').replaceChildren(winsAgenda({ races: allRaces(), get: () => nd.wins, set: (w) => { nd.wins = w; }, at: () => (nd.winAt ||= {}),
+    offer: opts.offer, info: opts.info, onEdit: () => { count(); (opts.onEdit || persist)(); } }));
+  count();
+  // closing: the pool searches again; the focus goes back to the button that opened it (redrawn by then: found by its key)
+  winsClose = opts.onClose || (() => { const k = opener?.dataset?.k; changed(); const b = k && document.querySelector(`[data-k="${CSS.escape(k)}"]`); (b || (opener?.isConnected ? opener : null))?.focus(); });
   $('wins-dlg').showModal();
 }
-const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
-$('wins-dlg').addEventListener('close', () => changed());
+export const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
+$('wins-dlg').addEventListener('close', () => { const f = winsClose; winsClose = null; f && f(); });
 // "+" beside a node's sparks: the target skills she lacks, then the aptitudes she has no spark of
 const pop = $('add-pop'); let popFor = null;
 function closeAdd() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
@@ -153,8 +156,8 @@ export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
   sp.appendChild(add);
   return sp;
 }
-export function winsBtn(nd, who) {
-  const w = document.createElement('button'); w.type = 'button'; w.className = 'btn vwins';
+export function winsBtn(nd, who, key = '') {
+  const w = document.createElement('button'); w.type = 'button'; w.className = 'btn vwins'; if (key) w.dataset.k = key + ':wins';
   w.textContent = winsText(nd);
   w.title = 'G1 wins (race affinity): click to edit'; w.onclick = () => openWins(nd, who);
   w.setAttribute('aria-haspopup', 'dialog');

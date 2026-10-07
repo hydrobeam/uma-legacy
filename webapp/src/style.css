@@ -298,7 +298,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .sview { display: grid; gap: 10px; }
 .lacts { gap: 8px; }
 #sched-dlg, #wins-dlg { width: min(1480px, calc(100vw - 24px)); }   /* the same calendar, the same size */
-#sched-dlg .scount { margin-left: auto; margin-right: 12px; white-space: nowrap; }
 .agenda { --ag-h: max(420px, calc(100dvh - 250px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 900px) { .agenda { grid-template-columns: minmax(0, 1fr); } .agenda .ag-pre { display: none; } }   /* stacked: no blank Junior half-year */
 .ag-year { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
@@ -709,17 +708,23 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the career page's Support cards dialog: 8 tiles a row (the planner's rail fits 4); fewer on a narrow screen */
 .setdlg .cgroup .ctiles { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px 8px; }
 @media (max-width: 900px) { .setdlg .cgroup .ctiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
-/* G1 wins on the schedule window's calendar: each race a button; not won = faded banner, muted name */
+/* the G1 wins editor on the schedule window's calendar: a win is the schedule's cell as a button (click: remove); an empty
+   slot where a G1 is held is a button whose "+" shows on hover and focus (faint on touch screens); its menu sits under it */
+.winsed { position: relative; }
 .wbtn { border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; border-radius: 5px; }
 .wbtn:hover { background: var(--accent-soft); }
-.wbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.wbtn.off .banner { opacity: 0.3; filter: grayscale(1); }
-.wbtn.off .ag-nm { color: var(--muted); font-weight: 600; }
+.wbtn:focus-visible, .ag-add:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ag-slot.many .wbtn .banner { display: none; }
 .ag-slot.many .wbtn { flex: 0 0 auto; padding: 1px 3px; }
-/* names only there (no banner to fade): a won race also gets a tick and a tint */
-.ag-slot.many .wbtn[aria-pressed="true"] { background: var(--accent-soft); }
-.ag-slot.many .wbtn[aria-pressed="true"] .ag-nm::before { content: '✓ '; color: var(--accent); }
+.ag-add { flex: 1 1 auto; min-height: 0; width: 100%; border: 0; border-radius: 5px; background: none; color: var(--accent); font: inherit; font-size: 1.5rem; font-weight: 300; cursor: pointer; display: grid; place-items: center; }
+.ag-add span { opacity: 0; transition: opacity 0.12s; }
+.ag-add:hover, .ag-add[aria-expanded="true"] { background: var(--accent-soft); }
+.ag-add:hover span, .ag-add:focus-visible span, .ag-add[aria-expanded="true"] span { opacity: 1; }
+@media (hover: none) { .ag-add span { opacity: 0.35; } }
+.wmenu { width: max-content; min-width: 180px; padding: 8px; gap: 4px; }
+.wmenu .hint { font-size: 0.78rem; }
+.wpick { display: grid; justify-items: start; text-align: left; gap: 0; width: 100%; }
+.wpick small { color: var(--muted); font-weight: 500; font-size: 0.74rem; }
 #wins-dlg .dhead .num { margin-left: auto; margin-right: 12px; white-space: nowrap; }
 /* label / value rows (after this career, the planner's numbers) */
 .kv { display: grid; grid-template-columns: minmax(0, max-content) auto; gap: 4px 18px; margin: 0; align-items: baseline; }

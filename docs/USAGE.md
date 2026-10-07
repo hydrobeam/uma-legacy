@@ -78,8 +78,9 @@ better next careers." With every place set by hand, the career is just scored.
 
 Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
-she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the same Race schedule
-window, where a click on a race she runs marks it won or not; a not-won race is faded) and press **Compare**: it counts careers until one
+she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
+described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it counts careers until one
 lands every target for both choices, running this career again or using her in the next career, the same way for both
 (one more career, then the best setup it leaves, repeated), shows today's best and the next career with her (all
 targets, all but one), that next career as portraits (trainee, then her two parents, *her* marked) and its deck behind
@@ -110,5 +111,13 @@ bound, from the best odds any pool could give).
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
 re-import replaces earlier imports and keeps veterans made here. In every node: click a skill to cycle its stars
 1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a
-portrait to change who she is, the G1 button edits her wins on the schedule window's calendar (every G1 at its turns; a
-race held in Classic and Senior is one race, so either click toggles both), *Yours / Borrowed* marks a borrowed veteran.
+portrait to change who she is, the G1 button opens the G1 wins editor, *Yours / Borrowed* marks a borrowed veteran.
+
+The G1 wins editor (a veteran's, and the veteran analysis') is the schedule window's calendar with her wins on it: each
+win sits in its slot as a banner card, and a click removes it, leaving the slot empty. An empty slot where a G1 is held
+shows a **+** on hover or keyboard focus (faintly at all times on a touch screen); a click opens a menu of the G1s held
+at that turn, and picking one marks it won in that slot (Escape or a click elsewhere closes the menu). A race held in
+Classic and Senior, such as the Arima Kinen, is one race and one win: it shows once, at the turn it was picked at, else
+the turn her schedule runs it, else its first turn (an imported win carries no turn); the menu at its other turn offers
+to move it there. The turn is only for display; the planner reads which races she won. The count of wins is in the
+header; a veteran's edits are saved at once and the planner searches again when the editor closes.

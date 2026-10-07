@@ -17,7 +17,7 @@ import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, changeUma, askSkills,
-  newVet, importVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas } from './vets.js';
+  newVet, importVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport } from './umadump.js';
 
 const pct = (p) => p === 0 ? '0%' : (p * 100 >= 10 ? (p * 100).toFixed(0) : p * 100 >= 1 ? (p * 100).toFixed(1) : (p * 100).toFixed(2)) + '%';
@@ -186,7 +186,7 @@ function familyEl(k, r) {
     const pb = el('button', 'facebtn'); pb.type = 'button'; pb.append(umaAv(v.chara, v.outfit, 64)); pb.title = 'Choose another parent'; pb.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`);
     pb.onclick = () => openParentPicker(k);
     const nm = el('div', 'tnm'); nm.append(el('div', 'nm', umaName(v.chara)), el('div', 'sub', `Veteran #${i + 1}` + (v.src === 'hand' ? ', made here' : '')));
-    who.append(pb, nm, winsBtn(v, umaName(v.chara)));
+    who.append(pb, nm, winsBtn(v, umaName(v.chara), 'p' + k));
     n.append(who, sparksEl(v, 'p' + k));
   } else n.appendChild(el('p', 'tempty', vets.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'));
   const acts = el('div', 'row tacts');
@@ -204,7 +204,7 @@ function familyEl(k, r) {
       const b = el('button', 'facebtn'); b.type = 'button'; b.append(umaAv(g.chara || 0, g.outfit, 40));
       b.title = 'Change who she is'; b.setAttribute('aria-label', `Grandparent: ${umaName(g.chara)}. Change who she is`);
       b.onclick = () => changeUma(g, 'Grandparent');
-      who.append(b, el('div', 'nm', g.chara ? umaName(g.chara) : 'Unknown: pick her'), winsBtn(g, umaName(g.chara)));
+      who.append(b, el('div', 'nm', g.chara ? umaName(g.chara) : 'Unknown: pick her'), winsBtn(g, umaName(g.chara), `p${k}g${j}`));
       gn.append(who, sparksEl(g, `p${k}g${j}`));
       gk.appendChild(gn);
     });
@@ -321,15 +321,23 @@ function schedBtn(r) {
   b.id = 'sched-open'; b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;
 }
-// the veteran analysis' G1 wins: the same schedule window, each race she runs a button that marks it won or not (a race
-// held in Classic and Senior is one win saddle, so either running marks it)
+// the veteran analysis' G1 wins: the G1 wins editor of the pool (a win in its slot, click to remove; an empty slot lists the
+// G1s she could enter then). Her schedule's races keep their win odds in the turn bar; a win shows at the turn picked for
+// it, else the turn her schedule runs it. A race held in Classic and Senior is one win saddle (one race index).
 function openDraftWins(d, r) {
-  const ix = (row) => CAREER.races.indexOf(row.name || row.race);
-  openSched(schedOf(r), {
-    won: (row) => d.wins.includes(ix(row)),
-    toggle: (row) => { const i = ix(row); if (i < 0) return; const s = new Set(d.wins); s.has(i) ? s.delete(i) : s.add(i); d.wins = [...s].sort((a, b) => a - b); editDraft(); },
-    count: () => d.wins.length ? `${d.wins.length} G1 win${d.wins.length > 1 ? 's' : ''}` : 'No G1 wins' });
-  $('sched-dlg').addEventListener('close', () => $('sim-wins')?.focus(), { once: true });   // the button was redrawn by the edits
+  const rows = r.schedule || [], runs = new Map(), can = new Map();
+  for (const w of rows) {
+    const ix = CAREER.races.indexOf(w.name || w.race); if (ix < 0) continue;
+    if (!can.has(w.turn)) can.set(w.turn, []); can.get(w.turn).push(ix);
+    if (w.run !== false && !runs.has(ix)) runs.set(ix, { turn: w.turn, cell: w.cells[0] });
+  }
+  const parentWon = (ix) => d.parents.some(p => p.wins.includes(ix));
+  openWins(d, umaName(d.chara), {
+    hint: 'The G1s she won in this career. Click a win to remove it; click an empty slot (+) for the G1s she could enter then (her schedule\'s first, with its win odds). Each one she shares with a parent adds 3 affinity.',
+    offer: rows.length ? (t) => can.get(t) || [] : null,
+    info: (ix) => { const x = runs.get(ix); return x || parentWon(ix) ? { ...(x || {}), parent: parentWon(ix) } : null; },
+    onEdit: editDraft,
+    onClose: () => $('sim-wins')?.focus() });   // the button was redrawn by the edits
 }
 // a career as portraits: trainee (outfit), then her two parents; parents: [{chara, outfit, label, her}]
 function facesEl(tid, outfit, parents, outfitLabel = null) {
@@ -384,7 +392,7 @@ function rolledOutcome(r) {
   const wins = scheduledRaces(r).filter(x => Math.random() < x.p).map(x => x.ix).sort((a, b) => a - b);
   return { sparks, wins };
 }
-function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r)); simulation.r = null; simulation.stale = false; compare(); }
+function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false; compare(); }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
 // can't be interrupted, so the worker goes (run() starts a new one). Returns whether the look ahead went with it.
 function cancelCompare() {
@@ -612,7 +620,7 @@ function vetCardEl(v, i) {
     const who = el('button', 'vwho'); who.type = 'button'; who.append(umaAv(nd.chara || 0, nd.outfit, kind === 'self' ? 40 : 28), el('span', 'vnm', nd.chara ? umaName(nd.chara) : 'Unknown parent'));
     who.title = `${label}: ${umaName(nd.chara)}. Click to change who she is`; who.setAttribute('aria-label', who.title);
     who.onclick = () => changeUma(nd, label);
-    head.append(who, winsBtn(nd, `${label}, ${umaName(nd.chara)}`));
+    head.append(who, winsBtn(nd, `${label}, ${umaName(nd.chara)}`, key));
     n.append(head, sparksEl(nd, key));
     return n;
   };
