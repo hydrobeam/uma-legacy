@@ -1177,6 +1177,22 @@ pub fn cli_main() {
             deck::apply_events_db(&mut v, &sk, &db);
         }
         let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
+        // several career jobs (same skills, cards and events files): run in turn in one process, one output line each,
+        // as the page's solver worker runs them (what one job leaves in the solver's caches the next can use)
+        if jobs.mode == "career" && args.len() > 3 {
+            for path in &args[2..] {
+                let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+                if let Some(ev) = v["events_file"].as_str() {
+                    let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ev).unwrap()).unwrap();
+                    deck::apply_events_db(&mut v, &sk, &db);
+                }
+                let t0 = Instant::now();
+                let mut out = deck::run_career(&d, &sk, &cr, &v);
+                out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
+                println!("{}", out);
+            }
+            return;
+        }
         let t0 = Instant::now();
         let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
         out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());

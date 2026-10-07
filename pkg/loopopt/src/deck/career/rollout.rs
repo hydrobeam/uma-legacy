@@ -203,14 +203,7 @@ impl<'a> Env<'a> {
 /// page's searches on one setup pay for it once per solver instance
 pub(super) fn p_bar_cached(env: &mut Env, v: &Value) -> (f64, Option<u32>, bool) {
     thread_local! { static PBAR: std::cell::RefCell<Vec<(u64, (f64, Option<u32>, bool))>> = const { std::cell::RefCell::new(Vec::new()) }; }
-    let mut key = v.clone();
-    if let Some(o) = key.as_object_mut() {
-        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode"] { o.remove(k); }
-    }
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    key.to_string().hash(&mut h);
-    let fp = h.finish();
+    let fp = setup_fp(v);
     if let Some(x) = PBAR.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1)) { return x; }
     let (p, t, proven) = env.p_bar();
     let x = (p, t.map(|t| env.d.umas[t].id), proven);

@@ -139,6 +139,26 @@ fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
     }
     (if finite && remaining.is_finite() { Some(remaining) } else { None }, two_runs)
 }
+/// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
+/// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
+pub(super) fn setup_fp(v: &Value) -> u64 {
+    let mut key = v.clone();
+    if let Some(o) = key.as_object_mut() {
+        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode"] { o.remove(k); }
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.to_string().hash(&mut h);
+    h.finish()
+}
+thread_local! {
+    /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
+    /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
+    /// there, which depend on the setup only (the job's trainees change no deck value: they only order plain pals).
+    static SEEN: std::cell::RefCell<Vec<(u64, Vec<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
+const SEEN_KEEP: usize = 256;
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x.
 fn interp(v: &[f64], x: &[f64]) -> f64 { interp_in(v, x, &mut vec![]) }
 /// `interp` with a buffer the caller keeps (the rollout evaluates tables millions of times)
@@ -169,6 +189,9 @@ struct Env<'a> {
     /// every earlier search's fully checked decks per trainee (same model, so each is a proven best at its chances):
     /// later searches bound with them (`rise`), but don't start from them, so ties resolve as in a lone search
     seen: Vec<Vec<Ref>>,
+    /// whether `solve` bounds with `seen`: off for the searches whose fully checked decks feed the rollout's cache
+    /// (its floors f(S) come from those decks, so they must not depend on what earlier searches proved)
+    use_seen: bool,
 }
 impl<'a> Env<'a> {
     fn uix(&self, id: u32) -> Option<usize> { self.d.umas.iter().position(|u| u.id == id) }
@@ -321,7 +344,8 @@ impl<'a> Env<'a> {
             let th = thr(&done, &cands, t);
             if cands[ci].ub * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
             let (q, _, c) = self.lineage(p, t, a, b);
-            let rb = refs[t].iter().chain(&self.seen[t]).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
+            let seen: &[Ref] = if self.use_seen { &self.seen[t] } else { &[] };
+            let rb = refs[t].iter().chain(seen).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
             if rb * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
@@ -337,7 +361,7 @@ impl<'a> Env<'a> {
             let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
             done.insert(pos, (val, ci, sel));
         }
-        for (t, rs) in refs.iter().enumerate() { self.seen[t].extend(rs.iter().cloned()); }
+        for (t, rs) in refs.iter().enumerate() { for r in rs { if !self.seen[t].iter().any(|x| x.val == r.val && x.q == r.q) { self.seen[t].push(r.clone()); } } }
         let next_bound = if next < cands.len() { cands[next].ub } else { 0.0 };
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
@@ -650,11 +674,22 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n] };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true };
+    // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
+    let fp = setup_fp(v);
+    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }
+    let keep = |env: &Env| SEEN.with(|c| {
+        let mut c = c.borrow_mut(); c.retain(|e| e.0 != fp);
+        c.push((fp, env.seen.iter().map(|rs| rs[rs.len().saturating_sub(SEEN_KEEP)..].to_vec()).collect()));
+        if c.len() > 4 { c.remove(0); }
+    });
     let pool = env.pool(legs);
+    // the rollout's cache takes the main search's decks when it uses its candidates (see `use_seen`)
+    env.use_seen = cj.rollout == 0;
     let sv = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
+    env.use_seen = true;
     if std::env::var("CAREER_WORK").is_ok() { eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven); }
-    if sv.cands == 0 { return json!({"error": "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed."}); }
+    if sv.cands == 0 { keep(&env); return json!({"error": "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed."}); }
     // the race schedule only for the best career (the one the page shows; each takes a schedule search)
     let results: Vec<Value> = sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect();
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
@@ -685,6 +720,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         out["rollout"] = if ntar > 12 || nu > 10 { json!({"error": "The rollout takes at most 12 targets, 10 of them not guaranteed by the scenario."}) } else {
             // the K best careers whoever trains (the job's trainees and fixed parents respected)
             let own;
+            env.use_seen = false;
             let rsv: &Solved = if !cj.per_trainee && cj.top >= k { &sv } else { own = env.solve(&pool, &cj.fix, &trainees, false, k); &own };
             let mut cache = rollout::Cache::new(n);
             cache.absorb(&mut env, &rsv.refs);
@@ -696,6 +732,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                 None => { let all = env.owned.clone(); let b = env.solve(&pool, &[], &all, false, 1); cache.absorb(&mut env, &b.refs);
                     (b.found.first().map_or(0.0, |f| f.val).max(rsv.found[0].val), "search", json!(b.proven)) }
             };
+            env.use_seen = true;
             let cands = &rsv.found[..k.min(rsv.found.len())];
             let (rows, pick, sl_proven, check) = env.rollout(&pool, legs, cands, p_star, &mut cache);
             let (pbar, pbar_t, pbar_proven) = rollout::p_bar_cached(&mut env, v);
@@ -729,6 +766,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         };
         out["lookahead"] = env.lookahead(&pool, legs, f, p_now, p_minus1_now, false);
     } }
+    keep(&env);
     out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
     out
 }
