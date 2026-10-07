@@ -16,6 +16,8 @@ words; this file is the reference for the controls.
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
 - *Borrow one friend's card*, *A separate deck
   for each uma* (on by default).
+- *Loop*: *3 or 4 umas* (default: 3-uma rotations and 4-uma loops ranked together), *3 umas* or *4 umas* only.
+  A 3-uma rotation holds at most three must-include umas.
 - The status line: searching; then "Checking the exact odds…" with the first result already shown (ranked by the
   odds with targets treated as independent); done ("Searched N decks and M loops in T s." and what the result was checked against:
   "nothing else does better" on exact odds, or every deck within 11% / 5% of it, by odds with targets treated as

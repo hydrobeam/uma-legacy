@@ -7,6 +7,7 @@ import { save } from './save.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
 import { fmtIn } from './results.js';
+import { paintSize } from './cards.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 function exportText() {
   const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
@@ -17,6 +18,7 @@ function exportText() {
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
+    loop: { any: '3-uma rotations or 4-uma loops', 3: '3-uma rotations only', 4: '4-uma loops only' }[state.loopSize || 'any'],
     game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', scenario: scenarioOf(state.scen).name,
   };
   let results = null;
@@ -50,7 +52,7 @@ export function initIO() {
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
-      paintRank(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
+      paintRank(); paintSize(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
       $('x-auto').checked = state.auto !== false; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }

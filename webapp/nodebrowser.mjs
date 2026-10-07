@@ -1026,6 +1026,24 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },
+  async loopsize(b) {
+    // the Loop setting: 3-uma rotations only, 4-uma loops only, or both (the default); saved, and sent to the solver
+    const pg = await open(b);
+    const members = () => pg.locator('.loop').first().locator('.mem').count();
+    const def = await members();
+    await pg.locator('#c-size [data-v="4"]').click(); await settle(pg);
+    const four = await members(), job4 = await pg.evaluate(() => window.__runs.at(-1).sizes);
+    await pg.locator('#c-size [data-v="3"]').click(); await settle(pg);
+    const three = await members(), job3 = await pg.evaluate(() => window.__runs.at(-1).sizes);
+    check('loop size: "4 umas" gives a 4-uma loop, "3 umas" a 3-uma rotation, and the job says so', four === 4 && three === 3 && JSON.stringify(job4) === '[4]' && JSON.stringify(job3) === '[3]', [def, four, three].join(' '));
+    check('loop size: the choice is saved', await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:settings')).common.loopSize === '3'));
+    await pg.locator('#c-size [data-v="any"]').click(); await settle(pg);
+    check('loop size: "3 or 4 umas" sends no restriction and returns the default result', await pg.evaluate(() => window.__runs.at(-1).sizes === undefined) && await members() === def);
+    check('loop size: one radio checked, one in the Tab order', await pg.evaluate(() => { const bs = [...document.querySelectorAll('#c-size button')];
+      return bs.filter(b => b.getAttribute('aria-checked') === 'true').length === 1 && bs.filter(b => b.tabIndex === 0).length === 1; }));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await pg.context().close();
+  },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);
