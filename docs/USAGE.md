@@ -64,13 +64,18 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 1★, keep hers, or none). Under the pedigree: the board (all targets land as sparks, all but one, targets expected);
 the deck as a race card (numbered, each card's art and what it gives toward the targets); the target skills (per
 target the chance the lineage passes it on, how many of the six carry it, the chance it lands as a spark) and the
-aptitude (pink) sparks' chances of being passed on; her race schedule by year (the G1s her parents won, which she
-runs to share them; career goals outlined; gate numbers mark which parent won it); and the look ahead, *After this
-career: move on or reroll?*: for each outcome (every target, all but one named target, or a number of targets) its
-chance, the best next career with her as a parent, and whether to move on with her or run this career again
-("Either" when nothing she could land beats today's best career), with the expected careers to a veteran carrying
-every target. With any place left to the planner, its other picks follow (only what it picked), each with **Use
-this**. **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
+aptitude (pink) sparks' chances of being passed on; her race schedule by year: every G1 she can enter, the ones she runs (most G1 wins, a race a parent won counting extra) with their win chances, the rest faded with what she does that turn instead; career goals outlined; gate numbers mark which parent won it; and *After this career*. That section first lists what she could land (every target, all but one named target, or
+a number of targets), each with its chance and the best next career with her as a parent, marked *Better* or *No gain*
+against your best career today; it decides nothing. Below it, *The veteran you got* starts as the most likely result
+(the most likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not).
+Set it to what she actually landed (click a spark for its stars, × to remove, + to add, tick her G1 wins) and press
+**Compare**: it counts careers until one lands every target for both choices, running this career again or using her
+in the next career, the same way for both (one more career, then the best setup it leaves, repeated), and shows the
+next career with her and its deck. An edit after Compare marks the comparison out of date. **Back to the most likely
+result** resets her; **Add her to your veterans** saves her (with her parents, who become the next career's
+grandparents) and hands every place back to the planner for the next generation.
+With any place left to the planner, its other picks follow (only what it picked), each with **Use this**.
+**Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
 re-import replaces earlier imports and keeps veterans made here. In every node: click a skill to cycle its stars
 1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a

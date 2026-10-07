@@ -93,7 +93,7 @@ $('wins-dlg').addEventListener('close', () => { if (winsNode) { winsNode = null;
 // "+" beside a node's sparks: the target skills she lacks, then the aptitudes she has no spark of
 const pop = $('add-pop'); let popFor = null;
 function closeAdd() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
-function openAdd(btn, nd) {
+function openAdd(btn, nd, onEdit = changed) {
   if (popFor === btn) { closeAdd(); return; }
   closeAdd(); popFor = btn; btn.setAttribute('aria-expanded', 'true'); pop.textContent = '';
   const head = (t) => { const h = document.createElement('p'); h.className = 'hint'; h.textContent = t; pop.appendChild(h); };
@@ -102,14 +102,14 @@ function openAdd(btn, nd) {
   for (const g of miss) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn addsk';
     const ic = skillIcon(g, false); if (ic) b.appendChild(ic); b.append(skillName(g));
-    b.onclick = () => { nd.sparks[g] = NEW_STARS; closeAdd(); changed(); };
+    b.onclick = () => { nd.sparks[g] = NEW_STARS; closeAdd(); onEdit(); };
     pop.appendChild(b);
   }
   const pm = Object.keys(CAREER.pinks).map(Number).filter(g => !nd.pinks[g]);
   if (pm.length) { head('Aptitude (pink) sparks');
     const row = document.createElement('div'); row.className = 'pinkrow';
     for (const g of pm) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn addpk'; b.textContent = pinkName(g);
-      b.onclick = () => { nd.pinks[g] = NEW_STARS; closeAdd(); changed(); }; row.appendChild(b); }
+      b.onclick = () => { nd.pinks[g] = NEW_STARS; closeAdd(); onEdit(); }; row.appendChild(b); }
     pop.appendChild(row); }
   const r = btn.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - 320)) + 'px'; pop.style.top = (r.bottom + scrollY + 6) + 'px';
@@ -122,27 +122,29 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hid
 // target skill chips (click: stars 1 -> 2 -> 3 -> 1; the corner x removes), then aptitude chips (pink), then "+".
 // Sparks of skills that are not targets are kept but not shown. key: names the controls (data-k), so the page can put the
 // keyboard focus back on the same one after a redraw.
-function chip(label, icon, n, pink, cycle, remove, key) {
+function chip(label, icon, n, pink, cycle, remove, key, readOnly = false) {
   const c = document.createElement('span'); c.className = 'vsk' + (pink ? ' pink' : '');
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'vskb';
+  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) b.type = 'button'; b.className = 'vskb';
   if (icon) b.appendChild(icon);
   const t = document.createElement('span'); t.className = 'vskn'; t.textContent = label; b.appendChild(t);
   const s = document.createElement('span'); s.className = 'stars'; s.textContent = starText(n); s.setAttribute('aria-hidden', 'true'); b.appendChild(s);
+  if (readOnly) { b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${n} stars`); c.appendChild(b); return c; }
   b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${n} star${n > 1 ? 's' : ''}. Click for ${n % 3 + 1}`);
   b.onclick = cycle; b.dataset.k = key;
   const x = document.createElement('button'); x.type = 'button'; x.className = 'vskx'; x.textContent = '×';
   x.setAttribute('aria-label', 'Remove ' + label); x.title = 'Remove ' + label; x.onclick = remove; x.dataset.k = key + 'x';
   c.append(b, x); return c;
 }
-export function sparksEl(nd, key = '') {
+export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
   const sp = document.createElement('div'); sp.className = 'vsparks';
-  for (const g of targetGroups()) { const n = nd.sparks[g]; if (!n) continue;
-    sp.appendChild(chip(skillName(g), skillIcon(g, false), n, false, () => { nd.sparks[g] = n % 3 + 1; changed(); }, () => { delete nd.sparks[g]; changed(); }, `${key}:s${g}`)); }
+  for (const g of readOnly ? Object.keys(nd.sparks).map(Number) : targetGroups()) { const n = nd.sparks[g]; if (!n) continue;
+    sp.appendChild(chip(skillName(g), skillIcon(g, false), n, false, () => { nd.sparks[g] = n % 3 + 1; onEdit(); }, () => { delete nd.sparks[g]; onEdit(); }, `${key}:s${g}`, readOnly)); }
   for (const [g, n] of Object.entries(nd.pinks || {})) {
-    sp.appendChild(chip(pinkName(g), null, n, true, () => { nd.pinks[g] = n % 3 + 1; changed(); }, () => { delete nd.pinks[g]; changed(); }, `${key}:p${g}`)); }
+    sp.appendChild(chip(pinkName(g), null, n, true, () => { nd.pinks[g] = n % 3 + 1; onEdit(); }, () => { delete nd.pinks[g]; onEdit(); }, `${key}:p${g}`, readOnly)); }
+  if (readOnly) return sp;
   const add = document.createElement('button'); add.type = 'button'; add.className = 'vskadd'; add.textContent = '+';
   add.setAttribute('aria-label', 'Add a spark'); add.title = 'Add a spark'; add.setAttribute('aria-haspopup', 'dialog'); add.setAttribute('aria-expanded', 'false');
-  add.onclick = () => openAdd(add, nd); add.dataset.k = key + ':add';
+  add.onclick = () => openAdd(add, nd, onEdit); add.dataset.k = key + ':add';
   sp.appendChild(add);
   return sp;
 }

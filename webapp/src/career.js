@@ -4,7 +4,7 @@
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
 import { $ } from './dom.js';
 import { ERA, SAVED } from './settings.js';
-import { UMAS, CARDS, CARD_BY_ID, SK, loadData } from './data.js';
+import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, killEngine } from './engine.js';
 import { onSave } from './save.js';
@@ -40,7 +40,8 @@ function paint() {
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
   clearTimeout(timer); myId++;
-  if (searching) killEngine();
+  if (searching || simulation.state === 'busy' || ahead.state === 'busy') killEngine();
+  simulationId++;
   searching = true; t0 = performance.now(); paint();
   timer = setTimeout(search, 600);
 }
@@ -60,39 +61,48 @@ function buildJob() {
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   const all = plan.trainee && fixed.length === 2;
   return { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: state.borrow,
-    scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
+    star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: !plan.trainee, top: all ? 1 : 5 };
 }
-// the look ahead (reroll or move on) for the career on show: a second solver run after the main one
-let ahead = { state: 'none', r: null, key: null };
+// after the main result: the outcome look ahead (a second run), and the entered veteran with its comparison (on demand)
+let ahead = { state: 'none', r: null };
+let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
+let simulationId = 0;
+let baselineCache = null;
+function comparisonJob() {
+  return { ...last.job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1 };
+}
 async function search() {
-  const id = ++myId;
+  const id = ++myId; simulationId++;
   let job;
-  try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message }; last = null; ahead = { state: 'none' }; renderAll(); paint(); return; }
+  try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
   searching = true; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
     const m = await run(job);
     if (id !== myId) return;
-    if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; ahead = { state: 'none' }; }
+    if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
     else {
-      last = { r: m.r, plan: JSON.stringify(plan) };
+      last = { r: m.r, job, plan: JSON.stringify(plan) };
       const cert = m.r.proven_top ? 'Checked on exact odds: nothing else does better.' : 'The exact check ran out of time: the order may not be final.';
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
-      ahead = { state: m.r.results.length ? 'busy' : 'none', r: null };
+      const r = m.r.results[0];
+      simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null } : { state: 'none' };
+      ahead = r ? { state: 'busy', r: null } : { state: 'none' };
+      if (r && !job.trainees.length && !job.fix.length) baselineCache = { key: JSON.stringify(comparisonJob()), result: r };
     }
-  } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; ahead = { state: 'none' }; }
+  } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
   searching = false; clearInterval(tick); renderAll(); paint();
   if (ahead.state !== 'busy') return;
-  // the look ahead for the career on show; today's best over every career is the main result when the planner had every place
+  // the outcome look ahead for the career on show; today's best is the main result when the planner had every place
   const r = last.r.results[0], open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
-  const job2 = { ...job, trainees: [r.trainee.id], fix: r.parents, per_trainee: false, top: 1, lookahead: true, ...(open ? { p_now: r.p_all } : {}) };
+  const job2 = { ...job, trainees: [r.trainee.id], fix: r.parents, per_trainee: false, top: 1, lookahead: true, ...(open ? { p_now: r.p_all, p_minus1_now: r.p_minus1 } : {}) };
   try {
     const m2 = await run(job2);
     if (id !== myId) return;
-    ahead = m2.r.lookahead ? { state: 'done', r: m2.r.lookahead } : { state: 'error', text: m2.r.error || 'No look ahead.' };
+    ahead = m2.r.lookahead ? { state: 'done', r: m2.r.lookahead } : { state: 'error', text: m2.r.error || m2.r.lookahead?.error || 'No look ahead.' };
   } catch (e) { if (id !== myId) return; ahead = { state: 'error', text: e.message }; }
-  renderAhead();
+  renderSimulation();
 }
 
 // ---------- the pedigree ----------
@@ -271,18 +281,19 @@ function targetsEl(r) {
 // her G1s by year: when, race, win chance, career goal, and which parents won it (each shared win is affinity later)
 function calendarEl(r) {
   const s = sec('rcal', 'Calendar', 'Race schedule');
-  const rows = r.schedule || [];
-  const shared = rows.filter(x => x.parents.some(Boolean)).length;
-  s.appendChild(el('p', 'hint', rows.length ? `She runs the G1s her parents won where she can win them (each one she shares with a parent adds affinity when she is a parent herself): ${rows.length} G1s, ${shared} shared with a parent, ${r.g1_wins.toFixed(1)} wins expected. Career goals are marked.` : 'No G1s scheduled.'));
+  // every G1 she could enter; those she runs win the most G1s (a race a parent won counts extra: affinity later)
+  const rows = r.schedule || [], ran = rows.filter(x => x.run !== false);
+  const shared = ran.filter(x => x.parents.some(Boolean)).length;
+  s.appendChild(el('p', 'hint', rows.length ? `Every G1 she can enter. She runs ${ran.length} of them, the ones that win her the most G1s (a race a parent won counts extra, for affinity later), within her career goals and the penalty for racing many in a row: ${r.g1_wins.toFixed(1)} wins expected, ${shared} of the races shared with a parent. The rest are faded, with what she does instead. Career goals are outlined.` : 'No G1s.'));
   const yrs = el('div', 'cyears');
   ['Junior', 'Classic', 'Senior'].forEach((y, yi) => {
     const yr = el('div', 'cyear'); yr.appendChild(el('div', 'cyl', y));
     const list = el('div', 'cyr');
     for (const x of rows.filter(x => x.year === yi)) {
-      const c = el('div', 'race' + (x.goal ? ' goal' : ''));
+      const skip = x.run === false, c = el('div', 'race' + (x.goal ? ' goal' : '') + (skip ? ' notrun' : ''));
       const top = el('div', 'rw'); top.append(el('span', 'rwhen', x.when.split(' ')[1].replace('-', ' ')));
       for (const [k, on] of x.parents.entries()) if (on) { const g = el('span', 'gate sm', String(k * 3 + 1)); g.style.setProperty('--gate', `var(--gate${k * 3 + 1})`); g.style.setProperty('--gate-ink', `var(--gate${k * 3 + 1}-ink)`); g.title = `Parent ${k + 1} won it`; top.appendChild(g); }
-      c.append(top, el('div', 'rn', x.race), el('div', 'rp', `${pct(x.p)} win` + (x.goal ? ' · goal' : '')));
+      c.append(top, el('div', 'rn', x.race), el('div', 'rp', skip ? (x.instead === 'rest' ? 'Skipped: a rest turn' : `Skipped for ${x.instead}`) : `${pct(x.p)} win` + (x.goal ? ' · goal' : '')));
       list.appendChild(c);
     }
     if (!list.children.length) list.appendChild(el('span', 'hint', 'No G1s'));
@@ -291,44 +302,168 @@ function calendarEl(r) {
   s.appendChild(yrs);
   return s;
 }
-const careers = (x) => x === null || x === undefined || !isFinite(x) ? 'never' : Math.round(x).toLocaleString();
-// the look ahead: what she lands decides whether to move on with her or run this career again
-function aheadBody(L, n) {
+// ---------- after this career: what she could land, and the veteran you got ----------
+// The look ahead (a second solver run after the main one) lists her possible outcomes with the best next career each
+// gives; it decides nothing. The decision is per veteran: enter the one you got (it starts as the most likely result)
+// and Compare runs both choices, running this career again or using her in the next one, on the same terms.
+const copyNode = (v) => ({ chara: v.chara, ...(v.outfit ? { outfit: v.outfit } : {}), sparks: { ...v.sparks }, pinks: { ...v.pinks }, wins: [...v.wins] });
+function scheduledRaces(r) {
+  const races = new Map();
+  for (const w of (r.schedule || []).filter(w => w.run !== false)) {
+    const ix = CAREER.races.indexOf(w.race); if (ix < 0) continue;
+    const prev = races.get(ix);
+    races.set(ix, { ix, name: w.race, p: 1 - (1 - (prev?.p || 0)) * (1 - w.p) });
+  }
+  return [...races.values()];
+}
+// the most likely result: the most likely set of landed targets, each at the rank's most likely star count, and the
+// G1s she more likely wins than not
+function likelyOutcome(r) {
+  const w = state.rank.split(',').map(Number), star = w.indexOf(Math.max(...w)) + 1;
+  const sparks = {};
+  if (Array.isArray(r.outcome_sets)) {
+    let mask = 0; r.outcome_sets.forEach((p, m) => { if (p > r.outcome_sets[mask]) mask = m; });
+    state.targets.forEach((t, i) => { if (mask & (1 << i)) sparks[t.group] = star; });
+  } else r.targets.forEach(t => { if (t.p >= 0.5) sparks[t.group] = star; });
+  const wins = scheduledRaces(r).filter(x => x.p >= 0.5).map(x => x.ix).sort((a, b) => a - b);
+  return { sparks, wins };
+}
+function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, ...likelyOutcome(r), pinks: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
+function draftJob(v) {
+  const pairs = (o) => Object.entries(o).map(([g, s]) => [+g, s]);
+  const node = (v) => ({ chara: v.chara || 0, sparks: pairs(v.sparks), pinks: pairs(v.pinks), wins: [...v.wins] });
+  return { ...node(v), borrowed: false, parents: v.parents.map(node) };
+}
+// an edit to the entered veteran: the comparison on screen is for the old one
+function editDraft() { if (simulation.r) simulation.stale = true; renderSimulation(); }
+function resetDraft() { const r = shown(); if (!r) return; simulation = { ...simulation, draft: draftOf(r), r: null, stale: false, error: null, state: 'ready' }; renderSimulation(); }
+async function compare() {
+  if (searching || !shown() || simulation.state === 'busy') return;
+  const id = ++simulationId, source = myId;
+  const base = comparisonJob(), key = JSON.stringify(base);
+  simulation.state = 'busy'; simulation.error = null; simulation.stale = false; renderSimulation();
+  try {
+    if (!simulation.baseline) {
+      const open = !last.job.trainees.length && !last.job.fix.length;
+      const cached = baselineCache?.key === key ? baselineCache.result : null;
+      const before = cached ? { results: [cached] } : open ? last.r : (await run(base)).r;
+      if (id !== simulationId || source !== myId) return;
+      if (before.error || !before.results?.length) throw new Error(before.error || 'No career found in the current roster.');
+      simulation.baseline = before.results[0];
+      baselineCache = { key, result: simulation.baseline };
+    }
+    const current = shown();
+    const m = await run({ ...base, fix: [base.legacies.length], legacies: [...base.legacies, draftJob(simulation.draft)],
+      policy: { stay_trainee: current.trainee.id, stay_parents: current.parents, p_floor: simulation.baseline.p_all } });
+    if (id !== simulationId || source !== myId) return;
+    if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
+    simulation.r = m.r; simulation.state = 'done';
+  } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
+  renderSimulation();
+}
+function addDraft() {
+  if (searching || !simulation.draft) return;
+  const d = structuredClone(simulation.draft);
+  const v = newVet(d.chara, d.sparks);
+  Object.assign(v, d, { src: 'entered', borrowed: false });
+  plan.trainee = null; plan.parents = [null, null];
+  $('v-msg').textContent = `Added ${umaName(v.chara)} to your veterans. The planner now picks the next career from all of them.`;
+  changed();
+}
+// the outcome table: her possible results, their chances and the best next career each gives (facts, no verdict)
+function outcomesEl(L, n) {
   const box = el('div', 'ahead');
   const head = el('div', 'tote small');
   const cell = (big, small) => { const d = el('div', 'tc'); d.append(el('span', 'tl', small), el('b', 'tv', big)); return d; };
-  head.append(cell(careers(L.careers_this), 'Careers to an all-target veteran: this career, then the table'), cell(careers(L.careers_now), 'Repeating today\'s best career'), cell(pct(L.improve), 'Chance she improves the next career'));
+  head.append(cell(pct(L.p_all), `She lands all ${n}`), cell(pct(L.improve), 'She improves your best next career'), cell(fmtIn(L.p_now), 'Your best career today'));
   box.appendChild(head);
-  if (L.improve === 0) box.appendChild(el('p', 'note', 'Whatever she lands, she can\'t beat your best career today (your veterans already carry more stars than a new spark is likely to). Moving on or rerolling makes no difference: keep running the best career.'));
+  if (L.improve === 0) box.appendChild(el('p', 'note', 'Whatever she lands, she can\'t improve on your best career today: your veterans already carry more stars than a new spark is likely to.'));
   const tb = el('table', 'cartab ahtab');
-  tb.innerHTML = '<thead><tr><th scope="col">She lands</th><th scope="col">Chance</th><th scope="col" title="Best next career with her as a parent (at least today\'s best)">Next career</th><th scope="col">Then</th></tr></thead><tbody></tbody>';
-  // nothing she lands beats today's best: both choices cost the same
-  const either = L.improve === 0 ? ['Either', 'mix'] : null;
-  const verdict = (share) => either || (share >= 0.999 ? ['Reroll', 'rr'] : share <= 0.001 ? ['Move on', 'mo'] : [`Mostly ${share >= 0.5 ? 'reroll' : 'move on'} (${pct(share >= 0.5 ? share : 1 - share)})`, 'mix']);
+  tb.innerHTML = '<thead><tr><th scope="col">She lands</th><th scope="col">Chance</th><th scope="col" title="The best next career with her as a parent, or your best career today if she doesn\'t beat it">Best next career</th><th scope="col">Against today</th></tr></thead><tbody></tbody>';
+  const gain = (f) => f > L.p_now * (1 + 1e-9) ? ['Better', 'mo'] : ['No gain', 'mix'];
   const row = (label, p, f, v) => { const tr = el('tr'); const th = el('th', '', label); th.scope = 'row'; tr.appendChild(th);
     tr.append(el('td', '', pct(p)), el('td', '', f === null ? '—' : fmtIn(f))); const td = el('td'); td.appendChild(el('span', 'verdict ' + v[1], v[0])); tr.appendChild(td); tb.tBodies[0].appendChild(tr); };
-  row(`All ${n}`, L.p_all, null, ['Done', 'done']);
+  row(`All ${n}`, L.p_all, null, ['Hit', 'done']);
   for (const c of L.by_count) {
-    if (c.landed === n - 1) {
-      // all but one: which one she misses decides
-      for (const m of L.miss_one.filter(m => m.p > 0).sort((a, b) => b.p - a.p)) row(`All but ${tName(m.group)}`, m.p, m.f, either || (m.reroll ? ['Reroll', 'rr'] : ['Move on', 'mo']));
-    } else row(`${c.landed} of ${n}`, c.p, c.f, verdict(c.reroll));
+    if (c.landed === n - 1) { for (const m of L.miss_one.filter(m => m.p > 0).sort((a, b) => b.p - a.p)) row(`All but ${tName(m.group)}`, m.p, m.f, gain(m.f)); }
+    else row(`${c.landed} of ${n}`, c.p, c.f, c.no_gain >= 0.999 ? ['No gain', 'mix'] : c.no_gain <= 0.001 ? ['Better', 'mo'] : [`Better ${pct(1 - c.no_gain)} of the time`, 'mix']);
   }
   box.appendChild(tb);
-  if (L.setups.length) {
-    const p = el('p', 'hint'); p.append('With her as a parent and every target landed, the best next careers: ');
-    p.append(L.setups.slice(0, 3).map(s => `${s.trainee.name} with #${s.partner + 1} ${umaName(vets[s.partner]?.chara)} (${fmtIn(s.p_all)})`).join('; ') + '.');
-    box.appendChild(p);
-  }
-  box.appendChild(el('p', 'hint', 'How it decides: moving on with her costs 1 ÷ (the next career\'s chance) careers on average; running this career once more and keeping the better veteran costs one career plus the same for the better of the two. Her stars follow the rank above; her G1 wins, her schedule. The next career\'s chances are for the best setups found for her landing every target, so they are a floor.'));
+  box.appendChild(el('p', 'hint', 'The next career\'s odds are for the best setups found for her landing every target, rescored for each result, so they are a floor. Her stars follow the rank above; her G1 wins, her schedule. Whether to use her or run this career again depends on more than her next career: enter the veteran you got below and press Compare.'));
   return box;
 }
-function renderAhead() {
-  const s = $('ahead-sec'); if (!s) return;
-  const body = s.querySelector('.abody'); body.textContent = '';
-  if (ahead.state === 'busy') { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Looking one career ahead…</span>'; body.appendChild(p); }
-  else if (ahead.state === 'done') body.appendChild(aheadBody(ahead.r, state.targets.length));
-  else if (ahead.state === 'error') body.appendChild(el('p', 'hint', ahead.text));
+function aheadEl() {
+  const box = el('div');
+  if (ahead.state === 'busy') { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Working out what she could land…</span>'; box.appendChild(p); }
+  else if (ahead.state === 'done') box.appendChild(outcomesEl(ahead.r, state.targets.length));
+  else if (ahead.state === 'error') box.appendChild(el('p', 'hint', ahead.text));
+  return box;
+}
+function simulationBody() {
+  const box = el('div', 'simulation'); box.id = 'simulation';
+  const d = simulation.draft, r = shown(); if (!d || !r) return box;
+  const busy = simulation.state === 'busy';
+  box.appendChild(el('h4', '', 'The veteran you got'));
+  const who = el('div', 'simwho'); who.append(umaAv(d.chara, d.outfit, 48), el('b', '', `${umaName(d.chara)} ${r.trainee.outfits[0]?.label || '(any outfit)'}`), el('span', 'simtag', 'Not saved'));
+  box.appendChild(who);
+  box.appendChild(el('p', 'hint', 'It starts as the most likely result of this career. Set it to what she actually landed: click a spark to change its stars, × to remove it, + to add one, and tick the G1s she won. Then Compare.'));
+  const controls = el('fieldset', 'simskills'); controls.appendChild(el('legend', '', 'Her sparks'));
+  controls.appendChild(sparksEl(d, 'sim', editDraft));
+  box.appendChild(controls);
+  const details = el('details', 'simwins'); details.open = !!simulation.winsOpen; details.ontoggle = () => { simulation.winsOpen = details.open; };
+  details.appendChild(el('summary', '', `${d.wins.length} G1 wins · edit`));
+  const wins = el('fieldset', 'simraces'); wins.appendChild(el('legend', '', 'G1s she won (from her schedule)'));
+  for (const w of scheduledRaces(r)) {
+    const label = el('label', 'wrace'), c = el('input'); c.type = 'checkbox'; c.id = `sim-win-${w.ix}`; c.checked = d.wins.includes(w.ix);
+    c.onchange = () => { const set = new Set(d.wins); c.checked ? set.add(w.ix) : set.delete(w.ix); d.wins = [...set].sort((a, b) => a - b); editDraft(); $(c.id)?.focus(); };
+    label.append(c, ` ${w.name} (${pct(w.p)} to win)`); wins.appendChild(label);
+  }
+  details.appendChild(wins); box.appendChild(details);
+  const actions = el('div', 'row');
+  const go = btn('Compare', 'primary', compare); go.id = 'sim-compare'; go.disabled = searching || busy;
+  const reset = btn('Back to the most likely result', '', resetDraft); reset.id = 'sim-reset'; reset.dataset.k = 'sim:reset';
+  const add = btn('Add her to your veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
+  actions.append(go, reset, add); box.appendChild(actions);
+  const result = el('div', 'simresult' + (simulation.stale ? ' stale' : '')); result.id = 'sim-result'; result.setAttribute('role', 'status');
+  if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: this career again, or her in the next one…</span>'; result.appendChild(p); }
+  else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
+  else if (simulation.r) {
+    if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
+    const next = simulation.r.results[0], before = simulation.baseline, n = state.targets.length, policy = simulation.r.policy;
+    const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
+    if (policy?.stay && policy?.advance) {
+      const cost = a => a.expected_careers_estimate === null ? Infinity : a.expected_careers_estimate;
+      const stay = cost(policy.stay), advance = cost(policy.advance);
+      const better = advance < stay * (1 - 1e-6), worse = stay < advance * (1 - 1e-6);
+      verdict.append(el('strong', '', better ? 'Use her in the next career.' : worse ? 'Run this career again.' : 'Neither choice is better.'),
+        ' ' + (better || worse ? 'It takes fewer careers on average to land every target.' : 'Both take about as many careers to land every target.'));
+      result.appendChild(verdict);
+      const est = el('div', 'simodds');
+      for (const [label, a] of [['Run this career again', policy.stay], ['Use her in the next career', policy.advance]]) {
+        const c = cost(a), card = el('div', 'tc');
+        card.append(el('span', 'tl', label), el('b', 'tv', Number.isFinite(c) ? `${c.toFixed(1)} careers` : 'never'), el('span', 'hint', `All ${n} on the next run: ${pct(a.p_all)}; within two runs: ${pct(a.p_within_two)}`));
+        est.appendChild(card);
+      }
+      result.appendChild(est);
+      result.appendChild(el('p', 'hint', 'Careers until one lands every target, for each choice: one more career, then the best setup it leaves you, repeated. Both choices are counted the same way; neither counts the better veterans later careers could add, so these are estimates, not the best possible plan.'));
+      if (!policy.actions_proven || !policy.stay.next_proven || !policy.advance.next_proven) result.appendChild(el('p', 'hint', 'Some searches reached their work limit: this uses the best setups found so far.'));
+    } else { verdict.append(el('strong', '', 'No comparison.'), ' ' + (policy?.error || 'The solver returned none.')); result.appendChild(verdict); }
+    const odds = el('div', 'simodds');
+    for (const [label, a, b] of [[`All ${n}`, before.p_all, next.p_all], [`At least ${n - 1}`, before.p_minus1, next.p_minus1]]) {
+      const card = el('div', 'tc'); card.append(el('span', 'tl', label), el('b', 'tv', `${fmtIn(a)} → ${fmtIn(b)}`), el('span', 'hint', `${pct(a)} → ${pct(b)}`)); odds.appendChild(card);
+    }
+    result.appendChild(el('p', 'hint', 'Your best career today → the best next career with her as a parent:'));
+    result.appendChild(odds);
+    const names = next.parents.map(i => i === vets.length ? `${umaName(d.chara)} (her)` : `#${i + 1} ${umaName(vets[i].chara)}`);
+    result.appendChild(el('p', '', `That career: ${next.trainee.name} ${next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'}, with ${names.join(' + ')}.`));
+    result.appendChild(deckEl(next));
+  }
+  box.appendChild(result);
+  return box;
+}
+function renderSimulation() {
+  const a = $('ahead-sec'); if (!a) return;
+  a.querySelector('.abody').replaceChildren(aheadEl(), simulationBody());
 }
 // the other careers the planner weighed: only what it picked (the places left open), with "Use this"
 function altsEl(res) {
@@ -359,10 +494,10 @@ function renderResults() {
   grid.append(deckEl(r), targetsEl(r));
   box.appendChild(grid);
   box.appendChild(calendarEl(r));
-  const a = sec('rahead', 'Next leg', 'After this career: move on or reroll?'); a.id = 'ahead-sec'; a.appendChild(el('div', 'abody')); box.appendChild(a);
+  const a = sec('rahead', 'Next leg', 'After this career'); a.id = 'ahead-sec'; a.appendChild(el('div', 'abody')); box.appendChild(a);
   const open = !plan.trainee || plan.parents.some(p => !p);
   if (open && last.r.results.length > 1) box.appendChild(altsEl(last.r));
-  renderAhead();
+  renderSimulation();
 }
 
 // ---------- the veterans (pool) ----------
@@ -370,6 +505,7 @@ function vetCardEl(v, i) {
   const card = el('article', 'vet' + (v.borrowed ? ' bor' : '')); card.id = 'vet-' + i;
   const top = el('div', 'vtop');
   top.appendChild(el('span', 'vno', '#' + (i + 1)));
+  if (v.src === 'entered' || v.src === 'simulated') top.appendChild(el('span', 'simtag', 'Entered here'));
   const seg = el('div', 'seg sm'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
   for (const [b, l] of [[false, 'Yours'], [true, 'Borrowed']]) {
     const x = el('button', '', l); x.type = 'button'; x.setAttribute('aria-pressed', String(v.borrowed === b));
@@ -378,7 +514,11 @@ function vetCardEl(v, i) {
   top.appendChild(seg);
   const k = plan.parents.indexOf(v.id);
   if (k >= 0) top.appendChild(el('span', 'vin', `Parent ${k + 1}`));
-  top.appendChild(btn('Remove', 'vdel', () => removeVet(i))).setAttribute('aria-label', `Remove veteran #${i + 1}`);
+  top.appendChild(btn('Remove', 'vdel', () => {
+    const index = idxOf(v.id); if (index < 0) return;
+    removeVet(index);
+    $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
+  })).setAttribute('aria-label', `Remove veteran #${i + 1}`);
   card.appendChild(top);
   const node = (nd, kind, label, key) => {
     const n = el('div', 'vnode ' + kind);
@@ -438,7 +578,14 @@ function importText(text) {
 }
 loadData().then(() => {
   initSettings();
-  onVetsChange(() => { renderAll(); schedule(); });
+  // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
+  // places, so the result on screen goes; an edit to a veteran keeps it on screen until the new search ends.
+  const vetsSig = () => vets.map(v => v.id).join(',');
+  let sig = vetsSig();
+  onVetsChange(() => {
+    if (vetsSig() !== sig) { sig = vetsSig(); last = null; simulation = { state: 'none' }; ahead = { state: 'none' }; }
+    schedule(); renderAll();
+  });
   for (const x of ['vets', 'new', 'auto']) $('vp-tab-' + x).onclick = () => vpTab(x);
   $('vp-filter').oninput = drawNew;
   $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $('vpick-dlg').close(); changed(); };

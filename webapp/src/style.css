@@ -613,12 +613,34 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .cyr { display: flex; flex-wrap: wrap; gap: 6px; }
 .race { border: 1px solid var(--line); border-radius: 3px; padding: 4px 9px; min-width: 150px; background: var(--panel); }
 .race.goal { border: 2px solid var(--ink); }
+.race.notrun { border-style: dashed; background: var(--bg); color: var(--muted); }
+.race.notrun .rn { font-weight: 600; }
 .rw { display: flex; align-items: center; gap: 4px; }
 .rwhen { font-family: var(--font-data); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-right: auto; }
 .rn { font-weight: 700; font-size: 0.86rem; line-height: 1.25; }
 .rp { font-family: var(--font-data); font-size: 0.74rem; }
 @media (max-width: 620px) { .cyear { grid-template-columns: minmax(0, 1fr); } }
 .ahead { display: grid; gap: 12px; }
+.simulation { display: grid; gap: 14px; min-width: 0; }
+.simwho { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.simtag { font-family: var(--font-data); font-size: 0.72rem; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; }
+.simskills, .simraces { border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
+
+.simparents, .simodds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.simparent summary { cursor: pointer; min-height: 44px; }
+.simparent summary .twho { margin-top: 8px; }
+.simparent summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.simparent-details { display: grid; gap: 8px; margin-top: 10px; }
+.simparent-details p, .simparent-details ul { margin: 0; }
+.simparent-details .vskb { cursor: default; }
+.simparents .hint { width: 100%; }
+.simresult { display: grid; gap: 12px; }
+.simresult.stale > :not(.note) { opacity: 0.5; }
+.simulation h4 { margin: 8px 0 0; font-size: 1rem; font-weight: 900; }
+.simodds .tl { color: var(--muted); }
+.simodds .tv { color: var(--ink); }
+.simwins summary { cursor: pointer; }
+@media (max-width: 620px) { .simparents, .simodds { grid-template-columns: minmax(0, 1fr); } }
 .note { margin: 0; border-left: 5px solid var(--gold); background: var(--gold-soft); color: var(--ink); padding: 8px 12px; }
 .verdict { display: inline-block; font-family: var(--font-data); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px; color: var(--ink); border-left: 4px solid; }
 .verdict.mo { background: var(--req-soft); border-color: var(--req); }

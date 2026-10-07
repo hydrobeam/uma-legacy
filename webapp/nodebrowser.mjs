@@ -737,6 +737,11 @@ const TESTS = {
     // the career planner (/career): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
     // umadump import, the veteran editor, the search and its results
     const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+    await ctx.addInitScript(() => {
+      const W = window.Worker; window.__careerJobs = [];
+      window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
+        w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
+    });
     const pg = await ctx.newPage(); pg.errors = [];
     pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
     const note = () => pg.textContent('#run-note');
@@ -761,14 +766,67 @@ const TESTS = {
     check('career: the six legacies carry gate numbers 1-6 and their affinity, grandparents labelled plainly', (await pg.$$eval('#tree .pnh .gate', g => g.map(x => x.textContent).join(''))) === '123456'
       && await pg.locator('#tree .pn .aff').count() === 6 && (await pg.$$eval('#tree .pn.gp .pnl', l => l.every(x => x.textContent === 'Grandparent'))));
     check('career: the deck is a numbered race card with what each card gives', await pg.locator('.rcard li .gate').count() === 6 && await pg.locator('.rcard .rcg .gv').count() > 0);
-    check('career: her race schedule, by year, with the races her parents won', await pg.locator('.rcal .race').count() > 0 && await pg.locator('.rcal .race .gate').count() > 0
+    check('career: her G1s by year, with the races her parents won marked', await pg.locator('.rcal .race').count() > 0 && await pg.locator('.rcal .race .gate').count() > 0
       && (await pg.$$eval('.rcal .cyl', l => l.map(x => x.textContent).join(','))) === 'Junior,Classic,Senior');
+    check('career: the calendar lists every G1 she can enter; those she skips are shown faded with what she does instead', await pg.locator('.rcal .race.notrun').count() > 0
+      && (await pg.$$eval('.rcal .race.notrun', l => l.every(x => { const r = x.getBoundingClientRect(), c = x.closest('.cyr').getBoundingClientRect(); return r.width > 0 && r.left >= c.left - 1 && r.top >= c.top - 1 && /^Skipped/.test(x.querySelector('.rp').textContent); })))
+      && (await pg.$$eval('.rcal .race:not(.notrun) .rp', l => l.every(x => /% win/.test(x.textContent)))));
+    // after this career: a row per result (facts, no verdict), then the veteran you got, compared only on demand
     await pg.waitForSelector('#ahead-sec .ahead', { timeout: 180000 });
-    const verdicts = await pg.$$eval('#ahead-sec .verdict', v => v.map(x => x.textContent));
-    check('career: the look ahead: a row per outcome, here "Either" (no veteran she could be beats today\'s best)', verdicts[0] === 'Done' && verdicts.length > 8 && verdicts.slice(1).every(v => v === 'Either')
-      && /improves/i.test(await pg.textContent('#ahead-sec .tote')), verdicts.slice(0, 4).join(','));
+    const rowsA = await pg.$$eval('#ahead-sec .ahtab tbody tr', r => r.length), verdictsA = await pg.$$eval('#ahead-sec .verdict', v => v.map(x => x.textContent));
+    check('career: after this career, a row per result with its chance and the best next career, and no verdict', rowsA > 8 && verdictsA[0] === 'Hit'
+      && verdictsA.slice(1).every(v => /^(Better|No gain)/.test(v)), verdictsA.slice(0, 4).join(','));
+    const simStars = async (n) => {
+      const loc = pg.locator('[data-k="sim:s20159"]');
+      if (!(await loc.count())) { await pg.locator('#simulation .vskadd').click(); await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click(); }
+      for (let i = 0; i < 3; i++) { if (+(await loc.getAttribute('aria-label')).match(/(\d) star/)[1] === n) return; await loc.click(); }
+    };
+    const draft = () => pg.$$eval('#simulation .simskills .vskb', l => l.map(b => b.getAttribute('aria-label')).join('|'));
+    const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.policy).length);
+    const d0 = await draft();
+    check('career: the veteran you got starts as the most likely result, and nothing is compared yet', d0.length > 0 && await policyJobs() === 0 && !(await pg.locator('#sim-verdict').count()));
+    const original = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets);
+    await simStars(3);
+    check('career: editing her leaves your veterans untouched and runs nothing', await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original)
+      && await policyJobs() === 0);
+    await pg.click('#sim-reset');
+    check('career: "Back to the most likely result" restores the same veteran', (await draft()) === d0);
+    await simStars(3);
+    await pg.click('#sim-compare');
+    await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
+    check('career: Compare counts careers for both choices and shows the next career with her', /Use her in the next career\.|Run this career again\.|Neither choice is better\./.test(await pg.textContent('#sim-verdict'))
+      && await pg.locator('#sim-result .simodds').first().locator('.tc').count() === 2 && /within two runs/.test(await pg.textContent('#sim-result'))
+      && /→/.test(await pg.textContent('#sim-result')) && await pg.locator('#sim-result .rcard li').count() === 6);
+    check('career: the comparison sends her fixed stars, race indices and her parents', await pg.evaluate(() => {
+      const j = window.__careerJobs.filter(j => j.policy).at(-1), v = j.legacies.at(-1);
+      return j.policy.stay_parents.length === 2 && j.policy.stay_trainee > 0 && v.sparks.some(([g, s]) => g === 20159 && s === 3)
+        && v.wins.every(Number.isInteger) && v.parents.length === 2 && v.parents.every(p => p.chara > 0 && p.sparks.length > 0);
+    }));
+    for (const theme of ['light', 'dark']) {
+      if (await pg.evaluate(() => document.documentElement.getAttribute('data-theme')) !== theme) await pg.click('#theme-btn');
+      await pg.waitForTimeout(300);
+      const fails = await pg.evaluate(AUDIT);
+      check(`career: ${theme} mode with the outcome table and a comparison meets WCAG AAA`, !fails.length, fails.slice(0, 5).join(' | '));
+    }
+    await pg.click('#theme-btn');
+    const nPolicy = await policyJobs();
+    await simStars(1);
+    check('career: an edit after Compare marks the comparison out of date without running another', /changed her since/.test(await pg.textContent('#sim-result')) && await policyJobs() === nPolicy);
     const alts = await pg.$$eval('.alts li', ls => ls.map(l => l.textContent));
     check('career: five picks, one per trainee', alts.length === 5 && new Set(alts.map(t => t.split(',')[0])).size === 5, alts.join(' | '));
+    const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1).length);
+    const cachedRuns = await baselineRuns();
+    await pg.getByRole('button', { name: 'Choose trainee' }).click(); await dialog(pg, 'pick-dlg');
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await done();
+    await pg.waitForSelector('#sim-compare:not([disabled])'); await pg.click('#sim-compare'); await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
+    check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
+    await pg.locator('#tree .pn.trainee').getByRole('button', { name: 'Let the planner pick' }).click(); await done();
+    // editing a veteran keeps the result on screen while the search runs again
+    const toteBefore = await pg.locator('#results .tote').count();
+    await pg.locator('#vet-0 .vnode.self .vskb').first().click();
+    check('career: editing a veteran keeps the result on screen until the new one is ready', toteBefore === 1 && await pg.locator('#results .tote').count() === 1 && await pg.locator('#tree .pn.ghost').count() === 3);
+    await done();
+    await pg.locator('#vet-0 .vnode.self .vskb').first().click(); await pg.locator('#vet-0 .vnode.self .vskb').first().click(); await done();
     // stars on a pool veteran: a click cycles 1 -> 2 -> 3 -> 1, and is saved
     const chip = pg.locator('#vet-0 .vnode.self .vskb').first();
     const stars = async () => +(await chip.getAttribute('aria-label')).match(/(\d) star/)[1];
@@ -831,6 +889,49 @@ const TESTS = {
       && /Special Week/.test(await pg.locator('.pf').nth(0).textContent()) && /Agnes Digital/.test(await pg.locator('#tree .pn.trainee').textContent()));
     await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
     check('career: a paste that is not an export says so and changes nothing', /No veterans found/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 13);
+    await pg.keyboard.press('Escape');
+    // Save one generation, then another: a veteran's parents become the next one's grandparents.
+    const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
+    await simStars(3);
+    await pg.click('#sim-add'); await done();
+    check('career: adding her saves a labelled veteran and opens the next career', await pg.evaluate(n => {
+      const c = JSON.parse(localStorage.getItem('llp:career')).global;
+      const v = c.vets.at(-1);
+      return c.vets.length === n + 1 && v.src === 'entered' && v.sparks[20159] === 3
+        && v.parents.length === 2 && v.parents.every(p => p.chara > 0)
+        && c.plan.trainee === null && c.plan.parents.every(p => p === null);
+    }, beforeSimulation) && await pg.locator('#vets .simtag').count() === 1);
+    const simulated = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
+    await pg.reload(); await done();
+    check('career: her ancestry survives reloading', await pg.evaluate(v => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1)) === JSON.stringify(v), simulated));
+    // Force this simulated veteran as a parent and complete another hypothetical career.
+    await pg.evaluate(v => { const o = JSON.parse(localStorage.getItem('llp:career')); o.global.plan = { trainee: null, parents: [v.id, null] }; localStorage.setItem('llp:career', JSON.stringify(o)); }, simulated);
+    await pg.reload(); await done();
+    await pg.click('#sim-add'); await done();
+    check('career: another generation keeps her as a grandparent', await pg.evaluate(v => {
+      const o = JSON.parse(localStorage.getItem('llp:career')).global, next = o.vets.at(-1);
+      return o.vets.length === v.count + 2 && next.parents.some(p => p.chara === v.chara && JSON.stringify(p.sparks) === JSON.stringify(v.sparks));
+    }, { ...simulated, count: beforeSimulation }));
+
+    await pg.locator('.pf').nth(0).getByRole('button', { name: 'Choose parent' }).click(); await dialog(pg, 'vpick-dlg');
+    await pg.locator('#vp-list .vpt:not(:disabled)').last().click(); await done();
+    const removal = await pg.evaluate(() => {
+      const c = JSON.parse(localStorage.getItem('llp:career')).global;
+      return { id: c.plan.parents.find(Boolean), count: c.vets.length };
+    });
+    const removalIndex = await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:career')).global.vets.findIndex(v => v.id === id), removal.id);
+    await pg.locator(`#vet-${removalIndex} .vdel`).click();
+    check('career: removing a selected veteran immediately redraws and clears the fixed parent', await pg.locator('#vets .vet').count() === removal.count - 1
+      && await pg.evaluate(({ id, count }) => { const c = JSON.parse(localStorage.getItem('llp:career')).global;
+        return c.vets.length === count - 1 && !c.vets.some(v => v.id === id) && !c.plan.parents.includes(id); }, removal));
+    await done();
+    await pg.reload(); await done();
+    check('career: removed veterans stay removed after reload', await pg.evaluate(id => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some(v => v.id === id), removal.id));
+    while (await pg.locator('#vets .vet').count() > 1) await pg.locator('#vets .vdel').last().click();
+    await done();
+    check('career: removing down to one veteran clears obsolete indexed results without a page error', await pg.locator('#vets .vet').count() === 1
+      && /Choose both parents, or import/.test(await note()) && await pg.locator('#simulation').count() === 0);
+
     await pg.keyboard.press('Escape');
     if (b.browserType().name() === 'chromium') { await pg.waitForTimeout(300); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
