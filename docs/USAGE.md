@@ -76,7 +76,7 @@ the best next career with that veteran as a parent, today's best as the floor). 
 best odds now, one line under the odds says so: "Picked over <that career> (1 in X now): the veterans it leaves give
 better next careers." With every place set by hand, the career is just scored.
 
-Right under the pedigree, *The veteran you got* starts as the most likely result of the career on show (the most
+Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens her schedule's races on
 the schedule window's calendar, click one to mark it won or not) and press **Compare**: it counts careers until one
@@ -84,7 +84,7 @@ lands every target for both choices, running this career again or using her in t
 (one more career, then the best setup it leaves, repeated), shows today's best and the next career with her (all
 targets, all but one), that next career as portraits (trainee, then her two parents, *her* marked) and its deck behind
 *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
-odds) and compares at once. An edit after Compare marks the comparison out of date. **Back to the most likely result**
+odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
 resets her; **Add her to your veterans** saves her (with her parents, who become the next career's grandparents) and
 hands every place back to the planner for the next generation.
 
