@@ -1,0 +1,48 @@
+16 runs to do (greedy), 4 at a time
+  greedy run 3: 100 decisions, 134 careers, pool 112, S 0.6970, p 3.390e-3, 43 s
+  greedy run 1: 100 decisions, 119 careers, pool 112, S 0.6852, p 4.932e-3, 46 s
+  greedy run 0: 100 decisions, 127 careers, pool 112, S 0.6813, p 3.894e-3, 47 s
+  greedy run 2: 100 decisions, 122 careers, pool 112, S 0.6742, p 3.897e-3, 49 s
+  greedy run 3: 200 decisions, 259 careers, pool 212, S 0.4062, p 5.310e-3, 139 s
+  greedy run 0: 200 decisions, 261 careers, pool 212, S 0.3914, p 4.165e-3, 149 s
+  greedy run 1: 200 decisions, 315 careers, pool 212, S 0.2600, p 4.932e-3, 158 s
+  greedy run 2: 200 decisions, 341 careers, pool 212, S 0.2865, p 4.048e-3, 210 s
+  greedy run 0: 300 decisions, 484 careers, pool 312, S 0.1543, p 4.165e-3, 310 s
+  greedy run 3: 300 decisions, 447 careers, pool 312, S 0.1361, p 5.807e-3, 321 s
+  greedy run 1: 300 decisions, 578 careers, pool 312, S 0.0708, p 4.932e-3, 325 s
+  greedy run 2: 300 decisions, 513 careers, pool 312, S 0.1426, p 4.048e-3, 483 s
+  greedy run 0: 400 decisions, 798 careers, pool 412, S 0.0416, p 4.165e-3, 512 s
+  greedy run 1: 400 decisions, 939 careers, pool 412, S 0.0119, p 4.932e-3, 524 s
+  greedy run 3: 400 decisions, 762 careers, pool 412, S 0.0217, p 5.807e-3, 535 s
+  greedy run 0: 500 decisions, 1184 careers, pool 512, S 0.0083, p 4.165e-3, 668 s
+  greedy run 3: 500 decisions, 1144 careers, pool 512, S 0.0023, p 5.807e-3, 706 s
+  greedy run 2: 400 decisions, 783 careers, pool 412, S 0.0477, p 4.048e-3, 708 s
+  greedy run 1: 500 decisions, 1212 careers, pool 512, S 0.0030, p 5.384e-3, 723 s
+[771 s] 1/16 greedy run 3: E 254, 1291 careers, 534 solver calls (770 s), ended by eps on 1019:179,214 (p 5.807e-3)
+  greedy run 4: 100 decisions, 124 careers, pool 112, S 0.7848, p 2.073e-3, 42 s
+  greedy run 4: 200 decisions, 379 careers, pool 212, S 0.4623, p 2.073e-3, 126 s
+  greedy run 0: 600 decisions, 1517 careers, pool 612, S 0.0021, p 4.253e-3, 905 s
+  greedy run 2: 500 decisions, 1129 careers, pool 512, S 0.0117, p 4.048e-3, 982 s
+  greedy run 4: 300 decisions, 802 careers, pool 312, S 0.1921, p 2.073e-3, 264 s
+  greedy run 1: 600 decisions, 1380 careers, pool 612, S 0.0012, p 5.384e-3, 1168 s
+  greedy run 4: 400 decisions, 1265 careers, pool 412, S 0.0720, p 3.100e-3, 412 s
+[1246 s] 2/16 greedy run 1: E 242, 1419 careers, 613 solver calls (1,244 s), ended by eps on 1019:491,510 (p 5.384e-3)
+  greedy run 4: 500 decisions, 1423 careers, pool 512, S 0.0434, p 3.635e-3, 548 s
+  greedy run 5: 100 decisions, 106 careers, pool 112, S 0.8078, p 2.522e-3, 97 s
+  greedy run 2: 600 decisions, 1636 careers, pool 612, S 0.0015, p 4.048e-3, 1380 s
+  greedy run 5: 200 decisions, 235 careers, pool 212, S 0.5241, p 3.748e-3, 207 s
+[1481 s] 3/16 greedy run 2: E 274, 1736 careers, 622 solver calls (1,479 s), ended by eps on 1019:71,209 (p 4.048e-3)
+  greedy run 6: 100 decisions, 111 careers, pool 112, S 0.6574, p 5.126e-3, 43 s
+  greedy run 4: 600 decisions, 1566 careers, pool 612, S 0.0256, p 3.969e-3, 760 s
+  greedy run 0: 700 decisions, 1639 careers, pool 712, S 0.0012, p 4.665e-3, 1625 s
+  greedy run 6: 200 decisions, 236 careers, pool 212, S 0.3382, p 5.406e-3, 167 s
+  greedy run 5: 300 decisions, 357 careers, pool 312, S 0.3311, p 3.829e-3, 414 s
+  greedy run 4: 700 decisions, 1714 careers, pool 712, S 0.0130, p 4.619e-3, 1072 s
+[1862 s] 4/16 greedy run 0: E 273, 1677 careers, 722 solver calls (1,860 s), ended by eps on 1019:664,665 (p 4.665e-3)
+  greedy run 7: 100 decisions, 110 careers, pool 112, S 0.6193, p 4.909e-3, 40 s
+  greedy run 6: 300 decisions, 361 careers, pool 312, S 0.1687, p 5.724e-3, 427 s
+  greedy run 7: 200 decisions, 279 careers, pool 212, S 0.2675, p 5.489e-3, 158 s
+  greedy run 5: 400 decisions, 495 careers, pool 412, S 0.1854, p 4.909e-3, 778 s
+  greedy run 7: 300 decisions, 409 careers, pool 312, S 0.1301, p 5.663e-3, 370 s
+  greedy run 4: 800 decisions, 1838 careers, pool 812, S 0.0063, p 6.144e-3, 1587 s
+  greedy run 6: 400 decisions, 503 careers, pool 412, S 0.0747, p 5.724e-3, 935 s

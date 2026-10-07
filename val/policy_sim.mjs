@@ -228,7 +228,7 @@ export function summarise(dir, H, K, eps) {
   H = H ?? cfg.steps; K = K ?? cfg.settle; eps = eps ?? cfg.eps;
   const order = (n) => ['planner', 'greedy'].includes(n) ? ['planner', 'greedy'].indexOf(n) : 2;
   const recs = Object.fromEntries(Object.entries(readRecords(dir)).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))), out = { pool: cfg.pool, seed: cfg.seed, steps: H, settle: K, eps, prune: cfg.prune, policies: {}, paired: [] };
-  const lines = [`pool ${cfg.pool}  seed ${cfg.seed}  H ${H}  settle ${K} (on the best career)  eps ${eps}  prune ${cfg.prune}` +
+  const lines = [`pool ${cfg.pool}  seed ${cfg.seed}  H ${H}  settle ${K}${K ? " (on the best career)" : " (never)"}  eps ${eps}  prune ${cfg.prune}` +
                  `${H !== cfg.steps || K !== cfg.settle || eps !== cfg.eps ? `  (recorded H ${cfg.steps}, settle ${cfg.settle}, eps ${cfg.eps})` : ''}`];
   const perRun = {};
   for (const [name, rs] of Object.entries(recs)) {
