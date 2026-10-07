@@ -447,7 +447,13 @@ pub(in super::super) fn plan<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsR
         match newest { Some(k) => Some(members[(k + 1) % members.len()]), None => start.map(|k| members[k]) } };
     let by_p = |x: &usize, y: &usize| cs[*x].cur.p.partial_cmp(&cs[*y].cur.p).unwrap().then(y.cmp(x));
     let loop_led = lead.map_or(false, |l| est.loop_wins(l)) && same.len() > 1;
-    let loop_pick = if loop_led { loop_next.and_then(|m| same.iter().copied().filter(|&i| cs[i].cur.t == m).max_by(|x, y| by_p(x, y))) } else { None };
+    // among the tied careers of loop members other than the newest veteran's (in a three-member rotation both others are
+    // "next"; the listed order is arbitrary), the lowest estimate; the listed next member only when that leaves none
+    let newest_m = legs.last().and_then(|l| s.env.uix(l.chara)).filter(|u| members.contains(u));
+    let by_est = |x: &usize, y: &usize| mean(est.x(*x)).partial_cmp(&mean(est.x(*y))).unwrap_or(std::cmp::Ordering::Equal);
+    let loop_pick = if !loop_led { None } else {
+        same.iter().copied().filter(|&i| members.contains(&cs[i].cur.t) && Some(cs[i].cur.t) != newest_m).min_by(|x, y| by_est(x, y))
+            .or_else(|| loop_next.and_then(|m| same.iter().copied().filter(|&i| cs[i].cur.t == m).max_by(|x, y| by_p(x, y)))) };
     let pick_rule = if same.len() <= 1 { "lowest" } else if loop_pick.is_some() { "loop" } else { "odds" };
     let pick = loop_pick.or_else(|| same.iter().copied().max_by(|x, y| by_p(x, y)))
         .or_else(|| (0..cs.len()).filter(|&i| elig[i]).max_by(|&x, &y| cs[x].cur.p.partial_cmp(&cs[y].cur.p).unwrap()));

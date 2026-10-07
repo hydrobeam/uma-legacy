@@ -174,6 +174,11 @@ pub(super) fn setup_fp(v: &Value) -> u64 {
     key.to_string().hash(&mut h);
     h.finish()
 }
+fn setup_hash(s: &str) -> u64 { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); s.hash(&mut h); h.finish() }
+thread_local! {
+    /// the last job's main search, keyed by the whole job without `plan` (the page's plan job repeats the job it follows)
+    static LAST_SOLVE: std::cell::RefCell<Option<(u64, Solved)>> = const { std::cell::RefCell::new(None) };
+}
 thread_local! {
     /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
     /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
@@ -197,6 +202,7 @@ fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
     cur[0]
 }
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
+#[derive(Clone)]
 struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
 /// A trainee's fully checked deck: the chances it was found at (job-target order), its exact value there before the
 /// spark scale (the best of every legal deck, under the EXACT_RHO certificate), the deck. Its value bounds every deck
@@ -204,6 +210,7 @@ struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
 #[derive(Clone)]
 struct Ref { q: Vec<f64>, val: f64, sel: Sel }
 enum DeckRes { NoDeck, Bounded, Done(f64, Sel, bool) }
+#[derive(Clone)]
 struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
 
 struct Env<'a> {
@@ -766,7 +773,13 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let pool = env.pool(legs);
     // the rollout's cache takes the main search's decks when it uses its candidates (see `use_seen`)
     env.use_seen = cj.rollout == 0;
-    let sv = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
+    // the page sends a career job, then the same job with `plan`: the plan job reuses that job's main search (the solver
+    // worker keeps the last one; a search is deterministic for its job, so the result is the one it would compute)
+    let skey = { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("plan"); } setup_hash(&k.to_string()) };
+    let sv = match LAST_SOLVE.with(|c| c.borrow().as_ref().filter(|x| x.0 == skey).map(|x| x.1.clone())) {
+        Some(s) => s,
+        None => { let s = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top); LAST_SOLVE.with(|c| *c.borrow_mut() = Some((skey, s.clone()))); s }
+    };
     env.use_seen = true;
     if std::env::var("CAREER_WORK").is_ok() { eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven); }
     if sv.cands == 0 { keep(&env); return json!({"error": "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed."}); }
