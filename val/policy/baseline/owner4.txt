@@ -1,0 +1,10 @@
+pool val/policy/pools/owner4.json  seed 1  H 20  settle 2 (on the best career)  eps 0  prune 1
+planner  n 48  mean 5,446  sd 1,858  95% CI 4,907 to 5,985  median 5,915  range 1,529 to 7,591
+         careers simulated 9.1 (max 19), tail S/p 5,437, ended at H unsettled 12; solver 458 calls, 185 min; pruned 28
+greedy   n 48  mean 7,589  sd 0.0  95% CI 7,589 to 7,589  median 7,589  range 7,589 to 7,589
+         careers simulated 1.0 (max 1), tail S/p 7,588, ended at H unsettled 0; solver 96 calls, 1.2 min; pruned 0
+repeat   exact 7,589  (1/p*, p* = 1.3176e-4, 1019:2,3)
+planner - greedy, paired over 48 runs: -2,143  95% CI -2,683 to -1,604  sd 1,858  (planner lower in 38, higher in 10)
+planner  by H: 2: 14,539 ±485 (48 unsettled);  4: 6,812 ±465 (48 unsettled);  6: 5,944 ±493 (24 unsettled);  10: 5,814 ±517 (17 unsettled);  20: 5,446 ±539 (12 unsettled)
+greedy   by H: 2: 7,589 ±0.0 (0 unsettled);  4: 7,589 ±0.0 (0 unsettled);  6: 7,589 ±0.0 (0 unsettled);  10: 7,589 ±0.0 (0 unsettled);  20: 7,589 ±0.0 (0 unsettled)
+wall 47.3 min

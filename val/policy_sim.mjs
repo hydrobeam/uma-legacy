@@ -2,8 +2,8 @@
 // on a fixed veteran pool, under the solver's model. See val/policy/README.md.
 //
 //   node val/policy_sim.mjs --pool POOL.json --policy planner,greedy[,repeat] --runs N --out DIR
-//        [--first R] [--steps H] [--settle K] [--settle-best 0|1] [--eps E] [--prune 1] [--progress N] [--seed S] [-j P] [--k 6] [--bin PATH]
-//   node val/policy_sim.mjs report DIR [--steps H] [--settle K] [--settle-best B] [--eps E]   (re-summarise saved runs at other H/K/E)
+//        [--first R] [--steps H] [--settle K] [--eps E] [--prune 1] [--progress N] [--seed S] [-j P] [--k 6] [--bin PATH]
+//   node val/policy_sim.mjs report DIR [--steps H] [--settle K] [--eps E]   (re-summarise saved runs at a smaller H, other K or E)
 //
 // One run of a policy. Before career t the policy picks a career from the pool (a solver call); with chance p_t = its
 // P(all) that career lands everything and the process ends. That ending is counted analytically, so the simulated path
@@ -38,11 +38,11 @@ import { POLICIES } from './policy/policies.mjs';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOLVER_DIR = path.join(REPO, 'pkg/loopopt');
 const DEFAULT_STAR_DIST = [0.5, 0.45, 0.05];
-const NUM_ARGS = ['settle-best', 'progress', 'runs', 'first', 'steps', 'settle', 'seed', 'j', 'k', 'eps', 'prune'];
+const NUM_ARGS = ['progress', 'runs', 'first', 'steps', 'settle', 'seed', 'j', 'k', 'eps', 'prune'];
 
 // ---- arguments ----
 function parseArgs(argv) {
-  const o = { policy: 'planner,greedy', runs: 48, first: 0, steps: 10, settle: 2, eps: 0, prune: 1, progress: 0, 'settle-best': 0, seed: 1, j: 4, k: undefined,
+  const o = { policy: 'planner,greedy', runs: 48, first: 0, steps: 10, settle: 2, eps: 0, prune: 1, progress: 0, seed: 1, j: 4, k: undefined,
               bin: path.join(SOLVER_DIR, 'target/release/loopopt'), data: 'data.json', given: new Set() };
   const pos = [];
   for (let i = 0; i < argv.length; i++) {
@@ -147,14 +147,15 @@ function makeFrontier(targets, legs) {
 // A record's `segs`: one per decision the policy made, `len` decisions in a row with that pick (the extra ones are
 // repeats after a pruned veteran); the last decision of the last segment is where the run applied its tail. Any H, K
 // and eps no looser than the recording's give the same E as a run made with them (draws are keyed by career index).
-// settleBest: only a run of decisions that pick the pool's best career settles (a breeding pick never freezes)
+// Only a run of decisions that pick the pool's best career settles: a pick made to breed a better veteran is never
+// costed as if repeated forever (the policy repeats it only while the pool stays as it is).
 const stops = (runlen, t, S, H, K, eps, onBest) => ({ settled: K > 0 && runlen >= K && onBest, small: S < eps, horizon: t >= H - 1 });
-export function estimate(segs, H, K, eps, settleBest = 0) {
+export function estimate(segs, H, K, eps) {
   let S = 1, E = 0, t = 0, run = 0, prev = null;
   for (let i = 0; i < segs.length; i++) {
     const g = segs[i], same = prev && prev.pick === g.pick && prev.best === g.best;
     for (let j = 0; j < g.len; j++, t++) {
-      const st = stops((same ? run : 0) + j + 1, t, S, H, K, eps, !settleBest || g.pick === g.best), end = i === segs.length - 1 && j === g.len - 1;
+      const st = stops((same ? run : 0) + j + 1, t, S, H, K, eps, g.pick === g.best), end = i === segs.length - 1 && j === g.len - 1;
       if (st.settled || st.small || st.horizon || end) {
         const small = !st.settled && st.small;
         return { E: E + S / g.p, careers: t, settled: st.settled, small, truncated: !st.settled && !small && !st.horizon, tail: S / g.p, final_p: g.p, final: g.pick };
@@ -181,11 +182,11 @@ async function simulate(pool, policyName, run, o, ctx) {
     const base = prev && prev.pick === seg.pick && prev.best === seg.best ? runlen : 0;
     for (;;) {
       seg.len++; runlen = base + seg.len;
-      const st = stops(runlen, t, S, o.steps, o.settle, o.eps, !o['settle-best'] || seg.pick === seg.best);
+      const st = stops(runlen, t, S, o.steps, o.settle, o.eps, seg.pick === seg.best);
       if (st.settled || st.small || st.horizon) {
-        const s = solve.stats(), check = estimate(segs, o.steps, o.settle, o.eps, o['settle-best']);
+        const s = solve.stats(), check = estimate(segs, o.steps, o.settle, o.eps);
         if (Math.abs(check.E - (E + S / pick.p_all)) > 1e-9 * check.E) throw new Error('estimate disagrees with the simulation');
-        return { policy: policyName, run, cfg: ctx.cfgHash, E: E + S / pick.p_all, settled: st.settled, ended: st.settled ? 'settled' : st.small ? 'eps' : 'H', careers: t, tail: S / pick.p_all,
+        return { policy: policyName, run, cfg: ctx.cfgHash, E: E + S / pick.p_all, H: o.steps, settled: st.settled, ended: st.settled ? 'settled' : st.small ? 'eps' : 'H', careers: t, tail: S / pick.p_all,
                  final: seg.pick, final_p: pick.p_all, solver_calls: s.calls, solver_s: s.seconds, pruned, pool: legs.length,
                  wall_s: (Date.now() - t0) / 1000, segs };
       }
@@ -222,13 +223,13 @@ function readRecords(dir) {
 }
 
 const fmt = (x) => Math.abs(x) >= 100 ? Math.round(x).toLocaleString('en-US') : x.toFixed(1);
-export function summarise(dir, H, K, eps, SB) {
+export function summarise(dir, H, K, eps) {
   const cfg = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
-  H = H ?? cfg.steps; K = K ?? cfg.settle; eps = eps ?? cfg.eps; SB = SB ?? cfg.settle_best ?? 0;
+  H = H ?? cfg.steps; K = K ?? cfg.settle; eps = eps ?? cfg.eps;
   const order = (n) => ['planner', 'greedy'].includes(n) ? ['planner', 'greedy'].indexOf(n) : 2;
-  const recs = Object.fromEntries(Object.entries(readRecords(dir)).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))), out = { pool: cfg.pool, seed: cfg.seed, steps: H, settle: K, settle_best: SB, eps, prune: cfg.prune, policies: {}, paired: [] };
-  const lines = [`pool ${cfg.pool}  seed ${cfg.seed}  H ${H}  settle ${K}${SB ? ' (on the best career)' : ''}  eps ${eps}  prune ${cfg.prune}` +
-                 `${H !== cfg.steps || K !== cfg.settle || eps !== cfg.eps || SB !== (cfg.settle_best ?? 0) ? `  (recorded H ${cfg.steps}, settle ${cfg.settle}, eps ${cfg.eps})` : ''}`];
+  const recs = Object.fromEntries(Object.entries(readRecords(dir)).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))), out = { pool: cfg.pool, seed: cfg.seed, steps: H, settle: K, eps, prune: cfg.prune, policies: {}, paired: [] };
+  const lines = [`pool ${cfg.pool}  seed ${cfg.seed}  H ${H}  settle ${K} (on the best career)  eps ${eps}  prune ${cfg.prune}` +
+                 `${H !== cfg.steps || K !== cfg.settle || eps !== cfg.eps ? `  (recorded H ${cfg.steps}, settle ${cfg.settle}, eps ${cfg.eps})` : ''}`];
   const perRun = {};
   for (const [name, rs] of Object.entries(recs)) {
     if (name === 'repeat') {
@@ -236,7 +237,7 @@ export function summarise(dir, H, K, eps, SB) {
       lines.push(`repeat   exact ${fmt(rs[0].E)}  (1/p*, p* = ${rs[0].final_p.toExponential(4)}, ${rs[0].final})`);
       continue;
     }
-    const ests = rs.map(r => ({ run: r.run, ...estimate(r.segs, H, K, eps, SB) }));
+    const ests = rs.map(r => ({ run: r.run, ...estimate(r.segs, H, K, eps) }));
     perRun[name] = new Map(ests.map(e => [e.run, e.E]));
     const st = stats(ests.map(e => e.E)), careers = stats(ests.map(e => e.careers)), tail = stats(ests.map(e => e.tail));
     const unsettled = ests.filter(e => !e.settled && !e.small).length, truncated = ests.filter(e => e.truncated).length;
@@ -264,7 +265,7 @@ export function summarise(dir, H, K, eps, SB) {
   out.by_H = {};
   for (const [name, rs] of Object.entries(recs)) {
     if (name === 'repeat') continue;
-    out.by_H[name] = hs.map(h => { const es = rs.map(r => estimate(r.segs, h, K, eps, SB)); const s = stats(es.map(e => e.E));
+    out.by_H[name] = hs.map(h => { const es = rs.map(r => estimate(r.segs, h, K, eps)); const s = stats(es.map(e => e.E));
       return { H: h, mean: s.mean, half: s.half, unsettled: es.filter(e => !e.settled && !e.small).length }; });
     lines.push(`${name.padEnd(8)} by H: ` + out.by_H[name].map(x => `${x.H}: ${fmt(x.mean)} ±${fmt(x.half)} (${x.unsettled} unsettled)`).join(';  '));
   }
@@ -276,9 +277,9 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (o.pos[0] === 'report') {
     const dir = o.pos[1], g = (k) => o.given.has(k) ? o[k] : undefined;
-    const { out, text } = summarise(dir, g('steps'), g('settle'), g('eps'), g('settle-best'));
+    const { out, text } = summarise(dir, g('steps'), g('settle'), g('eps'));
     console.log(text);
-    if (!['steps', 'settle', 'eps', 'settle-best'].some(k => o.given.has(k))) fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(out, null, 1));
+    if (!['steps', 'settle', 'eps'].some(k => o.given.has(k))) fs.writeFileSync(path.join(dir, 'summary.json'), JSON.stringify(out, null, 1));
     return;
   }
   if (!o.pool || !o.out) throw new Error('usage: node val/policy_sim.mjs --pool POOL.json --policy planner,greedy --runs N --out DIR (see the header)');
@@ -293,19 +294,28 @@ async function main() {
   const tmpDir = path.join(o.out, 'tmp'); fs.mkdirSync(tmpDir, { recursive: true });
   const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
   const cfg = { pool: path.relative(REPO, path.resolve(o.pool)), pool_sha: sha(JSON.stringify(pool)), seed: o.seed, steps: o.steps, settle: o.settle,
-                settle_best: o['settle-best'], eps: o.eps, prune: o.prune, k: o.k ?? pool.rollout ?? 6, bin_sha: sha(fs.readFileSync(o.bin)) };
+                eps: o.eps, prune: o.prune, k: o.k ?? pool.rollout ?? 6, bin_sha: sha(fs.readFileSync(o.bin)) };
   const cfgPath = path.join(o.out, 'config.json');
   if (fs.existsSync(cfgPath)) {
     const old = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    for (const f of ['pool_sha', 'seed', 'steps', 'settle', 'settle_best', 'eps', 'prune', 'k']) if ((old[f] ?? 0) !== (cfg[f] ?? 0)) throw new Error(`${o.out} holds runs with ${f} = ${old[f]}, not ${cfg[f]}; use another --out`);
+    for (const f of ['pool_sha', 'seed', 'settle', 'eps', 'prune', 'k']) if (old[f] !== cfg[f]) throw new Error(`${o.out} holds runs with ${f} = ${old[f]}, not ${cfg[f]}; use another --out`);
+    if (cfg.steps < old.steps) throw new Error(`${o.out} holds runs with H = ${old.steps}; a smaller H is a report option (report DIR --steps H)`);
+    if (cfg.steps > old.steps) {   // drop the runs that ended at the old H; the rest are the same paths at the new H
+      console.error(`raising H from ${old.steps} to ${cfg.steps}: runs that ended at H are rerun`);
+      for (const f of fs.readdirSync(o.out).filter(f => f.endsWith('.jsonl'))) {
+        const keep = fs.readFileSync(path.join(o.out, f), 'utf8').split('\n').filter(Boolean).filter(l => JSON.parse(l).ended !== 'H');
+        fs.writeFileSync(path.join(o.out, f), keep.map(l => l + '\n').join(''));
+      }
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 1));
+    }
     if (old.bin_sha !== cfg.bin_sha) console.error(`note: the solver binary differs from the one that wrote the earlier runs in ${o.out}`);
   } else fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 1));
-  const cfgHash = [cfg.pool_sha, cfg.seed, cfg.steps, cfg.settle, cfg.eps, cfg.prune, cfg.k].join(':') + (cfg.settle_best ? ':best' : '');
+  const cfgHash = [cfg.pool_sha, cfg.seed, cfg.settle, cfg.eps, cfg.prune, cfg.k].join(':');   // H apart: see `done`
   const ctx = { seed: o.seed >>> 0, targets: pool.targets, starDist: pool.star_dist ?? DEFAULT_STAR_DIST, raceNames: data.race_names,
                 order: failOrder(pool.targets.length), tmpDir, cfgHash };
 
   const done = (n) => { const f = path.join(o.out, `${n}.jsonl`);
-    return new Set(fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.cfg === cfgHash).map(r => r.run) : []); };
+    return new Set(fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.cfg === cfgHash && (r.ended !== 'H' || r.H === o.steps)).map(r => r.run) : []); };
   const tasks = [];
   for (const n of names) {
     const have = done(n);
