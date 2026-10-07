@@ -461,9 +461,17 @@ function outcomesEl(L, n) {
   const row = (label, value, big = false, title = '') => { const dt = el('dt', '', label), dd = el('dd', big ? 'big' : '', value); if (title) dt.title = title; dl.append(dt, dd); };
   row('Chance she improves your best next career', pct(imp), true, 'Over every set of targets she could land and every star count (stars by the lineage rank, G1 wins by her schedule). The next careers checked are the best found with her landing every target, so this is a floor.');
   row('Your best career today', fmtIn(L.p_now));
-  if (imp > 0 && L.f_if_improve) row('When she improves it, the next career averages', fmtIn(L.f_if_improve));
+  // "when she improves it" is every result when improving is (near) certain: then it is the plain average
+  if (imp > 0 && L.f_if_improve) row(imp >= 0.9995 ? 'The next career, on average' : 'When she improves it, the next career averages', fmtIn(L.f_if_improve));
   row(`She lands all ${n}`, pct(L.p_all));
-  if (imp > 0 && L.improve_by_count) for (const c of L.improve_by_count.filter(c => c.landed >= n - 3 && c.landed < n)) row(`Lands ${c.landed} of ${n}: improves it`, pct(c.improve));
+  // per number landed: how likely, and the next career it gives (her landed targets at 2 stars), so a veteran you get
+  // can be read against it; the chance it improves today's best where that isn't certain
+  const impBy = new Map((L.improve_by_count || []).map(c => [c.landed, c.improve]));
+  for (const c of (L.by_count || []).filter(c => c.landed === n - 1 || c.p >= 0.005)) {
+    const ib = impBy.get(c.landed);
+    row(`Lands ${c.landed} of ${n} (${pct(c.p)})`, `next career ${fmtIn(c.f)}` + (ib !== undefined && ib < 0.9995 ? ` · improves it ${pct(ib)}` : ''), false,
+      'The best next career when she lands this many targets (each at 2 stars), averaged over which ones');
+  }
   if (imp === 0) {
     // the usual reason: today's best career trains her own character, and no one parents her own character
     const r = shown(), best = last?.r.results[0], open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
