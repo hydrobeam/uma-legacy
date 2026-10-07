@@ -786,7 +786,7 @@ const TESTS = {
     const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
     await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
     check('career: with no veterans it asks for parents or an import', /Choose both parents, or import/.test(await note()), await note());
-    check('career: the toolbar shows the shared settings', (await pg.textContent('#o-skills-n')) === '8' && /owned/.test(await pg.textContent('#o-umas-n')));
+    check('career: the toolbar shows the shared settings', (await pg.textContent('#o-skills-n')) === '8' && await pg.locator('.rbbar .tbtn .tico').count() === 3);
     await pg.click('#o-skills'); await dialog(pg, 'set-skills');
     check('career: Target skills opens the planner\'s skill editor', await pg.locator('#set-skills #targets .tgt').count() === 8);
     await pg.locator('#set-skills .dclose').click();
@@ -1007,9 +1007,11 @@ const TESTS = {
     check('career: "Let the planner pick" hands a place back', await pg.locator('#tree .pn.ghost').count() === 1 && /Weighed/.test(await note()));
     // a settings change searches again
     await pg.click('#o-umas'); await dialog(pg, 'set-umas');
-    const before = await pg.textContent('#o-umas-n');
+    const umasNow = () => pg.evaluate(() => { const g = JSON.parse(localStorage.getItem('llp:settings')).global; return JSON.stringify([g.roster, g.outfits]); });
+    const before = await umasNow(), searches = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career').length);
     await pg.locator('#set-umas #roster .ut .up').nth(3).click(); await pg.locator('#set-umas .dclose').click(); await done();
-    check('career: the Umas dialog changes the owned umas', (await pg.textContent('#o-umas-n')) !== before, before);
+    check('career: the Umas dialog changes the owned umas and searches again', (await umasNow()) !== before
+      && await pg.evaluate(n => window.__careerJobs.filter(j => j.cmd === 'career').length > n, searches), before);
     await pg.reload(); await done();
     check('career: the veterans and the chosen places outlive a reload', await pg.locator('#vets .vet').count() === 13
       && /Special Week/.test(await pg.locator('.pf').nth(0).textContent()) && /Agnes Digital/.test(await pg.locator('#tree .pn.trainee').textContent()));

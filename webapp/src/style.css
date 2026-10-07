@@ -545,7 +545,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the settings: one ruled strip, the planner's editors behind its buttons */
 .rbbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; border-block: 3px solid var(--ink); padding: 12px 2px; }
 .rbbar .gamerow { flex-wrap: wrap; gap: 10px 16px; }
-.tbtn b { font-weight: 700; margin-left: 4px; }
+.rbbar .tbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px 6px 10px; border: 2px solid var(--ink); border-radius: 8px;
+  color: var(--ink); font-weight: 700; font-size: 0.88rem; box-shadow: 0 2px 0 var(--ink); }   /* each opens an editor: icon, name, chevron */
+.rbbar .tbtn:hover { border-color: var(--accent); box-shadow: 0 2px 0 var(--accent); }
+.rbbar .tbtn:active { transform: translateY(2px); box-shadow: none; }
+.rbbar .tbtn::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+.tico { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.tbtn b { font-weight: 700; margin-left: -2px; font-variant-numeric: tabular-nums; }
 .tchk { font-size: 0.88rem; }
 .tshare { flex-basis: 100%; }
 .setdlg .panel { border: 0; padding: 0; }

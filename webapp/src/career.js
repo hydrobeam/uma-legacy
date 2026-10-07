@@ -626,8 +626,6 @@ function renderAll() {
 // ---------- settings ----------
 function counts() {
   $('o-skills-n').textContent = String(state.targets.length);
-  $('o-umas-n').textContent = `${UMAS.filter(owned).length} owned`;
-  $('o-cards-n').textContent = `${CARDS.filter(c => state.cardsOff[c.id] !== false).length} owned`;
   $('c-borrow').checked = !!state.borrow;
 }
 function initSettings() {
