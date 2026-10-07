@@ -409,7 +409,7 @@ fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usiz
     r
 }
 
-pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64>, pub sets: Vec<f64> }
+pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64>, pub sets: Vec<f64>, pub per_outfit: Vec<f64> }
 /// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
@@ -574,6 +574,7 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
             if want_sets { if let Some(x) = ext.as_deref_mut() { for (m, &p) in dist[i].iter().enumerate() { x.sets[(i << nu) + m] += w * p; } } }
         }
     }
+    if let Some(x) = ext.as_deref_mut() { x.per_outfit = acc.iter().map(|a| a.0).collect(); }
     (0..nq).map(|qi| {
         let mut b = 0;
         for o in 1..no { if acc[qi * no + o].0 > acc[qi * no + b].0 { b = o; } }
@@ -3191,7 +3192,7 @@ mod tests {
                 let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
                 assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {:?} vs {:?}", x, y);
                 let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
-                let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![] };
+                let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![], per_outfit: vec![] };
                 let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
                 let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
                 assert!(rel(z.0, c * y.0) < 1e-12 && z.2 == y.2, "scale uma {u}: {} vs {}", z.0, c * y.0);
@@ -3205,7 +3206,7 @@ mod tests {
         let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
         let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
         for u in [0usize, 5, 20] {
-            let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0] };
+            let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
             let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
             let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
             assert!(rel(m0 + m1, j.0 + j.1) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.0, j.1);

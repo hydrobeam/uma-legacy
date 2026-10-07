@@ -130,6 +130,15 @@ fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
     }
     (if finite && remaining.is_finite() { Some(remaining) } else { None }, two_runs)
 }
+/// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x.
+fn interp(v: &[f64], x: &[f64]) -> f64 {
+    let mut cur = v.to_vec();
+    for (k, &xk) in x.iter().enumerate() {
+        let b = 1usize << k;
+        for c in 0..cur.len() { if c & b == 0 { cur[c] = cur[c] * (1.0 - xk) + cur[c | b] * xk; } }
+    }
+    cur[0]
+}
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
 struct Solved { found: Vec<Found>, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
@@ -184,7 +193,7 @@ impl<'a> Env<'a> {
     /// chance of each set of uncertain targets landing
     fn exact(&self, t: usize, sel: &Sel, nc: &[i32], m1: bool, sets: bool) -> ((f64, f64, usize), JointExt) {
         let (su, sf) = self.scale(nc);
-        let mut ext = JointExt { su, sf, marg: vec![], sets: if sets { vec![0.0] } else { vec![] } };
+        let mut ext = JointExt { su, sf, marg: vec![], sets: if sets { vec![0.0] } else { vec![] }, per_outfit: vec![] };
         let j = joint_fast(&self.model, t, &[0.0], &self.ents_of(sel), sel.filler, self.ntar, m1, Some(&mut ext))[0];
         (j, ext)
     }
@@ -301,9 +310,13 @@ impl<'a> Env<'a> {
                 if op.race < 0 { continue; }
                 let r = op.race as usize; let run = chosen == Some(o);
                 let instead = match chosen { _ if run => Value::Null, None => json!("rest"), Some(c) => json!(u.opts[tt][c].name) };
-                rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": d.race_names[r], "run": run, "instead": instead,
-                                 "p": if run { json!(pk(d, op.bp, k)) } else { Value::Null }, "goal": op.goal,
-                                 "parents": [won(a, r) > 0.0, won(b, r) > 0.0]}));
+                // the loop planner's chart row (one member: `cells`, `shared` = a parent won it, so it builds affinity),
+                // plus `run`, `p`, `instead`, and `name` (the race's full name)
+                let par = [won(a, r) > 0.0, won(b, r) > 0.0];
+                let cell = if run { json!({"p": (pk(d, op.bp, k) * 100.0).round(), "goal": op.goal, "apt": 110 - op.bp, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)}) } else { Value::Null };
+                rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": chart_race_name(&d.race_names[r]), "name": d.race_names[r],
+                                 "run": run, "skipped": !run, "instead": instead, "p": if run { json!(pk(d, op.bp, k)) } else { Value::Null }, "goal": op.goal,
+                                 "parents": par, "shared": par[0] || par[1], "cells": [cell], "runners": run as u8, "alts": []}));
             }
         }
         (Value::Array(rows), wp)
@@ -419,6 +432,71 @@ impl<'a> Env<'a> {
                 "p_all": pfull, "p_within_two": two_runs, "next_proven": next.proven, "setups": setups.len(),
                 "star_dist": self.sj.star_dist});
         }
+        // The improvement odds over her stars too (not only stars averaged): for a fixed setup, P(all) per outfit is
+        // multilinear in x_k = m(s_k)^2, m(s) = 1 - min(1, 0.03 s (1 + A_V/100)) her miss factor for target k at s stars
+        // (each landing factor is affine in (1 - q_k) = (the other legacies' miss)^2 x_k), times the spark-generation
+        // scale 1.1^(n_k - 6). So P(all) at the 2^nu corners x in {0, 1} (uncertain targets) gives it for every set
+        // she lands and every star count: exact for these setups, over 4^n outcomes (n <= 8 targets).
+        let stars_exact = ntar <= 8;
+        let (mut improve_x, mut ef, mut ef_imp, mut fmax) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+        let mut by_x = vec![(0.0f64, 0.0f64); ntar + 1];   // per number landed: (P, P where she improves)
+        let mut check = 0.0f64;
+        if stars_exact && !policy {
+            let nu = self.nu; let w = self.sj.star_dist;
+            // per setup: per outfit the corner values (scale 1), the new veteran's affinity, the carriers without her
+            struct Lin { corners: Vec<Vec<f64>>, a_v: f64, nc0: Vec<i32> }
+            let mut lins = vec![];
+            for s in &next.found {
+                let sl = self.slots(&p2, s.t, s.a, s.b);
+                let iv = sl.iter().position(|x| x.parent && x.legacy == vi).unwrap();
+                let a_v = sl[iv].rel + sl[iv].race;
+                let mut sl0 = sl.clone(); for k in 0..ntar { sl0[iv].stars[k] = 0; } sl0[iv].mix = None;
+                let (q0, nc0) = inherit(&sl0, ntar);
+                let no = self.model.n_outfits(s.t);
+                let mut corners = vec![vec![0.0f64; 1 << nu]; no];
+                for c in 0..(1usize << nu) {
+                    let mut q = q0.clone();
+                    for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
+                    self.set_trainee(s.t, &q);
+                    let (_, ext) = self.exact(s.t, &s.sel, &vec![6; ntar], false, false);
+                    for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
+                }
+                // the check: every target at 2 stars, against a direct evaluation
+                let mut sl2 = sl0.clone(); for k in 0..ntar { sl2[iv].stars[k] = 2; }
+                let (q2, nc2) = inherit(&sl2, ntar);
+                self.set_trainee(s.t, &q2);
+                let direct = self.exact(s.t, &s.sel, &nc2, false, false).0 .0;
+                let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
+                let xs: Vec<f64> = self.uncv.iter().map(|_| xm(2)).collect();
+                let sc: f64 = (0..ntar).map(|k| 1.1f64.powi(nc0[k] + 1 - 6)).product();
+                let via = sc * corners.iter().map(|cv| interp(cv, &xs)).fold(0.0f64, f64::max);
+                check = check.max((via - direct).abs() / direct.max(1e-300));
+                lins.push(Lin { corners, a_v, nc0 });
+            }
+            // every outcome: per target absent or 1-3 stars
+            let mut sig = vec![0u8; ntar];
+            loop {
+                let mut m = 0usize; let mut pr = 1.0f64;
+                for k in 0..ntar { if sig[k] > 0 { m |= 1 << k; pr *= w[sig[k] as usize - 1]; } }
+                pr *= ps[m];
+                if pr > 0.0 {
+                    let mut f = p_now;
+                    for l in &lins {
+                        let xs: Vec<f64> = self.uncv.iter().map(|&i| if sig[i] == 0 { 1.0 } else { let mm = 1.0 - (0.03 * sig[i] as f64 * (1.0 + l.a_v / 100.0)).min(1.0); mm * mm }).collect();
+                        let sc: f64 = (0..ntar).map(|k| 1.1f64.powi(l.nc0[k] + (sig[k] > 0) as i32 - 6)).product();
+                        let v = sc * l.corners.iter().map(|cv| interp(cv, &xs)).fold(0.0f64, f64::max);
+                        if v > f { f = v; }
+                        if v > fmax { fmax = v; }
+                    }
+                    let up = f > p_now * (1.0 + 1e-9);
+                    ef += pr * f; if up { improve_x += pr; ef_imp += pr * f; }
+                    let c = m.count_ones() as usize; by_x[c].0 += pr; if up { by_x[c].1 += pr; }
+                }
+                let mut k = 0;
+                while k < ntar { sig[k] += 1; if sig[k] <= 3 { break; } sig[k] = 0; k += 1; }
+                if k == ntar { break; }
+            }
+        }
         // (probability, weighted all, weighted near, no-gain mass, near-only improvement mass)
         let mut by = vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64); ntar];
         let mut improve = 0.0;
@@ -441,6 +519,11 @@ impl<'a> Env<'a> {
                 "near_p_all": near_all[m], "no_gain": stay[m], "partial_only": stay[m] && near[m] > p_minus1_now * (1.0 + 1e-9)}) }).collect();
         json!({"p_now": p_now, "p_minus1_now": p_minus1_now, "p_all": pfull, "improve": improve,
                "partial_improve": partial_improve, "setups": setups, "next_proven": next.proven,
+               "stars_exact": stars_exact, "improve_stars": if stars_exact { json!(improve_x) } else { Value::Null },
+               "f_mean": if stars_exact { json!(ef) } else { Value::Null }, "f_if_improve": if stars_exact && improve_x > 0.0 { json!(ef_imp / improve_x) } else { Value::Null },
+               "improve_by_count": if stars_exact { json!((0..=ntar).rev().filter(|&c| by_x[c].0 > 0.0).map(|c| json!({"landed": c, "p": by_x[c].0, "improve": by_x[c].1 / by_x[c].0})).collect::<Vec<_>>()) } else { Value::Null },
+               "multilinear_check": check, "best_case_with_her": if stars_exact { json!(fmax) } else { Value::Null },
+               "best_with_her": next.found.first().map(|f| json!({"trainee": d.umas[f.t].id, "p_all": f.val})),
                "by_count": by_count, "miss_one": miss_one, "star_dist": self.sj.star_dist})
     }
 }

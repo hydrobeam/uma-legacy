@@ -48,6 +48,13 @@ fn weak_pool_outcomes_schedule_and_look_ahead() {
     let shares: f64 = ahead["by_count"].as_array().unwrap().iter().map(|c| c["p"].as_f64().unwrap()).sum();
     assert!((shares + ahead["p_all"].as_f64().unwrap() - 1.0).abs() < 1e-9, "outcome classes cover every result");
     assert!((0.0..=1.0).contains(&ahead["improve"].as_f64().unwrap()));
+    // over her stars too: exact for the checked setups (the multilinear form reproduces a direct evaluation)
+    assert!(ahead["stars_exact"] == true && ahead["multilinear_check"].as_f64().unwrap() < 1e-10);
+    let by: Vec<&Value> = ahead["improve_by_count"].as_array().unwrap().iter().collect();
+    assert!((by.iter().map(|c| c["p"].as_f64().unwrap()).sum::<f64>() - 1.0).abs() < 1e-9, "every outcome, stars included, once");
+    let imp = ahead["improve_stars"].as_f64().unwrap();
+    assert!((imp - by.iter().map(|c| c["p"].as_f64().unwrap() * c["improve"].as_f64().unwrap()).sum::<f64>()).abs() < 1e-12);
+    assert!(ahead["best_case_with_her"].as_f64().unwrap() >= ahead["f_if_improve"].as_f64().unwrap_or(0.0));
 }
 
 /// The comparison for one veteran: both choices are counted the same way and both estimates are finite.

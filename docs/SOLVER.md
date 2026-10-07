@@ -260,9 +260,10 @@ the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), a
 do not enter the skill odds), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
-- `schedule`: every G1 she could enter, in turn order (`turn`, `when`, `year`, `race`, `goal`, `parents` = which
-  parents won it). `run` false for those she skips, with `instead` (the race she runs that turn, or "rest") and `p`
-  null; `p` = her win chance for those she runs. The schedule maximizes expected distinct G1 wins, each race weighted
+- `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
+  chart name, `when`, `year`, `cells` = [win %, goal, aptitude and streak terms] or [null], `shared` = a parent won it)
+  plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
+  "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
   1 plus 1 per parent who won it (`best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
   she is a parent herself), under goal races, same-turn clashes and streak win penalties. `g1_wins`: expected wins.
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
@@ -281,6 +282,18 @@ best-all career as its floor (not optimized for it). Output `lookahead`: `p_now`
 `next_proven`, `star_dist`; `by_count` (per number landed: `p`, mean `f`, mean `f_minus1`, `no_gain` share,
 `partial_only` share); `miss_one` (per target, landing all but it: `p`, `f`, `f_minus1`, `near_p_all`, `no_gain`,
 `partial_only`). `p_minus1_now` can be passed with `p_now` to skip recomputing today's best.
+
+Those per-set figures average her stars. Over her stars too (`improve_stars`, `f_mean`, `f_if_improve`,
+`improve_by_count`, `best_case_with_her`; up to 8 targets, `stars_exact`): for a fixed setup, P(all) per outfit is
+multilinear in x_k = m(s_k)^2 with m(s) = 1 - min(1, 0.03 s (1 + A_V/100)) her miss factor for target k at s stars
+(derived: each landing factor is affine in (1 - q_k) = (the other legacies' miss)^2 x_k), times the spark-generation
+scale 1.1^(n_k - 6); a target she lacks has x_k = 1. So P(all) at the 2^nu corners x in {0, 1} (uncertain targets) gives
+it, by multilinear interpolation, for every one of the 4^n outcomes (each target absent or at 1-3 stars), each with
+chance P(set) x the rank mix per star; the best outfit is taken per outcome. Exact for the checked setups;
+`multilinear_check` is the relative difference against a direct evaluation (every target at 2 stars), about 1e-16.
+`improve_stars`: the chance, over every outcome including landing all targets, that the best next career with her
+beats today's best; `best_case_with_her`: the best P(all) of a career with her as a parent over every outcome
+(unfloored); `best_with_her`: the best setup found for her (trainee id, P(all) at the averaged stars).
 
 Comparison (`policy: {stay_trainee, stay_parents: [a, b], p_floor}`), for one veteran entered in the job's legacies
 and fixed as a parent (`fix`): "stay" runs the career (stay_trainee, stay_parents) again, "advance" runs the main result
