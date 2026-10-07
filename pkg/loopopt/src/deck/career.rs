@@ -277,9 +277,13 @@ impl<'a> Env<'a> {
     fn best_deck(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
         let ntar = self.ntar; let uid = self.d.umas[t].id;
         let n0 = self.space.nodes.get();
-        let (r, _) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+        // the product search starts at the bar the career must clear (a hair below the cut below): it prunes every
+        // branch that cannot reach it and finds nothing when no deck can, and a deck that clears it is the one an
+        // unseeded search finds (the seed is below the maximum, so the first deck reaching it is never pruned)
+        let seed = if th.is_finite() && th > 0.0 { th / (EXACT_RHO * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
+        let (r, _) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, seed, 1.0, 1);
         self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
-        let Some((pv, sel)) = r.into_iter().next() else { return DeckRes::NoDeck };
+        let Some((pv, sel)) = r.into_iter().next() else { return if seed > f64::NEG_INFINITY { DeckRes::Bounded } else { DeckRes::NoDeck } };
         // the candidate's own ceiling from its best product deck
         if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
         let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
