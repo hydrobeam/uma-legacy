@@ -608,7 +608,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .tc { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .tl { font-size: 0.78rem; color: var(--muted); }
 .tv { font-size: 1.2rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.ahead { display: grid; gap: 12px; }
 .simulation { display: grid; gap: 14px; min-width: 0; }
 .simwho { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; }   /* her portrait beside her sparks */
 .simside { display: grid; gap: 8px; min-width: 0; }
@@ -637,11 +636,27 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .ahtab th[scope="row"] { font-weight: 600; }
 .pinkres { margin: 8px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.85rem; }
 .pchip { border: 1px solid var(--pink-edge); background: var(--pink-soft); color: var(--ink); border-radius: 3px; padding: 1px 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.alts ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.alts li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border-bottom: 1px solid var(--line); padding: 6px 2px; }
-.alts li.on .altw { color: var(--accent); }
-.altw { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-weight: 600; flex: 1 1 18em; }
-.alto { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 0.82rem; }
+.optab td, .optab th { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
+.optab td { white-space: nowrap; }
+.optab tbody tr.on .altw { color: var(--accent); }
+.altw { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-weight: 600; }
+.otags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.otag { font-family: var(--font-data); font-size: 0.68rem; font-weight: 400; border: 1px solid var(--line); color: var(--ink); border-radius: 3px; padding: 0 4px; }
+.otag.pick { border-color: var(--accent); font-weight: 700; }
+.lhead .expc { flex-basis: 100%; }
+/* a phone: each option is a block (career, then its two numbers and the button on one line) */
+@media (max-width: 620px) {
+  .optab, .optab tbody { display: block; }
+  .optab thead { display: none; }
+  .optab tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .alts .optab th, .alts .optab td { border: 0; padding: 0; text-align: left; }
+  .optab tbody th { grid-column: 1 / -1; }
+  .optab td:nth-of-type(1) { grid-column: 1; grid-row: 2; }
+  .optab td:nth-of-type(2) { grid-column: 1; grid-row: 3; }
+  .optab td:nth-of-type(1)::before { content: 'This career: '; color: var(--muted); }
+  .optab td:nth-of-type(2)::before { content: 'Careers to land: '; color: var(--muted); }
+  .optab td:last-child { grid-column: 2; grid-row: 2 / 4; justify-self: end; }
+}
 /* the parent picker: your veterans as tiles, or a new one, or the planner */
 .vpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
 .vpt { display: grid; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); padding: 8px 10px; font: inherit; cursor: pointer; }
@@ -739,8 +754,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .cface .her { font-family: var(--font-data); font-size: 0.68rem; border: 1px solid var(--accent); color: var(--ink); border-radius: 3px; padding: 0 4px; }
 .cfaces .cwith { color: var(--muted); font-size: 0.82rem; }
 .rbmain .dtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.pickwhy { margin: 6px 0 0; }
-.altn { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.82rem; color: var(--muted); padding-left: 32px; }
 .tsum { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #sim-top { min-width: 0; }
 #sim-wins { justify-self: start; }

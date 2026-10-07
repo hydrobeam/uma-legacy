@@ -61,7 +61,7 @@ someone else's. Settings are saved in your browser on that device; nothing is up
 **Career planner** (`/career`, linked from the header). Picks the next career from the veterans you have. The
 settings strip (game data, scenario, lineage rank, *Target skills*, *Umas*, *Support cards*, *Borrow one friend's card*)
 opens the loop planner's own editors and shares their saved settings; the rank sets the stars of the new veteran's
-sparks in the look ahead. The pedigree reads left to right: the trainee, her two parents, each parent's own two
+sparks in the plan's simulated careers. The pedigree reads left to right: the trainee, her two parents, each parent's own two
 parents, joined by brackets; the six legacies carry gate numbers 1 to 6 and each shows her affinity in the career on
 show. Each place is set by hand or left to the planner, which tries every owned uma and every pair of your veterans (at
 most one borrowed) and shows its pick outlined in dashes. **Choose parent** opens the parent picker: one of *Your
@@ -70,19 +70,24 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 1★, keep hers, or none; a new parent's own two parents get the same). The trainee shows the affinity her six
 legacies hold (parents' and grandparents' parts).
 
-When any place is left to the planner, it takes the six best careers by odds and shows the one whose veterans leave the
-best next careers (a one-step rollout: per career, the exact chance of each set of targets her veteran could land and
-the best next career with that veteran as a parent, today's best as the floor). When that is not the career with the
-best odds now, one line under the odds says so: "Picked over <that career> (1 in X now): the veterans it leaves give
-better next careers." With every place set by hand, the career is just scored.
+The search shows the career with the best odds first. Then the plan runs in the background (the status line says
+"Planning…", then "Planned in X s", or that it stopped at its time limit): for each option (the six best careers by
+odds, the best career with each of your three newest veterans, the best career of each of the twelve best trainees,
+your places respected) it simulates on the model the expected number of careers until one lands every target: this
+career, then after each one the best career by odds, chosen again, up to 16 runs per option with the same luck for
+every option, each run the first 50 careers and then the last one repeated (so the numbers lean high). The planner
+shows the option with the fewest expected careers; options within error of it are "about the same", and among those it
+shows the best odds now. Under the odds: *Expected careers to land: N ± m* (a 95% interval) for the career on show.
+With every place set by hand, the career is scored and its expected careers simulated.
 
 Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it counts careers until one
-lands every target for both choices, running this career again or using her in the next career, the same way for both
-(one more career, then the best setup it leaves, repeated), shows today's best and the next career with her (all
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it simulates the careers until one
+lands every target for both choices, as the plan does, on the same runs: "Run this career again: N ± m careers to land"
+against "Use her in the next career: M ± m careers to land" (each with that career's odds), and the verdict (the
+fewer, or "about the same" when the difference is within error); it also shows today's best and the next career with her (all
 targets, all but one), that next career as portraits (trainee, then her two parents, *her* marked) and its deck behind
 *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
@@ -91,21 +96,16 @@ hands every place back to the planner for the next generation.
 
 Below: the odds (all targets land as sparks, all but one, targets expected), the deck with the *Race schedule* button
 in its title row, the target skills (per target the chance the lineage passes it on, how many of the six carry it, the
-chance it lands as a spark) and the aptitude (pink) sparks' chances of being passed on, and *After this career*. The
+chance it lands as a spark) and the aptitude (pink) sparks' chances of being passed on. The
 odds and the deck look as on the loop planner page: click a deck card for its panel (owned or not, GameTora); marking
 it not owned searches again (with borrowing on, it may come back as the borrowed card). *Race schedule* opens the
 planner's schedule window for the trainee: the G1s she runs, as banner cards with their win odds (a race a parent won
-counts extra and is outlined as building affinity). *After this career* lists, as label and value: the chance she improves your best next
-career (over every set of targets she could land and every star count; exact for the next careers checked, so a
-floor), your best career today, what the next career averages when she improves it, the chance she lands every
-target, the chance she improves it by how many targets she lands, and, when she can't, why (usually: today's best
-career trains her own character, and no veteran parents her own character).
+counts extra and is outlined as building affinity). (The former *After this career* section, next-career averages per
+result, is gone: the plan's expected careers replace it.)
 
-With any place left to the planner, *Other picks* lists its six candidates (only what it picked), each with its odds
-now, the next career her veterans give on average (and how much better than today's best), the best next career with
-her landing everything (as portraits), and **Use this**; the pick on show is marked. One line under them gives what
-repeating today's best costs (careers on average, exact) and the fewest careers any plan could average (a proven
-bound, from the best odds any pool could give).
+With any place left to the planner, *Options* is a table of what it weighed (only what it picks): per option "This
+career: 1 in X" and "Expected careers to land: N ± m" (while the plan runs, the six best by odds with "simulating…"),
+tagged *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked.
 
 **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
