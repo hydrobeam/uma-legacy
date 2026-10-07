@@ -67,7 +67,7 @@ __CSS__
     <div class="row">
       <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
       <button class="btn" type="button" id="v-paste">Paste</button>
-      <button class="btn" type="button" id="v-export" title="Download your veterans and the planner's search as a file (import it again with Import)">Export</button>
+      <button class="btn" type="button" id="v-export" title="Your veterans and the planner's search as text to copy or download (bring it back with Paste or Import)">Export</button>
       <button class="btn" type="button" id="v-clear">Remove all</button>
       <span class="hint" id="v-msg" role="status"></span>
     </div>
@@ -107,10 +107,16 @@ __CSS__
   <div id="wins-list"></div>
 </div></dialog>
 <dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
-  <div class="row between dhead"><h3 id="paste-title">Paste an umadump export</h3><button class="btn dclose">Close</button></div>
-  <p>The contents of umadump's <code>trained_chara_data.json</code>. Imported veterans replace earlier imports; veterans you made here stay.</p>
-  <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump export"></textarea>
+  <div class="row between dhead"><h3 id="paste-title">Paste veterans</h3><button class="btn dclose">Close</button></div>
+  <p>The contents of umadump's <code>trained_chara_data.json</code>, or the text from this page's Export. Imported veterans replace earlier imports; veterans you made here stay.</p>
+  <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump or Export text"></textarea>
   <div class="row"><button class="btn" id="paste-load">Import</button></div>
+</div></dialog>
+<dialog id="vx-dlg" aria-labelledby="vx-title"><div class="dlg">
+  <div class="row between dhead"><h3 id="vx-title">Export veterans</h3><button class="btn dclose">Close</button></div>
+  <p>Your veterans, the plan and the solver job the planner sends for them. Copy the text to keep or share it; Paste brings it back.</p>
+  <textarea id="vx-text" rows="12" spellcheck="false" readonly aria-label="Exported veterans, plan and solver job"></textarea>
+  <div class="row"><button class="btn" id="vx-copy">Copy</button><button class="btn" id="vx-dl">Download</button><span class="hint" id="vx-msg" role="status"></span></div>
 </div></dialog>
 <div class="cpop addpop" id="add-pop" role="dialog" aria-label="Add a spark" tabindex="-1" hidden></div>
 

@@ -794,12 +794,21 @@ const TESTS = {
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
     await done();
-    // Export: a file with the veterans and the solver job; Import takes it back
-    const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#v-export')]);
-    const exPath = await dl.path(), ex = JSON.parse((await import('fs')).readFileSync(exPath, 'utf8'));
-    await pg.locator('#v-file').setInputFiles(exPath); await pg.waitForFunction(() => /from an export/.test(document.getElementById('v-msg').textContent));
-    check('career: Export downloads the veterans and the search job, and Import takes the file back', ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career'
-      && ex.job.legacies.length === 12 && await pg.locator('#vets .vet').count() === 12);
+    // Export: a dialog with the veterans and the solver job as text; Copy puts it on the clipboard, Download saves it, Paste takes it back
+    await pg.click('#v-export'); await dialog(pg, 'vx-dlg');
+    const exText = await pg.inputValue('#vx-text'), ex = JSON.parse(exText);
+    const chromium = b.browserType().name() === 'chromium';
+    if (chromium) await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await pg.click('#vx-copy'); await pg.waitForFunction(() => document.getElementById('vx-msg').textContent);
+    const copied = (await pg.textContent('#vx-msg')) === 'Copied.' && (!chromium || await pg.evaluate(() => navigator.clipboard.readText()) === exText);
+    const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#vx-dl')]);
+    const dlSame = (await import('fs')).readFileSync(await dl.path(), 'utf8') === exText;
+    await pg.locator('#vx-dlg .dclose').click();
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load');
+    check('career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back', ex.app === 'uma-legacy-veterans'
+      && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
+      && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
+      `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
     await done();
     check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*Checked on exact odds/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);

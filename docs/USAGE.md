@@ -109,8 +109,9 @@ bound, from the best odds any pool could give).
 
 **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
-re-import replaces earlier imports and keeps veterans made here. *Export* downloads your veterans, the plan and the
-solver job the planner sends for them (to replay a search outside the page); *Import* takes that file back too. In every node: click a skill to cycle its stars
+re-import replaces earlier imports and keeps veterans made here. *Export* shows your veterans, the plan and the
+solver job the planner sends for them (to replay a search outside the page) as text, with *Copy* and *Download*;
+*Paste* takes that text back, *Import* the downloaded file. In every node: click a skill to cycle its stars
 1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a
 portrait to change who she is, the G1 button opens the G1 wins editor, *Yours / Borrowed* marks a borrowed veteran.
 

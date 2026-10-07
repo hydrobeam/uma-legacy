@@ -669,10 +669,22 @@ const EXPORT_APP = 'uma-legacy-veterans';
 function exportVets() {
   let job = null; try { job = buildJob(); } catch {}
   const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans: vets, plan, job };
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  $('vx-text').value = JSON.stringify(data); $('vx-msg').textContent = ''; $('vx-dlg').showModal();
+}
+// Copy: the clipboard API, else select the text and the old copy command, else leave it selected for Ctrl+C
+function copyExport() {
+  const t = $('vx-text'), msg = (m) => { $('vx-msg').textContent = m; };
+  const fallback = (why) => { t.focus(); t.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch {}
+    msg(ok ? 'Copied.' : `Could not copy${why ? ` (${why})` : ''}. The text is selected: press Ctrl+C (or ⌘C).`); };
+  if (!navigator.clipboard?.writeText) { fallback('no clipboard access here'); return; }
+  navigator.clipboard.writeText(t.value).then(() => msg('Copied.'), (e) => fallback(e?.message || 'clipboard refused'));
+}
+function downloadExport() {
+  const url = URL.createObjectURL(new Blob([$('vx-text').value], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = `uma-legacy-veterans-${ERA}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  $('v-msg').textContent = `Exported ${vets.length} veteran${vets.length === 1 ? '' : 's'}.`;
+  $('vx-msg').textContent = 'Downloaded.';
 }
 function ownExport(text) { try { const o = JSON.parse(text); return o && o.app === EXPORT_APP && Array.isArray(o.veterans) ? o : null; } catch { return null; } }
 function importText(text) {
@@ -698,7 +710,7 @@ loadData().then(() => {
   $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $('vpick-dlg').close(); changed(); };
   $('v-file').onchange = async (e) => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
-  $('v-export').onclick = exportVets;
+  $('v-export').onclick = exportVets; $('vx-copy').onclick = copyExport; $('vx-dl').onclick = downloadExport;
   $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
   $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
   renderAll(); search();
