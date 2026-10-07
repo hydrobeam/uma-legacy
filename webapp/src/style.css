@@ -650,3 +650,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .cartab .sic { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; }
 .cardeck ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; font-size: 0.85rem; }
 .cardeck li { display: flex; align-items: center; gap: 6px; }
+/* the career page's Support cards dialog: 8 tiles a row (the planner's rail fits 4); fewer on a narrow screen */
+.setdlg .cgroup .ctiles { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px 8px; }
+@media (max-width: 900px) { .setdlg .cgroup .ctiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
