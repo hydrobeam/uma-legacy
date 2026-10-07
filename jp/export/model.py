@@ -48,10 +48,18 @@ def goals2(ch, exclude_det2=True):
     for g in goals(ch, exclude_det2):
         gs.append([(t, JBC.get(p,p)) for t,p in g])
     return gs
+# turns a career forbids racing (single_mode_race_restrict_turn): gain_id names the story event that sets it (1078 118 11 is
+# story 501078118). Yamanin Zephyr turn 44 (Classic late October: Tenno Sho (Autumn), Shuka Sho, Kikuka Sho) and Sweep
+# Tosho turn 36 (Classic late June: Takarazuka Kinen) are fixed story events that rest her (+20 energy), so she races
+# nothing. Matikanetannhauser's turn 70 is the Japan Cup goal the event assigns her (route row determine_race 4), so only
+# the goal race stays on a restricted turn.
+RESTRICT={}
+for _ch,_t in q("select chara_id, turn from single_mode_race_restrict_turn"): RESTRICT.setdefault(_ch,set()).add(_t)
 def options(ch, exclude_det2=True):
-    """turn -> list of programs runnable (one program per (turn,race)); goal groups remapped to those programs"""
+    """turn -> list of programs runnable (one program per (turn,race)); goal groups remapped to those programs; only goal
+    races at a turn the career forbids racing (RESTRICT)"""
     gs=goals2(ch, exclude_det2)
-    opt={t:list(v) for t,v in G1CAL.items()}
+    opt={t:list(v) for t,v in G1CAL.items() if t not in RESTRICT.get(ch,())}
     canon={}
     for g in gs:
         for t,p in g:

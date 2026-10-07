@@ -43,6 +43,9 @@ E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_
   - Relocated-venue G1s count as the normal race: 1025→1012, 1027→1006, 1028→1005.
   - `determine_race = 2` goal alternates are excluded.
   - Goals sharing a `sort_id` are alternatives; at least one must be run.
+  - Turns in `single_mode_race_restrict_turn` (set by a story event of her career) keep only her goal races: Yamanin Zephyr
+    races nothing at turn 44 (Classic late October), Sweep Tosho nothing at turn 36 (Classic late June), Matikanetannhauser
+    only her Japan Cup goal at turn 70. JP adds rows for more umas (Daitaku Helios, Tanino Gimlet, Katsuragi Ace among them).
 
 **Assumptions:**
 - Schedules are fixed in advance.
