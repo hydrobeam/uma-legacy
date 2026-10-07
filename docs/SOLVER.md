@@ -232,9 +232,10 @@ choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets 
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
 | `lookahead` | add the reroll-or-move-on look ahead for the best career (`lookahead` in the output) | `false` |
-| `p_now` | today's best P(all) over every career, the look ahead's floor (computed when absent) | none |
+| `p_now` | today's best P(all) over every career, the floor of the look ahead and of the rollout (computed when absent) | none |
 | `p_minus1_now` | P(at least n−1) on that same best-all career; pass with `p_now` to avoid recomputing the baseline | none |
 | `policy` | `{stay_trainee, stay_parents: [a,b], p_floor}`: compare that fixed reroll career against the main result using equal continuation horizons; `p_floor` is an already available current-roster all-target probability | none |
+| `rollout` | K > 0: the planner's pick as a one-step rollout over the K best careers whoever trains (the job's `trainees` and `fix` respected; `rollout` in the output); the page sends 6 whenever a place is left open | 0 (off) |
 
 Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
 with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
@@ -308,6 +309,63 @@ stationary tail); a positive failure chance with f_a(S) = 0 gives null (no finit
 further ahead than the other; this is an estimate, not the optimal policy. Output `policy`: `stay` and `advance`
 (`expected_careers_estimate`, `p_all`, `p_within_two`, `next_proven`, `setups`, `star_dist`), `actions_proven`,
 `continuation_floor`, `horizon`. Cost: the stay search and two look aheads (about 6 s in the browser on 12 veterans).
+
+Rollout (`rollout: K`). Which career to run next, when the target is the first veteran landing every target. For each
+of the K best careers a by P(all) (a = trainee, parents, her best deck):
+
+    Q(a) = 1 + sum over S != all of P_a(S) / f_a(S)
+
+- P_a(S) (derived, exact under the model): the chance her new veteran lands target set S (`outcome_sets`).
+- f_a(S): the best P(all) of a next career once that veteran joins the pool, at least p* = today's best P(all). Her
+  stars per landed target follow `star_dist` (assumed independent across targets and of S), her G1 wins are her
+  schedule's win chances (assumed independent), her parents are a's parents.
+- Q(a) (derived) is the expected number of careers of "run a, then repeat the best career it leaves" (a stationary
+  tail). Running the career with the lowest Q is a rollout of the stationary policy, so it is never worse than repeating
+  today's best (derived, policy improvement); it is not guaranteed to beat re-running the search after every career
+  ("greedy"). Measured under the model by simulation (`DESIGN` section 4, not shipped): 230 careers to the first hit on
+  `career_U4` against 270 for greedy and 587 for repeating, 253 against 306 on a 4-veteran pool, no difference on
+  `career_U` (77.9). K = 6 was the measured choice; K = 12 was not better.
+- Q is a ranking rule, not a forecast: it counts every improvement as permanent and no later one (Q at the U4 start is
+  568, the policy's measured value 230). The page never shows Q as careers.
+
+How f is computed. For a fixed trainee and deck, P(all) per outfit is multilinear in the per-target inheritance
+chances q (derived: q_k enters every landing factor only through (1 - e)(1 - q_k), affinely, once per target), so its
+2^nu values at q in {0, 1}^nu (`corners`, nu = targets not guaranteed, at most 10) give it at any q by multilinear
+interpolation, times the spark scale Π 1.1^(n_k - 6). Decks come from a cache: the search's fully checked decks
+(`Ref`: the chances it was found at, its exact value, the deck), plus deck searches made here. Per candidate, every
+legal (trainee, partner) with her veteran as the other parent (her landing every target, stars averaged: exact for a
+fixed deck) gets the search's ceiling and, from each cached `Ref` of that trainee, the `rise` bound; setups are taken
+best ceiling first; where a bound exceeds the cached decks' table value, that trainee's best deck at those chances is
+searched (the per-uma search's `best_deck`) and cached. The four best setups (`SHORTLIST`) at S = all are then proven
+under EXACT_RHO (`shortlist_proven`, false when a deck search ran out of work). For S != all, f(S) = max(p*, the best
+table value over those four setups with her stars set by S): exact for the cached decks of those setups, a floor
+otherwise (another deck, or a setup outside the four, could do better for a veteran that lands only part of the set;
+the simulations found the same decision with 4 and 12 setups at every step of 40 trajectories, not a proof).
+
+The ceiling p_bar (derived bound). Every career has P(all) <= p_bar = max over owned trainees of P(all) at q = 1 for
+every target with all six legacies carrying every spark, so whatever is done the number of careers N to the first hit
+satisfies P(N > n) >= (1 - p*)(1 - p_bar)^(n - 1) and E[N] >= 1 + (1 - p*)/p_bar. p_bar is found best first (each
+trainee's ceiling at q = 1, her best deck searched while the ceiling beats the best so far), `p_bar_proven` when every
+search finished; cached per solver instance and job settings (everything but the pool and the places). 1/p* is exact:
+the expected careers of repeating today's best.
+
+Output `rollout`: `k`, `shortlist`, `pick` (index into `candidates`, lowest Q), `differs` (the pick is not the
+highest-P(all) candidate), `choice` (the picked career, the same fields as a result, with `schedule` and
+`outcome_sets`), `candidates` (each a result without schedule, plus `q`, `f_fail` = E[f | she misses a target],
+`gain` = f_fail / p*, `improve` = P(f > p* | she misses), `best_next` = the best setup with her landing everything:
+trainee, partner legacy index, `p_all`; `setups`, `visited`, `searched`, `chosen`), `p_star`, `repeat_careers` = 1/p*,
+`p_star_from` ("candidates" when nothing is fixed, else "search" or "p_now"), `p_star_proven`, `p_bar`,
+`p_bar_trainee`, `p_bar_proven`, `lower_bound` = 1 + (1 - p*)/p_bar, `candidates_proven`, `shortlist_proven`,
+`decks` (cached decks), `deck_searches`, `table_check` (relative difference of a table value against a direct exact
+evaluation over the best setup's cached decks, with her landing everything and with her likeliest failed set; about
+1e-16), `timing_s`. Cost (native, one core): `career_U` 0.13 s, `career_U4` 0.77 s, 50 and 200 synthetic veterans
+0.65 and 0.9 s, on top of the K-best search (0.46 s, 1.0 s, 0.4 s, 2.2 s); in the page's wasm `career_U` 0.67 s and
+`career_U4` 1.8 s for the whole job.
+
+Work budget: a career search has its own (`CAREER_BUDGET`, 300M units; the loop planner's 30M left synthetic pools of
+12, 100 and 200 veterans unproven with the same picks; measured need 10M-85M up to 400 veterans; `EXACT_BUDGET` in the
+environment overrides it). Candidates are kept as (ceiling, trainee, parents) and their chances recomputed when solved
+(peak memory at 400 veterans 914 MB -> 265 MB, same results).
 
 ## 4. Validation
 
