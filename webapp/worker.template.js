@@ -16,8 +16,10 @@ self.onmessage = async (e) => {
   try {
     if (m.type === 'init') {
       try {
-        if (m.module) ex = (await WebAssembly.instantiate(m.module, {})).exports;   // compiled once by the page
-        else ex = (await WebAssembly.instantiate(m.bytes, {})).instance.exports;
+        // env.clock_ms: the solver's wall clock (the career plan's time budget)
+        const imports = { env: { clock_ms: () => performance.now() } };
+        if (m.module) ex = (await WebAssembly.instantiate(m.module, imports)).exports;   // compiled once by the page
+        else ex = (await WebAssembly.instantiate(m.bytes, imports)).instance.exports;
       } catch (err) {
         throw new Error('This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.');
       }

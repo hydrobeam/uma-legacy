@@ -271,7 +271,8 @@ the job run alone.
 | `p_now` | today's best P(all) over every career, the floor of the look ahead and of the rollout (computed when absent) | none |
 | `p_minus1_now` | P(at least n−1) on that same best-all career; pass with `p_now` to avoid recomputing the baseline | none |
 | `policy` | `{stay_trainee, stay_parents: [a,b], p_floor}`: compare that fixed reroll career against the main result using equal continuation horizons; `p_floor` is an already available current-roster all-target probability | none |
-| `rollout` | K > 0: the planner's pick as a one-step rollout over the K best careers whoever trains (the job's `trainees` and `fix` respected; `rollout` in the output); the page sends 6 whenever a place is left open | 0 (off) |
+| `rollout` | K > 0: the planner's pick as a one-step rollout over the K best careers whoever trains (the job's `trainees` and `fix` respected; `rollout` in the output); no longer sent by the page (kept for reverting) | 0 (off) |
+| `plan` | the planner's pick on the surrogate simulator (section "Plan"): `{budget_ms, samples_min, samples_max, eps, horizon_max, seed, top, recent, trainees, margin, search_work, refresh_work}`, every field optional; `plan` in the output, or with `policy` the plan-based comparison in `policy.plan` (and no options) | none |
 
 Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
 with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
@@ -450,6 +451,68 @@ policy follows until S < `cont_eps`; the candidate with the lowest mean E over t
 follow the base policy. Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `refreshes`,
 `segs` (each pick change: career, p, pool size, S), `decisions`, `checks`; and `E` (mean, sd, 95% CI) over the runs.
 Results and commands: `val/sim/README.md`.
+
+### Plan (`plan` on a career job)
+
+The page's pick and its numbers. Objective (the only one): the expected number of careers until a career's veteran
+lands every target. After the main search, per candidate career c and sample j (derived, as the simulator):
+
+    X_j(c) = 1 + sum over t >= 1 of S_t,  S_1 = 1 - p_c,  S_{t+1} = S_t (1 - p_t);  stop at S_t < eps or t = horizon_max, plus S_t / p_t
+
+Career 0 is c with its exact best deck (its P(all) and landed-set distribution exact; the failed veteran drawn from it
+as the simulator draws), every later career is the surrogate greedy's (`greedy`: the best P(all) on cached decks,
+chosen again after every career). Sample j uses the simulator's uniforms for run j (`Keys::Main`), the same for every
+candidate at the same career index: common random numbers, so differences are paired. The tail S_t / p_t repeats the
+last career; greedy only ever moves to a higher P(all), so on each path the tail is at least what greedy would still
+need (derived): X is an upper estimate of "c, then greedy", tighter with a longer horizon. On the owner's pools p is
+1e-4 to 1e-3, so with horizon 50 the tail is most of X and the numbers lean high (assumed acceptable: the ranking is
+what decides; the full horizon costs 10-180 s native per run on these pools).
+
+Candidates: the main search's K best careers (`top`, reused when the job asked for them), the best career with each
+of the `recent` newest own veterans as a parent, the best career of each of the `trainees` best trainees (both
+searches with a hard work cap `search_work`: past it they stop taking candidates), and today's best by the surrogate
+(`greedy`, flagged; ineligible when it breaks the job's fixed places). Deduplicated by (trainee, parents).
+
+Surrogate: the simulator's `greedy` with refresh margin `margin` (default 1e9: a trainee's cached decks are re-scored
+exactly at new chances through their corner tables, never searched again) and `fill` (a trainee without a cached deck
+gets her best deck searched once without a bar, so a deck search that ends below the bar is not repeated for every new
+candidate of hers). The cache starts from the decks the job's searches fully checked. Measured with the simulator's
+audit (frozen surrogate, 4 runs of 25 careers each on `career_U5` and `owner4`): at all 29 pick changes the surrogate's
+pick equalled the exact career search's, value gap at most 0.3%. A margin-backed surrogate (m = 0 to 1) spent 15-40 s
+native per continuation on `owner4` in deck searches; the guarantee E*/(1 + m) does not hold for the default.
+
+Allocation: every candidate gets `samples_min` samples (sample index outer, candidate inner); the leader L is the
+eligible candidate with the lowest mean; c is separated from L when the 95% Student-t interval of the paired
+difference X_j(c) - X_j(L) is above 0; L and the candidates not separated from it double their samples (up to
+`samples_max`) until none is left ("separated"), all are at `samples_max` ("samples_max"), or `budget_ms` of wall clock
+has passed, checked before each sample ("budget"). Wall clock: the process clock natively, the host's `env.clock_ms`
+import in wasm (the worker, `example.mjs` and `nodebench.mjs` pass `performance.now`). Pick: among L and the
+candidates not separated from it, the highest P(all) now (`about_same` when there are several).
+
+Output `plan`: `options` (best estimate first; each a result without schedule plus `expected` (mean X), `ci` (95%
+half-width of its own samples; null below two), `samples`, `vs_leader` (paired [mean, half-width]), `eligible`,
+`greedy`, `from` (`top`, `recent`, `trainee`, `greedy`), `chosen`, `about_same`, `leader`), `pick` and `leader`
+(indices into `options`), `about_same`, `choice` (the picked career with `schedule` and `outcome_sets`),
+`greedy_expected` (today's best career's row: `option`, `expected`, `ci`, `samples`, `p_all`), `stop`, `sampling_ms`,
+`init_ms`, `search_ms`, `total_ms`, `continuations`, `careers_simulated`, `deck_searches`, `decks`, `fidelity` (the
+chosen career's surrogate table value against its exact P(all): `table`, `exact`, `rel_gap`), `greedy_check` (nothing
+fixed: the surrogate's best against the exact search's: `surrogate`, `its_exact`, `agrees`), `settings`.
+
+With `policy` (the veteran analysis): the two choices, the stay career again and the best career with the new
+veteran (`advance`, the main search with her fixed), on the same estimator and samples; `policy.plan` = `{stay,
+advance}` (each `expected`, `ci`, `samples`, `p_all`), `advance_minus_stay` (paired [mean, half-width]),
+`about_same` (|mean| <= half-width, or under two samples), `better` (`stay`/`advance`, null when about the same),
+`stop`, `sampling_ms`, `total_ms`, `careers_simulated`.
+
+| Field of `plan` | Meaning | Default |
+|---|---|---|
+| `budget_ms` | wall clock for the sampling (the searches before it come on top); the page sends 8000 | 8000 |
+| `samples_min`, `samples_max` | samples per candidate at the start; the most any candidate gets | 4, 16 |
+| `eps`, `horizon_max` | a sample stops at S < eps or this many careers, tail S/p added | 1e-3, 50 |
+| `seed` | the simulator's seed | 1 |
+| `top`, `recent`, `trainees` | candidates: K best careers, best with each of the R newest own veterans, best of the N best trainees | 6, 3, 12 |
+| `margin` | the surrogate's refresh margin (1e9: no refresh once a trainee has a deck) | 1e9 |
+| `search_work`, `refresh_work` | hard work cap of each extra candidate search; work budget of each deck search in a sample (0: the job's) | 5,000,000, 0 |
 
 ## 4. Validation
 

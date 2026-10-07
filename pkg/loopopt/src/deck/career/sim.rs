@@ -50,6 +50,8 @@
 use super::*;
 use super::rollout::Cache;
 use std::rc::Rc;
+/// the planner's pick on this simulator (`plan` on a career job)
+pub(super) mod plan;
 
 fn d_policy() -> String { "greedy".into() }
 fn d_runs() -> usize { 16 }
@@ -156,6 +158,9 @@ struct Sim<'s, 'a> {
     fastc: Vec<Vec<Vec<(f64, f64)>>>, fixed: f64,
     /// on the main path (not inside a rollout's continuations): audits are taken only there
     main: bool, audits: Vec<Value>,
+    /// `plan` only (false for every policy here): a trainee without a cached deck gets her best deck searched without
+    /// a bar (so she has one from then on), instead of a search at the bar that caches nothing when it ends Bounded
+    fill: bool,
 }
 
 fn canon(chara: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
@@ -211,7 +216,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             let sr: Vec<&Sel> = starts.iter().collect();
             self.env.work = 0;
             let mut sc = 0;
-            let r = self.env.best_deck(t, c, th, &sr, &mut sc);
+            let r = self.env.best_deck(t, c, if self.fill && di == usize::MAX { 0.0 } else { th }, &sr, &mut sc);
             if let Some(s) = self.env.last_pv.take() { self.env.ruled[t].push((q.to_vec(), s)); }
             self.n.searches += 1;
             if let DeckRes::Done(v, sel, full) = r {
@@ -695,7 +700,7 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
             _ => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, (1.0 - dg[k]) * crate::skills::GEN_WHITE * (1.0 - dw[k]) * (1.0 - ew[k])),
         }).collect()).collect() }).collect();
     let fixed = env.model.fixed_factor();
-    let mut s = Sim { env, d, sk, cr, job, cfg: cfg.clone(), cache: Cache::new(n), trainees: trainees.to_vec(), hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main: true, audits: vec![] };
+    let mut s = Sim { env, d, sk, cr, job, cfg: cfg.clone(), cache: Cache::new(n), trainees: trainees.to_vec(), hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main: true, audits: vec![], fill: false };
     let t_init = std::time::Instant::now();
     let st0 = s.initial(legs, base);
     let init_s = t_init.elapsed().as_secs_f64();

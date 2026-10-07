@@ -99,6 +99,8 @@ struct CareerJob {
     #[serde(default)] rollout: usize,
     /// the policy simulator (`sim`): runs instead of the search when present
     #[serde(default)] simulate: Option<Value>,
+    /// the planner's pick on the surrogate simulator (`sim::plan`, `plan` in the output; with `policy`, `policy.plan`)
+    #[serde(default)] plan: Option<Value>,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
@@ -218,6 +220,8 @@ struct Env<'a> {
     ruled: Vec<Vec<(Vec<f64>, f64)>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
     last_pv: Option<f64>,
+    /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
+    hard: usize,
 }
 impl<'a> Env<'a> {
     fn uix(&self, id: u32) -> Option<usize> { self.d.umas.iter().position(|u| u.id == id) }
@@ -380,6 +384,7 @@ impl<'a> Env<'a> {
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
         while next < cands.len() && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
+            if self.hard > 0 && self.work > self.hard { complete = false; break; }
             let ci = next; next += 1;
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
             let th = thr(&done, &cands, t);
@@ -747,7 +752,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, hard: 0 };
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
     let fp = setup_fp(v);
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }
@@ -757,6 +762,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         if c.len() > 4 { c.remove(0); }
     });
     if let Some(sm) = &cj.simulate { return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm); }
+    let pj: Option<sim::plan::PlanJob> = match &cj.plan { None => None, Some(x) => match serde_json::from_value(x.clone()) { Ok(p) => Some(p), Err(e) => return json!({"error": format!("plan: {e}")}) } };
     let pool = env.pool(legs);
     // the rollout's cache takes the main search's decks when it uses its candidates (see `use_seen`)
     env.use_seen = cj.rollout == 0;
@@ -776,7 +782,11 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             out["policy"] = json!({"error": "The reroll career needs an eligible trainee and two existing parents."});
         } else if let Some(advance) = sv.found.first() {
             let stay = env.solve(&pool, &policy.stay_parents, &[stay_t.unwrap()], false, 1);
-            if let Some(stay_f) = stay.found.first() {
+            if let (Some(pj), Some(stay_f)) = (&pj, stay.found.first()) {
+                let sf = Found { t: stay_f.t, a: stay_f.a, b: stay_f.b, val: stay_f.val, ub: stay_f.ub, sel: stay_f.sel.clone() };
+                let pl = sim::plan::plan_policy(&mut env, d, sk, cr, v, legs, &pool, &sv, sf, &stay.refs, pj);
+                out["policy"] = json!({"plan": pl, "actions_proven": stay.proven && sv.proven});
+            } else if let Some(stay_f) = stay.found.first() {
                 let floor = policy.p_floor.max(stay_f.val).max(advance.val);
                 let stay_estimate = env.lookahead(&pool, legs, stay_f, floor, 0.0, true);
                 let advance_estimate = env.lookahead(&pool, legs, advance, floor, 0.0, true);
@@ -823,6 +833,9 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                    "timing_s": t_r.elapsed().as_secs_f64()})
         };
     }
+    if let (Some(pj), None) = (&pj, &cj.policy) { if !sv.found.is_empty() {
+        out["plan"] = sim::plan::plan(&mut env, d, sk, cr, v, legs, &pool, &sv, !cj.per_trainee, &cj.fix, &trainees, pj);
+    } }
     if cj.lookahead { if let Some(f) = sv.found.first() {
         // today's best career over everything (the floor of what the next career can do)
         let (p_now, p_minus1_now) = match (cj.p_now, cj.p_minus1_now) {
