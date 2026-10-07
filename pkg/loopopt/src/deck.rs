@@ -409,14 +409,15 @@ fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usiz
     r
 }
 
-pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64> }
+pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64>, pub sets: Vec<f64> }
 /// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
 /// enumerated per cluster of targets they connect (clusters are independent given the chain state).
 /// `ext` (the career planner): each target's landing factor times its spark-generation scale (`su` per uncertain
 /// target, `sf` per guaranteed gold, in job order), and per (chance, outfit, uncertain target) the exact chance it
-/// lands, summed into `marg`. None leaves every number as it is.
+/// lands, summed into `marg`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
+/// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
 fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
@@ -465,7 +466,9 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
     let fixed = match &ext { Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s), None => model.fixed_factor() };
-    if let Some(x) = ext.as_deref_mut() { x.marg = vec![0.0; nq * no * nu]; }
+    let want_sets = ext.as_ref().map_or(false, |x| !x.sets.is_empty()) && nu <= 16;
+    if let Some(x) = ext.as_deref_mut() { x.marg = vec![0.0; nq * no * nu]; if want_sets { x.sets = vec![0.0; nq * no << nu]; } }
+    let mut dist: Vec<Vec<f64>> = if want_sets { vec![vec![]; nq * no] } else { vec![] };
     let mut acc = vec![(0.0f64, 0.0f64); nq * no];
     // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
     let nqo = nq * no;
@@ -518,6 +521,12 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
             for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f);
                 if let Some(x) = ext.as_deref_mut() { x.marg[i * nu + k] += w * f; } } }
         }
+        // the landed sets: independent targets first, clusters below (their targets join through `cdist`)
+        if want_sets { for i in 0..nqo {
+            let d = &mut dist[i]; d.clear(); d.resize(1 << nu, 0.0); d[0] = 1.0;
+            for k in 0..nu { if in_cl[k] { continue; } let (f, b) = (fv[i * nu + k][0], 1usize << k);
+                for m in 0..(1usize << nu) { if m & b == 0 && d[m] != 0.0 { let x = d[m]; d[m] = x * (1.0 - f); d[m | b] += x * f; } } }
+        } }
         for (ts, gs) in &clusters {
             let alts: Vec<Vec<(f64, &[(usize, u8)])>> = gs.iter().map(|g| {
                 let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
@@ -526,6 +535,8 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
                 v
             }).collect();
             let mut ca = vec![0.0f64; nqo]; let mut cb = vec![0.0f64; nqo];
+            // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
+            let mut cdist: Vec<crate::FxMap<usize, f64>> = if want_sets { vec![Default::default(); nqo] } else { vec![] };
             let mut pick = vec![0usize; alts.len()];
             loop {
                 let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product();
@@ -536,12 +547,23 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
                     for &k in ts { let f = fv[i * nu + k][lvl[k] as usize]; b = b * f + a * (1.0 - f); a *= f; }
                     ca[i] += wc * a; cb[i] += wc * b;
                     if let Some(x) = ext.as_deref_mut() { for &k in ts { x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize]; } }
+                    if want_sets {
+                        let mut part: Vec<(usize, f64)> = vec![(0, wc)];
+                        for &k in ts { let f = fv[i * nu + k][lvl[k] as usize];
+                            part = part.into_iter().flat_map(|(m, p)| [(m, p * (1.0 - f)), (m | 1 << k, p * f)]).collect(); }
+                        for (m, p) in part { *cdist[i].entry(m).or_insert(0.0) += p; }
+                    }
                 }
                 let mut i = 0;
                 while i < alts.len() { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
                 if i == alts.len() { break; }
             }
             for i in 0..nqo { push(&mut ua, &mut ub, i, ca[i], cb[i]); }
+            if want_sets { for i in 0..nqo {
+                let d = &mut dist[i]; let mut nd = vec![0.0f64; 1 << nu];
+                for (m0, &x) in d.iter().enumerate() { if x == 0.0 { continue; } for (&m, &p) in &cdist[i] { nd[m0 | m] += x * p; } }
+                *d = nd;
+            } }
         }
         for i in 0..nqo {
             let (mut a, mut b) = (ua[i], ub[i]);
@@ -549,6 +571,7 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
             // P(at least n_targets - 1 land) over nu + nfix targets
             let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
             acc[i].0 += w * a; acc[i].1 += w * if m1 { m } else { 0.0 };
+            if want_sets { if let Some(x) = ext.as_deref_mut() { for (m, &p) in dist[i].iter().enumerate() { x.sets[(i << nu) + m] += w * p; } } }
         }
     }
     (0..nq).map(|qi| {
@@ -3168,7 +3191,7 @@ mod tests {
                 let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
                 assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {:?} vs {:?}", x, y);
                 let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
-                let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![] };
+                let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![] };
                 let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
                 let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
                 assert!(rel(z.0, c * y.0) < 1e-12 && z.2 == y.2, "scale uma {u}: {} vs {}", z.0, c * y.0);
@@ -3182,10 +3205,13 @@ mod tests {
         let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
         let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
         for u in [0usize, 5, 20] {
-            let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![] };
+            let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0] };
             let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
             let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
             assert!(rel(m0 + m1, j.0 + j.1) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.0, j.1);
+            // the landed sets: they sum to 1, {both} is P(all), and each target's sets sum to its marginal
+            let st = &ext.sets[(j.2 << 2)..(j.2 << 2) + 4];
+            assert!((st.iter().sum::<f64>() - 1.0).abs() < 1e-12 && rel(st[3], j.0) < 1e-12 && rel(st[1] + st[3], m0) < 1e-12 && rel(st[2] + st[3], m1) < 1e-12, "sets {:?}", st);
         }
     }
 

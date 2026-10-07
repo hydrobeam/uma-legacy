@@ -32,37 +32,37 @@ __FONTPRELOAD__
 __CSS__
 </style>
 
-<header class="top">
+<header class="top rbhead">
   <h1 class="brand" aria-label="uma-legacy career planner"><a class="home" href="./">__LOGO__<span aria-hidden="true"><span class="bu">u</span><span class="bm">m</span><span class="ba">a</span>-legacy</span></a><span class="sub">Career planner</span></h1>
   <nav class="tnav"><a href="./">Loop planner</a> <a href="about">How this works</a> __THEMEBTN__</nav>
 </header>
 
-<div class="cwrap">
-  <section class="ctool" aria-label="Settings">
+<div class="rb">
+  <section class="rbbar" aria-label="Settings">
     <div class="seg" role="group" aria-label="Game data">
       <button id="era-global" aria-pressed="true">Global today</button>
       <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
     </div>
-    <div class="row gamerow">__PANEL_SCEN__</div>
+    <div class="row gamerow">__PANEL_SCEN____PANEL_RANK__</div>
     <button class="btn tbtn" type="button" id="o-skills" aria-haspopup="dialog">Target skills <b id="o-skills-n"></b></button>
     <button class="btn tbtn" type="button" id="o-umas" aria-haspopup="dialog">Umas <b id="o-umas-n"></b></button>
     <button class="btn tbtn" type="button" id="o-cards" aria-haspopup="dialog">Support cards <b id="o-cards-n"></b></button>
     <label class="tchk"><input type="checkbox" id="c-borrow"> Borrow one friend's card</label>
-    <p class="hint tshare">Shared with the loop planner: a change here changes it there too.</p>
+    <p class="hint tshare">Shared with the loop planner: a change here changes it there too. The rank sets the stars of the new veteran's sparks in the look ahead.</p>
   </section>
 
-  <main class="lineage" id="rcol" tabindex="-1" aria-labelledby="h-lin">
-    <div class="linhead">
-      <h2 id="h-lin">Next career</h2>
+  <main class="rbmain" id="rcol" tabindex="-1" aria-labelledby="h-lin">
+    <div class="rbtitle">
+      <h2 id="h-lin"><span class="rbk">Pedigree</span> Next career</h2>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
     </div>
-    <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick. The grandparents are each parent's own parents.</p>
-    <div class="ltree" id="tree"></div>
+    <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick, outlined in dashes. Numbers 1 to 6 are the six legacies; each shows her affinity.</p>
+    <div class="ped" id="tree"></div>
     <div id="results"></div>
   </main>
 
-  <section class="pool" aria-labelledby="h-vets">
-    <div class="row between"><h2 id="h-vets">Your veterans</h2><span class="hint" id="v-count"></span></div>
+  <section class="rbpool" aria-labelledby="h-vets">
+    <div class="rbtitle"><h2 id="h-vets"><span class="rbk">Paddock</span> Your veterans</h2><span class="hint" id="v-count"></span></div>
     <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
     <div class="row">
       <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>

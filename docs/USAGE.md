@@ -53,18 +53,25 @@ the bottom of the screen takes you back to them.
 someone else's. Settings are saved in your browser on that device; nothing is uploaded.
 
 **Career planner** (`/career`, linked from the header). Picks the next career from the veterans you have. The
-settings bar (game data, scenario, *Target skills*, *Umas*, *Support cards*, *Borrow one friend's card*) opens the loop
-planner's own editors and shares their saved settings. The page is the lineage tree: the trainee on top, her two
-parents below, each parent's own parents below her. Each place is set by hand or left to the planner, which tries
-every owned uma and every pair of your veterans (at most one borrowed) and shows its pick dashed. **Choose parent**
-opens the parent picker: one of *Your veterans* (those that can't go there are greyed out, with the reason), *A new one
-(any uma)*, or *Let the planner pick*. Picking a new uma, or changing who a grandparent is, asks whether to add the
-target skills (all at 2★, 3★ or 1★, keep hers, or none). Under the tree: the odds (all targets land as sparks, all but
-one, targets expected), per target the chance the lineage passes it on, how many of the six legacies carry it and the
-chance it lands as a spark, the aptitude (pink) sparks' chances of being passed on, and the deck; with any place left
-to the planner, its other picks follow (only what it picked), each with **Use this**. **Your veterans** below: *Import
-umadump file* reads umadump's `trained_chara_data.json` (or *Paste* its text): each veteran's skill and aptitude
-sparks with stars, single-race G1 wins and both parents; a re-import replaces earlier imports and keeps veterans made
-here. In every tree node: click a skill to cycle its stars 1 → 2 → 3 → 1, hover it for the × that removes it, **+**
-lists the target skills she lacks and the aptitudes, click a portrait to change who she is, the G1 button edits her
-wins, *Yours / Borrowed* marks a borrowed veteran.
+settings strip (game data, scenario, lineage rank, *Target skills*, *Umas*, *Support cards*, *Borrow one friend's card*)
+opens the loop planner's own editors and shares their saved settings; the rank sets the stars of the new veteran's
+sparks in the look ahead. The pedigree reads left to right: the trainee, her two parents, each parent's own two
+parents, joined by brackets; the six legacies carry gate numbers 1 to 6 and each shows her affinity in the career on
+show. Each place is set by hand or left to the planner, which tries every owned uma and every pair of your veterans (at
+most one borrowed) and shows its pick outlined in dashes. **Choose parent** opens the parent picker: one of *Your
+veterans* (those that can't go there are greyed out, with the reason), *A new one (any uma)*, or *Let the planner
+pick*. Picking a new uma, or changing who a grandparent is, asks whether to add the target skills (all at 2★, 3★ or
+1★, keep hers, or none). Under the pedigree: the board (all targets land as sparks, all but one, targets expected);
+the deck as a race card (numbered, each card's art and what it gives toward the targets); the target skills (per
+target the chance the lineage passes it on, how many of the six carry it, the chance it lands as a spark) and the
+aptitude (pink) sparks' chances of being passed on; her race schedule by year (the G1s her parents won, which she
+runs to share them; career goals outlined; gate numbers mark which parent won it); and the look ahead, *After this
+career: move on or reroll?*: for each outcome (every target, all but one named target, or a number of targets) its
+chance, the best next career with her as a parent, and whether to move on with her or run this career again
+("Either" when nothing she could land beats today's best career), with the expected careers to a veteran carrying
+every target. With any place left to the planner, its other picks follow (only what it picked), each with **Use
+this**. **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
+*Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
+re-import replaces earlier imports and keeps veterans made here. In every node: click a skill to cycle its stars
+1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a
+portrait to change who she is, the G1 button edits her wins, *Yours / Borrowed* marks a borrowed veteran.

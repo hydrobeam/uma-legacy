@@ -231,6 +231,8 @@ choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` and t
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
+| `lookahead` | add the reroll-or-move-on look ahead for the best career (`lookahead` in the output) | `false` |
+| `p_now` | today's best P(all) over every career, the look ahead's floor (computed when absent) | none |
 
 Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
 with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
@@ -254,7 +256,24 @@ those ratios. The search stops when the next ceiling is below the k-th best (one
 target `q`, `carriers`, landing chance `p`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
 the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), and `carriers`; reported only: aptitudes
 do not enter the skill odds), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
-`bounded`, `complete`, `proven_top`. 12 sample veterans x every trainee (3,564 candidates): 74 solved, 1.8 s natively,
+`bounded`, `complete`, `proven_top`. The best career also carries `schedule` (her G1s: `turn`, `when`, `year`,
+`race`, win chance `p`, `goal`, `parents` = which parents won it) and `g1_wins` (expected): the trainee races to win the
+G1s her parents won (`best_response` with each race weighted by the parents' wins), since each one she shares with a
+parent adds 3 to her affinity and 3 to the parent's when she is a parent herself.
+
+Look ahead (`lookahead: true`). The new veteran V lands each set S of targets with its exact chance (`JointExt::sets`:
+per chain state the targets are independent apart from the outcome clusters, which are enumerated, so the distribution
+over the 2^n sets is exact for the model); each landed spark's stars come from `star_dist`; her G1 wins are her
+schedule's win chances (shared wins as expected counts); her parents are the career's. f(S) = the best P(all) of a
+next career with V in the pool: the career search with V fixed as a parent (V landing every target) finds the four
+best setups (trainee, partner, deck); each S is scored on each of them (stars averaged: every landing factor is
+affine in q_k and the stars are independent of everything else, so the average is exact for a fixed setup), and f(S)
+is at least `p_now`. A floor: another setup could do better for some S. Expected careers until a veteran lands every
+target, a setup being repeated once chosen: move on with V = 1/f(S); run this career once more and keep the better
+veteran = 1 + Σ_{S' ≠ all} P(S') / max(f(S), f(S')); reroll when lower. Output `lookahead`: `p_now`, `p_all`,
+`careers_now` (1/p_now), `careers_this` (1 + Σ_{S ≠ all} P(S)·min(move on, reroll)), `improve` (P(f(S) > p_now)),
+`setups`, `by_count` (per number landed: `p`, mean `f`, `reroll` share), `miss_one` (per target, landing all but it:
+`p`, `f`, `reroll`), `star_dist`. 12 sample veterans, half their sparks removed: 6 s natively. 12 sample veterans x every trainee (3,564 candidates): 74 solved, 1.8 s natively,
 1.5 s in the browser.
 
 ## 4. Validation
