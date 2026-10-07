@@ -823,9 +823,10 @@ const TESTS = {
     check('career: the race schedule is a button in the deck\'s title row, not a section', await pg.locator('#results > .deck .dtitle #sched-open').count() === 1
       && !(await pg.locator('#results h3', { hasText: 'Race schedule' }).count()));
     await pg.click('#sched-open'); await dialog(pg, 'sched-dlg');
-    check('career: her schedule opens in the planner\'s schedule window, with the G1s she skips', await pg.locator('#sched-dlg .ag-slot.on').count() > 0 && await pg.locator('#sched-dlg .ag-skip, #sched-dlg .ag-skipn').count() > 0
-      && !(await pg.locator('#sched-dlg .ag-slot.on .ag-skip').count())   // a turn she races shows the skipped ones as a corner badge, keeping the banner whole
-      && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && !(await pg.locator('#sched-dlg .stab', { hasText: /^All / }).count()));
+    const nRun = +(await pg.getAttribute('#sched-open', 'title')).match(/She runs (\d+) G1s/)[1];
+    check('career: her schedule opens in the planner\'s schedule window: only the races she runs, one tab, the parent-won legend', nRun > 0
+      && await pg.locator('#sched-dlg .ag-slot.on').count() === nRun && await pg.locator('#sched-dlg .ag-race').count() === nRun && !(await pg.locator('#sched-dlg .ag-race.wbtn').count())
+      && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && await pg.locator('#sched-dlg .stab').count() === 1, `runs ${nRun}`);
     await pg.keyboard.press('Escape');
     // after this career: a row per result (facts, no verdict); the veteran analysis, compared only on demand
     await pg.waitForSelector('#ahead-sec .ahead', { timeout: 180000 });
@@ -916,13 +917,6 @@ const TESTS = {
     check('career: other picks: the six candidates, each with its odds now and the next careers her veterans give, the pick marked', alts.length === 6
       && alts.every(t => /1 in [\d,.]+ now/.test(t) && /Next career after her: 1 in/.test(t)) && await pg.locator('.alts li.on', { hasText: 'shown above' }).count() === 1
       && /repeated: [\d,]+ careers on average; no plan averages fewer than \d+/.test(await pg.textContent('.alts')), alts.join(' | '));
-    // her G1 wins on the schedule window's calendar: her schedule's races only, nothing saved
-    await pg.click('#sim-wins'); await dialog(pg, 'wins-dlg');
-    const simRaces = await pg.locator('#wins-dlg .wbtn').count(), wonBefore = await pg.locator('#wins-dlg .wbtn[aria-pressed="true"]').count();
-    await pg.locator('#wins-dlg .wbtn').first().click();
-    check('career: the entered veteran\'s G1 wins open on the calendar with her schedule\'s races; a click toggles one', simRaces > 0 && await pg.locator('#wins-dlg .agenda .ag-year').count() === 3
-      && Math.abs(await pg.locator('#wins-dlg .wbtn[aria-pressed="true"]').count() - wonBefore) === 1 && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
-    await pg.locator('#wins-dlg .dclose').click();
     const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1).length);
     const cachedRuns = await baselineRuns();
     await pg.getByRole('button', { name: 'Choose trainee' }).click(); await dialog(pg, 'pick-dlg');
@@ -937,6 +931,23 @@ const TESTS = {
     check('career: Compare pressed again while the look ahead runs restarts the comparison and runs the look ahead again to the end', aheadBusy
       && await aheadJobs() === la0 + 1 && await pg.locator('#ahead-sec .ahead').count() === 1, `look ahead running: ${aheadBusy}, look ahead jobs +${await aheadJobs() - la0}`);
     check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
+    // her G1 wins: the schedule window in edit mode, each race she runs a button; an edit after Compare marks it out of
+    // date, nothing is saved to the pool, and the focus goes back to the wins button
+    const winsN = async () => { const m = (await pg.textContent('#sim-wins')).match(/^(No|\d+) G1 win/); return m[1] === 'No' ? 0 : +m[1]; };
+    const pj0 = await policyJobs(), w0 = await winsN();
+    await pg.click('#sim-wins'); await dialog(pg, 'sched-dlg');
+    const wb0 = pg.locator('#sched-dlg .ag-race.wbtn').first(), wk = await wb0.getAttribute('data-k'), wp = await wb0.getAttribute('aria-pressed');
+    const simRaces = await pg.locator('#sched-dlg .ag-race.wbtn').count();
+    await wb0.click();
+    const wb1 = pg.locator(`#sched-dlg .wbtn[data-k="${wk}"]`);
+    check('career: the entered veteran\'s G1 wins open on the schedule window with her races; a click toggles one and keeps the focus', simRaces > 0
+      && await pg.locator('#sched-dlg .agenda .ag-year').count() === 3 && /G1 wins/.test(await pg.textContent('#sched-title'))
+      && await wb1.getAttribute('aria-pressed') === String(wp !== 'true') && await wb1.evaluate(e => e === document.activeElement)
+      && Math.abs(await winsN() - w0) === 1 && (await pg.textContent('#sched-dlg .scount')).startsWith(String(await winsN() || 'No')), `races ${simRaces}, wins ${w0} -> ${await winsN()}`);
+    check('career: … which marks the comparison out of date without running another, and saves nothing to your veterans', /changed her since/.test(await pg.textContent('#sim-result'))
+      && await policyJobs() === pj0 && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
+    await pg.keyboard.press('Escape');
+    check('career: … closing it puts the focus back on the wins button', await pg.evaluate(() => document.activeElement?.id === 'sim-wins'));
     await pg.locator('#tree .pn.trainee').getByRole('button', { name: 'Let the planner pick' }).click(); await done();
     // editing a veteran keeps the result on screen while the search runs again
     const toteBefore = await pg.locator('#results > .lhead').count();

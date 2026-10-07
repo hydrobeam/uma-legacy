@@ -78,8 +78,8 @@ better next careers." With every place set by hand, the career is just scored.
 
 Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
-she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens her schedule's races on
-the schedule window's calendar, click one to mark it won or not) and press **Compare**: it counts careers until one
+she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the same Race schedule
+window, where a click on a race she runs marks it won or not; a not-won race is faded) and press **Compare**: it counts careers until one
 lands every target for both choices, running this career again or using her in the next career, the same way for both
 (one more career, then the best setup it leaves, repeated), shows today's best and the next career with her (all
 targets, all but one), that next career as portraits (trainee, then her two parents, *her* marked) and its deck behind
@@ -93,9 +93,8 @@ in its title row, the target skills (per target the chance the lineage passes it
 chance it lands as a spark) and the aptitude (pink) sparks' chances of being passed on, and *After this career*. The
 odds and the deck look as on the loop planner page: click a deck card for its panel (owned or not, GameTora); marking
 it not owned searches again (with borrowing on, it may come back as the borrowed card). *Race schedule* opens the
-planner's schedule window for the trainee: every G1 she can enter, the ones she runs as banner cards with their win
-odds (a race a parent won counts extra and is outlined as building affinity), the ones she skips listed in their slot
-with what she does instead. *After this career* lists, as label and value: the chance she improves your best next
+planner's schedule window for the trainee: the G1s she runs, as banner cards with their win odds (a race a parent won
+counts extra and is outlined as building affinity). *After this career* lists, as label and value: the chance she improves your best next
 career (over every set of targets she could land and every star count; exact for the next careers checked, so a
 floor), your best career today, what the next career averages when she improves it, the chance she lands every
 target, the chance she improves it by how many targets she lands, and, when she can't, why (usually: today's best

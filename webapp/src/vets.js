@@ -78,29 +78,23 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
   }
   $('ask-dlg').showModal(); box.querySelector('.primary').focus();
 }
-// the G1 wins of one node, on the schedule window's calendar: click a race to mark it won or not. `opts.races`: the races
-// offered ([{ix, name, turns, p?}]; default every G1 at its turns); `opts.onEdit`: after each click (default: saved, and
-// the page searches again when the dialog closes)
-let winsDone = null;
+// the G1 wins of one node (a pool veteran), on the schedule window's calendar: every G1 at its turns, click a race to
+// mark it won or not; saved on each click, and the page searches again when the dialog closes
 const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
-export function openWins(nd, who, opts = {}) {
+export function openWins(nd, who) {
   $('wins-title').textContent = 'G1 wins: ' + who;
-  const races = opts.races || allRaces();
-  $('wins-hint').textContent = opts.races ? 'The G1s her schedule runs. Click a race to mark it won or not won (faded).'
-    : 'Single-race G1s she won: click a race to mark it won or not won (faded). Each one she shares with a parent or the other parent adds 3 affinity.';
-  const edit = opts.onEdit || persist;
+  $('wins-hint').textContent = 'Single-race G1s she won: click a race to mark it won or not won (faded). Each one she shares with a parent or the other parent adds 3 affinity.';
   const box = $('wins-list'); box.textContent = '';
-  const cal = winsAgenda(races, (ix) => nd.wins.includes(ix), (ix) => {
-    const s = new Set(nd.wins); s.has(ix) ? s.delete(ix) : s.add(ix); nd.wins = [...s].sort((a, b) => a - b); edit();
+  const cal = winsAgenda(allRaces(), (ix) => nd.wins.includes(ix), (ix) => {
+    const s = new Set(nd.wins); s.has(ix) ? s.delete(ix) : s.add(ix); nd.wins = [...s].sort((a, b) => a - b); persist();
     $('wins-count').textContent = winsText(nd);
   });
   box.appendChild(cal.el);
   $('wins-count').textContent = winsText(nd);
-  winsDone = opts.onEdit ? null : changed;
   $('wins-dlg').showModal();
 }
 const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
-$('wins-dlg').addEventListener('close', () => { const f = winsDone; winsDone = null; if (f) f(); });
+$('wins-dlg').addEventListener('close', () => changed());
 // "+" beside a node's sparks: the target skills she lacks, then the aptitudes she has no spark of
 const pop = $('add-pop'); let popFor = null;
 function closeAdd() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }

@@ -16,7 +16,7 @@ import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initTargets, renderTargets } from './targets.js';
-import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, openWins, changeUma, askSkills,
+import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas } from './vets.js';
 import { parseExport } from './umadump.js';
 
@@ -312,11 +312,24 @@ function targetsEl(r) {
   return s;
 }
 // her race schedule: the loop planner's schedule window, from a button beside the deck
+// (the races she runs: the G1s she could enter but doesn't aren't shown)
+const schedOf = (r) => ({ members: [{ id: r.trainee.id, name: r.trainee.name, short: r.trainee.name }], outfits: [{ outfits: r.trainee.outfits }],
+  schedule: (r.schedule || []).filter(x => x.run !== false) });
 function schedBtn(r) {
-  const rows = r.schedule || [], ran = rows.filter(x => x.run !== false).length;
-  const b = btn('Race schedule', '', () => openSched({ members: [{ id: r.trainee.id, name: r.trainee.name, short: r.trainee.name }], outfits: [{ outfits: r.trainee.outfits }], schedule: rows }));
-  b.id = 'sched-open'; b.title = rows.length ? `She runs ${ran} of the ${rows.length} G1s she can enter: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
+  const ran = schedOf(r).schedule.length;
+  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
+  b.id = 'sched-open'; b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;
+}
+// the veteran analysis' G1 wins: the same schedule window, each race she runs a button that marks it won or not (a race
+// held in Classic and Senior is one win saddle, so either running marks it)
+function openDraftWins(d, r) {
+  const ix = (row) => CAREER.races.indexOf(row.name || row.race);
+  openSched(schedOf(r), {
+    won: (row) => d.wins.includes(ix(row)),
+    toggle: (row) => { const i = ix(row); if (i < 0) return; const s = new Set(d.wins); s.has(i) ? s.delete(i) : s.add(i); d.wins = [...s].sort((a, b) => a - b); editDraft(); },
+    count: () => d.wins.length ? `${d.wins.length} G1 win${d.wins.length > 1 ? 's' : ''}` : 'No G1 wins' });
+  $('sched-dlg').addEventListener('close', () => $('sim-wins')?.focus(), { once: true });   // the button was redrawn by the edits
 }
 // a career as portraits: trainee (outfit), then her two parents; parents: [{chara, outfit, label, her}]
 function facesEl(tid, outfit, parents, outfitLabel = null) {
@@ -466,7 +479,7 @@ function simulationBody() {
   const controls = el('fieldset', 'simskills'); controls.setAttribute('aria-label', 'Her sparks');
   controls.appendChild(sparksEl(d, 'sim', editDraft));
   // her G1 wins: her schedule's races on the schedule window's calendar
-  const wb = btn(`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`, 'vwins', () => openWins(d, umaName(d.chara), { races: scheduledRaces(r), onEdit: editDraft }));
+  const wb = btn(`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`, 'vwins', () => openDraftWins(d, r));
   wb.id = 'sim-wins'; wb.dataset.k = 'sim:wins'; wb.setAttribute('aria-haspopup', 'dialog');
   side.append(controls, wb); who.append(face, side); box.appendChild(who);
   const actions = el('div', 'row');

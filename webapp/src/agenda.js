@@ -1,6 +1,6 @@
 // ---------- race schedule popup: one tab per member (her races as banner cards, like the game's list), plus all of them ----------
 // One member (the career page): no "All three" / "All four" tab; `shared` then means a parent won the race (it builds affinity when
-// she is a parent herself), and rows marked `skipped` (G1s she could enter but doesn't) show in their slot.
+// she is a parent herself).
 import { $, esc } from './dom.js';
 import { RACEIDS } from './data.js';
 import { umaAv, srcFor } from './images.js';
@@ -30,7 +30,7 @@ export function agendaGrid(fill) {
   }
   return ag;
 }
-// G1 wins on the same calendar: races = [{ix, name, turns: [0-71], p?}]; each race a button at each of its turns
+// G1 wins on the same calendar (a pool veteran's): races = [{ix, name, turns: [0-71]}]; each race a button at each of its turns
 // (a race held in Classic and Senior is one race: either button toggles it). won(ix) says whether she won it,
 // toggle(ix) flips it; not-won races are faded.
 export function winsAgenda(races, won, toggle) {
@@ -46,23 +46,24 @@ export function winsAgenda(races, won, toggle) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ag-race wbtn'; b.dataset.ix = r.ix; b.dataset.k = 'win:' + r.ix + ':' + (y * 24 + sI);
       const bn = banner(r.name); if (bn) b.appendChild(bn);
       const nm = document.createElement('span'); nm.className = 'ag-nm'; nm.textContent = r.name; b.appendChild(nm);
-      const label = r.name + (r.p !== undefined ? ` (${Math.round(r.p * 100)}% to win)` : '');
-      b.title = label; b.setAttribute('aria-label', label);
+      b.title = r.name; b.setAttribute('aria-label', r.name);
       b.onclick = () => { toggle(r.ix); paint(); };
       slot.appendChild(b); btns.push(b);
     }
-    const lb = whenBar(sI);
-    if (list.length === 1 && list[0].p !== undefined) { const p = document.createElement('b'); p.textContent = Math.round(list[0].p * 100) + '% win'; lb.appendChild(p); }
-    slot.appendChild(lb);
+    slot.appendChild(whenBar(sI));
   });
   paint();
   return { el: ag, paint };
 }
-export function openSched(l) {
+// edit (one member only): {won(row), toggle(row), count()}: each race she runs is a button that marks it won or not
+// (the veteran analysis' G1 wins); not-won races are faded
+export function openSched(l, edit = null) {
   const M = l.members, rows = l.schedule, body = $('sched-body'); body.textContent = '';
   const outfitOf = (k) => (l.outfits[k].outfits.length === 1 ? l.outfits[k].outfits[0].id : null);
   const head = document.createElement('div'); head.className = 'row between dhead';   // stays at the top while the dialog scrolls
   head.innerHTML = '<h3 id="sched-title">Race schedule</h3>';
+  const count = document.createElement('span'); count.className = 'num scount';
+  if (edit) { head.firstChild.textContent = 'Race schedule: G1 wins'; count.textContent = edit.count(); head.appendChild(count); }
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('sched-dlg').close(); head.appendChild(close);
   const tabs = document.createElement('div'); tabs.className = 'stabs'; tabs.setAttribute('role', 'tablist');
   const view = document.createElement('div'); view.className = 'sview'; view.id = 'sched-view'; view.setAttribute('role', 'tabpanel');
@@ -79,7 +80,7 @@ export function openSched(l) {
     const to = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
     if (to === undefined) return; e.preventDefault(); show(keyOf(to)); btns[to].focus(); });
   const keyEl = document.createElement('span'); keyEl.className = 'agkey';
-  keyEl.innerHTML = single ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span><span><i class="sk"></i>Skipped (+N: also that turn)</span>'
+  keyEl.innerHTML = single ? '<span><i class="sh"></i>A parent won it: builds affinity</span><span><i class="op"></i>No parent won it</span>' + (edit ? '<span>Click a race to mark it won or not (faded: not won)</span>' : '')
     : '<span><i class="sh"></i>Shared G1: builds affinity</span><span><i class="op"></i>Optional G1: runs alone, no affinity</span>'; tabs.appendChild(keyEl);
   // why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades) minus the penalty for the k-th
   // race in a row, capped at 100%
@@ -89,13 +90,15 @@ export function openSched(l) {
     if (c.pen > 0) parts.push(`${ORD[Math.min(c.row, 6)]} race in a row −${c.pen}`);
     return `${c.p}% win: 110` + (parts.length ? ', ' + parts.join(', ') : '') + (110 - c.apt - c.pen > 100 ? ', capped at 100' : ''); };
   function cell(r, k) {   // one scheduled race in a slot
-    const c = r.cells[k], names = r.race.split('/'), el = document.createElement('div'); el.className = 'ag-race' + (r.shared ? '' : ' opt');
+    const c = r.cells[k], names = r.race.split('/'), el = document.createElement(edit ? 'button' : 'div'); el.className = 'ag-race' + (r.shared ? '' : ' opt');
+    if (edit) { const w = edit.won(r); el.type = 'button'; el.classList.add('wbtn'); el.classList.toggle('off', !w); el.setAttribute('aria-pressed', String(w)); el.dataset.k = 'swin:' + r.year + ':' + r.when;
+      el.onclick = () => { edit.toggle(r); count.textContent = edit.count(); show(0); const b = view.querySelector(`[data-k="${CSS.escape(el.dataset.k)}"]`); if (b) b.focus(); }; }
     const bn = banner(names[0]); if (bn) el.appendChild(bn);
     const nmEl = document.createElement('div'); nmEl.className = 'ag-nm'; nmEl.textContent = names.join(' or '); el.appendChild(nmEl);
     const others = M.map((_, j) => j).filter(j => j !== k && r.cells[j]);
     if (c.goal) { const g = document.createElement('span'); g.className = 'ag-goal'; g.textContent = 'Goal'; el.appendChild(g); }
     const won = single && r.parents ? r.parents.map((x, j) => x ? `parent ${j + 1}` : '').filter(Boolean) : [];
-    el.title = names.join(' or ') + ' · ' + (why(c) || 'win ' + c.p + '%') + (c.goal ? ' · goal' : '') + (single ? (won.length ? ' · won by ' + won.join(' and ') : ' · no parent won it')
+    el.title = names.join(' or ') + (edit ? (edit.won(r) ? ' · won' : ' · not won') : '') + ' · ' + (why(c) || 'win ' + c.p + '%') + (c.goal ? ' · goal' : '') + (single ? (won.length ? ' · won by ' + won.join(' and ') : ' · no parent won it')
       : others.length ? ' · with ' + others.map(j => M[j].name).join(', ') : ' · alone (no affinity, optional)');
     return el;
   }
@@ -108,14 +111,6 @@ export function openSched(l) {
     const ag = agendaGrid((y, sI, slot) => {
       const r = rows.find(x => x.year === y && x.cells[key] && slotOf(x.when) === sI);
       if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
-      // G1s she could enter at this turn but doesn't (another race, or a rest for the streak penalty)
-      const sk = rows.filter(x => x.skipped && x.year === y && slotOf(x.when) === sI);
-      // a turn she races: a corner badge, so the banner keeps its size; a turn she rests: the names, there is room
-      if (sk.length) { const tip = sk.map(x => x.race + ': ' + (x.instead === 'rest' ? 'she rests this turn (races in a row lower her win odds)' : 'she runs ' + x.instead + ' instead')).join('\n');
-        if (r) { const k = document.createElement('span'); k.className = 'ag-skipn'; k.textContent = '+' + sk.length; k.title = 'Skipped here: ' + tip;
-          const sr = document.createElement('span'); sr.className = 'vh'; sr.textContent = ` (${sk.length} more G1 skipped: ${sk.map(x => x.race).join(', ')})`; k.appendChild(sr);
-          slot.querySelector('.ag-race').appendChild(k); }
-        else { const k = document.createElement('div'); k.className = 'ag-skip'; k.textContent = 'Skipped: ' + sk.map(x => x.race).join(', '); k.title = tip; slot.appendChild(k); } }
       // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
       const lb = whenBar(sI);
       if (r) { const p = document.createElement('b'); p.textContent = r.cells[key].p + '% win'; p.title = why(r.cells[key]); lb.appendChild(p); }
