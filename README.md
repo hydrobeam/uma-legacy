@@ -1,6 +1,6 @@
 # uma-legacy
 
-Finds the best four-uma legacy loop and support decks (Uma Musume: Pretty Derby, Global) for landing a set of target
+Finds the best legacy loop (a three-uma rotation or a four-uma loop) and support decks (Uma Musume: Pretty Derby, Global) for landing a set of target
 skills in Independent Training, with each uma's race schedule.
 
 Use it at https://uma-legacy.pages.dev.

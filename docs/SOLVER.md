@@ -2,7 +2,7 @@
 
 The Rust crate in `pkg/loopopt/`; paths below are relative to it. Building and running it: `docs/BUILD.md`.
 
-Finds the best 4-uma parent loop for legacy affinity in Uma Musume (Global), with the exact race schedule for each uma. It reads only the game's plaintext `master.mdb` and does math; nothing in the game is modified.
+Finds the best parent loop (a four-uma loop or, in the skill and deck modes, a three-uma rotation) for landing target skills in Uma Musume (Global), with the exact race schedule for each uma; the original affinity-only modes (`best`, `score`, ...) handle four-uma loops only. It reads only the game's plaintext `master.mdb` and does math; nothing in the game is modified.
 
 ```
 master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──▶ ranked loops + schedules (JSON)
@@ -170,8 +170,9 @@ target/release/loopopt data.json jobs/skills_unity8.json > result.json     # run
 | `exclude_outfits` | outfit (card) ids you don't own | `[]` |
 | `extra` | `[uma id, skill group, level]` skills an uma always gets (e.g. Zephyr Slipstream, Teio Head-On) | `[]` |
 | `top` | loops returned | 5 |
+| `sizes` | structure sizes searched, ranked together: 3 (three-uma rotations, see *Three-uma rotations*) and/or 4 (four-uma loops); `require` may list at most the largest size, and four required umas leave only loops | `[3, 4]` |
 
-Output `loops[]`: `members`, `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `per_trainee`, `mean_proc`, `bound`, and `schedule` (chart rows: `race`, `when`, `shared`, `cells` with win % and goal flag, `runners`). Top-level: `proven_top` (no unsearched loop can beat #1), `foursomes`, `searched`.
+Output `loops[]`: `members` (3 or 4), `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `per_trainee`, `mean_proc`, `bound`, and `schedule` (chart rows: `race`, `when`, `shared`, `cells` with win % and goal flag, `runners`). Top-level: `proven_top` (no unsearched loop can beat #1), `foursomes` (structures of every searched size), `searched`.
 
 ### Deck + loop search (`"mode":"deck"`)
 
@@ -190,7 +191,7 @@ Extra fields (on top of the skills-mode fields; scenario-guaranteed skills stay 
 | `borrow` | allow one card you don't own (friend card); the search picks it | `false` |
 | `exclude_cards` / `lock_cards` | cards never / always used | `[]` |
 | `top_decks` | distinct decks returned, each with its best loop (with `per_uma`: loops returned) | 1 |
-| `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all three lineages she heads | `false` |
+| `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all the lineages she heads (three in a loop, one in a rotation) | `false` |
 | `pals` | only decks with exactly this many pals | any |
 | `schedule` | experiment: `"solo"` (each uma maximises her own race wins), `"goals"` (career objectives only) or `"none"` (shared wins ignored) instead of loop-optimised schedules | optimised |
 | `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base (Grand Masters, with no runs to fit, uses a 2.30 placeholder) | `unity` |
@@ -206,16 +207,44 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 - **Every legal deck.** `DeckSpace` enumerates every deck legal for the trainee (for all four members with a shared deck: the character rule is a legality filter, no splitting), by chain-kind key, before card dominance drops any card; cards interchangeable for the trainee (same rewards on the targets her outfits leave open, or none) are merged; a partial deck is dropped when the best its completions could reach is below the threshold: per (chance, outfit) the lower of the per-target ideal point (the r lowest miss chances per target in each kind group) and a submodular bound (each card's ratio P({card})/P({}) for the product of one outfit at one chance, which gains less the more the deck holds; the best ratios of the cards still to add); branches that cannot place a locked card are dropped.
 - **Proven filter.** Before a deck is scored exactly, `upper_na` bounds it: given N = n chain events, the progress vector is negatively upper-orthant dependent (checked exactly per chain-kind key over its state distribution, early ends and stop risk included; with two cards feeding one target, the same check over every up-set of their pair), so with every card grouped with the targets its chain feeds, E[Π groups | n] ≤ Π E[group | n]; event outcomes enter at their marginal chances (exclusive outcomes only lower the product). U = Σ_n P(n) Π E[· | n] ≥ V; on the reference setups U is within 0.2% of V. `UPPER_CHECK=1` asserts U ≥ V on every deck scored.
 - **Per-uma tables.** X(u, i) = the best exact value of trainee u over every legal deck at grid chance i (64 points); V rises with q, so a lineage at chance q is bounded by X at the next grid point up. Cells are computed lazily: a loop's ceiling uses each cell's exact value when known, else the lowest known value at a higher grid point, else ρ times the product ceiling; while the ceiling beats the k-th best, the loosest term is refined (first at the uma's highest grid point, then halfway down).
-- **Loops.** Foursomes are generated in bands of a separable bound as before; a foursome is solved (schedules, then exact values) only when its exact ceiling at the pairwise-ceiling chances, then at its own schedule's chances, can still beat the k-th best exact value; the search stops when no ceiling (times ρ for the ungenerated ones) can.
-- **Shared deck** (`per_uma` false): a loop's value is the best exact sum over its twelve lineages among decks legal for all four members; ceilings are the lower of the per-uma tables and ρ times the best single skyline deck's product value over the twelve lineages. `top_decks` counts distinct decks, each with its best loop; per loop, every deck at or above the k-th best distinct deck so far is kept.
+- **Loops.** Structures of both sizes are generated in bands of a separable bound, the mean of the members' best product values M_u at their highest chances (a member heads 3 of 12 lineages in a loop, 1 of 3 in a rotation, so the product ceiling is at most the golds' factor times that mean; bands are kept in four-member sum units, a rotation's sum s counting as 4s/3); a structure is solved (schedules, then exact values) only when its exact ceiling at the pairwise-ceiling chances, then at its own schedule's chances, can still beat the k-th best exact value; the search stops when no ceiling (times ρ for the ungenerated ones) can.
+- **Shared deck** (`per_uma` false): a loop's value is the best exact sum over its lineages (12 or 3) among decks legal for all its members, divided by their number; ceilings are the lower of the per-uma tables and ρ times the best single skyline deck's product value over its lineages. `top_decks` counts distinct decks, each with its best loop; per loop, every deck at or above the k-th best distinct deck so far is kept.
 - **Certificate and budget.** The pass at ρ = 1.25 runs first; if it exceeds the work budget (`EXACT_BUDGET`, counted in work units so results do not depend on machine load: about 3 s natively), passes at 1.12 and 1.05 follow, each reusing every exact value, table cell and schedule already computed; if none finishes, a pass at ρ = 1 (product-odds pruning, no deck searches) answers. Output `exact`: `rho` the cap the answer is certified under, `max_ratio` the largest V/V̂ on any deck scored (a value above `rho` would contradict the assumption), `complete`, counts. Job field `exact: false` runs the ρ = 1 pass alone: the page shows it first, then the exact one.
 - `p_all`, `p_minus1`, `per_trainee` and the detail's per-lineage `p_all` are exact.
 
 "Proven" (`proven`, `exact.complete`) means the search ended by its stop rule under the certified cap. It is relative to the schedules the optimiser finds (iterated local search, not proven optimal; `exact.schedule_rejects` counts loops rejected only after their schedule was built) and to the cap.
 
-Typical time natively: about 2–4 s per search with one result (the Global default 2.5 s; Grand Masters all owned 6 s), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
+Typical time natively: about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
-Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%), from hakuraku.moe's room-match data; it was 4.8% from a 45/50/5 split that matched neither band). Each legacy's affinity follows uma-it-optimizer's fit to 8,155 Independent Training receipts (github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor (halving them predicted half of what fired). In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. Before this, the model used umaishow's split (a parent took half the parent–parent relation and shared G1s) with grandparents halved, which put every spark chance at about half the measured level. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop; fit to CM room data at hakuraku.moe/notes/spark_generation). Odds are averaged over the 12 lineages.
+Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%), from hakuraku.moe's room-match data; it was 4.8% from a 45/50/5 split that matched neither band). Each legacy's affinity follows uma-it-optimizer's fit to 8,155 Independent Training receipts (github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor (halving them predicted half of what fired). In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. Before this, the model used umaishow's split (a parent took half the parent–parent relation and shared G1s) with grandparents halved, which put every spark chance at about half the measured level. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop; fit to CM room data at hakuraku.moe/notes/spark_generation). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
+
+### Three-uma rotations (`sizes`)
+
+A rotation {A, B, C}: each member trains once per round from the other two, whose own parents are the other two of the
+three. Trainee A has parents B and C; B was bred from (C, A), C from (B, A). Over member positions its lineages are
+(T, P1, P2, X) = (0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2): the loop's form with X = T (`skills::lins`). The value is the
+mean P(all) over the 3 lineages, the loop's over its 12: both are the chance per career when every member trains in turn,
+and the search ranks both sizes together.
+
+- **Her races.** In a steady rotation the grandparent of character T is T's own earlier veteran with T's schedule, so its
+  shared wins with parent P are o(P, T), the same overlap as between those two members anywhere in the rotation; the
+  ×1.1⁶ spark generation is unchanged (all six legacies carry every spark).
+- **Race weights (derived).** With o(a, b) a pair's expected shared G1 wins, a lineage (T, P1, P2, X) counts 3·o in its
+  slot affinities: o(P1, P2) six times (each parent: once for the other parent and once for that parent as her own parent;
+  each grandparent slot under them once), o(P1, X) and o(P2, X) twice each (the parent and the grandparent slot), the
+  trainee's own pairs never. Summed over the 12 loop lineages every pair gets 6·2 + 2·4 = 20; over the 3 rotation
+  lineages (X = T) every pair gets 6·1 + 2·2 = 10. Both are uniform over the pairs, so a rotation's schedules maximise the
+  plain sum of its three pairs' shared wins, as a loop's do over six; `optimize` is generic over the member count (test
+  `rotation_affinities_by_hand` checks the 30 / 60 affinity per unit of a pair's overlap).
+- **Bounds.** `q_ub_trainee` lets the X slot also be the trainee (trio 0 + 3·PB(P, T)); pairwise ceilings are unchanged
+  (structure-free). Exact per-uma tables, the certificate and the stop rule are shared by both sizes.
+
+Effect on the references (the change that added rotations, 2026-10-07): every four-uma result is bit-identical; 43 of
+46 deck jobs are now led by a rotation, usually Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning],
+Inari One [Edomurasaki] (`pal_U` per-uma 1 in 115.9 → 105.4; Grand Masters all owned 1 in 150.0 → 143.5); `pal_H` and
+`pal_I` shared stay four-uma loops. A rotation's careers are each a little worse than the loop's best (the fourth uma's
+relation points as grandparent, a median ×1.05 per career over 660 trainee-parent combinations in the analysis), but
+a loop must also train its fourth member, usually a weak trainee (Oguri Cap at 1 in 216 in `pal_U`).
 
 ### Career planner (`"mode":"career"`, page `/career`)
 
@@ -337,7 +366,6 @@ The load step now asserts the structural fact the exact DP relies on: every race
 - `cd validation && uv run check_scores.py` checks score parity; it needs only the built binary.
 - `dp_vs_milp.py` (best response vs MILP) needs scipy plus the `export/` modules and master.mdb on the path.
 - `independent_check.py` is the spec-only checker used on `results/final_loops.json`.
-
 
 | Check | Result |
 |---|---|

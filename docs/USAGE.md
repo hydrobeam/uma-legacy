@@ -29,7 +29,7 @@ guarantees shows as that gold, in gold. Nothing else is set by hand: outfits, de
 search.
 
 **Umas.** One tile per outfit. Tap to cycle *owned → not owned → must include*, per outfit: a must-include outfit puts
-that uma in the loop in that outfit (mark several of her outfits to allow any of them). **None owned**, then tapping
+that uma in the loop in that outfit (mark several of her outfits to allow any of them). Up to four umas can be must-include; with four, only four-uma loops qualify. **None owned**, then tapping
 the ones you have, is quickest when you own few. Outfits decide most results through their skill lists (Agnes Digital
 [Full-Color Fangirling] carries Superstan, Tamamo Cross and Inari One carry Tail Nine).
 
@@ -37,14 +37,18 @@ the ones you have, is quickest when you own few. Outfits decide most results thr
 gives. No uma runs a card of herself or a group card she belongs to. Group cards such as Progenitors and Guides count as pals.
 
 **Results** update by themselves 0.55 s after any change (a change during a search restarts it); with *Search
-automatically after a change* off in Settings, a change waits for the Search button. For each loop:
+automatically after a change* off in Settings, a change waits for the Search button. A loop is either four umas (each
+trains from two of the other three) or a three-uma rotation (each trains from the other two, who were bred from each
+other and from her own earlier veteran); both are ranked on the same odds, the average over the careers when every
+member trains in turn, and a rotation usually comes first. For each loop:
 - the odds that every target lands, that all but one land, and how many careers give a 90% chance;
 - each uma with her outfit, the targets on her own skill list, and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
   deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
-- **Race schedule** (shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
-  but every runner must pick the same one) and **Affinity** (where each legacy's affinity comes from).
+- **Race schedule** (a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
+  but every runner must pick the same one) and **Affinity** (where each legacy's affinity comes from; in a rotation the trainee is her own
+  grandparent twice, with no relation points).
 
 On a wide screen the results stay in view while you edit the settings; on a phone they come first, and a button at
 the bottom of the screen takes you back to them.
