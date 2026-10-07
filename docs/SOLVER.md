@@ -217,6 +217,46 @@ Typical time natively: about 2–4 s per search with one result (the Global defa
 
 Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%), from hakuraku.moe's room-match data; it was 4.8% from a 45/50/5 split that matched neither band). Each legacy's affinity follows uma-it-optimizer's fit to 8,155 Independent Training receipts (github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor (halving them predicted half of what fired). In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. Before this, the model used umaishow's split (a parent took half the parent–parent relation and shared G1s) with grandparents halved, which put every spark chance at about half the measured level. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop; fit to CM room data at hakuraku.moe/notes/spark_generation). Odds are averaged over the 12 lineages.
 
+### Career planner (`"mode":"career"`, page `/career`)
+
+The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed), deck.
+Same files as deck mode, plus `legacies`; the skills- and deck-mode fields apply (`owned`/`exclude`/`exclude_outfits`
+choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` and the loop fields are unused).
+`val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
+
+| Field | Meaning | Default |
+|---|---|---|
+| `legacies` | veterans: `{chara, borrowed, sparks: [[skill group, stars], ...], pinks: [[aptitude group, stars], ...], wins: [race index], parents: [{chara, sparks, pinks, wins}, ...]}`; race index = position in data.json `races`; aptitude groups 11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; a parent with `chara` 0 is unknown (no relation points, its sparks still count) | required |
+| `trainees` | chara ids to consider (empty: every owned uma) | `[]` |
+| `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
+| `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
+| `top` | careers returned | 5 |
+
+Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
+with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
+relocated venue is the same race). Per target k: q_k = 1 − Π_legacies (1 − min(1, 0.03·s·(1 + A/100)))², s = that
+legacy's stars of k (0 without a spark); spark generation 0.2 / 0.4 × 1.1^n_k, n_k = legacies carrying k. Derived:
+q_k and the trainee's own event hint chance e enter every landing factor only as (1 − e)(1 − q_k), so the trainee's e is
+replaced by 1 − (1 − e)(1 − q_k) and the deck search runs unchanged at q = 0; the factor 1.1^(n_k − 6) per target is the
+same for every deck and multiplies P(all) (`JointExt` applies it per target for P(all but one) and the per-target
+chances, which are exact marginals of the joint model). Tested against the loop model (`career_fold_and_scale`; and
+end to end: with 2★ sparks everywhere and no race overlap every lineage of `pal_U` gives the same P(all) and q to
+9 digits).
+
+Search: each candidate gets a ceiling ρ·C·max_outfit Π_k f_k at each target's best possible deck odds (the deck_size
+lowest miss chances of the trainee's legal entries, every link firing); candidates are taken best ceiling first. A
+candidate is solved like a per-uma trainee (best product deck, then every deck whose product value times ρ reaches
+the best exact value, through `upper_na`, scored exactly). Between candidates of one trainee a proven bound skips
+most of them: from chances q0 to q a target's factor grows at most by (1 − (1 − e)(1 − q_k)) / (1 − (1 − e)(1 − q0_k))
+(1 when q_k ≤ q0_k or the outfit has the skill), for every deck and chain state, so E(q) ≤ E(q0) · max_outfit Π_k of
+those ratios. The search stops when the next ceiling is below the k-th best (one per trainee). Output per career:
+`trainee` (outfits, covers), `parents` (legacy indices), `slots` (six legacies: affinity parts, stars), `targets` (per
+target `q`, `carriers`, landing chance `p`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
+the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), and `carriers`; reported only: aptitudes
+do not enter the skill odds), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
+`bounded`, `complete`, `proven_top`. 12 sample veterans x every trainee (3,564 candidates): 74 solved, 1.8 s natively,
+1.5 s in the browser.
+
 ## 4. Validation
 
 `cargo test --release` (in `pkg/loopopt`) covers, among others:

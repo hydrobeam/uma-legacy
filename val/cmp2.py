@@ -15,6 +15,11 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
         a,b=sig(r),sig(x); ok=[s[0] for s in a]==[s[0] for s in b]; same=a==b
         print(f"{name}: values {'OK' if ok else 'DIFF'} decks {'same' if same else 'differ(ties?)'} ref {[round(1/s[0]) for s in a]} new {[round(1/s[0]) for s in b]} proven {r.get('proven')}/{x.get('proven')}")
         if not ok: bad+=1
+    elif 'results' in r:
+        sig=lambda j:[(round(c['p_all'],14),round(c['p_minus1'],12),c['trainee']['id'],tuple(c['parents']),tuple(sorted(c['deck']['card_ids']))) for c in j['results']]
+        a,b=sig(r),sig(x); ok=[s[0] for s in a]==[s[0] for s in b]; same=a==b
+        print(f"{name}: career values {'OK' if ok else 'DIFF'} picks {'same' if same else 'differ(ties?)'} proven {r.get('proven_top')}/{x.get('proven_top')}")
+        if not ok: bad+=1
     else:
         sig=lambda j:[(round(l['p_all'],14),tuple(m if isinstance(m,str) else m.get('name') for m in l['members'])) for l in j.get('loops',[])]
         ok=sig(r)==sig(x); print(name,'skills', 'OK' if ok else 'DIFF'); bad+= not ok

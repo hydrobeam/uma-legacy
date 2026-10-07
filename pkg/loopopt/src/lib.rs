@@ -1154,8 +1154,8 @@ pub fn cli_main() {
         println!("{}", skills::run_skills(&d, &sk, &sj));
         return;
     }
-    if jobs.mode == "deck" {
-        // joint deck + loop search; needs "skills_file" and "cards_file" (web_cards.json)
+    if jobs.mode == "deck" || jobs.mode == "career" {
+        // joint deck + loop search (or the career planner); needs "skills_file" and "cards_file" (web_cards.json)
         let mut v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
         let sk: skills::SkillsRaw = serde_json::from_str(&std::fs::read_to_string(v["skills_file"].as_str().expect("skills_file")).unwrap()).unwrap();
         if let Some(path) = v["events_file"].as_str() {
@@ -1164,7 +1164,7 @@ pub fn cli_main() {
         }
         let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
         let t0 = Instant::now();
-        let mut out = deck::run_deck(&d, &sk, &cr, &v);
+        let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
         out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
         println!("{}", out);
         return;

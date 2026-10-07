@@ -94,5 +94,17 @@
 [
 "pkg/loopopt",
 "jobs/skills_unity8.json"
+],
+[
+"pkg/loopopt",
+"jobs/career_U.json"
+],
+[
+"pkg/loopopt",
+"jobs/career_U2.json"
+],
+[
+"pkg/loopopt",
+"jobs/career_U3.json"
 ]
 ]

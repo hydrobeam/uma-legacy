@@ -3,6 +3,7 @@
 //!   {"cmd":"init","data":<data.json>,"skills":<web_skills.json>}
 //!   {"cmd":"skills", ...SkillJob}   {"cmd":"affinity", ...AffinityJob}
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
+//!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 use super::*;
 use super::skills::*;
 use std::cell::RefCell;
@@ -61,6 +62,13 @@ fn handle(req: &str) -> serde_json::Value {
             let mut job = v.clone();
             super::deck::apply_events_db(&mut job, sk, db);
             super::deck::run_deck(d, sk, cr, &job)
+        })),
+        "career" => STATE.with(|s| DECK.with(|dk| {
+            let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
+            let dkb = dk.borrow(); let Some((cr, db)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
+            let mut job = v.clone();
+            super::deck::apply_events_db(&mut job, sk, db);
+            super::deck::run_career(d, sk, cr, &job)
         })),
         c => serde_json::json!({"error": format!("unknown command {c}")}),
     }

@@ -397,7 +397,7 @@ fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// Training hints stay independent per target, as in the marginal model.
 fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
-    let r = joint_fast(model, u, qs, ents, filler, n_targets, m1);
+    let r = joint_fast(model, u, qs, ents, filler, n_targets, m1, None);
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
         let x = joint_trainee_ref(model, u, qs, ents, filler, n_targets);
@@ -409,11 +409,15 @@ fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usiz
     r
 }
 
+pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64> }
 /// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
 /// enumerated per cluster of targets they connect (clusters are independent given the chain state).
-fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
+/// `ext` (the career planner): each target's landing factor times its spark-generation scale (`su` per uncertain
+/// target, `sf` per guaranteed gold, in job order), and per (chance, outfit, uncertain target) the exact chance it
+/// lands, summed into `marg`. None leaves every number as it is.
+fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
@@ -460,7 +464,8 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
-    let fixed = model.fixed_factor();
+    let fixed = match &ext { Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s), None => model.fixed_factor() };
+    if let Some(x) = ext.as_deref_mut() { x.marg = vec![0.0; nq * no * nu]; }
     let mut acc = vec![(0.0f64, 0.0f64); nq * no];
     // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
     let nqo = nq * no;
@@ -486,6 +491,7 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
                     let f = |pg: f64, pnh: f64| match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
                         _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - pnh * (1.0 - ew[k]) * (1.0 - q)) };
                     fv[base + k] = [f(1.0 - ng[k], nh[k]), f(1.0 - ng[k], 0.0), f(1.0, 0.0)];
+                    if let Some(x) = &ext { for v in fv[base + k].iter_mut() { *v *= x.su[k]; } }
                 }
             }
         }
@@ -509,7 +515,8 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
         let mut ua = vec![1.0f64; nqo]; let mut ub = vec![0.0f64; nqo];
         let push = |ua: &mut [f64], ub: &mut [f64], i: usize, a: f64, b: f64| { ub[i] = ub[i] * a + ua[i] * b; ua[i] *= a; };
         for i in 0..nqo {
-            for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f); } }
+            for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f);
+                if let Some(x) = ext.as_deref_mut() { x.marg[i * nu + k] += w * f; } } }
         }
         for (ts, gs) in &clusters {
             let alts: Vec<Vec<(f64, &[(usize, u8)])>> = gs.iter().map(|g| {
@@ -528,6 +535,7 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
                     let (mut a, mut b) = (1.0f64, 0.0f64);
                     for &k in ts { let f = fv[i * nu + k][lvl[k] as usize]; b = b * f + a * (1.0 - f); a *= f; }
                     ca[i] += wc * a; cb[i] += wc * b;
+                    if let Some(x) = ext.as_deref_mut() { for &k in ts { x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize]; } }
                 }
                 let mut i = 0;
                 while i < alts.len() { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
@@ -537,7 +545,7 @@ fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler:
         }
         for i in 0..nqo {
             let (mut a, mut b) = (ua[i], ub[i]);
-            if m1 { for _ in 0..nfix { b = b * GEN_GOLD + a * (1.0 - GEN_GOLD); a *= GEN_GOLD; } } else { a *= fixed; }
+            if m1 { for j in 0..nfix { let g = match &ext { Some(x) => GEN_GOLD * x.sf[j], None => GEN_GOLD }; b = b * g + a * (1.0 - g); a *= g; } } else { a *= fixed; }
             // P(at least n_targets - 1 land) over nu + nfix targets
             let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
             acc[i].0 += w * a; acc[i].1 += w * if m1 { m } else { 0.0 };
@@ -1799,30 +1807,22 @@ impl<'a> DeckSpace<'a> {
     }
 }
 
-/// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
-/// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
-/// per-uma decks, for all four members with a shared deck.
-pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
-    run_deck_relaxed(d, sk, cr, v)
-}
-
-fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
-    let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
-    let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
-    CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
-    let model = Model::new(d, sk, &sj);
-    let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
-    let nu = unc.len();
+/// Deck entries of a job: per entry the card (`rel`, an index into `cards`, the cards a deck may hold), chain kind,
+/// early-end link (0 = played normally), choice variant and sources; the plain pals (owned pal characters with no
+/// relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
+/// none of them come first).
+struct Entries<'a> { cards: Vec<&'a Card>, rel: Vec<usize>, kind: Vec<Kind>, endk: Vec<u8>, vark: Vec<u32>, srcs: Vec<Src>,
+                     plain_ids: Vec<u32>, plain_names: Vec<String>, plain_chars: Vec<u32>, locked: Vec<usize> }
+fn deck_entries<'a>(cr: &'a CardsRaw, dj: &DeckJob, unc: &[u32], pool_ids: &[u32]) -> Result<Entries<'a>, Value> {
     let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
     let banned: &[u32] = cr.restrict.get(&dj.scenario).map_or(&[], |v| v.as_slice());
     if let Some(c) = dj.lock_cards.iter().find(|id| banned.contains(id)).and_then(|id| cr.cards.iter().find(|c| c.id == *id)) {
-        return json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", c.name, scenario_name(&dj.scenario))});
+        return Err(json!({"error": format!("{} can't be used in {}: the game bans it from that scenario's deck.", c.name, scenario_name(&dj.scenario))}));
     }
     let owned_c = |id: u32| (is_owned(id) || dj.borrow) && !dj.exclude_cards.contains(&id) && !banned.contains(&id);
-
     // ---- card sources ----
-    let srcb = Sources { dj: &dj, unc: &unc };
+    let srcb = Sources { dj, unc };
     let cards: Vec<&Card> = cr.cards.iter().filter(|c| owned_c(c.id)).collect();
     // deck entries: card index (`rel`), chain kind, early-end link (0 = played normally), choice variant and sources
     let mut rel: Vec<usize> = vec![];
@@ -1859,7 +1859,6 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     // With borrowing, a pal character the player owns no card of can still fill one slot as the borrowed card.
     // A deck with p plain pals uses the first p, so those blocking no uma in the pool come first (a plain pal that
     // blocks a loop member makes the result illegal, and `run_deck` then searches without it).
-    let pool_ids: Vec<u32> = d.umas.iter().map(|u| u.id).filter(|&id| (sj.owned.is_empty() || sj.owned.contains(&id) || sj.require.contains(&id)) && !sj.exclude.contains(&id)).collect();
     let mut plain: Vec<(usize, u32, String)> = vec![];
     for c in cards.iter().filter(|c| c.pal && is_owned(c.id)) {
         if rel.iter().any(|&r| cards[r].chara == c.chara) || plain_chars.contains(&c.chara) { continue; }
@@ -1879,16 +1878,43 @@ fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value
     }
     let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
     locked.sort(); locked.dedup();
+    Ok(Entries { cards, rel, kind, endk, vark, srcs, plain_ids, plain_names, plain_chars, locked })
+}
+fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRaw, unc: &[u32], e: &Entries<'a>) -> DeckSpace<'a> {
+    let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
+    let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
+    let mut kinds_all: Vec<Kind> = e.kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
+    kinds_all.push((2, 2, 0)); kinds_all.sort(); kinds_all.dedup();
+    DeckSpace { dj, unc: unc.to_vec(), sk, cards: e.cards.clone(), rel: e.rel.clone(), kind: e.kind.clone(), endk: e.endk.clone(), vark: e.vark.clone(),
+        srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(),
+        plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
+        locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default() }
+}
+
+mod career;
+pub(crate) use career::run_career;
+
+/// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
+/// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
+/// per-uma decks, for all four members with a shared deck.
+pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
+    run_deck_relaxed(d, sk, cr, v)
+}
+
+fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
+    let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
+    let model = Model::new(d, sk, &sj);
+    let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
+    let nu = unc.len();
+    let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
+    let pool_ids: Vec<u32> = d.umas.iter().map(|u| u.id).filter(|&id| (sj.owned.is_empty() || sj.owned.contains(&id) || sj.require.contains(&id)) && !sj.exclude.contains(&id)).collect();
+    let ent = match deck_entries(cr, &dj, &unc, &pool_ids) { Ok(e) => e, Err(e) => return e };
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
-    let space = if !dj.deck_only {
-        let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
-        let mut kinds_all: Vec<Kind> = kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
-        kinds_all.push((2, 2, 0)); kinds_all.sort(); kinds_all.dedup();
-        Some(DeckSpace { dj: &dj, unc: unc.clone(), sk, cards: cards.clone(), rel: rel.clone(), kind: kind.clone(), endk: endk.clone(), vark: vark.clone(),
-            srcs: srcs.clone(), ebor: rel.iter().map(|&r| !is_owned(cards[r].id)).collect(),
-            plain: plain_ids.iter().zip(&plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
-            locked: locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default() })
-    } else { None };
+    let space = if !dj.deck_only { Some(deck_space(cr, &dj, sk, &unc, &ent)) } else { None };
+    let Entries { cards, mut rel, mut kind, mut endk, mut vark, mut srcs, plain_ids, plain_names, plain_chars, locked } = ent;
+    let srcb = Sources { dj: &dj, unc: &unc };
 
     // ---- card dominance (exact) ----
     // Card A can stand in for card B in any deck when both are pals or both have the same chain length (so the
@@ -2858,7 +2884,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         }).collect();
         let s4 = [r.s[0], r.s[1], r.s[2], r.s[3]];
         let pss: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let mut detail = model.detail(*f, &|a, b| wval(&pss[a], &pss[b]), Some(std::array::from_fn(|t| (&dk[t].dw[..], &dk[t].dg[..]))));
+        let mut detail = model.detail(*f, &|a, b| if no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(std::array::from_fn(|t| (&dk[t].dw[..], &dk[t].dg[..]))));
         if let Some(ls) = detail["lineages"].as_array_mut() { for (l, x) in ls.iter_mut().enumerate() { x["rank_value"] = x["p_all"].clone(); x["p_all"] = json!(per_l[l].0); } }
         let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "rank_value": rank_v, "outfits": outfits,
                "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
@@ -3106,14 +3132,60 @@ mod tests {
         let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, risk)), (e, (0, 0, 0))];
         for fill in [0usize, 2] {
             for u in [0usize, 5, 20] {
-                let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true);
+                let x = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), true, None);
                 let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
                 for (p, r) in x.iter().zip(&y) {
                     assert!((p.0 - r.0).abs() < 1e-13 && (p.1 - r.1).abs() < 1e-13 && p.2 == r.2, "fill {fill} uma {u}: {:?} vs {:?}", p, r);
                 }
-                let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false);
+                let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false, None);
                 for (p, r) in z.iter().zip(&y) { assert!((p.0 - r.0).abs() < 1e-13); }
             }
+        }
+    }
+
+    /// Career planner: a per-target inheritance chance folded into the trainee's event hint chances, evaluated at
+    /// q = 0, gives the same joint odds as the loop model at q; the spark scale multiplies P(all) by the product of
+    /// the scales; with two targets the exact marginals satisfy P(A) + P(B) = P(all) + P(at least one).
+    #[test]
+    fn career_fold_and_scale() {
+        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+        let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+        let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
+            "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
+        let m = Model::new(&d, &sk, &sj);
+        let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
+        let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
+        let a = Src { train: vec![(0, 0.3)], chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))], ..Default::default() }.finish();
+        let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
+        let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
+        let ents = vec![(a, (3, 3, 0)), (b, (2, 2, 0)), (c, (3, 3, 0))];
+        let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
+        for u in [0usize, 5, 20] {
+            for q in [0.1, 0.6] {
+                let x = joint_fast(&m, u, &[q], &ents, 1, sj.targets.len(), true, None)[0];
+                let mut f = Model::new(&d, &sk, &sj);
+                f.ews[u] = m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
+                let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
+                assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {:?} vs {:?}", x, y);
+                let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
+                let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![] };
+                let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
+                let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
+                assert!(rel(z.0, c * y.0) < 1e-12 && z.2 == y.2, "scale uma {u}: {} vs {}", z.0, c * y.0);
+                assert!(z.1 >= z.0 && z.1 <= 1.0);
+            }
+        }
+        // two targets, coupled sources: marginals against P(all) and P(all but at most one)
+        let sj2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20166}]})).unwrap();
+        let m2 = Model::new(&d, &sk, &sj2);
+        let p = Src { train: vec![(0, 0.2)], chains: vec![(1, two(0, 1)), (2, g1(1, 1, 0.7))], ..Default::default() }.finish();
+        let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
+        let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
+        for u in [0usize, 5, 20] {
+            let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![] };
+            let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
+            let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
+            assert!(rel(m0 + m1, j.0 + j.1) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.0, j.1);
         }
     }
 
@@ -3143,7 +3215,7 @@ mod tests {
             for fill in [0usize, 1, 3] {
                 for u in [0usize, 5, 20] {
                     let qs = [0.1, 0.5, 0.9];
-                    let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false);
+                    let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
                     let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
                     if let Some(ub) = upper_na(&m, u, &qs, &er, fill) {
                         covered += 1;
