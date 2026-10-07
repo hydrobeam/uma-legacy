@@ -91,7 +91,7 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // veteran with its comparison (on demand)
 let planS = { state: 'none', r: null };
 // the plan's sampling time limit (ms of solver time in the browser's worker; the searches before it come on top)
-const PLAN = { budget_ms: 8000 };
+const PLAN = { budget_ms: 20000 };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0;
@@ -154,6 +154,12 @@ const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(
 // expected careers to land, with its 95% interval
 const fmtN = (x) => Math.round(x).toLocaleString();
 const careersText = (o) => o.expected == null ? 'not simulated' : fmtN(o.expected) + (o.ci != null ? ` ± ${fmtN(o.ci)}` : '');
+// the future an estimate assumes after the career: the best odds each time, or the loop planner's loop
+const loopChain = (P) => (P?.loop_members || []).map(m => m.short || m.name).join(' → ');
+const baseText = (o) => o.base === 'loop' ? 'then the loop' : 'then best odds';
+// the owner's question: does running it improve the odds of the next run (from the plan's runs: the best career right
+// after it against today's best)
+const improveText = (o) => o.improve_next == null ? '' : `Improves your next run: ${Math.round(o.improve_next * 100)}%` + (o.next_if_improved ? ` (to ${fmtIn(o.next_if_improved)} when it does)` : '');
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
   if (plan.parents[k]) return { v: vetById(plan.parents[k]), pick: false };
@@ -298,7 +304,7 @@ function oddsEl(r) {
   const nums = h.querySelectorAll('.sub .num'); nums[0].textContent = fmtIn(r.p_minus1); nums[1].textContent = r.expected.toFixed(2);
   // the plan's number for this career: expected careers to land (this one, then the best by odds after each)
   const o = planRow(r), x = el('span', 'sub expc', 'Expected careers to land: ');
-  if (o) x.appendChild(el('b', 'num', careersText(o)));
+  if (o) x.append(el('b', 'num', careersText(o)), ` · ${baseText(o)}`);
   else x.append(planS.state === 'busy' ? 'simulating…' : 'not simulated');
   x.id = 'exp-careers'; h.appendChild(x);
   return h;
@@ -519,7 +525,7 @@ function simulationBody() {
       const est = el('div', 'simodds');
       for (const [label, a] of [['Run this career again', P.stay], ['Use her in the next career', P.advance]]) {
         const card = el('div', 'tc');
-        card.append(el('span', 'tl', label), el('b', 'tv', `${careersText(a)} careers to land`), el('span', 'hint', `This career: ${fmtIn(a.p_all)}`));
+        card.append(el('span', 'tl', label), el('b', 'tv', `${careersText(a)} careers to land`), el('span', 'hint', `This career: ${fmtIn(a.p_all)}, ${baseText(a)}${a.base === 'loop' ? ` (${loopChain(P)})` : ''}`));
         est.appendChild(card);
       }
       result.appendChild(est);
@@ -566,7 +572,10 @@ function optionsEl() {
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
   const P = planS.state === 'done' ? planS.r : null, list = P ? P.options.filter(o => o.eligible) : last.r.results, on = shown();
   const tb = el('table', 'cartab optab');
-  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Expected careers to land</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Expected careers to land</th><th scope="col">Then</th><th scope="col">Next run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  // the loop the estimates may follow, once
+  if (P) box.appendChild(el('p', 'sub oloop', P.loop_base ? `The loop: ${loopChain(P)} (the loop planner's best loop for your settings). Each option is simulated two ways, then the best odds each career or then this loop, and counts the better.`
+    : `No loop to compare (${P.loop_note || 'none found'}): each option is simulated with the best odds each career.`));
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -575,7 +584,9 @@ function optionsEl() {
     if (P && r.about_same) tags.appendChild(el('span', 'otag', 'about the same'));
     if (P && r.greedy) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'oexp', P ? careersText(r) : planS.state === 'busy' ? 'simulating…' : '–'));
+    const then = el('td', 'obase', P && r.expected != null ? baseText(r) : '');
+    if (P && r.base === 'loop') then.title = `then the loop: ${loopChain(P)}`;
+    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'oexp', P ? careersText(r) : planS.state === 'busy' ? 'simulating…' : '–'), then, el('td', 'onext', P ? improveText(r) : ''));
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
     row.appendChild(act);
@@ -583,7 +594,7 @@ function optionsEl() {
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   if (P) { const s = P.settings;
-    box.appendChild(el('p', 'hint', `Expected careers to land: this career, then after each one the best career by odds, simulated on the model (up to ${s.samples_max} runs per option, the same luck for every option; each run the first ${s.horizon_max} careers, then the last one repeated, so the numbers lean high). ± is a 95% interval. The planner takes the lowest; options within error of it are "about the same", and among those it takes the best odds now.`)); }
+    box.appendChild(el('p', 'hint', `Expected careers to land: this career, then either the best career by odds after each one or the loop above, whichever needs fewer, simulated on the model (up to ${s.samples_max} runs per option, the same luck for every option and both futures; each run the first ${s.horizon_max} careers, then the best recent career repeated, so the numbers lean high). ± is a 95% interval. The planner takes the lowest; options within error of it are "about the same", and among those it takes the best odds now. Improves your next run: in how many of those runs the best career right after this one beats your best today (with the deck the simulation runs it with), and its odds when it does.`)); }
   return box;
 }
 function renderResults() {
