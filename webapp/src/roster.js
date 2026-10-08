@@ -41,7 +41,7 @@ export function renderRoster() {
     b.appendChild(umaAv(u.id, o ? o.id : null, 96, i < EAGER)); t.appendChild(b);
     const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
     if (o) { const ol = document.createElement('div'); ol.className = 'uol'; ol.textContent = o.label; ol.title = o.label; t.appendChild(ol); }   // two lines at most (CSS); the title has it whole
-    t._paint = () => { const st = tileState(u, o); t.dataset.s = st; b.setAttribute('aria-label', u.name + (o ? ' ' + o.label : '') + ': ' + ST_LABEL[st]); b.title = b.getAttribute('aria-label'); };
+    t._paint = () => { const st = tileState(u, o); t.dataset.s = st; b.setAttribute('aria-label', u.name + (o ? ' ' + o.label : '') + ': ' + ST_LABEL[st]); b.title = u.name + (o ? ' ' + o.label : ''); };   // hover: who she is (the tile's look shows owned / not owned / must include; the screen reader hears it)
     t._paint();
     b.onclick = () => {
       const st = tileState(u, o);
