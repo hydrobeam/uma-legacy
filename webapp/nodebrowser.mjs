@@ -888,15 +888,17 @@ const TESTS = {
       && await pg.evaluate(() => document.activeElement?.id === 'odds-open'), JSON.stringify(oddRows.slice(0, 3)));
     check('career: the odds and eight target rows beside and under the tree; the six-card deck under the trainee, behind its button', /to land all 8/.test(oddsTxt)
       && deckShut && await pg.locator('#tree .pn.trainee #tree-deck .dc').count() === 6 && await pg.locator('.rtgt .cartab tbody tr').count() === 8);
-    check('career: aptitude (pink) sparks show what they pass on', /Mile \d/.test(await pg.textContent('.pinkres')));
     check('career: the six legacies carry their affinity as a heart and a number (no legacy numbers), grandparents labelled plainly', !(await pg.locator('#tree .gate').count())
       && await pg.locator('#tree .pn:not(.trainee) .aff').count() === 6 && await pg.locator('#tree .pn:not(.trainee) .aff .heart').count() === 6
       && (await pg.$$eval('#tree .pn .aff', l => l.every(x => /^Affinity \d+$/.test(x.getAttribute('aria-label')) && /^\d+$/.test(x.textContent))))
       && (await pg.$$eval('#tree .pn.gp .pnl', l => l.every(x => x.textContent === 'Grandparent'))));
     const affs = await pg.$$eval('#tree .pn .aff', l => l.map(x => +x.textContent.replace(/\D/g, '')));
-    const tsum = await pg.textContent('#tree .pn.trainee .tsum'), [pa, ga] = (tsum.match(/\d+/g) || []).map(Number);
-    check('career: the trainee shows the affinity her six legacies hold, parents\' and grandparents\' parts', /Parents \d+ · grandparents \d+/.test(tsum)
-      && Math.abs(affs[0] - (pa + ga)) <= 1 && Math.abs(affs.slice(1).reduce((a, x) => a + x, 0) - affs[0]) <= 6, tsum + ' ' + affs.join(','));
+    check('career: the trainee shows the affinity her six legacies hold (their sum), without a parents/grandparents line', !(await pg.locator('#tree .pn.trainee .tsum').count())
+      && Math.abs(affs.slice(1).reduce((a, x) => a + x, 0) - affs[0]) <= 6, affs.join(','));
+    await node('node:t');
+    const affRows = await pg.$$eval('#node-dlg .afftab tbody tr', l => l.length), affTot = +(await pg.textContent('#node-dlg .afftab tfoot .aff')).replace(/\D/g, '');
+    await closeNode();
+    check('career: … her popup breaks it down legacy by legacy, summing to the same', affRows === 6 && Math.abs(affTot - affs[0]) <= 1, `${affRows} rows, ${affTot} vs ${affs[0]}`);
     // the planner's pick: the K best careers by odds, then the plan over them and a few more
     const lastJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && j.next && !j.compare).at(-1));
     const lastRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
@@ -978,11 +980,10 @@ const TESTS = {
     const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare).length);
     const d0 = await draft();
     check('career: the veteran you got starts as a random result (no default), and nothing is compared yet', d0.length > 0 && await policyJobs() === 0 && !(await pg.locator('#sim-verdict').count()));
-    // her pink spark: the career lists its odds (an aptitude she ends at A or S, uniformly); her roll carries one of them
+    // her pink spark: her roll carries at most one (an aptitude she ends at A or S)
     const pinkChips = () => pg.$$eval('#simulation .simskills .vsk.pink .vskb', l => l.map(b => b.getAttribute('aria-label')));
-    const genChips = await pg.locator('#pink-gen .pchip').allTextContents(), pk0 = await pinkChips();
-    check('career: the career gives the odds of her own pink spark, and her roll carries one of those aptitudes',
-      pk0.length <= 1 && (pk0.length === 0 || genChips.some(c => pk0[0].startsWith(c.replace(/ [<\d.,]+%$/, '') + ' (aptitude), '))), `${genChips.join(' / ')} | ${pk0.join(' / ')}`);
+    const pk0 = await pinkChips();
+    check('career: her roll carries at most one pink spark', pk0.length <= 1 && pk0.every(x => / \(aptitude\), \d stars?/.test(x)), pk0.join(' / '));
     const original = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets);
     await simStars(3);
     check('career: editing her leaves your veterans untouched and runs nothing', await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original)

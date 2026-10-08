@@ -16,7 +16,7 @@ import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initTargets, renderTargets } from './targets.js';
-import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, changeUma, askSkills,
+import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
@@ -193,16 +193,13 @@ function tile(key, face, name, sub, extra) {
 function traineeEl(r) {
   const id = plan.trainee || (r && r.trainee.id);
   const n = pnode('trainee', 0, plan.trainee ? 'Trainee' : 'Trainee · planner\'s pick', !plan.trainee);
-  // the affinity she holds from her six legacies: parents' and grandparents' parts
-  let parts = null;
+  // the affinity she holds from her six legacies (its breakdown is in her popup)
   if (r && r.trainee.id === id) {
-    const sum = (k) => r.slots.filter(x => x.kind === k).reduce((a, x) => a + x.aff, 0), pa = sum('parent'), ga = sum('grandparent');
-    const a = affEl(pa + ga, 'aff tot'); a.title = `Affinity ${Math.round(pa + ga)}: parents ${Math.round(pa)} + grandparents ${Math.round(ga)}`;
+    const tot = legacyAff(r), a = affEl(tot, 'aff tot'); a.title = `Affinity ${Math.round(tot)}, her six legacies: click her for the breakdown`;
     n.querySelector('.pnh').appendChild(a);
-    parts = el('span', 'tsum', `Parents ${Math.round(pa)} · grandparents ${Math.round(ga)}`);
   }
   const sub = id && r && r.trainee.id === id ? (r.trainee.outfits.length ? r.trainee.outfits.map(o => o.label).join(' or ') : 'any outfit') : null;
-  const t = id ? tile('node:t', umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 96), umaName(id), sub, parts)
+  const t = id ? tile('node:t', umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 96), umaName(id), sub)
     : tile('node:t', el('span', 'av empty'), 'Any uma', 'The planner tries every uma you own.');
   t.setAttribute('aria-label', `Trainee: ${id ? umaName(id) : 'the planner picks'}. Details`); t.onclick = () => openNode({ kind: 't' });
   n.appendChild(t); wholeBox(n, t);
@@ -217,6 +214,27 @@ function traineeEl(r) {
   return n;
 }
 // affinity: the game's heart and the number (named "Affinity N" for screen readers and the tooltip)
+// her affinity, legacy by legacy (the report's six slots, career.rs slots()): each of the six has its own, which weighs
+// its own inheritance rolls; a parent's counts her relation with the trainee and with the other parent, the trio
+// relations with her own two parents and the G1s she shares with all three (3 points each); a grandparent's, her trio
+// relation and the G1s she shares with the parent between them. The total is the six summed (as the loop planner's).
+const legacyAff = (r) => r.slots.reduce((a, x) => a + x.aff, 0);
+function affTable(r) {
+  const t = el('table', 'afftab'), R = (x) => String(Math.round(x));
+  t.innerHTML = '<caption>Affinity</caption><thead><tr><th scope="col"></th><th scope="col">Relation</th><th scope="col">G1 wins shared</th><th scope="col">Affinity</th></tr></thead><tfoot></tfoot>';
+  const row = (cls, who, rel, race, aff) => { const tr = el('tr', cls), th = el('th'); th.scope = 'row'; th.append(...who);
+    tr.append(th, el('td', '', R(rel)), el('td', '', R(race)), el('td', 'afv')); tr.lastChild.appendChild(affEl(aff)); return tr; };
+  // Legacy 1 and 2 follow the career's parents (a slot's legacy is her index among your veterans)
+  r.parents.forEach((ix, k) => { const p = r.slots.find(x => x.kind === 'parent' && x.legacy === ix); if (!p) return;
+    const tb = el('tbody', 'leg' + k);
+    tb.appendChild(row('par', [umaAv(p.chara || 0, null, 30), el('span', 'afn', p.name || umaName(p.chara)), el('span', 'afk', `Legacy ${k + 1}`)], p.rel, p.race, p.aff));
+    for (const g of r.slots.filter(x => x.kind === 'grandparent' && x.legacy === p.legacy).sort((a, b) => a.gp - b.gp))
+      tb.appendChild(row('gp', [umaAv(g.chara || 0, null, 24), el('span', 'afn', g.name || umaName(g.chara))], g.rel, g.race, g.aff));
+    t.appendChild(tb);
+  });
+  t.tFoot.appendChild(row('tot', [el('span', 'afk', 'Six legacies')], r.slots.reduce((a, x) => a + x.rel, 0), r.slots.reduce((a, x) => a + x.race, 0), legacyAff(r)));
+  return t;
+}
 function affEl(a, cls = 'aff') { if (a === null) return null; const e = el('span', cls); e.append(el('i', 'heart'), String(Math.round(a)));
   e.setAttribute('aria-label', `Affinity ${Math.round(a)}`); e.title = `Affinity ${Math.round(a)}`; return e; }
 function familyEl(k, r) {
@@ -275,6 +293,7 @@ function fillNode() {
     const id = plan.trainee || (r && r.trainee.id);
     if (id) { const w = el('div', 'twho'); w.append(umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 72), el('div', 'nm', umaName(id))); body.appendChild(w); }
     else body.appendChild(el('p', 'tempty', 'The planner tries every uma you own.'));
+    if (id && r && r.trainee.id === id) body.appendChild(affTable(r));
     acts.appendChild(btn(plan.trainee ? 'Change trainee' : 'Choose trainee', 'primary', fromNode(() => openUmaPicker('Trainee: which uma?', (u) => { plan.trainee = u; changed(); }, owned))));
     if (plan.trainee) acts.appendChild(btn('Let the planner pick', '', () => { plan.trainee = null; changed(); }));
   } else if (sp.kind === 'p') {
@@ -323,7 +342,9 @@ function fillNode() {
     iv.querySelector('.simskills').replaceChildren(sparksEl(g, `p${sp.k}g${sp.j}`, changed));
     body.append(w, iv);
   }
-  if (acts.childElementCount) body.appendChild(acts);
+  // the popup's actions sit in its footer beside Close (no row of their own)
+  const foot = nodeDlg.querySelector('.gmdfoot'); foot.querySelectorAll('.nact').forEach(e => e.remove());
+  for (const b of [...acts.children]) { b.classList.add('nact'); foot.appendChild(b); }
   fitSparks(nodeDlg);
 }
 function renderTree() {
@@ -446,24 +467,6 @@ function targetsEl(r) {
     tb.tBodies[0].appendChild(row);
   }
   s.appendChild(tb);
-  if (r.pinks.length) {
-    const p = el('p', 'pinkres'); p.append(el('span', 'sub', 'Pinks passed on: '));
-    for (const x of r.pinks) p.append(el('span', 'pchip', `${pinkName(x.group)} ${pct(x.q)}`), ' ');
-    s.appendChild(p);
-  }
-  // her aptitudes: what the legacies' pinks raise at the start (her schedule's win chances count it, and the April
-  // inspirations' chances), and the odds of her veteran's pink spark
-  const ap = r.aptitudes;
-  if (ap) {
-    const G = 'GFEDCBAS', up = ap.base.map((b, k) => [b, ap.start[k], k]).filter(([b, st]) => st > b);
-    if (up.length) { const p = el('p', 'pinkres'); p.id = 'apt-start'; p.append(el('span', 'sub', 'Start aptitudes: '));
-      for (const [b, st, k] of up) p.append(el('span', 'pchip', `${pinkName(ap.pink_gen[k].group)} ${G[b - 1]} → ${G[st - 1]}`), ' ');
-      s.appendChild(p); }
-    const gen = ap.pink_gen.filter(x => x.p > 0.0005).sort((a, b) => b.p - a.p);
-    if (gen.length) { const p = el('p', 'pinkres'); p.id = 'pink-gen'; p.append(el('span', 'sub', 'Her pink: '));
-      for (const x of gen) p.append(el('span', 'pchip', `${pinkName(x.group)} ${pct(x.p)}`), ' ');
-      s.appendChild(p); }
-  }
   return s;
 }
 // her race schedule: the loop planner's schedule window, from a button beside the deck

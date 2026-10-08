@@ -635,8 +635,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .verdict.mix { background: var(--gold-soft); border-color: var(--gold); }
 .verdict.done { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 .ahtab th[scope="row"] { font-weight: 600; }
-.pinkres { margin: 8px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.85rem; }
-.pchip { border: 1px solid var(--pink-edge); background: var(--pink-soft); color: var(--ink); border-radius: 3px; padding: 1px 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .optab td, .optab th { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
 .optab td { white-space: nowrap; }
 .optab tbody tr.on .altw { color: var(--accent); }
@@ -1067,8 +1065,12 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .gmtip::before { content: ''; position: absolute; top: -8px; left: calc(50% - 7px); border: 7px solid transparent; border-top: 0; border-bottom: 8px solid var(--gm-bright2); }
 .gmtip.up::before { top: auto; bottom: -8px; border-bottom: 0; border-top: 8px solid var(--gm-bright2); }
 /* skill tiles: the game's tile art scaled whole (its 9-slice stretched the middle into a vertical band) */
-.udsk::before { border: 0; border-image: none; background: var(--skill-white) 0 0 / 100% 100% no-repeat; border-radius: 9px; }
-.udsk.gold::before { background-image: var(--skill-gold); }
+/* the skill tile: the game's sprite alone (no CSS tile behind it to show at its corners), sliced across only so its
+   rounded ends keep their shape (190x45 sprite, ends 24 px, drawn at the tile's height) */
+.udsk:not(.off) { background: none; box-shadow: none; border-radius: 0; }
+.udsk:not(.off)::before { background: none; border-radius: 0; border: 0 solid transparent;
+  border-image: var(--skill-white, linear-gradient(var(--gm-tile), var(--gm-tile2))) 0 24 0 24 fill / 0 27px 0 27px / 0 stretch; }
+.udsk.gold::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
 
 /* your veterans: compact cards, her sparks in her popup */
 .vtile { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; cursor: pointer; padding: 4px 6px; border-radius: 10px; }
@@ -1252,7 +1254,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root[data-theme="dark"] .ud .vsk:not(.pink) .vskb { color: #f6ece3; background-color: #29262f; background-image: linear-gradient(#2e2b36, #24222b); box-shadow: inset 0 -3px 0 #18161d; }
 :root[data-theme="dark"] .ud .vsk:not(.pink) .vskb::before { border-image-source: var(--spark-white-dark, var(--spark-white)); }
 :root[data-theme="dark"] .udsk:not(.gold):not(.off) { color: #f4eeff; background-color: #3a3550; background-image: linear-gradient(#4a4466, #2f2a44); box-shadow: inset 0 -4px 0 #24203a; }
-:root[data-theme="dark"] .udsk:not(.gold):not(.off)::before { background-image: var(--skill-white-dark, var(--skill-white)); }
+:root[data-theme="dark"] .udsk:not(.gold):not(.off)::before { border-image-source: var(--skill-white-dark, var(--skill-white)); }
 :root[data-theme="dark"] .ud .vskb .stars .se, :root[data-theme="dark"] .spstar:not(.on) { background-image: var(--star-off-dark, var(--star-off, var(--gm-star0))); }
 :root[data-theme="dark"] #add-pop .addsk { color: #f6ece3; background-color: #3a3f47; background-image: linear-gradient(#4a5059, #31353c); box-shadow: inset 0 -3px 0 #1d2025; }
 
@@ -1334,13 +1336,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   border-image: var(--pill-w, linear-gradient(#fff, #eceaf2)) 0 100 0 32 fill / 0 61px 0 20px / 0 stretch; padding: 6px 28px 9px 18px; min-height: 44px; }
 .rb .seg button[aria-pressed="true"], :root:has(.rb) dialog .seg button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); background: none; box-shadow: none; border: 0 solid transparent;
   border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
-.rb input[type="checkbox"], :root:has(.rb) dialog input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
+.rb input[type="checkbox"]:not([role="switch"]), :root:has(.rb) dialog input[type="checkbox"]:not([role="switch"]) { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
   border: 0; background: var(--chk-off, linear-gradient(#fff, #eee)) center / contain no-repeat; cursor: pointer; vertical-align: middle; }
-.rb input[type="checkbox"]:checked, :root:has(.rb) dialog input[type="checkbox"]:checked { background-image: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)); }
+.rb input[type="checkbox"]:not([role="switch"]):checked, :root:has(.rb) dialog input[type="checkbox"]:not([role="switch"]):checked { background-image: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)); }
 .rb input[type="checkbox"]:focus-visible, :root:has(.rb) dialog input[type="checkbox"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 :root[data-theme="dark"] .rb .btn:not(.enh):not(.primary), :root[data-theme="dark"]:has(.rb) dialog .btn:not(.primary) { border-image-source: var(--btn-w-dark, var(--btn-w)); }
 :root[data-theme="dark"] .rb .rbbar .tbtn { border-image-source: var(--pill-w-dark, var(--pill-w)); }
-:root[data-theme="dark"] .rb input[type="checkbox"]:not(:checked), :root[data-theme="dark"]:has(.rb) dialog input[type="checkbox"]:not(:checked) { background-image: var(--chk-off-dark, var(--chk-off)); }
+:root[data-theme="dark"] .rb input[type="checkbox"]:not([role="switch"]):not(:checked), :root[data-theme="dark"]:has(.rb) dialog input[type="checkbox"]:not([role="switch"]):not(:checked) { background-image: var(--chk-off-dark, var(--chk-off)); }
 /* the scenario: the game's scenario select art behind its logo, on the button and on each menu tile */
 .rb .scenbtn { position: relative; overflow: hidden; width: 210px; justify-items: start; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--gm-edge);
   background: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat, linear-gradient(100deg, var(--gm-cell) 45%, var(--gm-tab-low)); }
@@ -1353,3 +1355,25 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb .stile .ssub { justify-content: flex-start; color: var(--gm-ink2); font-weight: 700; }
 .rb .stile[aria-checked="true"] { border: 2px solid var(--gm-bright2); box-shadow: 0 0 0 2px rgba(124, 196, 13, .25); background-color: var(--gm-tab-low); }
 .rb .stile:hover, .rb .stile:focus-visible { border-color: var(--gm-bright2); }
+/* the Owned switch (card and member panels) on the career page: the game's toggle track, a white knob */
+:root:has(.rb) .sw input { width: 46px; height: 24px; border-radius: 999px; border: 0; background: var(--tog-off, var(--line)) center / 100% 100% no-repeat; box-shadow: none; }
+:root:has(.rb) .sw input:checked { background: var(--tog-on, linear-gradient(#b4ec52, #7cc40d)) center / 100% 100% no-repeat; }
+:root:has(.rb) .sw input::after { top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+:root:has(.rb) .sw input:checked::after { transform: translateX(22px); }
+:root[data-theme="dark"]:has(.rb) .sw input:not(:checked) { background-image: var(--tog-off-dark, var(--tog-off)); }
+:root[data-theme="dark"]:has(.rb) .sw input::after { background: #e6e1f0; }
+/* a popup's actions sit in its footer beside Close */
+.gmdfoot { gap: 10px; flex-wrap: wrap; }
+/* the trainee popup's affinity breakdown: her six legacies, each parent then her two parents, and their sum */
+.afftab { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.86rem; color: var(--gm-ink); background: var(--gm-cell); border: 1px solid var(--gm-line);
+  border-radius: 10px; overflow: hidden; font-variant-numeric: tabular-nums; }
+.afftab caption { text-align: left; font-weight: 900; padding: 0 2px 6px; color: var(--gm-ink); }
+.afftab th, .afftab td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--gm-line); }
+.afftab thead th { font-size: 0.74rem; font-weight: 700; color: var(--gm-ink2); background: var(--gm-tab-low); }
+.afftab tbody th { text-align: left; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.afftab tbody tr.gp th { padding-left: 26px; font-weight: 500; }
+.afftab .afk { margin-left: auto; font-size: 0.72rem; font-weight: 700; } .afftab tbody.leg0 .afk { color: #2f7fd6; } .afftab tbody.leg1 .afk { color: #d4407f; } .afftab tfoot .afk { margin: 0; font-size: inherit; color: inherit; }
+.afftab tbody.leg1 tr.par th, .afftab tbody.leg1 tr.par td { border-top: 2px solid var(--gm-line); }
+.afftab tfoot th, .afftab tfoot td { font-weight: 900; border-bottom: 0; }
+.afftab tfoot th { text-align: left; }
+.afftab .afv .aff { justify-content: flex-end; }
