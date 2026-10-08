@@ -461,7 +461,10 @@ function targetsEl(r) {
   const tb = el('table', 'cartab');
   tb.innerHTML = '<thead><tr><th scope="col">Skill</th><th scope="col" title="Chance the six legacies pass the skill on (two inheritance events)">Inherited</th><th scope="col" title="Legacies (of six) with a spark of it">Sparks in lineage</th><th scope="col" title="Chance the new veteran gets its spark">Lands as a spark</th></tr></thead><tbody></tbody>';
   for (const t of r.targets) {
-    const row = el('tr'), c0 = el('th'); c0.scope = 'row'; const ic = skillIcon(t.group, t.gold); if (ic) c0.appendChild(ic); c0.append(tName(t.group));
+    // the skill as the game's tile (the card's Skills tab), gold for a gold target
+    const row = el('tr'), c0 = el('th'); c0.scope = 'row';
+    const tile = el('div', 'udsk' + (t.gold ? ' gold' : '')), ic = skillIcon(t.group, t.gold); if (ic) tile.appendChild(ic);
+    tile.appendChild(el('span', 'udskn', tName(t.group))); c0.appendChild(tile);
     row.appendChild(c0);
     for (const v of [t.gold ? 'scenario' : pct(t.q), `${t.carriers} of 6`, pct(t.p)]) row.appendChild(el('td', '', v));
     tb.tBodies[0].appendChild(row);

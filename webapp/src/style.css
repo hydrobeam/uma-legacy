@@ -1430,3 +1430,9 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simresult .nextc > .tl { flex-basis: 100%; font-size: 0.72rem; color: var(--gm-ink2); }
 .simresult .simodds .tv.up { color: #3c8f00; } .simresult .simodds .tv.down { color: #c8344f; } .simresult .simodds .tv.same { color: var(--gm-ink2); }
 :root[data-theme="dark"] .simresult .simodds .tv.up { color: #8fd94a; } :root[data-theme="dark"] .simresult .simodds .tv.down { color: #ff7d93; }
+/* Target skills: each skill as the game's tile, its figures beside it */
+.rb .cartab tbody tr > * { background: none; border: 0; border-radius: 0; padding: 2px 8px; }
+.rb .cartab tbody th { width: 46%; padding-left: 0; }
+.rb .cartab .udsk { cursor: default; min-height: 44px; }
+.rb .cartab .udsk:hover { filter: none; }
+.rb .cartab tbody td { font-weight: 700; font-size: 0.9rem; }
