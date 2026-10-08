@@ -9,7 +9,7 @@ import { state, goldGiven, writeSaved } from './state.js';
 import { run, killEngine } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { umaAv, skillIcon, cardAv } from './images.js';
+import { umaAv, skillIcon, cardAv, scenLogo, srcFor } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit } from './roster.js';
 import { initCards, cardTitle } from './cards.js';
@@ -842,8 +842,19 @@ function paintFold() {
   const bar = document.querySelector('.rbbar'), b = $('set-fold'), sum = $('set-sum');
   bar.classList.toggle('folded', folded); b.setAttribute('aria-expanded', String(!folded)); sum.hidden = !folded;
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
-  const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+';
-  sum.textContent = [ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenarioOf(state.scen).name, `rank ${rank}`, `${state.targets.length} target skills`].join(' · ');
+  // the summary as the settings look: the game data pill, the scenario's logo, the rank badges, the targets' skill icons
+  // (the words for the screen reader)
+  const ss = state.rank === '0.20,0.70,0.10', sc = scenarioOf(state.scen), era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global';
+  sum.setAttribute('aria-label', [era, sc.name, `rank ${ss ? 'SS' : 'B–S+'}`, `${state.targets.length} target skills`].join(' · '));
+  const pill = el('span', 'sumpill', era), logo = scenLogo(sc); logo.classList.add('sumlogo'); logo.title = sc.name;
+  const rk = el('span', 'sumrank'); rk.title = `Lineage rank ${ss ? 'SS' : 'B–S+'}`;
+  for (const k of ss ? ['ss'] : ['b', '-', 'splus']) { const s = k !== '-' && srcFor('ui', 'rank_' + k);
+    if (s) rk.appendChild(Object.assign(new Image(), { src: s, alt: '' })); else rk.append(k === '-' ? '–' : k === 'splus' ? 'S+' : k.toUpperCase()); }
+  const sks = el('span', 'sumsk');
+  for (const t of state.targets) { const s = SK.get(t.group) || {}, gold = goldGiven(t.group) && !!s.gd, ic = skillIcon(t.group, gold);
+    if (ic) { ic.title = gold ? s.gd : s.w; sks.appendChild(ic); } }
+  sum.replaceChildren(pill, logo, rk, sks);
+  sum.querySelectorAll('*').forEach(e => { if (!e.title) e.setAttribute('aria-hidden', 'true'); });
 }
 function initFold() { $('set-fold').onclick = () => { folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); }; paintFold(); }
 
