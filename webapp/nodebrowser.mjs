@@ -162,7 +162,7 @@ const TESTS = {
     check('desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen', await pg.evaluate(() => { const set = document.querySelector('.lp .rbbar').getBoundingClientRect(), res = document.querySelector('#results .loop').getBoundingClientRect();
       return set.right <= res.left && Math.abs(set.top - res.top) <= 1 && document.querySelector('.lpside').getBoundingClientRect().bottom <= innerHeight + 60; }));
     check('the status line, Auto-search and Results sit at the foot of the setup panel with the rank', await pg.evaluate(() => { const t = document.querySelector('.lp .rbbar');
-      return ['run-note', 'c-top', 'x-auto', 'rank'].every(id => t.contains(document.getElementById(id))); }));
+      return ['run-note', 'c-top', 'x-auto', 'c-peruma', 'rank'].every(id => t.contains(document.getElementById(id))) && document.getElementById('c-peruma').getAttribute('role') === 'switch'; }));
     check('no Loop size control: the solver picks 3-uma rotations or 4-uma loops', !(await pg.locator('#c-size').count()) && await pg.evaluate(() => window.__runs.at(-1).sizes === undefined));
     // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
     // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)

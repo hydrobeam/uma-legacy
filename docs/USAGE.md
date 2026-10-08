@@ -6,9 +6,9 @@ words; this file is the reference for the controls.
 Both planner pages are drawn in the game's style (the same rules, html class `game`): game panels, the game's buttons,
 check boxes and switches, green section bars, pink setup ribbon. The loop planner has two columns. On the left, the
 **Loop setup** panel with the same rows as the career's *Career setup* (built from the same markup,
-`webapp/panels.template.html`): *Game data*, *Scenario*, *Assumed lineage rank*, *Decks*; the game's Enhance buttons
-**Umas** and **Support cards**, which open their editors in dialogs; and at its foot the status line, *Auto-search* and
-*Results* (1 or 3, the game's pill switch). Under it, *Target skills* in the open. On the right, the results, the first
+`webapp/panels.template.html`): *Game data*, *Scenario*, *Assumed lineage rank*; the game's Enhance buttons
+**Umas** and **Support cards**, which open their editors in dialogs; and at its foot, in small type, the status line,
+the *Auto-search* and *Deck per uma* switches and *Results* (1 or 3, the game's pill switch). Under it, *Target skills* in the open. On the right, the results, the first
 one level with the setup panel. On a phone the columns stack, results first.
 
 **Settings** (the Loop setup panel)
@@ -22,7 +22,7 @@ one level with the setup panel. On a phone the columns stack, results first.
 - *Assumed lineage rank* (the planner doesn't work out the score a deck would reach): the star mix of the sparks on your legacies, *B to S+* (rank score 6,500–17,499: 50/45/5% for
   1/2/3 stars) or *SS* (17,500+: 20/70/10%), from hakuraku.moe's room-match data. Picking a scenario sets its usual
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
-- *A separate deck for each uma* (on by default). Every deck may borrow one friend's card and does when it helps;
+- *Deck per uma* (a switch in the status row, on by default): each uma gets her own best deck. Every deck may borrow one friend's card and does when it helps;
   there is no setting for it.
 - No loop-size setting: the search ranks 3-uma rotations and 4-uma loops together and shows the best. A 3-uma rotation
   holds at most three must-include umas.
