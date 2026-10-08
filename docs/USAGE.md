@@ -83,7 +83,7 @@ career is just scored.
 **The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
 target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
 everything are exactly its chance of an 8/8 veteran, so with every place left to the planner: with no 8/8 yet the
-planner builds the loop (step 1, the pick above); with one 8/8 the career uses her as a parent, for an 8/8 of another uma
+planner builds the lineage (step 1, the pick above); with one 8/8 the career uses her as a parent, for an 8/8 of another uma
 (step 2); with 8/8s of two umas the career uses both (step 3: its 8/8 is a fully looped parent; the pair with the most
 stars). Once you have one, the note says so and the planner goes on for more stars.
 
@@ -91,11 +91,13 @@ Under the pedigree come the career's deck (with its **Race schedule** button) an
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it finds the best career
-with her as a parent, exactly, and says whether she improves your next run (that career's odds against your best
-career today; when she doesn't, her value can still come later, as a grandparent). It shows both odds (all targets,
-all but one), that next career as portraits (trainee, then her two parents, *her* marked) and its deck behind
-*Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it says, exactly, what she changes for the next career. An 8/8 is step 1 of the goal done (with
+8/8 parents, a fully looped parent), and the best career with her as a parent is shown as step 2. Otherwise, in
+order: *She raises your best odds* (the best career with her as a parent beats your best today); *She gives X better
+parents* (for one of the planner's candidates, her best career with this veteran as a parent beats her best today, so
+the planner trains her once with them); or *She changes nothing yet* (she may still matter later, as a grandparent).
+It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
+and its deck behind *Show its deck*. *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
 resets her; **Add her to your veterans** saves her (with her parents, who become the next career's grandparents) and
 hands every place back to the planner for the next generation.

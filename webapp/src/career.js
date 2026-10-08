@@ -113,7 +113,7 @@ function goalEl() {
   const n = state.targets.length;
   const open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
   const txt = g.step === 'looped' ? `You have a fully looped parent: ${name(g.at)} (${n}/${n} with ${n}/${n} parents). The planner keeps going for more stars.`
-    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet, so the planner builds the loop.`
+    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet, so the planner builds the lineage.`
     : g.step === 'second' ? `Goal: a fully looped parent. Step 2: you have one ${n}/${n} (${name(g.at)}); ${open ? 'this career uses her' : 'a career using her'} as a parent to get a ${n}/${n} of another uma.`
     : `Goal: a fully looped parent. Step 3: you have ${n}/${n}s of two umas (${g.fix.map(name).join(' and ')}); ${open ? 'this career uses both' : 'a career using both'} as parents: its ${n}/${n} would be a fully looped parent.`;
   box.append(el('strong', '', g.step === 'looped' ? 'Fully looped. ' : `Step ${{ build: 1, second: 2, shot: 3 }[g.step]} of 3. `), txt);
@@ -123,10 +123,9 @@ const ROLL_K = 6;
 // the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
 const baseOf = (job) => ({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1, rollout: undefined, p_now: undefined });
 const baseKey = (job) => JSON.stringify(baseOf(job));
-// after the main result: the plan (a second run: expected careers to land per option, and its pick), and the entered
-// veteran with its comparison (on demand)
+// after the main result: the plan (a second run: the planner's candidates and its pick), and the entered veteran with
+// its comparison (on demand)
 let planS = { state: 'none', r: null };
-// the plan's sampling time limit (ms of solver time in the browser's worker; the searches before it come on top)
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0;
@@ -509,11 +508,24 @@ async function runComparison() {
       simulation.baseline = before.results[0];
       baselineCache = { key, result: simulation.baseline };
     }
-    // exact: the best career with her as a parent, against today's best (no simulation)
-    const m = await run({ ...base, fix: [base.legacies.length], legacies: [...base.legacies, draftJob(simulation.draft)], top: 1, compare: true });
+    // exact, the planner's question (no simulation): an n/n is goal step 1 done; else does the best career with her as
+    // a parent beat today's best; else does she give one of the plan's candidates better parents (that candidate's best
+    // career with her beats her best today, so the planner trains her once with them); else nothing changes yet
+    const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
+    const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
-    simulation.r = m.r; simulation.state = 'done';
+    const full = isFull(simulation.draft), gives = [];
+    if (!full && !(m.r.results[0].p_all > simulation.baseline.p_all * (1 + 1e-9)) && planS.state === 'done') {
+      for (const o of planS.r.options.filter(o => o.role !== 'best' && o.trainee.id !== simulation.draft.chara)) {
+        const mx = await run({ ...base, trainees: [o.trainee.id], fix: [her], legacies: legs, top: 1, compare: true });
+        if (id !== simulationId || source !== myId) return;
+        const r2 = mx.r.results?.[0];
+        if (r2 && r2.p_all > o.p_all * (1 + 1e-9)) gives.push({ name: o.trainee.name, from: o.p_all, r: r2 });
+      }
+      gives.sort((a, b) => b.r.p_all - a.r.p_all);
+    }
+    simulation.r = m.r; simulation.full = full; simulation.gives = gives; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   renderSimulation();
 }
@@ -549,16 +561,22 @@ function simulationBody() {
   const add = btn('Add her to your veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
   actions.append(go, roll, reset, add); box.appendChild(actions);
   const result = el('div', 'simresult' + (simulation.stale ? ' stale' : '')); result.id = 'sim-result'; result.setAttribute('role', 'status');
-  if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: this career again, or her in the next one…</span>'; result.appendChild(p); }
+  if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
-    const next = simulation.r.results[0], before = simulation.baseline, n = state.targets.length;
+    const before = simulation.baseline, n = state.targets.length, gives = simulation.gives || [];
+    const up = simulation.r.results[0].p_all > before.p_all * (1 + 1e-9);
+    // the career shown with her: the best with her as a parent, or the candidate's she gives better parents
+    const next = !simulation.full && !up && gives.length ? gives[0].r : simulation.r.results[0];
     const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
-    // she improves your next run when the best career with her beats your best today
-    const up = next.p_all > before.p_all * (1 + 1e-9);
-    verdict.append(el('strong', '', up ? 'She improves your next run.' : 'She doesn\'t improve your next run.'),
-      ' ' + (up ? `With her as a parent the best career is ${fmtIn(next.p_all)}, against ${fmtIn(before.p_all)} today.` : `The best career with her as a parent is ${fmtIn(next.p_all)}; your best today is ${fmtIn(before.p_all)}. Her value can still come later, as a grandparent.`));
+    const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
+    const [head, tail] = looped ? [`She's a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'That is the goal; add her to your veterans.']
+      : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Add her to your veterans and the next career uses her as a parent, for an ${n}/${n} of another uma; the best such career is below.`]
+      : up ? ['She raises your best odds.', `With her as a parent the best career is ${fmtIn(next.p_all)}, against ${fmtIn(before.p_all)} today.`]
+      : gives.length ? [`She gives ${gives.map(g => g.name).join(', ')} better parents.`, `With her, ${gives[0].name}'s best career goes from ${fmtIn(gives[0].from)} to ${fmtIn(next.p_all)}: her best parents are new to her, so the planner trains her once with them.`]
+      : ['She changes nothing yet.', `No career is better with her as a parent than without her (the best with her is ${fmtIn(next.p_all)}, today's best ${fmtIn(before.p_all)}); she may still matter later, as a grandparent.`];
+    verdict.append(el('strong', '', head), ' ' + tail);
     result.appendChild(verdict);
     const odds = el('div', 'simodds');
     for (const [label, a, b] of [[`All ${n}: today's best → next with her`, before.p_all, next.p_all], [`At least ${n - 1}: today's best → next with her`, before.p_minus1, next.p_minus1]]) {
