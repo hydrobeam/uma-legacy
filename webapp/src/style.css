@@ -1584,3 +1584,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game .setlist .rankseg { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; width: 100%; box-sizing: border-box; }
 :root.game .setlist .rankseg button { justify-content: center; }
 :root.game .setlist .rankseg .rk.img, :root.game .setlist .rankseg .rk.img img { height: 26px; }
+/* the chosen lineage rank on the game's green pill, as the other pill switches */
+:root.game .rankseg button[aria-checked="true"] { background: none; box-shadow: none; border: 0 solid transparent;
+  border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
+:root.game .rankseg button[aria-checked="true"] .rkdash { color: #fff; }
