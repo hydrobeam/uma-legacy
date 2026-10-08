@@ -1580,3 +1580,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the planner pages end at their footer: no blank band under it to scroll into */
 :root.game body { padding-bottom: 14px; }
 :root.game .foot { margin-top: 14px; }
+/* the lineage rank pill fills its row on the planner pages: two equal halves, the badges a little larger, centred */
+:root.game .setlist .rankseg { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; width: 100%; box-sizing: border-box; }
+:root.game .setlist .rankseg button { justify-content: center; }
+:root.game .setlist .rankseg .rk.img, :root.game .setlist .rankseg .rk.img img { height: 26px; }
