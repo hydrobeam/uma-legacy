@@ -327,8 +327,9 @@ impl<'s, 'a> Sim<'s, 'a> {
             "pick_index" => self.pick_index(st),
             "cycle" => { let id = self.cfg.cycle[self.t_now % self.cfg.cycle.len()];
                 let k = self.env.uix(id).and_then(|u| self.mi[u]).expect("cycle: ids must be loop members"); st.mb[k].or(st.best).expect("no legal career") }
+            // the best career's trainee counts too (a candidate when she is in the list): fresh, she has the best odds
             "stale" => { let g = st.best.expect("no legal career");
-                (0..self.members.len()).filter(|&k| st.since[k] == 0).filter_map(|k| st.mb[k]).filter(|p| p.t != g.t)
+                (0..self.members.len()).filter(|&k| st.since[k] == 0).filter_map(|k| st.mb[k])
                     .fold(None::<Pick>, |m, p| if m.map_or(true, |m| p.val > m.val) { Some(p) } else { m }).unwrap_or(g) }
             _ => self.next_pick(st),
         };

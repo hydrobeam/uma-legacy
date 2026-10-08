@@ -536,11 +536,12 @@ pub(in super::super) fn plan_policy<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a 
 pub(super) const NEXT_OUTSIDE: f64 = 1.5;
 /// The page's next career, exact and without simulation (the simulator's `stale` policy, val/sim/README.md E4).
 /// Candidates: the loop planner's loop for the job's settings (cached) and the umas among the best career's six legacies,
-/// the best career's trainee T aside, each with her best career (any parents; the job's fixed places respected). A
-/// candidate is fresh when none of your own veterans of hers has her best career's two parents as parents (matched by
-/// character and sparks): her best career changed since she last trained, or she never trained. Pick: the fresh candidate
-/// with the best odds; with none, the best career. Builders run once per change of their best parents; T's own careers
-/// can't improve her lineage (her veterans reach it only as a builder's parent).
+/// each with her best career (any parents; the job's fixed places respected), and the best career's trainee T with the
+/// best career. A candidate is fresh when none of your own veterans of hers has her best career's two parents as parents
+/// (matched by character and sparks): her best career changed since she last trained, or she never trained. Pick: the
+/// fresh candidate with the best odds (T when she is fresh: she has the best odds); with none, the best career.
+/// Builders run once per change of their best parents; T's repeats can't improve her lineage (her veterans reach it
+/// only as a builder's parent), but her first career on new parents makes the veteran the builders need.
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn stale_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
                                        pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
@@ -557,6 +558,12 @@ pub(in super::super) fn stale_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     }
     cands.retain(|&u| u != g.t && trainees.contains(&u));
     let key = |chara: u32, sp: &[(u32, u8)]| { let mut v = sp.to_vec(); v.sort(); (chara, v) };
+    // fresh: no own veteran of trainee u has the career's two parents as parents
+    let fresh = |u: usize, a: usize, b: usize| {
+        let want = { let mut w = vec![key(legs[a].chara, &legs[a].sparks), key(legs[b].chara, &legs[b].sparks)]; w.sort(); w };
+        !legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[u].id && l.parents.len() == 2).any(|l| {
+            let mut h = vec![key(l.parents[0].chara, &l.parents[0].sparks), key(l.parents[1].chara, &l.parents[1].sparks)]; h.sort(); h == want }) };
+    let t_fresh = fresh(g.t, g.a, g.b);
     let t1 = now_ms();
     let budget0 = env.budget;
     if pj.search_work > 0 { env.budget = pj.search_work; env.hard = pj.search_work; }
@@ -565,19 +572,20 @@ pub(in super::super) fn stale_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     for &u in &cands {
         let s = env.solve(pool, fix, &[u], false, 1);
         let Some(f) = s.found.into_iter().next() else { continue };
-        let want = { let mut w = vec![key(legs[f.a].chara, &legs[f.a].sparks), key(legs[f.b].chara, &legs[f.b].sparks)]; w.sort(); w };
-        let tried = legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[u].id && l.parents.len() == 2).any(|l| {
-            let mut h = vec![key(l.parents[0].chara, &l.parents[0].sparks), key(l.parents[1].chara, &l.parents[1].sparks)]; h.sort(); h == want });
+        let fr = fresh(u, f.a, f.b);
         let n = legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[u].id).count();
-        rows.push((f, !tried, n));
+        rows.push((f, fr, n));
     }
     env.hard = 0; env.budget = budget0;
     let search_ms = now_ms() - t1;
-    let pick = rows.iter().enumerate().filter(|(_, r)| r.1).max_by(|x, y| x.1.0.val.partial_cmp(&y.1.0.val).unwrap()).map(|(i, _)| i);
+    // T fresh: she trains (the best odds of all); else the fresh builder with the best odds; else T
+    let pick = if t_fresh { None } else { rows.iter().enumerate().filter(|(_, r)| r.1).max_by(|x, y| x.1.0.val.partial_cmp(&y.1.0.val).unwrap()).map(|(i, _)| i) };
+    let n_t = legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[g.t].id).count();
     let role = |u: usize| if members.contains(&u) { "loop" } else { "lineage" };
     let mut opts: Vec<Value> = vec![];
     let mut r = env.report(pool, &g, false);
-    { let o = r.as_object_mut().unwrap(); o.insert("role".into(), json!("best")); o.insert("best_odds".into(), json!(true)); o.insert("chosen".into(), json!(pick.is_none())); }
+    { let o = r.as_object_mut().unwrap(); o.insert("role".into(), json!("best")); o.insert("best_odds".into(), json!(true)); o.insert("chosen".into(), json!(pick.is_none()));
+      o.insert("fresh".into(), json!(t_fresh)); o.insert("veterans".into(), json!(n_t)); }
     opts.push(r);
     for (i, (f, fresh, n)) in rows.iter().enumerate() {
         let mut r = env.report(pool, f, false);
@@ -587,6 +595,6 @@ pub(in super::super) fn stale_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         opts.push(r);
     }
     let choice = match pick { Some(i) => env.report(pool, &rows[i].0, true), None => env.report(pool, &g, true) };
-    json!({"options": opts, "choice": choice, "rule": if pick.is_some() { "fresh" } else { "best" }, "loop_members": minfo, "loop_note": mwhy,
+    json!({"options": opts, "choice": choice, "rule": if t_fresh { "best_fresh" } else if pick.is_some() { "fresh" } else { "best" }, "loop_members": minfo, "loop_note": mwhy,
            "loop_ms": loop_ms, "search_ms": search_ms, "total_ms": now_ms() - t_all})
 }

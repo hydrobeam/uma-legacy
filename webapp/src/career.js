@@ -193,12 +193,13 @@ const loopChain = (P) => (P?.loop_members || []).map(m => m.short || m.name).joi
 // an option's role: a loop member's career, the best odds outside the loop, or the best odds (a member's)
 const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'lineage' ? 'in the lineage' : 'best odds now';
 // a candidate's state: her best parents are new to her (she trains once with them), or she already trained with them
-const freshText = (o) => o.role === 'best' ? '' : o.fresh ? 'new best parents' : 'tried these parents';
+const freshText = (o) => o.fresh ? 'new best parents' : 'tried these parents';
 function whyText(r) {
   const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
-  if (!o.chosen) return o.role === 'best' ? 'Not the planner\'s pick: a candidate has new best parents to try first.'
+  if (!o.chosen) return o.role === 'best' ? 'Not the planner\'s pick: she already trained with these parents, and a candidate has new best parents to try first.'
     : `Not the planner's pick: ${o.fresh ? 'new best parents, but lower odds than the pick' : 'she already trained with these parents'}.`;
-  return P.rule === 'fresh' ? `The planner's pick: ${o.trainee.name}'s best parents are new to her, so she trains once to see what they give (the best odds among such careers).`
+  return P.rule === 'best_fresh' ? `The planner's pick: the best odds, and ${o.trainee.name}'s best parents are new to her (her veteran is the one the other candidates need as a parent).`
+    : P.rule === 'fresh' ? `The planner's pick: ${o.trainee.name}'s best parents are new to her, so she trains once to see what they give (the best odds among such careers).`
     : 'The planner\'s pick: the best odds. Every candidate has already trained with her best parents.';
 }
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
@@ -642,7 +643,7 @@ function optionsEl() {
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  if (P) box.appendChild(el('p', 'hint', `The planner runs the best odds, except when a candidate's best parents are new to her: then she trains once with them, since her career is the one that can change the lineage (the best career's own veterans reach it only through another uma's career). Among such candidates, the best odds. Every number here is exact (the odds are also the chance of an ${state.targets.length}/${state.targets.length} veteran).`));
+  if (P) box.appendChild(el('p', 'hint', `The planner runs the best odds when its trainee's best parents are new to her. Otherwise a candidate whose best parents are new to her trains once with them, since her career is the one that can change the lineage (the best career's own repeats reach it only through another uma's career); among such candidates, the best odds. With none, the best odds again. Every number here is exact (the odds are also the chance of an ${state.targets.length}/${state.targets.length} veteran).`));
   return box;
 }
 function renderResults() {

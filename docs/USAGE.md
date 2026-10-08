@@ -74,8 +74,10 @@ The search shows the career with the best odds first. Then the planner picks the
 "Planning…", then "Planned in X s"; a few seconds after the search, nothing simulated). Its candidates are the loop
 planner's best loop for your settings and the umas in the best career's lineage (its parents and grandparents), each
 with her best career (any of your veterans as parents). A candidate whose best parents are new to her (none of your
-veterans of hers has those two as parents) trains once, to see what they give: the best career's own veterans can't
-improve her lineage, only another uma's career can. Among such candidates the best odds; with none, the best career.
+veterans of hers has those two as parents) trains once, to see what they give: the best career's own repeats can't
+improve her lineage, only another uma's career can. The best career's trainee counts too: when her best parents are new
+to her she trains first (she has the best odds, and her veteran is the one the others need as a parent). Otherwise the
+fresh candidate with the best odds; with none, the best career.
 Under the odds a line says why the career on show is (or is not) the planner's pick. With the trainee chosen by hand
 there is nothing for it to pick: the career with the best odds for her is shown, and with every place set by hand the
 career is just scored.
@@ -113,7 +115,7 @@ counts extra and is outlined as building affinity).
 
 With any place left to the planner, *Options* is a table of what it weighed, under one line naming the candidates
 (the loop, e.g. "Pasa → Digital → Zephyr", and the best career's lineage): per option "This career: 1 in X" and its
-role (*best odds now*, or *loop member* / *in the lineage* with *new best parents* or *tried these parents*), tags
+role (*best odds now*, *loop member* or *in the lineage*, with *new best parents* or *tried these parents*), tags
 *planner's pick* and *best odds now*, and **Use this**; the career on show is marked. While the planner works, the
 six best by odds with "planning…".
 

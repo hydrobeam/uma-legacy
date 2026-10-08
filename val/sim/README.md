@@ -169,7 +169,9 @@ shared G1s); new Digital, Zephyr, Gold Ship or Special Week veterans lifted noth
 | `cycle` D-P | 849 | 860, 866, 836, 834 |
 
 `stale` beat the former rule in all four runs (78-150 careers) and matched the sampled index, with no sampling: it is
-the page's rule since. The retry variants of the former rule (retry when no other member uses the newest veteran)
+the page's rule since. These runs predate one change (2026-10-08): the best career's trainee now counts as a
+candidate too, so with no veteran of hers from her best parents she trains first (a pool with no Digital veteran ran
+three builders before her); not re-measured. The retry variants of the former rule (retry when no other member uses the newest veteran)
 measured worse on owner14 (766 over 16 runs against 673 over 11 runs for no retry): the retry fires almost always once a lineage
 is saturated. Wall time 33 minutes on 2 cores (fixed cycles about 5 minutes a run).
 
