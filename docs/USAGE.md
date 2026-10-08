@@ -73,13 +73,16 @@ legacies hold (parents' and grandparents' parts).
 The search shows the career with the best odds first. Then the planner picks the next career (the status line says
 "Planning…", then "Planned in X s"; nothing simulated). It values your veterans by the expected number of careers to a
 *fully looped parent*: the cheapest plan A → B → C (an 8/8 of A, then of B with A's 8/8 as a parent, then of C from
-both), each step repeated until its 8/8, an 8/8 you already have (or borrow) costing nothing. That number assumes
-nothing improves along the way, so it leans high; it is shown above *Options*. Every owned uma's best career is
-scored by how many careers its veteran saves on that count, on average over every result she can roll (exact), minus the career
-itself, plus, for the few highest and the best odds, what her best rolls open for the career after (two careers
-deep): the planner runs the highest and repeats it until a roll changes the plan (a roll that changes nobody's odds
-leaves every score as it was). Under the odds a line says why the career on show is (or is not) the pick. With the
-trainee chosen by hand there is nothing for it to pick, and with every place set by hand the career is just scored.
+both), an 8/8 you already have (or borrow) costing nothing. A's step counts building: her odds can rise toward her
+odds with a full loop lineage, each builder career lifting them with some chance, so the step is "build while it pays,
+then run her"; the rate and the step size are fitted to your veterans now (the most efficient builder's exact lifts),
+and lifts get rarer as she nears her ceiling. A line above *Options* says which: "Building pays for about N more lifts
+(to about 1 in X); then run her", or "run her until her 8/8". Every owned uma's career is scored by how many careers
+it brings that goal closer, on average over every result she can roll (exact), minus the run itself; for the few
+highest and A, plus what her best rolls open for the next career (two careers deep). The planner runs the highest
+(within a small margin, a loop member first, then the better odds) and repeats it until a roll changes the plan. Under
+the odds a line says why the career on show is (or is not) the pick. With the trainee chosen by hand there is nothing
+for it to pick, and with every place set by hand the career is just scored.
 
 **The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
 target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
@@ -112,9 +115,8 @@ counts extra and is outlined as building affinity).
 
 With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
-8/8)"): per option "This career: 1 in X" and *Saves per run* (the careers its veteran saves on average, minus the run;
-hover for her role, the average saving and how often her roll changes the plan), tags *planner's pick* and *best odds
-now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
+8/8)"): per option "This career: 1 in X" and *Saves per run* (hover for her role, how often she lifts the step-1 trainee and
+to what odds, and the two-deep part), tags *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
 one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
 "planning…".
 

@@ -859,6 +859,10 @@ const TESTS = {
     check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
       && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) && /^Expected careers to a fully looped parent: /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
+    // the continuation: with a step-1 plan, a line says whether building pays (how many lifts, to what odds) or to run her
+    check('career: the plan says whether building pays or the step-1 trainee should run, from the solver\'s continuation', !lastRes.next.continuation
+      || ((await pg.locator('.alts .omode').count()) === 1 && (lastRes.next.mode === 'build' ? /Building pays for about \d+ more lifts/ : /run her until her/).test(await pg.textContent('.alts .omode'))),
+      lastRes.next.continuation ? await pg.textContent('.alts .omode') : 'no continuation');
     check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
       return document.getElementById('tree').nextElementSibling === r && at('#goal-note') === 0 && at('.deck') === 1 && !!kids[1].querySelector('.dtitle #sched-open') && at('.lhead') === 2
