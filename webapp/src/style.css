@@ -1568,9 +1568,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game #why-dlg { width: min(700px, calc(100vw - 24px)); }
 /* affinity: the game's heart and the number, no box around it */
 .game .aff, .rb .aff, .rb .pn .pnh .aff { border: 0; background: none; padding: 0; border-radius: 0; box-shadow: none; }
-/* a target's remove button: the game's round close button (the x glyph stays for the screen reader's name only) */
-.game .tgt .x, .game .lp .lptgt .tgt .x { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; color: transparent; font-size: 0;
-  background: var(--close, rgba(255, 255, 255, .6)) center / contain no-repeat; box-shadow: none; filter: drop-shadow(0 1px 1px var(--gm-shadow)); }
-.game .tgt .x:hover { filter: brightness(1.05) drop-shadow(0 1px 2px var(--gm-shadow)); }
+/* a target's remove button: the game's plain brown x (the menu's close icon), small; a round hover behind it; on a dark
+   tile lightened (the gold tiles stay light) */
+.game .tgt .x, .game .lp .lptgt .tgt .x { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: transparent; font-size: 0;
+  background: var(--close, none) center / 13px 13px no-repeat; box-shadow: none; }
+.game .tgt .x:hover { background-color: rgba(121, 64, 22, .12); }
 .game .tgt .x:active { transform: translateY(1px); }
-:root.game[data-theme="dark"] .tgt .x { background-color: transparent; }
+:root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x { filter: brightness(2.2) saturate(.5); }
+:root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x:hover { background-color: rgba(255, 255, 255, .08); }

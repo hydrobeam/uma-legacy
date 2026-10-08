@@ -147,7 +147,9 @@ UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_
               # the career page's race schedule, as the game's Scheduled Races: a slot's white frame (9-slice 22), an empty
               # turn before the debut (9-slice 19/17), the pink "Scheduled" badge (sliced across, 40), the green plus
               'slot_frame': ('atlas/single', 'utx_frm_racelist_white_00_sl'), 'slot_empty': ('atlas/common', 'utx_frm_emptybase_00_sl'),
-              'sched_badge': ('atlas/single', 'utx_frm_reserved_badge_00_sl'), 'plus': ('atlas/common', 'utx_ico_plus_00')}
+              'sched_badge': ('atlas/single', 'utx_frm_reserved_badge_00_sl'), 'plus': ('atlas/common', 'utx_ico_plus_00'),
+              # remove a target: the game's plain brown x (the menu's close icon)
+              'close': ('atlas/common', 'utx_ico_menu_close_00')}
 
 
 # the game's common buttons (resources.assets; 9-slice, sliced across only, borders L/R in px): white and green rectangle
@@ -155,8 +157,7 @@ UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_
 # / L35 R120), the check box off / on (utx_btn_checkbox_00 / _01, 78x80) and the switch's track off / on (utx_btn_toggle_00 /
 # _01, 160x60)
 RES_SPRITES = {'btn_w': 'utx_btn_s_02_sl', 'btn_g': 'utx_btn_s_03_sl', 'pill_w': 'utx_btn_s_00_sl', 'pill_g': 'utx_btn_s_01_sl',
-               'chk_off': 'utx_btn_checkbox_00', 'chk_on': 'utx_btn_checkbox_01', 'tog_off': 'utx_btn_toggle_00', 'tog_on': 'utx_btn_toggle_01',
-               'close': 'utx_btn_close_00'}   # the round close button: remove a target
+               'chk_off': 'utx_btn_checkbox_00', 'chk_on': 'utx_btn_checkbox_01', 'tog_off': 'utx_btn_toggle_00', 'tog_on': 'utx_btn_toggle_01'}
 
 
 def res_sprites(force, manifest):
@@ -184,14 +185,17 @@ def ui_sprites(force, manifest):
     for key, (atlas, name) in UI_SPRITES.items():
         dst = os.path.join(OUT, 'ui', key + '.webp')
         if os.path.exists(dst) and not force: manifest['images']['ui:' + key] = f'{atlas} {name}'; continue
-        for f in (atlas + '/' + atlas.split('/')[-1], atlas + '/' + atlas.split('/')[-1] + '_tex'):
+        d = os.path.join(ASSETS, atlas)   # the atlas's own bundle first, then every other bundle in its folder
+        names = [atlas.split('/')[-1], atlas.split('/')[-1] + '_tex'] + (sorted(os.listdir(d)) if os.path.isdir(d) else [])
+        found = False   # (not dst's existence: with force it exists before this run)
+        for f in (atlas + '/' + b for b in dict.fromkeys(names)):
             path = os.path.join(ASSETS, f)
             if not os.path.exists(path): continue
             for obj in UnityPy.load(path).objects:
                 if obj.type.name == 'Sprite' and obj.read().m_Name == name:
-                    obj.read().image.convert('RGBA').save(dst, 'WEBP', lossless=True); manifest['images']['ui:' + key] = f'{atlas} {name}'; n += 1; break
-            if os.path.exists(dst): break
-        if not os.path.exists(dst): manifest['missing']['ui:' + key] = f'{atlas} {name}'
+                    obj.read().image.convert('RGBA').save(dst, 'WEBP', lossless=True); manifest['images']['ui:' + key] = f'{atlas} {name}'; n += 1; found = True; break
+            if found: break
+        if not found and not os.path.exists(dst): manifest['missing']['ui:' + key] = f'{atlas} {name}'
     return n
 
 
