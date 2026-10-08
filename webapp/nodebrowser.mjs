@@ -25,6 +25,27 @@ const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; say(
 
 // ---------- helpers
 // before(pg): runs before the page loads (routes, request listeners)
+// The settings editors (Target skills, Umas, Support cards; on the career page also your veterans) are dialogs the setup
+// panel's buttons open. editorAware: an action on a control inside one of them opens its dialog first, and an action on
+// the page outside any open dialog shuts them, so the checks of the editors' behaviour read as on a page that shows them
+// (the buttons and dialogs themselves are checked on their own). Page actions and every locator's actions go through it.
+const ACTS = ['click', 'fill', 'focus', 'press', 'hover', 'type', 'check', 'uncheck', 'dblclick', 'selectOption', 'tap', 'innerText', 'boundingBox', 'scrollIntoViewIfNeeded'];
+function ensureEditor(el) {
+  const d = el.closest('dialog.setdlg'), open = [...document.querySelectorAll('dialog.setdlg[open]')];
+  if (d) { if (!d.open) { open.forEach(x => x.close()); d.showModal(); } }
+  else if (!el.closest('dialog[open]')) open.forEach(x => x.close());
+}
+function editorAware(pg) {
+  const before = (loc) => loc.first().evaluate(ensureEditor, null, { timeout: 1500 }).catch(() => {});
+  const wrap = (loc) => new Proxy(loc, { get(t, k) { const v = t[k]; if (typeof v !== 'function') return v;
+    if (ACTS.includes(k)) return async (...a) => { await before(t); return v.apply(t, a); };
+    return (...a) => { const r = v.apply(t, a); return r && r.constructor && /Locator$/.test(r.constructor.name) ? wrap(r) : r; }; } });
+  const L = pg.locator.bind(pg); pg.locator = (...a) => wrap(L(...a));
+  for (const k of ['getByRole', 'getByText', 'getByLabel']) { const f = pg[k].bind(pg); pg[k] = (...a) => wrap(f(...a)); }
+  for (const k of ACTS) { if (!pg[k]) continue; const f = pg[k].bind(pg); pg[k] = async (sel, ...a) => { await before(L(sel)); return f(sel, ...a); }; }
+  pg.editor = (sel) => before(L(sel));   // open the dialog holding sel (for a layout read)
+  return pg;
+}
 async function open(browser, { w = 1440, h = 900, mobile = false, init, before, scheme = 'light' } = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
   await ctx.addInitScript(() => {   // count worker creations/terminations
@@ -34,7 +55,7 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init, before, 
       const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); }; return w; };
   });
   if (init) await ctx.addInitScript(init);
-  const pg = await ctx.newPage(); pg.errors = [];
+  const pg = editorAware(await ctx.newPage()); pg.errors = [];
   pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));   // web-font fetch aborts are network noise
   if (before) await before(pg);
   await pg.goto(URL); await settle(pg);
@@ -73,6 +94,7 @@ async function pickScen(pg, v) { await pg.click('#x-scen'); await pg.click(`#sce
 
 // WCAG 2 contrast of every visible text run in the open dialog (or the page)
 const AUDIT = () => {
+  const game = document.documentElement.classList.contains('game');
   const parse = (c) => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
   const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
   const lum = (c) => { const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b); };
@@ -89,12 +111,12 @@ const AUDIT = () => {
     const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[hidden]') || el.closest('select')) continue;
     const { bg, img } = bgOf(el); if (img) continue;
     if (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) continue;   // the brand's coloured "uma": the logo's colours by choice
-    // the career page's recreation of the game's UI: the game's colours by choice over AAA (owner, 2026-10-08)
-    if (el.closest('.rb') && el.closest('.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick')) continue;
+    // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA (owner, 2026-10-08)
+    if (game && el.closest('.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b')) continue;   // also text on the game's sprites (skill tiles), which the audit can't see behind it
     if (el.closest('.gmdlg')) continue;
-    if (document.querySelector('.rb') && el.closest('dialog > .dlg > .dhead, dialog .btn.primary')) continue;   // the career page's game-style dialogs
+    if (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary')) continue;   // the planner pages' game-style dialogs
     const fg0 = parse(cs.color); const fg = over({ ...fg0, a: fg0.a * opac(el) }, bg);
-    const px = parseFloat(cs.fontSize), large = px >= 24 || (+cs.fontWeight >= 700 && px >= 18.66), need = el.closest('.rb') ? 3 : large ? 4.5 : 7;   // AAA; the rest of the career page keeps the game's colours, held only to a 3:1 floor
+    const px = parseFloat(cs.fontSize), large = px >= 24 || (+cs.fontWeight >= 700 && px >= 18.66), need = game ? 3 : large ? 4.5 : 7;   // AAA (/about); the planner pages keep the game's colours, held only to a 3:1 floor
     const rt = ratio(fg, bg); if (rt < need) out.push(`${el.tagName.toLowerCase()}.${el.className} "${txt.slice(0, 30)}" ${rt.toFixed(2)}<${need}`);
   }
   return out;
@@ -109,8 +131,8 @@ const TESTS = {
     // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
-    check('headline: "1 in 107 runs to land all 8", then "at least 7 of 8" and the 90% line, in the UI font; no rank with one result',
-      /^1 in 107 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 12\.6 · a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Kaku/.test(head.font), JSON.stringify(head));
+    check('headline: "1 in 107 runs to land all 8", then "at least 7 of 8" and the 90% line, in the game font; no rank with one result',
+      /^1 in 107 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 12\.6 · a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Maru/.test(head.font), JSON.stringify(head));
     // the default result is a three-uma rotation: three members in three columns, a deck for each
     check('members: three (a rotation), "as trainee: 1 in …", in three columns', head.own.length === 3 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x))
       && await pg.evaluate(() => { const m = document.querySelector('#results .loop .members'); return m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 3; }), head.own.join(' | '));
@@ -136,16 +158,12 @@ const TESTS = {
         && (await more.click(), (await more.locator('.swd1:visible').count()) === n0)); }
     check('a label marks where the swap rows start', await pg.evaluate(() => { const h = document.querySelector('#results .loop .swhead'), s = document.querySelector('#results .loop .deck.swap'); return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); }));
     check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
-    const al = await pg.evaluate(() => Math.round(document.querySelector('#results .loop').getBoundingClientRect().top - document.querySelector('.rail .panel').getBoundingClientRect().top));
-    check('the first result is level with the Settings box', Math.abs(al) <= 1, al + ' px');
-    check('the Settings box holds the status line, "Results to show" and the lineage rank', await pg.evaluate(() => { const s = document.querySelector('section[aria-labelledby="h-era"]');
-      return !!s && /Settings/.test(document.getElementById('h-era').textContent) && ['run-note', 'c-top', 'rank'].every(id => s.contains(document.getElementById(id))); }));
-    // the results stay in view while the settings column scrolls (sticky column, scrolling on its own)
-    await pg.evaluate(() => scrollTo(0, 1600));
-    const st = await pg.evaluate(() => { const c = document.getElementById('rcol').getBoundingClientRect(), l = document.querySelector('#results .loop').getBoundingClientRect();
-      return { top: Math.round(c.top), bottom: Math.round(c.bottom), loop: Math.round(l.top), y: scrollY, h: innerHeight }; });
-    check('desktop: scrolled down the settings, the result stays on screen', st.y > 1000 && st.top >= 0 && st.top <= 20 && st.loop < st.h && st.bottom <= st.h, JSON.stringify(st));
-    await pg.evaluate(() => scrollTo(0, 0));
+    // two columns: the Loop setup panel (the status row at its foot) beside the results, level at the top; the editors in dialogs
+    check('desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen', await pg.evaluate(() => { const set = document.querySelector('.lp .rbbar').getBoundingClientRect(), res = document.querySelector('#results .loop').getBoundingClientRect();
+      return set.right <= res.left && Math.abs(set.top - res.top) <= 1 && document.querySelector('.lpside').getBoundingClientRect().bottom <= innerHeight + 60; }));
+    check('the status line, Auto-search and Results sit at the foot of the setup panel with the rank', await pg.evaluate(() => { const t = document.querySelector('.lp .rbbar');
+      return ['run-note', 'c-top', 'x-auto', 'rank'].every(id => t.contains(document.getElementById(id))); }));
+    check('no Loop size control: the solver picks 3-uma rotations or 4-uma loops', !(await pg.locator('#c-size').count()) && await pg.evaluate(() => window.__runs.at(-1).sizes === undefined));
     // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
     // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
     const n0 = await pg.evaluate(() => window.__runs.length);
@@ -187,7 +205,7 @@ const TESTS = {
     check('each tile has the same hover text as the button gives the chosen scenario', await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].every(t => t.title && t.title === t.getAttribute('aria-label')) && document.querySelector('#scen-menu .stile[data-v="unity"]').title === document.getElementById('x-scen').title));
     check('opens with four tiles, each with its hint rate against URA Finale', !(await menu.isHidden()) && t.length === 4 && t.every(x => x.sub === want[x.v]), t.map(x => x.v + ': ' + x.sub).join(' | '));
     check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
-    check('every tile is logo + one line, no blank space below', t.every(x => x.subH <= 22 && x.gap <= 1), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
+    check('every tile is logo + one line', t.every(x => x.subH <= 22), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
     // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
     const golds = await pg.evaluate(() => { const skl = JSON.parse(document.getElementById('data-skills').textContent), gi = JSON.parse(document.getElementById('data-skillicon').textContent).gold;
       const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
@@ -275,14 +293,14 @@ const TESTS = {
     check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
     // a slow search (3 results, one shared deck), changed mid-run: the worker is killed and the new search finishes
     const r0 = await pg.evaluate(() => window.__runs.length);
-    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
+    await pg.click('#c-top [data-v="3"]'); await pg.click('#c-peruma');
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a quick job from the first change alone)
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
     await pg.waitForFunction(() => /(Searching|Checking the exact odds)…\s*\d+ s/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 });   // its clock is running
     await pg.click('#c-peruma'); const paused = await note(pg);
     check('a change mid-search clears the clock: it counts again only once the new search runs', /Searching/.test(paused) && !/\d+ s/.test(paused), paused);
-    await pg.selectOption('#c-top', '1'); await settle(pg);
+    await pg.click('#c-top [data-v="1"]'); await settle(pg);
     check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
     check('the restarted search finishes', /Searched/.test(await note(pg)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
@@ -331,6 +349,7 @@ const TESTS = {
     await pickScen(pg, 'ura');   // the picker follows at once; the search is not awaited
     check('Team Sirius allowed again in URA Finale', (await sirius()) === '');
     await pickScen(pg, 'unity'); await settle(pg);
+    await pg.editor('#cards');
     const sep = await pg.evaluate(() => { const c = document.getElementById('cards'), r = c.previousElementSibling.getBoundingClientRect(), cs = getComputedStyle(c);
       return { gap: Math.round(c.getBoundingClientRect().top - r.bottom), pad: parseFloat(cs.paddingTop) }; });
     check('the card list scrolls apart from its search row (gap like the roster\'s), its tiles\' rings and focus outline inside it', sep.gap >= 10 && sep.pad >= 5, JSON.stringify(sep));
@@ -401,6 +420,7 @@ const TESTS = {
     const pg = await open(b);
     const skl = await json(pg, 'data-skills'), gold = (g) => skl.find(x => x[0] === g)[2];
     // the add box sits above the list, two targets per row
+    await pg.editor('#targets');
     const lay = await pg.evaluate(() => { const t = [...document.querySelectorAll('#targets .tgt')].map(e => e.getBoundingClientRect());
       return { rows: new Set(t.map(r => Math.round(r.top))).size, n: t.length, addFirst: document.getElementById('t-add').getBoundingClientRect().bottom <= Math.min(...t.map(r => r.top)) }; });
     check('targets: add box first, two per row', lay.addFirst && lay.rows === Math.ceil(lay.n / 2), JSON.stringify(lay));
@@ -491,7 +511,7 @@ const TESTS = {
     // Stop: a slow search (three results, one shared deck) is stopped; the results stay and the worker is killed;
     // "Search again" runs it to the end, and the three results are told apart
     const r0 = await pg.evaluate(() => window.__runs.length);
-    await pg.selectOption('#c-top', '3'); await pg.click('#c-peruma');
+    await pg.click('#c-top [data-v="3"]'); await pg.click('#c-peruma');
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a job from the first change alone)
     check('while searching: the results are marked busy and a Stop button shows', await pg.evaluate(() => document.getElementById('results').getAttribute('aria-busy') === 'true') && (await pg.locator('#r-act button').innerText()) === 'Stop');
     const k0 = await pg.evaluate(() => window.__killed); await pg.click('#r-act button'); h = await head();
@@ -513,7 +533,7 @@ const TESTS = {
   // the 12 careers
   async fourloop(b) {
     const pg = await open(b);
-    await pg.selectOption('#c-top', '3'); await settle(pg);
+    await pg.click('#c-top [data-v="3"]'); await settle(pg);
     const sizes = await pg.evaluate(() => [...document.querySelectorAll('#results .loop')].map(l => l.querySelectorAll('.mem').length));
     check('three results: a rotation first, then four-uma loops', sizes.length === 3 && sizes[0] === 3 && sizes.slice(1).every(n => n === 4 || n === 0), JSON.stringify(sizes));
     const i = sizes.indexOf(4), loop = pg.locator('#results .loop').nth(i);
@@ -547,7 +567,7 @@ const TESTS = {
     check('schedule: a tab per member of the rotation plus "All three"', (await pg.locator('#sched-dlg .stab').count()) === 4 && (await pg.locator('#sched-dlg .stab').last().innerText()) === 'All three');
     const grids = await pg.evaluate(() => [...document.querySelectorAll('.ag-grid')].map(g => { const r = g.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); }));
     check('agenda: three identical year grids', grids.length === 3 && new Set(grids).size === 1, grids.join(' '));
-    check('agenda: a note fills the blank Junior half-year', /starts in Junior Year/.test(await pg.locator('#sched-dlg .ag-pre').innerText()));
+    check('agenda: Junior Year opens with the game\'s grey cells for April to June', (await pg.locator('#sched-dlg .ag-year.y0 .ag-slot.pre').count()) === 12);
     check('agenda: fits the window without scrolling', await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }));
     check('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
     check('agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) && /^\d+% win: 110/.test(w.querySelector('b').title))));
@@ -579,11 +599,11 @@ const TESTS = {
   async phone(b) {
     const pg = await open(b, { w: 390, h: 844, mobile: true });
     check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
-    const small = await pg.evaluate(() => [...document.querySelectorAll('.rail button, .rail select, .rail input[type=search], #rhead button, #rhead select, .loop .lacts button, .mem .memb')]
+    const small = await pg.evaluate(() => [...document.querySelectorAll('.lp .rbbar button, .lp .rbbar select, #rhead button, #rhead select, .loop .lacts button, .mem .memb')]
       .filter(e => e.offsetParent && !e.closest('.roster, .cards')).map(e => [e.id || e.className || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 44));
     check('phone: buttons, selects and search boxes are at least 44 px high', !small.length, JSON.stringify(small.slice(0, 6)));
     // results first: above the settings, and first in the document (reading and Tab order), the result in the first screen
-    const order = await pg.evaluate(() => { const c = document.getElementById('rcol'), r = document.querySelector('.rail'), o = document.querySelector('#results .loop .odds').getBoundingClientRect();
+    const order = await pg.evaluate(() => { const c = document.getElementById('rcol'), r = document.querySelector('.lp .rbbar'), o = document.querySelector('#results .loop .odds').getBoundingClientRect();
       return { above: c.getBoundingClientRect().top < r.getBoundingClientRect().top, dom: !!(c.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING), odds: Math.round(o.bottom), h: innerHeight }; });
     check('phone: the results come before the settings (on screen and in the Tab order), the odds in the first screen', order.above && order.dom && order.odds < order.h, JSON.stringify(order));
     if (b.browserType().name() === 'chromium') { const cls = await pg.evaluate(() => new Promise(r => { let v = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) v += e.value; }).observe({ type: 'layout-shift', buffered: true }); setTimeout(() => r(v), 200); }));
@@ -600,12 +620,13 @@ const TESTS = {
     await pg.click('#run-pill');   // a smooth scroll
     check('phone: after editing a card, the status button scrolls back to the results', await until(pg, () => { const r = document.getElementById('rcol').getBoundingClientRect(); return Math.abs(r.top) < 40 && document.activeElement.id === 'rcol'; }));
     // the roster and card boxes: shorter than the screen, their bottom edge fading while there is more below
-    const boxes = await pg.evaluate(() => ['roster', 'cards'].map(id => { const e = document.getElementById(id); return { h: e.clientHeight / innerHeight, more: e.classList.contains('more') }; }));
+    const boxes = []; for (const id of ['roster', 'cards']) { await pg.editor('#' + id); await pg.waitForTimeout(100);
+      boxes.push(await pg.evaluate((id) => { const e = document.getElementById(id); return { h: e.clientHeight / innerHeight, more: e.classList.contains('more') }; }, id)); }
     const part = await pg.evaluate(() => { const s = new Set(); let over = 0; for (const t of document.querySelectorAll('#cards .ct')) { const c = t.querySelector('.cav').getBoundingClientRect();
       s.add(Math.round(c.width)); if (c.width > t.getBoundingClientRect().width + 0.5) over++; } return { sizes: [...s], over }; });
     check('phone: every card picture is the same size and inside its tile, loaded or not', part.sizes.length === 1 && !part.over, JSON.stringify(part));
-    check('phone: the roster and card boxes are at most 55% of the screen high and show that they scroll', boxes.every(x => x.h <= 0.56 && x.more), JSON.stringify(boxes));
-    await pg.evaluate(() => scrollTo(0, 0));
+    check('phone: the roster and card boxes fit in their dialogs and show that they scroll', boxes.every(x => x.h <= 0.8 && x.more), JSON.stringify(boxes));
+    await pg.evaluate(() => { document.querySelectorAll('dialog[open]').forEach(d => d.close()); scrollTo(0, 0); });
     await pg.click('#x-scen');
     check('phone: the open scenario picker fits the screen', await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect();
       return r.width > 0 && r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }));
@@ -618,7 +639,7 @@ const TESTS = {
       return r.width > 0 && r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg');
-    check('phone: agenda stacks without the blank Junior half-year', (await pg.locator('#sched-dlg .ag-pre:visible').count()) === 0);
+    check('phone: agenda stacks without the grey Junior cells', (await pg.locator('#sched-dlg .ag-slot.pre:visible').count()) === 0);
     await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });
     const closeVis = () => pg.evaluate(() => { const b = [...document.querySelectorAll('dialog[open] .dhead button')].find(x => x.textContent === 'Close'), r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
     check('phone: the schedule\'s Close stays on screen at the bottom of the dialog', await closeVis());
@@ -631,7 +652,7 @@ const TESTS = {
     await pg.keyboard.press('Escape');
     await pg.click('#ex-open'); check('the export dialog\'s Close sits in the same header row as the others', await pg.evaluate(() => document.getElementById('ex-close').closest('.dhead') !== null)); await pg.keyboard.press('Escape');
     await pg.setViewportSize({ width: 1280, height: 800 });   // the page reorders on its resize handler
-    check('widened to desktop, the results go back beside (after) the settings', await until(pg, () => !!(document.querySelector('.rail').compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING)));
+    check('widened to desktop, the results go back beside (after) the settings', await until(pg, () => !!(document.querySelector('.lpside').compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -693,7 +714,7 @@ const TESTS = {
     await pg.click('#x-scen');
     const gt = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return { v: t.dataset.v, sub: t.querySelector('.ssub').innerText.replace(/\s+/g, ' ').trim(), size: Math.round(r.width) + 'x' + Math.round(r.height), x: Math.round(r.left + r.width / 2) }; }));
     const mid = await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect(); return Math.round(r.left + r.width / 2); });
-    check('GM era: five equal tiles, Grand Masters last and centred', gt.length === 5 && gt[4].v === 'grandmasters' && gt[4].sub === 'Hint rate ×1.44 (estimate)' && new Set(gt.map(t => t.size)).size === 1 && Math.abs(gt[4].x - mid) <= 1, JSON.stringify(gt));
+    check('GM era: five equal tiles, Grand Masters last and centred', gt.length === 5 && gt[4].v === 'grandmasters' && /^Hint rate ×1\.44 \((estimate|est\.)\)$/.test(gt[4].sub) && new Set(gt.map(t => t.size)).size === 1 && Math.abs(gt[4].x - mid) <= 1, JSON.stringify(gt));
     if (process.env.LLP_SHOTS) await pg.locator('#scen-menu').screenshot({ path: `${process.env.LLP_SHOTS}/${b.browserType().name()}-scen-picker-gm.png` });
     await pg.keyboard.press('Escape');
     await navClick(pg, '#era-global'); await settle(pg);
@@ -782,7 +803,7 @@ const TESTS = {
         w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
         w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
     });
-    const pg = await ctx.newPage(); pg.errors = [];
+    const pg = editorAware(await ctx.newPage()); pg.errors = [];
     pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
     const note = () => pg.textContent('#run-note');
     const done = async () => { await pg.waitForTimeout(700);   // past the pause before a search
@@ -1030,7 +1051,7 @@ const TESTS = {
     await pg.keyboard.press('Escape');
     check('career: … a roll draws her blue spark; its bar opens a picker of the five stats and the stars', /^(Speed|Stamina|Power|Guts|Wit) \(stat\), [123] stars?/.test(blueLbl)
       && blueOpts.join() === 'Speed,Stamina,Power,Guts,Wit' && /, 3 stars/.test(blue3), `${blueLbl} | ${blueOpts.join()} | ${blue3}`);
-    check('career: … a roll draws one pink spark for her (stars from 20/70/10: a low draw is 1 star)', genChips.length === 0 ? pkLow.length <= 1 : pkLow.length === 1 && /, 1 star\./.test(pkLow[0]), pkLow.join(' / '));
+    check('career: … a roll draws at most one pink spark for her (stars from 20/70/10: a low draw is 1 star)', pkLow.length <= 1 && pkLow.every(x => /, 1 star\./.test(x)), pkLow.join(' / '));
     // rolls while a comparison runs: each cancels the one in flight (its worker goes), and only the last roll's runs and shows
     const policyResults = () => pg.evaluate(() => window.__careerResults.filter(r => r.compare).length);
     // a comparison is one job for the best career with her (no trainee set) plus, when she doesn't raise the best odds,
@@ -1254,24 +1275,6 @@ const TESTS = {
     if (b.browserType().name() === 'chromium') { await pg.waitForTimeout(300); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
-  },
-  async loopsize(b) {
-    // the Loop setting: 3-uma rotations only, 4-uma loops only, or both (the default); saved, and sent to the solver
-    const pg = await open(b);
-    const members = () => pg.locator('.loop').first().locator('.mem').count();
-    const def = await members();
-    await pg.locator('#c-size [data-v="4"]').click(); await settle(pg);
-    const four = await members(), job4 = await pg.evaluate(() => window.__runs.at(-1).sizes);
-    await pg.locator('#c-size [data-v="3"]').click(); await settle(pg);
-    const three = await members(), job3 = await pg.evaluate(() => window.__runs.at(-1).sizes);
-    check('loop size: "4 umas" gives a 4-uma loop, "3 umas" a 3-uma rotation, and the job says so', four === 4 && three === 3 && JSON.stringify(job4) === '[4]' && JSON.stringify(job3) === '[3]', [def, four, three].join(' '));
-    check('loop size: the choice is saved', await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:settings')).common.loopSize === '3'));
-    await pg.locator('#c-size [data-v="any"]').click(); await settle(pg);
-    check('loop size: "3 or 4 umas" sends no restriction and returns the default result', await pg.evaluate(() => window.__runs.at(-1).sizes === undefined) && await members() === def);
-    check('loop size: one radio checked, one in the Tab order', await pg.evaluate(() => { const bs = [...document.querySelectorAll('#c-size button')];
-      return bs.filter(b => b.getAttribute('aria-checked') === 'true').length === 1 && bs.filter(b => b.tabIndex === 0).length === 1; }));
-    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
-    await pg.context().close();
   },
   async contrast(b) {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours

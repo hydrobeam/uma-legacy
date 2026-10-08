@@ -3,7 +3,15 @@
 The live page is https://uma-legacy.pages.dev. Its own "How this works" page (`/about`) explains the model in plain
 words; this file is the reference for the controls.
 
-**Settings** (top left)
+Both planner pages are drawn in the game's style (the same rules, html class `game`): game panels, the game's buttons,
+check boxes and switches, green section bars, pink setup ribbon. The loop planner has two columns. On the left, the
+**Loop setup** panel with the same rows as the career's *Career setup* (built from the same markup,
+`webapp/panels.template.html`): *Game data*, *Scenario*, *Assumed lineage rank*, *Decks*; the game's Enhance buttons
+**Umas** and **Support cards**, which open their editors in dialogs; and at its foot the status line, *Auto-search* and
+*Results* (1 or 3, the game's pill switch). Under it, *Target skills* in the open. On the right, the results, the first
+one level with the setup panel. On a phone the columns stack, results first.
+
+**Settings** (the Loop setup panel)
 - *Game data*: "Global today", or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023). Switching
   reloads the page; owned umas, outfits and cards are kept separately for each.
 - *Scenario*: Unity Cup (default), Grand Concert, URA Finale, Trackblazer; with the Grand Masters-era data also Grand
@@ -16,44 +24,46 @@ words; this file is the reference for the controls.
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
 - *A separate deck for each uma* (on by default). Every deck may borrow one friend's card and does when it helps;
   there is no setting for it.
-- *Loop*: *3 or 4 umas* (default: 3-uma rotations and 4-uma loops ranked together), *3 umas* or *4 umas* only.
-  A 3-uma rotation holds at most three must-include umas.
-- The status line: searching; then "Checking the exact odds…" with the first result already shown (ranked by the
+- No loop-size setting: the search ranks 3-uma rotations and 4-uma loops together and shows the best. A 3-uma rotation
+  holds at most three must-include umas.
+- The status line (at the foot of the setup panel): searching; then "Checking the exact odds…" with the first result already shown (ranked by the
   odds with targets treated as independent); done ("Searched N decks and M loops in T s." and what the result was checked against:
   "nothing else does better" on exact odds, or every deck within 11% / 5% of it, by odds with targets treated as
   independent, when the full check ran out of time); or
   what keeps the settings from being searched, with the button that fixes it; **Stop** ends a long search and keeps the
-  results (stopped during the exact check, the first result stays, marked as not checked). **Results to show**
+  results (stopped during the exact check, the first result stays, marked as not checked). **Results** (1 or 3)
   gives up to three, numbered.
 
-**Target skills.** Type to add a skill; **8/8 example** loads the eight targets used in our runs. A gold the scenario
+**Target skills** (in the open under the setup panel; on the career page a dialog from its *Target skills* button; each
+target as the game's skill tile, gold for a scenario gold). Type to add a skill; **8/8 example** loads the eight targets used in our runs. A gold the scenario
 guarantees shows as that gold, in gold. Nothing else is set by hand: outfits, decks and events are worked out by the
 search.
 
-**Umas.** One tile per outfit. Tap to cycle *owned → not owned → must include*, per outfit: a must-include outfit puts
+**Umas** (a dialog from the setup panel's *Umas* button). One tile per outfit. Tap to cycle *owned → not owned → must include*, per outfit: a must-include outfit puts
 that uma in the loop in that outfit (mark several of her outfits to allow any of them). Up to four umas can be must-include; with four, only four-uma loops qualify. In the results a must-include uma has a green ring round her portrait, and the card says *Must include* at its top right. **None owned**, then tapping
 the ones you have, is quickest when you own few. Outfits decide most results through their skill lists (Agnes Digital
 [Full-Color Fangirling] carries Superstan, Tamamo Cross and Inari One carry Tail Nine).
 
-**Support deck.** Tap the cards you don't own; only cards that can give a target are listed, each with what it
+**Support deck** (a dialog from the setup panel's *Support cards* button). Tap the cards you don't own; only cards that can give a target are listed, each with what it
 gives. No uma runs a card of herself or a group card she belongs to. Group cards such as Progenitors and Guides count as pals.
 
-**Results** update by themselves 0.55 s after any change (a change during a search restarts it); with *Search
-automatically after a change* off in Settings, a change waits for the Search button. A loop is either four umas (each
+**Results** update by themselves 0.55 s after any change (a change during a search restarts it); with *Auto-search*
+off, a change waits for the Search button. A loop is either four umas (each
 trains from two of the other three) or a three-uma rotation (each trains from the other two, who were bred from each
 other and from her own earlier veteran); both are ranked on the same odds, the average over the careers when every
 member trains in turn, and a rotation usually comes first. For each loop:
 - the odds that every target lands, that all but one land, and how many careers give a 90% chance;
-- each uma with her outfit, the targets on her own skill list, and her odds as the trainee (click her name for her
+- each uma as a tile with her outfit, the targets on her own skill list (as the game's gold skill tile), and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
   deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
-- **Race schedule** (a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
+- *Swaps* under a green bar, like the deck's;
+- **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
   but every runner must pick the same one) and **Affinity** (where each legacy's affinity comes from; in a rotation the trainee is her own
   grandparent twice, with no relation points).
 
-On a wide screen the results stay in view while you edit the settings; on a phone they come first, and a button at
-the bottom of the screen takes you back to them.
+The settings editors are dialogs, so the results stay where they are while you edit; a button at the bottom of a phone's
+screen takes you back to them when they are out of view.
 
 **Export / import settings** (bottom of the page) copies your settings and the results on screen as text, or loads
 someone else's. Settings are saved in your browser on that device; nothing is uploaded.

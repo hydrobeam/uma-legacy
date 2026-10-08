@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="game">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Career planner · uma-legacy</title>
@@ -41,18 +41,12 @@ __CSS__
   <section class="rbbar" aria-labelledby="h-set">
     <h2 class="sethdr" id="h-set">Career setup</h2>
     <div class="setlist">
-      <div class="gctl setrow"><span class="glab" id="era-l">Game data</span>
-        <div class="seg" role="group" aria-labelledby="era-l">
-          <button id="era-global" aria-pressed="true">Global today</button>
-          <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
-        </div></div>
+__PANEL_ERA__
       __PANEL_SCEN____PANEL_RANK__
-      <div class="gctl setrow"><span class="glab" id="tg-l">Targets</span>
-        <button class="btn tbtn" type="button" id="o-skills" aria-haspopup="dialog"><svg class="tico" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>Target skills <b id="o-skills-n"></b></button></div>
+      __PANEL_TARGETS__
     </div>
     <div class="setenh">
-      <button class="btn enh" type="button" id="o-umas" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl">Umas</span></button>
-      <button class="btn enh" type="button" id="o-cards" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl">Support cards</span></button>
+__PANEL_ENH__
       <button class="btn enh wide" type="button" id="v-toggle" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl"><span>Veteran</span> <span>Umamusume</span></span></button>
     </div>
   </section>
@@ -79,9 +73,7 @@ __CSS__
   </div>
   <div class="vets" id="vets"></div>
 </div></dialog>
-<dialog id="set-skills" class="setdlg" aria-label="Target skills"><div class="dlg"><div class="row between dhead"><h3>Target skills</h3><button class="btn dclose">Done</button></div>__PANEL_SKILLS__</div></dialog>
-<dialog id="set-umas" class="setdlg" aria-label="Umas"><div class="dlg"><div class="row between dhead"><h3>Umas you own</h3><button class="btn dclose">Done</button></div>__PANEL_ROSTER__</div></dialog>
-<dialog id="set-cards" class="setdlg" aria-label="Support cards"><div class="dlg"><div class="row between dhead"><h3>Support cards you own</h3><button class="btn dclose">Done</button></div>__PANEL_DECK__</div></dialog>
+__PANEL_SETDLGS__
 
 <dialog id="vpick-dlg" aria-labelledby="vpick-title"><div class="dlg">
   <div class="row between dhead"><h3 id="vpick-title">Choose a parent</h3><button class="btn dclose">Close</button></div>

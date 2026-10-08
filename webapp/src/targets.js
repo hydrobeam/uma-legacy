@@ -9,6 +9,7 @@ import { renderCards } from './cards.js';
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
 // row's, else the add box), so the keyboard doesn't fall back to the page top
 export function renderTargets(focus = null) {
+  const n = document.getElementById('o-skills-n'); if (n) n.textContent = String(state.targets.length);   // the setup panel's Target skills button
   const box = $('targets'); box.textContent = '';
   state.targets.forEach((t, i) => {
     const s = SK.get(t.group) || { w: 'Skill ' + t.group, gd: null };
@@ -53,7 +54,7 @@ export function initTargets() {
   };
   // Enter adds the first match; the arrows walk the list (Up from the first goes back to the box); Escape closes it
   addIn.onkeydown = (e) => {
-    if (e.key === 'Escape') sugg.hidden = true;
+    if (e.key === 'Escape' && !sugg.hidden) { e.preventDefault(); sugg.hidden = true; }   // the list, not the dialog the editor sits in
     else if (e.key === 'Enter') { const b = items()[0]; if (b && !sugg.hidden) { e.preventDefault(); b.click(); } }
     else if (e.key === 'ArrowDown' && !sugg.hidden && items().length) { e.preventDefault(); items()[0].focus(); }
   };

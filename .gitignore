@@ -47,6 +47,7 @@
 !/webapp/index.template.html
 !/webapp/about.template.html
 !/webapp/career.template.html
+!/webapp/panels.template.html
 !/webapp/src/
 !/webapp/worker.template.js
 !/webapp/example.mjs

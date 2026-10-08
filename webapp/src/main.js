@@ -12,6 +12,7 @@ import { initCards, renderCards } from './cards.js';
 import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
 import { initIO } from './io.js';
+import { initSetup } from './setup.js';
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 { const rcol = document.querySelector('.rcol');
@@ -28,7 +29,7 @@ function start() {
   $('x-auto').checked = state.auto !== false; $('x-auto').onchange = (e) => { state.auto = e.target.checked; writeSaved(); if (state.auto && ui.status.kind === 'pending') save(); };   // the switch changes no result: switching it on searches only changes made while it was off
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
-  initRoster(); initCards(); initTargets(); initIO(); initPopover();
+  initRoster(); initCards(); initTargets(); initIO(); initPopover(); initSetup();
   // phone: the floating status button shows while the results are out of view, and takes you back up to them
   if (window.IntersectionObserver) new IntersectionObserver((es) => document.documentElement.classList.toggle('rin', es[0].isIntersecting)).observe($('rcol'));
   $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };

@@ -33,23 +33,23 @@ function raceCell(tag, bannerName, label, goal) {
 const turnName = (t) => `${YEARS[(t / 24) | 0]} Year, ${t % 2 ? 'Late' : 'Early'} ${MONTHS[(t % 24) >> 1]}`;
 // the schedule window's calendar: three year columns of 24 half-month slots (the career starts in Junior Year, early
 // July); fill(year, slot index, slot element) fills each slot
-// On the career page it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
+// On the planner pages (html.game) it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
 // first three rows the game's grey cells for April to June (labelled as the game labels them, each half-month twice).
 export function agendaGrid(fill) {
-  const gm = !!document.querySelector('.rb');
-  const ag = document.createElement('div'); ag.className = 'agenda' + (gm ? ' gm' : '');
+  const game = document.documentElement.classList.contains('game');
+  const ag = document.createElement('div'); ag.className = 'agenda' + (game ? ' game' : '');
   for (let y = 0; y < 3; y++) {
     const col = document.createElement('section'); col.className = 'ag-year y' + y;
     col.innerHTML = `<h4>${YEARS[y]} Year</h4>`;
     const grid = document.createElement('div'); grid.className = 'ag-grid';
-    if (gm && y === 0) for (let i = 0; i < 12; i++) {
+    if (game && y === 0) for (let i = 0; i < 12; i++) {
       const slot = document.createElement('div'); slot.className = 'ag-slot pre';
       const lb = document.createElement('div'); lb.className = 'ag-when'; const wn = document.createElement('span');
       wn.textContent = (i % 4 < 2 ? 'Early ' : 'Late ') + MONTHS[3 + (i >> 2)]; lb.appendChild(wn); slot.appendChild(lb); grid.appendChild(slot);
     }
     for (let sI = 0; sI < 24; sI++) {
       const slot = document.createElement('div');
-      if (y === 0 && sI < 12) { if (!gm && sI === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); } continue; }   // one note fills the blank half-year
+      if (y === 0 && sI < 12) { if (!game && sI === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); } continue; }   // one note fills the blank half-year
       slot.className = 'ag-slot';
       fill(y, sI, slot);
       grid.appendChild(slot);

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="game">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>uma-legacy</title>
@@ -42,98 +42,44 @@ __CSS__
 </header>
 
 
-<div class="wrap">
-  <aside class="rail">
-    <section class="panel" aria-labelledby="h-era">
-      <div class="row between">
-        <h2 id="h-era">Settings</h2>
-        <div class="seg" role="group" aria-label="Game data">
-          <button id="era-global" aria-pressed="true">Global today</button>
-          <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
-        </div>
-      </div>
-      <div class="extras">
-        <div class="row gamerow">
-          <!--panel:scen--><div class="scendd" id="scen-dd">
-            <div class="gctl"><span id="x-scen-l">Scenario</span>
-              <button class="scenbtn" id="x-scen" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="scen-menu" aria-label="Scenario"><span class="slogo"></span></button></div>
-            <div class="scenpick" id="scen-menu" role="menu" aria-labelledby="x-scen-l" hidden></div>
-          </div><!--/panel:scen-->
-          <!--panel:rank--><div class="gctl rankctl"><span class="glab"><span id="rank-l">Assumed lineage rank</span><button type="button" class="qinfo" id="rank-q" aria-expanded="false" aria-controls="rank-note" aria-label="What the assumed lineage rank means" title="What the assumed lineage rank means"><span aria-hidden="true">?</span></button><span class="gpop" id="rank-note" role="tooltip" hidden><table class="rtab"><thead><tr><th><svg class="spk w" viewBox="0 0 24 24" aria-hidden="true"><title>Skill (white) sparks</title><path d="M12,1.5 Q13.3,10.7 22.5,12 Q13.3,13.3 12,22.5 Q10.7,13.3 1.5,12 Q10.7,10.7 12,1.5 Z" fill="none" stroke="#e6e9ef" stroke-width="3.6" stroke-linejoin="round"/><path d="M12,1.5 Q13.3,10.7 22.5,12 Q13.3,13.3 12,22.5 Q10.7,13.3 1.5,12 Q10.7,10.7 12,1.5 Z" fill="#ffffff" stroke="#8a93a3" stroke-width="1.4" stroke-linejoin="round"/></svg><svg class="spk g" viewBox="0 0 24 24" aria-hidden="true"><title>Unique (green) sparks</title><path d="M12,1.5 Q13.3,10.7 22.5,12 Q13.3,13.3 12,22.5 Q10.7,13.3 1.5,12 Q10.7,10.7 12,1.5 Z" fill="none" stroke="#98d838" stroke-width="3.6" stroke-linejoin="round"/><path d="M12,1.5 Q13.3,10.7 22.5,12 Q13.3,13.3 12,22.5 Q10.7,13.3 1.5,12 Q10.7,10.7 12,1.5 Z" fill="#f5fde0" stroke="#68a808" stroke-width="1.4" stroke-linejoin="round"/></svg><span class="vh">Skill (white) and unique (green) sparks</span></th><th>B–S+</th><th>SS</th></tr></thead><tbody>
-            <tr><th>1★</th><td>50%</td><td>20%</td></tr><tr><th>2★</th><td>45%</td><td>70%</td></tr><tr><th>3★</th><td>5%</td><td>10%</td></tr></tbody></table><span class="rfoot">At SS your legacies' white and green sparks have more stars on average, so each inspiration passes them more often: about 23% more per roll.</span><span class="rfoot">The planner doesn't work out the rank a deck would reach: pick the rank your veterans usually get.</span></span></span></span>
-            <div class="seg rankseg" id="rank" role="radiogroup" aria-labelledby="rank-l">
-              <button type="button" role="radio" data-v="0.50,0.45,0.05" aria-label="B to S+" title="B to S+: rank score 6,500–17,499; legacy sparks 50/45/5% at 1/2/3 stars"><span class="rk" data-r="b">B</span><span class="rkdash">–</span><span class="rk" data-r="splus">S+</span></button>
-              <button type="button" role="radio" data-v="0.20,0.70,0.10" aria-label="SS" title="SS and up: rank score 17,500+; legacy sparks 20/70/10% at 1/2/3 stars"><span class="rk" data-r="ss">SS</span></button>
-            </div></div><!--/panel:rank-->
-        </div>
-        <label title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label>
-        <div class="row sizerow"><span id="c-size-l">Loop</span>
-          <div class="seg" id="c-size" role="radiogroup" aria-labelledby="c-size-l">
-            <button type="button" role="radio" data-v="any" title="3-uma rotations and 4-uma loops, whichever does better">3 or 4 umas</button>
-            <button type="button" role="radio" data-v="3" title="Only 3-uma rotations: each trains from the other two">3 umas</button>
-            <button type="button" role="radio" data-v="4" title="Only 4-uma loops">4 umas</button>
-          </div></div>
-      </div>
-      <div class="rhead" id="rhead">
+<div class="wrap lp">
+  <div class="lpside">
+  <section class="rbbar" aria-labelledby="h-set">
+    <h2 class="sethdr" id="h-set">Loop setup</h2>
+    <div class="setlist">
+__PANEL_ERA__
+      __PANEL_SCEN____PANEL_RANK__
+      <div class="gctl setrow"><span class="glab" aria-hidden="true">Decks</span>
+        <label title="Each uma gets the best deck for her own outfit and targets: better odds than one deck for the whole loop"><input type="checkbox" id="c-peruma" checked> A separate deck for each uma</label></div>
+    </div>
+    <div class="setenh">
+__PANEL_ENH__
+    </div>
+    <div class="rhead" id="rhead">
         <p class="runnote" id="run-note" role="status" aria-live="polite"></p>
         <span class="ract" id="r-act"></span>
         <label class="sw rauto" title="Automatically search 0.55s after a change"><input type="checkbox" role="switch" id="x-auto" checked>Auto-search</label>
-        <label class="rtop" for="c-top">Results to show
-          <select id="c-top"><option value="1">1</option><option value="3">3 (slow)</option></select></label>
+        <span class="rtop"><span id="c-top-l">Results</span>
+          <span class="seg" id="c-top" role="radiogroup" aria-labelledby="c-top-l"><button type="button" role="radio" data-v="1">1</button><button type="button" role="radio" data-v="3" title="Three results: a slower search">3</button></span></span>
       </div>
-    </section>
-
-    <!--panel:skills--><section class="panel" aria-labelledby="h-skills">
-      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">Load 8/8 example</button></div>
-      <div class="adder">
-        <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
-        <div class="sugg" id="t-sugg" hidden></div>
-      </div>
-      <div class="targets" id="targets"></div>
-    </section><!--/panel:skills-->
-
-    <!--panel:roster--><section class="panel" aria-labelledby="h-roster">
-      <div class="row between"><h2 id="h-roster">Umas</h2>
-        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
-      <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" placeholder="Filter by name or outfit">
-        <div class="sortdd" id="rs-dd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort umas"></button>
-          <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
-      <p class="hint">Tap a portrait: owned → not owned → must include.</p>
-      <div class="tkey" aria-hidden="true"><span><i class="k-out"></i>Not owned</span><span><i class="k-req"></i>Must include</span></div>
-      <div class="roster" id="roster"></div>
-      <p class="hint" id="r-count"></p>
-    </section><!--/panel:roster-->
-
-
-    <!--panel:deck--><section class="panel" aria-labelledby="h-deck">
-      <div class="row between"><h2 id="h-deck">Support deck</h2>
-        <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button></div></div>
-      <p class="hint">Only cards that provide relevant skills are shown.</p>
-      <div>
-        <div class="row rtools"><input type="search" id="c-filter" aria-label="Filter cards" placeholder="Filter cards">
-        <div class="sortdd" id="cs-dd"><button class="btn" id="cs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort cards"></button>
-          <div class="sortmenu" id="cs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
-        <div class="cards" id="cards"></div>
-        <p class="hint" id="c-count"></p>
-      </div>
-    </section><!--/panel:deck-->
-
-    <button class="runpill" id="run-pill" type="button" hidden></button>
-  </aside>
+  </section>
+  <div class="lptgt">__PANEL_SKILLS__</div>
+  </div>
 
   <main class="rcol" id="rcol" tabindex="-1" aria-label="Results">
     <div class="results" id="results"></div>
   </main>
+  <button class="runpill" id="run-pill" type="button" hidden></button>
   <script>
-  // phone (the columns stacked): the results come first, before the settings, in the reading and Tab order too (the
-  // stylesheet orders them first as well, so the first frame is right either way); "rin": the results are in view
-  // (main.js keeps it current), which hides the floating status button
-  (function () { var m = matchMedia('(max-width: 960px)'), w = document.querySelector('.wrap'), r = document.getElementById('rcol');
-    function place() { if (m.matches) w.prepend(r); else w.append(r); }
+  // phone (the columns stacked): the results come first, before the setup, in the reading and Tab order too; "rin": the
+  // results are in view (main.js keeps it current), which hides the floating status button
+  (function () { var m = matchMedia('(max-width: 960px)'), w = document.querySelector('.wrap'), r = document.getElementById('rcol'), s = w.querySelector('.lpside');
+    function place() { if (m.matches) w.prepend(r); else s.after(r); }
     place(); if (m.addEventListener) m.addEventListener('change', place); document.documentElement.classList.add('rin'); })();
   </script>
 </div>
 
+__PANEL_DLGUMAS____PANEL_DLGCARDS__
 <dialog id="why-dlg" aria-labelledby="why-title"><div class="dlg" id="why-body"></div></dialog>
 <dialog id="sched-dlg" aria-labelledby="sched-title"><div class="dlg" id="sched-body"></div></dialog>
 <dialog id="ex-dlg" aria-labelledby="ex-title"><div class="dlg">

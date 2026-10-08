@@ -29,9 +29,12 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
   script, the Global page data, the example result and the logo filled in. Short cache.
 - `about.html` ("How this works", served at `/about`): `about.template.html` with the same styles; it holds the
   page's model text.
+- `career.html` (the career planner, served at `/career`): `career.template.html` with the same styles, data and
+  worker, its own bundle (`src/career.js`), the era's `career.json` tables and each G1's turns (`race_turns`, from
+  `data.json`, for the G1-wins calendar).
 - `assets/`: every file named with a fingerprint of its content and cached for a year (an update gets new names):
   the wasm, each era's solver data (preloaded by the page head), the GM era's page data (fetched when that era is
-  chosen), the fonts (Latin subsets from the Fontsource packages: Zen Kaku Gothic New, IBM Plex Mono, and Zen Maru Gothic for the career page's game-style veteran card) and `img.<hash>/` (copied from `webapp/img`).
+  chosen), the fonts (Latin subsets from the Fontsource packages: Zen Kaku Gothic New, IBM Plex Mono, and Zen Maru Gothic for the planner pages' game style) and `img.<hash>/` (copied from `webapp/img`).
 - Favicons and `og.png` at the root, font licences in `licenses/`, `_headers` (the caches) and `robots.txt`.
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`); a browser that refuses WebAssembly gets a

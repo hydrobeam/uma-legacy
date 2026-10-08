@@ -15,6 +15,7 @@ import { initRoster, renderRoster, noOutfit } from './roster.js';
 import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
+import { initSetup } from './setup.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
@@ -832,23 +833,18 @@ function renderPool() {
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
   const k = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
-  renderTree(); renderResults(); renderPool(); counts();
+  renderTree(); renderResults(); renderPool();
   if (k) { const e = document.querySelector(`[data-k="${CSS.escape(k)}"]`); if (e) e.focus(); }
 }
 
 // ---------- settings ----------
-function counts() {
-  $('o-skills-n').textContent = String(state.targets.length);
-}
 function initSettings() {
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); persist(); location.reload(); };
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
   initScenario(); initRoster(); initCards(); initTargets();
   renderRoster(); renderTargets();
-  $('o-skills').onclick = () => $('set-skills').showModal();
-  $('o-umas').onclick = () => $('set-umas').showModal();
-  $('o-cards').onclick = () => $('set-cards').showModal();
+  initSetup();
   // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
   onSave(() => { renderAll(); schedule(); });
 }

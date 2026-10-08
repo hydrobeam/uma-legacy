@@ -86,16 +86,13 @@ function buildJob() {
   // what the solver would refuse, said in the page's terms
   const req = UMAS.filter(isRequired), bad = req.filter(u => exclude.includes(u.id)), and = (l) => l.length > 1 ? l.slice(0, -1).join(', ') + ' and ' + l.at(-1) : l[0];
   if (bad.length) throw new Blocked('error', `Not searched: ${and(bad.map(u => u.name))} ${bad.length > 1 ? 'are' : 'is'} marked Must include but not owned.`);
-  const size = state.loopSize || 'any';
   if (req.length > 4) throw new Blocked('error', `Not searched: a loop has at most four umas, and ${req.length} are marked Must include.`);
-  if (size === '3' && req.length > 3) throw new Blocked('error', `Not searched: a 3-uma rotation holds three umas, and ${req.length} are marked Must include.`, { label: 'Allow 4-uma loops', run: () => $('c-size').querySelector('[data-v="any"]').click() });
   const owned = UMAS.length - exclude.length;
   if (owned < 3) throw new Blocked('empty', `Mark at least 3 umas as owned to search (${owned} owned now).`, { label: 'Mark all umas owned', click: 'r-all' });
-  if (size === '4' && owned < 4) throw new Blocked('empty', `Mark at least 4 umas as owned for a 4-uma loop (${owned} owned now).`, { label: 'Mark all umas owned', click: 'r-all' });
   const require = UMAS.filter(isRequired).map(u => u.id);
   const targets = jobTargets();
   const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra: EXTRA,
-    owned_cards: ownedCards(), borrow: true, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...(size === 'any' ? {} : { sizes: [+size] }), scenario: state.scen || 'unity',
+    owned_cards: ownedCards(), borrow: true, top_decks: +state.decksTop, per_uma: state.perUma !== false, scenario: state.scen || 'unity',
     ...rcardsOff() };
   return { job, targets };
 }

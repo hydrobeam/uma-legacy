@@ -111,6 +111,13 @@ app = bundle('main.js')
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
 html = open(os.path.join(H, 'index.template.html')).read()
+# the partials both planner pages share (panels.template.html: the setup rows, the Enhance buttons, the settings editors and
+# their dialogs): each __PANEL_NAME__ gets the block marked panel:name; a block may hold others, so this runs until none is left
+PANELS = dict(re.findall(r'<!--panel:(\w+)-->(.*?)<!--/panel:\1-->', open(os.path.join(H, 'panels.template.html')).read(), re.S))
+def panels(page):
+    while (m := re.search(r'__PANEL_([A-Z]+)__', page)): page = page.replace(m.group(0), PANELS[m.group(1).lower()], 1)
+    return page
+html = panels(html)
 # version shown in the footer: the git tag (and commits since it), "-dirty" with uncommitted changes to what the page
 # is built from (webapp/, pkg/, jp/; edits elsewhere, e.g. docs, don't count)
 def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, text=True, check=True).stdout.strip()
@@ -180,9 +187,7 @@ assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 # the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
 career = open(os.path.join(H, 'career.template.html')).read()
-# the settings editors (target skills, umas, cards, scenario): the planner template's marked blocks, the same modules
-for name, block in re.findall(r'<!--panel:(\w+)-->(.*?)<!--/panel:\1-->', open(os.path.join(H, 'index.template.html')).read(), re.S):
-    career = career.replace(f'__PANEL_{name.upper()}__', block, 1)
+career = panels(career)   # the shared setup rows, Enhance buttons and settings editors
 for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', bundle('career.js')), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
              ('__CAREERDATA__', G['career']), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker), ('__LOGO__', LOGO)]:

@@ -67,18 +67,15 @@ export function initCards() {
   $('c-all').onclick = () => { state.cardsOff = {}; save(); renderCards(); };
   $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); renderCards(); };
   if (!$('c-top')) return;   // the career page has neither: one career, one deck
-  $('c-top').value = state.decksTop; $('c-top').onchange = (e) => { state.decksTop = e.target.value; save(); };
+  // Results: 1 or 3, the game's pill switch (a radio group: the arrows move and select)
+  const top = $('c-top'), pickTop = (v) => { if (v === state.decksTop) return; state.decksTop = v; paintTop(); save(); };
+  top.querySelectorAll('button').forEach(b => { b.onclick = () => pickTop(b.dataset.v); });
+  top.addEventListener('keydown', (e) => { if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return; e.preventDefault();
+    const bs = [...top.querySelectorAll('button')], n = bs.find(b => b.dataset.v !== state.decksTop); pickTop(n.dataset.v); n.focus(); });
+  paintTop();
   $('c-peruma').checked = state.perUma; $('c-peruma').onchange = (e) => { state.perUma = e.target.checked; save(); };
-  // loop size: 3-uma rotations, 4-uma loops, or both (a radio group: the arrows move and select)
-  const sz = $('c-size'), pick = (v) => { if (v === (state.loopSize || 'any')) return; state.loopSize = v; paintSize(); save(); };
-  sz.querySelectorAll('button').forEach(b => b.onclick = () => pick(b.dataset.v));
-  sz.addEventListener('keydown', (e) => {
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return; e.preventDefault();
-    const bs = [...sz.querySelectorAll('button')], i = bs.findIndex(b => b.dataset.v === (state.loopSize || 'any'));
-    const n = bs[(i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? bs.length - 1 : 1)) % bs.length]; pick(n.dataset.v); n.focus(); });
-  paintSize();
 }
-export function paintSize() {
-  const sz = document.getElementById('c-size'); if (!sz) return;
-  sz.querySelectorAll('button').forEach(b => { const on = b.dataset.v === (state.loopSize || 'any'); b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); b.tabIndex = on ? 0 : -1; });
+export function paintTop() {
+  const top = document.getElementById('c-top'); if (!top) return;
+  top.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.decksTop; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); b.tabIndex = on ? 0 : -1; });
 }
