@@ -672,27 +672,30 @@ function simulationBody() {
     const before = simulation.baseline, n = state.targets.length, [v0b, v0a] = simulation.v0 || [null, null];
     const next = simulation.r.results[0];
     const saves = v0b != null && v0a != null ? v0b - v0a : null;
-    const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
+    // the verdict in one line, then the two figures it rests on (now -> with her), then the best career with her
+    const verdict = el('p', 'simverdict'); verdict.id = 'sim-verdict';
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
-    const [head, tail] = looped ? [`If this hit: a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'Add it to your veterans: the planner goes for the next one, with it as a parent.']
-      : simulation.full ? [`If this hit: an ${n}/${n}, step 1 of the goal done.`, `Expected careers to a fully looped parent after the planner's next career: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with this hit.` + (simulation.pickA ? ` With this hit the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')})${simulation.herParent ? ', this hit as a parent' : ''}.` : '') + ' The best career with this hit as a parent is below.']
-      : saves != null && saves >= 0.5 ? [`If this hit: saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with this hit.` + (simulation.pickA ? (simulation.samePick ? ` The planner's next career doesn't change: ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) again, ${netText(scoreOf(simulation.pickA))} per run (a gain this small doesn't change what's best).`
-        : ` With this hit the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(scoreOf(simulation.pickA))} per run.`) : '')]
-      // under half a career, but the planner's next career has this hit as a parent: it lifts its odds more than the plan's cost
-      : simulation.herParent ? ['If this hit: a parent of the planner\'s next career.', `${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) at ${fmtIn(simulation.pickA.p_all)} (today's best ${fmtIn(before.p_all)}). Expected careers to a fully looped parent after it: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with this hit, under half a career saved: the plan's cost rests mostly on the careers still to run.`]
-      : next.p_all > before.p_all * (1 + 1e-9) ? ['If this hit: better odds, under half a career saved.', `The best career with this hit as a parent is ${fmtIn(next.p_all)} (today's best ${fmtIn(before.p_all)}); expected careers to a fully looped parent stay about ${v0b != null ? fmtN(v0b) : 'unknown'}, and the planner's next career doesn't use it.`]
-      : ['If this hit: no change yet.', `Expected careers to a fully looped parent stay ${v0b != null ? fmtN(v0b) : 'unknown'} (the best career with this hit as a parent is ${fmtIn(next.p_all)}; today's best ${fmtIn(before.p_all)}); it may still matter later, as a grandparent.`];
-    verdict.append(el('strong', '', head), ' ' + tail);
+    const head = looped ? `a fully looped parent (${n}/${n} with ${n}/${n} parents)`
+      : simulation.full ? `an ${n}/${n}, step 1 of the goal done`
+      : saves != null && saves >= 0.5 ? `saves ${fmtN(saves)} careers`
+      : simulation.herParent ? 'a parent of the planner\'s next career'
+      : next.p_all > before.p_all * (1 + 1e-9) ? 'better odds, no careers saved'
+      : 'no change yet';
+    verdict.append('If this hit: ', el('strong', '', head));
     result.appendChild(verdict);
-    const odds = el('div', 'simodds');
-    for (const [label, a, b] of [[`All ${n}: today's best → next with her`, before.p_all, next.p_all], [`At least ${n - 1}: today's best → next with her`, before.p_minus1, next.p_minus1]]) {
-      const card = el('div', 'tc'); card.append(el('span', 'tl', label), el('b', 'tv', `${fmtIn(a)} → ${fmtIn(b)}`), el('span', 'hint', `${pct(a)} → ${pct(b)}`)); odds.appendChild(card);
-    }
-    result.appendChild(odds);
-    const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'The next career with her: '),
+    const figs = el('div', 'simodds');
+    // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
+    const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };
+    const way = (x, y, lowGood) => { if (x == null || y == null) return 'same'; const g = lowGood ? x - y : y - x;   // the gain
+      return Math.abs(g) < (lowGood ? 0.5 : 1e-9 * x) ? 'same' : g > 0 ? 'up' : 'down'; };
+    fig('Careers to a fully looped parent', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
+      'Expected careers to a fully looped parent once the planner\'s next career runs: without her → with her' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.'));
+    fig(`Best odds, all ${n}`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `Today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
+    result.appendChild(figs);
+    const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'Best career with her'),
       facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
     result.appendChild(nx);
-    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show its deck')); dd.appendChild(deckEl(next, 'Deck of the next career'));
+    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show its deck')); dd.appendChild(deckEl(next, 'Its deck'));
     result.appendChild(dd);
   }
   side.appendChild(result); box.appendChild(side);

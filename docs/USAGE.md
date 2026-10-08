@@ -144,14 +144,16 @@ the game's look (green title bar, pill buttons) and a hovered or focused control
 whenever a new search result arrives; it does not compare until you press Compare. Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), with the planner's
-counts without and with her and its next career. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
-without and with her: *If this hit: saves N careers* (the two counts, and the next career with her); under half a career,
-*If this hit: a parent of the planner's next career* when its pick uses her, *If this hit: better odds, under half a career
-saved* when only the best career's odds rise, else *If this hit: no change yet*. A veteran never raises the count (every
-plan without her is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can save careers without being anyone's better parent today: as a builder's parent she becomes a
-grandparent of the best career's next lineage, which the planner's scores count. It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
-and its deck behind *Show its deck*. **Reroll** draws one from this career's odds (targets, stars by rank, G1 wins by their
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**. The *Comparison* panel says it in one line, *If this hit:* then *saves N careers*, *a parent of
+the planner's next career* (under half a career, but its pick uses her), *better odds, no careers saved*, *no change
+yet*, *an 8/8, step 1 of the goal done* or *a fully looped parent*; then two figures, now → with her, green when she
+makes them better and red when worse: *Careers to a fully looped parent* (the planner's expected careers once its next
+career runs; hover for its next career with her) and *Best odds, all N* (today's best career → the best career with her
+as a parent; hover for the percentages and the N−1 odds); then *Best career with her* as portraits (trainee, then her
+two parents, *her* marked), its deck behind *Show its deck*. A veteran never raises the count (every plan without her
+is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can
+save careers without being anyone's better parent today: as a builder's parent she becomes a grandparent of the best
+career's next lineage, which the planner's scores count. **Reroll** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds, and her pink: each legacy pink fires or not at both April inspirations, then one aptitude she ends at A or S, stars
 20/70/10; the G1 wins are drawn from their average odds, not from that roll's aptitudes) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Add to veterans** saves her (with her parents, who become the next career's grandparents) and
 hands every place back to the planner for the next generation.
