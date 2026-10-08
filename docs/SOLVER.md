@@ -192,7 +192,7 @@ Extra fields (on top of the skills-mode fields; scenario-guaranteed skills stay 
 | Field | Meaning | Default |
 |---|---|---|
 | `owned_cards` | card ids you own (empty = all) | `[]` |
-| `borrow` | allow one card you don't own (friend card); the search picks it | `false` |
+| `borrow` | allow one card you don't own (friend card); the search uses it only when it makes the deck better (the pages always send `true`) | `false` |
 | `exclude_cards` / `lock_cards` | cards never / always used | `[]` |
 | `top_decks` | distinct decks returned, each with its best loop (with `per_uma`: loops returned) | 1 |
 | `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all the lineages she heads (three in a loop, one in a rotation) | `false` |

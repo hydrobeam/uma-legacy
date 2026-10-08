@@ -17,7 +17,7 @@ function exportText() {
     umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
-    borrow: state.borrow, deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
+    deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     loop: { any: '3-uma rotations or 4-uma loops', 3: '3-uma rotations only', 4: '4-uma loops only' }[state.loopSize || 'any'],
     game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global today', scenario: scenarioOf(state.scen).name,
   };
@@ -52,7 +52,7 @@ export function initIO() {
       }
       for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
       save();
-      paintRank(); paintSize(); $('c-borrow').checked = state.borrow; $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
+      paintRank(); paintSize(); $('c-top').value = state.decksTop; $('c-peruma').checked = state.perUma !== false;
       $('x-auto').checked = state.auto !== false; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }

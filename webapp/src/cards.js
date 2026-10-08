@@ -66,7 +66,6 @@ export function initCards() {
   $('c-filter').oninput = renderCards;
   $('c-all').onclick = () => { state.cardsOff = {}; save(); renderCards(); };
   $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); renderCards(); };
-  $('c-borrow').checked = state.borrow; $('c-borrow').onchange = (e) => { state.borrow = e.target.checked; save(); };
   if (!$('c-top')) return;   // the career page has neither: one career, one deck
   $('c-top').value = state.decksTop; $('c-top').onchange = (e) => { state.decksTop = e.target.value; save(); };
   $('c-peruma').checked = state.perUma; $('c-peruma').onchange = (e) => { state.perUma = e.target.checked; save(); };

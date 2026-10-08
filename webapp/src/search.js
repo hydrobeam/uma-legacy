@@ -95,7 +95,7 @@ function buildJob() {
   const require = UMAS.filter(isRequired).map(u => u.id);
   const targets = jobTargets();
   const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra: EXTRA,
-    owned_cards: ownedCards(), borrow: state.borrow, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...(size === 'any' ? {} : { sizes: [+size] }), scenario: state.scen || 'unity',
+    owned_cards: ownedCards(), borrow: true, top_decks: +state.decksTop, per_uma: state.perUma !== false, ...(size === 'any' ? {} : { sizes: [+size] }), scenario: state.scen || 'unity',
     ...rcardsOff() };
   return { job, targets };
 }
