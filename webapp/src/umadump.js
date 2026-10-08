@@ -31,6 +31,21 @@ function records(o) {
   return [];
 }
 // veterans from export text; throws an Error with a message for the page when it is not an export
+// uma.moe's lineage planner export ({type: 'lineage-planner', payload: [{position, characterId, sparks, manualWinSaddleIds}]}):
+// a veteran per top position ("p1", "p2", ...) with her parents at "p1-1" and "p1-2". A spark's factorId x 10 + its level
+// is the game's factor_id (master.mdb succession_factor); saddle ids are the game's win saddles. null when the text is not
+// one; its veterans count as yours (the export doesn't say)
+export function parseTree(text) {
+  let o; try { o = JSON.parse(text); } catch { return null; }
+  if (!o || o.type !== 'lineage-planner' || !Array.isArray(o.payload)) return null;
+  const at = new Map(o.payload.map(x => [x.position, x]));
+  const nd = (x) => node({ card_id: x.characterId, factor_info_array: (x.sparks || []).map(f => ({ factor_id: f.factorId * 10 + f.level })), win_saddle_id_array: x.manualWinSaddleIds });
+  const empty = () => ({ chara: null, sparks: {}, pinks: {}, wins: [] });
+  return o.payload.filter(x => /^p\d+$/.test(x.position)).map(x => ({
+    ...nd(x), id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), src: 'tree', borrowed: false,
+    parents: [1, 2].map(j => { const p = at.get(`${x.position}-${j}`); return p ? nd(p) : empty(); }),
+  }));
+}
 export function parseExport(text) {
   let o; try { o = JSON.parse(text); } catch { throw new Error('That is not JSON. Pick umadump\'s trained_chara_data.json.'); }
   const rs = records(o);

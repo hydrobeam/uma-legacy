@@ -182,6 +182,8 @@ export function importVets(list) {
   for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'import') vets.splice(i, 1);
   vets.unshift(...list); dropMissing(); changed();
 }
+// veterans from an uma.moe tree: added after the others (the numbers you have keep)
+export function addVets(list) { vets.push(...list); changed(); }
 export function removeVet(i) { vets.splice(i, 1); dropMissing(); changed(); }
 export function clearVets() { vets.length = 0; dropMissing(); changed(); }
 function dropMissing() { plan.parents = plan.parents.map(id => (id && vetById(id) ? id : null)); }

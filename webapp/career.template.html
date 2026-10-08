@@ -63,7 +63,7 @@ __CSS__
 
   <section class="rbpool" aria-labelledby="h-vets">
     <div class="rbtitle"><h2 id="h-vets">Your veterans</h2><span class="hint" id="v-count"></span></div>
-    <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
+    <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump or uma.moe, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
     <div class="row">
       <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
       <button class="btn" type="button" id="v-paste">Paste</button>
@@ -108,8 +108,8 @@ __CSS__
 </div></dialog>
 <dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
   <div class="row between dhead"><h3 id="paste-title">Paste veterans</h3><button class="btn dclose">Close</button></div>
-  <p>The contents of umadump's <code>trained_chara_data.json</code>, or the text from this page's Export. Imported veterans replace earlier imports; veterans you made here stay.</p>
-  <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump or Export text"></textarea>
+  <p>The contents of umadump's <code>trained_chara_data.json</code>, the text from this page's Export, or an uma.moe lineage planner export (one veteran with her parents, added after yours). An umadump file or an Export replaces earlier imports; veterans you made here stay.</p>
+  <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump, Export or uma.moe text"></textarea>
   <div class="row"><button class="btn" id="paste-load">Import</button></div>
 </div></dialog>
 <dialog id="vx-dlg" aria-labelledby="vx-title"><div class="dlg">

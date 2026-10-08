@@ -809,17 +809,21 @@ const TESTS = {
       && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
       `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
-    // the goal's steps: 8/8 veterans of two different umas -> step 3, the career uses both as parents; then restore
+    // the goal's steps: 8/8 veterans of two different umas -> step 3 in the note; the planner still picks (nothing fixed),
+    // pricing them as real 8/8 sides of its trio
     const goalEx = JSON.parse(exText), all8 = Object.fromEntries(goalEx.job.targets.map(t => [t.group, 2]));
     for (const v of goalEx.veterans) for (const g of v.parents) g.sparks = {};   // (the test file's parents carry every spark: they would make a looped parent at once)
     const two = [0, goalEx.veterans.findIndex(v => v.chara !== goalEx.veterans[0].chara)]; for (const k of two) goalEx.veterans[k].sparks = { ...all8 };
-    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(goalEx)); await pg.click('#paste-load'); await done();
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(goalEx)); await pg.click('#paste-load');
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
     const goalJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.next && !j.compare).at(-1));
-    check('career: with 8/8 veterans of two umas the goal is at step 3 and the career uses both as parents', /Step 3 of 3/.test(await pg.textContent('#goal-note').catch(() => ''))
-      && goalJob && goalJob.fix.length === 2 && goalJob.fix.includes(0) && goalJob.fix.includes(two[1]), JSON.stringify(goalJob && goalJob.fix));
+    const goalRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    check('career: with 8/8 veterans of two umas the note is at step 3, nothing is fixed, and the planner prices them in its trio and picks', /Step 3 of 3/.test(await pg.textContent('#goal-note').catch(() => ''))
+      && goalJob && goalJob.fix.length === 0 && goalRes && goalRes.next.mode === 'trio' && goalRes.next.members.length === 2 && goalRes.next.members.every(m => typeof m.real === 'boolean')
+      && /^The planner's pick: /.test(await pg.textContent('#pick-why').catch(() => '')),
+      `${JSON.stringify(goalJob && goalJob.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`);
     // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
     // against the cheapest trio, each step named, the pick explained
-    // (no 8/8 anywhere: the goal's steps would otherwise fix 8/8 parents and skip the plan)
     const trioEx = JSON.parse(exText), drop = String(trioEx.job.targets.find(x => !x.guaranteed).group);
     for (const v of trioEx.veterans) { delete v.sparks[drop]; for (const g of v.parents) g.sparks = {}; }
     await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(trioEx)); await pg.click('#paste-load');
@@ -834,7 +838,7 @@ const TESTS = {
     await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load');
     await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });   // the restored pool's plan
     await done();
-    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*Checked on exact odds/.test(await note()), await note());
+    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*The best odds are checked exact/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);
     check('career: the odds, a six-card deck and eight target rows under the tree, as the loop planner shows them', /1 in .* runs to land all 8/.test(await pg.textContent('#results .lhead'))
       && await pg.locator('#results > .deck .dc').count() === 6 && await pg.locator('.rtgt .cartab tbody tr').count() === 8);
@@ -873,9 +877,9 @@ const TESTS = {
     check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
       && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && (lastRes.next.mode === 'done' ? c[2] === '–' : /^[+−]\d+\.\d$/.test(c[2]))) && /^Expected careers to a fully looped parent: /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
-    // the trio: each step's line (her odds now, her full-loop odds, the lifts building pays for, or done)
+    // the trio: each step's line (her odds now and the lifts building pays for, or your 8/8 at no cost)
     check('career: the plan names its trio and, per step, the odds now and what building pays for', !lastRes.next.members?.length
-      || ((await pg.locator('.alts .omembers').count()) === 1 && /: (\d+\/\d+ done|1 in [\d,]+)/.test(await pg.textContent('.alts .omembers'))),
+      || ((await pg.locator('.alts .omembers').count()) === 1 && /: (your \d+\/\d+, no careers|.*1 in [\d,]+)/.test(await pg.textContent('.alts .omembers'))),
       lastRes.next.members?.length ? await pg.textContent('.alts .omembers') : 'no trio');
     check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
@@ -1088,6 +1092,16 @@ const TESTS = {
     await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
     check('career: a paste that is not an export says so and changes nothing', /No veterans found/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 13);
     await pg.keyboard.press('Escape');
+    // an uma.moe lineage planner tree: one veteran with her parents, added after the others (factorId x 10 + level is the
+    // game's factor id: Uma Stan 2, Racing Spirit: Stamina (factor group 21009, skill group 21010) 3, Dirt pink 1; saddle
+    // 3 is a title (left out), 165 and 168 single-race G1s)
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"version":1,"type":"lineage-planner","payload":[{"position":"p1","characterId":101901,"sparks":[{"factorId":201590,"level":2},{"factorId":210090,"level":3},{"factorId":120,"level":1}],"manualWinSaddleIds":[3,165,168]},{"position":"p1-1","characterId":102101,"sparks":[{"factorId":201650,"level":2}],"manualWinSaddleIds":[168]},{"position":"p1-2","characterId":102901,"sparks":[{"factorId":200490,"level":1}],"manualWinSaddleIds":[]}]}'); await pg.click('#paste-load'); await done();
+    const fromTree = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
+    check('career: an uma.moe tree adds her with her parents after your veterans, marked yours', await pg.locator('#vets .vet').count() === 14
+      && fromTree.src === 'tree' && fromTree.chara === 1019 && !fromTree.borrowed && fromTree.sparks[20159] === 2 && fromTree.sparks[21010] === 3 && fromTree.pinks[12] === 1
+      && fromTree.wins.length === 2 && fromTree.parents.map(p => p.chara).join() === '1021,1029' && fromTree.parents[0].sparks[20165] === 2 && fromTree.parents[0].wins.length === 1
+      && /From uma\.moe/.test(await pg.locator('#vets .vet').last().textContent()) && /uma\.moe tree/.test(await pg.textContent('#v-msg')), JSON.stringify(fromTree));
+    await pg.locator('#vets .vet').last().locator('.vdel').click(); await done();
     // Save one generation, then another: a veteran's parents become the next one's grandparents.
     const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
     await simStars(3);

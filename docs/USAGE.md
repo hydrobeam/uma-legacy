@@ -73,32 +73,33 @@ legacies hold (parents' and grandparents' parts).
 The search shows the career with the best odds first. Then the planner picks the next career (the status line says
 "Planning…", then "Planned in X s"; nothing simulated). It values your veterans by the expected number of careers to a
 *fully looped parent*: the cheapest trio, 8/8s of two umas (A and B) and then a third (C) from both. A's and B's
-steps count building: each one's odds can rise toward her odds with a full loop lineage, each lift coming from some
-career's veteran used as her parent, so a step is "build while it pays, then run her" (rate and step fitted to your
-veterans now; lifts get rarer near the ceiling); an 8/8 you already have (or borrow) makes a step free. Every owned uma's
+steps count building: each one's odds can rise, each lift coming from some career's veteran used as her parent, so a
+step is "build while it pays, then run her" (rate and step fitted to your veterans now, the curve's shape to
+simulations; lifts get rarer near the ceiling). An 8/8 you already have (or borrow) makes a step free, unless a fresh
+one (what her best career now would leave) is so much the better parent for C that running her again is cheaper. C's
+odds are her odds with those two 8/8s as parents. Every owned uma's
 career is scored by how many careers it brings that goal closer, on average over every result she can roll (exact),
 minus the run itself: her own 8/8 counts for her own step, and her veteran counts wherever she'd be a better parent
 for a step still to run (so a strong uma's career is a stepping stone for her partners as well as a shot at her
 8/8). For the few highest and the best odds, plus what her best rolls open for the next career (two careers deep).
-Above *Options*: the trio and its expected careers, and per step her odds now, her full-loop odds and how many lifts
-building pays for. The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the
+Above *Options*: the trio and its expected careers, and per step her odds now and how many lifts building pays for
+(or "your 8/8, no careers"). The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the
 plan. With a fully looped parent already, it shows the best odds. Under the odds a line says why the career on show
 is (or is not) the pick. With the trainee chosen by hand there is nothing for it to pick, and with every place set by
 hand the career is just scored.
 
 **The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
-target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
-everything are exactly its chance of an 8/8 veteran, so with every place left to the planner: with no 8/8 yet the
-planner builds the lineage (step 1, the pick above); with one 8/8 the career uses her as a parent, for an 8/8 of another uma
-(step 2); with 8/8s of two umas the career uses both (step 3: its 8/8 is a fully looped parent; the pair with the most
-stars). Once you have one, the note says so and the planner goes on for more stars.
+target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. The note says where you
+are: no 8/8 yet (step 1), one (step 2), 8/8s of two umas (step 3: a career with both as parents that lands everything
+is a fully looped parent). It only informs: the planner picks every step itself, its trio counting your 8/8s. Once you
+have a fully looped parent, the planner shows the best odds.
 
 Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), and the best career
-with her as a parent is shown as step 2. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), with the planner's
+counts without and with her and its next career. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
 without and with her: *She saves N careers* (the two counts, and the next career with her); under half a career,
 *She's a parent of the planner's next career* when its pick uses her, *She raises the best odds but saves under half a
 career* when only the best career's odds rise, else *She changes nothing yet*. A veteran never raises the count (every
@@ -128,7 +129,10 @@ one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the 
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
 re-import replaces earlier imports and keeps veterans made here. *Export* shows your veterans, the plan and the
 solver job the planner sends for them (to replay a search outside the page) as text, with *Copy* and *Download*;
-*Paste* takes that text back, *Import* the downloaded file. In every node: click a skill to cycle its stars
+*Paste* takes that text back, *Import* the downloaded file. *Paste* also takes an uma.moe lineage planner export: each
+top veteran (p1, p2, ...) with her two parents is added after yours, marked yours and tagged *From uma.moe* (switch it
+to Borrowed if she is a friend's); uma.moe's spark id x 10 + its level is the game's factor id, and its win saddles are
+the game's. In every node: click a skill to cycle its stars
 1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a
 portrait to change who she is, the G1 button opens the G1 wins editor, *Yours / Borrowed* marks a borrowed veteran.
 

@@ -5,7 +5,7 @@ skills in Independent Training, with each uma's race schedule.
 
 Use it at https://uma-legacy.pages.dev.
 
-The career planner at `/career` picks the next career from your own veterans (imported from umadump): trainee,
+The career planner at `/career` picks the next career from your own veterans (imported from umadump, or pasted from an uma.moe lineage tree): trainee,
 parents and deck, chosen by how many careers it brings a fully looped parent closer (an 8/8 whose parents are 8/8s):
 exact over every result she can roll, valued against the cheapest trio of umas, each building her odds while it pays;
 a career counts both as a shot at an 8/8 and as a parent for the others. It shows the trio and each step's state, her

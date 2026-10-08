@@ -17,8 +17,8 @@ import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, changeUma, askSkills,
-  newVet, importVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
-import { parseExport } from './umadump.js';
+  newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
+import { parseExport, parseTree } from './umadump.js';
 
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
@@ -80,17 +80,12 @@ function buildJob() {
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: state.borrow,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: all ? 1 : ROLL_K };
-  // the goal's progression, when every place is the planner's: after an 8/8 veteran the career uses her (a second 8/8 of
-  // another uma), after two of different umas it uses both (its 8/8 would be a fully looped parent)
-  const g = goalStage();
-  if (g.fix && !plan.trainee && !plan.parents[0] && !plan.parents[1]) { job.fix = g.fix; job.top = 1; }
   return job;
 }
 // ---------- the goal: a fully looped parent ----------
 // A veteran with a spark of every target ("8/8") whose two parents are 8/8 too: as a parent she brings three full
-// legacies. A career's P(all) is exactly its chance of an 8/8 veteran, so the steps are picked by it: with no 8/8, the
-// plan (building the loop); with one, the best career with her as a parent; with 8/8s of two umas, the best career with
-// both as parents (the pair with the most stars); once a fully looped parent exists, the plan again (more stars).
+// legacies. The note says where you are; the planner picks every step (its trio takes a real 8/8 of yours as a free
+// side, or a fresh one where yours is the poorer parent).
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t => (nd.sparks || {})[t.group] > 0);
 const starSum = (nd) => state.targets.reduce((a, t) => a + ((nd.sparks || {})[t.group] || 0), 0);
 function goalStage() {
@@ -111,11 +106,10 @@ function goalEl() {
   const g = goalStage(), box = el('div', 'goalnote'); box.id = 'goal-note';
   const name = (i) => `#${i + 1} ${umaName(vets[i].chara)}`;
   const n = state.targets.length;
-  const open = !plan.trainee && !plan.parents[0] && !plan.parents[1];
-  const txt = g.step === 'looped' ? `You have a fully looped parent: ${name(g.at)} (${n}/${n} with ${n}/${n} parents). The planner keeps going for more stars.`
-    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet, so the planner builds the lineage.`
-    : g.step === 'second' ? `Goal: a fully looped parent. Step 2: you have one ${n}/${n} (${name(g.at)}); ${open ? 'this career uses her' : 'a career using her'} as a parent to get a ${n}/${n} of another uma.`
-    : `Goal: a fully looped parent. Step 3: you have ${n}/${n}s of two umas (${g.fix.map(name).join(' and ')}); ${open ? 'this career uses both' : 'a career using both'} as parents: its ${n}/${n} would be a fully looped parent.`;
+  const txt = g.step === 'looped' ? `You have a fully looped parent: ${name(g.at)} (${n}/${n} with ${n}/${n} parents). The planner goes for the best odds.`
+    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet.`
+    : g.step === 'second' ? `Goal: a fully looped parent. Step 2: you have one ${n}/${n} (${name(g.at)}); the planner counts her as a parent for the next ${n}/${n}.`
+    : `Goal: a fully looped parent. Step 3: you have ${n}/${n}s of two umas (${g.fix.map(name).join(' and ')}); a career with both as parents that lands all ${n} is a fully looped parent.`;
   box.append(el('strong', '', g.step === 'looped' ? 'Fully looped. ' : `Step ${{ build: 1, second: 2, shot: 3 }[g.step]} of 3. `), txt);
   return box;
 }
@@ -142,26 +136,23 @@ async function search() {
     if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
     else {
       last = { r: m.r, job, plan: JSON.stringify(plan) };
-      const cert = m.r.proven_top ? 'Checked on exact odds: nothing else does better.' : 'The exact check ran out of time: the order may not be final.';
+      const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
       const best = m.r.results[0], r = best;
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
-      const gs = goalStage(), stepped = !!gs.fix && !plan.trainee && !plan.parents[0] && !plan.parents[1];
-      // steps 2 and 3 pick by P(all), and a trainee you chose leaves the plan nothing to pick: no plan
-      planS = r && !stepped && !plan.trainee ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };
+      // a trainee you chose leaves the plan nothing to pick: no plan
+      planS = r && !plan.trainee ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
   searching = false; clearInterval(tick); renderAll(); paint();
   if (planS.state === 'busy') runPlan();
 }
-// The plan: the same job with `next` (solver: sim/plan.rs `stale_rule`, exact, no simulation): candidates are the loop
-// planner's loop and the umas in the best career's lineage, each with her best career; one whose best parents are new to
-// her (no veteran of hers has them as parents) trains once, the best odds among those; with none, the best career.
-// Its pick replaces the quick one on show. It
-// shares the one worker with the comparison: a comparison cancelled while both were queued takes it down too, and it
-// runs again (planId tells the run that counts).
+// The plan: the same job with `next` (solver: sim/plan.rs `index_rule`, exact odds, no simulation): every owned uma's
+// best career scored by the careers it saves toward a fully looped parent (the cheapest trio). Its pick replaces the
+// best-odds career on show. It shares the one worker with the comparison: a comparison cancelled while both were queued
+// takes it down too, and it runs again (planId tells the run that counts).
 let planId = 0;
 async function runPlan() {
   const id = myId, pid = ++planId; if (!last) return;
@@ -512,9 +503,8 @@ async function runComparison() {
       simulation.baseline = before.results[0];
       baselineCache = { key, result: simulation.baseline };
     }
-    // exact, the planner's question (no simulation): an n/n is goal step 1 done; else does the best career with her as
-    // a parent beat today's best; else does she give one of the plan's candidates better parents (that candidate's best
-    // career with her beats her best today, so the planner trains her once with them); else nothing changes yet
+    // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
+    // expected careers to a fully looped parent once its next career runs, without and with her (an n/n: goal step 1 done)
     const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
     const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
@@ -522,12 +512,10 @@ async function runComparison() {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    let pb = null, pa = null;
-    if (!full) {
-      pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
-      if (!pb) { const mb = await run({ ...base, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
-      const ma = await run({ ...base, legacies: legs, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pa = ma.r.next || null;
-    }
+    let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
+    if (!pb) { const mb = await run({ ...base, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
+    const ma = await run({ ...base, legacies: legs, next: {}, compare: true }); if (id !== simulationId || source !== myId) return;
+    const pa = ma.r.next || null;
     const wOf = (P) => P && P.v0 != null ? P.v0 - Math.max(0, ...P.options.map(o => scoreOf(o) ?? 0)) : null;
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
     // a veteran never costs careers (every plan without her is still there): the two plans are fitted to their own pools,
@@ -582,7 +570,7 @@ function simulationBody() {
     const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
     const [head, tail] = looped ? [`She's a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'That is the goal; add her to your veterans.']
-      : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Add her to your veterans and the next career uses her as a parent, for an ${n}/${n} of another uma; the best such career is below.`]
+      : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Expected careers to a fully looped parent after the planner's next career: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with her.` + (simulation.pickA ? ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')})${simulation.herParent ? ', her as a parent' : ''}.` : '') + ' The best career with her as a parent is below.']
       : saves != null && saves >= 0.5 ? [`She saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with her.` + (simulation.pickA ? (simulation.samePick ? ` The planner's next career doesn't change: ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) again, ${netText(scoreOf(simulation.pickA))} per run (a gain this small doesn't change what's best).`
         : ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(scoreOf(simulation.pickA))} per run.`) : '')]
       // under half a career, but the planner's next career has her as a parent: she lifts its odds more than the plan's cost
@@ -639,9 +627,10 @@ function optionsEl() {
   if (P) { const pl = P.v0_plan;
     const n = state.targets.length;
     box.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${n}/${n}s of ${pl.a} and ${pl.b}, then ${pl.c} from both).` : 'Expected careers to a fully looped parent: no plan found.'));
-    if (P.members?.length) box.appendChild(el('p', 'sub omembers', P.members.map(m => m.have8 ? `${m.trainee}: ${n}/${n} done.`
-      : m.p_inf && m.builds > 0 ? `${m.trainee}: ${fmtIn(m.p)} now, about ${fmtIn(m.p_inf)} with a full loop lineage; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
-      : `${m.trainee}: ${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`).join(' '))); }
+    if (P.members?.length) box.appendChild(el('p', 'sub omembers', P.members.map(m => m.real ? `${m.trainee}: your ${n}/${n}, no careers.`
+      : (m.have8 ? `${m.trainee}: a fresh ${n}/${n} (yours is the poorer parent), ` : `${m.trainee}: `) + (m.builds > 0
+        ? `${fmtIn(m.p)} now; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
+        : `${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`)).join(' '))); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -661,7 +650,7 @@ function optionsEl() {
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   const rest = P ? P.options.filter(o => !list.includes(o) && scoreOf(o) != null) : [];
   if (rest.length) box.appendChild(el('p', 'sub orest', `${rest.length} more umas scored, ${netText(Math.min(...rest.map(scoreOf)))} to ${netText(Math.max(...rest.map(scoreOf)))} per run.`));
-  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career brings a fully looped parent closer, on average over every result she can roll (exact), minus the run itself. The plan is the cheapest trio: 8/8s of two umas, each building her odds toward her full-loop odds while that pays (rate and step fitted to your veterans now), then the third from both. A career counts both ways: her own 8/8 for her step, and her veteran as a parent that makes a step cheaper. The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the plan. Every odds figure is exact; the expected careers are estimates.`));
+  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career brings a fully looped parent closer, on average over every result she can roll (exact), minus the run itself. The plan is the cheapest trio: 8/8s of two umas (an 8/8 of yours costs nothing; a fresh one is her best career, building her odds first while that pays: rate and step fitted to your veterans now, the curve's shape to simulations), then the third from both, an 8/8 with them as parents. A career counts both ways: her own 8/8 for her step, and her veteran as a parent that makes a step cheaper. The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the plan. Every odds figure is exact; the expected careers are estimates.`));
   return box;
 }
 function renderResults() {
@@ -681,6 +670,7 @@ function vetCardEl(v, i) {
   const top = el('div', 'vtop');
   top.appendChild(el('span', 'vno', '#' + (i + 1)));
   if (v.src === 'entered' || v.src === 'simulated') top.appendChild(el('span', 'simtag', 'Entered here'));
+  if (v.src === 'tree') top.appendChild(el('span', 'srctag', 'From uma.moe'));
   const seg = el('div', 'seg sm'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
   for (const [b, l] of [[false, 'Yours'], [true, 'Borrowed']]) {
     const x = el('button', '', l); x.type = 'button'; x.setAttribute('aria-pressed', String(v.borrowed === b));
@@ -772,6 +762,9 @@ function importText(text) {
   const own = ownExport(text);
   if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })));
     $('v-msg').textContent = `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`; return true; }
+  const tree = parseTree(text);
+  if (tree) { if (!tree.length) { $('v-msg').textContent = 'No veteran in that uma.moe tree.'; return false; }
+    addVets(tree); $('v-msg').textContent = `Added ${tree.map(v => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${vets.length - tree.length + 1}${tree.length > 1 ? `-#${vets.length}` : ''} (marked yours: switch to Borrowed if she is a friend's).`; return true; }
   try { const list = parseExport(text); importVets(list); const nb = list.filter(v => v.borrowed).length;
     $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}.`; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }

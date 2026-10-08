@@ -612,7 +612,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simwho { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; }   /* her portrait beside her sparks */
 .simside { display: grid; gap: 8px; min-width: 0; }
 .simside .simskills { min-width: 0; margin: 0; }
-.simtag { font-family: var(--font-data); font-size: 0.72rem; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; }
+.simtag, .srctag { font-family: var(--font-data); font-size: 0.72rem; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; }
 .simskills, .simraces { border: 1px solid var(--line); border-radius: 5px; padding: 10px; }
 
 .simparents, .simodds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
