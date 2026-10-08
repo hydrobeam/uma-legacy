@@ -475,7 +475,9 @@ const schedOf = (r) => ({ members: [{ id: r.trainee.id, name: r.trainee.name, sh
   schedule: (r.schedule || []).filter(x => x.run !== false) });
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
-  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
+  // the turns where a G1 is held: the schedule window's plus on those she leaves empty (as the game's), naming them
+  const held = () => { const m = new Map(); (CAREER.race_turns || []).forEach((ts, ix) => { for (const t of ts) { if (!m.has(t)) m.set(t, []); m.get(t).push(CAREER.races[ix]); } }); return m; };
+  const b = btn('Race schedule', '', () => openSched({ ...schedOf(r), held: held() }));
   b.id = 'sched-open'; b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;
 }

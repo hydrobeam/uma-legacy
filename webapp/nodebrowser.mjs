@@ -918,10 +918,11 @@ const TESTS = {
       && !(await pg.locator('#results h3', { hasText: 'Race schedule' }).count()));
     await pg.click('#sched-open'); await dialog(pg, 'sched-dlg');
     const nRun = +(await pg.getAttribute('#sched-open', 'title')).match(/She runs (\d+) G1s/)[1];
-    check('career: her schedule opens in the planner\'s schedule window as the game\'s Scheduled Races: only the races she runs, one year at a time behind year tabs, the parent-won legend', nRun > 0
+    check('career: her schedule opens in the planner\'s schedule window as the game\'s Scheduled Races: only the races she runs, the three years at once without scrolling, Junior\'s April to June grey, a plus where she could enter a G1, the parent-won legend', nRun > 0
       && await pg.locator('#sched-dlg .ag-slot.on').count() === nRun && await pg.locator('#sched-dlg .ag-race').count() === nRun && !(await pg.locator('#sched-dlg .ag-race.wbtn').count())
       && /A parent won it/.test(await pg.textContent('#sched-dlg .agkey')) && await pg.locator('#sched-dlg .stab').count() === 1
-      && await pg.locator('#sched-dlg .ag-tabs [role="tab"]').count() === 3 && await pg.locator('#sched-dlg .ag-year:not([hidden])').count() === 1, `runs ${nRun}`);
+      && await pg.locator('#sched-dlg .ag-year').count() === 3 && await pg.locator('#sched-dlg .ag-slot.pre').count() === 12 && await pg.locator('#sched-dlg .ag-plus').count() > 0
+      && await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }), `runs ${nRun}`);
     await pg.keyboard.press('Escape');
     // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
     const opts = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => [...l.children].map(c => c.textContent)));
@@ -1137,7 +1138,6 @@ const TESTS = {
     await pg.locator('#node-dlg .twho .vwins').first().click(); await dialog(pg, 'wins-dlg');
     const savedWins = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins);
     const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'), had = (await savedWins()).includes(22), n0w = (await savedWins()).length;
-    await pg.click('#wins-dlg .ag-tabs [data-y="2"]');   // the career page's calendar shows one year: Senior
     if (had) { await arima.click(); }
     const gone = !(await arima.count()) && (await savedWins()).length === n0w - (had ? 1 : 0);
     await pg.locator('#wins-dlg .ag-add[aria-label="Senior Year, Late Dec: add a G1 win"]').click();

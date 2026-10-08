@@ -164,10 +164,11 @@ grades, at most A) and the odds of her own pink spark (one aptitude she ends at 
 inspirations' firings can lift an aptitude, A to S included). Her schedule's win chances count all of it. The
 odds and the deck look as on the loop planner page: click a deck card for its panel (owned or not, GameTora); marking
 it not owned searches again (it may come back as the borrowed card). *Race schedule* opens the
-planner's schedule window for the trainee, drawn as the game's *Scheduled Races*: the year tabs (one year at a time, the
-first with a race shown first), each turn the game's white slot with the race's banner and its win odds in the pink
-*Scheduled* badge (grey when no parent won it, pink when a parent did: it builds affinity), the turns before her
-debut grey. The G1 wins editor uses the same calendar, its empty turns showing the game's green +.
+planner's schedule window for the trainee, drawn as the game's *Scheduled Races*: the three years side by side, sized to fit
+the window, each turn the game's white slot with the race's banner and its win odds in the pink
+*Scheduled* badge (grey when no parent won it, pink when a parent did: it builds affinity), Junior's April to June the
+game's grey cells, and the game's green + on a turn she leaves empty where a G1 is held (its tooltip names them;
+the planner models G1s only). The G1 wins editor uses the same calendar, its + opening the G1s held then.
 
 With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
