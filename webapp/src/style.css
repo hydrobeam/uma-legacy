@@ -1588,3 +1588,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game .rankseg button[aria-checked="true"] { background: none; box-shadow: none; border: 0 solid transparent;
   border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
 :root.game .rankseg button[aria-checked="true"] .rkdash { color: #fff; }
+/* setup rows as the game's Umamusume Details labels them (Track, Distance, Style): plain bold labels in a column, no tile
+   behind them and no box round the row; the controls are the only framed things */
+:root.game .setlist .gctl { background: none; border: 0; box-shadow: none; padding: 2px 0; }
+:root.game .setlist .glab, :root.game .setlist .gctl > span:first-child { background: none; padding: 0 4px 0 2px; font-size: 0.95rem; font-weight: 700; color: var(--gm-ink); }
+:root.game[data-theme="dark"] .setlist .glab, :root.game[data-theme="dark"] .setlist .gctl > span:first-child { background: none; }
+:root.game .lp .setlist .glab, :root.game .lp .setlist .gctl > span:first-child { font-size: 0.9rem; }
+:root.game .setlist { gap: 6px; }
+:root.game .rb .setlist { column-gap: 36px; }
