@@ -1639,11 +1639,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 @media (max-width: 1100px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh" "tgt"; } }
 .rb .setlist { grid-template-columns: max-content; }
 .rb .lptgt .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-/* career setup: its status line in a box under the settings (as the loop planner's), Target skills shorter: the add
+/* career setup: Target skills shorter: the add
    box in its title row beside Load 8/8 example, the tiles three to a row from 1240 px */
-.rb .rbbar { grid-template-areas: "hdr enh tgt" "list enh tgt" "stat enh tgt"; grid-template-rows: auto auto 1fr; }
-.rb .rbbar > .rhead { align-self: start; max-width: 380px; }
-.rb .rbbar > .rhead[data-kind="busy"] { background: var(--gm-pane); border-color: var(--gm-line); }
+/* the settings spread down the panel's height (Target skills sets it) */
+.rb .rbbar { grid-template-areas: "hdr enh tgt" "list enh tgt"; grid-template-rows: auto 1fr; }
+.rb .setlist { align-content: space-evenly; align-self: stretch; padding-bottom: 6px; }
 .rb .lptgt .panel { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; grid-template-areas: "h add btn" "list list list";
   align-items: center; column-gap: 10px; row-gap: 10px; }
 .rb .lptgt .panel > .row.between { display: contents; }
@@ -1653,7 +1653,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb .lptgt .targets { grid-area: list; }
 .rb .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 1440px) { .rb .lptgt .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 1100px) { .rb .rbbar { grid-template-areas: "hdr" "list" "stat" "enh" "tgt"; grid-template-rows: none; } }
+@media (max-width: 1100px) { .rb .rbbar { grid-template-areas: "hdr" "list" "enh" "tgt"; grid-template-rows: none; } }
 .rb .lptgt .panel { overflow: visible; }
 .rb .lptgt .panel > .row.between > h2 { border-top-left-radius: 13px; }
 .rb .lptgt .adder { position: relative; }
