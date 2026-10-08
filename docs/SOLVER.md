@@ -296,7 +296,9 @@ most of them: from chances q0 to q a target's factor grows at most by (1 − (1 
 (1 when q_k ≤ q0_k or the outfit has the skill), for every deck and chain state, so E(q) ≤ E(q0) · max_outfit Π_k of
 those ratios. The search stops when the next ceiling is below the k-th best (one per trainee). Output per career:
 `trainee` (outfits, covers), `parents` (legacy indices), `slots` (six legacies: affinity parts, stars), `targets` (per
-target `q`, `carriers`, landing chance `p`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
+target `q`, `carriers`, landing chance `p`, and `buy`: the chances she buys it as gold / white and lands it from each
+(`gold`, `white`, `land_gold`, `land_white`; land_gold + land_white = p) with its sources `deck_gold`, `deck_white`,
+`own_event`, `inherit`, `outfit` (0, 1 her white, 2 her gold), or `scenario`), `pinks` (per aptitude among the six legacies: `q` = chance at least one of
 the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), and `carriers`; reported only: aptitudes
 do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her

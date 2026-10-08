@@ -608,8 +608,26 @@ impl<'a> Env<'a> {
         let outfits = if *st == default_st { vec![] } else { cards.iter().map(|c| json!({"id": c.0, "label": c.1})).collect::<Vec<_>>() };
         let slots: Vec<Value> = sl.iter().map(|s| json!({"kind": if s.parent { "parent" } else { "grandparent" }, "legacy": s.legacy, "gp": s.gp,
             "chara": s.chara, "name": name(s.chara), "rel": s.rel, "race": s.race, "aff": s.rel + s.race, "stars": s.stars, "pinks": s.pinks})).collect();
+        // per target, buying it and landing it (MODEL.md, skills): bought as gold (her outfit's gold, or a deck gold hint)
+        // or white (her outfit's white; else not gold and hinted by the deck, her own events or inheritance), each landing
+        // with GEN_GOLD / GEN_WHITE x her spark scale; the deck's hint chances are its per-target marginals (`sel.dw/dg`), so
+        // these products match `p` up to the deck chains' correlation. The scenario's golds: bought, landing GEN_GOLD.
+        let (su, sf) = self.scale(&nc);
+        let ewo = &self.ew0[t][o];
+        let buy = |i: usize| -> Value {
+            if let Some(pos) = self.uncv.iter().position(|&x| x == i) {
+                let (v, dw, dg, e) = (st[pos], f.sel.dw[pos], f.sel.dg[pos], ewo[pos]);
+                let gold = if v == 2 { 1.0 } else { dg };
+                let white = if v == 2 { 0.0 } else if v == 1 { 1.0 - dg } else { (1.0 - dg) * (1.0 - (1.0 - dw) * (1.0 - e) * (1.0 - q[i])) };
+                json!({"gold": gold, "white": white, "land_gold": gold * crate::skills::GEN_GOLD * su[pos], "land_white": white * crate::skills::GEN_WHITE * su[pos],
+                       "deck_gold": dg, "deck_white": dw, "own_event": e, "inherit": q[i], "outfit": v})
+            } else {
+                let pos = self.fixed_t.iter().position(|&x| x == i).unwrap_or(0);
+                json!({"gold": 1.0, "white": 0.0, "land_gold": crate::skills::GEN_GOLD * sf.get(pos).copied().unwrap_or(1.0), "land_white": 0.0, "scenario": true})
+            }
+        };
         let targets: Vec<Value> = (0..ntar).map(|i| json!({"group": sj.targets[i].group, "q": q[i], "carriers": nc[i], "p": pt[i],
-            "gold": sj.targets[i].guaranteed == 2})).collect();
+            "gold": sj.targets[i].guaranteed == 2, "buy": buy(i)})).collect();
         let pd = self.space.pdeck(&f.sel, &[uid]);
         // pink sparks: per aptitude the chance at least one of the two inheritance rolls passes it on (1/3/5% per star)
         let mut pg: Vec<u32> = sl.iter().flat_map(|s| s.pinks.iter().map(|x| x.0)).collect(); pg.sort(); pg.dedup();
