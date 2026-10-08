@@ -25,7 +25,7 @@ def fingerprint(name, data):
 # copied to assets/img.<hash>/<kind>/<id>.<ext>, the hash taken over every file's name and content: any change gives
 # the whole set a new folder (images change only when images.py is rerun)
 images = []; ext = {}; isize = 0; files = []; ih = hashlib.sha256()
-for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'scen', 'ui'):
+for kind in ('uma', 'outfit', 'card', 'skill', 'race', 'scen', 'scenart', 'ui'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         stem, e = os.path.splitext(f)
@@ -92,13 +92,13 @@ def era(dirp, events_file):
                          'whites': c['whites'], 'ev': evsum.get(c['id'], []),
                          **({'pri': pri} if (pri := events['cards'].get(str(c['id']), {}).get('prioritise')) else {}),   # skills to prioritise for IT to take the event choice the model credits
                          **({'ban': ban} if (ban := [sc for sc, ids in cards.get('restrict', {}).items() if c['id'] in ids]) else {})})   # scenarios that bar it from the deck
-    umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
+    umas = [{'id': u['id'], 'name': u['name'], 'gt': GT_CHAR.get(u['id']), **({'apt': u['apt']} if u.get('apt') else {}), 'outfits': [{'id': c[0], 'label': c[1], 'rel': rel.get(c[0], c[0])} for c in skills['cards'].get(str(u['id']), [])]} for u in data['umas']]
     engine = js({'data': data, 'skills': skills, 'cards': cards, 'events': events})
     # the career page's veteran import: spark factor group -> skill group, win saddle -> race index, race names by index
     ct = json.load(open(os.path.join(dirp, 'career.json')))
     # and the turns each G1 is held at (0-71: year x 24 + half-month; Classic and Senior runnings share one race index)
     race_turns = [sorted({t for u in data['umas'] for t, ops in enumerate(u['turns']) for o in ops if o['race'] == r}) for r in range(len(data['race_names']))]
-    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'races': data['race_names'], 'race_turns': race_turns})
+    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'blues': ct.get('blues', {}), 'uniques': ct.get('uniques', {}), 'races': data['race_names'], 'race_turns': race_turns})
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
@@ -123,7 +123,8 @@ ASSETS = {'wasm': fingerprint('loopopt.wasm', wasm), 'engine': {'global': finger
 # fonts: the Fontsource npm packages (webapp/package.json), self-hosted. Each weight's Latin subset as Fontsource writes
 # it (its own @font-face rule; the woff2 only, fingerprinted); anything else (symbols, the JP era's untranslated names)
 # falls back to the system font per glyph. The UI font's 400 and 700 are preloaded.
-FONTS = [('zen-kaku-gothic-new', w) for w in (400, 500, 700, 900)] + [('ibm-plex-mono', w) for w in (400, 500, 600)]
+FONTS = [('zen-kaku-gothic-new', w) for w in (400, 500, 700, 900)] + [('ibm-plex-mono', w) for w in (400, 500, 600)] \
+    + [('zen-maru-gothic', w) for w in (500, 700, 900)]   # rounded, the career page's game-style veteran card (fetched only where used)
 faces = []; preloads = []
 for pkg, w in FONTS:
     d = os.path.join(H, 'node_modules', '@fontsource', pkg)
@@ -133,7 +134,7 @@ for pkg, w in FONTS:
     faces.append(re.sub(r"src: [^;]+;", f"src: url({url}) format('woff2');", rule).strip())
     if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
-for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
+for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
 css = '\n'.join(faces) + '\n' + css
 # /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
 # fetches it only on a page that draws math, so only /about gets the face
