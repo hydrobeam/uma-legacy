@@ -1673,3 +1673,4 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb .setsum:not([hidden]) { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 22px; }
 .rb .setsum .sumk { margin-right: 6px; font-size: 0.74rem; font-weight: 500; color: var(--gm-ink2); }
 .rb .setsum .sumkv b { font-size: 0.9rem; font-weight: 700; color: var(--gm-ink); }
+@media (max-width: 960px) { :root.game body { padding-bottom: 76px; } }   /* phone: room under the footer for the floating status button, which would cover Export */
