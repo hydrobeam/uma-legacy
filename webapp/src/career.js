@@ -611,10 +611,13 @@ function useBtn(r) {
     const fr = r.parents.filter(i => !f.includes(vets[i].id)); for (let j = 0; j < 2; j++) if (!f[j]) f[j] = vets[fr.shift()].id;
     plan.parents = f; changed(); });
 }
+const OPT_SHOW = 8;
 function optionsEl() {
   const box = sec('alts', 'Options');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
-  const P = planS.state === 'done' ? planS.r : null, list = P ? P.options : last.r.results, on = shown();
+  // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below
+  const P = planS.state === 'done' ? planS.r : null, on = shown();
+  const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen) : last.r.results;
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Saves per run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // the plan to a fully looped parent, once
@@ -636,6 +639,8 @@ function optionsEl() {
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
+  const rest = P ? P.options.filter(o => !list.includes(o) && o.index != null) : [];
+  if (rest.length) box.appendChild(el('p', 'sub orest', `${rest.length} more umas scored, ${netText(Math.min(...rest.map(o => o.index)))} to ${netText(Math.max(...rest.map(o => o.index)))} per run.`));
   if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career's veteran saves toward a fully looped parent, on average over every result she can roll, minus the run itself. The planner runs the highest and repeats it until a roll changes the plan. The expected careers assume nothing improves after the plan's ${state.targets.length}/${state.targets.length}s (an upper estimate); every odds figure is exact.`));
   return box;
 }

@@ -74,9 +74,8 @@ The search shows the career with the best odds first. Then the planner picks the
 "Planning…", then "Planned in X s"; nothing simulated). It values your veterans by the expected number of careers to a
 *fully looped parent*: the cheapest plan A → B → C (an 8/8 of A, then of B with A's 8/8 as a parent, then of C from
 both), each step repeated until its 8/8, an 8/8 you already have (or borrow) costing nothing. That number assumes
-nothing improves along the way, so it leans high; it is shown above *Options*. Each candidate career (the best
-career's trainee, the loop planner's loop, the umas of the best career's lineage and of your veterans) is scored by
-how many careers its veteran saves on that count, on average over every result she can roll (exact), minus the career
+nothing improves along the way, so it leans high; it is shown above *Options*. Every owned uma's best career is
+scored by how many careers its veteran saves on that count, on average over every result she can roll (exact), minus the career
 itself: the planner runs the highest and repeats it until a roll changes the plan (a roll that changes nobody's odds
 leaves every score as it was). Under the odds a line says why the career on show is (or is not) the pick. With the
 trainee chosen by hand there is nothing for it to pick, and with every place set by hand the career is just scored.
@@ -114,7 +113,8 @@ With any place left to the planner, *Options* is a table of what it weighed, und
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
 8/8)"): per option "This career: 1 in X" and *Saves per run* (the careers its veteran saves on average, minus the run;
 hover for her role, the average saving and how often her roll changes the plan), tags *planner's pick* and *best odds
-now*, and **Use this**; the career on show is marked. While the planner works, the six best by odds with
+now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
+one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
 "planning…".
 
 **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or

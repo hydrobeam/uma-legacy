@@ -540,9 +540,9 @@ pub(super) const NEXT_OUTSIDE: f64 = 1.5;
 const IDX_CANDS: usize = 8;
 const IDX_PARTNERS: usize = 2;
 
-/// The frozen three-stage value (module notes of `index_rule`): per candidate uma, her stage-1 cost and the cheapest
-/// stages 2-3 with her as A; V0 and its plan
-struct Frozen { c1: Vec<f64>, m23: Vec<f64>, plan: Vec<(usize, usize, usize, [f64; 3])>, v0: f64, at: usize }
+/// The frozen three-stage value (module notes of `index_rule`): per stage-1 candidate (A), her stage-1 cost and the
+/// cheapest stages 2-3 with her as A, with that plan (B and C as uma indices); V0 and the best A
+struct Frozen { c1: Vec<f64>, m23: Vec<f64>, plan: Vec<(usize, usize, [f64; 3])>, v0: f64, at: usize }
 
 /// legal parents a, b for trainee u: different characters, neither hers, at most one borrowed
 fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bool {
@@ -555,21 +555,29 @@ fn val(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) 
     let Some(ub) = s.env.ceiling(u, &q, c) else { return 0.0 };
     s.deck_for(u, &q, c, ub, 0.0, buf).map_or(0.0, |x| x.0)
 }
+/// trainee u's ceiling with parents a, b (each target at her best possible deck odds; no deck search): >= her P(all)
+fn ceil(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize) -> f64 {
+    let (q, _, c) = s.env.lineage(p, u, a, b);
+    s.env.ceiling(u, &q, c).unwrap_or(0.0)
+}
 /// an 8/8 veteran (a spark of every job target), yours or borrowed
 fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool { sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0)) }
+/// B careers kept per A (each with its own best C)
+const B_KEEP: usize = 4;
 
-/// V0: the cheapest plan A -> B -> C over the candidates, each stage repeated until its 8/8 (an existing 8/8 of that uma
-/// costs nothing): 1/p_A + 1/p_B(A8 available) + 1/p_C(parents A8, B8). A8 and B8 are hypothetical 8/8 veterans
-/// (`veteran`: stars at the rank's mix, G1 wins at her schedule's chances, parents her stage's parents). B's parents: the
-/// best for B with A8 available. Frozen: no veteran other than A8 and B8 changes any stage (an upper bound on the
-/// optimum's careers, for this plan family).
-fn frozen(s: &mut Sim, d: &Data, legs: &[Legacy], cands: &[usize], fb: &[Option<Found>], buf: &mut Vec<f64>) -> Frozen {
+/// V0: the cheapest plan A -> B -> C, each stage repeated until its 8/8 (an existing 8/8 of that uma costs nothing):
+/// 1/p_A + 1/p_B(A8 a parent) + 1/p_C(parents A8, B8). A from the stage-1 candidates (their best careers); B and C from
+/// every uma in `all`, best first by ceiling (a true upper bound), exact values until the next ceiling can't win: the
+/// B_KEEP best Bs per A, the best C for each. A8 and B8 are hypothetical 8/8 veterans (`veteran`: stars at the rank's
+/// mix, G1 wins at her schedule's chances, parents her stage's parents). Frozen: no veteran but A8 and B8 changes any
+/// stage (an upper bound on the optimum's careers, for this plan family).
+fn frozen(s: &mut Sim, d: &Data, legs: &[Legacy], cands: &[usize], fb: &[Option<Found>], all: &[usize], buf: &mut Vec<f64>) -> Frozen {
     let n = cands.len(); let sj = s.env.sj;
     let full_of = |legs: &[Legacy], u: usize| legs.iter().enumerate().filter(|(_, l)| l.chara == d.umas[u].id && is_full(sj, &l.sparks))
         .max_by_key(|(_, l)| l.sparks.iter().map(|x| x.1 as u32).sum::<u32>()).map(|(i, _)| i);
     let pool0 = s.env.pool(legs);
     let mut c1 = vec![f64::INFINITY; n]; let mut m23 = vec![f64::INFINITY; n];
-    let mut plan = vec![(usize::MAX, usize::MAX, usize::MAX, [f64::INFINITY; 3]); n];
+    let mut plan = vec![(usize::MAX, usize::MAX, [f64::INFINITY; 3]); n];
     for ai in 0..n {
         let a = cands[ai];
         let (legs_a, ia) = match full_of(legs, a) {
@@ -580,31 +588,43 @@ fn frozen(s: &mut Sim, d: &Data, legs: &[Legacy], cands: &[usize], fb: &[Option<
                 let mut l = legs.to_vec(); l.push(s.env.veteran(legs, a, f.a, f.b, wp)); let i = l.len() - 1; (l, i) }
         };
         let pool_a = s.env.pool(&legs_a);
-        for bi in 0..n {
-            let b = cands[bi];
+        // B: every uma, best first by her best ceiling with A8 as a parent (an existing 8/8 of hers first, free)
+        let mut bs: Vec<(f64, usize)> = vec![];
+        for &b in all {
             if d.umas[b].id == d.umas[a].id { continue; }
-            let (legs_ab, ib, cb) = match full_of(&legs_a, b) {
-                Some(i) => (legs_a.clone(), i, 0.0),
-                None => {
-                    // B's best parents with A8 available: A8 and her best partner, or her best career without A8
-                    let (mut best, mut pp) = (fb[bi].as_ref().map_or(0.0, |f| f.val), fb[bi].as_ref().map(|f| (f.a, f.b)));
-                    for x in 0..legs_a.len() { if x != ia && legal_pair(d, &pool_a, b, ia, x) {
-                        let v = val(s, &pool_a, b, ia, x, buf); if v > best { best = v; pp = Some((ia, x)); } } }
-                    let Some((pa, pb)) = pp else { continue }; if best <= 0.0 { continue; }
-                    let wp = s.wins(&pool_a, b, pa, pb).to_vec();
-                    let mut l = legs_a.clone(); l.push(s.env.veteran(&legs_a, b, pa, pb, wp)); let i = l.len() - 1;
-                    (l, i, 1.0 / best)
-                }
-            };
-            if cb >= m23[ai] { continue; }
-            let pool_ab = s.env.pool(&legs_ab);
-            for ci in 0..n {
-                let c = cands[ci];
-                if !legal_pair(d, &pool_ab, c, ia, ib) { continue; }
-                let v = val(s, &pool_ab, c, ia, ib, buf); if v <= 0.0 { continue; }
-                let cc = 1.0 / v;
-                if cb + cc < m23[ai] { m23[ai] = cb + cc; plan[ai] = (bi, ci, 0, [c1[ai], cb, cc]); }
+            if full_of(&legs_a, b).is_some() { bs.push((f64::INFINITY, b)); continue; }
+            let ub = (0..legs_a.len()).filter(|&x| x != ia && legal_pair(d, &pool_a, b, ia, x)).map(|x| ceil(s, &pool_a, b, ia, x)).fold(0.0f64, f64::max);
+            if ub > 0.0 { bs.push((ub, b)); }
+        }
+        bs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+        let mut kept: Vec<(f64, usize, Option<usize>, usize)> = vec![];   // (cost, uma, existing 8/8, partner)
+        for &(ub, b) in &bs {
+            if kept.len() >= B_KEEP && 1.0 / ub >= kept[B_KEEP - 1].0 { break; }
+            if let Some(i) = full_of(&legs_a, b) { kept.push((0.0, b, Some(i), usize::MAX)); }
+            else {
+                let (mut best, mut px) = (0.0f64, usize::MAX);
+                for x in 0..legs_a.len() { if x != ia && legal_pair(d, &pool_a, b, ia, x) && ceil(s, &pool_a, b, ia, x) > best {
+                    let v = val(s, &pool_a, b, ia, x, buf); if v > best { best = v; px = x; } } }
+                if best <= 0.0 { continue; }
+                kept.push((1.0 / best, b, None, px));
             }
+            kept.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap()); kept.truncate(B_KEEP);
+        }
+        for &(cb, b, ex, px) in &kept {
+            if cb >= m23[ai] { continue; }
+            let (legs_ab, ib) = match ex { Some(i) => (legs_a.clone(), i), None => {
+                let wp = s.wins(&pool_a, b, ia, px).to_vec();
+                let mut l = legs_a.clone(); l.push(s.env.veteran(&legs_a, b, ia, px, wp)); let i = l.len() - 1; (l, i) } };
+            let pool_ab = s.env.pool(&legs_ab);
+            // C: every uma, best first by ceiling with A8 and B8 as parents
+            let mut cs: Vec<(f64, usize)> = all.iter().filter(|&&c| legal_pair(d, &pool_ab, c, ia, ib)).map(|&c| (ceil(s, &pool_ab, c, ia, ib), c)).filter(|x| x.0 > 0.0).collect();
+            cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+            let (mut cc, mut bc) = (f64::INFINITY, usize::MAX);
+            for (ub, c) in cs {
+                if 1.0 / ub >= cc { break; }
+                let v = val(s, &pool_ab, c, ia, ib, buf); if v > 0.0 && 1.0 / v < cc { cc = 1.0 / v; bc = c; }
+            }
+            if cb + cc < m23[ai] { m23[ai] = cb + cc; plan[ai] = (b, bc, [c1[ai], cb, cc]); }
         }
     }
     let (mut v0, mut at) = (f64::INFINITY, usize::MAX);
@@ -612,20 +632,21 @@ fn frozen(s: &mut Sim, d: &Data, legs: &[Legacy], cands: &[usize], fb: &[Option<
     Frozen { c1, m23, plan, v0, at }
 }
 
-/// One place a candidate's new veteran may be a parent: trainee (candidate index), per uncertain target (env.uncv
-/// order) the miss product without her, per job target the spark scale without and with her spark, her miss factor
-/// x per star count (0: absent), the trainee's cached decks' corner tables
+/// One place a builder's new veteran may be a parent: the stage-1 candidate she may lift (index), per uncertain target
+/// (env.uncv order) the miss product without her, per job target the spark scale without and with her spark, her miss
+/// factor x per star count (0: absent), the trainee's cached decks' corner tables
 struct Setup { ui: usize, x0: Vec<f64>, pw: Vec<[f64; 2]>, xm: [f64; 4], tabs: Vec<Vec<f64>> }
 
 /// The page's next career, exact and without simulation: the career that saves the most careers to a FULLY LOOPED
 /// veteran. Value V0 (`frozen`): the cheapest plan A -> B -> C if no veteran but its 8/8s mattered (an upper bound).
-/// Index of candidate X (her best career, odds p_X): I(X) = E_v[V0 - V0(+v)] - 1, v her veteran, the expectation
-/// exact over her landed set (`outcome_sets`) and her stars per uncertain target (the rank's mix; stars on a
-/// guaranteed gold change no P(all), only its carriers). V0(+v): each candidate's stage-1 odds raised where v as a
-/// parent beats them (her best partners, the trainee's cached decks: a floor), X's own stage 1 done when v is 8/8;
-/// stages 2-3 kept (first order). Derived: the stage career itself scores about 0 (its 8/8 saves 1/p with chance p);
-/// a roll that changes nobody's odds leaves every index as it was, so the same career is picked again (repeat); the
-/// highest index is run. Reservation value r (Weitzman): E[(Y - r)+] = 1, "repeat until a roll saves at least r".
+/// Builder X (her best career, odds p_X): I(X) = E_v[V0 - V0(+v)] - 1, v her veteran, the expectation exact over her
+/// landed set (`outcome_sets`) and her stars per uncertain target (the rank's mix; stars on a guaranteed gold change no
+/// P(all), only its carriers). V0(+v): each stage-1 candidate's odds raised where v as a parent beats them (her best
+/// partners, the trainee's cached decks: a floor), X's own stage 1 done when v is 8/8; stages 2-3 kept (first order).
+/// Every allowed uma is scored (her best career searched), the best career's trainee first.
+/// Derived: the stage career itself scores about 0 (its 8/8 saves 1/p with chance p); a roll that changes nobody's odds
+/// leaves every index as it was, so the same career is picked again (repeat); the highest index is run. Reservation
+/// value r (Weitzman): E[(Y - r)+] = 1.
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
                                        pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
@@ -633,8 +654,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let (members, minfo, mwhy) = rotation(env, d, sk, cr, job, pj);
     let loop_ms = now_ms() - t_all;
     let g = sv.found[0].clone();
-    // candidates: the best career's trainee, the loop's members, the umas of the best career's lineage, the umas you have
-    // veterans of, the search's other trainees; each once, allowed, at most IDX_CANDS
+    // stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the loop's members, the
+    // umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most IDX_CANDS
     let mut cands: Vec<usize> = vec![g.t];
     let push = |u: usize, c: &mut Vec<usize>| if !c.contains(&u) && trainees.contains(&u) { c.push(u) };
     for &m in &members { push(m, &mut cands); }
@@ -642,45 +663,58 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     for l in legs.iter().rev() { if !l.borrowed { if let Some(u) = env.uix(l.chara) { push(u, &mut cands); } } }
     for f in &sv.found { push(f.t, &mut cands); }
     cands.truncate(IDX_CANDS);
+    let all: Vec<usize> = trainees.iter().copied().filter(|&u| env.dmax[u].is_some()).collect();
     let t1 = now_ms();
     let budget0 = env.budget;
     if pj.search_work > 0 { env.budget = pj.search_work; env.hard = pj.search_work; }
     env.use_seen = true;
-    let mut fb: Vec<Option<Found>> = vec![]; let mut refs = vec![];
-    for &u in &cands {
-        if u == g.t { fb.push(Some(g.clone())); continue; }
-        let s = env.solve(pool, fix, &[u], false, 1);
-        refs.push(s.refs.clone());
-        fb.push(s.found.into_iter().next());
-    }
-    env.hard = 0; env.budget = budget0;
-    let search_ms = now_ms() - t1;
+    // best careers, searched on demand (stage-1 candidates now, builders when scored exactly)
+    let mut best: Vec<Option<Option<Found>>> = vec![None; d.umas.len()];
+    best[g.t] = Some(Some(g.clone()));
+    let mut refs = vec![];
+    for &u in &cands { if best[u].is_none() { let s = env.solve(pool, fix, &[u], false, 1); refs.push(s.refs.clone()); best[u] = Some(s.found.into_iter().next()); } }
+    let fb: Vec<Option<Found>> = cands.iter().map(|&u| best[u].clone().flatten()).collect();
+    let mut search_ms = now_ms() - t1;
     let mut s = match sim_for(env, d, sk, cr, job, pj) { Ok(s) => s, Err(e) => return e };
     s.cache.absorb(s.env, &sv.refs);
     for r in &refs { s.cache.absorb(s.env, r); }
     let mut buf = vec![];
     let t2 = now_ms();
-    let fr = frozen(&mut s, d, legs, &cands, &fb, &mut buf);
+    let fr = frozen(&mut s, d, legs, &cands, &fb, &all, &mut buf);
     let v0_ms = now_ms() - t2;
-    let names = |i: usize| if i == usize::MAX { Value::Null } else { json!(d.umas[cands[i]].name) };
+    let uname = |u: usize| if u == usize::MAX { Value::Null } else { json!(d.umas[u].name) };
     let plan_json = if fr.at == usize::MAX { Value::Null } else {
-        let (bi, ci, _, c) = fr.plan[fr.at];
-        json!({"a": names(fr.at), "b": names(bi), "c": names(ci), "careers": c}) };
+        let (b, c, cs) = fr.plan[fr.at];
+        json!({"a": uname(cands[fr.at]), "b": uname(b), "c": uname(c), "careers": cs}) };
     let n = cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone();
     let w = s.env.sj.star_dist;
-    // per candidate: index, savings, chance her roll saves anything, reservation value
-    let mut idx: Vec<Option<(f64, f64, f64, Option<(f64, f64)>)>> = vec![None; n];
+    let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
+    // the stage-1 value after one veteran of builder x (her stage-1 index xi, if any) raises some odds: V0 - V0'
+    let v0_after = |c1: &[f64]| (0..n).map(|a| c1[a] + fr.m23[a]).fold(f64::INFINITY, f64::min);
+    // per builder (uma): (index, saving, lift, reservation)
+    let mut idx: Vec<(usize, Found, (f64, f64, f64, Option<(f64, f64)>))> = vec![];
+    let mut exact_n = 0usize;
     let t3 = now_ms();
     if !pj.value_only && fr.v0.is_finite() {
-        let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
-        for xi in 0..n {
-            let Some(f) = fb[xi].clone() else { continue };
-            let x = cands[xi];
+        // every allowed uma, the best career's trainee first (the fallback pick)
+        let mut order: Vec<usize> = vec![g.t]; for &x in &all { if x != g.t { order.push(x); } }
+        for &x in &order {
+            if best[x].is_none() {
+                let ts = now_ms();
+                if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
+                let sr = s.env.solve(pool, fix, &[x], false, 1);
+                s.env.hard = 0; s.env.budget = budget0;
+                s.cache.absorb(s.env, &sr.refs);
+                best[x] = Some(sr.found.into_iter().next());
+                search_ms += now_ms() - ts;
+            }
+            let Some(Some(f)) = best[x].clone() else { continue };
+            let xi = cands.iter().position(|&u| u == x);
             let c = s.make_cur(pool, x, f.a, f.b, &f.sel, false);
             let mut lv = legs.to_vec(); lv.push(s.env.veteran(legs, x, f.a, f.b, c.wp.to_vec())); let iv = lv.len() - 1;
             let pv = s.env.pool(&lv);
-            // where she can be a parent: per other candidate (stage 1 still to run) her best partners
+            // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
             let mut setups: Vec<Setup> = vec![];
             for ui in 0..n {
                 let u = cands[ui];
@@ -706,7 +740,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
                 let mut out = vec![0.0f64; nleaf];
                 for tab in &st.tabs {
-                    // depth-first over coordinates, a stack of partially folded tables
                     fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64]) {
                         if k == nu { if t[0] > out[leaf] { out[leaf] = t[0]; } return; }
                         for sg in 0..4usize {
@@ -738,9 +771,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                         let v = sc * folds[si][leaf];
                         if v > pnow[st.ui] * (1.0 + 1e-9) && 1.0 / v < c1[st.ui] { c1[st.ui] = 1.0 / v; }
                     }
-                    if m == (1usize << ntar) - 1 { c1[xi] = 0.0; }
-                    let v0n = (0..n).map(|a| c1[a] + fr.m23[a]).fold(f64::INFINITY, f64::min);
-                    let y = (fr.v0 - v0n).max(0.0);
+                    if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; } }
+                    let y = (fr.v0 - v0_after(&c1)).max(0.0);
                     ey += pr * y; if y > 1e-9 { lift += pr; }
                     ys.push((y, pr));
                 }
@@ -751,27 +783,33 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 for _ in 0..60 { let mid = 0.5 * (lo + hi); let e: f64 = ys.iter().map(|&(y, p)| p * (y - mid).max(0.0)).sum(); if e > 1.0 { lo = mid } else { hi = mid } }
                 let r = 0.5 * (lo + hi);
                 Some((r, ys.iter().filter(|x| x.0 >= r).map(|x| x.1).sum::<f64>())) } else { None };
-            idx[xi] = Some((ey - 1.0, ey, lift, r));
+            exact_n += 1;
+            idx.push((x, f, (ey - 1.0, ey, lift, r)));
         }
     }
     let index_ms = now_ms() - t3;
     drop(s);
-    // pick: the highest index (ties to the best career)
+    // pick: the highest index (ties to the best career, scored first)
     let mut pick = 0usize;
-    for i in 0..n { if let (Some(a), Some(b)) = (idx[i], idx[pick]) { if a.0 > b.0 + 1e-9 { pick = i; } } }
-    let role = |u: usize| if u == g.t { "best" } else if members.contains(&u) { "loop" } else { "lineage" };
+    for i in 0..idx.len() { if idx[i].2 .0 > idx[pick].2 .0 + 1e-9 { pick = i; } }
+    let role = |u: usize| if u == g.t { "best" } else if members.contains(&u) { "loop" } else if cands.contains(&u) { "lineage" } else { "builder" };
+    let stage = |u: usize| cands.iter().position(|&c| c == u).map(|i| fr.c1[i]);
     let mut opts: Vec<Value> = vec![];
-    for i in 0..n {
-        let Some(f) = &fb[i] else { continue };
-        let mut r = env.report(pool, f, false);
-        let o = r.as_object_mut().unwrap();
-        o.insert("role".into(), json!(role(cands[i]))); o.insert("best_odds".into(), json!(i == 0)); o.insert("chosen".into(), json!(i == pick && !pj.value_only));
-        o.insert("stage_cost".into(), json!(fr.c1[i]));
-        if let Some((ix, ey, lift, r)) = idx[i] { o.insert("index".into(), json!(ix)); o.insert("saving".into(), json!(ey)); o.insert("lift".into(), json!(lift)); o.insert("reservation".into(), json!(r.map(|x| x.0))); o.insert("reservation_chance".into(), json!(r.map(|x| x.1))); }
-        opts.push(r);
+    for (i, (x, f, (ix, ey, lift, r))) in idx.iter().enumerate() {
+        let mut rp = env.report(pool, f, false);
+        let o = rp.as_object_mut().unwrap();
+        o.insert("role".into(), json!(role(*x))); o.insert("best_odds".into(), json!(*x == g.t)); o.insert("chosen".into(), json!(i == pick));
+        o.insert("stage_cost".into(), json!(stage(*x)));
+        o.insert("index".into(), json!(ix)); o.insert("saving".into(), json!(ey)); o.insert("lift".into(), json!(lift));
+        o.insert("reservation".into(), json!(r.map(|x| x.0))); o.insert("reservation_chance".into(), json!(r.map(|x| x.1)));
+        opts.push(rp);
     }
-    let choice = match &fb[pick] { Some(f) => env.report(pool, f, true), None => Value::Null };
-    json!({"options": opts, "choice": if pj.value_only { Value::Null } else { choice }, "rule": "index", "v0": if fr.v0.is_finite() { json!(fr.v0) } else { Value::Null },
-           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy,
+    opts.sort_by(|a, b| b["index"].as_f64().unwrap_or(f64::NEG_INFINITY).partial_cmp(&a["index"].as_f64().unwrap_or(f64::NEG_INFINITY)).unwrap());
+    if pj.value_only { for (i, &u) in cands.iter().enumerate() { if let Some(f) = &fb[i] { let mut rp = env.report(pool, f, false);
+        let o = rp.as_object_mut().unwrap(); o.insert("role".into(), json!(role(u))); o.insert("best_odds".into(), json!(u == g.t)); o.insert("chosen".into(), json!(false));
+        o.insert("stage_cost".into(), json!(fr.c1[i])); opts.push(rp); } } }
+    let choice = if pj.value_only || idx.is_empty() { Value::Null } else { env.report(pool, &idx[pick].1, true) };
+    json!({"options": opts, "choice": choice, "rule": "index", "v0": if fr.v0.is_finite() { json!(fr.v0) } else { Value::Null },
+           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n,
            "loop_ms": loop_ms, "search_ms": search_ms, "v0_ms": v0_ms, "index_ms": index_ms, "total_ms": now_ms() - t_all})
 }
