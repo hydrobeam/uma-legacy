@@ -842,8 +842,11 @@ function paintFold() {
   const bar = document.querySelector('.rbbar'), b = $('set-fold'), sum = $('set-sum');
   bar.classList.toggle('folded', folded); b.setAttribute('aria-expanded', String(!folded)); sum.hidden = !folded;
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
-  const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+';
-  sum.textContent = [ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenarioOf(state.scen).name, `rank ${rank}`, `${state.targets.length} target skills`].join(' · ');
+  const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+', era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global', sc = scenarioOf(state.scen).name;
+  // each setting as its label, light, and its value, bold, as the panel's rows read (the whole line for the screen reader)
+  sum.setAttribute('aria-label', [era, sc, `rank ${rank}`, `${state.targets.length} target skills`].join(' · '));
+  sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)]].map(([k, v]) => {
+    const p = el('span', 'sumkv'); p.setAttribute('aria-hidden', 'true'); p.append(el('span', 'sumk', k), el('b', '', v)); return p; }));
 }
 function initFold() { $('set-fold').onclick = () => { folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); }; paintFold(); }
 

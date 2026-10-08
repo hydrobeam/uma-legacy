@@ -1669,3 +1669,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the Enhance block spreads down the panel's height like the settings beside it: Umas and Support cards at the top,
    Veteran Umamusume at the foot, the gap between them growing with Target skills */
 .rb .setenh { align-self: stretch; align-content: space-between; padding-bottom: 6px; }
+/* the folded summary: each setting's label light and small, its value bold, spaced apart (no boxes) */
+.rb .setsum:not([hidden]) { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 22px; }
+.rb .setsum .sumk { margin-right: 6px; font-size: 0.74rem; font-weight: 500; color: var(--gm-ink2); }
+.rb .setsum .sumkv b { font-size: 0.9rem; font-weight: 900; color: var(--gm-ink); }
