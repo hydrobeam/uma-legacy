@@ -1577,3 +1577,6 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x { filter: brightness(2.2) saturate(.5); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x:hover { background-color: rgba(255, 255, 255, .08); }
 @media (max-width: 620px) { :root.game .seg > button, :root.game .lp .rbbar .seg > button, :root.game .scenbtn, :root.game .lp .setlist .scenbtn { min-height: 44px; } }   /* phone: 44 px tap targets */
+/* the planner pages end at their footer: no blank band under it to scroll into */
+:root.game body { padding-bottom: 14px; }
+:root.game .foot { margin-top: 14px; }
