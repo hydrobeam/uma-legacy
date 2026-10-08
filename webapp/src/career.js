@@ -190,20 +190,20 @@ const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results
 // the plan's row for a career (null before the plan is made)
 const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(o) === keyOf(r)) || null : null;
 // an option's role: the best odds now, a loop member, or an uma of the best career's lineage or of your veterans
-const roleText = (o) => o.role === 'stage' ? 'the plan\'s step-1 trainee' : o.role === 'loop' ? 'loop member' : o.role === 'lineage' ? 'in the lineage' : 'builder';
+const roleText = (o) => o.role === 'plan' ? 'in the plan\'s trio' : o.role === 'finish' ? 'the plan\'s finisher' : o.role === 'loop' ? 'loop member' : o.role === 'candidate' ? 'candidate' : 'builder';
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
 // an option's score: one career deep, plus (for the few highest and the best odds) what her veteran opens for the next
 const scoreOf = (o) => o.score ?? o.index;
 const fmtN = (x) => Math.round(x).toLocaleString();
 function whyText(r) {
-  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o || scoreOf(o) == null) return '';
-  const pick = P.options.find(x => x.chosen), C = P.continuation, stage = P.options.find(x => x.role === 'stage'), n = state.targets.length;
-  if (P.mode === 'done' || P.mode === 'none') return o.chosen ? `The planner's pick: the best odds (the plan's first ${n}/${n} already exists; the goal steps above say what comes next).` : '';
+  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
+  const pick = P.options.find(x => x.chosen), n = state.targets.length;
+  if (P.mode === 'done') return o.chosen ? `The planner's pick: the best odds (you already have a fully looped parent).` : '';
+  if (scoreOf(o) == null) return '';
   if (!o.chosen) return `Not the planner's pick: ${netText(scoreOf(o))} careers per run toward a fully looped parent, against ${pick ? netText(scoreOf(pick)) : '–'} for the pick${o.near ? ' (about the same)' : ''}.`;
-  if (o.role === 'stage') return `The planner's pick: run ${o.trainee.name} until her ${n}/${n}: no builder career brings the goal closer than her own run (${netText(scoreOf(o))} careers per run).`;
-  if (!(o.lift > 0)) return `The planner's pick: ${netText(scoreOf(o))} careers per run toward a fully looped parent, the best on offer.`;
-  return `The planner's pick: building pays${C ? ` (${C.trainee} at ${fmtIn(C.p)}, about ${fmtIn(C.p_inf)} with a full loop lineage)` : ''}, and this career lifts her the most per run: ${pct(o.lift)} of its rolls${o.p_after ? `, to about ${fmtIn(o.p_after)}` : ''}; ${netText(scoreOf(o))} careers per run${stage ? `, against ${netText(scoreOf(stage))} for running ${stage.trainee.name}` : ''}. Repeat it until a roll changes the plan.`;
+  const own = o.stage_cost != null ? `her own ${n}/${n} (1 in ${Math.round(1 / o.p_all).toLocaleString()}) counts for her step, and ` : '';
+  return `The planner's pick: it brings a fully looped parent the closest, ${netText(scoreOf(o))} careers per run: ${own}${pct(o.lift)} of her rolls make the plan cheaper (a better parent for a step still to run). Repeat it until a roll changes the plan.`;
 }
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
@@ -630,10 +630,11 @@ function optionsEl() {
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Saves per run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // the plan to a fully looped parent, once
   if (P) { const pl = P.v0_plan;
-    const n = state.targets.length, C = P.continuation;
-    box.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${pl.a} → ${pl.b} → ${pl.c}, each until her ${n}/${n}).` : 'Expected careers to a fully looped parent: no plan found.'));
-    if (C) box.appendChild(el('p', 'sub omode', P.mode === 'build' ? `${C.trainee} is at ${fmtIn(C.p)}; with a full loop lineage she'd reach about ${fmtIn(C.p_inf)}. Building pays for about ${C.builds} more lifts of her odds (to about ${fmtIn(C.p_switch)}); then run her until her ${n}/${n}: about ${fmtN(C.careers)} careers for her step, against ${fmtN(C.careers_frozen)} if you only ran her.`
-      : `${C.trainee} is at ${fmtIn(C.p)}, near what building can reach (about ${fmtIn(C.p_inf)}): run her until her ${n}/${n}.`)); }
+    const n = state.targets.length;
+    box.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${n}/${n}s of ${pl.a} and ${pl.b}, then ${pl.c} from both).` : 'Expected careers to a fully looped parent: no plan found.'));
+    if (P.members?.length) box.appendChild(el('p', 'sub omembers', P.members.map(m => m.have8 ? `${m.trainee}: ${n}/${n} done.`
+      : m.p_inf && m.builds > 0 ? `${m.trainee}: ${fmtIn(m.p)} now, about ${fmtIn(m.p_inf)} with a full loop lineage; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
+      : `${m.trainee}: ${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`).join(' '))); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -643,7 +644,7 @@ function optionsEl() {
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
     const sv = el('td', 'orole', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : planS.state === 'busy' ? 'planning…' : '–');
-    if (P && r.index != null) { sv.title = `${roleText(r)}` + (r.lift > 0 ? `: lifts ${P.continuation?.trainee || 'the step-1 trainee'} on ${pct(r.lift)} of rolls${r.p_after ? `, to about ${fmtIn(r.p_after)}` : ''}` : '') + (r.two_step != null ? `; ${netText(r.two_step)} from the next career her best rolls open` : '') + (r.near ? '; about the same as the pick' : ''); }
+    if (P && r.index != null) { sv.title = `${roleText(r)}` + (r.lift > 0 ? `: ${pct(r.lift)} of her rolls make the plan cheaper` : '') + (r.two_step != null ? `; ${netText(r.two_step)} from the next career her best rolls open` : '') + (r.near ? '; about the same as the pick' : ''); }
     row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
@@ -653,7 +654,7 @@ function optionsEl() {
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   const rest = P ? P.options.filter(o => !list.includes(o) && scoreOf(o) != null) : [];
   if (rest.length) box.appendChild(el('p', 'sub orest', `${rest.length} more umas scored, ${netText(Math.min(...rest.map(scoreOf)))} to ${netText(Math.max(...rest.map(scoreOf)))} per run.`));
-  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career brings a fully looped parent closer, on average over every result she can roll (exact), minus the run itself, counted against a plan that keeps building while it pays (the step-1 trainee's odds rising toward her full-loop odds with each lift; the rate and step are fitted to your veterans now). The planner runs the highest and repeats it until a roll changes the plan. Every odds figure is exact; the expected careers are estimates.`));
+  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career brings a fully looped parent closer, on average over every result she can roll (exact), minus the run itself. The plan is the cheapest trio: 8/8s of two umas, each building her odds toward her full-loop odds while that pays (rate and step fitted to your veterans now), then the third from both. A career counts both ways: her own 8/8 for her step, and her veteran as a parent that makes a step cheaper. The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the plan. Every odds figure is exact; the expected careers are estimates.`));
   return box;
 }
 function renderResults() {

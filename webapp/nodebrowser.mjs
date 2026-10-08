@@ -817,6 +817,20 @@ const TESTS = {
     const goalJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.next && !j.compare).at(-1));
     check('career: with 8/8 veterans of two umas the goal is at step 3 and the career uses both as parents', /Step 3 of 3/.test(await pg.textContent('#goal-note').catch(() => ''))
       && goalJob && goalJob.fix.length === 2 && goalJob.fix.includes(0) && goalJob.fix.includes(two[1]), JSON.stringify(goalJob && goalJob.fix));
+    // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
+    // against the cheapest trio, each step named, the pick explained
+    // (no 8/8 anywhere: the goal's steps would otherwise fix 8/8 parents and skip the plan)
+    const trioEx = JSON.parse(exText), drop = String(trioEx.job.targets.find(x => !x.guaranteed).group);
+    for (const v of trioEx.veterans) { delete v.sparks[drop]; for (const g of v.parents) g.sparks = {}; }
+    await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(trioEx)); await pg.click('#paste-load');
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
+    const trioRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
+    check('career: with no looped parent the plan scores every career against the cheapest trio and names each step', !!trioRes && trioRes.next.mode === 'trio'
+      && trioRes.next.members.length === 2 && /^Expected careers to a fully looped parent: about [\d,]+ \(\d+\/\d+s of .+ and .+, then .+ from both\)\.$/.test(await pg.textContent('.alts .oloop'))
+      && /1 in [\d,]+/.test(await pg.textContent('.alts .omembers')) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && /^The planner's pick: it brings a fully looped parent the closest/.test(await pg.textContent('#pick-why').catch(() => '')),
+      `${trioRes && trioRes.next.mode} | ${await pg.textContent('.alts .omembers').catch(() => '')} | ${trioCells.join(' ')}`);
     await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load');
     await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });   // the restored pool's plan
     await done();
@@ -857,12 +871,12 @@ const TESTS = {
     // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
     const opts = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => [...l.children].map(c => c.textContent)));
     check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
-      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) && /^Expected careers to a fully looped parent: /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
+      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && (lastRes.next.mode === 'done' ? c[2] === '–' : /^[+−]\d+\.\d$/.test(c[2]))) && /^Expected careers to a fully looped parent: /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
-    // the continuation: with a step-1 plan, a line says whether building pays (how many lifts, to what odds) or to run her
-    check('career: the plan says whether building pays or the step-1 trainee should run, from the solver\'s continuation', !lastRes.next.continuation
-      || ((await pg.locator('.alts .omode').count()) === 1 && (lastRes.next.mode === 'build' ? /Building pays for about \d+ more lifts/ : /run her until her/).test(await pg.textContent('.alts .omode'))),
-      lastRes.next.continuation ? await pg.textContent('.alts .omode') : 'no continuation');
+    // the trio: each step's line (her odds now, her full-loop odds, the lifts building pays for, or done)
+    check('career: the plan names its trio and, per step, the odds now and what building pays for', !lastRes.next.members?.length
+      || ((await pg.locator('.alts .omembers').count()) === 1 && /: (\d+\/\d+ done|1 in [\d,]+)/.test(await pg.textContent('.alts .omembers'))),
+      lastRes.next.members?.length ? await pg.textContent('.alts .omembers') : 'no trio');
     check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
       return document.getElementById('tree').nextElementSibling === r && at('#goal-note') === 0 && at('.deck') === 1 && !!kids[1].querySelector('.dtitle #sched-open') && at('.lhead') === 2
