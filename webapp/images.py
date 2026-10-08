@@ -148,9 +148,10 @@ UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_
 
 # the game's common buttons (resources.assets; 9-slice, sliced across only, borders L/R in px): white and green rectangle
 # (utx_btn_s_02_sl / _03_sl, 166x96, L40 R40 / L40 R116), white and green pill (utx_btn_s_00_sl / _01_sl, 180x72, L32 R100
-# / L35 R120), and the check box off / on (utx_btn_checkbox_00 / _01, 78x80)
+# / L35 R120), the check box off / on (utx_btn_checkbox_00 / _01, 78x80) and the switch's track off / on (utx_btn_toggle_00 /
+# _01, 160x60)
 RES_SPRITES = {'btn_w': 'utx_btn_s_02_sl', 'btn_g': 'utx_btn_s_03_sl', 'pill_w': 'utx_btn_s_00_sl', 'pill_g': 'utx_btn_s_01_sl',
-               'chk_off': 'utx_btn_checkbox_00', 'chk_on': 'utx_btn_checkbox_01'}
+               'chk_off': 'utx_btn_checkbox_00', 'chk_on': 'utx_btn_checkbox_01', 'tog_off': 'utx_btn_toggle_00', 'tog_on': 'utx_btn_toggle_01'}
 
 
 def res_sprites(force, manifest):
@@ -194,9 +195,10 @@ def ui_sprites(force, manifest):
 # rims survive in dark tones. Written as ui/<key>_dark.webp beside the original.
 # (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
 # a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
-DARK_SPRITES = {'spark_white': (0.09, 0.21, 1.0, 0), 'skill_white': (0.20, 0.38, 0.75, 2.5), 'star_off': (0.30, 0.58, 1.15, 0),
-                'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0)}
-CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white'}   # their saturation is capped by the pixel's real chroma
+DARK_SPRITES = {'spark_white': (0.09, 0.21, 1.0, 0), 'skill_white': (0.09, 0.21, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
+                'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0)}
+CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off'}   # their saturation is capped by the pixel's real chroma
+SHADE = {'skill_white': 0.35}   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
 
 
 # the game's Enhance menu buttons (home/ui/texture utx_btn_home_umamusume_00..02: Trainee, Support Cards, Veteran
@@ -236,7 +238,7 @@ def dark_sprites(force, manifest):
                 if not a: continue
                 hh, ll, ss = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
                 if key in CHROMA_CAP: ss = min(ss, 2 * (max(r, g, b) - min(r, g, b)) / 255)   # near white, HLS saturation of a faint tint is huge
-                if key in CHROMA_CAP: ll = max(lo, hi - (l1 - ll) * 0.8)   # the face's own shading (the fold's darker wedge) kept, not squeezed; rims go to lo
+                if key in CHROMA_CAP: ll = max(lo, hi - (l1 - ll) * SHADE.get(key, 0.8))   # the face's own shading (the fold's darker wedge) kept, not squeezed; rims go to lo
                 else: ll = lo + min(1, max(0, (ll - l0) / ((l1 - l0) or 1))) * (hi - lo)
                 if key in CHROMA_CAP and max(r, g, b) - min(r, g, b) < 40: hh, ss = 0.7, 0.12   # the Enhance buttons' dark band tint
                 rr, gg, bb = colorsys.hls_to_rgb(hh, ll, min(1, ss * sat))
