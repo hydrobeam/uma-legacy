@@ -72,7 +72,7 @@ function loopCard(l, meta, ctx) {
     else {
       // the deck most members share, then each other member's swaps against it, one row each: "X swaps A → B"
       const users = M.map((m, k) => k).filter(k => key(D[k]) === key(meta.deck));
-      card.appendChild(block(meta.deck, `Deck for <span class="dwho">${users.map(k => face(k, 46)).join('')}</span><span class="vh">${esc(users.map(k => M[k].name).join(', '))}</span>`));
+      card.appendChild(block(meta.deck, `Deck for <span class="dwho">${users.map(k => face(k, 42)).join('')}</span><span class="vh">${esc(users.map(k => M[k].name).join(', '))}</span>`));
       const seen = new Set();
       // a label where the swap rows start: each row is another uma's deck, given by what it swaps from the deck above
       if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps'; card.appendChild(h); }
