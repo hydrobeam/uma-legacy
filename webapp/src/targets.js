@@ -19,7 +19,7 @@ export function renderTargets(focus = null) {
     // a gold the scenario guarantees shows as that gold (It's On! for Ramp Up), in gold
     if (gold) el.classList.add('gold');
     const ic = skillIcon(t.group, gold); if (ic) nm.appendChild(ic);
-    nm.append(gold ? s.gd : s.w); nm.title = gold ? `${s.gd} (gold of ${s.w}): guaranteed by the scenario` : s.w;
+    nm.append(gold ? s.gd : s.w); if (gold) nm.title = `Gold of ${s.w}, guaranteed by the scenario`;   // a plain target's name is on the tile: no hover
     const x = el.querySelector('.x'); x.setAttribute('aria-label', 'Remove ' + s.w); x.title = 'Remove ' + s.w;
     x.onclick = () => { state.targets.splice(i, 1); save(); renderTargets(i); };
     box.appendChild(el);
