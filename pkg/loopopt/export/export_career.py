@@ -8,6 +8,8 @@ export folder (master.mdb there) with that era's data.json; writes career.json n
            group's saddle whose race is in data.json, relocated venues mapped as in samerace). Multi-race title
            saddles are left out: they count for nothing in affinity.
   pinks:   aptitude (pink) spark factor group -> name (succession_factor type 2; factor_id = group * 100 + stars).
+  blues:   stat (blue) spark factor group 1..5 -> name (type 1). uniques: unique (green) spark factor group (an outfit's
+           card id) -> its unique skill's name (type 3).
 usage: export_career.py DATA_JSON OUT_JSON"""
 import sqlite3, json, sys, os
 data_path, out_path = sys.argv[1], sys.argv[2]
@@ -32,5 +34,12 @@ unmapped = [sid for sid, g, _ in rows if g not in grp]
 gq = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'master.mdb')).execute
 pinks = {g: gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()[0]
          for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 2 order by factor_group_id')}
-json.dump({'factors': factors, 'saddles': saddles, 'pinks': pinks}, open(out_path, 'w'), separators=(',', ':'))
+# blue (stat) spark groups 1..5 and unique (green) spark groups (an outfit's card id) -> name, the same way
+blues = {g: gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()[0]
+         for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 1 order by factor_group_id')}
+uniques = {}
+for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 3 order by factor_group_id'):
+    r = gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()
+    if r: uniques[g] = r[0]
+json.dump({'factors': factors, 'saddles': saddles, 'pinks': pinks, 'blues': blues, 'uniques': uniques}, open(out_path, 'w'), separators=(',', ':'))
 print(len(factors), 'skill spark groups,', len(saddles), 'G1 saddles', f'({len(unmapped)} G1 saddles of races no trainee can run: {unmapped})' if unmapped else '')
