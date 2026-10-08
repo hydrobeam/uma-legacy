@@ -232,7 +232,7 @@ function affTable(r) {
       tb.appendChild(row('gp', [umaAv(g.chara || 0, null, 24), el('span', 'afn', g.name || umaName(g.chara))], g.rel, g.race, g.aff));
     t.appendChild(tb);
   });
-  t.tFoot.appendChild(row('tot', [el('span', 'afk', 'Six legacies')], r.slots.reduce((a, x) => a + x.rel, 0), r.slots.reduce((a, x) => a + x.race, 0), legacyAff(r)));
+  t.tFoot.appendChild(row('tot', [el('span', 'afk', 'Total')], r.slots.reduce((a, x) => a + x.rel, 0), r.slots.reduce((a, x) => a + x.race, 0), legacyAff(r)));
   return t;
 }
 function affEl(a, cls = 'aff') { if (a === null) return null; const e = el('span', cls); e.append(el('i', 'heart'), String(Math.round(a)));

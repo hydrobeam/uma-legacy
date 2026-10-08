@@ -33,21 +33,40 @@ function raceCell(tag, bannerName, label, goal) {
 const turnName = (t) => `${YEARS[(t / 24) | 0]} Year, ${t % 2 ? 'Late' : 'Early'} ${MONTHS[(t % 24) >> 1]}`;
 // the schedule window's calendar: three year columns of 24 half-month slots (the career starts in Junior Year, early
 // July); fill(year, slot index, slot element) fills each slot
+// On the career page it is the game's Scheduled Races: one year at a time behind the game's year tabs (the year shown
+// is kept across redraws; a new window starts at its first year with races), the turns before the debut as the game's grey slots.
+let agYear = null;
 export function agendaGrid(fill) {
-  const ag = document.createElement('div'); ag.className = 'agenda';
+  const gm = !!document.querySelector('.rb');
+  const ag = document.createElement('div'); ag.className = 'agenda' + (gm ? ' gm' : '');
+  const cols = [];
   for (let y = 0; y < 3; y++) {
     const col = document.createElement('section'); col.className = 'ag-year y' + y;
     col.innerHTML = `<h4>${YEARS[y]} Year</h4>`;
     const grid = document.createElement('div'); grid.className = 'ag-grid';
     for (let sI = 0; sI < 24; sI++) {
       const slot = document.createElement('div');
-      if (y === 0 && sI < 12) { if (sI === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); } continue; }   // one note fills the blank half-year
+      if (y === 0 && sI < 12) {
+        if (gm) { if (sI >= 6) { slot.className = 'ag-slot pre'; slot.appendChild(whenBar(sI)); grid.appendChild(slot); } }   // the game's Junior Year starts in April
+        else if (sI === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); }   // one note fills the blank half-year
+        continue;
+      }
       slot.className = 'ag-slot';
       fill(y, sI, slot);
       grid.appendChild(slot);
     }
-    col.appendChild(grid); ag.appendChild(col);
+    col.appendChild(grid); ag.appendChild(col); cols.push(col);
   }
+  if (!gm) return ag;
+  const tabs = document.createElement('div'); tabs.className = 'udtabs ag-tabs'; tabs.setAttribute('role', 'tablist');
+  const btns = YEARS.map((n, y) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'udtab'; b.setAttribute('role', 'tab');
+    b.dataset.y = y; b.textContent = n + ' Year'; b.onclick = () => pick(y); tabs.appendChild(b); return b; });
+  function pick(y) { agYear = y; cols.forEach((c, j) => { c.hidden = j !== y; }); btns.forEach((b, j) => { b.setAttribute('aria-selected', String(j === y)); b.tabIndex = j === y ? 0 : -1; }); }
+  tabs.addEventListener('keydown', (e) => { const i = btns.indexOf(document.activeElement); if (i < 0) return;
+    const to = { ArrowRight: (i + 1) % 3, ArrowLeft: (i + 2) % 3, Home: 0, End: 2 }[e.key]; if (to === undefined) return; e.preventDefault(); pick(to); btns[to].focus(); });
+  // the year first shown: the one kept, else the first with a race in it
+  pick(agYear ?? Math.max(0, cols.findIndex(c => c.querySelector('.ag-slot.on'))));
+  ag.prepend(tabs);
   return ag;
 }
 // ---------- the G1 wins editor (a pool veteran's, and the veteran analysis' draft), on the same calendar ----------
@@ -66,6 +85,7 @@ function closeMenu(refocus) {
 }
 document.addEventListener('pointerdown', (e) => { if (menuOpen && !menuOpen.menu.contains(e.target) && !menuOpen.opener.contains(e.target)) closeMenu(false); }, true);
 export function winsAgenda(o) {
+  agYear = null;
   const name = new Map(o.races.map(r => [r.ix, r.name])), turns = new Map(o.races.map(r => [r.ix, r.turns]));
   const held = new Map(); for (const r of o.races) for (const t of r.turns) { if (!held.has(t)) held.set(t, []); held.get(t).push(r.ix); }
   const info = (ix) => (o.info && o.info(ix)) || null;
@@ -154,6 +174,7 @@ export function winsAgenda(o) {
 }
 // the race schedule window: one tab per member, her races on the calendar
 export function openSched(l) {
+  agYear = null;
   const M = l.members, rows = l.schedule, body = $('sched-body'); body.textContent = '';
   const outfitOf = (k) => (l.outfits[k].outfits.length === 1 ? l.outfits[k].outfits[0].id : null);
   const head = document.createElement('div'); head.className = 'row between dhead';   // stays at the top while the dialog scrolls
