@@ -13,7 +13,7 @@ corner of the results. Under it, *Target skills* in the open. On the right, the 
 one level with the setup panel. On a phone the columns stack, results first.
 
 **Settings** (the Loop setup panel)
-- *Game data*: "Global today", or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023). Switching
+- *Game data*: "Global" (today's data), or "JP, Grand Masters era" (JP data cut at L'Arc's launch, 24 Aug 2023). Switching
   reloads the page; owned umas, outfits and cards are kept separately for each.
 - *Scenario*: Unity Cup (default), Grand Concert, URA Finale, Trackblazer; with the Grand Masters-era data also Grand
   Masters. It sets how often support cards give training hints (the picker shows each as a multiple of URA Finale's
