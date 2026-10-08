@@ -84,7 +84,7 @@ function loopCard(l, meta, ctx) {
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
-        dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
+        dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="vh">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
           `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d)}</div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }

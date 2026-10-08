@@ -17,6 +17,7 @@ import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initSetup } from './setup.js';
 import './gmtip.js';   // the game-style tooltips (both planner pages)
+import { affEl, affTable as affTableOf } from './afftable.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
@@ -216,29 +217,16 @@ function traineeEl(r) {
   return n;
 }
 // affinity: the game's heart and the number (named "Affinity N" for screen readers and the tooltip)
-// her affinity, legacy by legacy (the report's six slots, career.rs slots()): each of the six has its own, which weighs
-// its own inheritance rolls; a parent's counts her relation with the trainee and with the other parent, the trio
-// relations with her own two parents and the G1s she shares with all three (3 points each); a grandparent's, her trio
-// relation and the G1s she shares with the parent between them. The total is the six summed (as the loop planner's).
+// her affinity, legacy by legacy (afftable.js), from the report's six slots (career.rs slots()); Legacy 1 and 2 follow
+// the career's parents (a slot's legacy is her index among your veterans)
 const legacyAff = (r) => r.slots.reduce((a, x) => a + x.aff, 0);
 function affTable(r) {
-  const t = el('table', 'afftab'), R = (x) => String(Math.round(x));
-  t.innerHTML = '<caption>Affinity</caption><thead><tr><th scope="col"></th><th scope="col">Relation</th><th scope="col">G1 wins shared</th><th scope="col">Affinity</th></tr></thead><tfoot></tfoot>';
-  const row = (cls, who, rel, race, aff) => { const tr = el('tr', cls), th = el('th'); th.scope = 'row'; th.append(...who);
-    tr.append(th, el('td', '', R(rel)), el('td', '', R(race)), el('td', 'afv')); tr.lastChild.appendChild(affEl(aff)); return tr; };
-  // Legacy 1 and 2 follow the career's parents (a slot's legacy is her index among your veterans)
-  r.parents.forEach((ix, k) => { const p = r.slots.find(x => x.kind === 'parent' && x.legacy === ix); if (!p) return;
-    const tb = el('tbody', 'leg' + k);
-    tb.appendChild(row('par', [umaAv(p.chara || 0, null, 30), el('span', 'afn', p.name || umaName(p.chara)), el('span', 'afk', `Legacy ${k + 1}`)], p.rel, p.race, p.aff));
-    for (const g of r.slots.filter(x => x.kind === 'grandparent' && x.legacy === p.legacy).sort((a, b) => a.gp - b.gp))
-      tb.appendChild(row('gp', [umaAv(g.chara || 0, null, 24), el('span', 'afn', g.name || umaName(g.chara))], g.rel, g.race, g.aff));
-    t.appendChild(tb);
-  });
-  t.tFoot.appendChild(row('tot', [el('span', 'afk', 'Total')], r.slots.reduce((a, x) => a + x.rel, 0), r.slots.reduce((a, x) => a + x.race, 0), legacyAff(r)));
-  return t;
+  const nm = (x) => x.name || umaName(x.chara);
+  return affTableOf(r.parents.map((ix) => r.slots.find(x => x.kind === 'parent' && x.legacy === ix)).filter(Boolean).map(p => ({
+    face: umaAv(p.chara || 0, null, 30), name: nm(p), rel: p.rel, race: p.race, aff: p.aff,
+    gps: r.slots.filter(x => x.kind === 'grandparent' && x.legacy === p.legacy).sort((a, b) => a.gp - b.gp)
+      .map(g => ({ face: umaAv(g.chara || 0, null, 24), name: nm(g), rel: g.rel, race: g.race, aff: g.aff })) })));
 }
-function affEl(a, cls = 'aff') { if (a === null) return null; const e = el('span', cls); e.append(el('i', 'heart'), String(Math.round(a)));
-  e.setAttribute('aria-label', `Affinity ${Math.round(a)}`); e.title = `Affinity ${Math.round(a)}`; return e; }
 function familyEl(k, r) {
   const fam = el('div', 'pf');
   // the game's legacy box: "Legacy 1" blue, "Legacy 2" pink, the parent with her own two parents

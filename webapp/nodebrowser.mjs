@@ -477,11 +477,12 @@ const TESTS = {
     check('schedule tabs: ArrowRight selects and focuses the next tab, one tab in the Tab order, each controls the panel', tabs[1] === 'true:0:sched-view' && tabs.filter(t => t.startsWith('true')).length === 1
       && await pg.evaluate(() => document.activeElement === document.querySelectorAll('#sched-dlg .stab')[1]), tabs.join(' '));
     await pg.keyboard.press('Escape');
-    // affinity: each career is a button
+    // affinity: the careers are a radio group of pills; the arrows move and show one
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
-    const rb = pg.locator('#why-dlg .rowbtn[aria-pressed="false"]').first(); await rb.focus(); await pg.keyboard.press('Enter');
-    check('affinity: the careers are buttons; Enter shows one', await pg.evaluate(() => document.activeElement.getAttribute('aria-pressed') === 'true' && document.activeElement.closest('tr').classList.contains('sel'))
-      && /choose one/i.test(await pg.locator('#why-dlg').innerText()));
+    const cap0 = await pg.locator('#why-dlg .afftab caption').innerText();
+    await pg.locator('#why-dlg .afpick [aria-checked="true"]').focus(); await pg.keyboard.press('ArrowRight');
+    check('affinity: the careers are pill switches; an arrow key shows the next one', await pg.evaluate(() => document.activeElement.getAttribute('aria-checked') === 'true' && document.activeElement.closest('.afpick') !== null)
+      && (await pg.locator('#why-dlg .afftab caption').innerText()) !== cap0);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -542,8 +543,8 @@ const TESTS = {
     check('All four: a column per member', (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 4);
     await pg.keyboard.press('Escape');
     await loop.locator('.lacts button', { hasText: 'Affinity' }).click(); await dialog(pg, 'why-dlg');
-    const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
-    check('its affinity: 6 pairs and 12 careers, no grandparent is the trainee', rows.join(',') === '6,12' && !(await pg.locator('#why-dlg .node.g', { hasText: 'her own earlier veteran' }).count()), rows.join(','));
+    check('its affinity: 12 careers, six legacies each, no grandparent is the trainee', await pg.locator('#why-dlg .afpick button').count() === 12 && await pg.locator('#why-dlg .afftab tbody tr').count() === 6
+      && !(await pg.locator('#why-dlg .afftab .aft').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -575,22 +576,13 @@ const TESTS = {
       && await pg.locator('#sched-dlg .agkey').isHidden());
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
-    const rows = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl')].map(t => t.tBodies[0].rows.length));
-    check('affinity: a rotation has 3 pairs and 3 careers', rows.join(',') === '3,3', rows.join(','));
-    // the trainee is her own grandparent under each parent: labelled, no relation points
-    const self = await pg.evaluate(() => [...document.querySelectorAll('#why-dlg .node.g')].filter(n => /her own earlier veteran/.test(n.innerText)).map(n => /(^|\s)0 relations/.test(n.innerText)));
-    check('affinity: in a rotation the trainee is her own grandparent twice, with 0 relation points; the rotation is explained',
-      self.length === 2 && self.every(Boolean) && /three-uma rotation/.test(await pg.locator('#why-dlg .afx').first().innerText()), JSON.stringify(self));
-    const af = await pg.evaluate(() => ({ faces: document.querySelectorAll('#why-dlg .aface').length, fx: [...document.querySelectorAll('#why-dlg .fx')].map(e => e.textContent).join(' | '), hidden: getComputedStyle(document.querySelector('#why-dlg .aface .an')).display }));
-    check('affinity: umas as portraits (names hidden until asked; four grandparents per career), the formula with P, P2, GP1, GP2', af.faces >= 3 * 2 + 3 * 6 && af.hidden === 'none' && /GP1/.test(af.fx) && /P1–P2/.test(af.fx), JSON.stringify(af));
-    const ib = pg.locator('#why-dlg .oinfo'), mathVis = () => pg.locator('#why-math').isVisible();
-    const m0 = await mathVis(); await ib.click(); const m1 = await mathVis(); await ib.click();
-    check('affinity: the formula sits behind the (i) by the title (closed, opens, closes)', !m0 && m1 && !(await mathVis()) && (await ib.getAttribute('aria-expanded')) === 'false', JSON.stringify([m0, m1]));
-    const pos = () => pg.evaluate(() => [...document.querySelectorAll('#why-dlg table.tbl td')].slice(0, 40).map(td => Math.round(td.getBoundingClientRect().left) + ',' + Math.round(td.getBoundingClientRect().top)).join(' '));
-    const before = await pos(); await pg.locator('#why-dlg .aface').nth(3).hover();
-    check('affinity: hovering a portrait shows the name without moving the table', (await pos()) === before && await pg.locator('#why-dlg .aface').nth(3).locator('.an').isVisible());
-    await pg.locator('#why-dlg .aface').first().click();
-    check('affinity: tapping a portrait shows her name', await pg.locator('#why-dlg .aface.open .an').first().isVisible());
+    // the career page's table: each parent, then her two parents (relation, G1 wins shared, affinity), a Total row
+    const at = await pg.evaluate(() => { const t = document.querySelector('#why-dlg .afftab'), rows = [...t.tBodies].flatMap(b => [...b.rows]);
+      const n = (x) => +x.replace(/\D/g, ''), aff = rows.map(r => n(r.cells[3].textContent));
+      return { careers: document.querySelectorAll('#why-dlg .afpick button').length, rows: rows.length, own: rows.filter(r => /her own earlier veteran/.test(r.textContent)).map(r => n(r.cells[1].textContent)),
+        sum: aff.reduce((a, x) => a + x, 0), total: n(t.tFoot.rows[0].cells[3].textContent), prose: document.querySelectorAll('#why-dlg p').length }; });
+    check('affinity: a rotation has 3 careers; each shows six legacies and a Total that sums them, no prose', at.careers === 3 && at.rows === 6 && Math.abs(at.sum - at.total) <= 6 && at.prose === 0, JSON.stringify(at));
+    check('affinity: in a rotation the trainee is her own grandparent twice, marked, with 0 relation points', at.own.length === 2 && at.own.every(x => x === 0), JSON.stringify(at.own));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },

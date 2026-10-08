@@ -147,7 +147,9 @@ UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_
               # the career page's race schedule, as the game's Scheduled Races: a slot's white frame (9-slice 22), an empty
               # turn before the debut (9-slice 19/17), the pink "Scheduled" badge (sliced across, 40), the green plus
               'slot_frame': ('atlas/single', 'utx_frm_racelist_white_00_sl'), 'slot_empty': ('atlas/common', 'utx_frm_emptybase_00_sl'),
-              'sched_badge': ('atlas/single', 'utx_frm_reserved_badge_00_sl'), 'plus': ('atlas/common', 'utx_ico_plus_00')}
+              'sched_badge': ('atlas/single', 'utx_frm_reserved_badge_00_sl'), 'plus': ('atlas/common', 'utx_ico_plus_00'),
+              # the swap rows' arrow (old card -> new card): the game's green chevron
+              'chevron': ('atlas/common', 'utx_btn_arrow_side_03')}
 
 
 # the game's common buttons (resources.assets; 9-slice, sliced across only, borders L/R in px): white and green rectangle

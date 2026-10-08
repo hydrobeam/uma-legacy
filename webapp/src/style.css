@@ -1556,3 +1556,18 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
    Latin text low in its line), so a little more room under it than over it */
 :root.game .seg > button { padding-top: 1px; padding-bottom: 5px; }
 :root.game .lp .rbbar > .rhead .seg > button, :root.game .lp .rcol > .rtop .seg > button { padding-top: 0; padding-bottom: 3px; }
+/* the loop planner's affinity popup: the careers as pill switches (trainee, her affinity), the table under them */
+.afpick { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.afpick button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px 5px 4px; border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab);
+  box-shadow: inset 0 -3px 0 var(--gm-tab-low); font: inherit; font-weight: 700; color: var(--gm-ink); cursor: pointer; }
+.afpick button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); border-color: transparent; background: none; border: 0 solid transparent;
+  border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
+.afpick button .aff { margin-left: 2px; }
+.afpick button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.afftab .aft { font-size: 0.72rem; font-weight: 500; color: var(--gm-ink2); }
+:root.game #why-dlg { width: min(700px, calc(100vw - 24px)); }
+/* a swap row on the planner pages: her face, the card that goes, the game's green chevron, the card that comes in (the
+   word "swaps" for the screen reader only) */
+.game .swa { width: 20px; color: transparent; font-size: 0; background: var(--chevron, none) center / contain no-repeat; }
+/* affinity: the game's heart and the number, no box around it */
+.game .aff, .rb .aff, .rb .pn .pnh .aff { border: 0; background: none; padding: 0; border-radius: 0; box-shadow: none; }
