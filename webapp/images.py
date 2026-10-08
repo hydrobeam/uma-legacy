@@ -208,7 +208,8 @@ DARK_SPRITES = {'spark_white': (0.09, 0.21, 1.0, 0), 'skill_white': (0.09, 0.21,
                 'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
                 'slot_frame': (0.09, 0.21, 1.0, 0), 'slot_empty': (0.07, 0.14, 1.0, 0)}
 CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off', 'slot_frame', 'slot_empty'}   # their saturation is capped by the pixel's real chroma
-SHADE = {'skill_white': 0.35}   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
+SHADE = {'skill_white': 0.35}
+MIRROR = {'skill_white'}   # the dark skill tile's face gradient runs the other way (darker left, lighter right); its shape is symmetric   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
 
 
 # the game's Enhance menu buttons (home/ui/texture utx_btn_home_umamusume_00..02: Trainee, Support Cards, Veteran
@@ -253,6 +254,7 @@ def dark_sprites(force, manifest):
                 if key in CHROMA_CAP and max(r, g, b) - min(r, g, b) < 40: hh, ss = 0.7, 0.12   # the Enhance buttons' dark band tint
                 rr, gg, bb = colorsys.hls_to_rgb(hh, ll, min(1, ss * sat))
                 px[x, y] = (round(rr * 255), round(gg * 255), round(bb * 255), a)
+        if key in MIRROR: im = im.transpose(Image.FLIP_LEFT_RIGHT)
         im.save(dst, 'WEBP', lossless=True); manifest['images']['ui:' + key + '_dark'] = f'{key} (darkened)'; n += 1
     return n
 
