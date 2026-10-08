@@ -103,7 +103,7 @@ def era(dirp, events_file):
     sourced = sorted({g for c in cards['cards'] for g in c['whites']} | {e[0] for es in evsum.values() for e in es}
                      | {g for os_ in skills['cards'].values() for o in os_ for g, _ in o[2]})
     career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'blues': ct.get('blues', {}), 'uniques': ct.get('uniques', {}), 'races': data['race_names'], 'race_turns': race_turns,
-                 'mobs': ct.get('mobs', []), 'sourced': sourced})
+                 'mobs': [m for m in ct.get('mobs', []) if f'mob:{m[0]}' in images], 'sourced': sourced})   # only mobs with a portrait (the samples draw from them)
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
