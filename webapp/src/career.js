@@ -43,7 +43,7 @@ function paint() {
   else if (planS.state === 'busy' && status.kind === 'done') { const s = Math.floor((performance.now() - planS.t0) / 1000);
     n.textContent = status.text + ' ';
     const sp = el('span'); sp.innerHTML = '<span class="spin" aria-hidden="true"></span>';
-    sp.append('Planning: the loop\'s next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
+    sp.append('Planning: the next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
   else n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
 }
@@ -157,9 +157,10 @@ async function search() {
   searching = false; clearInterval(tick); renderAll(); paint();
   if (planS.state === 'busy') runPlan();
 }
-// The plan: the same job with `next` (solver: sim/plan.rs `next_rule`, exact, no simulation): the loop planner's loop; the
-// best career of each member other than the newest veteran's; the pick the best odds among them, or the best career
-// overall when it trains no member and has at least 1.5x those odds. Its pick replaces the quick one on show. It
+// The plan: the same job with `next` (solver: sim/plan.rs `stale_rule`, exact, no simulation): candidates are the loop
+// planner's loop and the umas in the best career's lineage, each with her best career; one whose best parents are new to
+// her (no veteran of hers has them as parents) trains once, the best odds among those; with none, the best career.
+// Its pick replaces the quick one on show. It
 // shares the one worker with the comparison: a comparison cancelled while both were queued takes it down too, and it
 // runs again (planId tells the run that counts).
 let planId = 0;
@@ -191,14 +192,15 @@ const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results
 const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(o) === keyOf(r)) || null : null;
 const loopChain = (P) => (P?.loop_members || []).map(m => m.short || m.name).join(' → ');
 // an option's role: a loop member's career, the best odds outside the loop, or the best odds (a member's)
-const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'outside' ? 'outside the loop' : 'best odds now';
+const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'lineage' ? 'in the lineage' : 'best odds now';
+// a candidate's state: her best parents are new to her (she trains once with them), or she already trained with them
+const freshText = (o) => o.role === 'best' ? '' : o.fresh ? 'new best parents' : 'tried these parents';
 function whyText(r) {
   const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
-  const others = P.newest_member ? ` (your newest veteran is ${P.newest_member.name}'s, so the loop trains another member)` : '';
-  if (!o.chosen) return `Not the planner's pick: ${roleText(o)}.`;
-  return P.rule === 'loop' ? `The planner's pick: the loop's next career, the best odds among the loop members${others}.`
-    : P.rule === 'outside' ? `The planner's pick: outside the loop, with at least ${P.outside_margin}× the odds of the loop's best career.`
-    : `The planner's pick: the best odds.`;
+  if (!o.chosen) return o.role === 'best' ? 'Not the planner\'s pick: a candidate has new best parents to try first.'
+    : `Not the planner's pick: ${o.fresh ? 'new best parents, but lower odds than the pick' : 'she already trained with these parents'}.`;
+  return P.rule === 'fresh' ? `The planner's pick: ${o.trainee.name}'s best parents are new to her, so she trains once to see what they give (the best odds among such careers).`
+    : 'The planner\'s pick: the best odds. Every candidate has already trained with her best parents.';
 }
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
@@ -600,7 +602,7 @@ function optionsEl() {
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Role</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // the loop, once
-  if (P) box.appendChild(el('p', 'sub oloop', P.loop_members?.length ? `The loop: ${loopChain(P)} (the loop planner's best loop for your settings).` : `No loop (${P.loop_note || 'none found'}): the best odds.`));
+  if (P) box.appendChild(el('p', 'sub oloop', P.loop_members?.length ? `Candidates: the loop (${loopChain(P)}, the loop planner's best for your settings) and the umas in the best career's lineage.` : `Candidates: the umas in the best career's lineage (no loop: ${P.loop_note || 'none found'}).`));
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -608,14 +610,14 @@ function optionsEl() {
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'orole', P ? roleText(r) : planS.state === 'busy' ? 'planning…' : '–'));
+    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'orole', P ? [roleText(r), freshText(r)].filter(Boolean).join(' · ') : planS.state === 'busy' ? 'planning…' : '–'));
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
     row.appendChild(act);
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  if (P) box.appendChild(el('p', 'hint', `The planner follows the loop: the next career trains a loop member other than the one whose veteran is newest, the one with the best odds (also her chance of an ${state.targets.length}/${state.targets.length} veteran), with any of your veterans as parents. A career outside the loop is picked only with at least ${P.outside_margin}× those odds. Every number here is exact.`));
+  if (P) box.appendChild(el('p', 'hint', `The planner runs the best odds, except when a candidate's best parents are new to her: then she trains once with them, since her career is the one that can change the lineage (the best career's own veterans reach it only through another uma's career). Among such candidates, the best odds. Every number here is exact (the odds are also the chance of an ${state.targets.length}/${state.targets.length} veteran).`));
   return box;
 }
 function renderResults() {

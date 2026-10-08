@@ -834,8 +834,8 @@ const TESTS = {
     // the planner's pick: the K best careers by odds, then the plan over them and a few more
     const lastJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && j.next && !j.compare).at(-1));
     const lastRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    check('career: with places open the planner picks the loop\'s next career after the six best by odds', lastJob && lastJob.top === 6 && lastJob.per_trainee === false && !lastJob.rollout
-      && lastRes && lastRes.next.options.length >= 2 && lastRes.next.loop_members.length === 3 && /^(loop|outside|best)$/.test(lastRes.next.rule) && /Planned in/.test(await note()));
+    check('career: with places open the planner picks the next career (fresh best parents, else the best odds) after the six best by odds', lastJob && lastJob.top === 6 && lastJob.per_trainee === false && !lastJob.rollout
+      && lastRes && lastRes.next.options.length >= 2 && /^(fresh|best)$/.test(lastRes.next.rule) && /Planned in/.test(await note()));
     check('career: … the career on show is its pick, with why under the odds',
       (await pg.textContent('#tree .pn.trainee .nm')) === lastRes.next.choice.trainee.name && /^The planner's pick: /.test(await pg.textContent('#pick-why')), await pg.textContent('#pick-why'));
     // the deck: a card's panel, as in the planner; marking it not owned searches again without it
@@ -857,7 +857,7 @@ const TESTS = {
     // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
     const opts = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => [...l.children].map(c => c.textContent)));
     check('career: Options lists each option with "1 in X" for this career and its role, the pick marked and shown above', opts.length >= 2
-      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^(loop member|outside the loop|best odds now)$/.test(c[2])) && /^The loop: .+ → .+ → /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
+      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^(best odds now|(loop member|in the lineage) · (new best parents|tried these parents))$/.test(c[2])) && /^Candidates: the (loop \(.+ → .+ → .+\)|umas)/.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
     check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');

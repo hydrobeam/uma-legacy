@@ -147,6 +147,32 @@ What the numbers say:
   non-base career in 15 of 16 runs on noise. More samples or a lower-variance score would be needed before a
   one-career rollout can show anything.
 
+## E4: getting off the dominant trainee (measured, 2026-10-07)
+
+The owner's 14-veteran pool (the career page's export: Gold Ship, Special Week, Seiun Sky and Agnes Digital veterans; the
+loop planner's loop El Condor Pasa → Agnes Digital → Yamanin Zephyr). Agnes Digital's best career (1 in 817) can't
+improve itself: her lineage is her two parents and theirs, so her own veterans reach it only through another uma's
+career. One-step measurements first (`index`, `index2`, 40 and 20 × 10 draws): only El Condor Pasa's veteran lifted
+Digital's best (8 of 80 draws), as a parent, through affinity (225 against Zephyr's 174 in the parent slot, relation and
+shared G1s); new Digital, Zephyr, Gold Ship or Special Week veterans lifted nothing, and the grandparent route was worth
+0 or less. Then policies to the first 8/8, runs 0-3, candidates Digital, Pasa, Zephyr, Seiun Sky, Gold Ship, Special Week:
+
+| Policy | Mean | Runs |
+|---|---|---|
+| `pick_index` (10 draws per candidate) | 537 | 524, 590, 553, 480 |
+| `stale` | 538 | 486, 523, 551, 592 |
+| `cycle` D-P-D-Z | 611 | 605, 690, 560, 588 |
+| `next_noretry` (the former page rule) | 644 | 567, 636, 701, 670 |
+| `loop` | 697 | 754, 648, 618, 768 |
+| `cycle` D-D-P | 744 | 767, 745, 748, 718 |
+| `greedy` | 817 | frozen at 1 in 817 |
+| `cycle` D-P | 849 | 860, 866, 836, 834 |
+
+`stale` beat the former rule in all four runs (78-150 careers) and matched the sampled index, with no sampling: it is
+the page's rule since. The retry variants of the former rule (retry when no other member uses the newest veteran)
+measured worse on owner14 (766 over 16 runs against 673 over 11 runs for no retry): the retry fires almost always once a lineage
+is saturated. Wall time 33 minutes on 2 cores (fixed cycles about 5 minutes a run).
+
 ## Scope: where the surrogate is verified and where it is not
 
 Verified (measured above): three pools (`career_U5`, `owner4`, `owner14`), Unity Cup, the default 8 targets with the two

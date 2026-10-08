@@ -70,13 +70,15 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 1★, keep hers, or none; a new parent's own two parents get the same). The trainee shows the affinity her six
 legacies hold (parents' and grandparents' parts).
 
-The search shows the career with the best odds first. Then the planner picks the loop's next career (the status line
-says "Planning…", then "Planned in X s"; a few seconds after the search, nothing simulated): the loop is the loop
-planner's best loop for your settings; the next career trains a loop member other than the one whose veteran is
-newest (the loop moves on), the member whose best career (any of your veterans as parents) has the best odds. A career
-whose trainee is in no loop is picked instead only when its odds are at least 1.5× that career's. Under the odds a line
-says why the career on show is (or is not) the planner's pick. With the trainee chosen by hand there is nothing for it
-to pick: the career with the best odds for her is shown, and with every place set by hand the career is just scored.
+The search shows the career with the best odds first. Then the planner picks the next career (the status line says
+"Planning…", then "Planned in X s"; a few seconds after the search, nothing simulated). Its candidates are the loop
+planner's best loop for your settings and the umas in the best career's lineage (its parents and grandparents), each
+with her best career (any of your veterans as parents). A candidate whose best parents are new to her (none of your
+veterans of hers has those two as parents) trains once, to see what they give: the best career's own veterans can't
+improve her lineage, only another uma's career can. Among such candidates the best odds; with none, the best career.
+Under the odds a line says why the career on show is (or is not) the planner's pick. With the trainee chosen by hand
+there is nothing for it to pick: the career with the best odds for her is shown, and with every place set by hand the
+career is just scored.
 
 **The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
 target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
@@ -106,10 +108,11 @@ it not owned searches again (with borrowing on, it may come back as the borrowed
 planner's schedule window for the trainee: the G1s she runs, as banner cards with their win odds (a race a parent won
 counts extra and is outlined as building affinity).
 
-With any place left to the planner, *Options* is a table of what it weighed, under one line naming the loop (e.g.
-"The loop: Pasa → Digital → Zephyr"): per option "This career: 1 in X" and its role (*loop member*, *outside the
-loop*, *best odds now*), tags *planner's pick* and *best odds now*, and **Use this**; the career on show is marked.
-While the planner works, the six best by odds with "planning…".
+With any place left to the planner, *Options* is a table of what it weighed, under one line naming the candidates
+(the loop, e.g. "Pasa → Digital → Zephyr", and the best career's lineage): per option "This career: 1 in X" and its
+role (*best odds now*, or *loop member* / *in the lineage* with *new best parents* or *tried these parents*), tags
+*planner's pick* and *best odds now*, and **Use this**; the career on show is marked. While the planner works, the
+six best by odds with "planning…".
 
 **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a

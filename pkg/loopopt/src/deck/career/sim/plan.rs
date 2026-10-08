@@ -265,7 +265,7 @@ fn sim_for<'s, 'a>(env: &'s mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a
     let fixed = env.model.fixed_factor();
     let trainees = env.owned.clone();
     Ok(Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members: vec![],
-             fastc, fixed, main: false, audits: vec![], fill: true })
+             fastc, fixed, main: false, audits: vec![], fill: true, mi: vec![], t_now: 0, run_now: 0, dcache: None })
 }
 
 /// The rotation for the loop base: (members as uma indices, their {id, name, short}, or why there is none). Members
@@ -289,7 +289,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// the pool is valued best ceiling first
     fn plan_initial(&mut self, legs: &[Legacy], refs: &[&[Vec<Ref>]]) -> St {
         let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
-                          rot: Rot { pos: 0, latest: vec![None; self.members.len()] } };
+                          rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![], since: vec![] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }
         for r in refs { self.cache.absorb(self.env, r); }
@@ -533,51 +533,60 @@ pub(in super::super) fn plan_policy<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a 
 }
 
 /// An outsider (a trainee no loop member) is picked over the loop's career only with at least this many times its odds
-const NEXT_OUTSIDE: f64 = 1.5;
-/// The page's next career, exact and without simulation. The loop: the loop planner's best loop for the job's settings
-/// (cached). Candidates: each member other than the newest veteran's (in a rotation the next career trains one of the
-/// others), her best career with any parents (the job's fixed places respected); and the best career by odds overall.
-/// Pick: the member career with the best P(all) (P(all) is also its chance of an 8/8 veteran), unless the best career
-/// overall trains no member and has at least NEXT_OUTSIDE times those odds (then it). Without a loop: the best overall.
+pub(super) const NEXT_OUTSIDE: f64 = 1.5;
+/// The page's next career, exact and without simulation (the simulator's `stale` policy, val/sim/README.md E4).
+/// Candidates: the loop planner's loop for the job's settings (cached) and the umas among the best career's six legacies,
+/// the best career's trainee T aside, each with her best career (any parents; the job's fixed places respected). A
+/// candidate is fresh when none of your own veterans of hers has her best career's two parents as parents (matched by
+/// character and sparks): her best career changed since she last trained, or she never trained. Pick: the fresh candidate
+/// with the best odds; with none, the best career. Builders run once per change of their best parents; T's own careers
+/// can't improve her lineage (her veterans reach it only as a builder's parent).
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn next_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy], pool: &Pool,
-                                      sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
+pub(in super::super) fn stale_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
+                                       pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
     let t_all = now_ms();
     let (members, minfo, mwhy) = rotation(env, d, sk, cr, job, pj);
     let loop_ms = now_ms() - t_all;
-    let newest = legs.last().and_then(|l| env.uix(l.chara)).filter(|u| members.contains(u));
+    let g = sv.found[0].clone();
+    // candidates: the loop's members, then the umas of the best career's lineage, each once
+    let mut cands: Vec<usize> = members.clone();
+    for x in [g.a, g.b] {
+        for c in std::iter::once(legs[x].chara).chain(legs[x].parents.iter().map(|p| p.chara)) {
+            if let Some(u) = env.uix(c) { if !cands.contains(&u) { cands.push(u); } }
+        }
+    }
+    cands.retain(|&u| u != g.t && trainees.contains(&u));
+    let key = |chara: u32, sp: &[(u32, u8)]| { let mut v = sp.to_vec(); v.sort(); (chara, v) };
     let t1 = now_ms();
     let budget0 = env.budget;
     if pj.search_work > 0 { env.budget = pj.search_work; env.hard = pj.search_work; }
     env.use_seen = true;
-    let mut cands: Vec<(Found, &'static str)> = vec![];
-    for &m in &members {
-        if Some(m) == newest || !trainees.contains(&m) { continue; }
-        let s = env.solve(pool, fix, &[m], false, 1);
-        if let Some(f) = s.found.into_iter().next() { cands.push((f, "loop")); }
+    let mut rows: Vec<(Found, bool, usize)> = vec![];
+    for &u in &cands {
+        let s = env.solve(pool, fix, &[u], false, 1);
+        let Some(f) = s.found.into_iter().next() else { continue };
+        let want = { let mut w = vec![key(legs[f.a].chara, &legs[f.a].sparks), key(legs[f.b].chara, &legs[f.b].sparks)]; w.sort(); w };
+        let tried = legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[u].id && l.parents.len() == 2).any(|l| {
+            let mut h = vec![key(l.parents[0].chara, &l.parents[0].sparks), key(l.parents[1].chara, &l.parents[1].sparks)]; h.sort(); h == want });
+        let n = legs.iter().filter(|l| !l.borrowed && l.chara == d.umas[u].id).count();
+        rows.push((f, !tried, n));
     }
     env.hard = 0; env.budget = budget0;
     let search_ms = now_ms() - t1;
-    let best = sv.found[0].clone();
-    let by = |x: &Found, y: &Found| x.val.partial_cmp(&y.val).unwrap();
-    let loop_best = cands.iter().map(|c| c.0.clone()).max_by(|x, y| by(x, y));
-    let outsider = !members.contains(&best.t);
-    let (pick, why) = match &loop_best {
-        Some(l) if outsider && best.val >= NEXT_OUTSIDE * l.val => (best.clone(), "outside"),
-        Some(l) => (l.clone(), "loop"),
-        None => (best.clone(), if members.is_empty() { "no_loop" } else { "best" }),
-    };
-    let same = |x: &Found, y: &Found| (x.t, x.a.min(x.b), x.a.max(x.b)) == (y.t, y.a.min(y.b), y.a.max(y.b));
-    if !cands.iter().any(|c| same(&c.0, &best)) { cands.push((best.clone(), if outsider { "outside" } else { "best" })); }
-    cands.sort_by(|x, y| y.0.val.partial_cmp(&x.0.val).unwrap());
-    let opts: Vec<Value> = cands.iter().map(|(f, role)| {
+    let pick = rows.iter().enumerate().filter(|(_, r)| r.1).max_by(|x, y| x.1.0.val.partial_cmp(&y.1.0.val).unwrap()).map(|(i, _)| i);
+    let role = |u: usize| if members.contains(&u) { "loop" } else { "lineage" };
+    let mut opts: Vec<Value> = vec![];
+    let mut r = env.report(pool, &g, false);
+    { let o = r.as_object_mut().unwrap(); o.insert("role".into(), json!("best")); o.insert("best_odds".into(), json!(true)); o.insert("chosen".into(), json!(pick.is_none())); }
+    opts.push(r);
+    for (i, (f, fresh, n)) in rows.iter().enumerate() {
         let mut r = env.report(pool, f, false);
         let o = r.as_object_mut().unwrap();
-        o.insert("role".into(), json!(role)); o.insert("best_odds".into(), json!(same(f, &best))); o.insert("chosen".into(), json!(same(f, &pick)));
-        r
-    }).collect();
-    let choice = env.report(pool, &pick, true);
-    json!({"options": opts, "choice": choice, "rule": why, "outside_margin": NEXT_OUTSIDE, "loop_members": minfo, "loop_note": mwhy,
-           "newest_member": newest.map(|u| json!({"id": d.umas[u].id, "name": d.umas[u].name})),
+        o.insert("role".into(), json!(role(f.t))); o.insert("fresh".into(), json!(fresh)); o.insert("veterans".into(), json!(n));
+        o.insert("best_odds".into(), json!(false)); o.insert("chosen".into(), json!(pick == Some(i)));
+        opts.push(r);
+    }
+    let choice = match pick { Some(i) => env.report(pool, &rows[i].0, true), None => env.report(pool, &g, true) };
+    json!({"options": opts, "choice": choice, "rule": if pick.is_some() { "fresh" } else { "best" }, "loop_members": minfo, "loop_note": mwhy,
            "loop_ms": loop_ms, "search_ms": search_ms, "total_ms": now_ms() - t_all})
 }
