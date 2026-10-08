@@ -143,7 +143,11 @@ UI_SPRITES = {'friend_frame': ('atlas/singlecommon', 'utx_frm_friend_support_00_
               **{'skill_' + k: ('atlas/common', f'utx_btn_skill_base_0{i}_sl') for i, k in enumerate(['white', 'gold', 'unique', 'pink'])},
               'pill': ('atlas/common', 'utx_btn_square_00_sl'),
               # the spark stars: gold and empty (atlas/common utx_ico_strong_star_00 / _01)
-              'star_on': ('atlas/common', 'utx_ico_strong_star_00'), 'star_off': ('atlas/common', 'utx_ico_strong_star_01')}
+              'star_on': ('atlas/common', 'utx_ico_strong_star_00'), 'star_off': ('atlas/common', 'utx_ico_strong_star_01'),
+              # the career page's race schedule, as the game's Scheduled Races: a slot's white frame (9-slice 22), an empty
+              # turn before the debut (9-slice 19/17), the pink "Scheduled" badge (sliced across, 40), the green plus
+              'slot_frame': ('atlas/single', 'utx_frm_racelist_white_00_sl'), 'slot_empty': ('atlas/common', 'utx_frm_emptybase_00_sl'),
+              'sched_badge': ('atlas/single', 'utx_frm_reserved_badge_00_sl'), 'plus': ('atlas/common', 'utx_ico_plus_00')}
 
 
 # the game's common buttons (resources.assets; 9-slice, sliced across only, borders L/R in px): white and green rectangle
@@ -196,8 +200,9 @@ def ui_sprites(force, manifest):
 # (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
 # a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
 DARK_SPRITES = {'spark_white': (0.09, 0.21, 1.0, 0), 'skill_white': (0.09, 0.21, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
-                'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0)}
-CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off'}   # their saturation is capped by the pixel's real chroma
+                'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
+                'slot_frame': (0.09, 0.21, 1.0, 0), 'slot_empty': (0.07, 0.14, 1.0, 0)}
+CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off', 'slot_frame', 'slot_empty'}   # their saturation is capped by the pixel's real chroma
 SHADE = {'skill_white': 0.35}   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
 
 
