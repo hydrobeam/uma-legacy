@@ -21,7 +21,11 @@ function pinksOf(fs) {
   for (const f of fs || []) { const g = Math.floor(f.factor_id / 100); if (CAREER.pinks[g] !== undefined) out[g] = Math.max(out[g] || 0, f.factor_id % 100); }
   return out;
 }
-const node = (x) => ({ chara: Math.floor(x.card_id / 100), outfit: x.card_id, sparks: sparksOf(x.factor_info_array), pinks: pinksOf(x.factor_info_array), wins: winsOf(x.win_saddle_id_array) });
+// blue (stat) sparks: factor groups 1..5; unique (green) sparks: the outfit's card id as the factor group
+function kindOf(fs, keep) { const out = {}; for (const f of fs || []) { const g = Math.floor(f.factor_id / 100); if (keep(g)) out[g] = Math.max(out[g] || 0, f.factor_id % 100); } return out; }
+const node = (x) => ({ chara: Math.floor(x.card_id / 100), outfit: x.card_id, sparks: sparksOf(x.factor_info_array), pinks: pinksOf(x.factor_info_array),
+  blues: kindOf(x.factor_info_array, g => g >= 1 && g <= 5), greens: kindOf(x.factor_info_array, g => g >= 100000 && (CAREER.uniques || {})[g] !== undefined),
+  wins: winsOf(x.win_saddle_id_array) });
 
 // the list of veterans in an export: the file's array, or the first array of veteran records inside an object
 function records(o) {

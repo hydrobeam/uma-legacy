@@ -763,3 +763,593 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .tsum { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #sim-top { min-width: 0; }
 #sim-wins { justify-self: start; }
+
+/* ---------- the game's style (career page): the veteran card (details.js, the game's "Umamusume Details") and the
+   surrounding career page (.rb) ----------
+   The game's colours, sampled from in-game screenshots (brown ink #794016, title green #7ecf08, selected tab #9dd934,
+   white text outlined in dark green, white on the pink spark bar, gold stars): faithful to the game rather than WCAG AAA
+   (the owner's choice; the suite's contrast audit skips these elements, the rest of the site keeps AAA). The game's art
+   where shipped (--spark-*, --skill-*, --pill; grade letters as <img>) in light mode; dark mode (the game has none)
+   draws the white bars, tiles and pill in CSS on dark panels and keeps the pink and gold art. */
+:root {
+  --gm-ink: #794016; --gm-ink2: #9c6a43; --gm-panel: #ffffff; --gm-pane: #f2f3f2; --gm-cell: #ffffff; --gm-line: #e1d8cf; --gm-edge: #d8d3dd;
+  --gm-shadow: rgba(80, 60, 40, .16); --gm-green: #7ecf08; --gm-green2: #66b800; --gm-bright: #a6e03c; --gm-bright2: #7cc40d; --gm-bright-ink: #ffffff;
+  --gm-outline: 0 1px 0 #3c7a00, 1px 0 0 #3c7a00, -1px 0 0 #3c7a00, 0 -1px 0 #3c7a00, 0 2px 2px rgba(40, 80, 0, .45);
+  --gm-bar: #e6e6e6; --gm-bar2: #d4d4d4; --gm-bar-ink: #794016; --gm-pink: #ff8fc0; --gm-pink2: #ff6fa9; --gm-pink-ink: #ffffff;
+  --gm-tile: #dfdbeb; --gm-tile2: #cbc5de; --gm-tile-edge: #a9a2c3; --gm-tile-ink: #794016; --gm-off: #ecebef; --gm-off-ink: #8f857c;
+  --gm-gold: #ffd36b; --gm-gold2: #ffbf33; --gm-gold-edge: #d68a00; --gm-gold-ink: #794016; --gm-g1: #3c7fd8; --gm-won: #f08a00; --gm-lost: #b9b2a8;
+  --gm-tab: #ffffff; --gm-tab-edge: #d8d6dc; --gm-tab-low: #e6e3ec; --gm-hero: linear-gradient(160deg, #eef1f8 0%, #f7f4f0 55%, #ffffff 100%);
+  --gm-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffd23a' stroke='%23e39a12' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%23ffffff' stroke='%23d3ccc1' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] {
+  --gm-ink: #f3e6da; --gm-ink2: #e8dccf; --gm-panel: #1f2328; --gm-pane: #16191d; --gm-cell: #2a2f36; --gm-line: #454b55; --gm-edge: #4d535d;
+  --gm-shadow: rgba(0, 0, 0, .55);   /* the game's spark bars and skill tiles keep their own (light) art and brown ink */
+  /* the game's greens toned down for a dark page (bars, the selected tab, primary buttons), the same outlined white text */
+  --gm-green: #4c8f0d; --gm-green2: #3b7507; --gm-bright: #63ad16; --gm-bright2: #4f960b;
+  --gm-outline: 0 1px 0 #1f3f00, 1px 0 0 #1f3f00, -1px 0 0 #1f3f00, 0 -1px 0 #1f3f00, 0 2px 2px rgba(0, 0, 0, .5);
+  --gm-off: #24272c; --gm-off-ink: #8f877e;
+  --gm-won: #ffad3d; --gm-lost: #7d766e; --gm-tab: #2a2f36; --gm-tab-edge: #4d535d; --gm-tab-low: #20242a;
+  --gm-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
+  --gm-star0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.8l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 17.9l-6.4 3.5 1.4-7.1-5.3-5 7.2-.9z' fill='%232a2f36' stroke='%236f6a62' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* green header bars: the card's title, "Sparks" / "Race record", and the career page's section titles */
+#simulation > h3, .udhdr, .rb .rbsec > h3 { position: relative; margin: 0; border: 0; color: #fff; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 900;
+  font-size: 1.05rem; line-height: 1.3; letter-spacing: .01em; text-shadow: var(--gm-outline); background-color: var(--gm-green);
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .12) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
+  background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
+#simulation > h3 { text-align: center; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; font-size: 1.2rem; }
+.rb #simulation > h3 { clip-path: none; padding: 7px 12px 8px; border-radius: 12px 12px 0 0; }
+.rb #simulation > h3::after { content: none; }
+.udhdr, .rb .rbsec > h3 { padding: 3px 40px 3px 12px; clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%); border-radius: 4px 0 0 4px; }
+.udhdr::after, .rb .rbsec > h3::after { content: ''; position: absolute; top: 0; bottom: 0; right: 13px; width: 6px; background: var(--gm-green2); transform: skewX(-14deg); box-shadow: -9px 0 0 var(--gm-green2); opacity: .8; }
+#simulation { gap: 12px; }
+#simulation > h3, #simulation > .ud { width: 100%; max-width: 640px; box-sizing: border-box; }
+/* the card */
+.ud { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 1px solid var(--gm-edge); border-top: 0;
+  border-radius: 0 0 14px 14px; margin-top: -12px; padding: 0 0 12px; display: grid; gap: 10px; min-width: 0; box-shadow: 0 2px 8px var(--gm-shadow); }
+.udtop { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; padding: 14px 16px 10px; background: var(--gm-hero); border-bottom: 1px solid var(--gm-line); }
+.udpor { border-radius: 50%; padding: 4px; background: var(--gm-panel); box-shadow: 0 0 0 3px #efe3cf, 0 2px 5px var(--gm-shadow); line-height: 0; }
+.udname { text-align: right; min-width: 0; }
+.udout { font-weight: 700; font-size: 1rem; } .udnm { font-weight: 900; font-size: 1.35rem; line-height: 1.2; overflow-wrap: anywhere; }
+.udapt { display: grid; gap: 5px; padding: 0 14px; }
+.udarow { display: grid; grid-template-columns: 74px repeat(4, minmax(0, 1fr)); gap: 5px; align-items: center; }
+.udal { font-weight: 700; font-size: 0.95rem; }
+.udac { display: flex; align-items: center; justify-content: space-between; gap: 2px; min-width: 0; background: var(--gm-cell); border: 1px solid var(--gm-line);
+  border-radius: 6px; padding: 2px 5px 2px 8px; font-weight: 700; font-size: 0.92rem; box-shadow: inset 0 -2px 0 var(--gm-tab-low); }
+.udan { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.udg { width: 20px; height: 23px; flex: none; object-fit: contain; }
+.udg.txt { display: inline-grid; place-items: center; font-weight: 900; font-size: 1.05rem; color: var(--gm-ink); }
+.udtabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 4px 12px 0; padding: 3px; border-radius: 999px; background: var(--gm-tab);
+  border: 1px solid var(--gm-tab-edge); box-shadow: inset 0 -3px 0 var(--gm-tab-low), 0 1px 2px var(--gm-shadow); }
+.udtab { font: inherit; font-weight: 700; font-size: 1rem; color: var(--gm-ink); background: transparent; border: 0; border-radius: 999px; min-height: 42px; cursor: pointer; }
+.udtab[aria-selected="true"] { color: #fff; background-color: var(--gm-bright); background-image: linear-gradient(var(--gm-bright), var(--gm-bright2));
+  text-shadow: var(--gm-outline); box-shadow: inset 0 -3px 0 #5aa300, inset 0 2px 0 rgba(255, 255, 255, .3); }
+.udtab:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.udpanes { margin: 0 12px; background: var(--gm-pane); border-radius: 10px; padding: 10px; min-width: 0; }
+.udpane { display: grid; gap: 8px; min-width: 0; }
+.udnone, .udfoot { margin: 0; font-size: 0.85rem; color: var(--gm-ink2); }
+/* Skills: the game's skill tiles, two per row; not bought: greyed */
+.udskills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.udsk { position: relative; isolation: isolate; display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 5px 12px 9px 8px; min-width: 0;
+  font-weight: 700; color: var(--gm-tile-ink); border-radius: 9px; background-color: var(--gm-tile); background-image: linear-gradient(var(--gm-tile), var(--gm-tile2));
+  box-shadow: inset 0 -4px 0 var(--gm-tile-edge); }
+.udsk.gold { color: var(--gm-gold-ink); background-color: var(--gm-gold); background-image: linear-gradient(#fff0b0, var(--gm-gold2)); box-shadow: inset 0 -4px 0 var(--gm-gold-edge); }
+.udsk::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-color: transparent; border-width: 9px 9px 14px 9px;
+  border-image: var(--skill-white) 18 18 28 18 fill / 9px 9px 14px 9px stretch; }
+.udsk.gold::before { border-image-source: var(--skill-gold); }
+.udsk.off { color: var(--gm-off-ink); background-color: var(--gm-off); background-image: none; box-shadow: inset 0 0 0 2px var(--gm-edge); border-radius: 9px; }
+.udsk.off::before { content: none; }
+.udsk.off .sic { filter: grayscale(1); opacity: .6; }
+.udsk .sic { width: 30px; height: 30px; margin: 0; flex: none; }
+.udskt { display: grid; gap: 1px; min-width: 0; }
+.udskn { font-size: 0.98rem; line-height: 1.2; overflow-wrap: anywhere; }
+.udsks { font-size: 0.72rem; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+/* Inspiration: her row and her parents' under "Legacy Origin", a line joining them; the game's spark bars, stars on
+   their bottom edge */
+.udlin { position: relative; display: grid; gap: 8px; }
+.udlin::before { content: ''; position: absolute; left: 30px; top: 70px; bottom: 34px; width: 4px; border-radius: 2px; background: var(--gm-edge); }
+.udrow { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start; position: relative; }
+.udface { box-shadow: 0 0 0 3px var(--gm-panel), 0 0 0 5px #efe3cf; position: relative; }
+.udorigin { display: flex; align-items: center; gap: 10px; font-weight: 700; padding-left: 74px; }
+.udorigin::after { content: ''; flex: 1; height: 1px; background: var(--gm-line); }
+.ud .simskills { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ud .vsparks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; }
+.ud .vsk { display: block; min-width: 0; padding-bottom: 12px; }
+.ud .vsk.pink { order: -1; }
+.ud .vskb { position: relative; isolation: isolate; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; column-gap: 6px;
+  width: 100%; height: 34px; min-width: 0; padding: 0 10px 0 7px; border: 0; border-radius: 7px; color: var(--gm-bar-ink);
+  background-color: var(--gm-bar); background-image: linear-gradient(#f7f7f7, var(--gm-bar2)); box-shadow: inset 0 -3px 0 #bdbdbd;
+  font: inherit; font-weight: 700; font-size: 0.95rem; line-height: 1.12; }
+.ud .vskb::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-color: transparent; border-width: 0 96px 0 19px;
+  border-image: var(--spark-white) 0 200 0 40 fill / 0 96px 0 19px stretch; }
+.ud .vskb::after { content: ''; grid-column: 1; grid-row: 1; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6); }
+.ud .vsk.pink .vskb { text-shadow: 0 1px 1px rgba(150, 30, 80, .6); color: var(--gm-pink-ink); background-color: var(--gm-pink); background-image: linear-gradient(#ffb1d4, var(--gm-pink2)); box-shadow: inset 0 -3px 0 #e2558f; }
+.ud .vsk.pink .vskb::before { border-image-source: var(--spark-pink); }
+.ud .vskb .sic { display: none; }
+.ud .vskn { grid-column: 2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ud .vskb .stars { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); display: flex; z-index: 1; height: 18px; letter-spacing: 0; }
+.ud .vskb .stars .sf, .ud .vskb .stars .se { display: block; height: 18px; width: calc(var(--n, 0) * 19px); font-size: 0; color: var(--gm-ink);
+  background: var(--gm-star) 0 0 / 19px 18px repeat-x; }
+.ud .vskb .stars .se { background-image: var(--gm-star0); }
+.ud .vskb:hover { filter: brightness(1.04); }
+.ud .vskb:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ud .vskx { top: -6px; right: -4px; background: var(--gm-cell); color: var(--out); border-color: var(--gm-edge); }
+.ud .vskadd { height: 34px; border: 2px dashed var(--gm-edge); border-radius: 7px; color: var(--gm-ink); background: var(--gm-cell); font: inherit; font-weight: 900; font-size: 1.1rem; align-self: start; }
+.ud .udpsp .vskb { cursor: default; }
+/* Career Info */
+.udsum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.udstat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 8px; padding: 6px 10px; }
+.udsl { font-weight: 700; font-size: 0.9rem; } .udsv { font-size: 1.25rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.udraces { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.udrace { display: grid; grid-template-columns: 112px auto minmax(0, 1fr) 40px; gap: 8px; align-items: center; background: var(--gm-cell); border: 1px solid var(--gm-line);
+  border-radius: 8px; padding: 5px 10px; font-weight: 700; font-size: 0.92rem; }
+.udrw { font-size: 0.78rem; color: var(--gm-ink2); }
+.udgr { font-size: 0.72rem; font-weight: 900; color: #fff; background: var(--gm-g1); border-radius: 4px; padding: 1px 6px; }
+.udrn { overflow-wrap: anywhere; }
+.udres { text-align: right; font-weight: 900; color: var(--gm-lost); }
+.udrace.won .udres { color: var(--gm-won); }
+.udact { display: flex; justify-content: flex-end; }
+@media (max-width: 520px) {
+  .udarow { grid-template-columns: 52px repeat(4, minmax(0, 1fr)); gap: 3px; }
+  .udac { padding: 2px 2px 2px 4px; font-size: 0.68rem; letter-spacing: -0.2px; } .udg { width: 14px; height: 17px; }
+  .udal { font-size: 0.8rem; } .udapt { padding: 0 8px; } .udpanes { margin: 0 8px; padding: 8px; } .udtabs { margin: 4px 8px 0; }
+  .udtab { font-size: 0.92rem; }
+  .ud .vsparks { gap: 0 6px; }
+  .ud .vskb { font-size: 0.8rem; padding: 0 6px 0 5px; column-gap: 4px; grid-template-columns: 15px minmax(0, 1fr); }
+  .ud .vskb::after { width: 14px; height: 14px; }
+  .udrow { grid-template-columns: 48px minmax(0, 1fr); gap: 6px; } .udrow .udface { width: 48px !important; height: 48px !important; }
+  .udlin::before { left: 22px; top: 54px; } .udorigin { padding-left: 54px; }
+  .udskills { grid-template-columns: minmax(0, 1fr); }
+  .udrace { grid-template-columns: 84px auto minmax(0, 1fr) 30px; gap: 6px; }
+  .udnm { font-size: 1.15rem; }
+}
+
+/* the career page around the card, in the same style (.rb: settings bar, tree, results, your veterans) */
+.rb { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); }
+.rb .rbtitle h2 { color: var(--gm-ink); display: flex; align-items: center; gap: 10px; }
+.rb .rbtitle h2::before { content: ''; width: 8px; height: 1.1em; border-radius: 4px; background: linear-gradient(var(--gm-bright), var(--gm-bright2)); box-shadow: inset 0 -2px 0 var(--gm-green); }
+.rb .hint, .rb .sub, .rb .tl { color: var(--gm-ink2); }
+.rb .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low));
+  border: 1px solid var(--gm-edge); border-radius: 999px; padding: 6px 16px; box-shadow: inset 0 -3px 0 var(--gm-tab-edge); }
+.rb .btn:hover { border-color: var(--gm-green); }
+.rb .btn:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 var(--gm-tab-edge); }
+.rb .btn.primary { color: var(--gm-bright-ink); text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2));
+  border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
+.rb .btn:disabled { opacity: 1; color: var(--gm-off-ink); background: var(--gm-off); box-shadow: none; }
+.rb .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.rb .rbbar { border-block: 0; background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
+.rb .rbbar .tbtn { border: 1px solid var(--gm-edge); border-radius: 999px; background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low));
+  box-shadow: inset 0 -3px 0 var(--gm-tab-edge); color: var(--gm-ink); }
+.rb .seg button[aria-pressed="true"] { color: #fff; background-color: var(--gm-bright2); text-shadow: var(--gm-outline); }
+.rb .pn { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 10px 12px; }
+.rb .pn.ghost { border: 2px dashed var(--gm-green); background: var(--gm-panel); }
+.rb .pn .pnh { color: var(--gm-ink); }
+.rb .pn.trainee .tnm .nm, .rb .pn .nm { color: var(--gm-ink); }
+.rb .goalnote { border-left: 0; border-radius: 12px; background: var(--gm-panel); border: 1px solid var(--gm-edge); box-shadow: inset 6px 0 0 var(--gm-bright2), 0 2px 6px var(--gm-shadow); color: var(--gm-ink); }
+.rb .deck, .rb .rbsec .tc, .rb .vet { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
+.rb .rbsec > h3 { justify-self: stretch; }
+.rb .cartab { border-collapse: separate; border-spacing: 0 4px; }
+.rb .cartab th, .rb .cartab td { color: var(--gm-ink); }
+.rb .cartab thead th { color: var(--gm-ink2); font-weight: 700; }
+.rb .cartab tbody tr > * { background: var(--gm-cell); border-block: 1px solid var(--gm-line); }
+.rb .cartab tbody tr > :first-child { border-left: 1px solid var(--gm-line); border-radius: 8px 0 0 8px; }
+.rb .cartab tbody tr > :last-child { border-right: 1px solid var(--gm-line); border-radius: 0 8px 8px 0; }
+.rb .optab tbody tr.on > * { background: var(--gm-tile); }
+.rb .vet .vtop .vno { color: var(--gm-ink); font-weight: 900; }
+.rb .vet .vnm { color: var(--gm-ink); }
+/* your veterans' spark chips: small spark bars */
+.rb .vet .vskb, .rb .pn .vskb { color: var(--gm-bar-ink); background-color: var(--gm-bar); background-image: linear-gradient(#f7f7f7, var(--gm-bar2));
+  border: 0; border-radius: 6px; box-shadow: inset 0 -2px 0 #bdbdbd; padding: 3px 8px 3px 4px; }
+.rb .vet .vsk.pink .vskb, .rb .pn .vsk.pink .vskb { text-shadow: 0 1px 1px rgba(150, 30, 80, .6); color: var(--gm-pink-ink); background-color: var(--gm-pink); background-image: linear-gradient(#ffb1d4, var(--gm-pink2)); box-shadow: inset 0 -2px 0 #e2558f; }
+.rb .vet .vskb .stars, .rb .pn .vskb .stars { color: var(--gm-ink); }
+.rb .vskadd { border-radius: 6px; border-color: var(--gm-edge); color: var(--gm-ink); }
+
+/* ---------- round 3: the game's stars, compact skill tiles and their popup, Career Info, the legacy boxes, the two-column
+   veteran analysis, the veterans' toggle ---------- */
+.ud .vskb .stars .sf { background-image: var(--star-on, var(--gm-star)); }
+.ud .vskb .stars .se { background-image: var(--star-off, var(--gm-star0)); }
+.ud .vskb .stars .sf, .ud .vskb .stars .se { height: 20px; width: calc(var(--n, 0) * 20px); background-size: 20px 20px; background-repeat: repeat-x; background-position: 0 0;
+  filter: drop-shadow(0 1px 1px rgba(80, 50, 10, .35)); }
+.ud .vskb .stars { bottom: -11px; height: 20px; }
+/* skill tiles: name only, a button opening the popup */
+.udsk { font: inherit; text-align: left; cursor: pointer; border: 0; width: 100%; min-height: 46px; }
+.udsk:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.udsk:hover { filter: brightness(1.04); }
+.udsk .udskn { font-weight: 700; }
+/* the game-style popup (skill details) */
+.gmdlg { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 0; border-radius: 14px; padding: 0; width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35); overflow: hidden; }
+.gmdlg::backdrop { background: rgba(20, 20, 30, .45); }
+.gmdhdr { margin: 0; text-align: center; color: #fff; font-weight: 900; font-size: 1.15rem; padding: 8px 12px; text-shadow: var(--gm-outline);
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 6px, transparent 6px 12px) left / 28% 100% no-repeat, linear-gradient(var(--gm-green), var(--gm-green2)); background-color: var(--gm-green); }
+.gmdbody { display: grid; gap: 10px; padding: 14px 16px; background: var(--gm-pane); }
+.gmdbody .udsk { cursor: default; }
+.gmdstat { margin: 0; font-weight: 700; color: var(--gm-ink2); } .gmdstat.on { color: var(--gm-ink); }
+.gmdsub { font-weight: 900; border-bottom: 2px solid var(--gm-line); padding-bottom: 2px; }
+.gmdlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.gmdlist li, .gmdlist.two > div { display: flex; justify-content: space-between; gap: 10px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 8px; padding: 5px 10px; font-weight: 700; }
+.gmdlist.two { grid-template-columns: 1fr 1fr; }
+.gmdlist b { font-variant-numeric: tabular-nums; }
+.gmdfoot { display: flex; justify-content: center; padding: 12px; background: var(--gm-panel); }
+.gmclose { min-width: 160px; font-family: inherit; font-weight: 700; font-size: 1.05rem; color: var(--gm-ink); border-radius: 12px; padding: 8px 20px;
+  background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge); box-shadow: inset 0 -4px 0 var(--gm-tab-edge); }
+/* Career Info */
+.udsub { font-weight: 900; font-size: 0.98rem; display: flex; align-items: center; gap: 8px; }
+.udsub::after { content: ''; flex: 1; height: 1px; background: var(--gm-line); }
+.udcards { display: flex; flex-wrap: wrap; gap: 6px; }
+.udcard { position: relative; line-height: 0; border-radius: 6px; }
+.udcard.bor { box-shadow: 0 0 0 3px var(--gm-pink2); }
+.udfr { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); line-height: 1.2; font-size: 0.68rem; font-weight: 900; color: #fff; background: var(--gm-pink2); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+.udlegs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.udleg { position: relative; border: 3px solid #3ab0f5; border-radius: 10px; background: var(--gm-cell); padding: 22px 8px 8px; min-width: 0; }
+.udleg.l2 { border-color: #ff7ab3; }
+.udlegh { position: absolute; top: 0; left: 0; color: #fff; font-weight: 900; font-size: 0.85rem; padding: 1px 12px 2px 8px; background: #3ab0f5; border-radius: 6px 0 10px 0; }
+.udleg.l2 .udlegh { background: #ff7ab3; }
+.udlegt { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 18px; }
+.udlegp { display: grid; justify-items: center; gap: 2px; text-align: center; position: relative; }
+.udlegn { font-weight: 700; font-size: 0.78rem; line-height: 1.15; max-width: 92px; overflow-wrap: anywhere; }
+.udguest { font-size: 0.72rem; font-weight: 900; color: #fff; background: #ff7ab3; border-radius: 999px; padding: 0 8px; }
+.udleggp { display: grid; gap: 8px; position: relative; }
+.udleggp::before { content: ''; position: absolute; left: -12px; top: 22%; bottom: 22%; border: 2px solid var(--gm-edge); border-right: 0; border-radius: 4px 0 0 4px; }
+.udleggp::after { content: ''; position: absolute; left: -18px; top: 50%; width: 6px; border-top: 2px solid var(--gm-edge); }
+.udleggx { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.78rem; min-width: 0; }
+.udleggx span { overflow-wrap: anywhere; }
+.udrec { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 8px; padding: 5px 10px; font-weight: 700; }
+.udrecl { font-size: 0.8rem; background: var(--gm-pane); border-radius: 999px; padding: 1px 10px; }
+.udrec .udstat { border: 0; background: none; padding: 0; }
+.udact { gap: 8px; flex-wrap: wrap; }
+.rb .btn.udmore { margin-right: auto; }
+/* the main pedigree as the game's legacy boxes: Legacy 1 blue, Legacy 2 pink */
+.rb .pf { position: relative; border: 3px solid #3ab0f5; border-radius: 14px; background: color-mix(in srgb, #3ab0f5 7%, var(--gm-panel)); padding: 30px 10px 10px; }
+.rb .pk > .pf + .pf { border-color: #ff7ab3; background: color-mix(in srgb, #ff7ab3 7%, var(--gm-panel)); }
+.rb .pflab { position: absolute; top: 0; left: 0; z-index: 1; color: #fff; font-weight: 900; font-size: 0.95rem; padding: 2px 16px 3px 10px; background: #3ab0f5; border-radius: 10px 0 12px 0; text-shadow: 0 1px 1px rgba(0, 60, 110, .4); }
+.rb .pk > .pf + .pf .pflab { background: #ff7ab3; text-shadow: 0 1px 1px rgba(130, 20, 70, .4); }
+.rb .pk::before, .rb .pk > *::before, .rb .pk > *::after { border-color: var(--gm-edge); border-width: 3px; }
+.rb .pf > .pk::before, .rb .pf > .pk > *::before, .rb .pf > .pk > *::after { border-color: color-mix(in srgb, var(--gm-ink) 35%, transparent); }
+.rb .pn.gp { box-shadow: 0 1px 4px var(--gm-shadow); }
+.rb .gate { border-color: var(--gm-ink); border-radius: 6px; }
+.rb .pnl { font-family: inherit; letter-spacing: .04em; color: var(--gm-ink2); }
+.rb .aff { font-family: inherit; border-color: var(--gm-line); border-radius: 999px; background: var(--gm-cell); color: var(--gm-ink); }
+/* the veteran analysis in two columns on a wide screen: her card, and beside it the actions and the comparison */
+.simcol { display: grid; gap: 12px; align-content: start; min-width: 0; }
+#sim-top { container-type: inline-size; min-width: 0; }
+@container (min-width: 900px) {
+  #simulation { grid-template-columns: minmax(0, 640px) minmax(0, 1fr); column-gap: 20px; align-items: start; }
+  #simulation > h3 { grid-column: 1; grid-row: 1; }
+  #simulation > .ud { grid-column: 1; grid-row: 2; }
+  #simulation > .simcol { grid-column: 2; grid-row: 1 / span 2; }
+  .simcol .simodds { grid-template-columns: minmax(0, 1fr); }
+}
+/* your veterans: behind a button */
+@media (max-width: 520px) { .udlegs { grid-template-columns: minmax(0, 1fr); } }
+
+/* the Inspiration view inside the tree's node popups: the card's bars and stars without the card's frame */
+.ud.udbare { border: 0; box-shadow: none; margin: 0; padding: 0; background: none; border-radius: 0; display: block; }
+.nodedlg { width: min(600px, calc(100vw - 32px)); }
+.udinsp { display: grid; gap: 8px; }
+.udlin.solo::before { content: none; }
+
+/* ---------- round 5: the tree in a column beside the results; deck and schedule under the trainee; game-style dialogs and
+   tooltips ---------- */
+@media (min-width: 1180px) {
+  .rb .rbmain { grid-template-columns: minmax(330px, 400px) minmax(0, 1fr); column-gap: 22px; align-items: start; }
+  .rb .rbmain > .rbtitle, .rb .rbmain > p.hint { grid-column: 1 / -1; }
+  .rb .rbmain > #tree { grid-column: 1; }
+  .rb .rbmain > #results { grid-column: 2; min-width: 0; }
+  /* the tree, top to bottom: the trainee, then Legacy 1 and Legacy 2 */
+  .rb .ped { flex-direction: column; align-items: stretch; margin-top: 0; }
+  .rb .ped > .pt { flex: none; }
+  .rb .ped > .pk { margin: 12px 0 0; padding-left: 0; gap: 12px; }
+  .rb .ped > .pk::before, .rb .ped > .pk > *::before, .rb .ped > .pk > *::after { display: none; }
+  .rb .pf > .pn { min-width: 0; flex: 1 1 0; }
+  .rb .pf > .pk { margin-left: 22px; }
+  .rb .pn.gp { min-width: 0; }
+  #results > .lhead { margin-top: 0; }
+}
+.rb .pn.trainee { justify-items: center; }
+.rb .tdeck { justify-content: center; gap: 8px; margin-top: 2px; }
+.rb .pn.trainee .deck { width: 100%; margin-top: 4px; }
+.rb .pn.trainee .deck .dcards { grid-template-columns: repeat(3, minmax(0, 96px)); justify-content: center; }
+/* the career page's dialogs, as the game's: a green title bar, a pale body, pill buttons */
+:root:has(.rb) dialog:not(.gmdlg) { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-pane); border: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+:root:has(.rb) dialog:not(.gmdlg) > .dlg > .dhead { top: -18px; background-color: var(--gm-green); border: 0;
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
+  background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
+:root:has(.rb) dialog:not(.gmdlg) > .dlg > .dhead h3 { color: #fff; text-shadow: var(--gm-outline); flex: 1; text-align: center; }
+:root:has(.rb) dialog:not(.gmdlg) .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); border-radius: 999px; border: 1px solid var(--gm-edge);
+  background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); box-shadow: inset 0 -3px 0 var(--gm-tab-edge); }
+:root:has(.rb) dialog:not(.gmdlg) .btn.primary { color: #fff; text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2)); border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
+:root:has(.rb) .cpop, :root:has(.rb) #add-pop { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; box-shadow: 0 6px 18px var(--gm-shadow); }
+/* tooltips: the game's balloon */
+.gmtip { position: fixed; z-index: 1000; max-width: 300px; pointer-events: none; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; font-size: 0.82rem; line-height: 1.3;
+  color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; padding: 6px 10px; box-shadow: 0 4px 12px var(--gm-shadow); white-space: pre-line; }
+.gmtip::before { content: ''; position: absolute; top: -8px; left: calc(50% - 7px); border: 7px solid transparent; border-top: 0; border-bottom: 8px solid var(--gm-bright2); }
+.gmtip.up::before { top: auto; bottom: -8px; border-bottom: 0; border-top: 8px solid var(--gm-bright2); }
+/* skill tiles: the game's tile art scaled whole (its 9-slice stretched the middle into a vertical band) */
+.udsk::before { border: 0; border-image: none; background: var(--skill-white) 0 0 / 100% 100% no-repeat; border-radius: 9px; }
+.udsk.gold::before { background-image: var(--skill-gold); }
+
+/* your veterans: compact cards, her sparks in her popup */
+.vtile { all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; cursor: pointer; padding: 4px 6px; border-radius: 10px; }
+.vtile:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
+.vtile:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.vtile .tnm { display: grid; } .vtile .nm { font-weight: 900; color: var(--gm-ink); } .vtile .sub { font-size: 0.78rem; color: var(--gm-ink2); }
+.vtps { display: flex; gap: 2px; }
+.rb .vets { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.vpars { display: grid; gap: 6px; }
+.vpars .twho { display: flex; align-items: center; gap: 8px; }
+.udlegp { all: unset; box-sizing: border-box; display: grid; justify-items: center; gap: 2px; text-align: center; cursor: pointer; border-radius: 10px; padding: 2px; }
+.udlegp:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
+.udlegp:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* the card's header: Compare, Roll and Add between her portrait and her name */
+.udtop { grid-template-columns: auto minmax(0, 1fr) auto; }
+.udtop > .row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-content: center; }
+.udtop > .row .btn { font-size: 0.82rem; padding: 5px 12px; }
+@media (max-width: 520px) { .udtop { grid-template-columns: auto minmax(0, 1fr); } .udtop > .row { grid-column: 1 / -1; grid-row: 2; } }
+
+/* wide screens: the tree beside the odds and the veteran analysis only; the target skills and options below at full
+   width (the results box joins the page grid) */
+@media (min-width: 1180px) {
+  .rb .rbmain > #results { display: contents; }
+  .rb .rbmain > #tree { grid-column: 1; grid-row: 3 / span 2; align-self: start; }
+  .rb #results > .lhead { grid-column: 2; grid-row: 3; }
+  .rb #results > #sim-top { grid-column: 2; grid-row: 4; }
+  .rb #results > :not(.lhead):not(#sim-top) { grid-column: 1 / -1; }
+}
+/* the tree as the game's legacy display: portraits only, details in the node popup */
+.rb .pn { padding: 6px 8px 8px; gap: 4px; justify-items: center; }
+.rb .pn .pnh { justify-content: center; gap: 6px; width: 100%; }
+.rb .pn .pnh .aff { margin-left: 0; font-size: 0.68rem; padding: 0 6px; }
+.rb .pn .pnl { font-size: 0.62rem; }
+.ptile { all: unset; box-sizing: border-box; display: grid; justify-items: center; gap: 2px; cursor: pointer; text-align: center; padding: 2px 4px; border-radius: 10px; }
+.ptile:hover { background: color-mix(in srgb, var(--gm-bright) 16%, transparent); }
+.ptile:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ptile .av { box-shadow: 0 0 0 3px var(--gm-panel), 0 0 0 5px #efe3cf, 0 2px 6px var(--gm-shadow); }
+.ptile .av.empty { width: 72px; height: 72px; background: var(--gm-pane); border: 2px dashed var(--gm-edge); box-shadow: none; }
+.ptile .tnm { display: grid; justify-items: center; gap: 0; }
+.ptile .nm { font-weight: 900; font-size: 0.92rem; color: var(--gm-ink); line-height: 1.2; }
+.ptile .sub, .ptile .tsum { font-size: 0.72rem; color: var(--gm-ink2); line-height: 1.2; }
+.rb .pn.trainee .ptile .nm { font-size: 1.15rem; }
+.rb .pn.gp .ptile .nm { font-size: 0.8rem; }
+.rb .pf { display: flex; align-items: center; gap: 0; padding: 28px 10px 10px; }
+.rb .pf > .pk { flex: 0 0 auto; margin-left: 22px; gap: 8px; }
+.rb .pn.gp { padding: 4px 6px 6px; }
+.nodedlg .gmdbody { gap: 12px; }
+.nodedlg .twho { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.nodedlg .nm { font-weight: 900; font-size: 1.05rem; }
+.nodedlg .tacts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.nodedlg .btn { font-family: inherit; font-weight: 700; border-radius: 999px; color: var(--gm-ink); background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge); box-shadow: inset 0 -3px 0 var(--gm-tab-edge); padding: 6px 16px; }
+.nodedlg .btn.primary { color: #fff; text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2)); border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
+.gmdlg { position: fixed; }
+@media (min-width: 1180px) {
+  .rb .pf > .pn { min-width: 0; flex: 1 1 0; }
+  .rb .pn.gp { min-width: 0; }
+}
+
+/* the card's header: her odds (a click opens every count) above Compare, Roll and Add */
+.udmid { display: grid; gap: 8px; justify-items: center; align-content: center; min-width: 0; }
+.udmid > .row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.udmid > .row .btn { font-size: 0.82rem; padding: 5px 12px; }
+.udodds { all: unset; box-sizing: border-box; cursor: pointer; display: grid; justify-items: center; line-height: 1.15; padding: 4px 14px; border-radius: 12px;
+  color: var(--gm-ink); background: var(--gm-cell); border: 1px solid var(--gm-line); box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
+.udodds b { font-size: 1.3rem; font-weight: 900; } .udodds > span:not(.sub) { font-size: 0.8rem; font-weight: 700; } .udodds .sub { font-size: 0.74rem; color: var(--gm-ink2); }
+.udodds:hover { border-color: var(--gm-bright2); } .udodds:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.udtop { grid-template-columns: auto minmax(0, 1fr) auto; }
+@media (max-width: 520px) { .udmid { grid-column: 1 / -1; grid-row: 2; } }
+.oddtab { width: 100%; border-collapse: separate; border-spacing: 0 4px; font-weight: 700; }
+.oddtab th, .oddtab td { padding: 5px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.oddtab thead th { font-size: 0.8rem; color: var(--gm-ink2); }
+.oddtab tbody tr > * { background: var(--gm-cell); border-block: 1px solid var(--gm-line); }
+.oddtab tbody tr > :first-child { text-align: left; border-left: 1px solid var(--gm-line); border-radius: 8px 0 0 8px; }
+.oddtab tbody tr > :last-child { border-right: 1px solid var(--gm-line); border-radius: 0 8px 8px 0; }
+.oddtab tbody tr.all > * { background: var(--gm-gold); color: var(--gm-gold-ink); }
+@media (min-width: 1180px) { .rb #results > #sim-top { grid-row: 3; } .rb .rbmain > #tree { grid-row: 3; } }
+@media (min-width: 1180px) { .rb #results > #sim-top, .rb .rbmain > #tree { grid-row: 2; } }
+@media (min-width: 1180px) { .rb #sim-top > #simulation { margin-top: 0; } }
+/* the comparison, compact, beside the card: a game panel with the verdict, the odds as one-line rows, the next career */
+@container (min-width: 820px) {
+  #simulation { grid-template-columns: minmax(0, 600px) minmax(220px, 1fr); column-gap: 16px; }
+  #simulation > .simcol { grid-column: 2; grid-row: 1 / span 2; }
+}
+.simcol { gap: 8px; }
+.simcol:empty { display: none; }
+.simresult { display: grid; gap: 8px; font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 1px solid var(--gm-edge);
+  border-radius: 12px; padding: 10px; box-shadow: 0 2px 8px var(--gm-shadow); font-size: 0.85rem; }
+.simresult:empty { display: none; }
+.simresult #sim-verdict { margin: 0; padding: 0; border: 0; background: none; line-height: 1.35; }
+.simresult #sim-verdict strong { display: block; font-size: 1rem; font-weight: 900; margin-bottom: 2px; }
+.simresult .simodds { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.simresult .simodds .tc { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 8px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--gm-line); background: var(--gm-pane); box-shadow: none; }
+.simresult .simodds .tl { grid-column: 1 / -1; font-size: 0.72rem; color: var(--gm-ink2); }
+.simresult .simodds .tv { font-size: 0.95rem; color: var(--gm-ink); }
+.simresult .simodds .hint { font-size: 0.72rem; }
+.simresult .nextc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 0.8rem; }
+.simresult .nextc .cfaces { flex-wrap: wrap; gap: 4px; }
+.simresult .nextdeck summary { font-weight: 700; cursor: pointer; }
+.simresult .nextdeck .deck .dcards { grid-template-columns: repeat(3, minmax(0, 72px)); }
+.simresult .runnote { margin: 0; }
+
+/* the career page's dialogs: one white body; green bars whose stripes fade out at the left, as the game's */
+:root:has(.rb) dialog:not(.gmdlg) { background: var(--gm-panel); }
+:root:has(.rb) dialog:not(.gmdlg) .dlg { background: var(--gm-panel); }
+#simulation > h3, .udhdr, .rb .rbsec > h3, .gmdhdr, :root:has(.rb) dialog:not(.gmdlg) > .dlg > .dhead {
+  background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
+  background-size: 100% 100%; background-repeat: no-repeat; background-color: var(--gm-green); }
+/* Career Info's support cards: buttons opening the card panel, without the deck box around them */
+.rb .udcards.deck { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; background: none; box-shadow: none; border-radius: 0; }
+.udcard.dc { all: unset; position: relative; line-height: 0; border-radius: 6px; cursor: pointer; }
+.udcard.dc:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.udcard.dc.bor { box-shadow: 0 0 0 3px var(--gm-pink2); }
+/* Options: the explanation behind a button */
+.rb .btn.savewhy { justify-self: start; font-size: 0.82rem; padding: 4px 12px; }
+.savebody p { margin: 0; line-height: 1.45; }
+.savebody .oloop, .savebody .omembers { font-size: 0.85rem; color: var(--gm-ink); }
+.gmdlg { width: min(520px, calc(100vw - 32px)); }
+.gmdlg .gmdbody { max-height: calc(100vh - 160px); overflow: auto; }
+
+.simhdr { font-weight: 900; font-size: 0.92rem; color: #fff; text-shadow: var(--gm-outline); padding: 3px 26px 3px 10px; margin: -10px -10px 0; border-radius: 12px 12px 0 0;
+  background-color: var(--gm-green); background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2)); }
+.simidle { margin: 0; color: var(--gm-ink2); font-size: 0.85rem; line-height: 1.4; }
+.simresult { padding-top: 10px; }
+.oddtab thead th:first-child { text-align: left; }
+
+/* affinity: a game-style heart (pink, white rim) and the number */
+.aff { display: inline-flex; align-items: center; gap: 3px; }
+.aff .heart { display: inline-block; width: 15px; height: 14px; flex: none; filter: drop-shadow(0 1px 1px rgba(150, 30, 80, .35));
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9cc8'/%3E%3Cstop offset='1' stop-color='%23f0407f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 20.5C5.5 15.6 1.5 12 1.5 7.4 1.5 4.2 4 1.7 7.1 1.7c2 0 3.8 1 4.9 2.6 1.1-1.6 2.9-2.6 4.9-2.6 3.1 0 5.6 2.5 5.6 5.7 0 4.6-4 8.2-10.5 13.1z' fill='url(%23g)' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M6.5 5.2c-1.3.3-2.2 1.4-2.2 2.7' fill='none' stroke='%23fff' stroke-width='1.4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E") center / contain no-repeat; }
+.rb .pn .pnh .aff { font-weight: 900; }
+/* Career Info's support cards: all six in one row, each a sixth of the tab (at most 64 px) */
+.rb .udcards.deck { display: grid; grid-template-columns: repeat(6, minmax(0, 64px)); gap: 6px; }
+.udcard.dc { width: 100%; }
+.udcard.dc .cav { width: 100% !important; height: auto !important; aspect-ratio: 1; }
+.udcard.dc .cav img { width: 100%; height: 100%; object-fit: cover; }
+.udfr { font-size: 0.6rem; padding: 0 4px; }
+.ud .vskn { display: block; -webkit-line-clamp: unset; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+
+/* blue (stat) and unique (green) spark bars, as the game's; a dashed bar where she has none; the order: blue, pink, unique,
+   then the white skill sparks */
+.ud .vsb { display: block; min-width: 0; padding-bottom: 12px; order: -3; }
+.ud .vsk.pink { order: -2; }
+.ud .vsb.green { order: -1; }
+.ud .vsb .vskb { color: #fff; text-shadow: 0 1px 1px rgba(10, 60, 110, .55); background-color: #37b9f7; background-image: linear-gradient(#6fd0ff, #22a5ea); box-shadow: inset 0 -3px 0 #1287c8; }
+.ud .vsb .vskb::before { border-image-source: var(--spark-blue); }
+.ud .vsb.green .vskb { text-shadow: 0 1px 1px rgba(40, 80, 0, .55); background-color: #96d526; background-image: linear-gradient(#b8ea5a, #7cc40d); box-shadow: inset 0 -3px 0 #5aa300; }
+.ud .vsb.green .vskb::before { border-image-source: var(--spark-green); }
+.ud .vsb.green .vskb::after { background: var(--spark-dot-gold, radial-gradient(circle at 40% 35%, #fff6c0, #ffcf2a 55%, #d99400)) center / cover no-repeat; }
+.ud .vsb.none .vskb { color: var(--gm-ink2); text-shadow: none; background: var(--gm-cell); box-shadow: none; border: 2px dashed #6fc3ef; }
+.ud .vsb.green.none .vskb { border-color: #9fd94a; }
+.ud .vsk.pink.none .vskb { color: var(--gm-ink2); }
+.ud .vsb.none .vskb::before { border-image: none; }
+.ud .vsb.none .vskb::after { opacity: .5; }
+.ud .vsb .vskb .stars { position: absolute; left: 50%; bottom: -11px; transform: translateX(-50%); display: flex; z-index: 1; height: 20px; }
+/* the picker: its choices as bars of the spark's colour, two per row, the chosen one ringed */
+.coldlg .colgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+.coldlg .colgrid > * { padding-bottom: 0; order: 0; }
+.coldlg .colgrid .vskb[aria-pressed="true"] { outline: 3px solid var(--gm-ink); outline-offset: 1px; }
+.coldlg .spstars { margin-top: 6px; }
+/* "+": the target skills she lacks, as white spark cells */
+#add-pop .addlist { display: grid; gap: 6px; }
+#add-pop .addsk { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 12px 0 8px; cursor: pointer; border-radius: 7px;
+  font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; color: var(--gm-bar-ink); background-color: var(--gm-bar); background-image: linear-gradient(#f7f7f7, var(--gm-bar2)); box-shadow: inset 0 -3px 0 #bdbdbd; }
+#add-pop .addsk::before { content: ''; width: 18px; height: 18px; flex: none; border-radius: 50%; background: var(--spark-dot, radial-gradient(circle at 40% 35%, #fff, #b9c6ff 55%, #6d7fd6)) center / cover no-repeat; }
+#add-pop .addsk:hover { filter: brightness(1.05); } #add-pop .addsk:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* Legacy Origin: a gap between the two parents */
+.udlin > .udrow.par + .udrow.par { margin-top: 10px; }
+
+/* the picker's stars: the game's, click one to set them */
+.spstars { display: flex; justify-content: center; gap: 8px; }
+.spstar { width: 44px; height: 44px; border: 0; padding: 0; cursor: pointer; background: var(--star-off, var(--gm-star0)) center / 40px 40px no-repeat; filter: drop-shadow(0 2px 2px rgba(80, 50, 10, .35)); }
+.spstar.on { background-image: var(--star-on, var(--gm-star)); }
+.spstar:disabled { cursor: default; opacity: .5; }
+.spstar:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
+.gmrm { color: var(--out); }
+.pnclick { cursor: pointer; }
+.rb .pn.pnclick:hover, .udleg.pnclick:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gm-bright) 45%, transparent), 0 2px 8px var(--gm-shadow); }
+
+/* dark mode: the game's light sprites darkened (images.py dark_sprites: same shading, dark tones), light text on them;
+   pink, blue, green and gold art as it is */
+:root[data-theme="dark"] .ud .vsk:not(.pink) .vskb { color: #f6ece3; background-color: #29262f; background-image: linear-gradient(#2e2b36, #24222b); box-shadow: inset 0 -3px 0 #18161d; }
+:root[data-theme="dark"] .ud .vsk:not(.pink) .vskb::before { border-image-source: var(--spark-white-dark, var(--spark-white)); }
+:root[data-theme="dark"] .udsk:not(.gold):not(.off) { color: #f4eeff; background-color: #3a3550; background-image: linear-gradient(#4a4466, #2f2a44); box-shadow: inset 0 -4px 0 #24203a; }
+:root[data-theme="dark"] .udsk:not(.gold):not(.off)::before { background-image: var(--skill-white-dark, var(--skill-white)); }
+:root[data-theme="dark"] .ud .vskb .stars .se, :root[data-theme="dark"] .spstar:not(.on) { background-image: var(--star-off-dark, var(--star-off, var(--gm-star0))); }
+:root[data-theme="dark"] #add-pop .addsk { color: #f6ece3; background-color: #3a3f47; background-image: linear-gradient(#4a5059, #31353c); box-shadow: inset 0 -3px 0 #1d2025; }
+
+/* dark mode: the planner's pick row in Options on a green-tinted dark highlight (the light lavender one hid its text) */
+:root[data-theme="dark"] .rb .optab tbody tr.on > * { background: #2e3a24; }
+:root[data-theme="dark"] .udtab[aria-selected="true"] { box-shadow: inset 0 -3px 0 #3b7507, inset 0 2px 0 rgba(255, 255, 255, .15); }
+/* Options' tags as the game's pills: the planner's pick green, the best odds plain */
+.rb .optab .otag { font-family: inherit; font-weight: 700; font-size: 0.7rem; letter-spacing: 0; text-transform: none; border-radius: 999px; padding: 1px 8px;
+  border: 1px solid var(--gm-edge); background: var(--gm-cell); color: var(--gm-ink); }
+.rb .optab .otag.pick { color: #fff; text-shadow: var(--gm-outline); background: var(--gm-bright2); border-color: var(--gm-green2); }
+/* one hover per legacy box: the box lights up, its portrait tile doesn't (the tile keeps its keyboard focus ring) */
+.pnclick .ptile:hover, .udleg.pnclick .udlegp:hover { background: none; }
+
+/* the game's Enhance menu buttons: Umas, Support cards (square), Veteran Umamusume (wide); the art from the game, the label
+   on its white lower band with a ▶ */
+.rb .btn.enh { position: relative; display: inline-grid; padding: 0; width: 125px; height: 100px; border: 0; border-radius: 12px; overflow: visible; cursor: pointer;
+  background: none; box-shadow: none; font-family: "Zen Maru Gothic", var(--font-ui); }
+/* the texture carries the game's frame and white band, the art spilling over its top edge: a drop shadow follows that shape */
+.rb .btn.enh .enhimg { position: absolute; inset: 0; background: center / 100% 100% no-repeat; filter: drop-shadow(0 2px 3px var(--gm-shadow)); }
+#o-umas .enhimg { background-image: var(--enh-umas, linear-gradient(#f3f1f8, #dcd8ea)); }
+#o-cards .enhimg { background-image: var(--enh-cards, linear-gradient(#f3f1f8, #dcd8ea)); }
+.rb .btn.enh .enhl { position: absolute; left: 6px; right: 20px; bottom: 8px; text-align: center; white-space: nowrap; font-weight: 900; font-size: 0.84rem; line-height: 1.15; color: #5b5470; }
+.rb .btn.enh .enhl::after { content: ''; position: absolute; right: -13px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left: 8px solid #5b5470; border-right: 0; }
+.rb .btn.enh:hover .enhimg { filter: brightness(1.06) drop-shadow(0 0 4px var(--gm-bright2)); }
+.rb .btn.enh:active { transform: translateY(2px); }
+.rb .btn.enh:focus-visible { outline: 3px solid var(--gm-bright2); outline-offset: 2px; }
+.rb .btn.enh.wide { width: 262px; height: 62px; }
+#v-toggle .enhimg { background-image: var(--enh-vets, linear-gradient(90deg, #f3f1f8, #dcd8ea)); }
+#v-toggle .enhl { left: 44%; right: 30px; bottom: auto; top: 50%; transform: translateY(-50%); white-space: normal; font-size: 0.86rem; }
+#v-toggle .enhl > span { display: block; }
+#v-toggle .enhl::after { right: -19px; }
+/* the settings bar as a game panel: a pink ribbon like the Enhance menu's, a list of label tiles and their controls, and on the
+   right the hint as the game's speech bubble over the Enhance buttons */
+.rb .rbbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hdr enh" "list enh"; grid-template-rows: auto 1fr; gap: 10px 28px; align-items: start;
+  padding: 0 18px 16px; }
+.rb .sethdr { grid-area: hdr; justify-self: start; position: relative; margin: -1px 0 0 -19px; padding: 6px 56px 7px 20px; border-top-left-radius: 14px; color: #fff; font-family: "Zen Maru Gothic", var(--font-ui);
+  font-size: 1.3rem; font-weight: 900; line-height: 1.2; text-transform: none; letter-spacing: 0; background: linear-gradient(100deg, var(--gm-pink2), var(--gm-pink) 75%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%); text-shadow: 0 1px 0 #d9468a, 1px 0 0 #d9468a, -1px 0 0 #d9468a, 0 -1px 0 #d9468a, 0 2px 2px rgba(150, 20, 80, .35); }
+.rb .sethdr::after { content: ''; position: absolute; top: 0; bottom: 0; right: 24px; width: 7px; background: rgba(255, 255, 255, .45); transform: skewX(-16deg); box-shadow: -11px 0 0 rgba(255, 255, 255, .3); }
+.rb .setlist { grid-area: list; position: relative; display: grid; grid-template-columns: repeat(2, max-content); align-content: start; gap: 6px; min-width: 0; }
+.rb .setlist .scendd { display: contents; }   /* the scenario menu hangs under the whole list */
+.rb .setlist .gctl { display: grid; grid-template-columns: 8.8em minmax(0, 1fr); align-items: center; justify-items: start; gap: 10px; padding: 4px 10px 4px 4px;
+  background: var(--gm-cell); border: 1px solid var(--gm-line); border-radius: 10px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); font-size: 0.95rem; }
+.rb .setlist .glab, .rb .setlist .gctl > span:first-child { align-self: stretch; justify-self: stretch; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; background: var(--gm-tile);
+  color: var(--gm-tile-ink); font-weight: 700; line-height: 1.2; }
+.rb .setlist .scenbtn { min-height: 44px; padding-block: 2px; }
+.rb .setlist .scenbtn .slogo { height: 36px; }
+.rb .setenh { grid-area: enh; align-self: center; padding-top: 18px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; justify-content: start; }
+.rb .setenh .btn.enh.wide { grid-column: 1 / -1; }
+.rb .vetdlg .vets { margin-top: 10px; }
+@media (max-width: 860px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; } .rb .setenh { padding-top: 14px; } }
+@media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .rb .setlist .gctl { grid-template-columns: 6.6em minmax(0, 1fr); gap: 8px; } .rb .setlist .seg button { white-space: normal; line-height: 1.2; }
+  .rb .rbbar { padding: 0 12px 14px; } .rb .sethdr { margin-left: -13px; } }
+/* dark: the Enhance art with its frame and label band darkened (images.py dark_enh), a light label */
+:root[data-theme="dark"] #o-umas .enhimg { background-image: var(--enh-umas-dark, var(--enh-umas)); }
+:root[data-theme="dark"] #o-cards .enhimg { background-image: var(--enh-cards-dark, var(--enh-cards)); }
+:root[data-theme="dark"] #v-toggle .enhimg { background-image: var(--enh-vets-dark, var(--enh-vets)); }
+:root[data-theme="dark"] .rb .setlist .glab, :root[data-theme="dark"] .rb .setlist .gctl > span:first-child { background: #3a3f4a; color: var(--gm-ink); }
+:root[data-theme="dark"] .rb .btn.enh .enhl { color: #e6e1f0; }
+:root[data-theme="dark"] .rb .btn.enh .enhl::after { border-left-color: #e6e1f0; }
+.rb .rbbar .seg { border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); padding: 3px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
+.rb .rbbar .seg button { border-radius: 999px; font-family: inherit; font-weight: 700; }
+.rb .rbbar .seg button:not([aria-pressed="true"]) { color: var(--gm-ink); }
+.rb .rbbar label { color: var(--gm-ink); font-weight: 700; }
+.rb .rbbar input[type="checkbox"] { accent-color: var(--gm-bright2); width: 18px; height: 18px; }
+.rb .rbbar .tbtn { min-height: 44px; }
+/* the game's own buttons (resources.assets, 9-slice across only): a white rectangle for actions, the green one for the main
+   action, white pills for the toolbar, the green pill for the chosen option, the game's check box. Side widths are the
+   sprite's borders scaled to the button's height (rectangle 96 px tall, pill 72 px) */
+.rb .btn:not(.enh), :root:has(.rb) dialog .btn { border: 0 solid transparent; border-radius: 0; background: none; box-shadow: none; text-shadow: none;
+  border-image: var(--btn-w, linear-gradient(#fff, #eceaf2)) 0 40 0 40 fill / 0 18px 0 18px / 0 stretch; padding: 8px 20px 11px; min-height: 42px; color: var(--gm-ink); }
+.rb .btn.primary, :root:has(.rb) dialog .btn.primary { border-image: var(--btn-g, linear-gradient(#b4ec52, #7cc40d)) 0 116 0 40 fill / 0 51px 0 18px / 0 stretch;
+  color: #fff; text-shadow: var(--gm-outline); padding-right: 26px; }
+.rb .btn:not(.enh):hover, :root:has(.rb) dialog .btn:hover { filter: brightness(1.04); border-color: transparent; }
+.rb .btn:not(.enh):active, :root:has(.rb) dialog .btn:active { transform: translateY(1px); box-shadow: none; }
+.rb .btn:not(.enh):disabled, :root:has(.rb) dialog .btn:disabled { filter: grayscale(1); opacity: .55; background: none; }
+.rb .rbbar .tbtn { border: 0 solid transparent; border-radius: 0; background: none; box-shadow: none;
+  border-image: var(--pill-w, linear-gradient(#fff, #eceaf2)) 0 100 0 32 fill / 0 61px 0 20px / 0 stretch; padding: 6px 28px 9px 18px; min-height: 44px; }
+.rb .seg button[aria-pressed="true"], :root:has(.rb) dialog .seg button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); background: none; box-shadow: none; border: 0 solid transparent;
+  border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
+.rb input[type="checkbox"], :root:has(.rb) dialog input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0;
+  border: 0; background: var(--chk-off, linear-gradient(#fff, #eee)) center / contain no-repeat; cursor: pointer; vertical-align: middle; }
+.rb input[type="checkbox"]:checked, :root:has(.rb) dialog input[type="checkbox"]:checked { background-image: var(--chk-on, linear-gradient(#b4ec52, #7cc40d)); }
+.rb input[type="checkbox"]:focus-visible, :root:has(.rb) dialog input[type="checkbox"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+:root[data-theme="dark"] .rb .btn:not(.enh):not(.primary), :root[data-theme="dark"]:has(.rb) dialog .btn:not(.primary) { border-image-source: var(--btn-w-dark, var(--btn-w)); }
+:root[data-theme="dark"] .rb .rbbar .tbtn { border-image-source: var(--pill-w-dark, var(--pill-w)); }
+:root[data-theme="dark"] .rb input[type="checkbox"]:not(:checked), :root[data-theme="dark"]:has(.rb) dialog input[type="checkbox"]:not(:checked) { background-image: var(--chk-off-dark, var(--chk-off)); }
+/* the scenario: the game's scenario select art behind its logo, on the button and on each menu tile */
+.rb .scenbtn { position: relative; overflow: hidden; width: 210px; justify-items: start; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--gm-edge);
+  background: var(--scen-art, none) right -6px top 18% / 104px auto no-repeat, linear-gradient(100deg, var(--gm-cell) 45%, var(--gm-tab-low)); }
+.rb .scenbtn .slogo { width: 112px; }
+.rb .scenpick { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 12px; box-shadow: 0 8px 22px var(--gm-shadow); padding: 8px; }
+.rb .stile { position: relative; overflow: hidden; align-items: flex-start; text-align: left; padding: 8px 12px; min-height: 112px; border-radius: 10px; border: 1px solid var(--gm-edge);
+  background: linear-gradient(90deg, var(--gm-cell) 40%, transparent 78%), var(--scen-art, none) right -10px top 16% / 52% auto no-repeat, var(--gm-tab-low); color: var(--gm-ink); }
+.rb .stile .slogo { width: 58%; height: 64px; }
+.rb .stile .slogo img { object-position: left center; }
+.rb .stile .ssub { justify-content: flex-start; color: var(--gm-ink2); font-weight: 700; }
+.rb .stile[aria-checked="true"] { border: 2px solid var(--gm-bright2); box-shadow: 0 0 0 2px rgba(124, 196, 13, .25); background-color: var(--gm-tab-low); }
+.rb .stile:hover, .rb .stile:focus-visible { border-color: var(--gm-bright2); }

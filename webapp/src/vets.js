@@ -35,6 +35,8 @@ export const umaName = (id) => id ? (NAME.get(id) || 'Uma ' + id) : 'Unknown';
 const targetGroups = () => state.targets.map(t => t.group);
 export const skillName = (g) => (SK.get(g) || { w: 'Skill ' + g }).w;
 export const pinkName = (g) => CAREER.pinks[g] || 'Aptitude ' + g;
+export const blueName = (g) => (CAREER.blues || {})[g] || ['', 'Speed', 'Stamina', 'Power', 'Guts', 'Wit'][g] || 'Stat ' + g;
+export const uniqueName = (g) => (CAREER.uniques || {})[g] || null;
 const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 export const vetById = (id) => vets.find(v => v.id === id);
 const full = (stars) => Object.fromEntries(targetGroups().map(g => [g, stars]));
@@ -98,7 +100,8 @@ export function openWins(nd, who, opts = {}) {
 }
 export const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
 $('wins-dlg').addEventListener('close', () => { const f = winsClose; winsClose = null; f && f(); });
-// "+" beside a node's sparks: the target skills she lacks, then the aptitudes she has no spark of
+// "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink and unique
+// sparks have bars of their own, each opening a picker)
 const pop = $('add-pop'); let popFor = null;
 function closeAdd() { pop.hidden = true; if (popFor) popFor.setAttribute('aria-expanded', 'false'); popFor = null; }
 function openAdd(btn, nd, onEdit = changed) {
@@ -107,20 +110,20 @@ function openAdd(btn, nd, onEdit = changed) {
   const head = (t) => { const h = document.createElement('p'); h.className = 'hint'; h.textContent = t; pop.appendChild(h); };
   const miss = targetGroups().filter(g => !nd.sparks[g]);
   head(miss.length ? 'Target skills she lacks' : 'She has every target skill.');
+  const list = document.createElement('div'); list.className = 'addlist';
   for (const g of miss) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn addsk';
-    const ic = skillIcon(g, false); if (ic) b.appendChild(ic); b.append(skillName(g));
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'addsk';
+    b.append(Object.assign(document.createElement('span'), { className: 'addn', textContent: skillName(g) }));
     b.onclick = () => { nd.sparks[g] = NEW_STARS; closeAdd(); onEdit(); };
-    pop.appendChild(b);
+    list.appendChild(b);
   }
-  const pm = Object.keys(CAREER.pinks).map(Number).filter(g => !nd.pinks[g]);
-  if (pm.length) { head('Aptitude (pink) sparks');
-    const row = document.createElement('div'); row.className = 'pinkrow';
-    for (const g of pm) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn addpk'; b.textContent = pinkName(g);
-      b.onclick = () => { nd.pinks[g] = NEW_STARS; closeAdd(); onEdit(); }; row.appendChild(b); }
-    pop.appendChild(row); }
+  pop.appendChild(list);
   const r = btn.getBoundingClientRect();
-  pop.style.left = Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - 320)) + 'px'; pop.style.top = (r.bottom + scrollY + 6) + 'px';
+  // inside an open (modal) dialog the page around it is inert: the menu moves into that dialog, placed relative to it
+  const host = btn.closest('dialog[open]');
+  if ((host || document.body) !== pop.parentElement) (host || document.body).appendChild(pop);
+  if (host) { const h = host.getBoundingClientRect(); pop.style.left = Math.max(4, Math.min(r.left - h.left, h.width - 300)) + 'px'; pop.style.top = (r.bottom - h.top + host.scrollTop + 6) + 'px'; }
+  else { pop.style.left = Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - 320)) + 'px'; pop.style.top = (r.bottom + scrollY + 6) + 'px'; }
   pop.hidden = false; pop.focus();
 }
 document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target) && !(popFor && popFor.contains(e.target))) closeAdd(); });
@@ -135,7 +138,10 @@ function chip(label, icon, n, pink, cycle, remove, key, readOnly = false) {
   const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) b.type = 'button'; b.className = 'vskb';
   if (icon) b.appendChild(icon);
   const t = document.createElement('span'); t.className = 'vskn'; t.textContent = label; b.appendChild(t);
-  const s = document.createElement('span'); s.className = 'stars'; s.textContent = starText(n); s.setAttribute('aria-hidden', 'true'); b.appendChild(s);
+  // stars: filled then empty (two spans: the career page's game-style card colours them apart; the text is starText(n))
+  const s = document.createElement('span'); s.className = 'stars'; s.setAttribute('aria-hidden', 'true');
+  const sf = document.createElement('span'); sf.className = 'sf'; sf.textContent = '★'.repeat(n); sf.style.setProperty('--n', String(n));
+  const se = document.createElement('span'); se.className = 'se'; se.textContent = '☆'.repeat(3 - n); se.style.setProperty('--n', String(3 - n)); s.append(sf, se); b.appendChild(s);
   if (readOnly) { b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${n} stars`); c.appendChild(b); return c; }
   b.setAttribute('aria-label', `${label}${pink ? ' (aptitude)' : ''}, ${n} star${n > 1 ? 's' : ''}. Click for ${n % 3 + 1}`);
   b.onclick = cycle; b.dataset.k = key;
@@ -143,18 +149,97 @@ function chip(label, icon, n, pink, cycle, remove, key, readOnly = false) {
   x.setAttribute('aria-label', 'Remove ' + label); x.title = 'Remove ' + label; x.onclick = remove; x.dataset.k = key + 'x';
   c.append(b, x); return c;
 }
+// A veteran's sparks as the game's Inspiration cells: her blue (stat), pink (aptitude) and unique (green) sparks first,
+// each a bar of its colour (a dashed one when she has none) that opens its picker; then her target skills' white sparks
+// (click: stars 1 -> 2 -> 3 -> 1, the corner x removes), then "+" (a target skill she lacks). Sparks of skills that are
+// not targets are kept but not shown (read-only: shown). key names the controls (data-k) for the focus after a redraw.
 export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
   const sp = document.createElement('div'); sp.className = 'vsparks';
+  for (const kind of ['blue', 'pink', 'green']) { const b = colourBar(nd, kind, key, onEdit, readOnly); if (b) sp.appendChild(b); }
   for (const g of readOnly ? Object.keys(nd.sparks).map(Number) : targetGroups()) { const n = nd.sparks[g]; if (!n) continue;
     sp.appendChild(chip(skillName(g), skillIcon(g, false), n, false, () => { nd.sparks[g] = n % 3 + 1; onEdit(); }, () => { delete nd.sparks[g]; onEdit(); }, `${key}:s${g}`, readOnly)); }
-  for (const [g, n] of Object.entries(nd.pinks || {})) {
-    sp.appendChild(chip(pinkName(g), null, n, true, () => { nd.pinks[g] = n % 3 + 1; onEdit(); }, () => { delete nd.pinks[g]; onEdit(); }, `${key}:p${g}`, readOnly)); }
   if (readOnly) return sp;
   const add = document.createElement('button'); add.type = 'button'; add.className = 'vskadd'; add.textContent = '+';
-  add.setAttribute('aria-label', 'Add a spark'); add.title = 'Add a spark'; add.setAttribute('aria-haspopup', 'dialog'); add.setAttribute('aria-expanded', 'false');
+  add.setAttribute('aria-label', 'Add a target skill spark'); add.title = 'Add a target skill spark'; add.setAttribute('aria-haspopup', 'dialog'); add.setAttribute('aria-expanded', 'false');
   add.onclick = () => openAdd(add, nd, onEdit); add.dataset.k = key + ':add';
   sp.appendChild(add);
   return sp;
+}
+// her blue / pink / unique spark: one each (the game gives every veteran one blue and one pink; a unique spark is hers or
+// none). The field: blues {stat group: stars}, pinks {aptitude group: stars}, greens {outfit card id: stars}
+const KIND = { blue: { field: 'blues', title: 'Blue spark', name: blueName, groups: () => Object.keys(CAREER.blues || { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }).map(Number) },
+  pink: { field: 'pinks', title: 'Pink spark', name: pinkName, groups: (nd) => pinkChoices(nd) },
+  green: { field: 'greens', title: 'Unique spark', name: uniqueName, groups: (nd) => nd.outfit && uniqueName(nd.outfit) ? [nd.outfit] : [] } };
+// the aptitudes a pink can come from: those she ends at A or S (a pink is drawn from them only): her end-of-career
+// grades when known (the veteran analysis), else her uma's base grades; the pink she has always stays a choice
+const APT_OF = { 31: 0, 32: 1, 33: 2, 34: 3, 11: 4, 12: 5, 21: 6, 22: 7, 23: 8, 24: 9 };
+function pinkChoices(nd) {
+  const grades = nd.apt || UMAS.find(u => u.id === nd.chara)?.apt;
+  const all = Object.keys(CAREER.pinks).map(Number), have = Object.keys(nd.pinks || {}).map(Number);
+  return grades ? all.filter(g => grades[APT_OF[g]] >= 7 || have.includes(g)) : all;
+}
+function colourBar(nd, kind, key, onEdit, readOnly) {
+  const K = KIND[kind], cur = Object.entries(nd[K.field] || {}).find(([, n]) => n > 0);
+  if (!cur && (readOnly || !K.groups(nd).length)) return null;
+  const k = `${key}:${kind}`;
+  if (kind === 'green') {
+    if (cur) { const g = cur[0], c = chip(uniqueName(g) || 'Unique spark', null, cur[1], false, () => { nd.greens[g] = cur[1] % 3 + 1; onEdit(); }, () => { delete nd.greens[g]; onEdit(); }, k, readOnly);
+      c.className = 'vsb green'; const b = c.querySelector('.vskb'); b.setAttribute('aria-label', b.getAttribute('aria-label').replace(/^([^,]+),/, '$1 (unique),')); return c; }
+    const c = document.createElement('span'); c.className = 'vsb green none';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'vskb'; b.dataset.k = k; b.setAttribute('aria-label', 'Unique spark: none. Add it at 2 stars');
+    b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: '+ Unique spark' }));
+    b.onclick = () => { nd.greens = { [nd.outfit]: NEW_STARS }; onEdit(); }; c.appendChild(b); return c;
+  }
+  if (cur && kind === 'pink') {   // (pinks keep the chip's look and label: "Mile (aptitude), 2 stars")
+    const c = chip(pinkName(cur[0]), null, cur[1], true, () => openColour(nd, kind, k, onEdit), () => { delete nd.pinks[cur[0]]; onEdit(); }, k, readOnly);
+    const b = c.querySelector('.vskb'); if (!readOnly) { b.setAttribute('aria-haspopup', 'dialog'); b.setAttribute('aria-label', `${pinkName(cur[0])} (aptitude), ${cur[1]} star${cur[1] > 1 ? 's' : ''}. Change`); }
+    c.querySelector('.vskx')?.remove(); return c;
+  }
+  const c = document.createElement('span'); c.className = `vsb ${kind}` + (cur ? '' : ' none');
+  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) { b.type = 'button'; b.dataset.k = k; b.setAttribute('aria-haspopup', 'dialog'); b.onclick = () => openColour(nd, kind, k, onEdit); }
+  b.className = 'vskb';
+  const label = cur ? K.name(cur[0]) || K.title : `${K.title}: none`;
+  b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: label }));
+  if (cur) { const n = cur[1], st = document.createElement('span'); st.className = 'stars'; st.setAttribute('aria-hidden', 'true');
+    const sf = document.createElement('span'); sf.className = 'sf'; sf.textContent = '★'.repeat(n); sf.style.setProperty('--n', String(n));
+    const se = document.createElement('span'); se.className = 'se'; se.textContent = '☆'.repeat(3 - n); se.style.setProperty('--n', String(3 - n)); st.append(sf, se); b.appendChild(st); }
+  b.setAttribute('aria-label', cur ? `${label} (${kind === 'blue' ? 'stat' : 'unique'}), ${cur[1]} star${cur[1] > 1 ? 's' : ''}${readOnly ? '' : '. Change'}` : `${K.title}: none. Set it`);
+  c.appendChild(b); return c;
+}
+// the picker (game style): the choices as bars of the spark's colour, its stars (click one), Done (no remove: every
+// veteran has one blue and one pink)
+let colDlg = null;
+function openColour(nd, kind, key, onEdit) {
+  const K = KIND[kind];
+  if (!colDlg) { colDlg = document.createElement('dialog'); colDlg.className = 'gmdlg coldlg'; colDlg.id = 'col-dlg'; colDlg.setAttribute('aria-labelledby', 'col-title');
+    colDlg.addEventListener('close', () => { const e = colDlg._key && document.querySelector(`[data-k="${CSS.escape(colDlg._key)}"]`); if (e) e.focus(); });
+    document.body.appendChild(colDlg); }
+  colDlg._key = key;
+  const draw = () => {
+    colDlg.textContent = ''; const cur = Object.entries(nd[K.field] || {}).find(([, n]) => n > 0), g0 = cur ? +cur[0] : null, n0 = cur ? cur[1] : 0;
+    const h = document.createElement('h3'); h.className = 'gmdhdr'; h.id = 'col-title'; h.textContent = K.title; colDlg.appendChild(h);
+    const body = document.createElement('div'); body.className = 'gmdbody'; const wrap = document.createElement('div'); wrap.className = 'ud udbare'; body.appendChild(wrap);
+    const grid = document.createElement('div'); grid.className = 'colgrid vsparks';
+    for (const g of K.groups(nd)) {
+      const c = document.createElement('span'); c.className = kind === 'pink' ? 'vsk pink' : `vsb ${kind}`;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'vskb'; b.setAttribute('aria-pressed', String(g === g0));
+      b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: K.name(g) }));
+      b.onclick = () => { nd[K.field] = { [g]: n0 || NEW_STARS }; onEdit(); draw(); }; c.appendChild(b); grid.appendChild(c);
+    }
+    wrap.appendChild(grid);
+    const row = document.createElement('div'); row.className = 'spstars'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', 'Stars');
+    for (let k = 1; k <= 3; k++) { const st = document.createElement('button'); st.type = 'button'; st.className = 'spstar' + (k <= n0 ? ' on' : '');
+      st.setAttribute('aria-label', `${k} star${k > 1 ? 's' : ''}`); st.setAttribute('aria-pressed', String(k === n0)); st.disabled = g0 === null;
+      st.onclick = () => { nd[K.field] = { [g0]: k }; onEdit(); draw(); }; row.appendChild(st); }
+    body.appendChild(row);
+    if (kind === 'blue') body.appendChild(Object.assign(document.createElement('p'), { className: 'gmdstat', textContent: 'A 3★ blue needs that stat at 600 or more (rank B) by the end of the career.' }));
+    if (kind === 'pink') body.appendChild(Object.assign(document.createElement('p'), { className: 'gmdstat', textContent: nd.apt ? 'The aptitudes she ends this career at A or S.' : 'Her uma\'s aptitudes at A or S (a pink needs A or better).' }));
+    colDlg.appendChild(body);
+    const f = document.createElement('div'); f.className = 'gmdfoot';
+    const done = document.createElement('button'); done.type = 'button'; done.className = 'btn gmclose'; done.textContent = 'Done'; done.onclick = () => colDlg.close();
+    f.appendChild(done); colDlg.appendChild(f);
+  };
+  draw(); colDlg.showModal(); colDlg.querySelector('.gmclose:last-child')?.focus();
 }
 export function winsBtn(nd, who, key = '') {
   const w = document.createElement('button'); w.type = 'button'; w.className = 'btn vwins'; if (key) w.dataset.k = key + ':wins';
@@ -173,8 +258,8 @@ export function changeUma(nd, label) {
 // a new veteran by hand for a parent place: she gets `sparks`, and so do her parents (a looped parent's own parents carry
 // the same sparks), whose umas are not known yet
 export function newVet(chara, sparks) {
-  const v = { id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), src: 'hand', chara, borrowed: false, sparks, pinks: {}, wins: [],
-    parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, wins: [] })) };
+  const v = { id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), src: 'hand', chara, borrowed: false, sparks, pinks: {}, blues: {}, greens: {}, wins: [],
+    parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })) };
   vets.push(v); return v;
 }
 // imported veterans replace earlier imports; hand-made ones stay (a plan slot holding a replaced one goes back to the planner)

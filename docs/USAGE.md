@@ -14,8 +14,8 @@ words; this file is the reference for the controls.
 - *Assumed lineage rank* (the planner doesn't work out the score a deck would reach): the star mix of the sparks on your legacies, *B to S+* (rank score 6,500–17,499: 50/45/5% for
   1/2/3 stars) or *SS* (17,500+: 20/70/10%), from hakuraku.moe's room-match data. Picking a scenario sets its usual
   rank (SS for Grand Concert and Grand Masters); change it if yours differs.
-- *Borrow one friend's card*, *A separate deck
-  for each uma* (on by default).
+- *A separate deck for each uma* (on by default). Every deck may borrow one friend's card and does when it helps;
+  there is no setting for it.
 - *Loop*: *3 or 4 umas* (default: 3-uma rotations and 4-uma loops ranked together), *3 umas* or *4 umas* only.
   A 3-uma rotation holds at most three must-include umas.
 - The status line: searching; then "Checking the exact odds…" with the first result already shown (ranked by the
@@ -59,11 +59,12 @@ the bottom of the screen takes you back to them.
 someone else's. Settings are saved in your browser on that device; nothing is uploaded.
 
 **Career planner** (`/career`, linked from the header). Picks the next career from the veterans you have. The
-settings strip (game data, scenario, lineage rank, *Target skills*, *Umas*, *Support cards*, *Borrow one friend's card*)
-opens the loop planner's own editors and shares their saved settings; the rank sets the stars of the new veteran's
-sparks it expects on a new veteran. The pedigree reads left to right: the trainee, her two parents, each parent's own two
-parents, joined by brackets; the six legacies carry gate numbers 1 to 6 and each shows her affinity in the career on
-show. Each place is set by hand or left to the planner, which tries every owned uma and every pair of your veterans (at
+*Career setup* panel (game data, scenario, lineage rank, *Target skills*; then the game's Enhance-menu buttons *Umas*,
+*Support cards* and *Veteran Umamusume*) opens the loop planner's own editors and shares their saved settings; the
+rank sets the stars of the new veteran's sparks it expects on a new veteran. The scenario button and its menu show the
+game's scenario-select art behind each logo. Every deck may borrow one friend's card and does when it helps (no
+setting). The pedigree reads left to right: the trainee, her two parents, each parent's own two
+parents, joined by brackets; each of the six legacies shows her affinity in the career on show. Each place is set by hand or left to the planner, which tries every owned uma and every pair of your veterans (at
 most one borrowed) and shows its pick outlined in dashes. **Choose parent** opens the parent picker: one of *Your
 veterans* (those that can't go there are greyed out, with the reason), *A new one (any uma)*, or *Let the planner
 pick*. Picking a new uma, or changing who a grandparent is, asks whether to add the target skills (all at 2★, 3★ or
@@ -84,37 +85,85 @@ for a step still to run (so a strong uma's career is a stepping stone for her pa
 8/8). For the few highest and the best odds, plus what her best rolls open for the next career (two careers deep).
 Above *Options*: the trio and its expected careers, and per step her odds now and how many lifts building pays for
 (or "your 8/8, no careers"). The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the
-plan. With a fully looped parent already, it shows the best odds. Under the odds a line says why the career on show
+plan. Under the odds a line says why the career on show
 is (or is not) the pick. With the trainee chosen by hand there is nothing for it to pick, and with every place set by
 hand the career is just scored.
 
-**The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
-target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. The note says where you
-are: no 8/8 yet (step 1), one (step 2), 8/8s of two umas (step 3: a career with both as parents that lands everything
-is a fully looped parent). It only informs: the planner picks every step itself, its trio counting your 8/8s. Once you
-have a fully looped parent, the planner shows the best odds.
+**No goal steps**: the planner runs every step itself (its trio counts every 8/8 you can use, borrowed ones too, one
+per career); the page shows no step note. Once you have a fully looped parent, it goes for the next one, any uma.
 
-Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her portrait beside her sparks. It starts as the most likely result of the career on show (the most
-likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
+Under the pedigree come the career's deck (with its **Race schedule** button) and odds, then *Veteran analysis*: her card, drawn as the game's *Umamusume Details* screen (the game's own art for the grade
+letters, spark bars and skill tiles where the build has it; no stats, which the model doesn't have). Her portrait and
+outfit, her aptitude grades at the end of this result (Track, Distance, Style: the start grades after the legacies'
+pinks, plus a roll's April firings), then three tabs: **Skills** (every target skill she could acquire this career, as the game's tiles, name only:
+acquired in this result bright, gold tile for the gold version, the others greyed; a tile opens the game-style *Skill
+Details* popup: acquired or not, where it comes from with each chance (her own skill, a deck card's gold or white hint,
+her story events, inspiration from the legacies, the scenario), and how likely it is acquired and lands. A roll
+draws them in the game's order: the sparks that land first (exact), then which skills she bought: a landed one is
+bought, another with the chance of buying it without its spark landing. Skills other than the targets aren't modelled),
+**Inspiration** (first; her sparks as the game's spark bars with the game's stars on their edge, her pink first, then
+*Legacy Origin*: her two parents' sparks) and **Career Info** (as the game's: *Support Cards*, the career's deck;
+*Legacy Umamusume*, her two parents in the game's Legacy 1 / Legacy 2 boxes with their own parents, a borrowed one a
+*Guest*; *Career Record*, G1 races and wins, the race-by-race record behind *Show the races*, and the G1 wins editor).
+On a wide screen the card sits beside the comparison and its buttons. The tab you pick stays across redraws; arrow keys move between tabs. The rest of the career page
+follows the same style (rounded game panels, the game's own white and green buttons and check box, green section bars), in light and dark mode: the pedigree is
+portraits only, as the game's legacy display: the trainee, then Legacy 1 (blue) and Legacy 2 (pink), each the parent
+with her own two parents, every portrait with its affinity as a heart and a number; a portrait opens its popup: her G1 wins,
+*Choose parent* / *Let the planner pick* (*Change who she is* for a grandparent), and her Inspiration view as on the
+card: her sparks as the game's spark bars, then *Legacy Origin* with her parents' (all editable: click a bar for its
+stars, × removes, + adds). A veteran's sparks there and
+in *Your veterans* are the game's icons (skill icon or aptitude badge, stars under it): a click opens the *Spark
+Details* popup (set the stars, Remove). *Your veterans* open from the setup panel's **Veteran Umamusume** button, in a
+dialog with *Import*, *Paste*, *Export* and *Remove all*. These game-style parts use the game's colours rather than WCAG AAA (the rest of the site keeps AAA).
+
+**Layout (career page, wide screens):** the tree runs down the left (the trainee, then Legacy 1 and Legacy 2), the
+*Veteran analysis* beside it, its top level with the tree's (its comparison a compact panel beside the card); *Target skills* and *Options* follow at full width. The
+career's odds sit in the card's header (1 in N to land all n); a click opens *Odds of this career*: the chance
+of landing exactly k of the n targets, for every k, in percent (exact over the landed sets; n/n is the solver's own
+figure), and the targets expected. No prose: the planner's pick shows as the tree and the *planner's pick* tag in *Options*. *Options* has no prose under it: **What do these
+mean?** opens a popup saying what *saves per run* means and why the best odds aren't the loop's best pick, with the plan
+the numbers come from. The comparison sits in a panel beside her card headed *Comparison* ("Compare/reroll to see if she
+improves your loop" until you do). Under *Target skills*: *Pinks passed on*, *Start aptitudes*, *Her pink*. In *Career
+Info*, a support card opens its card panel. A click on the backdrop closes any popup. A legacy box (the tree's nodes, Career Info's Legacy 1/2) opens from
+anywhere in it. A veteran's Inspiration cells start
+with her blue (stat), pink (aptitude) and unique (green) sparks, a bar each in the game's colour (dashed when she has
+none); the blue and pink bars open a picker (the five stats; the aptitudes a pink can come from, those she ends at A or S, or
+her uma's base A/S ones when her end grades aren't known; the stars; no remove: every veteran has one of each; the
+blue picker notes that a 3★ blue needs that stat at 600+); her unique spark is clicked like a white one (stars, × to
+remove, or + to add it). **+** offers only the
+target skills she lacks, as white spark cells. A roll draws her blue (a stat, stars by the rank band: stats aren't
+modelled) and her unique spark (always: guaranteed for an outfit at 3★ or more; stars by the rank band). Imports keep blue and unique
+sparks. Under the trainee, **Deck**
+opens her career's deck there (a card opens its panel) and **Race schedule** its window. In the card's header, between
+her portrait and her name: **Compare**, **Reroll**, **Add to veterans** (she starts as a random
+result, drawn as Reroll draws; there is no default result). *Your veterans* are compact cards (portrait, name, targets, G1 wins, her
+parents' faces); a card, or a legacy's portrait in *Career Info*, opens her popup: her sparks and her parents' as the
+game's spark bars, edited in place (click a bar for its stars, × removes, + adds), her G1 wins, and *change who she is*
+for her and her parents. The tree's popups show the same bars without the "Sparks" header. Every dialog on the page has
+the game's look (green title bar, pill buttons) and a hovered or focused control's tooltip shows as the game's balloon. It starts as a random result of the career on show, drawn exactly as **Reroll** draws (below), and is drawn again
+whenever a new search result arrives; it does not compare until you press Compare. Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
 win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), with the planner's
 counts without and with her and its next career. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
-without and with her: *She saves N careers* (the two counts, and the next career with her); under half a career,
-*She's a parent of the planner's next career* when its pick uses her, *She raises the best odds but saves under half a
-career* when only the best career's odds rise, else *She changes nothing yet*. A veteran never raises the count (every
+without and with her: *If this hit: saves N careers* (the two counts, and the next career with her); under half a career,
+*If this hit: a parent of the planner's next career* when its pick uses her, *If this hit: better odds, under half a career
+saved* when only the best career's odds rise, else *If this hit: no change yet*. A veteran never raises the count (every
 plan without her is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can save careers without being anyone's better parent today: as a builder's parent she becomes a
 grandparent of the best career's next lineage, which the planner's scores count. It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
-and its deck behind *Show its deck*. *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
-odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
-resets her; **Add her to your veterans** saves her (with her parents, who become the next career's grandparents) and
+and its deck behind *Show its deck*. **Reroll** draws one from this career's odds (targets, stars by rank, G1 wins by their
+odds, and her pink: each legacy pink fires or not at both April inspirations, then one aptitude she ends at A or S, stars
+20/70/10; the G1 wins are drawn from their average odds, not from that roll's aptitudes) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Add to veterans** saves her (with her parents, who become the next career's grandparents) and
 hands every place back to the planner for the next generation.
 
 Below: the odds (all targets land as sparks, all but one, targets expected), the deck with the *Race schedule* button
 in its title row, the target skills (per target the chance the lineage passes it on, how many of the six carry it, the
-chance it lands as a spark) and the aptitude (pink) sparks' chances of being passed on. The
+chance it lands as a spark) and the aptitude (pink) sparks' chances of being passed on; then her aptitudes the
+legacies' pinks raise at the start (e.g. Dirt F → E: the six legacies' pink stars for it summed, 1/4/7/10★ give 1-4
+grades, at most A) and the odds of her own pink spark (one aptitude she ends at A or S, uniformly; the April
+inspirations' firings can lift an aptitude, A to S included). Her schedule's win chances count all of it. The
 odds and the deck look as on the loop planner page: click a deck card for its panel (owned or not, GameTora); marking
-it not owned searches again (with borrowing on, it may come back as the borrowed card). *Race schedule* opens the
+it not owned searches again (it may come back as the borrowed card). *Race schedule* opens the
 planner's schedule window for the trainee: the G1s she runs, as banner cards with their win odds (a race a parent won
 counts extra and is outlined as building affinity).
 
@@ -125,15 +174,15 @@ to what odds, and the two-deep part), tags *planner's pick*, *about the same* an
 one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
 "planning…".
 
-**Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
+**Your veterans** (the *Veteran Umamusume* dialog): *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
 re-import replaces earlier imports and keeps veterans made here. *Export* shows your veterans, the plan and the
 solver job the planner sends for them (to replay a search outside the page) as text, with *Copy* and *Download*;
 *Paste* takes that text back, *Import* the downloaded file. *Paste* also takes an uma.moe lineage planner export: each
-top veteran (p1, p2, ...) with her two parents is added after yours, marked yours and tagged *From uma.moe* (switch it
+top veteran (p1, p2, ...) with her two parents is added after yours, marked yours (her popup says *From uma.moe*) (switch it
 to Borrowed if she is a friend's); uma.moe's spark id x 10 + its level is the game's factor id, and its win saddles are
-the game's. In every node: click a skill to cycle its stars
-1 → 2 → 3 → 1, hover it for the × that removes it, **+** lists the target skills she lacks and the aptitudes, click a
+the game's. In every node: a spark is the game's icon; click it for
+its popup (set 1, 2 or 3 stars, Remove), **+** lists the target skills she lacks and the aptitudes, click a
 portrait to change who she is, the G1 button opens the G1 wins editor, *Yours / Borrowed* marks a borrowed veteran.
 
 The G1 wins editor (a veteran's, and the veteran analysis') is the schedule window's calendar with her wins on it: each

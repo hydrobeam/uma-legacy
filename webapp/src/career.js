@@ -19,6 +19,7 @@ import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, pinkName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
+import { detailsEl, inspView, fitSparks } from './details.js';
 
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
@@ -77,42 +78,13 @@ function buildJob() {
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   const all = plan.trainee && fixed.length === 2;
   // a place left open: the K best careers by odds (the plan then picks among them and a few more, `runPlan`)
-  const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: state.borrow,
+  const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: true,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: all ? 1 : ROLL_K };
   return job;
 }
-// ---------- the goal: a fully looped parent ----------
-// A veteran with a spark of every target ("8/8") whose two parents are 8/8 too: as a parent she brings three full
-// legacies. The note says where you are; the planner picks every step (its trio takes a real 8/8 of yours as a free
-// side, or a fresh one where yours is the poorer parent).
+// an 8/8 veteran: a spark of every target (with 8/8 parents: a fully looped parent)
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t => (nd.sparks || {})[t.group] > 0);
-const starSum = (nd) => state.targets.reduce((a, t) => a + ((nd.sparks || {})[t.group] || 0), 0);
-function goalStage() {
-  const looped = vets.findIndex(v => isFull(v) && v.parents.length === 2 && v.parents.every(isFull));
-  if (looped >= 0) return { step: 'looped', at: looped };
-  const full = vets.map((v, i) => ({ v, i })).filter(x => isFull(x.v)).sort((a, b) => starSum(b.v) - starSum(a.v));
-  if (!full.length) return { step: 'build' };
-  // the best pair of 8/8s: different umas, at most one borrowed, most stars
-  let pair = null;
-  for (let a = 0; a < full.length && !pair; a++) for (let b = a + 1; b < full.length; b++) {
-    const x = full[a].v, y = full[b].v;
-    if (x.chara !== y.chara && !(x.borrowed && y.borrowed)) { pair = [full[a].i, full[b].i]; break; }
-  }
-  if (pair) return { step: 'shot', fix: pair };
-  return { step: 'second', fix: [full[0].i], at: full[0].i };
-}
-function goalEl() {
-  const g = goalStage(), box = el('div', 'goalnote'); box.id = 'goal-note';
-  const name = (i) => `#${i + 1} ${umaName(vets[i].chara)}`;
-  const n = state.targets.length;
-  const txt = g.step === 'looped' ? `You have a fully looped parent: ${name(g.at)} (${n}/${n} with ${n}/${n} parents). The planner goes for the best odds.`
-    : g.step === 'build' ? `Goal: a fully looped parent (${n}/${n} with ${n}/${n} parents). Step 1: no ${n}/${n} veteran yet.`
-    : g.step === 'second' ? `Goal: a fully looped parent. Step 2: you have one ${n}/${n} (${name(g.at)}); the planner counts her as a parent for the next ${n}/${n}.`
-    : `Goal: a fully looped parent. Step 3: you have ${n}/${n}s of two umas (${g.fix.map(name).join(' and ')}); a career with both as parents that lands all ${n} is a fully looped parent.`;
-  box.append(el('strong', '', g.step === 'looped' ? 'Fully looped. ' : `Step ${{ build: 1, second: 2, shot: 3 }[g.step]} of 3. `), txt);
-  return box;
-}
 const ROLL_K = 6;
 // the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
 const baseOf = (job) => ({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1, rollout: undefined, p_now: undefined });
@@ -187,15 +159,6 @@ const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
 // an option's score: one career deep, plus (for the few highest and the best odds) what her veteran opens for the next
 const scoreOf = (o) => o.score ?? o.index;
 const fmtN = (x) => Math.round(x).toLocaleString();
-function whyText(r) {
-  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
-  const pick = P.options.find(x => x.chosen), n = state.targets.length;
-  if (P.mode === 'done') return o.chosen ? `The planner's pick: the best odds (you already have a fully looped parent).` : '';
-  if (scoreOf(o) == null) return '';
-  if (!o.chosen) return `Not the planner's pick: ${netText(scoreOf(o))} careers per run toward a fully looped parent, against ${pick ? netText(scoreOf(pick)) : '–'} for the pick${o.near ? ' (about the same)' : ''}.`;
-  const own = o.stage_cost != null ? `her own ${n}/${n} (1 in ${Math.round(1 / o.p_all).toLocaleString()}) counts for her step, and ` : '';
-  return `The planner's pick: it brings a fully looped parent the closest, ${netText(scoreOf(o))} careers per run: ${own}${pct(o.lift)} of her rolls make the plan cheaper (a better parent for a step still to run). Repeat it until a roll changes the plan.`;
-}
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
   if (plan.parents[k]) return { v: vetById(plan.parents[k]), pick: false };
@@ -217,6 +180,16 @@ function pnode(kind, gate, label, ghost) {
   n.appendChild(h);
   return n;
 }
+// The tree, as the game's legacy display: portraits only (the trainee; Legacy 1 blue and Legacy 2 pink, each the parent
+// with her own two parents), each with its legacy number and affinity; a portrait opens the node popup (her sparks,
+// G1 wins, choose or hand back the place, change who she is). The popup is refilled after every edit (`fillNode`).
+// a click anywhere in a node's box opens it, as its portrait does (not on the box's own buttons or deck cards)
+const wholeBox = (box, t) => { box.classList.add('pnclick'); box.addEventListener('click', (e) => { if (!e.target.closest('button, a, .deck, input')) t.click(); }); };
+function tile(key, face, name, sub, extra) {
+  const b = el('button', 'ptile'); b.type = 'button'; b.dataset.k = key; b.setAttribute('aria-haspopup', 'dialog');
+  b.appendChild(face); const nm = el('span', 'tnm'); nm.appendChild(el('span', 'nm', name)); if (sub) nm.appendChild(el('span', 'sub', sub)); if (extra) nm.appendChild(extra);
+  b.appendChild(nm); return b;
+}
 function traineeEl(r) {
   const id = plan.trainee || (r && r.trainee.id);
   const n = pnode('trainee', 0, plan.trainee ? 'Trainee' : 'Trainee · planner\'s pick', !plan.trainee);
@@ -224,68 +197,140 @@ function traineeEl(r) {
   let parts = null;
   if (r && r.trainee.id === id) {
     const sum = (k) => r.slots.filter(x => x.kind === k).reduce((a, x) => a + x.aff, 0), pa = sum('parent'), ga = sum('grandparent');
-    const a = el('span', 'aff tot', `Affinity ${Math.round(pa + ga)}`); a.title = `Parents ${Math.round(pa)} + grandparents ${Math.round(ga)}`;
+    const a = affEl(pa + ga, 'aff tot'); a.title = `Affinity ${Math.round(pa + ga)}: parents ${Math.round(pa)} + grandparents ${Math.round(ga)}`;
     n.querySelector('.pnh').appendChild(a);
-    parts = el('div', 'tsum', `Parents ${Math.round(pa)} · grandparents ${Math.round(ga)}`);
+    parts = el('span', 'tsum', `Parents ${Math.round(pa)} · grandparents ${Math.round(ga)}`);
   }
-  const who = el('div', 'twho');
-  if (id) {
-    who.append(umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 96));
-    const nm = el('div', 'tnm'); nm.append(el('div', 'nm', umaName(id)));
-    if (r && r.trainee.id === id) nm.append(el('div', 'sub', r.trainee.outfits.length ? r.trainee.outfits.map(o => o.label).join(' or ') : 'any outfit'));
-    if (parts) nm.append(parts);
-    who.append(nm);
-  } else who.append(el('div', 'tempty', 'The planner tries every uma you own.'));
-  n.appendChild(who);
-  const acts = el('div', 'row tacts');
-  acts.appendChild(btn(plan.trainee ? 'Change trainee' : 'Choose trainee', 'primary', () => openUmaPicker('Trainee: which uma?', (u) => { plan.trainee = u; changed(); }, owned)));
-  if (plan.trainee) acts.appendChild(btn('Let the planner pick', '', () => { plan.trainee = null; changed(); }));
-  n.appendChild(acts);
+  const sub = id && r && r.trainee.id === id ? (r.trainee.outfits.length ? r.trainee.outfits.map(o => o.label).join(' or ') : 'any outfit') : null;
+  const t = id ? tile('node:t', umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 96), umaName(id), sub, parts)
+    : tile('node:t', el('span', 'av empty'), 'Any uma', 'The planner tries every uma you own.');
+  t.setAttribute('aria-label', `Trainee: ${id ? umaName(id) : 'the planner picks'}. Details`); t.onclick = () => openNode({ kind: 't' });
+  n.appendChild(t); wholeBox(n, t);
+  // her career's deck (opens here, under her) and race schedule (its window), behind buttons
+  if (r && r.trainee.id === id) {
+    const row = el('div', 'row tdeck');
+    const db = btn(deckOpen ? 'Hide the deck' : 'Deck', '', () => { deckOpen = !deckOpen; renderTree(); $('deck-open')?.focus(); });
+    db.id = 'deck-open'; db.dataset.k = 'deck-open'; db.setAttribute('aria-expanded', String(deckOpen)); db.setAttribute('aria-controls', 'tree-deck');
+    row.append(db, schedBtn(r)); n.appendChild(row);
+    if (deckOpen) { const dk = deckEl(r, 'Deck'); dk.id = 'tree-deck'; n.appendChild(dk); }
+  }
   return n;
 }
-function affEl(a) { return a === null ? null : el('span', 'aff', `Affinity ${Math.round(a)}`); }
+// affinity: the game's heart and the number (named "Affinity N" for screen readers and the tooltip)
+function affEl(a, cls = 'aff') { if (a === null) return null; const e = el('span', cls); e.append(el('i', 'heart'), String(Math.round(a)));
+  e.setAttribute('aria-label', `Affinity ${Math.round(a)}`); e.title = `Affinity ${Math.round(a)}`; return e; }
 function familyEl(k, r) {
   const fam = el('div', 'pf');
+  // the game's legacy box: "Legacy 1" blue, "Legacy 2" pink, the parent with her own two parents
+  fam.appendChild(el('span', 'pflab', `Legacy ${k + 1}`));
   const at = parentAt(k, r), gate = k * 3 + 1;
-  const n = pnode('parent', gate, `Parent ${k + 1}` + (at && at.pick ? ' · planner\'s pick' : '') + (at && at.v.borrowed ? ' · borrowed' : ''), at && at.pick);
+  const n = pnode('parent', 0, (at && at.pick ? 'Planner\'s pick' : at ? 'Your pick' : `Parent ${k + 1}`) + (at && at.v.borrowed ? ' · guest' : ''), at && at.pick);
   if (at && at.v.borrowed) n.classList.add('bor');
+  let t;
   if (at) {
     const v = at.v, i = idxOf(v.id), a = affOf(r, i);
     if (a !== null) n.querySelector('.pnh').appendChild(affEl(a));
-    const who = el('div', 'twho');
-    const pb = el('button', 'facebtn'); pb.type = 'button'; pb.append(umaAv(v.chara, v.outfit, 64)); pb.title = 'Choose another parent'; pb.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`);
-    pb.onclick = () => openParentPicker(k);
-    const nm = el('div', 'tnm'); nm.append(el('div', 'nm', umaName(v.chara)), el('div', 'sub', `Veteran #${i + 1}` + (v.src === 'hand' ? ', made here' : '')));
-    who.append(pb, nm, winsBtn(v, umaName(v.chara), 'p' + k));
-    n.append(who, sparksEl(v, 'p' + k));
-  } else n.appendChild(el('p', 'tempty', vets.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'));
-  const acts = el('div', 'row tacts');
-  acts.appendChild(btn(plan.parents[k] ? 'Change parent' : 'Choose parent', 'primary big', () => openParentPicker(k)));
-  if (plan.parents[k]) acts.appendChild(btn('Let the planner pick', '', () => { plan.parents[k] = null; changed(); }));
-  n.appendChild(acts);
-  fam.appendChild(n);
-  // her own parents: the trainee's grandparents (who they are and what they carry is part of the veteran)
+    t = tile('node:p' + k, umaAv(v.chara, v.outfit, 72), umaName(v.chara), `Veteran #${i + 1}` + (v.src === 'hand' ? ', made here' : ''));
+    t.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Details`);
+  } else { t = tile('node:p' + k, el('span', 'av empty'), vets.length >= 2 ? 'The planner picks' : 'No parent yet', null); t.setAttribute('aria-label', `Parent ${k + 1}: none yet. Details`); }
+  t.onclick = () => openNode({ kind: 'p', k });
+  n.appendChild(t); wholeBox(n, t); fam.appendChild(n);
+  // her own parents: the trainee's grandparents
   if (at) {
     const gk = el('div', 'pk');
     at.v.parents.forEach((g, j) => {
-      const gn = pnode('gp', gate + 1 + j, 'Grandparent', false);
+      const gn = pnode('gp', 0, 'Grandparent', false);
       const a = affOf(r, idxOf(at.v.id), j); if (a !== null) gn.querySelector('.pnh').appendChild(affEl(a));
-      const who = el('div', 'twho');
-      const b = el('button', 'facebtn'); b.type = 'button'; b.append(umaAv(g.chara || 0, g.outfit, 40));
-      b.title = 'Change who she is'; b.setAttribute('aria-label', `Grandparent: ${umaName(g.chara)}. Change who she is`);
-      b.onclick = () => changeUma(g, 'Grandparent');
-      who.append(b, el('div', 'nm', g.chara ? umaName(g.chara) : 'Unknown: pick her'), winsBtn(g, umaName(g.chara), `p${k}g${j}`));
-      gn.append(who, sparksEl(g, `p${k}g${j}`));
-      gk.appendChild(gn);
+      const gt = tile(`node:p${k}g${j}`, umaAv(g.chara || 0, g.outfit, 48), g.chara ? umaName(g.chara) : 'Unknown: pick her', null);
+      gt.setAttribute('aria-label', `Grandparent: ${g.chara ? umaName(g.chara) : 'unknown'}. Details`); gt.onclick = () => openNode({ kind: 'g', k, j });
+      gn.appendChild(gt); wholeBox(gn, gt); gk.appendChild(gn);
     });
     fam.appendChild(gk);
   }
   return fam;
 }
+let deckOpen = false;   // the deck under the trainee: closed at first
+// the node popup (game style): one dialog, refilled on every redraw while open
+let nodeDlg = null, nodeOpen = null;
+function openNode(spec) {
+  if (!nodeDlg) {
+    nodeDlg = el('dialog', 'gmdlg nodedlg'); nodeDlg.id = 'node-dlg'; nodeDlg.setAttribute('aria-labelledby', 'node-title');
+    const h = el('h3', 'gmdhdr'); h.id = 'node-title'; const body = el('div', 'gmdbody'); body.id = 'node-body';
+    const f = el('div', 'gmdfoot'); const c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => nodeDlg.close(); f.appendChild(c);
+    nodeDlg.append(h, body, f);
+    nodeDlg.addEventListener('close', () => { const sp = nodeOpen; nodeOpen = null; const key = sp && (sp.kind === 't' ? 'node:t' : sp.kind === 'p' ? 'node:p' + sp.k : sp.kind === 'v' ? 'node:v' + sp.id : `node:p${sp.k}g${sp.j}`);
+      const e = key && document.querySelector(`[data-k="${key}"]`); if (e && !document.querySelector('dialog[open]')) e.focus(); });
+    document.body.appendChild(nodeDlg);
+  }
+  nodeOpen = spec; fillNode(); if (!nodeDlg.open) nodeDlg.showModal();
+}
+// a dialog of its own from the popup (the uma or parent picker): the popup closes first
+const fromNode = (fn) => () => { if (nodeDlg?.open) nodeDlg.close(); fn(); };
+function fillNode() {
+  if (!nodeOpen || !nodeDlg) return;
+  const r = shown(), body = $('node-body'); body.textContent = ''; const sp = nodeOpen;
+  const acts = el('div', 'row tacts');
+  if (sp.kind === 't') {
+    $('node-title').textContent = plan.trainee ? 'Trainee' : 'Trainee · planner\'s pick';
+    const id = plan.trainee || (r && r.trainee.id);
+    if (id) { const w = el('div', 'twho'); w.append(umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 72), el('div', 'nm', umaName(id))); body.appendChild(w); }
+    else body.appendChild(el('p', 'tempty', 'The planner tries every uma you own.'));
+    acts.appendChild(btn(plan.trainee ? 'Change trainee' : 'Choose trainee', 'primary', fromNode(() => openUmaPicker('Trainee: which uma?', (u) => { plan.trainee = u; changed(); }, owned))));
+    if (plan.trainee) acts.appendChild(btn('Let the planner pick', '', () => { plan.trainee = null; changed(); }));
+  } else if (sp.kind === 'p') {
+    const k = sp.k, at = parentAt(k, r);
+    $('node-title').textContent = `Legacy ${k + 1} · parent ${k + 1}` + (at && at.pick ? ' · planner\'s pick' : '');
+    if (at) {
+      const v = at.v, i = idxOf(v.id), w = el('div', 'twho');
+      const pb = el('button', 'facebtn'); pb.type = 'button'; pb.append(umaAv(v.chara, v.outfit, 64)); pb.title = 'Choose another parent'; pb.setAttribute('aria-label', `Parent ${k + 1}: ${umaName(v.chara)}. Choose another parent`);
+      pb.onclick = fromNode(() => openParentPicker(k));
+      const nm = el('div', 'tnm'); nm.append(el('div', 'nm', umaName(v.chara)), el('div', 'sub', `Veteran #${i + 1}` + (v.src === 'hand' ? ', made here' : '') + (v.borrowed ? ', borrowed' : '')));
+      w.append(pb, nm, winsBtn(v, umaName(v.chara), 'p' + k)); body.append(w);
+      // her Inspiration view, as the card's: her sparks, then her parents' (the trainee's grandparents), all editable
+      const iv = el('div', 'ud udbare'); iv.appendChild(inspView({ d: v, key: 'p' + k, onEdit: changed, parentKey: (j) => `p${k}g${j}`, onEditParent: changed, header: false }));
+      body.appendChild(iv);
+    } else body.appendChild(el('p', 'tempty', vets.length >= 2 ? 'The planner picks from your veterans.' : 'No parent yet.'));
+    acts.appendChild(btn(plan.parents[k] ? 'Change parent' : 'Choose parent', 'primary big', fromNode(() => openParentPicker(k))));
+    if (plan.parents[k]) acts.appendChild(btn('Let the planner pick', '', () => { plan.parents[k] = null; changed(); }));
+  } else if (sp.kind === 'v') {
+    // a veteran of yours (the pool, Career Info's legacies): her sparks and her parents', editable in place
+    const i = idxOf(sp.id), v = vets[i]; if (!v) { nodeDlg.close(); return; }
+    $('node-title').textContent = `Veteran #${i + 1}` + (v.borrowed ? ' · borrowed' : '');
+    const w = el('div', 'twho'), b = el('button', 'facebtn'); b.type = 'button'; b.append(umaAv(v.chara, v.outfit, 56));
+    b.title = 'Change who she is'; b.setAttribute('aria-label', `Veteran #${i + 1}: ${umaName(v.chara)}. Change who she is`); b.onclick = fromNode(() => changeUma(v, `Veteran #${i + 1}`));
+    // where she came from (entered from a career here, an uma.moe tree, an import, made here)
+    const src = { entered: 'Entered here', simulated: 'Entered here', tree: 'From uma.moe', import: 'Imported', hand: 'Made here' }[v.src];
+    w.append(b, el('div', 'nm', umaName(v.chara)), winsBtn(v, `Veteran #${i + 1}, ${umaName(v.chara)}`, 'v' + v.id));
+    if (src) w.appendChild(el('span', v.src === 'tree' ? 'srctag' : 'simtag', src));
+    body.appendChild(w);
+    const iv = el('div', 'ud udbare'); iv.appendChild(inspView({ d: v, key: 'v' + v.id, onEdit: changed, parentKey: (j) => `v${v.id}g${j}`, onEditParent: changed, header: false }));
+    body.appendChild(iv);
+    // her parents: who they are and their G1 wins
+    const pr = el('div', 'vpars');
+    v.parents.forEach((g, j) => { const x = el('div', 'twho'), gb = el('button', 'facebtn'); gb.type = 'button'; gb.append(umaAv(g.chara || 0, g.outfit, 36));
+      const lab = `Parent ${j + 1} of #${i + 1}`; gb.title = `${lab}: ${umaName(g.chara)}. Change who she is`; gb.setAttribute('aria-label', gb.title); gb.onclick = fromNode(() => changeUma(g, lab));
+      x.append(gb, el('span', 'nm', g.chara ? umaName(g.chara) : 'Unknown parent'), winsBtn(g, `${lab}, ${umaName(g.chara)}`, `v${v.id}g${j}`)); pr.appendChild(x); });
+    body.appendChild(pr);
+  } else {
+    const at = parentAt(sp.k, r), g = at && at.v.parents[sp.j];
+    $('node-title').textContent = `Legacy ${sp.k + 1} · grandparent`;
+    if (!g) { nodeDlg.close(); return; }
+    const w = el('div', 'twho'), b = el('button', 'facebtn'); b.type = 'button'; b.append(umaAv(g.chara || 0, g.outfit, 56));
+    b.title = 'Change who she is'; b.setAttribute('aria-label', `Grandparent: ${umaName(g.chara)}. Change who she is`); b.onclick = fromNode(() => changeUma(g, 'Grandparent'));
+    w.append(b, el('div', 'nm', g.chara ? umaName(g.chara) : 'Unknown: pick her'), winsBtn(g, umaName(g.chara), `p${sp.k}g${sp.j}`));
+    const iv = el('div', 'ud udbare'); iv.appendChild(inspView({ d: { ...g, parents: [] }, key: `p${sp.k}g${sp.j}`, onEdit: changed, header: false }));
+    // (a copy without parents for the view; her sparks object is hers: edits land on her)
+    iv.querySelector('.simskills').replaceChildren(sparksEl(g, `p${sp.k}g${sp.j}`, changed));
+    body.append(w, iv);
+  }
+  if (acts.childElementCount) body.appendChild(acts);
+  fitSparks(nodeDlg);
+}
 function renderTree() {
   const r = shown(), box = $('tree'); box.textContent = '';
   const t = el('div', 'pt'); t.appendChild(traineeEl(r)); box.appendChild(t);
   const k = el('div', 'pk'); k.append(familyEl(0, r), familyEl(1, r)); box.appendChild(k);
+  if (nodeDlg?.open) fillNode();
 }
 
 // ---------- the parent picker ----------
@@ -333,15 +378,39 @@ function openParentPicker(k) {
 // ---------- the career: odds, deck, targets, schedule, after this career, other picks ----------
 const sec = (cls, title) => { const s = el('section', 'rbsec ' + cls); s.appendChild(el('h3', '', title)); return s; };
 // the odds as the loop planner shows them
-function oddsEl(r) {
-  const n = state.targets.length, h = el('div', 'lhead');
-  h.innerHTML = `<span class="odds"><b></b> runs to land all ${n}</span><span class="sub">${n - 1} of ${n} or better: <span class="num"></span> · <span class="num"></span> of ${n} expected</span>`;
-  h.querySelector('.odds b').textContent = fmtIn(r.p_all);
-  const nums = h.querySelectorAll('.sub .num'); nums[0].textContent = fmtIn(r.p_minus1); nums[1].textContent = r.expected.toFixed(2);
-  // why the planner shows this career (once the plan is made)
-  const why = whyText(r);
-  if (why) { const x = el('span', 'sub expc', why); x.id = 'pick-why'; h.appendChild(x); }
-  return h;
+// the career's odds in the veteran card's header: all n; a click opens the odds popup (exactly each count)
+function oddsBtn(r) {
+  const n = state.targets.length, b = el('button', 'udodds'); b.type = 'button'; b.id = 'odds-open'; b.dataset.k = 'odds-open'; b.setAttribute('aria-haspopup', 'dialog');
+  b.append(el('b', '', fmtIn(r.p_all)), el('span', '', ` to land all ${n}`));
+  b.setAttribute('aria-label', `${fmtIn(r.p_all)} runs to land all ${n}. The odds of every count`);
+  b.onclick = () => openOdds(r);
+  return b;
+}
+// the chance of landing exactly k of the n targets: exact over the landed sets (outcome_sets), else each target on its
+// own odds (over 12 targets); the all-n and n-1-or-better figures are the solver's exact ones
+function landedCounts(r) {
+  const n = state.targets.length, ex = new Array(n + 1).fill(0);
+  if (Array.isArray(r.outcome_sets)) r.outcome_sets.forEach((p, m) => { let c = 0; for (let x = m; x; x &= x - 1) c++; ex[c] += p; });
+  else { let v = [1]; for (const t of r.targets) { const w = new Array(v.length + 1).fill(0); v.forEach((x, i) => { w[i] += x * (1 - t.p); w[i + 1] += x * t.p; }); v = w; } v.forEach((x, i) => { ex[i] = x; }); }
+  return ex;
+}
+let oddsDlg = null;
+function openOdds(r) {
+  if (!oddsDlg) { oddsDlg = el('dialog', 'gmdlg'); oddsDlg.id = 'odds-dlg'; oddsDlg.setAttribute('aria-labelledby', 'odds-title');
+    oddsDlg.addEventListener('close', () => $('odds-open')?.focus()); document.body.appendChild(oddsDlg); }
+  const n = state.targets.length, ex = landedCounts(r); oddsDlg.textContent = '';
+  const h = el('h3', 'gmdhdr', 'Odds of this career'); h.id = 'odds-title'; oddsDlg.appendChild(h);
+  const body = el('div', 'gmdbody');
+  // the chance of landing exactly k of the n targets, k = n .. 0 (all n: the solver's exact figure)
+  const tb = el('table', 'oddtab'); tb.innerHTML = '<thead><tr><th scope="col">Targets landed</th><th scope="col">Chance</th></tr></thead><tbody></tbody>';
+  for (let k = n; k >= 0; k--) {
+    const tr = el('tr', k === n ? 'all' : ''); const th = el('th', '', `${k}/${n}`); th.scope = 'row';
+    tr.append(th, el('td', '', pct(k === n ? r.p_all : ex[k]))); tb.tBodies[0].appendChild(tr);
+  }
+  body.append(tb, el('p', 'gmdstat', `${r.expected.toFixed(2)} of ${n} expected.`));
+  oddsDlg.appendChild(body);
+  const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => oddsDlg.close(); f.appendChild(c); oddsDlg.appendChild(f);
+  oddsDlg.showModal(); c.focus();
 }
 // the deck as the loop planner shows it: card art and name; a click opens the card's panel (owned or not, GameTora)
 function deckEl(r, title = 'Deck', extra = null) {
@@ -378,9 +447,22 @@ function targetsEl(r) {
   }
   s.appendChild(tb);
   if (r.pinks.length) {
-    const p = el('p', 'pinkres'); p.append(el('span', 'sub', 'Aptitudes passed on (at least once): '));
+    const p = el('p', 'pinkres'); p.append(el('span', 'sub', 'Pinks passed on: '));
     for (const x of r.pinks) p.append(el('span', 'pchip', `${pinkName(x.group)} ${pct(x.q)}`), ' ');
     s.appendChild(p);
+  }
+  // her aptitudes: what the legacies' pinks raise at the start (her schedule's win chances count it, and the April
+  // inspirations' chances), and the odds of her veteran's pink spark
+  const ap = r.aptitudes;
+  if (ap) {
+    const G = 'GFEDCBAS', up = ap.base.map((b, k) => [b, ap.start[k], k]).filter(([b, st]) => st > b);
+    if (up.length) { const p = el('p', 'pinkres'); p.id = 'apt-start'; p.append(el('span', 'sub', 'Start aptitudes: '));
+      for (const [b, st, k] of up) p.append(el('span', 'pchip', `${pinkName(ap.pink_gen[k].group)} ${G[b - 1]} → ${G[st - 1]}`), ' ');
+      s.appendChild(p); }
+    const gen = ap.pink_gen.filter(x => x.p > 0.0005).sort((a, b) => b.p - a.p);
+    if (gen.length) { const p = el('p', 'pinkres'); p.id = 'pink-gen'; p.append(el('span', 'sub', 'Her pink: '));
+      for (const x of gen) p.append(el('span', 'pchip', `${pinkName(x.group)} ${pct(x.p)}`), ' ');
+      s.appendChild(p); }
   }
   return s;
 }
@@ -425,9 +507,9 @@ function facesEl(tid, outfit, parents, outfitLabel = null) {
 const parentFace = (i, who) => i >= vets.length ? { chara: who.chara, outfit: who.outfit, label: umaName(who.chara), her: true }
   : { chara: vets[i].chara, outfit: vets[i].outfit, label: `#${i + 1} ${umaName(vets[i].chara)}` };
 // ---------- the veteran analysis (the veteran you got) ----------
-// The decision is per veteran: enter the one you got (it starts as the most likely result) and Compare runs both
+// The decision is per veteran: enter the one you got (she starts as a random result, drawn as Reroll draws) and Compare runs both
 // choices, running this career again or using her in the next one, on the plan's terms (expected careers to land).
-const copyNode = (v) => ({ chara: v.chara, ...(v.outfit ? { outfit: v.outfit } : {}), sparks: { ...v.sparks }, pinks: { ...v.pinks }, wins: [...v.wins] });
+const copyNode = (v) => ({ chara: v.chara, ...(v.outfit ? { outfit: v.outfit } : {}), sparks: { ...v.sparks }, pinks: { ...v.pinks }, blues: { ...(v.blues || {}) }, greens: { ...(v.greens || {}) }, wins: [...v.wins] });
 function scheduledRaces(r) {
   const races = new Map();
   for (const w of (r.schedule || []).filter(w => w.run !== false)) {
@@ -437,20 +519,28 @@ function scheduledRaces(r) {
   }
   return [...races.values()];
 }
-// the most likely result: the most likely set of landed targets, each at the rank's most likely star count, and the
-// G1s she more likely wins than not
-function likelyOutcome(r) {
-  const w = state.rank.split(',').map(Number), star = w.indexOf(Math.max(...w)) + 1;
-  const sparks = {};
-  if (Array.isArray(r.outcome_sets)) {
-    let mask = 0; r.outcome_sets.forEach((p, m) => { if (p > r.outcome_sets[mask]) mask = m; });
-    state.targets.forEach((t, i) => { if (mask & (1 << i)) sparks[t.group] = star; });
-  } else r.targets.forEach(t => { if (t.p >= 0.5) sparks[t.group] = star; });
-  const wins = scheduledRaces(r).filter(x => x.p >= 0.5).map(x => x.ix).sort((a, b) => a - b);
-  return { sparks, wins };
+// the skills she bought in a roll, given the sparks it landed (the report's per-target buying and landing chances):
+// a landed one is bought, gold with chance land_gold / land; one that didn't land was bought anyway with chance
+// (buy - land) / (1 - land), gold with chance (gold - land_gold) / (buy - land)
+function rolledBought(r, sparks) {
+  const bought = {};
+  for (const t of r.targets) { const b = t.buy; if (!b) continue; const L = b.land_gold + b.land_white, B = b.gold + b.white;
+    if (sparks[t.group]) bought[t.group] = Math.random() < (L > 0 ? b.land_gold / L : 0) ? 'gold' : 'white';
+    else if (L < 1 && Math.random() < Math.max(0, B - L) / (1 - L)) bought[t.group] = Math.random() < (B - L > 0 ? Math.max(0, b.gold - b.land_gold) / (B - L) : 0) ? 'gold' : 'white'; }
+  return bought;
+}
+// her pink spark drawn (MODEL.md): her start grades, each legacy pink firing at each April inspiration (+1 grade, at most S),
+// then one aptitude uniform over those at A or S, stars 20/70/10
+function rolledPink(r) {
+  const ap = r.aptitudes; if (!ap) return { pinks: {}, apt: null };
+  const g = ap.start.slice();
+  for (let e = 0; e < 2; e++) for (const f of ap.fire) if (Math.random() < f.p) g[f.apt] = Math.min(8, g[f.apt] + 1);
+  const as = g.map((x, k) => x >= 7 ? k : -1).filter(k => k >= 0); if (!as.length) return { pinks: {}, apt: g };
+  const k = as[Math.floor(Math.random() * as.length)], u = Math.random();
+  return { pinks: { [ap.pink_gen[k].group]: u < 0.2 ? 1 : u < 0.9 ? 2 : 3 }, apt: g };
 }
 // a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
-// each G1 she runs won with its chance (your roll, so it differs every time; the default stays the most likely result)
+// each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
 function rolledOutcome(r) {
   const w = state.rank.split(',').map(Number);
   const star = () => { const u = Math.random(); return u < w[0] ? 1 : u < w[0] + w[1] ? 2 : 3; };
@@ -461,7 +551,19 @@ function rolledOutcome(r) {
     state.targets.forEach((t, i) => { if (mask & (1 << i)) sparks[t.group] = star(); });
   } else r.targets.forEach(t => { if (Math.random() < t.p) sparks[t.group] = star(); });   // over 12 targets: each on its own odds
   const wins = scheduledRaces(r).filter(x => Math.random() < x.p).map(x => x.ix).sort((a, b) => a - b);
-  return { sparks, wins };
+  const bought = rolledBought(r, sparks), pk = rolledPink(r);
+  return { sparks, bought, wins, pinks: pk.pinks, apt: pk.apt, ...rolledBlueGreen(r) };
+}
+// her blue (stat) spark: one of the five stats, near-equally likely (hakuraku: 20% each, a slight lean to her stronger
+// stats); its stars follow that stat's value, which the model doesn't have: the rank band's star mix stands in. Her unique
+// (green) spark: always (GameTora: guaranteed for an outfit at 3 stars or more; the page assumes yours are), stars by the
+// rank band (hakuraku: as white sparks, not by the skill's level)
+function rolledBlueGreen(r) {
+  const w = state.rank.split(',').map(Number), star = () => { const u = Math.random(); return u < w[0] ? 1 : u < w[0] + w[1] ? 2 : 3; };
+  const blues = { [1 + Math.min(4, Math.floor(Math.random() * 5))]: star() };
+  const out = r.trainee.outfits[0]?.id, greens = {};
+  if (out && (CAREER.uniques || {})[out]) greens[out] = star();
+  return { blues, greens };
 }
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false; compare(); }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
@@ -471,7 +573,7 @@ function cancelCompare() {
   simulationId++; killEngine(); simulation.state = 'ready';
   return planS.state === 'busy';
 }
-function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, ...likelyOutcome(r), pinks: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
+function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, pinks: {}, ...rolledOutcome(r), winAt: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
 function draftJob(v) {
   const pairs = (o) => Object.entries(o).map(([g, s]) => [+g, s]);
   const node = (v) => ({ chara: v.chara || 0, sparks: pairs(v.sparks), pinks: pairs(v.pinks), wins: [...v.wins] });
@@ -479,8 +581,6 @@ function draftJob(v) {
 }
 // an edit to the entered veteran: the comparison on screen is for the old one
 function editDraft() { if (simulation.r) simulation.stale = true; renderSimulation(); }
-function resetDraft() { const r = shown(); if (!r) return; const lost = cancelCompare();
-  simulation = { ...simulation, draft: draftOf(r), r: null, stale: false, error: null, state: 'ready' }; renderSimulation(); if (lost) runPlan(); }
 // Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now. The plan, if the
 // restart took it down, is queued again behind the comparison (runComparison posts its first job before it returns).
 function compare() {
@@ -530,7 +630,7 @@ async function runComparison() {
 }
 function addDraft() {
   if (searching || !simulation.draft) return;
-  const d = structuredClone(simulation.draft);
+  const d = structuredClone(simulation.draft); delete d.apt; delete d.bought;
   const v = newVet(d.chara, d.sparks);
   Object.assign(v, d, { src: 'entered', borrowed: false });
   plan.trainee = null; plan.parents = [null, null];
@@ -541,25 +641,28 @@ function simulationBody() {
   const box = sec('simulation', 'Veteran analysis'); box.id = 'simulation';
   const d = simulation.draft, r = shown(); if (!d || !r) return box;
   const busy = simulation.state === 'busy';
-  // her portrait beside her sparks and G1 wins (she starts as the most likely result of this career)
-  const who = el('div', 'simwho'), face = umaAv(d.chara, d.outfit, 96);
-  face.setAttribute('role', 'img'); face.setAttribute('aria-label', `${umaName(d.chara)} ${r.trainee.outfits[0]?.label || '(any outfit)'}`);
-  const side = el('div', 'simside');
-  const controls = el('fieldset', 'simskills'); controls.setAttribute('aria-label', 'Her sparks');
-  controls.appendChild(sparksEl(d, 'sim', editDraft));
-  // her G1 wins: her schedule's races on the schedule window's calendar
+  // her card, as the game's Umamusume Details screen (details.js; she starts as a random result of this career):
+  // aptitudes at the end of this result, Skills / Inspiration (her sparks, editable) / Career Info (her G1s, the wins editor)
   const wb = btn(`${d.wins.length ? d.wins.length : 'No'} G1 win${d.wins.length === 1 ? '' : 's'} · edit`, 'vwins', () => openDraftWins(d, r));
   wb.id = 'sim-wins'; wb.dataset.k = 'sim:wins'; wb.setAttribute('aria-haspopup', 'dialog');
-  side.append(controls, wb); who.append(face, side); box.appendChild(who);
+  box.appendChild(detailsEl({ d, outfit: r.trainee.outfits[0]?.label || null, apt: d.apt || r.aptitudes?.start || null,
+    races: scheduledRaces(r), raceName: (ix) => CAREER.races[ix] || 'G1 ' + ix, onEdit: editDraft, winsBtn: wb, targets: r.targets,
+    deck: r.deck, legacies: r.parents.map(i => ({ v: vets[i], label: '#' + (i + 1), open: () => openNode({ kind: 'v', id: vets[i].id }) })),
+    parentLabel: (j) => '#' + (r.parents[j] + 1) }));
+  const side = el('div', 'simcol');
   const actions = el('div', 'row');
   // Compare and a roll stay usable while a comparison runs: either one restarts it (not during the main search, whose
   // result replaces the career on show)
   const go = btn('Compare', 'primary', compare); go.id = 'sim-compare'; go.dataset.k = 'sim:compare'; go.disabled = searching;
-  const roll = btn('Roll a random result', '', rollDraft); roll.id = 'sim-roll'; roll.dataset.k = 'sim:roll'; roll.disabled = searching;
-  const reset = btn('Back to the most likely result', '', resetDraft); reset.id = 'sim-reset'; reset.dataset.k = 'sim:reset';
-  const add = btn('Add her to your veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
-  actions.append(go, roll, reset, add); box.appendChild(actions);
+  const roll = btn('Reroll', '', rollDraft); roll.id = 'sim-roll'; roll.dataset.k = 'sim:roll'; roll.disabled = searching;
+  const add = btn('Add to veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
+  actions.append(go, roll, add);
+  const mid = el('div', 'udmid'); mid.append(oddsBtn(r), actions);
+  box.querySelector('.ud .udtop')?.insertBefore(mid, box.querySelector('.ud .udname'));
   const result = el('div', 'simresult' + (simulation.stale ? ' stale' : '')); result.id = 'sim-result'; result.setAttribute('role', 'status');
+  // the panel beside her card: a mini header, and before any comparison a line saying what goes here
+  result.appendChild(el('div', 'simhdr', 'Comparison'));
+  if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare/reroll to see if she improves your loop.'));
   if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
@@ -569,14 +672,14 @@ function simulationBody() {
     const saves = v0b != null && v0a != null ? v0b - v0a : null;
     const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
-    const [head, tail] = looped ? [`She's a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'That is the goal; add her to your veterans.']
-      : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Expected careers to a fully looped parent after the planner's next career: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with her.` + (simulation.pickA ? ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')})${simulation.herParent ? ', her as a parent' : ''}.` : '') + ' The best career with her as a parent is below.']
-      : saves != null && saves >= 0.5 ? [`She saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with her.` + (simulation.pickA ? (simulation.samePick ? ` The planner's next career doesn't change: ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) again, ${netText(scoreOf(simulation.pickA))} per run (a gain this small doesn't change what's best).`
-        : ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(scoreOf(simulation.pickA))} per run.`) : '')]
-      // under half a career, but the planner's next career has her as a parent: she lifts its odds more than the plan's cost
-      : simulation.herParent ? ['She\'s a parent of the planner\'s next career.', `${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) at ${fmtIn(simulation.pickA.p_all)} (today's best ${fmtIn(before.p_all)}). Expected careers to a fully looped parent after it: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with her, under half a career saved: the plan's cost rests mostly on the careers still to run.`]
-      : next.p_all > before.p_all * (1 + 1e-9) ? ['She raises the best odds but saves under half a career.', `The best career with her as a parent is ${fmtIn(next.p_all)} (today's best ${fmtIn(before.p_all)}); expected careers to a fully looped parent stay about ${v0b != null ? fmtN(v0b) : 'unknown'}, and the planner's next career doesn't use her.`]
-      : ['She changes nothing yet.', `Expected careers to a fully looped parent stay ${v0b != null ? fmtN(v0b) : 'unknown'} (the best career with her as a parent is ${fmtIn(next.p_all)}; today's best ${fmtIn(before.p_all)}); she may still matter later, as a grandparent.`];
+    const [head, tail] = looped ? [`If this hit: a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'Add it to your veterans: the planner goes for the next one, with it as a parent.']
+      : simulation.full ? [`If this hit: an ${n}/${n}, step 1 of the goal done.`, `Expected careers to a fully looped parent after the planner's next career: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with this hit.` + (simulation.pickA ? ` With this hit the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')})${simulation.herParent ? ', this hit as a parent' : ''}.` : '') + ' The best career with this hit as a parent is below.']
+      : saves != null && saves >= 0.5 ? [`If this hit: saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with this hit.` + (simulation.pickA ? (simulation.samePick ? ` The planner's next career doesn't change: ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) again, ${netText(scoreOf(simulation.pickA))} per run (a gain this small doesn't change what's best).`
+        : ` With this hit the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(scoreOf(simulation.pickA))} per run.`) : '')]
+      // under half a career, but the planner's next career has this hit as a parent: it lifts its odds more than the plan's cost
+      : simulation.herParent ? ['If this hit: a parent of the planner\'s next career.', `${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) at ${fmtIn(simulation.pickA.p_all)} (today's best ${fmtIn(before.p_all)}). Expected careers to a fully looped parent after it: ${v0b != null ? fmtN(v0b) : 'unknown'} → ${v0a != null ? fmtN(v0a) : 'unknown'} with this hit, under half a career saved: the plan's cost rests mostly on the careers still to run.`]
+      : next.p_all > before.p_all * (1 + 1e-9) ? ['If this hit: better odds, under half a career saved.', `The best career with this hit as a parent is ${fmtIn(next.p_all)} (today's best ${fmtIn(before.p_all)}); expected careers to a fully looped parent stay about ${v0b != null ? fmtN(v0b) : 'unknown'}, and the planner's next career doesn't use it.`]
+      : ['If this hit: no change yet.', `Expected careers to a fully looped parent stay ${v0b != null ? fmtN(v0b) : 'unknown'} (the best career with this hit as a parent is ${fmtIn(next.p_all)}; today's best ${fmtIn(before.p_all)}); it may still matter later, as a grandparent.`];
     verdict.append(el('strong', '', head), ' ' + tail);
     result.appendChild(verdict);
     const odds = el('div', 'simodds');
@@ -590,12 +693,12 @@ function simulationBody() {
     const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show its deck')); dd.appendChild(deckEl(next, 'Deck of the next career'));
     result.appendChild(dd);
   }
-  box.appendChild(result);
+  side.appendChild(result); box.appendChild(side);
   return box;
 }
 function renderSimulation() {
   const ae = document.activeElement, k = ae?.dataset?.k, top = $('sim-top');
-  if (top) top.replaceChildren(shown() ? simulationBody() : '');
+  if (top) { top.replaceChildren(shown() ? simulationBody() : ''); fitSparks(top); }
   if (k && k.startsWith('sim:') && !ae.isConnected) document.querySelector(`[data-k="${CSS.escape(k)}"]`)?.focus();
 }
 // the options the planner weighed (only what it picks: the places left open), with "Use this": per option its odds now
@@ -623,14 +726,8 @@ function optionsEl() {
   const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen) : last.r.results;
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Saves per run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // the plan to a fully looped parent, once
-  if (P) { const pl = P.v0_plan;
-    const n = state.targets.length;
-    box.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${n}/${n}s of ${pl.a} and ${pl.b}, then ${pl.c} from both).` : 'Expected careers to a fully looped parent: no plan found.'));
-    if (P.members?.length) box.appendChild(el('p', 'sub omembers', P.members.map(m => m.real ? `${m.trainee}: your ${n}/${n}, no careers.`
-      : (m.have8 ? `${m.trainee}: a fresh ${n}/${n} (yours is the poorer parent), ` : `${m.trainee}: `) + (m.builds > 0
-        ? `${fmtIn(m.p)} now; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
-        : `${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`)).join(' '))); }
+  // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
+  if (P) { const q = el('button', 'btn savewhy', 'What do these mean?'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog'); q.onclick = () => openSaveWhy(P); box.appendChild(q); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -649,14 +746,34 @@ function optionsEl() {
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   const rest = P ? P.options.filter(o => !list.includes(o) && scoreOf(o) != null) : [];
-  if (rest.length) box.appendChild(el('p', 'sub orest', `${rest.length} more umas scored, ${netText(Math.min(...rest.map(scoreOf)))} to ${netText(Math.max(...rest.map(scoreOf)))} per run.`));
-  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career brings a fully looped parent closer, on average over every result she can roll (exact), minus the run itself. The plan is the cheapest trio: 8/8s of two umas (an 8/8 of yours costs nothing; a fresh one is her best career, building her odds first while that pays: rate and step fitted to your veterans now, the curve's shape to simulations), then the third from both, an 8/8 with them as parents. A career counts both ways: her own 8/8 for her step, and her veteran as a parent that makes a step cheaper. The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the plan. Every odds figure is exact; the expected careers are estimates.`));
   return box;
+}
+// "Saves per run" explained, in plain words, with the plan the numbers come from
+let saveDlg = null;
+function openSaveWhy(P) {
+  if (!saveDlg) { saveDlg = el('dialog', 'gmdlg'); saveDlg.id = 'save-dlg'; saveDlg.setAttribute('aria-labelledby', 'save-title');
+    saveDlg.addEventListener('close', () => $('save-why')?.focus()); document.body.appendChild(saveDlg); }
+  saveDlg.textContent = ''; const n = state.targets.length;
+  const h = el('h3', 'gmdhdr', 'Saves per run'); h.id = 'save-title'; saveDlg.appendChild(h);
+  const body = el('div', 'gmdbody savebody');
+  body.append(el('p', '', `How many careers running her takes off your road to a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n}), averaged over everything she could roll, minus the run itself. +1.1 means she gets you 1.1 careers closer than the run costs you. Below zero, she costs more than she brings.`),
+    el('div', 'gmdsub', 'Why not just run the best odds?'),
+    el('p', '', `The odds column only says who is most likely to land all ${n} in this one run. A fully looped parent needs ${n}/${n}s of two different umas, then a third career off both of them, and every veteran you make becomes a parent for the runs after it. So a run with slightly worse odds can be the better move when what she leaves behind makes the next runs cheaper. The planner counts both: her own shot, and what her veteran does for the rest.`),
+    el('div', 'gmdsub', 'The plan right now'));
+  { const pl = P.v0_plan;
+    const n = state.targets.length;
+    body.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${n}/${n}s of ${pl.a} and ${pl.b}, then ${pl.c} from both).` : 'Expected careers to a fully looped parent: no plan found.'));
+    if (P.members?.length) body.appendChild(el('p', 'sub omembers', P.members.map(m => m.real ? `${m.trainee}: your ${n}/${n}, no careers.`
+      : (m.have8 ? `${m.trainee}: a fresh ${n}/${n} (yours is the poorer parent), ` : `${m.trainee}: `) + (m.builds > 0
+        ? `${fmtIn(m.p)} now; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
+        : `${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`)).join(' '))); }
+  saveDlg.appendChild(body);
+  const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
+  saveDlg.showModal(); c.focus();
 }
 function renderResults() {
   const box = $('results'); box.textContent = '';
   const r = shown(); if (!r) { renderSimulation(); return; }
-  box.append(goalEl(), deckEl(r, 'Deck', schedBtn(r)), oddsEl(r));
   const top = el('div'); top.id = 'sim-top';
   box.append(top, targetsEl(r));
   const open = !plan.trainee || plan.parents.some(p => !p);
@@ -669,8 +786,6 @@ function vetCardEl(v, i) {
   const card = el('article', 'vet' + (v.borrowed ? ' bor' : '')); card.id = 'vet-' + i;
   const top = el('div', 'vtop');
   top.appendChild(el('span', 'vno', '#' + (i + 1)));
-  if (v.src === 'entered' || v.src === 'simulated') top.appendChild(el('span', 'simtag', 'Entered here'));
-  if (v.src === 'tree') top.appendChild(el('span', 'srctag', 'From uma.moe'));
   const seg = el('div', 'seg sm'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
   for (const [b, l] of [[false, 'Yours'], [true, 'Borrowed']]) {
     const x = el('button', '', l); x.type = 'button'; x.setAttribute('aria-pressed', String(v.borrowed === b));
@@ -685,28 +800,26 @@ function vetCardEl(v, i) {
     $('v-msg').textContent = `Removed ${umaName(v.chara)} from your veterans.`;
   })).setAttribute('aria-label', `Remove veteran #${i + 1}`);
   card.appendChild(top);
-  const node = (nd, kind, label, key) => {
-    const n = el('div', 'vnode ' + kind);
-    const head = el('div', 'vhead');
-    const who = el('button', 'vwho'); who.type = 'button'; who.append(umaAv(nd.chara || 0, nd.outfit, kind === 'self' ? 40 : 28), el('span', 'vnm', nd.chara ? umaName(nd.chara) : 'Unknown parent'));
-    who.title = `${label}: ${umaName(nd.chara)}. Click to change who she is`; who.setAttribute('aria-label', who.title);
-    who.onclick = () => changeUma(nd, label);
-    head.append(who, winsBtn(nd, `${label}, ${umaName(nd.chara)}`, key));
-    n.append(head, sparksEl(nd, key));
-    return n;
-  };
-  card.appendChild(node(v, 'self', `Veteran #${i + 1}`, 'v' + v.id));
-  const kids = el('div', 'vkids');
-  v.parents.forEach((p, j) => kids.appendChild(node(p, 'par', `Parent ${j + 1} of #${i + 1}`, `v${v.id}g${j}`)));
-  card.appendChild(kids);
+  // her portrait, name, targets and G1 wins, her parents' faces; a click opens her popup (sparks editable in place)
+  const tg = state.targets.map(t => t.group), have = tg.filter(g => (v.sparks || {})[g]).length;
+  const t = el('button', 'vtile'); t.type = 'button'; t.dataset.k = 'node:v' + v.id; t.setAttribute('aria-haspopup', 'dialog');
+  t.setAttribute('aria-label', `Veteran #${i + 1}: ${umaName(v.chara)}, ${have} of ${tg.length} target skills. Her sparks`);
+  const nm = el('span', 'tnm'); nm.append(el('span', 'nm', umaName(v.chara)), el('span', 'sub', `${have}/${tg.length} targets · ${v.wins.length ? v.wins.length : 'no'} G1 win${v.wins.length === 1 ? '' : 's'}`));
+  const ps = el('span', 'vtps'); for (const g of v.parents) ps.appendChild(umaAv(g.chara || 0, g.outfit, 26));
+  t.append(umaAv(v.chara, v.outfit, 48), nm, ps); t.onclick = () => openNode({ kind: 'v', id: v.id });
+  card.appendChild(t);
   return card;
 }
+// your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
 function renderPool() {
   const box = $('vets'); box.textContent = '';
+  if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
+  const tb = $('v-toggle'); tb.querySelector('.enhl').innerHTML = `<span>Veteran</span> <span>Umamusume${vets.length ? ` (${vets.length})` : ''}</span>`;
+  tb.setAttribute('aria-label', `Your veterans${vets.length ? ` (${vets.length})` : ''}`);
   vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
   if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
   const nb = vets.filter(v => v.borrowed).length;
-  $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}` + (nb ? `, ${nb} borrowed` : '') : '';
+  $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}` + (nb ? `, ${nb} borrowed` : '') + '.' : '';
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -718,7 +831,6 @@ function renderAll() {
 // ---------- settings ----------
 function counts() {
   $('o-skills-n').textContent = String(state.targets.length);
-  $('c-borrow').checked = !!state.borrow;
 }
 function initSettings() {
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
@@ -769,6 +881,25 @@ function importText(text) {
     $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}.`; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }
 }
+// game-style tooltips: after a short hover (or on keyboard focus) an element's title shows as the game's balloon; the
+// title is lifted only while the balloon shows (no native tooltip twice), and put back when it goes
+const tipEl = el('div', 'gmtip'); tipEl.setAttribute('role', 'tooltip'); tipEl.hidden = true;
+let tipFor = null, tipTimer = null;
+function tipShow(t) {
+  if (!t.isConnected || !t.title) return;
+  tipFor = t; t.dataset.tip = t.title; t.removeAttribute('title'); tipEl.textContent = t.dataset.tip;
+  (t.closest('dialog[open]') || document.body).appendChild(tipEl); tipEl.hidden = false;
+  const r = t.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  const below = r.bottom + 10 + h < innerHeight;
+  tipEl.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8)) + 'px';
+  tipEl.style.top = (below ? r.bottom + 10 : r.top - h - 10) + 'px'; tipEl.classList.toggle('up', !below);
+}
+function tipHide() { clearTimeout(tipTimer); if (tipFor) { if (tipFor.dataset.tip) tipFor.title = tipFor.dataset.tip; delete tipFor.dataset.tip; tipFor = null; } tipEl.hidden = true; }
+document.addEventListener('mouseover', (e) => { const t = e.target.closest?.('[title]'); if (!t || t === tipFor) return; tipHide(); tipTimer = setTimeout(() => tipShow(t), 400); });
+document.addEventListener('mouseout', (e) => { if (!e.relatedTarget || !(tipFor || e.target).contains?.(e.relatedTarget)) tipHide(); });
+document.addEventListener('focusin', (e) => { const t = e.target.closest?.('[title]'); tipHide(); if (t && e.target.matches(':focus-visible')) tipShow(t); });
+document.addEventListener('focusout', tipHide);
+document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close(); });   // a backdrop click closes addEventListener('scroll', tipHide, true); document.addEventListener('pointerdown', tipHide);
 loadData().then(() => {
   initSettings(); initPopover();
   // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
@@ -786,6 +917,7 @@ loadData().then(() => {
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
   $('v-export').onclick = exportVets; $('vx-copy').onclick = copyExport; $('vx-dl').onclick = downloadExport;
   $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
+  $('v-toggle').onclick = () => $('set-vets').showModal();
   $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
   renderAll(); search();
 }, (e) => { status = { kind: 'error', text: e.message }; paint(); });

@@ -41,6 +41,7 @@ export function paintScen() {
   const sc = scenarioOf(state.scen), btn = $('x-scen');
   btn.dataset.value = sc.v; btn.setAttribute('aria-label', 'Scenario: ' + sc.name); btn.title = label(sc);
   btn.querySelector('.slogo').replaceWith(scenLogo(sc));
+  const art = srcFor('scenart', sc.id); btn.style.setProperty('--scen-art', art ? `url(${art})` : 'none');   // the scenario select art (styled on the career page)
   $('scen-menu').querySelectorAll('.stile').forEach(t => t.setAttribute('aria-checked', String(t.dataset.v === sc.v)));
 }
 // the ? by Lineage rank: a small popup; Escape or a click elsewhere closes it
@@ -66,6 +67,7 @@ export function initScenario() {
   menu.classList.toggle('five', LIST.length === 5);
   for (const sc of LIST) {
     const t = document.createElement('button'); t.type = 'button'; t.className = 'stile'; t.setAttribute('role', 'menuitemradio'); t.dataset.v = sc.v; t.tabIndex = -1;
+    { const art = srcFor('scenart', sc.id); if (art) t.style.setProperty('--scen-art', `url(${art})`); }
     t.setAttribute('aria-label', label(sc)); t.title = label(sc);   // the same hover text as the button shows for the chosen one
     const sub = document.createElement('span'); sub.className = 'ssub'; sub.textContent = sc.mult;
     if (sc.est) {   // "(estimate)", shortened to "(est.)" when the tiles are narrow (phone) so the line stays one line

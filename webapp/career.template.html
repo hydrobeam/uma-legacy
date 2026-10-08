@@ -38,17 +38,23 @@ __CSS__
 </header>
 
 <div class="rb">
-  <section class="rbbar" aria-label="Settings">
-    <div class="seg" role="group" aria-label="Game data">
-      <button id="era-global" aria-pressed="true">Global today</button>
-      <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
+  <section class="rbbar" aria-labelledby="h-set">
+    <h2 class="sethdr" id="h-set">Career setup</h2>
+    <div class="setlist">
+      <div class="gctl setrow"><span class="glab" id="era-l">Game data</span>
+        <div class="seg" role="group" aria-labelledby="era-l">
+          <button id="era-global" aria-pressed="true">Global today</button>
+          <button id="era-gm" aria-pressed="false">JP, Grand Masters era</button>
+        </div></div>
+      __PANEL_SCEN____PANEL_RANK__
+      <div class="gctl setrow"><span class="glab" id="tg-l">Targets</span>
+        <button class="btn tbtn" type="button" id="o-skills" aria-haspopup="dialog"><svg class="tico" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>Target skills <b id="o-skills-n"></b></button></div>
     </div>
-    <div class="row gamerow">__PANEL_SCEN____PANEL_RANK__</div>
-    <button class="btn tbtn" type="button" id="o-skills" aria-haspopup="dialog"><svg class="tico" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>Target skills <b id="o-skills-n"></b></button>
-    <button class="btn tbtn" type="button" id="o-umas" aria-haspopup="dialog"><svg class="tico" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>Umas</button>
-    <button class="btn tbtn" type="button" id="o-cards" aria-haspopup="dialog"><svg class="tico" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/></svg>Support cards</button>
-    <label class="tchk"><input type="checkbox" id="c-borrow"> Borrow one friend's card</label>
-    <p class="hint tshare">Shared with the loop planner: a change here changes it there too. The rank also sets the stars of the new veteran's sparks after this career.</p>
+    <div class="setenh">
+      <button class="btn enh" type="button" id="o-umas" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl">Umas</span></button>
+      <button class="btn enh" type="button" id="o-cards" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl">Support cards</span></button>
+      <button class="btn enh wide" type="button" id="v-toggle" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl"><span>Veteran</span> <span>Umamusume</span></span></button>
+    </div>
   </section>
 
   <main class="rbmain" id="rcol" tabindex="-1" aria-labelledby="h-lin">
@@ -56,25 +62,23 @@ __CSS__
       <h2 id="h-lin">Next career</h2>
       <div class="rhead" id="rhead" data-kind="loading"><span class="runnote" id="run-note" role="status" aria-live="polite"></span></div>
     </div>
-    <p class="hint">Set the trainee and the parents yourself, or leave any of them to the planner: it tries every owned uma and every pair of your veterans and shows its pick, outlined in dashes. Numbers 1 to 6 are the six legacies; each shows her affinity.</p>
     <div class="ped" id="tree"></div>
     <div id="results"></div>
   </main>
 
-  <section class="rbpool" aria-labelledby="h-vets">
-    <div class="rbtitle"><h2 id="h-vets">Your veterans</h2><span class="hint" id="v-count"></span></div>
-    <p class="hint">Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump or uma.moe, or make one when you choose a parent. Click a skill to change its stars, hover it to remove it.</p>
-    <div class="row">
-      <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
-      <button class="btn" type="button" id="v-paste">Paste</button>
-      <button class="btn" type="button" id="v-export" title="Your veterans and the planner's search as text to copy or download (bring it back with Paste or Import)">Export</button>
-      <button class="btn" type="button" id="v-clear">Remove all</button>
-      <span class="hint" id="v-msg" role="status"></span>
-    </div>
-    <div class="vets" id="vets"></div>
-  </section>
 </div>
 
+<dialog id="set-vets" class="setdlg vetdlg" aria-labelledby="h-vets"><div class="dlg"><div class="row between dhead"><h3 id="h-vets">Veteran Umamusume</h3><button class="btn dclose">Done</button></div>
+  <p class="hint"><span id="v-count"></span> Yours and the borrowed ones you can use (at most one borrowed per career). Import them from umadump or uma.moe, or make one when you choose a parent. Click one to see or change her sparks.</p>
+  <div class="row">
+    <label class="btn filebtn">Import umadump file<input type="file" id="v-file" accept=".json,application/json"></label>
+    <button class="btn" type="button" id="v-paste">Paste</button>
+    <button class="btn" type="button" id="v-export" title="Your veterans and the planner's search as text to copy or download (bring it back with Paste or Import)">Export</button>
+    <button class="btn" type="button" id="v-clear">Remove all</button>
+    <span class="hint" id="v-msg" role="status"></span>
+  </div>
+  <div class="vets" id="vets"></div>
+</div></dialog>
 <dialog id="set-skills" class="setdlg" aria-label="Target skills"><div class="dlg"><div class="row between dhead"><h3>Target skills</h3><button class="btn dclose">Done</button></div>__PANEL_SKILLS__</div></dialog>
 <dialog id="set-umas" class="setdlg" aria-label="Umas"><div class="dlg"><div class="row between dhead"><h3>Umas you own</h3><button class="btn dclose">Done</button></div>__PANEL_ROSTER__</div></dialog>
 <dialog id="set-cards" class="setdlg" aria-label="Support cards"><div class="dlg"><div class="row between dhead"><h3>Support cards you own</h3><button class="btn dclose">Done</button></div>__PANEL_DECK__</div></dialog>
