@@ -7,8 +7,9 @@ Both planner pages are drawn in the game's style (the same rules, html class `ga
 check boxes and switches, green section bars, pink setup ribbon. The loop planner has two columns. On the left, the
 **Loop setup** panel with the same rows as the career's *Career setup* (built from the same markup,
 `webapp/panels.template.html`): *Game data*, *Scenario*, *Assumed lineage rank*; the game's Enhance buttons
-**Umas** and **Support cards**, which open their editors in dialogs; and at its foot, in small type, the status line,
-the *Auto-search* and *Deck per uma* switches and *Results* (1 or 3, the game's pill switch). Under it, *Target skills* in the open. On the right, the results, the first
+**Umas** and **Support cards**, which open their editors in dialogs; and at its foot, in small type, the status line
+and the *Auto-search* and *Deck per uma* switches. *Results* (1 or 3, the game's pill switch) sits in the top-right
+corner of the results. Under it, *Target skills* in the open. On the right, the results, the first
 one level with the setup panel. On a phone the columns stack, results first.
 
 **Settings** (the Loop setup panel)
