@@ -811,9 +811,9 @@ const TESTS = {
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
     await pg.click('#set-fold');
-    const foldSum = await pg.getAttribute('#set-sum', 'aria-label'), foldHid = await pg.locator('.rbbar .setlist').isHidden();
+    const foldSum = await pg.textContent('#set-sum'), foldHid = await pg.locator('.rbbar .setlist').isHidden();
     await pg.click('#set-fold');
-    check('career: the Career setup ribbon folds the panel to a one-line summary and back', foldHid && /^Global · .+ · Rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
+    check('career: the Career setup ribbon folds the panel to a one-line summary and back', foldHid && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
