@@ -1672,4 +1672,4 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the folded summary: each setting's label light and small, its value bold, spaced apart (no boxes) */
 .rb .setsum:not([hidden]) { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 22px; }
 .rb .setsum .sumk { margin-right: 6px; font-size: 0.74rem; font-weight: 500; color: var(--gm-ink2); }
-.rb .setsum .sumkv b { font-size: 0.9rem; font-weight: 900; color: var(--gm-ink); }
+.rb .setsum .sumkv b { font-size: 0.9rem; font-weight: 700; color: var(--gm-ink); }
