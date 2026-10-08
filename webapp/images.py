@@ -44,12 +44,12 @@ ASSETS = os.environ.get('UMA_DECRYPTED', os.path.expanduser(
 OUT = os.path.join(H, 'img')
 # the game install's built-in assets: the common buttons live in resources.assets, not in the downloaded bundles
 GAME_DATA = os.environ.get('UMA_GAME_DATA', os.path.expanduser('~/.local/share/Steam/steamapps/common/UmamusumePrettyDerby/UmamusumePrettyDerby_Data'))
-SIZE = {'uma': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128), 'scen': (288, 160), 'scenart': (360, 360)}   # 2x the largest display (race banners ~128x64; scenario logos fit 144x80)
+SIZE = {'uma': 96, 'mob': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128), 'scen': (288, 160), 'scenart': (360, 360)}   # 2x the largest display (race banners ~128x64; scenario logos fit 144x80)
 # the scenario logos' textures are square, but the game draws them 1.25x as wide as tall (resources.assets:
 # PartsSingleModeStartScenarioLogo/bnr_00N RawImage 642x514, DialogSingleModeStartScenarioDetail/scenarioImage 446x355);
 # the square texture alone looks squeezed (round letters come out tall)
 SCEN_ASPECT = 1.25
-INSET = {'uma': 26}   # px of the 256 px icon cut inside the visible area: the white ring
+INSET = {'uma': 26, 'mob': 26}   # px of the 256 px icon cut inside the visible area: the white ring
 # Outfit icons (chr_icon_{chara}_{dress}_01) are a portrait in a silver frame that sits at the same place in every
 # texture (outer edge x 10-245, y 34/35-248/249; inner picture x 23-232, y 47-235, checked on all 137 icons); ears and
 # hair often stick out above it by 0-20 px. Cropping from the visible area kept the frame's top edge at a different
@@ -76,6 +76,12 @@ def wanted():
         for r in data['races']: w['race'][r] = None   # thumbnail id = race id for every G1 (checked against master.mdb)
     w['scen'] = scenario_images()
     w['scenart'] = scenario_images()   # the scenario select screen's character art, same image ids
+    # mob umas' portraits (the career planner's sample veterans): each named mob's first icon variant the bundles have
+    mdir = os.path.join(ASSETS, 'mob'); have = set(os.listdir(mdir)) if os.path.isdir(mdir) else set()
+    w['mob'] = {}
+    for m, _ in json.load(open(os.path.join(R, 'pkg/loopopt/career.json'))).get('mobs', []):
+        v = sorted(f for f in have if f.startswith(f'mob_chr_icon_{m}_'))
+        if v: w['mob'][m] = 'mob/' + v[0]
     return w
 
 
@@ -337,6 +343,7 @@ def main(force):
                 rel = f'chara/chr{chara}/chr_icon_{chara}_{dress[i]}_01'
             elif kind == 'skill': rel = f'outgame/skillicon/utx_ico_skill_{i}'
             elif kind == 'race': rel = f'race/racetitle/thumb/thum_race_rt_000_{i}_00'
+            elif kind == 'mob': rel = chara   # the icon's bundle path
             elif kind == 'scen': rel = f'single/banner/bnr_{chara:03d}_text'   # chara holds the scenario's image id
             elif kind == 'scenart': rel = f'single/banner/bnr_chara_big_{chara:03d}'
             else: rel = f'supportcard/support{i}/support_card_s_{i}'
