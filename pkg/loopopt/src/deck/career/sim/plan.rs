@@ -637,6 +637,100 @@ fn frozen(s: &mut Sim, d: &Data, legs: &[Legacy], cands: &[usize], fb: &[Option<
 /// factor x per star count (0: absent), the trainee's cached decks' corner tables
 struct Setup { ui: usize, x0: Vec<f64>, pw: Vec<[f64; 2]>, xm: [f64; 4], tabs: Vec<Vec<f64>> }
 
+/// Two deep: candidates given the term (the highest by index, plus the best career's trainee), and builders tried
+const TWO_TOP: usize = 3;
+const TWO_BUILDERS: usize = 3;
+/// Two deep follows rolls at most this many targets short of 8/8 (on the owner's 10-veteran pool rolls with 4 of 8 never
+/// opened a builder better than the best career now; 6 and 7 of 8 carried the term)
+const TWO_MISS: usize = 3;
+/// `val` with the deck it found (its index in the cache)
+fn val_d(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
+    let (q, _, c) = s.env.lineage(p, u, a, b);
+    let ub = s.env.ceiling(u, &q, c)?;
+    s.deck_for(u, &q, c, ub, 0.0, buf)
+}
+/// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
+/// A, V0, and the stage-1 odds now
+struct ScoreBase<'b> { cands: &'b [usize], c1: Vec<f64>, m23: &'b [f64], v0: f64, pnow: Vec<f64> }
+/// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
+/// above 0, and (Y, P) per outcome. Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
+/// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
+/// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
+#[allow(clippy::too_many_arguments)]
+fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<(f64, f64)>) {
+    let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
+    let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
+    let v0_after = |c1: &[f64]| (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min);
+    let xi = bs.cands.iter().position(|&u| u == x);
+    let c = s.make_cur(pool, x, a, b, sel, false);
+    let mut lv = legs.to_vec(); lv.push(s.env.veteran(legs, x, a, b, c.wp.to_vec())); let iv = lv.len() - 1;
+    let pv = s.env.pool(&lv);
+    // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
+    let mut setups: Vec<Setup> = vec![];
+    for ui in 0..n {
+        let u = bs.cands[ui];
+        if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || !bs.c1[ui].is_finite() { continue; }
+        let mut ps: Vec<(f64, usize)> = (0..iv).filter(|&y| legal_pair(d, &pv, u, y, iv)).map(|y| (val(s, &pv, u, y, iv, buf), y)).collect();
+        ps.sort_by(|p, q| q.0.partial_cmp(&p.0).unwrap()); ps.truncate(IDX_PARTNERS);
+        for (_, y) in ps {
+            let sl = s.env.slots(&pv, u, y, iv);
+            let Some(pos) = sl.iter().position(|z| z.parent && z.legacy == iv) else { continue };
+            let a_v = sl[pos].rel + sl[pos].race;
+            let mut sl0 = sl.clone(); for k in 0..ntar { sl0[pos].stars[k] = 0; } sl0[pos].mix = None;
+            let (q0, nc0) = inherit(&sl0, ntar);
+            let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
+            let tabs: Vec<Vec<f64>> = s.cache.decks[u].iter().flat_map(|dk| dk.tab.iter().cloned()).collect();
+            if tabs.is_empty() { continue; }
+            setups.push(Setup { ui, x0: uncv.iter().map(|&i| 1.0 - q0[i]).collect(),
+                pw: (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect(), xm: [1.0, xm(1), xm(2), xm(3)], tabs });
+        }
+    }
+    // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best table value
+    // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic)
+    let nleaf = 1usize << (2 * nu);
+    let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
+        let mut out = vec![0.0f64; nleaf];
+        for tab in &st.tabs {
+            fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64]) {
+                if k == nu { if t[0] > out[leaf] { out[leaf] = t[0]; } return; }
+                for sg in 0..4usize {
+                    let x = st.x0[k] * st.xm[sg];
+                    let h = t.len() / 2;
+                    let f: Vec<f64> = (0..h).map(|i| t[2 * i] * (1.0 - x) + t[2 * i + 1] * x).collect();
+                    rec(&f, k + 1, leaf | sg << (2 * k), st, nu, out);
+                }
+            }
+            rec(tab, 0, 0, st, nu, &mut out);
+        }
+        out
+    }).collect();
+    // every outcome: uncertain targets' star pattern, guaranteed golds present or not
+    let nf = fixed_t.len();
+    let (mut ey, mut lift) = (0.0f64, 0.0f64);
+    let mut ys: Vec<(f64, f64)> = vec![];
+    let mut c1 = bs.c1.clone();
+    for leaf in 0..nleaf {
+        let mut mu = 0usize; let mut pr_st = 1.0f64;
+        for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
+        for fm in 0..(1usize << nf) {
+            let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
+            let pr = c.os[m] * pr_st;
+            if pr <= 0.0 { continue; }
+            c1.copy_from_slice(&bs.c1);
+            for (si, st) in setups.iter().enumerate() {
+                let sc: f64 = (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product();
+                let v = sc * folds[si][leaf];
+                if v > bs.pnow[st.ui] * (1.0 + 1e-9) && 1.0 / v < c1[st.ui] { c1[st.ui] = 1.0 / v; }
+            }
+            if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; } }
+            let y = (bs.v0 - v0_after(&c1)).max(0.0);
+            ey += pr * y; if y > 1e-9 { lift += pr; }
+            ys.push((y, pr));
+        }
+    }
+    (ey, lift, ys)
+}
+
 /// The page's next career, exact and without simulation: the career that saves the most careers to a FULLY LOOPED
 /// veteran. Value V0 (`frozen`): the cheapest plan A -> B -> C if no veteran but its 8/8s mattered (an upper bound).
 /// Builder X (her best career, odds p_X): I(X) = E_v[V0 - V0(+v)] - 1, v her veteran, the expectation exact over her
@@ -686,12 +780,9 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let plan_json = if fr.at == usize::MAX { Value::Null } else {
         let (b, c, cs) = fr.plan[fr.at];
         json!({"a": uname(cands[fr.at]), "b": uname(b), "c": uname(c), "careers": cs}) };
-    let n = cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
-    let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone();
-    let w = s.env.sj.star_dist;
+    let n = cands.len(); let ntar = s.env.ntar;
     let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
-    // the stage-1 value after one veteran of builder x (her stage-1 index xi, if any) raises some odds: V0 - V0'
-    let v0_after = |c1: &[f64]| (0..n).map(|a| c1[a] + fr.m23[a]).fold(f64::INFINITY, f64::min);
+    let base0 = ScoreBase { cands: &cands, c1: fr.c1.clone(), m23: &fr.m23, v0: fr.v0, pnow: pnow.clone() };
     // per builder (uma): (index, saving, lift, reservation)
     let mut idx: Vec<(usize, Found, (f64, f64, f64, Option<(f64, f64)>))> = vec![];
     let mut exact_n = 0usize;
@@ -710,73 +801,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 search_ms += now_ms() - ts;
             }
             let Some(Some(f)) = best[x].clone() else { continue };
-            let xi = cands.iter().position(|&u| u == x);
-            let c = s.make_cur(pool, x, f.a, f.b, &f.sel, false);
-            let mut lv = legs.to_vec(); lv.push(s.env.veteran(legs, x, f.a, f.b, c.wp.to_vec())); let iv = lv.len() - 1;
-            let pv = s.env.pool(&lv);
-            // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
-            let mut setups: Vec<Setup> = vec![];
-            for ui in 0..n {
-                let u = cands[ui];
-                if d.umas[u].id == d.umas[x].id || fr.c1[ui] == 0.0 || !fr.c1[ui].is_finite() { continue; }
-                let mut ps: Vec<(f64, usize)> = (0..iv).filter(|&b| legal_pair(d, &pv, u, b, iv)).map(|b| (val(&mut s, &pv, u, b, iv, &mut buf), b)).collect();
-                ps.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap()); ps.truncate(IDX_PARTNERS);
-                for (_, b) in ps {
-                    let sl = s.env.slots(&pv, u, b, iv);
-                    let Some(pos) = sl.iter().position(|x| x.parent && x.legacy == iv) else { continue };
-                    let a_v = sl[pos].rel + sl[pos].race;
-                    let mut sl0 = sl.clone(); for k in 0..ntar { sl0[pos].stars[k] = 0; } sl0[pos].mix = None;
-                    let (q0, nc0) = inherit(&sl0, ntar);
-                    let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
-                    let tabs: Vec<Vec<f64>> = s.cache.decks[u].iter().flat_map(|dk| dk.tab.iter().cloned()).collect();
-                    if tabs.is_empty() { continue; }
-                    setups.push(Setup { ui, x0: uncv.iter().map(|&i| 1.0 - q0[i]).collect(),
-                        pw: (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect(), xm: [1.0, xm(1), xm(2), xm(3)], tabs });
-                }
-            }
-            // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best
-            // table value at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic)
-            let nleaf = 1usize << (2 * nu);
-            let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
-                let mut out = vec![0.0f64; nleaf];
-                for tab in &st.tabs {
-                    fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64]) {
-                        if k == nu { if t[0] > out[leaf] { out[leaf] = t[0]; } return; }
-                        for sg in 0..4usize {
-                            let x = st.x0[k] * st.xm[sg];
-                            let h = t.len() / 2;
-                            let f: Vec<f64> = (0..h).map(|i| t[2 * i] * (1.0 - x) + t[2 * i + 1] * x).collect();
-                            rec(&f, k + 1, leaf | sg << (2 * k), st, nu, out);
-                        }
-                    }
-                    rec(tab, 0, 0, st, nu, &mut out);
-                }
-                out
-            }).collect();
-            // every outcome: uncertain targets' star pattern, guaranteed golds present or not
-            let nf = fixed_t.len();
-            let (mut ey, mut lift) = (0.0f64, 0.0f64);
-            let mut ys: Vec<(f64, f64)> = vec![];
-            let mut c1 = fr.c1.clone();
-            for leaf in 0..nleaf {
-                let mut mu = 0usize; let mut pr_st = 1.0f64;
-                for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
-                for fm in 0..(1usize << nf) {
-                    let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
-                    let pr = c.os[m] * pr_st;
-                    if pr <= 0.0 { continue; }
-                    c1.copy_from_slice(&fr.c1);
-                    for (si, st) in setups.iter().enumerate() {
-                        let sc: f64 = (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product();
-                        let v = sc * folds[si][leaf];
-                        if v > pnow[st.ui] * (1.0 + 1e-9) && 1.0 / v < c1[st.ui] { c1[st.ui] = 1.0 / v; }
-                    }
-                    if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; } }
-                    let y = (fr.v0 - v0_after(&c1)).max(0.0);
-                    ey += pr * y; if y > 1e-9 { lift += pr; }
-                    ys.push((y, pr));
-                }
-            }
+            let (ey, lift, ys) = score_career(&mut s, d, &base0, legs, pool, x, f.a, f.b, &f.sel, &mut buf);
             // reservation value: E[(Y - r)+] = 1 (none when E[Y] <= 1)
             let r = if ey > 1.0 {
                 let (mut lo, mut hi) = (0.0f64, ys.iter().map(|x| x.0).fold(0.0, f64::max));
@@ -788,10 +813,61 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         }
     }
     let index_ms = now_ms() - t3;
+    // two deep, for the TWO_TOP highest and the best career's trainee: the option her veteran opens for the next career.
+    // Per landed set at most TWO_MISS targets short of 8/8 (stars at the rank's mix), the best of the TWO_BUILDERS highest builders
+    // bred with her as a parent, scored against the pool with her (her own lifts in); the gain over today's best index
+    let t4 = now_ms();
+    let mut two: Vec<Option<f64>> = vec![None; idx.len()];
+    if !pj.value_only && !idx.is_empty() {
+        let istar = idx.iter().map(|e| e.2 .0).fold(f64::NEG_INFINITY, f64::max).max(0.0);
+        let mut ord: Vec<usize> = (0..idx.len()).collect();
+        ord.sort_by(|&p, &q| idx[q].2 .0.partial_cmp(&idx[p].2 .0).unwrap());
+        let builders: Vec<usize> = ord.iter().take(TWO_BUILDERS).map(|&i| idx[i].0).collect();
+        let mut who: Vec<usize> = ord.iter().take(TWO_TOP).copied().collect();
+        if let Some(gi) = idx.iter().position(|e| e.0 == g.t) { if !who.contains(&gi) { who.push(gi); } }
+        let full = (1usize << ntar) - 1;
+        for &wi in &who {
+            let (x, f) = (idx[wi].0, idx[wi].1.clone());
+            let c = s.make_cur(pool, x, f.a, f.b, &f.sel, false);
+            let mut gain = 0.0f64;
+            // her rolls landing TWO_MISS or fewer targets short of 8/8 (an 8/8 ends her stage, counted one deep)
+            for m in (0..full).filter(|m| m.count_ones() as usize + TWO_MISS >= ntar) {
+                let pm = c.os[m]; if pm <= 0.0 { continue; }
+                let keep: Vec<u32> = (0..ntar).filter(|&k| m >> k & 1 == 1).map(|k| s.env.sj.targets[k].group).collect();
+                let mut v = s.env.veteran(legs, x, f.a, f.b, c.wp.to_vec()); v.sparks.retain(|sp| keep.contains(&sp.0));
+                let mut lv = legs.to_vec(); lv.push(v); let iv = lv.len() - 1; let pv = s.env.pool(&lv);
+                // her direct lifts: the base after her
+                let mut c1v = fr.c1.clone();
+                for ui in 0..n {
+                    let u = cands[ui];
+                    if d.umas[u].id == d.umas[x].id || fr.c1[ui] == 0.0 || !fr.c1[ui].is_finite() { continue; }
+                    for y in 0..iv { if legal_pair(d, &pv, u, y, iv) { let vv = val(&mut s, &pv, u, y, iv, &mut buf); if vv > 0.0 && 1.0 / vv < c1v[ui] { c1v[ui] = 1.0 / vv; } } }
+                }
+                let v0v = (0..n).map(|a| c1v[a] + fr.m23[a]).fold(f64::INFINITY, f64::min);
+                let pv_now: Vec<f64> = c1v.iter().map(|&c| if c.is_finite() && c > 0.0 { 1.0 / c } else { 0.0 }).collect();
+                let basev = ScoreBase { cands: &cands, c1: c1v, m23: &fr.m23, v0: v0v, pnow: pv_now };
+                let mut bestv = f64::NEG_INFINITY;
+                for &bd in &builders {
+                    if d.umas[bd].id == d.umas[x].id { continue; }
+                    // the builder's best career with her as a parent
+                    let mut bp = (0.0f64, usize::MAX, usize::MAX);
+                    for y in 0..iv { if legal_pair(d, &pv, bd, y, iv) { if let Some((vv, di)) = val_d(&mut s, &pv, bd, y, iv, &mut buf) { if vv > bp.0 { bp = (vv, y, di); } } } }
+                    if bp.1 == usize::MAX { continue; }
+                    let sel = s.cache.decks[bd][bp.2].sel.clone();
+                    let (ey2, _, _) = score_career(&mut s, d, &basev, &lv, &pv, bd, bp.1, iv, &sel, &mut buf);
+                    bestv = bestv.max(ey2 - 1.0);
+                }
+                gain += pm * (bestv - istar).max(0.0);
+            }
+            two[wi] = Some(gain);
+        }
+    }
+    let two_ms = now_ms() - t4;
     drop(s);
-    // pick: the highest index (ties to the best career, scored first)
+    // pick: the highest score (one deep, plus two deep where computed; ties to the best career, scored first)
+    let score = |i: usize| idx[i].2 .0 + two[i].unwrap_or(0.0);
     let mut pick = 0usize;
-    for i in 0..idx.len() { if idx[i].2 .0 > idx[pick].2 .0 + 1e-9 { pick = i; } }
+    for i in 0..idx.len() { if score(i) > score(pick) + 1e-9 { pick = i; } }
     let role = |u: usize| if u == g.t { "best" } else if members.contains(&u) { "loop" } else if cands.contains(&u) { "lineage" } else { "builder" };
     let stage = |u: usize| cands.iter().position(|&c| c == u).map(|i| fr.c1[i]);
     let mut opts: Vec<Value> = vec![];
@@ -801,15 +877,16 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         o.insert("role".into(), json!(role(*x))); o.insert("best_odds".into(), json!(*x == g.t)); o.insert("chosen".into(), json!(i == pick));
         o.insert("stage_cost".into(), json!(stage(*x)));
         o.insert("index".into(), json!(ix)); o.insert("saving".into(), json!(ey)); o.insert("lift".into(), json!(lift));
+        o.insert("two_step".into(), json!(two[i])); o.insert("score".into(), json!(ix + two[i].unwrap_or(0.0)));
         o.insert("reservation".into(), json!(r.map(|x| x.0))); o.insert("reservation_chance".into(), json!(r.map(|x| x.1)));
         opts.push(rp);
     }
-    opts.sort_by(|a, b| b["index"].as_f64().unwrap_or(f64::NEG_INFINITY).partial_cmp(&a["index"].as_f64().unwrap_or(f64::NEG_INFINITY)).unwrap());
+    opts.sort_by(|a, b| b["score"].as_f64().unwrap_or(f64::NEG_INFINITY).partial_cmp(&a["score"].as_f64().unwrap_or(f64::NEG_INFINITY)).unwrap());
     if pj.value_only { for (i, &u) in cands.iter().enumerate() { if let Some(f) = &fb[i] { let mut rp = env.report(pool, f, false);
         let o = rp.as_object_mut().unwrap(); o.insert("role".into(), json!(role(u))); o.insert("best_odds".into(), json!(u == g.t)); o.insert("chosen".into(), json!(false));
         o.insert("stage_cost".into(), json!(fr.c1[i])); opts.push(rp); } } }
     let choice = if pj.value_only || idx.is_empty() { Value::Null } else { env.report(pool, &idx[pick].1, true) };
     json!({"options": opts, "choice": choice, "rule": "index", "v0": if fr.v0.is_finite() { json!(fr.v0) } else { Value::Null },
            "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n,
-           "loop_ms": loop_ms, "search_ms": search_ms, "v0_ms": v0_ms, "index_ms": index_ms, "total_ms": now_ms() - t_all})
+           "loop_ms": loop_ms, "search_ms": search_ms, "v0_ms": v0_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
 }

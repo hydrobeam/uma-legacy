@@ -76,7 +76,8 @@ The search shows the career with the best odds first. Then the planner picks the
 both), each step repeated until its 8/8, an 8/8 you already have (or borrow) costing nothing. That number assumes
 nothing improves along the way, so it leans high; it is shown above *Options*. Every owned uma's best career is
 scored by how many careers its veteran saves on that count, on average over every result she can roll (exact), minus the career
-itself: the planner runs the highest and repeats it until a roll changes the plan (a roll that changes nobody's odds
+itself, plus, for the few highest and the best odds, what her best rolls open for the career after (two careers
+deep): the planner runs the highest and repeats it until a roll changes the plan (a roll that changes nobody's odds
 leaves every score as it was). Under the odds a line says why the career on show is (or is not) the pick. With the
 trainee chosen by hand there is nothing for it to pick, and with every place set by hand the career is just scored.
 
