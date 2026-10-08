@@ -761,7 +761,8 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
 /// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own 8/8 ends her own
 /// step; a roll that changes nothing leaves every score as it was (repeat). Two deep for the 3 highest and the best
 /// odds: her rolls one target short, as a parent of the 3 highest builders, over today's best score. Pick: the highest;
-/// within NEAR, the better own odds. With a fully looped veteran already, the best odds (unscored).
+/// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
+/// real 8/8 (free) with 8/8 parents, a strong side of the trios.
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
                                        pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
@@ -817,8 +818,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let ntar = s.env.ntar; let n = cands.len();
     let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
     let sj = s.env.sj;
-    // the goal reached already (a fully looped veteran), and per candidate whether an 8/8 of hers exists (her step free)
-    let looped = legs.iter().any(|l| is_full(sj, &l.sparks) && l.parents.len() == 2 && l.parents.iter().all(|p| is_full(sj, &p.sparks)));
+    // per candidate whether an 8/8 of hers exists (a free side of the trios)
     let have8: Vec<bool> = cands.iter().map(|&u| legs.iter().any(|l| l.chara == d.umas[u].id && is_full(sj, &l.sparks))).collect();
     let zeros = vec![0.0f64; n];
     let mut exact_n = 0usize;
@@ -827,7 +827,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // mean odds raised to (exact over her outcomes)
     let mut runs: Vec<(usize, Found, Vec<(f64, f64)>)> = vec![];
     let mut wtab: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
-    if !pj.value_only && !looped {
+    if !pj.value_only {
         // (placeholder step costs: 1, so every candidate's lifts are gathered; an 8/8 of hers may be a poorer parent than a
         // fresh one)
         let open: Vec<f64> = vec![1.0; n];
@@ -880,7 +880,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         fb[ui].as_ref().map(|f| { let wp = s.wins(pool, cands[ui], f.a, f.b); s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec()) }) }).collect();
     // (A, B, C's step, C, A real, B real)
     let mut combos: Vec<(usize, usize, f64, usize, bool, bool)> = vec![];
-    if !looped { for ia in 0..n { for ib in ia + 1..n {
+    { for ia in 0..n { for ib in ia + 1..n {
         let (ua, ub) = (cands[ia], cands[ib]);
         if d.umas[ua].id == d.umas[ub].id { continue; }
         let mut l = legs.to_vec();
@@ -900,7 +900,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let combo_ms = now_ms() - t_c;
     let combos3: Vec<Trio> = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
     let vof = |c: &[f64]| trio_v(c, &combos3);
-    let vnow = if looped { 0.0 } else { vof(&c1) };
+    let vnow = vof(&c1);
     let step = |ui: usize, real: bool| if real { 0.0 } else { c1[ui] };
     let best_combo = combos.iter().min_by(|x, y| (step(x.0, x.4) + step(x.1, x.5) + x.2).partial_cmp(&(step(y.0, y.4) + step(y.1, y.5) + y.2)).unwrap()).copied();
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
@@ -961,7 +961,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     }
     let two_ms = now_ms() - t4;
     drop(s);
-    // nothing scored (the goal reached, or no trio): the best odds is the one option and the pick
+    // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
     if runs.is_empty() && !pj.value_only { for f in &sv.found { runs.push((f.t, f.clone(), vec![])); two.push(None); } }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
     let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY) + two[i].unwrap_or(0.0);
@@ -970,7 +970,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let top = if runs.is_empty() { 0.0 } else { total(pick) };
     let near = |i: usize| total(i) >= top - NEAR.max(0.05 * top.abs());
     for i in 0..runs.len() { if near(i) && runs[i].1.val > runs[pick].1.val { pick = i; } }
-    if looped { if let Some(i) = runs.iter().position(|r| r.0 == g.t) { pick = i; } }
     let role = |u: usize| match best_combo { Some((ia, ib, _, _, _, _)) if u == cands[ia] || u == cands[ib] => "plan", Some((_, _, _, cu, _, _)) if u == cu => "finish",
         _ => if members.contains(&u) { "loop" } else if cands.contains(&u) { "candidate" } else { "builder" } };
     let mut opts: Vec<Value> = vec![];
@@ -996,7 +995,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         let ((fa, fra), (fb2, frb)) = if step(ia, ra) <= step(ib, rb) { ((ia, ra), (ib, rb)) } else { ((ib, rb), (ia, ra)) };
         (json!({"a": uname(cands[fa]), "b": uname(cands[fb2]), "c": uname(cu), "careers": [step(fa, fra), step(fb2, frb), c3]}), json!([member(fa, fra), member(fb2, frb)])) }
         None => (Value::Null, json!([])) };
-    json!({"options": opts, "choice": choice, "rule": "index", "mode": if looped { "done" } else { "trio" }, "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null },
+    json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null },
            "members": members_json,
            "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
