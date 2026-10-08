@@ -836,7 +836,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .udsk::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-color: transparent; border-width: 9px 9px 14px 9px;
   border-image: var(--skill-white) 18 18 28 18 fill / 9px 9px 14px 9px stretch; }
 .udsk.gold::before { border-image-source: var(--skill-gold); }
-.udsk.off { color: var(--gm-off-ink); background-color: var(--gm-off); background-image: none; box-shadow: inset 0 0 0 2px var(--gm-edge); border-radius: 9px; }
+.udsk.off { color: var(--gm-off-ink); background-color: var(--gm-off); background-image: none; box-shadow: inset 0 0 0 2px var(--gm-edge); border-radius: 6px; }
 .udsk.off::before { content: none; }
 .udsk.off .sic { filter: grayscale(1); opacity: .6; }
 .udsk .sic { width: 30px; height: 30px; margin: 0; flex: none; }
@@ -1065,11 +1065,12 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .gmtip::before { content: ''; position: absolute; top: -8px; left: calc(50% - 7px); border: 7px solid transparent; border-top: 0; border-bottom: 8px solid var(--gm-bright2); }
 .gmtip.up::before { top: auto; bottom: -8px; border-bottom: 0; border-top: 8px solid var(--gm-bright2); }
 /* skill tiles: the game's tile art scaled whole (its 9-slice stretched the middle into a vertical band) */
-/* the skill tile: the game's sprite alone (no CSS tile behind it to show at its corners), sliced across only so its
-   rounded ends keep their shape (190x45 sprite, ends 24 px, drawn at the tile's height) */
+/* the skill tile: the game's sprite alone (no CSS tile behind it to show at its corners), 9-sliced with its corners at
+   0.6x as the game draws them (190x45 sprite: face rows 1-35, rim, then a 6 px shadow; slices 12 top, 16 bottom, 14 sides,
+   leaving face rows and the across gradient to stretch) */
 .udsk:not(.off) { background: none; box-shadow: none; border-radius: 0; }
 .udsk:not(.off)::before { background: none; border-radius: 0; border: 0 solid transparent;
-  border-image: var(--skill-white, linear-gradient(var(--gm-tile), var(--gm-tile2))) 0 24 0 24 fill / 0 27px 0 27px / 0 stretch; }
+  border-image: var(--skill-white, linear-gradient(var(--gm-tile), var(--gm-tile2))) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch; }
 .udsk.gold::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
 
 /* your veterans: compact cards, her sparks in her popup */
