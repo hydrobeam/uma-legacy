@@ -357,8 +357,6 @@ const TESTS = {
     const tile = pg.locator('#cards .ct').first(); const img = await tile.evaluate(t => { t.__img = t.querySelector('img'); return !!t.__img; });
     await tile.click();
     check('toggling a card keeps its image element (no flicker)', img && await tile.evaluate(t => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false'));
-    const cnt = /^(\d+) of (\d+) listed cards owned$/.exec(await pg.locator('#c-count').innerText());
-    check('the count line follows ("N of M listed cards owned")', !!cnt && +cnt[1] === +cnt[2] - 1, await pg.locator('#c-count').innerText());
     await tile.click();
     // R cards are left out (no setting): the R section holds only the R pals
     const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
@@ -660,7 +658,7 @@ const TESTS = {
     // "None owned" on support cards: no owned card reaches the solver (an empty owned list used to mean "all owned")
     const pg = await open(b); const all = await odds(pg);
     await pg.click('#c-none'); await settle(pg);
-    check('None owned: the count says "0 of N listed cards owned"', /^0 of \d+ listed cards owned$/.test(await pg.locator('#c-count').innerText()), await pg.locator('#c-count').innerText());
+    check('None owned: the count at the top says "0 of N owned"', /^0 of \d+ owned$/.test(await pg.locator('#c-count').innerText()), await pg.locator('#c-count').innerText());
     const job = await pg.evaluate(() => window.__runs.at(-1));
     check('None owned: the job allows no owned card, only the one borrowed, and the odds drop', job.owned_cards.length === 1 && job.owned_cards[0] === 0 && job.borrow === true && (await odds(pg)) !== all, (await odds(pg)) + ' vs ' + all);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

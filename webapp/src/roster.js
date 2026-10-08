@@ -22,7 +22,7 @@ export const isRequired = (u) => state.roster[u.id] === 'req' || reqOutfits(u).l
 function rosterCount() {
   const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = UMAS.filter(isRequired).length;
   const nO = UMAS.reduce((a, u) => a + Math.max(1, (u.outfits || []).length), 0), offO = UMAS.reduce((a, u) => a + ((u.outfits && u.outfits.length) ? u.outfits : [null]).filter(o => tileState(u, o) === 'out').length, 0);
-  $('r-count').textContent = `${nO - offO} of ${nO} outfits owned · ${UMAS.length - out} of ${UMAS.length} umas` + (req ? ` · ${req} must be in the loop` : '');
+  $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} umas · ${nO - offO} of ${nO} outfits` + (req ? ` · ${req} must include` : '');
 }
 export function renderRoster() {
   const f = $('r-filter').value.trim().toLowerCase();

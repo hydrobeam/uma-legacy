@@ -1544,3 +1544,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .loop .lhead { padding-right: 130px; }
 @media (max-width: 620px) { .lp .rcol > .rtop { position: static; justify-self: end; } .lp .loop .lhead { padding-right: 0; } }
 .lp .rbbar > .rhead { padding: 8px 12px 9px; gap: 6px 14px; }
+/* the Umas and Support cards editors: the dialog never scrolls; its list takes the room left under the tools and scrolls
+   on its own */
+.setdlg > .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); overflow: hidden; }
+.setdlg .panel, .setdlg .panel > .cwrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.setdlg .panel > *, .setdlg .panel > .cwrap > * { flex: none; }
+.setdlg .panel > .roster, .setdlg .panel > .cwrap, .setdlg .cwrap > .cards { flex: 1 1 auto; min-height: 0; max-height: none; }
+.panel .cnt { margin: 0 0 0 auto; padding-left: 10px; font-size: 0.82rem; font-variant-numeric: tabular-nums; align-self: center; }
+.setdlg .panel > .row.between > .row { flex: 1; }

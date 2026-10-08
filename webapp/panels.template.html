@@ -33,25 +33,23 @@
     </section><!--/panel:skills-->
 <!--panel:roster--><section class="panel" aria-labelledby="h-roster">
       <div class="row between"><h2 id="h-roster">Umas</h2>
-        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button></div></div>
+        <div class="row"><button class="btn" id="r-all">All owned</button><button class="btn" id="r-none">None owned</button><span class="hint cnt" id="r-count" role="status"></span></div></div>
       <div class="row rtools"><input type="search" id="r-filter" aria-label="Filter umas" placeholder="Filter by name or outfit">
         <div class="sortdd" id="rs-dd"><button class="btn" id="rs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort umas"></button>
           <div class="sortmenu" id="rs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
       <p class="hint">Tap a portrait: owned → not owned → must include.</p>
       <div class="tkey" aria-hidden="true"><span><i class="k-out"></i>Not owned</span><span><i class="k-req"></i>Must include</span></div>
       <div class="roster" id="roster"></div>
-      <p class="hint" id="r-count"></p>
     </section><!--/panel:roster-->
 <!--panel:deck--><section class="panel" aria-labelledby="h-deck">
       <div class="row between"><h2 id="h-deck">Support deck</h2>
-        <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button></div></div>
+        <div class="row"><button class="btn" id="c-all">All owned</button><button class="btn" id="c-none">None owned</button><span class="hint cnt" id="c-count" role="status"></span></div></div>
       <p class="hint">Only cards that provide relevant skills are shown.</p>
-      <div>
+      <div class="cwrap">
         <div class="row rtools"><input type="search" id="c-filter" aria-label="Filter cards" placeholder="Filter cards">
         <div class="sortdd" id="cs-dd"><button class="btn" id="cs" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort cards"></button>
           <div class="sortmenu" id="cs-menu" role="menu" hidden><button type="button" role="menuitemradio" data-k="rel">Release</button><button type="button" role="menuitemradio" data-k="name">Name</button></div></div></div>
         <div class="cards" id="cards"></div>
-        <p class="hint" id="c-count"></p>
       </div>
     </section><!--/panel:deck-->
 <!--panel:dlgskills--><dialog id="set-skills" class="setdlg" aria-label="Target skills"><div class="dlg"><div class="row between dhead"><h3>Target skills</h3><button class="btn dclose">Done</button></div>__PANEL_SKILLS__</div></dialog>
