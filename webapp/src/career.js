@@ -475,9 +475,7 @@ const schedOf = (r) => ({ members: [{ id: r.trainee.id, name: r.trainee.name, sh
   schedule: (r.schedule || []).filter(x => x.run !== false) });
 function schedBtn(r) {
   const ran = schedOf(r).schedule.length;
-  // the turns where a G1 is held: the schedule window's plus on those she leaves empty (as the game's), naming them
-  const held = () => { const m = new Map(); (CAREER.race_turns || []).forEach((ts, ix) => { for (const t of ts) { if (!m.has(t)) m.set(t, []); m.get(t).push(CAREER.races[ix]); } }); return m; };
-  const b = btn('Race schedule', '', () => openSched({ ...schedOf(r), held: held() }));
+  const b = btn('Race schedule', '', () => openSched(schedOf(r)));
   b.id = 'sched-open'; b.title = ran ? `She runs ${ran} G1s: ${r.g1_wins.toFixed(1)} wins expected` : 'No G1s';
   return b;
 }
@@ -493,7 +491,6 @@ function openDraftWins(d, r) {
   }
   const parentWon = (ix) => d.parents.some(p => p.wins.includes(ix));
   openWins(d, umaName(d.chara), {
-    hint: 'The G1s she won in this career. Click a win to remove it; click an empty slot (+) for the G1s she could enter then (her schedule\'s first, with its win odds). Each one she shares with a parent adds 3 affinity.',
     offer: rows.length ? (t) => can.get(t) || [] : null,
     info: (ix) => { const x = runs.get(ix); return x || parentWon(ix) ? { ...(x || {}), parent: parentWon(ix) } : null; },
     onEdit: editDraft,

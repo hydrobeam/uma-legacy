@@ -1380,8 +1380,8 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .afftab .afv .aff { justify-content: flex-end; }
 /* the race schedule (and the G1 wins editor) on the career page: the game's Scheduled Races, the three years side by
    side, sized to the window (no scrolling on a desktop): each turn the game's white slot with the race's banner, its win
-   odds in the game's pink Scheduled badge, the turn under it; Junior's April to June the game's grey cells; a turn where
-   she could enter a G1 (or, in the wins editor, add a win) the game's green plus */
+   odds in the game's pink Scheduled badge, the turn under it; Junior's April to June the game's grey cells; in the wins
+   editor a turn to add a win shows the game's green plus, its menu the races as banners in the game's slots */
 :root:has(.rb) #sched-dlg, :root:has(.rb) #wins-dlg { width: min(1480px, calc(100vw - 24px)); }
 .agenda.gm { --ag-h: max(360px, calc(100dvh - 262px)); gap: 10px; }
 .agenda.gm .ag-year { border: 0; border-radius: 12px; background: var(--gm-pane); padding: 0 8px 8px; overflow: visible; }
@@ -1392,7 +1392,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .agenda.gm .ag-slot::before { content: ''; grid-row: 1; grid-column: 1; min-height: 0; border: 0 solid transparent;
   border-image: var(--slot-frame, linear-gradient(#fff, #f1f0f4)) 22 fill / 9px / 0 stretch; }
 .agenda.gm .ag-slot.pre::before { border-image: var(--slot-empty, linear-gradient(#e6e6e8, #e6e6e8)) 17 19 fill / 8px 9px / 0 stretch; opacity: .22; }   /* the game's grey overlay, as light as its screen shows it */
-.agenda.gm .ag-race, .agenda.gm .ag-add, .agenda.gm .ag-plus { grid-row: 1; grid-column: 1; min-height: 0; }
+.agenda.gm .ag-race, .agenda.gm .ag-add { grid-row: 1; grid-column: 1; min-height: 0; }
 .agenda.gm .ag-race { padding: 4px 4px 6px; display: block; }
 .agenda.gm .ag-race .banner { width: 100%; height: 100%; object-fit: contain; }
 .agenda.gm .ag-nm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -1406,7 +1406,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .agenda.gm .ag-slot.on.opt .ag-when b { filter: grayscale(.85) brightness(.9); }
 .agenda.gm .ag-slot.on, .agenda.gm .ag-slot.on.opt { border: 0; }
 .agenda.gm .ag-slot.on.opt .ag-when, .agenda.gm .ag-slot.on .ag-when { background: none; color: inherit; }
-.agenda.gm .ag-plus, .agenda.gm .ag-add { background: var(--plus, none) center / auto 42% no-repeat; }
+.agenda.gm .ag-add { background: var(--plus, none) center / auto 42% no-repeat; }
 .agenda.gm .ag-add { border: 0; border-radius: 8px; cursor: pointer; }
 .agenda.gm .ag-add span { display: none; }
 .agenda.gm .ag-add:hover, .agenda.gm .ag-add[aria-expanded="true"] { background-color: rgba(124, 196, 13, .12); }
@@ -1415,3 +1415,12 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 @media (max-width: 900px) { .agenda.gm .ag-grid { height: auto; grid-template-rows: none; grid-auto-rows: 84px; } }
 :root[data-theme="dark"] .agenda.gm .ag-slot::before { border-image-source: var(--slot-frame-dark, var(--slot-frame)); }
 :root[data-theme="dark"] .agenda.gm .ag-slot.pre::before { border-image-source: var(--slot-empty-dark, var(--slot-empty)); opacity: .9; }
+/* the wins editor's menu on the career page: the races held then, each its banner in the game's white slot */
+:root:has(.rb) .wmenu { display: grid; grid-template-columns: repeat(auto-fill, 150px); width: min(492px, calc(100vw - 48px)); max-width: none; gap: 8px; padding: 10px; }
+:root:has(.rb) .wmenu .hint { grid-column: 1 / -1; margin: 0; }
+:root:has(.rb) .wmenu .wpick.art { display: grid; justify-items: center; gap: 2px; padding: 6px 6px 7px; min-height: 0; width: auto;
+  border-image: var(--slot-frame, linear-gradient(#fff, #f1f0f4)) 22 fill / 9px / 0 stretch; }
+:root:has(.rb) .wmenu .wpick.art .banner { width: 100%; aspect-ratio: 2; object-fit: contain; display: block; }
+:root:has(.rb) .wmenu .wpick.art .wpn { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:root:has(.rb) .wmenu .wpick.art small { font-size: 0.66rem; text-align: center; line-height: 1.2; }
+:root[data-theme="dark"]:has(.rb) .wmenu .wpick.art { border-image-source: var(--slot-frame-dark, var(--slot-frame)); }

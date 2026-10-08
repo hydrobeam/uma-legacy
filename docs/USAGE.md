@@ -167,8 +167,8 @@ it not owned searches again (it may come back as the borrowed card). *Race sched
 planner's schedule window for the trainee, drawn as the game's *Scheduled Races*: the three years side by side, sized to fit
 the window, each turn the game's white slot with the race's banner and its win odds in the pink
 *Scheduled* badge (grey when no parent won it, pink when a parent did: it builds affinity), Junior's April to June the
-game's grey cells, and the game's green + on a turn she leaves empty where a G1 is held (its tooltip names them;
-the planner models G1s only). The G1 wins editor uses the same calendar, its + opening the G1s held then.
+game's grey cells. The G1 wins editor uses the same calendar: its empty turns where a G1 is held show the game's green
++, opening the races held then as their banners in the game's slots.
 
 With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her

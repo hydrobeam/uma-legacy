@@ -89,7 +89,6 @@ let winsClose = null;
 export function openWins(nd, who, opts = {}) {
   const opener = document.activeElement;
   $('wins-title').textContent = 'G1 wins: ' + who;
-  $('wins-hint').textContent = opts.hint || 'Single-race G1s she won. Click a win to remove it; click an empty slot (+) for the G1s held then. Each one she shares with a parent or the other parent adds 3 affinity.';
   const count = () => { $('wins-count').textContent = winsText(nd); };
   $('wins-list').replaceChildren(winsAgenda({ races: allRaces(), get: () => nd.wins, set: (w) => { nd.wins = w; }, at: () => (nd.winAt ||= {}),
     offer: opts.offer, info: opts.info, onEdit: () => { count(); (opts.onEdit || persist)(); } }));

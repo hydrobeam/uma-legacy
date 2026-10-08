@@ -137,17 +137,22 @@ export function winsAgenda(o) {
     const h = document.createElement('p'); h.className = 'hint'; h.textContent = `${turnName(t)}: which G1 did she win?`; menu.appendChild(h);
     const mine = (ix) => info(ix)?.turn === t;
     for (const ix of [...can].sort((x, y) => mine(y) - mine(x) || name.get(x).localeCompare(name.get(y)))) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn wpick';
-      const nm = document.createElement('span'); nm.textContent = name.get(ix); b.appendChild(nm);
+      // each race as its banner (the name stays for the screen reader and when the banner is missing)
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn wpick'; b.title = name.get(ix);
+      const bn = banner(name.get(ix)); if (bn) { bn.loading = 'eager'; b.appendChild(bn); b.classList.add('art'); }
+      const nm = document.createElement('span'); nm.className = 'wpn'; nm.textContent = name.get(ix); b.appendChild(nm);
       const sub = mine(ix) ? `her schedule · ${info(ix).cell.p}% win` : shownAt.has(ix) ? `won, shown in ${turnName(shownAt.get(ix))}: moves here` : '';
       if (sub) { const s = document.createElement('small'); s.textContent = sub; b.appendChild(s); }
       b.onclick = () => { o.at()[ix] = t; edit([...o.get(), ix]); draw('win:' + ix); };
       menu.appendChild(b);
     }
-    // under the slot, inside the editor (it scrolls with the calendar); clamped to the editor's width
+    // by the slot, inside the editor (it scrolls with the calendar); clamped to the editor's width
     menu.hidden = false;
     const br = box.getBoundingClientRect(), r = a.closest('.ag-slot').getBoundingClientRect(), w = menu.offsetWidth;
-    menu.style.left = Math.max(0, Math.min(r.left - br.left, box.clientWidth - w)) + 'px'; menu.style.top = (r.bottom - br.top + 4) + 'px';
+    menu.style.left = Math.max(0, Math.min(r.left - br.left, box.clientWidth - w)) + 'px';
+    // below the slot, or above it when it would run past the editor's foot (no scrolling to reach it)
+    const below = r.bottom - br.top + 4, above = r.top - br.top - menu.offsetHeight - 4;
+    menu.style.top = (below + menu.offsetHeight > box.clientHeight && above >= 0 ? above : below) + 'px';
     menu.querySelector('.wpick')?.focus();
   }
   // Escape closes the menu (not the dialog) and returns to its slot; Tab past either end does the same
@@ -202,7 +207,6 @@ export function openSched(l) {
     const ag = agendaGrid((y, sI, slot) => {
       const r = rows.find(x => x.year === y && x.cells[key] && slotOf(x.when) === sI);
       if (r) { slot.classList.add('on'); if (!r.shared) slot.classList.add('opt'); slot.appendChild(cell(r, key)); }
-      else if (l.held && l.held.has(y * 24 + sI)) { const p = document.createElement('span'); p.className = 'ag-plus'; p.title = 'G1s held then: ' + l.held.get(y * 24 + sI).join(', '); slot.appendChild(p); }
       // the turn, and the win odds of the race run there (in the bar, not over the banner's lettering)
       slot.appendChild(whenBar(sI, r ? r.cells[key] : null));
     });
