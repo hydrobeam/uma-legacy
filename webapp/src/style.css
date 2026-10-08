@@ -1596,3 +1596,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game .lp .setlist .glab, :root.game .lp .setlist .gctl > span:first-child { font-size: 0.9rem; }
 :root.game .setlist { gap: 6px; }
 :root.game .rb .setlist { column-gap: 36px; }
+/* the career setup panel: the Enhance column no taller than the ribbon and the two rows of settings beside it */
+.rb .rbbar { padding-bottom: 12px; row-gap: 8px; }
+.rb .setenh { padding-top: 10px; gap: 6px 8px; align-self: start; }
+.rb .setenh .btn.enh { width: 104px; height: 83px; }
+.rb .setenh .btn.enh .enhl { bottom: 6px; font-size: 0.76rem; }
+.rb .setenh .btn.enh.wide { width: 216px; height: 54px; }
+.rb #v-toggle .enhl { font-size: 0.78rem; right: 26px; }
+.rb #v-toggle .enhl::after { right: -16px; }
+.rb .setenh .btn.enh:not(.wide) .enhl { left: 4px; right: 16px; font-size: 0.72rem; letter-spacing: -.01em; }
+.rb .setenh .btn.enh:not(.wide) .enhl::after { right: -11px; border-width: 5px; border-left-width: 7px; margin-top: -5px; }
