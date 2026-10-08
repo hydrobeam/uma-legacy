@@ -10,6 +10,8 @@ export folder (master.mdb there) with that era's data.json; writes career.json n
   pinks:   aptitude (pink) spark factor group -> name (succession_factor type 2; factor_id = group * 100 + stars).
   blues:   stat (blue) spark factor group 1..5 -> name (type 1). uniques: unique (green) spark factor group (an outfit's
            card id) -> its unique skill's name (type 3).
+  mobs:    the first 24 mob umas (mob_data, English names from the Global text_data category 59 by mob id): the career
+           planner's sample veterans (no relation points with anyone; they only carry sparks).
 usage: export_career.py DATA_JSON OUT_JSON"""
 import sqlite3, json, sys, os
 data_path, out_path = sys.argv[1], sys.argv[2]
@@ -41,5 +43,10 @@ uniques = {}
 for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 3 order by factor_group_id'):
     r = gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()
     if r: uniques[g] = r[0]
-json.dump({'factors': factors, 'saddles': saddles, 'pinks': pinks, 'blues': blues, 'uniques': uniques}, open(out_path, 'w'), separators=(',', ':'))
+mobs = []
+for (m,) in gq('select mob_id from mob_data order by mob_id'):
+    r = gq('select text from text_data where category = 59 and "index" = ?', (m,)).fetchone()
+    if r and r[0]: mobs.append([m, r[0]])
+    if len(mobs) == 24: break
+json.dump({'factors': factors, 'saddles': saddles, 'pinks': pinks, 'blues': blues, 'uniques': uniques, 'mobs': mobs}, open(out_path, 'w'), separators=(',', ':'))
 print(len(factors), 'skill spark groups,', len(saddles), 'G1 saddles', f'({len(unmapped)} G1 saddles of races no trainee can run: {unmapped})' if unmapped else '')

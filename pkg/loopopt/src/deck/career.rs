@@ -414,7 +414,10 @@ impl<'a> Env<'a> {
         let dom: Vec<Vec<usize>> = (0..nl).map(|y| (0..nl).filter(|&x| x != y && dominates(p, x, y)).collect()).collect();
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
-        while next < cands.len() && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
+        // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
+        // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
+        // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
+        while next < cands.len() && cands[next].ub > 0.0 && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
             if self.hard > 0 && self.work > self.hard { complete = false; break; }
             let ci = next; next += 1;
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);

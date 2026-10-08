@@ -19,7 +19,7 @@ import { initSetup } from './setup.js';
 import './gmtip.js';   // the game-style tooltips (both planner pages)
 import { affEl, affTable as affTableOf } from './afftable.js';
 import { initTargets, renderTargets } from './targets.js';
-import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills,
+import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills, sampleVets,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
@@ -49,7 +49,8 @@ function paint() {
     const sp = el('span'); sp.innerHTML = '<span class="spin" aria-hidden="true"></span>';
     sp.append('Planning: the next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
-  else n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
+  else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
+    if (status.act && !searching) { const b = btn(status.act.label, 'primary', status.act.run); b.id = 'run-act'; n.append(' ', b); } }   // e.g. Try sample veterans
 }
 // the plan's line: finished, or stopped by its time limit, or failed
 function planNote() {
@@ -68,11 +69,11 @@ function schedule() {
 
 // ---------- the job ----------
 const idxOf = (id) => vets.findIndex(v => v.id === id);
-class Blocked extends Error { constructor(kind, text) { super(text); this.kind = kind; } }
+class Blocked extends Error { constructor(kind, text, act) { super(text); this.kind = kind; this.act = act; } }
 function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
-  if (vets.length < 2) throw new Blocked('empty', 'Choose both parents, or import your veterans and let the planner pick.');
+  if (vets.length < 2) throw new Blocked('empty', 'Choose both parents, or import your veterans and let the planner pick.', !vets.length ? { label: 'Try sample veterans', run: () => addVets(sampleVets()) } : null);
   if (fixed.length === 2 && fixed[0].chara === fixed[1].chara) throw new Blocked('error', `Both parents are ${umaName(fixed[0].chara)}: a career takes two different umas.`);
   if (fixed.length === 2 && fixed[0].borrowed && fixed[1].borrowed) throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
   if (plan.trainee && fixed.some(v => v.chara === plan.trainee)) throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
@@ -103,7 +104,7 @@ function comparisonJob() { return JSON.parse(baseKey(last.job)); }
 async function search() {
   const id = ++myId; simulationId++;
   let job;
-  try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
+  try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message, act: e.act }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
   searching = true; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
     const m = await run(job);
@@ -114,6 +115,13 @@ async function search() {
       const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
+      // no career can land every target: say which targets nothing can give (no veteran or parent carries their spark;
+      // no deck, outfit or event gives them either, or some career would have them)
+      if (!m.r.results.length) {
+        const carried = new Set(vets.flatMap(v => [v, ...v.parents]).flatMap(x => Object.keys(x.sparks || {}).map(Number)));
+        const none = state.targets.filter(t => !goldGiven(t.group) && !carried.has(t.group)).map(t => tName(t.group));
+        status = { kind: 'error', text: `No career can land all ${state.targets.length} targets` + (none.length ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.` : ' with these veterans.') };
+      }
       const best = m.r.results[0], r = best;
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
       // a trainee you chose leaves the plan nothing to pick: no plan
@@ -308,7 +316,7 @@ function fillNode() {
     const w = el('div', 'twho'), b = el('button', 'facebtn'); b.type = 'button'; b.append(umaAv(v.chara, v.outfit, 56));
     b.title = 'Change who she is'; b.setAttribute('aria-label', `Veteran #${i + 1}: ${umaName(v.chara)}. Change who she is`); b.onclick = fromNode(() => changeUma(v, `Veteran #${i + 1}`));
     // where she came from (entered from a career here, an uma.moe tree, an import, made here)
-    const src = { entered: 'Entered here', simulated: 'Entered here', tree: 'From uma.moe', import: 'Imported', hand: 'Made here' }[v.src];
+    const src = { entered: 'Entered here', simulated: 'Entered here', tree: 'From uma.moe', import: 'Imported', hand: 'Made here', sample: 'Sample' }[v.src];
     w.append(b, el('div', 'nm', umaName(v.chara)), winsBtn(v, `Veteran #${i + 1}, ${umaName(v.chara)}`, 'v' + v.id));
     if (src) w.appendChild(el('span', v.src === 'tree' ? 'srctag' : 'simtag', src));
     body.appendChild(w);

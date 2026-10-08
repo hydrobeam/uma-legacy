@@ -98,7 +98,12 @@ def era(dirp, events_file):
     ct = json.load(open(os.path.join(dirp, 'career.json')))
     # and the turns each G1 is held at (0-71: year x 24 + half-month; Classic and Senior runnings share one race index)
     race_turns = [sorted({t for u in data['umas'] for t, ops in enumerate(u['turns']) for o in ops if o['race'] == r}) for r in range(len(data['race_names']))]
-    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'blues': ct.get('blues', {}), 'uniques': ct.get('uniques', {}), 'races': data['race_names'], 'race_turns': race_turns})
+    # skill groups something besides inheritance can give: a card's hints or events, an outfit's own skills (the career
+    # planner's sample veterans carry only the targets outside this: the ones a loop must inherit)
+    sourced = sorted({g for c in cards['cards'] for g in c['whites']} | {e[0] for es in evsum.values() for e in es}
+                     | {g for os_ in skills['cards'].values() for o in os_ for g, _ in o[2]})
+    career = js({'factors': ct['factors'], 'saddles': ct['saddles'], 'pinks': ct['pinks'], 'blues': ct.get('blues', {}), 'uniques': ct.get('uniques', {}), 'races': data['race_names'], 'race_turns': race_turns,
+                 'mobs': ct.get('mobs', []), 'sourced': sourced})
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
 M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global

@@ -17,6 +17,7 @@ function setData(d) {
   CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
   SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
   NAME = new Map(UMAS.map(u => [u.id, u.name]));
+  for (const [id, name] of (CAREER && CAREER.mobs) || []) NAME.set(id, name);   // the career page's sample (mob) veterans
 }
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
 export const loadFail = (what) => `Could not load ${what}. Check your connection and reload the page.` + (location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '');

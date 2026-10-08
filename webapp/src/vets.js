@@ -6,7 +6,7 @@
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
 import { UMAS, NAME, SK, CAREER } from './data.js';
-import { state } from './state.js';
+import { state, goldGiven } from './state.js';
 import { umaAv, skillIcon } from './images.js';
 import { winsAgenda } from './agenda.js';
 
@@ -72,8 +72,9 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
   $('ask-text').textContent = `Her sparks of your ${n} target skills decide what she passes on. A fully looped parent has all of them` +
     (withParents ? ', and so do her own two parents: the same choice goes on them.' : '.') + ' You can change the stars of each afterwards.';
   const box = $('ask-btns'); box.textContent = '';
-  const opts = [[`All ${n} at 2★`, () => full(2), true], [`All ${n} at 3★`, () => full(3)], [`All ${n} at 1★`, () => full(1)],
-    ...(hasSparks ? [['Keep her current skills', () => null]] : []), ['No skills', () => ({})]];
+  // No skills first and the default (a new uma carries nothing until you say so)
+  const opts = [['No skills', () => ({}), true], [`All ${n} at 2★`, () => full(2)], [`All ${n} at 3★`, () => full(3)], [`All ${n} at 1★`, () => full(1)],
+    ...(hasSparks ? [['Keep her current skills', () => null]] : [])];
   for (const [label, val, primary] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' primary' : ''); b.textContent = label;
     b.onclick = () => { $('ask-dlg').close(); onChoice(val()); }; box.appendChild(b);
@@ -265,6 +266,20 @@ export function newVet(chara, sparks) {
 export function importVets(list) {
   for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'import') vets.splice(i, 1);
   vets.unshift(...list); dropMissing(); changed();
+}
+// sample veterans to try the planner with (no veterans yet): mob umas from the game, the bare minimum to start a loop:
+// each carries, at 1 star, only the targets nothing but inheritance gives (no card hints or events them, no outfit has
+// them, the scenario doesn't hand them out); her two parents, mobs too, carry nothing. No relation points with anyone
+// (the solver knows no mob), no G1 wins. Marked as samples; Remove all clears them.
+export function sampleVets() {
+  const mobs = CAREER.mobs || [], src = new Set(CAREER.sourced || []);
+  const inherit = targetGroups().filter(g => !src.has(g) && !goldGiven(g));
+  const node = (id, sparks) => ({ chara: id, sparks, pinks: {}, blues: {}, greens: {}, wins: [] });
+  const out = [];
+  for (let i = 0; i + 2 < mobs.length && out.length < 6; i += 3)
+    out.push({ id: 'm' + mobs[i][0], src: 'sample', borrowed: false, ...node(mobs[i][0], Object.fromEntries(inherit.map(g => [g, 1]))),
+      parents: [node(mobs[i + 1][0], {}), node(mobs[i + 2][0], {})] });
+  return out;
 }
 // veterans from an uma.moe tree: added after the others (the numbers you have keep)
 export function addVets(list) { vets.push(...list); changed(); }

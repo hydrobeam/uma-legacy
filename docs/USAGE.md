@@ -193,6 +193,12 @@ to what odds, and the two-deep part), tags *planner's pick*, *about the same* an
 one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
 "planning…".
 
+With no veterans the status line offers **Try sample veterans**: six mob umas from the game (names from its own mob
+list, no relation points, no G1 wins), each with two mob parents, carrying at 1★ only the targets nothing but
+inheritance gives (no card hints or events them, no outfit has them, the scenario doesn't hand them out): the bare
+minimum to start a loop. Their popups say *Sample*; *Remove all* clears them. A search where no career can land every
+target stops at once and names the targets no veteran or parent carries.
+
 **Your veterans** (the *Veteran Umamusume* dialog): *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a
 re-import replaces earlier imports and keeps veterans made here. *Export* shows your veterans, the plan and the
