@@ -1616,3 +1616,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the inspiration stars at the game's ratio: about 0.43 of the spark bar's height (measured on its Umamusume Details) */
 .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -8px; height: 15px; }
 .ud .vskb .stars .sf, .ud .vskb .stars .se { height: 15px; width: calc(var(--n, 0) * 15px); background-size: 15px 15px; }
+/* career setup (wide screens): Umas and Support cards side by side in the space after the settings, Veteran Umamusume at
+   the far right, all in the settings' row under the ribbon */
+@media (min-width: 1200px) {
+  .rb .rbbar { grid-template-columns: max-content minmax(0, 1fr); grid-template-areas: "hdr hdr" "list enh"; column-gap: 24px; }
+  .rb .setlist { column-gap: 24px; }
+  .rb .setenh { grid-template-columns: auto auto minmax(0, 1fr); align-self: center; padding-top: 0; gap: 6px; }
+  .rb .setenh .btn.enh { width: 104px; height: 83px; }
+  .rb .setenh .btn.enh.wide { grid-column: auto; justify-self: end; align-self: center; width: 200px; height: 50px; }
+  .rb #v-toggle .enhl { font-size: 0.74rem; }
+}
