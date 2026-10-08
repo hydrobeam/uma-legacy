@@ -1669,13 +1669,3 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the Enhance block spreads down the panel's height like the settings beside it: Umas and Support cards at the top,
    Veteran Umamusume at the foot, the gap between them growing with Target skills */
 .rb .setenh { align-self: stretch; align-content: space-between; padding-bottom: 6px; }
-/* the folded summary in the settings' own look: the game data on the green pill, the scenario logo, the rank badges, the
-   targets as their skill icons */
-.rb .setsum:not([hidden]) { display: inline-flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; }
-.rb .setsum .sumpill { color: #fff; font-weight: 700; font-size: 0.82rem; padding: 2px 14px 4px; text-shadow: var(--gm-outline); border: 0 solid transparent;
-  border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
-.rb .setsum .sumlogo { position: relative; width: 84px; height: 34px; }
-.rb .setsum .sumrank { display: inline-flex; align-items: center; gap: 1px; font-weight: 900; color: var(--gm-ink); }
-.rb .setsum .sumrank img { height: 22px; width: auto; }
-.rb .setsum .sumsk { display: inline-flex; gap: 3px; }
-.rb .setsum .sumsk .sic { width: 24px; height: 24px; margin: 0; }
