@@ -1436,3 +1436,14 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb .cartab .udsk { cursor: default; min-height: 44px; }
 .rb .cartab .udsk:hover { filter: none; }
 .rb .cartab tbody td { font-weight: 700; font-size: 0.9rem; }
+/* the Target skills editor on the career page: each target as the game's skill tile (gold for a scenario gold), × to remove */
+:root:has(.rb) #set-skills .tgt { position: relative; isolation: isolate; border: 0; border-radius: 0; background: none; min-height: 46px; padding: 4px 4px 8px 8px; color: var(--gm-tile-ink); }
+:root:has(.rb) #set-skills .tgt::before { content: ''; position: absolute; inset: 0; z-index: -1; border: 0 solid transparent;
+  border-image: var(--skill-white, linear-gradient(var(--gm-tile), var(--gm-tile2))) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch; }
+:root:has(.rb) #set-skills .tgt[data-g="2"]::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
+:root:has(.rb) #set-skills .tgt .name, :root:has(.rb) #set-skills .tgt.gold .name { color: var(--gm-gold-ink); font-size: 0.95rem; }
+:root:has(.rb) #set-skills .tgt .sic { width: 30px; height: 30px; }
+:root:has(.rb) #set-skills .tgt .x { width: 30px; height: 30px; border-radius: 999px; border: 0; background: rgba(255, 255, 255, .55); color: var(--gm-ink); }
+:root[data-theme="dark"]:has(.rb) #set-skills .tgt:not([data-g="2"])::before { border-image-source: var(--skill-white-dark, var(--skill-white)); }
+:root[data-theme="dark"]:has(.rb) #set-skills .tgt:not([data-g="2"]) .name { color: var(--gm-ink); }
+:root[data-theme="dark"]:has(.rb) #set-skills .tgt .x { background: rgba(0, 0, 0, .25); color: var(--gm-ink); }
