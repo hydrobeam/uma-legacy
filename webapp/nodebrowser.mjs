@@ -808,10 +808,8 @@ const TESTS = {
     const inNode = (name) => pg.locator('#node-dlg').getByRole('button', { name });
     const closeNode = async () => { if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape'); };
     check('career: with no veterans it asks for parents or an import', /Choose both parents, or import/.test(await note()), await note());
-    check('career: the toolbar shows the shared settings', (await pg.textContent('#o-skills-n')) === '8' && await pg.locator('.rbbar .tbtn .tico').count() === 1 && await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2);
-    await pg.click('#o-skills'); await dialog(pg, 'set-skills');
-    check('career: Target skills opens the planner\'s skill editor', await pg.locator('#set-skills #targets .tgt').count() === 8);
-    await pg.locator('#set-skills .dclose').click();
+    check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
+      && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);

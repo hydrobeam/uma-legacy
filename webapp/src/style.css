@@ -1441,10 +1441,8 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .game .tgt[data-g="2"]::before { border-image-source: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))); }
 .game .tgt .name, .game .tgt.gold .name { color: var(--gm-gold-ink); font-size: 0.95rem; }
 .game .tgt .sic { width: 30px; height: 30px; }
-.game .tgt .x { width: 30px; height: 30px; border-radius: 999px; border: 0; background: rgba(255, 255, 255, .55); color: var(--gm-ink); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"])::before { border-image-source: var(--skill-white-dark, var(--skill-white)); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .name { color: var(--gm-ink); }
-:root.game[data-theme="dark"] .tgt .x { background: rgba(0, 0, 0, .25); color: var(--gm-ink); }
 /* the loop planner in the game style (.lp): two columns, the setup panel (its rows one under another, the Enhance
    buttons under them) beside the results; stacked on a phone, the setup first */
 .wrap.lp { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 18px; }
@@ -1483,12 +1481,12 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .setlist .scenbtn { width: 100%; }
 /* the loop planner's left column: the setup panel, then Target skills in the open under a green bar */
 .lp .lpside { display: grid; gap: 14px; align-content: start; min-width: 0; }
-.lp .lptgt .panel { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 0 12px 12px; overflow: hidden; }
-.lp .lptgt .panel > .row.between { margin: 0 -12px 10px; }
-.lp .lptgt .panel > .row.between > h2 { position: relative; margin: 0; padding: 4px 40px 4px 14px; color: #fff; font-size: 1.05rem; font-weight: 900; text-transform: none; letter-spacing: .01em;
+.game .lptgt .panel { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); padding: 0 12px 12px; overflow: hidden; }
+.game .lptgt .panel > .row.between { margin: 0 -12px 10px; }
+.game .lptgt .panel > .row.between > h2 { position: relative; margin: 0; padding: 4px 40px 4px 14px; color: #fff; font-size: 1.05rem; font-weight: 900; text-transform: none; letter-spacing: .01em;
   text-shadow: var(--gm-outline); background: linear-gradient(var(--gm-green), var(--gm-green2)); clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%); }
-.lp .lptgt .panel > .row.between > .btn { margin: 6px 12px 0 0; }
-.lp .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.game .lptgt .panel > .row.between > .btn { margin: 6px 12px 0 0; }
+.game .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .game .rhead .seg { border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); padding: 3px; box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
 .game .rhead .seg button { border-radius: 999px; font-family: inherit; font-weight: 700; min-width: 40px; }
 .game .rhead .seg button:not([aria-pressed="true"]) { color: var(--gm-ink); }
@@ -1497,12 +1495,12 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 @media (max-width: 960px) { .wrap.lp { grid-template-columns: minmax(0, 1fr); } }
 .lp .setenh { padding-top: 6px; }
 .lp .rbbar { padding-bottom: 12px; row-gap: 8px; }
-.lp .lptgt .targets { gap: 4px 6px; }
-.lp .lptgt .tgt { min-height: 40px; padding: 3px 3px 7px 6px; }
-.lp .lptgt .tgt .name { font-size: 0.84rem; gap: 5px; }
-.lp .lptgt .tgt .sic { width: 24px; height: 24px; }
-.lp .lptgt .tgt .x { width: 24px; height: 24px; }
-.lp .lptgt .adder { margin-bottom: 6px; }
+.game .lptgt .targets { gap: 4px 6px; }
+.game .lptgt .tgt { min-height: 40px; padding: 3px 3px 7px 6px; }
+.game .lptgt .tgt .name { font-size: 0.84rem; gap: 5px; }
+.game .lptgt .tgt .sic { width: 24px; height: 24px; }
+.game .lptgt .tgt .x { width: 24px; height: 24px; }
+.game .lptgt .adder { margin-bottom: 6px; }
 /* the loop planner's status row at the foot of the setup panel (the first result starts level with the panel) */
 .lp .rbbar { grid-template-areas: "hdr" "list" "enh" "stat"; }
 .lp .rbbar > .rhead { grid-area: stat; margin: 2px 0 0; border-radius: 10px; background: var(--gm-pane); border: 1px solid var(--gm-line); font-size: 0.84rem; color: var(--gm-ink); }
@@ -1512,7 +1510,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .setenh .btn.enh { width: 110px; height: 88px; }
 .lp .setenh .btn.enh .enhl { bottom: 6px; font-size: 0.78rem; }
 .lp .rbbar > .rhead { padding: 4px 10px; }
-.lp .lptgt .panel > .row.between { margin-bottom: 8px; }
+.game .lptgt .panel > .row.between { margin-bottom: 8px; }
 /* the loop planner's left column fits a 900 px screen: compact rows (one-line labels where they fit), smaller tiles */
 .lp .setlist { gap: 4px; }
 .lp .setlist .gctl { grid-template-columns: 8.4em minmax(0, 1fr); padding: 3px 8px 3px 3px; min-height: 0; }
@@ -1521,8 +1519,8 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .setlist .scenbtn { min-height: 38px; }
 .lp .setlist .scenbtn .slogo { height: 30px; }
 .lp .rbbar .tchk, .lp .rbbar label { font-size: 0.84rem; }
-.lp .lptgt .tgt { min-height: 36px; padding-block: 2px 6px; }
-.lp .lptgt .adder input { min-height: 36px; }
+.game .lptgt .tgt { min-height: 36px; padding-block: 2px 6px; }
+.game .lptgt .adder input { min-height: 36px; }
 /* Umas and Support cards at the game's size; the status row under them in small type, its switches and the Results pill
    on one line (the per-uma deck choice a switch there, not a row of its own) */
 .lp .setenh .btn.enh { width: 140px; height: 112px; }
@@ -1570,7 +1568,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .game .aff, .rb .aff, .rb .pn .pnh .aff { border: 0; background: none; padding: 0; border-radius: 0; box-shadow: none; }
 /* a target's remove button: the game's plain brown x (the menu's close icon), small; a round hover behind it; on a dark
    tile lightened (the gold tiles stay light) */
-.game .tgt .x, .game .lp .lptgt .tgt .x { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: transparent; font-size: 0;
+.game .tgt .x, .game .lptgt .tgt .x { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: transparent; font-size: 0;
   background: var(--close, none) center / 10px 10px no-repeat; box-shadow: none; }
 .game .tgt .x:hover { background-color: rgba(121, 64, 22, .12); }
 .game .tgt .x:active { transform: translateY(1px); }
@@ -1632,3 +1630,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -5px; }
 .ud .vskb .stars .sf, .ud .vskb .stars .se { width: max(0px, calc(var(--n, 0) * 18px - 3px)); background-repeat: space; background-position: 0 0; }
 .ud .vskb .stars .sf { margin-right: calc(min(var(--n, 0), 1) * 3px); }
+/* career setup: the settings (game data, rank, scenario), the three Enhance buttons beside them, Target skills in the open
+   at the right (as on the loop planner), its tiles three to a row */
+.rb .rbbar { grid-template-columns: max-content max-content minmax(0, 1fr); grid-template-areas: "hdr enh tgt" "list enh tgt"; column-gap: 24px; }
+.rb .rbbar > .lptgt { grid-area: tgt; align-self: start; padding-top: 10px; min-width: 0; }
+.rb .lptgt .panel { box-shadow: none; }
+.rb .lptgt .targets { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+@media (max-width: 1100px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh" "tgt"; } }
+.rb .setlist { grid-template-columns: max-content; }
+.rb .lptgt .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1360px) { .rb .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
