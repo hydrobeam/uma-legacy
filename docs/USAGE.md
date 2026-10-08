@@ -95,7 +95,8 @@ win odds, and a win in her schedule shows its odds in the turn bar) and press **
 8/8 parents, a fully looped parent), and the best career with her as a parent is shown as step 2. Otherwise, in
 order: *She raises your best odds* (the best career with her as a parent beats your best today); *She gives X better
 parents* (for one of the planner's candidates, her best career with this veteran as a parent beats her best today, so
-the planner trains her once with them); or *She changes nothing yet* (she may still matter later, as a grandparent).
+the planner trains her once with them; with places set by hand no plan ran, so Compare asks the planner for its
+candidates first); or *She changes nothing yet* (she may still matter later, as a grandparent).
 It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
 and its deck behind *Show its deck*. *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**

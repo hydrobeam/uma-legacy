@@ -920,8 +920,8 @@ const TESTS = {
     // rolls while a comparison runs: each cancels the one in flight (its worker goes), and only the last roll's runs and shows
     const policyResults = () => pg.evaluate(() => window.__careerResults.filter(r => r.compare).length);
     // a comparison is one job for the best career with her (no trainee set) plus, when she doesn't raise the best odds,
-    // one per planner candidate
-    const mainJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare && !j.trainees.length).length);
+    // the planner's candidates (a `next` job when no plan ran) and one job per candidate
+    const mainJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare && !j.trainees.length && !j.next).length);
     const [rj0, rr0, rm0] = [await policyJobs(), await policyResults(), await mainJobs()];
     const usable = await pg.evaluate(() => { const r = Math.random, ok = [];
       for (const u of [0.999999999, 0.999999999, 0]) { const b = document.getElementById('sim-roll'); ok.push(!b.disabled); Math.random = () => u; b.click(); Math.random = r; }
@@ -950,7 +950,7 @@ const TESTS = {
     const nPolicy = await policyJobs();
     await simStars(1);
     check('career: an edit after Compare marks the comparison out of date without running another', /changed her since/.test(await pg.textContent('#sim-result')) && await policyJobs() === nPolicy);
-    const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1).length);
+    const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1 && !j.next).length);
     const cachedRuns = await baselineRuns();
     await pg.getByRole('button', { name: 'Choose trainee' }).click(); await dialog(pg, 'pick-dlg');
     await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await pg.waitForTimeout(700);

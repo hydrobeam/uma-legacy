@@ -516,8 +516,15 @@ async function runComparison() {
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
     const full = isFull(simulation.draft), gives = [];
-    if (!full && !(m.r.results[0].p_all > simulation.baseline.p_all * (1 + 1e-9)) && planS.state === 'done') {
-      for (const o of planS.r.options.filter(o => o.role !== 'best' && o.trainee.id !== simulation.draft.chara)) {
+    if (!full && !(m.r.results[0].p_all > simulation.baseline.p_all * (1 + 1e-9))) {
+      // the planner's candidates for your veterans: the plan's, or (places set by hand, so no plan ran) asked for here
+      let cands = planS.state === 'done' ? planS.r.options : null;
+      if (!cands) {
+        const mp = await run({ ...base, next: {}, compare: true });
+        if (id !== simulationId || source !== myId) return;
+        cands = mp.r.next?.options || [];
+      }
+      for (const o of cands.filter(o => o.role !== 'best' && o.trainee.id !== simulation.draft.chara)) {
         const mx = await run({ ...base, trainees: [o.trainee.id], fix: [her], legacies: legs, top: 1, compare: true });
         if (id !== simulationId || source !== myId) return;
         const r2 = mx.r.results?.[0];
