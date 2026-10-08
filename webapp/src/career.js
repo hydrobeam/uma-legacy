@@ -10,7 +10,7 @@ import { run, killEngine } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv } from './images.js';
-import { initScenario, eraScenario } from './scenario.js';
+import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit } from './roster.js';
 import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
@@ -832,10 +832,20 @@ function initSettings() {
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
   initScenario(); initRoster(); initCards(); initTargets();
   renderRoster(); renderTargets();
-  initSetup();
+  initSetup(); initFold();
   // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
-  onSave(() => { renderAll(); schedule(); });
+  onSave(() => { renderAll(); schedule(); paintFold(); });
 }
+// the setup panel folds to its ribbon (click it) and a one-line summary; the choice is kept in this browser
+let folded = (() => { try { return localStorage.getItem('llp:setup-folded') === '1'; } catch { return false; } })();
+function paintFold() {
+  const bar = document.querySelector('.rbbar'), b = $('set-fold'), sum = $('set-sum');
+  bar.classList.toggle('folded', folded); b.setAttribute('aria-expanded', String(!folded)); sum.hidden = !folded;
+  b.title = folded ? 'Show the career setup' : 'Fold the career setup';
+  const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+';
+  sum.textContent = [ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenarioOf(state.scen).name, `rank ${rank}`, `${state.targets.length} target skills`].join(' · ');
+}
+function initFold() { $('set-fold').onclick = () => { folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); }; paintFold(); }
 
 // ---------- start ----------
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a
