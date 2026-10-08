@@ -16,6 +16,7 @@ import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initSetup } from './setup.js';
+import './gmtip.js';   // the game-style tooltips (both planner pages)
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
@@ -885,25 +886,7 @@ function importText(text) {
     $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}.`; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }
 }
-// game-style tooltips: after a short hover (or on keyboard focus) an element's title shows as the game's balloon; the
-// title is lifted only while the balloon shows (no native tooltip twice), and put back when it goes
-const tipEl = el('div', 'gmtip'); tipEl.setAttribute('role', 'tooltip'); tipEl.hidden = true;
-let tipFor = null, tipTimer = null;
-function tipShow(t) {
-  if (!t.isConnected || !t.title) return;
-  tipFor = t; t.dataset.tip = t.title; t.removeAttribute('title'); tipEl.textContent = t.dataset.tip;
-  (t.closest('dialog[open]') || document.body).appendChild(tipEl); tipEl.hidden = false;
-  const r = t.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
-  const below = r.bottom + 10 + h < innerHeight;
-  tipEl.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8)) + 'px';
-  tipEl.style.top = (below ? r.bottom + 10 : r.top - h - 10) + 'px'; tipEl.classList.toggle('up', !below);
-}
-function tipHide() { clearTimeout(tipTimer); if (tipFor) { if (tipFor.dataset.tip) tipFor.title = tipFor.dataset.tip; delete tipFor.dataset.tip; tipFor = null; } tipEl.hidden = true; }
-document.addEventListener('mouseover', (e) => { const t = e.target.closest?.('[title]'); if (!t || t === tipFor) return; tipHide(); tipTimer = setTimeout(() => tipShow(t), 400); });
-document.addEventListener('mouseout', (e) => { if (!e.relatedTarget || !(tipFor || e.target).contains?.(e.relatedTarget)) tipHide(); });
-document.addEventListener('focusin', (e) => { const t = e.target.closest?.('[title]'); tipHide(); if (t && e.target.matches(':focus-visible')) tipShow(t); });
-document.addEventListener('focusout', tipHide);
-document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close(); });   // a backdrop click closes addEventListener('scroll', tipHide, true); document.addEventListener('pointerdown', tipHide);
+document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close(); });   // a backdrop click closes
 loadData().then(() => {
   initSettings(); initPopover();
   // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the

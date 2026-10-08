@@ -13,6 +13,7 @@ import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
 import { initIO } from './io.js';
 import { initSetup } from './setup.js';
+import './gmtip.js';   // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
 { const rcol = document.querySelector('.rcol');

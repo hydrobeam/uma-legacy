@@ -1543,3 +1543,4 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .rcol > .rtop .seg button:not([aria-pressed="true"]) { color: var(--gm-ink); }
 .lp .loop .lhead { padding-right: 130px; }
 @media (max-width: 620px) { .lp .rcol > .rtop { position: static; justify-self: end; } .lp .loop .lhead { padding-right: 0; } }
+.lp .rbbar > .rhead { padding: 8px 12px 9px; gap: 6px 14px; }
