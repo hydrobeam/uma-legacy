@@ -816,7 +816,7 @@ const TESTS = {
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
     // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
-    const vbtn = (await pg.getAttribute('#v-toggle', 'aria-label')) === 'Your veterans (12)' && /^Veteran Umamusume \(12\)$/.test(await pg.textContent('#v-toggle'));
+    const vbtn = (await pg.getAttribute('#v-toggle', 'aria-label')) === 'Your veterans' && /^Veteran Umamusume$/.test((await pg.textContent('#v-toggle')).trim());
     await pg.click('#v-toggle'); await dialog(pg, 'set-vets');
     check('career: the Veteran Umamusume button opens your veterans with their import and export', vbtn && await pg.locator('#set-vets #vets .vet').count() === 12
       && await pg.locator('#set-vets #v-paste, #set-vets #v-export, #set-vets #v-clear, #set-vets #v-file').count() === 4);

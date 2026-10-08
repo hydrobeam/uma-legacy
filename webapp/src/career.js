@@ -812,8 +812,6 @@ function vetCardEl(v, i) {
 function renderPool() {
   const box = $('vets'); box.textContent = '';
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
-  const tb = $('v-toggle'); tb.querySelector('.enhl').innerHTML = `<span>Veteran</span> <span>Umamusume${vets.length ? ` (${vets.length})` : ''}</span>`;
-  tb.setAttribute('aria-label', `Your veterans${vets.length ? ` (${vets.length})` : ''}`);
   vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
   if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
   const nb = vets.filter(v => v.borrowed).length;
