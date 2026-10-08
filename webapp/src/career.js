@@ -668,22 +668,23 @@ function simulationBody() {
     // the verdict in one line, then the two figures it rests on (now -> with her), then the best career with her
     const verdict = el('p', 'simverdict'); verdict.id = 'sim-verdict';
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
-    const head = looped ? `a fully looped parent (${n}/${n} with ${n}/${n} parents)`
-      : simulation.full ? `an ${n}/${n}, step 1 of the goal done`
-      : saves != null && saves >= 0.5 ? `saves ${fmtN(saves)} careers`
-      : simulation.herParent ? 'a parent of the planner\'s next career'
-      : next.p_all > before.p_all * (1 + 1e-9) ? 'better odds, no careers saved'
-      : 'no change yet';
-    verdict.append('If this hit: ', el('strong', '', head));
+    // what she does for the loop if you enter her: one short line
+    const head = looped ? 'Fully looped parent'
+      : simulation.full ? `${n}/${n}: step 1 done`
+      : saves != null && saves >= 0.5 ? `Saves ${fmtN(saves)} careers`
+      : simulation.herParent ? 'Parent of the next career'
+      : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
+      : 'No careers saved';
+    verdict.append(el('strong', '', head));
     result.appendChild(verdict);
     const figs = el('div', 'simodds');
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
     const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };
     const way = (x, y, lowGood) => { if (x == null || y == null) return 'same'; const g = lowGood ? x - y : y - x;   // the gain
       return Math.abs(g) < (lowGood ? 0.5 : 1e-9 * x) ? 'same' : g > 0 ? 'up' : 'down'; };
-    fig('Careers to a fully looped parent', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
+    fig('Careers to loop', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
       'Expected careers to a fully looped parent once the planner\'s next career runs: without her → with her' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.'));
-    fig(`Best odds, all ${n}`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `Today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
+    fig('Odds with her as a parent', fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
     result.appendChild(figs);
     const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'Best career with her'),
       facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));

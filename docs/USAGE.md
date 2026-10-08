@@ -157,12 +157,12 @@ the game's look (green title bar, pill buttons) and a hovered or focused control
 whenever a new search result arrives; it does not compare until you press Compare. Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**. The *Comparison* panel says it in one line, *If this hit:* then *saves N careers*, *a parent of
-the planner's next career* (under half a career, but its pick uses her), *better odds, no careers saved*, *no change
-yet*, *an 8/8, step 1 of the goal done* or *a fully looped parent*; then two figures, now → with her, green when she
-makes them better and red when worse: *Careers to a fully looped parent* (the planner's expected careers once its next
-career runs; hover for its next career with her) and *Best odds, all N* (today's best career → the best career with her
-as a parent; hover for the percentages and the N−1 odds); then *Best career with her* as portraits (trainee, then her
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**. The *Comparison* panel says it in one line: *Saves N careers*, *Parent of the next career* (under half a career, but
+the planner's pick uses her), *Better odds, no careers saved*, *No careers saved*, *8/8: step 1 done* or *Fully looped
+parent*; then two figures, now → with her, green when she makes them better and red when worse: *Careers to loop*
+(the planner's expected careers to a fully looped parent once its next career runs; hover for its next career with
+her) and *Odds with her as a parent* (all N: today's best career → the best career with her as a parent; hover for
+the percentages and the N−1 odds); then *Best career with her* as portraits (trainee, then her
 two parents, *her* marked), its deck behind *Show its deck*. A veteran never raises the count (every plan without her
 is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can
 save careers without being anyone's better parent today: as a builder's parent she becomes a grandparent of the best

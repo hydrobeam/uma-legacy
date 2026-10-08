@@ -1002,7 +1002,7 @@ const TESTS = {
     await simStars(3);
     await pg.click('#sim-compare');
     await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
-    check('career: Compare says, exactly, what she changes for the next career and shows that career with her', /^If this hit: (saves [\d,]+ careers|no change yet|better odds|a parent of the planner's next career|an \d+\/\d+, step 1|a fully looped parent)/.test(await pg.textContent('#sim-verdict'))
+    check('career: Compare says, exactly, what she changes for the next career and shows that career with her', /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict'))
       && /→/.test(await pg.textContent('#sim-result')) && !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')));
     check('career: … the next career as portraits (trainee, then her two parents, her marked), its deck behind "Show its deck"', await pg.locator('#sim-result .nextc .cface').count() === 3
       && await pg.locator('#sim-result .nextc .cface .her').count() === 1 && await pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc').count() === 6
@@ -1066,7 +1066,7 @@ const TESTS = {
     }
     await pg.click('#sim-compare');
     await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
-    check('career: an n/n veteran: Compare says step 1 of the goal is done (or, with n/n parents, a fully looped parent)', /^If this hit: (an (\d+)\/\2, step 1 of the goal done|a fully looped parent)/.test(await pg.textContent('#sim-verdict')), await pg.textContent('#sim-verdict'));
+    check('career: an n/n veteran: Compare says step 1 of the goal is done (or, with n/n parents, a fully looped parent)', /^((\d+)\/\2: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict')), await pg.textContent('#sim-verdict'));
     await roll(0);   // (no reset: a roll that lands nothing leaves her short of n/n)
     await simStars(3);
     await pg.click('#sim-compare'); await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
@@ -1084,7 +1084,7 @@ const TESTS = {
     await pg.evaluate(() => { document.getElementById('sim-compare').click(); document.getElementById('sim-compare').click(); });
     await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#run-note .spin'), null, { timeout: 180000 });
     check('career: with the trainee chosen no plan runs, and Compare pressed twice finishes', await aheadJobs() === la0 && !/Planning|Planned in/.test(await note())
-      && /^If this hit: (saves [\d,]+ careers|no change yet|better odds|a parent of the planner's next career|an \d+\/\d+, step 1|a fully looped parent)/.test(await pg.textContent('#sim-verdict')), await note());
+      && /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict')), await note());
     check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
     // her G1 wins: the G1 wins editor (each win in its slot; a click removes it, an empty slot's menu adds one); an edit
     // after Compare marks it out of date, nothing is saved to the pool, and the focus goes back to the wins button
