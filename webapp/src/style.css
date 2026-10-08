@@ -1571,7 +1571,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* a target's remove button: the game's plain brown x (the menu's close icon), small; a round hover behind it; on a dark
    tile lightened (the gold tiles stay light) */
 .game .tgt .x, .game .lp .lptgt .tgt .x { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: transparent; font-size: 0;
-  background: var(--close, none) center / 13px 13px no-repeat; box-shadow: none; }
+  background: var(--close, none) center / 10px 10px no-repeat; box-shadow: none; }
 .game .tgt .x:hover { background-color: rgba(121, 64, 22, .12); }
 .game .tgt .x:active { transform: translateY(1px); }
 :root.game[data-theme="dark"] .tgt:not([data-g="2"]) .x { filter: brightness(2.2) saturate(.5); }
