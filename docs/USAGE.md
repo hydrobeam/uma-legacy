@@ -164,7 +164,7 @@ parent*; then two figures, now → with her, green when she makes them better an
 (the planner's expected careers to a fully looped parent once its next career runs; hover for its next career with
 her) and *Odds with her as a parent* (all N: today's best career → the best career with her as a parent; hover for
 the percentages and the N−1 odds); then *Best career with her* as portraits (trainee, then her
-two parents, *her* marked), its deck behind *Show its deck*. A veteran never raises the count (every plan without her
+two parents, *her* marked), its deck behind *Show deck*. A veteran never raises the count (every plan without her
 is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can
 save careers without being anyone's better parent today: as a builder's parent she becomes a grandparent of the best
 career's next lineage, which the planner's scores count. **Reroll** draws one from this career's odds (targets, stars by rank, G1 wins by their

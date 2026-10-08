@@ -689,7 +689,7 @@ function simulationBody() {
     const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'Best career with her'),
       facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
     result.appendChild(nx);
-    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show its deck')); dd.appendChild(deckEl(next, 'Its deck'));
+    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show deck')); dd.appendChild(deckEl(next, 'Deck'));
     result.appendChild(dd);
   }
   side.appendChild(result); box.appendChild(side);
