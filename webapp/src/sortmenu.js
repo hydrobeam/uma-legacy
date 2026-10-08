@@ -30,6 +30,6 @@ export function sortMenu(id, key, render) {
     const to = { ArrowDown: (i + 1) % bs.length, ArrowUp: (i - 1 + bs.length) % bs.length, Home: 0, End: bs.length - 1 }[e.key];
     if (to === undefined) return; e.preventDefault(); bs[to].focus(); });
   document.addEventListener('click', (e) => { if (!e.target.closest('#' + id + '-dd')) open(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { open(false); btn.focus(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); e.stopPropagation(); open(false); btn.focus(); } }, true);   // capture: before a dialog it sits in takes Escape
   dd.addEventListener('focusout', (e) => { if (e.relatedTarget && !dd.contains(e.relatedTarget)) open(false); });
 }
