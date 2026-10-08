@@ -58,7 +58,7 @@ member trains in turn, and a rotation usually comes first. For each loop:
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
   deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
-- *Swaps* under a green bar: each row her face, the card that goes, the game's green chevron, the card that comes in;
+- *Swaps* under a green bar: each row "her face swaps card → card";
 - **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
   but every runner must pick the same one) and **Affinity** (as the career page's: the loop's careers as pill switches, each trainee with her six legacies'
   affinity, the most first; under them that career's table, each parent then her two parents with their relation

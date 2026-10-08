@@ -6,7 +6,7 @@ if (SHIPPED.has('ui:friend_frame')) document.documentElement.style.setProperty('
 // the career page's game-style veteran card (details.js): spark bars and bullets, skill tiles, the tab pill, as --spark-white etc.
 for (const k of ['spark_white', 'spark_blue', 'spark_pink', 'spark_green', 'spark_dot', 'spark_dot_gold', 'skill_white', 'skill_gold', 'skill_unique', 'skill_pink', 'pill', 'star_on', 'star_off', 'spark_white_dark', 'skill_white_dark', 'star_off_dark', 'enh_umas', 'enh_cards', 'enh_vets', 'enh_umas_dark', 'enh_cards_dark', 'enh_vets_dark',
   'btn_w', 'btn_g', 'pill_w', 'pill_g', 'chk_off', 'chk_on', 'btn_w_dark', 'pill_w_dark', 'chk_off_dark', 'tog_off', 'tog_on', 'tog_off_dark',
-  'slot_frame', 'slot_empty', 'sched_badge', 'plus', 'slot_frame_dark', 'slot_empty_dark', 'chevron'])
+  'slot_frame', 'slot_empty', 'sched_badge', 'plus', 'slot_frame_dark', 'slot_empty_dark', 'close'])
   if (SHIPPED.has('ui:' + k)) document.documentElement.style.setProperty('--' + k.replaceAll('_', '-'), `url(${srcFor('ui', k)})`);
 export function skillIcon(group, gold = false) { const s = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]); if (!s) return null;
   const im = new Image(); im.className = 'sic'; im.alt = ''; im.loading = 'lazy'; im.src = s; return im; }
