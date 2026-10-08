@@ -1552,3 +1552,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .setdlg .panel > .roster, .setdlg .panel > .cwrap, .setdlg .cwrap > .cards { flex: 1 1 auto; min-height: 0; max-height: none; }
 .panel .cnt { margin: 0 0 0 auto; padding-left: 10px; font-size: 0.82rem; font-variant-numeric: tabular-nums; align-self: center; }
 .setdlg .panel > .row.between > .row { flex: 1; }
+/* pill switches: the text centred on the pill's face (the game's pill has a darker rim along its foot, and Zen Maru sets
+   Latin text low in its line), so a little more room under it than over it */
+:root.game .seg > button { padding-top: 1px; padding-bottom: 5px; }
+:root.game .lp .rbbar > .rhead .seg > button, :root.game .lp .rcol > .rtop .seg > button { padding-top: 0; padding-bottom: 3px; }
