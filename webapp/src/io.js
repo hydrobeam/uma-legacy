@@ -18,7 +18,7 @@ function exportText() {
     umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
-    game_data: ERA === 'gm' ? 'JP, Grand Masters era' : 'Global', scenario: scenarioOf(state.scen).name,
+    game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenario: scenarioOf(state.scen).name,
   };
   let results = null;
   if (ui.lastResult) {
