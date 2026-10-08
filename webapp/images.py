@@ -263,6 +263,7 @@ def _smooth(t): t = min(1, max(0, t)); return t * t * (3 - 2 * t)
 
 
 # the Enhance buttons' label band and its fade into the picture, 0..1: the lower band of the square ones, the right of the wide one
+ENH_INSET = {'enh_umas': (3, 7, 3), 'enh_cards': (3, 7, 3), 'enh_vets': (4, 9, 8)}   # the picture's inset from the panel's sides and top, its corner radius, its inset from the panel's foot (the wide one's foot includes its drop shadow), px
 ENH_BANDS = {'enh_umas': lambda x, y, w, h: _smooth((y / h - 0.66) / 0.12), 'enh_cards': lambda x, y, w, h: _smooth((y / h - 0.66) / 0.12),
              'enh_vets': lambda x, y, w, h: _smooth((x / w - 0.26) / 0.24)}
 
@@ -280,6 +281,18 @@ def dark_enh(force, manifest):
         sm = im.convert('RGB').filter(ImageFilter.GaussianBlur(1.5)).load()   # the band's pattern without the lossy noise
         ys = [y for y in range(h) if px[int(w * 0.03), y][3] > 200]; xs = [x for x in range(w) if px[x, h - 10][3] > 200]
         y0, y1, x0, x1 = ys[0], ys[-1], xs[0], xs[-1]   # the panel; the art spills over its top
+        # the frame by geometry: the picture is a rounded rectangle inset from the panel's edge (measured on the light
+        # textures: 3 px with 7 px corners on the square ones, 4 px with 9 px corners on the wide one, 8 px above its foot); outside it is frame,
+        # darkened; its 1 px edge blended by how much of the pixel the picture covers (4x4 samples). Coloured art crossing
+        # the frame (the characters' hair over the top) is kept. (Tracing the frame's light pixels leaked into the picture's
+        # light parts; a fixed-width ring left a speckled fringe.)
+        k, rad, kb = ENH_INSET[key]
+        L, T, R_, B = x0 + k, y0 + k, x1 - k + 1, y1 - kb + 1
+        def inside(fx, fy):
+            cx = min(max(fx, L + rad), R_ - rad); cy = min(max(fy, T + rad), B - rad)
+            return L <= fx <= R_ and T <= fy <= B and (fx - cx) ** 2 + (fy - cy) ** 2 <= rad * rad
+        def cover(x, y): return sum(inside(x + (i + .5) / 4, y + (j + .5) / 4) for i in range(4) for j in range(4)) / 16
+        chroma = lambda p: max(p[:3]) - min(p[:3])
         for y in range(h):
             for x in range(w):
                 r, g, b, a = px[x, y]
@@ -287,10 +300,7 @@ def dark_enh(force, manifest):
                 hh, ll, ss = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
                 bw = band(x, y, w, h)
                 if 0 < bw < 1: bw *= min(1, max(0, (0.3 - (max(r, g, b) - min(r, g, b)) / 255) / 0.15))
-                # the frame by position: a 2 px outline (its light inner line toned down), 3 px of white, a 1 px blend into the
-                # picture; art crossing it (the characters' hair over the top edge) is coloured and kept
-                d = min(x - x0, x1 - x, y - y0, y1 - y)
-                rw = {1: 0.6, 2: 1, 3: 1, 4: 1, 5: 0.5}.get(d, 0) if (max(r, g, b) - min(r, g, b)) < 40 and ll > 0.5 else 0
+                rw = (1 - cover(x, y)) * min(1, max(0, (70 - chroma(px[x, y])) / 30)) * min(1, max(0, (ll - 0.4) / 0.2)) if x0 <= x <= x1 and y0 <= y <= y1 else 0
                 wt = max(bw, rw)
                 if wt <= 0: continue
                 sl = colorsys.rgb_to_hls(*(c / 255 for c in sm[x, y]))[1]
