@@ -782,8 +782,8 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   --gm-ink: #f3e6da; --gm-ink2: #e8dccf; --gm-panel: #1f2328; --gm-pane: #16191d; --gm-cell: #2a2f36; --gm-line: #454b55; --gm-edge: #4d535d;
   --gm-shadow: rgba(0, 0, 0, .55);   /* the game's spark bars and skill tiles keep their own (light) art and brown ink */
   /* the game's greens toned down for a dark page (bars, the selected tab, primary buttons), the same outlined white text */
-  --gm-green: #4c8f0d; --gm-green2: #3b7507; --gm-bright: #63ad16; --gm-bright2: #4f960b;
-  --gm-outline: 0 1px 0 #1f3f00, 1px 0 0 #1f3f00, -1px 0 0 #1f3f00, 0 -1px 0 #1f3f00, 0 2px 2px rgba(0, 0, 0, .5);
+  --gm-green: #64ad12; --gm-green2: #4f960b; --gm-bright: #63ad16; --gm-bright2: #4f960b;
+  --gm-outline: 0 1px 0 #24470a, 1px 0 0 #24470a, -1px 0 0 #24470a, 0 -1px 0 #24470a, 0 2px 2px rgba(0, 0, 0, .5);
   --gm-off: #24272c; --gm-off-ink: #8f877e;
   --gm-won: #ffad3d; --gm-lost: #7d766e; --gm-tab: #2a2f36; --gm-tab-edge: #4d535d; --gm-tab-low: #20242a;
   --gm-hero: linear-gradient(160deg, #2c323c 0%, #252a31 60%, #1f2328 100%);
@@ -1259,7 +1259,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 
 /* dark mode: the planner's pick row in Options on a green-tinted dark highlight (the light lavender one hid its text) */
 :root[data-theme="dark"] .rb .optab tbody tr.on > * { background: #2e3a24; }
-:root[data-theme="dark"] .udtab[aria-selected="true"] { box-shadow: inset 0 -3px 0 #3b7507, inset 0 2px 0 rgba(255, 255, 255, .15); }
+:root[data-theme="dark"] .udtab[aria-selected="true"] { box-shadow: inset 0 -3px 0 #3f7d08, inset 0 2px 0 rgba(255, 255, 255, .15); }
 /* Options' tags as the game's pills: the planner's pick green, the best odds plain */
 .rb .optab .otag { font-family: inherit; font-weight: 700; font-size: 0.7rem; letter-spacing: 0; text-transform: none; border-radius: 999px; padding: 1px 8px;
   border: 1px solid var(--gm-edge); background: var(--gm-cell); color: var(--gm-ink); }
