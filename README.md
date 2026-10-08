@@ -6,9 +6,10 @@ skills in Independent Training, with each uma's race schedule.
 Use it at https://uma-legacy.pages.dev.
 
 The career planner at `/career` picks the next career from your own veterans (imported from umadump): trainee,
-parents and deck, chosen by the expected number of careers until one lands every target (simulated on the model per
-option), with her race schedule and, for the veteran you actually got, whether to use her or run the career again. See
-`docs/USAGE.md`.
+parents and deck, chosen by how many careers it brings a fully looped parent closer (an 8/8 whose parents are 8/8s),
+exact over every result she can roll and counted against a plan that keeps building while it pays; it says whether
+building still pays or to run the step-1 trainee, shows her race schedule and, for the veteran you actually got, how
+many careers she saves. See `docs/USAGE.md`.
 
 - Using the page: `docs/USAGE.md` (the page's own "How this works" explains the model in plain words)
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
