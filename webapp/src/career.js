@@ -843,7 +843,9 @@ function paintFold() {
   bar.classList.toggle('folded', folded); b.setAttribute('aria-expanded', String(!folded)); sum.hidden = !folded;
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
   const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+';
-  sum.textContent = [ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenarioOf(state.scen).name, `rank ${rank}`, `${state.targets.length} target skills`].join(' · ');
+  // one small tag per setting (the words as they read; the whole line for the screen reader)
+  const parts = [ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenarioOf(state.scen).name, `Rank ${rank}`, `${state.targets.length} target skills`];
+  sum.setAttribute('aria-label', parts.join(' · ')); sum.replaceChildren(...parts.map(p => { const t = el('span', 'sumtag', p); t.setAttribute('aria-hidden', 'true'); return t; }));
 }
 function initFold() { $('set-fold').onclick = () => { folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); }; paintFold(); }
 
