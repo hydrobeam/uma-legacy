@@ -524,8 +524,10 @@ async function runComparison() {
       const ma = await run({ ...base, legacies: legs, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pa = ma.r.next || null;
     }
     const wOf = (P) => P && P.v0 != null ? P.v0 - Math.max(0, ...P.options.map(o => o.index ?? 0)) : null;
-    const v0b = wOf(pb), v0a = wOf(pa), pickA = pa?.options?.find(o => o.chosen) || null;
-    simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.state = 'done';
+    const v0b = wOf(pb), v0a = wOf(pa), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
+    // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
+    const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
+    simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   renderSimulation();
 }
@@ -572,7 +574,8 @@ function simulationBody() {
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
     const [head, tail] = looped ? [`She's a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'That is the goal; add her to your veterans.']
       : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Add her to your veterans and the next career uses her as a parent, for an ${n}/${n} of another uma; the best such career is below.`]
-      : saves != null && saves >= 0.5 ? [`She saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with her.` + (simulation.pickA ? ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(simulation.pickA.index)} per run.` : '')]
+      : saves != null && saves >= 0.5 ? [`She saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with her.` + (simulation.pickA ? (simulation.samePick ? ` The planner's next career doesn't change: ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}) again, ${netText(simulation.pickA.index)} per run (a gain this small doesn't change what's best).`
+        : ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(simulation.pickA.index)} per run.`) : '')]
       : ['She changes nothing yet.', `Expected careers to a fully looped parent stay ${v0b != null ? fmtN(v0b) : 'unknown'} (the best career with her as a parent is ${fmtIn(next.p_all)}; today's best ${fmtIn(before.p_all)}); she may still matter later, as a grandparent.`];
     verdict.append(el('strong', '', head), ' ' + tail);
     result.appendChild(verdict);
