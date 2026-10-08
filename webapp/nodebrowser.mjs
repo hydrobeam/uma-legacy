@@ -76,7 +76,7 @@ const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').class
 // been sent (pages opened without open()'s worker hook have no __runs and skip that part)
 async function settle(pg, t = 180000) {
   await pg.waitForFunction(() => { const n = document.getElementById('run-note');
-    return (window.__runs === undefined || window.__runs.length > 0) && !n.classList.contains('busy') && /Searched|example/i.test(n.textContent); }, null, { timeout: t });
+    return (window.__runs === undefined || window.__runs.length > 0) && !n.classList.contains('busy') && /Checked [\d,]+ decks|example/i.test(n.textContent); }, null, { timeout: t });
 }
 const jobSent = (pg, fn, arg) => pg.waitForFunction(fn, arg);   // a search's job has gone to the engine (its result is not awaited)
 const lastJob = (pg, scen) => jobSent(pg, (s) => window.__runs.length > 0 && window.__runs.at(-1).scenario === s, scen);
@@ -126,8 +126,8 @@ const AUDIT = () => {
 const TESTS = {
   async load(b) {
     const pg = await open(b);
-    check('first search runs by itself', /Searched/.test(await note(pg)), await note(pg));
-    check('… and its status says what the result was checked against', /Checked on exact odds|Ranked by odds with targets treated as independent/.test(await note(pg)), await note(pg));
+    check('first search runs by itself', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), await note(pg));
+    check('… and its status is just the count: checked N decks / M loops in T s (a caveat only when the exact check ran out of time)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s( · .+)?$/.test(await note(pg)), await note(pg));
     // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
@@ -276,11 +276,11 @@ const TESTS = {
     // auto-search off: a change waits for the Search button; back on, it searches
     check('auto-search is on by default', await pg.locator('#x-auto').isChecked());
     await pg.click('#x-auto'); const n0 = await pg.evaluate(() => window.__runs.length);
-    check('switching auto-search off leaves the results as they are (not out of date)', /Searched/.test(await note(pg)) && !(await pg.evaluate(() => document.getElementById('results').classList.contains('stale'))));
+    check('switching auto-search off leaves the results as they are (not out of date)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) && !(await pg.evaluate(() => document.getElementById('results').classList.contains('stale'))));
     await pg.locator('#cards .ct').nth(6).click(); await pg.waitForTimeout(1300);
     check('auto-search off: a change does not search, the status says to press Search', (await pg.evaluate(() => window.__runs.length)) === n0 && /press Search/.test(await note(pg)) && (await pg.locator('#r-act button', { hasText: 'Search' }).count()) === 1);
     await pg.locator('#r-act button', { hasText: 'Search' }).click(); await settle(pg);
-    check('… the Search button runs it', (await pg.evaluate(() => window.__runs.length)) === n0 + 1 && /Searched/.test(await note(pg)));
+    check('… the Search button runs it', (await pg.evaluate(() => window.__runs.length)) === n0 + 1 && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)));
     await pg.locator('#cards .ct').nth(6).click(); await pg.click('#x-auto'); await settle(pg);
     check('… turning it back on searches the change', (await pg.evaluate(() => window.__runs.length)) === n0 + 2);
     const made0 = await pg.evaluate(() => window.__made);
@@ -302,7 +302,7 @@ const TESTS = {
     check('a change mid-search clears the clock: it counts again only once the new search runs', /Searching/.test(paused) && !/\d+ s/.test(paused), paused);
     await pg.click('#c-top [data-v="1"]'); await settle(pg);
     check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
-    check('the restarted search finishes', /Searched/.test(await note(pg)));
+    check('the restarted search finishes', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -410,7 +410,7 @@ const TESTS = {
     // (her first tile's outfit is the one marked, so the loop uses it and the switch turns that outfit off; with "any
     // outfit" every tile of hers goes off)
     check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', marked === 1 && after[0] === 'out' && !after.includes('req')
-      && (!anyOutfit || after.every(x => x === 'out')) && /Searched/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
+      && (!anyOutfit || after.every(x => x === 'out')) && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
     check('… and with nothing required, no ring and no legend', !(await pg.locator('.mem.forced, .lhead .lkey').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
@@ -496,7 +496,7 @@ const TESTS = {
     await kind(pg, 'empty'); let h = await head();
     check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg); h = await head();
-    check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /Searched/.test(h.note) && !h.stale, JSON.stringify(h));
+    check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(h.note) && !h.stale, JSON.stringify(h));
     await pg.click('#r-none'); await kind(pg, 'empty'); h = await head();
     check('no umas owned: a neutral status with "Mark all umas owned"', h.kind === 'empty' && /at least 3 umas/.test(h.note) && /Mark all umas owned/.test(h.act) && h.loops > 0, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg);
@@ -520,7 +520,7 @@ const TESTS = {
     const stoppedOk = h.kind === 'stopped' || (h.kind === 'done' && /Stopped the exact check/.test(h.note) && !h.stale);
     check('Stop kills the search and keeps the results', (await pg.evaluate(() => window.__killed)) > k0 && stoppedOk && h.loops > 0 && !(await busy(pg)), JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg);
-    check('… and "Search again" runs it', /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) === 3);
+    check('… and "Search again" runs it', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) && (await pg.locator('#results .loop').count()) === 3);
     const r = await pg.evaluate(() => { const L = [...document.querySelectorAll('#results .loop')], key = (l) => [...l.querySelectorAll('.mem')].map(m => m.dataset.uma + ':' + m.dataset.outfit).join(' ');
       return L.map((l, i) => ({ rank: (l.querySelector('.rank') || {}).textContent, same: !!l.querySelector('.same'), mem: l.querySelectorAll('.mem').length,
         sameAs1: i > 0 && !l.querySelector('.same') && key(l) === key(L[0]) })); });
@@ -705,7 +705,7 @@ const TESTS = {
     check('GM era: while its data loads, the status line says so', await until(pg, () => /Loading the JP Grand Masters-era data/.test(document.getElementById('run-note').textContent)), await note(pg));
     await settle(pg); await pg.unroute('**/assets/data-gm.*');
     check('switching to the GM era selects Grand Masters, at rank SS, and searches with it', (await scen(pg)) === 'grandmasters' && (await pg.getAttribute('#x-scen', 'aria-label')) === 'Scenario: Grand Masters'
-      && (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && /Searched/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0
+      && (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)) && (await pg.locator('#results .loop').count()) > 0
       && await pg.evaluate(() => window.__runs.at(-1).scenario === 'grandmasters' && window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'), await odds(pg));
     check('Grand Masters gives no guaranteed golds', (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0');
     const umas = (await pg.evaluate(() => fetch(JSON.parse(document.getElementById('data-assets').textContent).dataGm).then(r => r.json()))).umas; const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);

@@ -117,12 +117,11 @@ export function firstResult() {
   return null;
 }
 // What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the
-// cap aimed for; see the model notes on /about)
+// cap aimed for; see the model notes on /about): nothing when fully checked, else a short caveat
 export function certText(e) {
-  if (!e) return '';
-  if (e.rho >= e.rho_target) return 'Checked on exact odds: nothing else does better.';
-  if (e.rho > 1) return `Checked on exact odds against every deck within ${Math.round((1 - 1 / e.rho) * 100)}% of it (by odds with targets treated as independent; the full check ran out of time).`;
-  return 'Ranked by odds with targets treated as independent, then scored exactly; the exact check ran out of time.';
+  if (!e || e.rho >= e.rho_target) return '';
+  if (e.rho > 1) return ` · exact check: decks within ${Math.round((1 - 1 / e.rho) * 100)}% of it (ran out of time)`;
+  return ' · not checked exactly (ran out of time)';
 }
 export async function doSearch() {
   const my = ++searchId; clearTimeout(pauseTimer);
@@ -150,7 +149,7 @@ export async function doSearch() {
     if (!ok(m.r)) ui.status = { kind: 'error', text: m.r.error ? 'Not searched: ' + m.r.error : 'No result: no loop fits these settings.' };
     else {
       draw(m.r);
-      ui.status = { kind: 'done', text: `Searched ${m.r.decks_built.toLocaleString()} decks and ${m.r.foursomes.toLocaleString()} loops in ${(m.ms / 1000).toFixed(1)} s. ` + certText(m.r.exact) };
+      ui.status = { kind: 'done', text: `Checked ${m.r.decks_built.toLocaleString()} decks / ${m.r.foursomes.toLocaleString()} loops in ${(m.ms / 1000).toFixed(1)} s` + certText(m.r.exact) };
       try { localStorage.setItem(LAST(), JSON.stringify({ key, ms: m.ms, r: m.r })); } catch {}
     }
   } catch (e) { if (my !== searchId) return; busy = false; ui.status = { kind: 'error', text: e.message }; }
