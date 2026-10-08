@@ -72,6 +72,10 @@ pub(in super::super) struct PlanJob {
     #[serde(default)] loop_members: Option<Vec<u32>>,
     /// `index_rule`: only the frozen value V0 (no index per candidate)
     #[serde(default)] value_only: bool,
+    /// `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
+    /// both, reporting where they differ (2); the surrogate's refresh margin there
+    #[serde(default)] sur: u8,
+    #[serde(default)] sur_margin: f64,
 }
 
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
@@ -552,6 +556,32 @@ fn val(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) 
     let Some(ub) = s.env.ceiling(u, &q, c) else { return 0.0 };
     s.deck_for(u, &q, c, ub, 0.0, buf).map_or(0.0, |x| x.0)
 }
+/// Trainee u's best career through the surrogate (`deck_for`, sim module notes): every legal pair (all of `fix` among
+/// the parents), highest ceiling first, valued by her cached decks, an exact deck search where the bound beats the table
+/// by more than `margin`; stops when the next ceiling is below the best. margin 0: P(all) at least the exact best, up
+/// to deck searches that run out of work.
+fn best_sur(s: &mut Sim, d: &Data, pool: &Pool, fix: &[usize], u: usize, margin: f64, buf: &mut Vec<f64>) -> Option<Found> {
+    let m0 = s.cfg.margin; s.cfg.margin = margin;
+    let n = pool.me.len();
+    let mut cs: Vec<(f64, usize, usize, Vec<f64>, f64)> = vec![];
+    for a in 0..n { for b in a + 1..n {
+        if !legal_pair(d, pool, u, a, b) || !fix.iter().all(|&f| f == a || f == b) { continue; }
+        let (q, _, c) = s.env.lineage(pool, u, a, b);
+        let Some(ub) = s.env.ceiling(u, &q, c) else { continue };
+        cs.push((ub, a, b, q, c));
+    } }
+    cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+    let mut best: Option<Found> = None;
+    for (ub, a, b, q, c) in cs {
+        let bar = best.as_ref().map_or(0.0, |f| f.val);
+        if ub <= bar { break; }
+        if let Some((v, di)) = s.deck_for(u, &q, c, ub, bar, buf) {
+            if v > bar { best = Some(Found { t: u, a, b, val: v, ub, sel: s.cache.decks[u][di].sel.clone() }); }
+        }
+    }
+    s.cfg.margin = m0;
+    best
+}
 /// an 8/8 veteran (a spark of every job target), yours or borrowed
 fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool { sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0)) }
 
@@ -749,13 +779,33 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let mut best: Vec<Option<Option<Found>>> = vec![None; d.umas.len()];
     best[g.t] = Some(Some(g.clone()));
     let mut refs = vec![];
-    for &u in &cands { if best[u].is_none() { let s = env.solve(pool, fix, &[u], false, 1); refs.push(s.refs.clone()); best[u] = Some(s.found.into_iter().next()); } }
-    let fb: Vec<Option<Found>> = cands.iter().map(|&u| best[u].clone().flatten()).collect();
+    if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let s = env.solve(pool, fix, &[u], false, 1); refs.push(s.refs.clone()); best[u] = Some(s.found.into_iter().next()); } } }
     let mut search_ms = now_ms() - t1;
     let mut s = match sim_for(env, d, sk, cr, job, pj) { Ok(s) => s, Err(e) => return e };
     s.cache.absorb(s.env, &sv.refs);
     for r in &refs { s.cache.absorb(s.env, r); }
     let mut buf = vec![];
+    // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
+    let mut sur_diff: Vec<Value> = vec![];
+    let sur_one = |s: &mut Sim, best: &mut Vec<Option<Option<Found>>>, u: usize, buf: &mut Vec<f64>, sur_diff: &mut Vec<Value>| {
+        let f = best_sur(s, d, pool, fix, u, pj.sur_margin, buf);
+        if pj.sur == 2 {
+            let e = best[u].clone().flatten();
+            let (ve, vs) = (e.as_ref().map_or(0.0, |f| f.val), f.as_ref().map_or(0.0, |f| f.val));
+            let same = e.as_ref().map(|f| (f.a.min(f.b), f.a.max(f.b))) == f.as_ref().map(|f| (f.a.min(f.b), f.a.max(f.b)));
+            if !same || (ve - vs).abs() > 1e-9 * ve.max(vs) {
+                sur_diff.push(json!({"trainee": d.umas[u].name, "search": [e.as_ref().map(|f| [f.a, f.b]), ve], "sur": [f.as_ref().map(|f| [f.a, f.b]), vs]}));
+            }
+        } else { best[u] = Some(f); }
+    };
+    if pj.sur > 0 {
+        let ts = now_ms();
+        if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
+        for &u in &cands { if pj.sur == 2 || best[u].is_none() { sur_one(&mut s, &mut best, u, &mut buf, &mut sur_diff); } }
+        s.env.hard = 0; s.env.budget = budget0;
+        search_ms += now_ms() - ts;
+    }
+    let fb: Vec<Option<Found>> = cands.iter().map(|&u| best[u].clone().flatten()).collect();
     let ntar = s.env.ntar; let n = cands.len();
     let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
     let sj = s.env.sj;
@@ -775,13 +825,16 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         let base_s = ScoreBase { cands: &cands, c1: open, m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![] };
         let mut order: Vec<usize> = vec![g.t]; for &x in &all { if x != g.t { order.push(x); } }
         for &x in &order {
-            if best[x].is_none() {
+            if best[x].is_none() || (pj.sur == 2 && !cands.contains(&x)) {
                 let ts = now_ms();
                 if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
-                let sr = s.env.solve(pool, fix, &[x], false, 1);
+                if pj.sur != 1 && best[x].is_none() {
+                    let sr = s.env.solve(pool, fix, &[x], false, 1);
+                    s.cache.absorb(s.env, &sr.refs);
+                    best[x] = Some(sr.found.into_iter().next());
+                }
+                if pj.sur > 0 { sur_one(&mut s, &mut best, x, &mut buf, &mut sur_diff); }
                 s.env.hard = 0; s.env.budget = budget0;
-                s.cache.absorb(s.env, &sr.refs);
-                best[x] = Some(sr.found.into_iter().next());
                 search_ms += now_ms() - ts;
             }
             let Some(Some(f)) = best[x].clone() else { continue };
@@ -922,5 +975,5 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     json!({"options": opts, "choice": choice, "rule": "index", "mode": if looped { "done" } else { "trio" }, "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null },
            "v0_frozen": v0f, "members": members_json,
            "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n,
-           "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
+           "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
 }
