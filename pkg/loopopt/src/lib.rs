@@ -66,13 +66,17 @@ const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
 #[derive(Deserialize, Clone)]
 struct OptRaw { prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #[serde(default)] goal: bool }
 #[derive(Deserialize)]
-struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>> }
+struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>>,
+    /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
+    #[serde(default)] apt: Vec<u8> }
 #[derive(Deserialize)]
 struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>,
     /// relation groups: (points, roster indices); pair / tri are rebuilt from them (older data.json files carry the tables)
     #[serde(default)] relations: Option<Vec<(i32, Vec<usize>)>>,
     #[serde(default)] pair: Option<Vec<Vec<i32>>>, #[serde(default)] tri: Option<Vec<Vec<Vec<i32>>>>,
-    pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw> }
+    pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw>,
+    /// per race: distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)
+    #[serde(default)] race_cat: Vec<u8>, #[serde(default)] race_ground: Vec<u8> }
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
 fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<Vec<i32>>>) {
     let mut p = vec![vec![0i32; n]; n];
@@ -94,6 +98,7 @@ struct PbRaw { fp: String, rows: Vec<String> }
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Choice { Rest, Opt(u8) }
 
+#[derive(Clone)]
 struct Uma {
     id: u32,
     name: String,
@@ -104,6 +109,7 @@ struct Uma {
     pm: Vec<f64>,                    // best-case P per race
     ent: Vec<[Ent; 6]>,              // per turn: choice code 0 = rest, code o+1 = option o (precomputed for dp_exact)
     chl: Vec<([u8; 6], usize)>,      // per turn: allowed choice codes (no force), rest first then options in index order
+    apt: Vec<u8>,                    // aptitude codes (UmaRaw); empty in older data
 }
 
 /// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as `pk`), goal bits.
@@ -113,7 +119,8 @@ const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
 struct Data { nr: usize, umas: Vec<Uma>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pk: Vec<[f64; 7]>, race_names: Vec<String>,
     pbt: Option<Vec<f64>>,   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
-    pen: Vec<i32> }   // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
+    pen: Vec<i32>,    // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
+    race_cat: Vec<u8>, race_ground: Vec<u8> }
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
 /// stop matching and are recomputed.
@@ -212,14 +219,14 @@ fn load_raw(raw: DataRaw) -> Data {
             }
         }
         umas.push(Uma { id: u.id, name: u.name, opts: u.turns, forced, bits, full: (1u32 << nb) - 1,
-            pm: miss.iter().map(|m| 1.0 - m).collect(), ent, chl });
+            pm: miss.iter().map(|m| 1.0 - m).collect(), ent, chl, apt: u.apt });
     }
     let (pair, tri) = match (raw.pair, raw.tri, &raw.relations) {
         (Some(p), Some(t), _) => (p, t),
         (_, _, Some(r)) => rel_tables(n_umas, r),
         _ => panic!("data.json has neither relations nor pair/tri tables"),
     };
-    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt, pen: raw.pen }
+    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt, pen: raw.pen, race_cat: raw.race_cat, race_ground: raw.race_ground }
 }
 
 type Sched = [Choice; NT];

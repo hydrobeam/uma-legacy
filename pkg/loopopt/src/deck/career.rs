@@ -114,6 +114,26 @@ struct Who { ix: Option<usize>, chara: u32, wins: Vec<(usize, f64)>, stars: Vec<
 /// The veterans the parents come from, each with her own parents.
 #[derive(Clone)]
 struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool> }
+/// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
+/// inspiration, the legacy slot, stars
+#[derive(Clone)]
+struct PinkFire { apt: usize, p: f64, slot: usize, stars: u8 }
+/// The trainee's aptitude codes (base, after the career start's pinks) and her legacies' pink sparks
+struct PinkCareer { base: [u8; 10], start: [u8; 10], fire: Vec<PinkFire> }
+/// The April inspirations (0-based turns: Classic and Senior early April); a race on that turn already counts them
+const INSP_TURNS: [usize; 2] = [30, 54];
+/// aptitude index (data.json `apt` order) of a pink factor group: 31-34 short..long, 11 turf, 12 dirt, 21-24 front
+/// runner..end closer
+fn pink_apt(g: u32) -> Option<usize> { match g { 31..=34 => Some((g - 31) as usize), 11 => Some(4), 12 => Some(5), 21..=24 => Some((g - 21) as usize + 6), _ => None } }
+/// the pink factor group of aptitude k (inverse of `pink_apt`)
+fn apt_pink(k: usize) -> u32 { match k { 0..=3 => 31 + k as u32, 4 => 11, 5 => 12, _ => 21 + (k as u32 - 6) } }
+/// distribution of the number of successes over independent chances ps (Poisson binomial)
+fn pbinom(ps: &[f64]) -> Vec<f64> {
+    let mut v = vec![1.0f64];
+    for &p in ps { let mut w = vec![0.0f64; v.len() + 1]; for (i, &x) in v.iter().enumerate() { w[i] += x * (1.0 - p); w[i + 1] += x * p; } v = w; }
+    v
+}
+fn conv(a: &[f64], b: &[f64]) -> Vec<f64> { let mut w = vec![0.0f64; a.len() + b.len() - 1]; for (i, &x) in a.iter().enumerate() { for (j, &y) in b.iter().enumerate() { w[i + j] += x * y; } } w }
 /// One legacy slot of a lineage: affinity parts and per-target stars.
 #[derive(Clone)]
 struct Slot { parent: bool, legacy: usize, gp: Option<usize>, chara: u32, rel: f64, race: f64, stars: Vec<u8>, pinks: Vec<(u32, u8)>, mix: Option<[f64; 3]> }
@@ -463,11 +483,85 @@ impl<'a> Env<'a> {
     /// them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the shared one.
     /// Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does that turn.
     /// Also her win chance per race index.
+    /// Trainee t's aptitudes over the career with parents a, b (MODEL.md, aptitude sparks): at the start, per aptitude
+    /// the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to A; at each
+    /// April inspiration (Classic, Senior) every legacy's pink spark fires with base 1/3/5% by stars x (1 + that legacy's
+    /// affinity / 100), each firing +1 grade, at most S. None when data.json has no aptitudes.
+    fn pink_career(&self, p: &Pool, t: usize, a: usize, b: usize) -> Option<PinkCareer> {
+        let apt = &self.d.umas[t].apt; if apt.len() < 10 { return None; }
+        let mut base = [0u8; 10]; base.copy_from_slice(&apt[..10]);
+        let mut sum = [0u32; 10]; let mut fire = vec![];
+        for (si, sl) in self.slots(p, t, a, b).iter().enumerate() {
+            for &(g, st) in &sl.pinks {
+                let (Some(k), st) = (pink_apt(g), st.min(3)) else { continue }; if st == 0 { continue; }
+                sum[k] += st as u32;
+                fire.push(PinkFire { apt: k, p: ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (sl.rel + sl.race) / 100.0)).min(1.0), slot: si, stars: st });
+            }
+        }
+        let mut start = base;
+        for k in 0..10 { let up = match sum[k] { 0 => 0, 1..=3 => 1, 4..=6 => 2, 7..=9 => 3, _ => 4 }; if base[k] < 7 { start[k] = (base[k] + up).min(7); } }
+        Some(PinkCareer { base, start, fire })
+    }
+    /// Trainee t's race table with her pink sparks counted (`pink_career`): per G1 option the win chance per streak
+    /// position, the expectation over her distance and surface grades at that turn (before Classic April: the start
+    /// grades; then after one inspiration; from Senior April after both). None when nothing changes (no aptitude data,
+    /// or her grades and the base data agree at every turn).
+    /// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
+    fn pink_uma(&self, pc: &PinkCareer, t: usize) -> Option<(Uma, Vec<Vec<f64>>)> {
+        let d = self.d; if d.race_cat.len() < d.nr || d.race_ground.len() < d.nr { return None; }
+        let u = &d.umas[t];
+        // per aptitude, the grade distribution after 0, 1 and 2 inspirations
+        let dist: Vec<[Vec<(u8, f64)>; 3]> = (0..10).map(|k| {
+            let ps: Vec<f64> = pc.fire.iter().filter(|f| f.apt == k).map(|f| f.p).collect();
+            let one = pbinom(&ps); let two = conv(&one, &one);
+            let g = |x: &[f64]| { let mut m: Vec<(u8, f64)> = vec![]; for (i, &w) in x.iter().enumerate() { if w <= 0.0 { continue; }
+                let gr = (pc.start[k] as usize + i).min(8) as u8; if let Some(e) = m.iter_mut().find(|e| e.0 == gr) { e.1 += w; } else { m.push((gr, w)); } } m };
+            [vec![(pc.start[k], 1.0)], g(&one), g(&two)]
+        }).collect();
+        if pc.start == pc.base && pc.fire.iter().all(|f| f.apt >= 6) { return None; }
+        let cost = |gr: u8| -> i32 { [90, 90, 60, 40, 30, 20, 10, 0, 0][gr as usize] };
+        let mut v = u.clone(); let mut ebp: Vec<Vec<f64>> = u.opts.iter().map(|l| vec![0.0; l.len()]).collect();
+        for tt in 0..NT {
+            let ph = INSP_TURNS.iter().filter(|&&x| tt >= x).count();
+            for (o, op) in u.opts[tt].iter().enumerate() {
+                if op.race < 0 { continue; }
+                let r = op.race as usize; let (kd, ks) = (d.race_cat[r] as usize, if d.race_ground[r] == 1 { 4 } else { 5 });
+                let mut pr = [0.0f64; 7];
+                for &(gd, wd) in &dist[kd][ph] { for &(gs, ws) in &dist[ks][ph] {
+                    let bp = (110 - cost(gd) - cost(gs)).max(-20);
+                    ebp[tt][o] += wd * ws * bp as f64;
+                    for k in 1..=6 { pr[k] += wd * ws * pk(d, bp, k); } } }
+                v.ent[tt][o + 1].p = pr;
+            }
+        }
+        Some((v, ebp))
+    }
+    /// The chance of each pink spark of her veteran (MODEL.md): one, its aptitude uniform over those she ends at A or S
+    /// (stars 20/70/10, not here): per aptitude (data.json `apt` order) P(it is the one); exact, the aptitudes'
+    /// inspirations independent. The rest: no aptitude at A or S.
+    fn pink_gen(&self, pc: &PinkCareer) -> [f64; 10] {
+        let q: Vec<f64> = (0..10).map(|k| {
+            let ps: Vec<f64> = pc.fire.iter().filter(|f| f.apt == k).map(|f| f.p).collect();
+            let one = pbinom(&ps); let two = conv(&one, &one);
+            two.iter().enumerate().filter(|(i, _)| pc.start[k] as usize + i >= 7).map(|x| x.1).sum::<f64>()
+        }).collect();
+        let mut out = [0.0f64; 10];
+        for k in 0..10 {
+            let others: Vec<f64> = (0..10).filter(|&j| j != k).map(|j| q[j]).collect();
+            let n = pbinom(&others);
+            out[k] = q[k] * n.iter().enumerate().map(|(i, w)| w / (i + 1) as f64).sum::<f64>();
+        }
+        out
+    }
     fn schedule(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Value, Vec<f64>) {
-        let d = self.d; let u = &d.umas[t];
+        let d = self.d;
+        let pu = self.pink_career(p, t, a, b).and_then(|pc| self.pink_uma(&pc, t));
+        let u = pu.as_ref().map_or(&d.umas[t], |x| &x.0);
         let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] { for &(r, pr) in &p.me[x].wins { if r < d.nr { wr[r] += pr; } } }
-        let Some((s, _)) = best_response(d, u, &wr, None, None) else { return (json!([]), vec![0.0; d.nr]) };
+        // her own race table (pinks counted): solved directly (the memo is keyed by uma id)
+        let br = if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None, None) };
+        let Some((s, _)) = br else { return (json!([]), vec![0.0; d.nr]) };
         let wp = probs(d, u, &s);
         let won = |x: usize, r: usize| p.me[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
         let mut rows = vec![]; let mut k = 0usize;
@@ -480,9 +574,12 @@ impl<'a> Env<'a> {
                 // the loop planner's chart row (one member: `cells`, `shared` = a parent won it, so it builds affinity),
                 // plus `run`, `p`, `instead`, and `name` (the race's full name)
                 let par = [won(a, r) > 0.0, won(b, r) > 0.0];
-                let cell = if run { json!({"p": (pk(d, op.bp, k) * 100.0).round(), "goal": op.goal, "apt": 110 - op.bp, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)}) } else { Value::Null };
+                // win chance and aptitude cost (distance + surface grade costs, as 110 - bp; expected) with her pinks
+                let pw = u.ent[tt][o + 1].p;
+                let apt = pu.as_ref().map_or((110 - op.bp) as f64, |x| 110.0 - x.1[tt][o]).round() as i64;
+                let cell = if run { json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)}) } else { Value::Null };
                 rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": chart_race_name(&d.race_names[r]), "name": d.race_names[r],
-                                 "run": run, "skipped": !run, "instead": instead, "p": if run { json!(pk(d, op.bp, k)) } else { Value::Null }, "goal": op.goal,
+                                 "run": run, "skipped": !run, "instead": instead, "p": if run { json!(pw[k]) } else { Value::Null }, "goal": op.goal,
                                  "parents": par, "shared": par[0] || par[1], "cells": [cell], "runners": run as u8, "alts": []}));
             }
         }
@@ -522,11 +619,19 @@ impl<'a> Env<'a> {
                 miss *= 1.0 - ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (s.rel + s.race) / 100.0)).min(1.0); } } }
             json!({"group": g, "q": 1.0 - miss * miss, "carriers": n})
         }).collect();
+        // her aptitudes and her veteran's pink spark (MODEL.md): base and start grades (data.json `apt` order, codes 1..8 =
+        // G..S), each legacy pink's chance to fire at one April inspiration, and the chance of each pink type
+        let apt = self.pink_career(p, t, a, b).map(|pc| {
+            let pg8 = self.pink_gen(&pc);
+            json!({"base": pc.base, "start": pc.start,
+                   "fire": pc.fire.iter().map(|f| json!({"group": apt_pink(f.apt), "apt": f.apt, "p": f.p, "slot": f.slot, "stars": f.stars})).collect::<Vec<_>>(),
+                   "pink_gen": (0..10).map(|k| json!({"group": apt_pink(k), "p": pg8[k]})).collect::<Vec<_>>()})
+        });
         let outcomes = if with_schedule && ntar <= 12 { json!(self.outcome_sets(j.2, &ext)) } else { Value::Null };
         let (sched, wp) = if with_schedule { self.schedule(p, t, a, b) } else { (Value::Null, vec![]) };
         json!({"trainee": {"id": uid, "name": d.umas[t].name, "outfits": outfits, "covers": covers},
                "parents": [a, b], "slots": slots, "targets": targets, "p_all": j.0, "p_minus1": j.1, "expected": pt.iter().sum::<f64>(),
-               "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "schedule": sched, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
+               "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "aptitudes": apt, "schedule": sched, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
     }
 
     /// Corner table of trainee t with deck `sel`: per outfit, P(all) with every spark-generation scale 1 at the 2^nu

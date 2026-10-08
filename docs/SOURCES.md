@@ -13,6 +13,9 @@
 | Source | URL | What it gave us |
 |---|---|---|
 | uma-it-optimizer (Acrith) | https://github.com/Acrith/uma-it-optimizer (`tools/loop/affinity.py`, `inspiration_rates.py`, `loopdata.py`, `loop_README.md`, `companion-plan.md`) | per-legacy affinity model (adopted v19), grandparents at full rate, spark-generation curve, measured hint and chain rates (not adopted). Fits on IT receipts pulled from the uma-it site |
+| umamusustation red factor analysis | https://umamusustation.com/factor/red_factor_analysis.html | pink (red) spark generation on 22,411 team-trial horses: a pink needs aptitude A or better; A 90.36% / S 9.64% of selections, S not favoured; stars 20/70/10 at A and S alike |
+| umamusu.wiki Inheritance | https://umamusu.wiki/Game:Inheritance | pink sparks at the career start: the six legacies' stars summed per aptitude, 1/4/7/10★ raise 1/2/3/4 grades, at most A; at the Classic and Senior April inspirations a firing can take A to S (community) |
+| uma.guide sparks | https://uma.guide/guides/sparks | pink: an April inspiration firing raises the aptitude one grade regardless of stars; the start rule as above (community) |
 | umadump (Werseter) | https://github.com/Werseter/umadump ; site https://werseter.github.io/umadump/ | game-memory reader writing `trained_chara_data.json` (veterans; positions 10/20 parents, 11/12/21/22 grandparents) used by uma.moe and others. `val/umadump_lineage.py` writes this format |
 | umaishow | https://github.com/mee1080/umaishow | the earlier affinity split (replaced in v19) |
 | JP research notes | silvervine0822.hatenablog.com (白因子確率), owadablog.com/white-factor/, note.com/toijuichi3 (いぬかもめ), note.com/herohero_3 (へろへろ, 1,000+ trial inheritance rates) | community figures for generation and inheritance; superseded by hakuraku's data where they conflict |

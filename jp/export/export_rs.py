@@ -29,12 +29,16 @@ for ch in ROSTER:
         for o in lst:
             if o['race']>=0:
                 key=(o['race'],t<=48); assert key not in seen,(NAME[ch],RN[races[o['race']]]); seen[key]=t
-    umas.append({'id':ch,'name':NAME[ch],'turns':turns,'goals':groups})
+    # her ten aptitude codes (base.json order), for the career page's pink sparks (bp above is from the first six)
+    umas.append({'id':ch,'name':NAME[ch],'turns':turns,'goals':groups,'apt':list(APT[ch])})
 # relation groups instead of the expanded pair / trio tables: [points, [roster indices]] for every relation type with at
 # least two roster members. pair(a,b) / tri(a,b,c) = sum of the points of the groups holding all of them (distinct umas);
 # the solver rebuilds both tables at load (lib.rs rel_tables). Same numbers as rel.pair / rel.tri.
 RELS=[[pt[t],m] for t in sorted(pt) for m in [[i for i,ch in enumerate(ROSTER) if t in mem.get(ch,set())]] if len(m)>=2]
-json.dump({'races':races,'race_names':[RN[r] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(os.environ.get('OUT') or os.environ.get('JP_OUT', '..') + '/data.json','w'))
+# per race: distance class (0 short .. 3 long, as basep) and surface (1 turf, 2 dirt), for aptitude-dependent win chances
+RACE_AT={}
+for pid,p in PROG.items(): RACE_AT.setdefault(p['race'],(cat(p['dist']),p['ground']))
+json.dump({'races':races,'race_names':[RN[r] for r in races],'race_cat':[RACE_AT[r][0] for r in races],'race_ground':[RACE_AT[r][1] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(os.environ.get('OUT') or os.environ.get('JP_OUT', '..') + '/data.json','w'))
 print('races',len(races),'umas',len(umas),'max options/turn',max(len(l) for u in umas for l in u['turns']),
       'multi-turn goal groups',sum(1 for u in umas for g in u['goals'] if len({t for t,_ in g})>1),
       'same-turn multi-option groups',sum(1 for u in umas for g in u['goals'] if len(g)>1 and len({t for t,_ in g})==1))

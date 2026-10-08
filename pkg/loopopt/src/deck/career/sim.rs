@@ -295,6 +295,11 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, t: usize, a: usize, b: usize) -> Rc<Vec<f64>> {
         let mut k: Vec<usize> = pool.me[a].wins.iter().chain(&pool.me[b].wins).map(|w| w.0).collect(); k.sort();
+        // her pink sparks change her win chances: their inputs join the key (start grades, each spark's aptitude and chance)
+        if let Some(pc) = self.env.pink_career(pool, t, a, b) {
+            k.push(usize::MAX); k.extend(pc.start.iter().map(|&g| g as usize));
+            for f in &pc.fire { k.push(f.apt); k.push((f.p * 1e9).round() as usize); }
+        }
         if let Some(x) = self.sched.get(&(t, k.clone())) { return x.clone(); }
         let w = Rc::new(self.env.schedule(pool, t, a, b).1);
         self.sched.insert((t, k), w.clone());
