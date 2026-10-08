@@ -1616,16 +1616,17 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the inspiration stars at the game's ratio: about 0.43 of the spark bar's height (measured on its Umamusume Details) */
 .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -8px; height: 15px; }
 .ud .vskb .stars .sf, .ud .vskb .stars .se { height: 15px; width: calc(var(--n, 0) * 15px); background-size: 15px 15px; }
-/* career setup (1270 px and up): Umas, Support cards and Veteran Umamusume side by side after the settings, in the
-   settings' row under the ribbon; narrower, the stacked block */
-@media (min-width: 1270px) {
-  .rb .rbbar { grid-template-columns: max-content minmax(0, 1fr); grid-template-areas: "hdr hdr" "list enh"; column-gap: 16px; }
-  .rb .setlist { column-gap: 24px; }
-  .rb .setenh { grid-template-columns: auto auto auto; justify-content: start; align-items: center; align-self: center; padding-top: 0; gap: 6px; }
-  .rb .setenh .btn.enh { width: 112px; height: 90px; }
-  .rb .setenh .btn.enh.wide { grid-column: auto; width: 184px; height: 46px; }
-  .rb #v-toggle .enhl { font-size: 0.72rem; }
-}
+/* career setup: Umas and Support cards at the loop planner's size, Veteran Umamusume under them as wide as the two,
+   the block right after the settings (beside the ribbon too, so it sets no extra height) */
+.rb .rbbar { grid-template-columns: max-content max-content; grid-template-areas: "hdr enh" "list enh"; column-gap: 28px; }
+.rb .setenh { grid-template-columns: auto auto; justify-content: start; align-self: start; padding-top: 10px; gap: 6px; }
+.rb .setenh .btn.enh { width: 140px; height: 112px; }
+.rb .setenh .btn.enh:not(.wide) .enhl { bottom: 9px; left: 8px; right: 24px; font-size: 0.9rem; }
+.rb .setenh .btn.enh:not(.wide) .enhl::after { right: -13px; border-width: 6px; border-left-width: 8px; margin-top: -6px; }
+.rb .setenh .btn.enh.wide { grid-column: 1 / -1; width: 286px; height: 72px; }
+.rb #v-toggle .enhl { font-size: 0.95rem; right: 34px; }
+.rb #v-toggle .enhl::after { right: -22px; border-width: 6px; border-left-width: 8px; margin-top: -6px; }
+@media (max-width: 1100px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; } }
 /* the stars' spacing and height as the game's Details screen: a star every 18 px (0.56 of the bar's face, measured: 36 px
    on its 64 px face), each star's middle about 2 px under the bar's face */
 .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -5px; }
