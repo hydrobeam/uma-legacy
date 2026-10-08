@@ -99,8 +99,10 @@ she actually landed (click a spark for its stars, × to remove, + to add; *G1 wi
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
 win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), and the best career
 with her as a parent is shown as step 2. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
-without and with her: *She saves N careers* (the two counts, and the next career with her), or *She changes nothing
-yet*. A veteran can save careers without being anyone's better parent today: as a builder's parent she becomes a
+without and with her: *She saves N careers* (the two counts, and the next career with her); under half a career,
+*She's a parent of the planner's next career* when its pick uses her, *She raises the best odds but saves under half a
+career* when only the best career's odds rise, else *She changes nothing yet*. A veteran never raises the count (every
+plan without her is still there): the two plans are fitted to their own pools, and a rise between them reads as no change. A veteran can save careers without being anyone's better parent today: as a builder's parent she becomes a
 grandparent of the best career's next lineage, which the planner's scores count. It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
 and its deck behind *Show its deck*. *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
