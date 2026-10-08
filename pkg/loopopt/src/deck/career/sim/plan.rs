@@ -542,7 +542,7 @@ const IDX_PARTNERS: usize = 2;
 
 
 /// legal parents a, b for trainee u: different characters, neither hers, at most one borrowed
-fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bool {
+pub(super) fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bool {
     let id = d.umas[u].id; let (ca, cb) = (p.me[a].chara, p.me[b].chara);
     a != b && ca != cb && ca != id && cb != id && !(p.borrowed[a] && p.borrowed[b])
 }
@@ -591,16 +591,21 @@ fn loop_ceiling(s: &mut Sim, d: &Data, legs: &[Legacy], u: usize, b1: usize, b2:
 }
 /// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
 /// A, V0, and the stage-1 odds now
-struct ScoreBase<'b> { cands: &'b [usize], c1: Vec<f64>, m23: &'b [f64], v0: f64, pnow: Vec<f64>, cont: Vec<Cont>,
+pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: Vec<f64>, pub(super) m23: &'b [f64], pub(super) v0: f64, pub(super) pnow: Vec<f64>, pub(super) cont: Vec<Cont>,
     /// the trios (A, B as candidate indices, C's step): V = min over them of c1[A] + c1[B] + C's step; empty: min over a of
     /// c1[a] + m23[a]
-    combos: Vec<(usize, usize, f64)> }
-/// A stage-1 trainee's continuation (assumed, fitted to the pool now): builder careers lift her odds with chance lam_j
-/// at the j-th success, each success closing `phi` of the remaining gap in log odds to `pinf` (her odds with a full loop
-/// lineage): p_n = pinf (p / pinf)^((1 - phi)^n); the lift chance shrinks with the gap, lam_j = lam (1 - phi)^j (a new
-/// veteran beats stronger incumbents less often). lam = 0: none (grind at today's odds).
+    pub(super) combos: Vec<(usize, usize, f64)> }
+/// A step's continuation (form assumed; the rate and step fitted to the pool now, the shape to traces): builder careers
+/// lift her odds, each lift closing `phi` of the remaining gap in log odds to `pinf`, her effective ceiling; the lift
+/// chance falls with the remaining gap: lam_j = lam ((1 - phi)^j)^LAM_DECAY. pinf = CEIL_SHARE x her full-loop odds.
+/// Both constants fitted (val/sim/README.md E5) to traces of building for Agnes Digital on the owner's 2-, 5-, 11- and
+/// 19-veteran pools (the best builder each career, 6 runs x 400 careers): within 10-20% on 11 and 19, building
+/// underestimated on 5 and overestimated early on 2; leave-one-pool-out fits ranged 0.6-1.0 and 1-3. lam = 0: none.
 #[derive(Clone, Copy, Default)]
-struct Cont { lam: f64, phi: f64, pinf: f64 }
+pub(super) struct Cont { lam: f64, phi: f64, pinf: f64 }
+/// Effective ceiling as a share of the full-loop odds, and the lift chance's decline exponent (val/sim/README.md E5)
+const CEIL_SHARE: f64 = 0.6;
+const LAM_DECAY: f64 = 1.5;
 impl Cont {
     /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
     /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
@@ -611,7 +616,7 @@ impl Cont {
         let pn = |n: i32| self.pinf * (lr * r.powi(n)).exp();
         let (mut n, mut built, mut best) = (0i32, 0.0f64, 1.0 / p);
         while n < 500 {
-            let b = built + 1.0 / (self.lam * r.powi(n));
+            let b = built + 1.0 / (self.lam * r.powi(n).powf(LAM_DECAY));
             let x = b + 1.0 / pn(n + 1);
             if x >= best { break; }
             best = x; built = b; n += 1;
@@ -627,7 +632,7 @@ impl ScoreBase<'_> { fn cost(&self, ui: usize, p: f64) -> f64 { self.cont.get(ui
 /// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
+pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
@@ -797,7 +802,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         eff.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
         let Some(&(_, b1, lam, p1)) = eff.first() else { continue };
         let b2 = eff.iter().skip(1).map(|e| e.1).find(|&b| d.umas[b].id != d.umas[b1].id);
-        let pinf = match b2 { Some(b2) => loop_ceiling(&mut s, d, legs, u, b1, b2, &wt, &mut buf).max(p1), None => p1 };
+        let pinf = match b2 { Some(b2) => (CEIL_SHARE * loop_ceiling(&mut s, d, legs, u, b1, b2, &wt, &mut buf)).max(p1), None => p1 };
         let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
         cont[ui] = Cont { lam, phi, pinf };
     }

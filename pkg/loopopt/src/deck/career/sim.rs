@@ -416,6 +416,42 @@ impl<'s, 'a> Sim<'s, 'a> {
         }
         json!({"index": rows, "p_best": p0, "best": {"trainee": self.d.umas[g.t].name, "parents": [g.a, g.b]}, "samples": n, "baseline_careers": 1.0 / p0})
     }
+    /// `trace`: building for loop_members[0] (A) with the others as builders. Each career: per builder her best career's
+    /// exact chance of raising A's best odds (lam) and mean odds raised to (p1); the most efficient (lam (1/p - 1/p1)) runs,
+    /// her veteran joins; recorded per career: A's odds before, the builder, lam, p1, and A's odds after
+    fn trace(&mut self, st0: &St) -> Value {
+        let a = self.members[0]; let nb = self.members.len();
+        let mut out = vec![];
+        for run in self.cfg.first..self.cfg.first + self.cfg.runs {
+            let mut st = st0.clone(); let keys = Keys::Main { seed: self.cfg.seed, run: run as u32 };
+            let mut buf = vec![]; let mut rows = vec![];
+            let tm = std::time::Instant::now();
+            for t in 0..self.cfg.max_careers {
+                let Some(pka) = st.mb[0] else { break }; let pa = pka.val;
+                let one = [a];
+                let mut bestb: Option<(f64, Pick, f64, f64)> = None;
+                for k in 1..nb {
+                    let Some(pk) = st.mb[k] else { continue };
+                    let sel = self.cache.decks[pk.t][pk.d].sel.clone();
+                    let base = plan::ScoreBase { cands: &one, c1: vec![1.0], m23: &[0.0], v0: 0.0, pnow: vec![pa], cont: vec![], combos: vec![] };
+                    let (_, _, _, stt, _) = plan::score_career(self, self.d, &base, &st.legs, &st.pool, pk.t, pk.a, pk.b, &sel, &mut buf);
+                    let (pl, sp) = stt[0];
+                    let (e, p1) = if pl > 0.0 { let p1 = sp / pl; (pl * (1.0 / pa - 1.0 / p1), p1) } else { (0.0, pa) };
+                    if bestb.map_or(true, |b| e > b.0) { bestb = Some((e, pk, pl, p1)); }
+                }
+                let Some((_, pk, lam, p1)) = bestb else { break };
+                let sel = self.cache.decks[pk.t][pk.d].sel.clone();
+                let cur = self.make_cur(&st.pool, pk.t, pk.a, pk.b, &sel, false);
+                let (vet, _) = self.draw(&cur, &st.legs, &keys, t);
+                self.add_vet(&mut st, vet, true, &mut buf);
+                let after = st.mb[0].map_or(pa, |p| p.val);
+                rows.push(json!([t, pa, self.d.umas[pk.t].name, lam, p1, after]));
+            }
+            eprintln!("trace run {}: {} careers, A from {:.3e} to {:.3e}, {:.1} s", run, rows.len(), st0.mb[0].map_or(0.0, |p| p.val), st.mb[0].map_or(0.0, |p| p.val), tm.elapsed().as_secs_f64());
+            out.push(json!({"run": run, "rows": rows}));
+        }
+        json!({"trace": out, "trainee": self.d.umas[a].name, "builders": self.members[1..].iter().map(|&u| self.d.umas[u].name.clone()).collect::<Vec<_>>()})
+    }
     /// `index2`: the grandparent route. Per loop member X other than the builder B: her veteran v (`samples` draws from
     /// her best career), then B's best career with v as a parent, her veteran w (`inner` draws), then the best career
     /// forever: E = 1 + (1 - p_X)(1 + (1 - p_B|v) E_w[1 / p*(pool + v + w)]). Paired with the same w draws from B's
@@ -878,7 +914,7 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
     let base = match cfg.policy.as_str() {
         "greedy" | "greedy_exact" | "planner" | "rollout_greedy" => Base::Greedy,
         "loop" | "rollout_loop" => Base::Loop,
-        "next" | "next_noretry" | "next_retry1" | "index" | "index2" | "pick_index" | "stale" | "cycle" => Base::Next,
+        "next" | "next_noretry" | "next_retry1" | "index" | "index2" | "pick_index" | "stale" | "cycle" | "trace" => Base::Next,
         p => return json!({"error": format!("simulate: unknown policy {p}")}),
     };
     let members: Vec<usize> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
@@ -906,6 +942,7 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
     let st0 = s.initial(legs, base);
     if cfg.policy == "index" { return s.index(&st0); }
     if cfg.policy == "index2" { return s.index2(&st0); }
+    if cfg.policy == "trace" { return s.trace(&st0); }
     let init_s = t_init.elapsed().as_secs_f64();
     let mut runs = vec![]; let mut es = vec![];
     let eps = cfg.eps;

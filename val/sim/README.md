@@ -175,6 +175,30 @@ three builders before her); not re-measured. The retry variants of the former ru
 measured worse on owner14 (766 over 16 runs against 673 over 11 runs for no retry): the retry fires almost always once a lineage
 is saturated. Wall time 33 minutes on 2 cores (fixed cycles about 5 minutes a run).
 
+## E5: how building actually goes (measured, 2026-10-08)
+
+`trace` (docs/SOLVER.md): building for Agnes Digital with her five most efficient builders. Each career the most
+efficient one (exact lift chance x odds gained) runs, her veteran joins; 6 runs x 400 careers per pool (the owner's
+2-, 5-, 11- and 19-veteran pools). Digital's odds (mean over runs), actual against the continuation as first assumed
+(full-loop ceiling, lift chance falling linearly with the remaining log-odds gap):
+
+| Pool | Start | 25 careers | 100 | 400 | First assumption at 100 / 400 | Ceiling assumed |
+|---|---|---|---|---|---|---|
+| 2 veterans | 1 in 20,926 | 1,356 | 360 | 177 | 145 / 108 | 1 in 97 |
+| 5 | 1 in 2,252 | 1,446 | 605 | 346 | 1,126 / 444 | 1 in 163 |
+| 11 | 1 in 713 | 535 | 361 | 292 | 234 / 185 | 1 in 168 |
+| 19 | 1 in 496 | 415 | 354 | 312 | 237 / 194 | 1 in 177 |
+
+The lift chance fell far faster than assumed (fitted exponent 4-5 on 11 and 19, against 1), and every pool plateaued
+near 0.5-0.6 of the full-loop odds: building with the best builder doesn't reach the hypothetical all-8/8 lineage. One
+shape over the four pools (least squares on log odds at 10-400 careers): effective ceiling 0.6 x the full-loop odds,
+lift chance x (remaining log gap)^1.5 (`CEIL_SHARE`, `LAM_DECAY` in sim/plan.rs). It tracks 11 and 19 within 10-20%;
+it underestimates building on 5 (626 predicted at 400, 346 actual: there builders first get more efficient) and
+overestimates it early on 2. Leave-one-pool-out fits ranged 0.6-1.0 and 1-3: a calibration on these pools, not a law.
+With it, the planner picks Agnes Digital outright on the 7-, 10- and 11-veteran pools (before, the first assumption
+overrated building there). Reproduce: a career job with `"simulate": {"policy": "trace", "runs": 6, "max_careers":
+400, "margin": 1e9, "loop_members": [1019, <five builders>]}`; about 5 s a run natively.
+
 ## Scope: where the surrogate is verified and where it is not
 
 Verified (measured above): three pools (`career_U5`, `owner4`, `owner14`), Unity Cup, the default 8 targets with the two
