@@ -1606,25 +1606,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb #v-toggle .enhl::after { right: -16px; }
 .rb .setenh .btn.enh:not(.wide) .enhl { left: 4px; right: 16px; font-size: 0.72rem; letter-spacing: -.01em; }
 .rb .setenh .btn.enh:not(.wide) .enhl::after { right: -11px; border-width: 5px; border-left-width: 7px; margin-top: -5px; }
-/* career setup on one line (wide screens): the four settings side by side, each label above its control, and the three
-   Enhance buttons in a compact block at the right; below 1200 px the two-row layout above */
-@media (min-width: 1200px) {
-  .rb .setlist { grid-template-columns: repeat(4, max-content); column-gap: 24px; align-items: end; }
-  .rb .setlist .gctl { display: grid; grid-template-columns: max-content; grid-template-rows: auto auto; gap: 3px; padding: 0; }
-  .rb .setlist .glab, .rb .setlist .gctl > span:first-child { padding: 0 2px; font-size: 0.82rem; line-height: 1.2; white-space: nowrap; }
-  .rb .setlist .glab br { display: none; }
-  .rb .setenh { padding-top: 6px; gap: 5px 6px; }
-  .rb .setenh .btn.enh { width: 82px; height: 66px; }
-  .rb .setenh .btn.enh:not(.wide) .enhl { bottom: 4px; font-size: 0.64rem; right: 13px; }
-  .rb .setenh .btn.enh:not(.wide) .enhl::after { right: -9px; border-width: 4px; border-left-width: 6px; margin-top: -4px; }
-  .rb .setenh .btn.enh.wide { width: 170px; height: 43px; }
-  .rb #v-toggle .enhl { font-size: 0.64rem; line-height: 1.1; right: 18px; }
-  .rb #v-toggle .enhl::after { right: -12px; border-width: 4px; border-left-width: 6px; margin-top: -4px; }
-}
-@media (min-width: 1200px) {
-  .rb .setlist { align-items: start; }
-  .rb .setenh .btn.enh { width: 96px; height: 77px; }
-  .rb .setenh .btn.enh:not(.wide) .enhl { font-size: 0.7rem; left: 3px; right: 14px; }
-  .rb .setenh .btn.enh.wide { width: 198px; height: 50px; }
-  .rb #v-toggle .enhl { font-size: 0.7rem; }
-}
+/* the career setup's Enhance buttons sized to the two rows of settings beside them (the column about as tall as the
+   ribbon and the rows) */
+.rb .setenh { padding-top: 6px; gap: 5px 6px; }
+.rb .setenh .btn.enh { width: 112px; height: 90px; }
+.rb .setenh .btn.enh:not(.wide) .enhl { bottom: 6px; left: 4px; right: 16px; font-size: 0.78rem; }
+.rb .setenh .btn.enh.wide { width: 230px; height: 58px; }
+.rb #v-toggle .enhl { font-size: 0.8rem; right: 26px; }
+/* the inspiration stars at the game's ratio: about 0.43 of the spark bar's height (measured on its Umamusume Details) */
+.ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -8px; height: 15px; }
+.ud .vskb .stars .sf, .ud .vskb .stars .se { height: 15px; width: calc(var(--n, 0) * 15px); background-size: 15px 15px; }
