@@ -189,18 +189,16 @@ async function runPlan() {
 const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results[0] ? (planS.state === 'done' && planS.r.choice || last.r.results[0]) : null;
 // the plan's row for a career (null before the plan is made)
 const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(o) === keyOf(r)) || null : null;
-const loopChain = (P) => (P?.loop_members || []).map(m => m.short || m.name).join(' → ');
-// an option's role: a loop member's career, the best odds outside the loop, or the best odds (a member's)
-const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'lineage' ? 'in the lineage' : 'best odds now';
-// a candidate's state: her best parents are new to her (she trains once with them), or she already trained with them
-const freshText = (o) => o.fresh ? 'new best parents' : 'tried these parents';
+// an option's role: the best odds now, a loop member, or an uma of the best career's lineage or of your veterans
+const roleText = (o) => o.role === 'loop' ? 'loop member' : o.role === 'lineage' ? 'candidate' : 'best odds now';
+// an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
+const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
+const fmtN = (x) => Math.round(x).toLocaleString();
 function whyText(r) {
-  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o) return '';
-  if (!o.chosen) return o.role === 'best' ? 'Not the planner\'s pick: she already trained with these parents, and a candidate has new best parents to try first.'
-    : `Not the planner's pick: ${o.fresh ? 'new best parents, but lower odds than the pick' : 'she already trained with these parents'}.`;
-  return P.rule === 'best_fresh' ? `The planner's pick: the best odds, and ${o.trainee.name}'s best parents are new to her (her veteran is the one the other candidates need as a parent).`
-    : P.rule === 'fresh' ? `The planner's pick: ${o.trainee.name}'s best parents are new to her, so she trains once to see what they give (the best odds among such careers).`
-    : 'The planner\'s pick: the best odds. Every candidate has already trained with her best parents.';
+  const P = planS.state === 'done' ? planS.r : null, o = planRow(r); if (!P || !o || o.index == null) return '';
+  const pick = P.options.find(x => x.chosen);
+  if (!o.chosen) return `Not the planner's pick: ${netText(o.index)} careers per run toward a fully looped parent, against ${pick ? netText(pick.index) : '–'} for the pick.`;
+  return `The planner's pick: it saves the most careers toward a fully looped parent (${netText(o.index)} per run). Repeat it until a roll changes the plan (${pct(o.lift)} of rolls do).`;
 }
 // which veteran sits in parent place k: the chosen one, else the planner's pick in the result on show
 function parentAt(k, r) {
@@ -516,24 +514,18 @@ async function runComparison() {
     const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
-    const full = isFull(simulation.draft), gives = [];
-    if (!full && !(m.r.results[0].p_all > simulation.baseline.p_all * (1 + 1e-9))) {
-      // the planner's candidates for your veterans: the plan's, or (places set by hand, so no plan ran) asked for here
-      let cands = planS.state === 'done' ? planS.r.options : null;
-      if (!cands) {
-        const mp = await run({ ...base, next: {}, compare: true });
-        if (id !== simulationId || source !== myId) return;
-        cands = mp.r.next?.options || [];
-      }
-      for (const o of cands.filter(o => o.role !== 'best' && o.trainee.id !== simulation.draft.chara)) {
-        const mx = await run({ ...base, trainees: [o.trainee.id], fix: [her], legacies: legs, top: 1, compare: true });
-        if (id !== simulationId || source !== myId) return;
-        const r2 = mx.r.results?.[0];
-        if (r2 && r2.p_all > o.p_all * (1 + 1e-9)) gives.push({ name: o.trainee.name, from: o.p_all, r: r2 });
-      }
-      gives.sort((a, b) => b.r.p_all - a.r.p_all);
+    // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
+    // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
+    const full = isFull(simulation.draft);
+    let pb = null, pa = null;
+    if (!full) {
+      pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
+      if (!pb) { const mb = await run({ ...base, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
+      const ma = await run({ ...base, legacies: legs, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pa = ma.r.next || null;
     }
-    simulation.r = m.r; simulation.full = full; simulation.gives = gives; simulation.state = 'done';
+    const wOf = (P) => P && P.v0 != null ? P.v0 - Math.max(0, ...P.options.map(o => o.index ?? 0)) : null;
+    const v0b = wOf(pb), v0a = wOf(pa), pickA = pa?.options?.find(o => o.chosen) || null;
+    simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   renderSimulation();
 }
@@ -573,17 +565,15 @@ function simulationBody() {
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
-    const before = simulation.baseline, n = state.targets.length, gives = simulation.gives || [];
-    const up = simulation.r.results[0].p_all > before.p_all * (1 + 1e-9);
-    // the career shown with her: the best with her as a parent, or the candidate's she gives better parents
-    const next = !simulation.full && !up && gives.length ? gives[0].r : simulation.r.results[0];
+    const before = simulation.baseline, n = state.targets.length, [v0b, v0a] = simulation.v0 || [null, null];
+    const next = simulation.r.results[0];
+    const saves = v0b != null && v0a != null ? v0b - v0a : null;
     const verdict = el('p', 'note'); verdict.id = 'sim-verdict';
     const looped = simulation.full && d.parents.length === 2 && d.parents.every(isFull);
     const [head, tail] = looped ? [`She's a fully looped parent (${n}/${n} with ${n}/${n} parents).`, 'That is the goal; add her to your veterans.']
       : simulation.full ? [`She's an ${n}/${n}: step 1 of the goal is done.`, `Add her to your veterans and the next career uses her as a parent, for an ${n}/${n} of another uma; the best such career is below.`]
-      : up ? ['She raises your best odds.', `With her as a parent the best career is ${fmtIn(next.p_all)}, against ${fmtIn(before.p_all)} today.`]
-      : gives.length ? [`She gives ${gives.map(g => g.name).join(', ')} better parents.`, `With her, ${gives[0].name}'s best career goes from ${fmtIn(gives[0].from)} to ${fmtIn(next.p_all)}: her best parents are new to her, so the planner trains her once with them.`]
-      : ['She changes nothing yet.', `No career is better with her as a parent than without her (the best with her is ${fmtIn(next.p_all)}, today's best ${fmtIn(before.p_all)}); she may still matter later, as a grandparent.`];
+      : saves != null && saves >= 0.5 ? [`She saves ${fmtN(saves)} careers.`, `Expected careers to a fully looped parent after the planner's next career: ${fmtN(v0b)} → ${fmtN(v0a)} with her.` + (simulation.pickA ? ` With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}), ${netText(simulation.pickA.index)} per run.` : '')]
+      : ['She changes nothing yet.', `Expected careers to a fully looped parent stay ${v0b != null ? fmtN(v0b) : 'unknown'} (the best career with her as a parent is ${fmtIn(next.p_all)}; today's best ${fmtIn(before.p_all)}); she may still matter later, as a grandparent.`];
     verdict.append(el('strong', '', head), ' ' + tail);
     result.appendChild(verdict);
     const odds = el('div', 'simodds');
@@ -626,9 +616,10 @@ function optionsEl() {
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
   const P = planS.state === 'done' ? planS.r : null, list = P ? P.options : last.r.results, on = shown();
   const tb = el('table', 'cartab optab');
-  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Role</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // the loop, once
-  if (P) box.appendChild(el('p', 'sub oloop', P.loop_members?.length ? `Candidates: the loop (${loopChain(P)}, the loop planner's best for your settings) and the umas in the best career's lineage.` : `Candidates: the umas in the best career's lineage (no loop: ${P.loop_note || 'none found'}).`));
+  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Saves per run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  // the plan to a fully looped parent, once
+  if (P) { const pl = P.v0_plan;
+    box.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${pl.a} → ${pl.b} → ${pl.c}, each until her ${state.targets.length}/${state.targets.length}).` : 'Expected careers to a fully looped parent: no plan found.')); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -636,14 +627,16 @@ function optionsEl() {
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    row.append(c0, el('td', '', fmtIn(r.p_all)), el('td', 'orole', P ? [roleText(r), freshText(r)].filter(Boolean).join(' · ') : planS.state === 'busy' ? 'planning…' : '–'));
+    const sv = el('td', 'orole', P ? (r.index == null ? '–' : netText(r.index)) : planS.state === 'busy' ? 'planning…' : '–');
+    if (P && r.index != null) { sv.title = `${roleText(r)}: her veteran saves ${r.saving.toFixed(1)} careers on average; ${pct(r.lift)} of her rolls change the plan`; }
+    row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
     row.appendChild(act);
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  if (P) box.appendChild(el('p', 'hint', `The planner runs the best odds when its trainee's best parents are new to her. Otherwise a candidate whose best parents are new to her trains once with them, since her career is the one that can change the lineage (the best career's own repeats reach it only through another uma's career); among such candidates, the best odds. With none, the best odds again. Every number here is exact (the odds are also the chance of an ${state.targets.length}/${state.targets.length} veteran).`));
+  if (P) box.appendChild(el('p', 'hint', `Saves per run: the careers this career's veteran saves toward a fully looped parent, on average over every result she can roll, minus the run itself. The planner runs the highest and repeats it until a roll changes the plan. The expected careers assume nothing improves after the plan's ${state.targets.length}/${state.targets.length}s (an upper estimate); every odds figure is exact.`));
   return box;
 }
 function renderResults() {

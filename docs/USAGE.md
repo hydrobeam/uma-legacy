@@ -71,16 +71,15 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 legacies hold (parents' and grandparents' parts).
 
 The search shows the career with the best odds first. Then the planner picks the next career (the status line says
-"Planning…", then "Planned in X s"; a few seconds after the search, nothing simulated). Its candidates are the loop
-planner's best loop for your settings and the umas in the best career's lineage (its parents and grandparents), each
-with her best career (any of your veterans as parents). A candidate whose best parents are new to her (none of your
-veterans of hers has those two as parents) trains once, to see what they give: the best career's own repeats can't
-improve her lineage, only another uma's career can. The best career's trainee counts too: when her best parents are new
-to her she trains first (she has the best odds, and her veteran is the one the others need as a parent). Otherwise the
-fresh candidate with the best odds; with none, the best career.
-Under the odds a line says why the career on show is (or is not) the planner's pick. With the trainee chosen by hand
-there is nothing for it to pick: the career with the best odds for her is shown, and with every place set by hand the
-career is just scored.
+"Planning…", then "Planned in X s"; nothing simulated). It values your veterans by the expected number of careers to a
+*fully looped parent*: the cheapest plan A → B → C (an 8/8 of A, then of B with A's 8/8 as a parent, then of C from
+both), each step repeated until its 8/8, an 8/8 you already have (or borrow) costing nothing. That number assumes
+nothing improves along the way, so it leans high; it is shown above *Options*. Each candidate career (the best
+career's trainee, the loop planner's loop, the umas of the best career's lineage and of your veterans) is scored by
+how many careers its veteran saves on that count, on average over every result she can roll (exact), minus the career
+itself: the planner runs the highest and repeats it until a roll changes the plan (a roll that changes nobody's odds
+leaves every score as it was). Under the odds a line says why the career on show is (or is not) the pick. With the
+trainee chosen by hand there is nothing for it to pick, and with every place set by hand the career is just scored.
 
 **The goal's steps** (a note above the career): the goal is a *fully looped parent*, a veteran with a spark of every
 target (8/8) whose two parents are 8/8 too, so as a parent she brings three full legacies. A career's odds of landing
@@ -93,13 +92,11 @@ Under the pedigree come the career's deck (with its **Race schedule** button) an
 likely set of targets, at the rank's most likely star count, and the G1s she more likely wins than not). Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
-win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: it says, exactly, what she changes for the next career. An 8/8 is step 1 of the goal done (with
-8/8 parents, a fully looped parent), and the best career with her as a parent is shown as step 2. Otherwise, in
-order: *She raises your best odds* (the best career with her as a parent beats your best today); *She gives X better
-parents* (for one of the planner's candidates, her best career with this veteran as a parent beats her best today, so
-the planner trains her once with them; with places set by hand no plan ran, so Compare asks the planner for its
-candidates first); or *She changes nothing yet* (she may still matter later, as a grandparent).
-It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
+win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**: an 8/8 is step 1 of the goal done (with 8/8 parents, a fully looped parent), and the best career
+with her as a parent is shown as step 2. Otherwise it gives the planner's expected careers to a fully looped parent once its best next career runs,
+without and with her: *She saves N careers* (the two counts, and the next career with her), or *She changes nothing
+yet*. A veteran can save careers without being anyone's better parent today: as a builder's parent she becomes a
+grandparent of the best career's next lineage, which the planner's scores count. It shows both odds (all targets, all but one), that career as portraits (trainee, then her two parents, *her* marked)
 and its deck behind *Show its deck*. *Show its deck*. **Roll a random result** draws one from this career's odds (targets, stars by rank, G1 wins by their
 odds) and compares at once; rolling (or pressing Compare) again while a comparison runs cancels it and starts the new one. An edit after Compare marks the comparison out of date. **Back to the most likely result**
 resets her; **Add her to your veterans** saves her (with her parents, who become the next career's grandparents) and
@@ -113,11 +110,12 @@ it not owned searches again (with borrowing on, it may come back as the borrowed
 planner's schedule window for the trainee: the G1s she runs, as banner cards with their win odds (a race a parent won
 counts extra and is outlined as building affinity).
 
-With any place left to the planner, *Options* is a table of what it weighed, under one line naming the candidates
-(the loop, e.g. "Pasa → Digital → Zephyr", and the best career's lineage): per option "This career: 1 in X" and its
-role (*best odds now*, *loop member* or *in the lineage*, with *new best parents* or *tried these parents*), tags
-*planner's pick* and *best odds now*, and **Use this**; the career on show is marked. While the planner works, the
-six best by odds with "planning…".
+With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
+to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
+8/8)"): per option "This career: 1 in X" and *Saves per run* (the careers its veteran saves on average, minus the run;
+hover for her role, the average saving and how often her roll changes the plan), tags *planner's pick* and *best odds
+now*, and **Use this**; the career on show is marked. While the planner works, the six best by odds with
+"planning…".
 
 **Your veterans** (the paddock) below: *Import umadump file* reads umadump's `trained_chara_data.json` (or
 *Paste* its text): each veteran's skill and aptitude sparks with stars, single-race G1 wins and both parents; a

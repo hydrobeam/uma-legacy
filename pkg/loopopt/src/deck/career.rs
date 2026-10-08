@@ -101,7 +101,7 @@ struct CareerJob {
     #[serde(default)] simulate: Option<Value>,
     /// the planner's pick on the surrogate simulator (`sim::plan`, `plan` in the output; with `policy`, `policy.plan`)
     #[serde(default)] plan: Option<Value>,
-    /// the page's next career without simulation (`sim::plan::stale_rule`): a candidate whose best parents are new to her, else the best career
+    /// the page's next career without simulation (`sim::plan::index_rule`): the career saving the most careers to a fully looped veteran
     #[serde(default)] next: Option<Value>,
     /// the page's veteran-analysis comparison (echoed in the output, nothing else)
     #[serde(default)] compare: bool,
@@ -856,7 +856,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     if cj.compare { out["compare"] = json!(true); }
     if let Some(x) = &cj.next { if !sv.found.is_empty() {
         out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
-            Ok(nj) => sim::plan::stale_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj),
+            Ok(nj) => sim::plan::index_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj),
             Err(e) => json!({"error": format!("next: {e}")}) };
     } }
     if cj.lookahead { if let Some(f) = sv.found.first() {

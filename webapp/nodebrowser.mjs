@@ -834,8 +834,8 @@ const TESTS = {
     // the planner's pick: the K best careers by odds, then the plan over them and a few more
     const lastJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && j.next && !j.compare).at(-1));
     const lastRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    check('career: with places open the planner picks the next career (fresh best parents, else the best odds) after the six best by odds', lastJob && lastJob.top === 6 && lastJob.per_trainee === false && !lastJob.rollout
-      && lastRes && lastRes.next.options.length >= 2 && /^(best_fresh|fresh|best)$/.test(lastRes.next.rule) && /Planned in/.test(await note()));
+    check('career: with places open the planner picks the next career (the highest saving per run) after the six best by odds', lastJob && lastJob.top === 6 && lastJob.per_trainee === false && !lastJob.rollout
+      && lastRes && lastRes.next.options.length >= 2 && /^index$/.test(lastRes.next.rule) && /Planned in/.test(await note()));
     check('career: … the career on show is its pick, with why under the odds',
       (await pg.textContent('#tree .pn.trainee .nm')) === lastRes.next.choice.trainee.name && /^The planner's pick: /.test(await pg.textContent('#pick-why')), await pg.textContent('#pick-why'));
     // the deck: a card's panel, as in the planner; marking it not owned searches again without it
@@ -856,8 +856,8 @@ const TESTS = {
     await pg.keyboard.press('Escape');
     // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
     const opts = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => [...l.children].map(c => c.textContent)));
-    check('career: Options lists each option with "1 in X" for this career and its role, the pick marked and shown above', opts.length >= 2
-      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^(best odds now|loop member|in the lineage) · (new best parents|tried these parents)$/.test(c[2])) && /^Candidates: the (loop \(.+ → .+ → .+\)|umas)/.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
+    check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
+      && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) && /^Expected careers to a fully looped parent: /.test(await pg.textContent('.alts .oloop')) && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
     check('career: under the tree, the goal\'s step, the deck with its race schedule, the odds, the veteran analysis, then the target skills', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
@@ -891,13 +891,13 @@ const TESTS = {
     await simStars(3);
     await pg.click('#sim-compare');
     await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
-    check('career: Compare says, exactly, what she changes for the next career and shows that career with her', /^She( raises your best odds| gives .+ better parents| changes nothing yet|'s an \d+\/\d+: step 1|'s a fully looped parent)/.test(await pg.textContent('#sim-verdict'))
+    check('career: Compare says, exactly, what she changes for the next career and shows that career with her', /^She( saves [\d,]+ careers| changes nothing yet|'s an \d+\/\d+: step 1|'s a fully looped parent)/.test(await pg.textContent('#sim-verdict'))
       && /→/.test(await pg.textContent('#sim-result')) && !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')));
     check('career: … the next career as portraits (trainee, then her two parents, her marked), its deck behind "Show its deck"', await pg.locator('#sim-result .nextc .cface').count() === 3
       && await pg.locator('#sim-result .nextc .cface .her').count() === 1 && await pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc').count() === 6
       && /Show its deck/.test(await pg.textContent('#sim-result details.nextdeck summary')));
     check('career: the comparison sends her fixed stars, race indices and her parents', await pg.evaluate(() => {
-      const j = window.__careerJobs.filter(j => j.compare).at(-1), v = j.legacies.at(-1);
+      const j = window.__careerJobs.filter(j => j.compare && !j.next).at(-1), v = j.legacies.at(-1);
       return j.compare === true && j.fix.length === 1 && j.fix[0] === j.legacies.length - 1 && v.sparks.some(([g, s]) => g === 20159 && s === 3)
         && v.wins.every(Number.isInteger) && v.parents.length === 2 && v.parents.every(p => p.chara > 0 && p.sparks.length > 0);
     }));
@@ -930,7 +930,7 @@ const TESTS = {
     await pg.waitForTimeout(1500);   // time for a stray comparison to answer, were one still running
     const [rj, rr, rm] = [await policyJobs() - rj0, await policyResults() - rr0, await mainJobs() - rm0];
     check('career: rolling again while a comparison runs cancels it: one comparison runs, for the last roll', usable && rm === 1 && rr === rj
-      && await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0 && await pg.evaluate(() => window.__careerJobs.filter(j => j.compare).at(-1).legacies.at(-1).sparks.length === 0),
+      && await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0 && await pg.evaluate(() => window.__careerJobs.filter(j => j.compare && !j.next).at(-1).legacies.at(-1).sparks.length === 0),
       `usable ${usable}, comparisons ${rm}, jobs ${rj}, results ${rr}`);
     await pg.click('#sim-reset');
     check('career: … and the most likely result is back on reset', (await draft()) === d0);
@@ -961,7 +961,7 @@ const TESTS = {
     await pg.evaluate(() => { document.getElementById('sim-compare').click(); document.getElementById('sim-compare').click(); });
     await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#run-note .spin'), null, { timeout: 180000 });
     check('career: with the trainee chosen no plan runs, and Compare pressed twice finishes', await aheadJobs() === la0 && !/Planning|Planned in/.test(await note())
-      && /^She( raises your best odds| gives .+ better parents| changes nothing yet|'s an \d+\/\d+: step 1|'s a fully looped parent)/.test(await pg.textContent('#sim-verdict')), await note());
+      && /^She( saves [\d,]+ careers| changes nothing yet|'s an \d+\/\d+: step 1|'s a fully looped parent)/.test(await pg.textContent('#sim-verdict')), await note());
     check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
     // her G1 wins: the G1 wins editor (each win in its slot; a click removes it, an empty slot's menu adds one); an edit
     // after Compare marks it out of date, nothing is saved to the pool, and the focus goes back to the wins button
