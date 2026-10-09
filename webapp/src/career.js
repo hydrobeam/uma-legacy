@@ -6,7 +6,7 @@ import { $, spinHTML, el, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, killEngine } from './engine.js';
+import { run, killEngine, engineBusy } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv } from './images.js';
@@ -56,7 +56,9 @@ function planNote() {
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
   clearTimeout(timer); myId++;
-  if (searching || simulation.state === 'busy' || planS.state === 'busy') killEngine();
+  // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
+  // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
+  if (engineBusy()) killEngine();
   simulationId++;
   searching = true; t0 = performance.now(); paint();
   timer = setTimeout(search, 600);

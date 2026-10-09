@@ -28,6 +28,8 @@ function compiled() {
   wasmModule.catch(() => { wasmModule = null; });   // a failed load is retried on the next search
   return wasmModule;
 }
+// whether a job has been posted and not answered yet (a kill would cut it short; with none, the worker is idle)
+export const engineBusy = () => pending.size > 0;
 export function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); }
 function startEngine() {
   if (ready) return ready;
