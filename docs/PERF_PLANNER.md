@@ -13,7 +13,8 @@ credit raised p16's exact builder searches 9 -> 28 (native plan about 1.4 -> 1.8
 roll; a table zero is now proven (y_hi < 0.5) or checked in the background; a saving roll's exact check and Compare are
 one planner run with her added (warm, native about 0.7-0.9 s). Sample mob veterans: native 25.2 -> about 8-9 s
 (certified proxies) -> about 7 s on main 619c0ed -> about 2.1 s (2026-10-09, identical deck problems searched once:
-nodes 67.3M -> 5.4M; now about 1.4x p16 at the same load, was 5.7x). Grand Masters: native 44 -> about 2.3-4 s.
+nodes 67.3M -> 5.4M; now about 1.4x p16 at the same load, was 5.7x) -> about 0.92 s (Cont memos, below: total_ms
+1.59 -> 0.92 s; p16 1.04 -> 0.93 s, p10 2.11 -> 1.73 s, gm16 1.55 -> 1.42 s). Grand Masters: native 44 -> about 2.3-4 s.
 
 Merged on main (all byte-identical on val/plan except the deliberate re-baselines: the winners-only cache, the Cont
 proxy, the own-8/8 credit): deterministic cache, class-keyed proofs, planner arithmetic (Cont tables, fold buffers),
@@ -175,6 +176,30 @@ plan/compare/reroll state machines, views and import/export.
   instrumented timers): with candidates at p about 1.8e-5 every outcome of every builder lifts a candidate, so nearly
   every outcome pays `Cont::plan` (about 16 exp per call at builds 16) and a trio V; p16's outcomes mostly lift no one.
   A skip-ahead in `Cont::plan` (x_n is convex in n analytically) would need a float-exact argument for its first stop.
+  Done next (entry below): the Cont memos.
+- Cont memos (2026-10-09, exact by construction): `Cont::plan` and `Cont::cost_lo` memoised per Cont by the bits of p
+  (both read p and the Cont's parameters, set once in `new`; clones share the memo and the parameters, a refit makes new
+  Conts with empty memos). Lookups gated off below 1 hit in 8 after 4,096 (never triggered on val/plan), cleared past
+  16k entries per memo (about 0.6 MB; no cap would add 0.2-1.5% hits). Hit rates: plan 89-99% on all seven jobs
+  (boot_mob 95.9%, p16 92.2%, p10 89.1%, gm16 98.9%; 3-8M lookups per plan, so even p16's outcomes call it millions of
+  times); cost_lo (outcome_hi, 500 exp per call, 49k calls on boot_mob) 99.5% boot_mob, 77-80% p16/gm16, 48-56% p10/p11.
+  Instructions (callgrind): boot_mob 26.74G -> 18.45G (plan) -> 17.05G (cost_lo), p16 18.73G -> 18.33G -> 16.93G.
+  Native total_ms, 3 interleaved runs each at one load: boot_mob 1589-1591 -> 1002-1012 -> 919-920 (two_ms 286 -> 82),
+  p16 1037-1047 -> 1014-1038 -> 930-936, p10 2107-2111 -> 1726-1740 -> 1724-1729 (two_ms 343 -> 151), gm16 1548-1556 ->
+  1499-1504 -> 1416-1422; work counters unchanged. val/plan identical on all seven, also with `PLAN_MEMO_CHECK` (every
+  hit recomputed and compared bit for bit); mono output identical; valq 0 mismatches. `PLAN_MEMO=1` prints each plan's
+  lookups, hits, refits and clears. tests/plan_memo.rs: none of the seven jobs refits Cont, so the test runs p10 with
+  `next.proxy_eff` -1 (pass 1's builders left to their proxies; the pass-2 searches refit one candidate's step 1122.8 ->
+  1128.4) under the audit with the cap lifted (`PLAN_MEMO_CAP`), and against `PLAN_MEMO_OFF`. A deliberately stale memo
+  (the old Conts' carried across the refit) fails it; at the default cap it would pass, since the pre-refit entries are
+  cleared before the rescoring reads them, and the plan's output does not show it either (that candidate is in no
+  cheapest trio).
+  Tried, not kept: V over the trios memoised per trio set by the c1 bits (one memo per set, a refit's new set a new
+  memo). Hits 68-92%, but `trio_v` over at most 4 x 28 trios costs about what hashing nine words does: instructions
+  p16 -1.2%, boot_mob +0.1%, wall within noise (boot_mob two_ms 80 -> 98). The combos only change at a refit when a
+  candidate's step turns finite or infinite (`combos_of` reads c1 only for that), so a stale set would rarely have shown.
+  Left on boot_mob after both (callgrind, 17.05G): `best_sur` and the deck searches under it about 58%, the outcome loop
+  itself (score_career's self cost, the table folds `rec`, Cont::plan's lookups) about 25%; search_ms 0.62 of 0.92 s.
 - Cont proxy margins recalibrated (owner-approved, 2026-10-09), PROXY_EFF and PROXY_SAVE 0.2 -> 0.06. `proxy_check` on
   the seven val/plan jobs with the own-8/8 credit: the proxy is the exact career for every builder on p16, p16 SS/URA,
   gm16 and boot_mob; worst contender efficiency 2.79% low (p11; p10 0.41%), worst saving 2.67% low (p11; p10 0.14%):
