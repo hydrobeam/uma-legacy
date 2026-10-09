@@ -567,8 +567,6 @@ function rolledBlueGreen(r) {
 }
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false;
   const ts = tableSave(simulation.draft, r), y = ts ? ts.y : null;
-  const t = simulation.tally && simulation.tally.key === keyOf(r) ? simulation.tally : (simulation.tally = { key: keyOf(r), rolls: 0, hits: 0 });
-  t.rolls++; if (y != null && y >= 0.5) t.hits++;
   if (ts == null) { compare(); return; }
   if (cancelCompare()) runPlan();
   quickCompare(y, ts.hi); }
@@ -689,8 +687,6 @@ async function runComparison(refine = false) {
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick;
     simulation.herParent = !!pickA?.parents.includes(her); simulation.where = savedWhere(pb, pa, pickA, samePick, her); simulation.quick = false; simulation.refining = false; simulation.provisional = false; simulation.state = 'done';
-    // a roll the table read as no saving that the exact comparison finds saving: counted as an improvement after all
-    if (prov && v0b != null && v0a != null && v0b - v0a >= 0.5 && simulation.tally) simulation.tally.hits++;
   } catch (e) { if (id !== simulationId || source !== myId) return;
     if (simulation.refining) { simulation.refining = false; simulation.provisional = false; } else { simulation.error = e.message; simulation.state = 'error'; } }
   renderSimulation();
@@ -727,18 +723,18 @@ function simulationBody() {
   const mid = el('div', 'udmid'); mid.append(oddsBtn(r), actions);
   box.querySelector('.ud .udtop')?.insertBefore(mid, box.querySelector('.ud .udname'));
   const result = el('div', 'simresult' + (simulation.stale ? ' stale' : '')); result.id = 'sim-result'; result.setAttribute('role', 'status');
-  // the panel beside her card: a mini header, and before any comparison a line saying what goes here
-  result.appendChild(el('div', 'simhdr', 'Comparison'));
-  // the chance a roll of this career improves your loop (the plan's `lift`: her outcomes that lower V), and the rolls so far
-  const opt = planS.state === 'done' ? planS.r.options?.find(o => keyOf(o) === keyOf(r)) : null, tally = simulation.tally || { rolls: 0, hits: 0 };
+  // the panel beside her card: a mini header carrying the chance a roll of this career improves your loop (the plan's
+  // `lift`: her outcomes that lower V), and before any comparison a line saying what goes here
+  const hdr = el('div', 'simhdr'); hdr.append(el('span', '', 'Comparison'));
+  const opt = planS.state === 'done' ? planS.r.options?.find(o => keyOf(o) === keyOf(r)) : null;
   if (opt && opt.lift != null) {
-    const odds = el('p', 'simchance', opt.lift > 0 ? `1 in ${Math.max(1, Math.round(1 / opt.lift)).toLocaleString()} rolls improves your loop` : 'No roll of this career improves your loop');
+    const odds = el('span', 'simchance', opt.lift > 0 ? `1/${Math.max(1, Math.round(1 / opt.lift)).toLocaleString()} to improve` : 'none improve');
     odds.id = 'sim-chance'; odds.title = `The planner's chance that a roll of this career lowers the careers to a fully looped parent (${pct(opt.lift)})`;
-    if (tally.rolls) odds.append(el('span', 'simtally', ` · ${tally.hits} of ${tally.rolls} so far`));
-    result.appendChild(odds);
+    hdr.append(odds);
   }
-  if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare/reroll to see if she improves your loop.'));
-  if (busy) { const p = el('p', 'runnote'); p.innerHTML = spinHTML() + '<span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
+  result.appendChild(hdr);
+  if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare or reroll to see if she improves your loop.'));
+  if (busy) { const p = el('p', 'runnote'); p.innerHTML = spinHTML() + '<span>Comparing…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
@@ -762,18 +758,20 @@ function simulationBody() {
     if (simulation.refining || simulation.provisional) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>'); result.appendChild(p); }
     const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
-    const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };
+    // one figure per row: its label, then now → with her
+    const fig = (to, label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); to.appendChild(c); };
     const way = (x, y, lowGood) => { if (x == null || y == null) return 'same'; const g = lowGood ? x - y : y - x;   // the gain
       return Math.abs(g) < (lowGood ? 0.5 : 1e-9 * x) ? 'same' : g > 0 ? 'up' : 'down'; };
-    fig('Careers to loop', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
+    fig(figs, 'Careers to loop', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
       'Expected careers to a fully looped parent: with your veterans now → with her too' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.')
       + (simulation.quick ? ' From the planner\'s table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll.' : ''));
-    fig('Odds with her as a parent', fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
     result.appendChild(figs);
-    const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'Best career with her'),
-      facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
-    result.appendChild(nx);
-    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Show deck')); dd.appendChild(deckEl(next, 'Deck'));
+    // the best career with her as a parent, folded: its portraits, its odds against today's best, its deck
+    const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Best career with her'));
+    const nx = el('div', 'nextc'); nx.append(facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
+    const nodds = el('div', 'simodds');
+    fig(nodds, `All ${n} odds`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
+    dd.append(nx, nodds, deckEl(next, 'Deck'));
     result.appendChild(dd);
   }
   side.appendChild(result); box.appendChild(side);

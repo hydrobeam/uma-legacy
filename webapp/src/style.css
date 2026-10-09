@@ -1161,13 +1161,14 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .simresult #sim-verdict { margin: 0; padding: 0; border: 0; background: none; line-height: 1.35; }
 .simresult #sim-verdict strong { display: block; font-size: 1rem; font-weight: 900; margin-bottom: 2px; }
 .simresult .simodds { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-.simresult .simodds .tc { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 8px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--gm-line); background: var(--gm-pane); box-shadow: none; }
-.simresult .simodds .tl { grid-column: 1 / -1; font-size: 0.72rem; color: var(--gm-ink2); }
+.simresult .simodds .tc { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 0 0; border: 0; border-top: 1px solid var(--gm-line); border-radius: 0; background: none; box-shadow: none; }
+.simresult .simodds .tl { font-size: 0.78rem; color: var(--gm-ink2); }
 .simresult .simodds .tv { font-size: 0.95rem; color: var(--gm-ink); }
 .simresult .simodds .hint { font-size: 0.72rem; }
-.simresult .nextc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 0.8rem; }
+.simresult .nextc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 0.8rem; margin: 6px 0; }
 .simresult .nextc .cfaces { flex-wrap: wrap; gap: 4px; }
-.simresult .nextdeck summary { font-weight: 700; cursor: pointer; }
+.simresult .nextdeck summary { font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+.simresult .nextdeck .simodds { margin-bottom: 6px; }
 .simresult .nextdeck .deck .dcards { grid-template-columns: repeat(3, minmax(0, 72px)); }
 .simresult .runnote { margin: 0; }
 
@@ -1682,8 +1683,8 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .rb .setsum .sumk { margin-right: 6px; font-size: 0.74rem; font-weight: 500; color: var(--gm-ink2); }
 .rb .setsum .sumkv b { font-size: 0.9rem; font-weight: 700; color: var(--gm-ink); }
 @media (max-width: 960px) { :root.game body { padding-bottom: 76px; } }   /* phone: room under the footer for the floating status button, which would cover Export */
-.simresult .simchance { margin: 0; font-size: 0.78rem; font-weight: 700; color: var(--gm-ink2); }
-.simresult .simchance .simtally { font-weight: 500; }
+.simhdr { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.simhdr .simchance { font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
 /* a roll that improves the loop: its quick figures held, muted, while the exact count is worked out */
 .simresult .simodds.held .tv { opacity: .55; }
 .simresult .simrefine { margin: 0; font-size: 0.76rem; color: var(--gm-ink2); }
