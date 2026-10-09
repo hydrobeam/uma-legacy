@@ -2480,6 +2480,8 @@ fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRaw, unc: &[u
 
 mod career;
 pub(crate) use career::run_career;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use career::forget_kept_decks;
 
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with

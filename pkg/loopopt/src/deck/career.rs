@@ -336,7 +336,10 @@ struct Env<'a> {
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
     /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
+    /// (kept between jobs of one setup, `DECK_KEEP`)
     deck_memo: crate::FxMap<DeckKey, DeckMemo>,
+    /// the setup the memo is kept under, and this job's number
+    memo_fp: u64, job: u64,
 }
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
 /// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
@@ -346,7 +349,32 @@ struct Env<'a> {
 struct DeckKey { cls: usize, ews: Vec<u64>, c: u64, th: u64, work: usize }
 /// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
 /// added
-struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize, cert: f64, overflows: usize }
+struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize, cert: f64, overflows: usize,
+    /// the deck-search nodes and exact scorings it spent; per class, the call's own largest exact / product ratio and the
+    /// deck that first reached it (`note_ratio` from nothing); the last job that used it (`Env::job`)
+    nodes: usize, joints: usize, ratio: [Option<(f64, usize, Sel)>; 4], job: u64 }
+thread_local! {
+    /// `best_deck`'s memo kept between jobs (the page's worker runs a plan, then a Reroll's plans with her added: the
+    /// builders whose best pair doesn't involve her search the same deck problems again), per setup: `setup_fp` (what
+    /// sets the model, the deck space and the class caps, `cap_audit` included) with the job's trainees (the plain pals'
+    /// order), the last few. Exact: a `DeckKey` reads the same model, space and caps in every job of one setup, and the
+    /// work budget's argument holds for any budget (`best_deck`)
+    static DECK_KEEP: std::cell::RefCell<Vec<(u64, crate::FxMap<DeckKey, DeckMemo>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// jobs run so far (`Env::job`)
+    static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+/// setups whose memo is kept, and the entries past which a setup's memo starts afresh (at a job's start)
+const DECK_KEEP_SETUPS: usize = 4;
+const DECK_KEEP_CAP: usize = 8192;
+/// a new data set (the worker's `init`): nothing kept from the old one
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn forget_kept_decks() { DECK_KEEP.with(|c| c.borrow_mut().clear()); }
+impl Drop for Env<'_> {
+    fn drop(&mut self) {
+        let m = std::mem::take(&mut self.deck_memo); let fp = self.memo_fp;
+        DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.retain(|e| e.0 != fp); c.push((fp, m)); while c.len() > DECK_KEEP_SETUPS { c.remove(0); } });
+    }
+}
 impl<'a> Env<'a> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
     fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) { if r > self.max_ratio[k] { self.max_ratio[k] = r; self.max_deck[k] = Some((t, sel.clone())); } }
@@ -470,13 +498,32 @@ impl<'a> Env<'a> {
         if !starts.is_empty() { return self.best_deck_run(t, c, th, starts, scored); }
         let key = DeckKey { cls: self.cls[t], ews: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(), c: c.to_bits(),
                             th: if th <= 0.0 { 0 } else { th.to_bits() }, work: self.work };
-        if let Some(m) = self.deck_memo.get(&key) { if key.work + m.work <= self.budget {
-            self.work += m.work; *scored += m.scored; self.last_pv = m.pv; self.cert = self.cert.min(m.cert); self.overflows += m.overflows; return m.res.clone();
+        if let Some(m) = self.deck_memo.get_mut(&key) { if key.work + m.work <= self.budget {
+            self.work += m.work; *scored += m.scored; self.last_pv = m.pv; self.cert = self.cert.min(m.cert); self.overflows += m.overflows;
+            // first use in this job of an outcome an earlier job stored (`DECK_KEEP`): this job's own search would have
+            // run here, so its node and exact-scoring counters and its per-class ratios count as if it had (a later use
+            // in the same job leaves them, as the memo always has). A class's ratio and deck change only when the call's
+            // own maximum is above the job's: `note_ratio` keeps the first deck strictly above, so the same as the run
+            if m.job != self.job {
+                m.job = self.job;
+                self.space.nodes.set(self.space.nodes.get() + m.nodes);
+                crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
+                for k in 0..4 { if let Some((r, t2, sel)) = &m.ratio[k] { if *r > self.max_ratio[k] { self.max_ratio[k] = *r; self.max_deck[k] = Some((*t2, sel.clone())); } } }
+            }
+            return m.res.clone();
         } }
-        let (w0, s0, c0, o0) = (self.work, *scored, std::mem::replace(&mut self.cert, f64::INFINITY), self.overflows);
+        let (w0, s0, c0, o0, n0, j0) = (self.work, *scored, std::mem::replace(&mut self.cert, f64::INFINITY), self.overflows, self.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
+        // (the call's own per-class maxima, from nothing, then merged into the job's: see the hit above)
+        let (r0, d0) = (std::mem::replace(&mut self.max_ratio, [f64::NEG_INFINITY; 4]), std::mem::take(&mut self.max_deck));
         let res = self.best_deck_run(t, c, th, starts, scored);
         let cert = self.cert; self.cert = c0.min(cert);
-        if self.work <= self.budget { self.deck_memo.insert(key, DeckMemo { res: res.clone(), pv: self.last_pv, work: self.work - w0, scored: *scored - s0, cert, overflows: self.overflows - o0 }); }
+        let (r1, d1) = (std::mem::replace(&mut self.max_ratio, r0), std::mem::replace(&mut self.max_deck, d0));
+        let ratio: [Option<(f64, usize, Sel)>; 4] = std::array::from_fn(|k| d1[k].as_ref().map(|(t2, sel)| (r1[k], *t2, sel.clone())));
+        for k in 0..4 { if let Some((r, t2, sel)) = &ratio[k] { if *r > self.max_ratio[k] { self.max_ratio[k] = *r; self.max_deck[k] = Some((*t2, sel.clone())); } } }
+        if self.work <= self.budget {
+            self.deck_memo.insert(key, DeckMemo { res: res.clone(), pv: self.last_pv, work: self.work - w0, scored: *scored - s0, cert, overflows: self.overflows - o0,
+                nodes: self.space.nodes.get() - n0, joints: crate::deck::JCOUNT.with(|c| c.get()) - j0, ratio, job: self.job });
+        }
         res
     }
     fn best_deck_run(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
@@ -1096,7 +1143,12 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     let rho_top = space.rho_top();
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo: Default::default(), cls: (0..n).collect() };
+    // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
+    let memo_fp = { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); setup_fp(v).hash(&mut h); pool_ids.hash(&mut h); h.finish() };
+    let job = JOB_NO.with(|c| { c.set(c.get() + 1); c.get() });
+    let deck_memo = DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1) })
+        .filter(|m| m.len() < DECK_KEEP_CAP).unwrap_or_default();
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo, memo_fp, job, cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {

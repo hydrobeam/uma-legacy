@@ -45,6 +45,7 @@ fn handle(req: &str) -> serde_json::Value {
         let n = d.umas.len();
         if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { DECK.with(|x| *x.borrow_mut() = Some((cr, r.events))); }
         STATE.with(|s| *s.borrow_mut() = Some((d, r.skills)));
+        super::deck::forget_kept_decks();
         return serde_json::json!({"ok": true, "umas": n});
     }
     let v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
