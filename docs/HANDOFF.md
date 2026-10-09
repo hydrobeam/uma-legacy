@@ -1,4 +1,4 @@
-# Handoff: where the Legacy Loop Planner stands (2026-10-03, v23)
+# Handoff: where the Legacy Loop Planner stands (2026-10-09, v41 plus unreleased work on main)
 
 ## 1. First session: set up and confirm
 
@@ -16,20 +16,20 @@
    for both modes: everything should match the references.
 6. Decide hosting (section 6) and push the repo to the owner's GitHub.
 
-## 2. Current results (v23, per-uma decks, star mix below SS)
+## 2. Current results (val references, 2026-10-09; per-uma decks, star mix below SS)
 
-All proven optimal for the model. Outfits as the solver chose them.
+All proven optimal for the model, read from `val/refpu__*.out` (`top[0].loop`). Odds moved a lot since v23 (the
+2026-10-05 training-hint refit; three-uma rotations, which now win most setups). The SS+ and owner-roster rows of
+the v23 table were not regenerated.
 
 | Setup (job) | Odds all 8 land | Loop |
 |---|---|---|
-| Unity Cup golds guaranteed, everything owned (`pal_U`) | 1 in 142 | Oguri Cap (any outfit), Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki] |
-| same at the SS+ star mix | 1 in 128 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki], Nakayama Festa [Desperate Measures] |
-| no guarantees, everything owned (`pal_UF`) | 1 in 364 | Vodka [Fiery Aqua Vitae], Agnes Digital [Fanatic♡Jiangshi], Yukino Bijin [Darl'n Snowflake], Kawakami Princess [Princess of Pink] |
-| restricted roster (`pal_F`) | 1 in 543 | Special Week [Hopp'n♪Happy Heart], Vodka [Fiery Aqua Vitae], Agnes Digital [Full-Color Fangirling], Kawakami Princess [Princess of Pink] |
-| restricted roster (`pal_A2`) | 1 in 291 | Oguri Cap, Daiwa Scarlet, El Condor Pasa (all any outfit), Agnes Digital [Full-Color Fangirling] |
-| JP GM era, no guarantees (`jp/jobs/v_ng_k1`) | 1 in 209 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki], Yaeno Muteki [Blazed Head, Covered Fists] |
-| JP GM era, Unity Cup golds (`jp/jobs/v_uc_k1`) | 1 in 117 | Agnes Digital, Tamamo Cross, Inari One (as above), Nakayama Festa [Desperate Measures] |
-| the owner's roster (`jobs/owner_2026-10.json`) | 1 in 302 | Taiki Shuttle (any), El Condor Pasa (any), Agnes Digital [Full-Color Fangirling], Yamanin Zephyr [Fluttertail Spirit] |
+| Unity Cup golds guaranteed, everything owned (`pal_U`) | 1 in 105 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki] |
+| no guarantees, everything owned (`pal_UF`) | 1 in 241 | Agnes Digital [Full-Color Fangirling], Yukino Bijin [Darl'n Snowflake], Inari One [Edomurasaki] |
+| restricted roster (`pal_F`) | 1 in 379 | Vodka [Fiery Aqua Vitae], Agnes Digital [Full-Color Fangirling], Kawakami Princess [Princess of Pink] |
+| restricted roster (`pal_A2`) | 1 in 205 | Oguri Cap (any outfit), El Condor Pasa (any outfit), Agnes Digital [Full-Color Fangirling] |
+| JP GM era, no guarantees (`jp/jobs/v_ng_k1`) | 1 in 142 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki] |
+| JP GM era, Unity Cup golds (`jp/jobs/v_uc_k1`) | 1 in 91 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki] |
 
 Per-setup decks are in `val/refpu__*.out` (`top[0].decks`, one per member).
 
@@ -62,15 +62,21 @@ provably only rescaled odds.
 
 ## 4. Open threads, most valuable first
 
-0. **Career planner speed (started 2026-10-08).** The first plan takes about 12 s in wasm, 80% of it the 60 builders'
-   best-career searches. `docs/PERF_PLANNER.md` holds the measurements, what failed, the reasoning agents' findings
-   and the ordered plan; `val/planval.py` (six next-plan jobs in `val/plan/`, compared whole, with deterministic work
-   counters) is the regression check for every item. The prerequisite is a deterministic planner cache (outputs must
-   not depend on which decks a search happened to check fully), then class-keyed proofs (measured 2.4x on p16
-   builders, identical outputs) and byte-identical deck-search and planner-arithmetic items. Owner decisions pending:
-   a cheaper Cont (near-top builders only; approved 2026-10-08, in progress), the cap (the owner wants a reasoned bound,
-   not a guess: tripwires done, the state-conditioned bound to prototype). Status 2026-10-08: first plan about 12 s ->
-   2.4 s in the page (class proofs, planner arithmetic, report skip, then the Cont proxy) (class proofs, planner arithmetic, report skip; byte-identical but for the cache re-baseline).
+0. **Career planner: speed and consistency (2026-10-08/09).** First plan on the owner's pool about 12 s -> 1.4–2 s in
+   the page; sample (mob) pools 3x faster again (identical deck problems solved once: `Twin`, `deck_memo`). Every
+   step is in `docs/PERF_PLANNER.md`; `val/planval.py` (seven next-plan jobs, compared whole, deterministic work
+   counters) and `val/mono.py` (a veteran added never raises V) are the regression checks. Open:
+   - **In progress (agent, 2026-10-09): each fresh 8/8's breeding pair chosen jointly with the route** (her top 2–3
+     pairs as alternative sides), so an added veteran can never make V worse through a changed lineage. Evidence: the
+     owner's Inari One veteran (exact saving 8.7 vs table 12.9; with two more G1 wins V rose 4 careers).
+   - **Owner decision: carry the Cont fit across plans.** Compare now prices a pool with her under the plan's own
+     fit (`next.fit`), so its verdict can't flip; but the plan run after Add refits, and "Careers to loop" can still
+     rise (1,083 -> 1,103 on the owner's pool). Carrying the fit is principled only if the step model is unbiased:
+     decide after item 1.
+   - Per-outcome planner arithmetic on mob pools (about 1.4 s): a skip-ahead in `Cont::plan` is valid on paper but
+     needs a bit-identical proof first. The pass-2 replay is parked on branch `worktree-agent-a919b16f64bbaea00`.
+   - Display: on a mob pool the search's six best careers are the same career with interchangeable pairs; group
+     them on the page (display only; the plan's candidates depend on the list).
 2. **Star-mix band for the owner's veterans.** uma-it's summary data: an IT veteran's score range runs from "no
    skills bought" to "all affordable bought"; Unity Cup median best case is 17,428 (just under SS), Grand Concert
    18,094. Whether the owner's loop veterans clear 17,500 decides the default; ask.
@@ -89,6 +95,13 @@ provably only rescaled odds.
    across shared-mode branches (slow case: `pal_Fk3` shared ≈ 575 s historically); diff WASM vs native outputs; a
    "JP, latest" data mode (needs GameTora's support-card file for hint frequency); a "set these as prioritized
    skills" list on the page.
+
+8. **Loop planner, owner decisions from the 2026-10-09 audit:** treat a reload's cached result as done when the wasm,
+   data and job match (it reruns the search today, up to 10–35 s on shared-deck jobs; recommended); grey out the
+   Deck (i) panel's hints its umas already have (recommended, as the swap rows now do); show a must-include uma's
+   marked outfit instead of "any outfit" (recommended); "press Search" after an undo with Auto-search off (leave).
+   Phone layout leftovers: a three-member result wraps 2+1; "prioritise Risky Business" wraps to three lines; the
+   schedule's GOAL badge is clipped.
 
 ## 5. Standing decisions and the owner's calls
 
