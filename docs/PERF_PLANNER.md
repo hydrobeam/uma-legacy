@@ -126,6 +126,14 @@ plan/compare/reroll state machines, views and import/export.
 - Class-keyed proofs (`seen`, `ruled` per deck class, `Env::cls`): val/plan identical on all six jobs. Nodes (exact
   scorings) p16 39.8M -> 15.9M (2,069 -> 735), p10 34.8M -> 31.4M, p11 21.6M -> 19.5M, gm16 128.5M -> 57.0M (112k ->
   52.8k); native time p16 10.1 -> 5.4 s, p10 15.8 -> 14.8 s, p11 13.3 -> 12.3 s, gm16 44.0 -> 22.8 s (machine shared).
+- Planner scoring: the table folds reuse one scratch buffer per level and read cached tables in place (p10 folds 278-311
+  -> 150 ms per plan); the outcome loop's `Cont::plan` (10.5M calls on p10, powi/powf/exp per iteration) reads a table of
+  its powers and build-cost sums built once per candidate, each setup's spark scale is computed once per landed set, and
+  V after her is reused when no candidate's step moves (p10 two deep 1.2 -> 0.36 s, about 1.7 s per plan; p16 about
+  0.35 s). Byte-identical. Not done: reusing pass 1's setups in pass 2 (about 90 ms to gain, 31 MB to hold on p10).
+- Deck search memory traffic: the flat miss stack (no 32-wide copies per node) and per-leaf scratch: identical, no
+  measurable gain (the copies were not a cost); per-call setup hoisted: configuration building is about a quarter of
+  deck-search time (p16), the hoists within noise.
 - Tried, not kept: solving each class's highest-ceiling trainees first (a pre-pass before the scoring loop): nodes
   p16 -0.6%, p10/p11 0%, URA -1.7%, gm16 0% (under the 3% bar).
 - `upper_na` relaxed instead of giving up: a target with three or more feeding chain cards, or two feeders other than
