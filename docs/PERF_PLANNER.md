@@ -117,6 +117,10 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
 | mimalloc as the native allocator (2026-10-09) | identical outputs; user CPU, 3 interleaved runs: p16 0.97 -> 1.00 s, p10 noise, boot_mob 1.25 -> 1.14 s (spread 0.98-1.28), gm16 1.83 -> 1.80 s, pal_A2 1.34 -> 1.39 s | no: within noise; cachegrind put allocation's RAM misses at most about 7% of time un-overlapped |
 | talc as the wasm allocator (2026-10-09) | identical outputs; node, 3 interleaved runs: p16 1,386 -> 1,327 ms (-4.3%, every run faster), boot_mob 1,414 -> 1,413 ms; wasm 1.84 -> 1.97 MB | no: 4% on one pool for +7% download; retry if allocation still shows after the table deferral |
 
+| Incremental trio V: only trios reading a changed step cost, min with V at the base (2026-10-09) | exact; +218M instructions on p16 against `trio_v`'s 290M: nearly every trio reads the changed candidate | no |
+| `trio_v` over trios sorted by C's step, stop once c3 >= best (2026-10-09) | exact with positive-signed costs; +115M on p16: C's step is small next to A's and B's, the stop rarely fires | no |
+| Skip `hopeful` at the final slot for single-trainee clauses (2026-10-09, reasoning, not measured) | after the per-parent factor reuse, `hopeful`'s A costs less than the leaf's own outfit evaluation, and the skip would send every child it rejects to the leaf | no |
+
 ## Findings from code (reasoning agents, 2026-10-08)
 
 - A proven cap of 1 exists only for decks with no target-bearing chain card (negative dependence of one event's
@@ -141,6 +145,24 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (about 
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- Exact batch (2026-10-09, merged at e674119; identical on all seven val/plan jobs after each item, work counters
+  included; valq 0 mismatches; cargo test passes). Callgrind p16 / boot_mob 11.81G / 11.73G -> 9.87G / 10.26G
+  (-16.4% / -12.5%); p16 wall at load 3: 1.42-1.47 -> 1.29 s.
+  - `score_career`'s outcome loop: flat leaf-major folds and m-major spark scales with a per-setup candidate index;
+    thresholds once per call; only candidates with setups tested; `up` and `c1` restored where changed instead of
+    copied. p16 -3.8%.
+  - Node bound: a child's untouched targets (miss exactly 1.0, per-entry masks cached with the key's miss tables) keep
+    the parent's A factors bit for bit; factors once per parent and borrowing variant; a child recomputes only its
+    touched targets (1.25 of 6 on p16, 8 children per parent); B's inputs only when B runs. `OutfitPre::eval`
+    985M -> 144M; p16 -2.6%.
+  - DFS miss rows in a per-configuration buffer, one row per depth, instead of push/truncate: p16 -4.5%.
+  - `outcome_hi` leaf products level by level (`leaf_products`, the same left-to-right products): p16 -2.0%.
+  - `Env::slots`: grandparents' race parts per legacy in `Pool.gpc`, parents' shared wins once, stars and pinks shared
+    through `Rc`: p16 -2.4%.
+  - Allocations: `ceiling` borrows `dmax`; `set_trainee` in place; `her_trios` push/pop on one pool;
+    configuration-build scratches; `make_rpk` flat scratch; no one-borrowed tables without borrowing; reused
+    per-configuration buffers. p16 -2.4%.
+  - `upper_na` reads `Src::fm` instead of `group_gh` per call: gm16 -4.3%, p16 -0.1%.
 - Deck search node bound, four exact items (2026-10-09, branch merged as e3c2303; same outputs and work counters on all
   seven val/plan jobs after each, valq and full val clean). Callgrind instructions p16 / boot_mob / pal_A2 (loop planner,
   per-uma): 16.57G / 17.05G / 22.19G before.
