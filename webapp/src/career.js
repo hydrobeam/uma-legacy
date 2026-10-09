@@ -818,7 +818,15 @@ function openSaveWhy(P) {
   saveDlg.textContent = ''; const n = state.targets.length;
   const h = el('h3', 'gmdhdr', 'Saves per run'); h.id = 'save-title'; saveDlg.appendChild(h);
   const body = el('div', 'gmdbody savebody');
-  body.append(el('p', '', `How many careers running her takes off your road to a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n}), averaged over everything she could roll, minus the run itself. +1.1 means she gets you 1.1 careers closer than the run costs you. Below zero, she costs more than she brings.`),
+  // what the number is, what it is measured against (the plan's expected careers with the veterans you have now) and how
+  const V = P.v0 != null ? `about ${fmtN(P.v0)}` : 'the plan\'s figure below';
+  body.append(el('div', 'gmdsub', 'What it measures'),
+    el('p', '', `How many careers running this career takes off your road to a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n}), after paying for the run itself.`),
+    el('div', 'gmdsub', 'What it is measured against'),
+    el('p', '', `The planner's estimate of the careers that road still takes with the veterans you have now: ${V} (the plan below). That is the number to beat.`),
+    el('div', 'gmdsub', 'How it is worked out'),
+    el('p', '', `For a career, the planner works the estimate out again with her veteran added, once for every result she could roll (which of the ${n} targets land, at how many stars), and averages those by how likely each result is. Her veteran lowers the estimate when, as a parent, she raises the odds of the umas the plan needs, or when she is one of the ${n}/${n}s the plan is after. Saves per run = today's estimate − that average − 1 (the run itself). For the few highest rows it also adds what her best results would open for the career after.`),
+    el('p', '', `+1.1: on average she leaves you 1.1 careers closer than you are now, the run already paid for. 0: what she leaves behind is worth exactly the run. Below zero: the run costs more than her veteran brings.`),
     el('div', 'gmdsub', 'Why not just run the best odds?'),
     el('p', '', `The odds column only says who is most likely to land all ${n} in this one run. A fully looped parent needs ${n}/${n}s of two different umas, then a third career off both of them, and every veteran you make becomes a parent for the runs after it. So a run with slightly worse odds can be the better move when what she leaves behind makes the next runs cheaper. The planner counts both: her own shot, and what her veteran does for the rest.`),
     el('div', 'gmdsub', 'The plan right now'));

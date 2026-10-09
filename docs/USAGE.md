@@ -192,7 +192,9 @@ game's grey cells. The G1 wins editor uses the same calendar: its empty turns wh
 With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
 8/8)"): per option "This career: 1 in X" and *Saves per run* (hover for her role, how often she lifts the step-1 trainee and
-to what odds, and the two-deep part), tags *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
+to what odds, and the two-deep part; **What do these mean?** explains it: the planner's expected careers to a fully looped
+parent with today's veterans, worked out again with her veteran for every result she could roll, averaged by their
+chances, minus the run itself), tags *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
 one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
 "planning…".
 
