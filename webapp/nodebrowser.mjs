@@ -1031,9 +1031,9 @@ const TESTS = {
     await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
     check('career: Compare says, exactly, what she changes for the next career and shows that career with her', /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict'))
       && /→/.test(await pg.textContent('#sim-result')) && !/Careers until one lands|Your best career today →/.test(await pg.textContent('#sim-result')));
-    check('career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked), its odds, its deck', await pg.locator('#sim-result details.nextdeck:not([open]) .nextc .cface').count() === 3
+    check('career: … the best career with her folded under "Best career with her": portraits (trainee, then her two parents, her marked) and its deck; its odds outside', await pg.locator('#sim-result details.nextdeck:not([open]) .nextc .cface').count() === 3
       && await pg.locator('#sim-result .nextc .cface .her').count() === 1 && await pg.locator('#sim-result details.nextdeck:not([open]) .deck .dc').count() === 6
-      && await pg.locator('#sim-result details.nextdeck .simodds .tc').count() === 1
+      && await pg.locator('#sim-result > .simodds .tc').count() === 2
       && /^Best career with her$/.test(await pg.textContent('#sim-result details.nextdeck summary')));
     check('career: the comparison sends her fixed stars, race indices and her parents', await pg.evaluate(() => {
       const j = window.__careerJobs.filter(j => j.compare && !j.next).at(-1), v = j.legacies.at(-1);

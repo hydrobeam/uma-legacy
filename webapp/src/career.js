@@ -765,13 +765,12 @@ function simulationBody() {
     fig(figs, 'Careers to loop', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
       'Expected careers to a fully looped parent: with your veterans now → with her too' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.')
       + (simulation.quick ? ' From the planner\'s table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll.' : ''));
-    result.appendChild(figs);
-    // the best career with her as a parent, folded: its portraits, its odds against today's best, its deck
+    // the best career with her as a parent: its odds against today's best, then folded its portraits and deck
     const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Best career with her'));
     const nx = el('div', 'nextc'); nx.append(facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
-    const nodds = el('div', 'simodds');
-    fig(nodds, `All ${n} odds`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
-    dd.append(nx, nodds, deckEl(next, 'Deck'));
+    fig(figs, `All ${n} odds`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
+    result.appendChild(figs);
+    dd.append(nx, deckEl(next, 'Deck'));
     result.appendChild(dd);
   }
   side.appendChild(result); box.appendChild(side);
