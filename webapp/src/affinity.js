@@ -7,10 +7,11 @@
 import { $ } from './dom.js';
 import { umaAv } from './images.js';
 import { affEl, affTable } from './afftable.js';
+import { pickOutfit } from './roster.js';
 export function openWhy(l) {
   const D = l.detail, M = l.members, body = $('why-body'); body.textContent = '';
   const nm = (i) => M[i].short || M[i].name;
-  const outfitOf = (i) => (l.outfits[i].outfits.length === 1 ? l.outfits[i].outfits[0].id : null);
+  const outfitOf = (i) => pickOutfit(l.members[i].id, l.outfits[i].outfits).list[0]?.id ?? null;
   const total = (L) => L.slots.reduce((a, x) => a + x.aff, 0);
   const head = document.createElement('div'); head.className = 'row between dhead';
   head.innerHTML = '<h3 id="why-title">Affinity</h3>';

@@ -18,6 +18,20 @@ function tileState(u, o) {
 // must include, per outfit: the uma is required and only her marked outfits are allowed (any of them). An uma
 // without separate outfits is marked as a whole (roster 'req').
 export const reqOutfits = (u) => (u.outfits || []).filter(o => state.outfits[o.id] === 'req');
+// The outfit a result names for uma `id`: one, never "any outfit". `offered`: the solver's outfits for her (each covers a
+// target the same way; empty when none of hers covers one). Among the offered, the one you marked must include, else
+// the first; with none offered, among your owned outfits the marked one, else her original (<id>01), else the first.
+// Returns { list: the chosen first, then the other offered ones (equally good), any: no outfit of hers covers a target }
+export function pickOutfit(id, offered = []) {
+  const u = UMAS.find(x => x.id === id), mine = (u?.outfits || []).filter(o => state.outfits[o.id] !== false);
+  const marked = (o) => state.outfits[o.id] === 'req';
+  if (offered.length) { const p = offered.find(marked) || offered[0]; return { list: [p, ...offered.filter(o => o !== p)], any: false }; }
+  const p = mine.find(marked) || mine.find(o => o.id === id * 100 + 1) || mine[0];
+  return { list: p ? [{ id: p.id, label: p.label }] : [], any: true };
+}
+// what her popup says about the outfit chosen: that any of hers would do, or the equally good others
+export const outfitNote = (f) => f.any ? 'Any outfit works: none of hers covers a target.'
+  : f.list.length > 1 ? 'Also works: ' + f.list.slice(1).map(o => o.label).join(', ') + '.' : '';
 export const isRequired = (u) => state.roster[u.id] === 'req' || reqOutfits(u).length > 0;
 function rosterCount() {
   const out = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).length, req = UMAS.filter(isRequired).length;

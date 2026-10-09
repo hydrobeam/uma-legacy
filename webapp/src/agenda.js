@@ -4,6 +4,7 @@
 import { $, esc } from './dom.js';
 import { RACEIDS } from './data.js';
 import { umaAv, srcFor } from './images.js';
+import { pickOutfit } from './roster.js';
 const YEARS = ['Junior', 'Classic', 'Senior'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const slotOf = (w) => { const m = /^(Jr|Cl|Sr) ([EL])-(\w+)$/.exec(w); return m ? MONTHS.indexOf(m[3]) * 2 + (m[2] === 'L' ? 1 : 0) : -1; };
@@ -168,7 +169,7 @@ export function winsAgenda(o) {
 // the race schedule window: one tab per member, her races on the calendar
 export function openSched(l) {
   const M = l.members, rows = l.schedule, body = $('sched-body'); body.textContent = '';
-  const outfitOf = (k) => (l.outfits[k].outfits.length === 1 ? l.outfits[k].outfits[0].id : null);
+  const outfitOf = (k) => pickOutfit(l.members[k].id, l.outfits[k].outfits).list[0]?.id ?? null;
   const head = document.createElement('div'); head.className = 'row between dhead';   // stays at the top while the dialog scrolls
   head.innerHTML = '<h3 id="sched-title">Race schedule</h3>';
   const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('sched-dlg').close(); head.appendChild(close);

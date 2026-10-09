@@ -57,7 +57,7 @@ export function detailsEl({ d, outfit, apt, races, raceName, onEdit, winsBtn, pa
   // her portrait, outfit and name
   const top = el('div', 'udtop');
   const por = el('div', 'udpor'); const face = umaAv(d.chara, d.outfit, 96);
-  face.setAttribute('role', 'img'); face.setAttribute('aria-label', `${umaName(d.chara)} ${outfit || '(any outfit)'}`);
+  face.setAttribute('role', 'img'); face.setAttribute('aria-label', outfit ? `${umaName(d.chara)} ${outfit}` : umaName(d.chara));
   por.appendChild(face); top.appendChild(por);
   const nm = el('div', 'udname'); if (outfit) nm.appendChild(el('div', 'udout', /^\[.*\]$/.test(outfit) ? outfit : `[${outfit}]`)); nm.appendChild(el('div', 'udnm', umaName(d.chara)));
   top.appendChild(nm); card.appendChild(top);

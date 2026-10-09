@@ -263,6 +263,10 @@ const TESTS = {
     // the default result is a three-uma rotation: three members in three columns, a deck for each
     check('members: three (a rotation), "as trainee: 1 in …", in three columns', head.own.length === 3 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x))
       && await pg.evaluate(() => { const m = document.querySelector('#results .loop .members'); return m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 3; }), head.own.join(' | '));
+    // every member names one outfit, never "any outfit" (her popup says when any would do)
+    const ofs = await pg.$$eval('#results .loop .mem', l => l.map(m => [m.querySelector('.of').textContent, m.dataset.outfitNote || '']));
+    check('members: each names one outfit (never "any outfit"; her popup carries any note)', ofs.length > 0 && ofs.every(([o]) => o && !/any outfit/i.test(o))
+      && !/any outfit/i.test(await pg.textContent('#results')), JSON.stringify(ofs));
     // a pal whose credited event choice needs a priority says so, derived from the event data (Anshinzawa SSR's finale)
     const anshin = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .dc[data-cid="30080"] i')].map(i => i.textContent));
     check('deck: Sasami Anshinzawa SSR says "prioritise Risky Business"', anshin.includes('prioritise Risky Business'), JSON.stringify(anshin));
@@ -1064,6 +1068,7 @@ const TESTS = {
     const lastRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
     check('career: with places open the planner picks the next career (the highest saving per run) after the six best by odds', lastJob && lastJob.top === 6 && lastJob.per_trainee === false && !lastJob.rollout
       && lastRes && lastRes.next.options.length >= 2 && /^index$/.test(lastRes.next.rule) && /Planned in/.test(await note()));
+    check('career: the trainee names one outfit (never "any outfit")', !/any outfit/i.test(await pg.textContent('#tree')) && !/any outfit/i.test(await pg.textContent('#results')));
     check('career: … the career on show is its pick, with why under the odds',
       (await pg.textContent('#tree .pn.trainee .nm')) === lastRes.next.choice.trainee.name && await pg.locator('.alts .otag.pick').count() === 1, await pg.textContent('#tree .pn.trainee .nm'));
     // the deck: a card's panel, as in the planner; marking it not owned searches again without it

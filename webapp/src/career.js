@@ -11,7 +11,7 @@ import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
-import { initRoster, renderRoster, noOutfit } from './roster.js';
+import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
@@ -105,6 +105,12 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // with its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
+// every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
+// one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
+function oneOutfit(t) { if (!t || t.outfitNote != null) return; const f = pickOutfit(t.id, t.outfits || []); t.outfits = f.list; t.anyOutfit = f.any; t.outfitNote = outfitNote(f); }
+const runN = async (job) => { const m = await run(job), r = m.r || {};
+  for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
+  return m; };
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 try { localStorage.removeItem('llp:loops'); } catch {}
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
@@ -129,7 +135,7 @@ async function search() {
   searching = true; started = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   const fail = (text) => { status = { kind: 'error', text }; last = null; planS = { state: 'none' }; simulation = { state: 'none' }; };
   try {
-    const m = await run(job);
+    const m = await runN(job);
     if (id !== myId) return;
     if (m.r.error) fail('Not searched: ' + m.r.error);
     else {
@@ -152,7 +158,7 @@ async function search() {
         phase = 'plan'; phaseNote = found; t0 = performance.now(); paint();
         const { rollout: _r, p_now: _p, ...plain } = job;
         try {
-          const m2 = await run({ ...plain, next: {}, no_reports: true });
+          const m2 = await runN({ ...plain, next: {}, no_reports: true });
           if (id !== myId) return;
           const x = m2.r.next;
           P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
@@ -222,7 +228,7 @@ function traineeEl(r) {
     const tot = legacyAff(r), a = affEl(tot, 'aff tot'); a.title = `Affinity ${Math.round(tot)}, her six legacies: click her for the breakdown`;
     n.querySelector('.pnh').appendChild(a);
   }
-  const sub = id && r && r.trainee.id === id ? (r.trainee.outfits.length ? r.trainee.outfits.map(o => o.label).join(' or ') : 'any outfit') : null;
+  const sub = id && r && r.trainee.id === id ? r.trainee.outfits[0]?.label || null : null;
   const t = id ? tile('node:t', umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 96), umaName(id), sub)
     : tile('node:t', el('span', 'av empty'), 'Any uma', 'The planner tries every uma you own.');
   t.setAttribute('aria-label', `Trainee: ${id ? umaName(id) : 'the planner picks'}. Details`); t.onclick = () => openNode({ kind: 't' });
@@ -302,7 +308,11 @@ function fillNode() {
   if (sp.kind === 't') {
     $('node-title').textContent = plan.trainee ? 'Trainee' : 'Trainee · planner\'s pick';
     const id = plan.trainee || (r && r.trainee.id);
-    if (id) { const w = el('div', 'twho'); w.append(umaAv(id, r && r.trainee.id === id ? r.trainee.outfits[0]?.id : null, 72), el('div', 'nm', umaName(id))); body.appendChild(w); }
+    if (id) { const w = el('div', 'twho'), mine = r && r.trainee.id === id;
+      const who = el('div'); who.append(el('div', 'nm', umaName(id)));
+      if (mine && r.trainee.outfits[0]) who.append(el('div', 'ctt', r.trainee.outfits[0].label));
+      if (mine && r.trainee.outfitNote) who.append(el('div', 'onote', r.trainee.outfitNote));
+      w.append(umaAv(id, mine ? r.trainee.outfits[0]?.id : null, 72), who); body.appendChild(w); }
     else body.appendChild(el('p', 'tempty', 'The planner tries every uma you own.'));
     if (id && r && r.trainee.id === id) body.appendChild(affTable(r));
     acts.appendChild(btn(plan.trainee ? 'Change trainee' : 'Choose trainee', 'primary', fromNode(() => openUmaPicker('Trainee: which uma?', (u) => { plan.trainee = u; changed(); }, owned))));
@@ -591,7 +601,7 @@ async function quickCompare(y, hi = null) {
     const base = comparisonJob();
     if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
     const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
-    const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
+    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length || !simulation.baseline) throw new Error(m.r.error || 'No next career found.');
     const v0 = planS.r.v0;
@@ -653,7 +663,7 @@ async function runComparison(refine = false) {
     if (!simulation.baseline) {
       const open = !last.job.trainees.length && !last.job.fix.length;
       const cached = baselineCache?.key === key ? baselineCache.result : null;
-      const before = cached ? { results: [cached] } : open ? last.r : (await run(base)).r;
+      const before = cached ? { results: [cached] } : open ? last.r : (await runN(base)).r;
       if (id !== simulationId || source !== myId) return;
       if (before.error || !before.results?.length) throw new Error(before.error || 'No career found in the current roster.');
       simulation.baseline = before.results[0];
@@ -662,7 +672,7 @@ async function runComparison(refine = false) {
     // the planner's question (exact odds, estimated careers): the best career with her as a parent, and the planner's
     // expected careers to a fully looped parent once its next career runs, without and with her (an n/n: goal step 1 done)
     const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
-    const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
+    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
@@ -670,10 +680,10 @@ async function runComparison(refine = false) {
     const full = isFull(simulation.draft);
     const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as a run's plan job, once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
-    if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
+    if (!pb) { const mb = await runN(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
     // with her, priced under the plan's own fit (its stage candidates and continuations, `fit`), not one refitted to the
     // larger pool: the two values then differ only by what she changes (a refit alone can move V by several percent)
-    const ja = { ...planOf(legs), next: { fit: pb?.fit } }, ma = await run(ja); if (id !== simulationId || source !== myId) return;
+    const ja = { ...planOf(legs), next: { fit: pb?.fit } }, ma = await runN(ja); if (id !== simulationId || source !== myId) return;
     const pa = ma.r.next || null;
     engineSaveState();
     const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
@@ -765,7 +775,7 @@ function simulationBody() {
       + (simulation.quick ? ' From the planner\'s table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll.' : ''));
     // the best career with her as a parent: its odds against today's best, then folded its portraits and deck
     const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Best career with her'));
-    const nx = el('div', 'nextc'); nx.append(facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits.map(o => o.label).join(' / ') || '(any outfit)'));
+    const nx = el('div', 'nextc'); nx.append(facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits[0]?.label || ''));
     fig(figs, `All ${n} odds`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
     result.appendChild(figs);
     dd.append(nx, deckEl(next, 'Deck'));

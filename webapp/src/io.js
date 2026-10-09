@@ -5,7 +5,7 @@ import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
 import { state, ui, goldGiven } from './state.js';
 import { save } from './save.js';
-import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
+import { noOutfit, renderRoster, reqOutfits, isRequired, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 function exportText() {
@@ -23,7 +23,7 @@ function exportText() {
   if (ui.lastResult) {
     const { r, meta } = ui.lastResult;
     const loopSum = (l) => ({ all_land: fmtIn(l.p_all), at_least_n_minus_1: fmtIn(l.p_minus1),
-      umas: l.members.map((m, k) => m.name + (l.outfits[k].outfits.length ? ' ' + l.outfits[k].outfits.map(o => o.label).join('/') : '')) });
+      umas: l.members.map((m, k) => { const o = pickOutfit(m.id, l.outfits[k].outfits).list[0]; return m.name + (o ? ' ' + o.label : ''); }) });
     results = { example: !!meta.example, decks: (r.top || []).map(t => ({ ...loopSum(t.loop), deck: t.deck.cards, pals: t.deck.pals, borrowed: t.deck.borrowed,
       ...(t.decks ? { deck_per_uma: Object.fromEntries(t.loop.members.map((m, k) => [m.name, t.decks[k].cards])) } : {}),
       deck_odds: t.deck.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => ({ skill: nmG(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })) })),

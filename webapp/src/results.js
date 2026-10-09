@@ -5,6 +5,7 @@ import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon } from './images.js';
 import { cardTitle } from './cards.js';
 import { closePop, markOwn, popHasFocus } from './popover.js';
+import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
@@ -101,13 +102,14 @@ function loopCard(l, meta, ctx) {
     mem = document.createElement('div'); mem.className = 'members' + (l.members.length === 3 ? ' n3' : '');
     l.members.forEach((m, k) => {
       const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem';
-      const outfit = o.outfits.length ? o.outfits.map(x => x.label).join(' or ') : 'any outfit';
+      // one outfit named, never "any outfit" (her popup says when any would do, or which others are as good)
+      const f = pickOutfit(m.id, o.outfits), outfit = f.list[0]?.label || '';
       d.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span>` +
         `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(l.per_trainee[k])}</span></span>`;
-      d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit;
+      d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit; d.dataset.outfitNote = outfitNote(f);
       d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
       if (forced.includes(m.id)) { d.classList.add('forced'); const t = document.createElement('span'); t.className = 'vh'; t.textContent = ' (must include)'; d.querySelector('.nm').after(t); }
-      d.querySelector('.head').prepend(umaAv(m.id, o.outfits.length === 1 ? o.outfits[0].id : null, 38));
+      d.querySelector('.head').prepend(umaAv(m.id, f.list[0]?.id ?? null, 38));
       // targets on her own outfit's skill list (she has them when she is the trainee)
       const sk = d.querySelector('.sk');
       // each its icon and name

@@ -47,7 +47,8 @@ function openUmaPop(btn, d = btn.closest('.mem')) {   // d: her member block (a 
   const owned = () => oid ? umaState(u) !== 'out' && state.outfits[oid] !== false : umaState(u) !== 'out';
   const title = u.name + (oid ? ' ' + d.dataset.outfitLabel : '');
   pop.setAttribute('aria-label', title);
-  pop.innerHTML = `<div><b>${esc(u.name)}</b><div class="ctt">${esc(d.dataset.outfitLabel)}</div></div>` +
+  pop.innerHTML = `<div><b>${esc(u.name)}</b><div class="ctt">${esc(d.dataset.outfitLabel)}</div>` +
+    (d.dataset.outfitNote ? `<div class="onote">${esc(d.dataset.outfitNote)}</div>` : '') + `</div>` +
     `<div class="pfoot"><label class="sw"><input type="checkbox" role="switch" data-act="uma"${owned() ? ' checked' : ''}>Owned</label>` +
     `<a class="gtl" href="${umaUrl(u, oid)}" target="_blank" rel="noopener">GameTora ↗︎</a></div>`;
   placePop(btn);
