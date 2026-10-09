@@ -62,6 +62,13 @@ provably only rescaled odds.
 
 ## 4. Open threads, most valuable first
 
+0. **Career planner speed (started 2026-10-08).** The first plan takes about 12 s in wasm, 80% of it the 60 builders'
+   best-career searches. `docs/PERF_PLANNER.md` holds the measurements, what failed, the reasoning agents' findings
+   and the ordered plan; `val/planval.py` (six next-plan jobs in `val/plan/`, compared whole, with deterministic work
+   counters) is the regression check for every item. The prerequisite is a deterministic planner cache (outputs must
+   not depend on which decks a search happened to check fully), then class-keyed proofs (measured 2.4x on p16
+   builders, identical outputs) and byte-identical deck-search and planner-arithmetic items. Owner decisions pending:
+   a cheaper Cont (near-top builders only), a per-era cap.
 2. **Star-mix band for the owner's veterans.** uma-it's summary data: an IT veteran's score range runs from "no
    skills bought" to "all affordable bought"; Unity Cup median best case is 17,428 (just under SS), Grand Concert
    18,094. Whether the owner's loop veterans clear 17,500 decides the default; ask.
