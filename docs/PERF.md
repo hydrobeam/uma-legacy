@@ -15,7 +15,7 @@ How to speed up `pkg/loopopt` without changing its results, learned from the 202
      are a noise-free A/B signal. Line-level `callgrind_annotate` shows whether a phase's cost is the work or the scan
      around it.
    - Wall time for slow jobs: the two binaries side by side, best of 3, at the same machine load.
-4. **Verify each item.** `cargo test --release`; `./build.sh valq TAG` (the 44-job tier); the full `./build.sh val TAG`
+4. **Verify each item.** `cargo test --release`; `./build.sh valq TAG` (every job but the slow ones in `val/slow.json`); the full `./build.sh val TAG`
    when the change touches the shared three-result search (`top_decks` > 1: the second enumeration pass,
    `k_filter` with kmax > 1, frontier caps, branch reuse), and once at the end.
 5. **Commit.** One item per commit, the measured gain in the message. Revert anything under about 3% unless it is
@@ -61,7 +61,9 @@ How to speed up `pkg/loopopt` without changing its results, learned from the 202
   built. `run_deck` branches change `exclude`, `require` and `exclude_cards`.
 
 Done in the page afterwards: the wasm is compiled once and the `WebAssembly.Module` posted to each restarted worker
-(works from `file://` in Chromium and Firefox; worker ready about 100-190 ms against 180-490 ms with base64).
+(worker ready about 100-190 ms against 180-490 ms with base64). The wasm2js fallback was dropped (2026-10-03): it was
+8.8 MB of the then single-file page and 3.6-6x slower than wasm, which runs within 3% of native; the page now requires
+WebAssembly and says so when a host refuses it.
 
 ## Not done (estimates)
 
