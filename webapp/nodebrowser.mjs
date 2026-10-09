@@ -88,7 +88,8 @@ const until = (pg, fn, arg, timeout = 3000) => pg.waitForFunction(fn, arg, { tim
 async function navClick(pg, sel) { await Promise.all([pg.waitForEvent('load'), pg.click(sel)]); }   // a click that reloads the page
 const note = (pg) => pg.locator('#run-note').innerText();
 const odds = (pg) => pg.evaluate(() => (document.querySelector('#results .loop .odds') || {}).textContent || '');
-const json = (pg, id) => pg.evaluate((id) => JSON.parse(document.getElementById(id).textContent), id);
+// the page's data by its old element id: the shared lists come from build.py's data scripts (self.__LLP_DATA), the rest from JSON elements
+const json = (pg, id) => pg.evaluate((id) => self.__LLP_DATA && id in self.__LLP_DATA ? self.__LLP_DATA[id] : JSON.parse(document.getElementById(id).textContent), id);
 const scen = (pg) => pg.getAttribute('#x-scen', 'data-value');   // the chosen scenario
 async function pickScen(pg, v) { await pg.click('#x-scen'); await pg.click(`#scen-menu .stile[data-v="${v}"]`); }
 
@@ -200,7 +201,7 @@ const TESTS = {
     const menu = pg.locator('#scen-menu'), tiles = pg.locator('#scen-menu .stile');
     const btnName = () => pg.getAttribute('#x-scen', 'aria-label');
     check('picker closed at first; the button is Unity Cup (logo only, named for assistive tech)', (await menu.isHidden()) && (await scen(pg)) === 'unity' && (await btnName()) === 'Scenario: Unity Cup'
-      && (await pg.evaluate(() => JSON.parse(document.getElementById('data-img').textContent).keys.includes('scen:2'))
+      && (await pg.evaluate(() => self.__LLP_DATA['data-img'].keys.includes('scen:2'))
         ? (await pg.locator('#x-scen').innerText()).trim() === '' && (await pg.locator('#x-scen img').count()) === 1
         : (await pg.locator('#x-scen').innerText()).trim() === 'Unity Cup'));
     const shots = process.env.LLP_SHOTS, bn = b.browserType().name();   // pictures of the button and the open picker, for a look at the logos
@@ -216,7 +217,7 @@ const TESTS = {
     check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
     check('every tile is logo + one line', t.every(x => x.subH <= 22), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
     // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
-    const golds = await pg.evaluate(() => { const skl = JSON.parse(document.getElementById('data-skills').textContent), gi = JSON.parse(document.getElementById('data-skillicon').textContent).gold;
+    const golds = await pg.evaluate(() => { const skl = self.__LLP_DATA['data-skills'], gi = self.__LLP_DATA['data-skillicon'].gold;
       const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
       return { want: [20049, 20046].map(x => ({ name: skl.find(s => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })), group: g && g.getAttribute('aria-label'),
         got: g ? [...g.querySelectorAll('img')].map(i => ({ alt: i.alt, title: i.title, src: i.getAttribute('src'), h: Math.round(i.getBoundingClientRect().height) })) : [],
@@ -368,7 +369,7 @@ const TESTS = {
     check('toggling a card keeps its image element (no flicker)', img && await tile.evaluate(t => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false'));
     await tile.click();
     // R cards are left out (no setting): the R section holds only the R pals
-    const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
+    const rpals = await pg.evaluate(() => self.__LLP_DATA['data-cards'].filter(c => c.rar === 1 && c.pal).length);
     const rCount = () => pg.evaluate(() => { const g = [...document.querySelectorAll('#cards .cgroup')].find(x => x.querySelector('h3').textContent === 'R'); return g ? g.querySelectorAll('.ct').length : 0; });
     check('R cards are left out, with no switch; the R section keeps the R pals', (await pg.locator('#x-rcards').count()) === 0 && (await rCount()) === rpals, (await rCount()) + ' of ' + rpals);
     check('every card image carries its type icon', (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()));
