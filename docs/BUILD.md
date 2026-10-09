@@ -97,6 +97,11 @@ editor), `umadump.js` (import).
 can move results, commit, tag `vN` (the next after the latest tag), `./build.sh deploy`. The page footer shows the
 build's `git describe` version.
 
+Verify a deploy against its own address (the `https://<hash>.uma-legacy.pages.dev` wrangler prints), e.g.
+`LLP_URL=https://<hash>.uma-legacy.pages.dev node webapp/nodebrowser.mjs quick`. The branch addresses
+(`preview.…`, the main one) serve HTML with a 5-minute cache, so for up to 5 minutes after a deploy they can hand out
+the previous page and its scripts: checks run against them then fail with the old behaviour (v42's preview check did).
+
 ## Layout
 
 ```
