@@ -830,7 +830,8 @@ impl Drop for MemoReport {
         let s = MEMO_STATS.with(|c| c.replace([0; 8]));
         if std::env::var("PLAN_MEMO").is_ok() {
             let r = |l: u64, h: u64| if l == 0 { 0.0 } else { 100.0 * h as f64 / l as f64 };
-            eprintln!("PLAN_MEMO plan lookups {} hits {} ({:.1}%) off {} | refits {} clears {}", s[0], s[1], r(s[0], s[1]), s[2], s[6], s[7]);
+            eprintln!("PLAN_MEMO plan lookups {} hits {} ({:.1}%) off {} | cost_lo lookups {} hits {} ({:.1}%) off {} | refits {} clears {}",
+                s[0], s[1], r(s[0], s[1]), s[2], s[3], s[4], r(s[3], s[4]), s[5], s[6], s[7]);
         }
     }
 }
@@ -845,12 +846,14 @@ pub(super) struct Cont { lam: f64, phi: f64, pinf: f64,
     /// per n (0..=CONT_N): the careers built through the n-th success (the sum `plan` takes, in its order), and (1 - phi)^n:
     /// `plan` reads them instead of evaluating the powers per call (the same expressions, so the same values)
     tab: std::rc::Rc<Vec<(f64, f64)>>,
-    /// `plan`'s results by the bits of p. Exact: `plan` reads p and lam, phi, pinf and tab alone, which are set once in
-    /// `new` and never written after (private fields; a refit makes new Conts). A clone shares the memo and carries the
-    /// same parameters; a new or default Cont gets its own
-    memo: std::rc::Rc<std::cell::RefCell<Memo<u64, (f64, i32, f64)>>> }
+    /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tab alone, which are
+    /// set once in `new` and never written after (private fields; a refit makes new Conts). A clone shares the memos and
+    /// carries the same parameters; a new or default Cont gets its own
+    memo: std::rc::Rc<ContMemo> }
+pub(super) struct ContMemo { plan: std::cell::RefCell<Memo<u64, (f64, i32, f64)>>, lo: std::cell::RefCell<Memo<u64, f64>> }
+fn cont_memo() -> std::rc::Rc<ContMemo> { std::rc::Rc::new(ContMemo { plan: std::cell::RefCell::new(Memo::new(0)), lo: std::cell::RefCell::new(Memo::new(1)) }) }
 impl Default for Cont {
-    fn default() -> Self { Cont { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: std::rc::Rc::new(std::cell::RefCell::new(Memo::new(0))) } }
+    fn default() -> Self { Cont { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: cont_memo() } }
 }
 /// `plan`'s cap on successes before grinding
 const CONT_N: usize = 500;
@@ -862,14 +865,14 @@ impl Cont {
         let r = 1.0 - phi;
         let mut tab = Vec::with_capacity(CONT_N + 1); let mut built = 0.0f64;
         for n in 0..=CONT_N as i32 { let b = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY)); tab.push((b, r.powi(n))); built = b; }
-        Cont { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: std::rc::Rc::new(std::cell::RefCell::new(Memo::new(0))) }
+        Cont { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
     }
     /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
     /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
     fn plan(&self, p: f64) -> (f64, i32, f64) {
         if p <= 0.0 { return (f64::INFINITY, 0, p); }
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p { return (1.0 / p, 0, p); }
-        self.memo.borrow_mut().get_or(|| p.to_bits(), || self.plan_n(p))
+        self.memo.plan.borrow_mut().get_or(|| p.to_bits(), || self.plan_n(p))
     }
     /// `plan` past its early returns (the first stop of the building loop)
     fn plan_n(&self, p: f64) -> (f64, i32, f64) {
@@ -901,6 +904,10 @@ impl Cont {
     fn cost_lo(&self, p: f64) -> f64 {
         if p <= 0.0 { return f64::INFINITY; }
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p { return 1.0 / p; }
+        self.memo.lo.borrow_mut().get_or(|| p.to_bits(), || self.cost_lo_n(p))
+    }
+    /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate)
+    fn cost_lo_n(&self, p: f64) -> f64 {
         let lr = (p / self.pinf).ln(); let mut best = 1.0 / p;
         if self.tab.len() > CONT_N { let t = &self.tab; for n in 0..CONT_N { best = best.min(t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp())); } return best; }
         let r = 1.0 - self.phi; let mut built = 0.0f64;
