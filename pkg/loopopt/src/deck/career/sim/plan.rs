@@ -909,9 +909,11 @@ impl Cont {
     /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate)
     fn cost_lo_n(&self, p: f64) -> f64 {
         let lr = (p / self.pinf).ln(); let mut best = 1.0 / p;
-        if self.tab.len() > CONT_N { let t = &self.tab; for n in 0..CONT_N { best = best.min(t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp())); } return best; }
+        // every n's cost is its building (rising with n: each term 1/lam_j > 0) plus a positive grind, so once the
+        // building alone reaches the best found no later n can be lower: the scan stops there, the same minimum
+        if self.tab.len() > CONT_N { let t = &self.tab; for n in 0..CONT_N { if t[n].0 >= best { break; } best = best.min(t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp())); } return best; }
         let r = 1.0 - self.phi; let mut built = 0.0f64;
-        for n in 0..500i32 { built += 1.0 / (self.lam * r.powi(n).powf(LAM_DECAY)); best = best.min(built + 1.0 / (self.pinf * (lr * r.powi(n + 1)).exp())); }
+        for n in 0..500i32 { built += 1.0 / (self.lam * r.powi(n).powf(LAM_DECAY)); if built >= best { break; } best = best.min(built + 1.0 / (self.pinf * (lr * r.powi(n + 1)).exp())); }
         best
     }
 }
