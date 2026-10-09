@@ -105,6 +105,11 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // with its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
+// the plan Compare ran for the pool with her: the same job a run sends once she is added (keys sorted, the comparison's
+// flag aside), so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job)
+let planKept = null;
+const canon = (x) => Array.isArray(x) ? x.map(canon) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().filter(k => x[k] !== undefined).map(k => [k, canon(x[k])])) : x;
+const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } = job; return JSON.stringify(canon(j)); };
 // every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
 // one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
 function oneOutfit(t) { if (!t || t.outfitNote != null) return; const f = pickOutfit(t.id, t.outfits || []); t.outfits = f.list; t.anyOutfit = f.any; t.outfitNote = outfitNote(f); }
@@ -158,7 +163,8 @@ async function search() {
         phase = 'plan'; phaseNote = found; t0 = performance.now(); paint();
         const { rollout: _r, p_now: _p, ...plain } = job;
         try {
-          const m2 = await runN({ ...plain, next: {}, no_reports: true });
+          const jp = { ...plain, next: {}, no_reports: true }, kept = planKept && planKept.key === planKey(jp) ? planKept : null;
+          const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runN(jp);
           if (id !== myId) return;
           const x = m2.r.next;
           P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
@@ -681,10 +687,11 @@ async function runComparison(refine = false) {
     const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as a run's plan job, once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await runN(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
-    // with her, priced under the plan's own fit (its stage candidates and continuations, `fit`), not one refitted to the
-    // larger pool: the two values then differ only by what she changes (a refit alone can move V by several percent)
-    const ja = { ...planOf(legs), next: { fit: pb?.fit } }, ma = await runN(ja); if (id !== simulationId || source !== myId) return;
+    // with her: the plan a run makes once she is added (her pool, fitted to it, as Add to veterans will show it; kept, so
+    // Add takes it without planning again)
+    const ja = planOf(legs), ma = await runN(ja); if (id !== simulationId || source !== myId) return;
     const pa = ma.r.next || null;
+    if (pa && !pa.error) planKept = { key: planKey(ja), r: pa, ms: ma.ms };
     engineSaveState();
     const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
@@ -755,7 +762,7 @@ function simulationBody() {
     // what she does for the loop if you enter her: one short line
     const head = looped ? 'Fully looped parent'
       : simulation.full ? `${n}/${n}: step 1 done`
-      : simulation.refining && !simulation.provisional ? 'Improves your loop'
+      : simulation.refining && !simulation.provisional ? 'Checking…'
       : saves != null && saves >= 0.5 ? `Saves ${fmtN(saves)} careers`
       : simulation.herParent ? 'Parent of the next career'
       : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'

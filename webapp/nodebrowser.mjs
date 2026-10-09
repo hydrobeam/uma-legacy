@@ -1407,7 +1407,14 @@ const TESTS = {
     // Save one generation, then another: a veteran's parents become the next one's grandparents.
     const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
     await simStars(3);
+    // Compare first: it plans exactly as the run after Add will, so Add takes that plan instead of planning again
+    await pg.click('#sim-compare');
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
+    const planJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.next && !j.compare).length);
+    const pj0 = await planJobs(), cmpPick = await pg.evaluate(() => window.__careerResults.filter(r => r.next && r.next.options).at(-1)?.next.choice?.trainee.id);
     await pg.click('#sim-add'); await done();
+    check('career: Add to veterans after Compare shows the plan Compare made, with no second plan', await planJobs() === pj0
+      && /Planned in|Weighed/.test(await pg.textContent('#run-note')), `plan jobs ${pj0} -> ${await planJobs()}, compare's pick ${cmpPick}`);
     await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: adding her saves a labelled veteran and opens the next career', await pg.evaluate(n => {
       const c = JSON.parse(localStorage.getItem('llp:career')).global;
