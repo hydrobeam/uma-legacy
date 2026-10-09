@@ -99,6 +99,10 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
    live; 37M nodes per plan on p16): a flat stack of stride `nu` (estimate 10-25% of search time); per-leaf `dw`/`dg`
    allocations and the band test's second evaluation of the same clause value (estimate 3-15%); `gm_cached` keyed by
    content and stored flat (classmates rebuild identical tables today: tens of MB of wasm heap high-water, estimate).
+3c. `upper_na`'s per-call constants (measured on main after the merges, native): Grand Masters 1.70M calls, 6.56 s of
+   a 16.6 s plan (39%), 543k on the pair path whose `pair_marg` rebuild alone is 1.77 s; p16 22k calls, 0.18 s of 3.7 s
+   (5%). Memoise the pair marginals per key and pair, the event pmf, each group's NUOD flag (static per card source),
+   the key level lookup; byte-identical (data-structure survey: no container change elsewhere is worth 1%).
 4. Merge the two passes (an existence check, then one band DFS): exact under the cap; counters re-baseline; estimate
    -5 to -20% after item 3.
 5. Planner arithmetic: reuse `score_career`'s setups and folds between passes 1 and 2; the fold recursion allocates a
