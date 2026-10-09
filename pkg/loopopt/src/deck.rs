@@ -1820,10 +1820,11 @@ impl<'a> DeckSpace<'a> {
             let ng = gs.len();
             {
                 {
-                    struct St { sel: Vec<usize>, pw: Vec<[f64; 32]>, pg: Vec<[f64; 32]> }
-                    let mut st = St { sel: vec![], pw: vec![[1.0; 32]], pg: vec![[1.0; 32]] };
+                    // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
+                    struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64> }
+                    let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu] };
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
-                    let mut hopeful = |g: usize, left: usize, pw: &[f64; 32], pg: &[f64; 32], bestv: f64, nb: usize| -> bool {
+                    let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize| -> bool {
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
                         for t in 0..nu {
@@ -1862,44 +1863,50 @@ impl<'a> DeckSpace<'a> {
                     }
                     if all_locked & !avail[0][0] != 0 { continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
-                           mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64; 32], &[f64; 32], f64, usize) -> bool,
-                           leaf: &mut dyn FnMut(&[usize], &[f64; 32], &[f64; 32]) -> bool, bestv: &dyn Fn() -> f64) -> bool {
+                           mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize) -> bool,
+                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
-                            if g + 1 >= gs.len() { let (pw, pg) = (*st.pw.last().unwrap(), *st.pg.last().unwrap()); return leaf(&st.sel, &pw, &pg); }
+                            if g + 1 >= gs.len() { let b = st.pw.len() - nu; return leaf(&st.sel, &st.pw[b..], &st.pg[b..]); }
                             return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
+                        // the deck so far is the last row; a child's row is pushed after it and dropped after its subtree
+                        let b = st.pw.len() - nu;
                         for p in start..list.len() {
                             if list.len() - p < left { break; }
                             let j = list[p];
                             if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) { continue; }
                             sp.nodes.set(sp.nodes.get() + 1);
-                            let (mut w2, mut g2) = (*st.pw.last().unwrap(), *st.pg.last().unwrap());
-                            for t in 0..nu { w2[t] *= mw[j * nu + t]; g2[t] *= mg[j * nu + t]; }
-                            if !hopeful(g, left - 1, &w2, &g2, bestv(), nb + sp.ebor[j] as usize) { continue; }
-                            st.sel.push(j); st.pw.push(w2); st.pg.push(g2);
+                            for t in 0..nu { let w = st.pw[b + t] * mw[j * nu + t]; st.pw.push(w); let x = st.pg[b + t] * mg[j * nu + t]; st.pg.push(x); }
+                            if !hopeful(g, left - 1, &st.pw[b + nu..], &st.pg[b + nu..], bestv(), nb + sp.ebor[j] as usize) { st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
+                            st.sel.push(j);
                             let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv);
-                            st.sel.pop(); st.pw.pop(); st.pg.pop();
+                            st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu);
                             if stop { return true; }
                         }
                         false
                     }
                     let bcell = std::cell::Cell::new(bestv);
-                    let mut leaf = |sel: &[usize], pw: &[f64; 32], pg: &[f64; 32]| -> bool {
+                    // the deck's odds, written per leaf (no allocation unless the deck is kept)
+                    let (mut dwa, mut dga) = ([0.0f64; 32], [0.0f64; 32]);
+                    let mut leaf = |sel: &[usize], pw: &[f64], pg: &[f64]| -> bool {
                         let pals = sel.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + plain;
                         if let Some(p) = self.dj.pals { if p != pals { return false; } }
                         if !self.locked.iter().all(|l| sel.iter().any(|&j| self.rel[j] == *l)) { return false; }
-                        let dw: Vec<f64> = (0..nu).map(|t| 1.0 - pw[t]).collect(); let dg: Vec<f64> = (0..nu).map(|t| 1.0 - pg[t]).collect();
-                        let mk = |v: f64| { let mut e = sel.to_vec(); e.sort(); (v, Sel { ents: e, plain, filler, dw: dw.clone(), dg: dg.clone() }) };
+                        for t in 0..nu { dwa[t] = 1.0 - pw[t]; dga[t] = 1.0 - pg[t]; }
+                        let (dw, dg) = (&dwa[..nu], &dga[..nu]);
+                        let mk = |v: f64| { let mut e = sel.to_vec(); e.sort(); (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() }) };
                         if best {
-                            let v = val(&clauses[0], &dw, &dg);
+                            let v = val(&clauses[0], dw, dg);
                             if v > bcell.get() { bcell.set(v); out.clear(); out.push(mk(v)); }
                             false
                         } else {
-                            let v = clauses.iter().map(|cl| val(cl, &dw, &dg)).fold(f64::NEG_INFINITY, f64::max);
-                            if clauses.iter().any(|cl| rho * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) {
+                            // each clause's value once: the best of them, and whether any passes its bar
+                            let (mut v, mut pass) = (f64::NEG_INFINITY, false);
+                            for cl in clauses { let x = val(cl, dw, dg); v = v.max(x); pass = pass || rho * x * (1.0 + 1e-9) >= cl.1; }
+                            if pass {
                                 out.push(mk(v));
                                 if out.len() >= cap { return true; }
                             }
@@ -1907,7 +1914,7 @@ impl<'a> DeckSpace<'a> {
                         }
                     };
                     let bget = || bcell.get();
-                    let stop = if gs.is_empty() { leaf(&[], &[1.0; 32], &[1.0; 32]) }
+                    let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu]) }
                         else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget) };
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
