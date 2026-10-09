@@ -1816,3 +1816,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   .rb .rtgt .cartab .udsk .sic { width: 24px; height: 24px; }
   .rb .rtgt .cartab .udskn { font-size: 0.86rem; line-height: 1.15; }
 }
+/* phones (baseline 375 px), the loop planner: a three-uma rotation stacks (two columns left it 2 + 1); decks three
+   to a row (six left each card about 45 px wide, its art tiny and a "prioritise ..." note three lines tall); the
+   schedule's Goal badge inside its slot's corner (hanging off it, it covered the turn label of the slot above) */
+@media (max-width: 620px) {
+  .members.n3 { grid-template-columns: minmax(0, 1fr); }
+  .lp .deck .dcards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .agenda.game .ag-goal { top: 2px; right: 2px; }
+}
