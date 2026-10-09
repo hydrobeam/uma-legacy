@@ -633,6 +633,8 @@ const TESTS = {
       && (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 3);
     check('All three: turns written as on the member tabs ("Early Apr"), no shared/optional key', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg td.when')].every(t => /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent)))
       && await pg.locator('#sched-dlg .agkey').isHidden());
+    check('All three: each win % says why on hover, as its note promises', await pg.evaluate(() => { const c = [...document.querySelectorAll('#sched-dlg table.sched tbody td')].filter(t => /^\*?\d+$/.test(t.textContent));
+      return c.length > 0 && c.every(t => /^\d+% win: 110/.test(t.title)) && /hover for why/.test(document.querySelector('#sched-dlg .tablewrap .hint').textContent); }));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     // the career page's table: each parent, then her two parents (relation, G1 wins shared, affinity), a Total row
