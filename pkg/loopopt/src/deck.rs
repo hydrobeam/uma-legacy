@@ -180,6 +180,15 @@ fn event_pmf(n: usize) -> Vec<f64> {
     let (bn, bp) = CHAIN_EVENTS.with(|c| c.get());
     (0..=n).map(|e| if e as u32 <= bn { binom_coef(bn, e as u32) * bp.powi(e as i32) * (1.0 - bp).powi((bn - e as u32) as i32) } else { 0.0 }).collect()
 }
+/// `event_pmf` of the job's own event count (n = its CHAIN_EVENTS n), kept per (n, p): the same for every call of a job
+fn event_pmf_job() -> std::rc::Rc<Vec<f64>> {
+    thread_local! { static EP: std::cell::RefCell<Option<((u32, u64), std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
+    let key = pmf_key();
+    if let Some(r) = EP.with(|c| c.borrow().as_ref().filter(|x| x.0 == key).map(|x| x.1.clone())) { return r; }
+    let r = std::rc::Rc::new(event_pmf(key.0 as usize));
+    EP.with(|c| *c.borrow_mut() = Some((key, r.clone())));
+    r
+}
 fn binom_coef(n: u32, k: u32) -> f64 { (0..k).fold(1.0f64, |a, i| a * (n - i) as f64 / (i + 1) as f64) }
 /// Cache key of the event-count distribution in use: (n, bits of p). (An XOR of the two collided: (21, 0.35) and
 /// (22, 0.7) gave one key.)
@@ -688,13 +697,21 @@ fn joint_trainee_ref(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], 
 /// checked exactly (to 1e-12) over the key's state distribution. Early ends and stop risk are included (stop risk as
 /// the mixture over where each risky card stops, which does not depend on N).
 struct KeyLevel { marg: Vec<Vec<Vec<f64>>>, nuod: bool, lev: Vec<Vec<f64>>, dims: Vec<usize>, gstride: Vec<usize>,
-                  pairs: std::cell::RefCell<crate::FxMap<(usize, usize), bool>> }
+                  pairs: std::cell::RefCell<crate::FxMap<(usize, usize), bool>>,
+                  pms: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<Vec<Vec<Vec<f64>>>>>> }
 impl KeyLevel {
     /// P(X_i = a, X_j = b | N = m)
     fn pair_marg(&self, i: usize, j: usize, m: usize) -> Vec<Vec<f64>> {
         let mut v = vec![vec![0.0f64; self.dims[j]]; self.dims[i]];
         for (gi, &p) in self.lev[m].iter().enumerate() { if p != 0.0 { v[(gi / self.gstride[i]) % self.dims[i]][(gi / self.gstride[j]) % self.dims[j]] += p; } }
         v
+    }
+    /// `pair_marg` at every event count m = 0..=n, kept per pair (a function of the key alone)
+    fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<Vec<Vec<Vec<f64>>>> {
+        if let Some(r) = self.pms.borrow().get(&(i, j)) { return r.clone(); }
+        let r = std::rc::Rc::new((0..self.lev.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>());
+        self.pms.borrow_mut().insert((i, j), r.clone());
+        r
     }
     /// The orthant check with positions i and j as one block: for every up-set A of the (i, j) grid and every
     /// threshold vector t on the other positions, P((X_i, X_j) in A, X_k >= t_k) <= P((X_i, X_j) in A) prod P(X_k >= t_k).
@@ -735,8 +752,11 @@ impl KeyLevel {
 }
 fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
     thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(Default::default()); }
-    let key = (kinds.to_vec(), pmf_key());
-    if let Some(r) = KL.with(|c| c.borrow().get(&key).cloned()) { return r; }
+    thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<Kind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
+    let pk = pmf_key();
+    if let Some(r) = KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| x.2.clone())) { return r; }
+    let key = (kinds.to_vec(), pk);
+    if let Some(r) = KL.with(|c| c.borrow().get(&key).cloned()) { KL_LAST.with(|c| *c.borrow_mut() = Some((key.0, key.1, r.clone()))); return r; }
     let (bn, _) = CHAIN_EVENTS.with(|c| c.get());
     let nmax = bn as usize;
     let n = kinds.len();
@@ -802,7 +822,8 @@ fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
             if up[gi] > prod * (1.0 + 1e-12) + 1e-15 { nuod = false; break; }
         }
     }
-    let r = std::rc::Rc::new(KeyLevel { marg, nuod, lev, dims, gstride, pairs: Default::default() });
+    let r = std::rc::Rc::new(KeyLevel { marg, nuod, lev, dims, gstride, pairs: Default::default(), pms: Default::default() });
+    KL_LAST.with(|c| *c.borrow_mut() = Some((key.0.clone(), key.1, r.clone())));
     KL.with(|c| c.borrow_mut().insert(key, r.clone()));
     r
 }
@@ -842,9 +863,11 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
     let nu = model.uncertain.len();
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
     // marginals below could understate a group whose outcomes hint targets together
+    // (checked once per source, when it is built: `Src::not_nuod`)
     for (src, _) in ents {
-        for g in src.fixed.iter().chain(src.chains.iter().map(|x| &x.1)) {
-            if group_gh(g).len() >= 2 && !group_nuod(g) { if std::env::var("UPPER_WHY").is_ok() { eprintln!("why: group {:?}", g); } return None; }
+        if src.not_nuod {
+            if std::env::var("UPPER_WHY").is_ok() { if let Some(g) = src.fixed.iter().chain(src.chains.iter().map(|x| &x.1)).find(|g| group_gh(g).len() >= 2 && !group_nuod(g)) { eprintln!("why: group {:?}", g); } }
+            return None;
         }
     }
     let (mut ng0, mut nh0) = (vec![1.0f64; nu], vec![1.0f64; nu]);
@@ -899,8 +922,7 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
         let ok = match pair { None => k.nuod, Some((a, b)) => k.pair_ok(a, b) };
         if !ok { return None; }
     }
-    let (bn, _) = CHAIN_EVENTS.with(|c| c.get());
-    let pmf = event_pmf(bn as usize);
+    let pmf = event_pmf_job();
     let opts = &model.opts[u];
     let fixed = model.fixed_factor();
     let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
@@ -908,7 +930,7 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
         let pg = 1.0 - ng;
         match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew[k]) * (1.0 - q)) }
     };
-    let pm: Option<Vec<Vec<Vec<f64>>>> = match (pair, &kl) { (Some((a, b)), Some(k)) => Some((0..pmf.len()).map(|m| k.pair_marg(a, b, m)).collect()), _ => None };
+    let pm: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &kl) { (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)), _ => None };
     Some(qs.iter().map(|&q| {
         let mut best = 0.0f64;
         for o in 0..opts.len() {
@@ -952,7 +974,10 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
 /// per target as miss factors (1 - P(gold), 1 - P(any hint)), the chain ones per link in link order.
 #[derive(Clone, Default)]
 struct Src { train: Vec<(usize, f64)>, fixed: Vec<Group>, chains: Vec<(u8, Group)>,
-             fm: Vec<(usize, f64, f64)>, cm: Vec<(usize, Vec<(u8, f64, f64)>)> }
+             fm: Vec<(usize, f64, f64)>, cm: Vec<(usize, Vec<(u8, f64, f64)>)>,
+             /// a group of it touching two or more targets is not negatively upper-orthant dependent (`group_nuod`):
+             /// `upper_na` does not cover a deck with it
+             not_nuod: bool }
 impl Src {
     fn finish(mut self) -> Self {
         self.chains.sort_by_key(|x| x.0);
@@ -966,6 +991,7 @@ impl Src {
         }
         cm.sort_by_key(|x| x.0);
         self.cm = cm;
+        self.not_nuod = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
         self
     }
     fn is_empty(&self) -> bool { self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty() }
