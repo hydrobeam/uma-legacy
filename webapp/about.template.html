@@ -561,8 +561,12 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p><strong>Search. C4. The best careers by odds.</strong> Every legal (trainee, parents) is a candidate with a ceiling,
   her chances <math><msub><mi>q</mi><mi>k</mi></msub></math> folded into her own hint chances (<math><msub><mi>e</mi><mi>k</mi></msub><mo>←</mo><mn>1</mn><mo>−</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>e</mi><mi>k</mi></msub><mo>)</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>q</mi><mi>k</mi></msub><mo>)</mo></math>):</p>
   <math display="block"><mtext>ceiling</mtext><mo>=</mo><mi>ρ</mi><mspace width="0.2em"/><mi>C</mi><mspace width="0.2em"/><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>max</mo><mtext>outfit</mtext></munder><munder><mo>∏</mo><mi>k</mi></munder><msub><mi>s</mi><mi>k</mi></msub><mo>(</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>,</mo><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>)</mo></math>
-  <p>with <math><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></math>, <math><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup></math> the best odds any of her legal decks could give target <math><mi>k</mi></math> on its own (each target's best,
-  not one deck). The main search has a work budget of 300 million units (the units of step 18); each planner search
+  <p>with <math><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></math>, <math><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup></math> the best odds any of her legal decks could give target <math><mi>k</mi></math> on its own: every entry
+  she may use is taken with all its chain links firing, giving per target its chance of no gold <math><msub><mi>G</mi><mi>j</mi></msub></math> and of no hint
+  <math><msub><mi>H</mi><mi>j</mi></msub></math>; with <math><msubsup><mo>∏</mo><mrow></mrow><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup></math> the product of the six lowest (one deck's slots, ignoring the one-per-character rule
+  and the competition for chain events),</p>
+  <math display="block"><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>G</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>H</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><mn>1</mn><mo>−</mo><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow><mrow><mn>1</mn><mo>−</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow></mfrac></math>
+  <p>Each target's best is taken separately, so no real deck can beat it. The main search has a work budget of 300 million units (the units of step 18); each planner search
   5 million, past which it stops taking candidates and its answer is marked unproven. Candidates are taken best ceiling first; each gets its exact best deck
   (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
   <ul>
@@ -642,14 +646,32 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><mtext>second</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mrow><mi>ω</mi><mo>:</mo><mtext> n−1 of n</mtext></mrow></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>max</mi><mrow><mo>(</mo><mn>0</mn><mo>,</mo><munder><mo>max</mo><mi>b</mi></munder><msub><mtext>score</mtext><mi>ω</mi></msub><mo>(</mo><mi>b</mi><mo>)</mo><mo>−</mo><msup><mtext>score</mtext><mo>*</mo></msup><mo>)</mo></mrow></math>
   <p>The pick is the highest score plus second step; within 0.25 careers (or 5%) of it, the better own odds. With fewer
   than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
-  <p><strong>Which careers are searched exactly.</strong> Every uma's best career (C4 restricted to her) is first valued
-  from her deck class's best decks at her own chances, with no deck search; this proxy is a real career she can run, so
-  never above her best. An exact search follows only where precision can change the answer: the stage candidates;
-  builders whose proxy efficiency is within 6% of a candidate's two most efficient; careers whose proxy savings come
-  within 6% of the shown rows, the pick or the second step's three (the margin is about twice the largest proxy error
-  measured on the reference setups, 2.8%; most builders' proxy is exactly their best career). Before that search, the proxy is checked against
-  every bound the search would prune with; if none exceeds it, the proxy is her best career and no search runs. Other
-  rows keep the proxy career, marked as not searched.</p>
+  <p><strong>C8b. Which careers are searched exactly.</strong> Every stage candidate's best career is searched (C4 for
+  her alone). Every other uma's career starts as a proxy:</p>
+  <ol>
+  <li><strong>Class winners.</strong> The decks of the main search's best careers and of every stage candidate's best
+  career, where that trainee shares her deck class (C4), join her cached decks: the same deck problem, so each is a deck
+  she can use.</li>
+  <li><strong>Proxy career.</strong> Her legal pairs (keeping any fixed places), highest ceiling first; each pair's value
+  is <math><mi>C</mi></math> times the best of her cached decks' corner tables at the pair's chances (a deck search only when she has no
+  cached deck at all); the best pair so far is kept, and the scan stops when the next ceiling is no higher. A proxy is a
+  career she can run, so it is never above her best.</li>
+  <li><strong>Admission by efficiency.</strong> Per candidate <math><mi>u</mi></math>, the efficiencies (C7) of every career, exact or proxy, of
+  another character that lifts her are sorted; every proxy at or above <math><mo>(</mo><mn>1</mn><mo>−</mo><mn>0.06</mn><mo>)</mo></math> times the second best is
+  searched exactly. Repeated until no proxy is admitted. Cont's two builders come from exactly searched careers only.</li>
+  <li><strong>Admission by savings.</strong> With scores sorted, the line is
+  <math><mi>t</mi><mo>=</mo><mi>min</mi><mo>(</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>8</mn><mo>)</mo></mrow></msub><mo>,</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>3</mn><mo>)</mo></mrow></msub><mo>,</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>−</mo><mi>max</mi><mo>(</mo><mn>0.25</mn><mo>,</mo><mn>0.05</mn><mo>|</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>|</mo><mo>)</mo><mo>)</mo><mo>+</mo><mn>1</mn></math> (the eighth shown row, the second
+  step's third, the pick's near-tie band; in savings, score + 1); every proxy with <math><mtext>score</mtext><mo>+</mo><mn>1</mn><mo>≥</mo><mo>(</mo><mn>1</mn><mo>−</mo><mn>0.06</mn><mo>)</mo><mi>t</mi></math> is
+  searched exactly. When a search changes a candidate's two builders, Cont, the trios, <math><mi>V</mi></math> and every score are worked
+  out again; repeated until none is admitted.</li>
+  <li><strong>Certification.</strong> Before an admitted proxy is searched, every legal pair <math><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>)</mo></math> of hers keeping the
+  places is bounded by the least of its ceiling, <math><mi>C</mi><mi>v</mi><mo>·</mo><mtext>rise</mtext><mo>(</mo><mi>q</mi><mo>,</mo><msub><mi>q</mi><mi>r</mi></msub><mo>)</mo></math> for each fully checked deck of her class
+  (worth <math><mi>v</mi></math> at <math><msub><mi>q</mi><mi>r</mi></msub></math>) and <math><mi>ρ</mi><mi>C</mi><mi>s</mi><mo>·</mo><mtext>rise</mtext><mo>(</mo><mi>q</mi><mo>,</mo><msub><mi>q</mi><mi>r</mi></msub><mo>)</mo></math> for each product proof of her class; if no pair's bound
+  exceeds the proxy's value, the proxy is her best career's value and no search runs.</li>
+  </ol>
+  <p>The margins, 6%, are about twice the largest proxy error measured on the reference setups (2.8%; the proxy is
+  exact for every builder on five of seven). Careers left as proxies are marked as not searched; the full exact plan
+  (every uma searched) is a job option.</p>
 
   <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
   chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. For the veteran it would add, it
@@ -659,8 +681,15 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
   found, a refitted continuation. So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
-  effect could save: her pairings valued by ceilings over every partner (the lower of the trainee's ceiling and any
-  existing pair's exact value times <math><mtext>rise</mtext></math>), each candidate's step at its lowest over every number of builds. "No
+  effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
+  outcome <math><mi>ω</mi></math> (chances <math><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> and scale <math><msup><mi>C</mi><mo>′</mo></msup></math> of the lineage with her):</p>
+  <math display="block"><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><munder><mo>max</mo><mi>y</mi></munder><mspace width="0.2em"/><msup><mi>C</mi><mo>′</mo></msup><mi>min</mi><mrow><mo>(</mo><msub><mtext>ceil</mtext><mi>y</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><munder><mo>min</mo><mi>z</mi></munder><mfrac><msub><mi>p</mi><mi>u</mi></msub><msub><mi>C</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></mfrac><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><msub><mi>q</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub><mo>)</mo><mo>)</mo></mrow></math>
+  <p>over today's pairs <math><mo>(</mo><mi>y</mi><mo>,</mo><mi>z</mi><mo>)</mo></math> keeping the places: each is a career of hers worth at most <math><msub><mi>p</mi><mi>u</mi></msub></math>, and <math><mtext>rise</mtext></math> bounds every
+  deck's change between chances. <math><msub><mtext>ceil</mtext><mi>y</mi></msub></math> is C4's ceiling for that lineage. Her step then costs at least
+  <math><msub><mtext>cost</mtext><mtext>lo</mtext></msub><mo>(</mo><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>)</mo></math>, the minimum of C7's sum over every number of builds (C7's choice stops at the first minimum), which
+  falls as the odds rise; <math><msub><mi>V</mi><mtext>lo</mtext></msub><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs (and her own n/n credit), and
+  <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msub><mi>V</mi><mtext>lo</mtext></msub><mo>)</mo><mo>≥</mo><mi>y</mi></math>. It bounds the replan's direct effect only; what a replan's refits do (Cont fitted again,
+  other careers re-searched with her) is outside it. "No
   careers saved" is shown as proven when <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>&lt;</mo><mn>0.5</mn></math>; otherwise it is provisional and the exact comparison (C10)
   runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Improves your loop" at once, then the exact
   count.</p>
