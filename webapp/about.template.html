@@ -65,7 +65,7 @@ pinks raise the trainee's aptitudes at the start and may fire at the April inspi
 <li>The exact choices IT takes at events are still unclear.</li>
 <li><strong>Search:</strong> results are ranked by exact odds. To save time, a deck is scored exactly only if its odds with
 targets treated as independent come within 20% of the best result; this assumes linked targets never raise a deck's odds
-by more than 25% (the most seen is 17%). When a search runs long the margin shrinks, and the status line says so. Race
+by more than 25% (the most seen is 18%). When a search runs long the margin shrinks, and the status line says so. Race
 schedules are the optimiser's best found, not proven best.</li>
 <li>The counted hints rely on the player's IT priorities; the deck card names the one the planner knows (Sasami
 Anshinzawa SSR: prioritise Risky Business).</li>
@@ -329,8 +329,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><mover><mi>V</mi><mo>^</mo></mover></math> is cheap and rises with every deck odd (for <math><mn>0</mn><mo>≤</mo><mi>q</mi><mo>≤</mo><mn>1</mn></math>, a white being worth less than a gold), so it bounds groups of decks
   and loops at once; it only decides what gets scored, under one assumption:</p>
   <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>=</mo><mn>1.25</mn></math>
-  <p>The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored is 1.17 (Grand Masters, decks with 0–1 pals); on Global jobs, 1.04. Every
-  deck scored is checked against it, and the largest ratio seen is reported with the result.</p>
+  <p>The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored is 1.18 (a Global validation deck), 1.17 on Grand Masters (decks with 0–1 pals). No
+  data-free cap can be proven: a target whose only source is one card's last link makes the ratio <math><mn>1</mn><mo>/</mo><mi>P</mi><mo>(</mo><mtext>link</mtext><mo>)</mo></math>.
+  Every deck scored is checked against it, the largest ratio seen is reported with the result, and validation fails
+  when one comes within 5% of the cap.</p>
   <p>Why not rank by exact odds alone: on the Global default (Unity Cup, everything owned), one trainee has 15.1 million
   legal decks, even with interchangeable cards merged. Listing them takes 3–4 s and scoring each exactly 21–25 µs, so the
   best deck for one trainee at one inheritance chance takes about 6 minutes natively. The search needs that value for
@@ -381,8 +383,12 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   Valid because <math><mo>log</mo><mspace width="0.1em"/><mover><mi>V</mi><mo>^</mo></mover></math> of one outfit at one chance is submodular in the set of cards: each target's factor is
   <math><mi>a</mi><mo>−</mo><mi>b</mi><mspace width="0.1em"/><msub><mi>m</mi><mi>g</mi></msub><mo>(</mo><mn>1</mn><mo>+</mo><mi>c</mi><mspace width="0.1em"/><msub><mi>m</mi><mi>w</mi></msub><mo>)</mo></math> in the deck's miss products, so a card gains less the more the deck already holds.</li>
   </ul>
-  <p>Configurations are visited best root bound first; the search stops at the first one whose bound fails. At most
-  50,000 decks per search; more ends the pass (step 18).</p>
+  <p>Configurations are visited best root bound first; the search stops at the first one whose bound fails. In the
+  pass that lists decks for exact scoring, a configuration is also skipped when a bound on the exact value of all its
+  decks, with no cap, is below the best exact value: given every card's chain progress, the targets are independent
+  except for one event's mutually exclusive outcomes, which only lower the value, so the average over progress states
+  of each target's best value given the state bounds every completion. At most 50,000 decks per search; more ends the
+  pass (step 18).</p>
 
   <p><strong>13. A proven filter.</strong> Before a deck is scored exactly, it is bounded by <math><mi>U</mi><mo>≥</mo><mi>V</mi></math>. Let <math><mi>x</mi></math> be the vector of
   links done after <math><mi>N</mi><mo>=</mo><mi>n</mi></math> chain events. For every combination of chain kinds and every <math><mi>n</mi></math>, it is checked exactly, over the
@@ -397,8 +403,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   set <math><mi>S</mi></math> of its targets, <math><mi>P</mi><mo>(</mo><mtext>all of</mtext><mspace width="0.3em"/><mi>S</mi><mo>)</mo><mo>≤</mo><munder><mo>∏</mo><mrow><mi>k</mi><mo>∈</mo><mi>S</mi></mrow></munder><mi>P</mi><mo>(</mo><mi>k</mi><mo>)</mo></math>): true for outcomes that each give one target, which
   exclude each other; checked exactly for every group, and a deck with a group that fails skips the filter. A target fed
   by two cards' chains puts both cards in one group; the progress check is then made over every up-set of that pair (any
-  rising function of two coordinates is a positive combination of up-set indicators). Decks with three cards feeding one
-  target, or two such pairs, skip the filter. <math><mi>U</mi></math> is within 0.2% of <math><mi>V</mi></math> on the reference setups and filters out almost every
+  rising function of two coordinates is a positive combination of up-set indicators). A target fed by three or more chain cards, or by a
+  second pair, is taken at its feeders' full progress (its factor only falls as links fail), so the rest keeps the
+  structure above. <math><mi>U</mi></math> is within 0.2% of <math><mi>V</mi></math> on the reference setups and filters out almost every
   candidate.</p>
 
   <p><strong>14. One trainee's exact best deck.</strong> For trainee <math><mi>u</mi></math> at her chances <math><msub><mi>q</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo></math> (her three careers, or one grid
@@ -483,6 +490,149 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p><strong>Data.</strong> Global master.mdb; card events from GameTora. The Grand Masters-era option uses a JP
   master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>
 
+  </details>
+
+<h3>The career planner, in detail</h3>
+  <p class="hint">Very technical: how the career planner chooses your next career and what its numbers mean, written so
+  another person or program could reimplement it. It builds on the model above (steps 4–8 and 19 score a career; steps
+  10–15 search decks). Nothing here is needed to use it.</p>
+  <details class="spec"><summary>Show the career planner</summary>
+  <p><strong>In short.</strong></p>
+  <ol>
+  <li>A career is a trainee and two of your veterans as parents; their own recorded parents are the grandparents. Every
+  number comes from what your veterans actually carry: their sparks and stars, their wins, their pinks (steps C1–C3).</li>
+  <li>The best career by odds is found by searching every trainee and pair of parents, best ceiling first, with the
+  deck search of the model (step C4).</li>
+  <li>The planner's pick asks a different question: which career, run next, takes you furthest toward a fully looped
+  parent (an n/n whose parents are both n/n)? It prices the cheapest route there, and scores each career by how much
+  her veteran shortens that route, averaged over everything she could roll (steps C5–C8).</li>
+  <li>Reroll, Compare and Add reuse the plan: a roll's saving is read from the plan's table of outcomes, and Compare is
+  the plan run again with her in your pool (steps C9–C10).</li>
+  </ol>
+  <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>a</mi></math>, <math><mi>b</mi></math> her parents (legacies), <math><mi>k</mi></math> a target, <math><mi>n</mi></math> the number of targets,
+  <math><mi>V</mi></math> the plan's expected careers to a fully looped parent, <math><mi>p</mi></math> a career's chance of landing every target.</p>
+
+  <p><strong>Lineage. C1. Legal careers.</strong> Trainee <math><mi>T</mi></math> is an uma you own (with any outfit you own); parents
+  <math><mi>a</mi></math> and <math><mi>b</mi></math> are two of your veterans: different characters, neither of them <math><mi>T</mi></math>'s, at most one borrowed. Each
+  parent's two recorded parents are the grandparents, as you entered or imported them; great-grandparents count for
+  nothing. Places you fix (a trainee, a parent) restrict the search to careers keeping them.</p>
+
+  <p><strong>C2. Affinity per legacy.</strong> With <math><mi>x</mi></math> one parent, <math><mi>y</mi></math> the other and <math><mi>g</mi></math> each of <math><mi>x</mi></math>'s own
+  parents (pair and trio the game's relation points, as in step 2; <math><mi>w</mi></math> the G1s two legacies both won):</p>
+  <math display="block"><msub><mi>A</mi><mi>x</mi></msub><mo>=</mo><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>x</mi><mo>)</mo><mo>+</mo><mtext>pair</mtext><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>+</mo><munder><mo>∑</mo><mi>g</mi></munder><mtext>trio</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>x</mi><mo>,</mo><mi>g</mi><mo>)</mo><mo>+</mo><mn>3</mn><mrow><mo>[</mo><mi>w</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>+</mo><munder><mo>∑</mo><mi>g</mi></munder><mi>w</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>g</mi><mo>)</mo><mo>]</mo></mrow></math><math display="block"><msub><mi>A</mi><mi>g</mi></msub><mo>=</mo><mtext>trio</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>x</mi><mo>,</mo><mi>g</mi><mo>)</mo><mo>+</mo><mn>3</mn><mi>w</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>g</mi><mo>)</mo></math>
+  <p>Shared G1s are counted per race from the legacies' recorded wins (relocated venues are the same race; multi-race
+  title saddles count for nothing); a win that is only a chance (a veteran a career would leave, with her schedule's
+  win chances) counts as an expected number. The trainee's own schedule doesn't enter: her affinity with her legacies
+  is set before she races. Her race schedule (step 9) uses her aptitudes after her legacies' pink sparks, and decides
+  the wins her own veteran will carry.</p>
+
+  <p><strong>C3. Inheritance and spark generation.</strong> For target <math><mi>k</mi></math>, slot <math><mi>ℓ</mi></math> carrying its spark at
+  <math><msub><mi>σ</mi><mi>ℓ</mi></msub></math> stars passes it at an inspiration with chance <math><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><msub><mi>σ</mi><mi>ℓ</mi></msub><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>A</mi><mi>ℓ</mi></msub><mo>/</mo><mn>100</mn><mo>)</mo><mo>)</mo></math>;
+  two inspirations (April of years two and three):</p>
+  <math display="block"><msub><mi>q</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∏</mo><mrow><mi>ℓ</mi><mtext> carries </mtext><mi>k</mi></mrow></munder><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>min</mi><mrow><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><msub><mi>σ</mi><mi>ℓ</mi></msub><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo></mrow><mo>)</mo></mrow><mn>2</mn></msup></math>
+  <p>A veteran that doesn't exist yet (the one a career would leave) carries every target with stars drawn from the
+  rank's mix, as an exact mixture. Spark generation at the end of the career depends on how many of the six ancestors
+  <math><msub><mi>c</mi><mi>k</mi></msub></math> carry the spark: a learned gold becomes a spark with chance <math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>, a white <math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>.
+  With these per-target <math><msub><mi>q</mi><mi>k</mi></msub></math> and generation factors, a career's odds <math><mi>p</mi></math> are the model's exact value (steps 4–8, 19)
+  with its best deck.</p>
+
+  <p><strong>Search. C4. The best careers by odds.</strong> Every legal (trainee, parents) is a candidate with a ceiling:
+  <math><mi>ρ</mi></math> times the product value with the trainee's best deck odds per target (each target's best over all her legal decks,
+  not one deck), times the spark generation scale. Candidates are taken best ceiling first; each gets its exact best deck
+  (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
+  <ul>
+  <li><strong>Earlier best decks.</strong> A deck fully checked at chances <math><mi>q</mi></math> worth <math><mi>v</mi></math> bounds the same trainee's best at
+  any chances <math><msup><mi>q</mi><mo>′</mo></msup></math> by <math><mi>v</mi><mo>·</mo><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>,</mo><mi>q</mi><mo>)</mo></math>, with <math><msub><mi>m</mi><mi>k</mi></msub><mo>=</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>e</mi><mi>k</mi></msub><mo>)</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>q</mi><mi>k</mi></msub><mo>)</mo></math>:</li>
+  </ul>
+  <math display="block"><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>,</mo><mi>q</mi><mo>)</mo><mo>=</mo><munder><mo>∏</mo><mrow><mi>k</mi><mo>:</mo><msubsup><mi>q</mi><mi>k</mi><mo>′</mo></msubsup><mo>&gt;</mo><msub><mi>q</mi><mi>k</mi></msub></mrow></munder><mfrac><mrow><mn>1</mn><mo>−</mo><msubsup><mi>m</mi><mi>k</mi><mo>′</mo></msubsup></mrow><mrow><mn>1</mn><mo>−</mo><msub><mi>m</mi><mi>k</mi></msub></mrow></mfrac></math>
+  <ul>
+  <li><strong>Product proofs.</strong> A deck search that found no deck above <math><mi>s</mi></math> at <math><mi>q</mi></math> bounds any other chances the same way
+  (times <math><mi>ρ</mi></math>).</li>
+  <li><strong>Deck classes.</strong> Trainees with the same outfit coverage of the targets, the same own-skill chances, the
+  same relevant cards barred and as many plain pals face one deck problem: the best deck is the same function of the
+  chances. Both kinds of proof are shared within such a class.</li>
+  <li><strong>Dominated veterans.</strong> A veteran no better than another in every slot it could fill (sparks, stars,
+  wins) can't make a better career with the same partner; once that partner's pair with the better veteran is ruled out,
+  so is hers.</li>
+  </ul>
+  <p>The search stops when the next ceiling is below the sixth-best career found. The first career's race schedule is
+  searched for the page.</p>
+
+  <p><strong>Plan. C5. The route and its cost <math><mi>V</mi></math>.</strong> The goal is a fully looped parent: an n/n whose parents
+  are both n/n. The route: an n/n of uma A, an n/n of uma B, then uma C trained with those two as parents until she lands
+  every target. A and B are stage candidates (C6). Each side is either a real n/n of hers you already have (free) or a
+  fresh one at her step cost (C7); C is any allowed uma, valued with the two n/n veterans as parents (each a
+  hypothetical veteran: every target at the rank's star mix, her best career's parents, her schedule's wins). Over every
+  pair of candidates and every choice of sides:</p>
+  <math display="block"><mi>V</mi><mo>=</mo><munder><mo>min</mo><mrow><mi>A</mi><mo>,</mo><mi>B</mi><mo>,</mo><mtext>sides</mtext></mrow></munder><mrow><mo>[</mo><mtext>side</mtext><mo>(</mo><mi>A</mi><mo>)</mo><mo>+</mo><mtext>side</mtext><mo>(</mo><mi>B</mi><mo>)</mo><mo>+</mo><munder><mo>min</mo><mi>C</mi></munder><mfrac><mn>1</mn><msub><mi>p</mi><mi>C</mi></msub></mfrac><mo>]</mo></mrow></math>
+  <p>With a real n/n of A and of B and C's odds on them, the goal is one stage away; with your own fully looped veteran,
+  <math><mi>V</mi><mo>=</mo><mn>0</mn></math>.</p>
+
+  <p><strong>C6. Stage candidates.</strong> At most 8 umas: the best career's trainee, the umas of its lineage, the umas
+  you hold veterans of (not borrowed), and the main search's other top trainees. If these give fewer than 4 (a loop being
+  started, or mob parents), the rest are filled with the owned umas whose ceiling is highest under a full loop lineage
+  (parents hypothetical n/n veterans of the first two candidates), with no deck search.</p>
+
+  <p><strong>C7. A candidate's step: the continuation.</strong> Rerunning candidate <math><mi>u</mi></math>'s best career until she lands
+  n/n takes <math><mn>1</mn><mo>/</mo><msub><mi>p</mi><mi>u</mi></msub></math> careers on average. Building first can be cheaper: careers whose veterans become better
+  parents for her raise <math><msub><mi>p</mi><mi>u</mi></msub></math>. Assumed form (fitted on traces of building, below): the <math><mi>j</mi></math>-th building
+  success comes with chance <math><msub><mi>λ</mi><mi>j</mi></msub></math> per career, and after <math><mi>j</mi></math> of them her odds are <math><msub><mi>p</mi><mi>j</mi></msub></math>:</p>
+  <math display="block"><msub><mi>λ</mi><mi>j</mi></msub><mo>=</mo><mi>λ</mi><msup><mrow><mo>(</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>φ</mi><mo>)</mo></mrow><mi>j</mi></msup><mo>)</mo></mrow><mn>1.5</mn></msup><mo>,</mo><mspace width="1em"/><msub><mi>p</mi><mi>j</mi></msub><mo>=</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>exp</mo><mrow><mo>(</mo><mo>ln</mo><mfrac><mi>p</mi><msub><mi>p</mi><mi>∞</mi></msub></mfrac><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>φ</mi><mo>)</mo></mrow><mi>j</mi></msup><mo>)</mo></mrow></math><math display="block"><mtext>step</mtext><mo>(</mo><mi>u</mi><mo>)</mo><mo>=</mo><munder><mo>min</mo><mi>n</mi></munder><mrow><mo>[</mo><munder><mo>∑</mo><mrow><mi>j</mi><mo>&lt;</mo><mi>n</mi></mrow></munder><mfrac><mn>1</mn><msub><mi>λ</mi><mi>j</mi></msub></mfrac><mo>+</mo><mfrac><mn>1</mn><msub><mi>p</mi><mi>n</mi></msub></mfrac><mo>]</mo></mrow></math>
+  <p>Each success closes a share <math><mi>φ</mi></math> of the gap in log odds to <math><msub><mi>p</mi><mi>∞</mi></msub></math>. The parameters come from the builders (C8): the most
+  efficient builder <math><msub><mi>b</mi><mn>1</mn></msub></math> for <math><mi>u</mi></math> (the largest <math><mtext>eff</mtext><mo>=</mo><msub><mi>p</mi><mi>ℓ</mi></msub><mo>(</mo><mn>1</mn><mo>/</mo><mi>p</mi><mo>−</mo><mn>1</mn><mo>/</mo><msub><mi>p</mi><mn>1</mn></msub><mo>)</mo></math>, with <math><msub><mi>p</mi><mi>ℓ</mi></msub></math> the chance her
+  veteran lifts <math><mi>u</mi></math>'s odds and <math><msub><mi>p</mi><mn>1</mn></msub></math> the mean odds it lifts them to) gives <math><mi>λ</mi><mo>=</mo><msub><mi>p</mi><mi>ℓ</mi></msub></math>; <math><msub><mi>p</mi><mi>∞</mi></msub></math> is 0.6 times <math><mi>u</mi></math>'s odds
+  with hypothetical n/n veterans of her two most efficient builders as parents; <math><mi>φ</mi><mo>=</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mn>1</mn></msub><mo>/</mo><mi>p</mi><mo>)</mo><mo>/</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>/</mo><mi>p</mi><mo>)</mo></math>. The share 0.6
+  and the exponent 1.5 were fitted to traces of building for Agnes Digital on four of the owner's pools (2, 5, 11 and
+  19 veterans): within 10–20% on 11 and 19; fits leaving one pool out ranged 0.6–1.0 and 1–3.</p>
+
+  <p><strong>C8. A career's score: saves per run.</strong> Running career <math><mi>c</mi></math> (trainee <math><mi>x</mi></math>, parents <math><mi>a</mi></math>, <math><mi>b</mi></math>)
+  leaves a veteran: her parents <math><mi>a</mi></math> and <math><mi>b</mi></math>, her G1 wins at her schedule's chances, and the targets she lands. Her
+  outcome <math><mi>ω</mi></math> is the set of targets landed (with the exact chance of each set from step 19, the scenario's golds
+  included) and each landed spark's stars (the rank's mix, independent). For each outcome:</p>
+  <ul>
+  <li>every stage candidate's odds with her veteran as a parent, with each of the candidate's two best partners, read
+  from the candidates' cached best decks at the new chances; a candidate whose odds rise gets a cheaper step (C7);</li>
+  <li>if she lands every target: her own n/n is a free side for her uma (as a candidate, or for any uma, joining the
+  trios); if both her parents are n/n as well, she is the goal: <math><msup><mi>V</mi><mo>′</mo></msup><mo>=</mo><mn>0</mn></math>;</li>
+  <li><math><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs, and <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>)</mo></math> the careers she saves.</li>
+  </ul>
+  <math display="block"><mtext>score</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mi>ω</mi></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>−</mo><mn>1</mn></math>
+  <p>That is "Saves per run": the route's careers today minus the average after running her, minus her run. For the
+  three highest and the best odds, a second step is added: her rolls at most one target short of n/n, as a parent of the
+  three highest builders, scored the same way, minus today's best score. The pick is the highest score; within 0.25
+  careers (or 5%) of it, the better own odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
+  <p><strong>Which careers are searched exactly.</strong> Every uma's best career (C4 restricted to her) is first valued
+  from her deck class's best decks at her own chances, with no deck search; this proxy is a real career she can run, so
+  never above her best. An exact search follows only where precision can change the answer: the stage candidates;
+  builders whose proxy efficiency is within 20% of a candidate's two most efficient; careers whose proxy savings come
+  within 20% of the shown rows, the pick or the second step's three. Before that search, the proxy is checked against
+  every bound the search would prune with; if none exceeds it, the proxy is her best career and no search runs. Other
+  rows keep the proxy career, marked as not searched.</p>
+
+  <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
+  chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. When the career on show is the
+  pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
+  her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
+  found, a refitted continuation. So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
+  effect could save: her pairings valued by ceilings over every partner (the lower of the trainee's ceiling and any
+  existing pair's exact value times <math><mtext>rise</mtext></math>), each candidate's step at its lowest over every number of builds. "No
+  careers saved" is shown as proven when <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>&lt;</mo><mn>0.5</mn></math>; otherwise it is provisional and the exact comparison (C10)
+  runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Improves your loop" at once, then the exact
+  count.</p>
+
+  <p><strong>C10. Compare and Add.</strong> Compare runs the plan again with her veteran added to your pool, and one
+  search for the best career with her as a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, clamped at 0 (a veteran never
+  makes a route longer: every route without her is still there, so a rise is the refit's noise). Add to veterans shows
+  that plan at once. Each uma's best career in a pool is kept; with one veteran added, a career is either the kept one or
+  uses her, so only careers with her as a parent are searched, with the kept value as the bar.</p>
+
+  <p><strong>C11. What is reported.</strong> The best careers by odds with their decks, targets, aptitudes and
+  schedule; the plan: <math><mi>V</mi></math>, its route (each step's odds, builds and careers), the options with each career's role
+  (in the route, its finisher, a candidate, a builder), score, lift chance and second step, and the pick's per-outcome
+  table with its bound. The planner's numbers depend on the job alone: its cache holds only each search's best decks,
+  not whatever a search happened to check, so earlier jobs, the order of work and kept results change how long it
+  takes, never what it says. Kept results survive a reload (stored in the browser, keyed by the solver's and data's
+  fingerprints).</p>
   </details>
 
 <h3>Sources</h3>
