@@ -35,13 +35,14 @@ const btn = (label, cls, fn) => { const b = el('button', 'btn' + (cls ? ' ' + cl
 // phase at work; the answer (career, tree places, veteran analysis) is drawn once, when the run ends. Until then the
 // previous answer stays on screen, dimmed, its actions off.
 let searching = false, phase = 'search', t0 = 0, tick = null, timer = null, myId = 0;
+let started = false;   // a job of this run is under way (the pause before it dims nothing: an edit that ends where it started runs none)
 let phaseNote = '';   // the plan phase's lead: what the search found ("Weighed N careers in X s.")
 let status = { kind: 'loading', text: 'Loading…' };
 let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
   const n = $('run-note');
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
-  const old = searching && !!shown();   // the previous answer, on screen until this run's
+  const old = searching && started && !!shown();   // the previous answer, on screen until this run's
   $('results').classList.toggle('stale', old || (!searching && ['error', 'empty'].includes(status.kind)));
   $('tree').classList.toggle('stale', old);
   $('results').setAttribute('aria-busy', String(searching));
@@ -70,7 +71,7 @@ function schedule() {
   simulationId++;
   if (simulation.state === 'busy') Object.assign(simulation, { state: 'ready', r: null, kind: null });
   Object.assign(simulation, { refining: false, provisional: false });
-  searching = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); paint();
+  searching = true; started = false; phase = 'search'; phaseNote = ''; t0 = performance.now(); paint();
   timer = setTimeout(search, 600);
 }
 
@@ -125,7 +126,7 @@ async function search() {
   if (last && last.key === key && last.plan === places && planS.state !== 'error') {
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
-  searching = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
+  searching = true; started = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   const fail = (text) => { status = { kind: 'error', text }; last = null; planS = { state: 'none' }; simulation = { state: 'none' }; };
   try {
     const m = await run(job);

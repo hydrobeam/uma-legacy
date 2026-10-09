@@ -203,7 +203,9 @@ async function careerPage(b) {
   const oneAnswer = async (pre) => {
     const seq = await pg.evaluate(() => window.__seq), busy = seq.filter(s => s.busy), end = seq.at(-1);
     const shows = (s) => s.who + '/' + s.draft, phases = busy.map(s => s.phase).filter((p, i, a) => p && p !== a[i - 1]);
-    const ok = busy.length > 0 && !end.busy && busy.every(s => shows(s) === pre && (!s.draft || s.stale)) && end.draft !== '' && !end.stale
+    // dimmed from when its job starts (the pause before it dims nothing) to the answer
+    const dim = busy.findIndex(s => s.stale);
+    const ok = busy.length > 0 && !end.busy && busy.every(s => shows(s) === pre) && (!busy.some(s => s.draft) || dim >= 0 && busy.slice(dim).every(s => !s.draft || s.stale)) && end.draft !== '' && !end.stale
       && seq.slice(seq.indexOf(busy.at(-1)) + 1).every(s => shows(s) === shows(end));
     return { ok, phases, detail: `phases ${phases.join(' > ')} · before ${pre.slice(0, 60)} · busy shows ${[...new Set(busy.map(shows))].map(x => x.slice(0, 40)).join(' | ')} · end ${shows(end).slice(0, 60)}` };
   };
@@ -1071,6 +1073,14 @@ const TESTS = {
     await pg.locator('.cpop [data-act="own"]').uncheck(); await done();
     const edit = await oneAnswer(preEdit);
     check('career: an edit keeps the old answer on screen, dimmed, through both phases (no interim career), then draws the new one', edit.ok && edit.phases.join() === 'search,plan', edit.detail);
+    // an edit undone within the pause runs nothing and never dims the answer
+    if (!(await pg.locator('.cpop:not([hidden]) [data-act="own"]').count())) await pg.locator('#tree-deck .dc').first().click();
+    await pg.waitForSelector('.cpop:not([hidden]) [data-act="own"]');
+    const pre3 = await showsNow(); await pg.evaluate(() => { window.__seq = []; });
+    await pg.evaluate(() => { const c = document.querySelector('.cpop [data-act="own"]'); c.click(); c.click(); });
+    await done();
+    const seq3 = await pg.evaluate(() => window.__seq);
+    check('career: an edit undone within the pause runs nothing and never dims the answer', seq3.length > 0 && !seq3.some(s => s.stale) && (await showsNow()) === pre3, JSON.stringify(seq3.map(s => [s.busy, s.stale])).slice(0, 120));
     check('career: a deck card\'s panel marks it not owned; the search drops it or borrows it', await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff[id] === false, dcid)
       && (!(await pg.locator(`#tree-deck .dc[data-cid="${dcid}"]`).count()) || await pg.locator(`#tree-deck .dc.bor[data-cid="${dcid}"]`).count() === 1));
     await pg.click('#o-cards'); await dialog(pg, 'set-cards'); await pg.click('#c-all'); await pg.locator('#set-cards .dclose').click(); await done();
