@@ -1,5 +1,5 @@
 //! The planner's pick of the next career: a one-step rollout with a stationary tail over the K best careers by P(all)
-//! (`rollout: K`; docs/SOLVER.md "Rollout").
+//! (`rollout: K`; docs/SOLVER.md "Solver-only career fields").
 //!
 //! For each candidate career a (trainee, parents, her best deck):
 //!

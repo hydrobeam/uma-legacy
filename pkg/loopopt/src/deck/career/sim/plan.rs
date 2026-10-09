@@ -1,4 +1,4 @@
-//! The planner's pick on the surrogate simulator (`plan` on a career job; docs/SOLVER.md "Plan").
+//! The planner's pick on the surrogate simulator (`plan` on a career job; docs/SOLVER.md "Solver-only career fields"; `next`: "Next career").
 //!
 //! The objective is the one the simulator measures: the expected number of careers until a career's veteran lands
 //! every target. Per candidate career c (trainee, parents, her exact best deck), base policy B and sample j (derived,
