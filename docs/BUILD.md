@@ -61,8 +61,10 @@ The solver runs as WebAssembly in a Web Worker (`worker.template.js`); a browser
 message saying so. Source map of `src/`: `main.js` (entry), `settings.js` (saved settings), `state.js`, `data.js`,
 `search.js` (auto-search), `save.js` (what a settings change does), `engine.js` (the worker), `job.js` (job fields both pages send), `roster.js`, `targets.js`, `scenario.js`, `cards.js`, `results.js`, `popover.js`
 (card and member panels), `agenda.js` (race schedule), `affinity.js`, `io.js` (export/import), `images.js`,
-`sortmenu.js`, `dom.js`; the career page: `career.js` (entry, search, results), `vets.js` (veterans and the tree
-editor), `umadump.js` (import).
+`sortmenu.js`, `dom.js`, `setup.js` (the settings editors both pages share), `afftable.js` (a career's affinity, legacy by
+legacy), `odds.js` (the odds popup), `gmtip.js` (the game-style tooltips); the career page: `career.js` (entry, search,
+results), `vets.js` (veterans and the tree editor), `details.js` (the veteran card, the game's Umamusume Details
+screen), `statestore.js` (the solver's kept work in IndexedDB), `umadump.js` (import).
 
 ## Tests
 
