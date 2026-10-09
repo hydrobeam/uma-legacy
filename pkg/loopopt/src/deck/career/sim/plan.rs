@@ -935,11 +935,12 @@ impl ScoreBase<'_> {
 /// (B's candidate index, partner side real, C's step)
 fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, lv: &[Legacy], iv: usize, x: usize, buf: &mut Vec<f64>) -> Vec<(usize, bool, f64)> {
     let her_id = d.umas[x].id; let mut out = vec![];
+    // the pool of lv, with each side pushed in turn (the same Pool as `Env::pool` of lv and the side)
+    let mut p8 = s.env.pool(lv); let il = lv.len();
     for ib in 0..bs.cands.len() {
         let pu = bs.cands[ib]; if d.umas[pu].id == her_id { continue; }
         for (real, leg) in bs.sides.get(ib).map_or(&[][..], |v| &v[..]) {
-            let mut l = lv.to_vec(); l.push(leg.clone()); let il = l.len() - 1;
-            let p8 = s.env.pool(&l);
+            s.env.pool_push(&mut p8, leg);
             let mut cs: Vec<(f64, usize)> = bs.all.iter().copied()
                 .filter(|&cu| d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &p8, cu, iv, il))
                 .filter_map(|cu| { let (q, _, c) = s.env.lineage(&p8, cu, iv, il); s.env.ceiling(cu, &q, c).map(|ub| (ub, cu)) }).collect();
@@ -947,6 +948,7 @@ fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, lv: &[Legacy], iv: usize, x:
             let mut best = 0.0f64;
             for (ub, cu) in cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &p8, cu, iv, il, buf); if v > best { best = v; } }
             if best > 0.0 { out.push((ib, *real, 1.0 / best)); }
+            s.env.pool_pop(&mut p8);
         }
     }
     out

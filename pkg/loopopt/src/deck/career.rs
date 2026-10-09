@@ -349,6 +349,14 @@ impl<'a> Env<'a> {
         w.sort_by_key(|x| x.0);
         Who { ix: self.uix(chara), chara, wins: w, stars: std::rc::Rc::new(self.stars_of(sparks)), pinks: std::rc::Rc::new(pinks.to_vec()), mix }
     }
+    /// `pool` of the legacies so far plus `l` (pop with `pool_pop`)
+    fn pool_push(&self, p: &mut Pool, l: &Legacy) {
+        let me = self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix);
+        let gp: Vec<Who> = l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect();
+        p.gpc.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
+        p.me.push(me); p.gp.push(gp); p.borrowed.push(l.borrowed);
+    }
+    fn pool_pop(&self, p: &mut Pool) { p.me.pop(); p.gp.pop(); p.borrowed.pop(); p.gpc.pop(); }
     fn pool(&self, legs: &[Legacy]) -> Pool {
         let me: Vec<Who> = legs.iter().map(|l| self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix)).collect();
         let gp: Vec<Vec<Who>> = legs.iter().map(|l| l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect()).collect();
@@ -381,8 +389,13 @@ impl<'a> Env<'a> {
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
     fn set_trainee(&mut self, t: usize, q: &[f64]) {
-        let uncv = &self.uncv;
-        self.model.ews[t] = self.ew0[t].iter().map(|o| o.iter().zip(uncv).map(|(e, &i)| 1.0 - (1.0 - e) * (1.0 - q[i])).collect()).collect();
+        let uncv = &self.uncv; let ew0 = &self.ew0[t]; let cur = &mut self.model.ews[t];
+        // (in place when the shape is already this one: the same values)
+        if cur.len() == ew0.len() && cur.iter().zip(ew0).all(|(c, o)| c.len() == o.len().min(uncv.len())) {
+            for (c, o) in cur.iter_mut().zip(ew0) { for ((c, e), &i) in c.iter_mut().zip(o).zip(uncv) { *c = 1.0 - (1.0 - e) * (1.0 - q[i]); } }
+        } else {
+            *cur = ew0.iter().map(|o| o.iter().zip(uncv).map(|(e, &i)| 1.0 - (1.0 - e) * (1.0 - q[i])).collect()).collect();
+        }
     }
     fn ents_of(&self, sel: &Sel) -> Vec<(Src, Kind)> { sel.ents.iter().map(|&j| (self.space.srcs[j].clone(), self.space.kind[j])).collect() }
     /// exact P(all) of trainee t (her inheritance already folded in) with deck `sel`, scaled per target; `sets`: also the
@@ -414,9 +427,10 @@ impl<'a> Env<'a> {
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
     fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
-        let (dw, dg) = self.dmax[t].clone()?;
+        self.dmax[t].as_ref()?;
         self.set_trainee(t, q);
-        let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, &dw, &dg)).fold(0.0f64, f64::max);
+        let (dw, dg) = self.dmax[t].as_ref().unwrap();
+        let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
         Some(EXACT_RHO * c * self.model.fixed_factor() * pv)
     }
     /// Trainee t's best deck at the chances already folded in (`set_trainee`), as the per-uma search finds it: the best

@@ -1840,6 +1840,9 @@ impl<'a> DeckSpace<'a> {
         let glk: &[u8] = &lt.glk;
         let mut cfgs: Vec<Cfg> = vec![];
         let mut dw = vec![0.0f64; nu]; let mut dg = vec![0.0f64; nu];
+        // (scratch of the configuration build: a candidate's groups, copied into its Cfg only when kept; the root's
+        // clause sums)
+        let mut gsb: Vec<(usize, usize)> = vec![]; let mut cvr = vec![0.0f64; clauses.len()];
         // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
         // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
         // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
@@ -1870,14 +1873,18 @@ impl<'a> DeckSpace<'a> {
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
             let mut rpk: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = None;
-            let make_rpk = || -> Vec<Vec<Vec<f64>>> { groups_all.iter().map(|l| {
-                let mut x = vec![0.0f64; nu]; let mut y = vec![0.0f64; nu];
-                let rat: Vec<Vec<f64>> = l.iter().map(|&j| {
+            // (the entries' ratios in one flat scratch, rat[e * noq + i], and one scratch for each sorted column: the
+            // same values, sorted the same way)
+            let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
+            let mut make_rpk = || -> Vec<Vec<Vec<f64>>> { groups_all.iter().map(|l| {
+                let noq = oq.len();
+                rat.clear();
+                for &j in l.iter() {
                     for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                    oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }).collect()
-                }).collect();
-                (0..oq.len()).map(|i| {
-                    let mut r: Vec<f64> = rat.iter().map(|v| v[i]).collect(); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                    rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }));
+                }
+                (0..noq).map(|i| {
+                    r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
                     let mut pre = vec![1.0f64; size + 1];
                     for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
                     pre
@@ -1890,9 +1897,10 @@ impl<'a> DeckSpace<'a> {
                     let plain = rem - np;
                     if plain > nplain { continue; }
                     if let Some(p) = self.dj.pals { if np + plain < p || plain > p { continue; } }
-                    let mut gs: Vec<(usize, usize)> = vec![];
+                    let gs = &mut gsb; gs.clear();
                     for i in 0..nk { let c = if i == ki22 { real22 } else { cnt[i] }; if c > 0 { gs.push((i, c)); } }
                     if np > 0 { gs.push((nk, np)); }
+                    let gs = &gsb[..];
                     if all_lk & !gs.iter().fold(0u8, |m, &(i, _)| m | glk[i]) != 0 { continue; }
                     let ng = gs.len();
                     // the per-target bound first (row 0 of the suffix table the DFS builds, the same products in the same
@@ -1909,14 +1917,14 @@ impl<'a> DeckSpace<'a> {
                     // sp[0] of the suffix table: the same products in the same order (from the last group down)
                     for i in 0..oq.len() { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
                     // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound
-                    let mut cv = vec![0.0f64; clauses.len()];
+                    let cv = &mut cvr; cv.iter_mut().for_each(|x| *x = 0.0);
                     for &(ci, i, no) in &og {
                         let q = oq[i].2; let mut m = 0.0f64;
                         for o in 0..no { m = m.max(orow[i + o].eval(q, &dw, &dg).min(p0[i + o] * sp0[i + o])); }
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
-                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs, gm: gm.clone(), rpk: rpk.clone() });
+                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone(), rpk: rpk.clone() });
                 }
             }
         }
@@ -1975,6 +1983,10 @@ impl<'a> DeckSpace<'a> {
         struct Hc { pid: usize, fa: Vec<f64> }
         let mut hc: Vec<Hc> = vec![];
         let mut pid_next = 0usize;
+        // (buffers of the expanded configuration, reused: clause sums, B's odds, the DFS rows, the locked-card table)
+        let (mut cvx, mut pdwx, mut pdgx): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
+        let (mut st_sel, mut st_pw, mut st_pg): (Vec<usize>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
+        let mut avail_buf: Vec<Vec<u8>> = vec![];
         // (a child's touched targets: their odds and the parent's factors they replace)
         let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
         // the per-parent rows need every outfit row to read the nu targets
@@ -2008,8 +2020,9 @@ impl<'a> DeckSpace<'a> {
             let ngs = cf.gs.len();
             // (allocated only when used)
             let nb = if one_b { ngs + 1 } else { 0 };
-            let (mut so, mut s1) = (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb]);
-            let (mut po, mut p1) = (vec![vec![1.0f64; oq.len()]; nb], vec![vec![1.0f64; oq.len()]; nb]);
+            // (vec![x; 0] would still build x: none without borrowing)
+            let (mut so, mut s1) = if nb > 0 { (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb]) } else { (vec![], vec![]) };
+            let (mut po, mut p1) = if nb > 0 { (vec![vec![1.0f64; oq.len()]; nb], vec![vec![1.0f64; oq.len()]; nb]) } else { (vec![], vec![]) };
             if one_b { for g in (0..ngs).rev() { let (gb, c) = (&gbs[g], cf.gs[g].1);
                 for t in 0..nu {
                     so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t]; so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
@@ -2018,8 +2031,8 @@ impl<'a> DeckSpace<'a> {
                 }
                 for i in 0..oq.len() { po[g][i] = gb.rown[i][c] * po[g + 1][i]; p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]); }
             } }
-            let mut cv = vec![0.0f64; clauses.len()];
-            let mut pdw = vec![0.0f64; nu]; let mut pdg = vec![0.0f64; nu];
+            cvx.clear(); cvx.resize(clauses.len(), 0.0); pdwx.clear(); pdwx.resize(nu, 0.0); pdgx.clear(); pdgx.resize(nu, 0.0);
+            let (cv, pdw, pdg) = (&mut cvx[..], &mut pdwx[..], &mut pdgx[..]);
             let ng = gs.len();
             // the state-conditioned bound of this configuration: chain positions (sorted kinds, the key's state
             // distribution projected on the positions whose group has chain targets), per group its slots' positions
@@ -2085,7 +2098,8 @@ impl<'a> DeckSpace<'a> {
                     struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64>, pid: usize }
                     // (pw, pg: one row of nu per depth 0 ..= the deck's slots, row d at d * nu: the partial deck with d cards)
                     let nrows = gs.iter().map(|x| x.1).sum::<usize>() + 1;
-                    let mut st = St { sel: vec![], pw: vec![1.0; nrows * nu], pg: vec![1.0; nrows * nu], pid: pid_next };
+                    let mut st = St { sel: std::mem::take(&mut st_sel), pw: std::mem::take(&mut st_pw), pg: std::mem::take(&mut st_pg), pid: pid_next };
+                    st.sel.clear(); st.pw.clear(); st.pw.resize(nrows * nu, 1.0); st.pg.clear(); st.pg.resize(nrows * nu, 1.0);
                     let nhc = 2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1);
                     while hc.len() < nhc { hc.push(Hc { pid: usize::MAX, fa: vec![0.0; noq * nu] }); }
                     // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
@@ -2194,14 +2208,15 @@ impl<'a> DeckSpace<'a> {
                     // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
                     // later group (a branch that can no longer place every locked card is dropped)
                     let all_locked = all_lk;
-                    let mut avail: Vec<Vec<u8>> = vec![vec![]; ng + 1];
-                    avail[ng] = vec![0];
+                    let mut avail = std::mem::take(&mut avail_buf);
+                    avail.truncate(ng + 1); avail.resize_with(ng + 1, Vec::new);
+                    avail[ng].clear(); avail[ng].push(0);
                     for g in (0..ng).rev() {
-                        let l = gs[g].0; let mut v = vec![0u8; l.len() + 1]; v[l.len()] = avail[g + 1][0];
+                        let l = gs[g].0; let next = avail[g + 1][0];
+                        let v = &mut avail[g]; v.clear(); v.resize(l.len() + 1, 0u8); v[l.len()] = next;
                         for p in (0..l.len()).rev() { v[p] = v[p + 1] | lbit[l[p]]; }
-                        avail[g] = v;
                     }
-                    if all_locked & !avail[0][0] != 0 { continue; }
+                    if all_locked & !avail[0][0] != 0 { avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg; continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
                            mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32) -> bool,
                            leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
@@ -2284,6 +2299,7 @@ impl<'a> DeckSpace<'a> {
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu]) }
                         else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
                     pid_next = st.pid;
+                    avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
                 }
