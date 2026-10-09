@@ -100,6 +100,8 @@ h1 { font-weight: 900; font-size: clamp(1.6rem, 3.2vw, 2.2rem); letter-spacing: 
 #results { transition: opacity 0.15s; }
 #results[aria-busy="true"] { opacity: 0.5; transition: opacity 0.25s 0.8s; }
 #results.stale { opacity: 0.45; }
+/* the career planner while a run works on the next answer: the planner's places and deck of the old one dimmed too */
+#tree.stale .pn.ghost, #tree.stale .tdeck { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) { #results, #results[aria-busy="true"] { transition: none; } }
 /* phone: the status line's copy floats at the bottom of the screen as a button back to the results */
 .runpill { display: none; }

@@ -88,8 +88,15 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 1★, keep hers, or none; a new parent's own two parents get the same). The trainee shows the affinity her six
 legacies hold (parents' and grandparents' parts).
 
-The search shows the career with the best odds first. Then the planner picks the next career (the status line says
-"Planning…", then "Planned in X s"; nothing simulated). It values your veterans by the expected number of careers to a
+Every edit starts one run, and a run gives one answer. It searches the careers by odds, then, with the trainee left
+to the planner, plans (nothing simulated); the status line names the phase at work ("Searching careers… 2 s", then
+"Weighed 3,564 careers in 0.4 s. Planning your next career… 3 s") and ends on "Weighed … The best odds are checked
+exact … Planned in X s". Nothing of the run is drawn before it ends: the tree's picks, the career, the veteran you
+got and *Options* all come from its answer, the planner's pick (the best odds when the trainee is yours, or when the
+plan fails: "Plan not made: …"). Until then the previous answer stays on screen, dimmed, with *Compare*, *Reroll*,
+*Add to veterans* and *Use this* off; an edit during a run stops it and starts a new one. Internally a run is two
+solver jobs, the search and then the same job with `next`, which reuses the search the worker keeps (a second job
+costs about 3 ms in wasm, and the plan does the same work as one combined job). The planner values your veterans by the expected number of careers to a
 *fully looped parent*: the cheapest trio, 8/8s of two umas (A and B) and then a third (C) from both. A's and B's
 steps count building: each one's odds can rise, each lift coming from some career's veteran used as her parent, so a
 step is "build while it pays, then run her" (rate and step fitted to your veterans now, the curve's shape to
@@ -157,8 +164,8 @@ result, drawn as Reroll draws; there is no default result). *Your veterans* are 
 parents' faces); a card, or a legacy's portrait in *Career Info*, opens her popup: her sparks and her parents' as the
 game's spark bars, edited in place (click a bar for its stars, × removes, + adds), her G1 wins, and *change who she is*
 for her and her parents. The tree's popups show the same bars without the "Sparks" header. Every dialog on the page has
-the game's look (green title bar, pill buttons) and a hovered or focused control's tooltip shows as the game's balloon. It starts as a random result of the career on show, drawn exactly as **Reroll** draws (below), and is drawn again
-whenever a new search result arrives; it does not compare until you press Compare. Set it to what
+the game's look (green title bar, pill buttons) and a hovered or focused control's tooltip shows as the game's balloon. It starts as a random result of the career on show, drawn exactly as **Reroll** draws (below), and is drawn again,
+once, whenever a run's answer arrives; it does not compare until you press Compare. Set it to what
 she actually landed (click a spark for its stars, × to remove, + to add; *G1 wins · edit* opens the G1 wins editor
 described under *Your veterans*, where the G1s she could enter at a turn are offered, her schedule's race first with its
 win odds, and a win in her schedule shows its odds in the turn bar) and press **Compare**. The *Comparison* panel's header gives the chance a roll of this career improves your loop (*1/N to improve*). The panel says it in one line: *Saves N careers*, *Parent of the next career* (under half a career, but
@@ -195,8 +202,8 @@ to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Spec
 to what odds, and the two-deep part; **What do these mean?** explains it: the planner's expected careers to a fully looped
 parent with today's veterans, worked out again with her veteran for every result she could roll, averaged by their
 chances, minus the run itself), tags *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
-one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). While the planner works, the six best by odds with
-"planning…".
+one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). With no plan (the trainee chosen, or the plan
+failed), the six best by odds, with no saving.
 
 With no veterans the status line offers **Try sample veterans**: six mob umas drawn at random from the game's (its own
 names and portraits; no relation points, no G1 wins), each with two random mob parents, carrying at 1★ only the targets nothing but
