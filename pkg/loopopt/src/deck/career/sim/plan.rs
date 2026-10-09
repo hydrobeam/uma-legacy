@@ -773,7 +773,10 @@ pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: 
 pub(super) type Trio = (usize, usize, f64, bool, bool);
 /// V over the trios at step costs c1
 fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
-    combos.iter().map(|&(ia, ib, c3, ra, rb)| (if ra { 0.0 } else { c1[ia] }) + (if rb { 0.0 } else { c1[ib] }) + c3).fold(f64::INFINITY, f64::min)
+    // (a plain comparison: no value here is NaN, so the same minimum as f64::min)
+    let mut best = f64::INFINITY;
+    for &(ia, ib, c3, ra, rb) in combos { let v = (if ra { 0.0 } else { c1[ia] }) + (if rb { 0.0 } else { c1[ib] }) + c3; if v < best { best = v; } }
+    best
 }
 /// An exact memo of a pure function of its key, owned (through an `Rc`) by the one object whose fixed parameters the
 /// function reads; a hit returns the value a miss computed for the same key bits, so outputs are the same by
@@ -996,18 +999,36 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     let mut scratch: Vec<Vec<f64>> = vec![vec![]; nu];
     let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
         let mut out = vec![0.0f64; nleaf];
+        // per target and star level: x and 1 - x (the same expressions the fold took per branch)
+        let xs: Vec<[f64; 4]> = (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| st.x0[k] * st.xm[sg])).collect();
+        let xc: Vec<[f64; 4]> = xs.iter().map(|r| r.map(|x| 1.0 - x)).collect();
         for tab in s.cache.decks[bs.cands[st.ui]][..st.nd].iter().flat_map(|dk| dk.tab.iter()) {
-            fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64], sc: &mut [Vec<f64>]) {
+            fn rec(t: &[f64], k: usize, leaf: usize, xs: &[[f64; 4]], xc: &[[f64; 4]], nu: usize, out: &mut [f64], sc: &mut [Vec<f64>]) {
                 if k == nu { if t[0] > out[leaf] { out[leaf] = t[0]; } return; }
+                if nu - k == 2 {
+                    // the last two levels unrolled: t holds 4 values
+                    let (t0, t1, t2, t3) = (t[0], t[1], t[2], t[3]);
+                    let (xa, ca, xb, cb) = (&xs[k], &xc[k], &xs[k + 1], &xc[k + 1]);
+                    for sg in 0..4usize {
+                        let f0 = t0 * ca[sg] + t1 * xa[sg]; let f1 = t2 * ca[sg] + t3 * xa[sg];
+                        let l1 = leaf | sg << (2 * k);
+                        for sg2 in 0..4usize {
+                            let v = f0 * cb[sg2] + f1 * xb[sg2];
+                            let li = l1 | sg2 << (2 * (k + 1));
+                            if v > out[li] { out[li] = v; }
+                        }
+                    }
+                    return;
+                }
                 let (f, rest) = sc.split_first_mut().unwrap();
                 for sg in 0..4usize {
-                    let x = st.x0[k] * st.xm[sg];
+                    let (x, c) = (xs[k][sg], xc[k][sg]);
                     let h = t.len() / 2;
-                    f.clear(); f.extend((0..h).map(|i| t[2 * i] * (1.0 - x) + t[2 * i + 1] * x));
-                    rec(f, k + 1, leaf | sg << (2 * k), st, nu, out, rest);
+                    f.clear(); f.extend((0..h).map(|i| t[2 * i] * c + t[2 * i + 1] * x));
+                    rec(f, k + 1, leaf | sg << (2 * k), xs, xc, nu, out, rest);
                 }
             }
-            rec(tab, 0, 0, st, nu, &mut out, &mut scratch);
+            rec(tab, 0, 0, &xs, &xc, nu, &mut out, &mut scratch);
         }
         out
     }).collect();
