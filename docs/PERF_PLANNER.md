@@ -106,3 +106,11 @@ the card count is O(n^2) and goes stale after a toggle; `renderPool` redraws the
 estimate); CSS and the shared data are inlined into each page and re-fetched after the 5-minute HTML cache. Code
 health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 lines) mixes job building, the
 plan/compare/reroll state machines, views and import/export.
+
+## Done
+
+- `upper_na` relaxed instead of giving up: a target with three or more feeding chain cards, or two feeders other than
+  the one pair, is taken at its feeders' full progress (a valid constant bound; derivation in the code). Grand Masters
+  plan (gm16): exact scorings 112,014 -> 17,350, time 44.0 -> 41.5 s (loaded machine; the search's 129M nodes
+  dominate there); Global jobs exact -2% to -32%; all six plan outputs identical; `UPPER_CHECK=1` on the Grand
+  Masters deck jobs: every scored deck covered, none below exact, bound/exact at most 1.29.

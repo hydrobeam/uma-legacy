@@ -866,16 +866,32 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
     for _ in 0..filler { chains.push(((2, 2, 0), vec![])); }
     chains.sort_by(|a, b| a.0.cmp(&b.0));
     let kinds: Vec<Kind> = chains.iter().map(|c| c.0).collect();
-    // groups: cards joined by a target their chains both feed; at most one group of two cards, none larger
+    // groups: cards joined by a target their chains both feed; at most one group of two cards, none larger. A target
+    // that would join a larger group (three or more feeders, or two feeders other than the one pair) is "maxed": its
+    // factor is taken at every feeder's full progress, a constant, and it leaves its feeders' target lists. Valid
+    // (derived): per target phi = G(1 - ng) + W(ng - nh a) with a = (1 - e)(1 - q) in [0, 1] and G > W, so phi >= 0
+    // (nh <= ng) and phi falls with ng and with nh; the miss products only fall as links progress (each link's factor
+    // is at most 1), so f_k(L) <= f_k(full progress) on every chain state L, and E[prod_k f_k] <= E[prod_kept f_k] x
+    // prod_maxed f_k^max; the kept targets then meet the structure the bound below needs.
     let mut feeders: Vec<Vec<usize>> = vec![vec![]; nu];
     for (ci, (_, ts)) in chains.iter().enumerate() { for (k, _) in ts { feeders[*k].push(ci); } }
     let mut pair: Option<(usize, usize)> = None;
+    let mut maxed: Vec<Option<(f64, f64)>> = vec![None; nu];
     for k in 0..nu {
-        match feeders[k].len() {
-            0 | 1 => {}
-            2 => { let p = (feeders[k][0], feeders[k][1]); if pair.map_or(false, |x| x != p) { return None; } pair = Some(p); }
-            _ => { return None; }
+        let mx = match feeders[k].len() {
+            0 | 1 => false,
+            2 => { let p = (feeders[k][0], feeders[k][1]); if pair.map_or(false, |x| x != p) { true } else { pair = Some(p); false } }
+            _ => true,
+        };
+        if mx {
+            let (mut g, mut h) = (ng0[k], nh0[k]);
+            for &ci in &feeders[k] { let cum = &chains[ci].1.iter().find(|x| x.0 == k).unwrap().1; let last = cum[cum.len() - 1]; g *= last.0; h *= last.1; }
+            maxed[k] = Some((g, h));
         }
+    }
+    if maxed.iter().any(|m| m.is_some()) {
+        for c in chains.iter_mut() { c.1.retain(|(k, _)| maxed[*k].is_none()); }
+        for k in 0..nu { if maxed[k].is_some() { feeders[k].clear(); } }
     }
     let fed: Vec<bool> = (0..nu).map(|k| !feeders[k].is_empty()).collect();
     let kl = if kinds.is_empty() { None } else { Some(key_level(&kinds)) };
@@ -897,7 +913,7 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
         let mut best = 0.0f64;
         for o in 0..opts.len() {
             let mut other = 1.0;
-            for k in 0..nu { if !fed[k] { other *= phi(o, q, k, ng0[k], nh0[k]); } }
+            for k in 0..nu { if let Some((g, h)) = maxed[k] { other *= phi(o, q, k, g, h); } else if !fed[k] { other *= phi(o, q, k, ng0[k], nh0[k]); } }
             // per single card and links done: the product over the targets only it feeds
             let single = |ci: usize, l: usize| -> f64 { chains[ci].1.iter().filter(|(k, _)| feeders[*k].len() == 1).map(|(k, cum)| phi(o, q, *k, ng0[*k] * cum[l].0, nh0[*k] * cum[l].1)).product() };
             let comp: Vec<Vec<f64>> = (0..chains.len()).map(|ci| (0..=chains[ci].0 .1 as usize).map(|l| single(ci, l)).collect()).collect();
