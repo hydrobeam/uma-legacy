@@ -12,7 +12,8 @@ First plan on the owner's 16-veteran export, in the page: about 12 s (2026-10-08
 credit raised p16's exact builder searches 9 -> 28 (native plan about 1.4 -> 1.8 s). Reroll: about 30 ms of solver per
 roll; a table zero is now proven (y_hi < 0.5) or checked in the background; a saving roll's exact check and Compare are
 one planner run with her added (warm, native about 0.7-0.9 s). Sample mob veterans: native 25.2 -> about 8-9 s
-(certified proxies). Grand Masters: native 44 -> about 2.3-4 s.
+(certified proxies) -> about 7 s on main 619c0ed -> about 2.1 s (2026-10-09, identical deck problems searched once:
+nodes 67.3M -> 5.4M; now about 1.4x p16 at the same load, was 5.7x). Grand Masters: native 44 -> about 2.3-4 s.
 
 Merged on main (all byte-identical on val/plan except the deliberate re-baselines: the winners-only cache, the Cont
 proxy, the own-8/8 credit): deterministic cache, class-keyed proofs, planner arithmetic (Cont tables, fold buffers),
@@ -156,6 +157,24 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 li
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- Sample mob veterans (val/plan boot_mob, the page's "Try sample veterans"), 2026-10-09. Cause: a sample pool is six mob
+  veterans with one 1-star spark each and mob parents; no mob is in `data.umas`, so no relation or race points anywhere and
+  every draw is the same problem (verified: two fresh draws give the main search's and the plan's work counters to the
+  unit). For every trainee all 15 parent pairs then have bit-identical chances, and every trainee of one deck class has
+  the same chances too. Nothing collapsed that symmetry: `dominates` needs the same character, and every bound prunes
+  only strictly below the bar, so a twin (a tie) was searched in full. Measured on main: each `best_of` solved up to 15
+  identical pairs (one full search each, each re-scoring every earlier pair's deck as a start: 120 exact scorings), the
+  hard work cap cutting some at 6-11; pass 1 searched each of the 47 umas of the big class in full (about 450k nodes
+  each: a class with no winning deck gets no proxy deck), and the proxy loop's 17 exact searches repeated the class
+  searches. Plan 67.3M nodes, 1,316 exact scorings, 6.0 of 7.0 s in searches; the search job itself was 0.12 s.
+  Fixes (exact; derivations in the code): `Twin` in `solve` (an earlier candidate's outcome for a bit-identical
+  problem: 67.3M -> 31.6M nodes, 1,316 -> 158 scorings) and `deck_memo` in `best_deck` (calls without start decks
+  memoised by what they read, the work budget's tests reproduced: 31.6M -> 5.4M, 158 -> 35; p10 -5.8%, p11 -10.2% nodes,
+  p16 -0.7%, gm16 0). val/plan identical on all seven, valq 0 mismatches, the five career jobs identical whole. Left:
+  the per-outcome planner arithmetic (`score_career`'s outcome loop, 1.4 s against p16's 0.4 s at equal load, from
+  instrumented timers): with candidates at p about 1.8e-5 every outcome of every builder lifts a candidate, so nearly
+  every outcome pays `Cont::plan` (about 16 exp per call at builds 16) and a trio V; p16's outcomes mostly lift no one.
+  A skip-ahead in `Cont::plan` (x_n is convex in n analytically) would need a float-exact argument for its first stop.
 - Cont proxy margins recalibrated (owner-approved, 2026-10-09), PROXY_EFF and PROXY_SAVE 0.2 -> 0.06. `proxy_check` on
   the seven val/plan jobs with the own-8/8 credit: the proxy is the exact career for every builder on p16, p16 SS/URA,
   gm16 and boot_mob; worst contender efficiency 2.79% low (p11; p10 0.41%), worst saving 2.67% low (p11; p10 0.14%):
