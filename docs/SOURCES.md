@@ -31,3 +31,15 @@
 - `val/umadump_carriers.py`: test veterans with 1–6 carriers per spark (reads a lineage file from the above).
 - `val/spark_gen_fit.py trained_chara_data.json`: measures spark generation and star mix from a real veteran dump.
 - `val/event_audit.py`: hand-entered pal/group entries vs GameTora.
+
+| Need | Where on the page | Fields |
+|---|---|---|
+| setup | `<h1>` and header | trainee and outfit, scenario after the dash, timestamp, final stats, skill points; on some pages a "Prioritized skills" list |
+| deck | `#contribs` card widgets | card id from `support_card_s_{id}.png`, limit break from `title="Limit break k/4"`, type |
+| hints | `#hints` (`.hint-card`) | skill name, total level (`.hint-lv`, `hint-lv-max`), `.hint-sources`: `"<card>"` = training hint, `"<card> event"` = event hint, `"A or B event"` = ambiguous, `Events` = scenario or trainee events, `Inspiration` = spark |
+| hint counts per source | `#contribs` table | per source row: stat gains, SP, `Hints` (distinct skills) |
+| skill ids, final hint levels | the embedded `const P = {...}` | `owned_skill_ids`; per variant `skill_id`, `hint_level` (names to ids through `hint_groups`); most of P is fixed tables |
+| inspiration | `#contribs` Inspiration row; `#factors` | per year (1-3) each fired `factor_id` with its hit count (`title="factor_id N · hit kx"`) |
+| lineage | `#lineage` | six ancestors (character from `chara_stand_{chara}_{card}.png`), every factor chip with `factor_id` (last digit = stars) and `sparked` / `not-sparked`; the affinity table (pair, base, shared G1, bonus, total) |
+| races | `#races` | per turn: race, grade, won or not, career-required lock |
+| skip | `#modelcheck`, `#score`, `#planner`, `#plan` | the site's own predictions, not observations |
