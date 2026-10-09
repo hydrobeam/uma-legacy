@@ -140,7 +140,8 @@ let planId = 0;
 async function runPlan() {
   const id = myId, pid = ++planId; if (!last) return;
   const { rollout: _r, p_now: _p, ...plain } = last.job;
-  const job2 = { ...plain, next: {} };
+  // plan-only: the page reads `next` alone, so the solver skips the career reports it would rebuild
+  const job2 = { ...plain, next: {}, no_reports: true };
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
@@ -642,7 +643,7 @@ async function runComparison(refine = false) {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true });   // as runPlan sends it once she is added
+    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
     const ja = planOf(legs), ma = await run(ja); if (id !== simulationId || source !== myId) return;

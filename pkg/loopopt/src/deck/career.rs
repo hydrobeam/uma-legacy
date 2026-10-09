@@ -105,6 +105,9 @@ struct CareerJob {
     #[serde(default)] next: Option<Value>,
     /// the page's veteran-analysis comparison (echoed in the output, nothing else)
     #[serde(default)] compare: bool,
+    /// the plan-only jobs' flag: the page reads only `next` from them, so the main search's career reports (and the first
+    /// one's schedule search) are left out
+    #[serde(default)] no_reports: bool,
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
@@ -193,7 +196,7 @@ pub(super) fn setup_fp(v: &Value) -> u64 {
     if let Some(o) = key.as_object_mut() {
         // (also the page's flags that change no deck value: `compare`, and the plan's own fields, so the plan and compare
         // jobs share what the search jobs proved)
-        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode", "compare", "next", "plan"] { o.remove(k); }
+        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode", "compare", "next", "plan", "no_reports"] { o.remove(k); }
     }
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -935,7 +938,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     env.use_seen = cj.rollout == 0;
     // the page sends a career job, then the same job with `plan`: the plan job reuses that job's main search (the solver
     // worker keeps the last one; a search is deterministic for its job, so the result is the one it would compute)
-    let skey = { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("plan"); o.remove("next"); } setup_hash(&k.to_string()) };
+    let skey = { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("plan"); o.remove("next"); o.remove("no_reports"); } setup_hash(&k.to_string()) };
     let sv = match LAST_SOLVE.with(|c| c.borrow().as_ref().filter(|x| x.0 == skey).map(|x| x.1.clone())) {
         Some(s) => s,
         None => { let s = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top); LAST_SOLVE.with(|c| *c.borrow_mut() = Some((skey, s.clone()))); s }
@@ -944,7 +947,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     if std::env::var("CAREER_WORK").is_ok() { eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven); }
     if sv.cands == 0 { keep(&env); return json!({"error": "No legal career: a trainee needs two veterans of other characters (not her own, not the same as each other), at most one of them borrowed."}); }
     // the race schedule only for the best career (the one the page shows; each takes a schedule search)
-    let results: Vec<Value> = sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect();
+    let results: Vec<Value> = if cj.no_reports { vec![] } else { sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect() };
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
            "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": EXACT_RHO});
     if let Some(policy) = &cj.policy {
