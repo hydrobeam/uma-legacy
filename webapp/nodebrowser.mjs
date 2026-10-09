@@ -536,11 +536,22 @@ const TESTS = {
   },
   async states(b) {
     // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
-    const pg = await open(b);
+    // (window.__trap: the next jobs reach the worker without their job, so they fail inside it, as a solver trap would)
+    const pg = await open(b, { init: () => { const W0 = window.Worker; window.Worker = function (...a) { const w = new W0(...a), pm = w.postMessage.bind(w);
+      w.postMessage = (m, ...r) => pm(m && m.type === 'run' && window.__trap ? { ...m, job: null } : m, ...r); return w; }; } });
     const head = () => pg.evaluate(() => ({ kind: document.getElementById('rhead').dataset.kind, note: document.getElementById('run-note').textContent, act: document.getElementById('r-act').innerText,
       loops: document.querySelectorAll('#results .loop').length, stale: document.getElementById('results').classList.contains('stale') }));
+    // a job that fails inside the worker: the search ends on the error (it used to spin for ever), the results stay, the
+    // worker goes, and the next search runs on a fresh one
+    const kt = await pg.evaluate(() => { window.__trap = true; return window.__killed; });
+    await pg.locator('#cards .ct').nth(6).click();
+    const trapped = await until(pg, () => document.getElementById('rhead').dataset.kind === 'error', null, 15000); let h = await head();
+    check('a job that fails in the worker ends the search on its error, the results kept, the worker restarted', trapped && /^Not searched: the solver stopped with an error/.test(h.note) && h.loops > 0 && h.stale
+      && (await pg.evaluate(() => window.__killed)) > kt, JSON.stringify(h));
+    await pg.evaluate(() => { window.__trap = false; }); await pg.locator('#cards .ct').nth(6).click(); await settle(pg);
+    check('… and the next search runs', /^Checked [\d,]+ decks/.test(await note(pg)));
     while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
-    await kind(pg, 'empty'); let h = await head();
+    await kind(pg, 'empty'); h = await head();
     check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg); h = await head();
     check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(h.note) && !h.stale, JSON.stringify(h));

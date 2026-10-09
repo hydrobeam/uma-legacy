@@ -37,5 +37,5 @@ self.onmessage = async (e) => {
       const r = callRaw(JSON.stringify(m.job));
       self.postMessage({ type: 'result', id: m.id, r, ms: performance.now() - t });
     }
-  } catch (err) { self.postMessage({ type: 'error', message: String(err && err.message || err) }); }
+  } catch (err) { self.postMessage({ type: 'error', id: m.type === 'run' ? m.id : undefined, message: String(err && err.message || err) }); }
 };
