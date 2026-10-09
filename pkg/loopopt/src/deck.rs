@@ -1845,6 +1845,8 @@ impl<'a> DeckSpace<'a> {
         let oq: Vec<(usize, usize, f64, usize)> = clauses.iter().enumerate().flat_map(|(ci, cl)| cl.0.iter().flat_map(move |&(k, q)| (0..model.n_outfits(us[k])).map(move |o| (ci, us[k], q, o)))).collect();
         let og: Vec<(usize, usize, usize)> = { let mut v = vec![]; let mut i = 0; while i < oq.len() { let no = model.n_outfits(oq[i].1); v.push((oq[i].0, i, no)); i += no; } v };
         let zero = vec![0.0f64; nu];
+        // the node bound's per-target values, one per (clause, chance, outfit)
+        let mut av = vec![0.0f64; oq.len()];
         let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
@@ -2061,20 +2063,36 @@ impl<'a> DeckSpace<'a> {
                             dw[t] = 1.0 - pw[t] * a; dg[t] = 1.0 - pg[t] * b;
                             pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t];
                         }
+                        let pass = |cv: &[f64]| if best { cv[0] * (1.0 + 1e-9) >= bestv }
+                            else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) };
+                        // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
+                        // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
+                        // its inputs being probabilities, and a NaN falls through to the real test)
+                        cv.iter_mut().for_each(|x| *x = 0.0);
+                        let mut nan = false;
+                        for &(ci, i, no) in &og {
+                            let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
+                            for o in 0..no { let a = model.outfit_fast(u, o, q, &dw, &dg); av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
+                            cv[ci] += fixed * m;
+                        }
+                        if !nan && !pass(&cv) { return false; }
+                        // the real bound, the same expression in the same order; an outfit whose A is at most the running
+                        // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
                         for &(ci, i, no) in &og {
                             let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
                             for o in 0..no {
                                 let ix = i + o;
+                                let a = av[ix];
+                                if a <= m { continue; }
                                 let r = if g >= ng { 1.0 } else if !one_b { rp[g][ix][left] * sp[g + 1][ix] }
                                     else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
-                                m = m.max(model.outfit_fast(u, o, q, &dw, &dg).min(model.outfit_fast(u, o, q, &pdw, &pdg) * r));
+                                m = m.max(a.min(model.outfit_fast(u, o, q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
                         }
-                        if best { cv[0] * (1.0 + 1e-9) >= bestv }
-                        else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) }
+                        pass(&cv)
                     };
                     // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
                     // later group (a branch that can no longer place every locked card is dropped)
