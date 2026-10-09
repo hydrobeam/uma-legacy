@@ -66,15 +66,16 @@ provably only rescaled odds.
    the page; sample (mob) pools 3x faster again (identical deck problems solved once: `Twin`, `deck_memo`). Every
    step is in `docs/PERF_PLANNER.md`; `val/planval.py` (seven next-plan jobs, compared whole, deterministic work
    counters) and `val/mono.py` (a veteran added never raises V) are the regression checks. Open:
-   - **In progress (agent, 2026-10-09): each fresh 8/8's breeding pair chosen jointly with the route** (her top 2–3
-     pairs as alternative sides), so an added veteran can never make V worse through a changed lineage. Evidence: the
-     owner's Inari One veteran (exact saving 8.7 vs table 12.9; with two more G1 wins V rose 4 careers).
-   - **Owner decision: carry the Cont fit across plans.** Compare now prices a pool with her under the plan's own
-     fit (`next.fit`), so its verdict can't flip; but the plan run after Add refits, and "Careers to loop" can still
-     rise (1,083 -> 1,103 on the owner's pool). Carrying the fit is principled only if the step model is unbiased:
-     decide after item 1.
-   - Per-outcome planner arithmetic on mob pools (about 1.4 s): a skip-ahead in `Cont::plan` is valid on paper but
-     needs a bit-identical proof first. The pass-2 replay is parked on branch `worktree-agent-a919b16f64bbaea00`.
+   - **Parked: lineage alternatives** (each fresh 8/8 from her 3 best pairs; branch worktree-agent-acf153943fcd00fff,
+     `next.alt_k`): V 0.6-1.5% better and the owner's extra-wins rise fixed, but +20-40% planner work and still not
+     monotone. Owner to decide: merge off (recommended), on, or leave.
+   - **Compare** plans exactly as Add will (b2ecc73; the frozen fit was reverted after it named a different next career
+     than Add on a small pool) and Add reuses that plan. A rise in V when a veteran is added remains possible: the step
+     model (Cont) is refitted per pool. Its error is analysed in val/sim/README.md ("E5 reread"): within 0-5% of achievable
+     building on 2/11/19 veterans, 70% too pessimistic on 5 because lam rises there (builders improve); proposed, not
+     built, a one-lift lookahead for lam and a per-plan pick-sensitivity check.
+   - Per-outcome planner arithmetic: memoised (`Cont::plan`, `cost_lo` by the bits of p; boot_mob 1.59 -> 0.92 s native)
+     and `cost_lo` stops early. The pass-2 replay is parked on branch `worktree-agent-a919b16f64bbaea00`.
    - Display: on a mob pool the search's six best careers are the same career with interchangeable pairs; group
      them on the page (display only; the plan's candidates depend on the list).
 2. **Star-mix band for the owner's veterans.** uma-it's summary data: an IT veteran's score range runs from "no
