@@ -467,7 +467,7 @@ pub(in super::super) fn plan<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsR
     let budget0 = s.env.budget;
     if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
     let top = if reuse_top && sv.found.len() >= pj.top.max(1) { Solved { found: sv.found.iter().take(pj.top.max(1)).map(|f| Found { t: f.t, a: f.a, b: f.b, val: f.val, ub: f.ub, sel: f.sel.clone() }).collect(), refs: vec![vec![]; d.umas.len()],
-        work: 0, cands: 0, solved: 0, bounded: 0, scored: 0, skipped: 0, next_bound: 0.0, complete: sv.complete, proven: sv.proven } }
+        work: 0, cands: 0, solved: 0, bounded: 0, scored: 0, skipped: 0, next_bound: 0.0, complete: sv.complete, proven: sv.proven, cert: sv.cert } }
         else { s.env.solve(pool, fix, trainees, false, pj.top.max(1)) };
     tm.push(now_ms() - t1); let t1 = now_ms();
     let per = if pj.trainees > 0 { Some(s.env.solve(pool, fix, trainees, true, pj.trainees)) } else { None };
@@ -1569,7 +1569,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         }
     }
     let two_ms = now_ms() - t4;
-    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top(), "class_caps": s.env.space.caps()});
+    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
     // search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact ones. Runs after

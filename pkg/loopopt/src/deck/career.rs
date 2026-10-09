@@ -298,7 +298,8 @@ struct Ref { q: Vec<f64>, val: f64, sel: Sel }
 #[derive(Clone)]
 enum DeckRes { NoDeck, Bounded, Done(f64, Sel, bool) }
 #[derive(Clone)]
-struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
+/// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see `Env::cert`)
+struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool, cert: f64 }
 
 struct Env<'a> {
     d: &'a Data, sj: &'a SkillJob, model: Model<'a>, ew0: Vec<Vec<Vec<f64>>>, uncv: Vec<usize>, fixed_t: Vec<usize>, ntar: usize, nu: usize,
@@ -328,6 +329,10 @@ struct Env<'a> {
     pub(crate) max_ratio: [f64; 4],
     /// per class, the trainee and deck that set `max_ratio`
     pub(crate) max_deck: [Option<(usize, Sel)>; 4],
+    /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
+    /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
+    pub(crate) cert: f64,
+    pub(crate) overflows: usize,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
     /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
@@ -341,7 +346,7 @@ struct Env<'a> {
 struct DeckKey { cls: usize, ews: Vec<u64>, c: u64, th: u64, work: usize }
 /// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
 /// added
-struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize }
+struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize, cert: f64, overflows: usize }
 impl<'a> Env<'a> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
     fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) { if r > self.max_ratio[k] { self.max_ratio[k] = r; self.max_deck[k] = Some((t, sel.clone())); } }
@@ -445,7 +450,14 @@ impl<'a> Env<'a> {
     /// product deck, then every deck whose product value times its class's cap (`cap_class`; at most EXACT_RHO, the top
     /// cap) reaches the best exact value, scored exactly (`upper_na` filters). `c` the spark scale, `th` the value (C x E)
     /// the career must beat: below it the search stops after the product deck. `starts`: decks scored first (a higher
-    /// start leaves fewer decks to check). Counts the exact scorings in `scored`, its work in `self.work`; `full` is false when the work budget ran out.
+    /// start leaves fewer decks to check). Counts the exact scorings in `scored`, its work in `self.work`; `full` is
+    /// false when the work budget ran out or the band was certified below the top cap only.
+    ///
+    /// A band of more than EXACT_CAP decks is not scored: the band is built again at the next lower cap of the ladder
+    /// (EXACT_STEPS, then 1: decks whose product value reaches the best exact one; each class at most that), the first
+    /// that fits is scored, its cap is noted in `cert` (the answer is exact under it; 0 when even the last overflows:
+    /// the best of the product deck and the starts, certified under nothing) and the call is not `full` (no Ref: a
+    /// Ref is a proof under the top cap, kept by later searches and jobs). Without an overflow nothing changes.
     ///
     /// Memoised when there are no start decks (`deck_memo`): the call is then a function of what `DeckKey` holds, the
     /// work budget aside, and the budget never bound a call whose work stayed within it (work only grows during a
@@ -459,11 +471,12 @@ impl<'a> Env<'a> {
         let key = DeckKey { cls: self.cls[t], ews: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(), c: c.to_bits(),
                             th: if th <= 0.0 { 0 } else { th.to_bits() }, work: self.work };
         if let Some(m) = self.deck_memo.get(&key) { if key.work + m.work <= self.budget {
-            self.work += m.work; *scored += m.scored; self.last_pv = m.pv; return m.res.clone();
+            self.work += m.work; *scored += m.scored; self.last_pv = m.pv; self.cert = self.cert.min(m.cert); self.overflows += m.overflows; return m.res.clone();
         } }
-        let (w0, s0) = (self.work, *scored);
+        let (w0, s0, c0, o0) = (self.work, *scored, std::mem::replace(&mut self.cert, f64::INFINITY), self.overflows);
         let res = self.best_deck_run(t, c, th, starts, scored);
-        if self.work <= self.budget { self.deck_memo.insert(key, DeckMemo { res: res.clone(), pv: self.last_pv, work: self.work - w0, scored: *scored - s0 }); }
+        let cert = self.cert; self.cert = c0.min(cert);
+        if self.work <= self.budget { self.deck_memo.insert(key, DeckMemo { res: res.clone(), pv: self.last_pv, work: self.work - w0, scored: *scored - s0, cert, overflows: self.overflows - o0 }); }
         res
     }
     fn best_deck_run(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
@@ -488,7 +501,10 @@ impl<'a> Env<'a> {
         if pv > 0.0 { let k = self.space.sel_class(&best.1); self.note_ratio(k, best.0 / pv, t, &best.1); }
         for s in starts { let x = score(self, s); *scored += 1; self.work += 200; if x > best.0 { best = (x, (*s).clone()); } }
         let mut full = false;
-        if self.work <= self.budget {
+        // the cap ladder below the top cap (a band over EXACT_CAP decks is retried at the next one)
+        let mut ladder = EXACT_STEPS[1..].iter().copied().chain(std::iter::once(1.0)).filter(|&x| x < rho);
+        let mut rho = rho;
+        while self.work <= self.budget {
             let n0 = self.space.nodes.get();
             crate::deck::SB_ON.with(|c| c.set(true)); crate::deck::SB_USED.with(|c| c.set(0));
             let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, rho, EXACT_CAP);
@@ -496,11 +512,16 @@ impl<'a> Env<'a> {
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
             let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;
             self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
-            full = !over;
+            if over {
+                self.overflows += 1;
+                match ladder.next() { Some(x) if !nocap => { rho = x; continue; } _ => { self.cert = 0.0; break; } }
+            }
+            full = rho == self.space.rho_top();
+            let mut cut = false;
             more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-            if full { for (v, s) in more {
+            for (v, s) in more {
                 if !nocap && rho * v * (1.0 + 1e-9) < best.0 { break; }
-                if self.work > self.budget { full = false; break; }
+                if self.work > self.budget { full = false; cut = true; break; }
                 if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler { continue; }
                 // below the bar at its own class's cap (the bar rose since the band was built)
                 let k = self.space.sel_class(&s);
@@ -510,7 +531,9 @@ impl<'a> Env<'a> {
                 let x = score(self, &s); *scored += 1; self.work += 200;
                 if v > 0.0 { self.note_ratio(k, x / v, t, &s); }
                 if x > best.0 { best = (x, s); }
-            } }
+            }
+            if !cut { self.cert = self.cert.min(rho); }
+            break;
         }
         DeckRes::Done(best.0, best.1, full)
     }
@@ -522,6 +545,7 @@ impl<'a> Env<'a> {
     fn solve(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], per_trainee: bool, top: usize) -> Solved {
         let d = self.d;
         self.work = 0;   // each search has its own work budget
+        let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
         struct Cand { ub: f64, t: u16, a: u16, b: u16 }
         let mut cands: Vec<Cand> = vec![];
         let nl = p.me.len();
@@ -656,8 +680,9 @@ impl<'a> Env<'a> {
         let next_bound = if next < cands.len() { cands[next].ub } else { 0.0 };
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
+        let cert = self.cert; self.cert = cert0.min(cert);
         Solved { found: done.into_iter().take(top).map(|(val, ci, sel)| Found { t: cands[ci].t as usize, a: cands[ci].a as usize, b: cands[ci].b as usize, val, ub: cands[ci].ub, sel }).collect(),
-                 refs, cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven, work: self.work }
+                 refs, cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven, work: self.work, cert }
     }
 
     /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
@@ -1070,7 +1095,8 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), deck_memo: Default::default(), cls: (0..n).collect() };
+    let rho_top = space.rho_top();
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo: Default::default(), cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {
@@ -1119,7 +1145,10 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     // the race schedule only for the best career (the one the page shows; each takes a schedule search)
     let results: Vec<Value> = if cj.no_reports { vec![] } else { sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect() };
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
-           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": env.space.rho_top(), "class_caps": env.space.caps(), "work": search_work});
+           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": rho_top.min(sv.cert), "class_caps": env.space.caps(), "work": search_work});
+    // a deck band over EXACT_CAP decks (in the main search or any later one of this job) was certified at a lower cap
+    // only: `cap` says which, `complete` is false
+    if sv.cert < rho_top { out["complete"] = json!(false); }
     if let Some(policy) = &cj.policy {
         let stay_t = env.uix(policy.stay_trainee).filter(|t| env.owned.contains(t));
         if ntar > 12 {
@@ -1206,6 +1235,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         out["lookahead"] = env.lookahead(&pool, legs, f, p_now, p_minus1_now, false);
     } }
     keep(&env);
+    if env.overflows > 0 { out["complete"] = json!(false); out["cap"] = json!(rho_top.min(env.cert)); out["band_overflows"] = json!(env.overflows); }
     out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
     out
 }
