@@ -7,7 +7,9 @@ re-baseline), one item per commit with its gain.
 
 ## Status (2026-10-08, evening)
 
-The career page's first plan on the owner's 16-veteran export: about 12 s in the morning, 4.2-4.4 s after the merged
+The career page's first plan on the owner's 16-veteran export: about 12 s in the morning, 4.2-4.4 s after class proofs,
+the planner arithmetic and the report skip, 2.4 s with the Cont proxy (9 of 68 umas searched exactly on p16). Earlier:
+4.2-4.4 s after the merged
 items below ("Planned in", Chromium, two runs; the main search adds 0.3 s). Native val/plan: p16 10.1 -> 2.9 s, p10
 15.8 -> 8.2 s, p11 13.3 -> 6.8 s, Grand Masters 44.0 -> 13.8 s (the before runs were on a busier machine; nodes p16
 39.8M -> 15.9M, gm16 128.5M -> 57.3M are load-free). All byte-identical after the one deliberate cache re-baseline.
