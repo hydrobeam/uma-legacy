@@ -293,6 +293,7 @@ struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
 /// at other chances through `rise`.
 #[derive(Clone)]
 struct Ref { q: Vec<f64>, val: f64, sel: Sel }
+#[derive(Clone)]
 enum DeckRes { NoDeck, Bounded, Done(f64, Sel, bool) }
 #[derive(Clone)]
 struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool }
@@ -325,7 +326,18 @@ struct Env<'a> {
     pub(crate) max_ratio: f64,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
+    /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
+    deck_memo: crate::FxMap<DeckKey, DeckMemo>,
 }
+/// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
+/// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
+/// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
+/// and the work spent before the call (the work budget's tests read it)
+#[derive(PartialEq, Eq, Hash)]
+struct DeckKey { cls: usize, ews: Vec<u64>, c: u64, th: u64, work: usize }
+/// A memoised `best_deck` outcome: the result, its product search's proof (`last_pv`), the work and exact scorings it
+/// added
+struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize }
 impl<'a> Env<'a> {
     fn uix(&self, id: u32) -> Option<usize> { self.d.umas.iter().position(|u| u.id == id) }
     fn stars_of(&self, sp: &[(u32, u8)]) -> Vec<u8> { self.sj.targets.iter().map(|t| sp.iter().filter(|s| s.0 == t.group).map(|s| s.1.min(3)).max().unwrap_or(0)).collect() }
@@ -407,7 +419,27 @@ impl<'a> Env<'a> {
     /// (`upper_na` filters). `c` the spark scale, `th` the value (C x E) the career must beat: below it the search stops
     /// after the product deck. `starts`: decks scored first (a higher start leaves fewer decks to check). Counts the
     /// exact scorings in `scored`, its work in `self.work`; `full` is false when the work budget ran out.
+    ///
+    /// Memoised when there are no start decks (`deck_memo`): the call is then a function of what `DeckKey` holds, the
+    /// work budget aside, and the budget never bound a call whose work stayed within it (work only grows during a
+    /// call, and every budget test is `work <= budget` or `work > budget`), so a stored call that ended at work w
+    /// answers again under any budget >= w. Classmates at the same chances (a sample pool of mob veterans gives every
+    /// trainee the same chances: no relation points) then search once per class; a hit adds the same work and
+    /// scorings and leaves the same proof, so everything after it is as if the search had run (only the node and
+    /// exact-scoring counters, and `max_ratio`, which the same decks already set, see nothing).
     fn best_deck(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
+        if !starts.is_empty() { return self.best_deck_run(t, c, th, starts, scored); }
+        let key = DeckKey { cls: self.cls[t], ews: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(), c: c.to_bits(),
+                            th: if th <= 0.0 { 0 } else { th.to_bits() }, work: self.work };
+        if let Some(m) = self.deck_memo.get(&key) { if key.work + m.work <= self.budget {
+            self.work += m.work; *scored += m.scored; self.last_pv = m.pv; return m.res.clone();
+        } }
+        let (w0, s0) = (self.work, *scored);
+        let res = self.best_deck_run(t, c, th, starts, scored);
+        if self.work <= self.budget { self.deck_memo.insert(key, DeckMemo { res: res.clone(), pv: self.last_pv, work: self.work - w0, scored: *scored - s0 }); }
+        res
+    }
+    fn best_deck_run(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
         let ntar = self.ntar; let uid = self.d.umas[t].id;
         let n0 = self.space.nodes.get();
         // the product search starts at the bar the career must clear (a hair below the cut below): it prunes every
@@ -1007,7 +1039,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: 0.0, cls: (0..n).collect() };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: 0.0, deck_memo: Default::default(), cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {
