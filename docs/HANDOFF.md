@@ -16,9 +16,9 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 
 ## 2. Releases
 
-Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases). v41 was deployed to preview and production;
-v42 (2026-10-09: one run, one answer on the career page; sample veterans 3x faster; a mobile pass; loop planner audit
-fixes; browser suite 233 -> 99 s with the fast tier `./build.sh testq`) was checked on the preview.
+Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases): v42 in production, deployed and verified on
+its hash address 2026-10-09 (one run, one answer on the career page; sample veterans 3x faster; a mobile pass; loop
+planner audit fixes; browser suite 233 -> 99 s with the fast tier `./build.sh testq`).
 
 On main since v42, unreleased: Compare plans exactly as Add will (b2ecc73: under the old plan's frozen fit, Compare and
 Add named different next careers on a small pool); the Cont memos and `cost_lo`'s early exit (byte-identical, boot_mob
