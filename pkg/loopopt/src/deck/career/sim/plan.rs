@@ -631,8 +631,9 @@ fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool { sj.targets.iter().all(
 
 /// One place a builder's new veteran may be a parent: the stage-1 candidate she may lift (index), per uncertain target
 /// (env.uncv order) the miss product without her, per job target the spark scale without and with her spark, her miss
-/// factor x per star count (0: absent), the trainee's cached decks' corner tables
-struct Setup { ui: usize, x0: Vec<f64>, pw: Vec<[f64; 2]>, xm: [f64; 4], tabs: Vec<Vec<f64>> }
+/// factor x per star count (0: absent), how many of the trainee's cached decks it reads (their corner tables; a trainee's
+/// cached decks only grow, so the first `nd` are the ones there when the setup was made)
+struct Setup { ui: usize, x0: Vec<f64>, pw: Vec<[f64; 2]>, xm: [f64; 4], nd: usize }
 
 /// Two deep: candidates given the term (the highest by index, plus the best career's trainee), and builders tried
 const TWO_TOP: usize = 3;
@@ -736,28 +737,31 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
             let mut sl0 = sl.clone(); for k in 0..ntar { sl0[pos].stars[k] = 0; } sl0[pos].mix = None;
             let (q0, nc0) = inherit(&sl0, ntar);
             let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
-            let tabs: Vec<Vec<f64>> = s.cache.decks[u].iter().flat_map(|dk| dk.tab.iter().cloned()).collect();
-            if tabs.is_empty() { continue; }
+            let nd = s.cache.decks[u].len();
+            if s.cache.decks[u].iter().all(|dk| dk.tab.is_empty()) { continue; }
             setups.push(Setup { ui, x0: uncv.iter().map(|&i| 1.0 - q0[i]).collect(),
-                pw: (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect(), xm: [1.0, xm(1), xm(2), xm(3)], tabs });
+                pw: (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect(), xm: [1.0, xm(1), xm(2), xm(3)], nd });
         }
     }
     // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best table value
     // at scale 1: the tables folded one coordinate at a time (interp's order and arithmetic)
     let nleaf = 1usize << (2 * nu);
+    // (one scratch buffer per level, reused by the four branches below it: the same values in the same order)
+    let mut scratch: Vec<Vec<f64>> = vec![vec![]; nu];
     let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
         let mut out = vec![0.0f64; nleaf];
-        for tab in &st.tabs {
-            fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64]) {
+        for tab in s.cache.decks[bs.cands[st.ui]][..st.nd].iter().flat_map(|dk| dk.tab.iter()) {
+            fn rec(t: &[f64], k: usize, leaf: usize, st: &Setup, nu: usize, out: &mut [f64], sc: &mut [Vec<f64>]) {
                 if k == nu { if t[0] > out[leaf] { out[leaf] = t[0]; } return; }
+                let (f, rest) = sc.split_first_mut().unwrap();
                 for sg in 0..4usize {
                     let x = st.x0[k] * st.xm[sg];
                     let h = t.len() / 2;
-                    let f: Vec<f64> = (0..h).map(|i| t[2 * i] * (1.0 - x) + t[2 * i + 1] * x).collect();
-                    rec(&f, k + 1, leaf | sg << (2 * k), st, nu, out);
+                    f.clear(); f.extend((0..h).map(|i| t[2 * i] * (1.0 - x) + t[2 * i + 1] * x));
+                    rec(f, k + 1, leaf | sg << (2 * k), st, nu, out, rest);
                 }
             }
-            rec(tab, 0, 0, st, nu, &mut out);
+            rec(tab, 0, 0, st, nu, &mut out, &mut scratch);
         }
         out
     }).collect();
