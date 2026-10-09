@@ -1,5 +1,5 @@
 // ---------- export / import ----------
-import { $ } from './dom.js';
+import { $, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK } from './data.js';
@@ -7,7 +7,6 @@ import { state, ui, goldGiven } from './state.js';
 import { save } from './save.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
 import { renderTargets } from './targets.js';
-import { fmtIn } from './results.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 function exportText() {
   const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };

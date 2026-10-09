@@ -4,7 +4,7 @@
 // three (3 points each); a grandparent's, her trio relation and the G1s she shares with the parent between them. The
 // total is the six summed. legs: [{ face, name, tag?, rel, race, aff, gps: [{ face, name, tag?, rel, race, aff }] }]
 // (Legacy 1 first); face an element (her portrait).
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+import { el } from './dom.js';
 // her affinity as the game's heart and the number
 export function affEl(a, cls = 'aff') { if (a === null || a === undefined) return null; const e = el('span', cls); e.append(el('i', 'heart'), String(Math.round(a)));
   e.setAttribute('aria-label', `Affinity ${Math.round(a)}`); e.title = `Affinity ${Math.round(a)}`; return e; }

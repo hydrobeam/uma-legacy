@@ -43,7 +43,6 @@ const full = (stars) => Object.fromEntries(targetGroups().map(g => [g, stars]));
 
 // ---------- dialogs ----------
 for (const d of document.querySelectorAll('dialog')) {
-  d.addEventListener('click', (e) => { if (e.target === d) d.close(); });   // backdrop
   d.querySelectorAll('.dclose').forEach(b => b.onclick = () => d.close());
 }
 // the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)

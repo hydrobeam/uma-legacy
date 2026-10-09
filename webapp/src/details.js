@@ -4,6 +4,7 @@
 // "Legacy Origin": her two parents' sparks) and Career Info (the G1s she ran and won). No stats (the model has none).
 // The game's own art where the build shipped it (images.py: grade letters, spark bars and bullets, skill tiles), the
 // same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
+import { el } from './dom.js';
 import { SK, CARD_BY_ID, CARDS } from './data.js';
 import { srcFor, umaAv, skillIcon, cardAv } from './images.js';
 import { umaName, sparksEl } from './vets.js';
@@ -36,7 +37,6 @@ export function fitSparks(root = document) {
   });
 }
 addEventListener('resize', () => fitSparks());   // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const GRADES = 'GFEDCBAS';
 // aptitude rows (index into the solver's `apt` order: short, mile, middle, long, turf, dirt, front, pace, late, end)
 const APT_ROWS = [['Track', [[4, 'Turf'], [5, 'Dirt']]], ['Distance', [[0, 'Sprint'], [1, 'Mile'], [2, 'Medium'], [3, 'Long']]],

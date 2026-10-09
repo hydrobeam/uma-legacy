@@ -1,5 +1,5 @@
 // ---------- the odds popup (both planner pages): the chance of landing exactly k of the n targets ----------
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+import { el } from './dom.js';
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 export const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
   if (x < 1e-6) return '<0.000001%';
