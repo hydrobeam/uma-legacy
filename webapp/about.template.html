@@ -335,9 +335,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><mover><mi>V</mi><mo>^</mo></mover></math> is cheap and rises with every deck odd (for <math><mn>0</mn><mo>≤</mo><mi>q</mi><mo>≤</mo><mn>1</mn></math>, a white being worth less than a gold), so it bounds groups of decks
   and loops at once; it only decides what gets scored, under one assumption:</p>
   <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>≤</mo><mn>1.25</mn></math>
-  <p><math><mi>V</mi></math> exceeds <math><mover><mi>V</mi><mo>^</mo></mover></math> only through the run's one count of chain events, shared by the targets a chain link of
-  the deck feeds. With at most one such target (and no event outcome hinting two targets together) <math><mi>V</mi><mo>≤</mo><mover><mi>V</mi><mo>^</mo></mover></math> is proven, so
-  <math><mi>ρ</mi><mo>=</mo><mn>1</mn></math> for those decks; with two, <math><mi>ρ</mi><mo>=</mo><mn>1.05</mn></math>; with three or more, 1.25. A half-built deck takes the
+  <p><math><mi>V</mi></math> and <math><mover><mi>V</mi><mo>^</mo></mover></math> differ because the deck's chain cards share the run's chain events: the targets a chain link
+  feeds land or miss together, and the cards compete for events, which can tie even one target's sources together. The
+  cap depends on how many such targets the deck has: <math><mi>ρ</mi><mo>=</mo><mn>1.05</mn></math> with at most two (and no event outcome hinting two
+  targets together), 1.25 with three or more, both assumed from measurement. A half-built deck takes the
   <math><mi>ρ</mi></math> of every target it can still reach. The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored: 1.008 with two
   such targets, 1.127 with three, 1.18 with more (a Global validation deck; 1.17 on Grand Masters). No data-free cap
   can be proven for those: two targets whose only source is one card's last link make the ratio

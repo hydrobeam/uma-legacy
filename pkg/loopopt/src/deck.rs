@@ -1178,14 +1178,14 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 /// reference setups the exact value was 1.00-1.19 times the product (the most for 0-1-pal decks), so 0.8 covers a
 /// gap well beyond that.
 /// Assumed caps on a deck's exact odds over its product odds, by the deck's structure class (`cap_class`): decks and
-/// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Exact
-/// exceeds product only through the shared chain-event count N, which correlates the targets a chain link feeds
-/// ("chain-varying"): with at most one such target and no multi-target group, exact <= product (given N the groups
-/// are independent and each target's factor rises with its own hints), so 1.0 is proven; two targets 1.05 (largest seen
-/// 1.0082); three or more, or a multi-target group, 1.25 (largest seen: three 1.127, King Halo in boot_mob, so the
-/// 1.10 first proposed for three is not used; four or more 1.164). Every deck scored reports its ratio by class
-/// (`exact.class_max_ratio`).
-pub(crate) const EXACT_CAPS: [f64; 4] = [1.0, 1.05, 1.25, 1.25];
+/// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Chain
+/// cards share one run's chain events, so the targets their links feed ("chain-varying") land or miss together through
+/// the event count, and chain cards compete for those events, which can correlate even one target's feeders: every cap
+/// is assumed, from measurement. At most one chain-varying target and no multi-target group 1.05 (no such deck scored
+/// yet); two 1.05 (largest seen 1.0082); three or more, or a multi-target group, 1.25 (largest seen: three 1.127, King
+/// Halo in boot_mob, so the 1.10 first proposed for three is not used; four or more 1.164). Every deck scored reports
+/// its ratio by class (`exact.class_max_ratio`).
+pub(crate) const EXACT_CAPS: [f64; 4] = [1.05, 1.05, 1.25, 1.25];
 /// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
 pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)

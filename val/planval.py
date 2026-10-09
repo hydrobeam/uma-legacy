@@ -40,9 +40,9 @@ def walk(a, b, p, out):
 CLS = ['0-1', '2', '3', '4+']
 def near_cap(r, c):
     # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
-    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05); at a cap of 1 (proven) any excess is a bug.
+    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05).
     # The same rule as val/cmp2.py.
-    return r > 1 + 0.75 * (c - 1) + 1e-9
+    return r > 1 + 0.75 * (c - 1)
 bad = 0
 for d, n in jobs:
     rf, nf = os.path.join(P, f'{ref}__{n}.out'), os.path.join(P, f'{tag}__{n}.out')

@@ -6,8 +6,8 @@ largest ratio passes its normal cap, and fails when the answer moves (a deck the
 usage: capaudit.py BIN [JOB ...]
   JOB: a val/plan job name (p16, gm16, ...) or a val job as DIR/FILE with ':pu' for per-uma (jp/jobs/v_uc_k1.json:pu).
   Default: p16, gm16, jp/jobs/v_uc_k1.json:pu (about 35 s natively, one job at a time; the audit runs take most of
-  it). v_uc_k1's per-uma audit run lists over 500,000 decks at 2.0 and falls to 1.12: there it checks the 1.0 and 1.05
-  classes only.
+  it). v_uc_k1's per-uma audit run lists over 500,000 decks at 2.0 and falls to 1.12: there it checks the 1.05 classes
+  (0-1 and 2) only.
   Exits 1 when an answer moves or a ratio passes its cap."""
 import json, os, subprocess, sys, tempfile, time
 V = os.path.dirname(os.path.abspath(__file__)); S = os.path.dirname(V); P = os.path.join(V, 'plan')

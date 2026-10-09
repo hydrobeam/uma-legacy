@@ -146,7 +146,7 @@ plan/compare/reroll state machines, views and import/export.
 ## Done
 - Per-class exact caps (2026-10-09, owner's call; outputs identical on the seven val/plan jobs, mono and the full val
   apart from cap fields and counters; the budget ladder now certifies higher caps on five val jobs). The cap on exact /
-  product odds by the deck's chain-varying targets: 0-1 1.0 (proven), 2 1.05, 3+ or a multi-target group 1.25; a node
+  product odds by the deck's chain-varying targets: 0-2 1.05 (assumed), 3+ or a multi-target group 1.25; a node
   takes the class of everything it can still reach. Callgrind gm16 19.458G -> 14.098G (-27.5%: nodes 5.71M -> 3.58M,
   exact scorings 919 -> 311), p16 9.873G -> 9.935G (+0.6%: its decks are mostly three-target, where the cap stays 1.25;
   nodes -0.7%); v_uc_k1 per-uma wall 1.79 -> 1.20 s (best of 3, interleaved, CPU clock-throttled at the time).
