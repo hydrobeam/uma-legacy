@@ -109,6 +109,11 @@ plan/compare/reroll state machines, views and import/export.
 
 ## Done
 
+- Class-keyed proofs (`seen`, `ruled` per deck class, `Env::cls`): val/plan identical on all six jobs. Nodes (exact
+  scorings) p16 39.8M -> 15.9M (2,069 -> 735), p10 34.8M -> 31.4M, p11 21.6M -> 19.5M, gm16 128.5M -> 57.0M (112k ->
+  52.8k); native time p16 10.1 -> 5.4 s, p10 15.8 -> 14.8 s, p11 13.3 -> 12.3 s, gm16 44.0 -> 22.8 s (machine shared).
+- Tried, not kept: solving each class's highest-ceiling trainees first (a pre-pass before the scoring loop): nodes
+  p16 -0.6%, p10/p11 0%, URA -1.7%, gm16 0% (under the 3% bar).
 - `upper_na` relaxed instead of giving up: a target with three or more feeding chain cards, or two feeders other than
   the one pair, is taken at its feeders' full progress (a valid constant bound; derivation in the code). Grand Masters
   plan (gm16): exact scorings 112,014 -> 17,350, time 44.0 -> 41.5 s (loaded machine; the search's 129M nodes
