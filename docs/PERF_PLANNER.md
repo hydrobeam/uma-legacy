@@ -5,14 +5,31 @@ pool; this file holds what was measured about where that time goes, what was tri
 protocol is `docs/PERF.md`'s: a deterministic reference, byte-identical outputs per item (or a deliberate, measured
 re-baseline), one item per commit with its gain.
 
-## Status (2026-10-08, evening)
+## Status (2026-10-09, early morning)
 
-The career page's first plan on the owner's 16-veteran export: about 12 s in the morning, 4.2-4.4 s after class proofs,
-the planner arithmetic and the report skip, 2.4 s with the Cont proxy (9 of 68 umas searched exactly on p16). Earlier:
-4.2-4.4 s after the merged
-items below ("Planned in", Chromium, two runs; the main search adds 0.3 s). Native val/plan: p16 10.1 -> 2.9 s, p10
-15.8 -> 8.2 s, p11 13.3 -> 6.8 s, Grand Masters 44.0 -> 13.8 s (the before runs were on a busier machine; nodes p16
-39.8M -> 15.9M, gm16 128.5M -> 57.3M are load-free). All byte-identical after the one deliberate cache re-baseline.
+First plan on the owner's 16-veteran export, in the page: about 12 s (2026-10-08 morning) -> 2.4 s with the Cont proxy
+-> 1.9 s cold and 1.4 s after a reload (kept work persisted); measured before the reroll-table merge, whose own-8/8
+credit raised p16's exact builder searches 9 -> 28 (native plan about 1.4 -> 1.8 s). Reroll: about 30 ms of solver per
+roll; a table zero is now proven (y_hi < 0.5) or checked in the background; a saving roll's exact check and Compare are
+one planner run with her added (warm, native about 0.7-0.9 s). Sample mob veterans: native 25.2 -> about 8-9 s
+(certified proxies). Grand Masters: native 44 -> about 2.3-4 s.
+
+Merged on main (all byte-identical on val/plan except the deliberate re-baselines: the winners-only cache, the Cont
+proxy, the own-8/8 credit): deterministic cache, class-keyed proofs, planner arithmetic (Cont tables, fold buffers),
+report skip, upper_na relaxation and memoisation, Cont proxy (PROXY_EFF/PROXY_SAVE 0.2), certified proxies, derived
+stage candidates (no loop-planner lookup), persistence (IndexedDB state_in/state_out), the state-conditioned bound at
+configuration roots (SBOUND; SB_CHECK audits it), reroll table own-8/8 credit and y_hi bound, cap tripwires.
+
+Open:
+- Recalibrate PROXY_SAVE/PROXY_EFF on current code (agent running): p16's 19 extra searches after the own-8/8 credit
+  only confirm (proxy == exact for all 60 builders); scores cluster at the shown-row cut inside the 20% band.
+- Consolidate score_career's and outcome_hi's outcome loops (one loop, estimate and bound; y byte-identical); the parked
+  pass-2 replay may fold in there.
+- Page: Compare shows the table's instant figure while its replan runs (as Reroll does).
+- The browser suite has not run since v40; several suite checks were edited to match new behaviour without running.
+  Run it once before any release. Nothing since v40 is deployed.
+- Owner decisions on record: the 1.25 cap stays (real ratios 1.18 Global / 1.17 GM; the cap-free bound is valid but
+  13-45x slower as a replacement); parallel helper workers are a last resort.
 
 ## Where the time goes (measured 2026-10-08, native, p16 = the owner's 16 veterans)
 
