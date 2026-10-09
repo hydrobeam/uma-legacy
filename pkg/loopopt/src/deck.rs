@@ -118,10 +118,8 @@ fn d_hinc() -> u32 { 1 }
 /// 82% of such runs, 75% predicted.
 const CHAIN_N: u32 = 21;
 const CHAIN_P: f64 = 0.35;
-/// Training-hint draws per run for a card with hint frequency 0, by scenario (h = base x (1 + hf/100)); fitted on the
-/// same runs' training hints with the Lv-5 cap (`hint_miss`; max-limit-break card-runs, 92 uploaders; 90%: Unity
-/// 2.66-2.75, Grand Concert 2.03-2.13, URA 1.48-1.73; Trackblazer has too few runs and Grand Masters (JP) none, both use
-/// the pooled 2.30).
+/// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` below: h = base x (1 + hf/100),
+/// refit 2026-10-05 on 2,402 runs with the Lv-5 cap, docs/HINT_RATE_FIT.md; Grand Masters (JP) has no runs: a placeholder.)
 fn scenario_name(s: &str) -> &str {
     match s { "unity" => "Unity Cup", "gc" => "Grand Concert", "ura" => "URA Finale", "trackblazer" => "Trackblazer", "grandmasters" => "Grand Masters", x => x }
 }

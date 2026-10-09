@@ -111,6 +111,12 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
 | Pass 2 replayed from pass 1's recorded outcomes (`score_replay`) | exact, identical on all seven jobs, but 2-7% on plans and about 10% on the warm Compare plan for 74 lines and a second scoring path | parked on branch worktree-agent-a919b16f64bbaea00 (23d6968, 1ea4bc9); reconsider inside the outcome-loop consolidation |
 | wasm SIMD (`+simd128`, 2026-10-09) | byte-identical outputs; node (V8), 3 interleaved fresh-process runs: p16 1,713 -> 1,683 ms avg (-1.7%), boot_mob 1,571 -> 1,630 ms (+3.8%), both within noise | no: the hot loops (node bound, outfit_fast) are branchy with serial products, nothing autovectorises; recheck once outfit_fast is branch-free |
 
+| `outfit_fast` with u8-state `if` selects (2026-10-09) | LLVM re-emits branches; -0.4 to -1.4% | no (`OutfitPre`'s u64 masks vectorise) |
+| `outfit_fast` with f64-state compares (2026-10-09) | not vectorised; +0.6 to +0.8% | no |
+| A/B pre-check at the root bound (2026-10-09) | its B side is `p0 * sp0`, no outfit call | nothing to save |
+| mimalloc as the native allocator (2026-10-09) | identical outputs; user CPU, 3 interleaved runs: p16 0.97 -> 1.00 s, p10 noise, boot_mob 1.25 -> 1.14 s (spread 0.98-1.28), gm16 1.83 -> 1.80 s, pal_A2 1.34 -> 1.39 s | no: within noise; cachegrind put allocation's RAM misses at most about 7% of time un-overlapped |
+| talc as the wasm allocator (2026-10-09) | identical outputs; node, 3 interleaved runs: p16 1,386 -> 1,327 ms (-4.3%, every run faster), boot_mob 1,414 -> 1,413 ms; wasm 1.84 -> 1.97 MB | no: 4% on one pool for +7% download; retry if allocation still shows after the table deferral |
+
 ## Findings from code (reasoning agents, 2026-10-08)
 
 - A proven cap of 1 exists only for decks with no target-bearing chain card (negative dependence of one event's
@@ -135,6 +141,21 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (about 
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- Deck search node bound, four exact items (2026-10-09, branch merged as e3c2303; same outputs and work counters on all
+  seven val/plan jobs after each, valq and full val clean). Callgrind instructions p16 / boot_mob / pal_A2 (loop planner,
+  per-uma): 16.57G / 17.05G / 22.19G before.
+  - A/B pre-check in `hopeful`: the per-target values A first; if the clause sums with A alone fail, no B
+    (`min(A, B r) <= A`); otherwise B only for outfits whose A is above the running max. -6.4 / -9.6 / -11.6%.
+  - `OutfitPre`: the node and root bounds' outfit products through prepared rows (masks, 1 - ew), a bitwise select,
+    a vectorised factor loop, the product in target order (unit test with non-finite inputs). -1.8 / -2.4 / -2.6%.
+  - Configuration suffix tables built only when the DFS expands the configuration (flat, reused); the root bound's
+    sp[0] computed directly in the same order; one-borrowed tables only when used. -3.0 / -2.0 / -2.1%.
+  - Node-bound constants per (group, cards left, borrowing), tabulated lazily per configuration (the crate audit's
+    prototype). -7.8 / -11.8 / -25.8%.
+  - Totals 13.62G / 13.01G / 13.87G; wall (best of 3) p16 1.14 -> 0.92 s, boot_mob 1.05 -> 0.86 s, pal_A2 1.30 -> 0.88 s.
+- `score_career`'s table fold (2026-10-09, b84526c): x and 1 - x per target and star level once, the last two levels
+  unrolled; fold 2,124M -> 469M instructions, about -10% of p16; `trio_v` as a plain minimum (-0.9%).
+- With both: native p16 0.79 s, p10 1.80 s, gm16 1.40 s, boot_mob 0.77 s (val/plan, one at a time).
 - Deterministic cache, winners only (each search's best deck; before, the planner's cache took every deck a search
   happened to check fully). Moved results once: p16 candidates' stage costs +1-4%, p10's member lift 0.565 -> 0.526 and
   careers to loop 1044 -> 1058; URA and Grand Masters unchanged; picks and top five unchanged on all six jobs then. The
