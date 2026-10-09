@@ -4,7 +4,7 @@
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
 import { $, spinHTML, el, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
-import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
+import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, ASSETS, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, killEngine, engineBusy } from './engine.js';
 import { onSave } from './save.js';
@@ -98,7 +98,25 @@ const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
 // the comparison's flag aside), so Add to veterans shows it at once (the solver is deterministic for its job)
 let planKept = null;
 const canon = (x) => Array.isArray(x) ? x.map(canon) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().filter(k => x[k] !== undefined).map(k => [k, canon(x[k])])) : x;
-const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } = job; return JSON.stringify(canon(j)); };
+// (the loop members it was given aside: they spare the solver its loop search and change nothing in the plan)
+const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } = job; if (j.next) { const { loop_members: _l, ...n } = j.next; j.next = n; } return JSON.stringify(canon(j)); };
+// The plan builds on the loop planner's best loop for the setup (its own search in the worker, independent of the
+// veterans: up to seconds, kept only while the worker lives). The members it reported are kept here per setup (the job
+// without what that search ignores, with the solver's and data's fingerprints; the last few setups) and sent with
+// plan-only jobs, so a reload or a restarted worker doesn't search again. A failed lookup isn't kept.
+const LOOPS_KEY = 'llp:loops', LOOPS_N = 6;
+const LOOP_SKIP = ['legacies', 'trainees', 'fix', 'per_trainee', 'lookahead', 'p_now', 'p_minus1_now', 'policy', 'rollout', 'plan', 'simulate', 'top', 'next', 'compare', 'no_reports'];
+const loopKey = (job) => { const j = { ...job }; for (const k of LOOP_SKIP) delete j[k]; return JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], canon(j)]); };
+const loopsRead = () => { try { const a = JSON.parse(localStorage.getItem(LOOPS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+// a plan-only job with the members kept for its setup, when there are some
+function withLoop(job) { const k = loopKey(job), e = loopsRead().find(x => x.k === k); return e ? { ...job, next: { ...job.next, loop_members: e.m } } : job; }
+// after a plan: keep the members it used (first in the list), or drop the setup's when its lookup failed
+function keepLoop(job, P) {
+  if (!P || P.error) return;
+  const k = loopKey(job), a = loopsRead().filter(x => x.k !== k), ids = (P.loop_members || []).map(m => m.id);
+  if (!P.loop_note && ids.length >= 3) a.unshift({ k, m: ids });
+  try { localStorage.setItem(LOOPS_KEY, JSON.stringify(a.slice(0, LOOPS_N))); } catch {}
+}
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0;
 let baselineCache = null;
@@ -150,7 +168,7 @@ async function runPlan() {
   const id = myId, pid = ++planId; if (!last) return;
   const { rollout: _r, p_now: _p, ...plain } = last.job;
   // plan-only: the page reads `next` alone, so the solver skips the career reports it would rebuild
-  const job2 = { ...plain, next: {}, no_reports: true };
+  const job2 = withLoop({ ...plain, next: {}, no_reports: true });
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
@@ -158,6 +176,7 @@ async function runPlan() {
     const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await run(job2);
     if (id !== myId || pid !== planId) return;
     const P = m2.r.next;
+    if (!kept) keepLoop(job2, P);
     planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
   } catch (e) { if (id !== myId || pid !== planId) return; planS = { state: 'error', text: e.message }; }
   clearInterval(tick);
@@ -652,11 +671,12 @@ async function runComparison(refine = false) {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
+    const planOf = (legacies) => withLoop({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
-    if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
+    if (!pb) { const jb = planOf(base.legacies), mb = await run(jb); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; keepLoop(jb, pb); }
     const ja = planOf(legs), ma = await run(ja); if (id !== simulationId || source !== myId) return;
     const pa = ma.r.next || null;
+    keepLoop(ja, pa);
     if (pa && !pa.error) planKept = { key: planKey(ja), r: pa, ms: ma.ms };
     const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
