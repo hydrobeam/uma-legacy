@@ -100,8 +100,9 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
 6. Page: keep worker state across a superseded job (today a settings change during a plan discards every kept best);
    persist kept bests in IndexedDB (float bits, keyed by build id, setup and legacies); generalise reuse to pools that
    grow by several veterans or lose one; skip the plan job's unused `results`.
-7. Page: helper workers for the builder searches (a classmate's proofs seeded to every worker), after item 1; estimate
-   first plan 12 s -> 4-5 s with item 2 alone, lower with workers.
+7. Last resort, not planned (owner, 2026-10-08: meaningful gains first; parallel workers hide work rather than remove
+   it): helper workers for the builder searches (design in the page-side agent's report: deterministic only with the
+   winners-only cache and exact, unbudgeted searches).
 8. Owner decisions (change results):
    - Cont from near-top builders: rank every builder by a table-value proxy (her class's winning decks at her own q),
      exact searches only for builders within about 10% of a candidate's top two, the displayed rows, the pick's
