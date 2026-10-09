@@ -136,6 +136,19 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 li
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- State-conditioned bound (prototype of the cap-free bound): at a configuration the chain-kind make-up is fixed, so its
+  progress states x are known; given x a deck's exact value is at most the product over targets of their factors at
+  their misses (groups whose outcomes each hint one target, or two-target groups that are negatively quadrant
+  dependent, are negatively associated), equal without coupled groups; per open slot each target's lowest miss over
+  the group's entries at that slot's level bounds every completion (`state_value`, the `sb_ub` closure in `search`).
+  Checked (SB_CHECK): value >= exact on every exactly scored deck (pal_A 895, pal_UF 4,529, v_ng_k1 636, p16, gm16; at
+  most 0.2% above), node bound >= every leaf below it (gm16 295k leaves, p10 43k): no violation. Used in the career
+  band pass at configuration roots (default, `SBOUND=3`): identical outputs on val/plan; Grand Masters nodes 13.2M ->
+  5.7M, exact scorings 2,508 -> 1,779, user CPU -24 to -28%; Global within noise. Also at depth 1 (`SBOUND=1`): Global
+  +7 to +16% CPU. Without the cap in the band pass (`SBOUND=2`): identical outputs but more nodes (p16 3.4M -> 5.3M)
+  and about 10-45x the time: alone it is looser than rho x the product bound inside the tree (a slot may reuse the
+  group's best entry; no per-card ratio term) and about 100x a node's cost. Phase 1 and the candidate ceilings still
+  assume the cap.
 
 - Class-keyed proofs (`seen`, `ruled` per deck class, `Env::cls`): val/plan identical on all six jobs. Nodes (exact
   scorings) p16 39.8M -> 15.9M (2,069 -> 735), p10 34.8M -> 31.4M, p11 21.6M -> 19.5M, gm16 128.5M -> 57.0M (112k ->

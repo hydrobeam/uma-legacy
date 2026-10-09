@@ -408,6 +408,12 @@ fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
 fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
     JCOUNT.with(|c| c.set(c.get() + 1));
     let r = joint_fast(model, u, qs, ents, filler, n_targets, m1, None);
+    if sb_check() {
+        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (&e.0, e.1)).collect();
+        if let Some(sv) = state_value(model, u, qs, &er, filler) {
+            SBCHK.with(|c| { let mut c = c.borrow_mut(); for (v, x) in sv.iter().zip(&r) { if x.0 > 0.0 { let rt = v / x.0; c.0 += 1; c.1 = c.1.max(rt); c.2 = c.2.min(rt); if rt < 1.0 - 1e-9 { c.3 += 1; } } } });
+        }
+    }
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
         let x = joint_trainee_ref(model, u, qs, ents, filler, n_targets);
@@ -842,6 +848,24 @@ fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
 /// S of its targets, P(all of S hinted) <= prod over S of P(k hinted). True for outcomes that each give one target
 /// (they exclude each other); not for an outcome giving two targets together. Training draws over several targets
 /// are checked the same way. Cached per group (by its bits).
+/// Whether a group's per-target hint levels are negatively associated, as the state-conditioned bound needs: every
+/// outcome hints at most one target (one draw: a one-trial multinomial is negatively associated, and so are increasing
+/// functions of disjoint sets of its outcomes), or it touches two targets and their levels are negatively quadrant
+/// dependent, P(A >= a, B >= b) <= P(A >= a) P(B >= b) for a, b in {white, gold} (for two variables negative quadrant
+/// dependence is negative association). Three or more targets with an outcome hinting several: not covered.
+fn group_assoc(g: &Group) -> bool {
+    if g.iter().all(|(_, o)| o.iter().all(|x| x.0 == o[0].0)) { return true; }
+    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect(); ts.sort(); ts.dedup();
+    if ts.len() != 2 { return false; }
+    let lv = |o: &[(usize, u8)], t: usize| o.iter().filter(|x| x.0 == t).map(|x| if x.1 >= 2 { 2u8 } else { 1u8 }).max().unwrap_or(0);
+    for a in 1..=2u8 { for b in 1..=2u8 {
+        let pa: f64 = g.iter().filter(|(_, o)| lv(o, ts[0]) >= a).map(|x| x.0).sum();
+        let pb: f64 = g.iter().filter(|(_, o)| lv(o, ts[1]) >= b).map(|x| x.0).sum();
+        let pj: f64 = g.iter().filter(|(_, o)| lv(o, ts[0]) >= a && lv(o, ts[1]) >= b).map(|x| x.0).sum();
+        if pj > pa * pb * (1.0 + 1e-12) + 1e-15 { return false; }
+    } }
+    true
+}
 fn group_nuod(g: &Group) -> bool {
     thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(Default::default()); }
     let key: Vec<(u64, Vec<(usize, u8)>)> = g.iter().map(|(p, o)| (p.to_bits(), o.clone())).collect();
@@ -968,6 +992,85 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
     }).collect())
 }
 
+/// One entry's miss chances at each number of its chain links done: row d = links 1..=d fired, per target (P(no gold),
+/// P(no hint)); training hints and non-chain groups in every row. `stop` rows after row 0. The same factors
+/// `joint_fast` applies to an entry at chain progress d (each group's per-target chances, `fm` / `cm`).
+fn src_levels(s: &Src, stop: u8, nu: usize) -> Vec<(f64, f64)> {
+    let mut base = vec![(1.0f64, 1.0f64); nu];
+    for &(k, p) in &s.train { base[k].1 *= 1.0 - p; }
+    for &(k, ng, nh) in &s.fm { base[k].0 *= ng; base[k].1 *= nh; }
+    let mut out = Vec::with_capacity((stop as usize + 1) * nu);
+    out.extend_from_slice(&base);
+    for d in 1..=stop {
+        let mut row: Vec<(f64, f64)> = out[(d as usize - 1) * nu..d as usize * nu].to_vec();
+        for (k, links) in &s.cm { for &(l, ng, nh) in links { if l == d { row[*k].0 *= ng; row[*k].1 *= nh; } } }
+        out.extend_from_slice(&row);
+    }
+    out
+}
+/// Target k's landing factor at its misses (no gold `ng`, no hint `nh`): as `joint_fast` (falls with ng and with nh).
+#[inline]
+fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
+    use crate::skills::GEN_WHITE;
+    let pg = 1.0 - ng;
+    match st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)) }
+}
+/// The state-conditioned value of one deck (trainee `u`, per chance in `qs`, fixed factor included): over the chain
+/// progress states x (`chain_states`, early ends and stop risk folded in), P(x) times the product over targets of each
+/// target's factor at its misses given x, every group's outcomes at their per-target chances; the best outfit.
+/// Derived: given x, every source's outcomes are independent of the others' (`joint_fast`); one group's outcomes are a
+/// single draw, so when each outcome hints at most one target its per-target indicators are negatively associated
+/// (a one-trial multinomial), and so are increasing functions of disjoint sets of them; each target's factor rises
+/// with its own indicators, so the expected product given x is at most the product of the targets' expected factors,
+/// equal without coupled groups. Hence value >= the exact P(all), equal when no group touches two targets.
+/// None when some entry has an outcome hinting two targets at once (`Src::multi`).
+fn state_value<'s>(model: &Model, u: usize, qs: &[f64], ents: &[(&'s Src, Kind)], filler: usize) -> Option<Vec<f64>> {
+    if ents.iter().any(|e| e.0.multi) { return None; }
+    let nu = model.uncertain.len();
+    let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
+    for _ in 0..filler { ch.push(((2, 2, 0), None)); }
+    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
+    // the non-chain entries' misses (constant over states), and per chain position its entry's rows
+    let mut cg = vec![1.0f64; nu]; let mut chh = vec![1.0f64; nu];
+    for e in ents.iter().filter(|e| e.1 == (0, 0, 0)) { let r = src_levels(e.0, 0, nu); for k in 0..nu { cg[k] *= r[k].0; chh[k] *= r[k].1; } }
+    let rows: Vec<Option<Vec<(f64, f64)>>> = ch.iter().map(|&(kd, e)| e.map(|i| src_levels(ents[i].0, kd.1, nu))).collect();
+    let opts = &model.opts[u]; let no = opts.len();
+    let mut acc = vec![0.0f64; qs.len() * no];
+    let (mut ng, mut nh) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+    for (x, w) in states.iter() {
+        ng.copy_from_slice(&cg); nh.copy_from_slice(&chh);
+        for (p, r) in rows.iter().enumerate() { if let Some(r) = r { let b = x[p] as usize * nu; for k in 0..nu { ng[k] *= r[b + k].0; nh[k] *= r[b + k].1; } } }
+        for (qi, &q) in qs.iter().enumerate() { for (o, (st, _)) in opts.iter().enumerate() {
+            let ew = &model.ews[u][o];
+            let f: f64 = (0..nu).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
+            acc[qi * no + o] += w * f;
+        } }
+    }
+    let fixed = model.fixed_factor();
+    Some((0..qs.len()).map(|qi| fixed * (0..no).map(|o| acc[qi * no + o]).fold(0.0f64, f64::max)).collect())
+}
+thread_local! {
+    /// SB_CHECK: per exact scoring, the state-conditioned value against the exact value: (decks, max value/exact, min
+    /// value/exact, violations); and the node bounds against the decks below them: (leaves checked, violations)
+    pub(crate) static SBCHK: std::cell::RefCell<(usize, f64, f64, usize, usize, usize)> = const { std::cell::RefCell::new((0, 0.0, f64::INFINITY, 0, 0, 0)) };
+}
+thread_local! { pub(crate) static SBN: std::cell::RefCell<(usize, usize, usize)> = const { std::cell::RefCell::new((0, 0, 0)) }; }
+/// A configuration's state-conditioned bound tables: the chain state distribution projected on the positions whose
+/// group has chain targets, per group its slots' positions (usize::MAX: level-independent), per group and chain level
+/// each target's lowest misses over the group's entries
+struct SbCfg { states: Vec<(Vec<u8>, f64)>, slots: Vec<Vec<usize>>, gmin: Vec<Vec<(f64, f64)>> }
+fn sb_check() -> bool { static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("SB_CHECK").is_ok()) }
+/// The state-conditioned bound in the career searches' band pass (`best_deck` pass 2), `SBOUND` to change it: 3 (the
+/// default) at each configuration's root, an extra prune beside the rho one (exact: it only drops configurations no deck
+/// of which can reach the bar); 1 also at depth 1; 2 the band pass without the cap (the bound at every node, a leaf kept
+/// when its state-conditioned value reaches the bar; measured far slower); 0 off. Measured (val/plan, user CPU): roots
+/// only, Grand Masters -24 to -28%, nodes -57%; Global within noise; depth 1 costs more than it saves on Global.
+pub(crate) fn sb_mode() -> u8 { static C: std::sync::OnceLock<u8> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("SBOUND").ok().and_then(|v| v.parse().ok()).unwrap_or(3)) }
+thread_local! { pub(crate) static SB_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+thread_local! { pub(crate) static SB_USED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) }; }
+
 /// Target sources of one deck entry (a card, a card whose chain the player ends early, or a card taking a given
 /// choice where an event offers targets on different choices): training hints (target, chance), outcome groups that
 /// do not depend on the chain, and chain outcome groups with their link, sorted by link. `fm` / `cm` are the same
@@ -977,7 +1080,10 @@ struct Src { train: Vec<(usize, f64)>, fixed: Vec<Group>, chains: Vec<(u8, Group
              fm: Vec<(usize, f64, f64)>, cm: Vec<(usize, Vec<(u8, f64, f64)>)>,
              /// a group of it touching two or more targets is not negatively upper-orthant dependent (`group_nuod`):
              /// `upper_na` does not cover a deck with it
-             not_nuod: bool }
+             not_nuod: bool,
+             /// an outcome of one of its groups hints two or more targets at once (the state-conditioned bound, which
+             /// takes each target's outcomes at their marginal chances, does not cover a deck with it)
+             multi: bool }
 impl Src {
     fn finish(mut self) -> Self {
         self.chains.sort_by_key(|x| x.0);
@@ -992,6 +1098,7 @@ impl Src {
         cm.sort_by_key(|x| x.0);
         self.cm = cm;
         self.not_nuod = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
+        self.multi = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| !group_assoc(g));
         self
     }
     fn is_empty(&self) -> bool { self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty() }
@@ -1547,6 +1654,10 @@ struct DeckSpace<'a> {
     counts: std::cell::OnceCell<std::rc::Rc<Vec<Vec<usize>>>>,
     /// per entry, its locked card's bit (0 if none), and all locked bits together
     lockbits: std::cell::OnceCell<(Vec<u8>, u8)>,
+    /// the state-conditioned bound's tables (`SbCfg`) per (set id, key code, real (2, 2) entries, kind-0 entries), and
+    /// per set id the legal entries' miss rows per chain level: functions of the entry set and configuration alone
+    sbcfg: std::cell::RefCell<crate::FxMap<(usize, u64, usize, usize), std::rc::Rc<SbCfg>>>,
+    sbrows: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>>>,
 }
 /// `search`'s per-entry-set tables: the character bit of each entry (`over`: more than 128 characters),
 /// the entries per chain kind and the pal (kind 0) entries, the locked cards each group can hold, the plain pals legal
@@ -1700,6 +1811,19 @@ impl<'a> DeckSpace<'a> {
         let kpos: Vec<u64> = (0..nk).map(|i| 7u64.pow(i as u32)).collect();
         let (by_kind, pal_ents) = (&lt.by_kind, &lt.pal_ents);
         let fixed = model.fixed_factor();
+        // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
+        // per chain level; off when an entry has an outcome hinting two targets (`state_value`)
+        let sbm = if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(|c| c.get()) { sb_mode() } else { 0 };
+        let sb_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>> = if sbm > 0 && !legal_rc.iter().any(|&j| self.srcs[j].multi) {
+            let hit = self.sbrows.borrow().get(&set_id).cloned();
+            hit.unwrap_or_else(|| { let r = std::rc::Rc::new((0..self.rel.len()).map(|j| if legal_rc.contains(&j) { Some(src_levels(&self.srcs[j], self.kind[j].1, nu)) } else { None }).collect::<Vec<_>>());
+                self.sbrows.borrow_mut().insert(set_id, r.clone()); r })
+        } else { std::rc::Rc::new(vec![]) };
+        let sbm = if sb_rows.is_empty() { 0 } else { sbm };
+        let sb_bar = if sbm > 0 { clauses[0].1 } else { 0.0 };
+        let (sb_u, sb_q) = if sbm > 0 { (us[clauses[0].0[0].0], clauses[0].0[0].1) } else { (0, 0.0) };
+        let rho = if sbm == 2 { 1e9 } else { rho };
+        if sbm > 0 { SB_USED.with(|c| c.set(sbm)); }
         let val = |cl: &(Vec<(usize, f64)>, f64), dw: &[f64], dg: &[f64]| fixed * cl.0.iter().map(|&(k, q)| model.trainee_fast(us[k], q, dw, dg)).sum::<f64>();
         let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
@@ -1707,7 +1831,7 @@ impl<'a> DeckSpace<'a> {
         let mut over = false;
         let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct Cfg { root: f64, code: u64, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, sp: Vec<Vec<f64>> }
+        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, sp: Vec<Vec<f64>> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let (lbit, all_lk) = { let x = self.lock_bits(); (&x.0[..], x.1) };
@@ -1785,7 +1909,7 @@ impl<'a> DeckSpace<'a> {
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
-                    cfgs.push(Cfg { root, code, filler, plain, gs, gm: gm.clone(), suf, rpk: rpk.clone(), sp });
+                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs, gm: gm.clone(), suf, rpk: rpk.clone(), sp });
                 }
             }
         }
@@ -1861,6 +1985,64 @@ impl<'a> DeckSpace<'a> {
             let mut cv = vec![0.0f64; clauses.len()];
             let mut pdw = vec![0.0f64; nu]; let mut pdg = vec![0.0f64; nu];
             let ng = gs.len();
+            // the state-conditioned bound of this configuration: chain positions (sorted kinds, the key's state
+            // distribution projected on the positions whose group has chain targets), per group its slots' positions
+            // and, per chain level, each target's lowest misses over the group's entries (a slot may take any of them,
+            // the same one twice: a relaxation)
+            let sbkey = (set_id, cf.code, cf.code_real22, cf.np);
+            let sbc: Option<std::rc::Rc<SbCfg>> = if sbm == 0 { None } else if let Some(r) = self.sbcfg.borrow().get(&sbkey).cloned() { Some(r) } else {
+                let mut kinds: Vec<(Kind, usize)> = vec![];   // (kind, group, or usize::MAX for a filler)
+                for (g, &(i, c)) in cf.gs.iter().enumerate() { if i < nk { for _ in 0..c { kinds.push((self.kinds_all[i], g)); } } }
+                for _ in 0..filler { kinds.push(((2, 2, 0), usize::MAX)); }
+                kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                let kl: Vec<Kind> = kinds.iter().map(|x| x.0).collect();
+                let full = if kl.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kl) };
+                let has_chain: Vec<bool> = gs.iter().map(|(l, _)| l.iter().any(|&j| !self.srcs[j].cm.is_empty())).collect();
+                let rel_pos: Vec<usize> = (0..kinds.len()).filter(|&p| kinds[p].1 != usize::MAX && has_chain[kinds[p].1]).collect();
+                let mut slots: Vec<Vec<usize>> = vec![vec![]; ng];
+                for (ri, &p) in rel_pos.iter().enumerate() { slots[kinds[p].1].push(ri); }
+                for g in 0..ng { while slots[g].len() < gs[g].1 { slots[g].push(usize::MAX); } }
+                let mut proj: crate::FxMap<Vec<u8>, f64> = Default::default();
+                for (x, w) in full.iter() { let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect(); *proj.entry(key).or_insert(0.0) += w; }
+                let mut states: Vec<(Vec<u8>, f64)> = proj.into_iter().collect(); states.sort_by(|a, b| a.0.cmp(&b.0));
+                let stops: Vec<usize> = cf.gs.iter().map(|&(i, _)| if i < nk { self.kinds_all[i].1 as usize } else { 0 }).collect();
+                let gmin: Vec<Vec<(f64, f64)>> = (0..ng).map(|g| {
+                    let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * nu];
+                    for &j in gs[g].0 { if let Some(r) = &sb_rows[j] { for (x, y) in m.iter_mut().zip(r.iter()) { x.0 = x.0.min(y.0); x.1 = x.1.min(y.1); } } }
+                    m }).collect();
+                let r = std::rc::Rc::new(SbCfg { states, slots, gmin });
+                self.sbcfg.borrow_mut().insert(sbkey, r.clone());
+                Some(r)
+            };
+            // the bound at a partial deck `sel` (entries in pick order, filling the groups in turn)
+            let sb_ub = |sel: &[usize]| -> f64 {
+                let c = sbc.as_ref().unwrap();
+                let (mut kg, mut kh) = ([1.0f64; 32], [1.0f64; 32]);
+                let mut chain: Vec<(usize, &[(f64, f64)])> = vec![];
+                let mut idx = 0usize;
+                for g in 0..ng { for t in 0..gs[g].1 {
+                    let rows: &[(f64, f64)] = if idx < sel.len() { sb_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
+                    idx += 1;
+                    let p = c.slots[g][t];
+                    if p == usize::MAX { for k in 0..nu { kg[k] *= rows[k].0; kh[k] *= rows[k].1; } } else { chain.push((p, rows)); }
+                } }
+                let opts = &model.opts[sb_u];
+                let mut acc = [0.0f64; 16];
+                let (mut xg, mut xh) = ([0.0f64; 32], [0.0f64; 32]);
+                for (x, w) in &c.states {
+                    xg[..nu].copy_from_slice(&kg[..nu]); xh[..nu].copy_from_slice(&kh[..nu]);
+                    for &(p, rows) in &chain { let b = x[p] as usize * nu; for k in 0..nu { xg[k] *= rows[b + k].0; xh[k] *= rows[b + k].1; } }
+                    for (o, (st, _)) in opts.iter().enumerate() {
+                        let ew = &model.ews[sb_u][o];
+                        let mut f = 1.0f64; for k in 0..nu { f *= land_factor(st[k], ew[k], sb_q, xg[k], xh[k]); }
+                        acc[o] += w * f;
+                    }
+                }
+                fixed * acc[..opts.len()].iter().cloned().fold(0.0f64, f64::max)
+            };
+            // the configuration's root: no deck of it can reach the bar
+            let sb_root = if sbm > 0 { sb_ub(&[]) } else { 0.0 };
+            if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
             {
                 {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
@@ -1907,11 +2089,11 @@ impl<'a> DeckSpace<'a> {
                     if all_locked & !avail[0][0] != 0 { continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
                            mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize) -> bool,
-                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64) -> bool {
+                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
                             if g + 1 >= gs.len() { let b = st.pw.len() - nu; return leaf(&st.sel, &st.pw[b..], &st.pg[b..]); }
-                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv);
+                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv, sbx);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
@@ -1925,12 +2107,33 @@ impl<'a> DeckSpace<'a> {
                             for t in 0..nu { let w = st.pw[b + t] * mw[j * nu + t]; st.pw.push(w); let x = st.pg[b + t] * mg[j * nu + t]; st.pg.push(x); }
                             if !hopeful(g, left - 1, &st.pw[b + nu..], &st.pg[b + nu..], bestv(), nb + sp.ebor[j] as usize) { st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
                             st.sel.push(j);
-                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv);
+                            if !sbx(&st.sel) { st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
+                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv, sbx);
                             st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu);
                             if stop { return true; }
                         }
                         false
                     }
+                    // the state-conditioned bound at depth <= 1 (mode 1) or at every depth, the leaf included (mode 2); with
+                    // SB_CHECK, every leaf's value against its root's and depth-1 node's bounds
+                    let total_slots: usize = gs.iter().map(|x| x.1).sum();
+                    let mut sb_d1 = f64::INFINITY;
+                    let mut sbx = |sel: &[usize]| -> bool {
+                        if sbm == 0 || (sbm == 3 && !sb_check()) { return true; }
+                        let d = sel.len();
+                        let chk = sb_check();
+                        let leafd = d == total_slots;
+                        if (sbm == 1 || sbm == 3) && d > 1 && !(chk && leafd) { return true; }
+                        if sbm == 3 && d == 1 && !chk { return true; }
+                        let ub = sb_ub(sel);
+                        SBN.with(|c| c.borrow_mut().1 += 1);
+                        if d == 1 { sb_d1 = ub; }
+                        if chk && leafd { SBCHK.with(|c| { let mut c = c.borrow_mut(); c.4 += 1; if ub > sb_root * (1.0 + 1e-9) || (d > 1 && ub > sb_d1 * (1.0 + 1e-9)) { c.5 += 1; } }); }
+                        if (sbm == 1 && d > 1) || sbm == 3 { return true; }
+                        let pass = ub * (1.0 + 1e-9) >= sb_bar;
+                        if !pass { SBN.with(|c| c.borrow_mut().2 += 1); }
+                        pass
+                    };
                     let bcell = std::cell::Cell::new(bestv);
                     // the deck's odds, written per leaf (no allocation unless the deck is kept)
                     let (mut dwa, mut dga) = ([0.0f64; 32], [0.0f64; 32]);
@@ -1958,7 +2161,7 @@ impl<'a> DeckSpace<'a> {
                     };
                     let bget = || bcell.get();
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu]) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget) };
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
                 }
@@ -2075,7 +2278,7 @@ fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRaw, unc: &[u
         srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(),
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
         locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default(),
-        legt: Default::default(), counts: Default::default(), lockbits: Default::default() }
+        legt: Default::default(), counts: Default::default(), lockbits: Default::default(), sbcfg: Default::default(), sbrows: Default::default() }
 }
 
 mod career;

@@ -1158,6 +1158,9 @@ fn print_best(d: &Data, jobs: &Jobs, pool: &[usize], cand: &[(f64, [usize; 4])],
 }
 
 pub fn cli_main() {
+    struct SbReport; impl Drop for SbReport { fn drop(&mut self) { if std::env::var("SB_CHECK").is_ok() { deck::SBCHK.with(|c| { let c = c.borrow(); eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5); }); }
+        if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() { deck::SBN.with(|c| { let c = c.borrow(); eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2); }); } } }
+    let _sbr = SbReport;
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 3 && args[1] == "pbtable" {
         // print the pairwise-ceiling table for a data.json (./build.sh pb merges it in as "pb")

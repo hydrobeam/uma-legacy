@@ -375,12 +375,16 @@ impl<'a> Env<'a> {
         let mut full = false;
         if self.work <= self.budget {
             let n0 = self.space.nodes.get();
+            crate::deck::SB_ON.with(|c| c.set(true)); crate::deck::SB_USED.with(|c| c.set(0));
             let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, EXACT_RHO, EXACT_CAP);
+            crate::deck::SB_ON.with(|c| c.set(false));
+            // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
+            let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;
             self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
             full = !over;
             more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             if full { for (v, s) in more {
-                if EXACT_RHO * v * (1.0 + 1e-9) < best.0 { break; }
+                if !nocap && EXACT_RHO * v * (1.0 + 1e-9) < best.0 { break; }
                 if self.work > self.budget { full = false; break; }
                 if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler { continue; }
                 let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
