@@ -136,6 +136,13 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 li
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+
+- Parked (not merged): pass 2 replayed from pass 1's recorded outcomes (`score_replay`, branch
+  worktree-agent-a919b16f64bbaea00, commits 23d6968/1ea4bc9): exact, identical on all seven jobs, but 2-7% on plans and
+  about 10% on the warm Compare plan for 74 lines and a second scoring path; reconsider inside the consolidation of
+  score_career's and outcome_hi's outcome loops. Dropping unshown rows is not possible safely: pass 1 must cover every
+  uma (the proxy's admission reads every builder's efficiency) and no cheap valid score bound exists (Cont's cost is a
+  minimum over n, not convex).
 - State-conditioned bound (prototype of the cap-free bound): at a configuration the chain-kind make-up is fixed, so its
   progress states x are known; given x a deck's exact value is at most the product over targets of their factors at
   their misses (groups whose outcomes each hint one target, or two-target groups that are negatively quadrant
