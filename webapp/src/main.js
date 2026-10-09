@@ -36,7 +36,7 @@ function start() {
   $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };
   // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
   for (const id of ['roster', 'cards']) { const el = $(id), upd = () => el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true }); addEventListener('resize', upd);
+    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });   // the filter hides tiles addEventListener('resize', upd);
     if (window.ResizeObserver) new ResizeObserver(upd).observe(el); }   // also when its dialog opens (its size goes from 0)
   for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
 
