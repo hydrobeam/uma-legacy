@@ -16,7 +16,8 @@ export function umaAv(charaId, outfitId, size, eager = false) {
   const el = document.createElement('span'); el.className = 'av'; el.style.width = el.style.height = size + 'px'; el.style.fontSize = Math.round(size * 0.38) + 'px';
   el.style.setProperty('--h', String((charaId * 47) % 360)); el.textContent = initials(NAME.get(charaId) || '?');
   const tries = [outfitId && srcFor('outfit', outfitId), srcFor('uma', charaId), srcFor('mob', charaId)].filter(Boolean);   // a mob (sample veteran) has her own portrait
-  // initials show until the image loads, and come back only if every source fails
+  // with a source, the disc is left blank (its colour) until the portrait loads; the initials show only when there is no
+  // art or every source fails
   const next = () => { const s = tries.shift(); el.textContent = ''; if (!s) { el.textContent = initials(NAME.get(charaId) || '?'); return; }
     const im = new Image(); im.alt = ''; im.loading = eager ? 'eager' : 'lazy'; if (eager) im.fetchPriority = 'high'; im.onerror = next; im.src = s; el.appendChild(im); };
   if (tries.length) next(); return el;
