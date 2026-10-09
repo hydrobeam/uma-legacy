@@ -1831,7 +1831,7 @@ impl<'a> DeckSpace<'a> {
         let mut over = false;
         let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, sp: Vec<Vec<f64>> }
+        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let (lbit, all_lk) = { let x = self.lock_bits(); (&x.0[..], x.1) };
@@ -1845,7 +1845,14 @@ impl<'a> DeckSpace<'a> {
         let oq: Vec<(usize, usize, f64, usize)> = clauses.iter().enumerate().flat_map(|(ci, cl)| cl.0.iter().flat_map(move |&(k, q)| (0..model.n_outfits(us[k])).map(move |o| (ci, us[k], q, o)))).collect();
         let og: Vec<(usize, usize, usize)> = { let mut v = vec![]; let mut i = 0; while i < oq.len() { let no = model.n_outfits(oq[i].1); v.push((oq[i].0, i, no)); i += no; } v };
         let zero = vec![0.0f64; nu];
+        // the node bound's per-target values, one per (clause, chance, outfit)
+        let mut av = vec![0.0f64; oq.len()];
+        // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
+        let orow: Vec<crate::skills::OutfitPre> = oq.iter().map(|&(_, u, _, o)| model.outfit_pre(u, o)).collect();
         let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
+        // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
+        // DFS expands)
+        let mut sp0 = vec![1.0f64; oq.len()];
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
             if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) { continue; }
@@ -1886,8 +1893,8 @@ impl<'a> DeckSpace<'a> {
                     if np > 0 { gs.push((nk, np)); }
                     if all_lk & !gs.iter().fold(0u8, |m, &(i, _)| m | glk[i]) != 0 { continue; }
                     let ng = gs.len();
-                    // the per-target bound first (suf[0], the same products in the same order as the suffix table below),
-                    // the tables only for configurations it lets through
+                    // the per-target bound first (row 0 of the suffix table the DFS builds, the same products in the same
+                    // order), the ratio products only for configurations it lets through
                     for t in 0..nu {
                         let (mut a, mut b) = (1.0f64, 1.0f64);
                         for g in (0..ng).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
@@ -1895,21 +1902,19 @@ impl<'a> DeckSpace<'a> {
                     }
                     let ideal = if best { val(&clauses[0], &dw, &dg) * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rho * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
                     if !ideal { continue; }
-                    let mut suf: Vec<(Vec<f64>, Vec<f64>)> = vec![(vec![1.0; nu], vec![1.0; nu]); ng + 1];
-                    for g in (0..ng).rev() { for t in 0..nu { suf[g].0[t] = suf[g + 1].0[t] * gm[gs[g].0][gs[g].1].0[t]; suf[g].1[t] = suf[g + 1].1[t] * gm[gs[g].0][gs[g].1].1[t]; } }
                     if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
                     let rpk = rpk.as_ref().unwrap();
-                    let mut sp: Vec<Vec<f64>> = vec![vec![1.0; oq.len()]; ng + 1];
-                    for g in (0..ng).rev() { for i in 0..oq.len() { sp[g][i] = sp[g + 1][i] * rpk[gs[g].0][i][gs[g].1]; } }
+                    // sp[0] of the suffix table: the same products in the same order (from the last group down)
+                    for i in 0..oq.len() { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
                     // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound
                     let mut cv = vec![0.0f64; clauses.len()];
                     for &(ci, i, no) in &og {
-                        let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
-                        for o in 0..no { m = m.max(model.outfit_fast(u, o, q, &dw, &dg).min(p0[i + o] * sp[0][i + o])); }
+                        let q = oq[i].2; let mut m = 0.0f64;
+                        for o in 0..no { m = m.max(orow[i + o].eval(q, &dw, &dg).min(p0[i + o] * sp0[i + o])); }
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
-                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs, gm: gm.clone(), suf, rpk: rpk.clone(), sp });
+                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs, gm: gm.clone(), rpk: rpk.clone() });
                 }
             }
         }
@@ -1956,6 +1961,13 @@ impl<'a> DeckSpace<'a> {
             let _ = code;
             GB { own: om, one, rown, rone }
         };
+        // the expanded configuration's suffix tables, flat and reused: per target (g * nu + t) the products of the
+        // groups' lowest misses from group g on (white, gold), per (clause, chance, outfit) (g * noq + i) those of the
+        // best ratios
+        let noq = oq.len();
+        let (mut sufw, mut sufg, mut spf): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
+        // the node bound's per-configuration constants, flat and reused (see `hopeful`)
+        let (mut kab, mut kr, mut kab_have, mut kr_have): (Vec<f64>, Vec<f64>, Vec<bool>, Vec<bool>) = (vec![], vec![], vec![], vec![]);
         for cf in &cfgs {
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
@@ -1966,14 +1978,26 @@ impl<'a> DeckSpace<'a> {
             // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
             let gmin: Vec<&Vec<(Vec<f64>, Vec<f64>)>> = cf.gs.iter().map(|&(i, _)| &cf.gm[i]).collect();
             let rp: Vec<&Vec<Vec<f64>>> = cf.gs.iter().map(|&(i, _)| &cf.rpk[i]).collect();
-            let (suf, sp) = (&cf.suf, &cf.sp);
+            // the same products in the same order as the per-configuration tables they replace
+            {
+                let ng = cf.gs.len();
+                sufw.clear(); sufw.resize((ng + 1) * nu, 1.0); sufg.clear(); sufg.resize((ng + 1) * nu, 1.0);
+                spf.clear(); spf.resize((ng + 1) * noq, 1.0);
+                for g in (0..ng).rev() { let gmg = &cf.gm[cf.gs[g].0][cf.gs[g].1];
+                    for t in 0..nu { sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gmg.0[t]; sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gmg.1[t]; } }
+                for g in (0..ng).rev() { let rpg = &cf.rpk[cf.gs[g].0];
+                    for i in 0..noq { spf[g * noq + i] = spf[(g + 1) * noq + i] * rpg[i][cf.gs[g].1]; } }
+            }
+            let (sufw, sufg, spf) = (&sufw[..], &sufg[..], &spf[..]);
             // the one-borrowed-card tables of this configuration's groups and their suffixes (`own`: no borrowed card
             // left to place; `one`: at most one, in one group)
             let one_b = self.allowed_borrow == 1 && gs.iter().any(|(l, _)| l.iter().any(|&j| self.ebor[j]));
             let gbs: Vec<std::rc::Rc<GB>> = if one_b { cf.gs.iter().map(|&(i, _)| gbc.entry((cf.code, i)).or_insert_with(|| std::rc::Rc::new(gb_of(cf.code, i, mw, mg))).clone()).collect() } else { vec![] };
             let ngs = cf.gs.len();
-            let (mut so, mut s1) = (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); ngs + 1], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); ngs + 1]);
-            let (mut po, mut p1) = (vec![vec![1.0f64; oq.len()]; ngs + 1], vec![vec![1.0f64; oq.len()]; ngs + 1]);
+            // (allocated only when used)
+            let nb = if one_b { ngs + 1 } else { 0 };
+            let (mut so, mut s1) = (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb]);
+            let (mut po, mut p1) = (vec![vec![1.0f64; oq.len()]; nb], vec![vec![1.0f64; oq.len()]; nb]);
             if one_b { for g in (0..ngs).rev() { let (gb, c) = (&gbs[g], cf.gs[g].1);
                 for t in 0..nu {
                     so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t]; so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
@@ -2048,33 +2072,74 @@ impl<'a> DeckSpace<'a> {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
                     struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64> }
                     let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu] };
+                    // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
+                    // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
+                    // first use of their row (the same expressions, so the same f64s as computing them per node); row
+                    // (loff[g] + left) * ncan + can, a row of 2 nu factors (a then b) and one of noq ratios
+                    let ncan = if one_b { 2 } else { 1 };
+                    let mut loff = vec![0usize; ng + 1]; for g in 0..ng { loff[g + 1] = loff[g] + gs[g].1 + 1; }
+                    let nrow = loff[ng] * ncan;
+                    kab.clear(); kab.resize(nrow * 2 * nu, 0.0); kr.clear(); kr.resize(nrow * noq, 0.0);
+                    kab_have.clear(); kab_have.resize(nrow, false); kr_have.clear(); kr_have.resize(nrow, false);
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
                     let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize| -> bool {
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
-                        for t in 0..nu {
-                            let (a, b) = if g >= ng { (1.0, 1.0) }
-                                else if !one_b { (gmin[g][left].0[t] * suf[g + 1].0[t], gmin[g][left].1[t] * suf[g + 1].1[t]) }
-                                else if can { let gb = &gbs[g];
-                                    ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
-                                else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
-                            dw[t] = 1.0 - pw[t] * a; dg[t] = 1.0 - pg[t] * b;
-                            pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t];
+                        let row = if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + (one_b && can) as usize };
+                        let (pw, pg) = (&pw[..nu], &pg[..nu]);
+                        if row == usize::MAX {
+                            for t in 0..nu { dw[t] = 1.0 - pw[t] * 1.0; dg[t] = 1.0 - pg[t] * 1.0; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
+                        } else {
+                            if !kab_have[row] {
+                                kab_have[row] = true;
+                                for t in 0..nu {
+                                    let (a, b) = if !one_b { (gmin[g][left].0[t] * sufw[(g + 1) * nu + t], gmin[g][left].1[t] * sufg[(g + 1) * nu + t]) }
+                                        else if can { let gb = &gbs[g];
+                                            ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
+                                        else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
+                                    kab[row * 2 * nu + t] = a; kab[row * 2 * nu + nu + t] = b;
+                                }
+                            }
+                            let (ka, kb) = kab[row * 2 * nu..(row + 1) * 2 * nu].split_at(nu);
+                            let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
+                            for t in 0..nu { dw[t] = 1.0 - pw[t] * ka[t]; dg[t] = 1.0 - pg[t] * kb[t]; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
                         }
+                        let pass = |cv: &[f64]| if best { cv[0] * (1.0 + 1e-9) >= bestv }
+                            else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) };
+                        // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
+                        // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
+                        // its inputs being probabilities, and a NaN falls through to the real test)
                         cv.iter_mut().for_each(|x| *x = 0.0);
+                        let mut nan = false;
                         for &(ci, i, no) in &og {
-                            let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
-                            for o in 0..no {
-                                let ix = i + o;
-                                let r = if g >= ng { 1.0 } else if !one_b { rp[g][ix][left] * sp[g + 1][ix] }
+                            let q = oq[i].2; let mut m = 0.0f64;
+                            for o in 0..no { let a = orow[i + o].eval(q, &dw, &dg); av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
+                            cv[ci] += fixed * m;
+                        }
+                        if !nan && !pass(&cv) { return false; }
+                        if row != usize::MAX && !kr_have[row] {
+                            kr_have[row] = true;
+                            for ix in 0..noq {
+                                kr[row * noq + ix] = if !one_b { rp[g][ix][left] * spf[(g + 1) * noq + ix] }
                                     else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
-                                m = m.max(model.outfit_fast(u, o, q, &dw, &dg).min(model.outfit_fast(u, o, q, &pdw, &pdg) * r));
+                            }
+                        }
+                        // the real bound, the same expression in the same order; an outfit whose A is at most the running
+                        // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
+                        cv.iter_mut().for_each(|x| *x = 0.0);
+                        for &(ci, i, no) in &og {
+                            let q = oq[i].2; let mut m = 0.0f64;
+                            for o in 0..no {
+                                let ix = i + o;
+                                let a = av[ix];
+                                if a <= m { continue; }
+                                let r = if row == usize::MAX { 1.0 } else { kr[row * noq + ix] };
+                                m = m.max(a.min(orow[ix].eval(q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
                         }
-                        if best { cv[0] * (1.0 + 1e-9) >= bestv }
-                        else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) }
+                        pass(&cv)
                     };
                     // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
                     // later group (a branch that can no longer place every locked card is dropped)
