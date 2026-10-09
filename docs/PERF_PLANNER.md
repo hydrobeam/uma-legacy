@@ -153,6 +153,14 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 li
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- Cont proxy margins recalibrated (owner-approved, 2026-10-09), PROXY_EFF and PROXY_SAVE 0.2 -> 0.06. `proxy_check` on
+  the seven val/plan jobs with the own-8/8 credit: the proxy is the exact career for every builder on p16, p16 SS/URA,
+  gm16 and boot_mob; worst contender efficiency 2.79% low (p11; p10 0.41%), worst saving 2.67% low (p11; p10 0.14%):
+  0.06 is 2.15x / 2.25x (the first calibration: 0.2 = 1.8x an 11% that the merges since have removed). Picks, V, the
+  top-8 rows, best-odds and chosen rows, Cont members and the reroll table identical on all seven; `exact_all` still the
+  fully exact plan. Exact searches p16 28 -> 10, p10 22 -> 11, p11 38 -> 16, gm16 39 -> 10, boot_mob 21 (one per class);
+  user CPU p16 1.73 -> 1.14 s, p10 3.70 -> 2.90 s, p11 3.92 -> 2.90 s, gm16 3.52 -> 1.86 s, boot_mob unchanged. Below
+  the shown rows on p10 one builder keeps a proxy career 0.088 lower than her exact one (two rows below the eighth swap).
 
 - Parked (not merged): pass 2 replayed from pass 1's recorded outcomes (`score_replay`, branch
   worktree-agent-a919b16f64bbaea00, commits 23d6968/1ea4bc9): exact, identical on all seven jobs, but 2-7% on plans and
