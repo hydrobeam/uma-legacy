@@ -4,10 +4,22 @@ Everything goes through `./build.sh [step...]` at the repository root; no step m
 in the project's uv environment (`pyproject.toml`, `uv.lock`; `.venv/` is local): `uv run path/to/script.py`, never
 the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on first use).
 
+## Toolchain and a fresh checkout
+
+- Rust stable with `rust-src`: the wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1` (with the
+  `wasm32-unknown-unknown` target installed it also works without build-std).
+- Node + npm: `cd webapp && npm ci` (binaryen's `wasm-opt`, esbuild, wrangler, Playwright).
+- uv: the Python environment (UnityPy and Pillow for the image step; everything else is stdlib). Playwright with
+  Chromium and Firefox for the browser suite.
+- Data: the Global `master.mdb` in `pkg/loopopt/export/`, the JP one in `jp/export/` (sources: `docs/SOURCES.md`).
+- Check: `./build.sh all` (data, events, native with its tests, pb, wasm, page), `uv run val/event_audit.py` ("every
+  target hint is accounted for"), `./build.sh val TAG` (everything should match the references).
+
 ## Steps
 
 | Step | Does | Needs |
 |---|---|---|
+| `all` | `data events native pb wasm page` | everything below |
 | `data` | Global and Grand Masters-era exports (`data.json`, `web_skills.json`, `web_cards.json` with the scenario card bans, `career.json`: the veteran import's spark-factor and win-saddle tables) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
 | `events` | card event caches from `pkg/loopopt/gametora/` plus the manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary and its tests | cargo |
@@ -18,7 +30,7 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 | `serve` | serves `webapp/dist` on http://localhost:8000 (`PORT=…`). The page fetches its solver and images, so it must be served, not opened as a file | node |
 | `test` | the browser suite (below) | node, Playwright |
 | `testq` | the browser suite's fast tier (below) | node, Playwright |
-| `deploy` | builds the page, uploads `webapp/dist` to Cloudflare Pages with wrangler (project `uma-legacy` unless `CF_PAGES_PROJECT`; `CF_PAGES_BRANCH=preview` publishes to the preview URL; `SITE_URL` sets the link-preview tags' host). Refuses when `webapp/`, `pkg/` or `jp/` have uncommitted changes (`DEPLOY_DIRTY=1` overrides). One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create uma-legacy --production-branch main` | node, a Cloudflare login |
+| `deploy` | builds the page, uploads `webapp/dist` to Cloudflare Pages with wrangler (project `uma-legacy` unless `CF_PAGES_PROJECT`; `CF_PAGES_BRANCH=preview` publishes to the preview URL; `SITE_URL` sets the link-preview tags' host). Refuses when `webapp/`, `pkg/` or `jp/` have uncommitted changes (`DEPLOY_DIRTY=1` overrides). One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create uma-legacy --production-branch main` (plus `--force` to stay on classic Pages, see *Releases*) | node, a Cloudflare login |
 | `val TAG` / `valq TAG` | validation (below) | native |
 
 `uv run webapp/icons.py` renders the favicons and the link-preview image from `webapp/icons/favicon.svg` (committed).
@@ -79,8 +91,9 @@ editor), `umadump.js` (import).
 - **Card events**: after touching the manual entries or the GameTora caches, `uv run val/event_audit.py`.
 - **Speed work** on the solver follows `docs/PERF.md`: byte-identical outputs, one item per commit with its gain.
   The career planner's next-plan jobs are outside `val`: `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG`
-  runs the six in `val/plan/` and compares each whole output with `val/plan/ref__*.out`, printing the plan's work
-  (nodes, exact scorings) beside the reference's; `docs/PERF_PLANNER.md` holds the planner's measurements and plan.
+  runs the seven in `val/plan/` (p16, p16_ss, p16_ura, p10, p11, gm16, boot_mob) and compares each whole output with
+  `val/plan/ref__*.out`, printing the plan's work (nodes, exact scorings) beside the reference's; `val/mono.py` checks
+  that adding a veteran never raises the planner's V; `docs/PERF_PLANNER.md` holds the planner's measurements.
   `node webapp/nodebench.mjs <wasm> global pal_A2 …` times the wasm.
 
 ## Data
@@ -97,6 +110,11 @@ editor), `umadump.js` (import).
 can move results, commit, tag `vN` (the next after the latest tag), `./build.sh deploy`. The page footer shows the
 build's `git describe` version.
 
+Hosting: Cloudflare Pages by direct upload, project `uma-legacy`, live at https://uma-legacy.pages.dev (canonical;
+indexing allowed since 2026-10-05). The project is on classic Pages: it was created with `wrangler pages project
+create --force` because wrangler 4.147 otherwise delegated to the Workers-based Pages and failed; deploys need no flag.
+Classic Pages gets no new features; moving to Workers static assets is a `wrangler.jsonc` away but changes the address.
+
 Verify a deploy against its own address (the `https://<hash>.uma-legacy.pages.dev` wrangler prints), e.g.
 `LLP_URL=https://<hash>.uma-legacy.pages.dev node webapp/nodebrowser.mjs quick`. The branch addresses
 (`preview.…`, the main one) serve HTML with a 5-minute cache, so for up to 5 minutes after a deploy they can hand out
@@ -110,7 +128,8 @@ pkg/loopopt/     Rust solver (src/), data.json, web_skills.json, web_cards.json,
 pkg/loopopt/export/  Python exporters (master.mdb -> data files)
 jp/              Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
 val/             validation jobs, reference outputs and checks
-docs/            the documentation (this file, USAGE, SOLVER, MODEL, evidence notes, HANDOFF)
+docs/            the documentation (this file, USAGE, SOLVER, MODEL, PERF, PERF_PLANNER, SOURCES, the evidence notes
+                 CHAIN_EVENTS, HINT_RATE_FIT, RANDOM_EVENTS, SECRET_EVENTS (generated by val/secret_events.py), HANDOFF)
 inputs/          reference material handed over by hand
 build.sh         the one entry point for every build step
 ```
