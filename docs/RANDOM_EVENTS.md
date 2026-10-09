@@ -38,6 +38,11 @@ Character events belong to the character: an R, SR or SSR card of hers can trigg
 | pals 2 / 3 / 4 / 5 | 0.17 / 0.19 / 0.20 / 0.17 |
 | marker card SSR / SR / R | 0.17 / 0.11 / 0.12 |
 
+Logistic fits: random events on offer −0.058 logit per event; with it in the model, 0 pals −0.02 and chain links
++0.005 per link, and initial friendship gauge, friendship bonus, specialty priority, maximum limit break and scenario
+show no effect distinguishable from zero. Rarity +0.20 logit per step next to the event count (borderline). Within a
+run, events fire independently (pairs both fired 19 against 22.4 expected in the first sample).
+
 Rejected forms (log-likelihood; constant −1205.5): strict competition 1 − (1 − 1/K)^S −1213.4 (S = 1.57); every
 event slot competing (chain links + random events + pals) no better than constant, with chain links weighted 0;
 power law c·(K/8)^−a −1200.7 with a = 0.39 (uniform competition would be a = 1).
@@ -57,9 +62,14 @@ is the card, page crediting, or chance in the smaller groups.
 
 ## Rarity, training frequency and the target cards (2,264 runs, 2026-10-05)
 
-- **Specialty priority** (a proxy for being trained with): +0.026 logit per 10 points, [−0.007, +0.065], likelihood
-  ratio 1.5. Not adopted.
-- **Random events on offer:** −0.043 logit per event [−0.062, −0.021]: 15.7% at 8 on offer, 12.5% at 14, a little
+- **Rarity: no effect within a character.** Pooled, SSR markers fire at 15.3% against SR 10.9% and R 11.4%, but that
+  is mostly which characters have SR cards. Within the 22 characters with cards of more than one rarity (character
+  fixed effects plus random events on offer), SSR is +0.18 logit (odds ratio 1.20), not distinguishable from zero.
+  Agnes Tachyon's gap (SSR 18%, SR 11%) shrinks to +0.24 logit once her stat contribution (how much she was trained with), events on offer and scenario are
+  accounted for: SR Tachyon is a filler in 0-pal decks, trained with less.
+- **Specialty priority** (a proxy for being trained with): +0.026 logit per 10 points, likelihood ratio 1.5. Not
+  adopted.
+- **Random events on offer:** −0.043 logit per event: 15.7% at 8 on offer, 12.5% at 14, a little
   flatter than the first fit.
 - **The cards that hint the default targets:** Vodka (Nimble Navigator) 21/228 = 9.2% across R, SR and SSR (SR 10/104,
   SSR 9/107) against 15.0% predicted for those decks; Nice Nature's SSR (Ramp Up) 16/121 = 13.2% against 15.2%.
