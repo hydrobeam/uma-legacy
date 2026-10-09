@@ -64,5 +64,5 @@ for d, n in jobs:
     print(f'{n}: {"identical" if not out else "DIFFERS"}  {rt.get(n, "?")} s -> {times[n]} s  {work}' + (f'  max ratio/cap by class {" ".join(f"{r:.3f}/{c}" for r, c in zip(mr, caps))}' if all(num(r) for r in mr) else ''))
     for k, r, c in near: print(f'    CAP: a scored deck of class {CLS[k] if len(mr) == 4 else "any"} reached exact/product {r:.4f}, near its assumed cap {c}')
     for o in out: print('   ', o)
-    bad += bool(out) or near
+    bad += bool(out) or bool(near)
 print(f'{len(jobs)} plan jobs, {bad} differ')
