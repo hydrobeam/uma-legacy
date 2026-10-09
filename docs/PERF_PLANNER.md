@@ -109,6 +109,7 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
 | Bounds restricted to the entries still pickable | nodes -9 to -21%, CPU +1 to +22%: the tables cost more than the nodes saved; paying would need them cached across calls (estimated hundreds of MB of wasm heap) | no |
 | Solving each class's highest-ceiling trainees first (a pre-pass before the scoring loop) | nodes p16 -0.6%, p10/p11 0%, URA -1.7%, gm16 0% | no (under the 3% bar) |
 | Pass 2 replayed from pass 1's recorded outcomes (`score_replay`) | exact, identical on all seven jobs, but 2-7% on plans and about 10% on the warm Compare plan for 74 lines and a second scoring path | parked on branch worktree-agent-a919b16f64bbaea00 (23d6968, 1ea4bc9); reconsider inside the outcome-loop consolidation |
+| wasm SIMD (`+simd128`, 2026-10-09) | byte-identical outputs; node (V8), 3 interleaved fresh-process runs: p16 1,713 -> 1,683 ms avg (-1.7%), boot_mob 1,571 -> 1,630 ms (+3.8%), both within noise | no: the hot loops (node bound, outfit_fast) are branchy with serial products, nothing autovectorises; recheck once outfit_fast is branch-free |
 
 ## Findings from code (reasoning agents, 2026-10-08)
 
