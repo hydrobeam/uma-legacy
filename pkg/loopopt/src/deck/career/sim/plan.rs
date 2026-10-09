@@ -686,10 +686,14 @@ const NEAR: f64 = 0.25;
 const TWO_BUILDERS: usize = 3;
 /// Builders through their deck class (`index_rule`): a proxy is searched exactly when her lift efficiency is within this
 /// share of a candidate's second best, or her saving within this share of the lowest saving the shown rows, the pick's
-/// near-tie band or two deep take. Measured (val/plan `proxy_check`): the proxy reads at most 11% low on contenders and
-/// 9% low on savings near the shown rows; 0.2 leaves room
-const PROXY_EFF: f64 = 0.2;
-const PROXY_SAVE: f64 = 0.2;
+/// near-tie band or two deep take. Recalibrated 2026-10-09 (val/plan `proxy_check`, with the own-8/8 credit): the proxy is
+/// the exact career for every builder on five of the seven jobs; it reads at most 2.79% low on a contender's efficiency
+/// (exact at least 0.7 of a candidate's second best; p11) and 2.67% low on a builder's saving (p11): 0.06 is 2.15x and
+/// 2.25x those. (The first measurement, on the planner as it was before the class winners and the merges since, had 11%
+/// and 9%, with 0.2.) The errors move with the model: run `proxy_check` again after a change to what builders' careers
+/// are made of
+const PROXY_EFF: f64 = 0.06;
+const PROXY_SAVE: f64 = 0.06;
 /// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
 const OPT_SHOW: usize = 8;
 /// Two deep follows rolls at most this many targets short of 8/8 (on the owner's 10-veteran pool rolls with 4 of 8 never
@@ -1179,9 +1183,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // problem, valued at her own chances through the surrogate, `best_sur`), no career search. Exact searches only where
     // the plan can turn on her: a lift efficiency within PROXY_EFF of a candidate's second best (Cont's two builders come
     // from the exactly searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW), the
-    // pick's near-tie band and two deep's builders. Measured on val/plan (`proxy_check`): the proxy only ever reads low;
-    // on contenders for a candidate's top two at most 11% low (p10), on savings near the shown rows at most 9% low, exact
-    // on the other five jobs. `exact_all` restores a search for every uma.
+    // pick's near-tie band and two deep's builders. Measured on val/plan (`proxy_check`): the proxy's odds only ever read
+    // low (it is a career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it
+    // can also read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
+    // `exact_all` restores a search for every uma.
     let proxy_on = pj.sur == 0 && !pj.exact_all && !pj.proxy_check && !pj.value_only;
     let wins: Vec<(usize, Sel)> = sv.found.iter().map(|f| (f.t, f.sel.clone()))
         .chain(cands.iter().filter_map(|&u| best[u].clone().flatten().map(|f| (u, f.sel)))).collect();
