@@ -533,19 +533,37 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   is set before she races. Her race schedule (step 9) uses her aptitudes after her legacies' pink sparks, and decides
   the wins her own veteran will carry.</p>
 
+  <p><strong>C2b. Aptitudes, pink sparks and her schedule.</strong> Per aptitude <math><mi>k</mi></math> (four distances, two surfaces,
+  four running styles), the pink stars of that aptitude on her six legacies are summed; the sum raises her starting
+  grade by 1, 2, 3 or 4 grades at 1, 4, 7 or 10 stars, at most to A. At each of the two April inspirations every
+  legacy's pink spark fires with</p>
+  <math display="block"><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><msub><mi>β</mi><mi>σ</mi></msub><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo><mo>,</mo><mspace width="1em"/><msub><mi>β</mi><mi>σ</mi></msub><mo>=</mo><mn>1</mn><mo>,</mo><mn>3</mn><mo>,</mo><mn>5</mn><mo>%</mo><mtext> at 1, 2, 3 stars</mtext></math>
+  <p>each firing +1 grade, at most S; firings are independent. A race's win chance (step 9's table) is the expectation
+  over her distance and surface grades at its turn: the starting grades before the Classic April, after one inspiration
+  until the Senior April, after both from then on. Her schedule maximises her expected G1 wins plus, per race, one more
+  for each parent who won it (a win she shares with a parent adds affinity to both when she is a parent herself), so
+  where two races clash she runs the one a parent won. Her veteran's pink spark: one aptitude, uniform over those she
+  ends at A or S, 1/2/3 stars at 20/70/10%.</p>
+
   <p><strong>C3. Inheritance and spark generation.</strong> For target <math><mi>k</mi></math>, slot <math><mi>ℓ</mi></math> carrying its spark at
   <math><msub><mi>σ</mi><mi>ℓ</mi></msub></math> stars passes it at an inspiration with chance <math><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><msub><mi>σ</mi><mi>ℓ</mi></msub><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>A</mi><mi>ℓ</mi></msub><mo>/</mo><mn>100</mn><mo>)</mo><mo>)</mo></math>;
   two inspirations (April of years two and three):</p>
   <math display="block"><msub><mi>q</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∏</mo><mrow><mi>ℓ</mi><mtext> carries </mtext><mi>k</mi></mrow></munder><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>min</mi><mrow><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><msub><mi>σ</mi><mi>ℓ</mi></msub><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><msub><mi>A</mi><mi>ℓ</mi></msub><mn>100</mn></mfrac><mo>)</mo></mrow><mo>)</mo></mrow><mo>)</mo></mrow><mn>2</mn></msup></math>
   <p>A veteran that doesn't exist yet (the one a career would leave) carries every target with stars drawn from the
   rank's mix, as an exact mixture. Spark generation at the end of the career depends on how many of the six ancestors
-  <math><msub><mi>c</mi><mi>k</mi></msub></math> carry the spark: a learned gold becomes a spark with chance <math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>, a white <math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>.
+  <math><msub><mi>c</mi><mi>k</mi></msub></math> carry the spark: a learned gold becomes a spark with chance <math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>, a white <math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><msub><mi>c</mi><mi>k</mi></msub></msup></math>: the
+  loop model's six-carrier values (0.709, 0.354) times <math><msup><mn>1.1</mn><mrow><msub><mi>c</mi><mi>k</mi></msub><mo>−</mo><mn>6</mn></mrow></msup></math>, for the open targets and the scenario's
+  guaranteed golds alike. Each target's factor carries its own <math><msup><mn>1.1</mn><mrow><msub><mi>c</mi><mi>k</mi></msub><mo>−</mo><mn>6</mn></mrow></msup></math>, so the career's value is
+  <math><mi>C</mi><mo>=</mo><munder><mo>∏</mo><mi>k</mi></munder><msup><mn>1.1</mn><mrow><msub><mi>c</mi><mi>k</mi></msub><mo>−</mo><mn>6</mn></mrow></msup></math> times its value with six carriers per target.
   With these per-target <math><msub><mi>q</mi><mi>k</mi></msub></math> and generation factors, a career's odds <math><mi>p</mi></math> are the model's exact value (steps 4–8, 19)
   with its best deck.</p>
 
-  <p><strong>Search. C4. The best careers by odds.</strong> Every legal (trainee, parents) is a candidate with a ceiling:
-  <math><mi>ρ</mi></math> times the product value with the trainee's best deck odds per target (each target's best over all her legal decks,
-  not one deck), times the spark generation scale. Candidates are taken best ceiling first; each gets its exact best deck
+  <p><strong>Search. C4. The best careers by odds.</strong> Every legal (trainee, parents) is a candidate with a ceiling,
+  her chances <math><msub><mi>q</mi><mi>k</mi></msub></math> folded into her own hint chances (<math><msub><mi>e</mi><mi>k</mi></msub><mo>←</mo><mn>1</mn><mo>−</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>e</mi><mi>k</mi></msub><mo>)</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>q</mi><mi>k</mi></msub><mo>)</mo></math>):</p>
+  <math display="block"><mtext>ceiling</mtext><mo>=</mo><mi>ρ</mi><mspace width="0.2em"/><mi>C</mi><mspace width="0.2em"/><msup><mn>0.709</mn><msub><mi>n</mi><mtext>gold</mtext></msub></msup><munder><mo>max</mo><mtext>outfit</mtext></munder><munder><mo>∏</mo><mi>k</mi></munder><msub><mi>s</mi><mi>k</mi></msub><mo>(</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>,</mo><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>)</mo></math>
+  <p>with <math><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></math>, <math><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup></math> the best odds any of her legal decks could give target <math><mi>k</mi></math> on its own (each target's best,
+  not one deck). The main search has a work budget of 300 million units (the units of step 18); each planner search
+  5 million, past which it stops taking candidates and its answer is marked unproven. Candidates are taken best ceiling first; each gets its exact best deck
   (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
   <ul>
   <li><strong>Earlier best decks.</strong> A deck fully checked at chances <math><mi>q</mi></math> worth <math><mi>v</mi></math> bounds the same trainee's best at
@@ -568,8 +586,11 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p><strong>Plan. C5. The route and its cost <math><mi>V</mi></math>.</strong> The goal is a fully looped parent: an n/n whose parents
   are both n/n. The route: an n/n of uma A, an n/n of uma B, then uma C trained with those two as parents until she lands
   every target. A and B are stage candidates (C6). Each side is either a real n/n of hers you already have (free) or a
-  fresh one at her step cost (C7); C is any allowed uma, valued with the two n/n veterans as parents (each a
-  hypothetical veteran: every target at the rank's star mix, her best career's parents, her schedule's wins). Over every
+  fresh one at her step cost (C7); C is any allowed uma other than A's and B's characters, valued with the two n/n veterans as parents from her cached
+  best decks (each fresh n/n a hypothetical veteran: every target at the rank's star mix, the parents of her best career
+  now, its schedule's wins at their chances; a real n/n is any veteran of hers carrying every target spark, at its own
+  stars and wins). For each choice of sides (fresh or real, for A and for B) the best C is found; the cheapest total
+  wins, so a fresh n/n can beat a real one whose parents make a poorer lineage for C. Over every
   pair of candidates and every choice of sides:</p>
   <math display="block"><mi>V</mi><mo>=</mo><munder><mo>min</mo><mrow><mi>A</mi><mo>,</mo><mi>B</mi><mo>,</mo><mtext>sides</mtext></mrow></munder><mrow><mo>[</mo><mtext>side</mtext><mo>(</mo><mi>A</mi><mo>)</mo><mo>+</mo><mtext>side</mtext><mo>(</mo><mi>B</mi><mo>)</mo><mo>+</mo><munder><mo>min</mo><mi>C</mi></munder><mfrac><mn>1</mn><msub><mi>p</mi><mi>C</mi></msub></mfrac><mo>]</mo></mrow></math>
   <p>With a real n/n of A and of B and C's odds on them, the goal is one stage away; with your own fully looped veteran,
@@ -585,29 +606,42 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   parents for her raise <math><msub><mi>p</mi><mi>u</mi></msub></math>. Assumed form (fitted on traces of building, below): the <math><mi>j</mi></math>-th building
   success comes with chance <math><msub><mi>λ</mi><mi>j</mi></msub></math> per career, and after <math><mi>j</mi></math> of them her odds are <math><msub><mi>p</mi><mi>j</mi></msub></math>:</p>
   <math display="block"><msub><mi>λ</mi><mi>j</mi></msub><mo>=</mo><mi>λ</mi><msup><mrow><mo>(</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>φ</mi><mo>)</mo></mrow><mi>j</mi></msup><mo>)</mo></mrow><mn>1.5</mn></msup><mo>,</mo><mspace width="1em"/><msub><mi>p</mi><mi>j</mi></msub><mo>=</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>exp</mo><mrow><mo>(</mo><mo>ln</mo><mfrac><mi>p</mi><msub><mi>p</mi><mi>∞</mi></msub></mfrac><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>φ</mi><mo>)</mo></mrow><mi>j</mi></msup><mo>)</mo></mrow></math><math display="block"><mtext>step</mtext><mo>(</mo><mi>u</mi><mo>)</mo><mo>=</mo><munder><mo>min</mo><mi>n</mi></munder><mrow><mo>[</mo><munder><mo>∑</mo><mrow><mi>j</mi><mo>&lt;</mo><mi>n</mi></mrow></munder><mfrac><mn>1</mn><msub><mi>λ</mi><mi>j</mi></msub></mfrac><mo>+</mo><mfrac><mn>1</mn><msub><mi>p</mi><mi>n</mi></msub></mfrac><mo>]</mo></mrow></math>
-  <p>Each success closes a share <math><mi>φ</mi></math> of the gap in log odds to <math><msub><mi>p</mi><mi>∞</mi></msub></math>. The parameters come from the builders (C8): the most
+  <p>Each success closes a share <math><mi>φ</mi></math> of the gap in log odds to <math><msub><mi>p</mi><mi>∞</mi></msub></math>. The parameters come from every uma's best career, scored as in C8 with every candidate's step cost set to 1 (pass
+  1): for candidate <math><mi>u</mi></math>, a builder's lift chance <math><msub><mi>p</mi><mi>ℓ</mi></msub><mo>=</mo><munder><mo>∑</mo><mi>ω</mi></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>[</mo><msub><mi>p</mi><mi>u</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>&gt;</mo><msub><mi>p</mi><mi>u</mi></msub><mo>]</mo></math> and mean lifted
+  odds <math><msub><mi>p</mi><mn>1</mn></msub><mo>=</mo><munder><mo>∑</mo><mi>ω</mi></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><msub><mi>p</mi><mi>u</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>[</mo><mo>…</mo><mo>]</mo><mo>/</mo><msub><mi>p</mi><mi>ℓ</mi></msub></math>, over builders of other characters than <math><mi>u</mi></math>. The most
   efficient builder <math><msub><mi>b</mi><mn>1</mn></msub></math> for <math><mi>u</mi></math> (the largest <math><mtext>eff</mtext><mo>=</mo><msub><mi>p</mi><mi>ℓ</mi></msub><mo>(</mo><mn>1</mn><mo>/</mo><mi>p</mi><mo>−</mo><mn>1</mn><mo>/</mo><msub><mi>p</mi><mn>1</mn></msub><mo>)</mo></math>, with <math><msub><mi>p</mi><mi>ℓ</mi></msub></math> the chance her
   veteran lifts <math><mi>u</mi></math>'s odds and <math><msub><mi>p</mi><mn>1</mn></msub></math> the mean odds it lifts them to) gives <math><mi>λ</mi><mo>=</mo><msub><mi>p</mi><mi>ℓ</mi></msub></math>; <math><msub><mi>p</mi><mi>∞</mi></msub></math> is 0.6 times <math><mi>u</mi></math>'s odds
-  with hypothetical n/n veterans of her two most efficient builders as parents; <math><mi>φ</mi><mo>=</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mn>1</mn></msub><mo>/</mo><mi>p</mi><mo>)</mo><mo>/</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>/</mo><mi>p</mi><mo>)</mo></math>. The share 0.6
+  with hypothetical n/n veterans of her two most efficient builders of different characters as parents (bred from each
+  other and from her), at least <math><msub><mi>p</mi><mn>1</mn></msub></math>; with no builder that lifts her, her step is <math><mn>1</mn><mo>/</mo><msub><mi>p</mi><mi>u</mi></msub></math>; <math><mi>φ</mi><mo>=</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mn>1</mn></msub><mo>/</mo><mi>p</mi><mo>)</mo><mo>/</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>/</mo><mi>p</mi><mo>)</mo></math>. The share 0.6
   and the exponent 1.5 were fitted to traces of building for Agnes Digital on four of the owner's pools (2, 5, 11 and
   19 veterans): within 10–20% on 11 and 19; fits leaving one pool out ranged 0.6–1.0 and 1–3.</p>
 
   <p><strong>C8. A career's score: saves per run.</strong> Running career <math><mi>c</mi></math> (trainee <math><mi>x</mi></math>, parents <math><mi>a</mi></math>, <math><mi>b</mi></math>)
   leaves a veteran: her parents <math><mi>a</mi></math> and <math><mi>b</mi></math>, her G1 wins at her schedule's chances, and the targets she lands. Her
-  outcome <math><mi>ω</mi></math> is the set of targets landed (with the exact chance of each set from step 19, the scenario's golds
-  included) and each landed spark's stars (the rank's mix, independent). For each outcome:</p>
+  outcome <math><mi>ω</mi></math> is the set of targets landed (the exact chance of each set from step 19, with her deck at her chances,
+  the scenario's golds included) and each landed spark's stars (the rank's mix, independent per spark). Her veteran
+  carries exactly those sparks, her parents, and her G1 wins at her schedule's chances; no pink or other sparks enter
+  the model. For each outcome:</p>
   <ul>
-  <li>every stage candidate's odds with her veteran as a parent, with each of the candidate's two best partners, read
-  from the candidates' cached best decks at the new chances; a candidate whose odds rise gets a cheaper step (C7);</li>
+  <li>every stage candidate's odds with her veteran as a parent, with each of the candidate's two best partners (by the
+  same value), read from the candidate's cached best decks at the new chances: per open target, her slot multiplies the
+  lineage's miss chance by <math><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>min</mi><mo>(</mo><mn>1</mn><mo>,</mo><mn>0.03</mn><mi>σ</mi><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>A</mi><mtext>her</mtext></msub><mo>/</mo><mn>100</mn><mo>)</mo><mo>)</mo><mo>)</mo></mrow><mn>2</mn></msup></math> at her <math><mi>σ</mi></math> stars and the spark scale
+  by 1.1 when she carries it; a cached deck's odds are a table over every corner of the open targets' miss chances,
+  interpolated multilinearly, which is exact for that deck (its odds are affine in each target's miss chance). The best
+  over her cached decks is taken; a candidate whose odds rise gets a cheaper step (C7);</li>
   <li>if she lands every target: her own n/n is a free side for her uma (as a candidate, or for any uma, joining the
   trios); if both her parents are n/n as well, she is the goal: <math><msup><mi>V</mi><mo>′</mo></msup><mo>=</mo><mn>0</mn></math>;</li>
   <li><math><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs, and <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>)</mo></math> the careers she saves.</li>
   </ul>
   <math display="block"><mtext>score</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mi>ω</mi></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>−</mo><mn>1</mn></math>
   <p>That is "Saves per run": the route's careers today minus the average after running her, minus her run. For the
-  three highest and the best odds, a second step is added: her rolls at most one target short of n/n, as a parent of the
-  three highest builders, scored the same way, minus today's best score. The pick is the highest score; within 0.25
-  careers (or 5%) of it, the better own odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
+  three highest scores and the best odds, a second step is added. For each of her outcomes exactly one target short of
+  n/n (stars at the rank's mix), her veteran joins the pool; every candidate's odds are lifted by her with any partner
+  and V re-taken; then the umas of the three highest-scoring careers (other characters than hers) each get their best career with
+  her veteran as a parent (her best partner by table value), scored against that pool. With <math><msup><mtext>score</mtext><mo>*</mo></msup></math> today's best score (at least 0):</p>
+  <math display="block"><mtext>second</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mrow><mi>ω</mi><mo>:</mo><mtext> n−1 of n</mtext></mrow></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>max</mi><mrow><mo>(</mo><mn>0</mn><mo>,</mo><munder><mo>max</mo><mi>b</mi></munder><msub><mtext>score</mtext><mi>ω</mi></msub><mo>(</mo><mi>b</mi><mo>)</mo><mo>−</mo><msup><mtext>score</mtext><mo>*</mo></msup><mo>)</mo></mrow></math>
+  <p>The pick is the highest score plus second step; within 0.25 careers (or 5%) of it, the better own odds. With fewer
+  than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
   <p><strong>Which careers are searched exactly.</strong> Every uma's best career (C4 restricted to her) is first valued
   from her deck class's best decks at her own chances, with no deck search; this proxy is a real career she can run, so
   never above her best. An exact search follows only where precision can change the answer: the stage candidates;
@@ -618,7 +652,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   rows keep the proxy career, marked as not searched.</p>
 
   <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
-  chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. When the career on show is the
+  chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. For the veteran it would add, it
+  also draws the skills bought (a landed target is bought, as a gold with the report's chance; one that didn't land is
+  bought anyway with its remaining buying chance), her pink spark (C2b), one blue spark (a stat, near uniform, stars at
+  the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
   pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
   found, a refitted continuation. So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
