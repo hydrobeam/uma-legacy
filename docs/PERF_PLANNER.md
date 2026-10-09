@@ -20,9 +20,12 @@ report skip, upper_na relaxation and memoisation, Cont proxy (PROXY_EFF/PROXY_SA
 stage candidates (no loop-planner lookup), persistence (IndexedDB state_in/state_out), the state-conditioned bound at
 configuration roots (SBOUND; SB_CHECK audits it), reroll table own-8/8 credit and y_hi bound, cap tripwires.
 
+Recalibrated (2026-10-09): PROXY_EFF/PROXY_SAVE 0.2 -> 0.06 (about 2.2x the largest proxy error measured on current
+code, 2.8% on p11; proxy == exact for every builder on five of seven jobs); shown rows, pick, V, Cont identical on all
+seven; exact searches p16 28 -> 10, gm16 39 -> 10, p11 38 -> 16; plan CPU p16 1.73 -> 1.14 s, gm16 3.52 -> 1.86 s.
+Rerun next.proxy_check after any change to how builders' careers are built.
+
 Open:
-- Recalibrate PROXY_SAVE/PROXY_EFF on current code (agent running): p16's 19 extra searches after the own-8/8 credit
-  only confirm (proxy == exact for all 60 builders); scores cluster at the shown-row cut inside the 20% band.
 - Consolidate score_career's and outcome_hi's outcome loops (one loop, estimate and bound; y byte-identical); the parked
   pass-2 replay may fold in there.
 - Page: Compare shows the table's instant figure while its replan runs (as Reroll does).
