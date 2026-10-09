@@ -110,8 +110,11 @@ M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
-def bundle(entry): return subprocess.run([ESBUILD, os.path.join(H, 'src', entry), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
+def bundle(entry): return subprocess.run([ESBUILD, os.path.join(H, 'src', entry), '--bundle', '--format=iife', '--charset=utf8', '--minify', '--log-level=warning'],
                                          check=True, capture_output=True, text=True).stdout
+# the inlined CSS without its comments and whitespace (no other rewriting: the rules stay as written)
+def css_min(text): return subprocess.run([ESBUILD, '--loader=css', '--minify-whitespace', '--charset=utf8', '--log-level=warning'],
+                                         input=text, check=True, capture_output=True, text=True).stdout
 app = bundle('main.js')
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
@@ -147,7 +150,7 @@ for pkg, w in FONTS:
     if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
 for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
-css = '\n'.join(faces) + '\n' + css
+css = css_min('\n'.join(faces) + '\n' + css)
 # /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
 # fetches it only on a page that draws math, so only /about gets the face
 _d = os.path.join(H, 'node_modules', '@fontsource', 'stix-two-math')
