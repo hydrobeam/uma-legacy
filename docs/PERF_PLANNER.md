@@ -33,6 +33,19 @@ page-side agent's report: deterministic only with the winners-only cache and exa
 
 ## Open
 
+- Reroll (2026-10-09, branch reroll-memos-on-caps, on main 6aed843 with the per-class caps). What a roll runs: the
+  quick comparison (a career job, `fix` her) always; the plan with her added (the exact check) when the table's y >= 0.5
+  or, after 800 ms, when y_hi >= 0.5. Chance a roll runs the plan: p16 37% (6.1% saving + 30.7% provisional), gm16 37%,
+  p10 100% (52.6 + 47.4), p11 100%, boot_mob 100%. Callgrind per roll (before the caps, line-table build): p16 quick
+  0.12G, saving plan 8.30G, provisional plan 6.61G; p10 quick 7.42G / 3.89G, plans 16.65G / 11.40G. In a p16 saving plan:
+  deck searches 3.80G (16 proxy searches from `best_sur`, 2.47G), `score_career` 3.56G (190 calls, 18.7M each; its fold
+  0.47G, Cont::plan 0.36G, trio_v about 0.31G), corner tables 0.27G. A provisional plan repeated every one of the base
+  plan's proxy searches key for key. Kept: `best_deck`'s memo (replaying cert, band overflows, nodes, exact scorings and
+  the per-class ratio and deck) and the corner tables, kept between jobs of one setup (`DECK_KEEP`). On main (release
+  build, callgrind): p16 run's plan 9.10G -> 8.91G (-2.1%), saving-roll plan 8.38G -> 8.06G (-3.8%), provisional-roll
+  plan 6.65G -> 4.33G (-35.0%); p10 (before the caps) saving -24.6%, provisional -36.8%; the quick job unchanged.
+  Identical whole, work counters and per-class fields included: the Reroll sequences on p16, p10 and boot_mob (native;
+  wasm before the caps), val/plan 7/7 against main; full val 0 mismatches; mono 0 rises.
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
   parked pass-2 replay (Done, below) may fold in there.
 - Left on boot_mob after the memos (callgrind, 17.05G instructions): `best_sur` and the deck searches under it about
