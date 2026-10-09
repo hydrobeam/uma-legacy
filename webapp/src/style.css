@@ -1662,7 +1662,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* the career setup folds: its ribbon is the button (a chevron at its end), folded the panel is the ribbon and a summary */
 .rb .sethdr .setfold { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; }
 .rb .sethdr { cursor: pointer; } .rb .sethdr::after { pointer-events: none; }
-.rb .rbbar.folded, .rb .rbbar.hdrhot { cursor: pointer; }
+.rb .rbbar.folded { cursor: pointer; }
 .rb .sethdr .setfold:focus-visible { outline: 3px solid #fff; outline-offset: 2px; border-radius: 4px; }
 .rb .sethdr .foldi { width: 8px; height: 8px; border-right: 3px solid #fff; border-bottom: 3px solid #fff; transform: rotate(-135deg) translate(-2px, -2px); filter: drop-shadow(0 1px 0 #d9468a); }
 .rb .rbbar.folded .sethdr .foldi { transform: rotate(45deg) translate(-2px, -2px); }

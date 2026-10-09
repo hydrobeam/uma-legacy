@@ -819,15 +819,17 @@ const TESTS = {
     check('career: with no veterans it asks for parents or an import, and offers sample veterans', /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')), await note());
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
-    // the whole header toggles it: the bare strip beside the ribbon folds it, the summary (folded, the whole bar) opens it
+    // the pink ribbon toggles it, its edge too (not the bare strip beside it); folded, the summary (the whole bar) opens it
     const hb = await pg.locator('#h-set').boundingBox(), bb = await pg.locator('.rbbar').boundingBox();
     await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
+    const stripStays = !(await pg.locator('.rbbar .setlist').isHidden());
+    await pg.mouse.click(hb.x + 6, hb.y + 4);
     const foldSum = await pg.getAttribute('#set-sum', 'aria-label'), foldHid = await pg.locator('.rbbar .setlist').isHidden();
     await pg.click('#set-sum');
     const sumOpen = !(await pg.locator('.rbbar .setlist').isHidden());
     await pg.click('#set-fold'); const ribFold = await pg.locator('.rbbar .setlist').isHidden(); await pg.click('#set-fold');
-    check('career: the Career setup header (the strip beside the ribbon, the ribbon, folded the summary) folds the panel to a one-line summary and back',
-      foldHid && sumOpen && ribFold && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
+    check('career: the Career setup ribbon (its edge too, not the strip beside it; folded, the summary) folds the panel to a one-line summary and back',
+      stripStays && foldHid && sumOpen && ribFold && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously

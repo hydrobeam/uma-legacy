@@ -899,13 +899,10 @@ function paintFold() {
   sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)]].map(([k, v]) => {
     const p = el('span', 'sumkv'); p.setAttribute('aria-hidden', 'true'); p.append(el('span', 'sumk', k), el('b', '', v)); return p; }));
 }
-// the whole header toggles it: the ribbon, the bare strip beside it and, folded, the whole bar (its summary included)
+// the pink ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included)
 function initFold() {
-  const bar = document.querySelector('.rbbar'), hdr = $('h-set');
-  const inHdr = (e) => folded || e.target.closest('#h-set') || (e.target === bar && e.clientY < hdr.getBoundingClientRect().bottom);
-  bar.addEventListener('click', (e) => { if (!inHdr(e)) return; folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); });
-  bar.addEventListener('mousemove', (e) => bar.classList.toggle('hdrhot', !folded && e.target === bar && e.clientY < hdr.getBoundingClientRect().bottom));
-  bar.addEventListener('mouseleave', () => bar.classList.remove('hdrhot'));
+  const bar = document.querySelector('.rbbar');
+  bar.addEventListener('click', (e) => { if (!folded && !e.target.closest('#h-set')) return; folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); });
   paintFold();
 }
 
