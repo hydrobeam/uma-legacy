@@ -123,6 +123,37 @@ const AUDIT = () => {
   return out;
 };
 
+// every visible pill track (the segmented controls and the veteran card's tabs): its segments fill it flush, the full
+// inner height, no gap at its ends or between them, the track a pill that clips them to its own curve, none of them drawn
+// with the game's pill sprite (whose fixed-width caps don't fit other heights). Returns what is wrong.
+const PILLS = () => {
+  const bad = [], near = (a, b) => Math.abs(a - b) <= 0.6;
+  for (const t of document.querySelectorAll('.seg, .udtabs')) {
+    const r = t.getBoundingClientRect(), cs = getComputedStyle(t); if (!r.width || !r.height || cs.visibility === 'hidden') continue;
+    const id = t.id ? '#' + t.id : t.getAttribute('aria-label') || t.getAttribute('aria-labelledby') || t.className;
+    const inner = { l: r.left + parseFloat(cs.borderLeftWidth), r: r.right - parseFloat(cs.borderRightWidth), t: r.top + parseFloat(cs.borderTopWidth), b: r.bottom - parseFloat(cs.borderBottomWidth) };
+    if (cs.overflowX !== 'hidden' && cs.overflowX !== 'clip') bad.push(`${id}: does not clip its segments`);
+    if (parseFloat(cs.borderTopLeftRadius) < r.height / 2 - 0.5) bad.push(`${id}: not a pill`);
+    const segs = [...t.children].filter(c => c.getBoundingClientRect().width > 0);
+    segs.forEach((s, i) => { const q = s.getBoundingClientRect();
+      if (!near(q.top, inner.t) || !near(q.bottom, inner.b)) bad.push(`${id} #${i}: ${(q.top - inner.t).toFixed(1)} / ${(inner.b - q.bottom).toFixed(1)} px short of top / bottom`);
+      if (i === 0 && !near(q.left, inner.l)) bad.push(`${id}: ${(q.left - inner.l).toFixed(1)} px gap at its start`);
+      if (i === segs.length - 1 && !near(q.right, inner.r)) bad.push(`${id}: ${(inner.r - q.right).toFixed(1)} px gap at its end`);
+      if (i > 0 && !near(q.left, segs[i - 1].getBoundingClientRect().right)) bad.push(`${id}: a gap before #${i}`);
+      if (getComputedStyle(s).borderImageSource !== 'none') bad.push(`${id} #${i}: drawn with a border-image`); });
+  }
+  return bad;
+};
+// what scrolls sideways: the page, an open dialog's body, or an open dialog that leaves the screen
+const SIDEWAYS = () => {
+  const d = document.documentElement, out = [];
+  if (d.scrollWidth > d.clientWidth) out.push(`page ${d.scrollWidth} > ${d.clientWidth}`);
+  for (const g of document.querySelectorAll('dialog[open]')) { const r = g.getBoundingClientRect();
+    if (r.left < -0.5 || r.right > d.clientWidth + 0.5) out.push(`#${g.id} leaves the screen`);
+    for (const s of g.querySelectorAll('.dlg, .gmdbody')) if (s.scrollWidth > s.clientWidth + 1) out.push(`#${g.id} scrolls sideways (${s.scrollWidth} > ${s.clientWidth})`); }
+  return out;
+};
+
 // ---------- tests: each gets a fresh page (fresh storage) unless noted
 const TESTS = {
   async load(b) {
@@ -651,10 +682,54 @@ const TESTS = {
     check('phone: the affinity\'s Close stays on screen too', await closeVis());
     await pg.keyboard.press('Escape');
     await pg.click('#ex-open'); check('the export dialog\'s Close sits in the same header row as the others', await pg.evaluate(() => document.getElementById('ex-close').closest('.dhead') !== null)); await pg.keyboard.press('Escape');
+    // the pill switches (Game data, lineage rank, Results): the chosen part fills its share of the track, flush
+    await pg.evaluate(() => scrollTo(0, 0));
+    const pills = await pg.evaluate(PILLS);
+    check('phone: every pill track\'s segments fill it flush (full height, no gap at its ends or between them)', !pills.length && await pg.locator('.seg:visible').count() >= 3, pills.slice(0, 4).join(' | '));
+    // nothing scrolls sideways with the editors and the result's popups open
+    const side = [];
+    for (const [sel, id, text] of [['#o-umas', 'set-umas'], ['#o-cards', 'set-cards'], ['.loop .lacts button', 'why-dlg', 'Affinity'], ['.loop .lacts button', 'odds-dlg', 'Odds']]) {
+      const loc = text ? pg.locator(sel, { hasText: text }).first() : pg.locator(sel); await loc.scrollIntoViewIfNeeded(); await loc.click(); await dialog(pg, id);
+      side.push(...(await pg.evaluate(SIDEWAYS)).map(x => id + ': ' + x)); await pg.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close())); }
+    check('phone: nothing scrolls sideways with Umas, Support cards, Affinity or Odds open', !side.length, side.slice(0, 4).join(' | '));
     await pg.setViewportSize({ width: 1280, height: 800 });   // the page reorders on its resize handler
     check('widened to desktop, the results go back beside (after) the settings', await until(pg, () => !!(document.querySelector('.lpside').compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
+  },
+  async careerphone(b) {
+    // the career page on a 390 px phone with the sample veterans' answer: nothing scrolls sideways (page or dialogs), the
+    // setup rows inside their panel, the pill tracks flush, the pick in Options shaded as one card
+    const chromium = b.browserType().name() === 'chromium';
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, ...(chromium ? { isMobile: true, hasTouch: true } : {}) });
+    const pg = await ctx.newPage(); pg.errors = [];
+    pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
+    await pg.goto(URL.replace(/\/?$/, '/') + 'career');
+    await pg.waitForFunction(() => /Try sample veterans/.test(document.getElementById('run-act')?.textContent || ''), null, { timeout: 180000 });
+    await pg.click('#run-act');
+    await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent) && document.querySelector('.ud .udtabs'), null, { timeout: 300000 });
+    const inside = await pg.evaluate(() => { const p = document.querySelector('.rbbar').getBoundingClientRect();
+      return [...document.querySelectorAll('.rbbar .setlist > *, .rbbar .setlist .seg, .rbbar .setlist .scenbtn, .rbbar .lptgt .adder')].filter(e => e.getBoundingClientRect().width)
+        .filter(e => { const r = e.getBoundingClientRect(); return r.left < p.left || r.right > p.right; }).map(e => e.id || e.className); });
+    check('career phone: no sideways scroll; the setup rows and the add-a-skill box sit inside their panel', !(await pg.evaluate(SIDEWAYS)).length && !inside.length
+      && (await pg.locator('.rbbar .lptgt .adder input').boundingBox()).width > 200, JSON.stringify([await pg.evaluate(SIDEWAYS), inside]));
+    await pg.locator('.udtab').nth(1).click();
+    const pills = await pg.evaluate(PILLS);
+    check('career phone: the pill tracks (Game data, rank, her card\'s tabs) are filled flush by their segments', !pills.length && await pg.locator('.udtabs').count() === 1, pills.slice(0, 4).join(' | '));
+    const pick = await pg.evaluate(() => { const tr = document.querySelector('.alts .optab tbody tr.on'); if (!tr) return null; const th = tr.querySelector('th');
+      return { bg: getComputedStyle(tr).backgroundColor, cell: getComputedStyle(th).backgroundColor, wide: th.getBoundingClientRect().width >= tr.getBoundingClientRect().width - 20 }; });
+    check('career phone: Options shades the planner\'s pick as one card, its career the card\'s full width', pick && pick.bg !== 'rgba(0, 0, 0, 0)' && pick.cell === 'rgba(0, 0, 0, 0)' && pick.wide, JSON.stringify(pick));
+    const side = [];
+    const shut = () => pg.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()));
+    for (const [open, label] of [[() => pg.click('#v-toggle'), 'veterans'], [() => pg.click('#o-umas'), 'umas'], [() => pg.click('#o-cards'), 'cards'],
+      [() => pg.locator('#tree [data-k]').first().click(), 'node'], [() => pg.locator('.udodds').first().click(), 'odds']]) {
+      await open(); await pg.waitForSelector('dialog[open]'); await pg.waitForTimeout(150);
+      side.push(...(await pg.evaluate(SIDEWAYS)).map(x => label + ': ' + x));
+      if (label === 'veterans') side.push(...(await pg.evaluate(PILLS)).map(x => label + ': ' + x));
+      await shut(); }
+    check('career phone: nothing scrolls sideways in your veterans (their Yours / Borrowed pills flush), Umas, Support cards, the node popup or the odds', !side.length, side.slice(0, 4).join(' | '));
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
   },
   async nonecards(b) {
     // "None owned" on support cards: no owned card reaches the solver (an empty owned list used to mean "all owned")
