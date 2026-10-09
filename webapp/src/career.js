@@ -566,28 +566,30 @@ function rolledBlueGreen(r) {
   return { blues, greens };
 }
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false;
-  const y = tableSave(simulation.draft, r);
+  const ts = tableSave(simulation.draft, r), y = ts ? ts.y : null;
   const t = simulation.tally && simulation.tally.key === keyOf(r) ? simulation.tally : (simulation.tally = { key: keyOf(r), rolls: 0, hits: 0 });
   t.rolls++; if (y != null && y >= 0.5) t.hits++;
-  if (y == null) { compare(); return; }
+  if (ts == null) { compare(); return; }
   if (cancelCompare()) runPlan();
-  quickCompare(y); }
+  quickCompare(y, ts.hi); }
 // A roll's careers saved, read from the plan's table for the career on show (`outcomes`: per outcome, her targets' stars
-// and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. null when
-// the plan isn't for this career (then Reroll compares exactly).
+// and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. With it
+// `hi`, the most her veteran's direct lifts could save for that outcome (`y_hi`: ceilings over every partner; null on an
+// older plan): a table zero is proven when hi < 0.5, else the exact comparison checks it. null when the plan isn't for
+// this career (then Reroll compares exactly).
 function tableSave(d, r) {
   const o = planS.state === 'done' ? planS.r?.outcomes : null;
   if (!o || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',') || !Array.isArray(o.y)) return null;
   const tg = state.targets, sp = d.sparks || {}; let leaf = 0, fm = 0;
   o.uncv.forEach((k, j) => { leaf |= Math.min(3, sp[tg[k]?.group] || 0) << (2 * j); });
   o.fixed.forEach((k, j) => { if (sp[tg[k]?.group]) fm |= 1 << j; });
-  const y = o.y[(leaf << o.fixed.length) | fm];
-  return typeof y === 'number' ? y : null;
+  const i = (leaf << o.fixed.length) | fm, y = o.y[i], hi = Array.isArray(o.y_hi) ? o.y_hi[i] : null;
+  return typeof y === 'number' ? { y, hi: typeof hi === 'number' ? hi : null } : null;
 }
 // the reroll's comparison: careers to loop from the table, and the best career with her as a parent (one quick search)
-async function quickCompare(y) {
+async function quickCompare(y, hi = null) {
   const id = ++simulationId, source = myId;
-  simulation.state = 'busy'; simulation.kind = 'quick'; simulation.error = null; simulation.stale = false; renderSimulation();
+  simulation.state = 'busy'; simulation.kind = 'quick'; simulation.error = null; simulation.stale = false; simulation.provisional = false; renderSimulation();
   try {
     const base = comparisonJob();
     if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
@@ -601,13 +603,19 @@ async function quickCompare(y) {
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
   // a roll that saves careers: the table can undercount how many (it tries her with a few partners at cached decks), so
-  // the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant)
-  if (simulation.state === 'done' && y >= 0.5 && id === simulationId && source === myId) runComparison(true);
+  // the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant). A table zero whose
+  // bound allows a saving (`hi`) is checked the same way, shown meanwhile as no saving, checking
+  if (simulation.state === 'done' && id === simulationId && source === myId) {
+    if (y >= 0.5) runComparison(true);
+    // after the roll has stood a moment: rolling on starts none (a running check would be stopped, the worker with it)
+    else if (hi != null && hi >= 0.5) { simulation.provisional = true; renderSimulation();
+      setTimeout(() => { if (id === simulationId && source === myId && simulation.provisional && !simulation.refining) runComparison(true); }, 800); }
+  }
 }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
 // can't be interrupted, so the worker goes (run() starts a new one). Returns whether the plan went with it.
 function cancelCompare() {
-  if (simulation.refining) { simulationId++; simulation.refining = false; killEngine(); return planS.state === 'busy'; }
+  if (simulation.refining) { simulationId++; simulation.refining = false; simulation.provisional = false; killEngine(); return planS.state === 'busy'; }
   if (simulation.state !== 'busy') return false;
   simulationId++; simulation.state = 'ready';
   if (simulation.kind === 'quick') return false;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
@@ -633,8 +641,8 @@ function compare() {
 // the exact count; otherwise the panel waits on it
 async function runComparison(refine = false) {
   const id = ++simulationId, source = myId;
-  const base = comparisonJob(), key = JSON.stringify(base);
-  if (refine) simulation.refining = true; else { simulation.state = 'busy'; simulation.refining = false; }
+  const base = comparisonJob(), key = JSON.stringify(base), prov = refine && !!simulation.provisional;
+  if (refine) simulation.refining = true; else { simulation.state = 'busy'; simulation.refining = false; simulation.provisional = false; }
   simulation.error = null; simulation.stale = false; renderSimulation();
   try {
     if (!simulation.baseline) {
@@ -670,9 +678,11 @@ async function runComparison(refine = false) {
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick;
-    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.refining = false; simulation.state = 'done';
+    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.refining = false; simulation.provisional = false; simulation.state = 'done';
+    // a roll the table read as no saving that the exact comparison finds saving: counted as an improvement after all
+    if (prov && v0b != null && v0a != null && v0b - v0a >= 0.5 && simulation.tally) simulation.tally.hits++;
   } catch (e) { if (id !== simulationId || source !== myId) return;
-    if (simulation.refining) simulation.refining = false; else { simulation.error = e.message; simulation.state = 'error'; } }
+    if (simulation.refining) { simulation.refining = false; simulation.provisional = false; } else { simulation.error = e.message; simulation.state = 'error'; } }
   renderSimulation();
 }
 function addDraft() {
@@ -731,14 +741,14 @@ function simulationBody() {
     // what she does for the loop if you enter her: one short line
     const head = looped ? 'Fully looped parent'
       : simulation.full ? `${n}/${n}: step 1 done`
-      : simulation.refining ? 'Improves your loop'
+      : simulation.refining && !simulation.provisional ? 'Improves your loop'
       : saves != null && saves >= 0.5 ? `Saves ${fmtN(saves)} careers`
       : simulation.herParent ? 'Parent of the next career'
       : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
       : 'No careers saved';
     verdict.append(el('strong', '', head));
     result.appendChild(verdict);
-    if (simulation.refining) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + '<span>Working out how many careers it saves…</span>'; result.appendChild(p); }
+    if (simulation.refining || simulation.provisional) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>'); result.appendChild(p); }
     const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
     const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };
