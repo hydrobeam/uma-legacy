@@ -895,7 +895,9 @@ fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: 
     let (mut ng0, mut nh0) = (vec![1.0f64; nu], vec![1.0f64; nu]);
     for (src, _) in ents {
         for &(k, p) in &src.train { nh0[k] *= 1.0 - p; }
-        for g in &src.fixed { for (k, pg, ph) in group_gh(g) { ng0[k] *= 1.0 - pg; nh0[k] *= 1.0 - ph; } }
+        // (Src::fm: the fixed groups' (k, 1 - P(gold), 1 - P(any hint)) in group order, as group_gh gives them: the same
+        // factors in the same order, computed once per source)
+        for &(k, mg, mh) in &src.fm { ng0[k] *= mg; nh0[k] *= mh; }
     }
     // chain cards in key order (fillers included): (kind, per target: cumulative (miss gold, miss any) after l links)
     let mut chains: Vec<(Kind, Vec<(usize, Vec<(f64, f64)>)>)> = vec![];
