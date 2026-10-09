@@ -493,6 +493,27 @@ impl<'a> Env<'a> {
         let dom: Vec<Vec<usize>> = (0..nl).map(|y| (0..nl).filter(|&x| x != y && dominates(p, x, y)).collect()).collect();
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
+        // Identical deck problems, searched once (`Twin`): a candidate whose trainee, chances q and spark scale c are
+        // bit-identical to an earlier candidate's of this search (interchangeable parents: veterans with the same stars
+        // and no relation or race points between them, as every sample pool of mob veterans has; 15 pairs of 6 such
+        // veterans are one problem per trainee) takes that candidate's outcome instead of a second `best_deck`.
+        // Derived, per outcome of the first (F, at bar th1) for the later one (R, at bar th2 >= th1: the bar only rises):
+        // - Done(v, D) fully checked: F's Ref (q, v, D) is in refs[t], so R reaches the deck search only with
+        //   th2 <= c v (1 + 1e-9) (the Ref bound above, rise = 1 at equal q). R's product search then starts below the
+        //   best product value pv (th2 / (rho c (1 + 1e-9)) <= v / rho <= pv under the cap every search assumes) and finds
+        //   F's product deck P, so the same `ruled` proof (q, pv); R's first exact pass scores P, then its starts, which
+        //   hold F's (D among them), so its best is at least v from the same decks in the same order up to D; its band
+        //   (decks with rho x product >= its best) is within F's, every deck of which F scored or ruled out against a
+        //   lower best, and the starts F did not have are decks legal at q, at most v (F's search is exact under the cap).
+        //   So R is Done(v, D) with the same floats (the same model state, `set_trainee` at the same q); a tie or lower,
+        //   it goes into `done` exactly where R's own search would have put it.
+        // - Bounded at th1: no deck above F's seed, or the best product deck below th1 / (rho c (1 + 1e-9)); a higher bar
+        //   gives a higher seed, so R is Bounded too (no `ruled` entry: R's would only repeat what F's proves).
+        // - NoDeck (no legal deck at all, at any bar): R the same.
+        // R's search would also have spent work, so a work budget can now reach further than before (the answer the
+        // unbudgeted search gives); outputs are otherwise the same, only the work counters fall.
+        enum Twin { Done(f64, Sel, Option<f64>), Bounded(f64), NoDeck }
+        let mut twins: crate::FxMap<(u16, Vec<u64>, u64), Twin> = Default::default();
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
         // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
@@ -536,9 +557,25 @@ impl<'a> Env<'a> {
             let lo = if self.use_seen { 0 } else { ruled0[ct] };
             if self.ruled[ct][lo..].iter().any(|(rq, s)| EXACT_RHO * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
-            let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
-            let res = self.best_deck(t, c, th, &starts, &mut n_scored);
-            if let Some(s) = self.last_pv.take() { self.ruled[ct].push((q.clone(), s)); }
+            let tk = (cands[ci].t, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
+            let res = match twins.get(&tk) {
+                Some(Twin::Done(v, sel, pv)) => { if let Some(s) = pv { self.ruled[ct].push((q.clone(), *s)); } DeckRes::Done(*v, sel.clone(), true) }
+                Some(Twin::Bounded(th1)) if th >= *th1 => DeckRes::Bounded,
+                Some(Twin::NoDeck) => DeckRes::NoDeck,
+                _ => {
+                    let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
+                    let res = self.best_deck(t, c, th, &starts, &mut n_scored);
+                    let pv = self.last_pv.take();
+                    if let Some(s) = pv { self.ruled[ct].push((q.clone(), s)); }
+                    match &res {
+                        DeckRes::Done(v, sel, true) => { twins.insert(tk, Twin::Done(*v, sel.clone(), pv)); }
+                        DeckRes::Done(..) => {}
+                        DeckRes::Bounded => { twins.insert(tk, Twin::Bounded(th)); }
+                        DeckRes::NoDeck => { twins.insert(tk, Twin::NoDeck); }
+                    }
+                    res
+                }
+            };
             let (val, sel, full) = match res {
                 DeckRes::NoDeck => continue,
                 DeckRes::Bounded => { n_bounded += 1; continue }
