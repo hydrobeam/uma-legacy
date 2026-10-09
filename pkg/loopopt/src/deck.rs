@@ -91,6 +91,9 @@ pub(crate) struct DeckJob {
     /// per-uma: rank loops and decks by exact odds (EXACT_RHO); false = prune by product odds, as a fast first pass
     /// (what is reported is still scored exactly, `exact.complete` false)
     #[serde(default = "d_true")] pub exact: bool,
+    /// audit: every class cap (`EXACT_CAPS`) at 2.0, so a deck whose exact / product exceeds its class's cap is still
+    /// found and reported (`val/capaudit.py`; slow)
+    #[serde(default)] pub cap_audit: bool,
 }
 
 /// Fixed schedule for one uma (see DeckJob::schedule).
@@ -1174,10 +1177,28 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 /// (`joint_trainee`), and so are the decks and loops whose ranking value is at least this share of the best. On the
 /// reference setups the exact value was 1.00-1.19 times the product (the most for 0-1-pal decks), so 0.8 covers a
 /// gap well beyond that.
-/// Assumed cap on a deck's exact odds over its product odds, for the per-uma search: decks and loops are scored exactly
-/// wherever their product-odds ceiling times this could beat the best exact value. Largest ratio seen: 1.17 (Grand
-/// Masters, all owned, 0-1-pal decks); every deck scored reports its ratio (`exact.max_ratio`).
-pub(crate) const EXACT_RHO: f64 = 1.25;
+/// Assumed caps on a deck's exact odds over its product odds, by the deck's structure class (`cap_class`): decks and
+/// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Exact
+/// exceeds product only through the shared chain-event count N, which correlates the targets a chain link feeds
+/// ("chain-varying"): with at most one such target and no multi-target group, exact <= product (given N the groups
+/// are independent and each target's factor rises with its own hints), so 1.0 is proven; two targets 1.05 (largest seen
+/// 1.0082); three or more, or a multi-target group, 1.25 (largest seen: three 1.127, King Halo in boot_mob, so the
+/// 1.10 first proposed for three is not used; four or more 1.164). Every deck scored reports its ratio by class
+/// (`exact.class_max_ratio`).
+pub(crate) const EXACT_CAPS: [f64; 4] = [1.0, 1.05, 1.25, 1.25];
+/// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
+pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
+/// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
+const AUDIT_CAP: f64 = 2.0;
+/// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links) and bit 63 when one
+/// of its groups is not negatively associated (`Src::multi`).
+fn cv_mask(s: &Src) -> u64 { s.cm.iter().fold(0u64, |m, (k, _)| m | 1u64 << *k) | if s.multi { 1u64 << 63 } else { 0 } }
+/// The structure class of a deck from its entries' `cv_mask`s ORed (or of every deck a search node can still reach,
+/// from the masks of its cards and of every candidate left): 0 at most one chain-varying target, 1 two, 2 three, 3 four
+/// or more or a multi-target group.
+pub(crate) fn cap_class(m: u64) -> usize { if m >> 63 != 0 { 3 } else { match m.count_ones() { 0 | 1 => 0, 2 => 1, 3 => 2, _ => 3 } } }
+/// The class of a deck given by its sources.
+fn src_class<'s>(it: impl Iterator<Item = &'s Src>) -> usize { cap_class(it.fold(0u64, |m, s| m | cv_mask(s))) }
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.
 const EXACT_STEPS: [f64; 3] = [EXACT_RHO, 1.12, 1.05];
 /// Most decks one exact deck search may return; beyond it the answer is the best found and `exact.complete` is false.
@@ -1638,6 +1659,8 @@ struct DeckSpace<'a> {
     cards: Vec<&'a Card>,
     // entries (as in run_deck_relaxed, before card dominance drops any): card index, chain kind, early end, variant
     rel: Vec<usize>, kind: Vec<Kind>, endk: Vec<u8>, vark: Vec<u32>, srcs: Vec<Src>, ebor: Vec<bool>,
+    // per entry, `cv_mask` of its source (the class caps)
+    cvm: Vec<u64>,
     // pal characters with no relevant card: (id, name, card)
     plain: Vec<(u32, String, &'a Card)>,
     locked: Vec<usize>, allowed_borrow: usize,
@@ -1795,13 +1818,22 @@ impl<'a> DeckSpace<'a> {
             (lbit, all_locked)
         })
     }
+    /// the class caps (`EXACT_CAPS`, or all at AUDIT_CAP under `cap_audit`)
+    pub(crate) fn caps(&self) -> [f64; 4] { if self.dj.cap_audit { [AUDIT_CAP; 4] } else { EXACT_CAPS } }
+    /// the highest class cap (EXACT_RHO unless `cap_audit`)
+    pub(crate) fn rho_top(&self) -> f64 { self.caps()[3] }
+    /// a deck's structure class (`cap_class`)
+    pub(crate) fn sel_class(&self, x: &Sel) -> usize { cap_class(x.ents.iter().fold(0u64, |m, &j| m | self.cvm[j])) }
+    /// a deck's cap under the ceiling rho: its class's cap, at most rho
+    pub(crate) fn sel_cap(&self, x: &Sel, rho: f64) -> f64 { self.caps()[self.sel_class(x)].min(rho) }
     fn legal_plain(&self, ids: &[u32]) -> Vec<&(u32, String, &'a Card)> { self.plain.iter().filter(|x| ids.iter().all(|&id| !x.2.blocks(id))).collect() }
     /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
     /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
     /// included) over those pairs. `best`: return the one deck
     /// with the highest value of the single clause above `seed` (none if no deck beats it; ties: the first found).
     /// Otherwise return every deck
-    /// for which some clause has rho * value >= threshold; at most `cap` decks (the flag says the cap was hit).
+    /// for which some clause has c * value >= threshold, c the deck's class cap (`cap_class`, `caps`) at most rho; at
+    /// most `cap` decks (the flag says the cap was hit).
     fn search(&self, model: &Model, us: &[usize], ids: &[u32], clauses: &[(Vec<(usize, f64)>, f64)], best: bool, seed: f64, rho: f64, cap: usize) -> (Vec<(f64, Sel)>, bool) {
         let nu = self.unc.len(); let size = self.dj.deck_size;
         if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) { return (vec![], false); }
@@ -1828,6 +1860,10 @@ impl<'a> DeckSpace<'a> {
         let (sb_u, sb_q) = if sbm > 0 { (us[clauses[0].0[0].0], clauses[0].0[0].1) } else { (0, 0.0) };
         let rho = if sbm == 2 { 1e9 } else { rho };
         if sbm > 0 { SB_USED.with(|c| c.set(sbm)); }
+        // the cap per structure class (`cap_class`), at most rho (uncapped with SBOUND=2); a deck passes at its own
+        // class's cap, a node at the cap of the class of every deck it can still reach (its cards and every candidate
+        // left: a superset of any completion's, so a cap at least as high)
+        let ccap: [f64; 4] = if sbm == 2 { [rho; 4] } else { let c = self.caps(); [c[0].min(rho), c[1].min(rho), c[2].min(rho), c[3].min(rho)] };
         let val = |cl: &(Vec<(usize, f64)>, f64), dw: &[f64], dg: &[f64]| fixed * cl.0.iter().map(|&(k, q)| model.trainee_fast(us[k], q, dw, dg)).sum::<f64>();
         let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
@@ -1837,6 +1873,8 @@ impl<'a> DeckSpace<'a> {
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
         struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
+        // per group, its entries' `cv_mask`s ORed
+        let gcvm: Vec<u64> = groups_all.iter().map(|l| l.iter().fold(0u64, |m, &j| m | self.cvm[j])).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let (lbit, all_lk) = { let x = self.lock_bits(); (&x.0[..], x.1) };
         let glk: &[u8] = &lt.glk;
@@ -1912,7 +1950,9 @@ impl<'a> DeckSpace<'a> {
                         for g in (0..ng).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
                         dw[t] = 1.0 - a; dg[t] = 1.0 - b;
                     }
-                    let ideal = if best { val(&clauses[0], &dw, &dg) * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rho * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
+                    // the configuration's class cap (every deck of it is in a class at most this one's)
+                    let rc = if best { rho } else { ccap[cap_class(gs.iter().fold(0u64, |m, &(i, _)| m | gcvm[i]))] };
+                    let ideal = if best { val(&clauses[0], &dw, &dg) * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
                     if !ideal { continue; }
                     if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
                     let rpk = rpk.as_ref().unwrap();
@@ -1926,6 +1966,8 @@ impl<'a> DeckSpace<'a> {
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
+                    // (the visiting order stays by `root`; a configuration whose root at its class cap fails is left out)
+                    if !best && rc < rho && (0..clauses.len()).all(|ci| rc * cv[ci] * (1.0 + 1e-9) < clauses[ci].1) { continue; }
                     cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone(), rpk: rpk.clone() });
                 }
             }
@@ -1989,6 +2031,9 @@ impl<'a> DeckSpace<'a> {
         let (mut cvx, mut pdwx, mut pdgx): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
         let (mut st_sel, mut st_pw, mut st_pg): (Vec<usize>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
         let mut avail_buf: Vec<Vec<u8>> = vec![];
+        // (the class masks of the expanded configuration: csuf[goff[g] + p] = the `cv_mask`s ORed of group g's entries
+        // from position p on and of every later group's)
+        let (mut csuf, mut goff): (Vec<u64>, Vec<usize>) = (vec![], vec![]);
         // (a child's touched targets: their odds and the parent's factors they replace)
         let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
         // the per-parent rows need every outfit row to read the nu targets
@@ -2036,6 +2081,12 @@ impl<'a> DeckSpace<'a> {
             cvx.clear(); cvx.resize(clauses.len(), 0.0); pdwx.clear(); pdwx.resize(nu, 0.0); pdgx.clear(); pdgx.resize(nu, 0.0);
             let (cv, pdw, pdg) = (&mut cvx[..], &mut pdwx[..], &mut pdgx[..]);
             let ng = gs.len();
+            if !best {
+                goff.clear(); goff.push(0); for g in 0..ng { goff.push(goff[g] + gs[g].0.len()); }
+                csuf.clear(); csuf.resize(goff[ng] + 1, 0);
+                for g in (0..ng).rev() { for (p, &j) in gs[g].0.iter().enumerate().rev() { csuf[goff[g] + p] = csuf[goff[g] + p + 1] | self.cvm[j]; } }
+            }
+            let (csuf, goff) = (&csuf[..], &goff[..]);
             // the state-conditioned bound of this configuration: chain positions (sorted kinds, the key's state
             // distribution projected on the positions whose group has chain targets), per group its slots' positions
             // and, per chain level, each target's lowest misses over the group's entries (a slot may take any of them,
@@ -2115,8 +2166,10 @@ impl<'a> DeckSpace<'a> {
                     kab_have.clear(); kab_have.resize(nrow, false); kr_have.clear(); kr_have.resize(nrow, false);
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
                     // (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
-                    // touches)
-                    let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize, ppw: &[f64], ppg: &[f64], dep: usize, pid: usize, tm: u32| -> bool {
+                    // touches; cm, p: the child's class mask (`cv_mask`s ORed) and its card's position in group g)
+                    let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize, ppw: &[f64], ppg: &[f64], dep: usize, pid: usize, tm: u32, cm: u64, p: usize| -> bool {
+                        // the cap of every deck the child can still reach: its cards' classes and every entry left
+                        let rho = if best { rho } else { ccap[cap_class(cm | if left > 0 { csuf[goff[g] + p + 1] } else { csuf[goff[g + 1]] })] };
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
                         let mut have_a = false;
@@ -2219,13 +2272,13 @@ impl<'a> DeckSpace<'a> {
                         for p in (0..l.len()).rev() { v[p] = v[p + 1] | lbit[l[p]]; }
                     }
                     if all_locked & !avail[0][0] != 0 { avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg; continue; }
-                    fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
-                           mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32) -> bool,
-                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
+                    fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, cmk: u64, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
+                           mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32, u64, usize) -> bool,
+                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64], u64) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
-                            if g + 1 >= gs.len() { let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu]); }
-                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
+                            if g + 1 >= gs.len() { let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk); }
+                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, cmk, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
@@ -2243,10 +2296,11 @@ impl<'a> DeckSpace<'a> {
                               for t in 0..nu { ch[t] = par[t] * mj[t]; } }
                             { let (par, ch) = st.pg.split_at_mut(b + nu); let (mj, par, ch) = (&mg[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
                               for t in 0..nu { ch[t] = par[t] * mj[t]; } }
-                            if !hopeful(g, left - 1, &st.pw[b + nu..b + 2 * nu], &st.pg[b + nu..b + 2 * nu], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j]) { continue; }
+                            let cj = cmk | sp.cvm[j];
+                            if !hopeful(g, left - 1, &st.pw[b + nu..b + 2 * nu], &st.pg[b + nu..b + 2 * nu], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j], cj, p) { continue; }
                             st.sel.push(j);
                             if !sbx(&st.sel) { st.sel.pop(); continue; }
-                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
+                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], cj, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
                             st.sel.pop();
                             if stop { return true; }
                         }
@@ -2275,7 +2329,7 @@ impl<'a> DeckSpace<'a> {
                     let bcell = std::cell::Cell::new(bestv);
                     // the deck's odds, written per leaf (no allocation unless the deck is kept)
                     let (mut dwa, mut dga) = ([0.0f64; 32], [0.0f64; 32]);
-                    let mut leaf = |sel: &[usize], pw: &[f64], pg: &[f64]| -> bool {
+                    let mut leaf = |sel: &[usize], pw: &[f64], pg: &[f64], cmk: u64| -> bool {
                         let pals = sel.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + plain;
                         if let Some(p) = self.dj.pals { if p != pals { return false; } }
                         if !self.locked.iter().all(|l| sel.iter().any(|&j| self.rel[j] == *l)) { return false; }
@@ -2287,8 +2341,9 @@ impl<'a> DeckSpace<'a> {
                             if v > bcell.get() { bcell.set(v); out.clear(); out.push(mk(v)); }
                             false
                         } else {
-                            // each clause's value once: the best of them, and whether any passes its bar
+                            // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
                             let (mut v, mut pass) = (f64::NEG_INFINITY, false);
+                            let rho = ccap[cap_class(cmk)];
                             for cl in clauses { let x = val(cl, dw, dg); v = v.max(x); pass = pass || rho * x * (1.0 + 1e-9) >= cl.1; }
                             if pass {
                                 out.push(mk(v));
@@ -2298,8 +2353,8 @@ impl<'a> DeckSpace<'a> {
                         }
                     };
                     let bget = || bcell.get();
-                    let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu]) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
+                    let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu], 0) }
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
                     pid_next = st.pid;
                     avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();
@@ -2415,7 +2470,7 @@ fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRaw, unc: &[u
     let mut kinds_all: Vec<Kind> = e.kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
     kinds_all.push((2, 2, 0)); kinds_all.sort(); kinds_all.dedup();
     DeckSpace { dj, unc: unc.to_vec(), sk, cards: e.cards.clone(), rel: e.rel.clone(), kind: e.kind.clone(), endk: e.endk.clone(), vark: e.vark.clone(),
-        srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(),
+        srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(), cvm: e.srcs.iter().map(cv_mask).collect(),
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
         locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default(),
         legt: Default::default(), counts: Default::default(), lockbits: Default::default(), sbcfg: Default::default(), sbrows: Default::default() }
@@ -2985,7 +3040,11 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
     struct ExEntry { best: Option<(f64, PDeck)>, done: crate::FxSet<(Vec<u32>, Vec<u8>, Vec<u32>, usize)>, seen: crate::FxSet<(Vec<usize>, usize, usize)>, level: f64, result: Option<std::rc::Rc<Best>> }
     let ex_cache: std::cell::RefCell<crate::FxMap<(usize, Vec<u64>), ExEntry>> = Default::default();
     let n_scored = std::cell::Cell::new(0usize); let n_band = std::cell::Cell::new(0usize);
-    let cap_hit = std::cell::Cell::new(false); let max_ratio = std::cell::Cell::new(0.0f64);
+    // (per structure class, `cap_class`)
+    let cap_hit = std::cell::Cell::new(false); let max_ratio = std::cell::Cell::new([0.0f64; 4]);
+    let caps = space.caps(); let rho_top = caps[3];
+    let max_deck: std::cell::RefCell<[Option<(u32, Vec<String>)>; 4]> = Default::default();
+    let ratio_at = |k: usize, r: f64, u: u32, x: &PDeck| { let mut m = max_ratio.get(); if r > m[k] { m[k] = r; max_ratio.set(m); max_deck.borrow_mut()[k] = Some((u, x.names.clone())); } };
     let (t_band, t_score, t_seed) = (std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64));
     let work = std::cell::Cell::new(0usize); let n_ufilt = std::cell::Cell::new(0usize); let t_ub = std::cell::Cell::new(0.0f64);
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(EXACT_BUDGET);
@@ -3017,9 +3076,10 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
                 } else { UCHK.with(|c| { let mut v = c.get(); v.2 += 1; c.set(v); }); }
             }
             n_scored.set(n_scored.get() + 1); spend(200);
+            let k = src_class(e.iter().map(|y| &y.0));
             for (i, &q) in qs.iter().enumerate() {
                 let p = fixed * model.trainee_fast(u, q, &x.dw, &x.dg);
-                if p > 0.0 { max_ratio.set(max_ratio.get().max(j[i].0 / p)); }
+                if p > 0.0 { ratio_at(k, j[i].0 / p, uid, x); }
             }
             let sv: f64 = j.iter().map(|y| y.0).sum();
             if ent.best.as_ref().map_or(true, |b| sv > b.0) { ent.best = Some((sv, x.clone())); }
@@ -3051,6 +3111,8 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
             if complete { for (v, sel) in &cands {
                 if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { break; }
                 if work.get() > budget_c.get() { complete = false; break; }
+                // below the best at its own class's cap (the best rose since the band was built)
+                if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { continue; }
                 if !ent.seen.insert((sel.ents.clone(), sel.plain, sel.filler)) { continue; }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
                 let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
@@ -3143,12 +3205,13 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
             if !done.insert((x.ids.clone(), x.ends.clone(), x.vars.clone(), x.plain_ids.len())) { return; }
             let t0 = Instant::now();
             let (e, fl) = ents_of(x);
+            let k = src_class(e.iter().map(|y| &y.0));
             let mut sv = 0.0;
             for t in 0..nm {
                 let j = joint(model, f[t], &qt[t], &e, fl, ntar, false);
                 for (i, &q) in qt[t].iter().enumerate() {
                     let p = fixed * model.trainee_fast(f[t], q, &x.dw, &x.dg);
-                    if p > 0.0 { max_ratio.set(max_ratio.get().max(j[i].0 / p)); }
+                    if p > 0.0 { ratio_at(k, j[i].0 / p, d.umas[f[t]].id, x); }
                     sv += j[i].0;
                 }
             }
@@ -3187,6 +3250,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
                 let thr = need(&list);
                 if lv * v * (1.0 + 1e-9) < thr { break; }
                 if work.get() > budget_c.get() { complete = false; break; }
+                if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < thr { continue; }
                 if !seen.insert((sel.ents.clone(), sel.plain, sel.filler)) { continue; }
                 let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
@@ -3390,7 +3454,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
     // Try the caps highest first (EXACT_STEPS): the answer is certified under the first whose pass finishes within the
     // budget; a lower cap's pass reuses everything computed so far and gets a quarter of the budget more. When none
     // finishes, a pass with the cap at 1 (product odds: no deck searches) gives the answer.
-    let steps: Vec<f64> = if !dj.exact { vec![] } else if let Ok(x) = std::env::var("EXACT_STEPS") { x.split(',').filter_map(|t| t.parse().ok()).collect() } else { EXACT_STEPS.to_vec() };
+    let steps: Vec<f64> = if !dj.exact { vec![] } else if let Ok(x) = std::env::var("EXACT_STEPS") { x.split(',').filter_map(|t| t.parse().ok()).collect() } else { EXACT_STEPS.iter().map(|&x| if x == EXACT_RHO { rho_top } else { x }).collect() };
     let mut last: Option<Pass> = None; let mut cert = 1.0f64;
     let mut allow = budget;
     for &lv in &steps {
@@ -3475,11 +3539,15 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         let base = (0..nm).max_by_key(|&i| (dk.iter().filter(|x| x.names == dk[i].names).count(), nm - i)).unwrap();
         json!({"loop": lp, "deck": dk[base].out(&unc), "decks": dk.iter().map(|x| x.out(&unc)).collect::<Vec<_>>()})
     }).collect();
-    let budget_out = dj.exact && cert < EXACT_RHO;
+    let budget_out = dj.exact && cert < rho_top;
     let complete = next_bound <= kth_val * (1.0 + 4e-12);
-    // what the answer rests on: `rho` the assumed cap on exact / product odds, `max_ratio` the largest seen on any deck
-    // scored here; `complete` = the search ended by its stop rule (no unexamined loop or deck can win under the cap)
-    let exact = json!({"rho": cert, "rho_target": EXACT_RHO, "max_ratio": max_ratio.get(), "complete": complete, "decks_scored": n_scored.get(),
+    // what the answer rests on: `rho` the highest cap certified (`rho_target` the one sought), `class_caps` the assumed
+    // cap per structure class (each certified at most at rho), `class_max_ratio` the largest exact / product odds seen
+    // per class on any deck scored here (`max_ratio` of them all); `complete` = the search ended by its stop rule (no
+    // unexamined loop or deck can win under the certified caps)
+    let mr = max_ratio.get();
+    let exact = json!({"rho": cert, "rho_target": rho_top, "class_caps": caps, "max_ratio": mr.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": mr,
+                       "class_max_deck": max_deck.borrow().iter().map(|x| x.as_ref().map(|(u, n)| json!({"trainee": u, "cards": n}))).collect::<Vec<_>>(), "complete": complete, "decks_scored": n_scored.get(),
                        "deck_searches": n_band.get(), "loops_solved": solved.len(), "schedule_rejects": sched_rejects, "cap_hit": cap_hit.get(), "budget_out": budget_out, "bound_filtered": n_ufilt.get()});
     let mut out = stats;
     for (key, val) in [("top", json!(top)), ("best", json!([])), ("per_uma", json!(!shared)), ("foursomes", json!(total_foursomes)),

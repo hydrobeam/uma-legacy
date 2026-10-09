@@ -323,9 +323,11 @@ struct Env<'a> {
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
     /// best: careers below it are pruned as if the bar were already there); NEG_INFINITY for every other search
     pub(crate) floor: f64,
-    /// the largest exact / product value of any deck `best_deck` scored (the assumed cap EXACT_RHO must exceed it; the
-    /// planner reports it and `val/planval.py` fails when it comes near the cap)
-    pub(crate) max_ratio: f64,
+    /// per structure class (`cap_class`), the largest exact / product value of any deck `best_deck` scored (the class's
+    /// assumed cap must exceed it; the planner reports it and `val/planval.py` fails when it comes near the cap)
+    pub(crate) max_ratio: [f64; 4],
+    /// per class, the trainee and deck that set `max_ratio`
+    pub(crate) max_deck: [Option<(usize, Sel)>; 4],
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
     /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
@@ -341,6 +343,12 @@ struct DeckKey { cls: usize, ews: Vec<u64>, c: u64, th: u64, work: usize }
 /// added
 struct DeckMemo { res: DeckRes, pv: Option<f64>, work: usize, scored: usize }
 impl<'a> Env<'a> {
+    /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
+    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) { if r > self.max_ratio[k] { self.max_ratio[k] = r; self.max_deck[k] = Some((t, sel.clone())); } }
+    /// per class, the deck that set `max_ratio` (trainee name, cards), for the cap audit
+    pub(crate) fn max_decks(&self) -> Value {
+        json!(self.max_deck.iter().map(|x| x.as_ref().map(|(t, s)| json!({"trainee": self.d.umas[*t].name, "cards": self.space.pdeck(s, &[self.d.umas[*t].id]).names}))).collect::<Vec<_>>())
+    }
     fn uix(&self, id: u32) -> Option<usize> { self.d.umas.iter().position(|u| u.id == id) }
     fn stars_of(&self, sp: &[(u32, u8)]) -> Vec<u8> { self.sj.targets.iter().map(|t| sp.iter().filter(|s| s.0 == t.group).map(|s| s.1.min(3)).max().unwrap_or(0)).collect() }
     fn who(&self, chara: u32, sparks: &[(u32, u8)], wins: &[usize], win_p: &[f64], pinks: &[(u32, u8)], mix: Option<[f64; 3]>) -> Who {
@@ -431,13 +439,13 @@ impl<'a> Env<'a> {
         self.set_trainee(t, q);
         let (dw, dg) = self.dmax[t].as_ref().unwrap();
         let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
-        Some(EXACT_RHO * c * self.model.fixed_factor() * pv)
+        Some(self.space.rho_top() * c * self.model.fixed_factor() * pv)
     }
     /// Trainee t's best deck at the chances already folded in (`set_trainee`), as the per-uma search finds it: the best
-    /// product deck, then every deck whose product value times EXACT_RHO reaches the best exact value, scored exactly
-    /// (`upper_na` filters). `c` the spark scale, `th` the value (C x E) the career must beat: below it the search stops
-    /// after the product deck. `starts`: decks scored first (a higher start leaves fewer decks to check). Counts the
-    /// exact scorings in `scored`, its work in `self.work`; `full` is false when the work budget ran out.
+    /// product deck, then every deck whose product value times its class's cap (`cap_class`; at most EXACT_RHO, the top
+    /// cap) reaches the best exact value, scored exactly (`upper_na` filters). `c` the spark scale, `th` the value (C x E)
+    /// the career must beat: below it the search stops after the product deck. `starts`: decks scored first (a higher
+    /// start leaves fewer decks to check). Counts the exact scorings in `scored`, its work in `self.work`; `full` is false when the work budget ran out.
     ///
     /// Memoised when there are no start decks (`deck_memo`): the call is then a function of what `DeckKey` holds, the
     /// work budget aside, and the budget never bound a call whose work stayed within it (work only grows during a
@@ -464,7 +472,8 @@ impl<'a> Env<'a> {
         // the product search starts at the bar the career must clear (a hair below the cut below): it prunes every
         // branch that cannot reach it and finds nothing when no deck can, and a deck that clears it is the one an
         // unseeded search finds (the seed is below the maximum, so the first deck reaching it is never pruned)
-        let seed = if th.is_finite() && th > 0.0 { th / (EXACT_RHO * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
+        let rho = self.space.rho_top();
+        let seed = if th.is_finite() && th > 0.0 { th / (rho * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
         let (r, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, seed, 1.0, 1);
         self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
         // what it proves (`ruled`): the deck found is the best (the first deck above the seed the search keeps is only
@@ -473,16 +482,16 @@ impl<'a> Env<'a> {
         self.last_pv = if over { None } else if let Some(x) = r.first() { Some(x.0) } else if seed > f64::NEG_INFINITY { Some(seed) } else { None };
         let Some((pv, sel)) = r.into_iter().next() else { return if seed > f64::NEG_INFINITY { DeckRes::Bounded } else { DeckRes::NoDeck } };
         // the candidate's own ceiling from its best product deck
-        if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
+        if rho * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
         let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
         let mut best = (score(self, &sel), sel); *scored += 1; self.work += 200;
-        if pv > 0.0 { self.max_ratio = self.max_ratio.max(best.0 / pv); }
+        if pv > 0.0 { let k = self.space.sel_class(&best.1); self.note_ratio(k, best.0 / pv, t, &best.1); }
         for s in starts { let x = score(self, s); *scored += 1; self.work += 200; if x > best.0 { best = (x, (*s).clone()); } }
         let mut full = false;
         if self.work <= self.budget {
             let n0 = self.space.nodes.get();
             crate::deck::SB_ON.with(|c| c.set(true)); crate::deck::SB_USED.with(|c| c.set(0));
-            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, EXACT_RHO, EXACT_CAP);
+            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, rho, EXACT_CAP);
             crate::deck::SB_ON.with(|c| c.set(false));
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
             let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;
@@ -490,13 +499,16 @@ impl<'a> Env<'a> {
             full = !over;
             more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             if full { for (v, s) in more {
-                if !nocap && EXACT_RHO * v * (1.0 + 1e-9) < best.0 { break; }
+                if !nocap && rho * v * (1.0 + 1e-9) < best.0 { break; }
                 if self.work > self.budget { full = false; break; }
                 if s.ents == best.1.ents && s.plain == best.1.plain && s.filler == best.1.filler { continue; }
+                // below the bar at its own class's cap (the bar rose since the band was built)
+                let k = self.space.sel_class(&s);
+                if !nocap && self.space.caps()[k].min(rho) * v * (1.0 + 1e-9) < best.0 { continue; }
                 let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
                 if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) { self.work += 25; if ub[0] * (1.0 + 1e-9) < best.0 { continue; } }
                 let x = score(self, &s); *scored += 1; self.work += 200;
-                if v > 0.0 { self.max_ratio = self.max_ratio.max(x / v); }
+                if v > 0.0 { self.note_ratio(k, x / v, t, &s); }
                 if x > best.0 { best = (x, s); }
             } }
         }
@@ -606,7 +618,7 @@ impl<'a> Env<'a> {
             // decks feed the rollout (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
             let lo = if self.use_seen { 0 } else { ruled0[ct] };
-            if self.ruled[ct][lo..].iter().any(|(rq, s)| EXACT_RHO * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
+            if self.ruled[ct][lo..].iter().any(|(rq, s)| self.space.rho_top() * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let tk = (cands[ci].t, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
             let res = match twins.get(&tk) {
@@ -1058,7 +1070,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: 0.0, deck_memo: Default::default(), cls: (0..n).collect() };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), deck_memo: Default::default(), cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {
@@ -1107,7 +1119,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     // the race schedule only for the best career (the one the page shows; each takes a schedule search)
     let results: Vec<Value> = if cj.no_reports { vec![] } else { sv.found.iter().enumerate().map(|(i, f)| env.report(&pool, f, i == 0)).collect() };
     let mut out = json!({"results": results, "candidates": sv.cands, "solved": sv.solved, "bounded": sv.bounded, "scored": sv.scored, "skipped": sv.skipped,
-           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": EXACT_RHO, "work": search_work});
+           "next_bound": sv.next_bound, "complete": sv.complete, "proven_top": sv.proven, "cap": env.space.rho_top(), "class_caps": env.space.caps(), "work": search_work});
     if let Some(policy) = &cj.policy {
         let stay_t = env.uix(policy.stay_trainee).filter(|t| env.owned.contains(t));
         if ntar > 12 {

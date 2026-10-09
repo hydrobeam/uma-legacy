@@ -36,6 +36,13 @@ def walk(a, b, p, out):
         if len(a) != len(b): out.append(f'{p}: length {len(a)} vs {len(b)}'); return
         for i, (x, y) in enumerate(zip(a, b)): walk(x, y, f'{p}[{i}]', out)
     elif a != b: out.append(f'{p}: {str(a)[:60]} vs {str(b)[:60]}')
+# the deck structure classes of the exact caps (`cap_class`: chain-varying targets; a multi-target group counts as 4+)
+CLS = ['0-1', '2', '3', '4+']
+def near_cap(r, c):
+    # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
+    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05); at a cap of 1 (proven) any excess is a bug.
+    # The same rule as val/cmp2.py.
+    return r > 1 + 0.75 * (c - 1) + 1e-9
 bad = 0
 for d, n in jobs:
     rf, nf = os.path.join(P, f'{ref}__{n}.out'), os.path.join(P, f'{tag}__{n}.out')
@@ -48,11 +55,14 @@ for d, n in jobs:
     wk = lambda j: (j.get('next') or {}).get('work') or {}
     wa, wx = wk(a), wk(x)
     work = ' '.join(f'{k} {wa.get(k, "?"):,} -> {wx.get(k, "?"):,}' if isinstance(wa.get(k), int) and isinstance(wx.get(k), int) else f'{k} {wa.get(k, "?")} -> {wx.get(k, "?")}' for k in ('nodes', 'exact'))
-    # the assumed cap: no scored deck's exact / product may come within 5% of it (a deck above it would be missed unseen)
-    mr, cap = wx.get('max_ratio'), wx.get('cap')
-    near = isinstance(mr, (int, float)) and isinstance(cap, (int, float)) and mr > cap / 1.05
-    print(f'{n}: {"identical" if not out else "DIFFERS"}  {rt.get(n, "?")} s -> {times[n]} s  {work}' + (f'  max ratio {mr:.3f} of cap {cap}' if isinstance(mr, (int, float)) else ''))
-    if near: print(f'    CAP: a scored deck reached exact/product {mr:.3f}, within 5% of the assumed cap {cap}')
+    # the assumed caps, per structure class: no scored deck's exact / product may come near its class's cap (a deck
+    # above it would be missed unseen)
+    mr, caps = wx.get('class_max_ratio'), wx.get('class_caps')
+    if not isinstance(mr, list): mr, caps = [wx.get('max_ratio')], [wx.get('cap')]
+    num = lambda x: isinstance(x, (int, float))
+    near = [(k, r, c) for k, (r, c) in enumerate(zip(mr, caps)) if num(r) and num(c) and near_cap(r, c)]
+    print(f'{n}: {"identical" if not out else "DIFFERS"}  {rt.get(n, "?")} s -> {times[n]} s  {work}' + (f'  max ratio/cap by class {" ".join(f"{r:.3f}/{c}" for r, c in zip(mr, caps))}' if all(num(r) for r in mr) else ''))
+    for k, r, c in near: print(f'    CAP: a scored deck of class {CLS[k] if len(mr) == 4 else "any"} reached exact/product {r:.4f}, near its assumed cap {c}')
     for o in out: print('   ', o)
     bad += bool(out) or near
 print(f'{len(jobs)} plan jobs, {bad} differ')

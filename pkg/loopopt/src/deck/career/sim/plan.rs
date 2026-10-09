@@ -639,7 +639,7 @@ fn certified(env: &mut Env, d: &Data, pool: &Pool, fix: &[usize], x: usize, f: &
         let (q, _, c) = env.lineage(pool, x, a, b);
         let Some(mut ub) = env.ceiling(x, &q, c) else { continue };
         for r in &env.seen[ct] { ub = ub.min(c * r.val * env.rise(x, &q, &r.q)); }
-        for (rq, sv) in &env.ruled[ct] { ub = ub.min(crate::deck::EXACT_RHO * c * sv * env.rise(x, &q, rq)); }
+        for (rq, sv) in &env.ruled[ct] { ub = ub.min(env.space.rho_top() * c * sv * env.rise(x, &q, rq)); }
         if ub > f.val * (1.0 + 1e-9) { return false; }
     } }
     true
@@ -1144,7 +1144,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let nleaf = 1usize << (2 * nu); let nm = 1usize << ntar;
     let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];   // (candidate, bound at scale 1 per leaf, spark scale per m)
-    let rf = crate::deck::EXACT_RHO * s.fixed;
+    let rf = s.env.space.rho_top() * s.fixed;
     let (mut lp, mut lp_tmp): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
     for ui in 0..n {
         let u = bs.cands[ui];
@@ -1569,7 +1569,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         }
     }
     let two_ms = now_ms() - t4;
-    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio, "cap": crate::deck::EXACT_RHO});
+    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top(), "class_caps": s.env.space.caps()});
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
     // search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact ones. Runs after

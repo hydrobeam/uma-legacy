@@ -221,7 +221,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     fn deck_for(&mut self, t: usize, q: &[f64], c: f64, ub: f64, th: f64, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
         let mut rb = ub;
         for r in &self.cache.refs[t] { rb = rb.min(c * r.val * self.env.rise(t, q, &r.q)); if rb * (1.0 + 1e-9) < th { return None; } }
-        if th > 0.0 && self.env.ruled[self.env.cls[t]].iter().any(|(rq, s)| EXACT_RHO * c * s * self.env.rise(t, q, rq) * (1.0 + 2e-9) < th) { return None; }
+        if th > 0.0 && self.env.ruled[self.env.cls[t]].iter().any(|(rq, s)| self.env.space.rho_top() * c * s * self.env.rise(t, q, rq) * (1.0 + 2e-9) < th) { return None; }
         self.n.tables += 1;
         let (mut tv, mut di) = self.tval(t, q, c, buf);
         if di == usize::MAX || rb > tv * (1.0 + self.cfg.margin) {
@@ -267,7 +267,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             for (j, &i) in env.uncv.iter().enumerate() { v *= ab[j].0 - ab[j].1 * miss[i] * miss[i]; }
             if v > best { best = v; }
         }
-        EXACT_RHO * c * self.fixed * best
+        env.space.rho_top() * c * self.fixed * best
     }
     /// value candidate (t, a, b) against the best so far
     /// the value a career of trainee t must beat to matter: the best overall, or under `next` a member's own best

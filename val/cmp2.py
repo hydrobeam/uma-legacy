@@ -1,5 +1,12 @@
 import json,sys,glob,os
 V=os.path.dirname(os.path.abspath(__file__))+'/'
+# the deck structure classes of the exact caps (`cap_class`: chain-varying targets; a multi-target group counts as 4+)
+CLS=['0-1','2','3','4+']
+def near_cap(r, c):
+    # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
+    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05); at a cap of 1 (proven) any excess is a bug.
+    # The same rule as val/planval.py.
+    return r > 1 + 0.75 * (c - 1) + 1e-9
 tag=sys.argv[1]; bad=0; n=0
 def load(p):
     t=open(p).read()
@@ -10,11 +17,15 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
     if not os.path.exists(nf): continue
     r,x=load(rf),load(nf); n+=1
     if r is None or x is None: print(name,'PARSE FAIL', r is None, x is None); bad+=1; continue
-    # the assumed cap (EXACT_RHO): no scored deck's exact / product may come within 5% of it (a deck above it is missed unseen)
+    # the assumed caps per structure class: no scored deck's exact / product may come near its class's cap (a deck
+    # above it is missed unseen)
     ex=x.get('exact') if isinstance(x, dict) else None
-    if isinstance(ex, dict) and isinstance(ex.get('max_ratio'), (int, float)):
+    if isinstance(ex, dict) and isinstance(ex.get('class_max_ratio'), list):
+        for k,(rr,c) in enumerate(zip(ex['class_max_ratio'], ex['class_caps'])):
+            if near_cap(rr, c): print(f"{name}: CAP class {CLS[k]} exact/product {rr:.4f} near its assumed cap {c}"); bad+=1
+    elif isinstance(ex, dict) and isinstance(ex.get('max_ratio'), (int, float)):
         cap=ex.get('rho_target') or 1.25
-        if ex['max_ratio'] > cap/1.05: print(f"{name}: CAP exact/product {ex['max_ratio']:.3f} within 5% of the assumed cap {cap}"); bad+=1
+        if near_cap(ex['max_ratio'], cap): print(f"{name}: CAP exact/product {ex['max_ratio']:.3f} near the assumed cap {cap}"); bad+=1
     if 'top' in r:
         sig=lambda j:[(round(t['loop']['p_all'],14),round(t['loop']['p_minus1'],12),tuple(sorted(zip(t['deck']['card_ids'],t['deck'].get('end_chain_at',[0]*9)))),tuple(m if isinstance(m,str) else m.get('name') for m in t['loop']['members'])) for t in j['top']]
         a,b=sig(r),sig(x); ok=[s[0] for s in a]==[s[0] for s in b]; same=a==b
