@@ -176,7 +176,7 @@ target/release/loopopt data.json jobs/skills_unity8.json > result.json     # run
 | `top` | loops returned | 5 |
 | `sizes` | structure sizes searched, ranked together: 3 (three-uma rotations, see *Three-uma rotations*) and/or 4 (four-uma loops); `require` may list at most the largest size, and four required umas leave only loops | `[3, 4]` |
 
-Output `loops[]`: `members` (3 or 4), `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `per_trainee`, `mean_proc`, `bound`, and `schedule` (chart rows: `race`, `when`, `shared`, `cells` with win % and goal flag, `runners`). Top-level: `proven_top` (no unsearched loop can beat #1), `foursomes` (structures of every searched size), `searched`.
+Output `loops[]`: `members` (3 or 4), `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `landed` (the chance of exactly k targets, k = 0 ..= n, averaged over the lineages; the deck search's exact over each lineage's landed sets, so `landed[n]` = `p_all` and the top two sum to `p_minus1`), `per_trainee`, `mean_proc`, `bound`, and `schedule` (chart rows: `race`, `when`, `shared`, `cells` with win % and goal flag, `runners`). Top-level: `proven_top` (no unsearched loop can beat #1), `foursomes` (structures of every searched size), `searched`.
 
 ### Deck + loop search (`"mode":"deck"`)
 

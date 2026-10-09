@@ -128,11 +128,20 @@ const TESTS = {
     const pg = await open(b);
     check('first search runs by itself', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), await note(pg));
     check('… and its status is just the count: checked N decks / M loops in T s (a caveat only when the exact check ran out of time)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s( · .+)?$/.test(await note(pg)), await note(pg));
-    // the result's wording: the headline odds, the "at least 7 of 8" line, each member's own odds as trainee
+    // the result's wording: the headline odds, the 90% line, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
-    check('headline: "1 in 107 runs to land all 8", then "at least 7 of 8" and the 90% line, in the game font; no rank with one result',
-      /^1 in 107 runs to land all 8$/.test(head.odds) && /^7 of 8 or better: 1 in 12\.6 · a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Maru/.test(head.font), JSON.stringify(head));
+    check('headline: "1 in 107 runs to land all 8", then the 90% line, in the game font; no rank with one result',
+      /^1 in 107 runs to land all 8$/.test(head.odds) && /^a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Maru/.test(head.font), JSON.stringify(head));
+    // Odds opens the career planner's table for the loop: every count, 8/8 the headline's (1 in 107), 7/8 and 8/8 together
+    // the solver's 7-or-better (1 in 12.6), focus back on the button when it closes
+    await pg.click('#results .loop .lacts button:has-text("Odds")'); await dialog(pg, 'odds-dlg');
+    const lrows = await pg.$$eval('#odds-dlg .oddtab tbody tr', l => l.map(r => [...r.children].map(c => c.textContent)));
+    const pv = (s) => parseFloat(s) / 100;
+    await pg.keyboard.press('Escape');
+    check('loop odds: a popup with every count 8/8 .. 0/8, all 8 at the headline odds, 7 or better at 1 in 12.6, focus back on Odds',
+      lrows.length === 9 && lrows[0][0] === '8/8' && lrows[8][0] === '0/8' && Math.abs(1 / pv(lrows[0][1]) - 107) < 2 && Math.abs(1 / (pv(lrows[0][1]) + pv(lrows[1][1])) - 12.6) < 0.3
+      && await pg.evaluate(() => document.activeElement?.textContent === 'Odds'), JSON.stringify(lrows.slice(0, 3)));
     // the default result is a three-uma rotation: three members in three columns, a deck for each
     check('members: three (a rotation), "as trainee: 1 in …", in three columns', head.own.length === 3 && head.own.every(x => /^as trainee: 1 in [\d,.]+$/.test(x))
       && await pg.evaluate(() => { const m = document.querySelector('#results .loop .members'); return m.classList.contains('n3') && getComputedStyle(m).gridTemplateColumns.split(' ').length === 3; }), head.own.join(' | '));
@@ -810,10 +819,15 @@ const TESTS = {
     check('career: with no veterans it asks for parents or an import, and offers sample veterans', /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')), await note());
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
-    await pg.click('#set-fold');
+    // the whole header toggles it: the bare strip beside the ribbon folds it, the summary (folded, the whole bar) opens it
+    const hb = await pg.locator('#h-set').boundingBox(), bb = await pg.locator('.rbbar').boundingBox();
+    await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
     const foldSum = await pg.getAttribute('#set-sum', 'aria-label'), foldHid = await pg.locator('.rbbar .setlist').isHidden();
-    await pg.click('#set-fold');
-    check('career: the Career setup ribbon folds the panel to a one-line summary and back', foldHid && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
+    await pg.click('#set-sum');
+    const sumOpen = !(await pg.locator('.rbbar .setlist').isHidden());
+    await pg.click('#set-fold'); const ribFold = await pg.locator('.rbbar .setlist').isHidden(); await pg.click('#set-fold');
+    check('career: the Career setup header (the strip beside the ribbon, the ribbon, folded the summary) folds the panel to a one-line summary and back',
+      foldHid && sumOpen && ribFold && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously

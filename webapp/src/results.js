@@ -7,6 +7,7 @@ import { cardTitle } from './cards.js';
 import { closePop, markOwn, popHasFocus } from './popover.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
+import { openOdds } from './odds.js';
 export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const runs90 = (p) => p > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - p)).toLocaleString() : '—';
 const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
@@ -17,7 +18,7 @@ function loopCard(l, meta, ctx) {
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
   const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
   card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>
-    <span class="sub">${n > 1 ? `<span title="How often a career lands every target but one, or all of them">${n - 1} of ${n} or better: <span class="num">${fmtIn(l.p_minus1)}</span></span> · ` : ''}<span title="How many careers give a 90% chance that at least one lands all ${n}">a 90% chance within <span class="num">${runs90(l.p_all)}</span> runs</span></span>${forced.length ? '<span class="lkey" title="Marked must include under Umas: the search had to put her in the loop"><i aria-hidden="true"></i>Must include</span>' : ''}</div>`;
+    <span class="sub"><span title="How many careers give a 90% chance that at least one lands all ${n}">a 90% chance within <span class="num">${runs90(l.p_all)}</span> runs</span></span>${forced.length ? '<span class="lkey" title="Marked must include under Umas: the search had to put her in the loop"><i aria-hidden="true"></i>Must include</span>' : ''}</div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
@@ -120,6 +121,9 @@ function loopCard(l, meta, ctx) {
   const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
   card.insertBefore(mem, firstDeck);
   const acts = document.createElement('div'); acts.className = 'row lacts';
+  // the chance of each count of targets landed (the solver's, exact over the landed sets), as the career planner's
+  if (l.landed) { const ob = document.createElement('button'); ob.type = 'button'; ob.className = 'btn sbtn'; ob.textContent = 'Odds'; ob.setAttribute('aria-haspopup', 'dialog');
+    ob.onclick = () => openOdds({ title: 'Odds of this loop', n, ex: l.landed, pAll: l.p_all, expected: l.landed.reduce((s, x, k) => s + k * x, 0) }); acts.appendChild(ob); }
   const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'btn sbtn'; sb.textContent = 'Race schedule'; sb.onclick = () => openSched(l); acts.appendChild(sb);
   if (l.detail) { const ab = document.createElement('button'); ab.type = 'button'; ab.className = 'btn sbtn'; ab.textContent = 'Affinity'; ab.onclick = () => openWhy(l); acts.appendChild(ab); }
   card.appendChild(acts);

@@ -18,16 +18,13 @@ import { openSched } from './agenda.js';
 import { initSetup } from './setup.js';
 import './gmtip.js';   // the game-style tooltips (both planner pages)
 import { affEl, affTable as affTableOf } from './afftable.js';
+import { pct, openOdds as openOdds0 } from './odds.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills, sampleVets,
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
 
-// under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
-const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
-  if (x < 1e-6) return '<0.000001%';
-  return (x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x.toFixed(Math.min(6, 1 - Math.floor(Math.log10(x))))) + '%'; };
 const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const tName = (g) => { const s = SK.get(g) || { w: 'Skill ' + g, gd: null }; return goldGiven(g) && s.gd ? s.gd : s.w; };
 const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
@@ -419,24 +416,7 @@ function landedCounts(r) {
   else { let v = [1]; for (const t of r.targets) { const w = new Array(v.length + 1).fill(0); v.forEach((x, i) => { w[i] += x * (1 - t.p); w[i + 1] += x * t.p; }); v = w; } v.forEach((x, i) => { ex[i] = x; }); }
   return ex;
 }
-let oddsDlg = null;
-function openOdds(r) {
-  if (!oddsDlg) { oddsDlg = el('dialog', 'gmdlg'); oddsDlg.id = 'odds-dlg'; oddsDlg.setAttribute('aria-labelledby', 'odds-title');
-    oddsDlg.addEventListener('close', () => $('odds-open')?.focus()); document.body.appendChild(oddsDlg); }
-  const n = state.targets.length, ex = landedCounts(r); oddsDlg.textContent = '';
-  const h = el('h3', 'gmdhdr', 'Odds of this career'); h.id = 'odds-title'; oddsDlg.appendChild(h);
-  const body = el('div', 'gmdbody');
-  // the chance of landing exactly k of the n targets, k = n .. 0 (all n: the solver's exact figure)
-  const tb = el('table', 'oddtab'); tb.innerHTML = '<thead><tr><th scope="col">Targets landed</th><th scope="col">Chance</th></tr></thead><tbody></tbody>';
-  for (let k = n; k >= 0; k--) {
-    const tr = el('tr', k === n ? 'all' : ''); const th = el('th', '', `${k}/${n}`); th.scope = 'row';
-    tr.append(th, el('td', '', pct(k === n ? r.p_all : ex[k]))); tb.tBodies[0].appendChild(tr);
-  }
-  body.append(tb, el('p', 'gmdstat', `${r.expected.toFixed(2)} of ${n} expected.`));
-  oddsDlg.appendChild(body);
-  const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => oddsDlg.close(); f.appendChild(c); oddsDlg.appendChild(f);
-  oddsDlg.showModal(); c.focus();
-}
+function openOdds(r) { openOdds0({ title: 'Odds of this career', n: state.targets.length, ex: landedCounts(r), pAll: r.p_all, expected: r.expected }); }
 // the deck as the loop planner shows it: card art and name; a click opens the card's panel (owned or not, GameTora)
 function deckEl(r, title = 'Deck', extra = null) {
   const d = r.deck, pals = new Set(d.pal_cards || []);
@@ -919,7 +899,15 @@ function paintFold() {
   sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)]].map(([k, v]) => {
     const p = el('span', 'sumkv'); p.setAttribute('aria-hidden', 'true'); p.append(el('span', 'sumk', k), el('b', '', v)); return p; }));
 }
-function initFold() { $('set-fold').onclick = () => { folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); }; paintFold(); }
+// the whole header toggles it: the ribbon, the bare strip beside it and, folded, the whole bar (its summary included)
+function initFold() {
+  const bar = document.querySelector('.rbbar'), hdr = $('h-set');
+  const inHdr = (e) => folded || e.target.closest('#h-set') || (e.target === bar && e.clientY < hdr.getBoundingClientRect().bottom);
+  bar.addEventListener('click', (e) => { if (!inHdr(e)) return; folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); });
+  bar.addEventListener('mousemove', (e) => bar.classList.toggle('hdrhot', !folded && e.target === bar && e.clientY < hdr.getBoundingClientRect().bottom));
+  bar.addEventListener('mouseleave', () => bar.classList.remove('hdrhot'));
+  paintFold();
+}
 
 // ---------- start ----------
 // Export: the veterans as the page keeps them, the plan, and the solver job the planner sends for them (to replay a

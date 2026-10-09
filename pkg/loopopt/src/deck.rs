@@ -3004,6 +3004,21 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         let mut per = vec![(0.0, 0usize); nm]; let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
         for (l, &(t, ..)) in ln.iter().enumerate() { per[t].0 += per_l[l].0; per[t].1 += 1; picks[t].push(per_l[l].2); }
         let minus1 = per_l.iter().map(|x| x.1).sum::<f64>() / nl as f64;
+        // the chance of exactly k targets, k = 0 ..= n (exact over each lineage's landed sets, as `p_all`), averaged over
+        // the lineages: the uncertain targets' sets from the joint model, each guaranteed gold on its own (GEN_GOLD)
+        let mut landed = vec![0.0f64; ntar + 1];
+        for l in 0..nl {
+            let t = ln[l].0; let (e, fl) = ents_of(dk[t]); let nu = unc.len();
+            let mut ext = JointExt { su: vec![1.0; nu], sf: vec![1.0; ntar - nu], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
+            joint_fast(model, f[t], &[qs[l]], &e, fl, ntar, false, Some(&mut ext));
+            let o = per_l[l].2;
+            let mut g = vec![1.0f64];
+            for _ in nu..ntar { let mut nn = vec![0.0; g.len() + 1]; for (i, x) in g.iter().enumerate() { nn[i] += x * (1.0 - GEN_GOLD); nn[i + 1] += x * GEN_GOLD; } g = nn; }
+            for (mu, &x) in ext.sets[(o << nu)..((o + 1) << nu)].iter().enumerate() {
+                if x == 0.0 { continue; }
+                for (j, &y) in g.iter().enumerate() { landed[mu.count_ones() as usize + j] += x * y / nl as f64; }
+            }
+        }
         // the search's product value of this loop with these decks
         let rank_v = fixed * (0..nl).map(|l| model.trainee_fast(f[ln[l].0], qs[l], &dk[ln[l].0].dw, &dk[ln[l].0].dg)).sum::<f64>() / nl as f64;
         let outfits: Vec<Value> = (0..nm).map(|i| {
@@ -3016,7 +3031,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
         let dks: Vec<(&[f64], &[f64])> = (0..nm).map(|t| (&dk[t].dw[..], &dk[t].dg[..])).collect();
         let mut detail = model.detail(f, &|a, b| if no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(&dks));
         if let Some(ls) = detail["lineages"].as_array_mut() { for (l, x) in ls.iter_mut().enumerate() { x["rank_value"] = x["p_all"].clone(); x["p_all"] = json!(per_l[l].0); } }
-        let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "rank_value": rank_v, "outfits": outfits,
+        let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "landed": landed, "rank_value": rank_v, "outfits": outfits,
                "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
                "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64, "schedule": chart_rows(d, f, &r.s[..nm]), "detail": detail});
         if shared { return json!({"loop": lp, "deck": dk[0].out(&unc)}); }

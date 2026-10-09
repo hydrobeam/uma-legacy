@@ -362,10 +362,11 @@ impl<'a> Model<'a> {
     }
 }
 
-pub(crate) fn atleast(ps: &[f64], k: usize) -> f64 {
+/// the chance of exactly k of the independent events landing, k = 0 ..= ps.len()
+pub(crate) fn exactly(ps: &[f64]) -> Vec<f64> {
     let mut d = vec![1.0f64];
     for &p in ps { let mut nn = vec![0.0; d.len() + 1]; for (i, x) in d.iter().enumerate() { nn[i] += x * (1.0 - p); nn[i + 1] += x * p; } d = nn; }
-    d[k.min(d.len() - 1)..].iter().sum()
+    d
 }
 
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
@@ -461,16 +462,22 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
     let loops: Vec<Value> = done.iter().take(top).map(|(v, ub, f, r, qs)| {
         let f = members(f); let nm = f.len(); let lin = lins(nm);
         // per-lineage outfit choice and skill odds
+        // the chance of exactly k targets (each target on its own chance, as `p_minus1`), averaged over the lineages
+        let mut landed: Vec<f64> = vec![];
         let mut minus1 = 0.0; let mut per: Vec<(f64, usize)> = vec![(0.0, 0); nm];
         let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
         for (&(t, ..), &q) in lin.iter().zip(qs) {
             let (val, kk) = model.trainee(f[t], q);
             let mut ps = vec![GEN_GOLD; model.n_fixed_gold as usize];
             ps.extend(model.skill_probs(&model.opts[f[t]][kk].0, &model.ews[f[t]][kk], q));
-            minus1 += atleast(&ps, job.targets.len().saturating_sub(1));
+            let ex = exactly(&ps);
+            minus1 += ex[job.targets.len().saturating_sub(1).min(ex.len() - 1)..].iter().sum::<f64>();
+            if landed.len() < ex.len() { landed.resize(ex.len(), 0.0); }
+            for (k, x) in ex.iter().enumerate() { landed[k] += x; }
             per[t].0 += model.fixed() * val; per[t].1 += 1; picks[t].push(kk);
         }
         minus1 /= lin.len() as f64;
+        for x in landed.iter_mut() { *x /= lin.len() as f64; }
         let outfits: Vec<Value> = (0..nm).map(|i| {
             let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
             let (st, cards) = &model.opts[f[i]][kk];
@@ -482,7 +489,7 @@ pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
         let ps: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
         let detail = model.detail(f, &|x, y| wval(&ps[x], &ps[y]), None);
         json!({
-            "members": member_json(d, f), "p_all": v, "p_minus1": minus1, "bound": ub,
+            "members": member_json(d, f), "p_all": v, "p_minus1": minus1, "landed": landed, "bound": ub,
             "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
             "outfits": outfits, "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64,
             "schedule": chart_rows(d, f, &r.s[..nm]),

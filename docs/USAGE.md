@@ -53,13 +53,14 @@ off, a change waits for the Search button. A loop is either four umas (each
 trains from two of the other three) or a three-uma rotation (each trains from the other two, who were bred from each
 other and from her own earlier veteran); both are ranked on the same odds, the average over the careers when every
 member trains in turn, and a rotation usually comes first. For each loop:
-- the odds that every target lands, that all but one land, and how many careers give a 90% chance;
+- the odds that every target lands and how many careers give a 90% chance;
 - each uma as a tile with her outfit, the targets on her own skill list (as the game's gold skill tile), and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
   deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
 - *Swaps* under a green bar: each row "her face swaps card → card";
-- **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
+- **Odds** (the career page's odds table for the loop: the chance of landing exactly each count of targets, 8/8 to 0/8, and
+  the count expected), **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
   but every runner must pick the same one) and **Affinity** (as the career page's: the loop's careers as pill switches, each trainee with her six legacies'
   affinity, the most first; under them that career's table, each parent then her two parents with their relation
   points, G1 wins shared (expected, x3) and affinity, and the Total; in a rotation the trainee is her own grandparent
@@ -73,7 +74,7 @@ someone else's. Settings are saved in your browser on that device; nothing is up
 
 **Career planner** (`/career`, linked from the header). Picks the next career from the veterans you have. The
 *Career setup* panel (game data, lineage rank and scenario in a column; the game's Enhance-menu buttons *Umas*,
-*Support cards* and *Veteran Umamusume* beside them; *Target skills* in the open at the right, as on the loop planner, its add box in its title row). Clicking the *Career setup* ribbon folds the panel to the ribbon and a one-line summary (game data, scenario, rank,
+*Support cards* and *Veteran Umamusume* beside them; *Target skills* in the open at the right, as on the loop planner, its add box in its title row). Clicking the *Career setup* header (the ribbon or the bare strip beside it; folded, anywhere on the bar) folds the panel to the ribbon and a one-line summary (game data, scenario, rank,
 how many targets); the choice is kept in this browser opens the loop planner's own editors and shares their saved settings; the
 rank sets the stars of the new veteran's sparks it expects on a new veteran. The scenario button and its menu show the
 game's scenario-select art behind each logo. Every deck may borrow one friend's card and does when it helps (no
