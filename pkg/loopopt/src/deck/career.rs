@@ -265,6 +265,9 @@ struct Env<'a> {
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
     /// best: careers below it are pruned as if the bar were already there); NEG_INFINITY for every other search
     pub(crate) floor: f64,
+    /// the largest exact / product value of any deck `best_deck` scored (the assumed cap EXACT_RHO must exceed it; the
+    /// planner reports it and `val/planval.py` fails when it comes near the cap)
+    pub(crate) max_ratio: f64,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
 }
@@ -367,6 +370,7 @@ impl<'a> Env<'a> {
         if EXACT_RHO * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
         let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
         let mut best = (score(self, &sel), sel); *scored += 1; self.work += 200;
+        if pv > 0.0 { self.max_ratio = self.max_ratio.max(best.0 / pv); }
         for s in starts { let x = score(self, s); *scored += 1; self.work += 200; if x > best.0 { best = (x, (*s).clone()); } }
         let mut full = false;
         if self.work <= self.budget {
@@ -382,6 +386,7 @@ impl<'a> Env<'a> {
                 let e: Vec<(&Src, Kind)> = s.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
                 if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler) { self.work += 25; if ub[0] * (1.0 + 1e-9) < best.0 { continue; } }
                 let x = score(self, &s); *scored += 1; self.work += 200;
+                if v > 0.0 { self.max_ratio = self.max_ratio.max(x / v); }
                 if x > best.0 { best = (x, s); }
             } }
         }
@@ -904,7 +909,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, cls: (0..n).collect() };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: 0.0, cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {

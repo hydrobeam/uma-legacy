@@ -25,6 +25,20 @@ The cap: rho = 1.25 (assumed, `EXACT_RHO`; largest exact/product ratio seen 1.17
 Builder time at rho 1.25 / 1.10 / 1.02: 4.4 / 2.1 / 1.1 s. At 1.02 one career changed (King Halo, 1 in 689 -> 691.7: a
 deck with a ratio above 1.02 was skipped), so lowering the cap is an assumption change, not a speed-up.
 
+## The cap (reasoning agent, 2026-10-08)
+
+No data-free proven cap exists: a target whose only source is one card's last link makes exact/product = 1/P(link)
+(about 6.7 with two such targets); real targets have floors (inheritance, white generation), but range-only and Hölder
+caps still come out at 1.2-1.7. Measured: 1.18 on the Global deck job pal_UF (pal_I 1.165), 1.17 on Grand Masters; the
+planner jobs' scored decks 1.03-1.04 (p16, p10). So 1.25 has about 6% of headroom on both eras. Guards (done): the
+planner reports `next.work.max_ratio`, and `val/planval.py` / `val/cmp2.py` fail when a scored deck comes within 5% of
+the cap; they cannot see pruned decks, hence the planned build-time audit (rerun near-best decks with the cap at 2.0).
+The replacement that needs no cap: at a search node the chain-kind make-up is fixed, so the distribution of chain
+progress states is known; given a state, targets are independent apart from exclusive outcomes (which only lower the
+value), so the average over states of each target's best value given the state bounds every completion's exact value,
+for any card data. About 20-50x a node's current bound cost (estimate); prototype at configuration roots and depth <= 1,
+measured in nodes.
+
 ## Deck classes
 
 A uma enters the deck search only through her outfits' coverage of the targets (`model.opts`, `ew0`), the relevant

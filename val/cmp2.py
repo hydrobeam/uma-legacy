@@ -10,6 +10,11 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
     if not os.path.exists(nf): continue
     r,x=load(rf),load(nf); n+=1
     if r is None or x is None: print(name,'PARSE FAIL', r is None, x is None); bad+=1; continue
+    # the assumed cap (EXACT_RHO): no scored deck's exact / product may come within 5% of it (a deck above it is missed unseen)
+    ex=x.get('exact') if isinstance(x, dict) else None
+    if isinstance(ex, dict) and isinstance(ex.get('max_ratio'), (int, float)):
+        cap=ex.get('rho_target') or 1.25
+        if ex['max_ratio'] > cap/1.05: print(f"{name}: CAP exact/product {ex['max_ratio']:.3f} within 5% of the assumed cap {cap}"); bad+=1
     if 'top' in r:
         sig=lambda j:[(round(t['loop']['p_all'],14),round(t['loop']['p_minus1'],12),tuple(sorted(zip(t['deck']['card_ids'],t['deck'].get('end_chain_at',[0]*9)))),tuple(m if isinstance(m,str) else m.get('name') for m in t['loop']['members'])) for t in j['top']]
         a,b=sig(r),sig(x); ok=[s[0] for s in a]==[s[0] for s in b]; same=a==b

@@ -1044,7 +1044,7 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 /// Assumed cap on a deck's exact odds over its product odds, for the per-uma search: decks and loops are scored exactly
 /// wherever their product-odds ceiling times this could beat the best exact value. Largest ratio seen: 1.17 (Grand
 /// Masters, all owned, 0-1-pal decks); every deck scored reports its ratio (`exact.max_ratio`).
-const EXACT_RHO: f64 = 1.25;
+pub(crate) const EXACT_RHO: f64 = 1.25;
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.
 const EXACT_STEPS: [f64; 3] = [EXACT_RHO, 1.12, 1.05];
 /// Most decks one exact deck search may return; beyond it the answer is the best found and `exact.complete` is false.
