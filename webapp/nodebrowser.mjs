@@ -193,6 +193,13 @@ const TESTS = {
     const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.facebtn')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && (n.classList.contains('vh') || n.classList.contains('facebtn')))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
     const swd = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap')].map(d => [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim())));
     check('each swap row says what it changes ("Skill a% → b%")', swd.length > 0 && swd.every(r => r.length > 0 && r.every(t => /\d+% → \d+%$/.test(t))), JSON.stringify(swd));
+    // a target on the swapping uma's own skill list is no change for her (her deck drops its hints because she has it):
+    // not listed (the default's Agnes Digital [Full-Color Fangirling] has Superstan, so no "Uma Stan 100% → 0%")
+    const owned = await pg.evaluate(() => { const skl = self.__LLP_DATA['data-skills'], wOf = new Map(skl.filter(s => s[2]).map(s => [s[2], s[1]]));
+      return [...document.querySelectorAll('#results .loop .deck.swap')].map(d => { const ids = [...d.querySelectorAll('.swho .facebtn')].map(f => f.dataset.uma);
+        const per = ids.map(id => [...document.querySelectorAll(`#results .loop .mem[data-uma="${id}"] .sk .spark`)].flatMap(s => s.classList.contains('g') ? [s.textContent, wOf.get(s.textContent)] : [s.textContent]));
+        return { mine: per.length ? per[0].filter(n => per.every(p => p.includes(n))) : [], swd: [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim()) }; }); });
+    check('swap rows leave out the targets their umas have on their own skill list', owned.some(r => r.mine.length) && owned.every(r => r.swd.every(t => !r.mine.some(n => t.startsWith(n + ' ')))), JSON.stringify(owned));
     const more = pg.locator('#results .loop .swd.more').first();
     if (await more.count()) { const n0 = await more.locator('.swd1:visible').count(); await more.click();
       check('clicking a swap\'s changes shows them all, again folds them', (await more.locator('.swd1:visible').count()) > n0 && (await more.getAttribute('aria-expanded')) === 'true'
