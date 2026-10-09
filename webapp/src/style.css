@@ -1794,3 +1794,15 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   .about { padding-inline: 0; }   /* the body's 16 px gutter only (with its own 16 more the text was a 296 px column) */
   .about li:has(> math), .about p:has(> math) { overflow-x: auto; }   /* a formula wider than the screen scrolls in its line */
 }
+/* phones: the Inspiration spark bars at 28 px instead of 34, everything that hangs off the bar's height scaled with it
+   (the sprite is 244x71, its caps sliced at 40 / 200 px: 16 / 79 px at 28 px tall; stars at the game's 0.43 of the bar,
+   one every 0.53 of it) */
+@media (max-width: 520px) {
+  .ud .vsk, .ud .vsb { padding-bottom: 10px; }
+  .ud .vskb { height: 28px; font-size: 0.76rem; padding: 0 5px 0 4px; grid-template-columns: 12px minmax(0, 1fr); }
+  .ud .vskb::before { border-width: 0 79px 0 16px; border-image-width: 0 79px 0 16px; }
+  .ud .vskb::after { width: 12px; height: 12px; }
+  .ud .vskb .stars, .ud .vsb .vskb .stars { bottom: -4px; height: 12px; }
+  .ud .vskb .stars .sf, .ud .vskb .stars .se { height: 12px; width: max(0px, calc(var(--n, 0) * 15px - 3px)); background-size: 12px 12px; }
+  .ud .vskadd { height: 28px; font-size: 1rem; }
+}
