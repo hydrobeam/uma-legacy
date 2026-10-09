@@ -138,7 +138,7 @@ impl<'a> Env<'a> {
                 let iv = sl.iter().position(|x| x.parent && x.legacy == vi).unwrap();
                 for m in 0..full {
                     if ps[m] == 0.0 { continue; }
-                    for k in 0..ntar { sl[iv].stars[k] = if m >> k & 1 == 1 { 2 } else { 0 }; }
+                    { let s = std::rc::Rc::make_mut(&mut sl[iv].stars); for k in 0..ntar { s[k] = if m >> k & 1 == 1 { 2 } else { 0 }; } }
                     let (q2, nc2) = inherit(&sl, ntar);
                     let c2: f64 = nc2.iter().map(|&n| 1.1f64.powi(n - 6)).product();
                     let v = self.tval(cache, t2, &q2, c2, &mut buf);
@@ -154,7 +154,7 @@ impl<'a> Env<'a> {
                 let worst = (0..full).max_by(|&x, &y| ps[x].partial_cmp(&ps[y]).unwrap()).unwrap_or(0);
                 let sels: Vec<Sel> = cache.decks[t2].iter().map(|d| d.sel.clone()).collect();
                 for m in [full, worst] {
-                    for k in 0..ntar { sl[iv].stars[k] = if m >> k & 1 == 1 { 2 } else { 0 }; }
+                    { let s = std::rc::Rc::make_mut(&mut sl[iv].stars); for k in 0..ntar { s[k] = if m >> k & 1 == 1 { 2 } else { 0 }; } }
                     let (q2, nc2) = inherit(&sl, ntar);
                     let c2: f64 = nc2.iter().map(|&n| 1.1f64.powi(n - 6)).product();
                     let via = self.tval(cache, t2, &q2, c2, &mut buf);

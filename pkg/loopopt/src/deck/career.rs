@@ -113,10 +113,12 @@ struct CareerJob {
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
 /// pink sparks, and the star mix when the stars are random.
 #[derive(Clone)]
-struct Who { ix: Option<usize>, chara: u32, wins: Vec<(usize, f64)>, stars: Vec<u8>, pinks: Vec<(u32, u8)>, mix: Option<[f64; 3]> }
-/// The veterans the parents come from, each with her own parents.
+/// (stars and pinks shared with the lineage slots made from her: `Env::slots` takes them without copying)
+struct Who { ix: Option<usize>, chara: u32, wins: Vec<(usize, f64)>, stars: std::rc::Rc<Vec<u8>>, pinks: std::rc::Rc<Vec<(u32, u8)>>, mix: Option<[f64; 3]> }
+/// The veterans the parents come from, each with her own parents; per veteran and parent, the race part of that
+/// grandparent slot's affinity, 3 x shared(veteran, parent) (constant per veteran: `Env::slots` reads it)
 #[derive(Clone)]
-struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool> }
+struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool>, gpc: Vec<Vec<f64>> }
 /// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
 /// inspiration, the legacy slot, stars
 #[derive(Clone)]
@@ -139,7 +141,7 @@ fn pbinom(ps: &[f64]) -> Vec<f64> {
 fn conv(a: &[f64], b: &[f64]) -> Vec<f64> { let mut w = vec![0.0f64; a.len() + b.len() - 1]; for (i, &x) in a.iter().enumerate() { for (j, &y) in b.iter().enumerate() { w[i + j] += x * y; } } w }
 /// One legacy slot of a lineage: affinity parts and per-target stars.
 #[derive(Clone)]
-struct Slot { parent: bool, legacy: usize, gp: Option<usize>, chara: u32, rel: f64, race: f64, stars: Vec<u8>, pinks: Vec<(u32, u8)>, mix: Option<[f64; 3]> }
+struct Slot { parent: bool, legacy: usize, gp: Option<usize>, chara: u32, rel: f64, race: f64, stars: std::rc::Rc<Vec<u8>>, pinks: std::rc::Rc<Vec<(u32, u8)>>, mix: Option<[f64; 3]> }
 /// Whether legacy `x` is at least as good a parent as legacy `y` in every career (`Env::solve`, dominated veterans):
 /// the same character, stars at least y's on every job target, G1 wins a superset of y's, and the same number of
 /// parents, each (in order) the same character as y's, with stars and wins at least as good the same way. Only fixed
@@ -152,7 +154,7 @@ struct Slot { parent: bool, legacy: usize, gp: Option<usize>, chara: u32, rel: f
 /// same sums and products in the same order, so this holds for the floats as well (correctly rounded operations are
 /// monotone).
 fn dominates(p: &Pool, x: usize, y: usize) -> bool {
-    let ge = |a: &Who, b: &Who| a.chara == b.chara && a.mix.is_none() && b.mix.is_none() && a.stars.iter().zip(&b.stars).all(|(s, t)| s >= t)
+    let ge = |a: &Who, b: &Who| a.chara == b.chara && a.mix.is_none() && b.mix.is_none() && a.stars.iter().zip(b.stars.iter()).all(|(s, t)| s >= t)
         && a.wins.iter().chain(&b.wins).all(|w| w.1 == 1.0) && b.wins.iter().all(|w| a.wins.iter().any(|v| v.0 == w.0));
     ge(&p.me[x], &p.me[y]) && p.gp[x].len() == p.gp[y].len() && p.gp[x].iter().zip(&p.gp[y]).all(|(a, b)| ge(a, b))
 }
@@ -345,29 +347,32 @@ impl<'a> Env<'a> {
         let mut w: Vec<(usize, f64)> = if win_p.is_empty() { let mut v = wins.to_vec(); v.sort(); v.dedup(); v.into_iter().map(|r| (r, 1.0)).collect() }
             else { win_p.iter().enumerate().filter(|x| *x.1 > 0.0).map(|(r, &p)| (r, p)).collect() };
         w.sort_by_key(|x| x.0);
-        Who { ix: self.uix(chara), chara, wins: w, stars: self.stars_of(sparks), pinks: pinks.to_vec(), mix }
+        Who { ix: self.uix(chara), chara, wins: w, stars: std::rc::Rc::new(self.stars_of(sparks)), pinks: std::rc::Rc::new(pinks.to_vec()), mix }
     }
     fn pool(&self, legs: &[Legacy]) -> Pool {
-        Pool { me: legs.iter().map(|l| self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix)).collect(),
-               gp: legs.iter().map(|l| l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect()).collect(),
-               borrowed: legs.iter().map(|l| l.borrowed).collect() }
+        let me: Vec<Who> = legs.iter().map(|l| self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix)).collect();
+        let gp: Vec<Vec<Who>> = legs.iter().map(|l| l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect()).collect();
+        let gpc = me.iter().zip(&gp).map(|(m, g)| g.iter().map(|g| 3.0 * shared(m, g)).collect()).collect();
+        Pool { me, gp, borrowed: legs.iter().map(|l| l.borrowed).collect(), gpc }
     }
     fn pair(&self, a: Option<usize>, b: Option<usize>) -> f64 { match (a, b) { (Some(a), Some(b)) => self.d.pair[a][b] as f64, _ => 0.0 } }
     fn tri(&self, a: Option<usize>, b: Option<usize>, c: Option<usize>) -> f64 { match (a, b, c) { (Some(a), Some(b), Some(c)) => self.d.tri[a][b][c] as f64, _ => 0.0 } }
     /// the six legacy slots of trainee t with parents a and b
     fn slots(&self, p: &Pool, t: usize, a: usize, b: usize) -> Vec<Slot> {
-        let ti = Some(t); let mut v = vec![];
+        let ti = Some(t); let mut v = Vec::with_capacity(2 + p.gp[a].len() + p.gp[b].len());
+        // (the parents' shared wins once: shared(a, b) and shared(b, a) are the same products summed in the same order)
+        let sh = 3.0 * shared(&p.me[a], &p.me[b]);
         for (x, y) in [(a, b), (b, a)] {
             let px = &p.me[x];
-            let mut rel = self.pair(ti, px.ix) + self.pair(px.ix, p.me[y].ix); let mut race = 3.0 * shared(px, &p.me[y]);
-            let mut gs = vec![];
+            let mut rel = self.pair(ti, px.ix) + self.pair(px.ix, p.me[y].ix); let mut race = sh;
+            let i0 = v.len();
+            v.push(Slot { parent: true, legacy: x, gp: None, chara: px.chara, rel: 0.0, race: 0.0, stars: px.stars.clone(), pinks: px.pinks.clone(), mix: px.mix });
             for (gi, g) in p.gp[x].iter().enumerate() {
-                let (gr, gc) = (self.tri(ti, px.ix, g.ix), 3.0 * shared(px, g));
+                let (gr, gc) = (self.tri(ti, px.ix, g.ix), p.gpc[x][gi]);
                 rel += gr; race += gc;
-                gs.push(Slot { parent: false, legacy: x, gp: Some(gi), chara: g.chara, rel: gr, race: gc, stars: g.stars.clone(), pinks: g.pinks.clone(), mix: g.mix });
+                v.push(Slot { parent: false, legacy: x, gp: Some(gi), chara: g.chara, rel: gr, race: gc, stars: g.stars.clone(), pinks: g.pinks.clone(), mix: g.mix });
             }
-            v.push(Slot { parent: true, legacy: x, gp: None, chara: px.chara, rel, race, stars: px.stars.clone(), pinks: px.pinks.clone(), mix: px.mix });
-            v.extend(gs);
+            v[i0].rel = rel; v[i0].race = race;
         }
         v
     }
@@ -643,7 +648,7 @@ impl<'a> Env<'a> {
         let mut base = [0u8; 10]; base.copy_from_slice(&apt[..10]);
         let mut sum = [0u32; 10]; let mut fire = vec![];
         for (si, sl) in self.slots(p, t, a, b).iter().enumerate() {
-            for &(g, st) in &sl.pinks {
+            for &(g, st) in sl.pinks.iter() {
                 let (Some(k), st) = (pink_apt(g), st.min(3)) else { continue }; if st == 0 { continue; }
                 sum[k] += st as u32;
                 fire.push(PinkFire { apt: k, p: ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (sl.rel + sl.race) / 100.0)).min(1.0), slot: si, stars: st });
@@ -758,7 +763,7 @@ impl<'a> Env<'a> {
         let default_st: Vec<u8> = self.uncv.iter().map(|&i| if sj.targets[i].guaranteed == 1 { 1 } else { 0 }).collect();
         let outfits = if *st == default_st { vec![] } else { cards.iter().map(|c| json!({"id": c.0, "label": c.1})).collect::<Vec<_>>() };
         let slots: Vec<Value> = sl.iter().map(|s| json!({"kind": if s.parent { "parent" } else { "grandparent" }, "legacy": s.legacy, "gp": s.gp,
-            "chara": s.chara, "name": name(s.chara), "rel": s.rel, "race": s.race, "aff": s.rel + s.race, "stars": s.stars, "pinks": s.pinks})).collect();
+            "chara": s.chara, "name": name(s.chara), "rel": s.rel, "race": s.race, "aff": s.rel + s.race, "stars": &*s.stars, "pinks": &*s.pinks})).collect();
         // per target, buying it and landing it (MODEL.md, skills): bought as gold (her outfit's gold, or a deck gold hint)
         // or white (her outfit's white; else not gold and hinted by the deck, her own events or inheritance), each landing
         // with GEN_GOLD / GEN_WHITE x her spark scale; the deck's hint chances are its per-target marginals (`sel.dw/dg`), so
@@ -873,7 +878,7 @@ impl<'a> Env<'a> {
             for m in 0..=full {
                 if ps[m] == 0.0 && m != full { continue; }
                 let mut sl2 = sl.clone();
-                for &i in &vs { for k in 0..ntar { sl2[i].stars[k] = if m >> k & 1 == 1 { 2 } else { 0 }; } }
+                for &i in &vs { let s = std::rc::Rc::make_mut(&mut sl2[i].stars); for k in 0..ntar { s[k] = if m >> k & 1 == 1 { 2 } else { 0 }; } }
                 let (q2, nc2) = inherit(&sl2, ntar);
                 self.set_trainee(s.t, &q2);
                 let score = self.exact(s.t, &s.sel, &nc2, !policy, false).0;
@@ -913,11 +918,11 @@ impl<'a> Env<'a> {
                 let sl = self.slots(&p2, s.t, s.a, s.b);
                 let iv = sl.iter().position(|x| x.parent && x.legacy == vi).unwrap();
                 let a_v = sl[iv].rel + sl[iv].race;
-                let mut sl0 = sl.clone(); for k in 0..ntar { sl0[iv].stars[k] = 0; } sl0[iv].mix = None;
+                let mut sl0 = sl.clone(); { let s = std::rc::Rc::make_mut(&mut sl0[iv].stars); for k in 0..ntar { s[k] = 0; } } sl0[iv].mix = None;
                 let (q0, nc0) = inherit(&sl0, ntar);
                 let corners = self.corners(s.t, &s.sel, &q0);
                 // the check: every target at 2 stars, against a direct evaluation
-                let mut sl2 = sl0.clone(); for k in 0..ntar { sl2[iv].stars[k] = 2; }
+                let mut sl2 = sl0.clone(); { let s = std::rc::Rc::make_mut(&mut sl2[iv].stars); for k in 0..ntar { s[k] = 2; } }
                 let (q2, nc2) = inherit(&sl2, ntar);
                 self.set_trainee(s.t, &q2);
                 let direct = self.exact(s.t, &s.sel, &nc2, false, false).0 .0;

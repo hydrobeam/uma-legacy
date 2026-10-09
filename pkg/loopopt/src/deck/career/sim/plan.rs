@@ -371,7 +371,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// `initial` without its own search: the cache starts from `refs` (searches already made), then every candidate of
     /// the pool is valued best ceiling first
     fn plan_initial(&mut self, legs: &[Legacy], refs: &[&[Vec<Ref>]]) -> St {
-        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
+        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![], gpc: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
                           rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![], since: vec![] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }
@@ -983,7 +983,7 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
             let sl = s.env.slots(&pv, u, y, iv);
             let Some(pos) = sl.iter().position(|z| z.parent && z.legacy == iv) else { continue };
             let a_v = sl[pos].rel + sl[pos].race;
-            let mut sl0 = sl.clone(); for k in 0..ntar { sl0[pos].stars[k] = 0; } sl0[pos].mix = None;
+            let mut sl0 = sl.clone(); { let s = std::rc::Rc::make_mut(&mut sl0[pos].stars); for k in 0..ntar { s[k] = 0; } } sl0[pos].mix = None;
             let (q0, nc0) = inherit(&sl0, ntar);
             let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
             let nd = s.cache.decks[u].len();
@@ -1154,7 +1154,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             let sl = s.env.slots(&pv, u, y, iv);
             let Some(pos) = sl.iter().position(|z| z.parent && z.legacy == iv) else { continue };
             let a_v = sl[pos].rel + sl[pos].race;
-            let mut sl0 = sl.clone(); for k in 0..ntar { sl0[pos].stars[k] = 0; } sl0[pos].mix = None;
+            let mut sl0 = sl.clone(); { let s = std::rc::Rc::make_mut(&mut sl0[pos].stars); for k in 0..ntar { s[k] = 0; } } sl0[pos].mix = None;
             let (q0, nc0) = inherit(&sl0, ntar);
             let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
             let xms = [1.0, xm(1), xm(2), xm(3)];

@@ -645,6 +645,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         st.pool.borrowed.push(l.borrowed);
         let x = st.pool.me.len() - 1;
         st.gpc.push(st.pool.gp[x].iter().map(|g| 3.0 * shared(&st.pool.me[x], g)).collect());
+        st.pool.gpc.push(st.gpc[x].clone());
         if !l.borrowed { let sw = self.stars_wins(&l); st.fam.entry(family(&l)).or_default().push(sw); }
         st.legs.push(l);
         self.n.added += 1;
@@ -664,7 +665,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// the initial state: the job's pool, every candidate valued (best ceiling first)
     fn initial(&mut self, legs: &[Legacy], base: Base) -> St {
         let pool = self.env.pool(legs);
-        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
+        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![], gpc: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
                           rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![None; self.members.len()], since: vec![0; self.members.len()] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }
