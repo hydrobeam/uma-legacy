@@ -25,17 +25,24 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 ## The page (`webapp/`)
 
 `build.py` assembles `webapp/dist/`:
-- `index.html`: `index.template.html` with `src/style.css`, the `src/*.js` modules bundled by esbuild into one inline
-  script, the Global page data, the example result and the logo filled in. Short cache.
-- `about.html` ("How this works", served at `/about`): `about.template.html` with the same styles; it holds the
-  page's model text.
-- `career.html` (the career planner, served at `/career`): `career.template.html` with the same styles, data and
-  worker, its own bundle (`src/career.js`), the era's `career.json` tables and each G1's turns (`race_turns`, from
-  `data.json`, for the G1-wins calendar).
+- `index.html`: `index.template.html` with the example result, the asset table, the worker source and the logo filled
+  in; everything shared and large is a fingerprinted file in `assets/` (below), so a revisit or a move between pages
+  fetches only the HTML (about 33 KB raw). Short cache.
+- `about.html` ("How this works", served at `/about`): `about.template.html` with the same stylesheet (plus its math
+  font face inline); it holds the page's model text.
+- `career.html` (the career planner, served at `/career`): `career.template.html` with the same stylesheet, data and
+  worker, its own bundle (`src/career.js`) and its own data script: the era's `career.json` tables and each G1's turns
+  (`race_turns`, from `data.json`, for the G1-wins calendar).
 - `assets/`: every file named with a fingerprint of its content and cached for a year (an update gets new names):
-  the wasm, each era's solver data (preloaded by the page head), the GM era's page data (fetched when that era is
+  `style.<hash>.css` (`src/style.css` minified, the font faces and the UI sprites as CSS variables, `--btn-w` etc.,
+  with paths relative to `assets/`: a `url()` in a custom property resolves against the stylesheet that uses it);
+  `data-global.<hash>.js` (the planner pages' shared data: Global cards, umas, skills, image keys, skill icons, race
+  ids, set as `self.__LLP_DATA` under the ids of the elements that once held it) and `career-data.<hash>.js`; the
+  bundles `main.<hash>.js` and `career.<hash>.js` (each page preloads its scripts from the head and runs them at the
+  end of the body, data first); the wasm, each era's solver data (preloaded by the page head), the GM era's page data (fetched when that era is
   chosen), the fonts (Latin subsets from the Fontsource packages: Zen Kaku Gothic New, IBM Plex Mono, and Zen Maru Gothic for the planner pages' game style) and `img.<hash>/` (copied from `webapp/img`).
 - Favicons and `og.png` at the root, font licences in `licenses/`, `_headers` (the caches) and `robots.txt`.
+  `serve.mjs` serves `assets/` with the same one-year immutable cache and the pages with `no-cache`, as the host does.
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`); a browser that refuses WebAssembly gets a
 message saying so. Source map of `src/`: `main.js` (entry), `settings.js` (saved settings), `state.js`, `data.js`,

@@ -45,7 +45,7 @@ export function renderCards() {
       if (ban) { b.classList.add('ban'); const n = document.createElement('span'); n.className = 'cban'; n.textContent = 'Not allowed in ' + (SCENARIOS.find(s => s.v === (state.scen || 'unity')) || {}).name; b.appendChild(n); }
       // a toggle: pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it
       const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false'); };
-      paint();
+      paint(); b._paint = paint;
       b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paint(); cardCount(); };
       chips.appendChild(b);
     }
@@ -53,6 +53,11 @@ export function renderCards() {
   }
   paintSort('cs', 'c');
   filterCards();
+}
+// after an ownership change: every card's pressed state and the count (the list doesn't depend on ownership)
+export function paintCards() {
+  for (const b of $('cards').querySelectorAll('.ct')) b._paint();
+  cardCount();
 }
 // the filter hides cards (and a rarity section left empty) instead of rebuilding the list on every keystroke
 function filterCards() {
@@ -72,8 +77,8 @@ function cardCount() {
 export function initCards() {
   sortMenu('cs', 'c', () => renderCards());
   $('c-filter').oninput = filterCards;
-  $('c-all').onclick = () => { state.cardsOff = {}; save(); renderCards(); };
-  $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); renderCards(); };
+  $('c-all').onclick = () => { state.cardsOff = {}; save(); paintCards(); };
+  $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); paintCards(); };
   if (!$('c-top')) return;   // the career page has neither: one career, one deck
   // Results: 1 or 3, the game's pill switch (a radio group: the arrows move and select)
   const top = $('c-top'), pickTop = (v) => { if (v === state.decksTop) return; state.decksTop = v; paintTop(); save(); };

@@ -2,11 +2,11 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-import { $, spinHTML } from './dom.js';
+import { $, spinHTML, el, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, killEngine } from './engine.js';
+import { run, killEngine, engineBusy } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv } from './images.js';
@@ -25,10 +25,8 @@ import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
 
-const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const tName = (g) => { const s = SK.get(g) || { w: 'Skill ' + g, gd: null }; return goldGiven(g) && s.gd ? s.gd : s.w; };
 const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const btn = (label, cls, fn) => { const b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.onclick = fn; return b; };
 
 // ---------- status line ----------
@@ -58,7 +56,9 @@ function planNote() {
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
   clearTimeout(timer); myId++;
-  if (searching || simulation.state === 'busy' || planS.state === 'busy') killEngine();
+  // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
+  // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
+  if (engineBusy()) killEngine();
   simulationId++;
   searching = true; t0 = performance.now(); paint();
   timer = setTimeout(search, 600);
@@ -107,13 +107,20 @@ async function search() {
   const id = ++myId; simulationId++;
   let job;
   try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message, act: e.act }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
+  // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
+  // result and plan are on show (era, settings, veterans as the job carries them, and the same places), so they stand and
+  // nothing runs; a plan or comparison cut short by the edits makes it run again
+  const key = JSON.stringify([ERA, job]);
+  if (last && last.key === key && last.plan === JSON.stringify(plan) && (planS.state === 'done' || planS.state === 'none') && simulation.state !== 'busy') {
+    searching = false; clearInterval(tick); renderAll(); paint(); return;
+  }
   searching = true; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
     const m = await run(job);
     if (id !== myId) return;
     if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
     else {
-      last = { r: m.r, job, plan: JSON.stringify(plan) };
+      last = { r: m.r, job, key, plan: JSON.stringify(plan) };
       const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
@@ -142,7 +149,8 @@ let planId = 0;
 async function runPlan() {
   const id = myId, pid = ++planId; if (!last) return;
   const { rollout: _r, p_now: _p, ...plain } = last.job;
-  const job2 = { ...plain, next: {} };
+  // plan-only: the page reads `next` alone, so the solver skips the career reports it would rebuild
+  const job2 = { ...plain, next: {}, no_reports: true };
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
@@ -644,7 +652,7 @@ async function runComparison(refine = false) {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true });   // as runPlan sends it once she is added
+    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
     const ja = planOf(legs), ma = await run(ja); if (id !== simulationId || source !== myId) return;
@@ -861,13 +869,19 @@ function vetCardEl(v, i) {
   return card;
 }
 // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
+// (the cards are drawn only while the dialog is open, and when it opens: every edit and result redraws the page)
+let poolStale = true;
 function renderPool() {
-  const box = $('vets'); box.textContent = '';
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
-  vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
-  if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
   const nb = vets.filter(v => v.borrowed).length;
   $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}` + (nb ? `, ${nb} borrowed` : '') + '.' : '';
+  if (!$('set-vets').open) { poolStale = true; return; }
+  drawPool();
+}
+function drawPool() {
+  const box = $('vets'); box.textContent = ''; poolStale = false;
+  vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
+  if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -960,7 +974,9 @@ loadData().then(() => {
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
   $('v-export').onclick = exportVets; $('vx-copy').onclick = copyExport; $('vx-dl').onclick = downloadExport;
   $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
-  $('v-toggle').onclick = () => $('set-vets').showModal();
+  $('v-toggle').onclick = () => { if (poolStale) drawPool(); $('set-vets').showModal(); };
+  // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
+  new MutationObserver(() => { if ($('set-vets').open && poolStale) drawPool(); }).observe($('set-vets'), { attributes: true, attributeFilter: ['open'] });
   $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
   renderAll(); search();
 }, (e) => { status = { kind: 'error', text: e.message }; paint(); });

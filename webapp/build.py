@@ -110,8 +110,11 @@ M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
-def bundle(entry): return subprocess.run([ESBUILD, os.path.join(H, 'src', entry), '--bundle', '--format=iife', '--charset=utf8', '--log-level=warning'],
+def bundle(entry): return subprocess.run([ESBUILD, os.path.join(H, 'src', entry), '--bundle', '--format=iife', '--charset=utf8', '--minify', '--log-level=warning'],
                                          check=True, capture_output=True, text=True).stdout
+# the inlined CSS without its comments and whitespace (no other rewriting: the rules stay as written)
+def css_min(text): return subprocess.run([ESBUILD, '--loader=css', '--minify-whitespace', '--charset=utf8', '--log-level=warning'],
+                                         input=text, check=True, capture_output=True, text=True).stdout
 app = bundle('main.js')
 css = open(os.path.join(H, 'src', 'style.css')).read()
 assert '</style' not in css.lower()
@@ -147,12 +150,37 @@ for pkg, w in FONTS:
     if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
 for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
-css = '\n'.join(faces) + '\n' + css
+# the UI sprites as CSS variables (--btn-w, --spark-white, ...), in the stylesheet itself so the game's buttons have their
+# art at the first paint; a sprite the build lacks is left unset (the rules fall back to plain styles). A url() inside a
+# custom property resolves against the stylesheet that uses it (Chromium and Firefox, checked), so the paths are given
+# relative to where the stylesheet is served from
+SPRITES = ['friend_frame', 'spark_white', 'spark_blue', 'spark_pink', 'spark_green', 'spark_dot', 'spark_dot_gold', 'skill_white', 'skill_gold', 'skill_unique', 'skill_pink', 'pill', 'star_on', 'star_off',
+           'spark_white_dark', 'skill_white_dark', 'star_off_dark', 'enh_umas', 'enh_cards', 'enh_vets', 'enh_umas_dark', 'enh_cards_dark', 'enh_vets_dark',
+           'btn_w', 'btn_g', 'pill_w', 'pill_g', 'chk_off', 'chk_on', 'btn_w_dark', 'pill_w_dark', 'chk_off_dark', 'tog_off', 'tog_on', 'tog_off_dark',
+           'slot_frame', 'slot_empty', 'sched_badge', 'plus', 'slot_frame_dark', 'slot_empty_dark', 'close']
+def sprite_rule(base):
+    vs = [f"--{k.replace('_', '-')}:url({base}ui/{k}.{ext['ui']})" for k in SPRITES if f'ui:{k}' in images]
+    return ':root{' + ';'.join(vs) + '}' if vs else ''
+# one stylesheet for the three pages, a fingerprinted file (cached a year; revisits and moving between pages fetch only
+# the HTML): its font and sprite paths relative to assets/, where it is served from
+css = css_min('\n'.join(f.replace('url(assets/', 'url(') for f in faces) + '\n' + sprite_rule(IMG_BASE[len('assets/'):]) + '\n' + css)
+CSS_LINK = f'<link rel="stylesheet" href="{fingerprint("style.css", css)}">'
 # /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
 # fetches it only on a page that draws math, so only /about gets the face
 _d = os.path.join(H, 'node_modules', '@fontsource', 'stix-two-math')
 MATHFACE = re.sub(r"src: [^;]+;", "src: url(" + fingerprint('stix-two-math-latin-400-normal.woff2', open(os.path.join(_d, 'files', 'stix-two-math-latin-400-normal.woff2'), 'rb').read()) + ") format('woff2');",
                   open(os.path.join(_d, 'latin-400.css')).read()).strip()
+# the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids), the career page's tables
+# and each page's script: fingerprinted classic scripts at the end of the body, run in the same order as the inline ones
+# were (data first); the data under the ids of the elements that held it (data.js: self.__LLP_DATA['data-cards'], ...)
+def data_script(name, d):
+    payload = '{' + ','.join(f'"{k}":{v}' for k, v in d.items()) + '}'
+    return fingerprint(name, 'Object.assign(self.__LLP_DATA=self.__LLP_DATA||{},JSON.parse(' + json.dumps(payload, ensure_ascii=False) + '));')
+DATA_JS = data_script('data-global.js', {'data-cards': G['cards'], 'data-umas': G['umas'], 'data-skills': G['skills'],
+                                         'data-img': js({'ext': ext, 'keys': images, 'base': IMG_BASE}), 'data-skillicon': js(skill_icons), 'data-raceids': js(race_ids)})
+CAREER_DATA_JS = data_script('career-data.js', {'data-career': G['career']})
+MAIN_JS, CAREER_JS = fingerprint('main.js', app), fingerprint('career.js', bundle('career.js'))
+def script_preloads(*srcs): return '\n'.join(f'<link rel="preload" href="{x}" as="script">' for x in srcs)
 # the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
 SITE = os.environ.get('SITE_URL', 'https://uma-legacy.pages.dev').rstrip('/')
 # light / dark: the visitor's choice (the header's button, saved in this browser), else the system's preference, followed
@@ -174,9 +202,9 @@ THEMEBTN = ('<button type="button" class="themebtn" id="theme-btn" aria-label="D
             '<svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/></svg>'
             '<svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round">'
             '<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg></button>')
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', app), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
-             ('__EXAMPLE__', js(example)), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
-             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker)]:
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', MAIN_JS), ('__DATAJS__', DATA_JS),
+             ('__EXAMPLE__', js(example)), ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)),
+             ('__FONTPRELOAD__', '\n'.join(preloads) + '\n' + script_preloads(DATA_JS, MAIN_JS)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
     html = html.replace(k, v, 1)
 # the logo: the favicon's three sparkles inline in the title (gradient ids prefixed so they can't clash)
@@ -187,15 +215,15 @@ assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', MATHFACE + '\n' + css), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK + '\n<style>\n' + MATHFACE + '\n</style>'), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 # the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
 career = open(os.path.join(H, 'career.template.html')).read()
 career = panels(career)   # the shared setup rows, Enhance buttons and settings editors
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', css), ('__APP__', bundle('career.js')), ('__CARDS__', G['cards']), ('__UMAS__', G['umas']), ('__SKILLCAT__', G['skills']),
-             ('__CAREERDATA__', G['career']), ('__IMG__', js({'ext': ext, 'keys': images, 'base': IMG_BASE})), ('__SKILLICON__', js(skill_icons)), ('__RACEIDS__', js(race_ids)),
-             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__WORKER__', worker), ('__LOGO__', LOGO)]:
+for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', CAREER_JS), ('__DATAJS__', DATA_JS), ('__CAREERDATAJS__', CAREER_DATA_JS),
+             ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)),
+             ('__FONTPRELOAD__', '\n'.join(preloads) + '\n' + script_preloads(DATA_JS, CAREER_DATA_JS, CAREER_JS)), ('__WORKER__', worker), ('__LOGO__', LOGO)]:
     assert '</script' not in v.lower(), k
     career = career.replace(k, v, 1)
 assert not re.search(r'__(?!PURE__)[A-Z]+__', career), re.findall(r'__(?!PURE__)[A-Z]+__', career)

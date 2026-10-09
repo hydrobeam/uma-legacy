@@ -1,7 +1,11 @@
 // The data build.py embeds in the page, for the chosen era.
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-const parse = (id) => JSON.parse($(id).textContent);
+// the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed by the ids of the elements that
+// used to hold it); what stays in the page (the asset table, the example) from its JSON elements
+const D = self.__LLP_DATA || {};
+const parse = (id) => id in D ? D[id] : JSON.parse($(id).textContent);
+const has = (id) => id in D || !!$(id);
 // Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder.
 export const ASSETS = parse('data-assets');
 // The active era's data, set by loadData() before the page starts. Global's is inline in the page; the GM era's is
@@ -22,7 +26,7 @@ function setData(d) {
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
 export const loadFail = (what) => `Could not load ${what}. Check your connection and reload the page.` + (location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '');
 export async function loadData() {
-  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills'), career: $('data-career') ? parse('data-career') : null }); return; }
+  if (ERA !== 'gm') { setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills'), career: has('data-career') ? parse('data-career') : null }); return; }
   let r; try { r = await fetch(ASSETS.dataGm); } catch { r = null; }
   if (!r || !r.ok) throw new Error(loadFail('the Grand Masters-era data'));
   setData(await r.json());

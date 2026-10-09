@@ -62,7 +62,7 @@ function scheduleSearch() {
   clearTimeout(pauseTimer);
   if (state.auto === false) { if (searching) stopSearch(); ui.status = { kind: 'pending', text: 'Settings changed: press Search.', act: { label: 'Search', run: doSearch } }; paintRunNote(); return; }
   if (busy) { searchId++; stopEngine(); }   // a search for the old settings is pointless: stop it now, not when the next starts
-  pauseTimer = setTimeout(doSearch, 550); phase = 'search';
+  pauseTimer = setTimeout(() => doSearch(true), 550); phase = 'search';
   // "Searching…" during the pause, but the seconds count only once the search runs (doSearch starts the clock)
   clearInterval(searchTick); searching = true; searchT0 = performance.now(); paintRunNote();
 }
@@ -123,12 +123,19 @@ export function certText(e) {
   if (e.rho > 1) return ` · exact check: decks within ${Math.round((1 - 1 / e.rho) * 100)}% of it (ran out of time)`;
   return ' · not checked exactly (ran out of time)';
 }
-export async function doSearch() {
+// auto: the search the pause starts (not the Search buttons): edits that end where they started run nothing when the
+// result on show is the finished search of the same job (its key holds the solver's and data's fingerprints, the era and
+// every setting the job carries)
+let doneKey = null, doneStatus = null;
+export async function doSearch(auto = false) {
   const my = ++searchId; clearTimeout(pauseTimer);
-  if (busy) stopEngine();   // a search is still running: stop it and start over
   let b;
   try { b = buildJob(); }
-  catch (e) { searching = false; clearInterval(searchTick); ui.status = e.status || { kind: 'error', text: e.message }; paintRunNote(); return; }
+  catch (e) { if (busy) stopEngine(); searching = false; clearInterval(searchTick); ui.status = e.status || { kind: 'error', text: e.message }; paintRunNote(); return; }
+  if (auto === true && !busy && doneKey && jobKey(b.job) === doneKey && shown.key === doneKey && !shown.example) {
+    searching = false; clearInterval(searchTick); ui.status = doneStatus; paintRunNote(); return;
+  }
+  if (busy) stopEngine();   // a search is still running: stop it and start over
   searching = true; searchT0 = performance.now(); paintRunNote(); clearInterval(searchTick); searchTick = setInterval(paintRunNote, 1000);
   try {
     const { job, targets } = b;
@@ -150,6 +157,7 @@ export async function doSearch() {
     else {
       draw(m.r);
       ui.status = { kind: 'done', text: `Checked ${m.r.decks_built.toLocaleString()} decks / ${m.r.foursomes.toLocaleString()} loops in ${(m.ms / 1000).toFixed(1)} s` + certText(m.r.exact) };
+      doneKey = key; doneStatus = ui.status;
       try { localStorage.setItem(LAST(), JSON.stringify({ key, ms: m.ms, r: m.r })); } catch {}
     }
   } catch (e) { if (my !== searchId) return; busy = false; ui.status = { kind: 'error', text: e.message }; }

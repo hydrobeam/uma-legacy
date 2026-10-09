@@ -88,7 +88,8 @@ const until = (pg, fn, arg, timeout = 3000) => pg.waitForFunction(fn, arg, { tim
 async function navClick(pg, sel) { await Promise.all([pg.waitForEvent('load'), pg.click(sel)]); }   // a click that reloads the page
 const note = (pg) => pg.locator('#run-note').innerText();
 const odds = (pg) => pg.evaluate(() => (document.querySelector('#results .loop .odds') || {}).textContent || '');
-const json = (pg, id) => pg.evaluate((id) => JSON.parse(document.getElementById(id).textContent), id);
+// the page's data by its old element id: the shared lists come from build.py's data scripts (self.__LLP_DATA), the rest from JSON elements
+const json = (pg, id) => pg.evaluate((id) => self.__LLP_DATA && id in self.__LLP_DATA ? self.__LLP_DATA[id] : JSON.parse(document.getElementById(id).textContent), id);
 const scen = (pg) => pg.getAttribute('#x-scen', 'data-value');   // the chosen scenario
 async function pickScen(pg, v) { await pg.click('#x-scen'); await pg.click(`#scen-menu .stile[data-v="${v}"]`); }
 
@@ -200,7 +201,7 @@ const TESTS = {
     const menu = pg.locator('#scen-menu'), tiles = pg.locator('#scen-menu .stile');
     const btnName = () => pg.getAttribute('#x-scen', 'aria-label');
     check('picker closed at first; the button is Unity Cup (logo only, named for assistive tech)', (await menu.isHidden()) && (await scen(pg)) === 'unity' && (await btnName()) === 'Scenario: Unity Cup'
-      && (await pg.evaluate(() => JSON.parse(document.getElementById('data-img').textContent).keys.includes('scen:2'))
+      && (await pg.evaluate(() => self.__LLP_DATA['data-img'].keys.includes('scen:2'))
         ? (await pg.locator('#x-scen').innerText()).trim() === '' && (await pg.locator('#x-scen img').count()) === 1
         : (await pg.locator('#x-scen').innerText()).trim() === 'Unity Cup'));
     const shots = process.env.LLP_SHOTS, bn = b.browserType().name();   // pictures of the button and the open picker, for a look at the logos
@@ -216,7 +217,7 @@ const TESTS = {
     check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
     check('every tile is logo + one line', t.every(x => x.subH <= 22), t.map(x => `${x.v} line ${x.subH}px, blank ${x.gap}px`).join(' | '));
     // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
-    const golds = await pg.evaluate(() => { const skl = JSON.parse(document.getElementById('data-skills').textContent), gi = JSON.parse(document.getElementById('data-skillicon').textContent).gold;
+    const golds = await pg.evaluate(() => { const skl = self.__LLP_DATA['data-skills'], gi = self.__LLP_DATA['data-skillicon'].gold;
       const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
       return { want: [20049, 20046].map(x => ({ name: skl.find(s => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })), group: g && g.getAttribute('aria-label'),
         got: g ? [...g.querySelectorAll('img')].map(i => ({ alt: i.alt, title: i.title, src: i.getAttribute('src'), h: Math.round(i.getBoundingClientRect().height) })) : [],
@@ -368,7 +369,7 @@ const TESTS = {
     check('toggling a card keeps its image element (no flicker)', img && await tile.evaluate(t => t.querySelector('img') === t.__img && t.getAttribute('aria-pressed') === 'false'));
     await tile.click();
     // R cards are left out (no setting): the R section holds only the R pals
-    const rpals = await pg.evaluate(() => JSON.parse(document.getElementById('data-cards').textContent).filter(c => c.rar === 1 && c.pal).length);
+    const rpals = await pg.evaluate(() => self.__LLP_DATA['data-cards'].filter(c => c.rar === 1 && c.pal).length);
     const rCount = () => pg.evaluate(() => { const g = [...document.querySelectorAll('#cards .cgroup')].find(x => x.querySelector('h3').textContent === 'R'); return g ? g.querySelectorAll('.ct').length : 0; });
     check('R cards are left out, with no switch; the R section keeps the R pals', (await pg.locator('#x-rcards').count()) === 0 && (await rCount()) === rpals, (await rCount()) + ' of ' + rpals);
     check('every card image carries its type icon', (await pg.locator('#cards .ct .cav.art').count()) === (await pg.locator('#cards .ct .ctype').count()));
@@ -813,6 +814,7 @@ const TESTS = {
     // your veterans live in the Veteran Umamusume dialog: open it to reach them, shut it to reach the page again
     const vetsOpen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await pg.click('#v-toggle'); await dialog(pg, 'set-vets'); } };
     const vetsShut = async () => { if (await pg.locator('#set-vets[open]').count()) await pg.evaluate(() => document.getElementById('set-vets').close()); };
+    const vetsSeen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await vetsOpen(); await vetsShut(); } };
     const node = async (key) => { await vetsShut(); await pg.click(`#tree [data-k="${key}"]`); await dialog(pg, 'node-dlg'); };
     const inNode = (name) => pg.locator('#node-dlg').getByRole('button', { name });
     const closeNode = async () => { if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape'); };
@@ -833,6 +835,7 @@ const TESTS = {
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
     // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
     const vbtn = (await pg.getAttribute('#v-toggle', 'aria-label')) === 'Your veterans' && /^Veteran Umamusume$/.test((await pg.textContent('#v-toggle')).trim());
@@ -1189,6 +1192,7 @@ const TESTS = {
     const sparksIn = async (key, n) => { await node(key); const ok = await pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb').evaluateAll((els, n) => els.length === 8 && els.every(e => new RegExp(n + ' stars').test(e.getAttribute('aria-label'))), n); await closeNode(); return ok; };
     check('career: … she is parent 1, with the eight targets at 2 stars (in her popup)', /Special Week/.test(await p1.textContent()) && !(await p1.getAttribute('class')).includes('ghost')
       && await sparksIn('node:p0', 2));
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: … her parents are not known yet but carry the same eight sparks, and she joins your veterans', await pg.locator('.pf').nth(0).locator('.pn.gp', { hasText: 'Unknown' }).count() === 2
       && await sparksIn('node:p0g0', 2) && await sparksIn('node:p0g1', 2)
       && await pg.locator('#vets .vet').count() === 13 && /Parent 1/.test(await pg.locator('#vet-12 .vtop').textContent()));
@@ -1221,6 +1225,7 @@ const TESTS = {
     check('career: the Umas dialog changes the owned umas and searches again', (await umasNow()) !== before
       && await pg.evaluate(n => window.__careerJobs.filter(j => j.cmd === 'career').length > n, searches), before);
     await pg.reload(); await done();
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: the veterans and the chosen places outlive a reload', await pg.locator('#vets .vet').count() === 13
       && /Special Week/.test(await pg.locator('.pf').nth(0).textContent()) && /Agnes Digital/.test(await pg.locator('#tree .pn.trainee').textContent()));
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
@@ -1241,6 +1246,7 @@ const TESTS = {
     const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
     await simStars(3);
     await pg.click('#sim-add'); await done();
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: adding her saves a labelled veteran and opens the next career', await pg.evaluate(n => {
       const c = JSON.parse(localStorage.getItem('llp:career')).global;
       const v = c.vets.at(-1);

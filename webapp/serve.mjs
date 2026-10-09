@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.wasm': 'application/wasm', '.webp': 'image/webp', '.avif': 'image/avif', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.webp': 'image/webp', '.avif': 'image/avif', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
 export function serveDist(port = 0, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {
@@ -18,7 +18,10 @@ export function serveDist(port = 0, host = '127.0.0.1') {
     if (!f.startsWith(DIST + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(f, (err, buf) => {
       if (err) { res.writeHead(404); return res.end('not found'); }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+      // as the host serves it (dist/_headers): fingerprinted assets/ a year, immutable (their names change with their
+      // content); the pages and everything else revalidated on every load
+      const cache = p.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': cache });
       res.end(buf);
     });
   });

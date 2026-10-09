@@ -1,5 +1,5 @@
 // ---------- the odds popup (both planner pages): the chance of landing exactly k of the n targets ----------
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+import { el, backdropCloses } from './dom.js';
 // under 1%: two significant figures (0.0061%, 0.013%), so long odds that differ don't print the same
 export const pct = (p) => { const x = p * 100; if (p === 0) return '0%';
   if (x < 1e-6) return '<0.000001%';
@@ -9,7 +9,7 @@ let dlg = null, from = null;
 export function openOdds({ title, n, ex, pAll, expected }) {
   from = document.activeElement;
   if (!dlg) { dlg = el('dialog', 'gmdlg'); dlg.id = 'odds-dlg'; dlg.setAttribute('aria-labelledby', 'odds-title');
-    dlg.addEventListener('close', () => { if (from && from.isConnected) from.focus(); }); document.body.appendChild(dlg); }
+    dlg.addEventListener('close', () => { if (from && from.isConnected) from.focus(); }); backdropCloses(dlg); document.body.appendChild(dlg); }
   dlg.textContent = '';
   const h = el('h3', 'gmdhdr', title); h.id = 'odds-title'; dlg.appendChild(h);
   const body = el('div', 'gmdbody');

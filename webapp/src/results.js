@@ -1,5 +1,5 @@
 // ---------- results: one card per loop (odds, members, decks), the schedule and affinity buttons ----------
-import { $, esc } from './dom.js';
+import { $, esc, fmtIn } from './dom.js';
 import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon } from './images.js';
@@ -8,7 +8,6 @@ import { closePop, markOwn, popHasFocus } from './popover.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
-export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
 const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
 // one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
 // only one result is shown), top: the #1 result (to say what differs from it)}

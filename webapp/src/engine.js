@@ -28,19 +28,24 @@ function compiled() {
   wasmModule.catch(() => { wasmModule = null; });   // a failed load is retried on the next search
   return wasmModule;
 }
+// whether a job has been posted and not answered yet (a kill would cut it short; with none, the worker is idle)
+export const engineBusy = () => pending.size > 0;
 export function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); }
 function startEngine() {
   if (ready) return ready;
   const gen = engineGen;
   ready = Promise.all([compiled(), eraEngineData()]).then(([{ module, bytes }, data]) => new Promise((resolve, reject) => {
     if (gen !== engineGen) { reject(new Error('superseded')); return; }
+    // the worker's script as a blob URL, released once the worker has loaded it (one per worker start otherwise stays)
+    let url = null;
     try {
       const src = $('engine-worker').textContent;
-      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-    } catch (e) { reject(new Error('This browser blocked the background worker the solver runs in.')); return; }
+      url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      worker = new Worker(url);
+    } catch (e) { if (url) URL.revokeObjectURL(url); reject(new Error('This browser blocked the background worker the solver runs in.')); return; }
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'ready') resolve();
+      if (m.type === 'ready') { URL.revokeObjectURL(url); resolve(); }
       else if (m.type === 'error') { reject(new Error(m.message)); }
       else if (m.type === 'interim') { const p = pending.get(m.id); p && p.interim && p.interim(m); }
       else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p.done(m); }

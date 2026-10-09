@@ -24,6 +24,12 @@ function rosterCount() {
   const nO = UMAS.reduce((a, u) => a + Math.max(1, (u.outfits || []).length), 0), offO = UMAS.reduce((a, u) => a + ((u.outfits && u.outfits.length) ? u.outfits : [null]).filter(o => tileState(u, o) === 'out').length, 0);
   $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} umas · ${nO - offO} of ${nO} outfits` + (req ? ` · ${req} must include` : '');
 }
+// after an ownership change: every tile's look (or her tiles only) and the count; the list itself stays (its order
+// doesn't depend on ownership)
+export function paintRoster(umaId = null) {
+  for (const t of $('roster').children) if (umaId == null || +t.dataset.uma === umaId) t._paint();
+  rosterCount();
+}
 // the filter hides tiles (name or outfit containing the text) instead of rebuilding the list on every keystroke
 function filterRoster() {
   const f = $('r-filter').value.trim().toLowerCase();
@@ -67,6 +73,6 @@ export function initRoster() {
   sortMenu('rs', 'r', () => renderRoster());
   $('r-filter').oninput = filterRoster;
   $('r-all').onclick = () => { state.roster = Object.fromEntries(Object.entries(state.roster).filter(([, v]) => v === 'req'));
-    state.outfits = Object.fromEntries(Object.entries(state.outfits).filter(([, v]) => v === 'req')); save(); renderRoster(); };
-  $('r-none').onclick = () => { for (const u of UMAS) if (!isRequired(u)) state.roster[u.id] = 'out'; save(); renderRoster(); };
+    state.outfits = Object.fromEntries(Object.entries(state.outfits).filter(([, v]) => v === 'req')); save(); paintRoster(); };
+  $('r-none').onclick = () => { for (const u of UMAS) if (!isRequired(u)) state.roster[u.id] = 'out'; save(); paintRoster(); };
 }

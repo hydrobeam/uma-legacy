@@ -1,6 +1,6 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
 // dist/index.html, next to the data, images, wasm and worker it embeds.
-import { $ } from './dom.js';
+import { $, backdropCloses } from './dom.js';
 import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
@@ -36,9 +36,9 @@ function start() {
   $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };
   // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
   for (const id of ['roster', 'cards']) { const el = $(id), upd = () => el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true }); addEventListener('resize', upd);
+    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });   // the filter hides tiles addEventListener('resize', upd);
     if (window.ResizeObserver) new ResizeObserver(upd).observe(el); }   // also when its dialog opens (its size goes from 0)
-  for (const id of ['why-dlg', 'sched-dlg']) $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });   // backdrop click closes
+  for (const id of ['why-dlg', 'sched-dlg']) backdropCloses($(id));
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing

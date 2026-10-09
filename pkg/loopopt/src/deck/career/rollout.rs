@@ -31,8 +31,10 @@ pub(super) const SHORTLIST: usize = 4;
 
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
+#[derive(Clone)]
 pub(super) struct CDeck { pub(super) sel: Sel, pub(super) tab: Vec<Vec<f64>> }
 /// The rollout's deck cache: per trainee her decks with corner tables and her fully checked decks (`Ref`, for `rise`)
+#[derive(Clone)]
 pub(super) struct Cache { pub(super) decks: Vec<Vec<CDeck>>, pub(super) refs: Vec<Vec<Ref>>, pub tables: usize, pub searches: usize, pub scored: usize }
 
 impl Cache {

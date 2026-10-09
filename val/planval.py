@@ -48,7 +48,11 @@ for d, n in jobs:
     wk = lambda j: (j.get('next') or {}).get('work') or {}
     wa, wx = wk(a), wk(x)
     work = ' '.join(f'{k} {wa.get(k, "?"):,} -> {wx.get(k, "?"):,}' if isinstance(wa.get(k), int) and isinstance(wx.get(k), int) else f'{k} {wa.get(k, "?")} -> {wx.get(k, "?")}' for k in ('nodes', 'exact'))
-    print(f'{n}: {"identical" if not out else "DIFFERS"}  {rt.get(n, "?")} s -> {times[n]} s  {work}')
+    # the assumed cap: no scored deck's exact / product may come within 5% of it (a deck above it would be missed unseen)
+    mr, cap = wx.get('max_ratio'), wx.get('cap')
+    near = isinstance(mr, (int, float)) and isinstance(cap, (int, float)) and mr > cap / 1.05
+    print(f'{n}: {"identical" if not out else "DIFFERS"}  {rt.get(n, "?")} s -> {times[n]} s  {work}' + (f'  max ratio {mr:.3f} of cap {cap}' if isinstance(mr, (int, float)) else ''))
+    if near: print(f'    CAP: a scored deck reached exact/product {mr:.3f}, within 5% of the assumed cap {cap}')
     for o in out: print('   ', o)
-    bad += bool(out)
+    bad += bool(out) or near
 print(f'{len(jobs)} plan jobs, {bad} differ')

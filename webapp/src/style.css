@@ -1544,8 +1544,9 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   .lp .loop .lhead { padding-right: 84px; } }   /* phone: the pill in the first result's corner too, its label for the screen reader only */
 .game .rbbar > .rhead { padding: 8px 12px 9px; gap: 6px 14px; }
 /* the Umas and Support cards editors: the dialog never scrolls; its list takes the room left under the tools and scrolls
-   on its own */
+   on its own; their size is the full list's, whatever the filter leaves (the lists are taller than the screen) */
 .setdlg > .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); overflow: hidden; }
+#set-umas > .dlg, #set-cards > .dlg { height: calc(100dvh - 48px); }
 .setdlg .panel, .setdlg .panel > .cwrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .setdlg .panel > *, .setdlg .panel > .cwrap > * { flex: none; }
 .setdlg .panel > .roster, .setdlg .panel > .cwrap, .setdlg .cwrap > .cards { flex: 1 1 auto; min-height: 0; max-height: none; }
