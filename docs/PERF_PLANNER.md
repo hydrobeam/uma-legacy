@@ -34,7 +34,6 @@ page-side agent's report: deterministic only with the winners-only cache and exa
 
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
   parked pass-2 replay (Done, below) may fold in there.
-- Page: Compare shows the table's instant figure while its replan runs (as Reroll does).
 - Left on boot_mob after the memos (callgrind, 17.05G instructions): `best_sur` and the deck searches under it about
   58%, the outcome loop itself (score_career's self cost, the table folds, Cont::plan's lookups) about 25%; search_ms
   0.62 of 0.92 s. A skip-ahead in `Cont::plan` (x_n is convex in n analytically) would need a float-exact argument for
