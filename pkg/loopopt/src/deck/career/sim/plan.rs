@@ -150,6 +150,9 @@ pub(in super::super) struct PlanJob {
     /// not fitted to this pool: a comparison prices a pool with one more veteran under the fit of the plan it compares
     /// with (the plan's `fit`), so the two values differ only by what she changes, not by a refit
     #[serde(default)] fit: Option<Vec<(u32, f64, f64, f64)>>,
+    /// `index_rule` test knob: PROXY_EFF in place of 0.06 (-1 leaves pass 1's builders to their proxies, so the pass-2
+    /// searches refit Cont: tests/plan_memo.rs runs that path)
+    #[serde(default)] proxy_eff: Option<f64>,
 }
 
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
@@ -777,30 +780,48 @@ fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
 /// construction. The gate only decides whether to look up: after MEMO_PROBE lookups with fewer than one hit in
 /// MEMO_MIN_HIT it stops (the hash and insert would cost more than the misses save). Past MEMO_CAP entries it is cleared
 /// (the wasm page's memory).
-pub(super) struct Memo<K, V> { map: FxMap<K, V>, look: u64, hit: u64, off: bool, kind: usize }
+pub(super) struct Memo<K, V> { map: FxMap<K, V>, look: u64, hit: u64, off: bool, kind: usize, cap: usize }
 const MEMO_PROBE: u64 = 4096;
 const MEMO_MIN_HIT: u64 = 8;
 /// (measured on val/plan: a Cont memo without a cap would hit 0.2-1.5% more often; 1 << 14 entries hold about 0.6 MB)
 const MEMO_CAP: usize = 1 << 14;
-impl<K: std::hash::Hash + Eq, V: Copy> Memo<K, V> {
-    fn new(kind: usize) -> Self { Memo { map: FxMap::default(), look: 0, hit: 0, off: false, kind } }
+/// bit equality of memoised values (the audit's test)
+pub(super) trait SameBits { fn same_bits(&self, o: &Self) -> bool; }
+impl SameBits for f64 { fn same_bits(&self, o: &Self) -> bool { self.to_bits() == o.to_bits() } }
+impl SameBits for (f64, i32, f64) { fn same_bits(&self, o: &Self) -> bool { self.0.same_bits(&o.0) && self.1 == o.1 && self.2.same_bits(&o.2) } }
+impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
+    // (`PLAN_MEMO_OFF`: every memo off from the start, for the test that compares against no memo)
+    // (`PLAN_MEMO_CAP`: another cap, for the test: entries kept long enough to be read after a refit)
+    fn new(kind: usize) -> Self { let e = memo_env(); Memo { map: FxMap::default(), look: 0, hit: 0, off: e.0, kind, cap: e.2 } }
     #[inline]
     fn get_or(&mut self, k: impl FnOnce() -> K, f: impl FnOnce() -> V) -> V {
         if self.off { return f(); }
         self.look += 1;
         let k = k();
-        if let Some(&v) = self.map.get(&k) { self.hit += 1; return v; }
+        if let Some(&v) = self.map.get(&k) {
+            self.hit += 1;
+            // (`PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit; tests/plan_memo.rs)
+            if memo_env().1 { let w = f(); assert!(v.same_bits(&w), "memo kind {}: hit {v:?}, computed {w:?}", self.kind); }
+            return v;
+        }
         let v = f();
         if self.look >= MEMO_PROBE && self.hit * MEMO_MIN_HIT < self.look { self.off = true; self.map = FxMap::default(); return v; }
-        if self.map.len() >= MEMO_CAP { self.map.clear(); memo_stat(7); }
+        if self.map.len() >= self.cap { self.map.clear(); memo_stat(7); }
         self.map.insert(k, v);
         v
     }
 }
-// (`PLAN_MEMO`: per plan, each memo kind's lookups, hits, memos gated off, and the Cont refits, on stderr)
+// (`PLAN_MEMO`: per plan, each memo kind's lookups, hits and memos gated off, the Cont refits and the cap's clears, on
+// stderr)
 thread_local! { static MEMO_STATS: std::cell::Cell<[u64; 8]> = const { std::cell::Cell::new([0; 8]) }; }
 impl<K, V> Drop for Memo<K, V> {
     fn drop(&mut self) { MEMO_STATS.with(|c| { let mut s = c.get(); s[3 * self.kind] += self.look; s[3 * self.kind + 1] += self.hit; s[3 * self.kind + 2] += self.off as u64; c.set(s); }); }
+}
+/// (PLAN_MEMO_OFF, PLAN_MEMO_CHECK, PLAN_MEMO_CAP or MEMO_CAP)
+fn memo_env() -> (bool, bool, usize) {
+    static E: std::sync::OnceLock<(bool, bool, usize)> = std::sync::OnceLock::new();
+    *E.get_or_init(|| (std::env::var("PLAN_MEMO_OFF").is_ok(), std::env::var("PLAN_MEMO_CHECK").is_ok(),
+                       std::env::var("PLAN_MEMO_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(MEMO_CAP)))
 }
 fn memo_stat(i: usize) { MEMO_STATS.with(|c| { let mut s = c.get(); s[i] += 1; c.set(s); }); }
 struct MemoReport;
@@ -809,8 +830,7 @@ impl Drop for MemoReport {
         let s = MEMO_STATS.with(|c| c.replace([0; 8]));
         if std::env::var("PLAN_MEMO").is_ok() {
             let r = |l: u64, h: u64| if l == 0 { 0.0 } else { 100.0 * h as f64 / l as f64 };
-            eprintln!("PLAN_MEMO cont lookups {} hits {} ({:.1}%) off {} | trio lookups {} hits {} ({:.1}%) off {} | refits {} clears {}",
-                s[0], s[1], r(s[0], s[1]), s[2], s[3], s[4], r(s[3], s[4]), s[5], s[6], s[7]);
+            eprintln!("PLAN_MEMO plan lookups {} hits {} ({:.1}%) off {} | refits {} clears {}", s[0], s[1], r(s[0], s[1]), s[2], s[6], s[7]);
         }
     }
 }
@@ -1318,7 +1338,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 e.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
                 let Some(&(e1, _)) = e.first() else { continue };
                 let second = e.get(1).map_or(e1, |x| x.0);
-                for &(v, i) in &e { if v < second * (1.0 - PROXY_EFF) { break; } if !exact_run[i] && !add.contains(&i) { add.push(i); } }
+                for &(v, i) in &e { if v < second * (1.0 - pj.proxy_eff.unwrap_or(PROXY_EFF)) { break; } if !exact_run[i] && !add.contains(&i) { add.push(i); } }
             }
             if add.is_empty() { break; }
             add.sort();
