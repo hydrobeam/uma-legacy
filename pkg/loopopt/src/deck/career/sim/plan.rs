@@ -754,7 +754,10 @@ fn hint_umas(env: &mut Env, d: &Data, legs: &[Legacy], cands: &[usize], trainees
 pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: Vec<f64>, pub(super) m23: &'b [f64], pub(super) v0: f64, pub(super) pnow: Vec<f64>, pub(super) cont: Vec<Cont>,
     /// the trios (A, B as candidate indices, C's step, A and B from a real 8/8 of hers): V = min over them of A's step +
     /// B's step + C's step, a side from a real 8/8 costing 0, else c1; empty: min over a of c1[a] + m23[a]
-    pub(super) combos: Vec<Trio> }
+    pub(super) combos: Vec<Trio>,
+    /// per candidate, the trios' sides: (a real 8/8 veteran of hers, the legacy): her real 8/8s and the 8/8 her best career
+    /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
+    pub(super) sides: &'b [Vec<(bool, Legacy)>], pub(super) all: &'b [usize] }
 /// (A, B, C's step, A from a real 8/8, B from a real 8/8)
 pub(super) type Trio = (usize, usize, f64, bool, bool);
 /// V over the trios at step costs c1
@@ -812,7 +815,39 @@ impl Cont {
     }
     fn cost(&self, p: f64) -> f64 { self.plan(p).0 }
 }
-impl ScoreBase<'_> { fn cost(&self, ui: usize, p: f64) -> f64 { match self.cont.get(ui) { Some(c) => c.cost(p), None => Cont::default().cost(p) } } }
+impl ScoreBase<'_> {
+    fn cost(&self, ui: usize, p: f64) -> f64 { match self.cont.get(ui) { Some(c) => c.cost(p), None => Cont::default().cost(p) } }
+}
+/// A career's own 8/8 as a trio side when her uma is not a stage candidate (her outcome lands every target): the replan
+/// would take her uma in (a veteran of hers) with that real 8/8 a free side. Per candidate side (real or fresh) her 8/8 can
+/// pair with, C's step: 1 / the best allowed C's value with the two 8/8s as parents (every allowed uma but hers and the
+/// partner's, best ceiling first, the value taken until no ceiling can beat the best: the best C by value, as `combos_of`
+/// finds one). Her 8/8 is `lv[iv]` (`Env::veteran`: every target at the rank's star mix), valued as every fresh side is
+/// (the trios' own 8/8s use the rank's mix too), so the trios with her compare like for like with the others; one per
+/// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
+/// (B's candidate index, partner side real, C's step)
+fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, lv: &[Legacy], iv: usize, x: usize, buf: &mut Vec<f64>) -> Vec<(usize, bool, f64)> {
+    let her_id = d.umas[x].id; let mut out = vec![];
+    for ib in 0..bs.cands.len() {
+        let pu = bs.cands[ib]; if d.umas[pu].id == her_id { continue; }
+        for (real, leg) in bs.sides.get(ib).map_or(&[][..], |v| &v[..]) {
+            let mut l = lv.to_vec(); l.push(leg.clone()); let il = l.len() - 1;
+            let p8 = s.env.pool(&l);
+            let mut cs: Vec<(f64, usize)> = bs.all.iter().copied()
+                .filter(|&cu| d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &p8, cu, iv, il))
+                .filter_map(|cu| { let (q, _, c) = s.env.lineage(&p8, cu, iv, il); s.env.ceiling(cu, &q, c).map(|ub| (ub, cu)) }).collect();
+            cs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            let mut best = 0.0f64;
+            for (ub, cu) in cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &p8, cu, iv, il, buf); if v > best { best = v; } }
+            if best > 0.0 { out.push((ib, *real, 1.0 / best)); }
+        }
+    }
+    out
+}
+/// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs c1 (a real partner side free)
+fn with_her(v: f64, her: &[(usize, bool, f64)], c1: &[f64]) -> f64 {
+    her.iter().map(|&(ib, real, c3)| (if real { 0.0 } else { c1[ib] }) + c3).fold(v, f64::min)
+}
 /// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
 /// above 0, and (Y, P) per outcome. Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
@@ -887,6 +922,9 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     let nm = 1usize << ntar;
     let scs: Vec<Vec<f64>> = setups.iter().map(|st| (0..nm).map(|m| (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product()).collect()).collect();
     let v_same = v0_after(&bs.c1);
+    // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
+    let full_m = (1usize << ntar) - 1;
+    let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
     for leaf in 0..nleaf {
         let mut mu = 0usize; let mut pr_st = 1.0f64;
         for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
@@ -907,7 +945,9 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
                 if ui == 0 { dist0.push((pr, up[0])); }
                 let cc = bs.cost(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; moved = true; } } }
             if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; moved = true; } }
-            let y = if goal && m == (1usize << ntar) - 1 { bs.v0 } else { (bs.v0 - if moved { v0_after(&c1) } else { v_same }).max(0.0) };
+            let mut va = if moved { v0_after(&c1) } else { v_same };
+            if m == full_m && !her.is_empty() { va = with_her(va, &her, &c1); }
+            let y = if goal && m == full_m { bs.v0 } else { (bs.v0 - va).max(0.0) };
             ey += pr * y; if y > 1e-9 { lift += pr; }
             ys[leaf << nf | fm] = y;
         }
@@ -1030,7 +1070,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let mut wtab: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
     // (placeholder step costs: 1, so every candidate's lifts are gathered; an 8/8 of hers may be a poorer parent than a
     // fresh one)
-    let base_s = ScoreBase { cands: &cands, c1: vec![1.0; n], m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![] };
+    let base_s = ScoreBase { cands: &cands, c1: vec![1.0; n], m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![], sides: &[], all: &[] };
     // uma x's exact best career (searched now if not yet) and its lifts
     let exact_one = |s: &mut Sim, best: &mut Vec<Option<Option<Found>>>, urefs: &mut Vec<Vec<Vec<Ref>>>, x: usize, buf: &mut Vec<f64>| -> Option<(Found, Vec<(f64, f64)>)> {
         if best[x].is_none() {
@@ -1154,19 +1194,25 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         } }
         combos
     };
+    // the trios' sides per candidate (her real 8/8s, then the fresh 8/8 her best career now would leave), for `her_trios`
+    let sides_of = |s: &mut Sim, c1: &[f64]| -> Vec<Vec<(bool, Legacy)>> { (0..n).map(|ui| {
+        let mut v: Vec<(bool, Legacy)> = real8[ui].iter().map(|&i| (true, legs[i].clone())).collect();
+        if c1[ui].is_finite() { if let Some(f) = fb[ui].as_ref() { let wp = s.wins(pool, cands[ui], f.a, f.b); v.push((false, s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec()))); } }
+        v }).collect() };
     let mut combos = combos_of(&mut s, &c1, &mut buf);
+    let mut sides = sides_of(&mut s, &c1);
     let mut combo_ms = now_ms() - t_c;
     let mut combos3: Vec<Trio> = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
     let mut vnow = trio_v(&c1, &combos3);
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
-    let score_one = |s: &mut Sim, r: &(usize, Found, Vec<(f64, f64)>), c1: &[f64], vnow: f64, cont: &[Cont], combos3: &[Trio], buf: &mut Vec<f64>| {
-        let base = ScoreBase { cands: &cands, c1: c1.to_vec(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.to_vec(), combos: combos3.to_vec() };
+    let score_one = |s: &mut Sim, r: &(usize, Found, Vec<(f64, f64)>), c1: &[f64], vnow: f64, cont: &[Cont], combos3: &[Trio], sides: &[Vec<(bool, Legacy)>], buf: &mut Vec<f64>| {
+        let base = ScoreBase { cands: &cands, c1: c1.to_vec(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.to_vec(), combos: combos3.to_vec(), sides, all: &all };
         let (ey, lift, ys, _, _) = score_career(s, d, &base, legs, pool, r.0, r.1.a, r.1.b, &r.1.sel, buf);
         (ey - 1.0, lift, ys)
     };
     let mut score: Vec<f64> = vec![]; let mut lifts: Vec<f64> = vec![]; let mut ytabs: Vec<Vec<f64>> = vec![];
     if !runs.is_empty() && vnow.is_finite() {
-        for r in &runs { let (sc, lift, ys) = score_one(&mut s, r, &c1, vnow, &cont, &combos3, &mut buf); score.push(sc); lifts.push(lift); ytabs.push(ys); }
+        for r in &runs { let (sc, lift, ys) = score_one(&mut s, r, &c1, vnow, &cont, &combos3, &sides, &mut buf); score.push(sc); lifts.push(lift); ytabs.push(ys); }
         // the proxies a shown row, the pick's near-tie band or two deep's builders can turn on: searched exactly (their
         // saving, score + 1, within PROXY_SAVE of the lowest saving those take), then scored again; when one of them joins a
         // candidate's two most efficient builders, Cont, the trios, V and every score are computed again
@@ -1186,20 +1232,20 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             let cont2 = cont_of(&mut s, &runs, &exact_run, &wtab, &mut buf);
             let same = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
             if same {
-                for &i in &add { let (sc, lift, ys) = score_one(&mut s, &runs[i], &c1, vnow, &cont, &combos3, &mut buf); score[i] = sc; lifts[i] = lift; ytabs[i] = ys; }
+                for &i in &add { let (sc, lift, ys) = score_one(&mut s, &runs[i], &c1, vnow, &cont, &combos3, &sides, &mut buf); score[i] = sc; lifts[i] = lift; ytabs[i] = ys; }
             } else {
                 cont = cont2;
                 c1 = (0..n).map(|ui| cont[ui].cost(pnow[ui])).collect();
-                let tc = now_ms(); combos = combos_of(&mut s, &c1, &mut buf); combo_ms += now_ms() - tc;
+                let tc = now_ms(); combos = combos_of(&mut s, &c1, &mut buf); sides = sides_of(&mut s, &c1); combo_ms += now_ms() - tc;
                 combos3 = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
                 vnow = trio_v(&c1, &combos3);
                 if !vnow.is_finite() { score.clear(); lifts.clear(); ytabs.clear(); break; }
-                for i in 0..runs.len() { let (sc, lift, ys) = score_one(&mut s, &runs[i], &c1, vnow, &cont, &combos3, &mut buf); score[i] = sc; lifts[i] = lift; ytabs[i] = ys; }
+                for i in 0..runs.len() { let (sc, lift, ys) = score_one(&mut s, &runs[i], &c1, vnow, &cont, &combos3, &sides, &mut buf); score[i] = sc; lifts[i] = lift; ytabs[i] = ys; }
             }
         }
         exact_n = score.len();
     }
-    let (c1, cont, combos, combos3, vnow) = (c1, cont, combos, combos3, vnow);
+    let (c1, cont, combos, combos3, vnow, sides) = (c1, cont, combos, combos3, vnow, sides);
     let vof = |c: &[f64]| trio_v(c, &combos3);
     let step = |ui: usize, real: bool| if real { 0.0 } else { c1[ui] };
     let best_combo = combos.iter().min_by(|x, y| (step(x.0, x.4) + step(x.1, x.5) + x.2).partial_cmp(&(step(y.0, y.4) + step(y.1, y.5) + y.2)).unwrap()).copied();
@@ -1234,7 +1280,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                     if pvn[ui] > pnow[ui] { c1v[ui] = c1v[ui].min(cont[ui].cost(pvn[ui])); }
                 }
                 let v0v = vof(&c1v);
-                let basev = ScoreBase { cands: &cands, c1: c1v, m23: &zeros, v0: v0v, pnow: pvn, cont: cont.clone(), combos: combos3.clone() };
+                let basev = ScoreBase { cands: &cands, c1: c1v, m23: &zeros, v0: v0v, pnow: pvn, cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
                 let mut bestg = 0.0f64;
                 for &bd in &builders {
                     if d.umas[bd].id == d.umas[x].id { continue; }
@@ -1260,8 +1306,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         std::mem::swap(&mut s.cache, &mut c0);
         let wins: Vec<(usize, Sel)> = sv.found.iter().map(|f| (f.t, f.sel.clone()))
             .chain(cands.iter().filter_map(|&u| best[u].clone().flatten().map(|f| (u, f.sel)))).collect();
-        let base_s = ScoreBase { cands: &cands, c1: vec![1.0; n], m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![] };
-        let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone() };
+        let base_s = ScoreBase { cands: &cands, c1: vec![1.0; n], m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![], sides: &[], all: &[] };
+        let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
         let effs = |x: usize, st: &[(f64, f64)]| -> Vec<f64> { (0..n).map(|ui| {
             let (pl, sp) = st[ui];
             if d.umas[cands[ui]].id == d.umas[x].id || pl <= 0.0 || pnow[ui] <= 0.0 { 0.0 } else { pl * (1.0 / pnow[ui] - 1.0 / (sp / pl)) } }).collect() };
