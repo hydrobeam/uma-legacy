@@ -2,6 +2,7 @@
 // Node + Playwright (local or global install). LLP_SHOTS=dir saves pictures of the scenario button and picker there.
 //   node webapp/nodebrowser.mjs                 every test, Chromium and Firefox
 //   node webapp/nodebrowser.mjs chromium roster only the named browsers / tests (any order)
+//   node webapp/nodebrowser.mjs quick           the fast tier (./build.sh testq): each page's core path, Chromium only
 // Both browsers run at once, each with LLP_JOBS test groups in parallel (default 4; LLP_JOBS=1 runs them one by one);
 // a group's lines print together when it ends. Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
 // update does not break the suite; the one fixed number is the Global default search (1 in 119, R cards off, Unity Cup).
@@ -17,7 +18,11 @@ try { pw = createRequire(import.meta.url)('playwright'); }
 catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('playwright'); }
 
 const argv = process.argv.slice(2);
-const BROWSERS = ['chromium', 'firefox'].filter(b => !argv.some(a => ['chromium', 'firefox'].includes(a)) || argv.includes(b));
+// the fast tier (`quick`; ./build.sh testq): each page's core path, Chromium only unless a browser is named: the planner
+// loads and its search returns (load), the result's dialogs (popups), the phone layout (phone), the contrast audit in
+// light mode (contrast), /about, and the career page up to its one-run answer (career stops there in this tier)
+const QUICK = argv.includes('quick'), QUICK_GROUPS = ['career', 'load', 'popups', 'phone', 'contrast', 'about'];
+const BROWSERS = ['chromium', 'firefox'].filter(b => argv.some(a => ['chromium', 'firefox'].includes(a)) ? argv.includes(b) : !QUICK || b === 'chromium');
 let failed = 0, passed = 0;
 const LOG = new AsyncLocalStorage();   // the running group's buffered lines (groups run in parallel)
 const say = (line) => { const buf = LOG.getStore(); if (buf) buf.push(line); else console.log(line); };
@@ -30,13 +35,10 @@ const timed = (key, p, st = profOf()) => { if (!st) return p; const t0 = Date.no
   return Promise.resolve(p).finally(() => { st[key] = (st[key] || 0) + Date.now() - t0; st[key + '#'] = (st[key + '#'] || 0) + 1; }); };
 async function profile(ctx, pg) {   // the solver's time per job (the worker reports it with each result), fixed sleeps, audits
   const st = profOf(); if (!st) return;
-  await ctx.exposeBinding('__llpSolved', (_, kind, ms) => { st['solver:' + kind] = (st['solver:' + kind] || 0) + ms; st['solver:' + kind + '#'] = (st['solver:' + kind + '#'] || 0) + 1; });
+  await ctx.exposeBinding('__llpSolved', (_, kind, ms) => { st['solver:' + kind] = (st['solver:' + kind] || 0) + ms; st['solver:' + kind + '#'] = (st['solver:' + kind + '#'] || 0) + 1; (st.solverLog ||= []).push(`${kind} ${ms}`); });
   await ctx.addInitScript(() => { const W = window.Worker; window.Worker = function (...a) { const w = new W(...a), kinds = new Map(), pm = w.postMessage.bind(w);
     w.postMessage = (m, ...r) => { if (m && m.type === 'run') kinds.set(m.id, m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop'); return pm(m, ...r); };
-    w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__llpSolved(kinds.get(e.data.id) || '?', Math.round(e.data.ms)); }); return w; };
-    window.__spins = 0; let on = false;   // how many times the status line's spinner has come up
-    new MutationObserver(() => { const n = document.getElementById('run-note'), s = !!(n && n.querySelector('.spin')); if (s && !on) window.__spins++; on = s; })
-      .observe(document, { subtree: true, childList: true }); });
+    w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__llpSolved(kinds.get(e.data.id) || '?', Math.round(e.data.ms)); }); return w; }; });
   const sleep = pg.waitForTimeout.bind(pg); pg.waitForTimeout = (ms) => timed('sleep', sleep(ms), st);
   const ev = pg.evaluate.bind(pg); pg.evaluate = (fn, ...a) => fn === AUDIT ? timed('audit', ev(fn, ...a), st) : ev(fn, ...a);
 }
@@ -173,6 +175,68 @@ const SIDEWAYS = () => {
     for (const s of g.querySelectorAll('.dlg, .gmdbody')) if (s.scrollWidth > s.clientWidth + 1) out.push(`#${g.id} scrolls sideways (${s.scrollWidth} > ${s.clientWidth})`); }
   return out;
 };
+// no transition or finite animation still running (a fade, a theme change): what a fixed short sleep waited for
+const still = (pg) => until(pg, () => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
+
+// the career planner (/career) in a fresh context, its first (empty) run done: the job and result hooks, the record of
+// what the page shows, and the helpers the career groups share (career, careerpool and careervets run in parallel, each
+// from its own fresh page)
+async function careerPage(b) {
+  const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+  await ctx.addInitScript(() => {
+    const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
+    window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
+      w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
+      w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
+    // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
+    // got (her sparks), whether the old answer is dimmed
+    window.__seq = [];
+    const snap = () => { const n = document.getElementById('run-note'); if (!n) return;
+      const s = { busy: !!n.querySelector('.spin'), phase: /Planning your next career…/.test(n.textContent) ? 'plan' : /Searching careers…/.test(n.textContent) ? 'search' : '',
+        who: document.querySelector('#tree .pn.trainee .nm')?.textContent || '', draft: (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''),
+        stale: !!document.querySelector('#results.stale') };
+      const k = JSON.stringify(s); if (window.__seq.at(-1)?.k !== k) window.__seq.push({ ...s, k }); };
+    new MutationObserver(snap).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+  });
+  // one answer per run: while the run is busy the page shows the answer it had before it (`pre`, none at first), dimmed
+  // if there is one, and names the phase; the answer it ends on is the only other one drawn
+  const oneAnswer = async (pre) => {
+    const seq = await pg.evaluate(() => window.__seq), busy = seq.filter(s => s.busy), end = seq.at(-1);
+    const shows = (s) => s.who + '/' + s.draft, phases = busy.map(s => s.phase).filter((p, i, a) => p && p !== a[i - 1]);
+    const ok = busy.length > 0 && !end.busy && busy.every(s => shows(s) === pre && (!s.draft || s.stale)) && end.draft !== '' && !end.stale
+      && seq.slice(seq.indexOf(busy.at(-1)) + 1).every(s => shows(s) === shows(end));
+    return { ok, phases, detail: `phases ${phases.join(' > ')} · before ${pre.slice(0, 60)} · busy shows ${[...new Set(busy.map(shows))].map(x => x.slice(0, 40)).join(' | ')} · end ${shows(end).slice(0, 60)}` };
+  };
+  const showsNow = () => pg.evaluate(() => (document.querySelector('#tree .pn.trainee .nm')?.textContent || '') + '/' + (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''));
+  const pg = editorAware(await ctx.newPage()); pg.errors = [];
+  await profile(ctx, pg);
+  pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
+  const note = () => pg.textContent('#run-note');
+  // the run an action started has ended. A change puts the spinner up at once (the search itself starts after a short
+  // pause), so no sleep past the pause is needed; an action that starts no run returns at once
+  const done = () => timed('done', pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }));
+  const planned = () => timed('done', pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 }));
+  const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
+  // the tree is portraits; a portrait opens its node popup (sparks, G1 wins, choose or hand back the place)
+  // your veterans live in the Veteran Umamusume dialog: open it to reach them, shut it to reach the page again
+  const vetsOpen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await pg.click('#v-toggle'); await dialog(pg, 'set-vets'); } };
+  const vetsShut = async () => { if (await pg.locator('#set-vets[open]').count()) await pg.evaluate(() => document.getElementById('set-vets').close()); };
+  const vetsSeen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await vetsOpen(); await vetsShut(); } };
+  const node = async (key) => { await vetsShut(); await pg.click(`#tree [data-k="${key}"]`); await dialog(pg, 'node-dlg'); };
+  const inNode = (name) => pg.locator('#node-dlg').getByRole('button', { name });
+  const closeNode = async () => { if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape'); };
+  // the veteran you got: Uma Stan at n stars (added first if she lacks it)
+  const simStars = async (n) => {
+    const loc = pg.locator('[data-k="sim:s20159"]');
+    if (!(await loc.count())) { await pg.locator('#simulation .vskadd').click(); await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click(); }
+    for (let i = 0; i < 3; i++) { if (+(await loc.getAttribute('aria-label')).match(/(\d) star/)[1] === n) return; await loc.click(); }
+  };
+  // the umadump test file's 12 veterans
+  const importDump = async () => { await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
+    await pg.waitForFunction(() => document.getElementById('v-msg').textContent); };   // the file is read asynchronously
+  await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
+  return { ctx, pg, note, done, planned, ask, oneAnswer, showsNow, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump };
+}
 
 // ---------- tests: each gets a fresh page (fresh storage) unless noted
 const TESTS = {
@@ -743,7 +807,7 @@ const TESTS = {
     const shut = () => pg.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()));
     for (const [open, label] of [[() => pg.click('#v-toggle'), 'veterans'], [() => pg.click('#o-umas'), 'umas'], [() => pg.click('#o-cards'), 'cards'],
       [() => pg.locator('#tree [data-k]').first().click(), 'node'], [() => pg.locator('.udodds').first().click(), 'odds']]) {
-      await open(); await pg.waitForSelector('dialog[open]'); await pg.waitForTimeout(150);
+      await open(); await pg.waitForSelector('dialog[open]'); await still(pg);
       side.push(...(await pg.evaluate(SIDEWAYS)).map(x => label + ': ' + x));
       if (label === 'veterans') side.push(...(await pg.evaluate(PILLS)).map(x => label + ': ' + x));
       await shut(); }
@@ -867,7 +931,7 @@ const TESTS = {
     await pg.emulateMedia({ colorScheme: 'dark' });
     await pg.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 3000 }).catch(() => {});
     if (b.browserType().name() === 'chromium') {
-      await pg.waitForTimeout(300);   // the results' fade back from the searching dim
+      await still(pg);   // the results' fade back from the searching dim
       const fails = [...await pg.evaluate(AUDIT)];
       await pg.click('#x-scen'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
       await pg.click('#rank-q'); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /rtab|rfoot|gpop/.test(x))); await pg.keyboard.press('Escape');
@@ -894,52 +958,7 @@ const TESTS = {
   async career(b) {
     // the career planner (/career): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
     // umadump import, the veteran editor, the search and its results
-    const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
-    await ctx.addInitScript(() => {
-      const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
-      window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
-        w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
-        w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
-      // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
-      // got (her sparks), whether the old answer is dimmed
-      window.__seq = [];
-      const snap = () => { const n = document.getElementById('run-note'); if (!n) return;
-        const s = { busy: !!n.querySelector('.spin'), phase: /Planning your next career…/.test(n.textContent) ? 'plan' : /Searching careers…/.test(n.textContent) ? 'search' : '',
-          who: document.querySelector('#tree .pn.trainee .nm')?.textContent || '', draft: (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''),
-          stale: !!document.querySelector('#results.stale') };
-        const k = JSON.stringify(s); if (window.__seq.at(-1)?.k !== k) window.__seq.push({ ...s, k }); };
-      new MutationObserver(snap).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
-    });
-    // one answer per run: while the run is busy the page shows the answer it had before it (`pre`, none at first), dimmed
-    // if there is one, and names the phase; the answer it ends on is the only other one drawn
-    const oneAnswer = async (pre) => {
-      const seq = await pg.evaluate(() => window.__seq), busy = seq.filter(s => s.busy), end = seq.at(-1);
-      const shows = (s) => s.who + '/' + s.draft, phases = busy.map(s => s.phase).filter((p, i, a) => p && p !== a[i - 1]);
-      const ok = busy.length > 0 && !end.busy && busy.every(s => shows(s) === pre && (!s.draft || s.stale)) && end.draft !== '' && !end.stale
-        && seq.slice(seq.indexOf(busy.at(-1)) + 1).every(s => shows(s) === shows(end));
-      return { ok, phases, detail: `phases ${phases.join(' > ')} · before ${pre.slice(0, 60)} · busy shows ${[...new Set(busy.map(shows))].map(x => x.slice(0, 40)).join(' | ')} · end ${shows(end).slice(0, 60)}` };
-    };
-    const showsNow = () => pg.evaluate(() => (document.querySelector('#tree .pn.trainee .nm')?.textContent || '') + '/' + (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''));
-    const pg = editorAware(await ctx.newPage()); pg.errors = [];
-    await profile(ctx, pg);
-    pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
-    const note = () => pg.textContent('#run-note');
-    const done = () => timed('done', (async () => {
-      // (LLP_PROF: whether a run started only during the pause, i.e. was not yet on show when done() was called)
-      const st = profOf(), at = st && new Error().stack.split('\n')[3]?.match(/:(\d+):\d+\)?$/)?.[1], s0 = st && await pg.evaluate(() => [window.__spins || 0, !!document.querySelector('#run-note .spin')]);
-      await pg.waitForTimeout(700);   // past the pause before a search
-      if (st) { const s1 = await pg.evaluate(() => window.__spins || 0); (st.doneLog ||= []).push(`${at}:${s0[1] ? 'busy' : s1 > s0[0] ? 'LATE' : 'idle'}`); }
-      await pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }); })());
-    const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
-    await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
-    // the tree is portraits; a portrait opens its node popup (sparks, G1 wins, choose or hand back the place)
-    // your veterans live in the Veteran Umamusume dialog: open it to reach them, shut it to reach the page again
-    const vetsOpen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await pg.click('#v-toggle'); await dialog(pg, 'set-vets'); } };
-    const vetsShut = async () => { if (await pg.locator('#set-vets[open]').count()) await pg.evaluate(() => document.getElementById('set-vets').close()); };
-    const vetsSeen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await vetsOpen(); await vetsShut(); } };
-    const node = async (key) => { await vetsShut(); await pg.click(`#tree [data-k="${key}"]`); await dialog(pg, 'node-dlg'); };
-    const inNode = (name) => pg.locator('#node-dlg').getByRole('button', { name });
-    const closeNode = async () => { if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape'); };
+    const { ctx, pg, note, done, planned, oneAnswer, showsNow, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump } = await careerPage(b);
     check('career: with no veterans it asks for parents or an import, and offers sample veterans', /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')), await note());
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
@@ -956,8 +975,7 @@ const TESTS = {
       stripStays && foldHid && sumOpen && ribFold && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.evaluate(() => { window.__seq = []; });
-    await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
-    await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
+    await importDump();
     await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
     // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
@@ -969,6 +987,7 @@ const TESTS = {
     const firstRun = await oneAnswer('Any uma/'), firstRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
     check('career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan\'s pick with the veteran drawn once',
       firstRun.ok && firstRun.phases.join() === 'search,plan' && firstRes && (await pg.textContent('#tree .pn.trainee .nm')) === firstRes.next.choice.trainee.name, firstRun.detail);
+    if (QUICK) { check('no page errors', !pg.errors.length, pg.errors.join(' | ')); return ctx.close(); }   // the fast tier: the one-run answer
     // Export: a dialog with the veterans and the solver job as text; Copy puts it on the clipboard, Download saves it, Paste takes it back
     await vetsOpen(); await pg.click('#v-export'); await dialog(pg, 'vx-dlg');
     const exText = await pg.inputValue('#vx-text'), ex = JSON.parse(exText);
@@ -984,55 +1003,7 @@ const TESTS = {
       && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
       `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
-    // the goal's steps: 8/8 veterans of two different umas -> step 3 in the note; the planner still picks (nothing fixed),
-    // pricing them as real 8/8 sides of its trio
-    const goalEx = JSON.parse(exText), all8 = Object.fromEntries(goalEx.job.targets.map(t => [t.group, 2]));
-    for (const v of goalEx.veterans) for (const g of v.parents) g.sparks = {};   // (the test file's parents carry every spark: they would make a looped parent at once)
-    const two = [0, goalEx.veterans.findIndex(v => v.chara !== goalEx.veterans[0].chara)]; for (const k of two) goalEx.veterans[k].sparks = { ...all8 };
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(goalEx)); await pg.click('#paste-load'); await vetsShut();
-    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
-    const goalJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.next && !j.compare).at(-1));
-    const goalRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    check('career: with 8/8 veterans of two umas nothing is fixed (no goal steps), and the planner prices them in its trio and picks', !(await pg.locator('#goal-note').count())
-      && goalJob && goalJob.fix.length === 0 && goalRes && goalRes.next.mode === 'trio' && goalRes.next.members.length === 2 && goalRes.next.members.every(m => typeof m.real === 'boolean')
-      && await pg.locator('.alts .otag.pick').count() === 1,
-      `${JSON.stringify(goalJob && goalJob.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`);
-    // a borrowed fully looped veteran is a parent to use, not the goal: the note stays at step 1 and the planner plans on
-    const borEx = JSON.parse(exText);
-    for (const v of borEx.veterans) for (const g of v.parents) g.sparks = {};
-    Object.assign(borEx.veterans[0], { borrowed: true, sparks: { ...all8 } }); for (const g of borEx.veterans[0].parents) g.sparks = { ...all8 };
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(borEx)); await pg.click('#paste-load'); await vetsShut();
-    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
-    const borRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    check('career: a borrowed fully looped veteran is a parent to use: the planner plans on, every career scored', borRes && borRes.next.mode === 'trio' && borRes.next.options.every(o => o.score != null),
-      `${borRes && borRes.next.mode}`);
-    // the same veteran as yours: the goal goes on (the next fully looped parent, any uma), every career still scored
-    borEx.veterans[0].borrowed = false;
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(borEx)); await pg.click('#paste-load'); await vetsShut();
-    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
-    const ownRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    check('career: with a fully looped parent of yours the planner goes for the next one and scores every career', ownRes && ownRes.next.mode === 'trio'
-      && ownRes.next.options.every(o => o.score != null) && await pg.locator('.alts .otag.pick').count() === 1, `${ownRes && ownRes.next.mode}`);
-    // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
-    // against the cheapest trio, each step named, the pick explained
-    const trioEx = JSON.parse(exText), drop = String(trioEx.job.targets.find(x => !x.guaranteed).group);
-    for (const v of trioEx.veterans) { delete v.sparks[drop]; for (const g of v.parents) g.sparks = {}; }
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(trioEx)); await pg.click('#paste-load'); await vetsShut();
-    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
-    const trioRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
-    // the plan behind the numbers sits in the "What do these mean?" popup, with the explanation of saves per run
-    await pg.click('#save-why'); await dialog(pg, 'save-dlg');
-    const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');
-    await pg.mouse.click(5, 5);   // a click on the backdrop closes it
-    check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
-      && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
-      && /1 in [\d,]+/.test(trioLoop) && /run this career once first, then follow the route/.test(saveTxt) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
-      && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
-      `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load'); await vetsShut();
-    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });   // the restored pool's plan
-    await done();
+    await done(); await planned();   // the pasted export's plan (the same pool)
     check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*The best odds are checked exact/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);
     const deckShut = !(await pg.locator('#tree-deck').count()) && (await pg.getAttribute('#deck-open', 'aria-expanded')) === 'false';
@@ -1135,11 +1106,6 @@ const TESTS = {
       && await pg.evaluate(() => document.activeElement?.matches('#udpane-skills .udsk')), pop.slice(0, 160));
     await pg.focus('#udtab-skills'); await pg.keyboard.press('ArrowRight');
     check('career: … an arrow key moves to the next tab', await pg.evaluate(() => document.activeElement.id === 'udtab-insp' && document.getElementById('udtab-insp').getAttribute('aria-selected') === 'true'));
-    const simStars = async (n) => {
-      const loc = pg.locator('[data-k="sim:s20159"]');
-      if (!(await loc.count())) { await pg.locator('#simulation .vskadd').click(); await pg.locator('#add-pop .addsk', { hasText: 'Uma Stan' }).click(); }
-      for (let i = 0; i < 3; i++) { if (+(await loc.getAttribute('aria-label')).match(/(\d) star/)[1] === n) return; await loc.click(); }
-    };
     const draft = () => pg.$$eval('#simulation .simskills .vskb', l => l.map(b => b.getAttribute('aria-label')).join('|'));
     const policyJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare).length);
     const d0 = await draft();
@@ -1168,7 +1134,7 @@ const TESTS = {
     }));
     for (const theme of ['light', 'dark']) {
       if (await pg.evaluate(() => document.documentElement.getAttribute('data-theme')) !== theme) await pg.click('#theme-btn');
-      await pg.waitForTimeout(300);
+      await still(pg);   // the theme's colour transitions
       const fails = await pg.evaluate(AUDIT);
       check(`career: ${theme} mode with the outcome table and a comparison meets WCAG AAA`, !fails.length, fails.slice(0, 5).join(' | '));
     }
@@ -1233,7 +1199,7 @@ const TESTS = {
     const cachedRuns = await baselineRuns();
     await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
     await pg.evaluate(() => { window.__seq = []; });
-    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await pg.waitForTimeout(700);
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await done();
     await pg.waitForSelector('#sim-compare:not([disabled])', { timeout: 180000 });
     const fixedRun = await oneAnswer('Agnes Digital/');
     check('career: with the trainee chosen the run is the search alone (no planning phase), its best career the one answer', fixedRun.ok && fixedRun.phases.join() === 'search', fixedRun.detail);
@@ -1275,7 +1241,14 @@ const TESTS = {
     await pg.keyboard.press('Escape');
     check('career: … closing it puts the focus back on the wins button', await pg.waitForFunction(() => document.activeElement?.id === 'sim-wins', null, { timeout: 2000 }).then(() => true, () => false));
     await pg.click('#udtab-insp');
-    await node('node:t'); await inNode('Let the planner pick').click(); await closeNode(); await done();
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
+  // the career planner's veteran pool, edited: a veteran's sparks and G1 wins, new parents and grandparents, the trainee,
+  // Use this, the settings, reloads, the uma.moe tree, generations saved, removals (from the 12 test veterans)
+  async careervets(b) {
+    const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump } = await careerPage(b);
+    await importDump(); await done();
     // a pool veteran: her card opens her popup, her sparks and her parents' as bars, editable in place; editing keeps the
     // result on screen while the search runs again
     const toteBefore = await pg.locator('#odds-open').count();
@@ -1354,7 +1327,7 @@ const TESTS = {
     check('career: "Let the planner pick" hands a place back', await pg.locator('#tree .pn.ghost').count() === 1 && /Weighed/.test(await note()));
     // a settings change searches again
     await pg.click('#o-umas'); await dialog(pg, 'set-umas');
-    const umasNow = () => pg.evaluate(() => { const g = JSON.parse(localStorage.getItem('llp:settings')).global; return JSON.stringify([g.roster, g.outfits]); });
+    const umasNow = () => pg.evaluate(() => { const g = JSON.parse(localStorage.getItem('llp:settings') || '{}').global || {}; return JSON.stringify([g.roster, g.outfits]); });   // (nothing saved before the first settings change)
     const before = await umasNow(), searches = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career').length);
     await pg.locator('#set-umas #roster .ut .up').nth(3).click(); await pg.locator('#set-umas .dclose').click(); await done();
     check('career: the Umas dialog changes the owned umas and searches again', (await umasNow()) !== before
@@ -1422,7 +1395,62 @@ const TESTS = {
       && /Choose both parents, or import/.test(await note()) && await pg.locator('#simulation').count() === 0);
 
     await pg.keyboard.press('Escape');
-    if (b.browserType().name() === 'chromium') { await pg.waitForTimeout(300); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    if (b.browserType().name() === 'chromium') { await still(pg); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
+  // the career planner on pasted pools: the goal's steps (8/8 veterans of two umas), a borrowed or owned fully looped
+  // veteran, the trio path (from the 12 test veterans' export, changed)
+  async careerpool(b) {
+    const { ctx, pg, done, vetsOpen, vetsShut, importDump } = await careerPage(b);
+    await importDump(); await done();
+    await vetsOpen(); await pg.click('#v-export'); await dialog(pg, 'vx-dlg'); const exText = await pg.inputValue('#vx-text'); await pg.locator('#vx-dlg .dclose').click();
+    // the goal's steps: 8/8 veterans of two different umas -> step 3 in the note; the planner still picks (nothing fixed),
+    // pricing them as real 8/8 sides of its trio
+    const goalEx = JSON.parse(exText), all8 = Object.fromEntries(goalEx.job.targets.map(t => [t.group, 2]));
+    for (const v of goalEx.veterans) for (const g of v.parents) g.sparks = {};   // (the test file's parents carry every spark: they would make a looped parent at once)
+    const two = [0, goalEx.veterans.findIndex(v => v.chara !== goalEx.veterans[0].chara)]; for (const k of two) goalEx.veterans[k].sparks = { ...all8 };
+    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(goalEx)); await pg.click('#paste-load'); await vetsShut();
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
+    const goalJob = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.next && !j.compare).at(-1));
+    const goalRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    check('career: with 8/8 veterans of two umas nothing is fixed (no goal steps), and the planner prices them in its trio and picks', !(await pg.locator('#goal-note').count())
+      && goalJob && goalJob.fix.length === 0 && goalRes && goalRes.next.mode === 'trio' && goalRes.next.members.length === 2 && goalRes.next.members.every(m => typeof m.real === 'boolean')
+      && await pg.locator('.alts .otag.pick').count() === 1,
+      `${JSON.stringify(goalJob && goalJob.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`);
+    // a borrowed fully looped veteran is a parent to use, not the goal: the note stays at step 1 and the planner plans on
+    const borEx = JSON.parse(exText);
+    for (const v of borEx.veterans) for (const g of v.parents) g.sparks = {};
+    Object.assign(borEx.veterans[0], { borrowed: true, sparks: { ...all8 } }); for (const g of borEx.veterans[0].parents) g.sparks = { ...all8 };
+    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(borEx)); await pg.click('#paste-load'); await vetsShut();
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
+    const borRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    check('career: a borrowed fully looped veteran is a parent to use: the planner plans on, every career scored', borRes && borRes.next.mode === 'trio' && borRes.next.options.every(o => o.score != null),
+      `${borRes && borRes.next.mode}`);
+    // the same veteran as yours: the goal goes on (the next fully looped parent, any uma), every career still scored
+    borEx.veterans[0].borrowed = false;
+    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(borEx)); await pg.click('#paste-load'); await vetsShut();
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
+    const ownRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    check('career: with a fully looped parent of yours the planner goes for the next one and scores every career', ownRes && ownRes.next.mode === 'trio'
+      && ownRes.next.options.every(o => o.score != null) && await pg.locator('.alts .otag.pick').count() === 1, `${ownRes && ownRes.next.mode}`);
+    // the trio path: the same veterans without one target and with their parents' sparks cleared: every career scored
+    // against the cheapest trio, each step named, the pick explained
+    const trioEx = JSON.parse(exText), drop = String(trioEx.job.targets.find(x => !x.guaranteed).group);
+    for (const v of trioEx.veterans) { delete v.sparks[drop]; for (const g of v.parents) g.sparks = {}; }
+    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(trioEx)); await pg.click('#paste-load'); await vetsShut();
+    await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
+    const trioRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
+    // the plan behind the numbers sits in the "What do these mean?" popup, with the explanation of saves per run
+    await pg.click('#save-why'); await dialog(pg, 'save-dlg');
+    const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');
+    await pg.mouse.click(5, 5);   // a click on the backdrop closes it
+    check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
+      && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
+      && /1 in [\d,]+/.test(trioLoop) && /run this career once first, then follow the route/.test(saveTxt) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
+      `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },
@@ -1430,7 +1458,7 @@ const TESTS = {
     if (b.browserType().name() !== 'chromium') return;   // one engine is enough for colours
     const pg = await open(b);
     await pg.locator('#roster .ut .up').nth(1).click(); await pg.locator('#cards .ct').nth(1).click(); await settle(pg);
-    await pg.waitForTimeout(300);   // the results' fade back from the searching dim (0.15 s)
+    await still(pg);   // the results' fade back from the searching dim (0.15 s)
     const fails = [...await pg.evaluate(AUDIT)];
     await pg.click('#x-scen'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.deck .dc').first().click(); fails.push(...(await pg.evaluate(AUDIT)).filter(x => /cpop|sw|gtl|ctt/.test(x))); await pg.keyboard.press('Escape');
@@ -1440,14 +1468,17 @@ const TESTS = {
     check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
     await pg.context().close();
     const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', r => r.abort()) });   // the first search done
-    await p2.waitForTimeout(300);   // the results' fade back from the searching dim, as above
+    await still(p2);   // the results' fade back from the searching dim, as above
     await p2.click('#x-scen'); const bf = (await p2.evaluate(AUDIT)).filter(x => /^b\./.test(x) || /scen|stile|slogo|snm|ssub/.test(x));
     check('contrast: scenario badges (no logo files) meet WCAG AAA', !bf.length, bf.join(' | '));
     await p2.context().close();
   },
 };
 
-const pick = Object.keys(TESTS).filter(t => !argv.some(a => a in TESTS) || argv.includes(t));
+// the longest groups start first (each runs serially; one started last would end the run alone), the slowest first
+const FIRST = ['careervets', 'career', 'careerpool', 'careerphone'];
+const pick = (QUICK ? QUICK_GROUPS : Object.keys(TESTS)).filter(t => !argv.some(a => a in TESTS) || argv.includes(t))
+  .sort((a, c) => (FIRST.includes(a) ? FIRST.indexOf(a) : FIRST.length) - (FIRST.includes(c) ? FIRST.indexOf(c) : FIRST.length));
 const JOBS = Math.max(1, +process.env.LLP_JOBS || 4), T0 = Date.now();
 await Promise.all(BROWSERS.map(async (name) => {
   const b = await pw[name].launch(), queue = [...pick];

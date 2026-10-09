@@ -17,6 +17,7 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 | `images` | game art into `webapp/img/{kind}/{id}.avif`: character icons, card art, skill icons, race banners, scenario logos, UI sprites (lossless WebP: the friend frame, card type icons, rank badges, and the career page's veteran card: aptitude grade letters `atlas/common utx_ico_statusrank_00..07`, spark bars and bullets `atlas/singlecommon utx_frm_factor_list_01..04_sl` / `utx_ico_factor_01..02`, skill tiles `atlas/common utx_btn_skill_base_00..03_sl`, the tab pill `utx_btn_square_00_sl`; the Enhance-menu buttons `home/ui/texture utx_btn_home_umamusume_00..02`; the game's buttons and check box from the install's `resources.assets`: `utx_btn_s_00..03_sl`, `utx_btn_checkbox_00..01`), dark-mode versions of the light ones (`*_dark`, made here: the game has no dark mode), and the scenario select art (`single/banner/bnr_chara_big_NNN`, kind `scenart`), and every named mob uma's portrait (`mob/mob_chr_icon_ID_*`, kind `mob`: the career planner's sample veterans); only new ids unless `IMAGES_FORCE=1`; `img/manifest.json` lists sources and gaps. Never committed (© Cygames); without it the page shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), `$UMA_GAME_DATA` (default: the Steam install's `UmamusumePrettyDerby_Data`) |
 | `serve` | serves `webapp/dist` on http://localhost:8000 (`PORT=…`). The page fetches its solver and images, so it must be served, not opened as a file | node |
 | `test` | the browser suite (below) | node, Playwright |
+| `testq` | the browser suite's fast tier (below) | node, Playwright |
 | `deploy` | builds the page, uploads `webapp/dist` to Cloudflare Pages with wrangler (project `uma-legacy` unless `CF_PAGES_PROJECT`; `CF_PAGES_BRANCH=preview` publishes to the preview URL; `SITE_URL` sets the link-preview tags' host). Refuses when `webapp/`, `pkg/` or `jp/` have uncommitted changes (`DEPLOY_DIRTY=1` overrides). One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create uma-legacy --production-branch main` | node, a Cloudflare login |
 | `val TAG` / `valq TAG` | validation (below) | native |
 
@@ -54,8 +55,18 @@ editor), `umadump.js` (import).
 ## Tests
 
 - **Browser suite**: `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`), Chromium and
-  Firefox at once with test groups in parallel (`LLP_JOBS` sets how many; `node webapp/nodebrowser.mjs chromium
-  roster` runs a subset). Run it after any page change, and add checks for new behaviour (not for removals).
+  Firefox at once with test groups in parallel (`LLP_JOBS` sets how many per browser, default 4; `node
+  webapp/nodebrowser.mjs chromium roster` runs a subset). The career page's checks are three groups (`career`,
+  `careerpool`, `careervets`), each from its own import of the umadump test file, so they run side by side; the
+  longest groups start first. About 1.5 to 2 minutes on a laptop. Add checks for new behaviour (not for removals).
+- **Fast tier**: `./build.sh testq` (`node webapp/nodebrowser.mjs quick`, Chromium only unless a browser is named)
+  runs each page's core path in about 15 to 30 seconds: the planner loads and its search returns, the result's dialogs
+  (odds, schedule, affinity), the phone layout and its dialogs, the contrast audit in light mode, /about with its
+  audit, and the career page up to its one-run answer (import, search, plan, the veterans dialog). Run it after each
+  page change while iterating; run the full `./build.sh test` before committing a page change that is done, and for
+  every release.
+- **Where the time goes**: `LLP_PROF=file` appends one JSON line per group (new contexts, page loads, waits for
+  searches and plans, fixed sleeps, contrast audits, the solver's own time per job kind) to `file`.
 - **Solver**: `cargo test --release` in `pkg/loopopt` (also part of `native`).
 - **Validation**: `./build.sh val TAG` runs the reference setups twice (shared deck, per-uma decks) in parallel and
   compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the slow shared three-result

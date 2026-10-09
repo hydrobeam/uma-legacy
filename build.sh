@@ -9,7 +9,8 @@
 #   page     webapp/dist: index.html (webapp/src bundled with esbuild, both eras' data), loopopt.wasm, img/
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
-#   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox)
+#   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox): releases
+#   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/ jp/
@@ -37,6 +38,7 @@ step_wasm() {
            && node example.mjs | tail -1)
 }
 step_test() { node "$W/nodebrowser.mjs"; }
+step_testq() { node "$W/nodebrowser.mjs" quick; }
 step_serve() { node "$W/serve.mjs" "${PORT:-8000}"; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
@@ -58,7 +60,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    data|events|native|pb|wasm|page|images|test|serve|deploy) "step_$1" ;;
+    data|events|native|pb|wasm|page|images|test|testq|serve|deploy) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
