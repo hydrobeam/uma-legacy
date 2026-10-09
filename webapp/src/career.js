@@ -107,13 +107,20 @@ async function search() {
   const id = ++myId; simulationId++;
   let job;
   try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message, act: e.act }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
+  // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
+  // result and plan are on show (era, settings, veterans as the job carries them, and the same places), so they stand and
+  // nothing runs; a plan or comparison cut short by the edits makes it run again
+  const key = JSON.stringify([ERA, job]);
+  if (last && last.key === key && last.plan === JSON.stringify(plan) && (planS.state === 'done' || planS.state === 'none') && simulation.state !== 'busy') {
+    searching = false; clearInterval(tick); renderAll(); paint(); return;
+  }
   searching = true; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
     const m = await run(job);
     if (id !== myId) return;
     if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
     else {
-      last = { r: m.r, job, plan: JSON.stringify(plan) };
+      last = { r: m.r, job, key, plan: JSON.stringify(plan) };
       const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
       const n = m.r.candidates;
       status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
