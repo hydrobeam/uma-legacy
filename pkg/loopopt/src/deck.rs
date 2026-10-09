@@ -1847,6 +1847,8 @@ impl<'a> DeckSpace<'a> {
         let zero = vec![0.0f64; nu];
         // the node bound's per-target values, one per (clause, chance, outfit)
         let mut av = vec![0.0f64; oq.len()];
+        // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
+        let orow: Vec<crate::skills::OutfitPre> = oq.iter().map(|&(_, u, _, o)| model.outfit_pre(u, o)).collect();
         let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
@@ -1906,8 +1908,8 @@ impl<'a> DeckSpace<'a> {
                     // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound
                     let mut cv = vec![0.0f64; clauses.len()];
                     for &(ci, i, no) in &og {
-                        let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
-                        for o in 0..no { m = m.max(model.outfit_fast(u, o, q, &dw, &dg).min(p0[i + o] * sp[0][i + o])); }
+                        let q = oq[i].2; let mut m = 0.0f64;
+                        for o in 0..no { m = m.max(orow[i + o].eval(q, &dw, &dg).min(p0[i + o] * sp[0][i + o])); }
                         cv[ci] += fixed * m;
                     }
                     let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
@@ -2071,8 +2073,8 @@ impl<'a> DeckSpace<'a> {
                         cv.iter_mut().for_each(|x| *x = 0.0);
                         let mut nan = false;
                         for &(ci, i, no) in &og {
-                            let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
-                            for o in 0..no { let a = model.outfit_fast(u, o, q, &dw, &dg); av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
+                            let q = oq[i].2; let mut m = 0.0f64;
+                            for o in 0..no { let a = orow[i + o].eval(q, &dw, &dg); av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
                             cv[ci] += fixed * m;
                         }
                         if !nan && !pass(&cv) { return false; }
@@ -2080,7 +2082,7 @@ impl<'a> DeckSpace<'a> {
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
                         for &(ci, i, no) in &og {
-                            let (_, u, q, _) = oq[i]; let mut m = 0.0f64;
+                            let q = oq[i].2; let mut m = 0.0f64;
                             for o in 0..no {
                                 let ix = i + o;
                                 let a = av[ix];
@@ -2088,7 +2090,7 @@ impl<'a> DeckSpace<'a> {
                                 let r = if g >= ng { 1.0 } else if !one_b { rp[g][ix][left] * sp[g + 1][ix] }
                                     else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
-                                m = m.max(a.min(model.outfit_fast(u, o, q, &pdw, &pdg) * r));
+                                m = m.max(a.min(orow[ix].eval(q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
                         }

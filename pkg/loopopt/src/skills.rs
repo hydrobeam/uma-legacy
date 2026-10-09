@@ -298,6 +298,8 @@ impl<'a> Model<'a> {
         }
         p
     }
+    /// `outfit_fast` for many calls on one outfit: its inputs resolved and prepared once (`OutfitPre`)
+    pub(crate) fn outfit_pre(&self, u: usize, o: usize) -> OutfitPre { OutfitPre::new(&self.sts[u][o], &self.ews[u][o]) }
     pub(crate) fn n_outfits(&self, u: usize) -> usize { self.sts[u].len() }
     /// Per-skill landing odds with deck hint odds supplied per uncertain target (white, gold) instead of the job's.
     pub(crate) fn skill_probs_d(&self, st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
@@ -362,6 +364,45 @@ impl<'a> Model<'a> {
     }
 }
 
+/// `Model::outfit_fast` for one outfit, its inputs prepared once for a caller that evaluates it many times (the deck
+/// search's node bound): per target the masks of "white given" (st = 1) and "gold given" (st = 2), all ones or zero,
+/// and 1 - ew (the same subtraction `outfit_fast` does per call, so the same f64). Every target's two arms are computed
+/// and the state picks one by a bitwise select, which takes one of the two f64s bit for bit, as the branch does; so the
+/// result is the same whatever the inputs (finite or not), and the factor loop has no branch and vectorizes.
+pub(crate) struct OutfitPre { m1: Vec<u64>, m2: Vec<u64>, ne: Vec<f64> }
+impl OutfitPre {
+    pub(crate) fn new(st: &[u8], ew: &[f64]) -> Self {
+        let mask = |b: bool| if b { u64::MAX } else { 0 };
+        OutfitPre { m1: st.iter().map(|&v| mask(v == 1)).collect(), m2: st.iter().map(|&v| mask(v == 2)).collect(),
+                    ne: ew[..st.len()].iter().map(|&e| 1.0 - e).collect() }
+    }
+    /// the same f64 as `outfit_fast` on this outfit: the same operations on the same values ((1 - q) once instead of per
+    /// target: the same f64), the factors into an array, then multiplied one by one in target order
+    #[inline]
+    pub(crate) fn eval(&self, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+        #[inline(always)]
+        fn sel(a: f64, b: f64, m: u64) -> f64 { f64::from_bits((a.to_bits() & !m) | (b.to_bits() & m)) }
+        #[inline(always)]
+        fn factor(m1: u64, m2: u64, ne: f64, omq: f64, w: f64, g: f64) -> f64 {
+            let hinted = GEN_WHITE * (1.0 - (1.0 - w) * ne * omq);
+            let white = sel(hinted, GEN_WHITE, m1);
+            sel(g * GEN_GOLD + (1.0 - g) * white, GEN_GOLD, m2)
+        }
+        const C: usize = 32;
+        let n = self.ne.len();
+        let (m1, m2, ne, dw, dg) = (&self.m1[..n], &self.m2[..n], &self.ne[..n], &dw[..n], &dg[..n]);
+        let omq = 1.0 - q;
+        let mut p = 1.0f64;
+        if n > C {
+            for k in 0..n { p *= factor(m1[k], m2[k], ne[k], omq, dw[k], dg[k]); }
+            return p;
+        }
+        let mut f = [0.0f64; C];
+        for k in 0..n { f[k] = factor(m1[k], m2[k], ne[k], omq, dw[k], dg[k]); }
+        for &x in &f[..n] { p *= x; }
+        p
+    }
+}
 /// the chance of exactly k of the independent events landing, k = 0 ..= ps.len()
 pub(crate) fn exactly(ps: &[f64]) -> Vec<f64> {
     let mut d = vec![1.0f64];
@@ -540,6 +581,37 @@ mod tests {
         D.get_or_init(|| load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json")))
     }
     fn skills() -> SkillsRaw { serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap() }
+
+    /// `OutfitPre::eval` is `outfit_fast`'s loop bit for bit: random states, odds and lengths (past the 32-lane array
+    /// too), plus non-finite and signed-zero inputs, which the branchy loop ignores on gold targets
+    #[test]
+    fn outfit_pre_matches_outfit_fast() {
+        let reference = |st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]| -> f64 {
+            let mut p = 1.0f64;
+            for k in 0..st.len() {
+                let v = st[k];
+                p *= if v == 2 { GEN_GOLD } else {
+                    let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
+                    dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
+                };
+            }
+            p
+        };
+        let mut s = 0x9e3779b97f4a7c15u64;
+        let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; (s >> 11) as f64 / (1u64 << 53) as f64 };
+        let odd = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0, 0.0, 1.0, 1e-300];
+        for it in 0..20000 {
+            let n = (rnd() * 40.0) as usize;
+            let st: Vec<u8> = (0..n).map(|_| (rnd() * 3.0) as u8).collect();
+            let mut f = |i: usize| if it % 7 == 0 && rnd() < 0.2 { odd[i % odd.len()] } else { rnd() };
+            let ew: Vec<f64> = (0..n).map(|i| f(i)).collect();
+            let dw: Vec<f64> = (0..n).map(|i| f(i + 1)).collect();
+            let dg: Vec<f64> = (0..n).map(|i| f(i + 2)).collect();
+            let q = if it % 11 == 0 { odd[it % odd.len()] } else { rnd() };
+            let (a, b) = (reference(&st, &ew, q, &dw, &dg), OutfitPre::new(&st, &ew).eval(q, &dw, &dg));
+            assert!(a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan()), "{st:?} {ew:?} {q} {dw:?} {dg:?}: {a} vs {b}");
+        }
+    }
 
     /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
     /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283; with
