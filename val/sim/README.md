@@ -199,6 +199,32 @@ With it, the planner picks Agnes Digital outright on the 7-, 10- and 11-veteran 
 overrated building there). Reproduce: a career job with `"simulate": {"policy": "trace", "runs": 6, "max_careers":
 400, "margin": 1e9, "loop_members": [1019, <five builders>]}`; about 5 s a run natively.
 
+## E5 reread (2026-10-09): bounds, the step model's error, and why
+
+No new simulation: the E5 traces (per career: odds before, builder, its lift chance, mean lifted odds, odds after;
+6 runs x 400 careers, Agnes Digital) reread. "Achievable" is min over k of the mean over runs of k + 1/p(k): build
+greedily k careers then grind, a concrete strategy, so an upper bound on the model's true expected careers.
+
+| Pool | Grind 1/p0 | Build once then grind (1/lam + 1/p1) | Cont (fit) | Achievable (best k) | 1/full-loop odds |
+|---|---|---|---|---|---|
+| 2 veterans | 20,926 | 11,231 | 391 | 391 (174) | 97 |
+| 5 | 2,252 | 2,023 | 995 | 587 (204) | 163 |
+| 11 | 713 | 614 | 425 | 446 (73) | 168 |
+| 19 | 496 | 439 | 392 | 414 (53) | 177 |
+
+- Cont tracks achievable building within 0-5% on 2, 11 and 19 veterans and is provably 70% too pessimistic on 5 (995
+  above an achievable 587). Constant-free bounds (the one-lift strategy, the full-loop odds) bracket by 2-100x: the value
+  is all in compounding, so no analytic bound replaces Cont.
+- Why 5 fails: Cont measures lam once and only lets it decay. On 5 veterans lam jumps 0.10 -> 0.27 after the first lift
+  (a new veteran is also a parent for the other builders' careers) and stays near 0.2 for ten lifts; on 11 and 19 it
+  falls faster than modelled (exponent about 1.7-2.3 against the remaining gap, against 1.5). Per lift the log-odds step
+  is roughly constant on 5/11/19 (x1.08-1.1), shrinking on 2; a "constant factor" form fits 5 (570) but overshoots 2
+  (214) and undershoots 11/19, so the step form is not settled by this data.
+- lam = max(lam now, lam one lift later) fixes most of 5 (995 -> 734) and leaves 2/11/19 unchanged. Proposed (not
+  built): a one-lift lookahead for lam in `cont_of` (the best builder's lifting veteran added, the top builders' careers
+  re-searched with her fixed, their lift chance at the lifted odds), gated on builder headroom or logged first; and a
+  per-plan check that the pick is the same under both step costs (`next.sensitive`). Evidence covers one candidate.
+
 ## Scope: where the surrogate is verified and where it is not
 
 Verified (measured above): three pools (`career_U5`, `owner4`, `owner14`), Unity Cup, the default 8 targets with the two
