@@ -77,8 +77,8 @@ someone else's. Settings are saved in your browser on that device; nothing is up
 **Career planner** (`/career`, linked from the header). Picks the next career from the veterans you have. The
 *Career setup* panel (game data, lineage rank and scenario in a column; the game's Enhance-menu buttons *Umas*,
 *Support cards* and *Veteran Umamusume* beside them; *Target skills* in the open at the right, as on the loop planner, its add box in its title row). Clicking the *Career setup* ribbon (folded, anywhere on the bar) folds the panel to the ribbon and a one-line summary (game data, scenario, rank,
-how many targets); the choice is kept in this browser opens the loop planner's own editors and shares their saved settings; the
-rank sets the stars of the new veteran's sparks it expects on a new veteran. The scenario button and its menu show the
+how many targets); the choice is kept in this browser. The panel's buttons open the loop planner's own editors and share
+their saved settings; the rank sets the stars the planner expects on a new veteran's sparks. The scenario button and its menu show the
 game's scenario-select art behind each logo. Every deck may borrow one friend's card and does when it helps (no
 setting). The pedigree reads left to right: the trainee, her two parents, each parent's own two
 parents, joined by brackets; each of the six legacies shows her affinity in the career on show. Each place is set by hand or left to the planner, which tries every owned uma and every pair of your veterans (at
