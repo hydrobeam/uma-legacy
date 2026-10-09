@@ -1689,3 +1689,106 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* a roll that improves the loop: its quick figures held, muted, while the exact count is worked out */
 .simresult .simodds.held .tv { opacity: .55; }
 .simresult .simrefine { margin: 0; font-size: 0.76rem; color: var(--gm-ink2); }
+
+/* ---------- pill tracks: the chosen part fills its share of the pill, flush ----------
+   Every segmented control on the planner pages (Game data, lineage rank, Results 1 / 3, Yours / Borrowed, the parent
+   picker's tabs, the veteran card's Skills / Inspiration / Career Info) was a pill track holding a smaller pill. Three
+   things kept the green from fitting its track: the track's 2-3 px padding left a ring of track round it on every side;
+   the green was the game's pill sprite as a border-image whose caps had fixed widths (17 and 60 px: right only for a
+   36 px tall button), so on a 26-48 px button its ends were ellipses matching neither the track's semicircle nor each
+   other; and the sprite's lowest 6 of its 72 rows are a translucent shadow, so the green stopped short of the bottom.
+   Now the track has no padding and clips its segments to its own inner curve (overflow: hidden on a 999px radius: the
+   inner radius is the outer one less the 1 px border, whatever the height), the segments are square and stretched to
+   the track's full height, and the chosen one is the sprite's green drawn in CSS (its gradient, light top line and darker
+   foot): flush on every side at any size. Unchosen neighbours are parted by a hairline. */
+:root { --seg-on: linear-gradient(#b4ec52, #7cc40d); --seg-rim: inset 0 -3px 0 #5aa300, inset 0 2px 0 rgba(255, 255, 255, .3); }
+:root[data-theme="dark"] { --seg-on: linear-gradient(var(--gm-bright), var(--gm-bright2)); --seg-rim: inset 0 -3px 0 #3f7d08, inset 0 2px 0 rgba(255, 255, 255, .15); }
+:root.game .seg.seg, .udtabs.udtabs { padding: 0; gap: 0; overflow: hidden; border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); }
+:root.game .seg.seg { box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
+:root.game .seg.seg > button, .udtabs.udtabs > .udtab { margin: 0; border: 0; border-radius: 0; border-image: none; background: none; box-shadow: none; }
+:root.game .seg.seg > button + button, .udtabs.udtabs > .udtab + .udtab { box-shadow: inset 1px 0 0 var(--gm-tab-edge); }
+:root.game .seg.seg > button:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"]), .udtabs.udtabs > .udtab[aria-selected="true"] {
+  color: #fff; text-shadow: var(--gm-outline); background: var(--seg-on); box-shadow: var(--seg-rim); border: 0; border-image: none; }
+:root.game .seg.seg > button:focus-visible, .udtabs.udtabs > .udtab:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+/* the affinity popup's careers are separate pills: the chosen one keeps the unchosen one's box (1 px border, same
+   padding), green */
+.afpick button[aria-pressed="true"] { border: 1px solid #5aa300; border-image: none; background: var(--seg-on); box-shadow: var(--seg-rim); }
+:root[data-theme="dark"] .afpick button[aria-pressed="true"] { border-color: #3f7d08; }
+/* the switches: the game's track (160x60, semicircular ends of radius 30) was stretched whole to 46x24, its ends squeezed
+   to 8.6 px wide ellipses that the round knob stuck out of. Its ends are now 9-sliced at the height's scale (30 px of
+   sprite to 12 px at 24 px tall, 10 px at 20), so they are semicircles concentric with the knob (radius 9 = 12 - 3 px) */
+:root.game .sw input { background: var(--line); border: 0 solid transparent; border-image: var(--tog-off, none) 0 30 fill / 0 12px / 0 stretch; }
+:root.game .sw input:checked { background: #7cc40d; border-image-source: var(--tog-on, none); }
+:root.game[data-theme="dark"] .sw input:not(:checked) { background: var(--line); border-image-source: var(--tog-off-dark, var(--tog-off, none)); }
+.game .rbbar > .rhead .sw input { border-image-width: 0 10px; }
+
+/* ---------- phones ---------- */
+/* the status line while a run works: what the search found, then the spinner and its phase on the next line when both
+   don't fit (side by side on a phone each was squeezed to a narrow two-line column) */
+.runnote { flex-wrap: wrap; row-gap: 2px; }
+.runnote > span:has(> .spin) { display: inline-flex; align-items: center; gap: 6px; }
+/* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
+@media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
+.game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */
+/* career Target skills on a phone: the add box on its own row (beside the title and Load 8/8 example it was squeezed
+   to a 20 px sliver) */
+@media (max-width: 620px) {
+  .rb .lptgt .panel { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "h btn" "add add" "list list"; }
+  .rb .lptgt .adder { margin-top: 0; }
+  .rb .lptgt .adder .sugg { min-width: 0; }
+  .game .lptgt .panel > .row.between > h2 { white-space: nowrap; padding-right: 26px; }
+}
+/* a narrow phone: the target tiles' names in smaller type (two lines at most, not three) */
+@media (max-width: 400px) {
+  .game .lptgt .tgt .name { font-size: 0.78rem; gap: 4px; }
+  .game .lptgt .tgt .sic { width: 22px; height: 22px; }
+}
+/* the veteran card's aptitudes on a narrow phone: each row's label (Track, Distance, Style) over its four grades, so
+   the grades get the full width ("Medium" was cut to "Medi…" beside the label column) */
+@media (max-width: 400px) {
+  .udarow { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 2px; }
+  .udarow > .udal { grid-column: 1 / -1; font-size: 0.78rem; line-height: 1.2; }
+  .udac { font-size: 0.72rem; padding-left: 6px; }
+  .udg { width: 15px; height: 18px; }
+}
+/* the tree on a phone or tablet: each legacy box holds the parent beside her two parents (stacked, the box was a tall
+   column of tiles with half its width empty) */
+@media (max-width: 1080px) {
+  .rb .pf { flex-direction: row; align-items: center; }
+  .rb .pf > .pn { flex: 1 1 0; min-width: 0; }
+  .rb .pf > .pk { flex: 1 1 0; min-width: 0; margin: 0 0 0 12px; padding-left: 12px; }
+}
+/* Options on a phone: one card per career, the planner's pick shaded as a whole (the cells were shaded one by one, in
+   patches) and the career's name the card's full width (the target table's 46 % name column applied here too) */
+@media (max-width: 620px) {
+  .rb .optab tbody th { width: auto; }
+  :root .rb .optab tbody tr.on > *, :root[data-theme="dark"] .rb .optab tbody tr.on > * { background: none; }
+  .rb .optab tbody tr.on { background: var(--gm-tile); border-radius: 10px; padding-inline: 8px; }
+  :root[data-theme="dark"] .rb .optab tbody tr.on { background: #2e3a24; }
+}
+/* the affinity table on a phone: each uma's portrait beside her name, her tag and legacy under it, tighter cells (the
+   name, the "her own earlier veteran" note and "Legacy 1" side by side made it wider than a 360 px dialog) */
+@media (max-width: 520px) {
+  .afftab th, .afftab td { padding: 4px 5px; }
+  .afftab thead th { font-size: 0.68rem; }
+  .afftab tbody th { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; row-gap: 0; align-items: center; justify-items: start; }
+  .afftab tbody th > :first-child { grid-row: span 3; }
+  .afftab tbody tr.gp th { padding-left: 14px; }
+  .afftab .afk { margin-left: 0; white-space: nowrap; }
+}
+/* the support cards editor: three cards a row on a phone (two made each card 145 px) */
+@media (max-width: 480px) { .setdlg .cgroup .ctiles { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); } }
+/* a spark name cut at its smallest size says so */
+.ud .vskn { text-overflow: ellipsis; }
+/* small round buttons keep their look and get a 36-44 px touch area */
+.game .tgt .x { position: relative; }
+.deck > .oinfo::before, .ud .vskx::before, .game .tgt .x::before { content: ''; position: absolute; inset: -11px; }
+.ud .vskx::before { inset: -10px; }
+.game .tgt .x::before { inset: -6px; }
+@media (max-width: 620px) {
+  .lp .rcol > .rtop .seg button { min-height: 36px; min-width: 40px; }
+  .simresult .nextdeck summary { padding-block: 10px; }
+  .about details.spec > summary { padding-block: 10px; }
+  .about { padding-inline: 0; }   /* the body's 16 px gutter only (with its own 16 more the text was a 296 px column) */
+  .about li:has(> math), .about p:has(> math) { overflow-x: auto; }   /* a formula wider than the screen scrolls in its line */
+}
