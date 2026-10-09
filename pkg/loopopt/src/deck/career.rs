@@ -191,7 +191,9 @@ fn continuation_estimate(outcomes: &[f64], next: &[f64]) -> (Option<f64>, f64) {
 pub(super) fn setup_fp(v: &Value) -> u64 {
     let mut key = v.clone();
     if let Some(o) = key.as_object_mut() {
-        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode"] { o.remove(k); }
+        // (also the page's flags that change no deck value: `compare`, and the plan's own fields, so the plan and compare
+        // jobs share what the search jobs proved)
+        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "lookahead", "p_now", "p_minus1_now", "policy", "rollout", "cmd", "mode", "compare", "next", "plan"] { o.remove(k); }
     }
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -251,6 +253,9 @@ struct Env<'a> {
     ruled: Vec<Vec<(Vec<f64>, f64)>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
     last_pv: Option<f64>,
+    /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
+    /// best: careers below it are pruned as if the bar were already there); NEG_INFINITY for every other search
+    pub(crate) floor: f64,
     /// a hard work cap for `solve` (0: none): past it the search stops taking candidates (`plan`'s extra searches)
     hard: usize,
 }
@@ -400,7 +405,8 @@ impl<'a> Env<'a> {
         let top = top.max(1);
         let mut complete = true;
         let mut done: Vec<(f64, usize, Sel)> = vec![];
-        let kth = |done: &[(f64, usize, Sel)]| if done.len() < top { f64::NEG_INFINITY } else { done[top - 1].0 };
+        let floor = self.floor;
+        let kth = |done: &[(f64, usize, Sel)]| if done.len() < top { floor } else { done[top - 1].0.max(floor) };
         let (mut n_solved, mut n_bounded, mut n_scored) = (0usize, 0usize, 0usize);
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
@@ -889,7 +895,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, hard: 0 };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0 };
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
     let fp = setup_fp(v);
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }

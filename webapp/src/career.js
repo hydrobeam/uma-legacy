@@ -97,6 +97,11 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
+// a plan the exact comparison ran for the pool with her: the same job the page sends once she is added (keys sorted,
+// the comparison's flag aside), so Add to veterans shows it at once (the solver is deterministic for its job)
+let planKept = null;
+const canon = (x) => Array.isArray(x) ? x.map(canon) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().filter(k => x[k] !== undefined).map(k => [k, canon(x[k])])) : x;
+const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } = job; return JSON.stringify(canon(j)); };
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
 let simulationId = 0;
 let baselineCache = null;
@@ -144,7 +149,8 @@ async function runPlan() {
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
-    const m2 = await run(job2);
+    const kept = planKept && planKept.key === planKey(job2) ? planKept : null;
+    const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await run(job2);
     if (id !== myId || pid !== planId) return;
     const P = m2.r.next;
     planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
@@ -568,13 +574,52 @@ function rolledBlueGreen(r) {
   if (out && (CAREER.uniques || {})[out]) greens[out] = star();
   return { blues, greens };
 }
-function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false; compare(); }
+function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false;
+  const y = tableSave(simulation.draft, r);
+  const t = simulation.tally && simulation.tally.key === keyOf(r) ? simulation.tally : (simulation.tally = { key: keyOf(r), rolls: 0, hits: 0 });
+  t.rolls++; if (y != null && y >= 0.5) t.hits++;
+  if (y == null) { compare(); return; }
+  if (cancelCompare()) runPlan();
+  quickCompare(y); }
+// A roll's careers saved, read from the plan's table for the career on show (`outcomes`: per outcome, her targets' stars
+// and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. null when
+// the plan isn't for this career (then Reroll compares exactly).
+function tableSave(d, r) {
+  const o = planS.state === 'done' ? planS.r?.outcomes : null;
+  if (!o || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',') || !Array.isArray(o.y)) return null;
+  const tg = state.targets, sp = d.sparks || {}; let leaf = 0, fm = 0;
+  o.uncv.forEach((k, j) => { leaf |= Math.min(3, sp[tg[k]?.group] || 0) << (2 * j); });
+  o.fixed.forEach((k, j) => { if (sp[tg[k]?.group]) fm |= 1 << j; });
+  const y = o.y[(leaf << o.fixed.length) | fm];
+  return typeof y === 'number' ? y : null;
+}
+// the reroll's comparison: careers to loop from the table, and the best career with her as a parent (one quick search)
+async function quickCompare(y) {
+  const id = ++simulationId, source = myId;
+  simulation.state = 'busy'; simulation.kind = 'quick'; simulation.error = null; simulation.stale = false; renderSimulation();
+  try {
+    const base = comparisonJob();
+    if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
+    const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
+    const m = await run({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
+    if (id !== simulationId || source !== myId) return;
+    if (m.r.error || !m.r.results?.length || !simulation.baseline) throw new Error(m.r.error || 'No next career found.');
+    const v0 = planS.r.v0;
+    simulation.r = m.r; simulation.full = isFull(simulation.draft); simulation.v0 = [v0, v0 != null ? Math.max(0, v0 - y) : null];
+    simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.quick = true; simulation.state = 'done';
+  } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
+  simulation.kind = null; renderSimulation();
+  // a roll that saves careers: the table can undercount how many (it tries her with a few partners at cached decks), so
+  // the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant)
+  if (simulation.state === 'done' && y >= 0.5 && id === simulationId && source === myId) runComparison();
+}
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
 // can't be interrupted, so the worker goes (run() starts a new one). Returns whether the plan went with it.
 function cancelCompare() {
   if (simulation.state !== 'busy') return false;
-  simulationId++; killEngine(); simulation.state = 'ready';
-  return planS.state === 'busy';
+  simulationId++; simulation.state = 'ready';
+  if (simulation.kind === 'quick') return false;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
+  killEngine(); return planS.state === 'busy';
 }
 function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, pinks: {}, ...rolledOutcome(r), winAt: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
 function draftJob(v) {
@@ -615,11 +660,13 @@ async function runComparison() {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
+    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true });   // as runPlan sends it once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
-    if (!pb) { const mb = await run({ ...base, next: {}, compare: true }); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
-    const ma = await run({ ...base, legacies: legs, next: {}, compare: true }); if (id !== simulationId || source !== myId) return;
+    if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
+    const ja = planOf(legs), ma = await run(ja); if (id !== simulationId || source !== myId) return;
     const pa = ma.r.next || null;
-    const wOf = (P) => P && P.v0 != null ? P.v0 - Math.max(0, ...P.options.map(o => scoreOf(o) ?? 0)) : null;
+    if (pa && !pa.error) planKept = { key: planKey(ja), r: pa, ms: ma.ms };
+    const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
     // a veteran never costs careers (every plan without her is still there): the two plans are fitted to their own pools,
     // so a rise is the fit's error, read as no change
@@ -627,7 +674,7 @@ async function runComparison() {
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick;
-    simulation.herParent = !!pickA?.parents.includes(her); simulation.state = 'done';
+    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   renderSimulation();
 }
@@ -665,6 +712,14 @@ function simulationBody() {
   const result = el('div', 'simresult' + (simulation.stale ? ' stale' : '')); result.id = 'sim-result'; result.setAttribute('role', 'status');
   // the panel beside her card: a mini header, and before any comparison a line saying what goes here
   result.appendChild(el('div', 'simhdr', 'Comparison'));
+  // the chance a roll of this career improves your loop (the plan's `lift`: her outcomes that lower V), and the rolls so far
+  const opt = planS.state === 'done' ? planS.r.options?.find(o => keyOf(o) === keyOf(r)) : null, tally = simulation.tally || { rolls: 0, hits: 0 };
+  if (opt && opt.lift != null) {
+    const odds = el('p', 'simchance', opt.lift > 0 ? `1 in ${Math.max(1, Math.round(1 / opt.lift)).toLocaleString()} rolls improves your loop` : 'No roll of this career improves your loop');
+    odds.id = 'sim-chance'; odds.title = `The planner's chance that a roll of this career lowers the careers to a fully looped parent (${pct(opt.lift)})`;
+    if (tally.rolls) odds.append(el('span', 'simtally', ` · ${tally.hits} of ${tally.rolls} so far`));
+    result.appendChild(odds);
+  }
   if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare/reroll to see if she improves your loop.'));
   if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
@@ -691,7 +746,8 @@ function simulationBody() {
     const way = (x, y, lowGood) => { if (x == null || y == null) return 'same'; const g = lowGood ? x - y : y - x;   // the gain
       return Math.abs(g) < (lowGood ? 0.5 : 1e-9 * x) ? 'same' : g > 0 ? 'up' : 'down'; };
     fig('Careers to loop', v0b != null ? fmtN(v0b) : '?', v0a != null ? fmtN(v0a) : '?', way(v0b, v0a, true),
-      'Expected careers to a fully looped parent once the planner\'s next career runs: without her → with her' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.'));
+      'Expected careers to a fully looped parent: with your veterans now → with her too' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.')
+      + (simulation.quick ? ' From the planner\'s table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll.' : ''));
     fig('Odds with her as a parent', fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
     result.appendChild(figs);
     const nx = el('div', 'nextc'); nx.append(el('span', 'tl', 'Best career with her'),
