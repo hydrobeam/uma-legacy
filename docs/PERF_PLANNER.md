@@ -137,6 +137,13 @@ plan/compare/reroll state machines, views and import/export.
 
 ## Done
 
+- The worker's kept work survives a page reload (`state_out` / `state_in`, IndexedDB on the career page): kept plans
+  (each uma's exact best career per pool; a plan of the same pool now takes them without a search) and kept proofs,
+  floats as hex bits. Byte-identical to a cold plan (p16, p10, gm16: in one process and restored into a new one). State
+  17.6 KB (p16), 28 KB (p10), 19 KB (gm16); the proofs add about 0.08 s of the gain. Native plan restored: p16 1.69 ->
+  1.28 s, p10 7.34 -> 4.97 s, gm16 4.88 -> 3.54 s (the rest of p10's is the loop lookup, which the page keeps itself);
+  in the page, the first plan after a reload 2.6 -> 1.3-1.4 s (p16 export, loop members also kept).
+
 - Class-keyed proofs (`seen`, `ruled` per deck class, `Env::cls`): val/plan identical on all six jobs. Nodes (exact
   scorings) p16 39.8M -> 15.9M (2,069 -> 735), p10 34.8M -> 31.4M, p11 21.6M -> 19.5M, gm16 128.5M -> 57.0M (112k ->
   52.8k); native time p16 10.1 -> 5.4 s, p10 15.8 -> 14.8 s, p11 13.3 -> 12.3 s, gm16 44.0 -> 22.8 s (machine shared).

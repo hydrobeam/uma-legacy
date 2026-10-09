@@ -4,6 +4,7 @@
 //!   {"cmd":"skills", ...SkillJob}   {"cmd":"affinity", ...AffinityJob}
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
+//!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
 use super::*;
 use super::skills::*;
 use std::cell::RefCell;
@@ -63,7 +64,7 @@ fn handle(req: &str) -> serde_json::Value {
             super::deck::apply_events_db(&mut job, sk, db);
             super::deck::run_deck(d, sk, cr, &job)
         })),
-        "career" => STATE.with(|s| DECK.with(|dk| {
+        "career" | "state_out" | "state_in" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             let dkb = dk.borrow(); let Some((cr, db)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
             let mut job = v.clone();

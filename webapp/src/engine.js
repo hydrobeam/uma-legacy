@@ -2,6 +2,7 @@
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
 import { ASSETS, loadFail } from './data.js';
+import { stateLoad, stateSave, stateDrop } from './statestore.js';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 let worker = null, ready = null, seq = 0; const pending = new Map();
 // The wasm (ASSETS.wasm, fingerprinted next to the page) is fetched and compiled once here and the compiled module handed to every
@@ -54,8 +55,33 @@ function startEngine() {
     try { if (!module) throw 0; worker.postMessage({ type: 'init', module, data }); }
     catch { worker.postMessage({ type: 'init', bytes, data }); }   // module not transferable here
   }));
+  ready = ready.then(() => restore().catch(() => {}));   // the last session's kept work, before the first job
   ready.catch(() => { if (gen === engineGen) ready = null; });   // a failed start is retried by the next search
   return ready;
+}
+// The career planner's kept work (each uma's best career per pool, the proofs) survives a page reload: a new worker gets
+// what the last one held before its first job (`state_in`), and the page stores it after each plan (`state_out`, in the
+// worker once it is idle). Only the page that asks for it (`enginePersist`) does this; its key is the solver's and the
+// era data's fingerprints, so a release starts afresh. A stored state the solver refuses is dropped.
+let persistOn = false, saveTimer = 0;
+const stateKey = () => ASSETS.wasm + '|' + ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'];
+export function enginePersist() { persistOn = true; }
+function post(job) { return new Promise(res => { const id = ++seq; pending.set(id, { done: res }); worker.postMessage({ type: 'run', id, job }); }); }
+async function restore() {
+  if (!persistOn) return;
+  const key = stateKey(), st = await stateLoad(key);
+  if (!st || !worker) return;
+  const m = await post({ cmd: 'state_in', state: st });
+  if (!m.r || m.r.error) stateDrop(key);
+}
+// after a plan: store what the worker holds, once it is idle (a job in flight comes first; a killed worker saves nothing)
+export function engineSaveState() {
+  if (!persistOn) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    if (!worker || !ready || pending.size) { engineSaveState(); return; }
+    try { await ready; const m = await post({ cmd: 'state_out' }); if (m.r && m.r.state) stateSave(stateKey(), m.r.state); } catch { /* the worker went: nothing to save */ }
+  }, 1500);
 }
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise
 export function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job }); })); }
