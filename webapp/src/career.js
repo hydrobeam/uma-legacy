@@ -599,7 +599,7 @@ async function quickCompare(y, hi = null) {
     if (m.r.error || !m.r.results?.length || !simulation.baseline) throw new Error(m.r.error || 'No next career found.');
     const v0 = planS.r.v0;
     simulation.r = m.r; simulation.full = isFull(simulation.draft); simulation.v0 = [v0, v0 != null ? Math.max(0, v0 - y) : null];
-    simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.quick = true; simulation.state = 'done';
+    simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.where = ''; simulation.quick = true; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
   // a roll that saves careers: the table can undercount how many (it tries her with a few partners at cached decks), so
@@ -620,6 +620,16 @@ function cancelCompare() {
   simulationId++; simulation.state = 'ready';
   if (simulation.kind === 'quick') return false;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
   killEngine(); return planS.state === 'busy';
+}
+// where a comparison's saving lands: the next career when she is one of its parents, else the route step (V's A, B, C)
+// whose careers fell most; unnamed when the route itself changed
+function savedWhere(pb, pa, pickA, samePick, her) {
+  if (!pickA) return '';
+  if (pickA.parents.includes(her)) return `Improves the next career (${pickA.trainee.name}).`;
+  const steps = (P) => { const v = P?.v0_plan; return v ? [v.a, v.b, v.c].map((t, i) => [t, v.careers[i]]) : []; };
+  const was = new Map(steps(pb)); let best = null, gain = 0;
+  for (const [t, c] of steps(pa)) { const g = (was.get(t) ?? c) - c; if (t && g > gain) { gain = g; best = t; } }
+  return `Improves a later ${best ? best + ' ' : ''}career; the next career ${samePick ? 'stays' : 'is'} ${pickA.trainee.name}.`;
 }
 function draftOf(r) { return { chara: r.trainee.id, outfit: r.trainee.outfits[0]?.id, borrowed: false, pinks: {}, ...rolledOutcome(r), winAt: {}, parents: r.parents.map(i => copyNode(vets[i])) }; }
 function draftJob(v) {
@@ -678,7 +688,7 @@ async function runComparison(refine = false) {
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick;
-    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.refining = false; simulation.provisional = false; simulation.state = 'done';
+    simulation.herParent = !!pickA?.parents.includes(her); simulation.where = savedWhere(pb, pa, pickA, samePick, her); simulation.quick = false; simulation.refining = false; simulation.provisional = false; simulation.state = 'done';
     // a roll the table read as no saving that the exact comparison finds saving: counted as an improvement after all
     if (prov && v0b != null && v0a != null && v0b - v0a >= 0.5 && simulation.tally) simulation.tally.hits++;
   } catch (e) { if (id !== simulationId || source !== myId) return;
@@ -747,6 +757,7 @@ function simulationBody() {
       : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
       : 'No careers saved';
     verdict.append(el('strong', '', head));
+    if (/^Saves /.test(head) && simulation.where) verdict.append(simulation.where);
     result.appendChild(verdict);
     if (simulation.refining || simulation.provisional) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>'); result.appendChild(p); }
     const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
