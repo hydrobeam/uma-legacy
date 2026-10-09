@@ -25,8 +25,9 @@ configuration roots (`SBOUND`; `SB_CHECK` audits it), the reroll table's own-8/8
 tripwires, identical deck problems solved once (`Twin`, `deck_memo`), the Cont memos and `cost_lo`'s early exit.
 Rerun `next.proxy_check` after any change to how builders' careers are built.
 
-Owner decisions on record: the 1.25 cap stays (real ratios 1.18 Global / 1.17 GM; the cap-free bound is valid but
-13-45x slower as a replacement, and a per-era cap would miss a deck above it silently); parallel helper workers are a
+Owner decisions on record: the 1.25 cap stays as the top cap (real ratios 1.18 Global / 1.17 GM; the cap-free bound
+is valid but 13-45x slower as a replacement, and a per-era cap would miss a deck above it silently); per-class caps
+below it (2026-10-09, Done below); parallel helper workers are a
 last resort (2026-10-08: meaningful gains first; parallel workers hide work rather than remove it; design in the
 page-side agent's report: deterministic only with the winners-only cache and exact, unbudgeted searches).
 
@@ -45,8 +46,6 @@ page-side agent's report: deterministic only with the winners-only cache and exa
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them, as of
   2026-10-08); reuse kept plans for pools that grow by several veterans or lose one (today: the same pool, or one more
   veteran at the end).
-- A build-time audit of the cap: rerun near-best decks with the cap at 2.0 (the tripwires see only scored decks, not
-  pruned ones).
 
 ## Baseline: where the time went (2026-10-08, before this work; native, p16)
 
@@ -145,6 +144,16 @@ health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (about 
 plan/compare/reroll state machines, views and import/export.
 
 ## Done
+- Per-class exact caps (2026-10-09, owner's call; outputs identical on the seven val/plan jobs, mono and the full val
+  apart from cap fields and counters; the budget ladder now certifies higher caps on five val jobs). The cap on exact /
+  product odds by the deck's chain-varying targets: 0-1 1.0 (proven), 2 1.05, 3+ or a multi-target group 1.25; a node
+  takes the class of everything it can still reach. Callgrind gm16 19.458G -> 14.098G (-27.5%: nodes 5.71M -> 3.58M,
+  exact scorings 919 -> 311), p16 9.873G -> 9.935G (+0.6%: its decks are mostly three-target, where the cap stays 1.25;
+  nodes -0.7%); v_uc_k1 per-uma wall 1.79 -> 1.20 s (best of 3, interleaved, CPU clock-throttled at the time).
+  Prototype at 1.10 for three targets (p16 1.39 -> 1.29 s) dropped: boot_mob scores a three-target King Halo deck at
+  1.1265. `val/capaudit.py` (every cap at 2.0; 37 s): answers identical on p16, gm16, v_uc_k1 per-uma; no class 0-1
+  deck is scored on any of them. With it, a career band over EXACT_CAP decks is rebuilt down the cap ladder instead of keeping
+  the product-best deck unreported (the 27-card GM subset of gm16, order 2: no longer overflows at all).
 - Exact batch (2026-10-09, merged at e674119; identical on all seven val/plan jobs after each item, work counters
   included; valq 0 mismatches; cargo test passes). Callgrind p16 / boot_mob 11.81G / 11.73G -> 9.87G / 10.26G
   (-16.4% / -12.5%); p16 wall at load 3: 1.42-1.47 -> 1.29 s.

@@ -334,11 +334,16 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><mi>u</mi></math>, deck <math><mi>D</mi></math> and inheritance chance <math><mi>q</mi></math> (step 19), and <math><mover><mi>V</mi><mo>^</mo></mover><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>q</mi><mo>,</mo><mi>D</mi><mo>)</mo></mrow></math> for step 5's product. Loops and decks are ranked by <math><mi>V</mi></math>.
   <math><mover><mi>V</mi><mo>^</mo></mover></math> is cheap and rises with every deck odd (for <math><mn>0</mn><mo>≤</mo><mi>q</mi><mo>≤</mo><mn>1</mn></math>, a white being worth less than a gold), so it bounds groups of decks
   and loops at once; it only decides what gets scored, under one assumption:</p>
-  <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>=</mo><mn>1.25</mn></math>
-  <p>The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored is 1.18 (a Global validation deck), 1.17 on Grand Masters (decks with 0–1 pals). No
-  data-free cap can be proven: a target whose only source is one card's last link makes the ratio <math><mn>1</mn><mo>/</mo><mi>P</mi><mo>(</mo><mtext>link</mtext><mo>)</mo></math>.
-  Every deck scored is checked against it, the largest ratio seen is reported with the result, and validation fails
-  when one comes within 5% of the cap.</p>
+  <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>≤</mo><mn>1.25</mn></math>
+  <p><math><mi>V</mi></math> exceeds <math><mover><mi>V</mi><mo>^</mo></mover></math> only through the run's one count of chain events, shared by the targets a chain link of
+  the deck feeds. With at most one such target (and no event outcome hinting two targets together) <math><mi>V</mi><mo>≤</mo><mover><mi>V</mi><mo>^</mo></mover></math> is proven, so
+  <math><mi>ρ</mi><mo>=</mo><mn>1</mn></math> for those decks; with two, <math><mi>ρ</mi><mo>=</mo><mn>1.05</mn></math>; with three or more, 1.25. A half-built deck takes the
+  <math><mi>ρ</mi></math> of every target it can still reach. The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored: 1.008 with two
+  such targets, 1.127 with three, 1.18 with more (a Global validation deck; 1.17 on Grand Masters). No data-free cap
+  can be proven for those: two targets whose only source is one card's last link make the ratio
+  <math><mn>1</mn><mo>/</mo><mi>P</mi><mo>(</mo><mtext>link</mtext><mo>)</mo></math>. Every deck scored is checked against its cap, the largest ratios are reported with the
+  result, validation fails when one passes three quarters of its cap's margin over 1, and an audit reruns searches with
+  every cap at 2.</p>
   <p>Why not rank by exact odds alone: on the Global default (Unity Cup, everything owned), one trainee has 15.1 million
   legal decks, even with interchangeable cards merged. Listing them takes 3–4 s and scoring each exactly 21–25 µs, so the
   best deck for one trainee at one inheritance chance takes about 6 minutes natively. The search needs that value for
@@ -458,11 +463,11 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   distinct deck with its best loop, each solved loop keeps every deck at or above the third-best distinct deck found so
   far (on the first loop, its own three best), so a deck's best loop is always among those kept.</p>
 
-  <p><strong>18. What the answer is checked against.</strong> The search at <math><mi>ρ</mi><mo>=</mo><mn>1.25</mn></math> runs within a fixed amount of work,
+  <p><strong>18. What the answer is checked against.</strong> The search at <math><mi>ρ</mi><mo>≤</mo><mn>1.25</mn></math> runs within a fixed amount of work,
   30 million units of about 0.1 µs each, counted in steps of the search, not seconds, so the answer does not depend on the
   machine: 2 per half-built deck tested, 5 per deck listed, 10,000 per deck search, 25 per filter bound (100 with a
   shared deck), 200 per exact score (800 with a shared deck). If it runs out, or a deck search exceeds 50,000 decks, the
-  search reruns at <math><mi>ρ</mi></math> = 1.12, then 1.05, each with a quarter of the budget more and reusing every exact value, table cell
+  search reruns with every <math><mi>ρ</mi></math> at most 1.12, then 1.05, each with a quarter of the budget more and reusing every exact value, table cell
   and schedule already computed (cells from a cut-short deck search are discarded). If none finishes, loops are ranked
   by <math><mover><mi>V</mi><mo>^</mo></mover></math> and each shown result is scored exactly. The status line says which cap the result was checked under. The page
   runs the product ranking first and shows it at once, then the exact search. Either way the guarantee is relative to
@@ -571,8 +576,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><msub><mi>H</mi><mi>j</mi></msub></math>; with <math><msubsup><mo>∏</mo><mrow></mrow><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup></math> the product of the six lowest (one deck's slots, ignoring the one-per-character rule
   and the competition for chain events),</p>
   <math display="block"><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>G</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>H</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><mn>1</mn><mo>−</mo><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow><mrow><mn>1</mn><mo>−</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow></mfrac></math>
-  <p>Each target's best is taken separately, so no real deck can beat it. The main search has a work budget of 300 million units (the units of step 18); each planner search
-  5 million, past which it stops taking candidates and its answer is marked unproven. Candidates are taken best ceiling first; each gets its exact best deck
+  <p>Each target's best is taken separately, so no real deck can beat it; <math><mi>ρ</mi></math> is the top cap, 1.25 (no deck is known yet). The main search has a work budget of 300 million units (the units of step 18); each planner search
+  5 million, past which it stops taking candidates and its answer is marked unproven. A deck search listing more than
+  50,000 decks is rerun with <math><mi>ρ</mi></math> at most 1.12, then 1.05, then 1; the plan then says it is not complete and which cap it holds under. Candidates are taken best ceiling first; each gets its exact best deck
   (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
   <ul>
   <li><strong>Earlier best decks.</strong> A deck fully checked at chances <math><mi>q</mi></math> worth <math><mi>v</mi></math> bounds the same trainee's best at

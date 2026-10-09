@@ -91,7 +91,9 @@ plan 1.59 -> 0.92 s native); the planner memo audit and its refit test (`tests/p
 - Chain events: keep the binomial and revisit with more data.
 - Loops and rotations are ranked by the rotation average (every member trains in turn), 2026-10-07.
 - Career planner: builders go through their deck class (2026-10-08); the proxy margins 0.06 (2026-10-09); the 1.25
-  cap stays; parallel helper workers are a last resort.
+  cap stays as the top cap; parallel helper workers are a last resort.
+- Per-class exact caps, owner's call 2026-10-09: 1.0 for at most one chain-varying target (proven), 1.05 for two,
+  1.25 for three or more (the 1.10 proposed for three is not used: boot_mob scores 1.127). `val/capaudit.py` checks.
 - Colours: both planner pages use the game's colours, held to a 3:1 contrast floor by the suite's audit; /about keeps
   WCAG AAA. No light colours on light backgrounds.
 - Hosting on Cloudflare Pages, not GitHub Pages: the page is built only on the owner's machine (master.mdb, game art,
