@@ -681,17 +681,38 @@ fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
 /// Both constants fitted (val/sim/README.md E5) to traces of building for Agnes Digital on the owner's 2-, 5-, 11- and
 /// 19-veteran pools (the best builder each career, 6 runs x 400 careers): within 10-20% on 11 and 19, building
 /// underestimated on 5 and overestimated early on 2; leave-one-pool-out fits ranged 0.6-1.0 and 1-3. lam = 0: none.
-#[derive(Clone, Copy, Default)]
-pub(super) struct Cont { lam: f64, phi: f64, pinf: f64 }
+#[derive(Clone, Default)]
+pub(super) struct Cont { lam: f64, phi: f64, pinf: f64,
+    /// per n (0..=CONT_N): the careers built through the n-th success (the sum `plan` takes, in its order), and (1 - phi)^n:
+    /// `plan` reads them instead of evaluating the powers per call (the same expressions, so the same values)
+    tab: std::rc::Rc<Vec<(f64, f64)>> }
+/// `plan`'s cap on successes before grinding
+const CONT_N: usize = 500;
 /// Effective ceiling as a share of the full-loop odds, and the lift chance's decline exponent (val/sim/README.md E5)
 const CEIL_SHARE: f64 = 0.6;
 const LAM_DECAY: f64 = 1.5;
 impl Cont {
+    fn new(lam: f64, phi: f64, pinf: f64) -> Cont {
+        let r = 1.0 - phi;
+        let mut tab = Vec::with_capacity(CONT_N + 1); let mut built = 0.0f64;
+        for n in 0..=CONT_N as i32 { let b = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY)); tab.push((b, r.powi(n))); built = b; }
+        Cont { lam, phi, pinf, tab: std::rc::Rc::new(tab) }
+    }
     /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
     /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
     fn plan(&self, p: f64) -> (f64, i32, f64) {
         if p <= 0.0 { return (f64::INFINITY, 0, p); }
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p { return (1.0 / p, 0, p); }
+        if self.tab.len() > CONT_N {
+            let lr = (p / self.pinf).ln(); let t = &self.tab;
+            let (mut n, mut best) = (0usize, 1.0 / p);
+            while n < CONT_N {
+                let x = t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp());
+                if x >= best { break; }
+                best = x; n += 1;
+            }
+            return (best, n as i32, self.pinf * (lr * t[n].1).exp());
+        }
         let r = 1.0 - self.phi; let lr = (p / self.pinf).ln();
         let pn = |n: i32| self.pinf * (lr * r.powi(n)).exp();
         let (mut n, mut built, mut best) = (0i32, 0.0f64, 1.0 / p);
@@ -705,7 +726,7 @@ impl Cont {
     }
     fn cost(&self, p: f64) -> f64 { self.plan(p).0 }
 }
-impl ScoreBase<'_> { fn cost(&self, ui: usize, p: f64) -> f64 { self.cont.get(ui).copied().unwrap_or_default().cost(p) } }
+impl ScoreBase<'_> { fn cost(&self, ui: usize, p: f64) -> f64 { match self.cont.get(ui) { Some(c) => c.cost(p), None => Cont::default().cost(p) } } }
 /// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
 /// above 0, and (Y, P) per outcome. Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
@@ -775,6 +796,11 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     let mut stats = vec![(0.0f64, 0.0f64); n];
     let mut dist0: Vec<(f64, f64)> = vec![];
     let mut up = vec![0.0f64; n];
+    // per setup and landed set m, the spark scale (the product the loop below took per outcome, the same order); V after
+    // her when no candidate's step moves (most outcomes lift no one): once
+    let nm = 1usize << ntar;
+    let scs: Vec<Vec<f64>> = setups.iter().map(|st| (0..nm).map(|m| (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product()).collect()).collect();
+    let v_same = v0_after(&bs.c1);
     for leaf in 0..nleaf {
         let mut mu = 0usize; let mut pr_st = 1.0f64;
         for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
@@ -785,16 +811,17 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
             c1.copy_from_slice(&bs.c1);
             up.copy_from_slice(&bs.pnow);
             for (si, st) in setups.iter().enumerate() {
-                let sc: f64 = (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product();
-                let v = sc * folds[si][leaf];
+                let v = scs[si][m] * folds[si][leaf];
                 if v > up[st.ui] { up[st.ui] = v; }
             }
+            // whether a candidate's step moved (if none did, c1 is the base's and V after is v_same)
+            let mut moved = false;
             for ui in 0..n { if up[ui] > bs.pnow[ui] * (1.0 + 1e-9) {
                 stats[ui].0 += pr; stats[ui].1 += pr * up[ui];
                 if ui == 0 { dist0.push((pr, up[0])); }
-                let cc = bs.cost(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; } } }
-            if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; } }
-            let y = if goal && m == (1usize << ntar) - 1 { bs.v0 } else { (bs.v0 - v0_after(&c1)).max(0.0) };
+                let cc = bs.cost(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; moved = true; } } }
+            if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; moved = true; } }
+            let y = if goal && m == (1usize << ntar) - 1 { bs.v0 } else { (bs.v0 - if moved { v0_after(&c1) } else { v_same }).max(0.0) };
             ey += pr * y; if y > 1e-9 { lift += pr; }
             ys[leaf << nf | fm] = y;
         }
@@ -921,7 +948,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         let b2 = eff.iter().skip(1).map(|e| e.1).find(|&b| d.umas[b].id != d.umas[b1].id);
         let pinf = match b2 { Some(b2) => (CEIL_SHARE * loop_ceiling(&mut s, d, legs, u, b1, b2, &wt, &mut buf)).max(p1), None => p1 };
         let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
-        cont[ui] = Cont { lam, phi, pinf };
+        cont[ui] = Cont::new(lam, phi, pinf);
     }
     // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
     let c1: Vec<f64> = (0..n).map(|ui| cont[ui].cost(pnow[ui])).collect();
