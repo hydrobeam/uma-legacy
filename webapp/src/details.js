@@ -10,13 +10,29 @@ import { umaName, sparksEl } from './vets.js';
 
 let tab = 'insp';
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
+// Each name takes the largest size f0 - 0.5k that fits, or the first one at or under 9 px (a step-by-step shrink). All
+// names are sized together: every round writes each unsettled name's next size to try, then reads them all (one layout
+// per round, not one per step per name), halving the range of steps left (the width only grows with the size).
+const fitting = new Set();   // roots with a pass already queued (resize fires many times a frame)
 export function fitSparks(root = document) {
+  if (fitting.has(root)) return;
+  fitting.add(root);
   requestAnimationFrame(() => {
-    for (const e of root.querySelectorAll('.ud .vskn')) {
-      e.style.fontSize = ''; if (!e.clientWidth) continue;
-      let f = parseFloat(getComputedStyle(e).fontSize);
-      while (e.scrollWidth > e.clientWidth + 0.5 && f > 9) { f -= 0.5; e.style.fontSize = f + 'px'; }
+    fitting.delete(root);
+    const es = [...root.querySelectorAll('.ud .vskn')];
+    for (const e of es) e.style.fontSize = '';
+    const fits = (e) => !(e.scrollWidth > e.clientWidth + 0.5);
+    // per name: base size f0, the steps that are known to fit (hi) and known not to (lo); k = 0 is the CSS size
+    const st = es.filter(e => e.clientWidth).map(e => ({ e, f0: parseFloat(getComputedStyle(e).fontSize) }))
+      .filter(x => !fits(x.e)).map(x => { let kmax = 0; while (x.f0 - 0.5 * kmax > 9) kmax++; return { ...x, lo: 0, hi: kmax }; });
+    // steps lo (doesn't fit) .. hi (fits, or the floor): the answer is the smallest step that fits, else hi
+    let open = st.filter(x => x.hi - x.lo > 1);
+    while (open.length) {
+      for (const x of open) { x.mid = (x.lo + x.hi) >> 1; x.e.style.fontSize = (x.f0 - 0.5 * x.mid) + 'px'; }
+      for (const x of open) { if (fits(x.e)) x.hi = x.mid; else x.lo = x.mid; }
+      open = open.filter(x => x.hi - x.lo > 1);
     }
+    for (const x of st) if (x.hi > 0) x.e.style.fontSize = (x.f0 - 0.5 * x.hi) + 'px';
   });
 }
 addEventListener('resize', () => fitSparks());   // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
