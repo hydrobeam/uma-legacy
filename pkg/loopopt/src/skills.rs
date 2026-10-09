@@ -402,6 +402,29 @@ impl OutfitPre {
         for &x in &f[..n] { p *= x; }
         p
     }
+    /// how many targets `eval` reads
+    #[inline]
+    pub(crate) fn len(&self) -> usize { self.ne.len() }
+    /// `eval`'s factors one by one: out[k] for k < len(), the same f64s as `eval` multiplies (in target order) for these
+    /// inputs
+    #[inline]
+    pub(crate) fn factors(&self, q: f64, dw: &[f64], dg: &[f64], out: &mut [f64]) {
+        let n = self.ne.len();
+        let (m1, m2, ne, dw, dg, out) = (&self.m1[..n], &self.m2[..n], &self.ne[..n], &dw[..n], &dg[..n], &mut out[..n]);
+        let omq = 1.0 - q;
+        for k in 0..n { out[k] = Self::factor(m1[k], m2[k], ne[k], omq, dw[k], dg[k]); }
+    }
+    /// `eval`'s factor of target k (k < len()) at odds w, g for that target
+    #[inline]
+    pub(crate) fn factor_at(&self, k: usize, q: f64, w: f64, g: f64) -> f64 { Self::factor(self.m1[k], self.m2[k], self.ne[k], 1.0 - q, w, g) }
+    #[inline(always)]
+    fn factor(m1: u64, m2: u64, ne: f64, omq: f64, w: f64, g: f64) -> f64 {
+        #[inline(always)]
+        fn sel(a: f64, b: f64, m: u64) -> f64 { f64::from_bits((a.to_bits() & !m) | (b.to_bits() & m)) }
+        let hinted = GEN_WHITE * (1.0 - (1.0 - w) * ne * omq);
+        let white = sel(hinted, GEN_WHITE, m1);
+        sel(g * GEN_GOLD + (1.0 - g) * white, GEN_GOLD, m2)
+    }
 }
 /// the chance of exactly k of the independent events landing, k = 0 ..= ps.len()
 pub(crate) fn exactly(ps: &[f64]) -> Vec<f64> {

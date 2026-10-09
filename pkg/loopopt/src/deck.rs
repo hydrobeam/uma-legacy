@@ -1641,7 +1641,7 @@ struct DeckSpace<'a> {
     locked: Vec<usize>, allowed_borrow: usize,
     // every chain kind of any entry plus fillers (2, 2): key codes are counts in base 7 over this list
     kinds_all: Vec<Kind>,
-    keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>)>>>,
+    keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)>>>,
     red: std::cell::RefCell<crate::FxMap<Vec<usize>, (std::rc::Rc<Vec<usize>>, usize)>>,
     gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>>>,
     /// partial decks tested, over every search (the search's cost)
@@ -1664,7 +1664,9 @@ struct LegalTabs { over: bool, ebit: Vec<u128>, by_kind: Vec<Vec<usize>>, pal_en
 struct Sel { ents: Vec<usize>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64> }
 impl<'a> DeckSpace<'a> {
     /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
-    fn key_miss(&self, code: u64) -> std::rc::Rc<(Vec<f64>, Vec<f64>)> {
+    /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
+    /// a miss chance other than exactly 1.0)
+    fn key_miss(&self, code: u64) -> std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)> {
         if let Some(r) = self.keys.borrow().get(&code) { return r.clone(); }
         let nu = self.unc.len(); let n = self.rel.len();
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
@@ -1673,7 +1675,9 @@ impl<'a> DeckSpace<'a> {
         let empty: Vec<f64> = vec![];
         let mut mw = vec![1.0f64; n * nu]; let mut mg = vec![1.0f64; n * nu];
         for j in 0..n { src_miss(&self.srcs[j], marg.get(&self.kind[j]).unwrap_or(&empty), &mut mw[j * nu..(j + 1) * nu], &mut mg[j * nu..(j + 1) * nu]); }
-        let r = std::rc::Rc::new((mw, mg));
+        assert!(nu <= 32);
+        let tm: Vec<u32> = (0..n).map(|j| (0..nu).filter(|&t| mw[j * nu + t] != 1.0 || mg[j * nu + t] != 1.0).fold(0u32, |m, t| m | 1 << t)).collect();
+        let r = std::rc::Rc::new((mw, mg, tm));
         self.keys.borrow_mut().insert(code, r.clone());
         r
     }
@@ -1966,11 +1970,21 @@ impl<'a> DeckSpace<'a> {
         let (mut sufw, mut sufg, mut spf): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
         // the node bound's per-configuration constants, flat and reused (see `hopeful`)
         let (mut kab, mut kr, mut kab_have, mut kr_have): (Vec<f64>, Vec<f64>, Vec<bool>, Vec<bool>) = (vec![], vec![], vec![], vec![]);
+        // the node bound's per-parent rows (see `hopeful`), per (depth, borrowing variant); parent ids never repeat
+        // within a search
+        struct Hc { pid: usize, fa: Vec<f64> }
+        let mut hc: Vec<Hc> = vec![];
+        let mut pid_next = 0usize;
+        // (a child's touched targets: their odds and the parent's factors they replace)
+        let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
+        // the per-parent rows need every outfit row to read the nu targets
+        let a_rows = orow.iter().all(|o| o.len() == nu);
+        let oqq: Vec<f64> = oq.iter().map(|x| x.2).collect();
         for cf in &cfgs {
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
             let km = self.key_miss(cf.code);
-            let (mw, mg) = (&km.0, &km.1);
+            let (mw, mg, tmk) = (&km.0, &km.1, &km.2[..]);
             let (filler, plain) = (cf.filler, cf.plain);
             let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| (&groups_all[i][..], c)).collect();
             // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
@@ -2068,8 +2082,10 @@ impl<'a> DeckSpace<'a> {
             {
                 {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
-                    struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64> }
-                    let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu] };
+                    struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64>, pid: usize }
+                    let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu], pid: pid_next };
+                    let nhc = 2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1);
+                    while hc.len() < nhc { hc.push(Hc { pid: usize::MAX, fa: vec![0.0; noq * nu] }); }
                     // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
                     // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
                     // first use of their row (the same expressions, so the same f64s as computing them per node); row
@@ -2080,9 +2096,12 @@ impl<'a> DeckSpace<'a> {
                     kab.clear(); kab.resize(nrow * 2 * nu, 0.0); kr.clear(); kr.resize(nrow * noq, 0.0);
                     kab_have.clear(); kab_have.resize(nrow, false); kr_have.clear(); kr_have.resize(nrow, false);
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
-                    let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize| -> bool {
+                    // (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
+                    // touches)
+                    let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize, ppw: &[f64], ppg: &[f64], dep: usize, pid: usize, tm: u32| -> bool {
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
+                        let mut have_a = false;
                         let row = if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + (one_b && can) as usize };
                         let (pw, pg) = (&pw[..nu], &pg[..nu]);
                         if row == usize::MAX {
@@ -2099,8 +2118,38 @@ impl<'a> DeckSpace<'a> {
                                 }
                             }
                             let (ka, kb) = kab[row * 2 * nu..(row + 1) * 2 * nu].split_at(nu);
-                            let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
-                            for t in 0..nu { dw[t] = 1.0 - pw[t] * ka[t]; dg[t] = 1.0 - pg[t] * kb[t]; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
+                            if a_rows {
+                                // A child is its parent plus one card: for a target the card does not touch (its miss
+                                // chances exactly 1.0) the child's pw[t] = parent's pw[t] * 1.0 is the parent's, bit for
+                                // bit, and so are dw[t], dg[t] and every outfit's A factor of t (the same expressions on
+                                // the same f64s; ka, kb depend only on the row, the same for all children of one parent
+                                // and borrowing variant). So the factors are computed once per parent (here, at its first
+                                // child), a child recomputes only its touched targets', and A is the product in target
+                                // order (`OutfitPre::eval`'s)
+                                let c = &mut hc[dep * 2 + (one_b && can) as usize];
+                                if c.pid != pid {
+                                    c.pid = pid;
+                                    let (mut bw, mut bg) = ([0.0f64; 32], [0.0f64; 32]);
+                                    for t in 0..nu { bw[t] = 1.0 - ppw[t] * ka[t]; bg[t] = 1.0 - ppg[t] * kb[t]; }
+                                    for ix in 0..noq { orow[ix].factors(oqq[ix], &bw[..nu], &bg[..nu], &mut c.fa[ix * nu..(ix + 1) * nu]); }
+                                }
+                                let mut m = tm;
+                                while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; tw[t] = 1.0 - pw[t] * ka[t]; tg[t] = 1.0 - pg[t] * kb[t]; }
+                                for (ix, row) in c.fa.chunks_exact_mut(nu).enumerate() {
+                                    let (o, q) = (&orow[ix], oqq[ix]);
+                                    let mut m = tm;
+                                    while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; told[t] = row[t]; row[t] = o.factor_at(t, q, tw[t], tg[t]); }
+                                    let mut p = 1.0f64; for &x in row.iter() { p *= x; }
+                                    let mut m = tm;
+                                    while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; row[t] = told[t]; }
+                                    av[ix] = p;
+                                }
+                                // (B's inputs pdw, pdg: below, only when B is evaluated)
+                                have_a = true;
+                            } else {
+                                let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
+                                for t in 0..nu { dw[t] = 1.0 - pw[t] * ka[t]; dg[t] = 1.0 - pg[t] * kb[t]; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
+                            }
                         }
                         let pass = |cv: &[f64]| if best { cv[0] * (1.0 + 1e-9) >= bestv }
                             else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) };
@@ -2111,7 +2160,7 @@ impl<'a> DeckSpace<'a> {
                         let mut nan = false;
                         for &(ci, i, no) in &og {
                             let q = oq[i].2; let mut m = 0.0f64;
-                            for o in 0..no { let a = orow[i + o].eval(q, &dw, &dg); av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
+                            for o in 0..no { let a = if have_a { av[i + o] } else { orow[i + o].eval(q, &dw, &dg) }; av[i + o] = a; nan |= a.is_nan(); m = m.max(a); }
                             cv[ci] += fixed * m;
                         }
                         if !nan && !pass(&cv) { return false; }
@@ -2123,6 +2172,7 @@ impl<'a> DeckSpace<'a> {
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
                             }
                         }
+                        if have_a { for t in 0..nu { pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; } }
                         // the real bound, the same expression in the same order; an outfit whose A is at most the running
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
@@ -2151,27 +2201,29 @@ impl<'a> DeckSpace<'a> {
                     }
                     if all_locked & !avail[0][0] != 0 { continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
-                           mw: &[f64], mg: &[f64], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize) -> bool,
+                           mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32) -> bool,
                            leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
                             if g + 1 >= gs.len() { let b = st.pw.len() - nu; return leaf(&st.sel, &st.pw[b..], &st.pg[b..]); }
-                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv, sbx);
+                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
                         // the deck so far is the last row; a child's row is pushed after it and dropped after its subtree
                         let b = st.pw.len() - nu;
+                        // this parent's id and depth (the per-parent rows of `hopeful`)
+                        st.pid += 1; let (pid, dep) = (st.pid, st.sel.len());
                         for p in start..list.len() {
                             if list.len() - p < left { break; }
                             let j = list[p];
                             if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) { continue; }
                             sp.nodes.set(sp.nodes.get() + 1);
                             for t in 0..nu { let w = st.pw[b + t] * mw[j * nu + t]; st.pw.push(w); let x = st.pg[b + t] * mg[j * nu + t]; st.pg.push(x); }
-                            if !hopeful(g, left - 1, &st.pw[b + nu..], &st.pg[b + nu..], bestv(), nb + sp.ebor[j] as usize) { st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
+                            if !hopeful(g, left - 1, &st.pw[b + nu..], &st.pg[b + nu..], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j]) { st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
                             st.sel.push(j);
                             if !sbx(&st.sel) { st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
-                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, nu, hopeful, leaf, bestv, sbx);
+                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
                             st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu);
                             if stop { return true; }
                         }
@@ -2224,7 +2276,8 @@ impl<'a> DeckSpace<'a> {
                     };
                     let bget = || bcell.get();
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu]) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
+                    pid_next = st.pid;
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
                 }
