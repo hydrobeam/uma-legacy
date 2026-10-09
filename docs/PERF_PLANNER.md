@@ -162,6 +162,14 @@ plan/compare/reroll state machines, views and import/export.
   full loop lineage by `Env::ceiling`, no search). Sample mob veterans: same pick, trio and V as with the loop lookup
   (hint Inari One, Tamamo Cross, Nakayama Festa against the loop's Tamamo Cross, Inari One). The page's loop-members
   store (945b557) retired.
+- Proxy certification (the page's "Try sample veterans" plan, val/plan boot_mob): with mob veterans every candidate's odds
+  are tiny (p about 1.8e-5), a builder's efficiency is about pl/p, and every builder's lift chance is nearly the same,
+  so all 64 builders sat within 3.2% of each candidate's second best and the 20% band searched them all (25-30 s native)
+  although the proxy was exact for every one (same pair, deck, odds). An admitted proxy is now first certified by her
+  class's proofs (ceiling, fully checked decks through rise, product proofs); the first of each class still needs a
+  search (17 classes there: only the cap's product proofs bound her, 18-25% above). boot_mob: 68 -> 21 searches, 25.2
+  -> 12.0 s, every row identical to exact_all; the six other jobs identical but for the new counter (p11: one builder
+  certified, 38 -> 37 searches).
 - Tried, reverted: configurations reused by the second pass (hits 472 of 1,163 searches, no CPU gain); bounds restricted
   to the entries still pickable (nodes -9 to -21%, CPU +1 to +22%: the tables cost more than the nodes saved; paying
   would need them cached across calls, estimated hundreds of MB of wasm heap).

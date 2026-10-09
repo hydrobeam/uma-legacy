@@ -620,6 +620,23 @@ pub(super) fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bo
     let id = d.umas[u].id; let (ca, cb) = (p.me[a].chara, p.me[b].chara);
     a != b && ca != cb && ca != id && cb != id && !(p.borrowed[a] && p.borrowed[b])
 }
+/// Whether builder x's career f (her deck class's proxy) is provably her best, without a career search: over every legal
+/// pair the bounds `solve` would prune with (the ceiling; each fully checked deck of her class through `rise`, exact for
+/// the class; each product proof of her class through `rise` and the cap) stay at or below f's value, so no deck and pair
+/// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
+/// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
+fn certified(env: &mut Env, d: &Data, pool: &Pool, fix: &[usize], x: usize, f: &Found) -> bool {
+    let nl = pool.me.len(); let ct = env.cls[x];
+    for a in 0..nl { for b in a + 1..nl {
+        if !legal_pair(d, pool, x, a, b) || !fix.iter().all(|&g| g == a || g == b) { continue; }
+        let (q, _, c) = env.lineage(pool, x, a, b);
+        let Some(mut ub) = env.ceiling(x, &q, c) else { continue };
+        for r in &env.seen[ct] { ub = ub.min(c * r.val * env.rise(x, &q, &r.q)); }
+        for (rq, sv) in &env.ruled[ct] { ub = ub.min(crate::deck::EXACT_RHO * c * sv * env.rise(x, &q, rq)); }
+        if ub > f.val * (1.0 + 1e-9) { return false; }
+    } }
+    true
+}
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
 fn val(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) -> f64 {
     let (q, _, c) = s.env.lineage(p, u, a, b);
@@ -1008,6 +1025,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let mut runs: Vec<(usize, Found, Vec<(f64, f64)>)> = vec![];
     // per run: an exact best career (else her class's proxy)
     let mut exact_run: Vec<bool> = vec![];
+    // admitted proxies the class's proofs certified (`certified`), so not searched
+    let mut n_cert = 0usize;
     let mut wtab: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
     // (placeholder step costs: 1, so every candidate's lifts are gathered; an 8/8 of hers may be a poorer parent than a
     // fresh one)
@@ -1073,7 +1092,12 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             if add.is_empty() { break; }
             add.sort();
             let ts = now_ms();
-            for i in add { let x = runs[i].0; if let Some((f, st)) = exact_one(&mut s, &mut best, &mut urefs, x, &mut buf) { runs[i] = (x, f, st); } exact_run[i] = true; }
+            for i in add {
+                let x = runs[i].0;
+                // a proxy the class's proofs certify needs no search (it is her best career's value)
+                if certified(s.env, d, pool, fix, x, &runs[i].1) { best[x] = Some(Some(runs[i].1.clone())); exact_run[i] = true; n_cert += 1; continue; }
+                if let Some((f, st)) = exact_one(&mut s, &mut best, &mut urefs, x, &mut buf) { runs[i] = (x, f, st); } exact_run[i] = true;
+            }
             search_ms += now_ms() - ts;
         }
         for r in &runs { set_wins(&mut s, &mut wtab, r.0, &r.1); }
@@ -1153,7 +1177,11 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             let add: Vec<usize> = (0..runs.len()).filter(|&i| !exact_run[i] && score[i] + 1.0 >= t * (1.0 - PROXY_SAVE)).collect();
             if add.is_empty() { break; }
             let ts = now_ms();
-            for &i in &add { let x = runs[i].0; if let Some((f, st)) = exact_one(&mut s, &mut best, &mut urefs, x, &mut buf) { set_wins(&mut s, &mut wtab, x, &f); runs[i] = (x, f, st); } exact_run[i] = true; }
+            for &i in &add {
+                let x = runs[i].0;
+                if certified(s.env, d, pool, fix, x, &runs[i].1) { best[x] = Some(Some(runs[i].1.clone())); exact_run[i] = true; n_cert += 1; continue; }
+                if let Some((f, st)) = exact_one(&mut s, &mut best, &mut urefs, x, &mut buf) { set_wins(&mut s, &mut wtab, x, &f); runs[i] = (x, f, st); } exact_run[i] = true;
+            }
             search_ms += now_ms() - ts;
             let cont2 = cont_of(&mut s, &runs, &exact_run, &wtab, &mut buf);
             let same = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
@@ -1307,7 +1335,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         "uncv": env.uncv, "fixed": env.fixed_t, "y": ys.iter().map(|y| (y * 100.0).round() / 100.0).collect::<Vec<f64>>()}), _ => Value::Null };
     let mut out = json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count(), "work": work,
+           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count() - n_cert, "umas_certified": n_cert, "work": work,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
     out
