@@ -73,6 +73,7 @@
 !/val/ref_times.txt
 !/val/planval.py
 !/val/mono.py
+!/val/capaudit.py
 !/val/plan/
 /val/plan/*
 !/val/plan/*.json

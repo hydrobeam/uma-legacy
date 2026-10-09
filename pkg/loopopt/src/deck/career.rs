@@ -507,7 +507,7 @@ impl<'a> Env<'a> {
         while self.work <= self.budget {
             let n0 = self.space.nodes.get();
             crate::deck::SB_ON.with(|c| c.set(true)); crate::deck::SB_USED.with(|c| c.set(0));
-            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, rho, EXACT_CAP);
+            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, rho, self.space.band_cap());
             crate::deck::SB_ON.with(|c| c.set(false));
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
             let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;

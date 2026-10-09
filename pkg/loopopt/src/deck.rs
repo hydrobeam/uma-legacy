@@ -1820,6 +1820,8 @@ impl<'a> DeckSpace<'a> {
     }
     /// the class caps (`EXACT_CAPS`, or all at AUDIT_CAP under `cap_audit`)
     pub(crate) fn caps(&self) -> [f64; 4] { if self.dj.cap_audit { [AUDIT_CAP; 4] } else { EXACT_CAPS } }
+    /// most decks one band search may return: EXACT_CAP, ten times that under `cap_audit` (its bands are far larger)
+    pub(crate) fn band_cap(&self) -> usize { if self.dj.cap_audit { 10 * EXACT_CAP } else { EXACT_CAP } }
     /// the highest class cap (EXACT_RHO unless `cap_audit`)
     pub(crate) fn rho_top(&self) -> f64 { self.caps()[3] }
     /// a deck's structure class (`cap_class`)
@@ -3103,7 +3105,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
-            let (mut cands, over) = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), thr)], false, f64::NEG_INFINITY, lv, EXACT_CAP);
+            let (mut cands, over) = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), thr)], false, f64::NEG_INFINITY, lv, space.band_cap());
             spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
             t_band.set(t_band.get() + t0.elapsed().as_secs_f64());
             if over { cap_hit.set(true); complete = false; }
@@ -3240,7 +3242,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
-            let (mut cands, over) = space.search(model, &us, &ids, &[(pairs.clone(), need(&list))], false, f64::NEG_INFINITY, lv, EXACT_CAP);
+            let (mut cands, over) = space.search(model, &us, &ids, &[(pairs.clone(), need(&list))], false, f64::NEG_INFINITY, lv, space.band_cap());
             spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
             t_band.set(t_band.get() + t0.elapsed().as_secs_f64());
             if over { cap_hit.set(true); complete = false; }
