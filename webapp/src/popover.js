@@ -3,8 +3,8 @@ import { esc } from './dom.js';
 import { UMAS, CARD_BY_ID } from './data.js';
 import { state, goldGiven } from './state.js';
 import { save } from './save.js';
-import { umaState, renderRoster } from './roster.js';
-import { cardTitle, cardGives, renderCards } from './cards.js';
+import { umaState, paintRoster } from './roster.js';
+import { cardTitle, cardGives, paintCards } from './cards.js';
 // The panel lives in the results column (positioned against it), so it scrolls with the result it belongs to when the
 // column scrolls on its own (desktop: the column is sticky and scrolls inside the window).
 // Keyboard: opening moves the focus into the panel; Escape, or Tab past either end, closes it and returns the focus to
@@ -59,7 +59,7 @@ function openUmaPop(btn, d = btn.closest('.mem')) {   // d: her member block (a 
     // replaced by its not-owned one; her other marked outfits still stand)
     else if (oid) state.outfits[oid] = false;
     else { state.roster[u.id] = 'out'; for (const o of u.outfits || []) if (state.outfits[o.id] === 'req') delete state.outfits[o.id]; }
-    save(); renderRoster(); markOwn(); sw.checked = owned(); };
+    save(); paintRoster(u.id); markOwn(); sw.checked = owned(); };
 }
 // GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name (build.py),
 // else made from her name; with "any outfit" her original outfit (<chara id>01)
@@ -86,7 +86,7 @@ function openPop(el) {
     (c ? `<a class="gtl" href="${gametoraUrl(c)}" target="_blank" rel="noopener">GameTora ↗︎</a>` : '') + '</div>';
   placePop(el, true);
   const sw = pop.querySelector('[data-act="own"]');
-  if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); renderCards(); markOwn(); };
+  if (sw) sw.onchange = () => { if (sw.checked) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paintCards(); markOwn(); };
 }
 export function initPopover() {
   document.addEventListener('click', (e) => { const d = e.target.closest('.deck .dc'), mb = e.target.closest('.mem .memb');
