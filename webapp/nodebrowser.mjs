@@ -738,7 +738,7 @@ const TESTS = {
     await pg.context().close();
   },
   async phone(b) {
-    const pg = await open(b, { w: 390, h: 844, mobile: true });
+    const pg = await open(b, { w: 375, h: 812, mobile: true });
     check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
     const small = await pg.evaluate(() => [...document.querySelectorAll('.lp .rbbar button, .lp .rbbar select, #rhead button, #rhead select, .loop .lacts button, .mem .memb')]
       .filter(e => e.offsetParent && !e.closest('.roster, .cards')).map(e => [e.id || e.className || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 44));
@@ -785,7 +785,7 @@ const TESTS = {
     const closeVis = () => pg.evaluate(() => { const b = [...document.querySelectorAll('dialog[open] .dhead button')].find(x => x.textContent === 'Close'), r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
     check('phone: the schedule\'s Close stays on screen at the bottom of the dialog', await closeVis());
     await pg.locator('#sched-dlg .stab').last().click();
-    check('phone: the All three table fits the 390 px screen', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .tablewrap')].every(w => w.scrollWidth <= w.clientWidth)));
+    check('phone: the All three table fits the 375 px screen', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .tablewrap')].every(w => w.scrollWidth <= w.clientWidth)));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     await pg.evaluate(() => { const d = document.querySelector('#why-dlg .dlg'); d.scrollTo(0, d.scrollHeight); });
@@ -808,10 +808,10 @@ const TESTS = {
     await pg.context().close();
   },
   async careerphone(b) {
-    // the career page on a 390 px phone with the sample veterans' answer: nothing scrolls sideways (page or dialogs), the
+    // the career page on a 375 px phone (iPhone 13 mini) with the sample veterans' answer: nothing scrolls sideways (page or dialogs), the
     // setup rows inside their panel, the pill tracks flush, the pick in Options shaded as one card
     const chromium = b.browserType().name() === 'chromium';
-    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, ...(chromium ? { isMobile: true, hasTouch: true } : {}) });
+    const ctx = await b.newContext({ viewport: { width: 375, height: 812 }, ...(chromium ? { isMobile: true, hasTouch: true } : {}) });
     const pg = await ctx.newPage(); pg.errors = [];
     pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
     await pg.goto(URL.replace(/\/?$/, '/') + 'career');
@@ -1128,9 +1128,9 @@ const TESTS = {
         && fr.right <= sr.left && fr.top < sr.bottom && s.getAttribute('aria-label') === 'Her sparks' && ins.querySelectorAll('.udrow.par').length === 2
         && c.querySelector('#udpane-info').contains(document.getElementById('sim-wins')) && c.getBoundingClientRect().right <= innerWidth
         && document.documentElement.scrollWidth <= document.documentElement.clientWidth; });
-    const wide = await simLayout(); await pg.setViewportSize({ width: 390, height: 844 }); await pg.waitForTimeout(200);
+    const wide = await simLayout(); await pg.setViewportSize({ width: 375, height: 812 }); await pg.waitForTimeout(200);
     const phone = await simLayout(); await pg.setViewportSize({ width: 1440, height: 1000 }); await pg.waitForTimeout(200);
-    check('career: the veteran analysis is the game\'s details card: portrait (named for screen readers), aptitude grades, Skills / Inspiration / Career Info tabs, her sparks beside her portrait and her parents\' under Legacy Origin, also on a 390 px phone with no sideways scroll', wide === true && phone === true, `wide ${wide}, phone ${phone}`);
+    check('career: the veteran analysis is the game\'s details card: portrait (named for screen readers), aptitude grades, Skills / Inspiration / Career Info tabs, her sparks beside her portrait and her parents\' under Legacy Origin, also on a 375 px phone (iPhone 13 mini) with no sideways scroll', wide === true && phone === true, `wide ${wide}, phone ${phone}`);
     // Skills: her learned targets (a spark of one) and the scenario's golds, as skill tiles; the tabs switch by click and arrow keys
     await pg.click('#udtab-skills');
     // every target she could acquire, as the game's tiles (name only), acquired bright, others greyed; a spark means she

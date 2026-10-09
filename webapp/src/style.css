@@ -1806,3 +1806,13 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   .ud .vskb .stars .sf, .ud .vskb .stars .se { height: 12px; width: max(0px, calc(var(--n, 0) * 15px - 3px)); background-size: 12px 12px; }
   .ud .vskadd { height: 28px; font-size: 1rem; }
 }
+/* phones (baseline 375 px): the target table's skill column takes what the figures leave (it was a fixed 46%, which
+   wrapped names to three lines in narrow tiles while the figures sat in wide empty columns); the figures never wrap */
+@media (max-width: 520px) {
+  .rb .rtgt .cartab tbody th { width: auto; }
+  .rb .rtgt .cartab thead th { font-size: 0.68rem; line-height: 1.15; padding: 2px 3px; vertical-align: bottom; }
+  .rb .rtgt .cartab tbody td { font-size: 0.8rem; padding: 2px 3px 2px 8px; white-space: nowrap; width: 1%; }
+  .rb .rtgt .cartab .udsk { min-height: 40px; padding: 4px 8px 8px 6px; gap: 6px; }
+  .rb .rtgt .cartab .udsk .sic { width: 24px; height: 24px; }
+  .rb .rtgt .cartab .udskn { font-size: 0.86rem; line-height: 1.15; }
+}
