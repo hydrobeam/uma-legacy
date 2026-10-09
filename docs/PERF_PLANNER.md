@@ -149,6 +149,12 @@ plan/compare/reroll state machines, views and import/export.
   once per class): no measurable CPU gain (the per-node copies the memory review counted were not a cost).
 - `upper_na` memoised (pair marginals per key level and pair, the event distribution, each source's group check at
   build time, the last key level): Grand Masters bound 2.82 -> 1.08 s, plan 7.46 -> 5.90 s CPU (-21%); p16 unchanged.
+- The plan's loop lookup (the loop planner's own search for the setup, 0.27 s native on p16, 3.6 s on p10) dropped:
+  with `loop_members: []` every val/plan job gave the same plan (its members always entered the candidates by the other
+  routes); a pool giving fewer than 4 candidates is filled from the planner's own model instead (`hint`: odds under a
+  full loop lineage by `Env::ceiling`, no search). Sample mob veterans: same pick, trio and V as with the loop lookup
+  (hint Inari One, Tamamo Cross, Nakayama Festa against the loop's Tamamo Cross, Inari One). The page's loop-members
+  store (945b557) retired.
 - Tried, reverted: configurations reused by the second pass (hits 472 of 1,163 searches, no CPU gain); bounds restricted
   to the entries still pickable (nodes -9 to -21%, CPU +1 to +22%: the tables cost more than the nodes saved; paying
   would need them cached across calls, estimated hundreds of MB of wasm heap).

@@ -676,6 +676,40 @@ fn loop_ceiling(s: &mut Sim, d: &Data, legs: &[Legacy], u: usize, b1: usize, b2:
     if !legal_pair(d, &p, u, n - 2, n - 1) { return 0.0; }
     val(s, &p, u, n - 2, n - 1, buf)
 }
+/// Below this many stage candidates the plan adds umas by `hint_umas` (the loop planner's search added up to three; a
+/// pool with veterans of its loop's umas gives four or more by the other routes: 6-8 on the val/plan pools)
+const HINT_FLOOR: usize = 4;
+/// The owned umas (a legal deck, not among `cands`) with the highest odds under a full loop lineage, at most `k`, best
+/// first: her parents hypothetical veterans of the first two candidates' umas (every target, stars at the rank's mix),
+/// each bred from the other and from her, as `loop_ceiling` builds p_inf's lineage (a missing candidate: an ancestor of
+/// no uma, so no relation points); no G1 wins on the hypothetical ancestors (the race part of their affinity is the
+/// same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by `Env::ceiling` (the
+/// per-target best deck odds: no deck search), which ranks the umas the way a full loop would before any building.
+fn hint_umas(env: &mut Env, d: &Data, legs: &[Legacy], cands: &[usize], trainees: &[usize], k: usize) -> Vec<(usize, f64)> {
+    let sj = env.sj; let star = sj.star_dist;
+    let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
+    let mut sides: Vec<u32> = vec![];
+    for &c in cands { let id = d.umas[c].id; if !sides.contains(&id) { sides.push(id); } if sides.len() == 2 { break; } }
+    while sides.len() < 2 { sides.push(0); }
+    let (ca, cb) = (sides[0], sides[1]);
+    let anc = |chara: u32| Ancestor { chara, sparks: full.clone(), wins: vec![], pinks: vec![] };
+    let mk = |chara: u32, p1: u32, p2: u32| Legacy { chara, borrowed: false, sparks: full.clone(), wins: vec![], pinks: vec![],
+        parents: vec![anc(p1), anc(p2)], win_p: vec![], mix: Some(star) };
+    let mut out: Vec<(usize, f64)> = vec![];
+    for &u in trainees {
+        let id = d.umas[u].id;
+        if cands.contains(&u) || env.dmax[u].is_none() || id == ca || id == cb { continue; }
+        let mut l = legs.to_vec(); l.push(mk(ca, cb, id)); l.push(mk(cb, ca, id));
+        let p = env.pool(&l); let n = l.len();
+        if !legal_pair(d, &p, u, n - 2, n - 1) { continue; }
+        let (q, _, c) = env.lineage(&p, u, n - 2, n - 1);
+        if let Some(v) = env.ceiling(u, &q, c) { if v > 0.0 { out.push((u, v)); } }
+    }
+    // best first; equal odds in uma order (stable)
+    out.sort_by(|x, y| y.1.partial_cmp(&x.1).unwrap());
+    out.truncate(k);
+    out
+}
 /// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
 /// A, V0, and the stage-1 odds now
 pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: Vec<f64>, pub(super) m23: &'b [f64], pub(super) v0: f64, pub(super) pnow: Vec<f64>, pub(super) cont: Vec<Cont>,
@@ -857,11 +891,12 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let t_all = now_ms();
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
-    let (members, minfo, mwhy) = rotation(env, d, sk, cr, job, pj);
-    let loop_ms = now_ms() - t_all;
+    // the loop planner's members only when the job names them (`loop_members`, an override; the plan no longer runs the
+    // loop planner's search itself: on the val/plan pools its members always entered the candidates by the routes below)
+    let (members, minfo, mwhy) = if pj.loop_members.is_some() { rotation(env, d, sk, cr, job, pj) } else { (vec![], vec![], None) };
     let g = sv.found[0].clone();
-    // stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the loop's members, the
-    // umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most IDX_CANDS
+    // stage-1 candidates (who A can be; whose odds a builder may lift): the best career's trainee, the named loop members,
+    // the umas of the best career's lineage, the umas you have veterans of, the search's other trainees; at most IDX_CANDS
     let mut cands: Vec<usize> = vec![g.t];
     let push = |u: usize, c: &mut Vec<usize>| if !c.contains(&u) && trainees.contains(&u) { c.push(u) };
     for &m in &members { push(m, &mut cands); }
@@ -869,6 +904,16 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     for l in legs.iter().rev() { if !l.borrowed { if let Some(u) = env.uix(l.chara) { push(u, &mut cands); } } }
     for f in &sv.found { push(f.t, &mut cands); }
     cands.truncate(IDX_CANDS);
+    // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
+    // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
+    // (`hint_umas`), no deck search
+    let mut hint: Vec<Value> = vec![];
+    if pj.loop_members.is_none() && cands.len() < HINT_FLOOR {
+        for (u, v) in hint_umas(env, d, legs, &cands, trainees, HINT_FLOOR - cands.len()) {
+            cands.push(u); hint.push(json!({"id": d.umas[u].id, "name": d.umas[u].name, "ceiling": v}));
+        }
+    }
+    let loop_ms = now_ms() - t_all;
     let all: Vec<usize> = trainees.iter().copied().filter(|&u| env.dmax[u].is_some()).collect();
     let t1 = now_ms();
     let budget0 = env.budget;
@@ -1239,7 +1284,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         "uncv": env.uncv, "fixed": env.fixed_t, "y": ys.iter().map(|y| (y * 100.0).round() / 100.0).collect::<Vec<f64>>()}), _ => Value::Null };
     let mut out = json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count(), "work": work,
+           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count(), "work": work,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
     out
