@@ -611,11 +611,12 @@ async function quickCompare(y) {
   simulation.kind = null; renderSimulation();
   // a roll that saves careers: the table can undercount how many (it tries her with a few partners at cached decks), so
   // the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant)
-  if (simulation.state === 'done' && y >= 0.5 && id === simulationId && source === myId) runComparison();
+  if (simulation.state === 'done' && y >= 0.5 && id === simulationId && source === myId) runComparison(true);
 }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
 // can't be interrupted, so the worker goes (run() starts a new one). Returns whether the plan went with it.
 function cancelCompare() {
+  if (simulation.refining) { simulationId++; simulation.refining = false; killEngine(); return planS.state === 'busy'; }
   if (simulation.state !== 'busy') return false;
   simulationId++; simulation.state = 'ready';
   if (simulation.kind === 'quick') return false;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
@@ -637,10 +638,13 @@ function compare() {
   runComparison();
   if (lost) runPlan();
 }
-async function runComparison() {
+// refine: a roll's quick result stays on screen (an improvement shown at once, its figures held) while this works out
+// the exact count; otherwise the panel waits on it
+async function runComparison(refine = false) {
   const id = ++simulationId, source = myId;
   const base = comparisonJob(), key = JSON.stringify(base);
-  simulation.state = 'busy'; simulation.error = null; simulation.stale = false; renderSimulation();
+  if (refine) simulation.refining = true; else { simulation.state = 'busy'; simulation.refining = false; }
+  simulation.error = null; simulation.stale = false; renderSimulation();
   try {
     if (!simulation.baseline) {
       const open = !last.job.trainees.length && !last.job.fix.length;
@@ -674,8 +678,9 @@ async function runComparison() {
     // the planner's next career keeps its trainee and parents (her legacy index is after them, so they keep theirs)
     const samePick = !!(pickA && pickB && keyOf(pickA) === keyOf(pickB));
     simulation.r = m.r; simulation.full = full; simulation.v0 = [v0b, v0a]; simulation.pickA = pickA; simulation.samePick = samePick;
-    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.state = 'done';
-  } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
+    simulation.herParent = !!pickA?.parents.includes(her); simulation.quick = false; simulation.refining = false; simulation.state = 'done';
+  } catch (e) { if (id !== simulationId || source !== myId) return;
+    if (simulation.refining) simulation.refining = false; else { simulation.error = e.message; simulation.state = 'error'; } }
   renderSimulation();
 }
 function addDraft() {
@@ -734,13 +739,15 @@ function simulationBody() {
     // what she does for the loop if you enter her: one short line
     const head = looped ? 'Fully looped parent'
       : simulation.full ? `${n}/${n}: step 1 done`
+      : simulation.refining ? 'Improves your loop'
       : saves != null && saves >= 0.5 ? `Saves ${fmtN(saves)} careers`
       : simulation.herParent ? 'Parent of the next career'
       : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
       : 'No careers saved';
     verdict.append(el('strong', '', head));
     result.appendChild(verdict);
-    const figs = el('div', 'simodds');
+    if (simulation.refining) { const p = el('p', 'runnote simrefine'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Working out how many careers it saves…</span>'; result.appendChild(p); }
+    const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
     const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };
     const way = (x, y, lowGood) => { if (x == null || y == null) return 'same'; const g = lowGood ? x - y : y - x;   // the gain
