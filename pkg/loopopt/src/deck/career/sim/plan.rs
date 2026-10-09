@@ -997,8 +997,10 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     let nleaf = 1usize << (2 * nu);
     // (one scratch buffer per level, reused by the four branches below it: the same values in the same order)
     let mut scratch: Vec<Vec<f64>> = vec![vec![]; nu];
-    let folds: Vec<Vec<f64>> = setups.iter().map(|st| {
-        let mut out = vec![0.0f64; nleaf];
+    // (setup-major, one buffer: fl[si * nleaf + leaf])
+    let ns = setups.len();
+    let mut fl = vec![0.0f64; ns * nleaf];
+    for (st, out) in setups.iter().zip(fl.chunks_exact_mut(nleaf.max(1))) {
         // per target and star level: x and 1 - x (the same expressions the fold took per branch)
         let xs: Vec<[f64; 4]> = (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| st.x0[k] * st.xm[sg])).collect();
         let xc: Vec<[f64; 4]> = xs.iter().map(|r| r.map(|x| 1.0 - x)).collect();
@@ -1028,10 +1030,13 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
                     rec(f, k + 1, leaf | sg << (2 * k), xs, xc, nu, out, rest);
                 }
             }
-            rec(tab, 0, 0, &xs, &xc, nu, &mut out, &mut scratch);
+            rec(tab, 0, 0, &xs, &xc, nu, out, &mut scratch);
         }
-        out
-    }).collect();
+    }
+    // leaf-major for the outcome loop (each leaf's setups contiguous): fol[leaf * ns + si]
+    let mut fol: Vec<f64> = Vec::with_capacity(nleaf * ns);
+    for leaf in 0..nleaf { fol.extend((0..ns).map(|si| fl[si * nleaf + leaf])); }
+    drop(fl);
     // every outcome: uncertain targets' star pattern, guaranteed golds present or not
     let nf = fixed_t.len();
     let (mut ey, mut lift) = (0.0f64, 0.0f64);
@@ -1041,37 +1046,49 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     // per stage-1 candidate: the chance her veteran raises that candidate's odds, and the odds raised to (summed, weighted)
     let mut stats = vec![(0.0f64, 0.0f64); n];
     let mut dist0: Vec<(f64, f64)> = vec![];
-    let mut up = vec![0.0f64; n];
     // per setup and landed set m, the spark scale (the product the loop below took per outcome, the same order); V after
     // her when no candidate's step moves (most outcomes lift no one): once
     let nm = 1usize << ntar;
-    let scs: Vec<Vec<f64>> = setups.iter().map(|st| (0..nm).map(|m| (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product()).collect()).collect();
+    // (m-major: scf[m * ns + si])
+    let mut scf: Vec<f64> = Vec::with_capacity(nm * ns);
+    for m in 0..nm { scf.extend(setups.iter().map(|st| (0..ntar).map(|k| st.pw[k][(m >> k & 1) as usize]).product::<f64>())); }
+    let sui: Vec<usize> = setups.iter().map(|st| st.ui).collect();
     let v_same = v0_after(&bs.c1);
+    // the candidates the loop below can lift, in candidate order: those with setups, and (never, as the odds are not
+    // negative) one whose odds now already clear her threshold pnow (1 + 1e-9); every other keeps up = pnow, below it
+    let thr: Vec<f64> = (0..n).map(|ui| bs.pnow[ui] * (1.0 + 1e-9)).collect();
+    let active: Vec<usize> = (0..n).filter(|&ui| sui.contains(&ui) || bs.pnow[ui] > thr[ui]).collect();
+    let mut up = bs.pnow.clone();
+    let fmm: Vec<usize> = (0..(1usize << fixed_t.len())).map(|fm| { let mut m = 0; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } } m }).collect();
+    let mut ch: Vec<usize> = vec![];
     // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
     let full_m = (1usize << ntar) - 1;
     let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
     for leaf in 0..nleaf {
         let mut mu = 0usize; let mut pr_st = 1.0f64;
         for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
-        for fm in 0..(1usize << nf) {
-            let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
+        let fr = &fol[leaf * ns..(leaf + 1) * ns];
+        for (fm, &mf) in fmm.iter().enumerate() {
+            let m = mu | mf;
             let pr = c.os[m] * pr_st;
             if pr <= 0.0 { continue; }
-            c1.copy_from_slice(&bs.c1);
-            up.copy_from_slice(&bs.pnow);
-            for (si, st) in setups.iter().enumerate() {
-                let v = scs[si][m] * folds[si][leaf];
-                if v > up[st.ui] { up[st.ui] = v; }
+            let sr = &scf[m * ns..(m + 1) * ns];
+            // up and c1 are the base's here (pnow, bs.c1)
+            for ((&sc, &f), &ui) in sr.iter().zip(fr).zip(&sui) { let v = sc * f; if v > up[ui] { up[ui] = v; } }
+            // the candidates whose step moved (if none, c1 is the base's and V after is v_same); up back to pnow
+            ch.clear();
+            for &ui in &active {
+                let upv = up[ui]; up[ui] = bs.pnow[ui];
+                if upv > thr[ui] {
+                    stats[ui].0 += pr; stats[ui].1 += pr * upv;
+                    if ui == 0 { dist0.push((pr, upv)); }
+                    let cc = bs.cost(ui, upv); if cc < c1[ui] { c1[ui] = cc; ch.push(ui); } }
             }
-            // whether a candidate's step moved (if none did, c1 is the base's and V after is v_same)
-            let mut moved = false;
-            for ui in 0..n { if up[ui] > bs.pnow[ui] * (1.0 + 1e-9) {
-                stats[ui].0 += pr; stats[ui].1 += pr * up[ui];
-                if ui == 0 { dist0.push((pr, up[0])); }
-                let cc = bs.cost(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; moved = true; } } }
-            if m == (1usize << ntar) - 1 { if let Some(xi) = xi { c1[xi] = 0.0; moved = true; } }
-            let mut va = if moved { v0_after(&c1) } else { v_same };
+            if m == full_m { if let Some(xi) = xi { c1[xi] = 0.0; ch.push(xi); } }
+            let mut va = if !ch.is_empty() { v0_after(&c1) } else { v_same };
             if m == full_m && !her.is_empty() { va = with_her(va, &her, &c1); }
+            // c1 back to the base's
+            for &i in &ch { c1[i] = bs.c1[i]; }
             let y = if goal && m == full_m { bs.v0 } else { (bs.v0 - va).max(0.0) };
             ey += pr * y; if y > 1e-9 { lift += pr; }
             ys[leaf << nf | fm] = y;
