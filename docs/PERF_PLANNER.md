@@ -65,7 +65,10 @@ p16: 47 of 68 umas in one class (21 classes); p10/p11: 38 of 51 (13 classes).
    member lift 0.565 -> 0.526 and careers to loop 1044 -> 1058; URA and Grand Masters unchanged. The loss is fidelity: a
    candidate's lifted odds are the best of her cached decks' tables at the new chances, and one deck reads lower than
    several. Variant: the main search runs without earlier jobs' proofs (its fully checked decks then depend on the job
-   alone) and feeds the cache, plus every other search's winner.
+   alone) and feeds the cache, plus every other search's winner: the same numbers as winners only on all five Global
+   jobs, so winners only it is (done: picks and top five unchanged on all six jobs, V unchanged but p10 +0.5%, stage
+   costs up to 4.5%). If the candidates' fidelity matters later: each candidate's top 3 careers' decks (deterministic,
+   about 7 cheap searches).
 2. Class-keyed proofs (`seen`, `ruled`; `gm_cached`, `reduced_cached` by legal-set content). Measured 2.4x on p16
    builders. Solve classmates in slot-wise affinity order (dominant first: their proofs transfer with rise = 1).
 3. Deck search, exact and byte-identical: build the configuration skeleton once per `best_deck` (both passes run at the

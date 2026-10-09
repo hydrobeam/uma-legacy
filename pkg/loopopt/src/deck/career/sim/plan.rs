@@ -833,17 +833,21 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // best careers, searched on demand (stage-1 candidates now, builders when scored exactly)
     let mut best: Vec<Option<Option<Found>>> = vec![None; d.umas.len()];
     best[g.t] = Some(Some(g.clone()));
-    let mut refs = vec![];
     // a kept plan of this pool less its last veteran (`Bests`), and this plan's own, kept at the end
     let nl = legs.len();
     // (taken out while this plan runs and put back after it: every reroll of a career reuses the same one)
     let prev: Option<Bests> = if nl > 1 { let k = bests_key(job, fix, nl - 1); BESTS.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|b| b.key == k); i.map(|i| c.remove(i)) }) } else { None };
     let mut urefs: Vec<Vec<Vec<Ref>>> = vec![vec![]; d.umas.len()];
-    if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r) = best_of(env, pool, fix, u, prev.as_ref(), nl); refs.push(r.clone()); urefs[u] = r; best[u] = Some(f); } } }
+    if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r) = best_of(env, pool, fix, u, prev.as_ref(), nl); urefs[u] = r; best[u] = Some(f); } } }
     let mut search_ms = now_ms() - t1;
     let mut s = match sim_for(env, d, sk, cr, job, pj) { Ok(s) => s, Err(e) => return e };
-    s.cache.absorb(s.env, &sv.refs);
-    for r in &refs { s.cache.absorb(s.env, r); }
+    // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
+    // winners only, the main search's best careers and each uma's best one, so what it holds (and every number read from
+    // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
+    // kept plan). Before, every fully checked deck went in: a candidate then had several decks, and her lifted odds
+    // read the best of them; with one the planner's numbers moved once (val/plan: picks unchanged)
+    for f in &sv.found { s.cache.add(s.env, f.t, &f.sel); }
+    for &u in &cands { if let Some(Some(f)) = &best[u] { s.cache.add(s.env, u, &f.sel); } }
     let mut buf = vec![];
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut sur_diff: Vec<Value> = vec![];
@@ -890,7 +894,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
                 if pj.sur != 1 && best[x].is_none() {
                     let (f, r) = best_of(s.env, pool, fix, x, prev.as_ref(), nl);
-                    s.cache.absorb(s.env, &r);
+                    if let Some(f) = &f { s.cache.add(s.env, x, &f.sel); }
                     urefs[x] = r; best[x] = Some(f);
                 }
                 if pj.sur > 0 { sur_one(&mut s, &mut best, x, &mut buf, &mut sur_diff); }
