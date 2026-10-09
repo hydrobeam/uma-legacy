@@ -1499,8 +1499,8 @@ struct DeckSpace<'a> {
     gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>>>,
     /// partial decks tested, over every search (the search's cost)
     nodes: std::cell::Cell<usize>,
-    /// what `search` derives from a legal entry set alone, per (set id, trainee ids): built once, not per call
-    legt: std::cell::RefCell<crate::FxMap<(usize, Vec<u32>), std::rc::Rc<LegalTabs>>>,
+    /// what `search` derives from a legal entry set alone, per (set id, plain pals allowed): built once, not per call
+    legt: std::cell::RefCell<crate::FxMap<(usize, usize), std::rc::Rc<LegalTabs>>>,
     /// every count vector over `kinds_all` (summing to at most deck_size), in enumeration order: the same for every search
     counts: std::cell::OnceCell<std::rc::Rc<Vec<Vec<usize>>>>,
     /// per entry, its locked card's bit (0 if none), and all locked bits together
@@ -1579,11 +1579,13 @@ impl<'a> DeckSpace<'a> {
         keep.sort();
         keep
     }
-    /// (reduced entries, id of the trainee set for other caches)
+    /// (reduced entries, an id per distinct list for other caches): trainees whose lists are equal (a deck class) share
+    /// the id, so what is cached by it (`gm_cached`, `legal_tabs`) is built once for them all
     fn reduced_cached(&self, model: &Model, us: &[usize], ids: &[u32]) -> (std::rc::Rc<Vec<usize>>, usize) {
         if let Some(r) = self.red.borrow().get(us) { return r.clone(); }
-        let id = self.red.borrow().len();
-        let r = (std::rc::Rc::new(self.reduced(model, us, ids)), id);
+        let list = self.reduced(model, us, ids);
+        let same = self.red.borrow().values().find(|v| *v.0 == list).cloned();
+        let r = same.unwrap_or_else(|| { let id = self.red.borrow().values().map(|v| v.1 + 1).max().unwrap_or(0); (std::rc::Rc::new(list), id) });
         self.red.borrow_mut().insert(us.to_vec(), r.clone());
         r
     }
@@ -1602,12 +1604,11 @@ impl<'a> DeckSpace<'a> {
     }
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
     fn legal_tabs(&self, legal: &[usize], set_id: usize, ids: &[u32]) -> std::rc::Rc<LegalTabs> {
-        let key = (set_id, ids.to_vec());
-        if let Some(r) = self.legt.borrow().get(&key) { return r.clone(); }
-        let legal = legal.to_vec();
         let nplain = self.legal_plain(ids).len();
+        let key = (set_id, nplain);
+        if let Some(r) = self.legt.borrow().get(&key) { return r.clone(); }
         let mut chara_ix: HashMap<u32, usize> = HashMap::new();
-        for &j in &legal { let n = chara_ix.len(); chara_ix.entry(self.cards[self.rel[j]].chara).or_insert(n); }
+        for &j in legal { let n = chara_ix.len(); chara_ix.entry(self.cards[self.rel[j]].chara).or_insert(n); }
         let over = chara_ix.len() > 128;
         let ebit: Vec<u128> = if over { vec![] } else { (0..self.rel.len()).map(|j| chara_ix.get(&self.cards[self.rel[j]].chara).map_or(0, |&c| 1u128 << c)).collect() };
         let nk = self.kinds_all.len();
