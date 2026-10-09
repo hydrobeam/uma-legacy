@@ -22,6 +22,24 @@ let failed = 0, passed = 0;
 const LOG = new AsyncLocalStorage();   // the running group's buffered lines (groups run in parallel)
 const say = (line) => { const buf = LOG.getStore(); if (buf) buf.push(line); else console.log(line); };
 const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; say(`${ok ? '  ok  ' : '  FAIL'} ${name}${detail ? ' · ' + detail : ''}`); };
+// LLP_PROF=file: where each group's time goes (new contexts and page loads, waits for searches and plans, fixed sleeps,
+// contrast audits, and the solver's own time per job), one JSON line per group appended to the file
+const PROF = process.env.LLP_PROF;
+const profOf = () => LOG.getStore()?.prof;
+const timed = (key, p, st = profOf()) => { if (!st) return p; const t0 = Date.now();
+  return Promise.resolve(p).finally(() => { st[key] = (st[key] || 0) + Date.now() - t0; st[key + '#'] = (st[key + '#'] || 0) + 1; }); };
+async function profile(ctx, pg) {   // the solver's time per job (the worker reports it with each result), fixed sleeps, audits
+  const st = profOf(); if (!st) return;
+  await ctx.exposeBinding('__llpSolved', (_, kind, ms) => { st['solver:' + kind] = (st['solver:' + kind] || 0) + ms; st['solver:' + kind + '#'] = (st['solver:' + kind + '#'] || 0) + 1; });
+  await ctx.addInitScript(() => { const W = window.Worker; window.Worker = function (...a) { const w = new W(...a), kinds = new Map(), pm = w.postMessage.bind(w);
+    w.postMessage = (m, ...r) => { if (m && m.type === 'run') kinds.set(m.id, m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop'); return pm(m, ...r); };
+    w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__llpSolved(kinds.get(e.data.id) || '?', Math.round(e.data.ms)); }); return w; };
+    window.__spins = 0; let on = false;   // how many times the status line's spinner has come up
+    new MutationObserver(() => { const n = document.getElementById('run-note'), s = !!(n && n.querySelector('.spin')); if (s && !on) window.__spins++; on = s; })
+      .observe(document, { subtree: true, childList: true }); });
+  const sleep = pg.waitForTimeout.bind(pg); pg.waitForTimeout = (ms) => timed('sleep', sleep(ms), st);
+  const ev = pg.evaluate.bind(pg); pg.evaluate = (fn, ...a) => fn === AUDIT ? timed('audit', ev(fn, ...a), st) : ev(fn, ...a);
+}
 
 // ---------- helpers
 // before(pg): runs before the page loads (routes, request listeners)
@@ -47,7 +65,7 @@ function editorAware(pg) {
   return pg;
 }
 async function open(browser, { w = 1440, h = 900, mobile = false, init, before, scheme = 'light' } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
+  const ctx = await timed('ctx', browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) }));
   await ctx.addInitScript(() => {   // count worker creations/terminations
     const W = window.Worker; window.__made = 0; window.__killed = 0;
     window.__runs = [];   // the jobs sent to the engine, in order
@@ -56,9 +74,10 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init, before, 
   });
   if (init) await ctx.addInitScript(init);
   const pg = editorAware(await ctx.newPage()); pg.errors = [];
+  await profile(ctx, pg);
   pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));   // web-font fetch aborts are network noise
   if (before) await before(pg);
-  await pg.goto(URL); await settle(pg);
+  await timed('goto', pg.goto(URL)); await timed('settle.load', settle(pg));
   return pg;
 }
 // a click that, when it times out, says what covers the target or whether it is missing (for intermittent failures)
@@ -74,7 +93,8 @@ const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').class
 // wait for the current (auto) search to finish. A setting change marks the status line busy at once (the search
 // itself starts after a short pause), so no fixed sleep is needed; after a page load, the page's first job must have
 // been sent (pages opened without open()'s worker hook have no __runs and skip that part)
-async function settle(pg, t = 180000) {
+const settle = (pg, t) => timed('settle', settle0(pg, t));
+async function settle0(pg, t = 180000) {
   await pg.waitForFunction(() => { const n = document.getElementById('run-note');
     return (window.__runs === undefined || window.__runs.length > 0) && !n.classList.contains('busy') && /Checked [\d,]+ decks|example/i.test(n.textContent); }, null, { timeout: t });
 }
@@ -826,10 +846,15 @@ const TESTS = {
     };
     const showsNow = () => pg.evaluate(() => (document.querySelector('#tree .pn.trainee .nm')?.textContent || '') + '/' + (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''));
     const pg = editorAware(await ctx.newPage()); pg.errors = [];
+    await profile(ctx, pg);
     pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
     const note = () => pg.textContent('#run-note');
-    const done = async () => { await pg.waitForTimeout(700);   // past the pause before a search
-      await pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }); };
+    const done = () => timed('done', (async () => {
+      // (LLP_PROF: whether a run started only during the pause, i.e. was not yet on show when done() was called)
+      const st = profOf(), at = st && new Error().stack.split('\n')[3]?.match(/:(\d+):\d+\)?$/)?.[1], s0 = st && await pg.evaluate(() => [window.__spins || 0, !!document.querySelector('#run-note .spin')]);
+      await pg.waitForTimeout(700);   // past the pause before a search
+      if (st) { const s1 = await pg.evaluate(() => window.__spins || 0); (st.doneLog ||= []).push(`${at}:${s0[1] ? 'busy' : s1 > s0[0] ? 'LATE' : 'idle'}`); }
+      await pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }); })());
     const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
     await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
     // the tree is portraits; a portrait opens its node popup (sparks, G1 wins, choose or hand back the place)
@@ -1348,13 +1373,15 @@ const TESTS = {
 };
 
 const pick = Object.keys(TESTS).filter(t => !argv.some(a => a in TESTS) || argv.includes(t));
-const JOBS = Math.max(1, +process.env.LLP_JOBS || 4);
+const JOBS = Math.max(1, +process.env.LLP_JOBS || 4), T0 = Date.now();
 await Promise.all(BROWSERS.map(async (name) => {
   const b = await pw[name].launch(), queue = [...pick];
   const worker = async () => { for (let t; (t = queue.shift());) {
-    const buf = [], t0 = Date.now();
+    const buf = [], t0 = Date.now(); buf.prof = PROF ? {} : null;
     await LOG.run(buf, async () => { try { await TESTS[t](b); } catch (e) { failed++; say('  FAIL ' + t + ' threw: ' + String(e).split('\n').slice(0, 3).join(' ')); } });
-    console.log(`[${name}] ${t} (${((Date.now() - t0) / 1000).toFixed(1)} s)\n` + buf.join('\n'));
+    const wall = Date.now() - t0;
+    console.log(`[${name}] ${t} (${(wall / 1000).toFixed(1)} s)\n` + buf.join('\n'));
+    if (PROF) (await import('fs')).appendFileSync(PROF, JSON.stringify({ browser: name, group: t, wall, start: t0 - T0, ...buf.prof }) + '\n');
   } };
   await Promise.all(Array.from({ length: JOBS }, worker));
   await b.close();
