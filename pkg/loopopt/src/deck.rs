@@ -1499,7 +1499,16 @@ struct DeckSpace<'a> {
     gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>>>,
     /// partial decks tested, over every search (the search's cost)
     nodes: std::cell::Cell<usize>,
+    /// what `search` derives from a legal entry set alone, per (set id, trainee ids): built once, not per call
+    legt: std::cell::RefCell<crate::FxMap<(usize, Vec<u32>), std::rc::Rc<LegalTabs>>>,
+    /// every count vector over `kinds_all` (summing to at most deck_size), in enumeration order: the same for every search
+    counts: std::cell::OnceCell<std::rc::Rc<Vec<Vec<usize>>>>,
+    /// per entry, its locked card's bit (0 if none), and all locked bits together
+    lockbits: std::cell::OnceCell<(Vec<u8>, u8)>,
 }
+/// `search`'s per-entry-set tables: the character bit of each entry (`over`: more than 128 characters),
+/// the entries per chain kind and the pal (kind 0) entries, the locked cards each group can hold, the plain pals legal
+struct LegalTabs { over: bool, ebit: Vec<u128>, by_kind: Vec<Vec<usize>>, pal_ents: Vec<usize>, glk: Vec<u8>, nplain: usize }
 #[derive(Clone)]
 struct Sel { ents: Vec<usize>, plain: usize, filler: usize, dw: Vec<f64>, dg: Vec<f64> }
 impl<'a> DeckSpace<'a> {
@@ -1591,6 +1600,43 @@ impl<'a> DeckSpace<'a> {
         self.gmc.borrow_mut().insert((u, code), r.clone());
         r
     }
+    /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
+    fn legal_tabs(&self, legal: &[usize], set_id: usize, ids: &[u32]) -> std::rc::Rc<LegalTabs> {
+        let key = (set_id, ids.to_vec());
+        if let Some(r) = self.legt.borrow().get(&key) { return r.clone(); }
+        let legal = legal.to_vec();
+        let nplain = self.legal_plain(ids).len();
+        let mut chara_ix: HashMap<u32, usize> = HashMap::new();
+        for &j in &legal { let n = chara_ix.len(); chara_ix.entry(self.cards[self.rel[j]].chara).or_insert(n); }
+        let over = chara_ix.len() > 128;
+        let ebit: Vec<u128> = if over { vec![] } else { (0..self.rel.len()).map(|j| chara_ix.get(&self.cards[self.rel[j]].chara).map_or(0, |&c| 1u128 << c)).collect() };
+        let nk = self.kinds_all.len();
+        let by_kind: Vec<Vec<usize>> = (0..nk).map(|i| legal.iter().copied().filter(|&j| self.kind[j] != (0, 0, 0) && self.kind[j] == self.kinds_all[i]).collect()).collect();
+        let pal_ents: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == (0, 0, 0)).collect();
+        // locked cards each group (by_kind, then pal_ents) can hold
+        let lb = |j: usize| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0u8, |b| 1u8 << b);
+        let glk: Vec<u8> = by_kind.iter().chain(std::iter::once(&pal_ents)).map(|l| l.iter().fold(0u8, |m, &j| m | lb(j))).collect();
+        let r = std::rc::Rc::new(LegalTabs { over, ebit, by_kind, pal_ents, glk, nplain });
+        self.legt.borrow_mut().insert(key, r.clone());
+        r
+    }
+    /// every count vector over `kinds_all` (each entry the number of cards of that kind, summing to at most deck_size)
+    fn counts_all(&self) -> std::rc::Rc<Vec<Vec<usize>>> {
+        self.counts.get_or_init(|| {
+            let (nk, size) = (self.kinds_all.len(), self.dj.deck_size);
+            let mut counts: Vec<Vec<usize>> = vec![vec![]];
+            for _ in 0..nk { counts = counts.into_iter().flat_map(|c| { let used: usize = c.iter().sum(); (0..=size - used).map(move |x| { let mut d = c.clone(); d.push(x); d }) }).collect(); }
+            std::rc::Rc::new(counts)
+        }).clone()
+    }
+    /// per entry, its locked card's bit (0 if none); and every locked card's bit
+    fn lock_bits(&self) -> &(Vec<u8>, u8) {
+        self.lockbits.get_or_init(|| {
+            let lbit: Vec<u8> = (0..self.rel.len()).map(|j| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0, |b| 1u8 << b)).collect();
+            let all_locked: u8 = if self.locked.is_empty() { 0 } else { ((1u16 << self.locked.len()) - 1) as u8 };
+            (lbit, all_locked)
+        })
+    }
     fn legal_plain(&self, ids: &[u32]) -> Vec<&(u32, String, &'a Card)> { self.plain.iter().filter(|x| ids.iter().all(|&id| !x.2.blocks(id))).collect() }
     /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
     /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
@@ -1601,33 +1647,28 @@ impl<'a> DeckSpace<'a> {
     fn search(&self, model: &Model, us: &[usize], ids: &[u32], clauses: &[(Vec<(usize, f64)>, f64)], best: bool, seed: f64, rho: f64, cap: usize) -> (Vec<(f64, Sel)>, bool) {
         let nu = self.unc.len(); let size = self.dj.deck_size;
         if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) { return (vec![], false); }
-        let (legal, set_id) = self.reduced_cached(model, us, ids);
-        let legal: Vec<usize> = legal.to_vec();
-        let nplain = self.legal_plain(ids).len();
-        let mut chara_ix: HashMap<u32, usize> = HashMap::new();
-        for &j in &legal { let n = chara_ix.len(); chara_ix.entry(self.cards[self.rel[j]].chara).or_insert(n); }
-        if chara_ix.len() > 128 { return (vec![], true); }
-        let ebit: Vec<u128> = (0..self.rel.len()).map(|j| chara_ix.get(&self.cards[self.rel[j]].chara).map_or(0, |&c| 1u128 << c)).collect();
+        let (legal_rc, set_id) = self.reduced_cached(model, us, ids);
+        let lt = self.legal_tabs(&legal_rc, set_id, ids);
+        if lt.over { return (vec![], true); }
+        let nplain = lt.nplain;
+        let ebit: &[u128] = &lt.ebit;
         let nk = self.kinds_all.len();
         let ki22 = self.kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
         let kpos: Vec<u64> = (0..nk).map(|i| 7u64.pow(i as u32)).collect();
-        let by_kind: Vec<Vec<usize>> = (0..nk).map(|i| legal.iter().copied().filter(|&j| self.kind[j] != (0, 0, 0) && self.kind[j] == self.kinds_all[i]).collect()).collect();
-        let pal_ents: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == (0, 0, 0)).collect();
+        let (by_kind, pal_ents) = (&lt.by_kind, &lt.pal_ents);
         let fixed = model.fixed_factor();
         let val = |cl: &(Vec<(usize, f64)>, f64), dw: &[f64], dg: &[f64]| fixed * cl.0.iter().map(|&(k, q)| model.trainee_fast(us[k], q, dw, dg)).sum::<f64>();
         let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
         let mut bestv = if best { seed } else { f64::NEG_INFINITY };
         let mut over = false;
-        let mut counts: Vec<Vec<usize>> = vec![vec![]];
-        for _ in 0..nk { counts = counts.into_iter().flat_map(|c| { let used: usize = c.iter().sum(); (0..=size - used).map(move |x| { let mut d = c.clone(); d.push(x); d }) }).collect(); }
+        let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
         struct Cfg { root: f64, code: u64, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, suf: Vec<(Vec<f64>, Vec<f64>)>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, sp: Vec<Vec<f64>> }
-        let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(&pal_ents)).collect();
+        let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
-        let lb = |j: usize| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0u8, |b| 1u8 << b);
-        let all_lk: u8 = if self.locked.is_empty() { 0 } else { ((1u16 << self.locked.len()) - 1) as u8 };
-        let glk: Vec<u8> = groups_all.iter().map(|l| l.iter().fold(0u8, |m, &j| m | lb(j))).collect();
+        let (lbit, all_lk) = { let x = self.lock_bits(); (&x.0[..], x.1) };
+        let glk: &[u8] = &lt.glk;
         let mut cfgs: Vec<Cfg> = vec![];
         let mut dw = vec![0.0f64; nu]; let mut dg = vec![0.0f64; nu];
         // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
@@ -1638,7 +1679,7 @@ impl<'a> DeckSpace<'a> {
         let og: Vec<(usize, usize, usize)> = { let mut v = vec![]; let mut i = 0; while i < oq.len() { let no = model.n_outfits(oq[i].1); v.push((oq[i].0, i, no)); i += no; } v };
         let zero = vec![0.0f64; nu];
         let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
-        for cnt in &counts {
+        for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
             if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) { continue; }
             let code: u64 = cnt.iter().zip(&kpos).map(|(&c, &p)| c as u64 * p).sum();
@@ -1811,8 +1852,7 @@ impl<'a> DeckSpace<'a> {
                     };
                     // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
                     // later group (a branch that can no longer place every locked card is dropped)
-                    let lbit: Vec<u8> = (0..self.rel.len()).map(|j| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0, |b| 1u8 << b)).collect();
-                    let all_locked: u8 = if self.locked.is_empty() { 0 } else { ((1u16 << self.locked.len()) - 1) as u8 };
+                    let all_locked = all_lk;
                     let mut avail: Vec<Vec<u8>> = vec![vec![]; ng + 1];
                     avail[ng] = vec![0];
                     for g in (0..ng).rev() {
@@ -1868,7 +1908,7 @@ impl<'a> DeckSpace<'a> {
                     };
                     let bget = || bcell.get();
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32], &[1.0; 32]) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (&lbit, all_locked, &avail), &mut st, &ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget) };
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, nu, &mut hopeful, &mut leaf, &bget) };
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
                 }
@@ -1984,7 +2024,8 @@ fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRaw, unc: &[u
     DeckSpace { dj, unc: unc.to_vec(), sk, cards: e.cards.clone(), rel: e.rel.clone(), kind: e.kind.clone(), endk: e.endk.clone(), vark: e.vark.clone(),
         srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(),
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
-        locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default() }
+        locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default(),
+        legt: Default::default(), counts: Default::default(), lockbits: Default::default() }
 }
 
 mod career;
