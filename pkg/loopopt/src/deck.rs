@@ -1966,6 +1966,8 @@ impl<'a> DeckSpace<'a> {
         // best ratios
         let noq = oq.len();
         let (mut sufw, mut sufg, mut spf): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
+        // the node bound's per-configuration constants, flat and reused (see `hopeful`)
+        let (mut kab, mut kr, mut kab_have, mut kr_have): (Vec<f64>, Vec<f64>, Vec<bool>, Vec<bool>) = (vec![], vec![], vec![], vec![]);
         for cf in &cfgs {
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
@@ -2070,18 +2072,37 @@ impl<'a> DeckSpace<'a> {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
                     struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64> }
                     let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu] };
+                    // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
+                    // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
+                    // first use of their row (the same expressions, so the same f64s as computing them per node); row
+                    // (loff[g] + left) * ncan + can, a row of 2 nu factors (a then b) and one of noq ratios
+                    let ncan = if one_b { 2 } else { 1 };
+                    let mut loff = vec![0usize; ng + 1]; for g in 0..ng { loff[g + 1] = loff[g] + gs[g].1 + 1; }
+                    let nrow = loff[ng] * ncan;
+                    kab.clear(); kab.resize(nrow * 2 * nu, 0.0); kr.clear(); kr.resize(nrow * noq, 0.0);
+                    kab_have.clear(); kab_have.resize(nrow, false); kr_have.clear(); kr_have.resize(nrow, false);
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
                     let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize| -> bool {
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
-                        for t in 0..nu {
-                            let (a, b) = if g >= ng { (1.0, 1.0) }
-                                else if !one_b { (gmin[g][left].0[t] * sufw[(g + 1) * nu + t], gmin[g][left].1[t] * sufg[(g + 1) * nu + t]) }
-                                else if can { let gb = &gbs[g];
-                                    ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
-                                else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
-                            dw[t] = 1.0 - pw[t] * a; dg[t] = 1.0 - pg[t] * b;
-                            pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t];
+                        let row = if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + (one_b && can) as usize };
+                        let (pw, pg) = (&pw[..nu], &pg[..nu]);
+                        if row == usize::MAX {
+                            for t in 0..nu { dw[t] = 1.0 - pw[t] * 1.0; dg[t] = 1.0 - pg[t] * 1.0; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
+                        } else {
+                            if !kab_have[row] {
+                                kab_have[row] = true;
+                                for t in 0..nu {
+                                    let (a, b) = if !one_b { (gmin[g][left].0[t] * sufw[(g + 1) * nu + t], gmin[g][left].1[t] * sufg[(g + 1) * nu + t]) }
+                                        else if can { let gb = &gbs[g];
+                                            ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
+                                        else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
+                                    kab[row * 2 * nu + t] = a; kab[row * 2 * nu + nu + t] = b;
+                                }
+                            }
+                            let (ka, kb) = kab[row * 2 * nu..(row + 1) * 2 * nu].split_at(nu);
+                            let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
+                            for t in 0..nu { dw[t] = 1.0 - pw[t] * ka[t]; dg[t] = 1.0 - pg[t] * kb[t]; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
                         }
                         let pass = |cv: &[f64]| if best { cv[0] * (1.0 + 1e-9) >= bestv }
                             else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) };
@@ -2096,6 +2117,14 @@ impl<'a> DeckSpace<'a> {
                             cv[ci] += fixed * m;
                         }
                         if !nan && !pass(&cv) { return false; }
+                        if row != usize::MAX && !kr_have[row] {
+                            kr_have[row] = true;
+                            for ix in 0..noq {
+                                kr[row * noq + ix] = if !one_b { rp[g][ix][left] * spf[(g + 1) * noq + ix] }
+                                    else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
+                                    else { gbs[g].rown[ix][left] * po[g + 1][ix] };
+                            }
+                        }
                         // the real bound, the same expression in the same order; an outfit whose A is at most the running
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
@@ -2105,9 +2134,7 @@ impl<'a> DeckSpace<'a> {
                                 let ix = i + o;
                                 let a = av[ix];
                                 if a <= m { continue; }
-                                let r = if g >= ng { 1.0 } else if !one_b { rp[g][ix][left] * spf[(g + 1) * noq + ix] }
-                                    else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
-                                    else { gbs[g].rown[ix][left] * po[g + 1][ix] };
+                                let r = if row == usize::MAX { 1.0 } else { kr[row * noq + ix] };
                                 m = m.max(a.min(orow[ix].eval(q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
