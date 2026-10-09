@@ -35,6 +35,11 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 
 `uv run webapp/icons.py` renders the favicons and the link-preview image from `webapp/icons/favicon.svg` (committed).
 
+Images: character icons are keyed by dress id (`card_rarity_data.race_dress_id`), not outfit id. Global's client
+pre-indexes upcoming content (its `meta` lists the 55 GM-era cards Global has not released), which is why GM-era art
+exists locally. Images are AVIF q55 (the owner's pick from a side-by-side comparison; half the size of WebP q82) and load
+lazily.
+
 ## The page (`webapp/`)
 
 `build.py` assembles `webapp/dist/`:
@@ -56,6 +61,12 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
   chosen), the fonts (Latin subsets from the Fontsource packages: Zen Kaku Gothic New, IBM Plex Mono, and Zen Maru Gothic for the planner pages' game style) and `img.<hash>/` (copied from `webapp/img`).
 - Favicons and `og.png` at the root, font licences in `licenses/`, `_headers` (the caches) and `robots.txt`.
   `serve.mjs` serves `assets/` with the same one-year immutable cache and the pages with `no-cache`, as the host does.
+
+Page state: saved settings are one object, `localStorage['llp:settings']` (`{v, era, common, global, gm}`, versioned
+and migrated in `settings.js`). Shared mutable page state lives in two exported objects (`state`: settings, `ui`: what
+is on screen), because an importer cannot reassign another module's `let`; module cycles (search -> results ->
+popover -> search) are runtime-only calls and safe. No framework, by choice: the page's problems were layout, not
+architecture.
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`); a browser that refuses WebAssembly gets a
 message saying so. Source map of `src/`: `main.js` (entry), `settings.js` (saved settings), `state.js`, `data.js`,
