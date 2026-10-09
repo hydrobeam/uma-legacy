@@ -30,19 +30,25 @@ const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
 const btn = (label, cls, fn) => { const b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.onclick = fn; return b; };
 
 // ---------- status line ----------
-let searching = false, t0 = 0, tick = null, timer = null, myId = 0;
+// One run per edit, one answer per run. A run has phases: the search (the best careers by odds), then, with the
+// trainee left to the planner, the plan (its pick among them and every other owned uma). The status line names the
+// phase at work; the answer (career, tree places, veteran analysis) is drawn once, when the run ends. Until then the
+// previous answer stays on screen, dimmed, its actions off.
+let searching = false, phase = 'search', t0 = 0, tick = null, timer = null, myId = 0;
+let phaseNote = '';   // the plan phase's lead: what the search found ("Weighed N careers in X s.")
 let status = { kind: 'loading', text: 'Loading…' };
-let last = null;   // the last result: {r, job}
+let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
   const n = $('run-note');
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
-  $('results').classList.toggle('stale', !searching && ['error', 'empty'].includes(status.kind));
+  const old = searching && !!shown();   // the previous answer, on screen until this run's
+  $('results').classList.toggle('stale', old || (!searching && ['error', 'empty'].includes(status.kind)));
+  $('tree').classList.toggle('stale', old);
+  $('results').setAttribute('aria-busy', String(searching));
   if (searching) { const s = Math.floor((performance.now() - t0) / 1000);
-    n.innerHTML = spinHTML() + '<span>Searching…<span aria-hidden="true">' + (s >= 1 ? ` ${s} s` : '') + '</span></span>'; }
-  else if (planS.state === 'busy' && status.kind === 'done') { const s = Math.floor((performance.now() - planS.t0) / 1000);
-    n.textContent = status.text + ' ';
+    n.textContent = phase === 'plan' && phaseNote ? phaseNote + ' ' : '';
     const sp = el('span'); sp.innerHTML = spinHTML();
-    sp.append('Planning: the next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
+    sp.append(phase === 'plan' ? 'Planning your next career…' : 'Searching careers…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
   else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
     if (status.act && !searching) { const b = btn(status.act.label, 'primary', status.act.run); b.id = 'run-act'; n.append(' ', b); } }   // e.g. Try sample veterans
@@ -59,8 +65,12 @@ function schedule() {
   // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
   // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
   if (engineBusy()) killEngine();
+  // a comparison in flight is stopped with it: its panel goes back to idle, or a roll's quick figures stand unchecked
+  // (an answer that stands keeps her)
   simulationId++;
-  searching = true; t0 = performance.now(); paint();
+  if (simulation.state === 'busy') Object.assign(simulation, { state: 'ready', r: null, kind: null });
+  Object.assign(simulation, { refining: false, provisional: false });
+  searching = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); paint();
   timer = setTimeout(search, 600);
 }
 
@@ -78,7 +88,7 @@ function buildJob() {
   if (!plan.trainee && exclude.length >= UMAS.length) throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   const all = plan.trainee && fixed.length === 2;
-  // a place left open: the K best careers by odds (the plan then picks among them and a few more, `runPlan`)
+  // a place left open: the K best careers by odds (the plan then picks among them and a few more, `search`)
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: true,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: all ? 1 : ROLL_K };
@@ -90,8 +100,8 @@ const ROLL_K = 6;
 // the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
 const baseOf = (job) => ({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1, rollout: undefined, p_now: undefined });
 const baseKey = (job) => JSON.stringify(baseOf(job));
-// after the main result: the plan (a second run: the planner's candidates and its pick), and the entered veteran with
-// its comparison (on demand)
+// the answer's plan (the planner's candidates and its pick; none with the trainee chosen), and the entered veteran
+// with its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
@@ -100,69 +110,63 @@ let simulation = { state: 'none', draft: null, r: null, baseline: null, error: n
 let simulationId = 0;
 let baselineCache = null;
 function comparisonJob() { return JSON.parse(baseKey(last.job)); }
+// A run: the search, then (with the trainee's place left to the planner) the plan, both on the one worker; the answer
+// is drawn once, at the end. Two solver jobs: the plan's reuses the search's (the solver keeps its last search, so the
+// plan job does none of that work again; a second job costs a few ms), and the page knows which phase is at work
+// without the solver reporting it. A newer edit stops a run in either phase (`myId`); nothing of it is drawn.
 async function search() {
   const id = ++myId; simulationId++;
   let job;
-  try { job = buildJob(); } catch (e) { searching = false; status = { kind: e.kind || 'error', text: e.message, act: e.act }; last = null; simulation = { state: 'none' }; renderAll(); paint(); return; }
+  try { job = buildJob(); } catch (e) { searching = false; clearInterval(tick); status = { kind: e.kind || 'error', text: e.message, act: e.act }; last = null; planS = { state: 'none' }; simulation = { state: 'none' }; renderAll(); paint(); return; }
   // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
-  // result and plan are on show (era, settings, veterans as the job carries them, and the same places), so they stand and
-  // nothing runs; a plan or comparison cut short by the edits makes it run again
-  const key = JSON.stringify([ERA, job]);
-  if (last && last.key === key && last.plan === JSON.stringify(plan) && (planS.state === 'done' || planS.state === 'none') && simulation.state !== 'busy') {
+  // answer is on show (era, settings, veterans as the job carries them, and the same places), so it stands and nothing
+  // runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run again
+  const key = JSON.stringify([ERA, job]), places = JSON.stringify(plan);
+  if (last && last.key === key && last.plan === places && planS.state !== 'error') {
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
-  searching = true; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
+  searching = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
+  const fail = (text) => { status = { kind: 'error', text }; last = null; planS = { state: 'none' }; simulation = { state: 'none' }; };
   try {
     const m = await run(job);
     if (id !== myId) return;
-    if (m.r.error) { status = { kind: 'error', text: 'Not searched: ' + m.r.error }; last = null; simulation = { state: 'none' }; }
+    if (m.r.error) fail('Not searched: ' + m.r.error);
     else {
-      last = { r: m.r, job, key, plan: JSON.stringify(plan) };
       const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
-      const n = m.r.candidates;
-      status = { kind: 'done', text: (n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s. ` : `Scored in ${(m.ms / 1000).toFixed(1)} s. `) + cert };
+      const n = m.r.candidates, found = n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s.` : `Scored in ${(m.ms / 1000).toFixed(1)} s.`;
+      let st = { kind: 'done', text: found + ' ' + cert };
       // no career can land every target: say which targets nothing can give (no veteran or parent carries their spark;
       // no deck, outfit or event gives them either, or some career would have them)
       if (!m.r.results.length) {
         const carried = new Set(vets.flatMap(v => [v, ...v.parents]).flatMap(x => Object.keys(x.sparks || {}).map(Number)));
         const none = state.targets.filter(t => !goldGiven(t.group) && !carried.has(t.group)).map(t => tName(t.group));
-        status = { kind: 'error', text: `No career can land all ${state.targets.length} targets` + (none.length ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.` : ' with these veterans.') };
+        st = { kind: 'error', text: `No career can land all ${state.targets.length} targets` + (none.length ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.` : ' with these veterans.') };
       }
-      const best = m.r.results[0], r = best;
+      const best = m.r.results[0];
+      // The plan (solver: sim/plan.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned
+      // uma's best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page
+      // reads `next` alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick.
+      let P = { state: 'none' };
+      if (best && !plan.trainee) {
+        phase = 'plan'; phaseNote = found; t0 = performance.now(); paint();
+        const { rollout: _r, p_now: _p, ...plain } = job;
+        try {
+          const m2 = await run({ ...plain, next: {}, no_reports: true });
+          if (id !== myId) return;
+          const x = m2.r.next;
+          P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
+        } catch (e) { if (id !== myId) return; P = { state: 'error', text: e.message }; }
+        if (P.state === 'done') engineSaveState();   // the worker's kept work, for the next page load
+      }
+      // the answer: the plan's pick (the best odds when no plan ran or it failed), and the veteran you got, drawn once
+      // from it (a comparison on screen was for the old answer)
+      status = st; last = { r: m.r, job, key, plan: places }; planS = P;
+      const r = shown();
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
-      // a trainee you chose leaves the plan nothing to pick: no plan
-      planS = r && !plan.trainee ? { state: 'busy', r: null, t0: performance.now() } : { state: 'none' };
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
-  } catch (e) { if (id !== myId) return; status = { kind: 'error', text: e.message }; last = null; simulation = { state: 'none' }; }
+  } catch (e) { if (id !== myId) return; fail(e.message); }
   searching = false; clearInterval(tick); renderAll(); paint();
-  if (planS.state === 'busy') runPlan();
-}
-// The plan: the same job with `next` (solver: sim/plan.rs `index_rule`, exact odds, no simulation): every owned uma's
-// best career scored by the careers it saves toward a fully looped parent (the cheapest trio). Its pick replaces the
-// best-odds career on show. It shares the one worker with the comparison: a comparison cancelled while both were queued
-// takes it down too, and it runs again (planId tells the run that counts).
-let planId = 0;
-async function runPlan() {
-  const id = myId, pid = ++planId; if (!last) return;
-  const { rollout: _r, p_now: _p, ...plain } = last.job;
-  // plan-only: the page reads `next` alone, so the solver skips the career reports it would rebuild
-  const job2 = { ...plain, next: {}, no_reports: true };
-  planS = { state: 'busy', r: null, t0: performance.now() };
-  clearInterval(tick); tick = setInterval(paint, 1000); paint();
-  try {
-    const m2 = await run(job2);
-    if (id !== myId || pid !== planId) return;
-    const P = m2.r.next;
-    planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
-    if (planS.state === 'done') engineSaveState();   // the worker's kept work, for the next page load
-  } catch (e) { if (id !== myId || pid !== planId) return; planS = { state: 'error', text: e.message }; }
-  clearInterval(tick);
-  // the plan's pick goes on show: the veteran you got follows it (a comparison for the old career goes)
-  const r = shown();
-  if (r && simulation.draft && simulation.forKey !== keyOf(r)) { cancelCompare();
-    simulation = { state: 'ready', draft: draftOf(r), r: null, baseline: simulation.baseline, error: null, forKey: keyOf(r) }; }
-  renderAll(); paint();
 }
 
 // ---------- the pedigree ----------
@@ -562,7 +566,7 @@ function rolledBlueGreen(r) {
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false;
   const ts = tableSave(simulation.draft, r), y = ts ? ts.y : null;
   if (ts == null) { compare(); return; }
-  if (cancelCompare()) runPlan();
+  cancelCompare();
   quickCompare(y, ts.hi); }
 // A roll's careers saved, read from the plan's table for the career on show (`outcomes`: per outcome, her targets' stars
 // and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. With it
@@ -605,13 +609,13 @@ async function quickCompare(y, hi = null) {
   }
 }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
-// can't be interrupted, so the worker goes (run() starts a new one). Returns whether the plan went with it.
+// can't be interrupted, so the worker goes (run() starts a new one). (No run is in flight: they wait for the answer.)
 function cancelCompare() {
-  if (simulation.refining) { simulationId++; simulation.refining = false; simulation.provisional = false; killEngine(); return planS.state === 'busy'; }
-  if (simulation.state !== 'busy') return false;
+  if (simulation.refining) { simulationId++; simulation.refining = false; simulation.provisional = false; killEngine(); return; }
+  if (simulation.state !== 'busy') return;
   simulationId++; simulation.state = 'ready';
-  if (simulation.kind === 'quick') return false;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
-  killEngine(); return planS.state === 'busy';
+  if (simulation.kind === 'quick') return;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
+  killEngine();
 }
 // where a comparison's saving lands: the next career when she is one of its parents, else the route step (V's A, B, C)
 // whose careers fell most; unnamed when the route itself changed
@@ -631,13 +635,11 @@ function draftJob(v) {
 }
 // an edit to the entered veteran: the comparison on screen is for the old one
 function editDraft() { if (simulation.r) simulation.stale = true; renderSimulation(); }
-// Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now. The plan, if the
-// restart took it down, is queued again behind the comparison (runComparison posts its first job before it returns).
+// Compare (or a roll): a press while a comparison runs restarts it with the veteran as she is now
 function compare() {
   if (searching || !shown()) return;
-  const lost = cancelCompare();
+  cancelCompare();
   runComparison();
-  if (lost) runPlan();
 }
 // refine: a roll's quick result stays on screen (an improvement shown at once, its figures held) while this works out
 // the exact count; otherwise the panel waits on it
@@ -665,7 +667,7 @@ async function runComparison(refine = false) {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
+    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as a run's plan job, once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
     // with her, priced under the plan's own fit (its stage candidates and continuations, `fit`), not one refitted to the
@@ -709,8 +711,8 @@ function simulationBody() {
     parentLabel: (j) => '#' + (r.parents[j] + 1) }));
   const side = el('div', 'simcol');
   const actions = el('div', 'row');
-  // Compare and a roll stay usable while a comparison runs: either one restarts it (not during the main search, whose
-  // result replaces the career on show)
+  // Compare and a roll stay usable while a comparison runs: either one restarts it (not during a run, whose
+  // answer replaces the career on show)
   const go = btn('Compare', 'primary', compare); go.id = 'sim-compare'; go.dataset.k = 'sim:compare'; go.disabled = searching;
   const roll = btn('Reroll', '', rollDraft); roll.id = 'sim-roll'; roll.dataset.k = 'sim:roll'; roll.disabled = searching;
   const add = btn('Add to veterans', '', addDraft); add.id = 'sim-add'; add.disabled = searching;
@@ -777,7 +779,7 @@ function renderSimulation() {
   if (k && k.startsWith('sim:') && !ae.isConnected) document.querySelector(`[data-k="${CSS.escape(k)}"]`)?.focus();
 }
 // the options the planner weighed (only what it picks: the places left open), with "Use this": per option its odds now
-// and, once the plan is made, the expected careers to land; before that, the K best careers by odds
+// and its net saving per run; without a plan (the trainee chosen, or the plan failed), the K best careers by odds
 function pickWhat(r) {
   const what = el('div', 'altw');
   if (!plan.trainee) { what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ' ' + r.trainee.name); }
@@ -787,10 +789,12 @@ function pickWhat(r) {
   return what;
 }
 function useBtn(r) {
-  return btn('Use this', '', () => {
+  const b = btn('Use this', '', () => {
     plan.trainee = r.trainee.id; const f = plan.parents.slice();
     const fr = r.parents.filter(i => !f.includes(vets[i].id)); for (let j = 0; j < 2; j++) if (!f[j]) f[j] = vets[fr.shift()].id;
     plan.parents = f; changed(); });
+  b.disabled = searching;   // (an old answer's option, while a run works on the next)
+  return b;
 }
 const OPT_SHOW = 8;
 function optionsEl() {
@@ -811,7 +815,7 @@ function optionsEl() {
     if (P && r.near) tags.appendChild(el('span', 'otag', 'about the same'));
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    const sv = el('td', 'orole', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : planS.state === 'busy' ? 'planning…' : '–');
+    const sv = el('td', 'orole', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–');
     if (P && r.index != null) { sv.title = `${roleText(r)}` + (r.lift > 0 ? `: ${pct(r.lift)} of her rolls make the plan cheaper` : '') + (r.two_step != null ? `; ${netText(r.two_step)} from the next career her best rolls open` : '') + (r.near ? '; about the same as the pick' : ''); }
     row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
@@ -927,7 +931,7 @@ function initSettings() {
   enginePersist();   // the solver's kept work survives a page reload
   initSetup(); initFold();
   // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
-  onSave(() => { renderAll(); schedule(); paintFold(); });
+  onSave(() => { schedule(); renderAll(); paintFold(); });
 }
 // the setup panel folds to its ribbon (click it) and a one-line summary; the choice is kept in this browser
 let folded = (() => { try { return localStorage.getItem('llp:setup-folded') === '1'; } catch { return false; } })();
@@ -988,7 +992,7 @@ document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogEl
 loadData().then(() => {
   initSettings(); initPopover();
   // A result names parents by their place in the veteran list: adding, removing or importing veterans changes the
-  // places, so the result on screen goes; an edit to a veteran keeps it on screen until the new search ends.
+  // places, so the answer on screen goes; an edit to a veteran keeps it on screen, dimmed, until the new one is ready.
   const vetsSig = () => vets.map(v => v.id).join(',');
   let sig = vetsSig();
   onVetsChange(() => {

@@ -805,7 +805,26 @@ const TESTS = {
       window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
         w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
         w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
+      // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
+      // got (her sparks), whether the old answer is dimmed
+      window.__seq = [];
+      const snap = () => { const n = document.getElementById('run-note'); if (!n) return;
+        const s = { busy: !!n.querySelector('.spin'), phase: /Planning your next career…/.test(n.textContent) ? 'plan' : /Searching careers…/.test(n.textContent) ? 'search' : '',
+          who: document.querySelector('#tree .pn.trainee .nm')?.textContent || '', draft: (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''),
+          stale: !!document.querySelector('#results.stale') };
+        const k = JSON.stringify(s); if (window.__seq.at(-1)?.k !== k) window.__seq.push({ ...s, k }); };
+      new MutationObserver(snap).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
     });
+    // one answer per run: while the run is busy the page shows the answer it had before it (`pre`, none at first), dimmed
+    // if there is one, and names the phase; the answer it ends on is the only other one drawn
+    const oneAnswer = async (pre) => {
+      const seq = await pg.evaluate(() => window.__seq), busy = seq.filter(s => s.busy), end = seq.at(-1);
+      const shows = (s) => s.who + '/' + s.draft, phases = busy.map(s => s.phase).filter((p, i, a) => p && p !== a[i - 1]);
+      const ok = busy.length > 0 && !end.busy && busy.every(s => shows(s) === pre && (!s.draft || s.stale)) && end.draft !== '' && !end.stale
+        && seq.slice(seq.indexOf(busy.at(-1)) + 1).every(s => shows(s) === shows(end));
+      return { ok, phases, detail: `phases ${phases.join(' > ')} · before ${pre.slice(0, 60)} · busy shows ${[...new Set(busy.map(shows))].map(x => x.slice(0, 40)).join(' | ')} · end ${shows(end).slice(0, 60)}` };
+    };
+    const showsNow = () => pg.evaluate(() => (document.querySelector('#tree .pn.trainee .nm')?.textContent || '') + '/' + (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''));
     const pg = editorAware(await ctx.newPage()); pg.errors = [];
     pg.on('pageerror', e => pg.errors.push(String(e))); pg.on('console', m => m.type() === 'error' && !/downloadable font/.test(m.text()) && pg.errors.push(m.text()));
     const note = () => pg.textContent('#run-note');
@@ -836,6 +855,7 @@ const TESTS = {
     check('career: the Career setup ribbon (its edge too, not the strip beside it; folded, the summary) folds the panel to a one-line summary and back',
       stripStays && foldHid && sumOpen && ribFold && /^Global · .+ · rank (B–S\+|SS) · 8 target skills$/.test(foldSum)
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
+    await pg.evaluate(() => { window.__seq = []; });
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
     await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
@@ -846,6 +866,9 @@ const TESTS = {
     check('career: the Veteran Umamusume button opens your veterans with their import and export', vbtn && await pg.locator('#set-vets #vets .vet').count() === 12
       && await pg.locator('#set-vets #v-paste, #set-vets #v-export, #set-vets #v-clear, #set-vets #v-file').count() === 4);
     await done();
+    const firstRun = await oneAnswer('Any uma/'), firstRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
+    check('career: one answer per run: while it searches, then plans, no career is drawn; the status names each phase; the answer is the plan\'s pick with the veteran drawn once',
+      firstRun.ok && firstRun.phases.join() === 'search,plan' && firstRes && (await pg.textContent('#tree .pn.trainee .nm')) === firstRes.next.choice.trainee.name, firstRun.detail);
     // Export: a dialog with the veterans and the solver job as text; Copy puts it on the clipboard, Download saves it, Paste takes it back
     await vetsOpen(); await pg.click('#v-export'); await dialog(pg, 'vx-dlg');
     const exText = await pg.inputValue('#vx-text'), ex = JSON.parse(exText);
@@ -945,7 +968,10 @@ const TESTS = {
     // the deck: a card's panel, as in the planner; marking it not owned searches again without it
     const dc = pg.locator('#tree-deck .dc').first(), dcid = await dc.getAttribute('data-cid');
     await dc.click(); await pg.waitForSelector('.cpop:not([hidden]) [data-act="own"]');
+    const preEdit = await showsNow(); await pg.evaluate(() => { window.__seq = []; });
     await pg.locator('.cpop [data-act="own"]').uncheck(); await done();
+    const edit = await oneAnswer(preEdit);
+    check('career: an edit keeps the old answer on screen, dimmed, through both phases (no interim career), then draws the new one', edit.ok && edit.phases.join() === 'search,plan', edit.detail);
     check('career: a deck card\'s panel marks it not owned; the search drops it or borrows it', await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff[id] === false, dcid)
       && (!(await pg.locator(`#tree-deck .dc[data-cid="${dcid}"]`).count()) || await pg.locator(`#tree-deck .dc.bor[data-cid="${dcid}"]`).count() === 1));
     await pg.click('#o-cards'); await dialog(pg, 'set-cards'); await pg.click('#c-all'); await pg.locator('#set-cards .dclose').click(); await done();
@@ -1106,8 +1132,11 @@ const TESTS = {
     const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1 && !j.next).length);
     const cachedRuns = await baselineRuns();
     await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
+    await pg.evaluate(() => { window.__seq = []; });
     await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await pg.waitForTimeout(700);
     await pg.waitForSelector('#sim-compare:not([disabled])', { timeout: 180000 });
+    const fixedRun = await oneAnswer('Agnes Digital/');
+    check('career: with the trainee chosen the run is the search alone (no planning phase), its best career the one answer', fixedRun.ok && fixedRun.phases.join() === 'search', fixedRun.detail);
     // with the trainee chosen there is nothing for the plan to pick: Compare pressed twice restarts the comparison,
     // which finishes, and no plan job is sent
     const aheadJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.next && !j.compare).length), la0 = await aheadJobs();
