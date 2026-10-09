@@ -21,7 +21,7 @@ import { affEl, affTable as affTableOf } from './afftable.js';
 import { pct, openOdds as openOdds0 } from './odds.js';
 import { initTargets, renderTargets } from './targets.js';
 import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName, sparksEl, winsBtn, changeUma, askSkills, sampleVets,
-  newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, openWins } from './vets.js';
+  newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, filterUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
 
@@ -954,7 +954,7 @@ loadData().then(() => {
     schedule(); renderAll();
   });
   for (const x of ['vets', 'new', 'auto']) $('vp-tab-' + x).onclick = () => vpTab(x);
-  $('vp-filter').oninput = drawNew;
+  $('vp-filter').oninput = () => filterUmas($('vp-umas'), $('vp-filter').value);
   $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $('vpick-dlg').close(); changed(); };
   $('v-file').onchange = async (e) => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };

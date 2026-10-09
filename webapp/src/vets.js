@@ -53,16 +53,23 @@ export function openUmaPicker(title, onPick, only = null) {
   drawUmas($('pick-list'), '', pickUma, only); $('pick-dlg').showModal(); $('pick-filter').focus();
 }
 function pickUma(id) { $('pick-dlg').close(); const cb = pickCb; pickCb = null; cb && cb(id); }
-$('pick-filter').oninput = () => drawUmas($('pick-list'), $('pick-filter').value, pickUma, pickOnly);
+$('pick-filter').oninput = () => filterUmas($('pick-list'), $('pick-filter').value);
+// the picker's list: every uma `only` lets through, the filter applied by hiding (typing doesn't rebuild it)
 export function drawUmas(box, filter, onPick, only = null) {
-  box.textContent = ''; const f = filter.trim().toLowerCase();
+  box.textContent = '';
   for (const u of [...UMAS].sort((a, b) => a.name.localeCompare(b.name))) {
-    if ((f && !u.name.toLowerCase().includes(f)) || (only && !only(u))) continue;
+    if (only && !only(u)) continue;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'upick'; b.append(umaAv(u.id, null, 40));
-    const s = document.createElement('span'); s.textContent = u.name; b.append(s);
+    const s = document.createElement('span'); s.textContent = u.name; b.append(s); b._nm = u.name.toLowerCase();
     b.onclick = () => onPick(u.id); box.appendChild(b);
   }
-  if (!box.children.length) box.innerHTML = '<p class="hint">No uma matches.</p>';
+  const none = document.createElement('p'); none.className = 'hint'; none.textContent = 'No uma matches.'; box.appendChild(none);
+  filterUmas(box, filter);
+}
+export function filterUmas(box, filter) {
+  const f = filter.trim().toLowerCase(); let n = 0;
+  for (const b of box.querySelectorAll('.upick')) { b.hidden = !!f && !b._nm.includes(f); n += !b.hidden; }
+  box.querySelector('p.hint').hidden = n > 0;
 }
 // after an uma is picked for a node that carries sparks: whether to give her the target skills. onChoice(sparks | null:
 // keep what she has)

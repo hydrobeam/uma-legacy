@@ -24,20 +24,18 @@ export function cardGives(c, groups) {   // [{t: skill, s: note, tip: tooltip, g
 }
 export function renderCards() {
   const groups = new Set(state.targets.filter(t => !goldGiven(t.group)).map(t => t.group));   // what the deck still has to give
-  const f = $('c-filter').value.trim().toLowerCase();
   const box = $('cards'); box.textContent = '';
   const sections = [['SSR', c => c.rar === 3], ['SR', c => c.rar === 2], ['R', c => c.rar === 1 && (c.pal || state.rcards)]];   // R pals stay usable without R cards
   const dir = state.cdir === 'desc' ? -1 : 1, nmOf = (c) => { const t = cardTitle(c); return t.nm + ' ' + t.ti; };
   for (const [label, pick] of sections) {
     const list = CARDS.filter(pick).map(c => ({ c, gives: cardGives(c, groups) })).filter(x => x.c.pal || x.gives.length)
       .sort((a, b) => dir * (state.csort === 'name' ? nmOf(a.c).localeCompare(nmOf(b.c)) : (a.c.rel - b.c.rel) || (a.c.id - b.c.id)));
-    const vis = list.filter(x => !f || x.c.name.toLowerCase().includes(f));
-    if (!vis.length) continue;
+    if (!list.length) continue;
     const sec = document.createElement('div'); sec.className = 'cgroup';
     sec.innerHTML = `<h3>${label}</h3><div class="ctiles"></div>`;
     const chips = sec.querySelector('.ctiles');
-    for (const { c, gives } of vis) {
-      const t = cardTitle(c, false); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button';
+    for (const { c, gives } of list) {
+      const t = cardTitle(c, false); const b = document.createElement('button'); b.className = 'ct'; b.type = 'button'; b._nm = c.name.toLowerCase();
       b.innerHTML = `<span class="cn">${esc(t.nm)}</span>` + (t.ti ? `<span class="cti">${esc(t.ti)}</span>` : '') +
         `<span class="cg">${gives.length ? gives.map(x => `<span class="gv${x.g ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.t)} <small>${esc(x.s)}</small></span>`).join('')
           : ''}</span>`;
@@ -54,16 +52,26 @@ export function renderCards() {
     box.appendChild(sec);
   }
   paintSort('cs', 'c');
+  filterCards();
+}
+// the filter hides cards (and a rarity section left empty) instead of rebuilding the list on every keystroke
+function filterCards() {
+  const f = $('c-filter').value.trim().toLowerCase();
+  for (const sec of $('cards').querySelectorAll('.cgroup')) {
+    let any = false;
+    for (const b of sec.querySelectorAll('.ct')) { b.hidden = !!f && !b._nm.includes(f); any ||= !b.hidden; }
+    sec.hidden = !any;
+  }
   cardCount();
 }
 function cardCount() {
-  // the cards listed (those that give a target, and pals) and how many of them are owned (beside All / None owned)
-  const cs = [...$('cards').querySelectorAll('.ct')], own = cs.filter(c => c.getAttribute('aria-pressed') === 'true').length;
+  // the cards listed (those that give a target, and pals, matching the filter) and how many of them are owned (beside All / None owned)
+  const cs = [...$('cards').querySelectorAll('.ct:not([hidden])')], own = cs.filter(c => c.getAttribute('aria-pressed') === 'true').length;
   $('c-count').textContent = `${own} of ${cs.length} owned`;
 }
 export function initCards() {
   sortMenu('cs', 'c', () => renderCards());
-  $('c-filter').oninput = renderCards;
+  $('c-filter').oninput = filterCards;
   $('c-all').onclick = () => { state.cardsOff = {}; save(); renderCards(); };
   $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); renderCards(); };
   if (!$('c-top')) return;   // the career page has neither: one career, one deck

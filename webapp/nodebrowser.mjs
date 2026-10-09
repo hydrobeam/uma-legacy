@@ -1097,7 +1097,7 @@ const TESTS = {
     const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1 && !j.next).length);
     const cachedRuns = await baselineRuns();
     await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
-    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await pg.waitForTimeout(700);
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await pg.waitForTimeout(700);
     await pg.waitForSelector('#sim-compare:not([disabled])', { timeout: 180000 });
     // with the trainee chosen there is nothing for the plan to pick: Compare pressed twice restarts the comparison,
     // which finishes, and no plan job is sent
@@ -1181,7 +1181,7 @@ const TESTS = {
     // parent 1: a new veteran, with the skills prompt
     await node('node:p0'); await inNode(/^(Choose|Change) parent$/).click(); await dialog(pg, 'vpick-dlg');
     check('career: the parent picker lists your veterans', await pg.locator('#vp-list .vpt').count() === 12);
-    await pg.click('#vp-tab-new'); await pg.fill('#vp-filter', 'Special Week'); await pg.locator('#vp-umas .upick').first().click();
+    await pg.click('#vp-tab-new'); await pg.fill('#vp-filter', 'Special Week'); await pg.locator('#vp-umas .upick:visible').first().click();
     await dialog(pg, 'ask-dlg');
     check('career: picking a new uma asks whether to add the skills', /Add skills to Special Week/.test(await pg.textContent('#ask-title')));
     await ask('All 8 at 2★'); await done();
@@ -1195,7 +1195,7 @@ const TESTS = {
     check('career: the planner fills the rest', /Weighed 792 careers/.test(await note()), await note());
     // a grandparent: pick her uma, then her skills
     await node('node:p0g0'); await pg.locator('#node-dlg .facebtn').click(); await dialog(pg, 'pick-dlg');
-    await pg.fill('#pick-filter', 'Gold Ship'); await pg.locator('#pick-list .upick').first().click(); await ask('All 8 at 3★'); await done();
+    await pg.fill('#pick-filter', 'Gold Ship'); await pg.locator('#pick-list .upick:visible').first().click(); await ask('All 8 at 3★'); await done();
     const g1 = pg.locator('.pf').nth(0).locator('.pn.gp').first();
     check('career: a grandparent takes an uma and the skills chosen for her', /Gold Ship/.test(await g1.textContent()) && await sparksIn('node:p0g0', 3));
     // the other parent can't be the same uma
@@ -1205,7 +1205,7 @@ const TESTS = {
     check('career: veterans that can\'t be parent 2 are greyed out', blocked === 0 || await pg.locator('#vp-list .vpt:disabled .vptw').count() === blocked);
     // the trainee
     await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
-    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick').first().click(); await done();
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await done();
     check('career: the chosen trainee is set and the picks list only parents', !(await pg.locator('#tree .pn.trainee').getAttribute('class')).includes('ghost')
       && (await pg.$$eval('.alts tbody .altw', ws => ws.every(w => /^Parents /.test(w.textContent.trim())))));
     await pg.locator('.alts tbody tr').filter({ has: pg.getByRole('button', { name: 'Use this' }) }).first().getByRole('button', { name: 'Use this' }).click(); await done();

@@ -24,19 +24,21 @@ function rosterCount() {
   const nO = UMAS.reduce((a, u) => a + Math.max(1, (u.outfits || []).length), 0), offO = UMAS.reduce((a, u) => a + ((u.outfits && u.outfits.length) ? u.outfits : [null]).filter(o => tileState(u, o) === 'out').length, 0);
   $('r-count').textContent = `${UMAS.length - out} of ${UMAS.length} umas · ${nO - offO} of ${nO} outfits` + (req ? ` · ${req} must include` : '');
 }
-export function renderRoster() {
+// the filter hides tiles (name or outfit containing the text) instead of rebuilding the list on every keystroke
+function filterRoster() {
   const f = $('r-filter').value.trim().toLowerCase();
+  for (const t of $('roster').children) t.hidden = !!f && !t._nm.includes(f) && !t._ol.includes(f);
+}
+export function renderRoster() {
   const box = $('roster'); box.textContent = '';
   const tiles = [];
-  for (const u of UMAS) for (const o of (u.outfits && u.outfits.length ? u.outfits : [null])) {
-    if (f && !u.name.toLowerCase().includes(f) && !(o && o.label.toLowerCase().includes(f))) continue;
-    tiles.push({ u, o, rel: o ? o.rel : 0, key: u.name + ' ' + (o ? o.label : '') });
-  }
+  for (const u of UMAS) for (const o of (u.outfits && u.outfits.length ? u.outfits : [null])) tiles.push({ u, o, rel: o ? o.rel : 0, key: u.name + ' ' + (o ? o.label : '') });
   const dir = state.rdir === 'desc' ? -1 : 1;
   tiles.sort((a, b) => dir * (state.rsort === 'name' ? a.key.localeCompare(b.key) : (a.rel - b.rel) || ((a.o ? a.o.id : 0) - (b.o ? b.o.id : 0))));
   const EAGER = 8;   // the first two rows are on screen at load (phone and desktop): their portraits load at once
   tiles.forEach(({ u, o }, i) => {
     const t = document.createElement('div'); t.className = 'ut'; t.dataset.uma = u.id;
+    t._nm = u.name.toLowerCase(); t._ol = o ? o.label.toLowerCase() : '';
     const b = document.createElement('button'); b.className = 'up'; b.type = 'button';
     b.appendChild(umaAv(u.id, o ? o.id : null, 96, i < EAGER)); t.appendChild(b);
     const nm = document.createElement('div'); nm.className = 'un'; nm.textContent = u.name; t.appendChild(nm);
@@ -57,12 +59,13 @@ export function renderRoster() {
       save(); box.querySelectorAll(`.ut[data-uma="${u.id}"]`).forEach(x => x._paint()); rosterCount(); };
     box.appendChild(t);
   });
+  filterRoster();
   paintSort('rs', 'r');
   rosterCount();
 }
 export function initRoster() {
   sortMenu('rs', 'r', () => renderRoster());
-  $('r-filter').oninput = renderRoster;
+  $('r-filter').oninput = filterRoster;
   $('r-all').onclick = () => { state.roster = Object.fromEntries(Object.entries(state.roster).filter(([, v]) => v === 'req'));
     state.outfits = Object.fromEntries(Object.entries(state.outfits).filter(([, v]) => v === 'req')); save(); renderRoster(); };
   $('r-none').onclick = () => { for (const u of UMAS) if (!isRequired(u)) state.roster[u.id] = 'out'; save(); renderRoster(); };
