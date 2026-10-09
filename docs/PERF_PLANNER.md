@@ -146,6 +146,7 @@ plan/compare/reroll state machines, views and import/export.
 - Deck search memory traffic: the flat miss stack (no 32-wide copies per node) and per-leaf scratch: identical, no
   measurable gain (the copies were not a cost); per-call setup hoisted: configuration building is about a quarter of
   deck-search time (p16), the hoists within noise.
+- Builders through their deck class (owner decision): proxy careers from the class's winning decks, exact searches only within PROXY_EFF / PROXY_SAVE = 0.2 of what the plan turns on (measured with `proxy_check`: proxy at most 11% low on contenders, 9% on savings near the shown rows, exact on five of six jobs). val/plan: picks, top-8 rows, V and shown scores unchanged; exact careers p16 9/68, p10 20/51, p11 38/51, gm16 10/83; nodes p16 39.8M -> 3.4M, p10 34.8M -> 16.5M, gm16 128.5M -> 13.2M; native time p16 10.1 -> 1.7 s, p10 15.8 -> 7.8 s, p11 13.3 -> 7.5 s, gm16 44.0 -> 5.5 s (machine shared).
 - Tried, not kept: solving each class's highest-ceiling trainees first (a pre-pass before the scoring loop): nodes
   p16 -0.6%, p10/p11 0%, URA -1.7%, gm16 0% (under the 3% bar).
 - `upper_na` relaxed instead of giving up: a target with three or more feeding chain cards, or two feeders other than
