@@ -6,7 +6,7 @@ import { $, spinHTML, el, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, ASSETS, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, killEngine, engineBusy } from './engine.js';
+import { run, killEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv } from './images.js';
@@ -178,6 +178,7 @@ async function runPlan() {
     const P = m2.r.next;
     if (!kept) keepLoop(job2, P);
     planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
+    if (planS.state === 'done' && !kept) engineSaveState();   // the worker's kept work, for the next page load
   } catch (e) { if (id !== myId || pid !== planId) return; planS = { state: 'error', text: e.message }; }
   clearInterval(tick);
   // the plan's pick goes on show: the veteran you got follows it (a comparison for the old career goes)
@@ -678,6 +679,7 @@ async function runComparison(refine = false) {
     const pa = ma.r.next || null;
     keepLoop(ja, pa);
     if (pa && !pa.error) planKept = { key: planKey(ja), r: pa, ms: ma.ms };
+    engineSaveState();
     const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;
     // a veteran never costs careers (every plan without her is still there): the two plans are fitted to their own pools,
@@ -917,6 +919,7 @@ function initSettings() {
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
   initScenario(); initRoster(); initCards(); initTargets();
   renderRoster(); renderTargets();
+  enginePersist();   // the solver's kept work survives a page reload
   initSetup(); initFold();
   // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
   onSave(() => { renderAll(); schedule(); paintFold(); });
