@@ -897,11 +897,11 @@ const TESTS = {
     const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
     // the plan behind the numbers sits in the "What do these mean?" popup, with the explanation of saves per run
     await pg.click('#save-why'); await dialog(pg, 'save-dlg');
-    const trioLoop = await pg.textContent('#save-dlg .oloop'), trioMem = await pg.textContent('#save-dlg .omembers').catch(() => ''), saveTxt = await pg.textContent('#save-dlg');
+    const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');
     await pg.mouse.click(5, 5);   // a click on the backdrop closes it
     check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
-      && trioRes.next.members.length === 2 && /^Expected careers to a fully looped parent: about [\d,]+ \(\d+\/\d+s of .+ and .+, then .+ from both\)\.$/.test(trioLoop)
-      && /1 in [\d,]+/.test(trioMem) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
+      && /1 in [\d,]+/.test(trioLoop) && /run this career once first, then follow the route/.test(saveTxt) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
       `${trioRes && trioRes.next.mode} | ${trioMem} | ${trioCells.join(' ')}`);
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load'); await vetsShut();
@@ -964,9 +964,9 @@ const TESTS = {
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
     // the trio: each step's line (her odds now and the lifts building pays for, or your 8/8 at no cost)
     await pg.click('#save-why'); await dialog(pg, 'save-dlg');
-    const memTxt = await pg.textContent('#save-dlg .omembers').catch(() => ''); await pg.keyboard.press('Escape');
-    check('career: the plan names its trio and, per step, the odds now and what building pays for', !lastRes.next.members?.length
-      || /: (your \d+\/\d+, no careers|.*1 in [\d,]+)/.test(memTxt), memTxt || 'no trio');
+    const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => ''); await pg.keyboard.press('Escape');
+    check('career: the plan names its route and, per step, the odds now and what building pays for', !lastRes.next.members?.length
+      || /(your \d+\/\d+ of .+ \(no careers\)|1 in [\d,]+)/.test(memTxt), memTxt || 'no trio');
     check('career: beside the tree, the veteran analysis with the odds in its header, then the target skills (no goal-step note, no prose; the deck is under the trainee)', await pg.evaluate(() => {
       const r = document.getElementById('results'), kids = [...r.children], at = (sel) => kids.findIndex(k => k.matches(sel)), sim = at('#sim-top');
       return document.getElementById('tree').nextElementSibling === r && at('#goal-note') === -1 && at('.deck') === -1 && at('.lhead') === -1

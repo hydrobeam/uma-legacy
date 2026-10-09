@@ -818,25 +818,27 @@ function openSaveWhy(P) {
   saveDlg.textContent = ''; const n = state.targets.length;
   const h = el('h3', 'gmdhdr', 'Saves per run'); h.id = 'save-title'; saveDlg.appendChild(h);
   const body = el('div', 'gmdbody savebody');
-  // what the number is, what it is measured against (the plan's expected careers with the veterans you have now) and how
-  const V = P.v0 != null ? `about ${fmtN(P.v0)}` : 'the plan\'s figure below';
+  // what the number is, the yardstick (the plan's route from today's veterans, step by step, with its careers) and how a
+  // row is measured against it (run this career once first, then follow the route), with a worked example from the plan
+  const pl = P.v0_plan, ms = P.members || [], V = P.v0 != null ? fmtN(P.v0) : null;
+  const step = (m, i) => { const k = pl?.careers?.[i]; const c = k != null ? ` (about ${fmtN(k)} careers)` : '';
+    if (m.real) return `your ${n}/${n} of ${m.trainee} (no careers)`;
+    const who = m.have8 ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
+    return m.builds > 0 ? `${who}lift ${m.trainee}'s odds with about ${m.builds} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
+      : `${who}rerun ${m.trainee}'s best career (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`; };
+  const route = pl && ms.length >= 2 && V ? `From the veterans you have now, the cheapest route the planner finds: ${step(ms[0], 0)}; then ${step(ms[1], 1)}; then ${pl.c} with those two ${n}/${n}s as parents${pl.careers?.[2] != null ? ` (about ${fmtN(pl.careers[2])} careers)` : ''}. About ${V} careers in all.` : 'No route found from the veterans you have now.';
+  // the example: the route's first step that is a plain rerun, her odds lifted by 6% (one helpful parent)
+  const ex = ms.find(m => !m.real && !(m.builds > 0) && m.p > 0);
+  const exTxt = ex ? ` For example, if as a parent she lifted ${ex.trainee}'s best odds from ${fmtIn(ex.p)} to ${fmtIn(ex.p * 1.06)}, that step would take about ${fmtN(1 / ex.p - 1 / (ex.p * 1.06))} fewer careers.` : '';
   body.append(el('div', 'gmdsub', 'What it measures'),
     el('p', '', `How many careers running this career takes off your road to a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n}), after paying for the run itself.`),
-    el('div', 'gmdsub', 'What it is measured against'),
-    el('p', '', `The planner's estimate of the careers that road still takes with the veterans you have now: ${V} (the plan below). That is the number to beat.`),
-    el('div', 'gmdsub', 'How it is worked out'),
-    el('p', '', `For a career, the planner works the estimate out again with her veteran added, once for every result she could roll (which of the ${n} targets land, at how many stars), and averages those by how likely each result is. Her veteran lowers the estimate when, as a parent, she raises the odds of the umas the plan needs, or when she is one of the ${n}/${n}s the plan is after. Saves per run = today's estimate − that average − 1 (the run itself). For the few highest rows it also adds what her best results would open for the career after.`),
-    el('p', '', `+1.1: on average she leaves you 1.1 careers closer than you are now, the run already paid for. 0: what she leaves behind is worth exactly the run. Below zero: the run costs more than her veteran brings.`),
+    el('div', 'gmdsub', 'The yardstick: the plan\'s route'),
+    el('p', 'oloop', route),
+    el('div', 'gmdsub', 'How a row is worked out'),
+    el('p', '', `Each row asks: run this career once first, then follow the route. Do you get there sooner? Her veteran joins your parents, so she can make the route's steps cheaper.${exTxt} The planner works the route out again with her veteran, once for every result she could roll (which of the ${n} targets land, at how many stars), and averages those by how likely each result is; most results lift nothing. Saves per run = ${V ? `${V}` : 'the route\'s careers'} − that average − 1 (her run). For the few highest rows it also adds what her best results would open for the career after.`),
+    el('p', '', `+1.1: on average, running her first gets you there 1.1 careers sooner, her run already paid for. 0: her veteran is worth exactly the run. Below zero: going straight to the route is cheaper.`),
     el('div', 'gmdsub', 'Why not just run the best odds?'),
-    el('p', '', `The odds column only says who is most likely to land all ${n} in this one run. A fully looped parent needs ${n}/${n}s of two different umas, then a third career off both of them, and every veteran you make becomes a parent for the runs after it. So a run with slightly worse odds can be the better move when what she leaves behind makes the next runs cheaper. The planner counts both: her own shot, and what her veteran does for the rest.`),
-    el('div', 'gmdsub', 'The plan right now'));
-  { const pl = P.v0_plan;
-    const n = state.targets.length;
-    body.appendChild(el('p', 'sub oloop', P.v0 != null && pl ? `Expected careers to a fully looped parent: about ${fmtN(P.v0)} (${n}/${n}s of ${pl.a} and ${pl.b}, then ${pl.c} from both).` : 'Expected careers to a fully looped parent: no plan found.'));
-    if (P.members?.length) body.appendChild(el('p', 'sub omembers', P.members.map(m => m.real ? `${m.trainee}: your ${n}/${n}, no careers.`
-      : (m.have8 ? `${m.trainee}: a fresh ${n}/${n} (yours is the poorer parent), ` : `${m.trainee}: `) + (m.builds > 0
-        ? `${fmtIn(m.p)} now; building pays for about ${m.builds} more lifts (to about ${fmtIn(m.p_switch)}), then run her: about ${fmtN(m.careers)} careers.`
-        : `${fmtIn(m.p)}, run her: about ${fmtN(m.careers)} careers.`)).join(' '))); }
+    el('p', '', `The odds column only says who is most likely to land all ${n} in this one run. A fully looped parent needs ${n}/${n}s of two different umas, then a third career off both of them, and every veteran you make becomes a parent for the runs after it. So a run with slightly worse odds can be the better move when what she leaves behind makes the next runs cheaper. The planner counts both: her own shot, and what her veteran does for the rest.`));
   saveDlg.appendChild(body);
   const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
   saveDlg.showModal(); c.focus();

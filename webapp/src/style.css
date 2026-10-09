@@ -1185,7 +1185,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 /* Options: the explanation behind a button */
 .game .btn.savewhy { justify-self: start; font-size: 0.82rem; padding: 4px 12px; }
 .savebody p { margin: 0; line-height: 1.45; }
-.savebody .oloop, .savebody .omembers { font-size: 0.85rem; color: var(--gm-ink); }
+.savebody .oloop { color: var(--gm-ink); }   /* the route: body text like the rest of the popup */
 .gmdlg { width: min(520px, calc(100vw - 32px)); }
 .gmdlg .gmdbody { max-height: calc(100vh - 160px); overflow: auto; }
 
