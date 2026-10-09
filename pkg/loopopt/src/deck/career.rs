@@ -338,6 +338,8 @@ struct Env<'a> {
     /// `best_deck` calls without start decks, by what they read (`DeckKey`): the outcome and what the call did besides
     /// (kept between jobs of one setup, `DECK_KEEP`)
     deck_memo: crate::FxMap<DeckKey, DeckMemo>,
+    /// `corners_kept`'s tables by (deck class, the deck's entries, filler), kept between jobs of one setup with `deck_memo`
+    corner_memo: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
     memo_fp: u64, job: u64,
 }
@@ -359,10 +361,13 @@ thread_local! {
     /// sets the model, the deck space and the class caps, `cap_audit` included) with the job's trainees (the plain pals'
     /// order), the last few. Exact: a `DeckKey` reads the same model, space and caps in every job of one setup, and the
     /// work budget's argument holds for any budget (`best_deck`)
-    static DECK_KEEP: std::cell::RefCell<Vec<(u64, crate::FxMap<DeckKey, DeckMemo>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static DECK_KEEP: std::cell::RefCell<Vec<(u64, Kept)>> = const { std::cell::RefCell::new(Vec::new()) };
     /// jobs run so far (`Env::job`)
     static JOB_NO: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
+/// what a setup keeps between jobs: `Env::deck_memo` and `Env::corner_memo`
+#[derive(Default)]
+struct Kept { decks: crate::FxMap<DeckKey, DeckMemo>, corners: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>> }
 /// setups whose memo is kept, and the entries past which a setup's memo starts afresh (at a job's start)
 const DECK_KEEP_SETUPS: usize = 4;
 const DECK_KEEP_CAP: usize = 8192;
@@ -371,7 +376,7 @@ const DECK_KEEP_CAP: usize = 8192;
 pub(crate) fn forget_kept_decks() { DECK_KEEP.with(|c| c.borrow_mut().clear()); }
 impl Drop for Env<'_> {
     fn drop(&mut self) {
-        let m = std::mem::take(&mut self.deck_memo); let fp = self.memo_fp;
+        let m = Kept { decks: std::mem::take(&mut self.deck_memo), corners: std::mem::take(&mut self.corner_memo) }; let fp = self.memo_fp;
         DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.retain(|e| e.0 != fp); c.push((fp, m)); while c.len() > DECK_KEEP_SETUPS { c.remove(0); } });
     }
 }
@@ -910,6 +915,19 @@ impl<'a> Env<'a> {
     /// points q_k = 1 - (1 - q0_k) x_k, x_k in {0, 1} (index bit k = uncertain target k at x_k = 1). Derived: q_k enters
     /// every landing factor only through (1 - e)(1 - q_k), affinely, and P(all) per outfit is a sum of products with
     /// one factor per target, so it is multilinear in x and `interp` at any x in [0, 1]^nu gives it exactly.
+    /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
+    /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from `ew0`), which
+    /// her deck class holds to the bit, and the deck only through its entries and filler; the memo is kept between jobs
+    /// of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model at its last corner, q = 0 for
+    /// every target (1 - (1 - 0) x 1); a hit sets the same state
+    pub(super) fn corners_kept(&mut self, t: usize, sel: &Sel) -> Vec<Vec<f64>> {
+        let key = (self.cls[t], sel.ents.clone(), sel.filler);
+        let z = vec![0.0; self.ntar];
+        if let Some(r) = self.corner_memo.get(&key) { let r = (**r).clone(); self.set_trainee(t, &z); return r; }
+        let r = self.corners(t, sel, &z);
+        self.corner_memo.insert(key, std::rc::Rc::new(r.clone()));
+        r
+    }
     fn corners(&mut self, t: usize, sel: &Sel, q0: &[f64]) -> Vec<Vec<f64>> {
         let (nu, ntar) = (self.nu, self.ntar);
         let no = self.model.n_outfits(t);
@@ -1146,9 +1164,10 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
     let memo_fp = { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); setup_fp(v).hash(&mut h); pool_ids.hash(&mut h); h.finish() };
     let job = JOB_NO.with(|c| { c.set(c.get() + 1); c.get() });
-    let deck_memo = DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1) })
-        .filter(|m| m.len() < DECK_KEEP_CAP).unwrap_or_default();
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo, memo_fp, job, cls: (0..n).collect() };
+    let kept = DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1) }).unwrap_or_default();
+    let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { Default::default() };
+    let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { Default::default() };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo, corner_memo, memo_fp, job, cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {

@@ -42,7 +42,7 @@ impl Cache {
     /// a deck of trainee t (its corner table built now); a deck already cached is skipped
     pub(super) fn add(&mut self, env: &mut Env, t: usize, sel: &Sel) {
         if self.decks[t].iter().any(|d| d.sel.ents == sel.ents && d.sel.plain == sel.plain && d.sel.filler == sel.filler) { return; }
-        let tab = env.corners(t, sel, &vec![0.0; env.ntar]);
+        let tab = env.corners_kept(t, sel);
         self.tables += 1;
         self.decks[t].push(CDeck { sel: sel.clone(), tab });
     }
