@@ -56,9 +56,9 @@ editor), `umadump.js` (import).
 
 - **Browser suite**: `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`), Chromium and
   Firefox at once with test groups in parallel (`LLP_JOBS` sets how many per browser, default 4; `node
-  webapp/nodebrowser.mjs chromium roster` runs a subset). The career page's checks are three groups (`career`,
-  `careerpool`, `careervets`), each from its own import of the umadump test file, so they run side by side; the
-  longest groups start first. About 1.5 to 2 minutes on a laptop. Add checks for new behaviour (not for removals).
+  webapp/nodebrowser.mjs chromium roster` runs a subset). The career page's checks are four groups (`career`,
+  `careerpool`, `careervets`, `careergen`), each from its own import of the umadump test file, so they run side by
+  side; the longest groups start first. Add checks for new behaviour (not for removals).
 - **Fast tier**: `./build.sh testq` (`node webapp/nodebrowser.mjs quick`, Chromium only unless a browser is named)
   runs each page's core path in about 15 to 30 seconds: the planner loads and its search returns, the result's dialogs
   (odds, schedule, affinity), the phone layout and its dialogs, the contrast audit in light mode, /about with its

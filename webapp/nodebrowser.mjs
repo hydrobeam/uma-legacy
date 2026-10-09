@@ -179,8 +179,8 @@ const SIDEWAYS = () => {
 const still = (pg) => until(pg, () => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
 
 // the career planner (/career) in a fresh context, its first (empty) run done: the job and result hooks, the record of
-// what the page shows, and the helpers the career groups share (career, careerpool and careervets run in parallel, each
-// from its own fresh page)
+// what the page shows, and the helpers the career groups share (career, careerpool, careervets and careergen run in
+// parallel, each from its own fresh page)
 async function careerPage(b) {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => {
@@ -1275,7 +1275,7 @@ const TESTS = {
   // the career planner's veteran pool, edited: a veteran's sparks and G1 wins, new parents and grandparents, the trainee,
   // Use this, the settings, reloads, the uma.moe tree, generations saved, removals (from the 12 test veterans)
   async careervets(b) {
-    const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump } = await careerPage(b);
+    const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, importDump } = await careerPage(b);
     await importDump(); await done();
     // a pool veteran: her card opens her popup, her sparks and her parents' as bars, editable in place; editing keeps the
     // result on screen while the search runs again
@@ -1367,12 +1367,23 @@ const TESTS = {
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
     check('career: a paste that is not an export says so and changes nothing', /No veterans found/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 13);
     await pg.keyboard.press('Escape');
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
+  // the career planner's pool grows: an uma.moe tree added, generations saved from the veteran you got (her parents the
+  // next one's grandparents), removals (from the 12 test veterans, parent 1 fixed so that saving has places to clear)
+  async careergen(b) {
+    const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, importDump } = await careerPage(b);
+    await importDump();   // (its run is cut short by the reload)
+    await pg.evaluate(() => { const o = JSON.parse(localStorage.getItem('llp:career')); o.global.plan = { trainee: null, parents: [o.global.vets[0].id, null] }; localStorage.setItem('llp:career', JSON.stringify(o)); });
+    await pg.reload(); await done();
+    const nVets = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
     // an uma.moe lineage planner tree: one veteran with her parents, added after the others (factorId x 10 + level is the
     // game's factor id: Uma Stan 2, Racing Spirit: Stamina (factor group 21009, skill group 21010) 3, Dirt pink 1; saddle
     // 3 is a title (left out), 165 and 168 single-race G1s)
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"version":1,"type":"lineage-planner","payload":[{"position":"p1","characterId":101901,"sparks":[{"factorId":201590,"level":2},{"factorId":210090,"level":3},{"factorId":120,"level":1}],"manualWinSaddleIds":[3,165,168]},{"position":"p1-1","characterId":102101,"sparks":[{"factorId":201650,"level":2}],"manualWinSaddleIds":[168]},{"position":"p1-2","characterId":102901,"sparks":[{"factorId":200490,"level":1}],"manualWinSaddleIds":[]}]}'); await pg.click('#paste-load'); await done();
     const fromTree = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
-    check('career: an uma.moe tree adds her with her parents after your veterans, marked yours (her popup says she came from uma.moe)', await pg.locator('#vets .vet').count() === 14
+    check('career: an uma.moe tree adds her with her parents after your veterans, marked yours (her popup says she came from uma.moe)', await pg.locator('#vets .vet').count() === nVets + 1
       && fromTree.src === 'tree' && fromTree.chara === 1019 && !fromTree.borrowed && fromTree.sparks[20159] === 2 && fromTree.sparks[21010] === 3 && fromTree.pinks[12] === 1
       && fromTree.wins.length === 2 && fromTree.parents.map(p => p.chara).join() === '1021,1029' && fromTree.parents[0].sparks[20165] === 2 && fromTree.parents[0].wins.length === 1
       && !/From uma\.moe/.test(await pg.locator('#vets .vet').last().textContent()) && /uma\.moe tree/.test(await pg.textContent('#v-msg'))
@@ -1504,7 +1515,7 @@ const TESTS = {
 };
 
 // the longest groups start first (each runs serially; one started last would end the run alone), the slowest first
-const FIRST = ['careervets', 'career', 'careerpool', 'careerphone'];
+const FIRST = ['careergen', 'careervets', 'career', 'careerpool', 'careerphone'];
 const pick = (QUICK ? QUICK_GROUPS : Object.keys(TESTS)).filter(t => !argv.some(a => a in TESTS) || argv.includes(t))
   .sort((a, c) => (FIRST.includes(a) ? FIRST.indexOf(a) : FIRST.length) - (FIRST.includes(c) ? FIRST.indexOf(c) : FIRST.length));
 const JOBS = Math.max(1, +process.env.LLP_JOBS || 4), T0 = Date.now();
@@ -1520,5 +1531,5 @@ await Promise.all(BROWSERS.map(async (name) => {
   await Promise.all(Array.from({ length: JOBS }, worker));
   await b.close();
 }));
-console.log(`\n${passed} passed, ${failed} failed`);
+console.log(`\n${passed} passed, ${failed} failed in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
 process.exit(failed ? 1 : 0);
