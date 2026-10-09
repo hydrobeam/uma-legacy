@@ -119,6 +119,9 @@ pub(in super::super) struct PlanJob {
     /// both, reporting where they differ (2); the surrogate's refresh margin there
     #[serde(default)] sur: u8,
     #[serde(default)] sur_margin: f64,
+    /// `index_rule` measurement: each builder's career also from her deck class's winning decks alone (no career search),
+    /// its lifts and score beside the exact ones (`proxy_check` in the output); changes nothing else
+    #[serde(default)] proxy_check: bool,
 }
 
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
@@ -879,6 +882,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // read the best of them; with one the planner's numbers moved once (val/plan: picks unchanged)
     for f in &sv.found { s.cache.add(s.env, f.t, &f.sel); }
     for &u in &cands { if let Some(Some(f)) = &best[u] { s.cache.add(s.env, u, &f.sel); } }
+    // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
+    let cache0 = if pj.proxy_check { Some(s.cache.clone()) } else { None };
     let mut buf = vec![];
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut sur_diff: Vec<Value> = vec![];
@@ -1047,6 +1052,44 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     }
     let two_ms = now_ms() - t4;
     let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio, "cap": crate::deck::EXACT_RHO});
+    // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
+    // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
+    // search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact ones. Runs after
+    // everything else, on the cache as it was before the builders' searches, so the plan's own numbers are unchanged
+    let proxy_check: Value = match (pj.proxy_check, cache0) { (true, Some(mut c0)) if !runs.is_empty() => {
+        std::mem::swap(&mut s.cache, &mut c0);
+        let wins: Vec<(usize, Sel)> = sv.found.iter().map(|f| (f.t, f.sel.clone()))
+            .chain(cands.iter().filter_map(|&u| best[u].clone().flatten().map(|f| (u, f.sel)))).collect();
+        let base_s = ScoreBase { cands: &cands, c1: vec![1.0; n], m23: &zeros, v0: 0.0, pnow: pnow.clone(), cont: vec![], combos: vec![] };
+        let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone() };
+        let effs = |x: usize, st: &[(f64, f64)]| -> Vec<f64> { (0..n).map(|ui| {
+            let (pl, sp) = st[ui];
+            if d.umas[cands[ui]].id == d.umas[x].id || pl <= 0.0 || pnow[ui] <= 0.0 { 0.0 } else { pl * (1.0 / pnow[ui] - 1.0 / (sp / pl)) } }).collect() };
+        let mut rows = vec![];
+        for (i, r) in runs.iter().enumerate() {
+            let x = r.0; let is_c = cands.contains(&x);
+            let ee = effs(x, &r.2);
+            let (pf, pe, psc) = if is_c { (Some(r.1.clone()), ee.clone(), score.get(i).copied()) } else {
+                let cx = s.env.cls[x];
+                for (t, sel) in &wins { if *t != x && s.env.cls[*t] == cx { s.cache.add(s.env, x, sel); } }
+                match best_sur(&mut s, d, pool, fix, x, 1e9, &mut buf) {
+                    None => (None, vec![0.0; n], None),
+                    Some(f) => {
+                        let (_, _, _, st, _) = score_career(&mut s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, &mut buf);
+                        let pe = effs(x, &st);
+                        let psc = if score.is_empty() { None } else { Some(score_career(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, &mut buf).0 - 1.0) };
+                        (Some(f), pe, psc)
+                    }
+                }
+            };
+            let same_pair = pf.as_ref().map_or(false, |f| (f.a.min(f.b), f.a.max(f.b)) == (r.1.a.min(r.1.b), r.1.a.max(r.1.b)));
+            let same_deck = pf.as_ref().map_or(false, |f| f.sel.ents == r.1.sel.ents && f.sel.plain == r.1.sel.plain && f.sel.filler == r.1.sel.filler);
+            rows.push(json!({"trainee": d.umas[x].name, "cand": is_c, "class": s.env.cls[x], "exact_val": r.1.val, "proxy_val": pf.as_ref().map(|f| f.val),
+                "same_pair": same_pair, "same_deck": same_deck, "score": score.get(i), "proxy_score": psc, "eff": ee, "proxy_eff": pe}));
+        }
+        std::mem::swap(&mut s.cache, &mut c0);
+        json!({"cands": cands.iter().map(|&u| d.umas[u].name.clone()).collect::<Vec<_>>(), "rows": rows})
+    } _ => Value::Null };
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time
       BESTS.with(|c| { let mut c = c.borrow_mut(); c.retain(|b| b.key != key); c.push(Bests { key, best: kb, refs: urefs }); if let Some(p) = prev { c.push(p); } while c.len() > 4 { c.remove(0); } }); }
@@ -1088,8 +1131,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // target in `uncv` order, 0 absent) then the scenario's guaranteed golds present or not, at leaf << nf | fm
     let outcomes = match (ytabs.get(pick), runs.get(pick)) { (Some(ys), Some((x, f, _))) => json!({"trainee": d.umas[*x].id, "parents": [f.a, f.b],
         "uncv": env.uncv, "fixed": env.fixed_t, "y": ys.iter().map(|y| (y * 100.0).round() / 100.0).collect::<Vec<f64>>()}), _ => Value::Null };
-    json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
+    let mut out = json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
            "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n, "work": work,
-           "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
+           "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
+    if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
+    out
 }
