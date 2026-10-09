@@ -1708,7 +1708,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 :root.game .seg.seg > button, .udtabs.udtabs > .udtab { margin: 0; border: 0; border-radius: 0; border-image: none; background: none; box-shadow: none; }
 :root.game .seg.seg > button + button, .udtabs.udtabs > .udtab + .udtab { box-shadow: inset 1px 0 0 var(--gm-tab-edge); }
 :root.game .seg.seg > button:is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"]), .udtabs.udtabs > .udtab[aria-selected="true"] {
-  color: #fff; text-shadow: var(--gm-outline); background: var(--seg-on); box-shadow: var(--seg-rim); }
+  color: #fff; text-shadow: var(--gm-outline); background: var(--seg-on); box-shadow: var(--seg-rim); border: 0; border-image: none; }
 :root.game .seg.seg > button:focus-visible, .udtabs.udtabs > .udtab:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 /* the affinity popup's careers are separate pills: the chosen one keeps the unchosen one's box (1 px border, same
    padding), green */
@@ -1723,6 +1723,10 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .game .rbbar > .rhead .sw input { border-image-width: 0 10px; }
 
 /* ---------- phones ---------- */
+/* the status line while a run works: what the search found, then the spinner and its phase on the next line when both
+   don't fit (side by side on a phone each was squeezed to a narrow two-line column) */
+.runnote { flex-wrap: wrap; row-gap: 2px; }
+.runnote > span:has(> .spin) { display: inline-flex; align-items: center; gap: 6px; }
 /* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
 @media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
 .game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */
