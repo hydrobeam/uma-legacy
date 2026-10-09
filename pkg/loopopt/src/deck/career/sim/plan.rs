@@ -42,8 +42,28 @@ fn p_budget() -> f64 { 20000.0 }
 /// and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a parent, so
 /// the best is the better of the kept one and the best with her as a parent (a search with her fixed): exact, the same
 /// value; on an exact tie the kept career stands.
-struct Bests { key: (u64, u64), best: Vec<Option<Option<Found>>>, refs: Vec<Vec<Vec<Ref>>> }
+pub(in super::super) struct Bests { key: (u64, u64), best: Vec<Option<Option<Found>>>, refs: Vec<Vec<Vec<Ref>>> }
 thread_local! { static BESTS: std::cell::RefCell<Vec<Bests>> = const { std::cell::RefCell::new(Vec::new()) }; }
+/// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
+/// not kept: nothing reads them back)
+pub(in super::super) fn bests_out() -> Value {
+    BESTS.with(|c| Value::Array(c.borrow().iter().map(|b| json!({"k": [super::super::ux(b.key.0), super::super::ux(b.key.1)], "n": b.best.len(),
+        "b": b.best.iter().enumerate().filter_map(|(u, x)| x.as_ref().map(|f| json!([u, f.as_ref().map(super::super::found_out)]))).collect::<Vec<_>>()})).collect()))
+}
+pub(in super::super) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
+    use super::super::{found_in, uxr};
+    v.as_array()?.iter().map(|e| {
+        let k = e["k"].as_array()?; let n = e["n"].as_u64()? as usize;
+        let mut best: Vec<Option<Option<Found>>> = vec![None; n];
+        for x in e["b"].as_array()? {
+            let a = x.as_array()?; let u = a.first()?.as_u64()? as usize;
+            if u >= n { return None; }
+            best[u] = Some(if a.get(1)?.is_null() { None } else { Some(found_in(a.get(1)?)?) });
+        }
+        Some(Bests { key: (uxr(k.first()?)?, uxr(k.get(1)?)?), best, refs: vec![vec![]; n] })
+    }).collect()
+}
+pub(in super::super) fn bests_set(b: Vec<Bests>) { BESTS.with(|c| *c.borrow_mut() = b); }
 fn h64(s: &str) -> u64 { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); s.hash(&mut h); h.finish() }
 /// (setup and places, the first `n` legacies)
 fn bests_key(job: &Value, fix: &[usize], n: usize) -> (u64, u64) {
@@ -51,7 +71,9 @@ fn bests_key(job: &Value, fix: &[usize], n: usize) -> (u64, u64) {
     (crate::deck::career::setup_fp(job) ^ h64(&format!("{fix:?}")).rotate_left(1), h64(&ls))
 }
 /// trainee u's best career in `pool` (and the refs to absorb), reusing a kept plan of the pool less its last veteran
-fn best_of(env: &mut Env, pool: &Pool, fix: &[usize], u: usize, prev: Option<&Bests>, nl: usize) -> (Option<Found>, Vec<Vec<Ref>>) {
+fn best_of(env: &mut Env, pool: &Pool, fix: &[usize], u: usize, same: Option<&Bests>, prev: Option<&Bests>, nl: usize) -> (Option<Found>, Vec<Vec<Ref>>) {
+    // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
+    if let Some(sm) = same { if let Some(Some(x)) = sm.best.get(u) { return (x.clone(), vec![]); } }
     if let Some(pr) = prev { if let Some(Some(old)) = pr.best.get(u) {
         let mut refs = pr.refs.get(u).cloned().unwrap_or_default();
         if fix.len() >= 2 { return (old.clone(), refs); }   // both parents fixed: she can't be one
@@ -880,9 +902,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // a kept plan of this pool less its last veteran (`Bests`), and this plan's own, kept at the end
     let nl = legs.len();
     // (taken out while this plan runs and put back after it: every reroll of a career reuses the same one)
+    let same: Option<Bests> = { let k = bests_key(job, fix, nl); BESTS.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|b| b.key == k); i.map(|i| c.remove(i)) }) };
     let prev: Option<Bests> = if nl > 1 { let k = bests_key(job, fix, nl - 1); BESTS.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|b| b.key == k); i.map(|i| c.remove(i)) }) } else { None };
     let mut urefs: Vec<Vec<Vec<Ref>>> = vec![vec![]; d.umas.len()];
-    if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r) = best_of(env, pool, fix, u, prev.as_ref(), nl); urefs[u] = r; best[u] = Some(f); } } }
+    if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r) = best_of(env, pool, fix, u, same.as_ref(), prev.as_ref(), nl); urefs[u] = r; best[u] = Some(f); } } }
     let mut search_ms = now_ms() - t1;
     let mut s = match sim_for(env, d, sk, cr, job, pj) { Ok(s) => s, Err(e) => return e };
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
@@ -948,7 +971,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let exact_one = |s: &mut Sim, best: &mut Vec<Option<Option<Found>>>, urefs: &mut Vec<Vec<Vec<Ref>>>, x: usize, buf: &mut Vec<f64>| -> Option<(Found, Vec<(f64, f64)>)> {
         if best[x].is_none() {
             if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
-            let (f, r) = best_of(s.env, pool, fix, x, prev.as_ref(), nl);
+            let (f, r) = best_of(s.env, pool, fix, x, same.as_ref(), prev.as_ref(), nl);
             if let Some(f) = &f { s.cache.add(s.env, x, &f.sel); }
             urefs[x] = r; best[x] = Some(f);
             s.env.hard = 0; s.env.budget = budget0;
@@ -976,7 +999,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 let ts = now_ms();
                 if pj.search_work > 0 { s.env.budget = pj.search_work; s.env.hard = pj.search_work; }
                 if pj.sur != 1 && best[x].is_none() {
-                    let (f, r) = best_of(s.env, pool, fix, x, prev.as_ref(), nl);
+                    let (f, r) = best_of(s.env, pool, fix, x, same.as_ref(), prev.as_ref(), nl);
                     if let Some(f) = &f { s.cache.add(s.env, x, &f.sel); }
                     urefs[x] = r; best[x] = Some(f);
                 }

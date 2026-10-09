@@ -1184,6 +1184,15 @@ pub fn cli_main() {
             deck::apply_events_db(&mut v, &sk, &db);
         }
         let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
+        // the worker's kept work across processes, as the page keeps it across reloads (LOOPOPT_STATE_IN: a file
+        // `state_out` wrote, restored before the jobs; LOOPOPT_STATE_OUT: written after them)
+        if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
+            let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            eprintln!("state_in: {}", deck::run_career(&d, &sk, &cr, &serde_json::json!({"cmd": "state_in", "state": st["state"]})));
+        } }
+        let state_save = |d: &Data| if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
+            std::fs::write(&path, deck::run_career(d, &sk, &cr, &serde_json::json!({"cmd": "state_out"})).to_string()).unwrap();
+        } };
         // several career jobs (same skills, cards and events files): run in turn in one process, one output line each,
         // as the page's solver worker runs them (what one job leaves in the solver's caches the next can use)
         if jobs.mode == "career" && args.len() > 3 {
@@ -1198,12 +1207,14 @@ pub fn cli_main() {
                 out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
                 println!("{}", out);
             }
+            state_save(&d);
             return;
         }
         let t0 = Instant::now();
         let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
         out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
         println!("{}", out);
+        state_save(&d);
         return;
     }
     if jobs.scheme != "scf" && jobs.scheme != "rot" { eprintln!("error: \"scheme\" must be \"scf\" or \"rot\""); std::process::exit(2); }

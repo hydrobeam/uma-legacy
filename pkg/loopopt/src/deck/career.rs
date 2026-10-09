@@ -216,6 +216,61 @@ thread_local! {
 }
 /// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
 const SEEN_KEEP: usize = 256;
+// ---------- the worker's kept work across page loads ----------
+// What a worker keeps between jobs (the kept plans, `sim::plan::BESTS`; the proofs, `SEEN`) leaves as `state_out` and comes
+// back as `state_in`, so the first plan after a page reload reuses the work of the last session. Every float travels as
+// its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
+// keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
+// `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
+const STATE_VERSION: u64 = 1;
+fn hx(x: f64) -> Value { Value::String(format!("{:016x}", x.to_bits())) }
+fn ux(x: u64) -> Value { Value::String(format!("{:016x}", x)) }
+fn fx(v: &Value) -> Option<f64> { Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)) }
+fn uxr(v: &Value) -> Option<u64> { u64::from_str_radix(v.as_str()?, 16).ok() }
+fn fvec(v: &[f64]) -> Value { Value::Array(v.iter().map(|&x| hx(x)).collect()) }
+fn fvec_r(v: &Value) -> Option<Vec<f64>> { v.as_array()?.iter().map(fx).collect() }
+fn usz(v: &Value) -> Option<usize> { v.as_u64().map(|x| x as usize) }
+fn sel_out(s: &Sel) -> Value { json!([s.ents, s.plain, s.filler, fvec(&s.dw), fvec(&s.dg)]) }
+fn sel_in(v: &Value) -> Option<Sel> {
+    let a = v.as_array()?;
+    Some(Sel { ents: a.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?, plain: usz(a.get(1)?)?, filler: usz(a.get(2)?)?,
+               dw: fvec_r(a.get(3)?)?, dg: fvec_r(a.get(4)?)? })
+}
+fn ref_out(r: &Ref) -> Value { json!([fvec(&r.q), hx(r.val), sel_out(&r.sel)]) }
+fn ref_in(v: &Value) -> Option<Ref> { let a = v.as_array()?; Some(Ref { q: fvec_r(a.first()?)?, val: fx(a.get(1)?)?, sel: sel_in(a.get(2)?)? }) }
+fn found_out(f: &Found) -> Value { json!([f.t, f.a, f.b, hx(f.val), hx(f.ub), sel_out(&f.sel)]) }
+fn found_in(v: &Value) -> Option<Found> {
+    let a = v.as_array()?;
+    Some(Found { t: usz(a.first()?)?, a: usz(a.get(1)?)?, b: usz(a.get(2)?)?, val: fx(a.get(3)?)?, ub: fx(a.get(4)?)?, sel: sel_in(a.get(5)?)? })
+}
+/// SEEN as [fingerprint, classes, [[class, [refs]], ...]] per setup (only the classes holding proofs)
+fn seen_out() -> Value {
+    SEEN.with(|c| Value::Array(c.borrow().iter().map(|(fp, vv)| json!([ux(*fp), vv.len(),
+        vv.iter().enumerate().filter(|(_, rs)| !rs.is_empty()).map(|(i, rs)| json!([i, rs.iter().map(ref_out).collect::<Vec<_>>()])).collect::<Vec<_>>()])).collect()))
+}
+fn seen_in(v: &Value) -> Option<Vec<(u64, Vec<Vec<Ref>>)>> {
+    v.as_array()?.iter().map(|e| {
+        let a = e.as_array()?;
+        let (fp, n) = (uxr(a.first()?)?, usz(a.get(1)?)?);
+        let mut vv: Vec<Vec<Ref>> = vec![vec![]; n];
+        for c in a.get(2)?.as_array()? {
+            let ca = c.as_array()?; let i = usz(ca.first()?)?;
+            if i >= n { return None; }
+            vv[i] = ca.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
+        }
+        Some((fp, vv))
+    }).collect()
+}
+fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out()}}) }
+/// replaces the kept plans and proofs with the page's stored ones (all or nothing: a store that does not parse is refused)
+fn state_in(v: &Value) -> Value {
+    if v["v"].as_u64() != Some(STATE_VERSION) { return json!({"error": "state: another version"}); }
+    let (Some(b), Some(sn)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"])) else { return json!({"error": "state: does not parse"}) };
+    let (nb, ns) = (b.len(), sn.len());
+    sim::plan::bests_set(b);
+    SEEN.with(|c| *c.borrow_mut() = sn);
+    json!({"ok": true, "bests": nb, "seen": ns})
+}
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x.
 fn interp(v: &[f64], x: &[f64]) -> f64 { interp_in(v, x, &mut vec![]) }
 /// `interp` with a buffer the caller keeps (the rollout evaluates tables millions of times)
@@ -860,6 +915,8 @@ impl<'a> Env<'a> {
 }
 
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
+    // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
+    match v["cmd"].as_str() { Some("state_out") => return state_out(), Some("state_in") => return state_in(&v["state"]), _ => {} }
     let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let cj: CareerJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
