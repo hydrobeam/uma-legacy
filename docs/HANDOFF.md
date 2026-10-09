@@ -68,7 +68,9 @@ provably only rescaled odds.
    counters) is the regression check for every item. The prerequisite is a deterministic planner cache (outputs must
    not depend on which decks a search happened to check fully), then class-keyed proofs (measured 2.4x on p16
    builders, identical outputs) and byte-identical deck-search and planner-arithmetic items. Owner decisions pending:
-   a cheaper Cont (near-top builders only), a per-era cap.
+   a cheaper Cont (near-top builders only; approved 2026-10-08, in progress), the cap (the owner wants a reasoned bound,
+   not a guess: tripwires done, the state-conditioned bound to prototype). Status 2026-10-08: first plan about 12 s ->
+   4.3 s in the page (class proofs, planner arithmetic, report skip; byte-identical but for the cache re-baseline).
 2. **Star-mix band for the owner's veterans.** uma-it's summary data: an IT veteran's score range runs from "no
    skills bought" to "all affordable bought"; Unity Cup median best case is 17,428 (just under SS), Grand Concert
    18,094. Whether the owner's loop veterans clear 17,500 decides the default; ask.
