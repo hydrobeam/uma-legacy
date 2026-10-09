@@ -30,8 +30,10 @@ __CSS__
 
 <main class="about">
 <h2>How this works</h2>
-<p>The planner searches loops of three or four umas, outfits, race schedules and support decks from what you own, and ranks them by
-the chance that one career ends with every target skill as a spark on the veteran. <strong>Independent Training only.</strong></p>
+<p>The loop planner searches loops of three or four umas, outfits, race schedules and support decks from what you own, and
+ranks them by the chance that one career ends with every target skill as a spark on the veteran. The career planner
+takes your actual veterans and picks the next career: the best odds now, and the run that takes you furthest toward a
+fully looped parent (see The career planner, in detail). <strong>Independent Training only.</strong></p>
 
 <h3>How the trainee acquires a skill</h3>
 <ul>
@@ -44,8 +46,9 @@ Superstan.</li>
 
 <h3>Assumptions</h3>
 <ol>
-<li><strong>8/8 legacies:</strong> both parents are 8/8, and so are all four grandparents: each carries every target
-spark, as in a running loop. A loop still being built has fewer carriers and lower odds.</li>
+<li><strong>8/8 legacies</strong> (loop planner): both parents are 8/8, and so are all four grandparents: each carries
+every target spark, as in a running loop. A loop still being built has fewer carriers and lower odds. The career planner
+uses what your veterans actually carry instead.</li>
 <li><strong>Spark generation:</strong> <math><mrow><mi>P</mi><mrow><mo>(</mo><mtext>spark</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mi>b</mi><mo>×</mo><msup><mn>1.1</mn><mi>n</mi></msup></math>, with b = 20% for a white or 40% for a gold, and n the
 number of the six ancestors already carrying that spark. In a running loop n = 6: 35.4% and 70.9%.</li>
 <li><strong>Assumed lineage rank:</strong> legacy sparks have 50/45/5% for 1/2/3 stars below SS, 20/70/10% at SS. The rank is
@@ -405,8 +408,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   by two cards' chains puts both cards in one group; the progress check is then made over every up-set of that pair (any
   rising function of two coordinates is a positive combination of up-set indicators). A target fed by three or more chain cards, or by a
   second pair, is taken at its feeders' full progress (its factor only falls as links fail), so the rest keeps the
-  structure above. <math><mi>U</mi></math> is within 0.2% of <math><mi>V</mi></math> on the reference setups and filters out almost every
-  candidate.</p>
+  structure above. <math><mi>U</mi></math> is within 0.2% of <math><mi>V</mi></math> on most reference decks (up to about 29% above it where a target is taken at full
+  progress) and filters out almost every candidate.</p>
 
   <p><strong>14. One trainee's exact best deck.</strong> For trainee <math><mi>u</mi></math> at her chances <math><msub><mi>q</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo></math> (her three careers, or one grid
   chance) under cap <math><mi>ρ</mi></math>:</p>
@@ -475,17 +478,21 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   miss products are built from per-card tables by links done, and the outcome events are enumerated per cluster of
   targets they join (clusters are independent given <math><mi>x</mi></math>). The outfit is chosen per career by the exact value. "7 of 8 or
   better" is the same sum with the chance that at most one target misses (guaranteed golds counted as targets that
-  miss with chance 0.291), from each independent unit's chance that all its targets land and that exactly one misses.</p>
+  miss with chance 0.291), from each independent unit's chance that all its targets land and that exactly one misses.
+  The chance of landing exactly each count (the result's Odds table) is the same sum over the chance of each set of
+  open targets landing, each guaranteed gold counted on its own, averaged over the loop's careers; its all-count
+  entry is <math><mi>L</mi></math>.</p>
 
-  <p><strong>20. What is reported.</strong> Per result: the loop's exact odds (the mean of its careers'), "7 of 8 or
-  better", each trainee's mean over her careers, the mean inheritance chance, the schedules, each lineage's
+  <p><strong>20. What is reported.</strong> Per result: the loop's exact odds (the mean of its careers'), the chance of
+  each count of targets (the Odds table; "7 of 8 or better" is its top two), each trainee's mean over her careers, the mean inheritance chance, the schedules, each lineage's
   affinities, and the deck or decks. A trainee's outfit shown is the option used in most of her careers. With a deck per
   uma, the deck most members use comes first and each other member's swaps against it. The status line gives the cap
   the result was checked under; the solver also reports the product value of the result, the largest exact/product
   ratio seen on any deck scored, and the counts of loops solved and decks scored.</p>
 
-  <p>Typical time: the product-ranked result shows in well under a second, the exact one usually 2–5 s later; up to
-  about 35 s for three results with one shared deck.</p>
+  <p>Typical time: on the default setup the whole exact search takes under a second (0.4–0.7 s measured in the
+  browser), the product-ranked result showing first; settings with many cards and three results with one shared deck
+  take longer, up to about 35 s.</p>
 
   <p><strong>Data.</strong> Global master.mdb; card events from GameTora. The Grand Masters-era option uses a JP
   master.mdb cut at L'Arc's launch (24 Aug 2023). Character icons and card art are from the game's own files, © Cygames.</p>
