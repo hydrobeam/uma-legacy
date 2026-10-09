@@ -675,8 +675,9 @@ const TESTS = {
     await ctx.addInitScript(() => { window.__seen = []; const snap = () => { const o = document.querySelector('#results .loop .odds'); window.__seen.push(o ? o.textContent : '');
       if (o && !o.__mark) o.__mark = 1; if (performance.now() < 6000) requestAnimationFrame(snap); }; requestAnimationFrame(snap); });
     await pg.reload(); await settle(pg);
-    const seen = [...new Set(await pg.evaluate(() => window.__seen))];
-    check('reload: the saved settings\' result from the first frame, never the default example', seen.length === 1 && seen[0] === mine && mine !== '' && mine !== def, seen.join(' | ') + ' · default ' + def);
+    // (the bundle is a cached script that may run after the first paint: a blank results area before it is allowed)
+    const seen = [...new Set(await pg.evaluate(() => window.__seen))].filter(x => x !== '');
+    check('reload: the first result drawn is the saved settings\' one, never the default example', seen.length === 1 && seen[0] === mine && mine !== '' && mine !== def, seen.join(' | ') + ' · default ' + def);
     check('reload: an identical fresh result is not redrawn', await pg.evaluate(() => document.querySelector('#results .loop .odds').__mark === 1));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
@@ -749,9 +750,11 @@ const TESTS = {
     const pg = await open(b);
     await pg.locator('header.top .tnav a', { hasText: 'How this works' }).click(); await pg.waitForLoadState();
     check('header link opens /about', new globalThis.URL(pg.url()).pathname === '/about' && /How this works/i.test(await pg.locator('main.about h2').innerText()));
-    const spec = pg.locator('main.about details.spec');
+    const spec = pg.locator('main.about details.spec').first(), cspec = pg.locator('main.about details.spec').nth(1);
     check('/about: the detailed model starts folded and opens to the model text; the version shows', !(await spec.getAttribute('open') !== null) && !/Model\./.test(await pg.locator('main.about').innerText())
       && await (async () => { await spec.locator('summary').click(); return /Model\./.test(await spec.innerText()); })() && /Version v?\S+/.test(await pg.locator('main.about').innerText()));
+    check('/about: the career planner in detail starts folded and opens to its steps', (await cspec.getAttribute('open')) === null
+      && await (async () => { await cspec.locator('summary').click(); const t = await cspec.innerText(); return /C1\. Legal careers/.test(t) && /C8b\. Which careers are searched exactly/.test(t) && /The Comparison panel/.test(t); })());
     if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     await pg.locator('header.top .tnav a').click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
@@ -903,7 +906,7 @@ const TESTS = {
       && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
       && /1 in [\d,]+/.test(trioLoop) && /run this career once first, then follow the route/.test(saveTxt) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
-      `${trioRes && trioRes.next.mode} | ${trioMem} | ${trioCells.join(' ')}`);
+      `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load'); await vetsShut();
     await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });   // the restored pool's plan
     await done();
@@ -1076,7 +1079,9 @@ const TESTS = {
     await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
     await pg.waitForTimeout(1500);   // time for a stray comparison to answer, were one still running
     const [rj, rr, rm] = [await policyJobs() - rj0, await policyResults() - rr0, await mainJobs() - rm0];
-    check('career: rolling again while a comparison runs cancels it: one comparison runs, for the last roll', usable && rm === 1 && rr === rj
+    // an exact comparison in flight is killed (one runs); a quick one (the roll read from the plan's table) runs out with its
+    // answer ignored, so the worker keeps its caches (one per roll): either way only the last roll's shows
+    check('career: rolling again while a comparison runs supersedes it: only the last roll\'s comparison shows', usable && (rm === 1 || rm === 3) && rr === rj
       && await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0 && await pg.evaluate(() => window.__careerJobs.filter(j => j.compare && !j.next).at(-1).legacies.at(-1).sparks.length === 0),
       `usable ${usable}, comparisons ${rm}, jobs ${rj}, results ${rr}`);
     check('career: there is no "back to the most likely result" button; Compare, Roll and Add sit in her card\'s header', !(await pg.locator('#sim-reset').count())
