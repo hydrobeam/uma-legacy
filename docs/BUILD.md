@@ -59,6 +59,9 @@ editor), `umadump.js` (import).
   independently.
 - **Card events**: after touching the manual entries or the GameTora caches, `uv run val/event_audit.py`.
 - **Speed work** on the solver follows `docs/PERF.md`: byte-identical outputs, one item per commit with its gain.
+  The career planner's next-plan jobs are outside `val`: `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG`
+  runs the six in `val/plan/` and compares each whole output with `val/plan/ref__*.out`, printing the plan's work
+  (nodes, exact scorings) beside the reference's; `docs/PERF_PLANNER.md` holds the planner's measurements and plan.
   `node webapp/nodebench.mjs <wasm> global pal_A2 …` times the wasm.
 
 ## Data

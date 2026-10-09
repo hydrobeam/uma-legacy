@@ -71,6 +71,12 @@
 !/val/jobs_noR.json
 !/val/ref__*.out
 !/val/ref_times.txt
+!/val/planval.py
+!/val/plan/
+/val/plan/*
+!/val/plan/*.json
+!/val/plan/ref__*.out
+!/val/plan/ref_times.txt
 !/val/refpu__*.out
 !/val/umadump_lineage.py
 !/val/career_job.py

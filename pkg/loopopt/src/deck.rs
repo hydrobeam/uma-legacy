@@ -397,6 +397,7 @@ fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// Training hints stay independent per target, as in the marginal model.
 fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
+    JCOUNT.with(|c| c.set(c.get() + 1));
     let r = joint_fast(model, u, qs, ents, filler, n_targets, m1, None);
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
@@ -1037,7 +1038,8 @@ const EXACT_CAP: usize = 50_000;
 /// certifies nothing; the next lower step gets a quarter more (see `run_multi`). Jobs where many decks lie within
 /// the cap of each other (high inheritance chances, few open targets, borrowing) can exhaust it.
 const EXACT_BUDGET: usize = 30_000_000;
-thread_local! { static JCOUNT: std::cell::Cell<usize> = std::cell::Cell::new(0); }
+// exact scorings made on this thread (the planner reports its own as a load-free measure of its work)
+thread_local! { pub(crate) static JCOUNT: std::cell::Cell<usize> = std::cell::Cell::new(0); }
 
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
 const DOM_EPS: f64 = 1e-12;

@@ -811,6 +811,8 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
 pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
                                        pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
     let t_all = now_ms();
+    // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
+    let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
     let (members, minfo, mwhy) = rotation(env, d, sk, cr, job, pj);
     let loop_ms = now_ms() - t_all;
     let g = sv.found[0].clone();
@@ -1009,6 +1011,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         }
     }
     let two_ms = now_ms() - t4;
+    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0});
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time
       BESTS.with(|c| { let mut c = c.borrow_mut(); c.retain(|b| b.key != key); c.push(Bests { key, best: kb, refs: urefs }); if let Some(p) = prev { c.push(p); } while c.len() > 4 { c.remove(0); } }); }
@@ -1052,6 +1055,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         "uncv": env.uncv, "fixed": env.fixed_t, "y": ys.iter().map(|y| (y * 100.0).round() / 100.0).collect::<Vec<f64>>()}), _ => Value::Null };
     json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n,
+           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "umas_scored": exact_n, "work": work,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all})
 }
