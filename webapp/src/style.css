@@ -1303,7 +1303,11 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .game .setlist .scenbtn .slogo { height: 36px; }
 .game .setenh { grid-area: enh; align-self: center; padding-top: 18px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; justify-content: start; }
 .game .setenh .btn.enh.wide { grid-column: 1 / -1; }
-.rb .vetdlg .vets { margin-top: 10px; }
+.vetdlg .vets { margin-top: 10px; }
+/* the veterans dialog: its tools stay put and the list takes the room left and scrolls on its own (the dialog itself
+   never scrolls, as the other editors) */
+.vetdlg > .dlg > * { flex: none; }
+.vetdlg > .dlg > .vets { flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; padding-right: 4px; }
 @media (max-width: 860px) { .game .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; } .game .setenh { padding-top: 14px; } }
 @media (max-width: 640px) { .game .setlist { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 520px) { .game .setlist .gctl { grid-template-columns: 6.6em minmax(0, 1fr); gap: 8px; } .game .setlist .seg button { white-space: normal; line-height: 1.2; }
