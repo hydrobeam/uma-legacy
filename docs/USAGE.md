@@ -53,7 +53,7 @@ off, a change waits for the Search button. A loop is either four umas (each
 trains from two of the other three) or a three-uma rotation (each trains from the other two, who were bred from each
 other and from her own earlier veteran); both are ranked on the same odds, the average over the careers when every
 member trains in turn, and a rotation usually comes first. For each loop:
-- the odds that every target lands and how many careers give a 90% chance;
+- the odds that every target lands;
 - each uma as a tile with her outfit, the targets on her own skill list (as the game's gold skill tile), and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a

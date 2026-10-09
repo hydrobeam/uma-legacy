@@ -128,11 +128,11 @@ const TESTS = {
     const pg = await open(b);
     check('first search runs by itself', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), await note(pg));
     check('… and its status is just the count: checked N decks / M loops in T s (a caveat only when the exact check ran out of time)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s( · .+)?$/.test(await note(pg)), await note(pg));
-    // the result's wording: the headline odds, the 90% line, each member's own odds as trainee
-    const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: l.querySelector('.sub').innerText, rank: !!l.querySelector('.rank'),
+    // the result's wording: the headline odds, each member's own odds as trainee
+    const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: !!l.querySelector('.sub'), rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
-    check('headline: "1 in 107 runs to land all 8", then the 90% line, in the game font; no rank with one result',
-      /^1 in 107 runs to land all 8$/.test(head.odds) && /^a 90% chance within 245 runs$/.test(head.sub) && !head.rank && /Zen Maru/.test(head.font), JSON.stringify(head));
+    check('headline: "1 in 107 runs to land all 8" alone (no 90% line), in the game font; no rank with one result',
+      /^1 in 107 runs to land all 8$/.test(head.odds) && !head.sub && !head.rank && /Zen Maru/.test(head.font), JSON.stringify(head));
     // Odds opens the career planner's table for the loop: every count, 8/8 the headline's (1 in 107), 7/8 and 8/8 together
     // the solver's 7-or-better (1 in 12.6), focus back on the button when it closes
     await pg.click('#results .loop .lacts button:has-text("Odds")'); await dialog(pg, 'odds-dlg');

@@ -1460,7 +1460,7 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
 .lp .loop { background: var(--gm-panel); border: 1px solid var(--gm-edge); border-radius: 14px; box-shadow: 0 2px 8px var(--gm-shadow); }
 .lp .loop.first { border: 1px solid var(--gm-edge); }
 .lp .lhead .odds { color: var(--gm-ink); } .lp .lhead .odds b { font-weight: 900; }
-.lp .lhead .sub, .lp .mem .of, .lp .mem .own { color: var(--gm-ink2); }
+.lp .mem .of, .lp .mem .own { color: var(--gm-ink2); }
 .lp .members { gap: 8px; }
 .lp .mem { padding: 8px 10px 10px; border-radius: 12px; background: var(--gm-cell); border: 1px solid var(--gm-line); box-shadow: inset 0 -3px 0 var(--gm-tab-low); }
 .lp .mem .av { box-shadow: 0 0 0 3px #fff, 0 1px 4px var(--gm-shadow); }

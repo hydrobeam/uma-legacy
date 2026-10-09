@@ -9,7 +9,6 @@ import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
 export const fmtIn = (p) => p > 0 ? '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1)) : 'never';
-const runs90 = (p) => p > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - p)).toLocaleString() : '—';
 const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
 // one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
 // only one result is shown), top: the #1 result (to say what differs from it)}
@@ -17,8 +16,7 @@ function loopCard(l, meta, ctx) {
   const n = meta.targets.length, forced = l.members.filter(m => (meta.forced || []).includes(m.id)).map(m => m.id);   // umas the job required
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
   const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
-  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>
-    <span class="sub"><span title="How many careers give a 90% chance that at least one lands all ${n}">a 90% chance within <span class="num">${runs90(l.p_all)}</span> runs</span></span>${forced.length ? '<span class="lkey" title="Marked must include under Umas: the search had to put her in the loop"><i aria-hidden="true"></i>Must include</span>' : ''}</div>`;
+  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>${forced.length ? '<span class="lkey" title="Marked must include under Umas: the search had to put her in the loop"><i aria-hidden="true"></i>Must include</span>' : ''}</div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
