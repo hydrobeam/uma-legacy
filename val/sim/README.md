@@ -35,7 +35,7 @@ greedy and the loop on three pools, plus the planner's first careers), at 20-150
 (owner14: 121 careers fewer, 95% CI 95-147; owner4: 2,600 fewer, CI 1,850-3,350); on `career_U5` the two are within
 noise (greedy 12.6 fewer, CI -3.3 to +28.5). One-step rollouts over either base gain nothing measurable on any pool:
 with 4-8 paired samples their candidate scores are noise-dominated, so they deviate from the base pick at random.
-Today's planner (the page's rollout pick, the exact solver per decision) finished one run: 227.2 careers on run index 0,
+The rollout planner (the page's pick at the time, since replaced by `next`; the exact solver per decision) finished one run: 227.2 careers on run index 0,
 where greedy took 273.5 and the loop 381.4. One run, no interval: suggestive, not a measurement of its mean. It costs
 2.2 hours per run in process, which is why the other runs were stopped (three more were at 400-1,100 careers).
 
@@ -116,7 +116,7 @@ S < 0.001 (0.05 for the every-100 variant), averaged over 8 (U5) or 4 (owner poo
 | | rollout_greedy, first career | 16 | 305.9 | 257.9-353.8 | 1,602 | 1/187 | +15.9 (-28.4 to +60.2); greedy lower in 13 of 16 |
 | | rollout_greedy, every 100 careers | 4 | 260.7 | 236.8-284.5 | 1,522 | 1/200 | -0.3 (-1.6 to +0.9) |
 | | rollout_loop, first career | 16 | 298.7 | 268.7-328.6 | 1,322 | 1/156 | +8.7 (-34.0 to +51.5); vs loop +3.5 (-23.3 to +30.3) |
-| | planner (today's rollout pick, exact) | 1 | 227.2 | (one run) | 1,286 | 1/161 | run 0 only: greedy 273.5 on the same index; stopped runs 1-3 not counted |
+| | planner (the rollout pick of the time, exact) | 1 | 227.2 | (one run) | 1,286 | 1/161 | run 0 only: greedy 273.5 on the same index; stopped runs 1-3 not counted |
 | owner14 | repeat | exact | 817 | | | 1/817 | |
 | | greedy | 16 | 817.1 | (no spread) | 5,641 | 1/817 | |
 | | loop | 16 | 696.1 | 669.9-722.2 | 3,418 | 1/449 | -121.0 (-147.2 to -94.9); loop lower in 16 of 16 |
@@ -169,7 +169,7 @@ shared G1s); new Digital, Zephyr, Gold Ship or Special Week veterans lifted noth
 | `cycle` D-P | 849 | 860, 866, 836, 834 |
 
 `stale` beat the former rule in all four runs (78-150 careers) and matched the sampled index, with no sampling: it is
-the page's rule since. These runs predate one change (2026-10-08): the best career's trainee now counts as a
+the page's rule then (since replaced by `next`). These runs predate one change (2026-10-08): the best career's trainee now counts as a
 candidate too, so with no veteran of hers from her best parents she trains first (a pool with no Digital veteran ran
 three builders before her); not re-measured. The retry variants of the former rule (retry when no other member uses the newest veteran)
 measured worse on owner14 (766 over 16 runs against 673 over 11 runs for no retry): the retry fires almost always once a lineage
@@ -179,18 +179,18 @@ is saturated. Wall time 33 minutes on 2 cores (fixed cycles about 5 minutes a ru
 
 `trace` (docs/SOLVER.md): building for Agnes Digital with her five most efficient builders. Each career the most
 efficient one (exact lift chance x odds gained) runs, her veteran joins; 6 runs x 400 careers per pool (the owner's
-2-, 5-, 11- and 19-veteran pools). Digital's odds (mean over runs), actual against the continuation as first assumed
-(full-loop ceiling, lift chance falling linearly with the remaining log-odds gap):
+2-, 5-, 11- and 19-veteran pools). Digital's odds (mean over runs; "1 in"):
 
-| Pool | Start | 25 careers | 100 | 400 | First assumption at 100 / 400 | Ceiling assumed |
-|---|---|---|---|---|---|---|
-| 2 veterans | 1 in 20,926 | 1,356 | 360 | 177 | 145 / 108 | 1 in 97 |
-| 5 | 1 in 2,252 | 1,446 | 605 | 346 | 1,126 / 444 | 1 in 163 |
-| 11 | 1 in 713 | 535 | 361 | 292 | 234 / 185 | 1 in 168 |
-| 19 | 1 in 496 | 415 | 354 | 312 | 237 / 194 | 1 in 177 |
+| Pool | Start | 25 careers | 100 | 400 | Full-loop odds |
+|---|---|---|---|---|---|
+| 2 veterans | 20,926 | 1,356 | 360 | 177 | 97 |
+| 5 | 2,252 | 1,446 | 605 | 346 | 163 |
+| 11 | 713 | 535 | 361 | 292 | 168 |
+| 19 | 496 | 415 | 354 | 312 | 177 |
 
-The lift chance fell far faster than assumed (fitted exponent 4-5 on 11 and 19, against 1), and every pool plateaued
-near 0.5-0.6 of the full-loop odds: building with the best builder doesn't reach the hypothetical all-8/8 lineage. One
+The lift chance fell far faster than the first assumption (linear in the remaining log-odds gap, with the full-loop
+odds as ceiling): fitted exponent 4-5 on 11 and 19, against 1; that assumption overrated building (at 400 careers it
+predicted 1 in 185-194 on 11 and 19). Every pool plateaued near 0.5-0.6 of the full-loop odds: building with the best builder doesn't reach the hypothetical all-8/8 lineage. One
 shape over the four pools (least squares on log odds at 10-400 careers): effective ceiling 0.6 x the full-loop odds,
 lift chance x (remaining log gap)^1.5 (`CEIL_SHARE`, `LAM_DECAY` in sim/plan.rs). It tracks 11 and 19 within 10-20%;
 it underestimates building on 5 (626 predicted at 400, 346 actual: there builders first get more efficient) and
