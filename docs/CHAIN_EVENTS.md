@@ -141,10 +141,10 @@ A pal (friend) card's events follow their own track: a first meeting, outings, c
 
 - Light Hello [From the Ground Up] credits See Ya Later! to her event in 812 of 812 runs that carry her. "Certain"
   holds.
-- Sasami Anshinzawa [This Might Sting!]: her finale is modelled as Nothing Ventured on success and Risky Business on
-  failure, 50% each. Nothing Ventured is credited to her event in 23 of 32 runs (72%). This is the first evidence that
-  some outcomes aren't equally likely.
-  These 23 credits are exact, and no other card in those decks gives Nothing Ventured.
+- Sasami Anshinzawa [This Might Sting!]: her finale gives Nothing Ventured on success and Risky Business on failure.
+  In this sample Nothing Ventured was credited to her event in 23 of 32 runs (72%; exact credits, no other card in
+  those decks gives it), the first evidence that outcomes aren't equally likely. A larger count (2026-10-06) set the
+  model's share to 0.75 (`docs/MODEL.md`, Anshinzawa SSR finale).
 - Her first-year Uma Stan event, left out as bugged: no run credits Uma Stan to her unambiguously. Three runs show
   "King Halo or Sasami Anshinzawa event" (run 10775) or "Agnes Digital or Sasami Anshinzawa event" (runs 19855,
   19947), and the other card in each has its own Uma Stan event. The data are consistent with the exclusion. (An
@@ -176,7 +176,8 @@ here".
 
 **Choices and outcomes.** IT takes an event's first choice unless one of the player's prioritised skills (up to 10)
 sits on another choice. The planner assumes the player sets priorities that reach the targets it counts, and names
-them with the "prioritise" label. Outcomes of one choice are taken as equally likely and as excluding each other.
+them with the "prioritise" label. Outcomes of one choice exclude each other and are taken as equally likely unless measured (`docs/MODEL.md`,
+Measured event outcome shares).
 
 **Exactness.** The solver doesn't simulate. It enumerates the exact distribution of final chain states
 (`chain_states`). Given a state, sources are independent, so targets that depend on the same run's events are counted
@@ -212,7 +213,8 @@ skill at Lv 5 leaves the card's training-hint draws.
 
    In master.mdb the short cards' chain events look the same as those of the cards that fit, so the difference isn't
    visible in the data tables. Whether it is real or another marker problem is open.
-3. **Outcome probabilities** are assumed equal. Anshinzawa's finale is the first evidence against this.
+3. **Outcome probabilities** are assumed equal except the four measured ones (`docs/MODEL.md`, Measured event outcome
+   shares).
 4. **Rejected: a per-card "activation" parameter** (each chain card active in a run with probability a, otherwise no
    events). At 3 chain cards it fitted the uncorrected data (a = 0.82), but it has no mechanism and fails at 4–6 chain
    cards. Most of what it fitted turned out to be measurement error (section 6).
@@ -257,12 +259,13 @@ group. Significance treats each run as one cluster (z = Σ(obs − pred) / √Σ
 | 2-pal | 175 | four chain cards |
 | 1-pal | 120 | five chain cards |
 | 0-pal | 120 | six chain cards, chosen for early-link markers |
+| 5-pal | 120 | one chain card. Almost all Agnes Tachyon [Q≠0] in URA Finale, the only 5-pal decks in the summary. |
 | Yukino Bijin / Yaeno Muteki | 107 | planner-relevant early links |
 | Unity Cup | 200 | 3–5 chain cards; also used for the hint-rate fit |
 
 ## 8. What would settle the open questions
 
-- **The game's event-selection logic,** from client decompilation (`docs/HANDOFF.md`, research notes). It would replace
+- **The game's event-selection logic,** from client decompilation. It would replace
   the allocation assumption with the actual rule and explain the per-card shortfalls.
 - **Outcome probabilities:** test every multi-outcome event with enough runs, as was done for Anshinzawa's finale.
 - **The unexplained credits:** list which skills they are and for which cards. Missing event data would show up here.
