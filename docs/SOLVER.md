@@ -95,7 +95,7 @@ target/release/loopopt data.json jobs/best_no_oguri_yukino_inari.json > result.j
 | `scheme` | `"scf"` or `"rot"` | required |
 | `owned` | uma ids you own (empty = whole roster) | `[]` |
 | `exclude` | uma ids to leave out | `[]` |
-| `gp_weight` | grandparent spark base rate as a fraction of parents' (community estimate 0.5). The objective becomes parent-slot affinity + w × grandparent-slot affinity. 1 = plain total affinity | `1` |
+| `gp_weight` | grandparent spark base rate as a fraction of parents' (the old community estimate 0.5; the receipt fits behind the skill modes give 1). The objective becomes parent-slot affinity + w × grandparent-slot affinity. 1 = plain total affinity | `1` |
 | `require` | uma ids every returned loop must contain (at most 4; added to the pool even if not in `owned`) | `[]` |
 | `top` | how many loops to return in `best` mode | 5 |
 | `iters` | iterated-local-search rounds per foursome | required (30 is plenty) |
@@ -135,7 +135,7 @@ A number is the win % for that attempt, streak penalty included; `*` marks a goa
 
 ### Grandparent weighting (`gp_weight`)
 
-Spark proc chance per legacy = base × (1 + affinity/100), and grandparent base rates are about half of parents' (community estimate). Using umaishow's per-legacy split, the objective with grandparent weight w is:
+Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w is:
 
 | Scheme | base | C (race weight) |
 |---|---|---|
@@ -204,7 +204,34 @@ Extra fields (on top of the skills-mode fields; scenario-guaranteed skills stay 
 | `events`, `events_p`, `odds_events` | inline event rewards (merged with `events_file`) | `[]` |
 | `alts` | events naming two or more skills, in full: `[card, link, [choice][outcome] -> [[group, 1 \| 2], ...]]` (from card_events.json `alts`); at these links they replace `events` / `events_p` | `[]` |
 
-Model: training hints h = base(scenario) × (1 + hint_frequency/100) draws per run (hint frequency at max limit break, unique effect included; base Unity 2.70, Grand Concert 2.03, URA 1.60, Trackblazer 1.81, Grand Masters 2.30 (a placeholder); floor or ceiling of h, weighted by the fraction), each uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is never drawn; a skill leaves the pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a skill), one card's draws over several targets joint; chain events Binomial(21, 0.35) per run (fitted on uma-it IT runs, docs/MODEL.md), each advancing a random remaining chain slot of a non-pal card; pal finales certain; outcome-dependent rewards at their share of the outcomes, k of n at k/n (e.g. Nakayama Festa [Trusting the Dice]: each in 2 of 4 outcomes, 50%; a measured share replaces k/n where one exists: Anshinzawa SSR's finale, choice 2, Nothing Ventured on success 75%, Risky Business on failure, and Riko Kashimoto SSR's Ramp Up 75%, both `chance` in card_events.json; for generated chain events `event_shares.json` (Seiun Sky [Foolproof Plan] Fast-Paced 75%, Smart Falcon [My Umadol Way! ☆] Center Stage 75%), which the builders turn into the chain shares and `alt_w`, the job field the solver uses as outcome weights in place of equal outcomes). Cards without chain events (R cards) take no chain slot, like pals, and give training hints only. A choice that ends a card's chain (GameTora's 'ee' reward) is offered as a separate deck entry: the card's earlier links as usual, the ending choice's rewards at that link, and its remaining chain slots freed for the other cards; choices that end the chain on only some outcomes are not offered, but when such a choice is IT's default (first) choice, the chain stops there with chance k/n (`stop_risk` in card_events.json; the chain odds are the exact mixture over where it stops, with freed slots going to the other cards). A skill offered at several links of one card counts once, from the earliest link that fires. An event's outcomes exclude each other, and where an event offers targets on different choices the card is offered once per choice worth taking (a choice no other beats on every target), like an early chain end; the deck output names it (`choices`: "link 1: Uma Stan", the skill to prioritise). A hand-entered pal or group entry may name the event and choice it models (`event`: [story id, choice]); the event builders then derive `prioritise` from GameTora's choice layout and IT's rule (the skills on that choice and on no choice above it; a choice nothing steers to is an error), and the page shows it on the deck card (Anshinzawa SSR: Risky Business). A card's gold and white of one skill are combined exactly (deck `odds`: `gold` = P(gold hint), `white` = P(white hint | no gold hint)).
+Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
+- **Training hints**: h = base(scenario) x (1 + hint_frequency/100) draws per card per run (`hint_base`; hint
+  frequency at max limit break, unique effect included; the floor or ceiling of h, weighted by the fraction), each
+  uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is never drawn; a skill leaves the
+  pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a
+  skill); one card's draws over several targets are joint (`miss_draws`). Cards without chain events (R cards) take no
+  chain slot, like pals, and give training hints only.
+- **Chain events**: Binomial(21, 0.35) per run (`CHAIN_N`, `CHAIN_P`; `chain_events` overrides), each advancing a
+  random remaining chain slot of a non-pal card. Pal finales are certain.
+- **Outcome shares**: an outcome-dependent reward counts at its share of the outcomes, k of n at k/n (Nakayama Festa
+  [Trusting the Dice]: each skill in 2 of 4 outcomes, 50%). A measured share replaces k/n where one exists: `chance` in
+  card_events.json for hand-entered entries (Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up), and
+  `event_shares.json` for generated chain events, which the builders turn into the chain shares and `alt_w`, the job
+  field the solver uses as outcome weights in place of equal outcomes.
+- **Early chain ends**: a choice that ends a card's chain (GameTora's 'ee' reward) is offered as a separate deck
+  entry: the card's earlier links as usual, the ending choice's rewards at that link, and its remaining chain slots
+  freed for the other cards. Choices that end the chain on only some outcomes are not offered, but when such a choice
+  is IT's default (first) choice the chain stops there with chance k/n (`stop_risk` in card_events.json; the chain
+  odds are the exact mixture over where it stops, freed slots going to the other cards).
+- **Links and choices**: a skill offered at several links of one card counts once, from the earliest link that fires.
+  An event's outcomes exclude each other, and where an event offers targets on different choices the card is offered
+  once per choice worth taking (a choice no other beats on every target), like an early chain end; the deck output
+  names it (`choices`: "link 1: Uma Stan", the skill to prioritise). A hand-entered pal or group entry may name the
+  event and choice it models (`event`: [story id, choice]); the event builders then derive `prioritise` from GameTora's
+  choice layout and IT's rule (the skills on that choice and on no choice above it; a choice nothing steers to is an
+  error), and the page shows it on the deck card (Anshinzawa SSR: Risky Business).
+- **Gold and white**: a card's gold and white of one skill are combined exactly (deck `odds`: `gold` = P(gold hint),
+  `white` = P(white hint | no gold hint)).
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their rewards land or miss together, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` runs both on every call). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (the old ranking value, `rank_value` in the output), is only used to bound and order the work:
 - **Assumed cap.** No deck's exact value exceeds ρ times its product value, V ≤ ρ·V̂, with ρ = `EXACT_RHO` = 1.25 (largest ratio seen on any deck scored: 1.18 on the Global deck job `pal_UF`, 1.17 on Grand Masters with 0–1 pals; validation fails when a scored deck comes within 5% of the cap). Every deck and loop whose product ceiling times ρ could beat the best exact value is examined.
@@ -227,7 +254,7 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 
 Typical time natively: about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
-Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%), from hakuraku.moe's room-match data; it was 4.8% from a 45/50/5 split that matched neither band). Each legacy's affinity follows uma-it-optimizer's fit to 8,155 Independent Training receipts (github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor (halving them predicted half of what fired). In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. Before this, the model used umaishow's split (a parent took half the parent–parent relation and shared G1s) with grandparents halved, which put every spark chance at about half the measured level. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop; fit to CM room data at hakuraku.moe/notes/spark_generation). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
+Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%)). Each legacy's affinity follows uma-it-optimizer's per-legacy fit (`docs/MODEL.md`, Per-legacy affinity; github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor. In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
 
 ### Three-uma rotations (`sizes`)
 
@@ -250,12 +277,11 @@ and the search ranks both sizes together.
 - **Bounds.** `q_ub_trainee` lets the X slot also be the trainee (trio 0 + 3·PB(P, T)); pairwise ceilings are unchanged
   (structure-free). Exact per-uma tables, the certificate and the stop rule are shared by both sizes.
 
-Effect on the references (the change that added rotations, 2026-10-07): every four-uma result is bit-identical; 43 of
-46 deck jobs are now led by a rotation, usually Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning],
-Inari One [Edomurasaki] (`pal_U` per-uma 1 in 115.9 → 105.4; Grand Masters all owned 1 in 150.0 → 143.5); `pal_H` and
-`pal_I` shared stay four-uma loops. A rotation's careers are each a little worse than the loop's best (the fourth uma's
-relation points as grandparent, a median ×1.05 per career over 660 trainee-parent combinations in the analysis), but
-a loop must also train its fourth member, usually a weak trainee (Oguri Cap at 1 in 216 in `pal_U`).
+Why rotations usually win (measured when they were added, 2026-10-07: every four-uma result stayed bit-identical
+and 43 of 46 deck jobs became rotation-led; `pal_H` and `pal_I` shared stayed four-uma loops): a rotation's careers
+are each a little worse than the loop's best (the fourth uma's relation points as grandparent, a median ×1.05 per
+career over 660 trainee-parent combinations), but a loop must also train its fourth member, usually a weak trainee
+(Oguri Cap at 1 in 216 in `pal_U`).
 
 ### Career planner (`"mode":"career"`, page `/career`)
 
@@ -275,16 +301,18 @@ the job run alone.
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
-| `lookahead` | add the reroll-or-move-on look ahead for the best career (`lookahead` in the output) | `false` |
+| `lookahead` | add the reroll-or-move-on look ahead for the best career (`lookahead` in the output) (not sent by the page) | `false` |
 | `p_now` | today's best P(all) over every career, the floor of the look ahead and of the rollout (computed when absent) | none |
 | `p_minus1_now` | P(at least n−1) on that same best-all career; pass with `p_now` to avoid recomputing the baseline | none |
-| `policy` | `{stay_trainee, stay_parents: [a,b], p_floor}`: compare that fixed reroll career against the main result using equal continuation horizons; `p_floor` is an already available current-roster all-target probability | none |
+| `policy` | `{stay_trainee, stay_parents: [a,b], p_floor}`: compare that fixed reroll career against the main result using equal continuation horizons; `p_floor` is an already available current-roster all-target probability (not sent by the page) | none |
 | `rollout` | K > 0: the planner's pick as a one-step rollout over the K best careers whoever trains (the job's `trainees` and `fix` respected; `rollout` in the output); no longer sent by the page (kept for reverting) | 0 (off) |
-| `next` | the page's next career, exact where it can be and not simulated (`sim::plan::index_rule`): `{search_work, value_only, sur, sur_margin}`, optional; `sur` 1 takes each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`, default 0) in place of the career search, 2 runs both and lists the differences in `sur_diff` (on the owner's 16-veteran pool: none over 68 umas, the same time). Stage candidates (at most 8: the best career's trainee, the loop members when the job names them (`next.loop_members`; the plan no longer runs the loop planner's search: on the val/plan pools its members always entered by the other routes), the umas of the best career's lineage and of your veterans, the search's other trainees; below 4 (`HINT_FLOOR`: a loop being started, mob or other-uma veterans) filled from the owned umas with the highest odds under a full loop lineage, parents hypothetical veterans of the first two candidates' umas each bred from the other and from her, valued by `Env::ceiling`, no deck search; reported in `hint`), each with her best career. Pass 1: every allowed uma's best career, exact over her outcomes (a builder's through her deck class: her class's winning decks, the main search's and the candidates' best careers, valued at her own chances by the surrogate, no career search; searched exactly when her lift efficiency is within 6% of a candidate's second best, `PROXY_EFF`, or her saving within 6% of the lowest the shown rows, the near-tie band or two deep take, `PROXY_SAVE` (recalibrated 2026-10-09 with `proxy_check` on val/plan: at most 2.79% / 2.67% low); such a row carries `exact: false`; before a near-top builder is searched her proxy is certified where her deck class's proofs allow (`certified`: over every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below the proxy's value, so it is her best career's value; with mob or affinity-free parents every classmate has the same chances and one search proves her class), counted in `umas_certified`; `exact_all: true` searches every uma; `fit` ([[chara, lam, phi, pinf], ...], a plan's own `fit` output) takes the stage candidates and their continuations as given instead of fitting them to this pool (the page's Compare prices the pool with her under the plan it compares with, so the two Vs differ only by her); Cont's two builders come from the exactly searched careers; `proxy_check: true` reports each builder's proxy beside her exact career; `proxy_eff`, a test knob, replaces PROXY_EFF: tests/plan_memo.rs sets -1 to make the pass-2 searches refit Cont), gives per candidate the chance her veteran raises that candidate's odds and the mean odds raised to. Per candidate a continuation (`Cont`, assumed form): builder careers lift her odds with chance lam_j = lam (1 - phi)^j at the j-th success, each closing phi of the gap in log odds to p_inf (her odds with a full loop lineage: parents hypothetical 8/8s of her two most efficient builders, bred from each other and from her); her step (a fresh 8/8) costs min over n of sum_j<n 1/lam_j + 1/p_n. V = min over trios of side(A) + side(B) + 1/p_C, A and B candidates, each side either a real 8/8 veteran of hers (cost 0) or a fresh 8/8 (her step; the veteran her best career now would leave, `Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), C every allowed uma at her odds with those two as parents (the cheapest choice of sides wins: a real 8/8 with poor parents can lose to a fresh one). Pass 2: a career's score E[V - V with her veteran] - 1 (her veteran as a parent raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal: V after 0). Two deep, for the 3 highest and the best odds: her rolls one target short of 8/8 (stars at the rank's mix), as a parent of the 3 highest builders, scored the same way, over today's best score. Pick: the highest; within 0.25 careers per run (or 5%) the better own odds. The goal is always the next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents. Output `next`: `options` (per career `role` plan/finish/loop/candidate/builder, `index`, `two_step`, `score`, `lift` (chance her roll lowers V), `near`, `stage_cost` for a candidate, `chosen`), `choice`, `mode` (trio), `members` (A and B: {trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds, p_switch, careers}), `v0` (V), `v0_plan` ({a, b, c, careers}), `fit` (the stage candidates in order with their continuations, [chara, lam, phi, pinf]), `outcomes` (the pick's careers saved per outcome, V - V with her veteran: {trainee, parents, uncv, fixed, y}; `y` at index leaf << len(fixed) | fm, leaf her uncertain targets' stars in base 4 in `uncv` order (0 absent), fm the scenario's guaranteed golds present; the page's Reroll reads a roll's from it; `y_hi` at the same index: at least `y`, the most her veteran's direct lifts could save for that outcome, each candidate's odds with her as a parent bounded over every partner y by the least over today's pairs (y, z) of c' (p_now / c_yz) rise(q', q_yz) (`Env::rise`: no assumed cap) and by the ceiling, the step at `Cont::cost_lo`; `provisional`: the chance a roll reads y < 0.5 <= y_hi, which the page checks exactly; the replan's other careers with her as a parent are not bounded (its candidates and Cont are the plan's, `fit`)) and her own 8/8 as a free trio side when her uma is not a stage candidate (`her_trios`: her 8/8 at the rank's star mix, as the trios' fresh sides, with every candidate side and the best C), `umas_scored`, `umas_searched` (careers searched exactly), `sur`, `sur_diff`, `work` (this plan's deck-search nodes and exact scorings: deterministic, so a speed change can be measured at any machine load), timings. Each trainee's best careers are kept per plan (the last few, in the worker): a plan of the same setup, places and pool takes them as they are (no search: a reload, an edit undone), and a plan of the same setup and places whose pool is a kept one plus one veteran at the end (the page's Compare) takes the better of the kept best and a search with her fixed, whose bar starts at the kept value (`Env::floor`); exact (on the owner's 16-veteran pool identical to the plan run cold), about 3 ms instead of 9 s | none |
-| `compare` | marks the page's veteran-analysis job (the best career with her fixed as a parent); echoed as `compare: true` in the output, changes nothing else | `false` |
+| `next` | the page's next-career plan, section *Next career (`next`)* below | none |
+| `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above) and the kept proofs (fully checked decks per setup and deck class), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 | `plan` | the planner's pick on the surrogate simulator (no longer sent by the page; `next` replaced it) (section "Plan"): `{budget_ms, samples_min, samples_max, eps, horizon_max, seed, top, recent, trainees, loop_members, margin, search_work, refresh_work}`, every field optional; `plan` in the output, or with `policy` the plan-based comparison in `policy.plan` (and no options) | none |
+
+#### Model per career
 
 Model per career (T, L1, L2): the six legacies are L1, L2 and their recorded parents. Affinity as in the loop model
 with the recorded G1 wins (shared = same race index; the page maps win saddles by saddle group, so a race at a
@@ -296,6 +324,8 @@ same for every deck and multiplies P(all) (`JointExt` applies it per target for 
 chances, which are exact marginals of the joint model). Tested against the loop model (`career_fold_and_scale`; and
 end to end: with 2★ sparks everywhere and no race overlap every lineage of `pal_U` gives the same P(all) and q to
 9 digits).
+
+#### Search and output
 
 Search: each candidate gets a ceiling ρ·C·max_outfit Π_k f_k at each target's best possible deck odds (the deck_size
 lowest miss chances of the trainee's legal entries, every link firing); candidates are taken best ceiling first. A
@@ -332,6 +362,92 @@ when the worker kept the search from the job before). The best career also carri
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
   (bit i = job target i), guaranteed golds' spark generation included.
 
+#### Next career (`next`)
+
+The page's plan (`sim::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
+`next: {}` with `no_reports: true`, after the search job (it reuses the search the worker keeps). The model and its
+evidence: `docs/MODEL.md`, *Next career*. Constants are in `deck/career/sim/plan.rs`.
+
+| Field of `next` (all optional) | Meaning | Default |
+|---|---|---|
+| `sur`, `sur_margin` | 1: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; 2: both, the differences listed in `sur_diff` (on the owner's 16-veteran pool: none over 68 umas, the same time) | 0, 0 |
+| `value_only` | V alone, no score per candidate | `false` |
+| `exact_all` | every uma's best career searched exactly (no proxies: the rule before builders went through their deck class) | `false` |
+| `proxy_check` | each builder's proxy reported beside her exact career (`proxy_check` in the output); changes nothing else | `false` |
+| `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
+| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. Unused by the page since Compare plans exactly as Add will (b2ecc73) | none |
+| `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
+| `search_work` and the other `plan` fields | read from the same structure as `plan` (section *Plan*) | as `plan` |
+
+**Stage candidates** (at most 8): the best career's trainee, the loop members when named, the umas of the best
+career's lineage and of your veterans, the search's other trainees. Below 4 (`HINT_FLOOR`: a loop being started, mob or
+other-uma veterans) they are filled from the owned umas with the highest odds under a full loop lineage (parents
+hypothetical veterans of the first two candidates' umas, each bred from the other and from her, valued by
+`Env::ceiling`, no deck search; reported in `hint`). Each gets her best career. On the val/plan pools the loop members
+always entered by the other routes, which is why the loop planner's search was dropped from the plan.
+
+**Pass 1**: every allowed uma's best career, exact over her outcomes, giving per candidate the chance her veteran
+raises that candidate's odds and the mean odds raised to.
+- A builder's career goes through her deck class: her class's winning decks (the main search's and the candidates'
+  best careers), valued at her own chances by the surrogate, no career search. She is searched exactly when her lift
+  efficiency is within `PROXY_EFF` (6%) of a candidate's second best, or her saving within `PROXY_SAVE` (6%) of the
+  lowest that the shown rows (`OPT_SHOW` = 8), the pick's near-tie band or two deep take. Recalibrated 2026-10-09 with
+  `proxy_check` on val/plan: the proxy reads at most 2.79% / 2.67% low. A row left on its proxy carries `exact: false`.
+- Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
+  every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below
+  the proxy's value, so it is her best career's value); with mob or affinity-free parents every classmate has the same
+  chances and one search proves her class. Counted in `umas_certified`.
+- Cont's two builders come from the exactly searched careers.
+
+**Continuation and V.** Per candidate a continuation (`Cont`, assumed form): builder careers lift her odds with chance
+lam_j = lam ((1 - phi)^j)^`LAM_DECAY` (1.5) at the j-th success, each closing phi of the gap in log odds to
+p_inf = `CEIL_SHARE` (0.6) x her odds with a full loop lineage (parents hypothetical 8/8s of her two most efficient
+builders, bred from each other and from her), at least her odds now. Her step (a fresh 8/8) costs
+min over n of sum_{j<n} 1/lam_j + 1/p_n (n up to `CONT_N` = 500; `cost_lo` stops once the building alone reaches the
+best cost, so the cap decides nothing). `Cont::plan` and `Cont::cost_lo` are memoised per Cont by the bits of p
+(`PLAN_MEMO=1` prints lookups and hits, `PLAN_MEMO_CHECK` recomputes every hit and panics unless bit-identical,
+`PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap). V = min over trios of side(A) + side(B) + 1/p_C: A and B
+candidates, each side either a real 8/8 veteran of hers (cost 0) or a fresh 8/8 (her step; the veteran her best career
+now would leave, `Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), C
+every allowed uma at her odds with those two as parents. The cheapest choice of sides wins: a real 8/8 with poor parents
+can lose to a fresh one.
+
+**Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
+raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
+(V after 0). Two deep, for the 3 highest (`TWO_TOP`) and the best odds: her rolls one target short of 8/8 (`TWO_MISS`;
+stars at the rank's mix), as a parent of the 3 highest builders (`TWO_BUILDERS`), scored the same way, over today's
+best score. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
+next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
+
+**Output `next`:**
+- `options`: per career `role` (plan / finish / loop / candidate / builder), `index`, `two_step`, `score`, `lift` (the
+  chance her roll lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
+- `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds,
+  p_switch, careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their
+  continuations, `[chara, lam, phi, pinf]`).
+- `outcomes`: the pick's careers saved per outcome, V - V with her veteran: `{trainee, parents, uncv, fixed, y}`. `y` is
+  indexed by leaf << len(fixed) | fm, leaf = her uncertain targets' stars in base 4 in `uncv` order (0 absent), fm =
+  the scenario's guaranteed golds present; the page's Reroll reads a roll's saving from it. `y_hi` at the same index: at
+  least `y`, the most her veteran's direct lifts could save for that outcome (each candidate's odds with her as a
+  parent bounded over every partner y by the least over today's pairs (y, z) of c' (p_now / c_yz) rise(q', q_yz)
+  (`Env::rise`: no assumed cap) and by the ceiling, the step at `Cont::cost_lo`); `provisional`: the chance a roll reads
+  y < 0.5 <= y_hi, which the page checks exactly. The replan's other careers with her as a parent are not bounded (its
+  candidates and Cont are the plan's).
+- `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
+  trios' fresh sides, with every candidate side and the best C).
+- `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `hint`, `sur`, `sur_diff`, `work` (this
+  plan's deck-search nodes and exact scorings, deterministic: a speed change can be measured at any machine load;
+  `work.max_ratio` the largest exact/product ratio scored), timings.
+
+**Kept plans.** Each trainee's best careers are kept per plan (the last few, in the worker). A plan of the same setup,
+places and pool takes them as they are (no search: a reload, an edit undone); a plan of the same setup and places whose
+pool is a kept one plus one veteran at the end (Compare, then Add) takes the better of the kept best and a search with
+her fixed, whose bar starts at the kept value (`Env::floor`). Exact (on the owner's 16-veteran pool identical to the
+plan run cold), about 3 ms instead of 9 s. The kept plans and proofs survive a page reload through `cmd: "state_out"` /
+`"state_in"` (fields table above).
+
+#### Look ahead (`lookahead`, not sent by the page)
+
 Look ahead (`lookahead: true`; facts, no decision). The new veteran V lands each set S with its exact chance (per chain
 state the targets are independent apart from the outcome clusters, which are enumerated, so the distribution over the
 2^n sets is exact for the model); each landed spark's stars come from `star_dist`; her G1 wins are her schedule's win
@@ -358,6 +474,8 @@ chance P(set) x the rank mix per star; the best outfit is taken per outcome. Exa
 beats today's best; `best_case_with_her`: the best P(all) of a career with her as a parent over every outcome
 (unfloored); `best_with_her`: the best setup found for her (trainee id, P(all) at the averaged stars).
 
+#### Comparison (`policy`, not sent by the page)
+
 Comparison (`policy: {stay_trainee, stay_parents: [a, b], p_floor}`), for one veteran entered in the job's legacies
 and fixed as a parent (`fix`): "stay" runs the career (stay_trainee, stay_parents) again, "advance" runs the main result
 (the best career with her). Each action a is scored the same way: one more career, then the best setup it leaves,
@@ -371,6 +489,8 @@ stationary tail); a positive failure chance with f_a(S) = 0 gives null (no finit
 further ahead than the other; this is an estimate, not the optimal policy. Output `policy`: `stay` and `advance`
 (`expected_careers_estimate`, `p_all`, `p_within_two`, `next_proven`, `setups`, `star_dist`), `actions_proven`,
 `continuation_floor`, `horizon`. Cost: the stay search and two look aheads (about 6 s in the browser on 12 veterans).
+
+#### Rollout (`rollout`, not sent by the page)
 
 Rollout (`rollout: K`). Which career to run next, when the target is the first veteran landing every target. For each
 of the K best careers a by P(all) (a = trainee, parents, her best deck):
@@ -423,6 +543,8 @@ evaluation over the best setup's cached decks, with her landing everything and w
 1e-16), `timing_s`. Cost (native, one core): `career_U` 0.13 s, `career_U4` 0.77 s, 50 and 200 synthetic veterans
 0.65 and 0.9 s, on top of the K-best search (0.46 s, 1.0 s, 0.4 s, 2.2 s); in the page's wasm `career_U` 0.67 s and
 `career_U4` 1.8 s for the whole job.
+
+#### Work budget
 
 Work budget: a career search has its own (`CAREER_BUDGET`, 300M units; the loop planner's 30M left synthetic pools of
 12, 100 and 200 veterans unproven with the same picks; measured need 10M-85M up to 400 veterans; `EXACT_BUDGET` in the
@@ -479,7 +601,7 @@ Results and commands: `val/sim/README.md`.
 
 ### Plan (`plan` on a career job)
 
-The page's pick and its numbers. Objective (the only one): the expected number of careers until a career's veteran
+The pick the page made before `next` replaced it (no longer sent by the page). Objective (the only one): the expected number of careers until a career's veteran
 lands every target. After the main search, per candidate career c, base policy B and sample j (derived, as the simulator):
 
     X_j(c, B) = 1 + sum over t >= 1 of S_t,  S_1 = 1 - p_c,  S_{t+1} = S_t (1 - p_t);  stop at S_t < eps or t = horizon_max, plus S_t / p
