@@ -830,6 +830,14 @@ const TESTS = {
     await pg.click('#ex-open'); const text = await pg.inputValue('#ex-text');
     await pg.fill('#ex-text', text); await pg.click('#ex-load');
     check('export then import: settings load', (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global');
+    // a setting of the wrong shape (a hand edit) is left out and named; the rest loads, and the page still loads after it
+    // (the wrong value used to be saved first, and every later load failed on it)
+    const bad = JSON.parse(text); bad.settings.targets = 5; bad.settings.rank = '0.50,0.45,0.05';
+    await pg.fill('#ex-text', JSON.stringify(bad)); await pg.click('#ex-load');
+    check('import: a malformed setting is named and left as it was, the others load', /Not understood, so left as they were: targets\.$/.test(await pg.locator('#ex-msg').innerText())
+      && (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05', await pg.locator('#ex-msg').innerText());
+    await pg.click('#ex-close'); await settle(pg); await pg.reload(); await settle(pg);
+    check('… and the page loads after it', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.locator('#results .loop').count()) > 0);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
     const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();
