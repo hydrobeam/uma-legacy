@@ -2083,7 +2083,9 @@ impl<'a> DeckSpace<'a> {
                 {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
                     struct St { sel: Vec<usize>, pw: Vec<f64>, pg: Vec<f64>, pid: usize }
-                    let mut st = St { sel: vec![], pw: vec![1.0; nu], pg: vec![1.0; nu], pid: pid_next };
+                    // (pw, pg: one row of nu per depth 0 ..= the deck's slots, row d at d * nu: the partial deck with d cards)
+                    let nrows = gs.iter().map(|x| x.1).sum::<usize>() + 1;
+                    let mut st = St { sel: vec![], pw: vec![1.0; nrows * nu], pg: vec![1.0; nrows * nu], pid: pid_next };
                     let nhc = 2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1);
                     while hc.len() < nhc { hc.push(Hc { pid: usize::MAX, fa: vec![0.0; noq * nu] }); }
                     // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
@@ -2205,13 +2207,13 @@ impl<'a> DeckSpace<'a> {
                            leaf: &mut dyn FnMut(&[usize], &[f64], &[f64]) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
-                            if g + 1 >= gs.len() { let b = st.pw.len() - nu; return leaf(&st.sel, &st.pw[b..], &st.pg[b..]); }
+                            if g + 1 >= gs.len() { let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu]); }
                             return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
-                        // the deck so far is the last row; a child's row is pushed after it and dropped after its subtree
-                        let b = st.pw.len() - nu;
+                        // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
+                        let b = st.sel.len() * nu;
                         // this parent's id and depth (the per-parent rows of `hopeful`)
                         st.pid += 1; let (pid, dep) = (st.pid, st.sel.len());
                         for p in start..list.len() {
@@ -2219,12 +2221,16 @@ impl<'a> DeckSpace<'a> {
                             let j = list[p];
                             if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) { continue; }
                             sp.nodes.set(sp.nodes.get() + 1);
-                            for t in 0..nu { let w = st.pw[b + t] * mw[j * nu + t]; st.pw.push(w); let x = st.pg[b + t] * mg[j * nu + t]; st.pg.push(x); }
-                            if !hopeful(g, left - 1, &st.pw[b + nu..], &st.pg[b + nu..], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j]) { st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
+                            // the child's row (depth + 1): the parent's times the card's misses
+                            { let (par, ch) = st.pw.split_at_mut(b + nu); let (mj, par, ch) = (&mw[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
+                              for t in 0..nu { ch[t] = par[t] * mj[t]; } }
+                            { let (par, ch) = st.pg.split_at_mut(b + nu); let (mj, par, ch) = (&mg[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
+                              for t in 0..nu { ch[t] = par[t] * mj[t]; } }
+                            if !hopeful(g, left - 1, &st.pw[b + nu..b + 2 * nu], &st.pg[b + nu..b + 2 * nu], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j]) { continue; }
                             st.sel.push(j);
-                            if !sbx(&st.sel) { st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu); continue; }
+                            if !sbx(&st.sel) { st.sel.pop(); continue; }
                             let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
-                            st.sel.pop(); st.pw.truncate(b + nu); st.pg.truncate(b + nu);
+                            st.sel.pop();
                             if stop { return true; }
                         }
                         false
