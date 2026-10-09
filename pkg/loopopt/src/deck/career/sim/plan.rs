@@ -1097,6 +1097,18 @@ pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy
     (ey, lift, ys, stats, dist0)
 }
 
+/// Per leaf (base-4 digits, digit k at bits 2k..2k+1) the product of g[k][digit k] over k, into `out`: level by level,
+/// each level's products the previous level's (at the leaf's lower digits) times g[k][digit k], from 1.0. The same
+/// operations in the same order as `let mut pr = 1.0; for k in 0..nu { pr *= g[k][digit k]; }` per leaf, so the same
+/// f64s; each prefix is computed once instead of once per leaf (4/3 4^nu products for nu 4^nu)
+fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
+    out.clear(); out.push(1.0);
+    for (k, gk) in g.iter().enumerate() {
+        let low = (1usize << (2 * k)) - 1;
+        tmp.clear(); tmp.extend((0..4usize << (2 * k)).map(|i| out[i & low] * gk[i >> (2 * k)]));
+        std::mem::swap(out, tmp);
+    }
+}
 /// The pick's upper bound per outcome (`outcomes.y_hi`, read by the page's reroll): the most V can fall through her
 /// veteran's DIRECT lifts. The outcomes, base and own-8/8 credit (`her_trios`) are `score_career`'s; but each stage
 /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
@@ -1131,6 +1143,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     let nleaf = 1usize << (2 * nu); let nm = 1usize << ntar;
     let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];   // (candidate, bound at scale 1 per leaf, spark scale per m)
     let rf = crate::deck::EXACT_RHO * s.fixed;
+    let (mut lp, mut lp_tmp): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
     for ui in 0..n {
         let u = bs.cands[ui];
         if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || s.fastc[u].is_empty() { continue; }
@@ -1150,10 +1163,8 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             let mut ceil = vec![0.0f64; nleaf];
             for o in &s.fastc[u] {
                 let g: Vec<[f64; 4]> = (0..nu).map(|k| { let (aa, bb) = o[k]; [0, 1, 2, 3].map(|sg| aa + bb * (1.0 - x0[k] * xms[sg])) }).collect();
-                for (leaf, cv) in ceil.iter_mut().enumerate() {
-                    let mut pr = 1.0f64; for (k, gk) in g.iter().enumerate() { pr *= gk[(leaf >> (2 * k)) & 3]; }
-                    if pr > *cv { *cv = pr; }
-                }
+                leaf_products(&g, &mut lp, &mut lp_tmp);
+                for (cv, &pr) in ceil.iter_mut().zip(&lp) { if pr > *cv { *cv = pr; } }
             }
             // the anchored rise bound per leaf: the least over today's pairs (y, z) keeping the places of
             // (pnow / c_yz) rise(q'(leaf), q_yz), q'_k(leaf) = 1 - x0[k] xm[her stars]
@@ -1168,10 +1179,8 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
                         let g: Vec<[f64; 4]> = (0..nu).map(|k| { let i = uncv_u[k]; [0, 1, 2, 3].map(|sg| {
                             let qn = 1.0 - x0[k] * xms[sg];
                             if st[k] > 0 || qn <= qz[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - qn)) / (1.0 - (1.0 - ew[k]) * (1.0 - qz[i])) } }) }).collect();
-                        for (leaf, rv) in rz.iter_mut().enumerate() {
-                            let mut pr = 1.0f64; for (k, gk) in g.iter().enumerate() { pr *= gk[(leaf >> (2 * k)) & 3]; }
-                            if pr > *rv { *rv = pr; }
-                        }
+                        leaf_products(&g, &mut lp, &mut lp_tmp);
+                        for (rv, &pr) in rz.iter_mut().zip(&lp) { if pr > *rv { *rv = pr; } }
                     }
                     let f = bs.pnow[ui] / cz;
                     for (av, rv) in anc.iter_mut().zip(&rz) { let v = f * rv; if v < *av { *av = v; } }
