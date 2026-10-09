@@ -47,8 +47,8 @@ export function renderCards() {
       if (ban) { b.classList.add('ban'); const n = document.createElement('span'); n.className = 'cban'; n.textContent = 'Not allowed in ' + (SCENARIOS.find(s => s.v === (state.scen || 'unity')) || {}).name; b.appendChild(n); }
       // a toggle: pressed = owned; its name is its visible text (name, title, what it gives), so voice control matches it
       const paint = () => { const own = state.cardsOff[c.id] !== false; b.setAttribute('aria-pressed', own ? 'true' : 'false'); };
-      paint(); cardCount();
-      b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paint(); };
+      paint();
+      b.onclick = () => { if (state.cardsOff[c.id] === false) delete state.cardsOff[c.id]; else state.cardsOff[c.id] = false; save(); paint(); cardCount(); };
       chips.appendChild(b);
     }
     box.appendChild(sec);

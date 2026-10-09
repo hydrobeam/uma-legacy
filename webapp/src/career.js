@@ -2,7 +2,7 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-import { $ } from './dom.js';
+import { $, spinHTML } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
@@ -40,10 +40,10 @@ function paint() {
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
   $('results').classList.toggle('stale', !searching && ['error', 'empty'].includes(status.kind));
   if (searching) { const s = Math.floor((performance.now() - t0) / 1000);
-    n.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Searching…<span aria-hidden="true">' + (s >= 1 ? ` ${s} s` : '') + '</span></span>'; }
+    n.innerHTML = spinHTML() + '<span>Searching…<span aria-hidden="true">' + (s >= 1 ? ` ${s} s` : '') + '</span></span>'; }
   else if (planS.state === 'busy' && status.kind === 'done') { const s = Math.floor((performance.now() - planS.t0) / 1000);
     n.textContent = status.text + ' ';
-    const sp = el('span'); sp.innerHTML = '<span class="spin" aria-hidden="true"></span>';
+    const sp = el('span'); sp.innerHTML = spinHTML();
     sp.append('Planning: the next career…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
   else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
@@ -706,7 +706,7 @@ function simulationBody() {
     result.appendChild(odds);
   }
   if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare/reroll to see if she improves your loop.'));
-  if (busy) { const p = el('p', 'runnote'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
+  if (busy) { const p = el('p', 'runnote'); p.innerHTML = spinHTML() + '<span>Comparing: what she changes for the next career…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
@@ -726,7 +726,7 @@ function simulationBody() {
       : 'No careers saved';
     verdict.append(el('strong', '', head));
     result.appendChild(verdict);
-    if (simulation.refining) { const p = el('p', 'runnote simrefine'); p.innerHTML = '<span class="spin" aria-hidden="true"></span><span>Working out how many careers it saves…</span>'; result.appendChild(p); }
+    if (simulation.refining) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + '<span>Working out how many careers it saves…</span>'; result.appendChild(p); }
     const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
     const fig = (label, a, b, dir, title) => { const c = el('div', 'tc'); c.title = title; const v = el('b', 'tv ' + dir, `${a} → ${b}`); c.append(el('span', 'tl', label), v); figs.appendChild(c); };

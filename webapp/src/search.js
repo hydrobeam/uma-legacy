@@ -1,7 +1,7 @@
 // ---------- search: scheduling, and the engine (a Web Worker running the WebAssembly solver) ----------
 // The search runs by itself: any change to a setting schedules one (after a short pause, so a run of clicks is one
 // search); a change during a search kills the worker and starts again (a fresh worker is ready in ~60 ms).
-import { $ } from './dom.js';
+import { $, spinHTML } from './dom.js';
 import { ERA } from './settings.js';
 import { UMAS, ASSETS, EXAMPLE } from './data.js';
 import { run, killEngine } from './engine.js';
@@ -35,7 +35,7 @@ export function paintRunNote() {
     const sec = Math.floor((performance.now() - searchT0) / 1000), t = sec >= 1 ? ` ${sec} s` : '';
     // the seconds are hidden from screen readers: the live region would read them out every second
     const what = phase === 'check' ? 'Checking the exact odds…' : 'Searching…';
-    n.innerHTML = '<span class="spin" aria-hidden="true"></span><span>' + what + '<span aria-hidden="true">' + t + '</span>' +
+    n.innerHTML = spinHTML() + '<span>' + what + '<span aria-hidden="true">' + t + '</span>' +
       (phase === 'check' ? (t ? '. ' : ' ') + 'The result below may still change.' : sec >= 1 && shown ? '. The results below are from before your change.' : '') + '</span>';
     setAct('stop', 'Stop', stopSearch); pill = what + t;
   } else {
