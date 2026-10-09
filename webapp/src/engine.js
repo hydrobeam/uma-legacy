@@ -47,7 +47,13 @@ function startEngine() {
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'ready') { URL.revokeObjectURL(url); resolve(); }
-      else if (m.type === 'error') { reject(new Error(m.message)); }
+      else if (m.type === 'error') {
+        if (m.id === undefined) { reject(new Error(m.message)); return; }   // the start failed
+        // a job failed inside the solver (a wasm trap leaves the instance unusable): every job waiting gets the error as
+        // its answer and the worker goes (the next job starts a fresh one); without this the job never answered
+        const waiting = [...pending.values()]; killEngine();
+        for (const p of waiting) p.done({ r: { error: 'the solver stopped with an error (' + m.message + ')' }, ms: 0 });
+      }
       else if (m.type === 'interim') { const p = pending.get(m.id); p && p.interim && p.interim(m); }
       else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p.done(m); }
     };

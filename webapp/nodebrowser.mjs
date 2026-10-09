@@ -277,6 +277,13 @@ const TESTS = {
     const sw = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap .swho')].map(w => ({ av: w.querySelectorAll('.av').length, label: w.querySelector('.vh').textContent, tips: [...w.querySelectorAll('.facebtn')].map(a => a.title), shown: [...w.childNodes].filter(n => !(n.classList && (n.classList.contains('vh') || n.classList.contains('facebtn')))).map(n => n.textContent).join('').trim() })));   // .vh: screen-reader text
     const swd = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap')].map(d => [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim())));
     check('each swap row says what it changes ("Skill a% → b%")', swd.length > 0 && swd.every(r => r.length > 0 && r.every(t => /\d+% → \d+%$/.test(t))), JSON.stringify(swd));
+    // a target on the swapping uma's own skill list is no change for her (her deck drops its hints because she has it):
+    // not listed (the default's Agnes Digital [Full-Color Fangirling] has Superstan, so no "Uma Stan 100% → 0%")
+    const owned = await pg.evaluate(() => { const skl = self.__LLP_DATA['data-skills'], wOf = new Map(skl.filter(s => s[2]).map(s => [s[2], s[1]]));
+      return [...document.querySelectorAll('#results .loop .deck.swap')].map(d => { const ids = [...d.querySelectorAll('.swho .facebtn')].map(f => f.dataset.uma);
+        const per = ids.map(id => [...document.querySelectorAll(`#results .loop .mem[data-uma="${id}"] .sk .spark`)].flatMap(s => s.classList.contains('g') ? [s.textContent, wOf.get(s.textContent)] : [s.textContent]));
+        return { mine: per.length ? per[0].filter(n => per.every(p => p.includes(n))) : [], swd: [...d.querySelectorAll('.swd1')].map(x => x.textContent.trim()) }; }); });
+    check('swap rows leave out the targets their umas have on their own skill list', owned.some(r => r.mine.length) && owned.every(r => r.swd.every(t => !r.mine.some(n => t.startsWith(n + ' ')))), JSON.stringify(owned));
     const more = pg.locator('#results .loop .swd.more').first();
     if (await more.count()) { const n0 = await more.locator('.swd1:visible').count(); await more.click();
       check('clicking a swap\'s changes shows them all, again folds them', (await more.locator('.swd1:visible').count()) > n0 && (await more.getAttribute('aria-expanded')) === 'true'
@@ -613,11 +620,22 @@ const TESTS = {
   },
   async states(b) {
     // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
-    const pg = await open(b);
+    // (window.__trap: the next jobs reach the worker without their job, so they fail inside it, as a solver trap would)
+    const pg = await open(b, { init: () => { const W0 = window.Worker; window.Worker = function (...a) { const w = new W0(...a), pm = w.postMessage.bind(w);
+      w.postMessage = (m, ...r) => pm(m && m.type === 'run' && window.__trap ? { ...m, job: null } : m, ...r); return w; }; } });
     const head = () => pg.evaluate(() => ({ kind: document.getElementById('rhead').dataset.kind, note: document.getElementById('run-note').textContent, act: document.getElementById('r-act').innerText,
       loops: document.querySelectorAll('#results .loop').length, stale: document.getElementById('results').classList.contains('stale') }));
+    // a job that fails inside the worker: the search ends on the error (it used to spin for ever), the results stay, the
+    // worker goes, and the next search runs on a fresh one
+    const kt = await pg.evaluate(() => { window.__trap = true; return window.__killed; });
+    await pg.locator('#cards .ct').nth(6).click();
+    const trapped = await until(pg, () => document.getElementById('rhead').dataset.kind === 'error', null, 15000); let h = await head();
+    check('a job that fails in the worker ends the search on its error, the results kept, the worker restarted', trapped && /^Not searched: the solver stopped with an error/.test(h.note) && h.loops > 0 && h.stale
+      && (await pg.evaluate(() => window.__killed)) > kt, JSON.stringify(h));
+    await pg.evaluate(() => { window.__trap = false; }); await pg.locator('#cards .ct').nth(6).click(); await settle(pg);
+    check('… and the next search runs', /^Checked [\d,]+ decks/.test(await note(pg)));
     while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
-    await kind(pg, 'empty'); let h = await head();
+    await kind(pg, 'empty'); h = await head();
     check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg); h = await head();
     check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(h.note) && !h.stale, JSON.stringify(h));
@@ -699,6 +717,8 @@ const TESTS = {
       && (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 3);
     check('All three: turns written as on the member tabs ("Early Apr"), no shared/optional key', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg td.when')].every(t => /^(Early|Late) [A-Z][a-z]{2}$/.test(t.textContent)))
       && await pg.locator('#sched-dlg .agkey').isHidden());
+    check('All three: each win % says why on hover, as its note promises', await pg.evaluate(() => { const c = [...document.querySelectorAll('#sched-dlg table.sched tbody td')].filter(t => /^\*?\d+$/.test(t.textContent));
+      return c.length > 0 && c.every(t => /^\d+% win: 110/.test(t.title)) && /hover for why/.test(document.querySelector('#sched-dlg .tablewrap .hint').textContent); }));
     await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg');
     // the career page's table: each parent, then her two parents (relation, G1 wins shared, affinity), a Total row
@@ -896,6 +916,14 @@ const TESTS = {
     await pg.click('#ex-open'); const text = await pg.inputValue('#ex-text');
     await pg.fill('#ex-text', text); await pg.click('#ex-load');
     check('export then import: settings load', (await pg.locator('#ex-msg').innerText()) === 'Settings loaded.' && JSON.parse(text).settings.era === 'global');
+    // a setting of the wrong shape (a hand edit) is left out and named; the rest loads, and the page still loads after it
+    // (the wrong value used to be saved first, and every later load failed on it)
+    const bad = JSON.parse(text); bad.settings.targets = 5; bad.settings.rank = '0.50,0.45,0.05';
+    await pg.fill('#ex-text', JSON.stringify(bad)); await pg.click('#ex-load');
+    check('import: a malformed setting is named and left as it was, the others load', /Not understood, so left as they were: targets\.$/.test(await pg.locator('#ex-msg').innerText())
+      && (await pg.locator('#targets .tgt').count()) === 8 && (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05', await pg.locator('#ex-msg').innerText());
+    await pg.click('#ex-close'); await settle(pg); await pg.reload(); await settle(pg);
+    check('… and the page loads after it', (await pg.locator('#targets .tgt').count()) === 8 && (await pg.locator('#results .loop').count()) > 0);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
     const p3 = await open(b, { init: () => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); localStorage.clear();

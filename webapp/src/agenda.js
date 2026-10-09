@@ -225,7 +225,7 @@ function schedTable(m, rows, outfitOf) {
   const body = (list) => { let out = '', y = -1;
     for (const r of list) {
       if (r.year !== y) { y = r.year; out += `<tr class="year"><td colspan="${m.length + 3}">${['Junior', 'Classic', 'Senior'][y]}</td></tr>`; }
-      out += `<tr><td>${esc(r.race)}</td><td class="when">${esc(turn(r.when))}</td>` + r.cells.map(c => c ? `<td class="${c.goal ? 'goal' : ''}">${c.goal ? '*' : ''}${c.p}</td>` : '<td class="dot">·</td>').join('')
+      out += `<tr><td>${esc(r.race)}</td><td class="when">${esc(turn(r.when))}</td>` + r.cells.map(c => c ? `<td class="${c.goal ? 'goal' : ''}"${why(c) ? ` title="${esc(why(c))}"` : ''}>${c.goal ? '*' : ''}${c.p}</td>` : '<td class="dot">·</td>').join('')
         + `<td>${r.runners}/${m.length}</td></tr>`;
     } return out; };
   const shared = rows.filter(r => r.shared), opt = rows.filter(r => !r.shared);
@@ -237,7 +237,7 @@ function schedTable(m, rows, outfitOf) {
     wrap.appendChild(t2);
   }
   wrap.querySelectorAll('th.mh').forEach(th => th.prepend(umaAv(m[+th.dataset.k].id, outfitOf(+th.dataset.k), 22)));
-  const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest.' + (rows.some(r => r.alts && r.alts.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : '');
+  const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'Number = win % at that attempt (aptitude and races in a row included; hover for why). * = goal race. · = not running it. Turns not listed are rest or a goal race that isn\'t a G1.' + (rows.some(r => r.alts && r.alts.length) ? ' A/B = either race at the same odds; every runner must pick the same one.' : '');
   wrap.appendChild(note);
   return wrap;
 }

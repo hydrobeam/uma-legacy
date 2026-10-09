@@ -2,7 +2,7 @@
 import { $, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
-import { CARDS, UMAS, SK } from './data.js';
+import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
 import { state, ui, goldGiven } from './state.js';
 import { save } from './save.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired } from './roster.js';
@@ -31,6 +31,22 @@ function exportText() {
   }
   return JSON.stringify({ app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } }, null, 1);
 }
+// What an import may set, per setting: a value of another shape (a hand edit, an old format) is left out, and the
+// setting keeps its value. Without this a wrong type was saved before the page tripped on it, and every later load
+// failed on the saved settings.
+const obj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const VALID = {
+  targets: (v) => Array.isArray(v) && v.every(t => obj(t) && Number.isInteger(t.group)),
+  rank: (v) => Object.values(RANKS).includes(v),
+  auto: (v) => typeof v === 'boolean', perUma: (v) => typeof v === 'boolean',
+  decksTop: (v) => v === '1' || v === '3',
+  scen: (v, era) => SCENARIOS.some(s => s.v === v && (!s.era || s.era === era)),
+  rsort: (v) => v === 'rel' || v === 'name', csort: (v) => v === 'rel' || v === 'name',
+  rdir: (v) => v === 'asc' || v === 'desc', cdir: (v) => v === 'asc' || v === 'desc',
+  roster: (v) => obj(v) && Object.values(v).every(x => x === 'out' || x === 'req'),
+  outfits: (v) => obj(v) && Object.values(v).every(x => x === false || x === 'req'),
+  cardsOff: (v) => obj(v) && Object.values(v).every(x => x === false),
+};
 export function initIO() {
   $('ex-open').onclick = () => { $('ex-text').value = exportText(); $('ex-msg').textContent = ''; $('ex-dlg').showModal(); };
   $('ex-close').onclick = () => $('ex-dlg').close();
@@ -43,16 +59,18 @@ export function initIO() {
   $('ex-load').onclick = () => {
     try { const o = JSON.parse($('ex-text').value); if (!o || !o.settings) throw new Error('no settings');
       const era = o.settings.era === 'gm' ? 'gm' : 'global';
+      const keys = SETTINGS.filter(k => k in o.settings), use = keys.filter(k => VALID[k](o.settings[k], era)), bad = keys.filter(k => !use.includes(k));
+      if (!use.length) throw new Error('nothing to load');
       if (era !== ERA) {   // settings for the other data set: store them under its keys, then switch
-        for (const k of SETTINGS) if (k in o.settings) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = o.settings[k];
+        for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = o.settings[k];
         SAVED.era = era; persist();
         location.reload(); return;
       }
-      for (const k of SETTINGS) if (k in o.settings) state[k] = o.settings[k];
+      for (const k of use) state[k] = o.settings[k];
       save();
       paintRank(); paintTop(); $('c-peruma').checked = state.perUma !== false;
       $('x-auto').checked = state.auto !== false; paintScen();
-      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.';
+      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.' + (bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : '');
     } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
   };
 }

@@ -47,12 +47,15 @@ function loopCard(l, meta, ctx) {
         return parts.join(''); }).join('');
       return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
     // what a swap changes: the hint odds that move against the shared deck (the gold's, then at least the white's),
-    // largest change first; two shown, a click on the list shows them all (and again folds it)
-    const deltas = (d) => { const base = new Map(meta.deck.odds.map(o => [o.group, o])), out = [];
+    // largest change first; two shown, a click on the list shows them all (and again folds it). who: the members on
+    // that deck; a hint all of them have on their own outfit's skill list is no change for them (its gold: they have the
+    // gold; the white: they have at least the white), so it isn't listed (her deck drops it because she doesn't need it)
+    const deltas = (d, who) => { const base = new Map(meta.deck.odds.map(o => [o.group, o])), out = [];
+      const own = (g) => Math.min(...who.map(k => (l.outfits[k].covers.find(c => c.group === g) || { level: 0 }).level));
       const h = (o) => o ? 1 - (1 - o.white) * (1 - o.gold) : 0;
-      for (const o of d.odds) { const b = base.get(o.group), s = SK.get(o.group) || { w: o.group, gd: null };
-        if (Math.abs(o.gold - (b ? b.gold : 0)) >= 0.005) out.push({ g: o.group, gold: true, nm: s.gd || s.w, a: b ? b.gold : 0, z: o.gold });
-        if (Math.abs(h(o) - h(b)) >= 0.005 && (h(o) - o.gold > 0.005 || h(b) - (b ? b.gold : 0) > 0.005)) out.push({ g: o.group, gold: false, nm: s.w, a: h(b), z: h(o) }); }
+      for (const o of d.odds) { const b = base.get(o.group), s = SK.get(o.group) || { w: o.group, gd: null }, lv = own(o.group);
+        if (lv < 2 && Math.abs(o.gold - (b ? b.gold : 0)) >= 0.005) out.push({ g: o.group, gold: true, nm: s.gd || s.w, a: b ? b.gold : 0, z: o.gold });
+        if (lv < 1 && Math.abs(h(o) - h(b)) >= 0.005 && (h(o) - o.gold > 0.005 || h(b) - (b ? b.gold : 0) > 0.005)) out.push({ g: o.group, gold: false, nm: s.w, a: h(b), z: h(o) }); }
       out.sort((x, y) => Math.abs(y.z - y.a) - Math.abs(x.z - x.a));
       if (!out.length) return '';
       const pc = (p) => Math.round(p * 100) + '%', one = (x) => `<span class="swd1${x.z < x.a ? ' down' : ''}">${icon(x.g, x.gold)}${esc(x.nm)} <b>${pc(x.a)} → ${pc(x.z)}</b></span>`;
@@ -78,12 +81,12 @@ function loopCard(l, meta, ctx) {
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
         const whoT = who.length === 1 ? `${who[0]}’s deck` : who.slice(0, -1).join(', ') + ' and ' + who.at(-1);   // "X’s deck swaps …", "X and Y swap …"
-        const faces = M.map((x, j) => j).filter(j => key(D[j]) === key(d)).map(j => face(j, 64)).join('');   // each portrait its own tooltip
+        const js = M.map((x, j) => j).filter(j => key(D[j]) === key(d)), faces = js.map(j => face(j, 64)).join('');   // each portrait its own tooltip
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
         dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d)}</div>${info}` + oddsOf(d);
+          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d, js)}</div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }
     card.querySelectorAll('.swd.more').forEach(b => b.onclick = () => { const open = b.getAttribute('aria-expanded') !== 'true';
