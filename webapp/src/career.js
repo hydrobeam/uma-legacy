@@ -861,13 +861,19 @@ function vetCardEl(v, i) {
   return card;
 }
 // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
+// (the cards are drawn only while the dialog is open, and when it opens: every edit and result redraws the page)
+let poolStale = true;
 function renderPool() {
-  const box = $('vets'); box.textContent = '';
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
-  vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
-  if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
   const nb = vets.filter(v => v.borrowed).length;
   $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}` + (nb ? `, ${nb} borrowed` : '') + '.' : '';
+  if (!$('set-vets').open) { poolStale = true; return; }
+  drawPool();
+}
+function drawPool() {
+  const box = $('vets'); box.textContent = ''; poolStale = false;
+  vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
+  if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -960,7 +966,9 @@ loadData().then(() => {
   $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
   $('v-export').onclick = exportVets; $('vx-copy').onclick = copyExport; $('vx-dl').onclick = downloadExport;
   $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
-  $('v-toggle').onclick = () => $('set-vets').showModal();
+  $('v-toggle').onclick = () => { if (poolStale) drawPool(); $('set-vets').showModal(); };
+  // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
+  new MutationObserver(() => { if ($('set-vets').open && poolStale) drawPool(); }).observe($('set-vets'), { attributes: true, attributeFilter: ['open'] });
   $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
   renderAll(); search();
 }, (e) => { status = { kind: 'error', text: e.message }; paint(); });

@@ -813,6 +813,7 @@ const TESTS = {
     // your veterans live in the Veteran Umamusume dialog: open it to reach them, shut it to reach the page again
     const vetsOpen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await pg.click('#v-toggle'); await dialog(pg, 'set-vets'); } };
     const vetsShut = async () => { if (await pg.locator('#set-vets[open]').count()) await pg.evaluate(() => document.getElementById('set-vets').close()); };
+    const vetsSeen = async () => { if (!(await pg.locator('#set-vets[open]').count())) { await vetsOpen(); await vetsShut(); } };
     const node = async (key) => { await vetsShut(); await pg.click(`#tree [data-k="${key}"]`); await dialog(pg, 'node-dlg'); };
     const inNode = (name) => pg.locator('#node-dlg').getByRole('button', { name });
     const closeNode = async () => { if (await pg.locator('#node-dlg[open]').count()) await pg.keyboard.press('Escape'); };
@@ -833,6 +834,7 @@ const TESTS = {
       && !(await pg.locator('.rbbar .setlist').isHidden()) && (await pg.getAttribute('#set-fold', 'aria-expanded')) === 'true', foldSum);
     await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent);   // the file is read asynchronously
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: the umadump file imports 12 veterans', /Imported 12 veterans/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12);
     // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
     const vbtn = (await pg.getAttribute('#v-toggle', 'aria-label')) === 'Your veterans' && /^Veteran Umamusume$/.test((await pg.textContent('#v-toggle')).trim());
@@ -1189,6 +1191,7 @@ const TESTS = {
     const sparksIn = async (key, n) => { await node(key); const ok = await pg.locator('#node-dlg .udrow.me .vsk:not(.pink) .vskb').evaluateAll((els, n) => els.length === 8 && els.every(e => new RegExp(n + ' stars').test(e.getAttribute('aria-label'))), n); await closeNode(); return ok; };
     check('career: … she is parent 1, with the eight targets at 2 stars (in her popup)', /Special Week/.test(await p1.textContent()) && !(await p1.getAttribute('class')).includes('ghost')
       && await sparksIn('node:p0', 2));
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: … her parents are not known yet but carry the same eight sparks, and she joins your veterans', await pg.locator('.pf').nth(0).locator('.pn.gp', { hasText: 'Unknown' }).count() === 2
       && await sparksIn('node:p0g0', 2) && await sparksIn('node:p0g1', 2)
       && await pg.locator('#vets .vet').count() === 13 && /Parent 1/.test(await pg.locator('#vet-12 .vtop').textContent()));
@@ -1221,6 +1224,7 @@ const TESTS = {
     check('career: the Umas dialog changes the owned umas and searches again', (await umasNow()) !== before
       && await pg.evaluate(n => window.__careerJobs.filter(j => j.cmd === 'career').length > n, searches), before);
     await pg.reload(); await done();
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: the veterans and the chosen places outlive a reload', await pg.locator('#vets .vet').count() === 13
       && /Special Week/.test(await pg.locator('.pf').nth(0).textContent()) && /Agnes Digital/.test(await pg.locator('#tree .pn.trainee').textContent()));
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', '{"x": 1}'); await pg.click('#paste-load');
@@ -1241,6 +1245,7 @@ const TESTS = {
     const beforeSimulation = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
     await simStars(3);
     await pg.click('#sim-add'); await done();
+    await vetsSeen();   // the veterans dialog draws its cards when open (and on opening)
     check('career: adding her saves a labelled veteran and opens the next career', await pg.evaluate(n => {
       const c = JSON.parse(localStorage.getItem('llp:career')).global;
       const v = c.vets.at(-1);
