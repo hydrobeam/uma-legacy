@@ -150,7 +150,18 @@ for pkg, w in FONTS:
     if pkg == 'zen-kaku-gothic-new' and w in (400, 700): preloads.append(f'<link rel="preload" href="{url}" as="font" type="font/woff2" crossorigin>')
 os.makedirs(os.path.join(DIST, 'licenses'), exist_ok=True)   # the fonts' SIL Open Font Licenses (not fingerprinted: kept out of assets/)
 for pkg in ('zen-kaku-gothic-new', 'ibm-plex-mono', 'stix-two-math', 'zen-maru-gothic'): shutil.copyfile(os.path.join(H, 'node_modules', '@fontsource', pkg, 'LICENSE'), os.path.join(DIST, 'licenses', f'OFL-{pkg}.txt'))
-css = css_min('\n'.join(faces) + '\n' + css)
+# the UI sprites as CSS variables (--btn-w, --spark-white, ...), in the stylesheet itself so the game's buttons have their
+# art at the first paint; a sprite the build lacks is left unset (the rules fall back to plain styles). A url() inside a
+# custom property resolves against the stylesheet that uses it (Chromium and Firefox, checked), so the paths are given
+# relative to where the stylesheet is served from
+SPRITES = ['friend_frame', 'spark_white', 'spark_blue', 'spark_pink', 'spark_green', 'spark_dot', 'spark_dot_gold', 'skill_white', 'skill_gold', 'skill_unique', 'skill_pink', 'pill', 'star_on', 'star_off',
+           'spark_white_dark', 'skill_white_dark', 'star_off_dark', 'enh_umas', 'enh_cards', 'enh_vets', 'enh_umas_dark', 'enh_cards_dark', 'enh_vets_dark',
+           'btn_w', 'btn_g', 'pill_w', 'pill_g', 'chk_off', 'chk_on', 'btn_w_dark', 'pill_w_dark', 'chk_off_dark', 'tog_off', 'tog_on', 'tog_off_dark',
+           'slot_frame', 'slot_empty', 'sched_badge', 'plus', 'slot_frame_dark', 'slot_empty_dark', 'close']
+def sprite_rule(base):
+    vs = [f"--{k.replace('_', '-')}:url({base}ui/{k}.{ext['ui']})" for k in SPRITES if f'ui:{k}' in images]
+    return ':root{' + ';'.join(vs) + '}' if vs else ''
+css = css_min('\n'.join(faces) + '\n' + sprite_rule(IMG_BASE) + '\n' + css)
 # /about's formulas (MathML): STIX Two Math, whole (its MATH table stretches brackets and big operators); the browser
 # fetches it only on a page that draws math, so only /about gets the face
 _d = os.path.join(H, 'node_modules', '@fontsource', 'stix-two-math')
