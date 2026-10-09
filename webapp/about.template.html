@@ -680,7 +680,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
   pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
-  found, a refitted continuation. So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
+  found (its continuations are the plan's, C10). So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
   effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
   outcome <math><mi>ω</mi></math> (chances <math><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> and scale <math><msup><mi>C</mi><mo>′</mo></msup></math> of the lineage with her):</p>
   <math display="block"><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><munder><mo>max</mo><mi>y</mi></munder><mspace width="0.2em"/><msup><mi>C</mi><mo>′</mo></msup><mi>min</mi><mrow><mo>(</mo><msub><mtext>ceil</mtext><mi>y</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><munder><mo>min</mo><mi>z</mi></munder><mfrac><msub><mi>p</mi><mi>u</mi></msub><msub><mi>C</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></mfrac><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><msub><mi>q</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub><mo>)</mo><mo>)</mo></mrow></math>
@@ -694,10 +694,14 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Improves your loop" at once, then the exact
   count.</p>
 
-  <p><strong>C10. Compare and Add.</strong> Compare runs the plan again with her veteran added to your pool, and one
-  search for the best career with her as a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, clamped at 0 (a veteran never
-  makes a route longer: every route without her is still there, so a rise is the refit's noise). Add to veterans shows
-  that plan at once. Each uma's best career in a pool is kept; with one veteran added, a career is either the kept one or
+  <p><strong>C10. Compare and Add.</strong> Compare runs the plan again with her veteran added to your pool, under the
+  plan's own fit (its stage candidates and each one's Cont, λ, φ and p∞, taken as given, not fitted again to the larger
+  pool), and one search for the best career with her as a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, clamped at 0. The fixed
+  fit is why: Cont is fitted to the pool's builders at today's odds, and a veteran that already does a builder's work
+  (an Inari One veteran when Inari One is a candidate's best builder) leaves less to gain from the next one, so a refit
+  can price a candidate's step higher at higher odds, a swing of several percent of V that is the fit's error, not
+  hers (one case: +20 careers refitted against −8.7 under the fixed fit, on a V of 1,083). Add to veterans runs the
+  plan for the new pool, fitted to it. Each uma's best career in a pool is kept; with one veteran added, a career is either the kept one or
   uses her, so only careers with her as a parent are searched, with the kept value as the bar.</p>
   <p><strong>The Comparison panel.</strong> The veteran entered starts as one roll (C9) and can be edited; Compare and
   Reroll fill the panel. Its header's <strong>1/N to improve</strong> is <math><mn>1</mn><mo>/</mo><mtext>lift</mtext></math>, where lift is the chance

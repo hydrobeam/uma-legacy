@@ -94,11 +94,6 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
-// a plan the exact comparison ran for the pool with her: the same job the page sends once she is added (keys sorted,
-// the comparison's flag aside), so Add to veterans shows it at once (the solver is deterministic for its job)
-let planKept = null;
-const canon = (x) => Array.isArray(x) ? x.map(canon) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().filter(k => x[k] !== undefined).map(k => [k, canon(x[k])])) : x;
-const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } = job; return JSON.stringify(canon(j)); };
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
 try { localStorage.removeItem('llp:loops'); } catch {}
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
@@ -156,12 +151,11 @@ async function runPlan() {
   planS = { state: 'busy', r: null, t0: performance.now() };
   clearInterval(tick); tick = setInterval(paint, 1000); paint();
   try {
-    const kept = planKept && planKept.key === planKey(job2) ? planKept : null;
-    const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await run(job2);
+    const m2 = await run(job2);
     if (id !== myId || pid !== planId) return;
     const P = m2.r.next;
     planS = P && !P.error && P.options?.length ? { state: 'done', r: P, ms: m2.ms } : { state: 'error', text: m2.r.error || P?.error || 'no option found.' };
-    if (planS.state === 'done' && !kept) engineSaveState();   // the worker's kept work, for the next page load
+    if (planS.state === 'done') engineSaveState();   // the worker's kept work, for the next page load
   } catch (e) { if (id !== myId || pid !== planId) return; planS = { state: 'error', text: e.message }; }
   clearInterval(tick);
   // the plan's pick goes on show: the veteran you got follows it (a comparison for the old career goes)
@@ -674,9 +668,10 @@ async function runComparison(refine = false) {
     const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as runPlan sends it once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await run(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
-    const ja = planOf(legs), ma = await run(ja); if (id !== simulationId || source !== myId) return;
+    // with her, priced under the plan's own fit (its stage candidates and continuations, `fit`), not one refitted to the
+    // larger pool: the two values then differ only by what she changes (a refit alone can move V by several percent)
+    const ja = { ...planOf(legs), next: { fit: pb?.fit } }, ma = await run(ja); if (id !== simulationId || source !== myId) return;
     const pa = ma.r.next || null;
-    if (pa && !pa.error) planKept = { key: planKey(ja), r: pa, ms: ma.ms };
     engineSaveState();
     const wOf = (P) => P && P.v0 != null ? P.v0 : null;   // careers to a fully looped parent with the pool as it is
     const v0b = wOf(pb), pickA = pa?.options?.find(o => o.chosen) || null, pickB = pb?.options?.find(o => o.chosen) || null;

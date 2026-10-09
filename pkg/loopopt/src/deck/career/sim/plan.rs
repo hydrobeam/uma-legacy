@@ -146,6 +146,10 @@ pub(in super::super) struct PlanJob {
     #[serde(default)] proxy_check: bool,
     /// `index_rule`: every uma's best career searched exactly (the rule before builders went through their deck class)
     #[serde(default)] exact_all: bool,
+    /// `index_rule`: the stage candidates (chara ids, in order) and their continuations (lam, phi, pinf) taken as given,
+    /// not fitted to this pool: a comparison prices a pool with one more veteran under the fit of the plan it compares
+    /// with (the plan's `fit`), so the two values differ only by what she changes, not by a refit
+    #[serde(default)] fit: Option<Vec<(u32, f64, f64, f64)>>,
 }
 
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
@@ -1112,11 +1116,12 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     for l in legs.iter().rev() { if !l.borrowed { if let Some(u) = env.uix(l.chara) { push(u, &mut cands); } } }
     for f in &sv.found { push(f.t, &mut cands); }
     cands.truncate(IDX_CANDS);
+    if let Some(f) = &pj.fit { cands = f.iter().filter_map(|&(c, ..)| env.uix(c)).filter(|u| trainees.contains(u)).collect(); }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
     // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
     // (`hint_umas`), no deck search
     let mut hint: Vec<Value> = vec![];
-    if pj.loop_members.is_none() && cands.len() < HINT_FLOOR {
+    if pj.loop_members.is_none() && pj.fit.is_none() && cands.len() < HINT_FLOOR {
         for (u, v) in hint_umas(env, d, legs, &cands, trainees, HINT_FLOOR - cands.len()) {
             cands.push(u); hint.push(json!({"id": d.umas[u].id, "name": d.umas[u].name, "ceiling": v}));
         }
@@ -1289,6 +1294,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
             cont[ui] = Cont::new(lam, phi, pinf);
         }
+        // a given fit replaces the pool's (`PlanJob::fit`)
+        if let Some(f) = &pj.fit { for ui in 0..n { if let Some(&(_, lam, phi, pinf)) = f.iter().find(|x| d.umas[cands[ui]].id == x.0) { cont[ui] = Cont::new(lam, phi, pinf); } } }
         cont
     };
     let mut cont = cont_of(&mut s, &runs, &exact_run, &wtab, &mut buf);
@@ -1525,7 +1532,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         "provisional": ys_hi.as_ref().filter(|(pk, (h, _))| *pk == pick && h.len() == ys.len()).map(|(_, (h, pr))| (0..ys.len()).filter(|&i| ys[i] < 0.5 && h[i].max(ys[i]) >= 0.5).map(|i| pr[i]).sum::<f64>())}), _ => Value::Null };
     let mut out = json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count() - n_cert, "umas_certified": n_cert, "work": work,
+           "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[cands[ui]].id, cont[ui].lam, cont[ui].phi, cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count() - n_cert, "umas_certified": n_cert, "work": work,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
     out
