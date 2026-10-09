@@ -7,7 +7,7 @@ function callRaw(text) {
   new Uint8Array(ex.memory.buffer, p, b.length).set(b);
   const r = ex.call(p, b.length);
   const n = ex.result_len();
-  const out = dec.decode(new Uint8Array(ex.memory.buffer, r, n).slice());
+  const out = dec.decode(new Uint8Array(ex.memory.buffer, r, n));   // a view, no copy: the memory is not shared and nothing runs in between
   ex.dealloc(p, b.length);
   return JSON.parse(out);
 }
