@@ -306,7 +306,11 @@ most of them: from chances q0 to q a target's factor grows at most by (1 − (1 
 those ratios. The same bound holds between trainees of one deck class (equal outfit coverage and own-skill chances of
 the targets, the same relevant cards barred, as many plain pals: the best deck is then one function of the chances), so
 the fully checked decks and product-search proofs kept between searches and jobs (`seen`, `ruled`) are kept per class:
-a classmate's proof bounds her candidates too (on the owner's 16-veteran pool 47 of 68 umas share one class). The
+a classmate's proof bounds her candidates too (on the owner's 16-veteran pool 47 of 68 umas share one class). Identical
+deck problems are searched once: a candidate whose trainee, chances and spark scale are bit-identical to an earlier one's
+in the same search takes its outcome (`Twin`: interchangeable veterans, as a sample pool of mob veterans gives, make
+every parent pair one problem), and a deck search without start decks is memoised per job by what it reads (deck class,
+folded chances, spark scale, bar, work spent; `deck_memo`), so classmates at the same chances search once. The
 search stops when the next ceiling is below the k-th best (one per trainee). Output per career:
 `trainee` (outfits, covers), `parents` (legacy indices), `slots` (six legacies: affinity parts, stars), `targets` (per
 target `q`, `carriers`, landing chance `p`, and `buy`: the chances she buys it as gold / white and lands it from each
@@ -316,7 +320,8 @@ the two inheritance rolls passes it on, 1/3/5% per star × (1 + affinity/100), a
 do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
 veteran's pink is that one; her schedule's win chances count them; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
-`bounded`, `complete`, `proven_top`. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
+`bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
+when the worker kept the search from the job before). The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
   chart name, `when`, `year`, `cells` = [win %, goal, aptitude and streak terms] or [null], `shared` = a parent won it)
