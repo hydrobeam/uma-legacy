@@ -242,13 +242,19 @@ struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usiz
 struct Env<'a> {
     d: &'a Data, sj: &'a SkillJob, model: Model<'a>, ew0: Vec<Vec<Vec<f64>>>, uncv: Vec<usize>, fixed_t: Vec<usize>, ntar: usize, nu: usize,
     unc: Vec<u32>, space: DeckSpace<'a>, dmax: Vec<Option<(Vec<f64>, Vec<f64>)>>, sts0: Vec<Vec<Vec<u8>>>, owned: Vec<usize>, budget: usize, work: usize,
-    /// every earlier search's fully checked decks per trainee (same model, so each is a proven best at its chances):
-    /// later searches bound with them (`rise`), but don't start from them, so ties resolve as in a lone search
+    /// every earlier search's fully checked decks per deck class (`cls`; one model, so each is a proven best at its
+    /// chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them, so
+    /// ties resolve as in a lone search
     seen: Vec<Vec<Ref>>,
+    /// each trainee's deck class, as the index of its first trainee: trainees with the same outfit coverage and own-skill
+    /// chances of the targets, the same relevant cards barred and as many plain pals face the same deck problem (her
+    /// best deck and its value are one function of the inheritance chances; `rise` and `dmax` agree), so a proof one of
+    /// them makes (`Ref`, `ruled`) holds for all of them. Within a class only the slots' affinity (so q) differs.
+    cls: Vec<usize>,
     /// whether `solve` bounds with `seen`: off for the searches whose fully checked decks feed the rollout's cache
     /// (its floors f(S) come from those decks, so they must not depend on what earlier searches proved)
     use_seen: bool,
-    /// per trainee, what her product searches proved (`best_deck` pass 1): (chances q, S) with every legal deck's product
+    /// per deck class (`cls`), what its product searches proved (`best_deck` pass 1): (chances q, S) with every legal deck's product
     /// value at q (fixed factor included, before the spark scale) at most S. Bounds her other candidates (`solve`).
     ruled: Vec<Vec<(Vec<f64>, f64)>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
@@ -443,7 +449,7 @@ impl<'a> Env<'a> {
                 if [(a, b), (b, a)].iter().any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y)))) { n_bounded += 1; continue; }
             }
             let (q, _, c) = self.lineage(p, t, a, b);
-            let seen: &[Ref] = if self.use_seen { &self.seen[t] } else { &[] };
+            let ct = self.cls[t]; let seen: &[Ref] = if self.use_seen { &self.seen[ct] } else { &[] };
             let rb = refs[t].iter().chain(seen).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
             if rb * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
             // what her earlier product searches proved (`ruled`). Derived: with her chances folded in, target k's factor
@@ -460,12 +466,12 @@ impl<'a> Env<'a> {
             // that ran out of its budget before can now get further; none of the checked jobs comes near it). A search whose
             // decks feed the rollout (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
-            let lo = if self.use_seen { 0 } else { ruled0[t] };
-            if self.ruled[t][lo..].iter().any(|(rq, s)| EXACT_RHO * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
+            let lo = if self.use_seen { 0 } else { ruled0[ct] };
+            if self.ruled[ct][lo..].iter().any(|(rq, s)| EXACT_RHO * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
             let res = self.best_deck(t, c, th, &starts, &mut n_scored);
-            if let Some(s) = self.last_pv.take() { self.ruled[t].push((q.clone(), s)); }
+            if let Some(s) = self.last_pv.take() { self.ruled[ct].push((q.clone(), s)); }
             let (val, sel, full) = match res {
                 DeckRes::NoDeck => continue,
                 DeckRes::Bounded => { n_bounded += 1; continue }
@@ -479,7 +485,7 @@ impl<'a> Env<'a> {
             let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
             done.insert(pos, (val, ci, sel));
         }
-        for (t, rs) in refs.iter().enumerate() { for r in rs { if !self.seen[t].iter().any(|x| x.val == r.val && x.q == r.q) { self.seen[t].push(r.clone()); } } }
+        for (t, rs) in refs.iter().enumerate() { let ct = self.cls[t]; for r in rs { if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) { self.seen[ct].push(r.clone()); } } }
         let next_bound = if next < cands.len() { cands[next].ub } else { 0.0 };
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
@@ -895,7 +901,25 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }).collect();
     let sts0: Vec<Vec<Vec<u8>>> = model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0 };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, cls: (0..n).collect() };
+    // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
+    // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
+    {
+        let mut first: crate::FxMap<Vec<u64>, usize> = Default::default();
+        for u in 0..n {
+            let uid = env.d.umas[u].id; let mut k: Vec<u64> = vec![];
+            for o in &env.sts0[u] { k.push(o.len() as u64); k.extend(o.iter().map(|&x| x as u64)); }
+            k.push(u64::MAX);
+            for o in &env.ew0[u] { k.push(o.len() as u64); k.extend(o.iter().map(|x| x.to_bits())); }
+            k.push(u64::MAX);
+            match &env.dmax[u] { Some((w, g)) => { k.push(1); k.extend(w.iter().chain(g).map(|x| x.to_bits())); } None => k.push(0) }
+            k.push(u64::MAX);
+            k.extend((0..env.space.rel.len()).filter(|&j| env.space.cards[env.space.rel[j]].blocks(uid)).map(|j| j as u64));
+            k.push(u64::MAX);
+            k.push(env.space.legal_plain(&[uid]).len() as u64);
+            env.cls[u] = *first.entry(k).or_insert(u);
+        }
+    }
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
     let fp = setup_fp(v);
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }

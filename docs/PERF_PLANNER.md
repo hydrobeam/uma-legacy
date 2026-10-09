@@ -106,3 +106,11 @@ the card count is O(n^2) and goes stale after a toggle; `renderPool` redraws the
 estimate); CSS and the shared data are inlined into each page and re-fetched after the 5-minute HTML cache. Code
 health: `el`/`fmtIn`/backdrop-close duplicated across modules; career.js (966 lines) mixes job building, the
 plan/compare/reroll state machines, views and import/export.
+
+## Done
+
+- Class-keyed proofs (`seen`, `ruled` per deck class, `Env::cls`): val/plan identical on all six jobs. Nodes (exact
+  scorings) p16 39.8M -> 15.9M (2,069 -> 735), p10 34.8M -> 31.4M, p11 21.6M -> 19.5M, gm16 128.5M -> 57.0M (112k ->
+  52.8k); native time p16 10.1 -> 5.4 s, p10 15.8 -> 14.8 s, p11 13.3 -> 12.3 s, gm16 44.0 -> 22.8 s (machine shared).
+- Tried, not kept: solving each class's highest-ceiling trainees first (a pre-pass before the scoring loop): nodes
+  p16 -0.6%, p10/p11 0%, URA -1.7%, gm16 0% (under the 3% bar).

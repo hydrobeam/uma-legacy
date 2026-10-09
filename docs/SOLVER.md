@@ -294,7 +294,11 @@ candidate is solved like a per-uma trainee (best product deck, then every deck w
 the best exact value, through `upper_na`, scored exactly). Between candidates of one trainee a proven bound skips
 most of them: from chances q0 to q a target's factor grows at most by (1 − (1 − e)(1 − q_k)) / (1 − (1 − e)(1 − q0_k))
 (1 when q_k ≤ q0_k or the outfit has the skill), for every deck and chain state, so E(q) ≤ E(q0) · max_outfit Π_k of
-those ratios. The search stops when the next ceiling is below the k-th best (one per trainee). Output per career:
+those ratios. The same bound holds between trainees of one deck class (equal outfit coverage and own-skill chances of
+the targets, the same relevant cards barred, as many plain pals: the best deck is then one function of the chances), so
+the fully checked decks and product-search proofs kept between searches and jobs (`seen`, `ruled`) are kept per class:
+a classmate's proof bounds her candidates too (on the owner's 16-veteran pool 47 of 68 umas share one class). The
+search stops when the next ceiling is below the k-th best (one per trainee). Output per career:
 `trainee` (outfits, covers), `parents` (legacy indices), `slots` (six legacies: affinity parts, stars), `targets` (per
 target `q`, `carriers`, landing chance `p`, and `buy`: the chances she buys it as gold / white and lands it from each
 (`gold`, `white`, `land_gold`, `land_white`; land_gold + land_white = p) with its sources `deck_gold`, `deck_white`,
