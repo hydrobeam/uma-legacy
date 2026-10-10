@@ -7,7 +7,6 @@ license = "GPL-3.0-or-later"
 dependencies = [
     "UnityPy",   # reads the game's (already decrypted) asset bundles: card art and character icons
     "Pillow",    # resize and encode those images as WebP
-    "lz4>=4.4.5",
 ]
 
 [tool.uv]

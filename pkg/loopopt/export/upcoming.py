@@ -1,6 +1,6 @@
 """What the Global exports count as released, and what is dated but has not started yet.
 
-The exports keep every uma, outfit and support card that master.mdb dates up to AHEAD past the build: a master fetched
+The exports keep every uma, outfit and support card that master.mdb dates up to AHEAD past the build: a master taken
 ahead of its update already holds the next week's, with their start times. The page hides each one
 until its start time (webapp/src/data.js), so a banner turns on without a rebuild. Content the game has not dated
 yet carries a 2050 placeholder and stays out.

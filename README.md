@@ -18,7 +18,6 @@ borrows one friend's card when it helps. See `docs/USAGE.md`.
 - The solver (model, algorithms, job fields, command line): `docs/SOLVER.md`
 - The maths behind each fitted value: `docs/RESEARCH.md`; every modelling assumption with its evidence:
   `docs/MODEL.md`; outside sources: `docs/SOURCES.md`
-- Contributing: `CONTRIBUTING.md`
 
 ## Building it
 
@@ -31,12 +30,16 @@ Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.ast
 ./build.sh valq TAG   # the validation jobs against the reference outputs
 ```
 
+A clone builds and tests the page from the tracked data files. Refreshing the game data needs the game's
+`master.mdb`, and the art steps need game files decrypted on your own
+machine; without art the page shows initials. Details: `docs/BUILD.md`.
+
 ## Credits and licence
 
 Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts
 ([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)). Measured rates come from Independent
 Training runs from [uma-it](https://training.umaladder.moe). Card events come from [GameTora](https://gametora.com)'s
-data files, downloaded at build time. Release dates come from [uma.moe](https://uma.moe).
+data files, downloaded at build time.
 
 The code is licensed under the GNU General Public License v3.0 or later (`LICENSE`). Uma Musume: Pretty Derby, its
 names, game data and art are © Cygames, Inc.; they are not covered by this licence and the art is not part of this

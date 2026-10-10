@@ -21,6 +21,16 @@ per member). The SS+ and own-roster rows of the v23 table were not regenerated.
 
 ## 2. Releases
 
+Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases): v49 in production, deployed 2026-10-10
+(v49: an optional race's "x% win" legible in the race schedule; v48, page only: the runner, each uma's mini model running in place of the spinner, `./build.sh runners`; swap rows as the
+outgoing card greyed -> the incoming one; a reload with unchanged settings shows the saved result as done; the status
+line's words beside the runner; Career choices tooltips in plain words, "about the same" stated right (5%, at least a
+quarter of a career); the affinity popup one pill per trainee with a Parents row in four-uma loops; Grand Masters'
+banner art and 14 skill icons from the JP client's bundles). v45 (same day): Zenno Rob Roy.
+Global data updates: a new `master.mdb`, then data, validation, deploy (`docs/BUILD.md`, Data).
+Open: the policy simulator to the fully-looped goal to measure V against simulated play (`val/sim/README.md`); the
+calibration's weak spots (`docs/CALIBRATION.md`).
+
 Milestones since 2026-10-03 (v24; v20–v39 are lightweight tags, v40 on annotated):
 
 | Tag | State |
@@ -102,6 +112,7 @@ Milestones since 2026-10-03 (v24; v20–v39 are lightweight tags, v40 on annotat
   headings as the game's section titles. /about keeps AAA except the current tab. Copy: less is more, a cute touch.
 - The busy sign is the runner, each uma's mini model running (2026-10-10; `docs/BUILD.md`, Runner strips).
 - Deploys only on the maintainer's explicit word, each time.
+- The Global asset sync is tabled (section 3, item 10).
 - A reload whose settings match the saved last result (same solver, data, held-back entries and job) shows it as done
   and searches nothing (2026-10-10, reversing the earlier "rerun").
 - The player is assumed to set prioritized skills so event choices reach the counted hints.

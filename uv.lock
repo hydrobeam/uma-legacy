@@ -160,14 +160,12 @@ name = "legacy-loop-planner-tools"
 version = "0"
 source = { virtual = "." }
 dependencies = [
-    { name = "lz4" },
     { name = "pillow" },
     { name = "unitypy" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "lz4", specifier = ">=4.4.5" },
     { name = "pillow" },
     { name = "unitypy" },
 ]

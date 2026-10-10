@@ -15,6 +15,8 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 - What a fresh clone builds with no game files: `./build.sh` (native with its tests, wasm, page: the page reads the
   tracked data files; `page` downloads GameTora's pinned files once), `./build.sh testq` / `test`, and
   `./build.sh val TAG`. The page shows initials in place of game art.
+- What needs game files: `data` and `events` need the Global `master.mdb` in `pkg/loopopt/export/` and the JP one in `jp/export/` (sources: `docs/SOURCES.md`); `images` and `runners` need decrypted
+  game files (below).
 - Check after a data change: `./build.sh all` (data, events, native with its tests, pb, wasm, page),
   `uv run val/event_audit.py` ("every target hint is accounted for"), `./build.sh val TAG` (everything should match
   the references).
@@ -170,6 +172,8 @@ What the pipeline learned, for when it breaks:
 
 ## Data
 
+- Game data update: put the Global `master.mdb` (from the game client) in `pkg/loopopt/export/` and the JP one in
+  `jp/export/`; then `./build.sh data events pb`. `master.mdb` files are never committed.
   - `data` keeps every uma, outfit and support card the master dates up to 60 days past the build
     (`pkg/loopopt/export/upcoming.py`; an outfit's start is its first gacha's, else its uma's start date; undated
     content carries a 2050 placeholder and stays out) and writes `pkg/loopopt/upcoming.json`, what starts after the

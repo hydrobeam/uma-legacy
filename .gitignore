@@ -6,7 +6,6 @@
 !/README.md
 !/AGENTS.md
 !/LICENSE
-!/CONTRIBUTING.md
 !/rust-toolchain.toml
 !/pyproject.toml
 !/uv.lock
