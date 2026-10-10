@@ -61,8 +61,8 @@ member trains in turn, and a rotation usually comes first. For each loop:
   and what it does to the targets' odds;
 - **Odds** (the career page's odds table for the loop: the chance of landing exactly each count of targets, 8/8 to 0/8, and
   the count expected), **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
-  but every runner must pick the same one) and **Affinity** (as the career page's: the loop's careers as pill switches, each trainee with her six legacies'
-  affinity, the most first; under them that career's table, each parent then her two parents with their relation
+  but every runner must pick the same one) and **Affinity** (as the career page's: the loop's trainees as pill switches, the most affinity first; in a four-uma
+  loop each trainee heads three careers, so a second row picks her parents; under them that career's table, each parent then her two parents with their relation
   points, G1 wins shared (expected, x3) and affinity, and the Total; in a rotation the trainee is her own grandparent
   twice, marked, with no relation points).
 

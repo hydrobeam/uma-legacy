@@ -1647,6 +1647,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .afpick button[aria-pressed="true"] { color: #fff; text-shadow: var(--gm-outline); border-color: transparent; background: none; border: 0 solid transparent;
   border-image: var(--pill-g, linear-gradient(#b4ec52, #7cc40d)) 0 120 0 35 fill / 0 60px 0 17px / 0 stretch; }
 .afpick button .aff { margin-left: 2px; }
+.afpar { margin-top: -6px; }   /* a four-uma loop's second row: the trainee's three parent pairs */
+.afpar { align-items: center; }
+.afpar button { padding-left: 4px; gap: 3px; }
+.afpar .aflab { font-size: .8rem; font-weight: 700; color: var(--gm-ink2); margin-right: 2px; }
 .afpick button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .afftab .aft { font-size: 0.72rem; font-weight: 500; color: var(--gm-ink2); }
 :root.game #why-dlg { width: min(700px, calc(100vw - 24px)); }
