@@ -210,8 +210,10 @@ def ui_sprites(force, manifest):
 # rims survive in dark tones. Written as ui/<key>_dark.webp beside the original.
 # (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
 # a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
-DARK_SPRITES = {'spark_white': (0.09, 0.21, 1.0, 0), 'skill_white': (0.09, 0.21, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
-                'btn_w': (0.09, 0.20, 1.0, 0), 'pill_w': (0.09, 0.20, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
+# face tones set so each dark face stands off the dark panel (#1f2328) by about the CIELAB lightness gap its light face
+# has on white: skill tile ~12 (light 14), spark bar ~10 (9), button ~5 (4)
+DARK_SPRITES = {'spark_white': (0.09, 0.245, 1.0, 0), 'skill_white': (0.09, 0.29, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
+                'btn_w': (0.09, 0.235, 1.0, 0), 'pill_w': (0.09, 0.235, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
                 'slot_frame': (0.09, 0.21, 1.0, 0), 'slot_empty': (0.07, 0.14, 1.0, 0)}
 CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off', 'slot_frame', 'slot_empty'}   # their saturation is capped by the pixel's real chroma
 SHADE = {'skill_white': 0.35}
