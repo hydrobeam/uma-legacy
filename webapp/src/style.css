@@ -424,6 +424,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
    cards' art (a caption under one, "chain end: link 2", doesn't shift the row); the arrow sits at the art's middle */
 .swrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 14px; }
 .swrow > :not(.swcards) { min-height: 64px; display: inline-flex; align-items: center; }
+.swrow > .swho { padding-right: 14px; border-right: 2px solid var(--line); }   /* whose deck | its cards */
 .swcards { display: flex; align-items: flex-start; gap: 10px; }
 .swc { display: inline-flex; align-items: flex-start; gap: 6px; }
 .swc .dc { width: 64px; }
@@ -527,7 +528,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .rankctl { position: relative; }   /* the ? popup hangs below the whole control, not over it */
 .gpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: max-content; max-width: 240px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4;
   color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
-@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
+@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow > .swho { padding-right: 8px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
 /* affinity popup: the formula, and umas as portraits whose names show on hover, focus or tap */
 .afx { display: grid; gap: 4px; margin-bottom: 6px; }
 .afx p { margin: 0; }
@@ -1547,6 +1548,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .lp .deck { background: var(--gm-pane); border: 0; border-radius: 12px; }
 .lp .swhead { margin: 4px 0 0; justify-self: start; min-width: 40%; font-size: 1rem; text-transform: none; letter-spacing: .01em; }
 .lp .deck .dtitle { color: var(--gm-ink); font-weight: 900; }
+.lp .swrow > .swho { border-right-color: var(--gm-line); }
 .lp .swout :root.game[data-theme="dark"] .lp .mem .av { box-shadow: 0 0 0 3px #3a3f4a, 0 1px 4px var(--gm-shadow); }
 .lp .setlist .gctl { grid-template-columns: 6.4em minmax(0, 1fr); gap: 8px; }
 .lp .setlist .glab, .lp .setlist .gctl > span:first-child { padding: 4px 8px; font-size: 0.86rem; }
