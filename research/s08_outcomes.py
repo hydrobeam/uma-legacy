@@ -226,10 +226,10 @@ def festa(R):
 # ---------------------------------------------------------------- claims
 ITEMS = [
     ('Anshinzawa: RB prioritised, took choice 2', '95%'),
-    ('Anshinzawa: neither prioritised, choice 2 won', '20'), ('Anshinzawa: neither prioritised, runs', '72'),
+    ('Anshinzawa: neither prioritised, choice 2 won', '0'), ('Anshinzawa: neither prioritised, runs', '35'),
     ('Anshinzawa: runs with the card (no Festa)', '254'),
     ('Anshinzawa: NV with RB prioritised', '58'), ('Anshinzawa: RB prioritised runs', '77'),
-    ('Anshinzawa: NV share', '0.75'), ('Anshinzawa: NV share 90% low', '0.67'), ('Anshinzawa: NV share 90% high', '0.82'),
+    ('Anshinzawa: NV share', '0.75'), ('Anshinzawa: NV share 90% low', '0.66'), ('Anshinzawa: NV share 90% high', '0.82'),
     ('Anshinzawa: choice 2, no inherited RB, won', '37'), ('Anshinzawa: choice 2, no inherited RB, runs', '45'),
     ('Anshinzawa: choice 2 share', '0.82'), ('Anshinzawa: choice 2 90% low', '0.71'), ('Anshinzawa: choice 2 90% high', '0.90'),
     ('Anshinzawa: choice 2 with inherited, low', '0.77'), ('Anshinzawa: choice 2 with inherited, high', '0.87'),
@@ -298,8 +298,7 @@ def claims():
     got.update({'Festa: NV share, low': t['NV'] / (m + t['hidden']), 'Festa: NV share, high': t['NV'] / m,
                 'Festa: readings, low': m, 'Festa: readings, high': m + t['hidden']})
     got['runs showing a priority list'] = sum(r.get('priority') is not None for r in R); got['runs'] = len(R)
-    note = {'Anshinzawa: neither prioritised, choice 2 won': 'Risky Business not prioritised: %d/%d' % a['rb_not'],
-            'Anshinzawa: NV share 90% low': '58/77 Wilson 90%% low is %.4f' % common.wilson(58, 77, Z90)[0]}
+    note = {'Anshinzawa: neither prioritised, choice 2 won': 'Risky Business alone not prioritised: %d/%d' % a['rb_not']}
     return [common.Claim(SEC, n, s, got.get(n), note=note.get(n, '')) for n, s in ITEMS]
 
 

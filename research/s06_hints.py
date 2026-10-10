@@ -194,12 +194,13 @@ DATA_CLAIMS = [
     ('refit rows URA Finale', '9,722'), ('refit rows Trackblazer', '3,349'), ('refit runs Unity Cup', '490'),
     ('refit runs Grand Concert', '1,251'), ('refit runs URA Finale', '514'), ('refit runs Trackblazer', '118'),
     ('adopted Unity Cup', '2.70'), ('adopted Grand Concert', '2.03'), ('adopted URA Finale', '1.60'),
-    ('adopted Trackblazer', '1.81'), ('refit runs adding a row', '2,373'), ('879: rows', '19,071'), ('879: rows without a spark', '17,079'),
+    ('adopted Trackblazer', '1.81'), ('refit base without R cards Unity Cup', '2.667'), ('refit base without R cards Grand Concert', '2.026'),
+    ('refit base without R cards URA Finale', '1.569'), ('refit base without R cards Trackblazer', '1.772'), ('refit runs adding a row', '2,373'), ('879: rows', '19,071'), ('879: rows without a spark', '17,079'),
     ('879: pooled base (Grand Masters)', '2.30'),
     ('LL 1+hf/25 over options', '−12,813.3'), ('LL 1+hf/25 over skills', '−12,461.0'), ('LL constant', '−12,048.0'),
     ('LL base(1+hf/100)', '−11,910.2'), ('LL per-scenario base(1+hf/100)', '−11,817.8'),
     ('LL free divisor', '−11,811.9'), ('free divisor c', '76'),
-    ('cells var below stat-option floor', '16'), ('cells (card, hf)', '20'), ('skills-only over n+1, nats', '843'),
+    ('cells var below stat-option floor', '16'), ('cells (card, hf)', '19'), ('skills-only over n+1, nats', '843'),
     ('repeat rate observed', '0.151'), ('repeat rate two-point count', '0.151'), ('repeat rate Poisson count', '0.199'),
     *[(f'distinct {k} observed', v) for k, v in zip((1, 2, 3, 4), ('0.093', '0.520', '0.307', '0.074'))],
     *[(f'distinct {k} model', v) for k, v in zip((1, 2, 3, 4), ('0.084', '0.477', '0.358', '0.079'))],
@@ -225,9 +226,18 @@ DATA_CLAIMS = [
     ('specialty free divisor', '92'),
     *[(f'specialty {c} {s}', v) for s, vs in (('Unity', ('0.89', '0.86', '1.16')), ('GC', ('1.09', '0.97', '1.07')))
       for c, v in zip(('Marvelous Sunday', 'Matikanefukukitaru', 'Agnes Tachyon'), vs)],
-    ('Unity hf-0 spec-0 over-rating', '10%'),
+    ('Unity hf-0 spec-0 over-rating', '13%'),
     ('priority runs', '101'), ('priority rows', '99'), ('priority observed', '0.222'), ('priority predicted', '0.297'),
 ]
+
+
+def adopted():
+    """the solver's training-hint bases by scenario (hint_base in pkg/loopopt/src/deck/hints.rs)"""
+    src = open(f'{common.ROOT}/pkg/loopopt/src/deck/hints.rs', encoding='utf-8').read()
+    body = re.search(r'fn hint_base[^{]*\{.*?match scenario \{(.*?)\}', src, re.S).group(1)
+    v = {k: float(x) for k, x in re.findall(r'"(\w+)" => ([\d.]+)', body)}
+    v['unity'] = float(re.search(r'_ => ([\d.]+)', body).group(1))
+    return {1: v['ura'], 2: v['unity'], 3: v['gc'], 4: v['trackblazer']}
 
 
 def derived():
@@ -245,6 +255,7 @@ def claims():
     def add(name, got, **kw): out.append(C(name, st[name], got, **kw))
 
     # ---- the adopted fit: first 2,402 records, max-limit-break card-runs, rows no spark hinted, Lv-5 cap
+    ADOPTED = adopted()
     A = build(len(common.runs())); ca = A['ci']
     fitset = (A['seq'][ca] < 2402) & (A['lb'][ca] == 4) & A['noinsp']
     bases, ll_cap, _ = fit_cap(A, fitset)
@@ -252,9 +263,10 @@ def claims():
     noR = fit_cap(A, fitset & (A['rar'][ca] != 1))[0]      # the refit included R cards; shown for reference
     for s, nm in ((2, 'Unity Cup'), (3, 'Grand Concert'), (1, 'URA Finale'), (4, 'Trackblazer')):
         q = fitset & (A['scen'][ca] == s)
-        add(f'refit base {nm}', bases[s], note=f'R cards included, as fitted; without them {noR[s]:.3f}')
+        add(f'refit base {nm}', bases[s], note='R card-runs included, as fitted')
+        add(f'refit base without R cards {nm}', noR[s])
         add(f'refit rows {nm}', q.sum())
-        add(f'adopted {nm}', round(bases[s], 2), note='the fitted base to two decimals')
+        add(f'adopted {nm}', ADOPTED[s], note='the solver\'s hint_base (pkg/loopopt/src/deck/hints.rs)')
         add(f'refit runs {nm}', len({A['obs'][i]['run'] for i in ca[q]}))
     add('refit runs adding a row', len({A['obs'][i]['run'] for i in ca[fitset]}))
 
@@ -281,10 +293,11 @@ def claims():
         for v in sorted(set(hf[cid == c])):
             m = (cid == c) & (hf == v) & (cens == 0)
             if m.sum() < 15: continue
-            cells += 1; T = tot[m]; oo = o[m][0]
-            if oo > 1: below_n += T.var() < T.mean() / (oo - 1) * (1 - 1 / oo)   # an empty pool (o = 1) can't be tested
+            T = tot[m]; oo = o[m][0]; cells += oo > 1
+            if oo <= 1: continue    # an empty pool (SSR Haru Urara) can't be tested
+            below_n += T.var() < T.mean() / (oo - 1) * (1 - 1 / oo)
     add('cells var below stat-option floor', below_n)
-    add('cells (card, hf)', cells, note='as the original counted: one is an empty pool (SSR Haru Urara), so 19 testable')
+    add('cells (card, hf)', cells, note='testable cells (an empty pool is left out)')
     out.append(C('skills-only over n+1, nats', '843', None, status='not reproduced: grouped by who ran each career',
                  note='the original left the draw count free per setup'))
 
@@ -403,7 +416,7 @@ def claims():
             q_ = NI & (cid[ci] == cardid) & (sc[ci] == s)
             add(f'specialty {c} {sn}', hit[q_].sum() / prow[q_].sum())
     q_ = NI & (sc[ci] == 2) & (hf[ci] == 0) & (spec[ci] == 0)
-    add('Unity hf-0 spec-0 over-rating', 1 - hit[q_].sum() / prow[q_].sum(), note='stated "about 10%"; 1 - obs/pred')
+    add('Unity hf-0 spec-0 over-rating', 1 - hit[q_].sum() / prow[q_].sum(), note='about; 1 - obs/pred')
 
     # prioritised skills
     prio = [None if x['prio'] is None else {norm(s) for s in x['prio']} for x in D['obs']]

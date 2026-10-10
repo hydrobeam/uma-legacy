@@ -115,12 +115,13 @@ def logistic_k(rows):
 
 
 ITEMS = [('readings', '2,871'), ('runs', '1,461'), ('clean hits', '426'), ('ambiguous credits', '58'),
-         ('rate with ambiguous, points higher', '3'),
+         ('rate with ambiguous, points higher', '2'),
          ('constant p', '0.148'), ('LL constant', '−1205.5'),
          ('fitted form: P at K = 4', '0.21'), ('fitted form: 1 - ratio per event', '0.047'), ('LL fitted form', '−1199.9'),
          ('power law a', '0.39'), ('LL power law', '−1200.7'),
          ('strict competition S', '1.57'), ('LL strict competition', '−1213.4'),
-         ('every slot competing: LL gain over constant', 'no better than constant'),
+         ('every slot competing: c', '1.85'), ('every slot competing: pal weight', '0.94'),
+         ('every slot competing: chain-link weight', '0'), ('LL every slot competing', '−1200.1'),
          ('hit rate K = 4', '0.17'), ('hit rate K = 6', '0.20'), ('hit rate K = 8', '0.19'), ('hit rate K = 10', '0.17'),
          ('hit rate K = 12', '0.14'), ('hit rate K = 14', '0.13'),
          ('fitted P overall', '0.15'), ('fitted P at K = 4', '0.21'), ('fitted P at K = 14', '0.13'),
@@ -176,7 +177,8 @@ def claims():
     (a, b), g['LL fitted form'] = f['exp']; g['fitted form: P at K = 4'] = a; g['fitted form: 1 - ratio per event'] = b
     (_, g['power law a']), g['LL power law'] = f['power']
     g['strict competition S'], g['LL strict competition'] = f['strict']
-    gain = f['slots'][1] - f['const'][1]
+    (g['every slot competing: c'], g['every slot competing: pal weight'], g['every slot competing: chain-link weight']), \
+        g['LL every slot competing'] = f['slots']
     t = by_k(rows)
     for k in (4, 6, 8, 10, 12, 14): g[f'hit rate K = {k}'] = t[k][1] / t[k][0]
     g['fitted P overall'] = float(np.mean([a * (1 - b) ** (r['K'] - 4) for r in rows]))
@@ -190,12 +192,8 @@ def claims():
         bottom_prioritised([r for r in R if r['seq'] < PRIO])
     out = []
     for name, s in ITEMS:
-        if name.startswith('every slot'):
-            out.append(common.Claim(SEC, name, s, None, status='match' if 2 * gain < 5.99 else 'differs',
-                                    note=f'LL gain {gain:+.1f} with 2 more parameters'))
-            continue
         tol = 0.1 if name.startswith('LL') else 0
-        note = '"about 3 points"' if 'points' in name else ''
+        note = 'about' if 'points' in name else ''
         out.append(common.Claim(SEC, name, s, g[name], tol=tol, note=note))
     return out
 

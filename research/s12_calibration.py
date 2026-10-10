@@ -390,11 +390,9 @@ def claims(wide=None):
     out += [Claim(S12, '1. deck hint: observed 95% low', '0.224', s['lo']), Claim(S12, '1. deck hint: observed 95% high', '0.238', s['hi'])]
     add('1. training pool only', rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only', pdeck, o_deck), '2,982', '0.372', '0.357', '0.959', ('0.91', '1.01'))
     add('1. events only', rep.stat(lambda r: d_sel(r) and kind(r) == 'events only', pdeck, o_deck), '1,864', '0.887', '0.807', '0.910', ('0.89', '0.93'))
-    # the stated split read prioritised names with an apostrophe (Playtime's Over!, It's On!) as not prioritised
-    pnote = 'apostrophe names now matched'
     pl = lambda r: d_sel(r) and r['prio'] is not None and kind(r) == 'events only'
-    add('1. events only, prioritised', rep.stat(lambda r: pl(r) and r['prio'], pdeck, o_deck), '124', '0.890', '0.927', '1.042', ('0.97', '1.08'), pnote)
-    add('1. events only, not prioritised', rep.stat(lambda r: pl(r) and not r['prio'], pdeck, o_deck), '220', '0.853', '0.582', '0.682', ('0.60', '0.76'), pnote)
+    add('1. events only, prioritised', rep.stat(lambda r: pl(r) and r['prio'], pdeck, o_deck), '151', '0.889', '0.907', '1.021', ('0.96', '1.06'))
+    add('1. events only, not prioritised', rep.stat(lambda r: pl(r) and not r['prio'], pdeck, o_deck), '193', '0.849', '0.549', '0.647', ('0.56', '0.73'))
     s = rep.stat(lambda r: True, lambda r: r['q'], lambda r: r['o_insp'])
     add('2. inheritance', s, '23,488', '0.350', '0.345', '0.985', ('0.97', '1.00'))
     out += [Claim(S3, 'inheritance obs / pred (23,488 rows)', '0.985', s['ratio']), Claim(S3, 'inheritance ratio 95% low', '0.97', s['rlo']),
@@ -417,8 +415,8 @@ def claims(wide=None):
     c_sel = free
     add('3. acquired, any source', rep.stat(c_sel, acq, o_any), '20,923', '0.498', '0.495', '0.993', ('0.98', '1.01'))
     add('3. acquired, deck or inspiration only', rep.stat(c_sel, acq, modelled), None, None, '0.485', '0.972', ('0.96', '0.99'))
-    add('3. acquired, prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any), '946', '0.685', '0.717', '1.046', ('1.00', '1.09'), pnote)
-    add('3. acquired, not prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any), '1,422', '0.565', '0.518', '0.918', ('0.87', '0.96'), pnote)
+    add('3. acquired, prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any), '1,052', '0.711', '0.736', '1.036', ('1.00', '1.07'))
+    add('3. acquired, not prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any), '1,316', '0.535', '0.487', '0.910', ('0.86', '0.96'))
     rs = [r for r in rows if c_sel(r)]
     a, b = sum(r['p_pred'] for r in rs), sum(r['l_obs'] for r in rs)
     out += [Claim(S12, '4. landing: sum of p', '3,669.8', a), Claim(S12, '4. landing: sum observed-equivalent', '3,631.5', b), Claim(S12, '4. landing: ratio', '0.990', common.div(b, a))]
@@ -443,7 +441,7 @@ def claims(wide=None):
     low = [rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['pool_lb'] == lb, pdeck, o_deck) for lb in (0, 1, 2)]
     out += [Claim(S12, '1. training pool only, LB0-2 lowest ratio', '0.83', min(s['ratio'] for s in low)),
             Claim(S12, '1. training pool only, LB0-2 highest ratio', '1.06', max(s['ratio'] for s in low)),
-            Claim(S12, '1. training pool only, LB0-2 fewest rows', '41', min(s['n'] for s in low)),
+            Claim(S12, '1. training pool only, LB0-2 fewest rows', '33', min(s['n'] for s in low)),
             Claim(S12, '1. training pool only, LB0-2 most rows', '87', max(s['n'] for s in low))]
     out.append(Claim(S12, "Unity Cup's guaranteed golds: runs with both", '780', sum(1 for x in runrows if x['scen'] == 2 and
                                                                                       all(r['o_gold'] for r in x['rows'] if r['scen_gold']))))
@@ -488,7 +486,7 @@ def claims(wide=None):
     cn = lambda r: (set(r['cards_pool']) | set(r['cards_ev'])).pop()
     byname = {c['name']: c['id'] for c in common.gjson('web_cards.json')['cards']}
     for card, g, sp, so, sr, sn in (('[This Might Sting!] Sasami Anshinzawa', 20203, '1.000', '0.730', '0.73', '185'),
-                                    ('[Planned Perfection] Riko Kashimoto', 20046, '0.750', '0.596', '0.80', '359'),
+                                    ('[Planned Perfection] Riko Kashimoto', 20046, '0.750', '0.596', '0.79', '359'),
                                     ('[Tonight, We Waltz] King Halo', 20159, '0.937', '0.726', '0.77', '73'),
                                     ('[That Time I Became the Strongest] Gold Ship', 20159, '0.205', '0.122', '0.59', '74'),
                                     ('[Cute + Cute = ?] Mayano Top Gun', 20049, '0.298', '0.070', '0.23', '43'),
