@@ -1,13 +1,12 @@
-"""Support cards for deck search -> ../web_cards.json. Run from this folder with master.mdb present.
+"""Support cards for deck search -> the era's web_cards.json. usage: export_cards.py global|jp
 Per released card: chara, rarity, pal (friend type), chain length (story events with progress markers),
 hint frequency at max limit break (effect 18, plus the unique effect's), number of distinct training-hint options (skills + stat option) and of skill options alone (nskill),
 hint levels per training-hint draw at max limit break (hinc: 1 + effect 17, plus the unique effect's),
 and the skill groups (white level) in its training-hint pool. Event skill rewards are NOT in master.mdb tables;
 they are supplied per job (`events`)."""
-import sqlite3, json, os
-from upcoming import CUT
-c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')); q = lambda s, *a: c.execute(s, a).fetchall()
-cn = dict(q("select [index],text from text_data where category=75"))
+import json, os
+from era import q, names, OUT, card_released
+cn = names(75)
 grp = dict(q("select id, group_id from skill_data"))
 out = []
 # characters who cannot train with a card: its own character plus, for group cards, every member
@@ -15,7 +14,7 @@ members = {}
 for sid, ch in q("select support_card_id, chara_id from support_card_group"): members.setdefault(sid, set()).add(ch)
 KIND = {101: 'speed', 105: 'stamina', 102: 'power', 103: 'guts', 106: 'wit'}
 for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_card_type,effect_table_id,start_date,command_id from support_card_data"):
-    if sd > CUT: continue   # dated up to upcoming.AHEAD ahead (the page hides it until then); group cards (type 3) act as pals: no chain slots, skills from their dates
+    if not card_released(sd): continue   # by the era's cut (era.py); group cards (type 3) act as pals: no chain slots, skills from their dates
     rows = q("select hint_group,hint_gain_type,hint_value_1 from single_mode_hint_gain where support_card_id=?", sid)
     opts = len({g for g, _, _ in rows})
     nskill = len({g for g, t, _ in rows if t == 0})   # skill options (the stat option is never drawn in IT)
@@ -37,5 +36,5 @@ for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_c
 SCEN = {1: 'ura', 2: 'unity', 3: 'gc', 4: 'trackblazer', 5: 'grandmasters'}; have = {c['id'] for c in out}; restrict = {}
 for sc, sid in q("select scenario_id, support_card_id from single_mode_restrict_support order by scenario_id, support_card_id"):
     if sc in SCEN and sid in have: restrict.setdefault(SCEN[sc], []).append(sid)
-json.dump({"cards": out, "restrict": restrict}, open('../web_cards.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+json.dump({"cards": out, "restrict": restrict}, open(os.path.join(OUT, 'web_cards.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
 print(len(out), 'cards;', sum(x['pal'] for x in out), 'pals; restricted', restrict)

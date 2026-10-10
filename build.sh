@@ -46,15 +46,17 @@ check() {
 TOOLS_RUST="https://rustup.rs"; TOOLS_NODE="Node.js with npm"; TOOLS_UV="https://docs.astral.sh/uv/"
 step_data() {
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "$GLOBAL_MDB" "$JP_MDB"; check data
-  (cd "$C/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" export_career.py ../data.json ../career.json && "${PY[@]}" upcoming.py)
-  (cd "$R/jp/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" "$C/export/export_career.py" ../data.json ../career.json)
+  (cd "$C/export" && for era in global jp; do
+     "${PY[@]}" build_base.py $era && "${PY[@]}" export_rs.py $era && "${PY[@]}" export_web.py $era \
+       && "${PY[@]}" export_cards.py $era && "${PY[@]}" export_career.py $era || exit 1
+   done && "${PY[@]}" upcoming.py)
 }
 step_gametora() { MISSING=(); need_cmd uv "$TOOLS_UV"; check gametora; "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}; }
 step_events() {
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "$GLOBAL_MDB" "$JP_MDB"; check events
   step_gametora
-  (cd "$C/export" && "${PY[@]}" build_card_events.py)
-  (cd "$R/jp/export" && "${PY[@]}" build_card_events.py && "${PY[@]}" build_card_events_nodates.py)
+  (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp \
+     && "${PY[@]}" build_card_events.py jp nodates)
 }
 step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test --release 2>&1 | grep -E "^test result" | head -3); }
 step_wasm() {

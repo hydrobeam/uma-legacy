@@ -1,5 +1,5 @@
-"""Tables for reading a veteran export (umadump's trained_chara_data.json) into the career planner. Run from an era's
-export folder (master.mdb there) with that era's data.json; writes career.json next to it:
+"""Tables for reading a veteran export (umadump's trained_chara_data.json) into the career planner. Reads the era's
+data.json (run after export_rs.py) and writes career.json next to it:
   factors: skill spark factor group -> skill group (succession_factor type 4, via succession_factor_effect.value_1 and
            skill_data.group_id). A spark's factor_id is factor group * 100 + stars.
   saddles: win saddle id -> race index in data.json's races, for saddles of one G1 race (single_mode_wins_saddle with
@@ -12,12 +12,10 @@ export folder (master.mdb there) with that era's data.json; writes career.json n
            card id) -> its unique skill's name (type 3).
   mobs:    every named mob uma (mob_data, English names from the Global text_data category 59 by mob id): the career
            planner's sample veterans, drawn at random (no relation points with anyone; they only carry sparks).
-usage: export_career.py DATA_JSON OUT_JSON"""
+usage: export_career.py global|jp"""
 import sqlite3, json, sys, os
-data_path, out_path = sys.argv[1], sys.argv[2]
-# the era is the folder it runs from (build.sh runs it in pkg/loopopt/export and in jp/export)
-MDB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'jp' if os.path.basename(os.path.dirname(os.getcwd())) == 'jp' else 'global', 'master.mdb')
-c = sqlite3.connect(MDB); q = lambda s, *a: c.execute(s, a).fetchall()
+from era import q, OUT, GLOBAL_MDB
+data_path, out_path = os.path.join(OUT, 'data.json'), os.path.join(OUT, 'career.json')
 RELOC = {1025: 1012, 1027: 1006, 1028: 1005}   # samerace.py
 races = json.load(open(data_path))['races']
 ridx = {r: i for i, r in enumerate(races)}
@@ -34,8 +32,8 @@ for sid, g, rid in rows:
     if rid in ridx: assert grp.setdefault(g, ridx[rid]) == ridx[rid], (sid, g)
 saddles = {sid: grp[g] for sid, g, _ in rows if g in grp}
 unmapped = [sid for sid, g, _ in rows if g not in grp]
-# names from the Global master.mdb next to this script (the JP one has Japanese text; the groups are the same)
-gq = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')).execute
+# names from the Global master.mdb (the JP one has Japanese text; the groups are the same)
+gq = sqlite3.connect(f'file:{GLOBAL_MDB}?mode=ro', uri=True).execute
 pinks = {g: gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()[0]
          for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 2 order by factor_group_id')}
 # blue (stat) spark groups 1..5 and unique (green) spark groups (an outfit's card id) -> name, the same way

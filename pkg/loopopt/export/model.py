@@ -1,8 +1,7 @@
-import sqlite3, json, itertools, math, os
-c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb'))
-q=lambda s,*a: c.execute(s,a).fetchall()
-RN={r[0]:r[1] for r in q("select [index],text from text_data where category=32")}
-B=json.load(open('base.json'))
+import json, itertools, math
+from era import c, q, names, BASE
+RN=names(32)
+B=json.load(open(BASE))
 ROSTER=B['roster']; NAME={int(k):v for k,v in B['name'].items()}
 APT={int(k):v for k,v in B['apt'].items()}   # (short,mile,mid,long,turf,dirt) codes 1..8 = G..S
 def off(code): # S,A ->0, B->1 ... G->6

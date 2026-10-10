@@ -186,8 +186,8 @@ minutes and can serve the previous page until then.
 build.sh             the one entry point for every build step
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
 pkg/loopopt/         the Rust solver (src/, tests/), data.json, web_skills.json, web_cards.json, card_events.json, jobs/
-pkg/loopopt/export/  Python exporters (master.mdb -> data files)
-jp/                  Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
+pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
+jp/                  the Grand Masters-era data (the JP game database cut at L'Arc's launch) and its hand-entered card events
 val/                 validation jobs, reference outputs and checks
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)

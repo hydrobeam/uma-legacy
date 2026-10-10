@@ -72,7 +72,7 @@ A structure whose bound is below a result already achieved cannot beat it.
 
 ```bash
 # 1. export data (needs the Global master.mdb in game/global/)
-cd export && uv run build_base.py && uv run export_rs.py            # writes ../data.json (../../build.sh data does every export)
+cd export && uv run build_base.py global && uv run export_rs.py global   # writes data.json (../../build.sh data exports both eras)
 
 # 2. build
 cargo build --release
@@ -502,4 +502,4 @@ exactly 24 turns apart.
 
 - **Schedules are heuristic.** `optimize` is an iterated local search with a provably exact best response per uma; nothing proves a structure's schedules optimal.
 - **Model assumptions (§1) are assumed or community-derived:** the win formula and the affinity objective. The skill model's per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
-- **Base-outfit aptitudes by default.** Use `OUTFIT=chara:card` for alternate outfits (Vodka 100802, Daiwa 100902, Urara 105202); this needs a re-export.
+- **Base-outfit aptitudes by default.** `build_base.py global CHARA:CARD` exports with an alternate outfit (Vodka 1008:100802, Daiwa 1009:100902, Urara 1052:105202).

@@ -1,8 +1,15 @@
-"""Export everything the Rust core needs. Relocated venues = same race (samerace patch)."""
-import samerace, json, itertools, os
+"""Export everything the Rust core needs to the era's data.json. Relocated venues = same race (samerace patch).
+usage: export_rs.py global|jp [--out FILE]"""
+import samerace, json, itertools, os, sys
 from model import *
 from rel import pt, mem
-races=sorted({PROG[p]['race'] for v in G1CAL.values() for p in v})
+from era import JP, OUT
+races={PROG[p]['race'] for v in G1CAL.values() for p in v}
+if JP:   # some JP career objectives are G1s outside the standard calendar programs; include their races too
+    for ch in ROSTER:
+        o,_=options(ch)
+        races |= {PROG[p]['race'] for l in o.values() for p in l if is_g1(p)}
+races=sorted(races)
 ridx={r:i for i,r in enumerate(races)}
 umas=[]
 for ch in ROSTER:
@@ -33,7 +40,7 @@ RELS=[[pt[t],m] for t in sorted(pt) for m in [[i for i,ch in enumerate(ROSTER) i
 # per race: distance class (0 short .. 3 long, as basep) and surface (1 turf, 2 dirt), for aptitude-dependent win chances
 RACE_AT={}
 for pid,p in PROG.items(): RACE_AT.setdefault(p['race'],(cat(p['dist']),p['ground']))
-json.dump({'races':races,'race_names':[RN[r] for r in races],'race_cat':[RACE_AT[r][0] for r in races],'race_ground':[RACE_AT[r][1] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(os.environ.get('OUT','../data.json'),'w'))
+json.dump({'races':races,'race_names':[RN[r] for r in races],'race_cat':[RACE_AT[r][0] for r in races],'race_ground':[RACE_AT[r][1] for r in races],'umas':umas,'relations':RELS,'pen':[PEN[k] for k in range(1,7)]},open(sys.argv[sys.argv.index('--out')+1] if '--out' in sys.argv else os.path.join(OUT,'data.json'),'w'))
 print('races',len(races),'umas',len(umas),'max options/turn',max(len(l) for u in umas for l in u['turns']),
       'multi-turn goal groups',sum(1 for u in umas for g in u['goals'] if len({t for t,_ in g})>1),
       'same-turn multi-option groups',sum(1 for u in umas for g in u['goals'] if len(g)>1 and len({t for t,_ in g})==1))
