@@ -29,6 +29,7 @@
 !/pkg/loopopt/web_cards.json
 !/pkg/loopopt/web_skills.json
 !/pkg/loopopt/career.json
+!/pkg/loopopt/upcoming.json
 !/jp/
 /jp/*
 !/jp/export/

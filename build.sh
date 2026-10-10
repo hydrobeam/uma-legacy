@@ -24,7 +24,7 @@ R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
 PY=(uv run --quiet --project "$R" python)
 WFLAGS="--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals"
 step_data() {
-  (cd "$C/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" export_career.py ../data.json ../career.json)
+  (cd "$C/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" export_career.py ../data.json ../career.json && "${PY[@]}" upcoming.py)
   (cd "$R/jp/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" "$C/export/export_career.py" ../data.json ../career.json)
 }
 step_events() {

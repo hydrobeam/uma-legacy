@@ -464,7 +464,10 @@ const TESTS = {
   },
   async roster(b) {
     const pg = await open(b);
-    const umas = await json(pg, 'data-umas'); const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
+    // as the page shows them: outfits dated after now hidden, an uma whose every outfit is (data.js LATER)
+    const umas = (await json(pg, 'data-umas')).map(u => ({ ...u, outfits: u.outfits.filter(o => o.rel <= Date.now() / 1000), had: u.outfits.length }))
+      .filter(u => u.outfits.length || !u.had);
+    const nOut = umas.reduce((a, u) => a + Math.max(1, u.outfits.length), 0);
     check('one tile per outfit', (await pg.locator('#roster .ut').count()) === nOut, nOut + ' outfits');
     const all = umas.flatMap(u => (u.outfits.length ? u.outfits : [{ label: '', rel: 0, id: 0 }]).map(o => ({ n: u.name + (o.label ? ' ' + o.label : ''), rel: o.rel, id: o.id })));
     const firstTile = async () => (await pg.locator('#roster .ut').first().innerText()).replace(/\n/g, ' ').trim();
@@ -487,6 +490,35 @@ const TESTS = {
     check('tile cycle: back to owned', s3.split(',').every(x => x === 'own'), s3);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
+  },
+  // a build holds the next banner ahead of its start (pkg/loopopt/upcoming.json): hidden and left out of every search
+  // until its start time, then there without a rebuild (the page's clock moved past it)
+  async upcoming(b) {
+    const up = JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/upcoming.json', import.meta.url), 'utf8'));
+    const later = Object.fromEntries(Object.entries(up).map(([k, l]) => [k, l.filter(([, t]) => t > Date.now() / 1000)]));
+    const all = Object.values(later).flat();
+    if (!all.length) { check('upcoming: nothing in this build starts later (nothing to check)', true); return; }
+    const at = Math.max(...all.map(([, t]) => t)) * 1000 + 60000;
+    const look = async (init) => {
+      const pg = await open(b, { init });
+      const tiles = await pg.locator('#roster .ut').count(), cards = await pg.locator('#cards .ct').count();
+      await pg.click('#rank button[data-v="0.20,0.70,0.10"]'); await settle(pg);
+      const job = await pg.evaluate(() => window.__runs.filter(j => j.cmd === 'deck').at(-1));
+      const errs = pg.errors; await pg.context().close();
+      return { tiles, cards, job, errs };
+    };
+    const ids = (k) => later[k].map(([id]) => id), has = (l, xs) => xs.every(x => (l || []).includes(x)), none = (l, xs) => !xs.some(x => (l || []).includes(x));
+    const now = await look(null);
+    check('upcoming: what starts later is left out of the search', now.job && has(now.job.exclude, ids('umas')) && has(now.job.exclude_outfits, ids('outfits')) && has(now.job.exclude_cards, ids('cards')),
+      JSON.stringify(later));
+    const then = await look(`{ const off = ${at} - Date.now(), n = Date.now; Date.now = () => n() + off; }`);
+    // R cards stay out by default whatever their date (the page's R-cards switch)
+    const rare = new Set(JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/web_cards.json', import.meta.url), 'utf8')).cards.filter(c => c.rarity > 1 || c.pal).map(c => c.id));
+    check('upcoming: once started it is in the search', then.job && none(then.job.exclude, ids('umas')) && none(then.job.exclude_outfits, ids('outfits'))
+      && none(then.job.exclude_cards, ids('cards').filter(id => rare.has(id))), JSON.stringify(then.job && then.job.exclude_cards.filter(id => ids('cards').includes(id))));
+    check('upcoming: once started its outfits and cards are on the page', then.tiles - now.tiles === ids('outfits').length && then.cards > now.cards,
+      `tiles ${now.tiles} -> ${then.tiles}, cards ${now.cards} -> ${then.cards}`);
+    check('no page errors', !now.errs.length && !then.errs.length, [...now.errs, ...then.errs].join(' | '));
   },
   async cards(b) {
     const pg = await open(b);

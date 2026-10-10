@@ -1,7 +1,7 @@
 // ---------- the engine: a Web Worker running the WebAssembly solver (shared by the planner and the career page) ----------
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-import { ASSETS, loadFail } from './data.js';
+import { ASSETS, LATER, loadFail } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 let worker = null, ready = null, seq = 0; const pending = new Map();
@@ -89,5 +89,9 @@ export function engineSaveState() {
     try { await ready; const m = await post({ cmd: 'state_out' }); if (m.r && m.r.state) stateSave(stateKey(), m.r.state); } catch { /* the worker went: nothing to save */ }
   }, 1500);
 }
+// what has not started yet (data.js LATER) is left out of every search
+const gate = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
+  exclude: [...(job.exclude || []), ...LATER.umas], exclude_outfits: [...(job.exclude_outfits || []), ...LATER.outfits],
+  exclude_cards: [...(job.exclude_cards || []), ...LATER.cards] };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise
-export function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job }); })); }
+export function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job: gate(job) }); })); }

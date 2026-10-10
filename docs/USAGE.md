@@ -13,7 +13,7 @@ corner of the results. Under it, *Target skills* in the open. On the right, the 
 one level with the setup panel. On a phone the columns stack, results first.
 
 **Settings** (the Loop setup panel)
-- *Game data*: "Global" (today's data), or "JP, Grand Masters" (JP data from the Grand Masters era, cut at L'Arc's launch, 24 Aug 2023). Switching
+- *Game data*: "Global" (today's data: umas, outfits and cards the build holds ahead of their banner appear at its start time, without a new build), or "JP, Grand Masters" (JP data from the Grand Masters era, cut at L'Arc's launch, 24 Aug 2023). Switching
   reloads the page; owned umas, outfits and cards are kept separately for each.
   The career planner also keeps the solver's work (each uma's best career, what its searches proved) in the browser
   (IndexedDB), so the first plan after a reload reuses it; a new release starts afresh.

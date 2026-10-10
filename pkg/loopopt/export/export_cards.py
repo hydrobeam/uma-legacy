@@ -4,17 +4,18 @@ hint frequency at max limit break (effect 18, plus the unique effect's), number 
 hint levels per training-hint draw at max limit break (hinc: 1 + effect 17, plus the unique effect's),
 and the skill groups (white level) in its training-hint pool. Event skill rewards are NOT in master.mdb tables;
 they are supplied per job (`events`)."""
-import sqlite3, json, time
+import sqlite3, json
+from upcoming import CUT
 c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
 cn = dict(q("select [index],text from text_data where category=75"))
 grp = dict(q("select id, group_id from skill_data"))
-now = int(time.time()); out = []
+out = []
 # characters who cannot train with a card: its own character plus, for group cards, every member
 members = {}
 for sid, ch in q("select support_card_id, chara_id from support_card_group"): members.setdefault(sid, set()).add(ch)
 KIND = {101: 'speed', 105: 'stamina', 102: 'power', 103: 'guts', 106: 'wit'}
 for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_card_type,effect_table_id,start_date,command_id from support_card_data"):
-    if sd > now: continue   # group cards (type 3) act as pals: no chain slots, skills from their dates
+    if sd > CUT: continue   # dated up to upcoming.AHEAD ahead (the page hides it until then); group cards (type 3) act as pals: no chain slots, skills from their dates
     rows = q("select hint_group,hint_gain_type,hint_value_1 from single_mode_hint_gain where support_card_id=?", sid)
     opts = len({g for g, _, _ in rows})
     nskill = len({g for g, t, _ in rows if t == 0})   # skill options (the stat option is never drawn in IT)

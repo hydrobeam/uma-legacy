@@ -16,11 +16,26 @@ export let CAT;     // [[group, white, gold|null]]
 export let CARD_BY_ID, SK, NAME;
 // the career page's veteran import tables ({factors, saddles, races}); null on the planner page
 export let CAREER = null;
+// what the data holds ahead of its start (a build from a master.mdb fetched ahead of its update holds the next week's
+// umas, outfits and cards, pkg/loopopt/export/upcoming.py): hidden here and left out of every search until its start,
+// so a banner turns on by itself. An uma counts from her first outfit's start. Fixed at page load.
+export let LATER = { umas: [], outfits: [], cards: [] };
 function setData(d) {
-  CARDS = d.cards; UMAS = d.umas; CAT = d.skills; CAREER = d.career || null;
-  CARD_BY_ID = new Map(CARDS.map(c => [c.id, c]));
+  const now = Date.now() / 1000;
+  LATER = { umas: [], outfits: [], cards: d.cards.filter(c => c.rel > now).map(c => c.id) };
+  const umas = d.umas.map(u => {
+    const later = (u.outfits || []).filter(o => o.rel > now);
+    if (!later.length) return u;
+    LATER.outfits.push(...later.map(o => o.id));
+    const outfits = u.outfits.filter(o => o.rel <= now);
+    if (!outfits.length) LATER.umas.push(u.id);
+    return { ...u, outfits };
+  });
+  CARDS = d.cards.filter(c => c.rel <= now); UMAS = umas.filter(u => !LATER.umas.includes(u.id));
+  CAT = d.skills; CAREER = d.career || null;
+  CARD_BY_ID = new Map(d.cards.map(c => [c.id, c]));
   SK = new Map(CAT.map(([g, w, gd]) => [g, { w, gd }]));
-  NAME = new Map(UMAS.map(u => [u.id, u.name]));
+  NAME = new Map(d.umas.map(u => [u.id, u.name]));
   for (const [id, name] of (CAREER && CAREER.mobs) || []) NAME.set(id, name);   // the career page's sample (mob) veterans
 }
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that

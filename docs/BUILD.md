@@ -111,8 +111,13 @@ screen), `statestore.js` (the solver's kept work in IndexedDB), `umadump.js` (im
 
 ## Data
 
-  - `data` counts an uma once her start date has passed and an outfit once its first gacha has started, both at
-    build time, so a master fetched ahead shows nothing early: rebuild after the banner starts.
+  - `data` keeps every uma, outfit and support card the master dates up to 60 days past the build
+    (`pkg/loopopt/export/upcoming.py`; an outfit's start is its first gacha's, else its uma's start date; undated
+    content carries a 2050 placeholder and stays out) and writes `pkg/loopopt/upcoming.json`, what starts after the
+    build. The page hides each until its start time and leaves it out of every search (`webapp/src/data.js` `LATER`,
+    `engine.js`), so a banner turns on by itself: with the next update's master in place, rebuild and deploy any
+    time before its start. The precomputed example leaves the same entries out (`webapp/example.mjs`).
+    Validation runs on everything in the data, upcoming included.
   - New characters' art still comes from the game install (`./build.sh images`); without it the page shows initials.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): Global in
   `pkg/loopopt/card_events.json` (entries whose `src` is not exactly "gametora training_events" survive `events`),
