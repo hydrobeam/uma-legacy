@@ -16,9 +16,9 @@ and GameTora's data files. With the game files in `game/` (below) it extracts th
 and the page shows initials. To check a change, `./build.sh testq` (the browser suite's fast tier; it installs its
 browsers the first time) and `./build.sh valq TAG` (the validation jobs against their reference outputs).
 
-A fresh clone builds the page from the tracked data files and passes the solver tests and validation. Without game
-art the page shows initials in place of pictures and a spinner in place of the runner; without art the browser
-suite's five art checks fail (banners, skill icons, swap-row card art, initials contrast, scenario tiles).
+A fresh clone builds the page from the tracked data files and passes the solver tests, validation and the browser
+suite. Without game art the page shows initials in place of pictures and a spinner in place of the runner, and the
+browser suite skips the checks of the art itself (it says which).
 
 ## What is needed
 

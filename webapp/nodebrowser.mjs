@@ -9,6 +9,9 @@
 import { createRequire } from 'module';
 import { AsyncLocalStorage } from 'async_hooks';
 import { serveDist } from './serve.mjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const local = process.env.LLP_URL ? null : await serveDist();
 const URL = process.env.LLP_URL || local.url;
@@ -27,6 +30,13 @@ let failed = 0, passed = 0;
 const LOG = new AsyncLocalStorage();   // the running group's buffered lines (groups run in parallel)
 const say = (line) => { const buf = LOG.getStore(); if (buf) buf.push(line); else console.log(line); };
 const check = (name, ok, detail = '') => { if (ok) passed++; else failed++; say(`${ok ? '  ok  ' : '  FAIL'} ${name}${detail ? ' · ' + detail : ''}`); };
+// Whether the build carries the game art: a clone without game files builds with initials in place of pictures, so
+// checks of the art itself are skipped and the contrast audits leave out the initials that stand in for card art.
+const ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist', 'assets');
+const ART = !!process.env.LLP_URL || (() => { try { const d = fs.readdirSync(ASSETS).find(n => n.startsWith('img.')); return !!d && fs.readdirSync(path.join(ASSETS, d, 'uma')).length > 0; } catch { return false; } })();   // the character icons `images` extracts
+let skipped = 0;
+const artCheck = (name, ok, detail = '') => ART ? check(name, ok, detail) : (skipped++, say(`  skip ${name} · no game art in this build`));
+const artless = (fails) => ART ? fails : fails.filter(x => !/^span\.cav\b/.test(x));
 // LLP_PROF=file: where each group's time goes (new contexts and page loads, waits for searches and plans, fixed sleeps,
 // contrast audits, and the solver's own time per job), one JSON line per group appended to the file
 const PROF = process.env.LLP_PROF;
@@ -279,7 +289,7 @@ const TESTS = {
     check('deck: Sasami Anshinzawa SSR says "prioritise Risky Business"', anshin.includes('prioritise Risky Business'), JSON.stringify(anshin));
     // the deck's odds per target, each with its skill icon
     const dd = await pg.evaluate(() => { const l = document.querySelector('#results .loop .dodds'); return { n: l.querySelectorAll('.dsk').length, icons: l.querySelectorAll('.dsk img.sic').length }; });
-    check('deck odds: a skill icon on every entry', dd.n > 0 && dd.icons === dd.n, JSON.stringify(dd));
+    artCheck('deck odds: a skill icon on every entry', dd.n > 0 && dd.icons === dd.n, JSON.stringify(dd));
     // the odds sit in a frame the (i) button opens; a swap row names its uma by her character icon
     const oi = pg.locator('#results .loop .deck .oinfo').first();
     check('deck odds start closed', await pg.evaluate(() => document.querySelector('#results .loop .dodds').hidden));
@@ -307,7 +317,7 @@ const TESTS = {
       return { outN: d.querySelectorAll('.swout .dc').length, inN: d.querySelectorAll('.swin .dc').length, tops: art.map(x => Math.round(x.top)),
         mid: Math.round(Math.abs((a.top + a.bottom) / 2 - (art[0].top + art[0].bottom) / 2)), grey: getComputedStyle(d.querySelector('.swout .dc .cav')).filter }; }));
     check('swap rows: the card out greyed ➜ the card in, every card\'s art on one line, the arrow at its middle', rows.length > 0 && rows.every(r =>
-      r.outN > 0 && r.outN === r.inN && new Set(r.tops).size === 1 && r.mid <= 1 && /grayscale/.test(r.grey)), JSON.stringify(rows));
+      r.outN > 0 && r.outN === r.inN && /grayscale/.test(r.grey) && (!ART || new Set(r.tops).size === 1 && r.mid <= 1)), JSON.stringify(rows));   // the art's alignment only with art
     check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && /’s deck:$/.test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     // two columns: the Loop setup panel (the status row at its foot) beside the results, level at the top; the editors in dialogs
     check('desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen', await pg.evaluate(() => { const set = document.querySelector('.lp .rbbar').getBoundingClientRect(), res = document.querySelector('#results .loop').getBoundingClientRect();
@@ -771,7 +781,7 @@ const TESTS = {
     check('agenda: three identical year grids', grids.length === 3 && new Set(grids).size === 1, grids.join(' '));
     check('agenda: Junior Year opens with the game\'s grey cells for April to June', (await pg.locator('#sched-dlg .ag-year.y0 .ag-slot.pre').count()) === 12);
     check('agenda: fits the window without scrolling', await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }));
-    check('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
+    artCheck('agenda: every race has its banner', (await pg.locator('#sched-dlg .ag-race').count()) === (await pg.locator('#sched-dlg .ag-race img.banner').count()));
     check('agenda: a race\'s "x% win" sits in its turn bar, its tooltip says why', await pg.evaluate(() => [...document.querySelectorAll('#sched-dlg .ag-slot.on .ag-when')].every(w => /^(Early|Late) [A-Z][a-z]{2}\d+% win$/.test(w.textContent) && /^\d+% win: 110/.test(w.querySelector('b').title || w.querySelector('b').dataset.tip))));   // (a hovered one's title is held in data-tip while its balloon shows)
     await pg.locator('#sched-dlg .stab').last().click(); check('All three shows the comparison table, a column per member', (await pg.locator('#sched-dlg table.sched').count()) > 0
       && (await pg.locator('#sched-dlg table.sched').first().locator('th.mh').count()) === 3);
@@ -826,7 +836,7 @@ const TESTS = {
       return r.width > 0 && r.left >= 0 && r.right <= innerWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }));
     const ph = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(), s = t.querySelector('.ssub').getBoundingClientRect();
       return Math.round(r.width) + 'x' + Math.round(r.height) + ' line ' + Math.round(s.height); }));
-    check('phone: the scenario tiles are the same size, each logo + one line', new Set(ph.map(x => x.split(' ')[0])).size === 1 && ph.every(x => +x.split(' ').at(-1) <= 22), ph.join(' | '));
+    artCheck('phone: the scenario tiles are the same size, each logo + one line', new Set(ph.map(x => x.split(' ')[0])).size === 1 && ph.every(x => +x.split(' ').at(-1) <= 22), ph.join(' | '));
     await pg.keyboard.press('Escape');
     await pg.click('#rank-q');
     check('phone: the open lineage-rank popup fits the screen', await pg.evaluate(() => { const r = document.getElementById('rank-note').getBoundingClientRect();
@@ -1013,7 +1023,7 @@ const TESTS = {
       && await (async () => { await spec.locator('summary').click(); return /Model\./.test(await spec.innerText()); })() && /Version v?\S+/.test(await pg.locator('main.about').innerText()));
     check('/about: the career planner in detail starts folded and opens to its steps', (await cspec.getAttribute('open')) === null
       && await (async () => { await cspec.locator('summary').click(); const t = await cspec.innerText(); return /C1\. Legal careers/.test(t) && /C8b\. Which careers are searched exactly/.test(t) && /The Comparison panel/.test(t); })());
-    if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    if (b.browserType().name() === 'chromium') { const f = artless(await pg.evaluate(AUDIT)); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     await pg.locator('header.top .tnav a', { hasText: 'Loop planner' }).click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
     await pg.context().close();
@@ -1038,7 +1048,7 @@ const TESTS = {
       await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg'); fails.push(...await pg.evaluate(AUDIT));
       await pg.locator('#sched-dlg .stab').last().click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
       await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
-      check('dark: every text run meets WCAG AAA (page, scenario picker, rank popup, card popup, schedule, affinity)', !fails.length, fails.slice(0, 5).join(' | '));
+      { const shown = artless(fails); check('dark: every text run meets WCAG AAA (page, scenario picker, rank popup, card popup, schedule, affinity)', !shown.length, shown.slice(0, 5).join(' | ')); }
     }
     await pg.click('#theme-btn');
     check('dark: the header button switches to light and remembers it', (await theme()) === 'light' && await pg.evaluate(() => localStorage.getItem('llp:theme') === 'light'));
@@ -1531,7 +1541,7 @@ const TESTS = {
       && /Choose both parents, or import/.test(await note()) && await pg.locator('#simulation').count() === 0);
 
     await pg.keyboard.press('Escape');
-    if (b.browserType().name() === 'chromium') { await still(pg); const f = await pg.evaluate(AUDIT); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    if (b.browserType().name() === 'chromium') { await still(pg); const f = artless(await pg.evaluate(AUDIT)); check('career: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },
@@ -1601,7 +1611,7 @@ const TESTS = {
     await pg.locator('.loop .lacts button', { hasText: 'Race schedule' }).first().click(); await dialog(pg, 'sched-dlg'); fails.push(...await pg.evaluate(AUDIT));
     await pg.locator('#sched-dlg .stab').last().click(); fails.push(...await pg.evaluate(AUDIT)); await pg.keyboard.press('Escape');
     await pg.locator('.loop .lacts button', { hasText: 'Affinity' }).first().click(); await dialog(pg, 'why-dlg'); fails.push(...await pg.evaluate(AUDIT));
-    check('contrast: every text run meets WCAG AAA', !fails.length, fails.slice(0, 5).join(' | '));
+    const shown = artless(fails); check('contrast: every text run meets WCAG AAA', !shown.length, shown.slice(0, 5).join(' | '));
     await pg.context().close();
     const p2 = await open(b, { before: (p) => p.route('**/img.*/scen/**', r => r.abort()) });   // the first search done
     await still(p2);   // the results' fade back from the searching dim, as above
@@ -1628,5 +1638,5 @@ await Promise.all(BROWSERS.map(async (name) => {
   await Promise.all(Array.from({ length: JOBS }, worker));
   await b.close();
 }));
-console.log(`\n${passed} passed, ${failed} failed in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
+console.log(`\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped (no game art)` : ''} in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
 process.exit(failed ? 1 : 0);
