@@ -1,7 +1,8 @@
 # Performance work on the solver
 
-How to speed up `pkg/loopopt` without changing its results. The protocol below took every search to 42-55% of its
-previous time (2026-10-03) with outputs unchanged on all validation jobs; no identity check failed at any step.
+How to speed up `pkg/loopopt` without changing its results (the protocol, the codebase's pitfalls), and the planner's
+speed record: where it stands, what is open, what was tried and rejected. The protocol took every search to 42-55% of
+its previous time (2026-10-03) with outputs unchanged on all validation jobs.
 
 ## Protocol
 
@@ -22,25 +23,19 @@ previous time (2026-10-03) with outputs unchanged on all validation jobs; no ide
    trivially small.
 6. **Final.** Strip timers, rebuild, full validation, wasm timings on Node, `./build.sh page test`.
 
-## What wasted time
+## Rules of thumb
 
-- Treating a non-deterministic binary as the exact reference.
-- Running checks 4 at a time on an idle machine. Wall time is set by the slowest job; run 12-14 at a time.
-- Callgrind on multi-second jobs (minutes each). Use it on pal_U / pal_A2 only.
-- Timing while other work loads the machine. The measuring machine (i5-1340P: 4 performance + 8 efficiency cores)
-  throttles; full parallel load roughly doubles the slowest job and inflates everything 1.5-2x. Compare only runs at
-  the same load.
+- Run checks 12-14 at a time: wall time is set by the slowest job.
+- Use callgrind on pal_U / pal_A2 only; on multi-second jobs it takes minutes each.
+- Compare timings only at the same machine load. The i5-1340P used for the numbers here (4 performance + 8 efficiency
+  cores) throttles: full parallel load roughly doubles the slowest job and inflates everything 1.5-2x.
+- Profile before estimating where time goes:
 
-## Measure before estimating
-
-Estimates of where time goes were badly off; profile first.
-
-- A filter that rejects nearly everything can cost more than the work it saves: the beaten-deck bookkeeping (`Kept`)
-  rejected 99% of candidates, so its cost was the scan itself (1.4G signature checks for 15.6M real dominance tests).
-  Per-field bitmaps (64 decks per AND) made it the largest win: -20% on slow per-uma searches, -43% on shared
-  three-result ones.
-- The precomputed pair-ceiling table costs 10-21% of a typical run, not tens of ms.
-- Native timers in `probs` / `score` cost nothing measurable; removing them gains nothing.
+  - A filter that rejects nearly everything can cost more than the work it saves: the beaten-deck bookkeeping
+    (`Kept`) rejected 99% of candidates, so its cost was the scan itself (1.4G signature checks for 15.6M real
+    dominance tests). Per-field bitmaps (64 decks per AND) made it the largest win: -20% on slow per-uma searches,
+    -43% on shared three-result ones.
+  - Computing the pair-ceiling table costs 10-21% of a typical run, hence the stored `pb` table.
 - Lazy class thinning cannot be done without changing output bits.
 
 ## Pitfalls in this codebase
@@ -68,9 +63,73 @@ against 180-490 ms when each worker decoded a base64 copy). Wasm runs within 3% 
 wasm2js output was 8.8 MB and 3.6-6x slower than wasm, so the page requires WebAssembly and says so when a host
 refuses it.
 
-## Not done (estimates)
+## Open in the deck search (estimates)
 
 - Lazy k-best for shared `top_decks` > 1: pal_I shared k3 spends 68 of 75 s in the second enumeration pass. A k-best
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.
 - Native threads: no browser gain; splitting the enumeration changes tie order.
+
+## Planner
+
+The career page's plan (`next` job, `sim::plan::index_rule`; `docs/SOLVER.md`, *Next career*). Harness:
+`val/planval.py` runs the seven next-plan jobs in `val/plan/` (p16 = a 16-veteran export, p16_ss and p16_ura = p16 at
+rank SS and on URA, p10, p11, gm16 = p16 on Grand Masters, boot_mob = the page's sample mob veterans) and compares each
+whole output strictly; the plan reports its own work (`next.work`: deck-search nodes, exact scorings), deterministic
+and comparable at any machine load. `val/mono.py` checks that a veteran added never raises V. Rerun `next.proxy_check`
+after any change to how builders' careers are built.
+
+### Where it stands
+
+- Whole job (search and plan), native, `val/planval.py` on 2026-10-10: p16 0.75 s, p16_ss 0.77 s, p16_ura 0.71 s,
+  p10 1.69 s, p11 1.71 s, gm16 0.98 s, boot_mob 0.79 s.
+- In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted).
+- Reroll: about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run with her
+  added (warm, native about 0.7-0.9 s). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7% provisional), gm16
+  37%, p10, p11 and boot_mob 100%.
+- Where the time goes (callgrind, 2026-10-09): boot_mob 17.05G instructions, `best_sur` and the deck searches under
+  it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s lookups) about 25%. A p16
+  saving-roll plan (8.30G, before the per-class caps): deck searches 3.80G (16 proxy searches from `best_sur`, 2.47G),
+  `score_career` 3.56G (190 calls, 18.7M each), corner tables 0.27G.
+- Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
+  deterministic only with the winners-only cache and exact, unbudgeted searches.
+
+### Open
+
+- Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
+  pass-2 replay (Tried) may fold in there.
+- A skip-ahead in `Cont::plan` (x_n is convex in n analytically) needs a float-exact argument for its first stop.
+- Not tried, estimates only: a node-marginal ratio bound at depth <= 2; the deck search's per-leaf `dw`/`dg`
+  allocations and the band test's second evaluation of the same clause value (3-15%); reusing pass 1's setups in
+  pass 2 (about 90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf
+  jump when near-tied builders swap).
+- Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them); reuse
+  kept plans for pools that grow by several veterans or lose one (today: the same pool, or one more veteran at the
+  end).
+
+### Tried and not kept
+
+| Item | Result | Why not |
+|---|---|---|
+| Seed each builder's floor with the previous builder's career | -7% / -4% / +5% | noise |
+| Pass 2 against the bar the candidate must beat (not its own best) | -6% | worse with class sharing (fewer proofs to share) |
+| Classmate's best deck as the product search's starting bar | nodes -4% (p16), -0.3% (p10) | bound looseness, not the incumbent, sets pass 1's tree |
+| Trio-V memo keyed by the step-cost vector | exact, 68-92% hits; instructions p16 -1.2%, boot_mob +0.1% | `trio_v` costs about what hashing its key does |
+| One pass instead of the deck search's two | pass-1 / pass-2 nodes: p16 1.11M / 2.62M, p10 8.21M / 7.04M, p11 10.17M / 3.74M, gm16 0.33M / 6.78M, boot_mob 1.40M / 4.18M | pass 1 is not a re-walk (it has no bar until it finds a deck); a merged pass would prune 25% looser during the weak-bar phase |
+| Memoise `best_deck` calls with start decks | repeats: 0 on every job | nothing repeats |
+| Fold Compare's "best career with her" search into its replan | the replan's searches bar each uma at her kept best | no work to share |
+| Frozen-fit Compare (`next.fit`) | stopped one flip (refit +20 vs fixed -8.7 on V 1,083) | on a small pool Compare's plan differed from Add's (Agnes Digital at 1,530 vs Tamamo Cross at 2,009); `fit` stays in the solver, unused by the page |
+| Each fresh 8/8 from her 3 best pairs | V 0.6-1.5% lower (p16 1,083 -> 1,067), fixes the extra-wins rise | +20-40% planner work (p16 3.39M -> 4.42M nodes, p10 9.90M -> 15.43M) and still not monotone |
+| Configurations reused by the second pass | hits 472 of 1,163 searches | no CPU gain |
+| Bounds restricted to the entries still pickable | nodes -9 to -21%, CPU +1 to +22% | the tables cost more than the nodes saved; caching them would take hundreds of MB of wasm heap |
+| Each class's highest-ceiling trainees first | nodes p16 -0.6%, URA -1.7%, others 0% | under the 3% bar |
+| Pass 2 replayed from pass 1's outcomes (`score_replay`) | exact; 2-7% on plans, about 10% on the warm Compare plan | 74 lines and a second scoring path; reconsider inside the outcome-loop consolidation |
+| wasm SIMD (`+simd128`) | p16 -1.7%, boot_mob +3.8% (V8, within noise) | the hot loops are branchy with serial products; recheck if `outfit_fast` becomes branch-free |
+| `outfit_fast` with u8-state `if` selects / f64-state compares | -0.4 to -1.4% / +0.6 to +0.8% | LLVM re-emits branches / no vectorisation (`OutfitPre`'s u64 masks do vectorise) |
+| A/B pre-check at the root bound | its B side is `p0 * sp0`, no outfit call | nothing to save |
+| mimalloc (native) | within noise on p16, p10, boot_mob, gm16, pal_A2 | allocation's RAM misses are at most about 7% of time |
+| talc (wasm) | p16 -4.3%, boot_mob 0% | +7% download (wasm 1.84 -> 1.97 MB) for one pool |
+| Incremental trio V (only trios reading a changed step cost) | exact; +218M instructions on p16 against `trio_v`'s 290M | nearly every trio reads the changed candidate |
+| `trio_v` over trios sorted by C's step, stopping once c3 >= best | exact; +115M on p16 | C's step is small next to A's and B's, the stop rarely fires |
+| Skip `hopeful` at the final slot for single-trainee clauses (reasoned, not measured) | `hopeful` costs less than the leaf's own outfit evaluation | every child it rejects would go to the leaf |
+| Skipping builders exactly (estimate) | about 45-55 of 60 exact searches would remain | Cont needs the most efficient builder over every uma (efficiencies within a few per cent); a cheaper Cont is a model decision |

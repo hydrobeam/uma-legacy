@@ -154,8 +154,8 @@ schedule), `affinity.js`, `afftable.js`, `odds.js`, `io.js` (export and import),
 - **Exactness:** `uv run val/owncheck.py BIN 3 "Yaeno Muteki"` and `uv run val/permcheck.py BIN 3` check the search
   against brute force on small owned sets; `uv run val/joint_check.py TAG` recomputes every deck result's odds
   independently.
-- **Speed work** follows `docs/PERF.md` (byte-identical outputs, one item per commit with its gain);
-  `docs/PERF_PLANNER.md` holds the planner's measurements. `node webapp/nodebench.mjs <wasm> global pal_A2 …` times
+- **Speed work** follows `docs/PERF.md` (byte-identical outputs, one item per commit with its gain),
+  which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …` times
   the wasm.
 
 ## Releases
@@ -184,7 +184,7 @@ pkg/loopopt/         the Rust solver (src/, tests/), data.json, web_skills.json,
 pkg/loopopt/export/  Python exporters (master.mdb -> data files)
 jp/                  Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
 val/                 validation jobs, reference outputs and checks
-docs/                USAGE, SOLVER, MODEL, RESEARCH, SOURCES, PERF, PERF_PLANNER, SECRET_EVENTS (made by
+docs/                USAGE, SOLVER, MODEL, RESEARCH, SOURCES, PERF, SECRET_EVENTS (made by
                      val/secret_events.py) and this file
 game/                your game files (gitignored)
 cache/               downloads: GameTora's files, the runner tools and exports (gitignored)

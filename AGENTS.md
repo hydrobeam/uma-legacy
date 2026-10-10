@@ -4,8 +4,8 @@ Read this file before doing anything. `docs/MODEL.md`
 holds every modelling assumption with its evidence; `docs/RESEARCH.md` the maths behind each fitted
 value; `docs/SOURCES.md` lists the outside sources and repos. `docs/BUILD.md` is the build reference (steps,
 assets, tests, repository layout); `docs/SOLVER.md` the solver's model and job fields; `docs/USAGE.md` the page;
-`docs/PERF.md` and `docs/PERF_PLANNER.md` the speed protocol and what was done or tried (read only the section you need:
-these docs are long).
+`docs/PERF.md` the speed protocol and the planner's speed record (read only the section you need: these docs are
+long).
 
 ## What this is
 
