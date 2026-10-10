@@ -37,7 +37,6 @@
 !/jp/web_skills.json
 !/jp/career.json
 !/jp/card_events.json
-!/jp/card_events_nodates.json
 !/webapp/
 /webapp/*
 !/webapp/build.py

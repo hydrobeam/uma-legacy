@@ -2,7 +2,7 @@
 # One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm art page)
 #   data     Global + GM-era exports (needs game/global/master.mdb, game/jp/master.mdb)
 #   gametora GameTora's data files at the pinned versions (pkg/loopopt/gametora.json) into cache/gametora
-#   events   card event caches from the GameTora files + manual entries (Global and both GM variants); runs gametora first
+#   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary + tests
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -49,14 +49,13 @@ step_data() {
   (cd "$C/export" && for era in global jp; do
      "${PY[@]}" build_base.py $era && "${PY[@]}" export_rs.py $era && "${PY[@]}" export_web.py $era \
        && "${PY[@]}" export_cards.py $era && "${PY[@]}" export_career.py $era || exit 1
-   done && "${PY[@]}" upcoming.py)
+   done && "${PY[@]}" upcoming.py global)
 }
 step_gametora() { MISSING=(); need_cmd uv "$TOOLS_UV"; check gametora; "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}; }
 step_events() {
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "$GLOBAL_MDB" "$JP_MDB"; check events
   step_gametora
-  (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp \
-     && "${PY[@]}" build_card_events.py jp nodates)
+  (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp)
 }
 step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test --release 2>&1 | grep -E "^test result" | head -3); }
 step_wasm() {

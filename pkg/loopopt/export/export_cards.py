@@ -5,7 +5,7 @@ hint levels per training-hint draw at max limit break (hinc: 1 + effect 17, plus
 and the skill groups (white level) in its training-hint pool. Event skill rewards are NOT in master.mdb tables;
 they are supplied per job (`events`)."""
 import json, os
-from era import q, names, OUT, card_released
+from era import q, names, OUT, released
 cn = names(75)
 grp = dict(q("select id, group_id from skill_data"))
 out = []
@@ -14,7 +14,7 @@ members = {}
 for sid, ch in q("select support_card_id, chara_id from support_card_group"): members.setdefault(sid, set()).add(ch)
 KIND = {101: 'speed', 105: 'stamina', 102: 'power', 103: 'guts', 106: 'wit'}
 for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_card_type,effect_table_id,start_date,command_id from support_card_data"):
-    if not card_released(sd): continue   # by the era's cut (era.py); group cards (type 3) act as pals: no chain slots, skills from their dates
+    if not released(sd): continue   # by the era's cut (era.py); group cards (type 3) act as pals: no chain slots, skills from their dates
     rows = q("select hint_group,hint_gain_type,hint_value_1 from single_mode_hint_gain where support_card_id=?", sid)
     opts = len({g for g, _, _ in rows})
     nskill = len({g for g, t, _ in rows if t == 0})   # skill options (the stat option is never drawn in IT)

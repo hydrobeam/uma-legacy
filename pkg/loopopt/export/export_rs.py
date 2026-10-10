@@ -3,12 +3,11 @@ usage: export_rs.py global|jp [--out FILE]"""
 import samerace, json, itertools, os, sys
 from model import *
 from rel import pt, mem
-from era import JP, OUT
+from era import OUT
 races={PROG[p]['race'] for v in G1CAL.values() for p in v}
-if JP:   # some JP career objectives are G1s outside the standard calendar programs; include their races too
-    for ch in ROSTER:
-        o,_=options(ch)
-        races |= {PROG[p]['race'] for l in o.values() for p in l if is_g1(p)}
+for ch in ROSTER:   # career objectives can be G1s outside the standard calendar programs; include their races too
+    o,_=options(ch)
+    races |= {PROG[p]['race'] for l in o.values() for p in l if is_g1(p)}
 races=sorted(races)
 ridx={r:i for i,r in enumerate(races)}
 umas=[]

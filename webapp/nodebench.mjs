@@ -1,6 +1,6 @@
 import fs from 'fs';
 const [wasmPath, era, ...jobs] = process.argv.slice(2);
-const P = era === 'gm' ? '../jp/' : '../pkg/loopopt/'; const EV = era === 'gm' ? 'card_events_nodates.json' : 'card_events.json';
+const P = era === 'gm' ? '../jp/' : '../pkg/loopopt/'; const EV = 'card_events.json';
 const enc=new TextEncoder(), dec=new TextDecoder();
 const {instance}=await WebAssembly.instantiate(fs.readFileSync(wasmPath),{env:{clock_ms:()=>performance.now()}}); const ex=instance.exports;
 function call(obj){ const b=enc.encode(JSON.stringify(obj)); const p=ex.alloc(b.length); new Uint8Array(ex.memory.buffer,p,b.length).set(b);

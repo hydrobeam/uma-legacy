@@ -78,7 +78,7 @@ it is before it stops; the `art` step instead says what it skipped.
 | `art` | `images` and `runners`, each when its game files are in `game/global/` (skipped with a note otherwise); part of the default build |
 | `data` | the Global and Grand Masters-era exports from `master.mdb`: `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first. Run by `events` and `page` |
-| `events` | the card event files from GameTora's files plus the manual entries (Global, Grand Masters, Grand Masters without first-year dates) |
+| `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary and `cargo test --release` |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3`, then `webapp/example.json` (the result shown before the first search) |

@@ -3,11 +3,15 @@
  "cards": {
   "10021": {
    "name": "[Tracen Academy] Tazuna Hayakawa",
-   "always": [
-    "Tail Held High"
+   "always": [],
+   "disabled": [
+    [
+     "Tail Held High",
+     "first-year date event, bugged in independent training"
+    ]
    ],
    "status": "complete",
-   "src": "same bonding event as the SSR (A Bond with Tazuna: Aspirations Entrusted, GameTora friend events); GM: date event fires (assumed taken)"
+   "src": "same bonding event as the SSR (A Bond with Tazuna: Aspirations Entrusted, GameTora friend events)"
   },
   "10060": {
    "name": "[Tracen Academy] Riko Kashimoto",
@@ -23,11 +27,16 @@
   "10074": {
    "name": "[Acupuncturist] Sasami Anshinzawa",
    "always": [
-    "Risky Business",
-    "Uma Stan"
+    "Risky Business"
    ],
    "status": "complete",
-   "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes; Uma Stan from A Bond Bolstered by Booze? (same date event as the SSR), GM: date event fires (assumed taken)"
+   "src": "GameTora friend events 830080001, R variant of the recreation finale: choice 2 gives the Risky Business hint on both outcomes; Uma Stan from A Bond Bolstered by Booze? (same date event as the SSR)",
+   "disabled": [
+    [
+     "Uma Stan",
+     "first-year date event, bugged in independent training"
+    ]
+   ]
   },
   "10083": {
    "name": "[Event Producer] Light Hello",
@@ -45,11 +54,15 @@
   },
   "30021": {
    "name": "[Tracen Reception] Tazuna Hayakawa",
-   "always": [
-    "Tail Held High"
+   "always": [],
+   "disabled": [
+    [
+     "Tail Held High",
+     "first-year date event, bugged in independent training"
+    ]
    ],
    "status": "complete",
-   "src": "user + umamusu.wiki; GM: date event fires (assumed taken)"
+   "src": "user + umamusu.wiki"
   },
   "30036": {
    "name": "[Planned Perfection] Riko Kashimoto",
@@ -78,11 +91,14 @@
   },
   "30080": {
    "name": "[This Might Sting!] Sasami Anshinzawa",
-   "always": [
-    "Uma Stan"
+   "disabled": [
+    [
+     "Uma Stan",
+     "first-year date event, bugged in independent training"
+    ]
    ],
    "status": "complete",
-   "src": "GameTora training_events_friend 830080001, decoded; GM: date event fires (assumed taken)",
+   "src": "GameTora training_events_friend 830080001, decoded",
    "chance": [
     [
      "Nothing Ventured",

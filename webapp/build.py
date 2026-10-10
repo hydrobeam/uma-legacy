@@ -106,7 +106,7 @@ def era(dirp, events_file):
                  'mobs': [m for m in ct.get('mobs', []) if f'mob:{m[0]}' in images], 'sourced': sourced})   # only mobs with a portrait (the samples draw from them)
     return {'cards': js(ui_cards), 'umas': js(umas), 'skills': js(skills['skills']), 'engine': engine, 'career': career}
 G = era(P, 'card_events.json')
-M = era(J, 'card_events_nodates.json')      # GM era: pal first-year date events left out, as in Global
+M = era(J, 'card_events.json')      # GM era: pal first-year date events left out, as in Global
 # the page script: src/main.js and the modules it imports, bundled into one IIFE (esbuild from node_modules: npm ci)
 ESBUILD = os.path.join(H, 'node_modules', '.bin', 'esbuild')
 if not os.path.exists(ESBUILD): raise SystemExit('esbuild missing: run npm ci in webapp/')
