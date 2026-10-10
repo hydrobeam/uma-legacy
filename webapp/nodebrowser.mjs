@@ -72,7 +72,13 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init, before, 
     const W = window.Worker; window.__made = 0; window.__killed = 0;
     window.__runs = [];   // the jobs sent to the engine, in order
     window.Worker = function (...a) { const w = new W(...a); window.__made++; const t = w.terminate.bind(w); w.terminate = () => { window.__killed++; t(); };
-      const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); }; return w; };
+      const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); };
+      // window.__hold: the worker's replies wait (a search stays running however fast it is) until window.__release()
+      let h = null, q = [], dead = false; Object.defineProperty(w, 'onmessage', { get: () => h, set: (f) => { h = f; } });
+      w.addEventListener('message', (e) => { if (window.__hold) q.push(e); else if (h) h(e); });
+      const kill = w.terminate; w.terminate = () => { dead = true; q = []; kill(); };
+      window.__flush.push(() => { const qq = q; q = []; if (!dead) qq.forEach((e) => h && h(e)); }); return w; };
+    window.__hold = false; window.__flush = []; window.__release = () => { window.__hold = false; window.__flush.forEach((f) => f()); };
   });
   if (init) await ctx.addInitScript(init);
   const pg = editorAware(await ctx.newPage()); pg.errors = [];
@@ -429,14 +435,15 @@ const TESTS = {
     check('the first pass shows while the exact check runs', checking && (await pg.locator('#results .loop').count()) > 0, await note(pg));
     await settle(pg);
     check('a burst of 5 changes is one search on the same worker', (await pg.evaluate(() => window.__made)) === made0);
-    // a slow search (3 results, one shared deck), changed mid-run: the worker is killed and the new search finishes
-    const r0 = await pg.evaluate(() => window.__runs.length);
+    // a search changed mid-run (3 results, one shared deck; its replies held so it is still running however fast it
+    // is): the worker is killed and the new search finishes
+    const r0 = await pg.evaluate(() => { window.__hold = true; return window.__runs.length; });
     await pg.click('#c-top [data-v="3"]'); await pg.click('#c-peruma');
     await pg.waitForFunction((n) => window.__runs.length > n && window.__runs.at(-1).top_decks === 3 && window.__runs.at(-1).per_uma === false, r0);   // the slow search itself is running (not a quick job from the first change alone)
     const k0 = await pg.evaluate(() => window.__killed);
     check('old results stay visible while searching', (await pg.locator('#results .loop').count()) > 0);
     await pg.waitForFunction(() => /(Searching|Checking the exact odds)…\s*\d+ s/.test(document.getElementById('run-note').textContent), null, { timeout: 30000 });   // its clock is running
-    await pg.click('#c-peruma'); const paused = await note(pg);
+    await pg.click('#c-peruma'); const paused = await note(pg); await pg.evaluate(() => window.__release());
     check('a change mid-search clears the clock: it counts again only once the new search runs', /Searching/.test(paused) && !/\d+ s/.test(paused), paused);
     await pg.click('#c-top [data-v="1"]'); await settle(pg);
     check('a change mid-search restarts the worker', (await pg.evaluate(() => window.__killed)) > k0);
