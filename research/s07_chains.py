@@ -20,7 +20,8 @@ first 2,425 records (Binomial grid MLE per pal count); the allocation rules and 
 1,193 records.
 The model: N chain events per run; each advances one running non-pal card's chain by a link, the card picked with
 weight = links left ("slots") or uniformly ("cards"); stop risk (card_events.json) ends a chain at link l with k/n.
-Fits of N are exact over the chain states, with a 3% chance that a fired link's marker does not show; the allocation
+Fits of N are exact over the chain states, with a 3% chance that a fired link's marker does not show (without it a run
+whose later link shows while an earlier one does not has likelihood 0; allowance_claims measures the rate); the allocation
 and activation comparisons score each observation on its own (P(card reaches link) on the run's deck)."""
 import collections, itertools, math, os, sys
 import numpy as np
@@ -262,12 +263,17 @@ def obs_v2(r):
     if any(cards[c]['rarity'] == 1 and not cards[c]['pal'] for c in deck): return None
     hints = {h['name']: h['src'] for h in r['hints']}
     name = {c: common.bare(n) for c, _, n in r['deck']}
+    by_name = {name[c]: c for c in deck}
     chain = [c for c in deck if kind(c)]; obs = []
     for ci, cid in enumerate(chain):
         nm = name[cid]
         for lk, mk in g['v2'].get(cid, {}).items():
             if lk > cards[cid]['links']: continue
-            seen = any(any(x.endswith(' event') and nm in [y.strip() for y in x[:-6].split(' or ')] for x in hints.get(s, ())) for s in mk)
+            credits = [[y.strip() for y in x[:-6].split(' or ')] for s in mk for x in hints.get(s, ()) if x.endswith(' event')]
+            credits = [c for c in credits if nm in c]
+            # "A or B event": unknown when B is another deck card whose events can give the marker
+            if credits and all(any(y != nm and y in by_name and mk & g['pool'][by_name[y]] for y in c) for c in credits): continue
+            seen = bool(credits)
             if not seen and any(s in hints for s in mk) and all(hints[s] == ['Inspiration'] for s in mk if s in hints): continue
             obs.append((ci, lk, seen, 1.0))
     return [kind(c) for c in chain], chain, obs
@@ -303,19 +309,19 @@ def binom_mle(xs):
 SHORT = [('Special Week [Take Hold of Our Dreams!]', 'Take Hold of Our Dreams!', '0.65', '0.82'),
          ('Yaeno Muteki [Fiery Discipline]', 'Fiery Discipline', '0.78', '0.90'),
          ('Zenno Rob Roy ["Rhodonite and the Dreamstone"]', 'Rhodonite and the Dreamstone', '0.63', '0.75'),
-         ('Hishi Akebono [Who Wants the First Bite?]', 'Who Wants the First Bite?', '0.86', '0.93'),
-         ('Smart Falcon [My Umadol Way! ☆]', 'My Umadol Way!', '0.73', '0.81'),
+         ('Hishi Akebono [Who Wants the First Bite?]', 'Who Wants the First Bite?', '0.86', '0.94'),
+         ('Smart Falcon [My Umadol Way! ☆]', 'My Umadol Way!', '0.72', '0.81'),
          ('Silence Suzuka [Beyond This Shining Moment]', 'Beyond This Shining Moment', '0.56', '0.77'),
-         ('King Halo [Tonight, We Waltz]', 'Tonight, We Waltz', '0.91', '0.92')]
+         ('King Halo [Tonight, We Waltz]', 'Tonight, We Waltz', '0.90', '0.91')]
 ALLOC = [('two 3-link SSRs', [(3, 3, ())] * 2, {'slots': [['1.00', '0.97', '0.87']], 'cards': [['0.99', '0.96', '0.87']]}),
          ('3-link SSR + 2-link SR', [(3, 3, ()), (2, 2, ())], {'slots': [['1.00', '0.99', '0.93'], ['0.99', '0.95']],
                                                               'cards': [['1.00', '0.98', '0.93'], ['0.99', '0.96']]}),
          ('three 3-link SSRs', [(3, 3, ())] * 3, {'slots': [['0.98', '0.84', '0.54']], 'cards': [['0.96', '0.81', '0.58']]}),
          ('four 3-link SSRs', [(3, 3, ())] * 4, {'slots': [['0.93', '0.65', '0.25']], 'cards': [['0.88', '0.62', '0.33']]})]
-FINAL = {5: ('120', '0.98', '0.98', '0.96'), 4: ('285', '0.88', '0.86', '0.79'), 3: ('391', '0.58', '0.53', '0.48'),
+FINAL = {5: ('120', '0.98', '0.98', '0.96'), 4: ('285', '0.88', '0.86', '0.79'), 3: ('391', '0.56', '0.53', '0.48'),
          2: ('212', '0.29', '0.30', '0.29'), 1: ('168', '0.19', '0.16', '0.17'), 0: ('123', '0.14', '0.15', '0.15')}
-EARLY = {4: ('0.02', '0.02', '0.9'), 3: ('0.07', '0.02', '3.3'), 2: ('0.06', '0.02', '2.5'), 1: ('0.05', '0.03', '1.8'),
-         0: ('0.14', '0.03', '4.3')}
+EARLY = {4: ('0.02', '0.02', '1.0'), 3: ('0.07', '0.02', '3.4'), 2: ('0.06', '0.02', '2.5'), 1: ('0.05', '0.03', '1.8'),
+         0: ('0.15', '0.03', '4.4')}
 
 
 def derived():
@@ -347,20 +353,19 @@ def fit_claims():
     l21 = ll(lump(BIN), M); l15 = ll(lump(binom_pmf(15, 0.48)), M); lp = ll(lump(POIS), M)
     _, bn, bp = binom_mle(xs)
     out = [C(S, 'fit of N: runs', '1,299', len(xs), note=note),
-           C(S, 'distribution-free: mean', '7.44', mn, note=note), C(S, 'distribution-free: variance', '4.62', vr, note=note),
-           C(S, 'Binomial(21, 0.35): nats behind distribution-free', '8.4', llp - l21, tol=0.1, note=f'LL {l21:.1f} vs {llp:.1f}'),
-           C(S, 'Binomial(15, 0.48): nats behind distribution-free', '14.7', llp - l15, tol=0.1),
-           C(S, 'Poisson(7.1): nats behind distribution-free', '42.4', llp - lp, tol=0.1),
-           C(S, 'best binomial, n free: n', '19', bn), C(S, 'best binomial, n free: p', '0.39', bp),
-           C(S, 'best binomial, n free: nats better than (21, 0.35)', '1.3', ll(lump(binom_pmf(bn, bp)), M) - l21, tol=0.1)]
+           C(S, 'distribution-free: mean', '7.36', mn, note=note), C(S, 'distribution-free: variance', '4.93', vr, note=note),
+           C(S, 'Binomial(21, 0.35): nats behind distribution-free', '5.9', llp - l21, tol=0.1, note=f'LL {l21:.1f} vs {llp:.1f}'),
+           C(S, 'Binomial(15, 0.48): nats behind distribution-free', '14.1', llp - l15, tol=0.1),
+           C(S, 'Poisson(7.1): nats behind distribution-free', '30.3', llp - lp, tol=0.1),
+           C(S, 'best binomial, n free: nats better than (21, 0.35)', '0.0', ll(lump(binom_pmf(bn, bp)), M) - l21, tol=0.1)]
     by = collections.defaultdict(list)
     for i, (r, *_rest) in enumerate(xs): by[r['scenario']].append(i)
     sep = {sc: em(M[ix]) for sc, ix in by.items() if len(ix) >= 30}
     lls = sum(ll(sep[sc], M[by[sc]]) for sc in sep) + sum(ll(pooled, M[ix]) for sc, ix in by.items() if sc not in sep)
-    for sc, st in ((2, '7.63'), (3, '7.41'), (1, '6.88')):
+    for sc, st in ((2, '7.56'), (3, '7.29'), (1, '6.79')):
         out.append(C(S, f'per scenario: mean, {common.SCEN[sc]}', st, mean_var(sep[sc])[0] if sc in sep else None,
                      note=f'{note}; {len(by[sc])} runs'))
-    out.append(C(S, 'per scenario: log-likelihood gain', '16.0', lls - llp, tol=0.1, note=note))
+    out.append(C(S, 'per scenario: log-likelihood gain', '19.1', lls - llp, tol=0.1, note=note))
     out.append(C(S, 'per scenario: extra parameters', '32', (len(sep) - 1) * KMAX, note=f'{len(sep)} scenarios with 30+ runs'))
     # the first fit: default-choice markers (v1), first 879 records, 1-4 pals; the binomial it chose
     x1 = dataset(1, 879, {1, 2, 3, 4}); _, n1, p1 = binom_mle(x1)
@@ -431,8 +436,23 @@ def final_claims():
     for label, title, so, sp in SHORT:
         cid = next(c for c in pc if title in cards[c]['name']); o, p, n = pc[cid]
         out += [C(S, f'early links {label}: observed', so, o / n, note=f'n {n}'), C(S, f'early links {label}: predicted', sp, p / n)]
-        if title == 'Tonight, We Waltz': out.append(C(S, f'early links {label}: n', '125', n))
+        if title == 'Tonight, We Waltz': out.append(C(S, f'early links {label}: n', '111', n))
     return out, dict(final=tab, early=early, percard=pc)
+
+
+def allowance_claims():
+    """the marker allowance: links fire in order, so a card's later link seen means its earlier links fired; the share of
+    those earlier links whose marker is missing measures how often a fired link goes unseen (v2, first 1,300 records)"""
+    C = common.Claim; note = 'v2, first 1,300 records'; imp = un = 0
+    for r, kinds, chain, obs in dataset(2, 1300, {0, 1, 2, 3, 4, 5}):
+        per = collections.defaultdict(dict)
+        for ci, lk, seen, q in obs: per[ci][lk] = seen
+        for d in per.values():
+            for lk, seen in d.items():
+                if any(l2 > lk and s2 for l2, s2 in d.items()): imp += 1; un += not seen
+    lo, hi = common.wilson(un, imp)
+    return [C(S, 'allowance: earlier links implied fired', '581', imp, note=note), C(S, 'allowance: marker not shown', '13', un),
+            C(S, 'allowance: share', '0.022', un / imp), C(S, 'allowance: 95% low', '0.013', lo), C(S, 'allowance: 95% high', '0.038', hi)]
 
 
 def alloc_claims():
@@ -467,7 +487,7 @@ def miss_claims():
         fz = {ci: seen for ci, lk, seen, q in obs if lk == 3}
         if len(fz) == 2: clean.append(sum(fz.values()) == 2)
     k = sum(clean); n = len(clean); lo, hi = common.wilson(k, n)
-    out += [C(S, 'two-chain decks: both chains finish', '138', k, note='v2, first 1,300 records'), C(S, 'two-chain decks: runs', '167', n),
+    out += [C(S, 'two-chain decks: both chains finish', '130', k, note='v2, first 1,300 records'), C(S, 'two-chain decks: runs', '157', n),
             C(S, 'two-chain decks: share', '0.83', k / n), C(S, 'two-chain decks: 95% low', '0.76', lo), C(S, 'two-chain decks: 95% high', '0.88', hi),
             C(S, 'two-chain decks: predicted, P(N >= 6)', '0.80', sum(BIN[6:]))]
     # chains never started: link 1 not reached, by chain cards in the deck (v2, first 1,300 records)
@@ -476,7 +496,7 @@ def miss_claims():
         mb = reach(kinds, BIN)
         for ci, lk, seen, q in obs:
             if lk == 1: a = rows[len(kinds)]; a[0] += seen; a[1] += mb[(ci, 1)]; a[2] += 1
-    for nc, so, sp in ((5, '0.19', '0.13'), (6, '0.34', '0.19')):
+    for nc, so, sp in ((5, '0.19', '0.13'), (6, '0.35', '0.19')):
         o, p_, n = rows[nc]
         out += [C(S, f'never started, {nc} chain cards: observed', so, 1 - o / n, note=f'link 1 not reached, {n} card-links'),
                 C(S, f'never started, {nc} chain cards: model', sp, 1 - p_ / n)]
@@ -500,16 +520,16 @@ def miss_claims():
 def claims():
     out = derived()
     if not common.have_runs():
-        return out + common.need_data(S, [('distribution-free: mean', '7.44'), ('distribution-free: variance', '4.62'),
-                                          ('Binomial(21, 0.35): nats behind distribution-free', '8.4'),
-                                          ('Binomial(15, 0.48): nats behind distribution-free', '14.7'), ('Poisson(7.1): nats behind distribution-free', '42.4'),
-                                          ('per scenario: means', '7.63 / 7.41 / 6.88'), ('per scenario: log-likelihood gain', '16.0'),
+        return out + common.need_data(S, [('distribution-free: mean', '7.36'), ('distribution-free: variance', '4.93'),
+                                          ('Binomial(21, 0.35): nats behind distribution-free', '5.9'),
+                                          ('Binomial(15, 0.48): nats behind distribution-free', '14.1'), ('Poisson(7.1): nats behind distribution-free', '30.3'),
+                                          ('per scenario: means', '7.56 / 7.29 / 6.79'), ('per scenario: log-likelihood gain', '19.1'),
                                           ('first fit: runs', '879'), ('refit: runs', '1,792'), ('refit: means, 1 / 2 / 3 / 4 pals', '7.52 / 6.84 / 7.20 / 7.92'),
                                           ('final-link table: runs', '1,299'), ('allocation: total LL, slot / card rule', '−2,397.2 / −2,396.7'),
-                                          ('two-chain decks: both finish', '138 / 167'),
+                                          ('two-chain decks: both finish', '130 / 157'), ('allowance: marker not shown', '13 of 581'),
                                           ('early-link shortfall and z by pals', 'see RESEARCH.md'), ('per-card early links', 'see RESEARCH.md'),
                                           ('never started, 5 / 6 chain cards', '0.19 / 0.34'), ('activation parameter a', '0.82')])
-    out += fit_claims()[0] + refit_claims()[0] + final_claims()[0] + alloc_claims()[0] + miss_claims()
+    out += fit_claims()[0] + allowance_claims() + refit_claims()[0] + final_claims()[0] + alloc_claims()[0] + miss_claims()
     return out
 
 

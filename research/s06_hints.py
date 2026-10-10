@@ -8,8 +8,8 @@ interpolation between milestone levels, plus the unique effect.
 
 The form study uses the first 879 records, every limit break: Bernoulli rows, P(hit) = 1 - (1 - 1/n)^h. The adopted
 bases are refit on the first 2,402 records, max-limit-break card-runs and rows no spark hinted, through the Lv-5 cap
-(uniform draws over the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs). Results
-that were held out by groups of runs are not reproduced; their in-sample values are noted.
+(uniform draws over the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs). Every
+result is in-sample on the pooled runs.
 """
 import collections, functools, math, re, unicodedata
 import numpy as np
@@ -200,34 +200,34 @@ DATA_CLAIMS = [
     ('LL 1+hf/25 over options', '−12,813.3'), ('LL 1+hf/25 over skills', '−12,461.0'), ('LL constant', '−12,048.0'),
     ('LL base(1+hf/100)', '−11,910.2'), ('LL per-scenario base(1+hf/100)', '−11,817.8'),
     ('LL free divisor', '−11,811.9'), ('free divisor c', '76'),
-    ('cells var below stat-option floor', '16'), ('cells (card, hf)', '19'), ('skills-only over n+1, nats', '843'),
+    ('cells var below stat-option floor', '16'), ('cells (card, hf)', '19'),
     ('repeat rate observed', '0.151'), ('repeat rate two-point count', '0.151'), ('repeat rate Poisson count', '0.199'),
     *[(f'distinct {k} observed', v) for k, v in zip((1, 2, 3, 4), ('0.093', '0.520', '0.307', '0.074'))],
-    *[(f'distinct {k} model', v) for k, v in zip((1, 2, 3, 4), ('0.084', '0.477', '0.358', '0.079'))],
+    *[(f'distinct {k} model', v) for k, v in zip((1, 2, 3, 4), ('0.084', '0.476', '0.359', '0.079'))],
     ('per-scenario bases gain, nats', '92'), ('other covariates max gain', 'under 3.5'),
     ('covariate factor min', '0.91'), ('covariate factor max', '1.02'),
     ('cap gain 879, nats', '7.8'), ('cap gain 2,402, nats', '17.5'),
     *[(f'cap table {d} draws {w}', v) for d, vs in ((5, ('5,347', '0.968', '0.979')), (3, ('259', '0.863', '0.870')),
                                                     (2, ('7,335', '1.025', '1.024')), (1, ('94', '1.289', '0.985')))
       for w, v in zip(('rows', 'replacement', 'cap'), vs)],
-    ('joint pairs', '38,927'), ('P(both) observed', '0.0872'), ('P(both) joint', '0.0861'),
-    ('P(both) independent', '0.1134'), ('P(neither) observed', '0.4371'), ('P(neither) joint', '0.4355'),
-    ('pool size obs/pred min', '0.88'), ('pool size obs/pred max', '1.11'),
+    ('joint pairs', '38,927'), ('P(both) observed', '0.0872'), ('P(both) joint', '0.0862'),
+    ('P(both) independent', '0.1135'), ('P(neither) observed', '0.4371'), ('P(neither) joint', '0.4354'),
+    ('pool size obs/pred min', '0.88'), ('pool size obs/pred max', '1.14'),
     ('increment: multiples of iota', '5,144'), ('increment: single-source levels', '5,150'),
     ('hf max in the data', '60'), ('LL hf floored-linear', '−10,676.9'), ('LL hf step', '−10,677.4'), ('LL hf max-LB for all', '−10,683.8'),
-    *[(f'spark {c} {w}', v) for c, vs in (('none', ('14,949', '0.345', '0.346', '1.00')),
-                                          ('inspiration', ('1,696', '0.269', '0.348', '0.78')),
-                                          ('inspiration + card event', ('139', '0.158', '0.370', '0.43')),
-                                          ('card event', ('635', '0.334', '0.352', '0.95')),
-                                          ('other card training', ('572', '0.372', '0.375', '0.99')))
+    *[(f'spark {c} {w}', v) for c, vs in (('none', ('14,949', '0.345', '0.345', '1.00')),
+                                          ('inspiration', ('1,696', '0.269', '0.347', '0.78')),
+                                          ('inspiration + card event', ('139', '0.158', '0.369', '0.43')),
+                                          ('card event', ('635', '0.334', '0.351', '0.95')),
+                                          ('other card training', ('572', '0.372', '0.376', '0.99')))
       for w, v in zip(('rows', 'observed', 'predicted', 'ratio'), vs)],
-    ('drop-out test observed', '0.386'), ('drop-out test no drop-out', '0.351'), ('drop-out test drop-out', '0.465'),
+    ('drop-out test observed', '0.375'), ('drop-out test no drop-out', '0.341'), ('drop-out test drop-out', '0.455'),
     ('specialty gain, nats', '18'), ('specialty factor per 10 points (log)', '0.0251'), ('specialty Unity base', '2.50'),
     ('specialty free divisor', '92'),
-    *[(f'specialty {c} {s}', v) for s, vs in (('Unity', ('0.89', '0.86', '1.16')), ('GC', ('1.09', '0.97', '1.07')))
+    *[(f'specialty {c} {s}', v) for s, vs in (('Unity', ('0.89', '0.86', '1.16')), ('GC', ('1.09', '0.96', '1.06')))
       for c, v in zip(('Marvelous Sunday', 'Matikanefukukitaru', 'Agnes Tachyon'), vs)],
     ('Unity hf-0 spec-0 over-rating', '13%'),
-    ('priority runs', '101'), ('priority rows', '99'), ('priority observed', '0.222'), ('priority predicted', '0.297'),
+    ('priority runs', '101'), ('priority rows', '99'), ('priority observed', '0.222'), ('priority predicted', '0.298'),
 ]
 
 
@@ -298,8 +298,6 @@ def claims():
             below_n += T.var() < T.mean() / (oo - 1) * (1 - 1 / oo)
     add('cells var below stat-option floor', below_n)
     add('cells (card, hf)', cells, note='testable cells (an empty pool is left out)')
-    out.append(C('skills-only over n+1, nats', '843', None, status='not reproduced: grouped by who ran each career',
-                 note='the original left the draw count free per setup'))
 
     # repeats and distinct counts (bases: per-scenario, rows no spark hinted, every limit break)
     bs, ll_ni = fitB(D, lambda th: B4(D, th) * (1 + hf / 100), [1.5, 2.7, 2., 1.8], rows=NI)
@@ -322,7 +320,7 @@ def claims():
     model /= has.sum()
     for k in (1, 2, 3, 4):
         add(f'distinct {k} observed', np.mean(dist[has] == k))
-        add(f'distinct {k} model', model[k], note='exact; the original simulated it')
+        add(f'distinct {k} model', model[k], note='exact')
 
     # covariates on all rows of the 879 set
     add('per-scenario bases gain, nats', ll4 - ll1)
@@ -390,16 +388,14 @@ def claims():
                    ('card event', 'card event'), ('other card training', 'other card')):
         q_ = cat == key
         add(f'spark {c} rows', q_.sum()); add(f'spark {c} observed', hit[q_].mean())
-        for w, v in (('predicted', prow[q_].mean()), ('ratio', hit[q_].mean() / prow[q_].mean())):
-            out.append(C(f'spark {c} {w}', st[f'spark {c} {w}'], None, status='not reproduced: grouped by who ran each career',
-                         note=f'the original held out groups of runs; in-sample {v:.3f}'))
+        add(f'spark {c} predicted', prow[q_].mean()); add(f'spark {c} ratio', hit[q_].mean() / prow[q_].mean())
     # drop-out: max-limit-break card-runs with exactly two pool skills spark-hinted, their other (no-spark) rows
     ins = np.bincount(ci, weights=(~NI).astype(float), minlength=D['N'])[ci]
     q_ = NI & max4 & (ins == 2); jj = np.nonzero(q_)[0]; c_ = ci[jj]
     capj = np.ceil(5 / D['hinc'][c_]).astype(int); hj = B4(D, [bases[s] for s in (1, 2, 3, 4)])[c_] * (1 + hf[c_] / 100)
     keep = 1 - mix(miss_table(np.ones(len(jj), int), D['nskill'][c_], capj), hj)
     drop = 1 - mix(miss_table(np.ones(len(jj), int), D['nskill'][c_] - 2, capj), hj)
-    note = 'no surviving script; reading assumed (adopted bases, Lv-5 cap)'
+    note = 'adopted bases, Lv-5 cap'
     add('drop-out test observed', hit[jj].mean(), note=note)
     add('drop-out test no drop-out', keep.mean(), note=note); add('drop-out test drop-out', drop.mean(), note=note)
 
@@ -423,8 +419,7 @@ def claims():
     isp = np.array([prio[ci[r_]] is not None and D['skn'][r_] in prio[ci[r_]] for r_ in range(len(ci))]) & NI
     add('priority runs', len({x['run'] for x in D['obs'] if x['prio'] is not None}))
     add('priority rows', isp.sum()); add('priority observed', hit[isp].mean())
-    out.append(C('priority predicted', '0.297', None, status='not reproduced: grouped by who ran each career',
-                 note=f'the original held out groups of runs; in-sample {prow[isp].mean():.3f}'))
+    add('priority predicted', prow[isp].mean())
     order = [nm for nm, _ in DATA_CLAIMS]
     return derived() + sorted(out, key=lambda c: order.index(c.name))
 

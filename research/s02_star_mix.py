@@ -1,6 +1,6 @@
 """Section 2, star mix of legacy sparks: the expected base per roll (derived) and each scenario's share of runs
-reaching rank score 17,500 if every skill point is spent (the summary records' `score_ceiling`). The star-mix shares
-themselves are an external fit on Champions Meeting room data, cited, not reproduced."""
+reaching rank score 17,500 if every skill point is spent (the summary records' `score_ceiling`), which picks each
+scenario's default band. The star-mix shares themselves are an external fit with no data here."""
 import statistics
 import common
 from common import Claim
@@ -11,8 +11,6 @@ MIX = {'below 17,500': (0.50, 0.45, 0.05), '17,500+': (0.20, 0.70, 0.10)}
 
 def claims():
     out = [Claim(S, f'b-bar {band}', st, 0.03 * (p1 + 2 * p2 + 3 * p3)) for (band, (p1, p2, p3)), st in zip(MIX.items(), ('0.0465', '0.057'))]
-    out += [Claim(S, 'star mix 6,500-17,499: sparks', '528,637', status='external'),
-            Claim(S, 'star mix 17,500+: sparks', '196,646', status='external')]
     stated = {1: ('0%', None, None), 2: ('47%', '17,428', None), 3: ('79%', '18,094', None), 4: ('0%', '12,386', '282')}
     rows = common.summary()
     for sc, (share, med, n) in stated.items():

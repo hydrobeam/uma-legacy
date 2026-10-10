@@ -113,7 +113,7 @@ def binom_pmf(n, p):
 class Claim:
     """One number RESEARCH.md states. `stated` is the text as written (its decimals set the precision); `got` the
     reproduced value (None when it could not be computed: `status` says why). Verdicts: match (equal at the stated
-    precision; exact for counts), within tolerance (|got - stated| <= tol), differs, needs data, external."""
+    precision; exact for counts), within tolerance (|got - stated| <= tol), differs, needs data."""
     section: str
     name: str
     stated: str
