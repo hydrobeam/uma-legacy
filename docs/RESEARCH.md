@@ -182,17 +182,20 @@ bases were refit with the cap on 2,402 runs (the table's Runs column counts the 
 | Trackblazer | 1.814 | 1.81 | 3,349 | 118 |
 | Grand Masters | no runs | 2.30 (**assumed**: the 879-run pooled base) | | |
 
+The adopted bases are the fitted ones to two decimals, except Unity Cup's, set at 2.70. The refit includes R
+card-runs; without them the bases are 2.667 / 2.026 / 1.569 / 1.772 in the table's order.
+
 What fixed the form (879 runs):
 
 | Question | Evidence |
 |---|---|
 | Rate form, LL on 19,071 rows | $1 + hf/25$ over options −12,813.3; $1 + hf/25$ over skills −12,461.0; constant −12,048.0; $\beta(1 + hf/100)$ −11,910.2; per-scenario $\beta(1 + hf/100)$ −11,817.8; free divisor ($c = 76$) −11,811.9 |
-| Skills only, not skills + stat option | in 16 of 20 (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies; with the count free per setup, skills-only beats $n + 1$ options by 843 nats |
+| Skills only, not skills + stat option | in 16 of 19 (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies; with the count free per setup, skills-only beats $n + 1$ options by 843 nats |
 | Draw count near-fixed per setup | runs of one setup show one count or two adjacent ones |
 | Uniform draws with repeats | repeat rate $P(k \ge 2 \mid k \ge 1)$: 0.151 observed, 0.151 two-point count, 0.199 Poisson count; distinct skills 1/2/3/4 per card-run 0.093 / 0.520 / 0.307 / 0.074 observed, 0.084 / 0.477 / 0.358 / 0.079 model |
 | Covariates | per-scenario bases +92 nats; card type, rarity, limit break beyond $hf$, pals per deck, initial bond, pool size each under 3.5 (factors 0.91-1.02) |
 | Lv-5 cap | beats drawing with replacement by 7.8 nats with no parameter (17.5 on 2,402 runs); obs / pred by draws to Lv 5, replacement vs cap: 5 draws (5,347 rows) 0.968 / 0.979, 3 (259) 0.863 / 0.870, 2 (7,335) 1.025 / 1.024, 1 (94) 1.289 / 0.985 |
-| Joint draws over targets | 38,927 pairs of no-spark pool skills on one card-run: $P(\text{both})$ 0.0872 observed, 0.0861 joint, 0.1134 independent; $P(\text{neither})$ 0.4371 vs 0.4355 |
+| Joint draws over targets | 38,927 pairs of no-spark pool skills on one card-run (Trackblazer left out): $P(\text{both})$ 0.0872 observed, 0.0861 joint, 0.1134 independent; $P(\text{neither})$ 0.4371 vs 0.4355 |
 | Pool size | obs / pred 0.88-1.11 for every $n$ with at least 150 rows |
 | Per-draw increment | 5,144 of 5,150 single-source levels are multiples of $\iota$, capped at 5 |
 | $hf$ by card level | floored linear interpolation −10,676.9, step −10,677.4, max-limit-break $hf$ for all −10,683.8 |
@@ -216,7 +219,7 @@ at 0.386 against 0.351 without drop-out and 0.465 with it).
 **Not adopted.** Specialty priority as $h \times e^{0.0251}$ per 10 points: +18 nats on 879 runs, Unity's base then
 2.50 and the free divisor about 92, but it rests mostly on the newest Unity runs and Unity's $hf$ slope is set by three
 cards (obs / pred in Unity 0.89, 0.86, 1.16; in Grand Concert 1.09, 0.97, 1.07). Without it, cards with $hf = 0$ and
-specialty 0 are over-rated by about 10% in Unity Cup. Prioritised skills raising training hints: 101 runs show a
+specialty 0 are over-rated by about 13% in Unity Cup. Prioritised skills raising training hints: 101 runs show a
 priority list, prioritised skills hinted by training at 0.222 against 0.297 predicted (99 rows); no effect assumed.
 
 ## 7. Chain events
@@ -241,22 +244,23 @@ the chain on $k$ of its $n$ outcomes, $q_l = k/n$ and the stopping link $\sigma$
 $P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$; a stopped chain's slots return to the pool. The solver enumerates the
 exact distribution of final chain states (no simulation); an independent recomputation agrees to about $10^{-16}$.
 
-**Fit of $N$** (1,299 runs, the pal-count table below; a refit on 1,792 runs follows). Chain progress per card is read from marker skills: a link is observable only if every choice and
-outcome of its event carries a skill appearing in no other event of that card; ambiguous two-card credits and
-inspiration-only listings are treated as unknown. $N$'s distribution is the one that best explains progress over all
-decks.
+**Fit of $N$** (1,299 runs, the pal-count table below). Chain progress per card is read from marker skills: a link is
+observable only if every choice and outcome of its event carries a skill appearing in no other event of that card;
+ambiguous two-card credits and inspiration-only listings are treated as unknown. $N$'s distribution is the one that
+best explains progress over all decks.
 
 | Form for $N$ | Result |
 |---|---|
-| distribution-free | mean 7.30, variance 5.1 |
-| Binomial(21, 0.35) | 6.6 nats behind distribution-free with 14 fewer parameters |
-| Binomial(15, 0.48) | 3.5 nats worse than Binomial(21, 0.35) |
-| Poisson(7.1) | 27 nats worse (variance = mean, too wide) |
-| per scenario | means Unity Cup 7.56, Grand Concert 7.16, URA Finale 6.53; +15.7 nats for 32 extra parameters |
+| distribution-free | mean 7.44, variance 4.62 |
+| Binomial(21, 0.35) | 8.4 nats behind distribution-free with 14 fewer parameters; with $n = 21$, $p = 0.35$ fits best |
+| Binomial(15, 0.48) | 14.7 nats behind distribution-free |
+| Poisson(7.1) | 42.4 nats behind distribution-free (variance = mean, too wide) |
+| per scenario | means Unity Cup 7.63, Grand Concert 7.41, URA Finale 6.88; +16.0 nats for 32 extra parameters |
 
-Refit on 1,792 runs: means 7.52 / 6.84 / 7.20 / 7.92 for 1 / 2 / 3 / 4 pals
-(variances 4.0-5.3); Binomial(21, 0.35) kept. The sub-Poisson spread suggests a capped number of chances per run; a
-reading of the shape, not verified.
+The best binomial with $n$ free, (19, 0.39), is 1.3 nats better than (21, 0.35), no real difference. A first fit on
+879 runs, with markers read from IT's default choice only, chose the same Binomial(21, 0.35); so did a refit on 1,792
+runs with those markers (means 7.52 / 6.84 / 7.20 / 7.92 for 1 / 2 / 3 / 4 pals, variances 4.0-5.3). The sub-Poisson
+spread suggests a capped number of chances per run; a reading of the shape, not verified.
 
 One $N$ reproduces final-link completion at every pal count, so pal events do not consume chain events:
 
@@ -269,7 +273,8 @@ One $N$ reproduces final-link completion at every pal count, so pal events do no
 | 1 | 5 | 168 | 0.19 / 0.16 / 0.17 |
 | 0 | 6 | 123 | 0.14 / 0.15 / 0.15 |
 
-**Allocation rule.** Against uniform over cards (each running card's next event equally likely):
+**Allocation rule.** Against uniform over cards (each running card's next event equally likely), on 1,193 runs with
+markers read from IT's default choice:
 
 | | Uniform over remaining slots (adopted) | Uniform over cards |
 |---|---|---|
@@ -291,21 +296,22 @@ preference. Exact consequences with Binomial(21, 0.35), P(reach link 1 / 2 / 3):
 (With two 3-link cards and exactly 3 events, the slot rule gives $(3,0)$ with $\tfrac36 \cdot \tfrac25 \cdot \tfrac14 = 5\%$,
 the card rule $(\tfrac12)^3 = 12.5\%$.)
 
-**Known misses.** Two-chain decks finish both chains in 82% of runs against 75% predicted. Early links in crowded
-decks run short while final links fit; per run as a cluster, $z = \sum(\text{obs} - \text{pred}) / \sqrt{\sum(\text{obs} - \text{pred})^2}$:
+**Known misses.** Two-chain decks (two 3-link SSRs, four pals) finish both chains in 138 of 167 runs, 0.83
+[0.76, 0.88], against 0.80 predicted: within the interval. Early links in crowded decks run short while final links
+fit; per run as a cluster, $z = \sum(\text{obs} - \text{pred}) / \sqrt{\sum(\text{obs} - \text{pred})^2}$:
 
 | Pals | 4 | 3 | 2 | 1 | 0 |
 |---|---|---|---|---|---|
 | Early-link shortfall | 0.02 ± 0.02 | 0.07 ± 0.02 | 0.06 ± 0.02 | 0.05 ± 0.03 | 0.14 ± 0.03 |
 | $z$ | 0.9 | 3.3 | 2.5 | 1.8 | 4.3 |
 
-In decks with 4-5 chain cards about a third of chains never start (model about 16%). The shortfall concentrates in a
-few cards (obs / pred): Special Week [Take Hold of Our Dreams!] 0.65 / 0.82, Yaeno Muteki [Fiery Discipline] 0.78 /
-0.90, Zenno Rob Roy ["Rhodonite and the Dreamstone"] 0.63 / 0.75, Hishi Akebono [Who Wants the First Bite?] 0.86 /
-0.93, Smart Falcon [My Umadol Way! ☆] 0.73 / 0.81, Silence Suzuka [Beyond This Shining Moment] 0.56 / 0.77; their
-event data look like those of cards that fit (King Halo [Tonight, We Waltz] 0.91 / 0.92, n = 125). A per-card
-activation parameter (a chain card active with probability $a$) fitted three-card decks ($a = 0.82$) on data later
-found to carry marker errors, has no mechanism and fails at 4-6 chain cards: rejected.
+More chains never start in crowded decks than predicted: 0.19 against 0.13 with five chain cards, 0.34 against 0.19 with
+six. The shortfall concentrates in a few cards (obs / pred): Special Week [Take Hold of Our Dreams!] 0.65 / 0.82, Yaeno
+Muteki [Fiery Discipline] 0.78 / 0.90, Zenno Rob Roy ["Rhodonite and the Dreamstone"] 0.63 / 0.75, Hishi Akebono [Who
+Wants the First Bite?] 0.86 / 0.93, Smart Falcon [My Umadol Way! ☆] 0.73 / 0.81, Silence Suzuka [Beyond This Shining
+Moment] 0.56 / 0.77; their event data look like those of cards that fit (King Halo [Tonight, We Waltz] 0.91 / 0.92, n =
+125). A per-card activation parameter (a chain card active with probability $a$) fitted three-card decks ($a = 0.82$) on
+data later found to carry marker errors, has no mechanism and fails at 4-6 chain cards: rejected.
 
 ## 8. Event choices and outcomes
 
@@ -317,10 +323,10 @@ on different choices, a deck entry takes one choice (the solver offers one entry
 ends a chain early).
 
 Evidence on the rule. Sasami Anshinzawa [This Might Sting!]'s finale: with Risky Business prioritised IT took choice 2
-in about 95% of runs (exceptions mostly with Risky Business already at hint Lv 5); with neither skill prioritised, 20 of
-72 runs still took choice 2. Riko Kashimoto [Planned Perfection]: with Lone Wolf prioritised IT took the bottom choice
+in about 95% of runs (exceptions mostly with Risky Business already at hint Lv 5); with neither skill prioritised, 0 of
+35 runs took choice 2. Riko Kashimoto [Planned Perfection]: with Lone Wolf prioritised IT took the bottom choice
 in 55 of 62 runs. Only 358 of 3,179 runs show a priority list, so the rule is tested
-mainly through its consequences (section 12: prioritised targets 1.04, non-prioritised 0.68 on event-only hints).
+mainly through its consequences (section 12: prioritised targets 1.02, non-prioritised 0.65 on event-only hints).
 
 **Outcomes** (**assumed** unless measured): one choice's outcomes exclude each other, one per firing, equally likely
 unless measured (outcome odds are server-side: master.mdb holds none); a card's gold and white of one skill are
@@ -329,7 +335,7 @@ her hint credited, the skill's level from other sources below 5):
 
 | Event, outcome | Observed | Adopted |
 |---|---|---|
-| Sasami Anshinzawa [This Might Sting!] finale, Nothing Ventured (Risky Business prioritised; 254 runs with the card) | 58/77 = 0.75 [0.67, 0.82] | 0.75 |
+| Sasami Anshinzawa [This Might Sting!] finale, Nothing Ventured (Risky Business prioritised; 254 runs with the card) | 58/77 = 0.75 [0.66, 0.82] | 0.75 |
 | same, choice 2 alone, no inherited Risky Business | 37/45 = 0.82 [0.71, 0.90] | |
 | Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up (top choice taken) | 527/585 = 0.90 [0.88, 0.92] | 0.75 |
 | Seiun Sky [Foolproof Plan] link 3, Fast-Paced | 33/40 = 0.82 [0.71, 0.90] | 0.75 |
@@ -368,7 +374,7 @@ $$P(\text{fires}) = 0.21\,(1 - 0.047)^{K - 4},$$
 $K$ = random events on offer (every shared event of the deck's characters plus the trainee's own): about 0.15 overall,
 0.21 at $K = 4$, 0.13 at $K = 14$. Readings: top-choice marker skills credited to the character's event; 2,871
 readings from 1,461 runs, 426 clean hits (58 ambiguous two-card credits counted as
-misses; with them the rate is about 3 points higher).
+misses; with them the rate is about 2 points higher).
 
 | Form | LL |
 |---|---|
@@ -376,7 +382,10 @@ misses; with them the rate is about 3 points higher).
 | $0.21(1 - 0.047)^{K-4}$ | −1199.9 |
 | power law $c(K/8)^{-a}$, $a = 0.39$ (uniform competition would be $a = 1$) | −1200.7 |
 | strict competition $1 - (1 - 1/K)^S$, $S = 1.57$ | −1213.4 |
-| every event slot competing (chain links + random events + pals) | no better than constant |
+| every event slot competing, $c / T$ with $T = K + 0.94 \cdot \text{pals}$ (chain links weigh 0), $c = 1.85$ | −1200.1 |
+
+The slot form fits about as well as the adopted one (+5.4 nats over constant for two extra parameters): chain links play
+no part, and a pal counts about as one more random event.
 
 Observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14: 0.17 / 0.20 / 0.19 / 0.17 / 0.14 / 0.13; within a run events fire
 independently. On a larger sample (4,748 readings, 2,264 runs) the slope holds (15.7% at 8 on offer, 12.5% at 14) and
@@ -453,18 +462,18 @@ means hinted and buyable, the model's own meaning.
 | 1. Deck hint, no inspiration | 14,015 | 0.247 | 0.231 [0.224, 0.238] | 0.932 [0.90, 0.96] |
 | 1. Training pool only | 2,982 | 0.372 | 0.357 | 0.959 [0.91, 1.01] |
 | 1. Events only | 1,864 | 0.887 | 0.807 | 0.910 [0.89, 0.93] |
-| 1. Events only, target prioritised | 124 | 0.890 | 0.927 | 1.042 [0.97, 1.08] |
-| 1. Events only, not prioritised | 220 | 0.853 | 0.582 | 0.682 [0.60, 0.76] |
+| 1. Events only, target prioritised | 151 | 0.889 | 0.907 | 1.021 [0.96, 1.06] |
+| 1. Events only, not prioritised | 193 | 0.849 | 0.549 | 0.647 [0.56, 0.73] |
 | 2. Inheritance | 23,488 | 0.350 | 0.345 [0.339, 0.351] | 0.985 [0.97, 1.00] |
 | 3. Acquired, any source | 20,923 | 0.498 | 0.495 [0.488, 0.501] | 0.993 [0.98, 1.01] |
 | 3. Acquired, deck or inspiration only | 20,923 | 0.498 | 0.485 | 0.972 [0.96, 0.99] |
-| 3. Acquired, prioritised | 946 | 0.685 | 0.717 | 1.046 [1.00, 1.09] |
-| 3. Acquired, not prioritised | 1,422 | 0.565 | 0.518 | 0.918 [0.87, 0.96] |
+| 3. Acquired, prioritised | 1,052 | 0.711 | 0.736 | 1.036 [1.00, 1.07] |
+| 3. Acquired, not prioritised | 1,316 | 0.535 | 0.487 | 0.910 [0.86, 0.96] |
 | 4. Landing (sums of $p$) | 20,923 | 3,669.8 | 3,631.5 | 0.990 |
 
 (The prioritised / not prioritised rows use the runs that show a priority list.) **Verdict:** the composed acquisition
 odds are calibrated (0.993). Inheritance is right. Deck hints read about 7% optimistic, almost all from the priority
-assumption: event hints land at 1.04 × predicted for prioritised targets and 0.68 for others. Unmodelled scenario and
+assumption: event hints land at 1.02 × predicted for prioritised targets and 0.65 for others. Unmodelled scenario and
 trainee events supply the few points the deck loses (208 target acquisitions in 20,923 rows, 1.0%).
 
 Per target (obs / pred):
@@ -482,7 +491,7 @@ Per target (obs / pred):
 
 Training-pool hints by scenario (tests $\beta$): Grand Concert 1.000 [0.94, 1.06], Unity Cup 0.935 [0.83, 1.05], URA
 Finale 0.893 [0.78, 1.02], Trackblazer 0.747 [0.58, 0.94]. By the lowest limit break of the sourcing cards: LB4 0.960,
-LB3 0.953, LB0-2 0.83-1.06 (41-87 rows each, every interval covering 1). Unity Cup's guaranteed golds: 780 of 780 runs
+LB3 0.953, LB0-2 0.83-1.06 (33-87 rows each, every interval covering 1). Unity Cup's guaranteed golds: 780 of 780 runs
 each. Gold acquisition: Nothing Ventured 0.899 [0.82, 0.98] (449 rows), Perfect Spot! 0.833 [0.75, 0.92] (366), It's
 On! outside Unity Cup 0.437 [0.28, 0.65] (109), No Stopping Me! outside Unity Cup 0.894 (62), See Ya Later! 1.000
 (2,336).
@@ -513,7 +522,7 @@ Single-source cards furthest from the model:
 | Card > target | Pred | Obs | Ratio | Rows | Likely reason |
 |---|---|---|---|---|---|
 | Sasami Anshinzawa [This Might Sting!] > Risky Business | 1.000 | 0.730 | 0.73 [0.66, 0.79] | 185 | model assumes Risky Business prioritised (finale choice 2) |
-| Riko Kashimoto [Planned Perfection] > Ramp Up | 0.750 | 0.596 | 0.80 [0.73, 0.86] | 359 | open (her Lone Wolf choice when prioritised accounts for part) |
+| Riko Kashimoto [Planned Perfection] > Ramp Up | 0.750 | 0.596 | 0.79 [0.73, 0.86] | 359 | open (her Lone Wolf choice when prioritised accounts for part) |
 | King Halo [Tonight, We Waltz] > Uma Stan | 0.937 | 0.726 | 0.77 [0.66, 0.87] | 73 | Uma Stan sits on a choice that needs a priority |
 | Gold Ship [That Time I Became the Strongest] > Uma Stan | 0.205 | 0.122 | 0.59 [0.32, 1.05] | 74 | open |
 | Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | 0.298 | 0.070 | 0.23 [0.08, 0.62] | 43 | open |
@@ -538,9 +547,9 @@ of the deck test, which is then conditional on no spark, treated as independent 
 | Inheritance $q$ | assumed bases, fitted affinity | 23,488 rows | 0.985 [0.97, 1.00] |
 | Self-grandparent trio 0 | fitted | 101,536 trials | 13 nats over the alternative |
 | Training hints | form derived, bases fitted | 2,402 runs | training pool 0.959 [0.91, 1.01] |
-| Chain events Binomial(21, 0.35) | fitted | 1,792-run refit | 6.6 nats from distribution-free; two-chain completion 0.82 vs 0.75 |
+| Chain events Binomial(21, 0.35) | fitted | 1,299 runs | 8.4 nats from distribution-free; two-chain completion 0.83 vs 0.80 |
 | Allocation by slots | assumed, preferred empirically | | final links 0.29 / 0.15 vs observed 0.27 / 0.13 |
-| Event choice / priority | assumed | 358 runs with lists | 1.04 prioritised, 0.68 not (event hints) |
+| Event choice / priority | assumed | 358 runs with lists | 1.02 prioritised, 0.65 not (event hints) |
 | Random card events | fitted, not modelled | 4,748 readings | at most +1.7% on the odds |
 | Composed acquisition | derived | 20,923 rows | 0.993 [0.98, 1.01] |
 | Per-run $P(\text{all})$ | derived | 2,936 runs | 0.85 [0.66, 1.05] |

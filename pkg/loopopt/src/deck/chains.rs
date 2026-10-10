@@ -3,9 +3,9 @@
 use super::*;
 
 /// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 1,299 uma-it Independent Training runs whose chain
-/// progress is readable from event hints (first on 879; a refit on 1,792 runs kept it) (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
-/// variance = mean, fits much worse). It slightly underestimates decks with two chain cards: both chains finish in
-/// 82% of such runs, 75% predicted.
+/// progress is readable from event hints (an earlier fit on 879 runs and a refit on 1,792, with markers read from IT's
+/// default choice, chose the same) (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
+/// variance = mean, fits much worse). Decks with two chain cards finish both chains in 83% of such runs, 80% predicted.
 pub(super) const CHAIN_N: u32 = 21;
 pub(super) const CHAIN_P: f64 = 0.35;
 /// Chain kind of a deck entry: (chain length, link the chain stops at). A card played normally stops at its last
