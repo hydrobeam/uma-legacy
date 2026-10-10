@@ -71,6 +71,9 @@
 !/val/owncheck.py
 !/val/permcheck.py
 !/val/joint_check.py
+# research scripts are tracked; the run records they read (research/data/) are not
+!/research/
+/research/data/
 master.mdb
 master.mdb.*
 __pycache__/

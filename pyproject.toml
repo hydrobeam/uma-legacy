@@ -14,3 +14,7 @@ package = false
 
 [dependency-groups]
 dev = []
+research = [
+    "numpy>=2.5.3",
+    "scipy>=1.18.1",
+]
