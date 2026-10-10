@@ -1,17 +1,14 @@
 jp__v_ng_k1 3.6
 jp__v_ng_k3 4.6
-jp__v_ng_r1 3.2
 jp__v_uc_k1 2.8
 jp__v_uc_k3 5.8
 jp__v_uc_r1 3.4
-pkg_loopopt__pal_A 4.4
 pkg_loopopt__pal_A2 3.0
 pkg_loopopt__pal_A2k3 5.8
 pkg_loopopt__pal_A2p4 0.6
 pkg_loopopt__pal_B 1.5
 pkg_loopopt__pal_C 0.5
 pkg_loopopt__pal_D 0.8
-pkg_loopopt__pal_E 0.5
 pkg_loopopt__pal_F 10.2
 pkg_loopopt__pal_Fk3 12.5
 pkg_loopopt__pal_G 1.5

@@ -1,10 +1,6 @@
 [
 [
 "pkg/loopopt",
-"jobs/pal_A.json"
-],
-[
-"pkg/loopopt",
 "jobs/pal_A2.json"
 ],
 [
@@ -18,10 +14,6 @@
 [
 "pkg/loopopt",
 "jobs/pal_D.json"
-],
-[
-"pkg/loopopt",
-"jobs/pal_E.json"
 ],
 [
 "pkg/loopopt",
@@ -88,10 +80,6 @@
 "jobs/v_ng_k3.json"
 ],
 [
-"jp",
-"jobs/v_ng_r1.json"
-],
-[
 "pkg/loopopt",
 "jobs/career_U.json"
 ],
@@ -102,10 +90,6 @@
 [
 "pkg/loopopt",
 "jobs/career_U3.json"
-],
-[
-"pkg/loopopt",
-"jobs/career_U4.json"
 ],
 [
 "pkg/loopopt",

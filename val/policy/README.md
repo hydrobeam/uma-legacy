@@ -71,7 +71,7 @@ went each way.
 
 From the repository root (the solver runs in `pkg/loopopt`, so a pool's relative file names resolve there):
 
-    node val/policy_sim.mjs --pool val/policy/pools/u4.json --policy planner,greedy,repeat \
+    node val/policy_sim.mjs --pool pkg/loopopt/jobs/career_U5.json --policy planner,greedy,repeat \
          --runs 48 --steps 20 --settle 2 --seed 1 -j 4 --out /tmp/u4
     node val/policy_sim.mjs report /tmp/u4 --steps 10      # the same runs cut at H = 10
 
@@ -94,7 +94,7 @@ the page's rollout pick (`rollout.choice`), `greedy` the best P(all) now (`resul
 |---|---|---|
 | `owner4.json` | the owner's 4-veteran pool (Unity Cup, owned roster and cards, borrowing on), `rollout: 6` | 7,589 |
 | `owner14.json` | the owner's 14-veteran pool, same settings | 817 |
-| `u4.json` | `pkg/loopopt/jobs/career_U5.json` (the `career_U4` test pool of 12 veterans with `rollout: 6`) | 587 |
+| u4 (no copy here: `pkg/loopopt/jobs/career_U5.json`) | the `career_U4` test pool of 12 veterans with `rollout: 6` | 587 |
 
 ## Baselines (seed 1, settle K = 2 on the best career)
 
