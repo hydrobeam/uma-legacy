@@ -64,7 +64,8 @@ The mechanics (objective V, `Cont`, a career's score, builders through their dec
 - **Cont's shape.** `CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 are fitted to the measured builder traces of
   `val/sim/README.md` E5 (four player pools of 2, 5, 11 and 19 veterans): Cont tracks achievable building within 0-5% on
   2, 11 and 19 veterans and is 70% too pessimistic on 5, where lam rises after the first lift (builders improve) while
-  Cont only lets it decay; leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
+  Cont only lets it decay (taking lam as the larger of now and one lift later fixes most of it: 995 -> 734
+  careers on 5 veterans, the others unchanged; not built); leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
   these pools, not a law. Not yet measured against other policies.
 - **Builders through their deck class** (2026-10-08): the proxy, checked 2026-10-09 with `proxy_check` on val/plan,
   reads at most 2.79% low (efficiency) and 2.67% (saving), so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice
