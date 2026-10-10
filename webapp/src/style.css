@@ -1258,7 +1258,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    pink, blue, green and gold art as it is */
 :root[data-theme="dark"] .ud .vsk:not(.pink) .vskb { color: #f6ece3; background-color: #29262f; background-image: linear-gradient(#2e2b36, #24222b); box-shadow: inset 0 -3px 0 #18161d; }
 :root[data-theme="dark"] .ud .vsk:not(.pink) .vskb::before { border-image-source: var(--spark-white-dark, var(--spark-white)); }
-:root[data-theme="dark"] .udsk:not(.gold):not(.off) { color: #f4eeff; background-color: #3a3550; background-image: linear-gradient(#4a4466, #2f2a44); box-shadow: inset 0 -4px 0 #24203a; }
+:root[data-theme="dark"] .udsk:not(.gold):not(.off) { color: #f4eeff; }   /* (no CSS tile: one here showed round the sprite's corners and under its rim) */
 :root[data-theme="dark"] .udsk:not(.gold):not(.off)::before { border-image-source: var(--skill-white-dark, var(--skill-white)); }
 :root[data-theme="dark"] .ud .vskb .stars .se, :root[data-theme="dark"] .spstar:not(.on) { background-image: var(--star-off-dark, var(--star-off, var(--gm-star0))); }
 :root[data-theme="dark"] #add-pop .addsk { color: #f6ece3; background-color: #3a3f47; background-image: linear-gradient(#4a5059, #31353c); box-shadow: inset 0 -3px 0 #1d2025; }
