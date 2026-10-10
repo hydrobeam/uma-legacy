@@ -27,7 +27,7 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 **Tools you install**
 - Rust, via rustup: `rust-toolchain.toml` pins 1.98.1 with `rust-src` and the `wasm32-unknown-unknown` target.
 - Node with npm.
-- [uv](https://docs.astral.sh/uv/) (it provides Python 3.12).
+- [uv](https://docs.astral.sh/uv/) (it provides Python 3.14).
 - bash, git; tar with zstd for `runners` only.
 
 **Libraries, installed into the folder by the build**

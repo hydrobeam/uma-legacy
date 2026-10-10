@@ -2,7 +2,7 @@
 name = "legacy-loop-planner-tools"
 version = "0"
 description = "Python side of the Legacy Loop Planner: master.mdb exporters, event builders, validation, image extraction"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
 dependencies = [
     "UnityPy",   # reads the game's (already decrypted) asset bundles: card art and character icons
