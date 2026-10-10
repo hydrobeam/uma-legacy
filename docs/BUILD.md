@@ -36,18 +36,31 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/gametora.json` | `events`, `page` |
 | `cache/chibi/tools/` (`runners`, first use) | AssetStudioModCLI 0.19.0, a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 (Arch's libxml2-legacy; always this copy) | `runners` |
 
-**Files you supply** (all gitignored)
+**Files you supply** (all gitignored; only needed to refresh the data or make the art)
 
-| File | Needed by |
-|---|---|
-| `pkg/loopopt/export/master.mdb` (Global), `jp/export/master.mdb` (JP, for the Grand Masters era) | `data`, `events` |
-| `game/decrypted/`: the game client's decrypted asset tree (paths as in the game, e.g. `chara/chr1001/...`) | `images`, `runners` |
-| `game/data/`: the game install's `*_Data` folder (`resources.assets`) | `images` |
-| `cache/meta_global.db`: the game's asset index as plain SQLite | `runners` |
-| `cache/jp_bundles/`: the JP client's bundles for JP-only art (the Grand Masters banner, 14 skill icons) | `images` |
+| File | Where it comes from | Needed by |
+|---|---|---|
+| `pkg/loopopt/export/master.mdb` (Global) | the PC client's game database: the `.mdb` file in its `master` folder under `AppData\LocalLow\Cygames\Umamusume\` (on Linux, inside the Steam/Proton prefix of app 3224770). It is plain SQLite; copy it | `data`, `events` |
+| `jp/export/master.mdb` (JP, for the Grand Masters era) | `master/master.mdb` of https://github.com/SimpleSandman/UmaMusumeMetaMasterMDB (its last update, 2025-10-09) | `data`, `events` |
+| `game/data/` | the PC install's `UmamusumePrettyDerby_Data` folder (for `resources.assets`) | `images` |
+| `game/decrypted/` | the client's asset bundles, decrypted, laid out by asset path (`chara/chr1001/...`) | `images`, `runners` |
+| `cache/meta_global.db` | the client's asset index (`meta`), decrypted to plain SQLite | `runners` |
+| `cache/jp_bundles/` | the JP client's bundles for JP-only art (the Grand Masters banner, 14 skill icons), by asset path | `images` |
 
-`UMA_DECRYPTED` and `UMA_GAME_DATA` point the art steps elsewhere. The tool that reads the game's encrypted asset index
-and fetches bundles is not published in this repository. Game art and `master.mdb` files are never committed.
+The client's bundles and asset index are encrypted; the tool that decrypts them is not published in this repository,
+so the last three rows are on you. `UMA_DECRYPTED` and `UMA_GAME_DATA` point the art steps elsewhere. Game art and
+`master.mdb` files are never committed.
+
+## Reproducing it
+
+1. **The page, the solver and its checks** need only the tools above: `./build.sh`, then `./build.sh testq` (71 checks;
+   the five art checks fail without art) and `./build.sh valq TAG` (every job matches its reference). This runs on
+   the tracked data files, which were exported from the Global `master.mdb` of 2026-10-10 and the JP one of
+   2025-10-09.
+2. **The data from the game:** put both `master.mdb` files in place, then `./build.sh data events pb`. With the same
+   game data the exports come out byte-identical, except `upcoming.json` (what starts after the build date) once a
+   banner in it has started; a newer Global database adds its new umas, cards and races. Check with `uv run val/event_audit.py` and `./build.sh val TAG`.
+3. **The art:** with the decrypted files in place, `./build.sh images runners page`.
 
 ## Steps
 
