@@ -77,10 +77,8 @@
 !/val/plan/ref__*.out
 !/val/plan/ref_times.txt
 !/val/refpu__*.out
-!/val/umadump_lineage.py
 !/val/career_job.py
 !/val/umadump/
-!/val/umadump_carriers.py
 !/val/spark_gen_fit.py
 !/val/cmp_ratio.py
 !/val/event_audit.py
@@ -90,12 +88,6 @@
 !/val/owncheck.py
 !/val/permcheck.py
 !/val/joint_check.py
-!/val/policy_sim.mjs
-!/val/policy/
-/val/policy/*
-!/val/policy/README.md
-!/val/policy/policies.mjs
-!/val/policy/pools/
 master.mdb
 master.mdb.*
 __pycache__/

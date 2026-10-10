@@ -36,7 +36,7 @@ def load(paths):
             name = o['policy']
             sim = o['simulate']
             pool0 = o['runs'][0]['segs'][0]['pool'] if o['runs'] and o['runs'][0]['segs'] else '?'
-            tag = f'[{pool0} vets] ' + name + ''.join(f' {k}={sim[k]}' for k in ('margin', 'samples', 'redecide', 'cont_eps', 'loop_members') if k in sim and k in o['simulate'])
+            tag = f'[{pool0} vets] ' + name + ''.join(f' {k}={sim[k]}' for k in ('margin', 'loop_members') if k in sim and k in o['simulate'])
             for r in o['runs']:
                 by[tag][r['run']] = r
     return by
@@ -94,7 +94,7 @@ def e1(paths):
             print(f'    table short: exact {x[3]:.4e} table {x[2]:.4e} ({x[4]:.2%}), B {x[9]:.4e}, trusted {x[5]}, tvd {x[6]:.3f}')
 
 
-KIND = {0: 'greedy pick', 1: 'random candidate', 2: 'rollout candidate', 3: 'loop career'}
+KIND = {0: 'greedy pick', 1: 'random candidate', 3: 'loop career'}
 
 
 def audit(paths):
