@@ -1036,8 +1036,11 @@ const TESTS = {
     check('dark: … the choice outlives a reload and beats the system preference', (await theme()) === 'light');
     await pg.emulateMedia({ colorScheme: 'light' }); await pg.emulateMedia({ colorScheme: 'dark' }); await pg.waitForTimeout(300);
     check('dark: … and a system change no longer overrides it', (await theme()) === 'light');
-    await pg.click('#theme-btn');
+    // the status box repaints with the page, not after it (its colour transitions wait out the switch)
+    const box = () => pg.evaluate(() => getComputedStyle(document.querySelector('.rhead')).backgroundColor);
+    const bLight = await box(); await pg.click('#theme-btn'); const bNow = await box(); await pg.waitForTimeout(900); const bLater = await box();
     check('dark: the button switches back to dark', (await theme()) === 'dark');
+    check('dark: … the status box takes its dark colour at once', bNow === bLater && bNow !== bLight, `${bLight} -> ${bNow} -> ${bLater}`);
     await pg.goto(URL.replace(/\/?$/, '/') + 'about'); await pg.waitForLoadState('load');
     check('dark: /about takes the same choice', (await theme()) === 'dark');
     if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('dark: /about meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }

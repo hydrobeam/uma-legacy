@@ -195,7 +195,8 @@ THEMEJS = '''
   set(); if (m && m.addEventListener) m.addEventListener('change', function () { if (!t) set(); });
   document.addEventListener('DOMContentLoaded', set);
   document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('#theme-btn')) return;
-    t = d.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(K, t); } catch (x) {} set(); });
+    t = d.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(K, t); } catch (x) {}
+    d.classList.add('themeswap'); set(); requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.remove('themeswap'); }); }); });
 })();
 '''
 THEMEBTN = ('<button type="button" class="themebtn" id="theme-btn" aria-label="Dark mode" aria-pressed="false" title="Switch to dark mode">'
