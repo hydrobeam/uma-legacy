@@ -2,13 +2,11 @@
 
 The Rust crate in `pkg/loopopt/`; paths below are relative to it. Building and running it: `docs/BUILD.md`.
 
-Finds the best parent loop (a four-uma loop or, in the skill and deck modes, a three-uma rotation) for landing target skills in Uma Musume (Global), with the exact race schedule for each uma; the original affinity-only modes (`best`, `score`, ...) handle four-uma loops only. It reads only the game's plaintext `master.mdb` and does math; nothing in the game is modified.
+Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). It reads only the game's plaintext `master.mdb` and does math; nothing in the game is modified.
 
 ```
 master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──▶ ranked loops + schedules (JSON)
 ```
-
-A whole pool (screen 814k foursomes, then search the survivors) takes **about 1 second** on a 2-core container.
 
 ---
 
@@ -24,6 +22,7 @@ cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[k] = 0,0,5,20,30,50 for
 (Earlier versions used 10 points per grade and PEN = 0,0,10,25,35,50; the algorithm tests run on that frozen data in `tests/fixtures/data_v1.json`, and `win_table_matches_community_table` checks the shipped data against every cell of the new table.)
 
 - **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it.
+- **Turn** = 24·year + 2·(month−1) + half: Junior 1–24, Classic 25–48, Senior 49–72; half 1 = Early, 2 = Late.
 - **Win probability per race:** P_a(r) = 1 − Π(1 − p) over uma a's attempts at race r. A race can be run in Classic and Senior; it still counts once.
 
 **Objective (expected affinity per 4 runs):**
@@ -36,6 +35,9 @@ E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_
 |---|---|---|---|
 | Self-copy-free 12-lineage breeding | `"scf"` | 10/3 for every pair | 2·Σ pair + 4·Σ trio |
 | Rotation (parents = previous two runs) | `"rot"` | 3 adjacent, 4 diagonal (3 orders tried) | 2·Σ pair + 3·Σ trio |
+
+The deck search optimises loop schedules under `"scf@0.5"` (*Grandparent weighting*, §3); `rot` is kept in the
+affinity core and its tests.
 
 - Aptitudes (career page): each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; her first outfit), and `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt); the loop planner reads neither (its `bp` per option is unchanged), the career schedule uses them for the legacies' pink sparks (`Env::pink_career`, MODEL.md).
 - `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver rebuilds both tables at load; older files with stored `pair` / `tri` tables still load.
@@ -61,13 +63,13 @@ E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_
 | `ascent` | Best-response dynamics: each member re-solves against the other three until none improves. It converges to a Nash equilibrium of an identical-interest game, not necessarily the global optimum. | Local |
 | `group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. Escapes coordination traps, e.g. all four moving Hopeful → Zen-Nippon together, which no single member gains from alone. | Local |
 | `optimize` | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). Rotation tries all 3 orders. | Heuristic |
-| `run_best` | Computes exact pairwise ceilings PB(a,b) = min(BR_a(PM_b), BR_b(PM_a)), where PM is a partner's best-case odds per race, and from them a guaranteed ceiling UB(F) ≥ E for every foursome F. Then searches foursomes in descending-UB order until the next ceiling is below the current k-th best score. | Screen is **guaranteed**; ranking among the searched survivors is heuristic |
+| `pair_ceilings` | Exact pairwise ceilings PB(a,b) = min(BR_a(PM_b), BR_b(PM_a)), where PM is a partner's best-case odds per race: no pair of schedules shares more expected G1 wins. The deck search bounds every structure's lineage affinities with them before any schedule is optimised; `loopopt pbtable` stores the table in data.json. | **Guaranteed** bound |
 
 **Why the ceiling is valid:**
 - P_b ≤ PM_b elementwise and P_a ≥ 0, so ⟨P_a, P_b⟩ ≤ ⟨P_a, PM_b⟩ ≤ BR_a(PM_b).
-- Take the min over both sides, then sum over pairs with weights C.
+- Take the min over both sides.
 
-A foursome whose ceiling is below a score already achieved cannot beat it.
+A structure whose bound is below a result already achieved cannot beat it.
 
 ## 3. Usage
 
@@ -83,59 +85,29 @@ cargo build --release
 # umas/goals/penalties; ignored when stale) so searches skip computing them (../../build.sh pb does both eras)
 uv run export/add_pb.py target/release/loopopt data.json
 
-# 3. run a job file
-target/release/loopopt data.json jobs/best_no_oguri_yukino_inari.json > result.json
+# 3. run a job file (from this folder: the file paths in a job are relative to it)
+target/release/loopopt data.json jobs/pal_U.json > result.json
 ```
 
-### Job file (JSON)
+The CLI runs `"mode":"deck"` and `"mode":"career"` job files (below), the jobs the page's worker sends to the wasm
+build (`src/web.rs`: `init`, `deck`, `career`, `state_out`, `state_in`), and `loopopt pbtable data.json`, which prints
+the pairwise-ceiling table `export/add_pb.py` merges in.
 
-| Field | Meaning | Default |
-|---|---|---|
-| `mode` | `"best"` (screen + search), `""` (optimize listed foursomes), `"score"` (score given schedules), `"legacy"` (per-slot affinity of every lineage for given schedules), `"br"` (best-response test), `"pb"` (ceiling table) | `""` |
-| `scheme` | `"scf"` or `"rot"` | required |
-| `owned` | uma ids you own (empty = whole roster) | `[]` |
-| `exclude` | uma ids to leave out | `[]` |
-| `gp_weight` | grandparent spark base rate as a fraction of parents' (the old community estimate 0.5; the receipt fits behind the skill modes give 1). The objective becomes parent-slot affinity + w × grandparent-slot affinity. 1 = plain total affinity | `1` |
-| `require` | uma ids every returned loop must contain (at most 4; added to the pool even if not in `owned`) | `[]` |
-| `top` | how many loops to return in `best` mode | 5 |
-| `iters` | iterated-local-search rounds per foursome | required (30 is plenty) |
-| `seed` | RNG seed | required |
-| `margin` | group-move pre-screen: skip re-ascent when the forced state is this far below the current best | 60 |
-| `threads` | worker threads | 2 |
-| `markdown` | if set, also write a readable sheet to this path (see *Schedule sheet* below) | `""` |
-| `jobs` | for `""` / `"score"` modes: `[{"members":[id,id,id,id], "init":[[[turn,program_id],...] x4]}]` | `[]` |
+### Schedule chart
 
-Example (`best`, owned list):
-
-```json
-{"mode":"best","scheme":"scf","iters":30,"seed":3,"threads":8,"top":5,
- "owned":[1008,1009,1014,1015,1017,1019,1023,1030,1069]}
-```
-
-`best` output has:
-- `top[]`: `members`, `order`, `score`, `base`, `g1_bonus`, `ceiling`, and each uma's `races` as `[turn, program_id]`.
-- Screen counts: `foursomes`, `optimized`, `ruled_out_by_ceiling`, `next_unoptimized_ceiling`.
-- `timing_s`.
-
-Every schedule also has a `detail` list: `turn`, `when` (e.g. `Cl L-May`), `race`, `program`, `g1`, `goal`, `streak`, `win`.
-
-Example sheet: `jobs/sheet_vodka.json` writes `vodka_daiwa_pasa_digital.md` in the crate folder (untracked).
-
-Turn = 24·year + 2·(month−1) + half: Junior 1–24, Classic 25–48, Senior 49–72; half 1 = Early, 2 = Late.
-
-### Schedule sheet (`markdown`)
-
-The schedule chart has two sections, rows in calendar order, one column per uma (required non-G1 goal races are not listed):
+A result's `schedule` (`skills::chart_rows`) lists races in calendar order, one cell per member (required non-G1 goal
+races are not listed):
 - **Shared G1s:** races (by identity, in either year) run by 2+ members. These are the affinity. A row with one runner is a second attempt at a race the others run in the other year; it raises that uma's P(win at least once).
 - **Optional G1s:** run by one member only. They have no affinity effect and can pass down race sparks. Skipping one never lowers affinity, since it can only shorten a streak.
 
-A number is the win % for that attempt, streak penalty included; `*` marks a goal; `·` means not running it. Below the chart: P(win at least once) per G1 per uma, and expected shared G1 wins per pair.
+A cell carries the win % for that attempt (streak penalty included), the goal flag, the aptitude cost and the streak
+position; `alts` names races that can replace the row's at no cost (`interchangeable`).
 
 **Optional fill pass:** after optimizing, each member re-solves against her partners with a tiny bonus (1e-7 per expected G1 win), and the result is kept only if the affinity score doesn't drop by more than 1e-6. That adds every G1 that costs nothing. Test `optional_g1s_cost_nothing` checks that stripping them leaves the score unchanged.
 
-### Grandparent weighting (`gp_weight`)
+### Grandparent weighting
 
-Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w is:
+Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w (scheme string `scf@w` / `rot@w`) is:
 
 | Scheme | base | C (race weight) |
 |---|---|---|
@@ -143,40 +115,27 @@ Spark proc chance per legacy = base × (1 + affinity/100), and the old community
 | rot | 2·Σ pair + 3w·Σ trio | 1 + 2w adjacent, 4w diagonal |
 
 - w = 1 reproduces the plain model (10/3; 3 and 4).
-- For scf, C stays uniform across pairs, so the optimal schedules for a given foursome don't change; only the ranking across foursomes does.
+- For scf, C stays uniform across pairs, so the optimal schedules for a given foursome don't change; only the ranking across foursomes does. The deck search uses `scf@0.5`.
 - For rotation with w = 0.5, adjacent and diagonal pairs weigh the same (2 and 2).
 - Test `gp_weight_matches_per_legacy_sum` checks these closed forms against a direct sum over every lineage and slot.
 
-`"mode":"legacy"` prints each lineage's six slot affinities (expected values, no rounding), for computing per-spark proc chances.
-
-### Skill-target search (`"mode":"skills"`)
-
-Ranks loops by the chance that every target skill lands as a spark on the new veteran. The page does not use it (it sends deck and career jobs).
-
-```bash
-target/release/loopopt data.json jobs/skills_unity8.json > result.json     # run from this folder (skills_file is relative)
-```
-
-```json
-{"mode":"skills","scheme":"scf","iters":30,"seed":3,"skills_file":"web_skills.json","top":5,
- "exclude":[1021,1034],
- "targets":[{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
-            {"group":20161,"deck_white":0.54},{"group":21010},{"group":20165,"deck_gold":0.54},{"group":20203,"guaranteed":2}],
- "extra":[[1078,20165,1],[1003,20190,1]]}
-```
+### Fields shared by deck and career jobs
 
 | Field | Meaning | Default |
 |---|---|---|
 | `skills_file` | outfit skill lists + skill catalog (`web_skills.json`, from `export/export_web.py`) | required |
 | `targets[]` | `group` = skill group id; `guaranteed` 0 none / 1 white / 2 gold; `deck_white`, `deck_gold` = deck hint chance 0–1 | required |
 | `star_dist` | spark star mix on the legacies `[p1★, p2★, p3★]` | `[0.50,0.45,0.05]` (rank score below 17,500; `[0.20,0.70,0.10]` from 17,500 up) |
-| `owned`, `exclude`, `require` | as in `best` | `[]` |
+| `owned` | uma ids you own (empty = whole roster) | `[]` |
+| `exclude` | uma ids to leave out | `[]` |
+| `require` | uma ids every result must contain (at most the largest of `sizes`; added to the pool even if not in `owned`) | `[]` |
 | `exclude_outfits` | outfit (card) ids you don't own | `[]` |
 | `extra` | `[uma id, skill group, level]` skills an uma always gets (e.g. Zephyr Slipstream, Teio Head-On) | `[]` |
-| `top` | loops returned | 5 |
+| `iters` | iterated-local-search rounds per structure's schedules | 30 |
+| `seed` | RNG seed of the schedule search | 3 |
 | `sizes` | structure sizes searched, ranked together: 3 (three-uma rotations, see *Three-uma rotations*) and/or 4 (four-uma loops); `require` may list at most the largest size, and four required umas leave only loops | `[3, 4]` |
 
-Output `loops[]`: `members` (3 or 4), `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `landed` (the chance of exactly k targets, k = 0 ..= n, averaged over the lineages; the deck search's exact over each lineage's landed sets, so `landed[n]` = `p_all` and the top two sum to `p_minus1`), `per_trainee`, `mean_proc`, `bound`, and `schedule` (chart rows: `race`, `when`, `shared`, `cells` with win % and goal flag, `runners`). Top-level: `proven_top` (no unsearched loop can beat #1), `foursomes` (structures of every searched size), `searched`.
+A deck result's `loop`: `members` (3 or 4), `outfits` (the outfit each uma uses and which targets it covers), `p_all` (all targets land), `p_minus1` (all but one), `landed` (the chance of exactly k targets, k = 0 ..= n, averaged over the lineages; the deck search's exact over each lineage's landed sets, so `landed[n]` = `p_all` and the top two sum to `p_minus1`), `per_trainee`, `mean_proc`, `rank_value`, `schedule` (*Schedule chart*) and `detail` (per lineage: the six legacy slots' affinity parts, q, each target's odds).
 
 ### Deck + loop search (`"mode":"deck"`)
 
@@ -187,7 +146,7 @@ target/release/loopopt data.json jobs/deck_unity8.json        # everyone owned
 target/release/loopopt data.json jobs/deck_unity8_noti.json   # no Tamamo / Inari
 ```
 
-Extra fields (on top of the skills-mode fields; scenario-guaranteed skills stay `guaranteed: 2`, everything the deck can give is left at 0):
+Extra fields (on top of the shared fields above; scenario-guaranteed skills stay `guaranteed: 2`, everything the deck can give is left at 0):
 
 | Field | Meaning | Default |
 |---|---|---|
@@ -255,7 +214,7 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 
 Typical time natively: about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
-Skills-mode model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%)). Each legacy's affinity follows uma-it-optimizer's per-legacy fit (`docs/MODEL.md`, Per-legacy affinity; github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor. In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
+Skill model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%)). Each legacy's affinity follows uma-it-optimizer's per-legacy fit (`docs/MODEL.md`, Per-legacy affinity; github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor. In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
 
 ### Three-uma rotations (`sizes`)
 
@@ -291,7 +250,7 @@ career over 660 trainee-parent combinations), but a loop must also train its fou
 ### Career planner (`"mode":"career"`, page `/career`)
 
 The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed), deck.
-Same files as deck mode, plus `legacies`; the skills- and deck-mode fields apply (`owned`/`exclude`/`exclude_outfits`
+Same files as deck mode, plus `legacies`; the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
 choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of the new veteran's sparks in the look ahead; other loop fields are unused).
 `val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
@@ -529,36 +488,24 @@ Results and commands: `val/sim/README.md`.
   - the full 2,278-pair ceiling table;
   - 23 schedules scored by the Python reference.
 - **Properties checked:**
-  - ceilings bound both optimized and truly random feasible schedules (both schemes, all 3 rotation orders);
-  - the best-first stop rule;
   - `feasible()` rejects bad schedules;
   - a force that conflicts with a goal is infeasible;
-  - schedule parsing rejects duplicate or out-of-range turns;
-  - `top = 0` is rejected;
-  - known optima are reproduced.
+  - known optima are reproduced;
+  - the grandparent-weight closed forms equal a direct per-legacy sum; optional G1s cost nothing.
 
-An independent adversarial review (separate agent, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs, now fixed and tested:
-1. A force could override a goal in `br` mode.
-2. `top = 0` panicked.
-3. Score mode accepted duplicate turns.
+An independent adversarial review (separate agent, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs in the affinity-only CLI modes (since removed: a force could override a goal, `top = 0` panicked, duplicate turns were accepted); the force check is still tested.
 
 The load step now asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair exactly 24 turns apart.
 
-**Reproduce:**
-- `cd validation && uv run check_scores.py` checks score parity; it needs only the built binary.
-- `independent_check.py` is a spec-only checker of a loop's schedules (needs master.mdb).
-
-
 | Check | Result |
 |---|---|
-| Scoring vs the Python reference: 32 known schedules (scf + rot, both sessions' outputs); 23 of them ship in `validation/known_schedules.json` | max \|diff\| 4.5e-13 |
+| Scoring vs the Python reference: 32 known schedules (scf + rot, both sessions' outputs); 23 of them ship in `tests/fixtures/known_schedules.json` | max \|diff\| 4.5e-13 |
 | `dp_exact` vs exact MILP (scipy/HiGHS), random weights, 40 umas × 4 weight types | 160/160 equal |
 | `dp_exact` vs MILP, all 68 umas, incl. forced group moves, turn-49 goal umas (Meisho Doto, Mejiro Palmer, Haru Urara) and multi-turn goal alternatives (Fuji Kiseki, Fine Motion, Fukukitaru, Chiyono O) | 192/192 equal, max \|gap\| 3.4e-13 |
 | Ceiling table `pb` vs the Python MILP table (2,278 pairs) | max \|diff\| 1.1e-14 |
 | Cold-start search reproduces every known best loop: 11 scf + 3 rot | all reproduced exactly (2058.92, 2011.30, 2008.51, 1961.02, 1958.00, 1956.38, 1948.98, 1945.95, 1942.37, 1941.28, 1936.89; rot 1944.49, 1915.98, 1833.03) |
 | Deep search (200 rounds, no group-move pre-screen) on 6 contenders | no value exceeded the known optima |
 | Independent checker (written from the spec without seeing this code): 12 final loops | all feasible; scores match to 4.5e-13 |
-| Note | The "random schedule" tests in the first suite used DP-optimal schedules for random weights. Genuinely random feasible schedules are covered by `ceilings_bound_truly_random_schedules`. |
 
 ## 5. Benchmarks (2-core container)
 
@@ -567,7 +514,6 @@ The load step now asserts the structural fact the exact DP relies on: every race
 | Exact best response, one uma | 110 ms | 35–40 µs | ~5.5 µs, plus a memo: ~99% of calls inside a search are repeats |
 | Ceiling table, all 2,278 pairs | 387 s | 0.18–0.25 s | 0.04 s |
 | Full search, one foursome (scf, 30 rounds) | ~6–7 min | 1.6–2.3 s | ~0.03–0.05 s |
-| Whole pool (screen + search) | hours | 14–44 s | **0.4–1.2 s** |
 
 v1 → v2 is byte-identical on every job tested (only timing fields differ). The changes:
 - `dp_exact`: precomputed per-option win tables, no per-call allocation, and loops inverted so choice pairs are outer and states inner, which keeps the tie-breaking order.
@@ -575,11 +521,9 @@ v1 → v2 is byte-identical on every job tested (only timing fields differ). The
 - A best-response memo per `optimize` call, keyed on exact weight bits.
 - `group_moves` reuses probability vectors.
 
-Rejected: a speculative work queue in `best`, which was slower at the current speed.
-
 ## 6. Limits
 
-- **The ranking among searched survivors is heuristic.** The search reproduces every known optimum and the deep search found nothing better, but no proof is given that a survivor's true optimum isn't higher. The ceilings are 30–110 points loose, so certifying would need a much tighter relaxation.
-- **Model assumptions (§1) are user-supplied or community-derived:** the win formula and the affinity-only objective. The skill modes' per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
+- **Schedules are heuristic.** `optimize` reproduces every known optimum and the deep search found nothing better, but no proof is given that a structure's true schedule optimum isn't higher.
+- **Model assumptions (§1) are user-supplied or community-derived:** the win formula and the affinity-only objective. The skill model's per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
 - **Junior G1s need 1,000 fans and a debut win gives 700.** Unless a fan bonus applies, add one extra Junior race the uma wins, before Early Nov. This doesn't change affinity.
 - **Base-outfit aptitudes by default.** Use `OUTFIT=chara:card` for alternate outfits (Vodka 100802, Daiwa 100902, Urara 105202); this needs a re-export.
