@@ -1111,13 +1111,33 @@ fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
         std::mem::swap(out, tmp);
     }
 }
+/// Per leaf (as `leaf_products`) the best outfit's `Env::rise` of trainee (sts, ews: her outfits' coverage and own
+/// chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain target k]:
+/// per outfit and target the factor at each of her four star levels (1 where it can't rise), their product per leaf
+#[allow(clippy::too_many_arguments)]
+fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa: &[f64], uncv: &[usize], lp: &mut Vec<f64>, lp_tmp: &mut Vec<f64>) -> Vec<f64> {
+    let nu = uncv.len(); let mut rz = vec![0.0f64; 1usize << (2 * nu)];
+    for (st, ew) in sts.iter().zip(ews) {
+        let g: Vec<[f64; 4]> = (0..nu).map(|k| { let i = uncv[k]; [0, 1, 2, 3].map(|sg| {
+            let qn = 1.0 - x0[k] * xms[sg];
+            if st[k] > 0 || qn <= qa[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - qn)) / (1.0 - (1.0 - ew[k]) * (1.0 - qa[i])) } }) }).collect();
+        leaf_products(&g, lp, lp_tmp);
+        for (rv, &pr) in rz.iter_mut().zip(lp.iter()) { if pr > *rv { *rv = pr; } }
+    }
+    rz
+}
 /// The pick's upper bound per outcome (`outcomes.y_hi`, read by the page's reroll): the most V can fall through her
 /// veteran's DIRECT lifts. The outcomes, base and own-8/8 credit (`her_trios`) are `score_career`'s; but each stage
 /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
 /// bounded from the candidate's exact best now (pnow): every pair (y, z) of today's pool that keeps the plan's places is
 /// a career of hers worth at most pnow, so (`Env::rise`: E(q') <= E(q) x rise(q', q) for every deck)
 ///     value(y, her) = c' E_best(q') <= c' (pnow / c_yz) rise(q', q_yz),
-/// the least over z (the veteran most like her: rise 1 when one already carries what she does); also at most the ceiling
+/// the least over z (the veteran most like her: rise 1 when one already carries what she does), and over the main
+/// search's found careers f of her deck class that it fully checked (a `Ref` at q_f: every deck of every classmate is
+/// worth at most val_f there, `Env::seen`, under the caps every search assumes; the found careers are the search's
+/// answer, so the anchors depend on the job alone)
+///     value(y, her) <= c' val_f rise(q', q_f);
+/// also at most the ceiling
 /// (`Env::ceiling` through `Sim::fastc`, under EXACT_RHO: per outfit and target A - B (1 - q'), `outfit_fast`'s factor at
 /// q'; before 2026-10-09 the bound took A + B q', B more per target, valid and on p16 3.3 times as high at the pick's
 /// partners). A candidate's step costs the lowest cost at those odds
@@ -1133,7 +1153,7 @@ fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
 ///     saving. Not bounded (channel 2, out of scope by the owner's decision): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
 #[allow(clippy::too_many_arguments)]
-fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, fix: &[usize], x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (Vec<f64>, Vec<f64>) {
+fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, fix: &[usize], msv: &Solved, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (Vec<f64>, Vec<f64>) {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
@@ -1153,7 +1173,12 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
         if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || s.fastc[u].is_empty() { continue; }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
         let (sts, ews) = (s.env.sts0[u].clone(), s.env.ew0[u].clone());
-        let uncv_u = s.env.uncv.clone();
+        // the main search's found careers of her deck class that it fully checked (a Ref at the career's own chances):
+        // (q_f, val_f), the best value of any deck at q_f for every trainee of the class (`Env::seen`), scale 1
+        let ct = s.env.cls[u];
+        let fr: Vec<(Vec<f64>, f64)> = msv.found.iter().filter(|f| s.env.cls[f.t] == ct).filter_map(|f| {
+            let (fq, _, _) = s.env.lineage(pool, f.t, f.a, f.b);
+            msv.refs.get(f.t)?.iter().find(|r| r.q == fq).map(|r| (r.q.clone(), r.val)) }).collect();
         for y in (0..iv).filter(|&y| legal_pair(d, &pv, u, y, iv)) {
             let sl = s.env.slots(&pv, u, y, iv);
             let Some(pos) = sl.iter().position(|z| z.parent && z.legacy == iv) else { continue };
@@ -1178,18 +1203,15 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
                 for z in (0..legs.len()).filter(|&z| z != y && legal_pair(d, pool, u, y, z) && fix.iter().all(|&f| f == y || f == z)) {
                     let (qz, _, cz) = s.env.lineage(pool, u, y, z);
                     if cz <= 0.0 { continue; }
-                    // per outfit and target the rise factor at each of her four star levels (1 where it can't rise)
-                    let mut rz = vec![0.0f64; nleaf];
-                    for (st, ew) in sts.iter().zip(&ews) {
-                        let g: Vec<[f64; 4]> = (0..nu).map(|k| { let i = uncv_u[k]; [0, 1, 2, 3].map(|sg| {
-                            let qn = 1.0 - x0[k] * xms[sg];
-                            if st[k] > 0 || qn <= qz[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - qn)) / (1.0 - (1.0 - ew[k]) * (1.0 - qz[i])) } }) }).collect();
-                        leaf_products(&g, &mut lp, &mut lp_tmp);
-                        for (rv, &pr) in rz.iter_mut().zip(&lp) { if pr > *rv { *rv = pr; } }
-                    }
+                    let rz = rise_leaves(&sts, &ews, &x0, &xms, &qz, &uncv, &mut lp, &mut lp_tmp);
                     let f = bs.pnow[ui] / cz;
                     for (av, rv) in anc.iter_mut().zip(&rz) { let v = f * rv; if v < *av { *av = v; } }
                 }
+            }
+            // and over the main search's proven careers of her deck class: E_best(q_f) = val_f there
+            for (fq, fv) in &fr {
+                let rz = rise_leaves(&sts, &ews, &x0, &xms, fq, &uncv, &mut lp, &mut lp_tmp);
+                for (av, rv) in anc.iter_mut().zip(&rz) { let v = fv * rv; if v < *av { *av = v; } }
             }
             // at most the ceiling too (under EXACT_RHO)
             for (cv, av) in ceil.iter_mut().zip(&anc) { *cv = (rf * *cv).min(*av); }
@@ -1619,7 +1641,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         for i in 0..runs.len() { if near(i) && runs[i].1.val > runs[pk].1.val { pk = i; } }
         let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
         let (x, f) = (runs[pk].0, runs[pk].1.clone());
-        Some((pk, outcome_hi(&mut s, d, &base, legs, pool, fix, x, f.a, f.b, &f.sel, &mut buf)))
+        Some((pk, outcome_hi(&mut s, d, &base, legs, pool, fix, sv, x, f.a, f.b, &f.sel, &mut buf)))
     } else { None };
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time

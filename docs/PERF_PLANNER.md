@@ -167,6 +167,12 @@ plan/compare/reroll state machines, views and import/export.
   beyond IDX_PARTNERS moved nothing (the band comes from the best two). (1) The ceiling's factor fixed: provisional
   (the chance a roll runs the full plan for a "no saving" check) p16 0.307 -> 0.156, gm16 0.311 -> 0.148, p16_ss
   0.401 -> 0.238, p10 0.474 and p11 0.028 unchanged; no added work. val/plan: only `y_hi` and `provisional` move.
+  (2) Anchors from the main search's found careers of the candidate's deck class (their `Ref`s: E_best at q_f, for every
+  classmate) beside today's pairs: p16 0.156 -> 0.144, gm16 0.148 -> 0.132, p16_ss 0.238 -> 0.229, p10, p11 unchanged.
+  Every proof the plan holds (`Env::seen`, every search's fully checked decks) took p16 to 0.036, but `seen` and the main
+  search's other Refs depend on the worker's history (kept plans, kept proofs: a candidate a kept proof bounds leaves
+  no Ref), and with them a roll's verdict could too (a check that runs can find a channel-2 saving the bound leaves
+  out); the found careers are the search's answer, the same in any history.
 - Per-class exact caps (2026-10-09, owner's call; outputs identical on the seven val/plan jobs, mono and the full val
   apart from cap fields and counters; the budget ladder now certifies higher caps on five val jobs). The cap on exact /
   product odds by the deck's chain-varying targets: 0-2 1.05 (assumed), 3+ or a multi-target group 1.25; a node
