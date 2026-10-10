@@ -198,7 +198,7 @@ to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Spec
 8/8)"): per option "This career: 1 in X" and *Saves per run* (hover for her role, how often she lifts the step-1 trainee and
 to what odds, and the two-deep part; **What do these mean?** explains it: the planner's expected careers to a fully looped
 parent with today's veterans, worked out again with her veteran for every result she could roll, averaged by their
-chances, minus the run itself), tags *planner's pick*, *about the same* and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
+chances, minus the run itself), tags *planner's pick*, *about the same* (within a quarter of a career of the best Saves per run, too close for the estimate to call; the planner then takes the better odds) and *best odds now*, and **Use this**; the career on show is marked. The eight highest are listed (and always the best odds), with
 one line for the rest ("41 more umas scored, +7.1 to +46.2 per run"). With no plan (the trainee chosen, or the plan
 failed), the six best by odds, with no saving.
 
