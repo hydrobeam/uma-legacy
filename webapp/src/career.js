@@ -53,6 +53,16 @@ function paint() {
     n.appendChild(sp); }
   else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
     if (status.act && !searching) { const b = btn(status.act.label, 'primary', status.act.run); b.id = 'run-act'; n.append(' ', b); } }   // e.g. Try sample veterans
+  // before the first answer: the analysis panel's frame, so the space beside the tree isn't blank while she is planned;
+  // renderResults replaces it with the answer, and a run that ends without one takes it away
+  const wait = $('results').querySelector(':scope > .simwait');
+  if (searching && !shown() && !$('results').firstElementChild) $('results').append(waitEl());
+  else if (!searching && wait) wait.remove();
+}
+function waitEl() {
+  const w = el('div', 'simwait'), box = sec('simulation', 'Veteran analysis'), body = el('div', 'ud simwbody');
+  const p = el('p'); p.innerHTML = spinHTML(); p.append('Her card, sparks and the comparison appear here once the planner has picked the career.');
+  body.append(p); box.append(body); w.append(box); return w;
 }
 // the plan's line: finished, or stopped by its time limit, or failed
 function planNote() {
