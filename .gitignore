@@ -5,6 +5,7 @@
 !/BUILD.md
 !/README.md
 !/AGENTS.md
+!/LICENSE
 !/pyproject.toml
 !/uv.lock
 !/.python-version
