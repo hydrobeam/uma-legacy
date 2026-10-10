@@ -1,4 +1,4 @@
-"""Independent check of the solver's exact landing odds (`joint_trainee` in deck.rs).
+"""Independent check of the solver's exact landing odds (`joint_fast` in src/deck/joint.rs).
 
 For every deck result of a validation run, recompute P(all targets land) from the job, the card data and the
 reported decks and loops, jointly over the chain process (Binomial(21, 0.35) events, each advancing a random remaining
@@ -199,7 +199,9 @@ def check(out, job, d):
                 ew = [1 - math.prod(1 - h[2] for h in job.get('trainee_hints', []) if h[0] in ids and h[1] == g) for g in unc]
                 res.append((lv, ew))
             return res
-        mine = sum(max(lineage(pm[L['t']], lv, L['q'], ew) for lv, ew in options(L['t'])) for L in lp['detail']['lineages']) / 12
+        # the mean over the structure's lineages: 12 in a four-uma loop, 3 in a three-uma rotation
+        lins = lp['detail']['lineages']
+        mine = sum(max(lineage(pm[L['t']], lv, L['q'], ew) for lv, ew in options(L['t'])) for L in lins) / len(lins)
         worst = max(worst, abs(mine / lp['p_all'] - 1))
     return worst
 
