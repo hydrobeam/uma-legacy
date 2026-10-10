@@ -428,7 +428,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   parent bounded over every partner y by the least over anchors A of c' E_A rise(q', q_A) (`Env::rise`: no assumed
   cap), E_A at least the best odds at q_A: today's pairs (y, z) at p_now / c_yz, the main search's found careers of the
   candidate's deck class at their `Ref`s, and, for the partners behind the band's likeliest outcomes, her best deck
-  searched at her 2 and 3 stars on every uncertain target (`HI_STARS`; at most `HI_SEARCHES` = 10 searches; outcomes whose
+  searched at her 2 and 3 stars on every uncertain target (`HI_STARS`; at most `HI_SEARCHES` searches, 0 by default = off, 10 when on; outcomes whose
   partners' bounds pass `HI_RISE` = 1.5 x p_now are left as they are), the latter two under the caps; and by the ceiling
   (C4's, `outfit_fast` at q'); the step at `Cont::cost_lo`); `provisional`: the chance a roll reads
   y < 0.5 <= y_hi, which the page checks exactly. The replan's other careers with her as a parent are not bounded (its

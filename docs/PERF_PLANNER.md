@@ -175,7 +175,8 @@ plan/compare/reroll state machines, views and import/export.
   out); the found careers are the search's answer, the same in any history. (3) Exact anchors: for the partners behind
   the band's likeliest outcomes (per outcome, most likely first, every partner above p_now of each candidate whose odds
   move V, taken whole while they fit; none past `HI_RISE` = 1.5 x p_now), her best deck searched at her 2 and 3 stars on
-  every uncertain target, at most `HI_SEARCHES` = 10: p16 0.144 -> 0.0275, gm16 0.132 -> 0.080, p16_ss 0.229 -> 0.086,
+  every uncertain target, at most `HI_SEARCHES` = 10 (off by default, `HI_SEARCHES` = 0, owner's call 2026-10-09: not worth
+  the plan's cost): p16 0.144 -> 0.0275, gm16 0.132 -> 0.080, p16_ss 0.229 -> 0.086,
   p16_ura 0.144 -> 0.0275; p10, p11 none run (their band needs partners at 2.5 x p_now and more; 63 searches moved p10
   only to 0.378). Callgrind, the val/plan job (search and plan), main against this: p16 9.745G -> 10.332G (+6.0%; the
   10 searches 0.555G), gm16 13.976G -> 15.522G (+11.1%; 1.511G), p10 22.955G -> 22.980G (+0.1%). The plan's `work`

@@ -1152,7 +1152,8 @@ fn saving_lo(bs: &ScoreBase, up: &[f64], m: usize, full_m: usize, xi: Option<usi
 /// most 1 is rare at the rank's mix: adding 1 star moved p16's provisional 0.0275 -> 0.0272, gm16 0.0796 -> 0.0742 for
 /// +8.8% and +16.5%
 const HI_STARS: [usize; 2] = [2, 3];
-const HI_SEARCHES: usize = 10;
+/// Off by default (owner, 2026-10-09: not worth the plan's +6-11%); 10 gives the numbers above.
+const HI_SEARCHES: usize = 0;
 /// ... and only for band outcomes whose partners' bounds are within this factor of p_now: a cost rule, not part of the
 /// bound. It skips p10 and p11, whose band needs partners at 2.5 times p_now and more: there 15 searches (at 1, 2 and 3
 /// stars) freed nothing (p11: 233 ms native spent), and only 63 (805 ms) moved p10 (0.474 -> 0.378); 1.3 and 1.5 chose
