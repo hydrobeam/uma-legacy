@@ -14,8 +14,8 @@ evidence), `docs/RESEARCH.md` (the maths), `docs/USAGE.md` (the page), `docs/PER
   Speed work keeps outputs byte-identical (`docs/PERF.md`). After data or solver changes, rerun `./build.sh pb`.
 - **`/about` states the model's exact constants** (`webapp/about.template.html`). A change to a modelling constant
   updates it in the same change, along with `docs/MODEL.md` and `docs/RESEARCH.md`.
-- **Game facts come from data**: `master.mdb`, the exported JSON and GameTora's files, never memory. Card events are
-  decoded only by the shared decoder in `pkg/loopopt/export/`.
+- **Game facts come from data**: `master.mdb`, the exported JSON and GameTora's files, never memory. GameTora's files
+  are read and decoded only through `pkg/loopopt/export/gametora.py`.
 - **Pages** recreate the game's UI: its colours with a 3:1 contrast floor on the planner pages and WCAG AAA on /about,
   both checked by the browser suite; phones are designed at 375 px wide first.
 - **Never commit** anything from the game (`game/`, `webapp/img/`) or downloaded (`cache/`). `.gitignore` is a
