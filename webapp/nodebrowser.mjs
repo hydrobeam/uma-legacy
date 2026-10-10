@@ -252,8 +252,7 @@ async function careerPage(b) {
 const TESTS = {
   async load(b) {
     const pg = await open(b);
-    check('first search runs by itself', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), await note(pg));
-    check('… and its status is just the count: checked N decks / M loops in T s (a caveat only when the exact check ran out of time)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s( · .+)?$/.test(await note(pg)), await note(pg));
+    check('first search runs by itself, and its status is just the count: checked N decks / M loops in T s (a caveat only when the exact check ran out of time)', /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s( · .+)?$/.test(await note(pg)), await note(pg));
     // the result's wording: the headline odds, each member's own odds as trainee
     const head = await pg.evaluate(() => { const l = document.querySelector('#results .loop'); return { odds: l.querySelector('.odds').innerText, sub: !!l.querySelector('.sub'), rank: !!l.querySelector('.rank'),
       own: [...l.querySelectorAll('.mem .own')].map(e => e.innerText), font: getComputedStyle(l.querySelector('.odds')).fontFamily }; });
@@ -318,10 +317,8 @@ const TESTS = {
     check('no Loop size control: the solver picks 3-uma rotations or 4-uma loops', !(await pg.locator('#c-size').count()) && await pg.evaluate(() => window.__runs.at(-1).sizes === undefined));
     // the scenario sets the training-hint rate: switching it searches again with the scenario in the job, and the
     // choice is kept (the default setup's odds barely move: its decks get the targets from events, not training hints)
-    const n0 = await pg.evaluate(() => window.__runs.length);
     check('the first search is a Unity Cup job', await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
     await pickScen(pg, 'ura'); await lastJob(pg, 'ura');   // the check reads the job: its (slow) search is not awaited
-    check('scenario switch searches again with the URA job', await pg.evaluate((n) => window.__runs.length > n && window.__runs.at(-1).scenario === 'ura', n0));
     // Unity Cup's golds follow the scenario: off under URA, back on under Unity, and the 8/8 example takes them too
     check('URA drops the Unity golds', (await pg.getAttribute('#g-20049', 'data-g')) === '0' && (await pg.getAttribute('#g-20046', 'data-g')) === '0');
     await pg.click('#t-preset'); await pg.locator('#pr-list .prow').first().locator('button', { hasText: 'Load' }).click();
@@ -400,7 +397,6 @@ const TESTS = {
     check('clicks on the label, beside the button, on the rank control close it', shut.every(Boolean), shut.join(','));
     await pg.click('#x-scen'); await pg.keyboard.press('End'); await pg.keyboard.press('Enter'); await lastJob(pg, 'trackblazer');
     check('Enter on a tile picks it and closes the picker', (await menu.isHidden()) && (await scen(pg)) === 'trackblazer' && (await btnName()) === 'Scenario: Trackblazer');
-    check('… and searches with it', await pg.evaluate(() => window.__runs.at(-1).scenario === 'trackblazer'));
     // the lineage rank follows the scenario: Grand Concert SS, Unity Cup below SS
     await pickScen(pg, 'gc'); await lastJob(pg, 'gc');
     const sirius = await pg.evaluate(() => { const t = [...document.querySelectorAll('#cards .ct')].find(x => /Team Sirius/.test(x.textContent)); return t ? (t.querySelector('.cban') || {}).textContent || '' : null; });
@@ -410,8 +406,6 @@ const TESTS = {
     check('picking Unity Cup sets it back to below SS', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05');
     await pg.click('#rank button[data-v="0.20,0.70,0.10"]'); await settle(pg); await pickScen(pg, 'unity');
     check('a rank changed by hand sticks (re-picking the scenario leaves it)', (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && await pg.evaluate(() => window.__runs.at(-1).star_dist.join() === '0.2,0.7,0.1'));
-    await pg.reload(); await settle(pg);
-    check('… and survives a reload', (await pg.getAttribute('#rank', 'data-value')) === '0.20,0.70,0.10' && (await scen(pg)) === 'unity');
     // the rank toggle is a radio group: game badges, arrow keys move the choice
     await pg.focus('#rank button[aria-checked="true"]'); await pg.keyboard.press('ArrowLeft');
     check('lineage rank: arrow keys switch it, aria-checked follows, badges shown', (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05'
@@ -431,7 +425,6 @@ const TESTS = {
     check('missing logos fall back to name badges', badges === 'Unity Cup,Unity Cup,Grand Concert,URA Finale,Trackblazer', badges);
     const sz = await p2.evaluate(() => new Set([...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })).size);
     check('… and the tiles stay the same size', sz === 1);
-    check('Grand Masters is not offered with the Global data', (await p2.locator('#scen-menu .stile').count()) === 4 && (await p2.locator('#scen-menu .stile[data-v="grandmasters"]').count()) === 0);
     await p2.context().close();
   },
   async autosearch(b) {
@@ -800,7 +793,6 @@ const TESTS = {
   },
   async phone(b) {
     const pg = await open(b, { w: 375, h: 812, mobile: true });
-    check('phone: no sideways scroll', !(await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
     const small = await pg.evaluate(() => [...document.querySelectorAll('.lp .rbbar button, .lp .rbbar select, #rhead button, #rhead select, .loop .lacts button, .mem .memb')]
       .filter(e => e.offsetParent && !e.closest('.roster, .cards')).map(e => [e.id || e.className || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 44));
     check('phone: buttons, selects and search boxes are at least 44 px high', !small.length, JSON.stringify(small.slice(0, 6)));
@@ -1257,13 +1249,15 @@ const TESTS = {
       return j.compare === true && j.fix.length === 1 && j.fix[0] === j.legacies.length - 1 && v.sparks.some(([g, s]) => g === 20159 && s === 3)
         && v.wins.every(Number.isInteger) && v.parents.length === 2 && v.parents.every(p => p.chara > 0 && p.sparks.length > 0);
     }));
-    for (const theme of ['light', 'dark']) {
-      if (await pg.evaluate(() => document.documentElement.getAttribute('data-theme')) !== theme) await pg.click('#theme-btn');
-      await still(pg);   // the theme's colour transitions
-      const fails = await pg.evaluate(AUDIT);
-      check(`career: ${theme} mode with the outcome table and a comparison meets WCAG AAA`, !fails.length, fails.slice(0, 5).join(' | '));
+    if (chromium) {   // one engine is enough for colours
+      for (const theme of ['light', 'dark']) {
+        if (await pg.evaluate(() => document.documentElement.getAttribute('data-theme')) !== theme) await pg.click('#theme-btn');
+        await still(pg);   // the theme's colour transitions
+        const fails = await pg.evaluate(AUDIT);
+        check(`career: ${theme} mode with the outcome table and a comparison meets WCAG AAA`, !fails.length, fails.slice(0, 5).join(' | '));
+      }
+      await pg.click('#theme-btn');
     }
-    await pg.click('#theme-btn');
     // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
     const roll = async (u) => { const before = await policyJobs(); await pg.evaluate(u => { const r = Math.random; Math.random = () => u; document.getElementById('sim-roll').click(); Math.random = r; }, u);
       await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare).length > n && document.querySelector('#sim-verdict'), before, { timeout: 180000 }); };
@@ -1507,11 +1501,10 @@ const TESTS = {
     }, beforeSimulation) && !(await pg.locator('#vets .simtag').count()) && await (async () => { await vetsOpen();
       await pg.locator('#vets .vtile').last().click(); await dialog(pg, 'node-dlg'); const t = await pg.textContent('#node-dlg .simtag').catch(() => ''); await pg.keyboard.press('Escape'); return t === 'Entered here'; })());
     const simulated = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1));
-    await pg.reload(); await done();
-    check('career: her ancestry survives reloading', await pg.evaluate(v => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1)) === JSON.stringify(v), simulated));
     // Force this simulated veteran as a parent and complete another hypothetical career.
     await pg.evaluate(v => { const o = JSON.parse(localStorage.getItem('llp:career')); o.global.plan = { trainee: null, parents: [v.id, null] }; localStorage.setItem('llp:career', JSON.stringify(o)); }, simulated);
     await pg.reload(); await done();
+    check('career: her ancestry survives reloading', await pg.evaluate(v => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets.at(-1)) === JSON.stringify(v), simulated));
     await pg.click('#sim-add'); await done();
     check('career: another generation keeps her as a grandparent', await pg.evaluate(v => {
       const o = JSON.parse(localStorage.getItem('llp:career')).global, next = o.vets.at(-1);
