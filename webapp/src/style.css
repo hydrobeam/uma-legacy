@@ -1101,8 +1101,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   .rb .rbmain > #results { display: contents; }
   .rb .rbmain > #tree { grid-column: 1; grid-row: 3 / span 2; align-self: start; }
   .rb #results > .lhead { grid-column: 2; grid-row: 3; }
-  .rb #results > #sim-top { grid-column: 2; grid-row: 4; }
-  .rb #results > :not(.lhead):not(#sim-top) { grid-column: 1 / -1; }
+  .rb #results > #sim-top, .rb #results > .simwait { grid-column: 2; grid-row: 4; }   /* (the frame shown before the first answer, in its place) */
+  .rb #results > :not(.lhead):not(#sim-top):not(.simwait) { grid-column: 1 / -1; }
 }
 /* the tree as the game's legacy display: portraits only, details in the node popup */
 .rb .pn { padding: 6px 8px 8px; gap: 4px; justify-items: center; }
@@ -1151,9 +1151,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .oddtab tbody tr > :first-child { text-align: left; border-left: 1px solid var(--gm-line); border-radius: 8px 0 0 8px; }
 .oddtab tbody tr > :last-child { border-right: 1px solid var(--gm-line); border-radius: 0 8px 8px 0; }
 .oddtab tbody tr.all > * { background: var(--gm-gold); color: var(--gm-gold-ink); }
-@media (min-width: 1180px) { .rb #results > #sim-top { grid-row: 3; } .rb .rbmain > #tree { grid-row: 3; } }
-@media (min-width: 1180px) { .rb #results > #sim-top, .rb .rbmain > #tree { grid-row: 2; } }
-@media (min-width: 1180px) { .rb #sim-top > #simulation { margin-top: 0; } }
+@media (min-width: 1180px) { .rb #results > #sim-top, .rb #results > .simwait { grid-row: 3; } .rb .rbmain > #tree { grid-row: 3; } }
+@media (min-width: 1180px) { .rb #results > #sim-top, .rb #results > .simwait, .rb .rbmain > #tree { grid-row: 2; } }
+@media (min-width: 1180px) { .rb #sim-top > #simulation, .rb .simwait > .simulation { margin-top: 0; } }
 /* the comparison, compact, beside the card: a game panel with the verdict, the odds as one-line rows, the next career */
 @container (min-width: 820px) {
   #simulation { grid-template-columns: minmax(0, 600px) minmax(220px, 1fr); column-gap: 16px; }
