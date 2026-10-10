@@ -1521,13 +1521,13 @@ const TESTS = {
     await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
     const trioRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
     const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
-    // the plan behind the numbers sits in the "What do these mean?" popup, with the explanation of saves per run
+    // the plan behind the numbers sits in the "What do these mean?" popup: saves per run defined first, then the route and its formula
     await pg.click('#save-why'); await dialog(pg, 'save-dlg');
     const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');
     await pg.mouse.click(5, 5);   // a click on the backdrop closes it
     check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
       && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
-      && /1 in [\d,]+/.test(trioLoop) && /run this career once first, then follow the route/.test(saveTxt) && /Why not just run the best odds\?/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && /1 in [\d,]+/.test(trioLoop) && /^What these meanSaves per runCareers to a fully looped parent .+ now, minus careers if you run this career first/.test(saveTxt) && /Saves per run = [\d,]+ − that average − 1\./.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
       `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

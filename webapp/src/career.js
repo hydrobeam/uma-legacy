@@ -832,7 +832,12 @@ function optionsEl() {
   const P = planS.state === 'done' ? planS.r : null, on = shown();
   const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen) : last.r.results;
   const tb = el('table', 'cartab optab');
-  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col">This career</th><th scope="col">Saves per run</th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
+  // the two number columns' headers explain themselves on hover or keyboard focus (gmtip.js); on touch, "What do these mean?"
+  const n = state.targets.length, ths = tb.tHead.rows[0].cells;
+  for (const [i, text, tip] of [[1, 'This career', `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`],
+    [2, 'Saves per run', `Careers to a fully looped parent now, minus careers if you run this one first, her own run included. +1.1: you get there 1.1 careers sooner on average.`]]) {
+    const t = el('span', 'thtip', text); t.title = tip; t.tabIndex = 0; ths[i].appendChild(t); }
   // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
   if (P) { const q = el('button', 'btn savewhy', 'What do these mean?'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog'); q.onclick = () => openSaveWhy(P); box.appendChild(q); }
   for (const r of list) {
@@ -861,7 +866,7 @@ function openSaveWhy(P) {
   if (!saveDlg) { saveDlg = el('dialog', 'gmdlg'); saveDlg.id = 'save-dlg'; saveDlg.setAttribute('aria-labelledby', 'save-title');
     saveDlg.addEventListener('close', () => $('save-why')?.focus()); document.body.appendChild(saveDlg); }
   saveDlg.textContent = ''; const n = state.targets.length;
-  const h = el('h3', 'gmdhdr', 'Saves per run'); h.id = 'save-title'; saveDlg.appendChild(h);
+  const h = el('h3', 'gmdhdr', 'What these mean'); h.id = 'save-title'; saveDlg.appendChild(h);
   const body = el('div', 'gmdbody savebody');
   // what the number is, the yardstick (the plan's route from today's veterans, step by step, with its careers) and how a
   // row is measured against it (run this career once first, then follow the route), with a worked example from the plan
@@ -875,15 +880,16 @@ function openSaveWhy(P) {
   // the example: the route's first step that is a plain rerun, her odds lifted by 6% (one helpful parent)
   const ex = ms.find(m => !m.real && !(m.builds > 0) && m.p > 0);
   const exTxt = ex ? ` For example, if as a parent she lifted ${ex.trainee}'s best odds from ${fmtIn(ex.p)} to ${fmtIn(ex.p * 1.06)}, that step would take about ${fmtN(1 / ex.p - 1 / (ex.p * 1.06))} fewer careers.` : '';
-  body.append(el('div', 'gmdsub', 'What it measures'),
-    el('p', '', `How many careers running this career takes off your road to a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n}), after paying for the run itself.`),
-    el('div', 'gmdsub', 'The yardstick: the plan\'s route'),
+  // the definition first, as a subtraction; then the route it is measured on, how her side is worked out, and the odds column
+  const loop = `a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n})`;
+  body.append(el('div', 'gmdsub', 'Saves per run'),
+    el('p', '', `Careers to ${loop} now, minus careers if you run this career first, her own run included. +1.1: running her first gets you there 1.1 careers sooner on average.`),
+    el('div', 'gmdsub', 'Now: the plan\'s route'),
     el('p', 'oloop', route),
-    el('div', 'gmdsub', 'How a row is worked out'),
-    el('p', '', `Each row asks: run this career once first, then follow the route. Do you get there sooner? Her veteran joins your parents, so she can make the route's steps cheaper.${exTxt} The planner works the route out again with her veteran, once for every result she could roll (which of the ${n} targets land, at how many stars), and averages those by how likely each result is; most results lift nothing. Saves per run = ${V ? `${V}` : 'the route\'s careers'} − that average − 1 (her run). For the few highest rows it also adds what her best results would open for the career after.`),
-    el('p', '', `+1.1: on average, running her first gets you there 1.1 careers sooner, her run already paid for. 0: her veteran is worth exactly the run. Below zero: going straight to the route is cheaper.`),
-    el('div', 'gmdsub', 'Why not just run the best odds?'),
-    el('p', '', `The odds column only says who is most likely to land all ${n} in this one run. A fully looped parent needs ${n}/${n}s of two different umas, then a third career off both of them, and every veteran you make becomes a parent for the runs after it. So a run with slightly worse odds can be the better move when what she leaves behind makes the next runs cheaper. The planner counts both: her own shot, and what her veteran does for the rest.`));
+    el('div', 'gmdsub', 'Running her first'),
+    el('p', '', `Her veteran joins your parents and can make the route's steps cheaper.${exTxt} The planner reworks the route for every result she could roll (which of the ${n} targets land, at how many stars), weighted by its chance; most change nothing. Saves per run = ${V || 'the route\'s careers'} − that average − 1. The top rows also count what her best results open for the career after.`),
+    el('div', 'gmdsub', 'This career'),
+    el('p', '', `Her odds of landing all ${n} in this one run. The best odds aren't always the best move: Saves per run also counts what her veteran does for the runs after.`));
   saveDlg.appendChild(body);
   const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
   saveDlg.showModal(); c.focus();
