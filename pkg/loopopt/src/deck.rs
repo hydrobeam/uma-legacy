@@ -122,12 +122,12 @@ fn d_hinc() -> u32 { 1 }
 const CHAIN_N: u32 = 21;
 const CHAIN_P: f64 = 0.35;
 /// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` below: h = base x (1 + hf/100),
-/// refit 2026-10-05 on 2,402 runs with the Lv-5 cap, docs/HINT_RATE_FIT.md; Grand Masters (JP) has no runs: a placeholder.)
+/// refit 2026-10-05 on 2,402 runs with the Lv-5 cap, docs/RESEARCH.md section 6; Grand Masters (JP) has no runs: a placeholder.)
 fn scenario_name(s: &str) -> &str {
     match s { "unity" => "Unity Cup", "gc" => "Grand Concert", "ura" => "URA Finale", "trackblazer" => "Trackblazer", "grandmasters" => "Grand Masters", x => x }
 }
 pub(crate) fn hint_base(scenario: &str) -> f64 {
-    // fitted on uma-it IT runs (docs/HINT_RATE_FIT.md, refit 2026-10-05 on 2,402 runs); Grand Masters has no data: a placeholder
+    // fitted on uma-it IT runs (docs/RESEARCH.md section 6, refit 2026-10-05 on 2,402 runs); Grand Masters has no data: a placeholder
     match scenario { "gc" => 2.03, "ura" => 1.60, "trackblazer" => 1.81, "grandmasters" => 2.30, _ => 2.70 }
 }
 /// P(none of `k` given skills of a card's pool is drawn) in `t` training-hint draws over its `n` skills, each draw

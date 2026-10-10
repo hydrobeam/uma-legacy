@@ -1,6 +1,6 @@
 # Legacy Loop Planner: instructions for coding agents
 
-Read this file, then `docs/HANDOFF.md` (where the work stands and why), before doing anything. `docs/MODEL.md`
+Read this file before doing anything. `docs/MODEL.md`
 holds every modelling assumption with its evidence; `docs/RESEARCH.md` the maths behind each fitted
 value; `docs/SOURCES.md` lists the outside sources and repos. `docs/BUILD.md` is the build reference (steps,
 assets, tests, repository layout); `docs/SOLVER.md` the solver's model and job fields; `docs/USAGE.md` the page;
@@ -76,7 +76,7 @@ Verdict first, then numbers; no padding. For this project:
   messages that say what changed and why. Commits are GPG-signed; never use `--no-gpg-sign`.
 - No AI-tool attribution in commits: no Co-Authored-By lines, session links or "Generated with" footers.
 - Never rewrite history or force-push; other agents may work in the repo.
-- Tags `vN` mark page versions and milestones (v16 onward; milestones since v24 are listed in HANDOFF section 2).
+- Tags `vN` mark page versions and milestones (v16 onward; `git tag -n1` lists them).
 - `master.mdb` files are never committed (`.gitignore` is a whitelist; add new tracked paths to it explicitly). Nor
   are game assets (`webapp/img/`, `cache/`, bundles) or decryption keys.
 

@@ -21,7 +21,6 @@
 !/pkg/loopopt/gametora.json
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
-!/pkg/loopopt/README.md
 !/pkg/loopopt/card_events.json
 !/pkg/loopopt/event_shares.json
 !/pkg/loopopt/data.json
@@ -41,7 +40,6 @@
 !/jp/card_events_nodates.json
 !/webapp/
 /webapp/*
-!/webapp/README.md
 !/webapp/build.py
 !/webapp/index.template.html
 !/webapp/about.template.html
