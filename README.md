@@ -5,15 +5,11 @@ skills in Independent Training, with each uma's race schedule.
 
 Use it at https://uma-legacy.pages.dev.
 
-The career planner at `/career` picks the next career from your own veterans (imported from umadump, or pasted from an uma.moe lineage tree): trainee,
-parents and deck, chosen by how many careers it brings a fully looped parent closer (an 8/8 whose parents are 8/8s):
-exact over every result she can roll, valued against the cheapest trio of umas, each building her odds while it pays;
-a career counts both as a shot at an 8/8 and as a parent for the others. It shows the trio and each step's state, her
-race schedule and, for the veteran you actually got (or a random roll of the career), how many careers she saves. Both
-pages are drawn in the game's own style (its Umamusume Details card, buttons and art, in light and dark). Each deck
-borrows one friend's card when it helps. See `docs/USAGE.md`.
+The career planner at `/career` picks the next career from your own veterans (imported from umadump or uma.moe): the
+trainee, her parents and her deck, chosen by how many careers it brings you closer to a fully looped parent (an 8/8
+whose parents are 8/8s). For the veteran you actually got, it shows how many careers she saves.
 
-- Using the page: `docs/USAGE.md` (the page's own "How this works" explains the model in plain words)
+- Using the page: `docs/USAGE.md`; the page's own "How this works" explains the model in plain words
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
 - The solver (model, algorithms, job fields, command line): `docs/SOLVER.md`
 - The maths behind each fitted value: `docs/RESEARCH.md`; every modelling assumption with its evidence:

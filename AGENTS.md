@@ -1,16 +1,15 @@
 # Legacy Loop Planner: instructions for coding agents
 
-Read this file before doing anything. `docs/MODEL.md`
-holds every modelling assumption with its evidence; `docs/RESEARCH.md` the maths behind each fitted
-value; `docs/SOURCES.md` lists the outside sources and repos. `docs/BUILD.md` is the build reference (steps,
-assets, tests, repository layout); `docs/SOLVER.md` the solver's model and job fields; `docs/USAGE.md` the page;
-`docs/PERF.md` the speed protocol and the planner's speed record (read only the section you need: these docs are
-long).
+Read this file before doing anything. The docs: `docs/BUILD.md` (building, testing, the repository layout),
+`docs/SOLVER.md` (the solver's model, algorithms and job fields), `docs/MODEL.md` (every modelling assumption and its
+evidence), `docs/RESEARCH.md` (the maths behind each fitted value), `docs/SOURCES.md`, `docs/USAGE.md` (the page) and
+`docs/PERF.md` (the speed protocol and record). Read only the section you need.
 
 ## What this is
 
-An optimizer for Uma Musume: Pretty Derby (Global server) that finds the best four-uma legacy loop and support
-deck for landing a set of target skills in **Independent Training (IT)**. It is used for IT only.
+An optimizer for Uma Musume: Pretty Derby (Global server) that finds the best legacy loop (a three-uma rotation or a
+four-uma loop) and support decks for landing a set of target skills in **Independent Training (IT)**, and plans the
+next career from a player's veterans. It models IT only.
 
 - Three pages: the loop planner (`/`), the career planner (`/career`: expected careers to a looped parent from the
   player's veterans, Compare and Reroll) and `/about`. Unity Cup is the default scenario; the JP Grand Masters-era data
@@ -21,12 +20,7 @@ deck for landing a set of target skills in **Independent Training (IT)**. It is 
 - Card event rewards come only from GameTora's data files (`./build.sh gametora` downloads them into `cache/gametora/`).
 - The default targets (eight skill pairs) are listed in `docs/RESEARCH.md`.
 
-## How to communicate
-
-Verdict first, then numbers; no padding. For this project:
-
-- When naming umas in results, give the outfit used (e.g. "Agnes Digital [Full-Color Fangirling]", "Oguri Cap, any
-  outfit"). Don't specify awakening levels. Don't describe goal races when describing a setup.
+When naming umas in results, give the outfit (e.g. "Agnes Digital [Full-Color Fangirling]", "Oguri Cap, any outfit").
 
 ## How to work in this repo
 
@@ -68,7 +62,7 @@ Delegated work gets a written brief that carries these rules and the verificatio
 - Never rewrite history or force-push; others may work in the repo.
 - Tags `vN` mark page versions and milestones (v16 onward; `git tag -n1` lists them).
 - `master.mdb` files are never committed (`.gitignore` is a whitelist; add new tracked paths to it explicitly). Nor
-  are game assets (`webapp/img/`, `cache/`, bundles) or decryption keys.
+  is anything from the game (`game/`, `webapp/img/`) or downloaded (`cache/`).
 
 ## Hard facts that are easy to get wrong
 
