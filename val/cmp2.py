@@ -32,12 +32,9 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
         print(f"{name}: values {'OK' if ok else 'DIFF'} decks {'same' if same else 'differ(ties?)'} ref {[round(1/s[0]) for s in a]} new {[round(1/s[0]) for s in b]} proven {r.get('proven')}/{x.get('proven')}")
         if not ok: bad+=1
     elif 'results' in r:
-        sig=lambda j:[(round(c['p_all'],14),round(c['p_minus1'],12),c['trainee']['id'],tuple(c['parents']),tuple(sorted(c['deck']['card_ids']))) for c in j['results']]+([(round(j['lookahead']['improve'],10),tuple((round(m['f'],12),m['no_gain']) for m in j['lookahead']['miss_one']))] if 'lookahead' in j else [])+([('rollout',j['rollout']['pick'],j['rollout']['differs'],round(j['rollout']['p_star'],14),round(j['rollout']['lower_bound'],9),tuple((round(c['q'],9),round(c['p_all'],14),c['trainee']['id'],tuple(c['parents'])) for c in j['rollout']['candidates']))] if 'rollout' in j else [])
+        sig=lambda j:[(round(c['p_all'],14),round(c['p_minus1'],12),c['trainee']['id'],tuple(c['parents']),tuple(sorted(c['deck']['card_ids']))) for c in j['results']]
         a,b=sig(r),sig(x); ok=[s[0] for s in a]==[s[0] for s in b]; same=a==b
-        rs=lambda l:[t for t in l if t and t[0]=='rollout']
-        if rs(a)!=rs(b): ok=False   # the rollout's pick, p*, bound and per-candidate Q are values
-        ro=f" rollout pick {r['rollout']['pick']}/{x['rollout']['pick']}" if 'rollout' in r and 'rollout' in x else ''
-        print(f"{name}: career values {'OK' if ok else 'DIFF'} picks {'same' if same else 'differ(ties?)'} proven {r.get('proven_top')}/{x.get('proven_top')}{ro}")
+        print(f"{name}: career values {'OK' if ok else 'DIFF'} picks {'same' if same else 'differ(ties?)'} proven {r.get('proven_top')}/{x.get('proven_top')}")
         if not ok: bad+=1
     else:
         print(name,'neither a deck nor a career output'); bad+=1

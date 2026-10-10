@@ -12,15 +12,14 @@ fn run(job: &Value) -> Value {
 fn rand_tag(job: &Value) -> u64 { job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64)) }
 
 /// The weak pool (each veteran keeps about half the target sparks): the landed-set distribution agrees with the
-/// career's own odds, the schedule lists every G1 she can enter, and the look ahead's facts are consistent.
+/// career's own odds, and the schedule lists every G1 she can enter.
 #[test]
-fn weak_pool_outcomes_schedule_and_look_ahead() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string("jobs/career_U4.json").unwrap()).unwrap();
+fn weak_pool_outcomes_and_schedule() {
+    let mut job: Value = serde_json::from_str(&fs::read_to_string("jobs/career_U5.json").unwrap()).unwrap();
     job["trainees"] = json!([1034]); // Inari One
     job["fix"] = json!([2, 3]);
     job["per_trainee"] = json!(false);
     job["top"] = json!(1);
-    job["lookahead"] = json!(true);
     job["star_dist"] = json!([0.0, 0.0, 1.0]);
     let result = run(&job);
     let career = &result["results"][0];
@@ -36,83 +35,4 @@ fn weak_pool_outcomes_schedule_and_look_ahead() {
     assert!(ran > 0 && rows.len() > ran, "every G1 she can enter is listed, not only those she runs");
     assert!((career["g1_wins"].as_f64().unwrap() - rows.iter().filter_map(|r| r["p"].as_f64()).sum::<f64>()).abs() < ran as f64, "expected wins come from the races she runs");
     assert!(rows.iter().all(|r| (r["run"] == true) == r["p"].is_number() && (r["run"] == true) == r["instead"].is_null()));
-    // look ahead: a floor at today's best, "no gain" exactly where the next career doesn't beat it
-    let ahead = &result["lookahead"];
-    let p_now = ahead["p_now"].as_f64().unwrap();
-    assert!(p_now > 0.0);
-    for m in ahead["miss_one"].as_array().unwrap() {
-        let f = m["f"].as_f64().unwrap();
-        assert!(f >= p_now * (1.0 - 1e-12));
-        assert_eq!(m["no_gain"].as_bool().unwrap(), f <= p_now * (1.0 + 1e-9));
-    }
-    let shares: f64 = ahead["by_count"].as_array().unwrap().iter().map(|c| c["p"].as_f64().unwrap()).sum();
-    assert!((shares + ahead["p_all"].as_f64().unwrap() - 1.0).abs() < 1e-9, "outcome classes cover every result");
-    assert!((0.0..=1.0).contains(&ahead["improve"].as_f64().unwrap()));
-    // over her stars too: exact for the checked setups (the multilinear form reproduces a direct evaluation)
-    assert!(ahead["stars_exact"] == true && ahead["multilinear_check"].as_f64().unwrap() < 1e-10);
-    let by: Vec<&Value> = ahead["improve_by_count"].as_array().unwrap().iter().collect();
-    assert!((by.iter().map(|c| c["p"].as_f64().unwrap()).sum::<f64>() - 1.0).abs() < 1e-9, "every outcome, stars included, once");
-    let imp = ahead["improve_stars"].as_f64().unwrap();
-    assert!((imp - by.iter().map(|c| c["p"].as_f64().unwrap() * c["improve"].as_f64().unwrap()).sum::<f64>()).abs() < 1e-12);
-    assert!(ahead["best_case_with_her"].as_f64().unwrap() >= ahead["f_if_improve"].as_f64().unwrap_or(0.0));
-}
-
-/// The comparison for one veteran: both choices are counted the same way and both estimates are finite.
-#[test]
-fn policy_compares_both_choices() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string("jobs/career_U4.json").unwrap()).unwrap();
-    let mut v = job["legacies"][2].clone();
-    v["chara"] = json!(1034);
-    v["parents"] = json!([job["legacies"][2].clone(), job["legacies"][3].clone()]);
-    for p in v["parents"].as_array_mut().unwrap() { p.as_object_mut().unwrap().remove("parents"); p.as_object_mut().unwrap().remove("borrowed"); }
-    let n = job["legacies"].as_array().unwrap().len();
-    job["legacies"].as_array_mut().unwrap().push(v);
-    job["fix"] = json!([n]);
-    job["per_trainee"] = json!(false);
-    job["top"] = json!(1);
-    job["policy"] = json!({"stay_trainee": 1034, "stay_parents": [2, 3], "p_floor": 0.0017});
-    let result = run(&job);
-    let policy = &result["policy"];
-    for a in ["stay", "advance"] {
-        let c = policy[a]["expected_careers_estimate"].as_f64().unwrap();
-        let pa = policy[a]["p_all"].as_f64().unwrap();
-        assert!(c >= 1.0 && pa > 0.0 && policy[a]["p_within_two"].as_f64().unwrap() >= pa);
-    }
-    assert!(policy["continuation_floor"].as_f64().unwrap() >= 0.0017);
-}
-
-/// The planner's pick as a rollout on the weak pool (career_U5 = career_U4 with `rollout: 6`): the corner tables equal a
-/// direct exact evaluation, Q and the bounds keep their inequalities, and the main results are untouched by the rollout.
-/// (The pick and its numbers, Inari One with parents 2 and 6, are pinned by the val job career_U5.)
-#[test]
-fn rollout_on_weak_pool() {
-    let job: Value = serde_json::from_str(&fs::read_to_string("jobs/career_U5.json").unwrap()).unwrap();
-    let a = run(&job);
-    let ra = &a["rollout"];
-    assert!(ra["error"].is_null(), "{}", ra);
-    assert!(ra["table_check"].as_f64().unwrap() < 1e-10, "table value vs direct: {}", ra["table_check"]);
-    let cands = ra["candidates"].as_array().unwrap();
-    assert_eq!(cands.len(), 6);
-    let pick = ra["pick"].as_u64().unwrap() as usize;
-    let c = &cands[pick];
-    assert!(c["chosen"] == true);
-    let p_star = ra["p_star"].as_f64().unwrap();
-    assert!((ra["repeat_careers"].as_f64().unwrap() - 1.0 / p_star).abs() < 1e-9);
-    for (i, x) in cands.iter().enumerate() {
-        let (q, p, ps) = (x["q"].as_f64().unwrap(), x["p_all"].as_f64().unwrap(), x["p_all_sets"].as_f64().unwrap());
-        assert!((p - ps).abs() < 1e-12 * p.max(1e-300) + 1e-15, "the landed-set distribution gives the career's odds");
-        assert!(p <= p_star * (1.0 + 1e-12) && x["gain"].as_f64().unwrap() >= 1.0 - 1e-12);
-        // f >= p* for every failed set, so Q <= 1 + (1 - p) / p*
-        assert!(q >= 1.0 && q <= 1.0 + (1.0 - p) / p_star + 1e-9);
-        assert!(i == pick || q >= c["q"].as_f64().unwrap());
-    }
-    assert_eq!(ra["choice"]["trainee"]["id"], c["trainee"]["id"]);
-    assert!(ra["choice"]["schedule"].is_array() && ra["choice"]["outcome_sets"].is_array());
-    let (lb, pbar) = (ra["lower_bound"].as_f64().unwrap(), ra["p_bar"].as_f64().unwrap());
-    assert!(pbar >= p_star && lb <= 1.0 / p_star && (lb - (1.0 + (1.0 - p_star) / pbar)).abs() < 1e-9);
-    assert!(ra["p_bar_proven"] == true && ra["shortlist_proven"] == true && ra["candidates_proven"] == true);
-    // the main results are untouched by the rollout
-    let mut plain = job.clone(); plain.as_object_mut().unwrap().remove("rollout");
-    let p0 = run(&plain);
-    assert_eq!(p0["results"], a["results"]);
 }

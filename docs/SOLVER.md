@@ -247,11 +247,11 @@ also train its fourth member, usually a weak trainee (Oguri Cap at 1 in 216 in `
 
 The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed), deck.
 Same files as deck mode, plus `legacies`; the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
-choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of the new veteran's sparks in the look ahead; other loop fields are unused).
+choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh 8/8s, the simulator's draws; other loop fields are unused).
 `val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
 as the page's solver worker runs them: a job's fully checked decks are kept per setup (everything but the pool and the
-places) and bound the later jobs' searches, never the searches that feed the rollout's cache, so every output equals
+places) and bound the later jobs' searches, never the search that seeds the simulator's cache, so every output equals
 the job run alone. The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
 search the worker keeps (the second job's search costs about 3 ms in wasm, and the plan does the same work as one
 combined job).
@@ -264,7 +264,7 @@ combined job).
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
 | `next` | the page's next-career plan, section *Next career (`next`)* below | none |
-| `lookahead`, `p_now`, `p_minus1_now`, `policy`, `rollout`, `plan` | solver-only, section *Solver-only career fields* | |
+| `simulate` | runs the policy simulator instead of the search (section *Policy simulator*) | none |
 | `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above) and the kept proofs (fully checked decks per setup and deck class), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
@@ -338,7 +338,8 @@ evidence: `docs/MODEL.md`, *Next career*. Constants are in `src/deck/career/sim/
 | `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
 | `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. Unused by the page, since Compare plans exactly as Add will | none |
 | `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
-| `search_work`, the other `plan` fields | read from the same structure as `plan` (section *Solver-only career fields*) | as `plan` |
+| `search_work` | work budget (career-search units) of each candidate search beyond the job's own; 0 = the job's budget | 5,000,000 |
+| `margin` | the surrogate's refresh margin (section *Policy simulator*) | 1e9 |
 
 **Stage candidates** (at most 8): the best career's trainee, the loop members when named, the umas of the best
 career's lineage and of your veterans, the search's other trainees. Below 4 (`HINT_FLOOR`: a loop being started, mob or
@@ -416,18 +417,6 @@ and per-class ratios) and the corner tables are also kept between jobs of one se
 repeats none of the base plan's proxy searches. The kept plans and proofs survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
-#### Solver-only career fields (not sent by the page)
-
-The page sends only `next`; these serve the simulator and the tests.
-
-| Field | Meaning | Default | Used by |
-|---|---|---|---|
-| `lookahead` | `true`: the reroll-or-move-on look ahead for the best career, facts only. Per landed set S (exact) of her veteran, f(S) = the best P(all) of a next career with her in the pool: the four best setups (`SHORTLIST`) with her landing everything, each rescored at S (a floor, at least `p_now`); for up to 8 targets also exact over her stars (P(all) is multilinear in each target's miss factor, so 2^nu corner values give every outcome). Output `lookahead`: `p_now`, `p_minus1_now`, `improve`, `partial_improve`, `by_count`, `miss_one` (per target: `p`, `f`, `no_gain`, ...), `improve_stars`, `f_if_improve`, `improve_by_count`, `best_case_with_her`, `multilinear_check`, `stars_exact` | `false` | `jobs/career_U4.json`, `career_U5.json` (val references), `tests/career_progress.rs` |
-| `p_now`, `p_minus1_now` | today's best P(all) (and P(at least n−1) on that career) over every career: the floor of the look ahead and of the rollout; computed when absent | none | look ahead, rollout |
-| `policy` | `{stay_trainee, stay_parents: [a, b], p_floor}`: for one veteran fixed as a parent (`fix`), "stay" (that career again) against "advance" (the best career with her), each scored C_a = 1 + Σ_{S≠all} P_a(S) / f_a(S) (one more career, then the best setup it leaves, repeated; f floored at `p_floor` and both careers' P(all); null when a failure has f = 0). Output `policy`: `stay`, `advance` (`expected_careers_estimate`, `p_all`, `p_within_two`, ...), `continuation_floor`; with `plan` also `policy.plan` | none | `tests/career_progress.rs` |
-| `rollout` | K > 0: of the K best careers whoever trains (`trainees`, `fix` respected), the one minimising Q(a) = 1 + Σ_{S≠all} P_a(S) / f_a(S): a rollout of "repeat the best career it leaves", so never worse than repeating today's best (derived); a ranking rule, never shown as careers (it counts every improvement as permanent: Q at the U4 start 568 against the policy's measured 230). Also p* (today's best: 1/p* careers by repeating it) and the ceiling p_bar (every career's P(all) at most p_bar, so E[N] ≥ 1 + (1 − p*)/p_bar). Output `rollout`: `pick`, `choice`, `candidates`, `differs`, `p_star`, `p_bar`, `p_bar_proven`, `lower_bound`, `repeat_careers`, `candidates_proven`, `shortlist_proven`, `table_check`. Measured under the model: 230 careers to the first hit on `career_U4` against 270 for greedy and 587 for repeating; K = 6 chosen, 12 not better | 0 | the simulator's `planner` policy (`planner_k`), `val/policy/` (`policies.mjs`, pools), `jobs/career_U5.json` |
-| `plan` | `{budget_ms (20000), samples_min (4), samples_max (16), eps (1e-3), horizon_max (200), seed (1), top (6), recent (3), trainees (12), loop_members, margin (1e9), search_work (5,000,000), refresh_work (0)}`: the page's pick before `next`. Per candidate (the K best careers, the best with each of the R newest veterans, the N best trainees' best, each loop member's, today's best), the expected careers to an all-target veteran over two base policies (surrogate greedy, the loop planner's loop as a rotation) on common random numbers; samples doubled until the 95% paired intervals separate or the budget ends; pick the highest P(all) among those not separated from the leader. Output `plan` | none | nothing in val/ or tests; `next` reads the same structure (`search_work`, `loop_members`) |
-
 #### Work budget
 
 A career search has its own work budget (`CAREER_BUDGET`, 300M units: pools up to 400 veterans need 10M-85M; the loop
@@ -436,17 +425,18 @@ as (ceiling, trainee, parents) and their chances recomputed when solved, which k
 
 ### Policy simulator (`simulate` on a career job)
 
-Measures a decision policy (which career to run next) the way `val/policy_sim.mjs` does, inside one solver process.
-With `simulate` present the career job runs the simulator instead of the search; jobs without it are unchanged. Per
-run, careers t = 0, 1, ... with p_t the exact P(all) of career t (derived, as in policy_sim):
+Measures a decision policy (which career to run next) inside one solver process. With `simulate` present the career
+job runs the simulator instead of the search; jobs without it are unchanged. Per run, careers t = 0, 1, ... with p_t the
+exact P(all) of career t (derived):
 
     E = sum over t of S_t,  S_0 = 1,  S_{t+1} = S_t (1 - p_t);  stop when S_t < eps or at max_careers, plus the tail S_t / p_t
 
-Each failed career leaves a veteran drawn exactly as policy_sim draws it (landed set from `outcome_sets` without the
-all-landed set, inverse CDF over sets ordered fewest-landed first; stars from `star_dist`; per race a win with the
-schedule's chance of at least one win; her parents the career's), with policy_sim's random numbers bit for bit (`u01`
-keyed by seed, run, career, stream, item), so a run index faces the same uniforms under every policy and a greedy path
-equals policy_sim's greedy path while the picks agree. Dominated new veterans are pruned as in policy_sim.
+Each failed career leaves a veteran drawn from the model: landed set from `outcome_sets` without the all-landed set
+(inverse CDF over sets ordered fewest-landed first), stars from `star_dist`, per race a win with the schedule's chance
+of at least one win, her parents the career's. The uniforms (`u01`) are keyed by seed, run, career, stream and item, so
+a run index faces the same uniforms under every policy (common random numbers: differences between policies are
+paired). A new veteran is pruned when an owned veteran of the same character with the same two parents has at least
+her stars on every target and every G1 she won (exact for P(all)).
 
 The surrogate (policy `greedy`): each candidate (trainee, parents) is valued through its trainee's cached decks' corner
 tables (`Cache`, exact P(all) of that deck at any inheritance chances), bounded first by the search's ceiling, by
@@ -458,16 +448,15 @@ when her later parent arrives; a trainee whose static ceiling (q = 1, every spar
 
 | Field of `simulate` | Meaning | Default |
 |---|---|---|
-| `policy` | `greedy` (surrogate), `greedy_exact` / `planner` (the solver in process per decision: best career by P(all), the rollout pick), `loop`, `rollout_greedy`, `rollout_loop`; with `loop_members` as the candidate list: `stale` (the page's rule: a candidate trains once after her best career changes, else the best career), `pick_index` (the careers-saved index per candidate, `samples` veterans each, decided again when a best value changes), `cycle` (`cycle`: chara ids trained in turn, each on her best career), `trace` (building for `loop_members[0]` with the rest as builders: each career the most efficient builder runs; per career her odds before and after, the builder, the exact lift chance and mean raised odds; val/sim/README.md E5), `next` / `next_noretry` / `next_retry1` (the former loop rule and its retry variants); measurement modes `index` (per candidate: one career, then the best forever, `samples` veterans) and `index2` (the grandparent route through `builder`, `samples` × `inner`) | `greedy` |
-| `runs`, `first`, `seed` | run indices `first` .. `first + runs - 1`; policy_sim's seed | 16, 0, 1 |
+| `policy` | `greedy` (surrogate), `greedy_exact` (the career search in process per decision: the best career by P(all)), `loop` (a fixed rotation of `loop_members`), `trace` (building for `loop_members[0]` with the others as builders: each career the builder whose best career lifts her odds most efficiently runs; records her odds before and after, the builder, lam and the odds raised to, as `docs/RESEARCH.md` §11 fits `Cont`'s shape to) | `greedy` |
+| `runs`, `first`, `seed` | run indices `first` .. `first + runs - 1`; the seed | 16, 0, 1 |
 | `eps`, `max_careers` | stop at S < eps or this many careers (tail S/p added) | 1e-3, 100000 |
 | `margin` | refresh margin m; -1: every valuation a bound does not rule out gets a fresh exact deck search (exact-backed: the same proofs as the career search, no trust in cached decks) | 0 |
 | `prune`, `share_cache` | prune dominated veterans; keep the deck cache across runs | true, true |
 | `check`, `check_lineages`, `check_frac` | every `check` new veterans compare with exact searches: the exact greedy pick (career search), and up to `check_lineages` of the newest veteran's candidates with ceiling at least `check_frac` x B (exact best deck, table value, landed-set distance) | 0, 0, 0.3 |
-| `samples`, `cand_top`, `cand_per_trainee`, `cand_recent`, `redecide`, `cont_eps` | rollout policies: paired continuations per candidate; candidates = the base policy's pick, the K best careers, the best career of the N best trainees, the best career with each of the R newest veterans; decide at the first career and every `redecide` careers (0: first only); continuations stop at `cont_eps` (default `eps`) | 8, 6, 4, 2, 0, none |
-| `audit`, `audit_sample`, `audit_every` | fidelity audit on the main path: at each greedy pick change the exact career search's pick and, for the pick and `audit_sample` random candidates with the newest veteran, the table value against a fresh exact deck search (relative error, landed-set total variation); the same for each rollout decision's choice and `audit_sample` random candidates; every `audit_every` loop careers her deck and the keep-or-replace decision under exact values | false, 3, 50 |
-| `loop_members` | `loop`: rotation members (chara ids) in order | none |
-| `planner_k`, `progress` | the planner's rollout width; log every N careers | 6, 0 |
+| `audit`, `audit_sample`, `audit_every` | fidelity audit: at each greedy pick change the exact career search's pick and, for the pick and `audit_sample` random candidates with the newest veteran, the table value against a fresh exact deck search (relative error, landed-set total variation); every `audit_every` careers of `loop`, its career and its keep-or-replace decision under exact values | false, 3, 50 |
+| `loop_members` | `loop`: rotation members (chara ids) in order; `trace`: the trainee built for, then her builders | none |
+| `progress` | log every N careers | 0 |
 
 `loop`: member i mod n trains; her parents are the rotation veterans of the previous two members. A member keeps the
 better of her rotation veteran and the new one, by the summed surrogate P(all) of the two loop careers she is a parent
@@ -476,10 +465,17 @@ a target has none and P(all) is 0 for good). Bootstrap: a member without both pa
 exact P(all) from the pool with the existing ones fixed. No pruning. Each career's schedule is her own (the career
 model's); the loop planner coordinates schedules across members, this does not.
 
-`rollout_*`: at a decision career each candidate is run (sample j's uniforms the same for every candidate) and the base
-policy follows until S < `cont_eps`; the candidate with the lowest mean E over the samples runs, the other careers
-follow the base policy. Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `refreshes`,
-`segs` (each pick change: career, p, pool size, S), `decisions`, `checks`; and `E` (mean, sd, 95% CI) over the runs.
+Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `refreshes`, `segs` (each pick change:
+career, p, pool size, S), `checks`, `audits`; and `E` (mean, sd, 95% CI) over the runs. `trace` returns its rows per run
+instead.
+
+Adding a policy: `simulate` (src/deck/career/sim.rs) matches the policy name to a base (`Base`); `play` asks the base
+for the next career each step (`greedy_cur`, `loop_cur`: a `Cur`, the career with its exact P(all), landed-set chances
+and win chances), runs it, draws the veteran and adds her to the state (`St`). A new policy is a new arm there and a
+function returning the `Cur` to run; `play` does the rest (E, the tail, pruning, checks, audits). A policy that runs a
+different loop (as `trace` does) returns its own JSON from `simulate`. No policy runs the page's current rule
+(`next`, `index_rule`).
+
 Results and commands: `val/sim/README.md`.
 
 ## 4. Validation

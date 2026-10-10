@@ -3,9 +3,10 @@ jp__v_ng_k3 3.8
 jp__v_uc_k1 4.3
 jp__v_uc_k3 2.6
 jp__v_uc_r1 2.5
-pkg_loopopt__career_U 3.0
 pkg_loopopt__career_U2 3.0
+pkg_loopopt__career_U 3.0
 pkg_loopopt__career_U3 0.3
+pkg_loopopt__career_U5 1.4
 pkg_loopopt__pal_A2 2.7
 pkg_loopopt__pal_A2k3 2.9
 pkg_loopopt__pal_A2p4 0.7
