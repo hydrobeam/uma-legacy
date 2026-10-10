@@ -1088,7 +1088,7 @@ const TESTS = {
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
       `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
     await done(); await planned();   // the pasted export's plan (the same pool)
-    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,564 careers.*The best odds are checked exact/.test(await note()), await note());
+    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,618 careers.*The best odds are checked exact/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);
     const deckShut = !(await pg.locator('#tree-deck').count()) && (await pg.getAttribute('#deck-open', 'aria-expanded')) === 'false';
     await pg.click('#deck-open');
@@ -1397,7 +1397,7 @@ const TESTS = {
     check('career: … her parents are not known yet but carry the same eight sparks, and she joins your veterans', await pg.locator('.pf').nth(0).locator('.pn.gp', { hasText: 'Unknown' }).count() === 2
       && await sparksIn('node:p0g0', 2) && await sparksIn('node:p0g1', 2)
       && await pg.locator('#vets .vet').count() === 13 && /Parent 1/.test(await pg.locator('#vet-12 .vtop').textContent()));
-    check('career: the planner fills the rest', /Weighed 792 careers/.test(await note()), await note());
+    check('career: the planner fills the rest', /Weighed 804 careers/.test(await note()), await note());
     // a grandparent: pick her uma, then her skills
     await node('node:p0g0'); await pg.locator('#node-dlg .facebtn').click(); await dialog(pg, 'pick-dlg');
     await pg.fill('#pick-filter', 'Gold Ship'); await pg.locator('#pick-list .upick:visible').first().click(); await ask('All 8 at 3★'); await done();

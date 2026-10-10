@@ -911,6 +911,19 @@
    "status": "complete",
    "src": "gametora training_events"
   },
+  "20054": {
+   "name": "[Mighty Fotografia] T.M. Opera O",
+   "chain": [
+    [
+     2,
+     [
+      "Preferred Position"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
   "30001": {
    "name": "[The Brightest Star in Japan!] Special Week",
    "chain": [
@@ -4437,6 +4450,25 @@
      3,
      [
       "Dauntless"
+     ]
+    ]
+   ],
+   "status": "complete",
+   "src": "gametora training_events"
+  },
+  "30126": {
+   "name": "[To Winds Untraveled] Yamanin Zephyr",
+   "chain": [
+    [
+     2,
+     [
+      "Slipstream"
+     ]
+    ],
+    [
+     3,
+     [
+      "Ambitious Breeze"
      ]
     ]
    ],
