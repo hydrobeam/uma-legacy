@@ -430,7 +430,7 @@ mod tests {
         static D: OnceLock<Data> = OnceLock::new();
         D.get_or_init(|| load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json")))
     }
-    fn skills() -> SkillsRaw { serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap() }
+    fn skills() -> SkillsRaw { serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap() }
 
     /// `OutfitPre::eval` is `outfit_fast`'s loop bit for bit: random states, odds and lengths (past the 32-lane array
     /// too), plus non-finite and signed-zero inputs, which the branchy loop ignores on gold targets

@@ -6,8 +6,8 @@ whole set, as a folder name), so it is served with a one-year immutable cache an
 index.html keeps a 5-minute cache and always points at the current names. Favicons (icons.py) sit at the root.
 Served over http(s): the page fetches the wasm, data and images, so it is not meant to be opened as a file."""
 import json, subprocess, os, sqlite3, glob, shutil, hashlib, re
-H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt')
-J = os.path.join(H, '..', 'jp')
+H = os.path.dirname(os.path.abspath(__file__)); P = os.path.join(H, '..', 'pkg', 'loopopt', 'data', 'global')
+J = os.path.join(H, '..', 'pkg', 'loopopt', 'data', 'jp')
 wasm = open(os.path.join(H, 'loopopt.opt.wasm'), 'rb').read()
 worker = open(os.path.join(H, 'worker.template.js')).read()
 example = json.load(open(os.path.join(H, 'example.json')))
@@ -127,9 +127,9 @@ def panels(page):
     return page
 html = panels(html)
 # version shown in the footer: the git tag (and commits since it), "-dirty" with uncommitted changes to what the page
-# is built from (webapp/, pkg/, jp/; edits elsewhere, e.g. docs, don't count)
+# is built from (webapp/, pkg/; edits elsewhere, e.g. docs, don't count)
 def _git(*a): return subprocess.run(['git', *a], cwd=H, capture_output=True, text=True, check=True).stdout.strip()
-try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg', '../jp') else '')
+try: VERSION = _git('describe', '--tags', '--always') + ('-dirty' if _git('status', '--porcelain', '--untracked-files=no', '--', '../webapp', '../pkg') else '')
 except Exception: VERSION = 'unknown'
 # the GM era's data, fetched only when that era is selected: the page's lists, and the solver's data as text
 gm_ui = '{"cards":' + M['cards'] + ',"umas":' + M['umas'] + ',"skills":' + M['skills'] + ',"career":' + M['career'] + '}'

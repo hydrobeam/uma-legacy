@@ -1,6 +1,6 @@
 """GameTora's data files into cache/gametora/ (not committed): the event and skill tables card events are built from.
 
-  uv run gametora.py            download the versions pinned in ../gametora.json that are not cached yet
+  uv run gametora.py            download the versions pinned in ../data/gametora.json that are not cached yet
   uv run gametora.py --latest   pin the newest versions from GameTora's manifest first, then download them
 
 Files are saved as <key with / as _, static/ dropped>.<hash>.json (dict/evrew -> dict_evrew.8bda1ecc.json); a cached
@@ -10,7 +10,7 @@ older versions online, so a pinned set rebuilds the same events.
 import json, os, sys, urllib.request
 
 H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(os.path.dirname(os.path.dirname(H)))
-PINS = os.path.join(H, '..', 'gametora.json')
+PINS = os.path.join(H, '..', 'data', 'gametora.json')
 CACHE = os.path.join(R, 'cache', 'gametora')
 UA = 'legacy-loop-planner build script'
 

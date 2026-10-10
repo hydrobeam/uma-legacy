@@ -942,7 +942,7 @@ mod tests {
     /// stops matching when the data changes. (A stale table is only a warning: the solver ignores it.)
     #[test]
     fn stored_pb_tables_match_fresh() {
-        for path in [concat!(env!("CARGO_MANIFEST_DIR"), "/data.json"), concat!(env!("CARGO_MANIFEST_DIR"), "/../../jp/data.json")] {
+        for path in [concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"), concat!(env!("CARGO_MANIFEST_DIR"), "/data/jp/data.json")] {
             let txt = std::fs::read_to_string(path).unwrap();
             let d = load_str(&txt);
             let Some(t) = d.pbt.as_ref() else { eprintln!("warning: {path} has no current pb table (run ./build.sh pb)"); continue; };
@@ -1088,7 +1088,7 @@ mod tests {
     /// F 60, G 90) minus 0/0/5/20/30/50 for the 1st..6th+ race in a row, capped to 0..100%. Checks every cell.
     #[test]
     fn win_table_matches_community_table() {
-        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/data.json"));
+        let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"));
         let table: [(i32, [i32; 6]); 13] = [(0, [110, 110, 105, 90, 80, 60]), (10, [100, 100, 95, 80, 70, 50]), (20, [90, 90, 85, 70, 60, 40]),
             (30, [80, 80, 75, 60, 50, 30]), (40, [70, 70, 65, 50, 40, 20]), (60, [50, 50, 45, 30, 20, 0]), (90, [20, 20, 15, 0, 0, 0]),
             (100, [10, 10, 5, 0, 0, 0]), (110, [0; 6]), (120, [0; 6]), (130, [0; 6]), (150, [0; 6]), (180, [0; 6])];

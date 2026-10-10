@@ -3,7 +3,7 @@ deck, each lineage's value read from the shared solver (deck locked, structure r
 rule off), then per uma the best legal deck over her lineages (three in a loop, one in a rotation), and a structure's
 value the mean over its lineages (12 or 3). usage: permcheck.py BIN [K]"""
 import json, itertools, subprocess, sys, os, concurrent.futures as cf
-S = os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/'
+S = os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/data/global/'
 SC = os.path.dirname(os.path.abspath(__file__)) + '/../'
 BIN, K = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 3
 data = json.load(open(S + 'data.json')); cards = {c['id']: c for c in json.load(open(S + 'web_cards.json'))['cards']}
@@ -14,7 +14,7 @@ def cid(frag): return next(i for i, c in cards.items() if frag in c['name'])
 OWN = [cid('[Tracen Academy] Yaeno'), cid('Tonight, We Waltz'), cid('Sunlit Angel'), cid('From the Ground Up'), cid('This Might Sting'),
        cid('[Tracen Academy] Inari'), cid('Split the Sky'), cid('[Tracen Academy] Gold Ship')]
 assert not any(str(c) in ends for c in OWN), 'pick cards without chain-ending choices'
-base = json.load(open(S + 'jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN)
+base = json.load(open(os.path.dirname(os.path.abspath(__file__)) + '/jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN)
 env = dict(os.environ, RULE_OFF='1')
 def run(job, e=None):
     p = SC + f'_pc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json'

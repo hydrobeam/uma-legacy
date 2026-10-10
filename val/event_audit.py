@@ -3,7 +3,7 @@
 For every Global pal / group card, decodes every event section GameTora stores (storyline, first meeting, outings,
 card-specific events, per-card variants), reading reward lists only (a choice's first element is its label, not a
 reward), and lists each target-skill hint the card can give. Each is checked against the card's entry in
-pkg/loopopt/card_events.json (always / chance / disabled). Exit code 1 if any target hint is unaccounted for.
+pkg/loopopt/data/global/card_events.json (always / chance / disabled). Exit code 1 if any target hint is unaccounted for.
 
 usage (repo root): python3 val/event_audit.py [--all]     --all also prints the non-target hints
 Needs game/global/master.mdb.
@@ -57,7 +57,7 @@ def walk(row, kind):
                         yield name, z[0], event_hints(z[1][1])
 
 
-CE = json.load(open(R + 'pkg/loopopt/card_events.json'))['cards']
+CE = json.load(open(R + 'pkg/loopopt/data/global/card_events.json'))['cards']
 bad = 0
 for kind in ('friend', 'group'):
     for row in json.load(open(glob.glob(G + f'training_events_{kind}.*.json')[0])):

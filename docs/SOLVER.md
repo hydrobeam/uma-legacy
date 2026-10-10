@@ -1,6 +1,8 @@
 # The solver (loopopt)
 
-The Rust crate in `pkg/loopopt/`; paths below are relative to it. Building and running it: `docs/BUILD.md`.
+The Rust crate in `pkg/loopopt/`; paths below are relative to it. Its data is in `data/global/` and `data/jp/` (the
+Grand Masters era); jobs run from the era's folder, which the file names in a job are relative to. Building and running
+it: `docs/BUILD.md`.
 
 Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). Its inputs are data files exported from the game's `master.mdb` and GameTora's event data.
 
@@ -72,16 +74,16 @@ A structure whose bound is below a result already achieved cannot beat it.
 
 ```bash
 # 1. export data (needs the Global master.mdb in game/global/)
-cd export && uv run build_base.py global && uv run export_rs.py global   # writes data.json (../../build.sh data exports both eras)
+cd export && uv run build_base.py global && uv run export_rs.py global   # writes data/global/data.json (../../build.sh data: both eras)
 
 # 2. build
 cargo build --release
 # optional, after any export: store the exact pairwise ceilings in data.json ("pb", with a fingerprint of the
 # umas/goals/penalties; ignored when stale) so searches skip computing them (../../build.sh pb does both eras)
-uv run export/add_pb.py target/release/loopopt data.json
+uv run export/add_pb.py target/release/loopopt data/global/data.json
 
-# 3. run a job file (from this folder: the file paths in a job are relative to it)
-target/release/loopopt data.json jobs/pal_U.json > result.json
+# 3. run a job file from the era's data folder (the file paths in a job are relative to it)
+cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/pal_U.json > /tmp/result.json
 ```
 
 The CLI runs `"mode":"deck"` and `"mode":"career"` job files (below), the jobs the page's worker sends to the wasm
@@ -123,8 +125,8 @@ A deck result's `loop`: `members` (3 or 4), `outfits` (the outfit each uma uses 
 Finds the support deck and the loop together. Needs `skills_file`, `cards_file` (`web_cards.json`, from `export/export_cards.py`) and usually `events_file` (`card_events.json`, from `export/build_card_events.py` over the GameTora files that `./build.sh gametora` caches in `cache/gametora/` at the repository root).
 
 ```bash
-target/release/loopopt data.json jobs/deck_unity8.json        # everyone owned
-target/release/loopopt data.json jobs/deck_unity8_noti.json   # no Tamamo / Inari
+cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/deck_unity8.json        # everyone owned
+cd data/global && ../../target/release/loopopt data.json ../../../../val/jobs/deck_unity8_noti.json   # no Tamamo / Inari
 ```
 
 Extra fields (on top of the shared fields above; scenario-guaranteed skills stay `guaranteed: 2`, everything the deck can give is left at 0):
@@ -156,7 +158,7 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   random remaining chain slot of a non-pal card. Pal finales are certain.
 - **Outcome shares**: an outcome-dependent reward counts at its share of the outcomes, k of n at k/n (Nakayama Festa
   [Trusting the Dice]: each skill in 2 of 4 outcomes, 50%). A measured share replaces k/n where one exists: `chance` in
-  card_events.json for hand-entered entries (Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up), and
+  manual.json for hand-entered entries (Anshinzawa SSR's finale, Riko Kashimoto SSR's Ramp Up), and
   `event_shares.json` for generated chain events, which the builders turn into the chain shares and `alt_w`, the job
   field the solver uses as outcome weights in place of equal outcomes.
 - **Early chain ends**: a choice that ends a card's chain (GameTora's 'ee' reward) is offered as a separate deck

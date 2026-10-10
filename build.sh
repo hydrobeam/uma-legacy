@@ -1,7 +1,7 @@
 #!/bin/bash
 # One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm art page)
 #   data     Global + GM-era exports (needs game/global/master.mdb, game/jp/master.mdb)
-#   gametora GameTora's data files at the pinned versions (pkg/loopopt/gametora.json) into cache/gametora
+#   gametora GameTora's data files at the pinned versions (pkg/loopopt/data/gametora.json) into cache/gametora
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary + tests
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
@@ -17,7 +17,7 @@
 #   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
-#            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/ jp/
+#            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/
 #   val TAG  run the 24 validation jobs (20 deck, 4 career; the 20 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
@@ -71,15 +71,15 @@ step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build
 step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
-  local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg jp)
-  if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/ jp/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
+  local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg)
+  if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
   step_page
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty=$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false))
 }
 step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check npm; [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
 step_page() { MISSING=(); need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; need "webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"; check page; step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }
-step_pb() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check pb; "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
+step_pb() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check pb; "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data/global/data.json" "$C/data/jp/data.json"; }
 step_runners() { MISSING=(); need_cmd uv "$TOOLS_UV"; [ -e "$R/cache/chibi/tools/xml/usr/lib/libxml2.so.2" ] || { need_cmd tar "to unpack libxml2 once"; need_cmd zstd "to unpack libxml2 once"; }; need "${RUNNER_FILES[@]}"; check runners; step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }
 step_images() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "${IMAGE_FILES[0]}"; check images; art_notes; "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 IMAGE_FILES=("game/global/decrypted: the Global client's asset bundles, decrypted, by asset path")

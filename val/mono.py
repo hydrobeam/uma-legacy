@@ -18,7 +18,7 @@ tmp = tempfile.mkdtemp(prefix='mono_')
 
 def plan(d, job, name):
     path = os.path.join(tmp, name + '.json'); json.dump(job, open(path, 'w'))
-    r = subprocess.run([b, 'data.json', path], cwd=os.path.join(S, d), capture_output=True, text=True)
+    r = subprocess.run([b, 'data.json', path], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', d), capture_output=True, text=True)
     return json.loads(r.stdout)['next']
 
 def one(dj):

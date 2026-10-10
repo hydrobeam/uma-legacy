@@ -13,7 +13,7 @@ fn run(job: &Value, off: bool) -> (Value, String) {
     let path = std::env::temp_dir().join(format!("uma-plan-memo-{}-{}.json", std::process::id(), off as u8));
     fs::write(&path, job.to_string()).unwrap();
     let mut c = Command::new(env!("CARGO_BIN_EXE_loopopt"));
-    c.args(["data.json", path.to_str().unwrap()]).env("PLAN_MEMO", "1");
+    c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global")).args(["data.json", path.to_str().unwrap()]).env("PLAN_MEMO", "1");
     // (memos on: no cap in practice, so entries made before the refit are still there to be read after it)
     if off { c.env("PLAN_MEMO_OFF", "1").env_remove("PLAN_MEMO_CHECK"); }
     else { c.env_remove("PLAN_MEMO_OFF").env("PLAN_MEMO_CHECK", "1").env("PLAN_MEMO_CAP", "100000000"); }
@@ -39,7 +39,7 @@ fn stat(err: &str, key: &str) -> u64 {
 
 #[test]
 fn memos_exact_through_a_refit() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string("../../val/plan/p10.json").unwrap()).unwrap();
+    let mut job: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap()).unwrap();
     job["next"] = json!({"proxy_eff": -1.0});
     let (mut on, err_on) = run(&job, false);
     let (mut off, err_off) = run(&job, true);

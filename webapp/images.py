@@ -64,7 +64,7 @@ INSET = {'uma': 26, 'mob': 26}   # px of the 256 px icon cut inside the visible 
 # height per uma, with the page's tile colour showing through above it. A fixed square inside the frame is the same
 # for every icon: the picture and its striped background only.
 OUTFIT_BOX = (34, 47, 222, 235)
-ERAS = [('pkg/loopopt', 'game/global/master.mdb'), ('jp', 'game/jp/master.mdb')]
+ERAS = [('pkg/loopopt/data/global', 'game/global/master.mdb'), ('pkg/loopopt/data/jp', 'game/jp/master.mdb')]
 
 
 def wanted():
@@ -87,7 +87,7 @@ def wanted():
     # mob umas' portraits (the career planner's sample veterans): each named mob's first icon variant the bundles have
     mdir = os.path.join(ASSETS, 'mob'); have = set(os.listdir(mdir)) if os.path.isdir(mdir) else set()
     w['mob'] = {}
-    for m, _ in json.load(open(os.path.join(R, 'pkg/loopopt/career.json'))).get('mobs', []):
+    for m, _ in json.load(open(os.path.join(R, 'pkg/loopopt/data/global/career.json'))).get('mobs', []):
         v = sorted(f for f in have if f.startswith(f'mob_chr_icon_{m}_'))
         if v: w['mob'][m] = 'mob/' + v[0]
     return w

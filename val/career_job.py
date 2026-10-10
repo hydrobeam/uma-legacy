@@ -6,11 +6,11 @@ exporting player's viewer_id.
 
 usage: career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB [TABLES]
   BASE_JOB  a deck job (targets, cards, events files...); its mode becomes "career"
-  TABLES    career.json (default pkg/loopopt/career.json)"""
+  TABLES    career.json (default pkg/loopopt/data/global/career.json)"""
 import json, sys, os
 S = os.path.dirname(os.path.abspath(__file__)) + '/../'
 vets, base_path, out_path = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
-T = json.load(open(sys.argv[4] if len(sys.argv) > 4 else S + 'pkg/loopopt/career.json'))
+T = json.load(open(sys.argv[4] if len(sys.argv) > 4 else S + 'pkg/loopopt/data/global/career.json'))
 F, W = {int(k): v for k, v in T['factors'].items()}, {int(k): v for k, v in T['saddles'].items()}
 
 def sparks(fs):

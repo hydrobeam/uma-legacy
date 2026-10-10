@@ -1,7 +1,7 @@
 // Precompute the example shown before the first search: deck + loop search, Unity Cup targets, everything owned,
 // R cards off (the page default; R pals stay).
 import fs from 'fs';
-const P='../pkg/loopopt/';
+const P='../pkg/loopopt/data/global/';
 const {instance}=await WebAssembly.instantiate(fs.readFileSync('loopopt.opt.wasm'),{env:{clock_ms:()=>performance.now()}});
 const ex=instance.exports; const enc=new TextEncoder(), dec=new TextDecoder();
 function call(obj){ const b=enc.encode(JSON.stringify(obj)); const p=ex.alloc(b.length); new Uint8Array(ex.memory.buffer,p,b.length).set(b);

@@ -16,8 +16,8 @@ ref = args[2] if len(args) > 2 else 'ref'
 jobs = json.load(open(os.path.join(P, 'jobs.json')))
 times = {}
 def run(dj):
-    d, n = dj; t0 = time.time()
-    r = subprocess.run([b, 'data.json', os.path.join(P, n + '.json')], cwd=os.path.join(S, d), capture_output=True, text=True)
+    era, n = dj; t0 = time.time()
+    r = subprocess.run([b, 'data.json', os.path.join(P, n + '.json')], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', era), capture_output=True, text=True)
     open(os.path.join(P, f'{tag}__{n}.out'), 'w').write(r.stdout)
     times[n] = round(time.time() - t0, 2)
 with ThreadPoolExecutor(par) as ex: list(ex.map(run, jobs))

@@ -6,13 +6,13 @@ fn run(job: &Value) -> Value {
     let tag = job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
     let path = std::env::temp_dir().join(format!("uma-rotations-{}-{tag}.json", std::process::id()));
     fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt")).args(["data.json", path.to_str().unwrap()]).output().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_loopopt")).current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global")).args(["data.json", path.to_str().unwrap()]).output().unwrap();
     fs::remove_file(path).unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     serde_json::from_slice(&output.stdout).unwrap()
 }
 fn job(per_uma: bool, sizes: Value, require: Value) -> Value {
-    let mut j: Value = serde_json::from_str(&fs::read_to_string("jobs/pal_U.json").unwrap()).unwrap();
+    let mut j: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/jobs/pal_U.json")).unwrap()).unwrap();
     j["per_uma"] = json!(per_uma); j["sizes"] = sizes; j["require"] = require;
     j
 }

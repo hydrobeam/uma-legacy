@@ -15,19 +15,20 @@ par = int(os.environ.get('VAL_J', 0)) or max(1, (os.cpu_count() or 4) - 2)
 if '-j' in args: i = args.index('-j'); par = int(args[i + 1]); del args[i:i + 2]
 b, tag = os.path.abspath(args[0]), args[1]
 slow = {tuple(x) for x in json.load(open(os.path.join(V, 'slow.json')))} if quick else set()
-tasks = []   # (mode, name, dir, job file)
-for d, j in json.load(open(os.path.join(V, 'jobs.json'))):
-    name = (d.replace('/', '_') + '__' + j.split('/')[-1]).replace('.json', '')
-    job = json.load(open(os.path.join(S, d, j)))
-    if ('', d, j) not in slow and ('sh', d, j) not in slow: tasks.append(('', name, d, os.path.join(S, d, j)))
-    if job.get('mode') == 'deck' and ('pu', d, j) not in slow:
+tasks = []   # (mode, name, era, job file); the solver runs in the era's data folder, as the job files expect
+for era, j in json.load(open(os.path.join(V, 'jobs.json'))):
+    name = era + '__' + j
+    jf = os.path.join(V, 'jobs', j + '.json')
+    job = json.load(open(jf))
+    if ('', era, j) not in slow and ('sh', era, j) not in slow: tasks.append(('', name, era, jf))
+    if job.get('mode') == 'deck' and ('pu', era, j) not in slow:
         job['per_uma'] = True
         tmp = os.path.join(V, f'_pu_tmp_{tag}__{name}.json'); json.dump(job, open(tmp, 'w'))
-        tasks.append(('pu', name, d, tmp))
+        tasks.append(('pu', name, era, tmp))
 times = {'': {}, 'pu': {}}
 def run(t):
-    mode, name, d, jf = t; t0 = time.time()
-    out = subprocess.run([b, 'data.json', jf], cwd=os.path.join(S, d), capture_output=True, text=True).stdout
+    mode, name, era, jf = t; t0 = time.time()
+    out = subprocess.run([b, 'data.json', jf], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', era), capture_output=True, text=True).stdout
     open(os.path.join(V, f'{tag}{mode}__{name}.out'), 'w').write(out)
     times[mode][name] = round(time.time() - t0, 1)
     if mode == 'pu': os.remove(jf)

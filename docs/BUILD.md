@@ -38,7 +38,7 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 | `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler` | `wasm`, `page`, `runners`, the tests, `deploy` |
 | `pyproject.toml` (`.venv/`, created by uv) | `UnityPy`, `Pillow` | `images`, `runners` (the exporters use the standard library) |
 | `webapp/node_modules` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH=0`) | `test`, `testq`, `runners` |
-| `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/gametora.json` | `events`, `page` |
+| `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json` | `events`, `page` |
 | `cache/chibi/tools/` (`runners`, first use) | AssetStudioModCLI 0.19.0, a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 (Arch's libxml2-legacy; always this copy) | `runners` |
 
 **Game files you supply**, all in `game/` (gitignored; needed only to refresh the data or make the art)
@@ -97,13 +97,13 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 
 - `data` keeps every uma, outfit and support card that `master.mdb` dates up to 60 days past the build
   (`pkg/loopopt/export/upcoming.py`; an outfit starts with its first gacha, else with its uma; content the game has
-  not dated carries a 2050 placeholder and stays out). `pkg/loopopt/upcoming.json` lists what starts after the build.
+  not dated carries a 2050 placeholder and stays out). `pkg/loopopt/data/global/upcoming.json` lists what starts after the build.
   The page hides each entry until its start time and leaves it out of every search (`webapp/src/data.js` `LATER`,
   `engine.js`), so a banner turns on by itself; the precomputed example leaves the same entries out
   (`webapp/example.mjs`). Validation runs on everything in the data, upcoming included.
-- Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): Global in
-  `pkg/loopopt/card_events.json` (entries whose `src` is not exactly "gametora training_events" survive `events`), Grand
-  Masters in `jp/export/manual_gm*.json`. The builders share one decoder, `pkg/loopopt/export/event_choices.py`. After
+- Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): each era's
+  `pkg/loopopt/data/<era>/manual.json`, which `events` merges into that era's `card_events.json`. The builders share one
+  decoder, `pkg/loopopt/export/event_choices.py`. After
   touching them, `uv run val/event_audit.py` should say "every target hint is accounted for".
 - New characters' art comes from `./build.sh images` (and `runners`); without it they show initials.
 
@@ -170,7 +170,7 @@ can move results, commit, tag `vN` (the next after the latest), `./build.sh depl
 build's `git describe` version.
 
 Hosting is Cloudflare Pages by direct upload: project `uma-legacy` (`CF_PAGES_PROJECT` overrides), live at
-https://uma-legacy.pages.dev. `deploy` refuses when `webapp/`, `pkg/` or `jp/` have uncommitted changes
+https://uma-legacy.pages.dev. `deploy` refuses when `webapp/` or `pkg/` have uncommitted changes
 (`DEPLOY_DIRTY=1` overrides); `CF_PAGES_BRANCH=preview` publishes to the preview address; `SITE_URL` sets the
 link-preview tags' host. One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create
 uma-legacy --production-branch main --force` (`--force` keeps it on classic Pages; without it wrangler 4.147 delegated
@@ -185,10 +185,13 @@ minutes and can serve the previous page until then.
 ```
 build.sh             the one entry point for every build step
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
-pkg/loopopt/         the Rust solver (src/, tests/), data.json, web_skills.json, web_cards.json, card_events.json, jobs/
+pkg/loopopt/         the Rust solver (src/, tests/)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
-jp/                  the Grand Masters-era data (the JP game database cut at L'Arc's launch) and its hand-entered card events
-val/                 validation jobs, reference outputs and checks
+pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
+                     launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,
+                     base.json and manual.json (hand-entered card events), plus upcoming.json for Global; and the
+                     inputs both eras share, event_shares.json and gametora.json (GameTora's pinned versions)
+val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
 cache/               downloads: GameTora's files, the runner tools and exports (gitignored)

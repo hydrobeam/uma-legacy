@@ -1,22 +1,22 @@
 """Write the simulator jobs behind val/sim/README.md into a directory.
 
     uv run val/sim/make_jobs.py OUT_DIR
-    (cd pkg/loopopt && target/release/loopopt data.json OUT_DIR/NAME.json > OUT_DIR/NAME.out)   # per job (one line of JSON)
+    (cd pkg/loopopt/data/global && ../../target/release/loopopt data.json OUT_DIR/NAME.json > OUT_DIR/NAME.out)   # per job
     uv run val/sim/report.py runs OUT_DIR/*.out ; uv run val/sim/report.py audit OUT_DIR/*.out ; ... e1 OUT_DIR/e1_*.out
 
 The greedy and loop policies on three pools (career_U5, pool4, pool14), with the surrogate's checks and audits, and
 whole trajectories under the exact model; the trace job that refits Cont's shape is in val/sim/README.md.
 
 Each job is a pool file (career mode) plus a `simulate` block (docs/SOLVER.md "Policy simulator"). Paths inside the
-pool files are relative to pkg/loopopt, so run the solver from there. Jobs split into run ranges run in parallel.
+pool files are relative to the era's data folder (pkg/loopopt/data/global), so run the solver from there. Jobs split into run ranges run in parallel.
 """
 import json, os, sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-U5 = f'{REPO}/pkg/loopopt/jobs/career_U5.json'
+U5 = f'{REPO}/val/jobs/career_U5.json'
 O4 = f'{REPO}/val/sim/pools/pool4.json'
 O14 = f'{REPO}/val/sim/pools/pool14.json'
-LU = [1019, 1021, 1034]   # the loop planner's best for career_U5's settings (val/refpu__pkg_loopopt__pal_U.out)
+LU = [1019, 1021, 1034]   # the loop planner's best for career_U5's settings (val/refpu__global__pal_U.out)
 LO = [1014, 1019, 1078]   # the loop planner's best for pool4/pool14's roster and cards
 G = dict(margin=-1)       # exact-backed greedy
 L = dict(margin=0.02)

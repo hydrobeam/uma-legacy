@@ -492,10 +492,10 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
-  // a build holds the next banner ahead of its start (pkg/loopopt/upcoming.json): hidden and left out of every search
+  // a build holds the next banner ahead of its start (pkg/loopopt/data/global/upcoming.json): hidden and left out of every search
   // until its start time, then there without a rebuild (the page's clock moved past it)
   async upcoming(b) {
-    const up = JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/upcoming.json', import.meta.url), 'utf8'));
+    const up = JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/data/global/upcoming.json', import.meta.url), 'utf8'));
     const later = Object.fromEntries(Object.entries(up).map(([k, l]) => [k, l.filter(([, t]) => t > Date.now() / 1000)]));
     const all = Object.values(later).flat();
     if (!all.length) { check('upcoming: nothing in this build starts later (nothing to check)', true); return; }
@@ -514,7 +514,7 @@ const TESTS = {
       JSON.stringify(later));
     const then = await look(`{ const off = ${at} - Date.now(), n = Date.now; Date.now = () => n() + off; }`);
     // R cards stay out by default whatever their date (the page's R-cards switch)
-    const rare = new Set(JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/web_cards.json', import.meta.url), 'utf8')).cards.filter(c => c.rarity > 1 || c.pal).map(c => c.id));
+    const rare = new Set(JSON.parse((await import('fs')).readFileSync(new globalThis.URL('../pkg/loopopt/data/global/web_cards.json', import.meta.url), 'utf8')).cards.filter(c => c.rarity > 1 || c.pal).map(c => c.id));
     check('upcoming: once started it is in the search', then.job && none(then.job.exclude, ids('umas')) && none(then.job.exclude_outfits, ids('outfits'))
       && none(then.job.exclude_cards, ids('cards').filter(id => rare.has(id))), JSON.stringify(then.job && then.job.exclude_cards.filter(id => ids('cards').includes(id))));
     check('upcoming: once started its outfits and cards are on the page', then.tiles - now.tiles === ids('outfits').length && then.cards > now.cards,

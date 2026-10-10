@@ -146,7 +146,7 @@ def strip(cid):
 
 def roster():
     ids = set()
-    for f in (os.path.join(R, 'pkg', 'loopopt', 'export', 'base.json'), os.path.join(R, 'jp', 'export', 'base.json')):
+    for f in (os.path.join(R, 'pkg', 'loopopt', 'data', era, 'base.json') for era in ('global', 'jp')):
         if os.path.exists(f): ids |= set(json.load(open(f))['roster'])
     return sorted(ids)
 

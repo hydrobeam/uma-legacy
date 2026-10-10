@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn fast_metric_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let nu = m.uncertain.len();
@@ -38,7 +38,7 @@ fn chain_marginals_dense_matches_ref() {
 /// The character rule: a card blocks its own character and, for a group card, every member.
 #[test]
 fn card_blocks_own_character_and_group_members() {
-    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_cards.json")).unwrap()).unwrap();
     let sirius = cr.cards.iter().find(|c| c.id == 30081).expect("Team Sirius");
     assert!(sirius.blocks(1001) && sirius.blocks(1002) && !sirius.blocks(1008));    // Special Week, Suzuka; not Vodka
     let halo = cr.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
@@ -65,7 +65,7 @@ fn chain_model_calibration() {
 /// are hinted together less often than independent chances would say, and the outcomes are a distribution.
 #[test]
 fn training_draws_over_two_targets() {
-    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_cards.json")).unwrap()).unwrap();
     let c = cr.cards.iter().find(|c| c.nskill > 0 && c.whites.contains(&20046) && c.whites.contains(&20161)).expect("a card with Ramp Up and Tail Held High");
     let dj = job_with(json!({}));
     let unc = [20046u32, 20161];
@@ -131,13 +131,13 @@ fn chain_stop_risk_is_a_mixture() {
 /// decks, allowed in URA Finale and Trackblazer.
 #[test]
 fn scenario_bans_exported() {
-    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_cards.json")).unwrap()).unwrap();
     for sc in ["unity", "gc"] { assert!(cr.restrict.get(sc).map_or(false, |v| v.contains(&30081)), "{sc}: {:?}", cr.restrict); }
     for sc in ["ura", "trackblazer"] { assert!(!cr.restrict.get(sc).map_or(false, |v| v.contains(&30081))); }
 }
 fn job_with(v: Value) -> DeckJob { serde_json::from_value(v).unwrap() }
 fn halo() -> Card {
-    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_cards.json")).unwrap()).unwrap();
+    let cr: CardsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_cards.json")).unwrap()).unwrap();
     cr.cards.into_iter().find(|c| c.id == 30056).unwrap()
 }
 /// An event offering targets on different choices gives one deck entry per choice, each with one choice's
@@ -210,7 +210,7 @@ fn chain_states_match_marginals() {
 #[test]
 fn joint_fast_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
@@ -241,7 +241,7 @@ fn joint_fast_matches_reference() {
 #[test]
 fn career_fold_and_scale() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
         "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
@@ -289,7 +289,7 @@ fn career_fold_and_scale() {
 #[test]
 fn upper_bound_covers_exact() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
@@ -335,7 +335,7 @@ fn group_orthant_check() {
 #[test]
 fn joint_equals_product_without_correlation() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/web_skills.json")).unwrap()).unwrap();
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let nu = m.uncertain.len();

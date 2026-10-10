@@ -2,7 +2,7 @@
 Brute-force check of the character rule: every 6-card deck from a small owned set, each with its best legal
 loop (deck locked, blocked umas excluded), against the search's answer (exact odds; the character rule as a legality filter). usage: owncheck.py BIN [K]"""
 import tempfile, json, itertools, subprocess, sys, os, concurrent.futures as cf
-S = os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/'
+S = os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/data/global/'
 BIN, K = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 3
 REQ = sys.argv[3].split(',') if len(sys.argv) > 3 else []
 data = json.load(open(S + 'data.json')); cards = {c['id']: c for c in json.load(open(S + 'web_cards.json'))['cards']}
@@ -11,7 +11,7 @@ UMAS = ['Agnes Digital', 'Tamamo Cross', 'Inari One', 'Oguri Cap', 'Yaeno Muteki
 def cid(frag): return next(i for i, c in cards.items() if frag in c['name'])
 OWN = [cid('[Tracen Academy] Yaeno'), cid('Tonight, We Waltz'), cid('Sunlit Angel'), cid('From the Ground Up'), cid('This Might Sting'),
        cid('[Tracen Academy] Mr. C.B.'), cid('[Tracen Academy] Inari'), cid('Split the Sky'), cid('Team Sirius'), cid('[Tracen Academy] Gold Ship')]
-base = json.load(open(S + 'jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN, top_decks=K, require=[uid[n] for n in REQ])
+base = json.load(open(os.path.dirname(os.path.abspath(__file__)) + '/jobs/pal_U.json')); base.update(owned=[uid[n] for n in UMAS], owned_cards=OWN, top_decks=K, require=[uid[n] for n in REQ])
 def run(job):
     p = os.path.join(tempfile.gettempdir(), f'_oc_{os.getpid()}_{abs(hash(json.dumps(job, sort_keys=True)))}.json')
     json.dump(job, open(p, 'w')); out = subprocess.run([BIN, 'data.json', p], cwd=S, capture_output=True, text=True).stdout; os.remove(p)

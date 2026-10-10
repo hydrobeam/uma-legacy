@@ -4,8 +4,8 @@ compare. Prints, per class, the largest exact / product odds the audit run score
 largest ratio passes its normal cap, and fails when the answer moves (a deck the normal caps missed).
 
 usage: capaudit.py BIN [JOB ...]
-  JOB: a val/plan job name (p16, gm16, ...) or a val job as DIR/FILE with ':pu' for per-uma (jp/jobs/v_uc_k1.json:pu).
-  Default: p16, gm16, jp/jobs/v_uc_k1.json:pu (about 35 s natively, one job at a time; the audit runs take most of
+  JOB: a val/plan job name (p16, gm16, ...) or a val/jobs job name with ':pu' for per-uma (v_uc_k1:pu).
+  Default: p16, gm16, v_uc_k1:pu (about 35 s natively, one job at a time; the audit runs take most of
   it). v_uc_k1's per-uma audit run lists over 500,000 decks at 2.0 and falls to 1.12: there it checks the 1.05 classes
   (0-1 and 2) only.
   Exits 1 when an answer moves or a ratio passes its cap."""
@@ -13,14 +13,15 @@ import json, os, subprocess, sys, tempfile, time
 V = os.path.dirname(os.path.abspath(__file__)); S = os.path.dirname(V); P = os.path.join(V, 'plan')
 CLS = ['0-1', '2', '3', '4+']
 args = sys.argv[1:]
-b = os.path.abspath(args[0]); want = args[1:] or ['p16', 'gm16', 'jp/jobs/v_uc_k1.json:pu']
+b = os.path.abspath(args[0]); want = args[1:] or ['p16', 'gm16', 'v_uc_k1:pu']
 plan_dirs = dict((n, d) for d, n in json.load(open(os.path.join(P, 'jobs.json'))))
+val_eras = dict((n, d) for d, n in json.load(open(os.path.join(V, 'jobs.json'))))
 tmp = tempfile.mkdtemp(prefix='capaudit_')
 
 def run(d, job, name, env=None):
     path = os.path.join(tmp, name + '.json'); json.dump(job, open(path, 'w'))
     t0 = time.time()
-    r = subprocess.run([b, 'data.json', path], cwd=os.path.join(S, d), capture_output=True, text=True, env=env)
+    r = subprocess.run([b, 'data.json', path], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', d), capture_output=True, text=True, env=env)
     t = r.stdout
     return json.loads(t[t.index('{'):]), time.time() - t0
 
@@ -45,8 +46,8 @@ bad = 0; t_all = time.time()
 for w in want:
     if w in plan_dirs: d, job, name = plan_dirs[w], json.load(open(os.path.join(P, w + '.json'))), w
     else:
-        f, _, mode = w.partition(':'); d, jf = f.split('/', 1)
-        job = json.load(open(os.path.join(S, d, jf))); name = os.path.basename(jf).replace('.json', '')
+        name, _, mode = w.partition(':'); d = val_eras[name]
+        job = json.load(open(os.path.join(V, 'jobs', name + '.json')))
         if mode == 'pu': job['per_uma'] = True; name += '_pu'
     a, ta = run(d, job, name)
     # (a per-uma audit run gets ten times the work budget, as `cap_audit` gives its bands ten times the room: at caps of

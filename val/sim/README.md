@@ -13,12 +13,12 @@ builders on 2-, 5-, 11- and 19-veteran pools (6 runs x 400 careers each). Result
 `"simulate": {"policy": "trace", "runs": 6, "max_careers": 400, "margin": 1e9, "loop_members": [1019, <five builders>]}`
 (about 5 s a run natively).
 
-The policy comparisons (greedy, the three-uma loop) run from the repository root (pools: `pkg/loopopt/jobs/career_U5.json`
+The policy comparisons (greedy, the three-uma loop) run from the repository root (pools: `val/jobs/career_U5.json`
 and `val/sim/pools/`):
 
     cargo build --release --manifest-path pkg/loopopt/Cargo.toml
     uv run val/sim/make_jobs.py /tmp/sim                         # job files and queue.txt
-    (cd pkg/loopopt && for n in $(cat /tmp/sim/queue.txt); do target/release/loopopt data.json /tmp/sim/$n.json > /tmp/sim/$n.out; done)
+    (cd pkg/loopopt/data/global && for n in $(cat /tmp/sim/queue.txt); do ../../target/release/loopopt data.json /tmp/sim/$n.json > /tmp/sim/$n.out; done)
     uv run val/sim/report.py runs /tmp/sim/u5_*.out              # E per policy, paired differences
     uv run val/sim/report.py audit /tmp/sim/u5_*.out             # the surrogate's fidelity audits
 

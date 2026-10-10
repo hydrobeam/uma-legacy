@@ -4,7 +4,7 @@ Writes cache/secret_events.md (per uma, then an index by skill). usage: uv run v
 import json, glob, sqlite3, collections, sys
 import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-P = REPO + '/pkg/loopopt/'
+P = REPO + '/pkg/loopopt/data/global/'
 ev = json.load(open(glob.glob(REPO + '/cache/gametora/dict_evrew.*.json')[0])); OFF = 36
 c = sqlite3.connect(f'file:{REPO}/game/global/master.mdb?mode=ro', uri=True)
 sk = dict(c.execute("select [index],text from text_data where category=47"))

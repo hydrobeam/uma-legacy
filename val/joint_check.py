@@ -205,14 +205,14 @@ def check(out, job, d):
 
 
 tag = sys.argv[1]; bad = 0
-for d, j in json.load(open(os.path.join(V, 'jobs.json'))):
-    job = json.load(open(os.path.join(S, d, j)))
+for era, j in json.load(open(os.path.join(V, 'jobs.json'))):
+    job = json.load(open(os.path.join(V, 'jobs', j + '.json')))
     if job.get('mode') != 'deck': continue
-    name = (d.replace('/', '_') + '__' + j.split('/')[-1]).replace('.json', '')
+    name = era + '__' + j
     for m in ('', 'pu'):
         f = os.path.join(V, f'{tag}{m}__{name}.out')
         if not os.path.exists(f): continue
-        w = check(json.load(open(f)), job, os.path.join(S, d))
+        w = check(json.load(open(f)), job, os.path.join(S, 'pkg', 'loopopt', 'data', era))
         flag = w > 1e-3; bad += flag
         print(f"{m or 'sh'} {name}: max |python / solver - 1| = {w:.1e}{'  <<' if flag else ''}", flush=True)
 print('all within 1e-3' if not bad else f'{bad} outside 1e-3')

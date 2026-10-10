@@ -12,8 +12,8 @@ JP = ERA == 'jp'
 R = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 GLOBAL_MDB = os.path.join(R, 'game', 'global', 'master.mdb')
 MDB = os.path.join(R, 'game', ERA, 'master.mdb')
-OUT = os.path.join(R, 'jp') if JP else os.path.join(R, 'pkg', 'loopopt')   # the era's data files
-BASE = os.path.join(OUT, 'export', 'base.json')                              # the roster the exporters share
+OUT = os.path.join(R, 'pkg', 'loopopt', 'data', ERA)   # the era's data files
+BASE = os.path.join(OUT, 'base.json')                  # the roster the exporters share
 c = sqlite3.connect(f'file:{MDB}?mode=ro', uri=True)
 q = lambda s, *a: c.execute(s, a).fetchall()
 _gl = sqlite3.connect(f'file:{GLOBAL_MDB}?mode=ro', uri=True)
