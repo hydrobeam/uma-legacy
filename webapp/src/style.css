@@ -939,6 +939,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .optab tbody tr.on > * { background: var(--gm-tile); }
 .rb .optab tr > :first-child { padding-left: 12px; } .rb .optab tr > :last-child { padding-right: 12px; }   /* off the rows' rounded walls */
 @media (max-width: 620px) { .rb .alts .optab tbody tr { padding-inline: 12px; } }   /* phone: each row is one card */
+/* the Saves per run popup's dropdowns (today's estimate, an example) */
+.savemore { border-top: 1px solid var(--gm-line, var(--line)); padding-top: 6px; }
+.savemore > summary { cursor: pointer; font-weight: 700; color: var(--gm-ink); }
+.savebody .savemore > p { margin: 8px 0 0; }   /* (over .savebody p's 0) */
 .rb .vet .vtop .vno { color: var(--gm-ink); font-weight: 900; }
 .rb .vet .vnm { color: var(--gm-ink); }
 /* your veterans' spark chips: small spark bars */
