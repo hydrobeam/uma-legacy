@@ -30,7 +30,7 @@ kept unless --force; an older WebP of the same image is removed when its AVIF is
   scenart  single/banner/bnr_chara_big_{image:03d}         the scenario select screen's character art, cropped to its
                                                              visible area, fitted in 360x360 (career page)
 
-Bundles: game/global/decrypted/ (the client's decrypted asset tree), game/global/data/ (the install's *_Data folder),
+Bundles: game/global/decrypted/ (the client's decrypted asset tree), game/global/resources.assets (from the install's *_Data folder),
 game/jp/bundles/ (JP-only art). They must already be decrypted; this script only reads them. Dress ids come from the Global master.mdb, then the JP one for JP-only
 outfits. usage: uv run webapp/images.py [--force]
 """
@@ -40,11 +40,11 @@ from PIL import Image
 
 H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(H)
 # the game's files, inside the repository (gitignored): game/global/decrypted/ holds the client's decrypted asset tree
-# (paths as in the game, e.g. chara/chr1001/...), game/global/data/ its install's *_Data folder
+# (paths as in the game, e.g. chara/chr1001/...); game/global/resources.assets is the install's built-in assets file
 ASSETS = os.path.join(R, 'game', 'global', 'decrypted')
 OUT = os.path.join(H, 'img')
 # the game install's built-in assets: the common buttons live in resources.assets, not in the downloaded bundles
-GAME_DATA = os.path.join(R, 'game', 'global', 'data')
+RESOURCES = os.path.join(R, 'game', 'global', 'resources.assets')
 SIZE = {'uma': 96, 'mob': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128), 'scen': (288, 160), 'scenart': (360, 360)}   # 2x the largest display (race banners ~128x64; scenario logos fit 144x80)
 # the scenario logos' textures are square, but the game draws them 1.25x as wide as tall (resources.assets:
 # PartsSingleModeStartScenarioLogo/bnr_00N RawImage 642x514, DialogSingleModeStartScenarioDetail/scenarioImage 446x355);
@@ -178,7 +178,7 @@ def res_sprites(force, manifest):
     todo = {k: n for k, n in RES_SPRITES.items() if force or not os.path.exists(os.path.join(OUT, 'ui', k + '.webp'))}
     for k, n in RES_SPRITES.items():
         if k not in todo: manifest['images']['ui:' + k] = 'resources.assets ' + n
-    path = os.path.join(GAME_DATA, 'resources.assets')
+    path = RESOURCES
     if not todo: return 0
     if not os.path.exists(path):
         for k, n in todo.items(): manifest['missing']['ui:' + k] = 'resources.assets ' + n

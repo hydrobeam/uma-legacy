@@ -1,8 +1,8 @@
 """The runner: each uma's mini model running, as one sprite strip per uma (webapp/img/run/{chara}.avif, 18 frames of
 128 px side by side, a 0.6 s loop the page steps through with CSS: webapp/src/images.js runnerHTML).
 
-From the game's own files (the decrypted bundles images.py reads, found by name through the asset index
-game/global/meta.db): her mini body (mbdy{id}_00), hair (mchr{id}_00), the shared mini face (mchr0001_00_face0, her
+From the game's own files (the decrypted bundles images.py reads, found by asset path in
+game/global/decrypted/, with the prerequisites each bundle lists): her mini body (mbdy{id}_00), hair (mchr{id}_00), the shared mini face (mchr0001_00_face0, her
 skin tone's texture), her tail model with her texture (chara_data.tail_model_id, .skin from master.mdb), and the
 game's mini run motion (3d/motion/mini/event/body/type00/anm_min_eve_type00_run00_loop). AssetStudio's CLI exports
 the models to FBX, FBX2glTF makes glb; the run (a generic clip: dense and constant curves, its bones named by the
@@ -20,7 +20,6 @@ import glob, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, ur
 H = os.path.dirname(os.path.abspath(__file__)); W = os.path.dirname(H); R = os.path.dirname(W)
 CACHE = os.path.join(R, 'cache', 'chibi'); TOOLS = os.path.join(CACHE, 'tools'); WORK = os.path.join(CACHE, 'work')
 OUT = os.path.join(W, 'img', 'run')
-META = os.path.join(R, 'game', 'global', 'meta.db')
 MDB = os.path.join(R, 'game', 'global', 'master.mdb')
 ASSETS = os.path.join(R, 'game', 'global', 'decrypted')   # as webapp/images.py
 RUN = '3d/motion/mini/event/body/type00/anm_min_eve_type00_run00_loop'
@@ -57,31 +56,44 @@ def tools():
     return env
 
 
-def body_of(meta, cid):
+def tree(prefix):
+    """Every bundle under an asset-path folder of the decrypted tree (its files are the bundles, named by asset path)."""
+    root = os.path.join(ASSETS, prefix)
+    return [os.path.relpath(os.path.join(d, f), ASSETS).replace(os.sep, '/') for d, _, fs in os.walk(root) for f in fs]
+
+
+def depends(n):
+    """A bundle's prerequisites, from its own AssetBundle object (m_Dependencies, each name with a '.a' suffix)."""
+    import UnityPy
+    for o in UnityPy.load(os.path.join(ASSETS, n)).objects:
+        if o.type.name == 'AssetBundle': return {x.removesuffix('.a') for x in o.read_typetree().get('m_Dependencies', [])}
+    return set()
+
+
+def body_of(cid):
     """Her mini body's variant: the lowest-numbered one (mbdy{id}_00 for most; a few have only _01 and later)."""
-    vs = sorted(r[0].rsplit('_', 1)[1] for r in meta.execute('select n from a where n like ?', (f'3d/chara/mini/body/mbdy{cid}_%/pfb_mbdy{cid}_%',)) if '/clothes/' not in r[0])
+    vs = sorted(os.path.basename(p).rsplit('_', 1)[1] for p in glob.glob(os.path.join(ASSETS, '3d', 'chara', 'mini', 'body', f'mbdy{cid}_*', f'pfb_mbdy{cid}_*')))
     return vs[0] if vs else '00'
 
 
-def bundles(meta, cid, skin, tail, body):
+def bundles(cid, skin, tail, body):
     """Her bundles by name, with their prerequisites (the materials live in sourceresources/...)."""
-    like = lambda p: [r[0] for r in meta.execute('select n from a where n like ?', (p,))]
-    names = set(like(f'3d/chara/mini/body/mbdy{cid}_{body}/%') + like(f'3d/chara/mini/head/mchr{cid}_00/%'))
+    names = set(tree(f'3d/chara/mini/body/mbdy{cid}_{body}') + tree(f'3d/chara/mini/head/mchr{cid}_00'))
     names |= {'3d/chara/mini/head/mchr0001_00/pfb_mchr0001_00_face0', f'3d/chara/mini/head/mchr0001_00/textures/tex_mchr0001_00_face0_{skin}_diff',
               f'3d/chara/mini/head/mchr0001_00/textures/tex_mchr0001_00_face0_{skin}_cheek0', f'3d/chara/mini/tail/mtail{tail}_00/pfb_mtail{tail}_00',
               f'3d/chara/mini/tail/mtail{tail}_00/textures/tex_mtail{tail}_00_{cid}_diff', RUN}
-    names |= set(like(f'3d/chara/mini/tail/mtail{tail}_00/clothes/%'))
+    names |= set(tree(f'3d/chara/mini/tail/mtail{tail}_00/clothes'))
     deps = set()
     for n in names:
-        for (d,) in meta.execute('select d from a where n = ?', (n,)): deps |= {x for x in (d or '').split(';') if x}
+        if os.path.exists(os.path.join(ASSETS, n)): deps |= depends(n)
     return sorted(names | deps)
 
 
-def export(cid, skin, tail, body, meta, env):
+def export(cid, skin, tail, body, env):
     w = os.path.join(WORK, str(cid))
     if os.path.exists(os.path.join(w, 'run.json')): return None   # exported before (the game files don't change under an id; delete cache/chibi/work/ID to redo)
     os.makedirs(os.path.join(w, 'in'), exist_ok=True); missing = []
-    for n in bundles(meta, cid, skin, tail, body):
+    for n in bundles(cid, skin, tail, body):
         src = os.path.join(ASSETS, n)
         if os.path.exists(src): shutil.copyfile(src, os.path.join(w, 'in', n.replace('/', '__')))
         else: missing.append(n)
@@ -155,11 +167,11 @@ def main(argv):
     force = '--force' in argv; args = [a for a in argv if not a.startswith('--')]
     ids = roster() if not args or args == ['all'] else [int(a) for a in args]
     if not ids: sys.exit('no umas: build the data first (./build.sh data)')
-    for f, what in ((META, 'the asset index (game/global/meta.db: the game\'s asset index as plain SQLite)'), (MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files (game/global/decrypted)')):
+    for f, what in ((MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files (game/global/decrypted)')):
         if not os.path.exists(f): sys.exit(f'missing {what}')
     todo = [c for c in ids if force or not os.path.exists(os.path.join(OUT, f'{c}.avif'))]
     if not todo: print(f'runners: all {len(ids)} present'); return
-    env = tools(); meta = sqlite3.connect(f'file:{META}?mode=ro', uri=True); mdb = sqlite3.connect(f'file:{MDB}?mode=ro', uri=True)
+    env = tools(); mdb = sqlite3.connect(f'file:{MDB}?mode=ro', uri=True)
     q = f'select id, skin, tail_model_id from chara_data where id in ({",".join(map(str, todo))})'
     info = {c: s for c, *s in mdb.execute(q)}
     jp = os.path.join(R, 'game', 'jp', 'master.mdb')   # umas not yet on Global (their mini models already ship in its files)
@@ -168,8 +180,8 @@ def main(argv):
     for c in todo:
         if c not in info: print(f'{c}: not in master.mdb'); continue
         skin, tail = max(0, (info[c][0] or 1) - 1), f'{info[c][1] or 1:04d}'
-        body = body_of(meta, c)
-        err = export(c, skin, tail, body, meta, env)
+        body = body_of(c)
+        err = export(c, skin, tail, body, env)
         if err: print(f'{c}: {err}'); continue
         ready.append(f'{c}:{skin}:{tail}:{body}')
     if ready: subprocess.run(['node', os.path.join(H, 'render.mjs'), WORK, *ready])
