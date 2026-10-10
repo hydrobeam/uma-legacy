@@ -1692,10 +1692,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .rbbar { grid-template-columns: max-content max-content minmax(0, 1fr); grid-template-areas: "hdr enh tgt" "list enh tgt"; column-gap: 24px; }
 .rb .rbbar > .lptgt { grid-area: tgt; align-self: start; padding-top: 10px; min-width: 0; }
 .rb .lptgt .panel { box-shadow: none; }
-.rb .lptgt .targets { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.rb .lptgt .panel > .targets { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 @media (max-width: 1100px) { .rb .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh" "tgt"; } }
 .rb .setlist { grid-template-columns: max-content; }
-.rb .lptgt .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rb .lptgt .panel > .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* career setup: Target skills shorter: the add
    box in its title row beside Load 8/8 example, the tiles three to a row from 1240 px */
 /* the settings spread down the panel's height (Target skills sets it) */
@@ -1707,9 +1707,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .lptgt .panel > .row.between > h2 { grid-area: h; margin-left: -12px; }
 .rb .lptgt .panel > .row.between > .btn { grid-area: btn; margin: 6px 0 0; }
 .rb .lptgt .adder { grid-area: add; margin: 6px 0 0; }
-.rb .lptgt .targets { grid-area: list; }
-.rb .lptgt .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (min-width: 1440px) { .rb .lptgt .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rb .lptgt .panel > .targets { grid-area: list; }
+.rb .lptgt .panel > .targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1440px) { .rb .lptgt .panel > .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) { .rb .rbbar { grid-template-areas: "hdr" "list" "enh" "tgt"; grid-template-rows: none; } }
 .rb .lptgt .panel { overflow: visible; }
 .rb .lptgt .panel > .row.between > h2 { border-top-left-radius: 13px; }

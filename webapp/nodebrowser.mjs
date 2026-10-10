@@ -1051,6 +1051,12 @@ const TESTS = {
     check('career: with no veterans it asks for parents or an import, and offers sample veterans', /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')), await note());
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));
+    // the presets popup inside that panel lays out as on the planner: one column, its tiles the dialog's width, the buttons under them
+    await pg.click('#t-preset'); await pg.locator('#pr-list .pview').first().click();
+    const pv = await pg.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), d = r('#pr-view .dlg'), t = r('#prv-tiles'), f = r('#pr-view .prfoot');
+      return { cols: getComputedStyle(document.querySelector('#pr-view .dlg')).gridTemplateColumns.split(' ').length, wide: t.width > d.width - 60, below: f.top >= t.bottom }; });
+    check('career: the preset popup is laid out as on the planner', pv.cols === 1 && pv.wide && pv.below, JSON.stringify(pv));
+    await pg.locator('#pr-view .dclose').click(); await pg.locator('#preset-dlg .dclose').click();
     // the pink ribbon toggles it, its edge too (not the bare strip beside it); folded, the summary (the whole bar) opens it
     const hb = await pg.locator('#h-set').boundingBox(), bb = await pg.locator('.rbbar').boundingBox();
     await pg.locator('.rbbar').click({ position: { x: hb.x - bb.x + hb.width + 60, y: hb.y - bb.y + hb.height / 2 } });
