@@ -88,9 +88,17 @@ header.top h1 a.home { color: inherit; text-decoration: none; }
 /* the brand: the favicon's sparkles, then "uma-legacy" */
 h1.brand, h1.brand a.home { display: inline-flex; align-items: center; gap: 0.3em; }
 h1.brand .logo { width: 1.25em; height: 1.25em; flex: none; }
-/* "uma" in the logo's own colours (stat blue, aptitude pink, unique green): the brand, by the owner's choice, below
-   the AAA contrast the rest of the page meets (the suite's audit skips these three letters) */
-h1.brand .bu { color: #28a8d8; } h1.brand .bm { color: #e84898; } h1.brand .ba { color: #68a808; }
+/* the wordmark as the game draws a title: the rounded face at its heaviest. "uma" as the three sparkles are drawn, each
+   letter its sparkle's pale fill, strong outline and softer halo (stat blue, aptitude pink, unique green); "-legacy"
+   in the game's brown with a white outline. The brand, by the owner's choice, below the AAA contrast the rest of the
+   page meets (the suite's audit skips the three letters) */
+h1.brand > span[aria-hidden], h1.brand a.home > span[aria-hidden] { font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 900; letter-spacing: 0;
+  color: var(--gm-ink); -webkit-text-stroke: 0.16em #fff; paint-order: stroke fill; filter: drop-shadow(0 0.05em 0.04em rgba(80, 50, 20, .28)); }
+h1.brand .bu, h1.brand .bm, h1.brand .ba { -webkit-text-stroke-width: 0.13em; }
+h1.brand .bu { color: #effaff; -webkit-text-stroke-color: #28a8d8; filter: drop-shadow(0 0 0.035em #68c8e8) drop-shadow(0 0 0.035em #68c8e8); }
+h1.brand .bm { color: #fff0f6; -webkit-text-stroke-color: #e84898; filter: drop-shadow(0 0 0.035em #f888b8) drop-shadow(0 0 0.035em #f888b8); }
+h1.brand .ba { color: #f5fde0; -webkit-text-stroke-color: #68a808; filter: drop-shadow(0 0 0.035em #98d838) drop-shadow(0 0 0.035em #98d838); }
+:root[data-theme="dark"] h1.brand > span[aria-hidden], :root[data-theme="dark"] h1.brand a.home > span[aria-hidden] { -webkit-text-stroke-color: #2a1a0c; filter: drop-shadow(0 0.05em 0.05em rgba(0, 0, 0, .5)); }
 /* the "How this works" page */
 .about { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; line-height: 1.6; }
 .about h2 { margin: 0 0 12px; font-size: 1.6rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
