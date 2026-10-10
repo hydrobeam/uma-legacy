@@ -4,11 +4,11 @@
 !/build.sh
 !/BUILD.md
 !/README.md
+!/AGENTS.md
 !/pyproject.toml
 !/uv.lock
 !/.python-version
 !/docs/
-!/inputs/
 !/pkg/
 /pkg/*
 !/pkg/loopopt/

@@ -34,7 +34,7 @@ Bundles: $UMA_DECRYPTED, default the Steam (Proton) install's LocalLow/Cygames/U
 be decrypted; this script only reads them. Dress ids come from the Global master.mdb, then the JP one for JP-only
 outfits. usage: uv run webapp/images.py [--force]
 """
-import glob, io, json, os, sqlite3, sys
+import io, json, os, sqlite3, sys
 import UnityPy
 from PIL import Image
 
@@ -50,21 +50,12 @@ SIZE = {'uma': 96, 'mob': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (
 # the square texture alone looks squeezed (round letters come out tall)
 SCEN_ASPECT = 1.25
 # what the Global client lacks (the Grand Masters scenario's banner art, JP-only skill icons): the JP client's bundle,
-# found by name in the JP asset index (cache/meta_jp_*, a plain SQLite copy) and fetched once from the JP CDN into
-# cache/jp_bundles/ (webapp/gamefiles.py fetch_jp; that index's bundles are not encrypted)
+# read from cache/jp_bundles/<asset path> when present. The module that fetches and reads the game's own asset index
+# is not published; without these bundles the page keeps its drawn fallbacks.
 JP_BUNDLES = os.path.join(R, 'cache', 'jp_bundles')
 def jp_bundle(rel):
     dst = os.path.join(JP_BUNDLES, rel)
-    if os.path.exists(dst): return dst
-    idx = sorted(glob.glob(os.path.join(R, 'cache', 'meta_jp_*')))
-    if not idx: return None
-    import sqlite3, gamefiles
-    row = sqlite3.connect(f'file:{idx[-1]}?mode=ro', uri=True).execute('select h from a where n = ?', (rel,)).fetchone()
-    if not row: return None
-    try: data = gamefiles.fetch_jp(row[0])
-    except Exception as e: print(f'JP bundle {rel}: {e}'); return None
-    os.makedirs(os.path.dirname(dst), exist_ok=True); open(dst, 'wb').write(data)
-    return dst
+    return dst if os.path.exists(dst) else None
 INSET = {'uma': 26, 'mob': 26}   # px of the 256 px icon cut inside the visible area: the white ring
 # Outfit icons (chr_icon_{chara}_{dress}_01) are a portrait in a silver frame that sits at the same place in every
 # texture (outer edge x 10-245, y 34/35-248/249; inner picture x 23-232, y 47-235, checked on all 137 icons); ears and

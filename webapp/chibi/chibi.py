@@ -157,7 +157,7 @@ def main(argv):
     force = '--force' in argv; args = [a for a in argv if not a.startswith('--')]
     ids = roster() if not args or args == ['all'] else [int(a) for a in args]
     if not ids: sys.exit('no umas: build the data first (./build.sh data)')
-    for f, what in ((META, 'the asset index (cache/meta_global.db: webapp/gamefiles.py meta)'), (MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files ($UMA_DECRYPTED)')):
+    for f, what in ((META, 'the asset index (cache/meta_global.db, a plain SQLite copy of the game\'s asset index; the tool that makes it is not published)'), (MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files ($UMA_DECRYPTED)')):
         if not os.path.exists(f): sys.exit(f'missing {what}')
     todo = [c for c in ids if force or not os.path.exists(os.path.join(OUT, f'{c}.avif'))]
     if not todo: print(f'runners: all {len(ids)} present'); return

@@ -1,5 +1,8 @@
 # Random character events triggered by support cards
 
+Written 2026-10-05 from Independent Training runs from uma-it. Not yet in the model: the planner credits no card
+random events (only chain events and the always-on ones in `card_events.json`, such as Riko Kashimoto's Ramp Up).
+
 ## Verdict
 
 A support card's random event (her character's "shared" event) fires in about **15% of careers** with the card in the
@@ -30,6 +33,14 @@ Character events belong to the character: an R, SR or SSR card of hers can trigg
 
 ## Measurement
 
+A **marker** is a top-choice skill hint (every outcome gives it, the bottom choice gives no skill). The hint credited
+to "<her name> event" in the run's record means the event fired. Readings: runs with her card in the deck, someone else
+training, and the skill not given by her card's own events. 2,871
+readings from 1,461 runs (the earlier studies' runs plus 550 chosen for this one: 0-pal decks at every chain
+length and 1-pal decks at both extremes, to separate pals, chain links and random-event count).
+426 clean hits; 58 more credited to "A or B event" (counted as misses here; with them the rate is about 3 points
+higher).
+
 | deck | hit rate |
 |---|---|
 | random events on offer 4 / 6 / 8 / 10 / 12 / 14 | 0.17 / 0.20 / 0.19 / 0.17 / 0.14 / 0.13 |
@@ -51,16 +62,19 @@ power law c·(K/8)^−a −1200.7 with a = 0.39 (uniform competition would be a 
 
 Agnes Tachyon SSR 0.18 (421 readings), SR 0.08 (124); Special Week SSR 0.18, R 0.07; Fine Motion SSR 0.14, R 0.13;
 Air Shakur SSR 0.15 (one card), 0/26 (the other), R 0.12. Initial friendship does not explain it. Unknown whether it
-is the card, page crediting, or chance in the smaller groups.
+is the card, the record's crediting, or chance in the smaller groups.
 
 ## Caveats
 
-- Pages sometimes drop a source when the skill was already hinted another way: rates are slight underestimates.
+- Runs sometimes drop a source when the skill was already hinted another way: rates are slight underestimates.
 - Vodka's Nimble Navigator as the trainee (23 of 25 runs) is a trainee event, not this; random events from the
   trainee's own side are not measured here beyond that.
 - Only Global scenarios; Trackblazer has 28 readings.
 
 ## Rarity, training frequency and the target cards (2,264 runs, 2026-10-05)
+
+803 more runs (every remaining run with SR Agnes Tachyon, SR Fine Motion, SR Mihono Bourbon, SR Daiwa Scarlet, any
+Vodka card or Nice Nature's SSR) bring the readings to 4,748 from 2,264 runs (658 clean hits).
 
 - **Rarity: no effect within a character.** Pooled, SSR markers fire at 15.3% against SR 10.9% and R 11.4%, but that
   is mostly which characters have SR cards. Within the 22 characters with cards of more than one rarity (character

@@ -1,5 +1,9 @@
 # Support-card chain events in Independent Training: the model and the evidence
 
+Written 2026-10-05. The data are 1,330 Independent Training (IT) deck-runs from uma-it (counted per pal group below). The solver code is `pkg/loopopt/src/deck.rs`
+(`event_pmf`, `chain_marginals*`, `chain_states`, `joint_trainee`). The analysis scripts were scratch files in the
+job directory, not in the repo; the method is described below so it can be redone.
+
 ## Verdict
 
 Chain completion in the planner rests on three rules:
@@ -37,6 +41,8 @@ the count that best explains the observed progress across all decks.
   difference.
 - **Refit after the measurement fixes (section 6):** p stays at 0.35 with n = 21, whether fitted on all links or on
   final links only.
+- **Refit on 1,792 runs** (the larger run set, 2026-10-05): means 7.52 / 6.84 / 7.20 / 7.92 for 1 / 2 / 3 / 4 pals
+  (variances 4.0-5.3); Binomial(21, 0.35) (7.35, 4.8) stays.
 
 **What the numbers mean.** "21 trials at 35%" is a shape with this mean and spread. The spread being smaller than
 Poisson's suggests a capped number of chances per run, for example a fixed set of turns that can each produce a chain
@@ -219,7 +225,11 @@ skill at Lv 5 leaves the card's training-hint draws.
    events). At 3 chain cards it fitted the uncorrected data (a = 0.82), but it has no mechanism and fails at 4–6 chain
    cards. Most of what it fitted turned out to be measurement error (section 6).
 
-## 6. How chain progress is read from a page, and the traps
+## 6. How chain progress is read from a run, and the traps
+
+A run lists every skill hint with its level and its sources. A card's training hint is credited with the bare
+character name ("King Halo"), its events as "King Halo event", inspiration as "Inspiration", and scenario and
+trainee events as "Events".
 
 **Markers.** A link fired if a "marker" skill of that link's event is credited to "<character> event". A marker must
 appear in no other event of the card: no other link and no non-chain event. For the corrected measurement, a link is
@@ -230,9 +240,9 @@ which choice IT took.
 
 1. **Default-choice markers.** Markers taken only from IT's first choice miss events where IT took another choice.
    Among skills credited to chain cards' events, the share from a non-default choice only rises from 2% (4 pals) to
-   10% (0–2 pals). Possibly players prioritise more skills when the deck has more chain cards; most pages don't show
+   10% (0–2 pals). Possibly players prioritise more skills when the deck has more chain cards; most runs don't show
    the priority list.
-2. **Ambiguous credits.** When two deck cards could have given a skill, the page credits "A or B event", e.g.
+2. **Ambiguous credits.** When two deck cards could have given a skill, the run credits "A or B event", e.g.
    "Sasami Anshinzawa or King Halo event" for Uma Stan. An exact-name match counts these as misses. This alone caused
    most of King Halo's apparent shortfall: 14 of his 43 link-1 misses.
 3. **Inspiration-only listings.** A marker skill hinted by inspiration is often listed with "Inspiration" as its only
@@ -253,6 +263,7 @@ group. Significance treats each run as one cluster (z = Σ(obs − pred) / √Σ
 
 ## 7. Data
 
+| Sample | Runs | Purpose |
 |---|---|---|
 | 4-pal | 284 | two-chain completion |
 | 3-pal | 300 + 74 | three-chain; the 74 chosen for early-link markers |
@@ -262,6 +273,8 @@ group. Significance treats each run as one cluster (z = Σ(obs − pred) / √Σ
 | 5-pal | 120 | one chain card. Almost all Agnes Tachyon [Q≠0] in URA Finale, the only 5-pal decks in the summary. |
 | Yukino Bijin / Yaeno Muteki | 107 | planner-relevant early links |
 | Unity Cup | 200 | 3–5 chain cards; also used for the hint-rate fit |
+
+All runs are completed careers.
 
 ## 8. What would settle the open questions
 

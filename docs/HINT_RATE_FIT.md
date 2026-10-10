@@ -1,5 +1,8 @@
 # Training-hint rate in Independent Training: the adopted fit
 
+Fitted 2026-10-05 on Independent Training runs from uma-it (first 879, bases refit on 2,402). Code: `hint_base` and `miss_draws` in `pkg/loopopt/src/deck.rs`; the model row is in `docs/MODEL.md`
+(Training hints). The fit scripts were scratch files outside the repo; the method below is enough to redo it.
+
 ## Result (adopted)
 
 ```
@@ -73,11 +76,19 @@ skills. Not modelled; the fit conditions on no spark, the case where the card's 
 
 ## Not adopted
 
+- **Specialty priority** (support effect 19) raising the draw count, ×exp(0.0251 per 10 points): gains 18
+  log-likelihood on the 879-run set, with which Unity's base falls to 2.50 and the free divisor returns to about 92. It
+  rests mostly on the 200 newest Unity runs, and Unity's hint-frequency slope is set by three cards (observed /
+  predicted in Unity: Marvelous Sunday [Dazzling Day in the Snow] 0.89, Matikanefukukitaru [Touching Sleeves] 0.86,
+  Agnes Tachyon [Q≠0] 1.16; in Grand Concert 1.09, 0.97, 1.07). The adopted model over-rates hf-0, specialty-0 cards in
+  Unity Cup by about 10%. Confirm on more runs before adopting.
 - **Prioritized skills** raising a card's hint: 101 runs show the list; a prioritized skill was hinted by training at
   0.222 against 0.297 predicted (99 rows). Weak evidence; assume no effect.
 
 ## Caveats
 
+- Selection: the first 879 runs were chosen for readable chain events (1-4-pal decks), only 2 R card-runs are in the
+  data, and hint frequency spans 0-60.
 - Per-setup error: IT rounds a per-setup count, so a given setup can be off the smooth formula by about half a draw.
   The fractional-h reading against a two-point count differs by under 1% (n = 5, h = 2.74: P(miss) 0.5426 vs 0.5453).
 - Skills-only draws, the cap and the spark deficit's cause are inferred from receipts, not game code.

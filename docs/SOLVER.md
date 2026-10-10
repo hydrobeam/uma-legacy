@@ -265,6 +265,10 @@ three. Trainee A has parents B and C; B was bred from (C, A), C from (B, A). Ove
 mean P(all) over the 3 lineages, the loop's over its 12: both are the chance per career when every member trains in turn,
 and the search ranks both sizes together.
 
+- **Repeated character.** A grandparent may be the trainee's own character (907 of 3,179 uma-it runs have one;
+  none has a parent of her character). `rel_tables` counts a relation group only for distinct members, so
+  tri(T, P, T) = 0 and pair(a, a) = 0; fitted on 101,536 inspiration trials, that (H0) predicts 521.8 passes from
+  self-grandparents against 523 seen, while counting the trio as pair(T, P) predicts 605.4 (about 13 nats worse).
 - **Her races.** In a steady rotation the grandparent of character T is T's own earlier veteran with T's schedule, so its
   shared wins with parent P are o(P, T), the same overlap as between those two members anywhere in the rotation; the
   ×1.1⁶ spark generation is unchanged (all six legacies carry every spark).
@@ -544,6 +548,7 @@ The load step now asserts the structural fact the exact DP relies on: every race
 - `cd validation && uv run check_scores.py` checks score parity; it needs only the built binary.
 - `dp_vs_milp.py` (best response vs MILP) needs scipy plus the `export/` modules and master.mdb on the path.
 - `independent_check.py` is the spec-only checker used on `results/final_loops.json`.
+
 
 | Check | Result |
 |---|---|

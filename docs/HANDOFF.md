@@ -1,9 +1,14 @@
 # Handoff: where the Legacy Loop Planner stands (2026-10-10)
 
+Read `AGENTS.md` first. This file is the state of the work: current results, releases, what is open, the standing
+decisions, and the lessons. The model and its evidence are in `docs/MODEL.md`, the solver in `docs/SOLVER.md`,
+building in `docs/BUILD.md`, speed work in `docs/PERF.md` and `docs/PERF_PLANNER.md`. How the work got here is in git:
+the tags (`git tag -n1`) and the commit messages.
+
 ## 1. Current results (val references, 2026-10-09; per-uma decks, star mix below SS)
 
 All proven optimal for the model, read from `val/refpu__*.out` (`top[0].loop`; per-setup decks in `top[0].decks`, one
-per member). The SS+ and owner-roster rows of the v23 table were not regenerated.
+per member). The SS+ and own-roster rows of the v23 table were not regenerated.
 
 | Setup (job) | Odds all 8 land | Loop |
 |---|---|---|
@@ -15,6 +20,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 | JP GM era, Unity Cup golds (`jp/jobs/v_uc_k1`) | 1 in 91 | Agnes Digital [Full-Color Fangirling], Tamamo Cross [Fast as Lightning], Inari One [Edomurasaki] |
 
 ## 2. Releases
+
+Milestones since 2026-10-03 (v24; v20–v39 are lightweight tags, v40 on annotated):
 
 | Tag | State |
 |---|---|
@@ -42,37 +49,43 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 
 0. **Career planner: consistency and speed.** Regression checks: `val/planval.py` (seven next-plan jobs, compared
    whole, deterministic work counters) and `val/mono.py` (a veteran added never raises V). Open:
-   - **Lineage alternatives, parked** (each fresh 8/8 from her 3 best pairs; branch worktree-agent-acf153943fcd00fff,
-     job field `next.alt_k`, not on main): V 0.6-1.5% better and the owner's extra-wins rise fixed, but +20-40% planner
-     work and still not monotone. Owner to decide: merge off (recommended), on, or leave.
+   - **Lineage alternatives, parked** (each fresh 8/8 from her 3 best pairs; a parked branch,
+     job field `next.alt_k`, not on main): V 0.6-1.5% better and the extra-wins rise fixed, but +20-40% planner
+     work and still not monotone. To decide: merge off (recommended), on, or leave.
    - **A rise in V when a veteran is added** remains possible: the step model (Cont) is refitted per pool. Its error
      (`val/sim/README.md`, "E5 reread"): within 0-5% of achievable building on 2/11/19 veterans, 70% too pessimistic
      on 5 because lam rises there (builders improve). Proposed, not built: a one-lift lookahead for lam and a per-plan
      pick-sensitivity check.
-   - The pass-2 replay is parked on branch `worktree-agent-a919b16f64bbaea00`; further speed items: `docs/PERF_PLANNER.md`,
+   - The pass-2 replay is parked on a branch; further speed items: `docs/PERF_PLANNER.md`,
      Open.
    - Display: on a mob pool the search's six best careers are the same career with interchangeable pairs; group them
      on the page (display only; the plan's candidates depend on the list).
-2. **Star-mix band for the owner's veterans.** An IT veteran's score runs from "no skills bought" to "all affordable
-   bought"; Unity Cup's median best case is 17,428 (just under SS), Grand Concert's 18,094. Whether the owner's loop
-   veterans clear 17,500 decides the default; ask.
-3. **Measure spark generation and star mix on the owner's own veterans.** Run umadump snapshot, send
-   `trained_chara_data.json`, then `uv run val/spark_gen_fit.py trained_chara_data.json`. Tested on synthetic data
+1. **Test the deck side against real careers.** The training-hint, chain-event and outcome-share fits were made part
+   by part on uma-it runs; the end-to-end calibration (`docs/CALIBRATION.md`) tests the composed model. The chain
+   outliers Agnes Digital [A Fan's Joy] and Seiun Sky [Foolproof Plan] noted at the hint refit are unresolved; check
+   `docs/CHAIN_EVENTS.md` (section 5) before reopening them.
+2. **Star-mix band for a player's veterans.** An IT veteran's score runs from "no skills bought" to "all affordable
+   bought"; Unity Cup's median best case is 17,428 (just under SS), Grand Concert's 18,094. Whether loop veterans
+   usually clear 17,500 decides the default.
+3. **Measure spark generation and star mix on real veterans.** From a umadump snapshot's
+   `trained_chara_data.json`: `uv run val/spark_gen_fit.py trained_chara_data.json`. Tested on synthetic data
    (recovers ×1.094 for a true ×1.1 at 24k observations).
 4. **Hint levels from inheritance.** One run showed Ramp Up Lv 5 from a single 2★ proc; the per-proc level rule is
    unknown. Receipts would settle it. It matters only if the model ever uses hint levels.
 5. **Per-lineage carrier counts in the loop planner.** The career planner already uses each legacy's real sparks and
    1.1ⁿ with the real carrier count; the loop planner assumes every target spark on all six ancestors (a running loop).
-   Only worth changing if the owner uses the loop planner to build loops from scratch.
+   Only worth changing if the loop planner is used to build loops from scratch.
 6. **Three-uma rotations, follow-ups.** Whether to also offer the best single lineage (a player re-training only her
    best trainee); a five-member or mixed structure is not done.
-7. **Loop planner, owner decisions from the 2026-10-09 audit:** grey out the Deck
+7. **Loop planner, decisions open from the 2026-10-09 audit:** grey out the Deck
    (i) panel's hints its umas already have (recommended, as the swap rows now do); show a must-include uma's marked
    outfit instead of "any outfit" (recommended); "press Search" after an undo with Auto-search off (leave). Phone layout
    leftovers: a three-member result wraps 2+1; "prioritise Risky Business" wraps to three lines; the schedule's GOAL
    badge is clipped.
-8. **Pending the owner's review:** the solver's affinity-only modes and jobs (off the page: "not the aim, and broken")
+8. **Pending review:** the solver's affinity-only modes and jobs (off the page; not the aim)
    and the `skills` job (fixed odds, unused since "Set odds by hand" left the page) stay in the Rust code.
+10. **Global asset sync (tabled 2026-10-10).** New umas' art and mini models still come from a local game install
+   (`./build.sh images runners`); without them the page shows initials and the spinner.
 11. **Runner follow-ups (2026-10-10).** Attachments (`attachment_model_id`) aren't drawn; `chibi.py`'s tool downloads
    were never run (the spike's tools were copied in); on the first search after a load the strip can be blank while it
    downloads (it is fetched when she is picked, so later searches are covered). Ideas offered, not requested: idle and
@@ -81,16 +94,16 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
    `pal_Fk3` shared about 575 s historically); diff WASM vs native outputs; a "JP, latest" data mode (needs GameTora's
    support-card file for hint frequency); a "set these as prioritized skills" list on the page.
 
-## 4. Standing decisions and the owner's calls
+## 4. Standing decisions
 
 - The tool is for Independent Training only. Unity Cup is the default scenario; the GM-era JP data is a secondary mode.
-- The busy sign is the runner, each uma's mini model running (owner, 2026-10-10; `docs/BUILD.md`, Runner strips).
-- Deploys only on the owner's explicit "deploy" each time; v46 went out on a misread reply (2026-10-10).
+- The busy sign is the runner, each uma's mini model running (2026-10-10; `docs/BUILD.md`, Runner strips).
+- Deploys only on the maintainer's explicit word, each time.
 - A reload whose settings match the saved last result (same solver, data, held-back entries and job) shows it as done
-  and searches nothing (owner, 2026-10-10, reversing the earlier "rerun").
+  and searches nothing (2026-10-10, reversing the earlier "rerun").
 - The player is assumed to set prioritized skills so event choices reach the counted hints.
 - Pal first-year dates don't fire in Unity Cup IT; always left out (the page option was removed 2026-10-03). If that
-  changes in the game, the owner will ask for the app to be updated.
+  changes in the game, the model changes with it.
 - R cards stay out of the page (the Use R cards switch was removed in v36; the research behind their event rates is
   thin) and out of measured results until there is data.
 - Secret and race-result character events: not worth modelling (`docs/MODEL.md`).
@@ -98,19 +111,18 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 - Loops and rotations are ranked by the rotation average (every member trains in turn), 2026-10-07.
 - Career planner: builders go through their deck class (2026-10-08); the proxy margins 0.06 (2026-10-09); the 1.25
   cap stays as the top cap; parallel helper workers are a last resort.
-- Per-class exact caps, owner's call 2026-10-09: 1.05 for at most two chain-varying targets (0-1 not proven: chain
+- Per-class exact caps, 2026-10-09: 1.05 for at most two chain-varying targets (0-1 not proven: chain
   cards compete for events, which can correlate one target's feeders), 1.25 for three or more (the 1.10 proposed for three is not used: boot_mob scores 1.127). `val/capaudit.py` checks.
+- uma-it statistics are pooled, never broken down or explained by who ran the career.
 - Colours: both planner pages use the game's colours, held to a 3:1 contrast floor by the suite's audit; /about keeps
   WCAG AAA. No light colours on light backgrounds.
-- Hosting on Cloudflare Pages, not GitHub Pages: the page is built only on the owner's machine (master.mdb, game art,
-  the Rust toolchain), and no build artifact lands in git per release. Indexed since 2026-10-05 (it sent noindex
+- Hosting on Cloudflare Pages, not GitHub Pages: the page is built locally (master.mdb, game art, the Rust
+  toolchain), and no build artifact lands in git per release. Indexed since 2026-10-05 (it sent noindex
   before, over the game art); canonical https://uma-legacy.pages.dev/.
+- Game assets and decryption keys are never committed.
 
 ## 5. Lessons
 
-- A summary between context windows can drop facts this session itself made: the JP asset index in `cache/` was
-  fetched earlier in the same session (from SimpleSandman's mirror), and the next window called it found. Record every
-  outside fetch in `docs/SOURCES.md` when it happens.
 - A broad CSS descendant rule on one page (`.rb .lptgt .targets { grid-area: list }`) reached a dialog inside the panel
   and split it into two columns; scope page-layout rules to the panel's own children (`> .targets`).
 - A `url()` inside a CSS custom property resolves against the stylesheet that uses the variable, not the element's
@@ -123,4 +135,3 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 - On battery or a shared machine, measure speed with the deterministic work counters or instruction counts, not wall
   time.
 - Verify a deploy against its own hash address: the branch addresses cache HTML for 5 minutes (`docs/BUILD.md`).
-

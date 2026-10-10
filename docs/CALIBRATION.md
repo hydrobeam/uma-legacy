@@ -1,7 +1,7 @@
 # End-to-end calibration of the career model against real careers
 
-```
-```
+Run 2026-10-10 on 3,179 Independent Training runs from uma-it (statistics pooled; R-card decks left out). The
+calibration scripts are not part of this repository; the method below is enough to redo it.
 
 ## Verdict
 
@@ -29,8 +29,8 @@ training-hint fit did; `cards_lb.py` adds a variant card per limit break and rep
 max limit break, King Halo LB3 increment 3 and Gold Ship [Breakaway Battleship] LB3 increment 4 as in
 `docs/HINT_RATE_FIT.md`), both parents with their recorded parents and every ancestor's white skill sparks at their
 stars, and race wins laid out so every pair the model reads shares the page's shared-G1 count (the solver's race
-affinity then equals the page's G1 bonus in all 2,936 runs). Relation points are the model's own, from master.mdb;
-the page's "Base" column follows another convention (it is 0 for every parent-2 row in 1,000 runs) and was not used.
+affinity then equals the run's recorded G1 bonus in all 2,936 runs). Relation points are the model's own, from master.mdb;
+the run's "Base" column follows another convention (it is 0 for every parent-2 row in 1,000 runs) and was not used.
 Targets: the owner's eight, Unity Cup's No Stopping Me! and It's On! guaranteed there; `extra` as the page sends it;
 no trainee own-event hints (the page sends none). The solver picks event choices and early chain ends as the planner
 would. A target with no source at all (no spark on any ancestor, no deck source, not her outfit's) is scored 0 and
@@ -46,11 +46,16 @@ Per (run, target) row, using the career output's per-target `buy` fields:
 | 3. Acquired | gold + white (1 for a scenario gold) | the skill hinted at the end from any source (any tier, any level), or owned | not on her outfit, not a scenario gold |
 | 4. Landing at the acquisition stage | the solver's landing chance p | 0.4·1.1ⁿ if a gold was hinted, 0.2·1.1ⁿ if only the white, 0 if neither (n = carriers) | as 3 |
 
-The pages record the career before skills are bought (`owned_skill_ids` holds only the unique skill), so "acquired"
+The runs record the career before skills are bought (`owned_skill_ids` holds only the unique skill), so "acquired"
 means hinted and available to buy, the model's own meaning. Intervals are 95% Wilson on the observed rate; ratio
 intervals are that interval over the mean prediction.
 
 ## Data
+
+3,179 runs: 240 with an R card dropped, 3 showing the same parent twice dropped, **2,936 used** (URA Finale
+598, Unity Cup 780, Grand Concert 1,477, Trackblazer 81). Every ancestor and trainee is in the roster; 24 hint names
+did not map to a skill. 23,488 run-target rows; 1,005 rows of a target on her outfit and 1,560 scenario golds are
+outside tests 1 and 3.
 
 ## Results, default eight targets
 
@@ -139,9 +144,12 @@ events missing from the GameTora cache.
 
 ## What this does not test
 
-- **Spark generation and buying.** The pages stop before skills are bought and show no veteran sparks, so the step
+- **Spark generation and buying.** The runs stop before skills are bought and show no veteran sparks, so the step
   from acquired to landed (0.2 / 0.4 × 1.1ⁿ, and that everything hinted is bought) is untested here; test 4 and the
   P(all) ratio apply the model's own generation to what was acquired.
+- **The priority policy per run.** Only 358 of 3,179 runs show a priority list. The model assumes the player
+  prioritises the targets and steers early chain ends; the players mostly did not, so the pooled deck numbers mix
+  model error with that mismatch. The prioritised subsets (124 and 946 rows) are the clean test and are small.
 - **The loop planner's carriers.** Career jobs use each run's real carriers; the loop planner's "all six carry every
   target" is a different input, not a different mechanism.
 - **Trainee own events, random card events, conditional events:** not in the model, so not tested beyond showing their
@@ -152,7 +160,7 @@ events missing from the GameTora cache.
 
 ## Caveats
 
-- Uploads skew to good runs; every comparison is per run on that run's own deck and lineage.
+- The runs skew to good ones; every comparison is per run on that run's own deck and lineage.
 - Rows with inspiration are left out of the deck test because a spark often removes the card's credit; the deck test is
   then conditional on no spark, which the model treats as independent of the deck (the training-hint fit made the same
   choice).
