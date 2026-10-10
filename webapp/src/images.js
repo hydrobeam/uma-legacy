@@ -4,12 +4,18 @@ import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, NAME } from './d
 import { spinHTML } from './dom.js';
 export function srcFor(kind, id) { return SHIPPED.has(kind + ':' + id) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null; }
 // the runner in place of a spinner: an uma's mini model running (img/run/<chara>: a strip of 18 frames of the game's
-// mini run, stepped by CSS, webapp/chibi/chibi.py). Who runs: the uma being planned (setRunner), else Special Week;
-// a build without the strips keeps the spinner. The negative delay keeps her stride when a status line is redrawn.
+// mini run, stepped by CSS, webapp/chibi/chibi.py). Who runs: the uma being planned (setRunner: the career page's
+// trainee; setRunnerFrom: one of the loop's umas at random, kept while the loop on show has her); before either, a random
+// uma with a strip. Her strip is fetched as soon as she is picked, so she is drawn when the next search shows her; a
+// build without strips keeps the spinner. The negative delay keeps her stride when a status line is redrawn.
 let runner = null;
-export function setRunner(id) { runner = id && SHIPPED.has('run:' + id) ? id : runner; }
+const hasRun = (id) => SHIPPED.has('run:' + id);
+export function setRunner(id) { if (!id || !hasRun(id) || id === runner) return; runner = id; new Image().src = srcFor('run', id); }
+// (the one running stays while she is among them: a new strip is fetched and decoded only when the loop changes)
+export function setRunnerFrom(ids) { const ok = ids.filter(hasRun); if (ok.length && !ok.includes(runner)) setRunner(ok[Math.floor(Math.random() * ok.length)]); }
 export function runnerHTML(big = false) {
-  const src = srcFor('run', runner) || srcFor('run', 1001);
+  if (runner == null) setRunnerFrom([...SHIPPED].filter(k => k.startsWith('run:')).map(k => +k.slice(4)));
+  const src = runner != null && srcFor('run', runner);
   return src ? `<span class="runner${big ? ' big' : ''}" aria-hidden="true" style="background-image:url(${src});animation-delay:-${Math.round(performance.now() % 600)}ms"></span>` : spinHTML();
 }
 // the UI sprites (--btn-w, --spark-white, ...) are CSS variables the build writes into the stylesheet (build.py SPRITES)
