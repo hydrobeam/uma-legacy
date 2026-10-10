@@ -1,4 +1,0 @@
-pool val/policy/pools/u4.json  seed 1  H 1000000000  settle 0 (never)  eps 0.001  prune 1
-greedy   n 4  mean 261  sd 15.4  95% CI 237 to 285  median 264  range 242 to 274
-         careers simulated 1530.8 (max 1736), tail S/p 0.2, ended at H unsettled 0; solver 2491 calls, 89.2 min; pruned 3636
-greedy   by H: 2: 587 ±0.0 (4 unsettled);  4: 586 ±5.1 (4 unsettled);  6: 586 ±5.1 (4 unsettled);  10: 570 ±30.9 (4 unsettled);  20: 490 ±76.0 (4 unsettled);  50: 431 ±145 (4 unsettled);  100: 281 ±50.5 (4 unsettled);  200: 269 ±28.2 (4 unsettled);  500: 261 ±24.4 (4 unsettled);  1000: 261 ±24.4 (4 unsettled);  2000: 261 ±24.4 (0 unsettled);  5000: 261 ±24.4 (0 unsettled);  10000: 261 ±24.4 (0 unsettled)

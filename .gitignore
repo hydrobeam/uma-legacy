@@ -98,8 +98,6 @@
 !/val/policy/README.md
 !/val/policy/policies.mjs
 !/val/policy/pools/
-!/val/policy/baseline/
-/val/policy/baseline/*/tmp/
 master.mdb
 master.mdb.*
 __pycache__/

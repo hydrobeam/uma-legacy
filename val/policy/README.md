@@ -98,6 +98,8 @@ the page's rollout pick (`rollout.choice`), `greedy` the best P(all) now (`resul
 
 ## Baselines (seed 1, settle K = 2 on the best career)
 
+The raw runs behind these tables (`val/policy/baseline/`) are not tracked; `node val/policy_sim.mjs` regenerates them.
+
 ### Settle-on-best estimates: not a policy comparison
 
 Read these as "the planner's breeding phase, then its settled career forever" against "today's best forever".
