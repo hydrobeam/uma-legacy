@@ -33,7 +33,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 | v43 | Reroll and Grand Masters speed: per-class exact caps, gm16 plan -27.5%; band-overflow ladder; deck and corner memos kept between jobs; `y_hi` tightened |
 | v44 | target skill presets, dark-mode mirror, career page polish, Saves per run explained plainly |
 | v45 | master.mdb 10008200 (Zenno Rob Roy); banners held ahead turn on at their start time |
-| v46 | see above |
+| v46 | game-style header (page tabs, light / dark switch) and wordmark, /about Sources list, career presets popup fix, /loop |
+| v47 | see above |
 
 ## 3. Open threads, most valuable first
 
