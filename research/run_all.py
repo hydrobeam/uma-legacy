@@ -6,6 +6,7 @@
 results are reused while nothing it reads changes). Without the run records (research/data/runs.jsonl, not included)
 the data claims read "needs data" and the derived ones still run."""
 import collections, glob, importlib, inspect, os, sys, traceback
+for v in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'): os.environ.setdefault(v, '1')   # one core
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 from common import Claim
