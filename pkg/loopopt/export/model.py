@@ -1,5 +1,5 @@
-import sqlite3, json, itertools, math
-c=sqlite3.connect('master.mdb')
+import sqlite3, json, itertools, math, os
+c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb'))
 q=lambda s,*a: c.execute(s,a).fetchall()
 RN={r[0]:r[1] for r in q("select [index],text from text_data where category=32")}
 B=json.load(open('base.json'))

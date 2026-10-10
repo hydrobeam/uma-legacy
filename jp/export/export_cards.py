@@ -4,9 +4,9 @@ hint frequency at max limit break (effect 18, plus the unique effect's), number 
 hint levels per training-hint draw at max limit break (hinc: 1 + effect 17, plus the unique effect's),
 and the skill groups (white level) in its training-hint pool. Event skill rewards are NOT in master.mdb tables;
 they are supplied per job (`events`)."""
-import sqlite3, json, time
+import sqlite3, json, time, os
 from jpnames import names, CUT, OUT
-c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
+c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb')); q = lambda s, *a: c.execute(s, a).fetchall()
 cn = names(75)
 grp = dict(q("select id, group_id from skill_data"))
 now = int(time.time()); out = []

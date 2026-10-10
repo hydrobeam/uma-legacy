@@ -3,8 +3,8 @@ Global master.mdb by the same ids (JP-only entries keep their Japanese text).
 Other cuts: JP_CUT=<unix time> (content released before it), JP_OUT=<folder> for the exported files (default ..),
 JP_BASE=<file> for the intermediate roster file (default base.json)."""
 import sqlite3, os
-GLOBAL = '../../pkg/loopopt/export/master.mdb'
-_jp = sqlite3.connect('master.mdb'); _gl = sqlite3.connect(GLOBAL)
+GLOBAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'global', 'master.mdb')
+_jp = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb')); _gl = sqlite3.connect(GLOBAL)
 CUT = int(os.environ.get('JP_CUT') or _jp.execute("select start_date from single_mode_scenario where id=6").fetchone()[0])   # L'Arc start
 OUT = os.environ.get('JP_OUT', '..')
 BASE = os.environ.get('JP_BASE', 'base.json')

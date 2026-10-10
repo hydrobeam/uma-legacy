@@ -6,12 +6,12 @@ import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 P = REPO + '/pkg/loopopt/'
 ev = json.load(open(glob.glob(REPO + '/cache/gametora/dict_evrew.*.json')[0])); OFF = 36
-c = sqlite3.connect(f'file:{P}export/master.mdb?mode=ro', uri=True)
+c = sqlite3.connect(f'file:{REPO}/game/global/master.mdb?mode=ro', uri=True)
 sk = dict(c.execute("select [index],text from text_data where category=47"))
 grp = dict(c.execute("select id, group_id from skill_data"))
 ttl = dict(c.execute("select [index],text from text_data where category=181"))
 cname = dict(c.execute("select [index],text from text_data where category=6"))
-cj = sqlite3.connect(f'file:{P}../../jp/export/master.mdb?mode=ro', uri=True)
+cj = sqlite3.connect(f'file:{REPO}/game/jp/master.mdb?mode=ro', uri=True)
 for k, v in cj.execute("select [index],text from text_data where category=6"): cname.setdefault(k, v)
 for k, v in cj.execute("select [index],text from text_data where category=181"): ttl.setdefault(k, v)
 skj = dict(cj.execute("select [index],text from text_data where category=47"))

@@ -11,7 +11,7 @@ from jpnames import names, CUT, OUT
 G = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cache', 'gametora') + '/'   # the same GameTora files as Global (./build.sh gametora)
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
-c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
+c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb')); q = lambda s, *a: c.execute(s, a).fetchall()
 skname = names(47)
 cname = names(75)
 link = {sid: p for sid, p in q("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0")}

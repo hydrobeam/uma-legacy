@@ -15,7 +15,7 @@ out_path = sys.argv[1]
 loop_path = sys.argv[2]
 md_path = sys.argv[3] if len(sys.argv) > 3 else None
 D = json.load(open(S + 'pkg/loopopt/data.json'))
-db = sqlite3.connect(S + 'pkg/loopopt/export/master.mdb'); q = lambda s, *a: db.execute(s, a).fetchall()
+db = sqlite3.connect(S + 'game/global/master.mdb'); q = lambda s, *a: db.execute(s, a).fetchall()
 TOP = json.load(open(loop_path))['top'][0]; L = TOP['loop']
 assert len(L['members']) == 4, f"{loop_path}: the first loop has {len(L['members'])} members; this script needs four"
 DECKS = TOP.get('decks') or ([TOP['deck']] * 4 if 'deck' in TOP else [{'card_ids': []}] * 4)

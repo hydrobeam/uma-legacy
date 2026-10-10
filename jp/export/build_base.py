@@ -4,7 +4,7 @@ Aptitudes come from each uma's base outfit (lowest card id) unless overridden wi
 OUTFIT="chara_id:card_id[,chara_id:card_id...]", e.g. OUTFIT=1008:100802 for [Fiery Aqua Vitae] Vodka."""
 import sqlite3, datetime, json, os
 from jpnames import names, CUT, outfit_released, BASE
-c=sqlite3.connect('master.mdb'); q=lambda s,*a: c.execute(s,a).fetchall()
+c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb')); q=lambda s,*a: c.execute(s,a).fetchall()
 name=names(6)
 cut=CUT
 roster=[r[0] for r in q("select id from chara_data where start_date<?",cut) if any(outfit_released(x) for (x,) in q("select id from card_data where chara_id=? and id<900000",r[0]))]

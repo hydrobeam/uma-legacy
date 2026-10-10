@@ -58,7 +58,7 @@ def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
     # release dates for the roster's and card picker's default order; without master.mdb, id order
-    mdb = os.path.join(dirp, 'export', 'master.mdb'); rel = {}
+    mdb = os.path.join(H, '..', 'game', 'jp' if os.path.basename(os.path.normpath(dirp)) == 'jp' else 'global', 'master.mdb'); rel = {}
     if os.path.exists(mdb):
         con = sqlite3.connect(f'file:{mdb}?mode=ro', uri=True)
         # an outfit's release = the start of the first gacha it appeared in; else its uma's start date

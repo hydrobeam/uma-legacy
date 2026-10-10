@@ -3,7 +3,7 @@ middle, long, turf, dirt, then front runner, pace chaser, late surger, end close
 Aptitudes come from each uma's base outfit (lowest card id) unless overridden with
 OUTFIT="chara_id:card_id[,chara_id:card_id...]", e.g. OUTFIT=1008:100802 for [Fiery Aqua Vitae] Vodka."""
 import sqlite3, datetime, json, os
-c=sqlite3.connect('master.mdb'); q=lambda s,*a: c.execute(s,a).fetchall()
+c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')); q=lambda s,*a: c.execute(s,a).fetchall()
 name={r[0]:r[1] for r in q("select [index],text from text_data where category=6")}
 # dated by the master up to upcoming.AHEAD past the build: the page hides an uma until her start (upcoming.py)
 from upcoming import CUT as cut

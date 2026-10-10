@@ -1,6 +1,6 @@
 #!/bin/bash
 # One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm page)
-#   data     Global + GM-era exports (needs pkg/loopopt/export/master.mdb, jp/export/master.mdb)
+#   data     Global + GM-era exports (needs game/global/master.mdb, game/jp/master.mdb)
 #   gametora GameTora's data files at the pinned versions (pkg/loopopt/gametora.json) into cache/gametora
 #   events   card event caches from the GameTora files + manual entries (Global and both GM variants); runs gametora first
 #   native   release binary + tests
@@ -10,8 +10,8 @@
 #   page     webapp/dist: index.html (webapp/src bundled with esbuild, both eras' data), loopopt.wasm, img/
 #   runners  each uma's mini model running, a sprite strip per uma into webapp/img/run (webapp/chibi/chibi.py: the game's
 #            files as for images; fetches its third-party tools into cache/chibi on first use)
-#   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
-#            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
+#   images   character icons and card art from the game's decrypted bundles (game/) into webapp/img
+#            (only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   browsers Playwright's Chromium and Firefox into webapp/node_modules (once; run by test, testq and runners)
 #   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox): releases
 #   testq    its fast tier (Chromium, each page's core path, under a minute): after each page change

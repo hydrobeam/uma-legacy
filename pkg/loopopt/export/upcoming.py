@@ -8,7 +8,7 @@ yet carries a 2050 placeholder and stays out.
 Run as a script (step data, after the other exports): ../upcoming.json, the entries dated after the build, as
 {umas, outfits, cards: [[id, start (unix s)], ...]}, for webapp/example.mjs, whose precomputed result must not use them.
 """
-import json, sqlite3, time
+import json, sqlite3, time, os
 
 AHEAD = 60 * 86400
 NOW = int(time.time())
@@ -23,7 +23,7 @@ def outfit_starts(q):
 
 
 if __name__ == '__main__':
-    c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
+    c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')); q = lambda s, *a: c.execute(s, a).fetchall()
     roster = set(json.load(open('base.json'))['roster'])
     starts = outfit_starts(q)
     owner = dict(q('select id, chara_id from card_data where id<900000'))

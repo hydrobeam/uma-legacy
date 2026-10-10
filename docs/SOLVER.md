@@ -70,7 +70,7 @@ A structure whose bound is below a result already achieved cannot beat it.
 ## 3. Usage
 
 ```bash
-# 1. export data (needs Python 3 + the global master.mdb next to the export scripts)
+# 1. export data (needs the Global master.mdb in game/global/)
 cd export && uv run build_base.py && uv run export_rs.py            # writes ../data.json
 # alternate outfits: e.g. [Fiery Aqua Vitae] (Christmas) Vodka, into a data file of its own
 OUTFIT=1008:100802 uv run build_base.py && OUT=../data_xmas_vodka.json uv run export_rs.py

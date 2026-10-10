@@ -15,7 +15,9 @@ export folder (master.mdb there) with that era's data.json; writes career.json n
 usage: export_career.py DATA_JSON OUT_JSON"""
 import sqlite3, json, sys, os
 data_path, out_path = sys.argv[1], sys.argv[2]
-c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
+# the era is the folder it runs from (build.sh runs it in pkg/loopopt/export and in jp/export)
+MDB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'jp' if os.path.basename(os.path.dirname(os.getcwd())) == 'jp' else 'global', 'master.mdb')
+c = sqlite3.connect(MDB); q = lambda s, *a: c.execute(s, a).fetchall()
 RELOC = {1025: 1012, 1027: 1006, 1028: 1005}   # samerace.py
 races = json.load(open(data_path))['races']
 ridx = {r: i for i, r in enumerate(races)}
@@ -33,7 +35,7 @@ for sid, g, rid in rows:
 saddles = {sid: grp[g] for sid, g, _ in rows if g in grp}
 unmapped = [sid for sid, g, _ in rows if g not in grp]
 # names from the Global master.mdb next to this script (the JP one has Japanese text; the groups are the same)
-gq = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'master.mdb')).execute
+gq = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')).execute
 pinks = {g: gq('select text from text_data where category = 147 and "index" = ?', (g * 100 + 1,)).fetchone()[0]
          for (g,) in q('select distinct factor_group_id from succession_factor where factor_type = 2 order by factor_group_id')}
 # blue (stat) spark groups 1..5 and unique (green) spark groups (an outfit's card id) -> name, the same way

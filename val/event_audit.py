@@ -6,13 +6,13 @@ reward), and lists each target-skill hint the card can give. Each is checked aga
 pkg/loopopt/card_events.json (always / chance / disabled). Exit code 1 if any target hint is unaccounted for.
 
 usage (repo root): python3 val/event_audit.py [--all]     --all also prints the non-target hints
-Needs pkg/loopopt/export/master.mdb.
+Needs game/global/master.mdb.
 """
 import json, glob, sqlite3, sys, os
 
 R = os.path.dirname(os.path.abspath(__file__)) + '/../'
 G = R + 'cache/gametora/'
-c = sqlite3.connect(R + 'pkg/loopopt/export/master.mdb')
+c = sqlite3.connect(R + 'game/global/master.mdb')
 q = lambda s, *a: c.execute(s, a).fetchall()
 sk = dict(q("select [index], text from text_data where category = 47"))
 title = dict(q("select [index], text from text_data where category = 181"))

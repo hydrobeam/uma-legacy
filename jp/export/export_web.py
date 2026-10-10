@@ -3,7 +3,7 @@
 Run from this folder with master.mdb present; writes ../web_skills.json."""
 import sqlite3, json, os, re
 from jpnames import names, outfit_released
-c = sqlite3.connect('master.mdb')
+c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb'))
 q = lambda s, *a: c.execute(s, a).fetchall()
 from jpnames import BASE, OUT
 B = json.load(open(BASE)); roster = B['roster']

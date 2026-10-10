@@ -3,7 +3,7 @@
 Run from this folder with master.mdb present; writes ../web_skills.json."""
 import sqlite3, json, os, re
 from upcoming import CUT, outfit_starts
-c = sqlite3.connect('master.mdb')
+c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb'))
 q = lambda s, *a: c.execute(s, a).fetchall()
 B = json.load(open('base.json')); roster = B['roster']
 sname = {i: t for i, t in q('select "index", text from text_data where category=47')}

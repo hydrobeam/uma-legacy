@@ -30,9 +30,8 @@ Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.ast
 ./build.sh valq TAG   # the validation jobs against the reference outputs
 ```
 
-A clone builds and tests the page from the tracked data files. Refreshing the game data needs the game's
-`master.mdb`, and the art steps need game files decrypted on your own
-machine; without art the page shows initials. Details: `docs/BUILD.md`.
+A clone builds and tests the page from the tracked data files. Refreshing the game data and making the art need
+game files in `game/` (`docs/BUILD.md` lists them); without art the page shows initials.
 
 ## Credits and licence
 

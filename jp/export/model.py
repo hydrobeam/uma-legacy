@@ -1,5 +1,5 @@
-import sqlite3, json, itertools, math
-c=sqlite3.connect('master.mdb')
+import sqlite3, json, itertools, math, os
+c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'jp', 'master.mdb'))
 q=lambda s,*a: c.execute(s,a).fetchall()
 from jpnames import names
 RN=names(32)

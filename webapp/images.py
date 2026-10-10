@@ -30,8 +30,8 @@ kept unless --force; an older WebP of the same image is removed when its AVIF is
   scenart  single/banner/bnr_chara_big_{image:03d}         the scenario select screen's character art, cropped to its
                                                              visible area, fitted in 360x360 (career page)
 
-Bundles: $UMA_DECRYPTED, default the Steam (Proton) install's LocalLow/Cygames/Umamusume/decrypted. They must already
-be decrypted; this script only reads them. Dress ids come from the Global master.mdb, then the JP one for JP-only
+Bundles: game/global/decrypted/ (the client's decrypted asset tree), game/global/data/ (the install's *_Data folder),
+game/jp/bundles/ (JP-only art). They must already be decrypted; this script only reads them. Dress ids come from the Global master.mdb, then the JP one for JP-only
 outfits. usage: uv run webapp/images.py [--force]
 """
 import io, json, os, sqlite3, sys
@@ -39,22 +39,21 @@ import UnityPy
 from PIL import Image
 
 H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(H)
-# the game's files, inside the repository (gitignored): game/decrypted/ holds the client's decrypted asset tree
-# (paths as in the game, e.g. chara/chr1001/...), game/data/ its install's *_Data folder; either can be pointed
-# elsewhere with UMA_DECRYPTED / UMA_GAME_DATA
-ASSETS = os.environ.get('UMA_DECRYPTED', os.path.join(R, 'game', 'decrypted'))
+# the game's files, inside the repository (gitignored): game/global/decrypted/ holds the client's decrypted asset tree
+# (paths as in the game, e.g. chara/chr1001/...), game/global/data/ its install's *_Data folder
+ASSETS = os.path.join(R, 'game', 'global', 'decrypted')
 OUT = os.path.join(H, 'img')
 # the game install's built-in assets: the common buttons live in resources.assets, not in the downloaded bundles
-GAME_DATA = os.environ.get('UMA_GAME_DATA', os.path.join(R, 'game', 'data'))
+GAME_DATA = os.path.join(R, 'game', 'global', 'data')
 SIZE = {'uma': 96, 'mob': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128), 'scen': (288, 160), 'scenart': (360, 360)}   # 2x the largest display (race banners ~128x64; scenario logos fit 144x80)
 # the scenario logos' textures are square, but the game draws them 1.25x as wide as tall (resources.assets:
 # PartsSingleModeStartScenarioLogo/bnr_00N RawImage 642x514, DialogSingleModeStartScenarioDetail/scenarioImage 446x355);
 # the square texture alone looks squeezed (round letters come out tall)
 SCEN_ASPECT = 1.25
 # what the Global client lacks (the Grand Masters scenario's banner art, JP-only skill icons): the JP client's bundle,
-# read from cache/jp_bundles/<asset path> when present. The module that fetches and reads the game's own asset index
+# read from game/jp/bundles/<asset path> when present. The module that fetches and reads the game's own asset index
 # is not published; without these bundles the page keeps its drawn fallbacks.
-JP_BUNDLES = os.path.join(R, 'cache', 'jp_bundles')
+JP_BUNDLES = os.path.join(R, 'game', 'jp', 'bundles')
 def jp_bundle(rel):
     dst = os.path.join(JP_BUNDLES, rel)
     return dst if os.path.exists(dst) else None
@@ -65,7 +64,7 @@ INSET = {'uma': 26, 'mob': 26}   # px of the 256 px icon cut inside the visible 
 # height per uma, with the page's tile colour showing through above it. A fixed square inside the frame is the same
 # for every icon: the picture and its striped background only.
 OUTFIT_BOX = (34, 47, 222, 235)
-ERAS = [('pkg/loopopt', 'pkg/loopopt/export/master.mdb'), ('jp', 'jp/export/master.mdb')]
+ERAS = [('pkg/loopopt', 'game/global/master.mdb'), ('jp', 'game/jp/master.mdb')]
 
 
 def wanted():
@@ -352,7 +351,7 @@ def texture(path):
 
 def main(force):
     if not os.path.isdir(ASSETS):
-        sys.exit(f'no decrypted asset folder at {ASSETS} (set UMA_DECRYPTED)')
+        sys.exit(f'no decrypted asset folder at {ASSETS}')
     w = wanted(); dress = dress_ids(w['outfit'])
     icons, gold = skill_icons(sorted(w.pop('groups')))
     w['skill'] = {i: None for i in sorted(set(icons.values()) | set(gold.values()))}

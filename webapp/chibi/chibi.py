@@ -2,7 +2,7 @@
 128 px side by side, a 0.6 s loop the page steps through with CSS: webapp/src/images.js runnerHTML).
 
 From the game's own files (the decrypted bundles images.py reads, found by name through the asset index
-cache/meta_global.db): her mini body (mbdy{id}_00), hair (mchr{id}_00), the shared mini face (mchr0001_00_face0, her
+game/global/meta.db): her mini body (mbdy{id}_00), hair (mchr{id}_00), the shared mini face (mchr0001_00_face0, her
 skin tone's texture), her tail model with her texture (chara_data.tail_model_id, .skin from master.mdb), and the
 game's mini run motion (3d/motion/mini/event/body/type00/anm_min_eve_type00_run00_loop). AssetStudio's CLI exports
 the models to FBX, FBX2glTF makes glb; the run (a generic clip: dense and constant curves, its bones named by the
@@ -20,9 +20,9 @@ import glob, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, ur
 H = os.path.dirname(os.path.abspath(__file__)); W = os.path.dirname(H); R = os.path.dirname(W)
 CACHE = os.path.join(R, 'cache', 'chibi'); TOOLS = os.path.join(CACHE, 'tools'); WORK = os.path.join(CACHE, 'work')
 OUT = os.path.join(W, 'img', 'run')
-META = os.path.join(R, 'cache', 'meta_global.db')
-MDB = os.path.join(R, 'pkg', 'loopopt', 'export', 'master.mdb')
-ASSETS = os.environ.get('UMA_DECRYPTED', os.path.join(R, 'game', 'decrypted'))   # as webapp/images.py
+META = os.path.join(R, 'game', 'global', 'meta.db')
+MDB = os.path.join(R, 'game', 'global', 'master.mdb')
+ASSETS = os.path.join(R, 'game', 'global', 'decrypted')   # as webapp/images.py
 RUN = '3d/motion/mini/event/body/type00/anm_min_eve_type00_run00_loop'
 TILE, FRAMES_Q = 128, 60
 ASMOD = os.path.join(TOOLS, 'asmod', 'AssetStudioModCLI_net9_linux64', 'AssetStudioModCLI')
@@ -155,14 +155,14 @@ def main(argv):
     force = '--force' in argv; args = [a for a in argv if not a.startswith('--')]
     ids = roster() if not args or args == ['all'] else [int(a) for a in args]
     if not ids: sys.exit('no umas: build the data first (./build.sh data)')
-    for f, what in ((META, 'the asset index (cache/meta_global.db, a plain SQLite copy of the game\'s asset index; the tool that makes it is not published)'), (MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files ($UMA_DECRYPTED)')):
+    for f, what in ((META, 'the asset index (game/global/meta.db: the game\'s asset index as plain SQLite)'), (MDB, 'the Global master.mdb'), (ASSETS, 'the decrypted game files (game/global/decrypted)')):
         if not os.path.exists(f): sys.exit(f'missing {what}')
     todo = [c for c in ids if force or not os.path.exists(os.path.join(OUT, f'{c}.avif'))]
     if not todo: print(f'runners: all {len(ids)} present'); return
     env = tools(); meta = sqlite3.connect(f'file:{META}?mode=ro', uri=True); mdb = sqlite3.connect(f'file:{MDB}?mode=ro', uri=True)
     q = f'select id, skin, tail_model_id from chara_data where id in ({",".join(map(str, todo))})'
     info = {c: s for c, *s in mdb.execute(q)}
-    jp = os.path.join(R, 'jp', 'export', 'master.mdb')   # umas not yet on Global (their mini models already ship in its files)
+    jp = os.path.join(R, 'game', 'jp', 'master.mdb')   # umas not yet on Global (their mini models already ship in its files)
     if os.path.exists(jp): info = {**{c: s for c, *s in sqlite3.connect(f'file:{jp}?mode=ro', uri=True).execute(q)}, **info}
     ready = []
     for c in todo:

@@ -1,5 +1,5 @@
-import sqlite3,itertools
-c=sqlite3.connect('master.mdb')
+import sqlite3,itertools, os
+c=sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb'))
 pt={r[0]:r[1] for r in c.execute("select relation_type,relation_point from succession_relation")}
 mem={}
 for t,ch in c.execute("select relation_type,chara_id from succession_relation_member"):

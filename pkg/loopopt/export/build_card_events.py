@@ -9,7 +9,7 @@ from event_choices import decode, fmt, manual_entry, apply_shares
 G = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'cache', 'gametora') + '/'   # ./build.sh gametora
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
-c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()
+c = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'game', 'global', 'master.mdb')); q = lambda s, *a: c.execute(s, a).fetchall()
 skname = dict(q("select [index],text from text_data where category=47"))
 cname = dict(q("select [index],text from text_data where category=75"))
 link = {sid: p for sid, p in q("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0")}
