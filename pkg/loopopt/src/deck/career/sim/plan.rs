@@ -1118,7 +1118,9 @@ fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
 /// a career of hers worth at most pnow, so (`Env::rise`: E(q') <= E(q) x rise(q', q) for every deck)
 ///     value(y, her) = c' E_best(q') <= c' (pnow / c_yz) rise(q', q_yz),
 /// the least over z (the veteran most like her: rise 1 when one already carries what she does); also at most the ceiling
-/// (`Env::ceiling` through `Sim::fastc`, under EXACT_RHO). A candidate's step costs the lowest cost at those odds
+/// (`Env::ceiling` through `Sim::fastc`, under EXACT_RHO: per outfit and target A - B (1 - q'), `outfit_fast`'s factor at
+/// q'; before 2026-10-09 the bound took A + B q', B more per target, valid and on p16 3.3 times as high at the pick's
+/// partners). A candidate's step costs the lowest cost at those odds
 /// (`Cont::cost_lo`). Derived, per outcome:
 /// (1) For each partner, the bound >= the best career's exact value >= the table value `score_career` reads. A cached
 ///     deck's corner table is multilinear in the targets' miss chances, as P(all) of a fixed deck is (each chance enters
@@ -1161,10 +1163,11 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             let xm = |st: u8| { let m = 1.0 - (0.03 * st as f64 * (1.0 + a_v / 100.0)).min(1.0); m * m };
             let xms = [1.0, xm(1), xm(2), xm(3)];
             let x0: Vec<f64> = uncv.iter().map(|&i| 1.0 - q0[i]).collect();
-            // the best outfit's product per leaf: per outfit and target the factor A + B q at each of her four star levels
+            // the best outfit's product per leaf: per outfit and target the factor A - B (1 - q') at each of her four star
+            // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Sim::fast_ub` takes it)
             let mut ceil = vec![0.0f64; nleaf];
             for o in &s.fastc[u] {
-                let g: Vec<[f64; 4]> = (0..nu).map(|k| { let (aa, bb) = o[k]; [0, 1, 2, 3].map(|sg| aa + bb * (1.0 - x0[k] * xms[sg])) }).collect();
+                let g: Vec<[f64; 4]> = (0..nu).map(|k| { let (aa, bb) = o[k]; [0, 1, 2, 3].map(|sg| aa - bb * (x0[k] * xms[sg])) }).collect();
                 leaf_products(&g, &mut lp, &mut lp_tmp);
                 for (cv, &pr) in ceil.iter_mut().zip(&lp) { if pr > *cv { *cv = pr; } }
             }
