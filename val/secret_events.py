@@ -1,6 +1,6 @@
 """Every conditional character event (secret and race-result events (GameTora training_events/char, section 4) that gives a skill hint, with its
 conditions decoded, and a feasibility check of the race conditions against the solver's Global data.json.
-Writes docs/SECRET_EVENTS.md (per uma, then an index by skill). usage: uv run val/secret_events.py [OUT.md]"""
+Writes cache/secret_events.md (per uma, then an index by skill). usage: uv run val/secret_events.py [OUT.md]"""
 import json, glob, sqlite3, collections, sys
 import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -120,7 +120,7 @@ for r in json.load(open(REPO + '/cache/gametora/' + os.path.basename(sorted(glob
             ver = [x[1] for x in ve[3:] if isinstance(x, list) and x and x[0] == 8]
             rows.append(dict(uma=cname.get(uid, uid), uid=uid, in_global=uid in U, title=str(ttl.get(int(ve[2]), '')).replace('\\n', ' ').replace('\n', ' '), version=tag + (f' [{ver[0]}]' if ver else ''),
                              hints=hints, choices=choices, conds=ctext, impossible=bad))
-OUT = sys.argv[1] if len(sys.argv) > 1 else REPO + '/docs/SECRET_EVENTS.md'
+OUT = sys.argv[1] if len(sys.argv) > 1 else REPO + '/cache/secret_events.md'
 print(len(rows), 'event variants with hints;', len({x['uid'] for x in rows}), 'umas;', sum(any(h[2] for h in x['hints']) for x in rows), 'touch a default target')
 
 R = rows
@@ -147,7 +147,7 @@ for (jp, uma, title), vs in sorted(by.items()):
         ver = '' if i == 0 else f" ({v['version']})"
         md.append(f"- **{title or '(untitled)'}**{ver}: {rew}  ")
         md.append(f"  needs: {'; '.join(v['conds']) or 'no conditions listed'}" + (' — **impossible in this career**' if v['impossible'] else ''))
-open(OUT, 'w').write('\n'.join(md) + '\n')
+os.makedirs(os.path.dirname(OUT), exist_ok=True); open(OUT, 'w').write('\n'.join(md) + '\n')
 # index by skill: current versions only
 idx = {}
 for r in R:

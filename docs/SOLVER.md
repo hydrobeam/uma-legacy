@@ -2,7 +2,7 @@
 
 The Rust crate in `pkg/loopopt/`; paths below are relative to it. Building and running it: `docs/BUILD.md`.
 
-Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). It reads only the game's plaintext `master.mdb` and GameTora's event data files (card events) and does math; nothing in the game is modified.
+Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). Its inputs are data files exported from the game's `master.mdb` and GameTora's event data.
 
 ```
 master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──▶ ranked loops + schedules (JSON)
@@ -19,7 +19,7 @@ p = clamp(110 − cost(distance grade) − cost(surface grade) − PEN[k], 0, 10
 cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[k] = 0,0,5,20,30,50 for streak position k = 1..6+
 ```
 
-(Earlier versions used 10 points per grade and PEN = 0,0,10,25,35,50; the algorithm tests run on that frozen data in `tests/fixtures/data_v1.json`, and `win_table_matches_community_table` checks the shipped data against every cell of the new table.)
+The algorithm tests run on frozen data with an older table (`tests/fixtures/data_v1.json`: 10 points per grade, PEN = 0,0,10,25,35,50); `win_table_matches_community_table` checks the shipped data against every cell of the current one.
 
 - **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it.
 - **Turn** = 24·year + 2·(month−1) + half: Junior 1–24, Classic 25–48, Senior 49–72; half 1 = Early, 2 = Late.
@@ -31,12 +31,13 @@ cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[k] = 0,0,5,20,30,50 for
 E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_i(r)·P_j(r) = expected shared G1 wins
 ```
 
-Self-copy-free 12-lineage breeding: C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio, with grandparent slots at
-half weight (*Grandparent weighting*, §3; `C_PAIR`, `K_TRIO`). A three-uma rotation uses the same uniform weight over its
-three pairs.
+Over the loop's 12 lineages C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio (`C_PAIR`, `K_TRIO`). C is the same
+for every pair whatever weight the grandparent slots get, so that weight scales the objective without changing the
+best schedules; a three-uma rotation likewise weights its three pairs equally. Test `score_matches_per_legacy_sum`
+checks the closed form against a direct sum over every lineage and slot.
 
-- Aptitudes (career page): each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; her first outfit), and `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt); the loop planner reads neither (its `bp` per option is unchanged), the career schedule uses them for the legacies' pink sparks (`Env::pink_career`, MODEL.md).
-- `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver rebuilds both tables at load; older files with stored `pair` / `tri` tables still load.
+- Aptitudes: each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; from her first outfit); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt). Only the career schedule uses them, for the legacies' pink sparks (`Env::pink_career`).
+- `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver builds both tables at load.
 - **Fixed rules** (applied by the exporter):
   - G1 only, +3 per shared G1.
   - Relocated-venue G1s count as the normal race: 1025→1012, 1027→1006, 1028→1005.
@@ -55,7 +56,7 @@ three pairs.
 
 | Function | What it does | Exact? |
 |---|---|---|
-| `dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 for the 3 umas with goals on turn 49. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. About 0.1 ms. | **Yes** (validated, §4) |
+| `dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 for the 3 umas with goals on turn 49. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. Microseconds per call, memoised within a search. | **Yes** (tested against an exact MILP, §4) |
 | `ascent` | Best-response dynamics: each member re-solves against the other three until none improves. It converges to a Nash equilibrium of an identical-interest game, not necessarily the global optimum. | Local |
 | `group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. Escapes coordination traps, e.g. all four moving Hopeful → Zen-Nippon together, which no single member gains from alone. | Local |
 | `optimize` | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
@@ -71,9 +72,7 @@ A structure whose bound is below a result already achieved cannot beat it.
 
 ```bash
 # 1. export data (needs the Global master.mdb in game/global/)
-cd export && uv run build_base.py && uv run export_rs.py            # writes ../data.json
-# alternate outfits: e.g. [Fiery Aqua Vitae] (Christmas) Vodka, into a data file of its own
-OUTFIT=1008:100802 uv run build_base.py && OUT=../data_xmas_vodka.json uv run export_rs.py
+cd export && uv run build_base.py && uv run export_rs.py            # writes ../data.json (../../build.sh data does every export)
 
 # 2. build
 cargo build --release
@@ -100,14 +99,6 @@ A cell carries the win % for that attempt (streak penalty included), the goal fl
 position; `alts` names races that can replace the row's at no cost (`interchangeable`).
 
 **Optional fill pass:** after optimizing, each member re-solves against her partners with a tiny bonus (1e-7 per expected G1 win), and the result is kept only if the affinity score doesn't drop by more than 1e-6. That adds every G1 that costs nothing. Test `optional_g1s_cost_nothing` checks that stripping them leaves the score unchanged.
-
-### Grandparent weighting
-
-Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w is base = 2·Σ pair + 4w·Σ trio and
-C = (2 + 8w)/3 for every pair; the optimiser uses w = 1/2 (C = 2, trio coefficient 2).
-
-- C is uniform across pairs for any w, so w does not change a foursome's optimal schedules (w = 1, plain total affinity, gives the same ones); it only scales the objective.
-- Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
 
 ### Fields shared by deck and career jobs
 
@@ -184,14 +175,28 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   `white` = P(white hint | no gold hint)).
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their rewards land or miss together, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` runs both on every call). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (the old ranking value, `rank_value` in the output), is only used to bound and order the work:
-- **Assumed caps, per structure class.** No deck's exact value exceeds ρ times its product value, V ≤ ρ·V̂, with ρ by the deck's class (`EXACT_CAPS`, `cap_class`): its chain-varying targets are those a chain link of one of its cards feeds (`Src::cm`); at most two and no multi-target group (`Src::multi`) ρ = 1.05; three or more, or a multi-target group, 1.25 = `EXACT_RHO`. All assumed from measurement: chain cards share the run's chain events and compete for them, which can correlate even one target's feeders (no deck with at most one such target has been scored yet). Largest ratios seen on any deck scored: two 1.037 (`pal_Fk3`), three 1.127 (King Halo, `val/plan/boot_mob`; the 1.10 once proposed for three would have been below it, so three takes 1.25), more 1.18 (`pal_UF`; `pal_I` 1.165; 1.17 on Grand Masters with 0-1 pals). The planner's own jobs' scored decks reach 1.03-1.04 (val/plan p16, p10), so 1.25 has about 6% of headroom on both eras; a cap per era would miss a deck above it without a sign. No data-free proven cap exists: a target whose only source is one card's last link makes the ratio 1/P(link) (about 6.7 with two such targets); real targets have floors (inheritance, white generation), but range-only and Hölder caps still come out at 1.2-1.7. A proven cap of 1 exists only for decks with no target-bearing chain card (one event's outcomes are negatively dependent), which is almost no deck, and no general cap-free bound per branch is valid: one chain card feeding two targets breaks a per-target mixture bound, and a later card can become a second feeder below a branch. Ranking by the product alone misses better answers (Grand Masters all owned: 1 in 202 where 1 in 194 exists), hence the exact ranking. A search node takes the class of its cards plus every candidate left (a superset of any completion's), so its cap is at least any completion's; a deck passes at its own. Ceilings that know no deck (`Env::ceiling`, the loop tables' product fallback, the reroll's `y_hi`) take 1.25. Every deck and loop whose product ceiling times its cap could beat the best exact value is examined. Output: `class_caps` and per class `class_max_ratio` / `class_max_deck` (the deck that set it); `val/cmp2.py` and `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap - 1). Job field `cap_audit: true` sets every class cap to 2.0 and ten times the band limit (slow; `val/capaudit.py` compares such runs with normal ones: about 37 s for its three default jobs).
+- **Assumed caps, per deck class.** No deck's exact value exceeds ρ times its product value (V ≤ ρ·V̂), with ρ set by
+  the deck's class (`EXACT_CAPS`, `cap_class`): 1.05 when at most two targets are fed by chain links (`Src::cm`) and no
+  outcome group touches two targets (`Src::multi`), otherwise 1.25 (`EXACT_RHO`). The caps are assumed from
+  measurement, because chain cards compete for one run's chain events and so correlate their targets: the largest
+  ratios scored are 1.037 with two chain-fed targets (`pal_Fk3`), 1.127 with three (King Halo, `val/plan/boot_mob`) and
+  1.18 with more (`pal_UF`; 1.17 on Grand Masters); the planner's own jobs reach 1.03-1.04. One cap for both eras keeps
+  the headroom where a deck above an era's measured maximum would otherwise pass unseen. No data-free cap exists: a
+  target whose only source is one card's last link makes the ratio 1/P(link) (about 6.7 with two such targets), and
+  range-only and Hölder bounds come out at 1.2-1.7; only a deck with no target-bearing chain card provably has ratio
+  at most 1. Ranking by the product alone misses better answers (Grand Masters, all owned: 1 in 202 where 1 in 194
+  exists), hence exact ranking. A search node takes the class of its cards plus every candidate still to add, so its
+  cap is at least any completion's; bounds that know no deck (`Env::ceiling`, the loop tables' product fallback, the
+  reroll's `y_hi`) use 1.25. Every deck and loop whose product ceiling times its cap could beat the best exact value is
+  examined. Guards: the output's `class_caps` and per class `class_max_ratio` / `class_max_deck`; `val/cmp2.py` and
+  `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap − 1); job field `cap_audit: true` (every cap
+  at 2.0, ten times the band limit) with `val/capaudit.py` checks the decks the caps pruned.
 - **State-conditioned bound** (career searches' band pass, at each configuration's root): over the configuration's
   chain progress states x, P(x) times the product over targets of each target's factor at its lowest possible misses
   given x (per open slot the best entry of its group at that slot's level); proven >= the exact value of every deck of
   the configuration (given x, sources are independent and one group's per-target hints negatively associated), so a
-  configuration below the bar is dropped without the cap. An extra prune beside the cap's (outputs unchanged): as a
-  replacement for the caps it was about 10-45x slower, so the caps stay;
-  `SBOUND` 0 turns it off, `SB_CHECK=1` checks the value against every exact scoring and the node bounds against the
+  configuration below the bar is dropped. It prunes beside the caps (outputs unchanged); as a replacement for them it
+  is 10-45x slower. `SBOUND` 0 turns it off, `SB_CHECK=1` checks the value against every exact scoring and the node bounds against the
   leaves below them.
 - **Every legal deck.** `DeckSpace` enumerates every deck legal for the trainee (for all four members with a shared deck: the character rule is a legality filter, no splitting), by chain-kind key, before card dominance drops any card; cards interchangeable for the trainee (same rewards on the targets her outfits leave open, or none) are merged; a partial deck is dropped when the best its completions could reach is below the threshold: per (chance, outfit) the lower of the per-target ideal point (the r lowest miss chances per target in each kind group) and a submodular bound (each card's ratio P({card})/P({}) for the product of one outfit at one chance, which gains less the more the deck holds; the best ratios of the cards still to add); branches that cannot place a locked card are dropped.
 - **Proven filter.** Before a deck is scored exactly, `upper_na` bounds it: given N = n chain events, the progress vector is negatively upper-orthant dependent (checked exactly per chain-kind key over its state distribution, early ends and stop risk included; with two cards feeding one target, the same check over every up-set of their pair), so with every card grouped with the targets its chain feeds, E[Π groups | n] ≤ Π E[group | n]; a target that would join a larger group (three or more feeding cards, or two other than the one pair) is taken at every feeder's full progress instead, a constant at least its factor on every chain state (a target's factor only rises as its misses fall), so such decks get a looser bound rather than none (Grand Masters decks often have them); event outcomes enter at their marginal chances (exclusive outcomes only lower the product). U = Σ_n P(n) Π E[· | n] ≥ V; on the reference setups U is within 0.2% of V. `UPPER_CHECK=1` asserts U ≥ V on every deck scored.
@@ -205,7 +210,10 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 
 Typical time natively: about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
-Skill model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or inherited (proc = 1 − Π(1 − base·(1 + affinity/100))² over the six legacies, base 4.65% below rank score 17,500 (stars 50/45/5%), 5.7% from 17,500 up (20/70/10%)). Each legacy's affinity follows uma-it-optimizer's per-legacy fit (`docs/MODEL.md`, Per-legacy affinity; github.com/Acrith/uma-it-optimizer, `tools/loop/affinity.py`, `inspiration_rates.py`): a parent P counts pair(T,P) + pair(P1,P2) + trio(T,P,G) for each of its own parents G + 3 per G1 shared with the other parent and with each G; a grandparent G under P counts trio(T,P,G) + 3 per G1 shared with P; grandparents get no extra factor. In a loop P's own parents are the other parent and the fourth member, so the parents' shared G1s count for both terms. An acquired skill becomes a spark 35.4% of the time as a white, 70.9% as a gold (20% / 40% ×1.1 per ancestor already carrying it, all six in a running loop). Odds are averaged over the structure's lineages (12 in a loop, 3 in a rotation).
+Skill model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or
+inherited; an acquired skill becomes a spark at the generation rate. The equations and fitted values (inheritance,
+per-legacy affinity, spark generation, star mix) are in `docs/RESEARCH.md` §1-4. Odds are averaged over the
+structure's lineages (12 in a loop, 3 in a rotation).
 
 ### Three-uma rotations (`sizes`)
 
@@ -231,11 +239,9 @@ and the search ranks both sizes together.
 - **Bounds.** `q_ub_trainee` lets the X slot also be the trainee (trio 0 + 3·PB(P, T)); pairwise ceilings are unchanged
   (structure-free). Exact per-uma tables, the certificate and the stop rule are shared by both sizes.
 
-Why rotations usually win (measured when they were added, 2026-10-07: every four-uma result stayed bit-identical
-and 43 of 46 deck jobs became rotation-led; `pal_H` and `pal_I` shared stayed four-uma loops): a rotation's careers
-are each a little worse than the loop's best (the fourth uma's relation points as grandparent, a median ×1.05 per
-career over 660 trainee-parent combinations), but a loop must also train its fourth member, usually a weak trainee
-(Oguri Cap at 1 in 216 in `pal_U`).
+Why rotations usually win: a rotation's careers are each a little worse than a loop's best (the fourth uma's relation
+points as a grandparent are missing; a median ×1.05 per career over 660 trainee-parent combinations), but a loop must
+also train its fourth member, usually a weak trainee (Oguri Cap at 1 in 216 in `pal_U`).
 
 ### Career planner (`"mode":"career"`, page `/career`)
 
@@ -412,7 +418,7 @@ repeats none of the base plan's proxy searches. The kept plans and proofs surviv
 
 #### Solver-only career fields (not sent by the page)
 
-Earlier page features, kept in the solver for the simulator, the tests and reverting. The page sends only `next`.
+The page sends only `next`; these serve the simulator and the tests.
 
 | Field | Meaning | Default | Used by |
 |---|---|---|---|
@@ -424,10 +430,9 @@ Earlier page features, kept in the solver for the simulator, the tests and rever
 
 #### Work budget
 
-Work budget: a career search has its own (`CAREER_BUDGET`, 300M units; the loop planner's 30M left synthetic pools of
-12, 100 and 200 veterans unproven with the same picks; measured need 10M-85M up to 400 veterans; `EXACT_BUDGET` in the
-environment overrides it). Candidates are kept as (ceiling, trainee, parents) and their chances recomputed when solved
-(peak memory at 400 veterans 914 MB -> 265 MB, same results).
+A career search has its own work budget (`CAREER_BUDGET`, 300M units: pools up to 400 veterans need 10M-85M; the loop
+planner's 30M left pools of 100 and more unproven; `EXACT_BUDGET` in the environment overrides it). Candidates are kept
+as (ceiling, trainee, parents) and their chances recomputed when solved, which keeps memory low on large pools.
 
 ### Policy simulator (`simulate` on a career job)
 
@@ -490,39 +495,11 @@ Results and commands: `val/sim/README.md`.
   - the objective equals a direct per-legacy sum; optional G1s cost nothing; interchangeable races preserve the score;
   - a three-uma rotation's schedules are a Nash point of its objective.
 
-An independent adversarial review (written without this code, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs (a force could override a goal, `top = 0` panicked, duplicate turns were accepted), all fixed; the force check is tested (`force_conflicting_with_goal_is_infeasible`).
+The loader asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair
+exactly 24 turns apart.
 
-The load step now asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair exactly 24 turns apart.
+## 5. Limits
 
-Measured on the objective at w = 1, including a rotation scheme (parents = the previous two runs) the solver no longer
-offers; the val references now pin the optimiser's schedules:
-
-| Check | Result |
-|---|---|
-| Scoring vs the Python reference: 32 known schedules (scf + rot) | max \|diff\| 4.5e-13 |
-| `dp_exact` vs exact MILP (scipy/HiGHS), random weights, 40 umas × 4 weight types | 160/160 equal |
-| `dp_exact` vs MILP, all 68 umas of `tests/fixtures/data_v1.json`, incl. forced group moves, turn-49 goal umas (Meisho Doto, Mejiro Palmer, Haru Urara) and multi-turn goal alternatives (Fuji Kiseki, Fine Motion, Fukukitaru, Chiyono O) | 192/192 equal, max \|gap\| 3.4e-13 |
-| Ceiling table `pb` vs the Python MILP table (2,278 pairs) | max \|diff\| 1.1e-14 |
-| Cold-start search reproduces every known best loop: 11 scf + 3 rot | all reproduced exactly (2058.92, 2011.30, 2008.51, 1961.02, 1958.00, 1956.38, 1948.98, 1945.95, 1942.37, 1941.28, 1936.89; rot 1944.49, 1915.98, 1833.03) |
-| Deep search (200 rounds, no group-move pre-screen) on 6 contenders | no value exceeded the known optima |
-| Independent checker (written from the spec without seeing this code): 12 final loops | all feasible; scores match to 4.5e-13 |
-
-## 5. Benchmarks (2-core container)
-
-| Operation | Rust | Python MILP reference |
-|---|---|---|
-| Exact best response, one uma | ~5.5 µs, plus a memo: ~99% of calls inside a search are repeats | 110 ms |
-| Ceiling table, all 2,278 pairs | 0.04 s | 387 s |
-| Full schedule search, one foursome (30 rounds) | ~0.03–0.05 s | ~6–7 min |
-
-What makes it fast, with outputs unchanged: `dp_exact` uses precomputed per-option win tables, no per-call allocation,
-and loops with choice pairs outer and states inner (which keeps the tie-breaking order); `ascent` skips re-solving
-members whose partners haven't changed; a best-response memo per `optimize` call is keyed on exact weight bits;
-`group_moves` reuses probability vectors.
-
-## 6. Limits
-
-- **Schedules are heuristic.** `optimize` reproduces every known optimum and the deep search found nothing better, but no proof is given that a structure's true schedule optimum isn't higher.
+- **Schedules are heuristic.** `optimize` is an iterated local search with a provably exact best response per uma; nothing proves a structure's schedules optimal.
 - **Model assumptions (§1) are assumed or community-derived:** the win formula and the affinity objective. The skill model's per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
-- **Junior G1s need 1,000 fans and a debut win gives 700.** Unless a fan bonus applies, add one extra Junior race the uma wins, before Early Nov. This doesn't change affinity.
 - **Base-outfit aptitudes by default.** Use `OUTFIT=chara:card` for alternate outfits (Vodka 100802, Daiwa 100902, Urara 105202); this needs a re-export.
