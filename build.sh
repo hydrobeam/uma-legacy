@@ -1,7 +1,8 @@
 #!/bin/bash
 # One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm page)
 #   data     Global + GM-era exports (needs pkg/loopopt/export/master.mdb, jp/export/master.mdb)
-#   events   card event caches from the GameTora files + manual entries (Global and both GM variants)
+#   gametora GameTora's data files at the pinned versions (pkg/loopopt/gametora.json) into cache/gametora
+#   events   card event caches from the GameTora files + manual entries (Global and both GM variants); runs gametora first
 #   native   release binary + tests
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -29,12 +30,15 @@ step_data() {
   (cd "$C/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" export_career.py ../data.json ../career.json && "${PY[@]}" upcoming.py)
   (cd "$R/jp/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" "$C/export/export_career.py" ../data.json ../career.json)
 }
+step_gametora() { "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}; }
 step_events() {
+  step_gametora
   (cd "$C/export" && "${PY[@]}" build_card_events.py)
   (cd "$R/jp/export" && "${PY[@]}" build_card_events.py && "${PY[@]}" build_card_events_nodates.py)
 }
 step_native() { (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test --release 2>&1 | grep -E "^test result" | head -3); }
 step_wasm() {
+  step_npm
   (cd "$C" && RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown -Z build-std=std,panic_abort 2>&1 | tail -1)
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
            && node example.mjs | tail -1)
@@ -50,7 +54,8 @@ step_deploy() {
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty=$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false))
 }
-step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
+step_npm() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
+step_page() { step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
 step_runners() { "${PY[@]}" "$W/chibi/chibi.py" all; }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
@@ -63,7 +68,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    data|events|native|pb|wasm|page|images|runners|test|testq|serve|deploy) "step_$1" ;;
+    gametora|data|events|native|pb|wasm|page|images|runners|test|testq|serve|deploy) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done

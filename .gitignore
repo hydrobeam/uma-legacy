@@ -18,7 +18,7 @@
 !/pkg/loopopt/tests/
 !/pkg/loopopt/jobs/
 !/pkg/loopopt/export/
-!/pkg/loopopt/gametora/
+!/pkg/loopopt/gametora.json
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
 !/pkg/loopopt/README.md

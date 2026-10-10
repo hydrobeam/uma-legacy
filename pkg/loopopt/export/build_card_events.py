@@ -1,4 +1,4 @@
-"""Build ../card_events.json from the cached GameTora training-event files (../gametora/) + master.mdb.
+"""Build ../card_events.json from the cached GameTora training-event files (cache/gametora/: ./build.sh gametora) + master.mdb.
 Chain links come from master.mdb (single_mode_story_data.show_progress_1 for the event's story id).
 Reward codes index dict/evrew with an offset of 36 (verified: every card's bond reward decodes to its own
 character, and King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match the wiki).
@@ -6,7 +6,7 @@ A skill in every outcome of some choice is certain when the link fires; a skill 
 (split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
 import json, sqlite3, glob, os
 from event_choices import decode, fmt, manual_entry, apply_shares
-G = '../gametora/'
+G = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'cache', 'gametora') + '/'   # ./build.sh gametora
 OFF = 36
 ev = json.load(open(glob.glob(G + 'dict_evrew.*.json')[0]))
 c = sqlite3.connect('master.mdb'); q = lambda s, *a: c.execute(s, a).fetchall()

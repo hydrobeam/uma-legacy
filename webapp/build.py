@@ -48,8 +48,8 @@ for dd in (P, J):
     dj = json.load(open(os.path.join(dd, 'data.json')))
     for nm, rid in zip(dj['race_names'], dj['races']): race_ids[nm] = rid; race_ids[CHART_ALIAS.get(nm, nm[:22])] = rid
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-# GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its cached support-card list
-_gt = sorted(glob.glob(os.path.join(P, 'gametora', 'support-cards.*.json')))
+# GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its support-card list (cache/gametora)
+_gt = sorted(glob.glob(os.path.join(H, '..', 'cache', 'gametora', 'support-cards.*.json')))   # ./build.sh gametora
 _gtc = json.load(open(_gt[-1])) if _gt else []
 GT_URL = {c['support_id']: c['url_name'] for c in _gtc}
 # GameTora's character slug (its character pages are /characters/<outfit id>-<slug>), from her support cards' url_name

@@ -11,7 +11,7 @@ Needs pkg/loopopt/export/master.mdb.
 import json, glob, sqlite3, sys, os
 
 R = os.path.dirname(os.path.abspath(__file__)) + '/../'
-G = R + 'pkg/loopopt/gametora/'
+G = R + 'cache/gametora/'
 c = sqlite3.connect(R + 'pkg/loopopt/export/master.mdb')
 q = lambda s, *a: c.execute(s, a).fetchall()
 sk = dict(q("select [index], text from text_data where category = 47"))

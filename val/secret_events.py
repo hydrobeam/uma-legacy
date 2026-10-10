@@ -5,7 +5,7 @@ import json, glob, sqlite3, collections, sys
 import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 P = REPO + '/pkg/loopopt/'
-ev = json.load(open(glob.glob(P + 'gametora/dict_evrew.*.json')[0])); OFF = 36
+ev = json.load(open(glob.glob(REPO + '/cache/gametora/dict_evrew.*.json')[0])); OFF = 36
 c = sqlite3.connect(f'file:{P}export/master.mdb?mode=ro', uri=True)
 sk = dict(c.execute("select [index],text from text_data where category=47"))
 grp = dict(c.execute("select id, group_id from skill_data"))
@@ -95,7 +95,7 @@ def cond_text(uid, cs):
     return out, bad
 
 rows = []
-for r in json.load(open(P + 'gametora/' + os.path.basename(sorted(glob.glob(P + 'gametora/training_events_char.*.json'))[-1]) + '')):
+for r in json.load(open(REPO + '/cache/gametora/' + os.path.basename(sorted(glob.glob(REPO + '/cache/gametora/training_events_char.*.json'))[-1]) + '')):
     uid = r[0]; secret = r[4] if len(r) > 4 and isinstance(r[4], list) else []
     for e in secret:
         variants = [('current', e)]

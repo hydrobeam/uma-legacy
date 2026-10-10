@@ -2,7 +2,7 @@ import json,glob,sys,os
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))+'/export')
 os.chdir(os.path.dirname(os.path.abspath(__file__))+'/export')
 from jpnames import names
-G='../gametora/'; OFF=36
+G=os.path.dirname(os.path.abspath(__file__))+'/../cache/gametora/'; OFF=36
 ev=json.load(open(glob.glob(G+'dict_evrew.*.json')[0])); sk=names(47)
 T={'Uma Stan','Superstan','Nimble Navigator','No Stopping Me!',"Playtime's Over!",'See Ya Later!','Ramp Up',"It's On!",'Tail Held High','Tail Nine','Racing Spirit: Stamina','Slipstream','Perfect Spot!','Risky Business','Nothing Ventured'}
 def dec(k):

@@ -1,0 +1,20 @@
+{
+ "about": "GameTora data files the card events are built from, pinned by version (pkg/loopopt/export/gametora.py downloads them into cache/gametora/; --latest moves the pins). Data (c) GameTora.",
+ "manifest": "https://gametora.com/data/manifests/umamusume.json",
+ "base": "https://gametora.com/data/umamusume",
+ "files": {
+  "dict/evrew": "8bda1ecc",
+  "dict/te_pairs_en": "bad1a897",
+  "skills": "a1fdfca9",
+  "support-cards": "3a6d72c4",
+  "static/common_char_events": "d83f1398",
+  "training_events/char": "04ff0e72",
+  "training_events/char_card": "b3a2a556",
+  "training_events/friend": "10ff5cd4",
+  "training_events/group": "cee7a990",
+  "training_events/scenario": "4385d1f3",
+  "training_events/shared": "b2a8aa8f",
+  "training_events/sr": "ef204eb5",
+  "training_events/ssr": "67768ea7"
+ }
+}
