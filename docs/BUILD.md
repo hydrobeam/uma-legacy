@@ -102,9 +102,10 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
   `engine.js`), so a banner turns on by itself; the precomputed example leaves the same entries out
   (`webapp/example.mjs`). Validation runs on everything in the data, upcoming included.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): each era's
-  `pkg/loopopt/data/<era>/manual.json`, which `events` merges into that era's `card_events.json`. The builders share one
-  decoder, `pkg/loopopt/export/event_choices.py`. After
-  touching them, `uv run val/event_audit.py` should say "every target hint is accounted for".
+  `pkg/loopopt/data/<era>/manual.json`, which `events` merges into that era's `card_events.json`. GameTora's files are
+  read and decoded in one place, `pkg/loopopt/export/gametora.py` (its docstring holds their format); the builders turn
+  events into card entries with `event_choices.py`, and `val/event_audit.py` and `val/secret_events.py` read them through
+  it too. After touching them, `uv run val/event_audit.py` should say "every target hint is accounted for".
 - New characters' art comes from `./build.sh images` (and `runners`); without it they show initials.
 
 ## Art

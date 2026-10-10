@@ -6,8 +6,26 @@
 Files are saved as <key with / as _, static/ dropped>.<hash>.json (dict/evrew -> dict_evrew.8bda1ecc.json); a cached
 file of the same key under another hash is removed, so each key has one file and readers can glob it. GameTora keeps
 older versions online, so a pinned set rebuilds the same events.
+
+Imported, it is the one reader of those files (no other code decodes them). The format, as decoded here:
+  - load(key) reads cache/gametora/<key>.<hash>.json (key as cached: 'dict_evrew', 'training_events_ssr', ...).
+  - An event is [id, choices, story id, extras...]. Its title is master.mdb's text_data category 181 by story id.
+  - A choice is [label, rewards]; only `rewards` is rewards: decoding the label produces hints that don't exist.
+  - A reward code k indexes dict_evrew at k - 36 (verified: every card's bond reward decodes to its own character, and
+    King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match the wiki). Kinds used: 'sk' [kind, level, skill id]
+    a skill hint, 'sr' [kind, _, [{d: skill id}, ...]] a random hint among skills, 'di' starts the choice's next
+    outcome (outcomes equally likely), 'ee' ends the card's event chain.
+  - training_events_sr / _ssr: rows [card id, events] (the chain links come from master.mdb, show_progress_1 of the
+    event's story id).
+  - training_events_friend (pal cards): rows [chara id, section, section, section]: storyline, first meeting, outings
+    and card-specific events; training_events_group: rows [card id, member chara ids, sections...]. An event of either
+    may carry per-card variants in extras[0] = [_, [[card id, [_, choices]], ...]]: a card with its own variant sees
+    that one (`events`, `pal_event`).
+  - training_events_char: rows [chara id, meta, story events, date events, conditional events (secret and race-result
+    events), localisation]. A conditional event's extras hold [0, conditions], [8, version] and [9, [[tag, older
+    event], ...]] (`conditional_events`, `extra`).
 """
-import json, os, sys, urllib.request
+import glob, json, os, sys, urllib.request
 
 H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(os.path.dirname(os.path.dirname(H)))
 PINS = os.path.join(H, '..', 'data', 'gametora.json')
@@ -42,6 +60,110 @@ def main(argv):
         with open(dst + '.part', 'wb') as f: f.write(data)
         os.replace(dst + '.part', dst); got += 1
     print(f'gametora: {got} downloaded, {len(pins["files"]) - got} cached in {os.path.relpath(CACHE, R)}')
+
+
+# ---- reading and decoding the cached files ----
+OFF = 36   # reward codes index dict_evrew at code - OFF
+_cache = {}
+
+
+def load(key):
+    """the cached file of `key` ('dict_evrew', 'training_events_ssr', ...), parsed once"""
+    if key not in _cache:
+        files = sorted(glob.glob(os.path.join(CACHE, f'{key}.*.json')))
+        if not files: raise SystemExit(f'cache/gametora has no {key}: run ./build.sh gametora')
+        _cache[key] = json.load(open(files[-1]))
+    return _cache[key]
+
+
+def reward(code):
+    """the dict_evrew entry of a reward code, or None"""
+    ev = load('dict_evrew'); i = code - OFF if isinstance(code, int) else -1
+    return ev[i] if 0 <= i < len(ev) else None
+
+
+def is_choice(ch):
+    return isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list)
+
+
+def choices(event_choices):
+    """the event's choices ([label, rewards]), in order; anything else in the list is skipped"""
+    return [ch for ch in (event_choices if isinstance(event_choices, list) else []) if is_choice(ch)]
+
+
+def hint(code):
+    """a reward code as a skill hint: ('hint', skill id, level), ('random', [skill ids], None), or None"""
+    r = reward(code)
+    if not r: return None
+    if r[0] == 'sk': return ('hint', r[2], r[1])
+    if r[0] == 'sr': return ('random', [x['d'] for x in r[2]], None)
+    return None
+
+
+def hints(rewards):
+    """the skill hints of one choice's rewards, in order"""
+    return [h for h in map(hint, rewards if isinstance(rewards, list) else []) if h]
+
+
+def outcomes(rewards):
+    """one choice's rewards split into its outcomes (at each 'di'): [(hints, ends the chain)], hints as `hint` gives them"""
+    out = [([], False)]
+    for k in rewards if isinstance(rewards, list) else []:
+        r = reward(k)
+        if r and r[0] == 'di': out.append(([], False)); continue
+        if r and r[0] == 'ee': out[-1] = (out[-1][0], True)
+        h = hint(k)
+        if h: out[-1][0].append(h)
+    return out
+
+
+def sections(row, kind):
+    """the event sections of a training_events_friend / _group row"""
+    return row[1:] if kind == 'friend' else row[2:]
+
+
+def events(row, kind):
+    """(event, card id its variant is limited to or None, its choice list) for every event of a friend / group row: the
+    event itself, then each per-card variant"""
+    for part in sections(row, kind):
+        for e in part if isinstance(part, list) else []:
+            if not (isinstance(e, list) and len(e) >= 3): continue
+            yield e, None, e[1]
+            if len(e) > 3 and isinstance(e[3], list) and len(e[3]) > 1 and isinstance(e[3][1], list):
+                for z in e[3][1]:
+                    if isinstance(z, list) and len(z) >= 2 and isinstance(z[1], list) and len(z[1]) >= 2:
+                        yield e, z[0], z[1][1]
+
+
+def pal_event(sid, cid):
+    """The choices of pal or group event `sid` (a story id) as card `cid` sees them: its per-card variant when it has
+    one; None when no such event exists"""
+    for kind in ('friend', 'group'):
+        for row in load(f'training_events_{kind}'):
+            base = None
+            for e, only, chs in events(row, kind):
+                if base is not None and e is not base: return base[1]
+                if str(e[2]) != str(sid): continue
+                if only is None: base = e
+                elif only == cid: return chs
+            if base is not None: return base[1]
+    return None
+
+
+def conditional_events(row):
+    """(tag, event) for every conditional event of a training_events_char row: 'current', then each older version"""
+    for e in row[4] if len(row) > 4 and isinstance(row[4], list) else []:
+        yield 'current', e
+        for x in e[3:]:
+            if isinstance(x, list) and x and x[0] == 9:
+                for tag, ve in x[1]: yield tag, ve
+
+
+def extra(event, code):
+    """the value of an event's extra [code, value] (0: conditions, 8: version), or None"""
+    for x in event[3:]:
+        if isinstance(x, list) and len(x) == 2 and x[0] == code: return x[1]
+    return None
 
 
 if __name__ == '__main__': main(sys.argv[1:])

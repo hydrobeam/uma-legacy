@@ -1,11 +1,12 @@
 """Every conditional character event (secret and race-result events (GameTora training_events/char, section 4) that gives a skill hint, with its
 conditions decoded, and a feasibility check of the race conditions against the solver's Global data.json.
 Writes cache/secret_events.md (per uma, then an index by skill). usage: uv run val/secret_events.py [OUT.md]"""
-import json, glob, sqlite3, collections, sys
+import json, sqlite3, collections, sys
 import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO + '/pkg/loopopt/export')
+import gametora
 P = REPO + '/pkg/loopopt/data/global/'
-ev = json.load(open(glob.glob(REPO + '/cache/gametora/dict_evrew.*.json')[0])); OFF = 36
 c = sqlite3.connect(f'file:{REPO}/game/global/master.mdb?mode=ro', uri=True)
 sk = dict(c.execute("select [index],text from text_data where category=47"))
 grp = dict(c.execute("select id, group_id from skill_data"))
@@ -23,13 +24,6 @@ ridx = {r: k for k, r in enumerate(d['races'])}
 U = {u['id']: u for u in d['umas']}
 TARGETS = {20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203}
 YEAR = {1: 'Junior', 2: 'Classic', 3: 'Senior'}
-
-def reward(k):
-    r = ev[k - OFF] if isinstance(k, int) and 0 <= k - OFF < len(ev) else None
-    if not r: return None
-    if r[0] == 'sk': return ('hint', r[2], r[1])
-    if r[0] == 'sr': return ('random', [x['d'] for x in r[2]], None)
-    return None
 
 def forced(u):
     """turn -> set of option indices allowed by a goal that has a single alternative (turns are 1-based in goals)"""
@@ -95,31 +89,21 @@ def cond_text(uid, cs):
     return out, bad
 
 rows = []
-for r in json.load(open(REPO + '/cache/gametora/' + os.path.basename(sorted(glob.glob(REPO + '/cache/gametora/training_events_char.*.json'))[-1]) + '')):
-    uid = r[0]; secret = r[4] if len(r) > 4 and isinstance(r[4], list) else []
-    for e in secret:
-        variants = [('current', e)]
-        for x in e[3:]:
-            if isinstance(x, list) and x and x[0] == 9:
-                for tag, ve in x[1]: variants.append((tag, ve))
-        for tag, ve in variants:
-            hints = []; choices = []
-            for ci, ch in enumerate(ve[1]):
-                if isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list):
-                    hints_before = len(hints)
-                    for k in ch[1]:
-                        rw = reward(k)
-                        if rw and rw[0] == 'hint': hints.append((sk.get(rw[1], rw[1]), rw[2], grp.get(rw[1]) in TARGETS))
-                        if rw and rw[0] == 'random': hints.append(('random: ' + '/'.join(sk.get(x, '?') for x in rw[1]), '', any(grp.get(x) in TARGETS for x in rw[1])))
-                    choices.append(hints[hints_before:])
-            if not hints: continue
-            cs = None
-            for x in ve[3:]:
-                if isinstance(x, list) and len(x) == 2 and x[0] == 0: cs = x[1]
-            ctext, bad = cond_text(uid, cs)
-            ver = [x[1] for x in ve[3:] if isinstance(x, list) and x and x[0] == 8]
-            rows.append(dict(uma=cname.get(uid, uid), uid=uid, in_global=uid in U, title=str(ttl.get(int(ve[2]), '')).replace('\\n', ' ').replace('\n', ' '), version=tag + (f' [{ver[0]}]' if ver else ''),
-                             hints=hints, choices=choices, conds=ctext, impossible=bad))
+for r in gametora.load('training_events_char'):
+    uid = r[0]
+    for tag, ve in gametora.conditional_events(r):
+        hints = []; choices = []
+        for ch in gametora.choices(ve[1]):
+            hints_before = len(hints)
+            for kind, x, lv in gametora.hints(ch[1]):
+                if kind == 'hint': hints.append((sk.get(x, x), lv, grp.get(x) in TARGETS))
+                else: hints.append(('random: ' + '/'.join(sk.get(d, '?') for d in x), '', any(grp.get(d) in TARGETS for d in x)))
+            choices.append(hints[hints_before:])
+        if not hints: continue
+        ctext, bad = cond_text(uid, gametora.extra(ve, 0))
+        ver = gametora.extra(ve, 8)
+        rows.append(dict(uma=cname.get(uid, uid), uid=uid, in_global=uid in U, title=str(ttl.get(int(ve[2]), '')).replace('\\n', ' ').replace('\n', ' '), version=tag + (f' [{ver}]' if ver is not None else ''),
+                         hints=hints, choices=choices, conds=ctext, impossible=bad))
 OUT = sys.argv[1] if len(sys.argv) > 1 else REPO + '/cache/secret_events.md'
 print(len(rows), 'event variants with hints;', len({x['uid'] for x in rows}), 'umas;', sum(any(h[2] for h in x['hints']) for x in rows), 'touch a default target')
 
