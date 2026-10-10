@@ -151,7 +151,7 @@ Spark proc chance per legacy = base × (1 + affinity/100), and the old community
 
 ### Skill-target search (`"mode":"skills"`)
 
-Ranks loops by the chance that every target skill lands as a spark on the new veteran. This is the solver behind the web page.
+Ranks loops by the chance that every target skill lands as a spark on the new veteran. The page does not use it (it sends deck and career jobs).
 
 ```bash
 target/release/loopopt data.json jobs/skills_unity8.json > result.json     # run from this folder (skills_file is relative)
