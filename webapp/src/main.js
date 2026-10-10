@@ -5,6 +5,7 @@ import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
 import { save, doSearch, firstResult, paintRunNote } from './search.js';
+import { warmEngine } from './engine.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';
@@ -46,6 +47,8 @@ function start() {
   const first = firstResult();
   if (first) { ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets, forced: first.forced || [] });
     ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
-    ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : { kind: 'done', text: 'Your last result for these settings' }; }
-  setTimeout(doSearch, 0);   // the first search, with the saved settings (also warms the engine)
+    ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : first.status; }
+  // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'
+  // finished search from before (it shows as done; the engine still warms for the next edit)
+  if (first && !first.example) { warmEngine(); paintRunNote(); } else setTimeout(doSearch, 0);
 }

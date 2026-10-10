@@ -104,7 +104,8 @@ const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').class
 const settle = (pg, t) => timed('settle', settle0(pg, t));
 async function settle0(pg, t = 180000) {
   await pg.waitForFunction(() => { const n = document.getElementById('run-note');
-    return (window.__runs === undefined || window.__runs.length > 0) && !n.classList.contains('busy') && /Checked [\d,]+ decks|example/i.test(n.textContent); }, null, { timeout: t });
+    // a search has run, or (no job sent) the saved result of these settings shows as done (a reload's)
+    return (window.__runs === undefined || window.__runs.length > 0 || /^Checked [\d,]+ decks/.test(n.textContent)) && !n.classList.contains('busy') && /Checked [\d,]+ decks|example/i.test(n.textContent); }, null, { timeout: t });
 }
 const jobSent = (pg, fn, arg) => pg.waitForFunction(fn, arg);   // a search's job has gone to the engine (its result is not awaited)
 const lastJob = (pg, scen) => jobSent(pg, (s) => window.__runs.length > 0 && window.__runs.at(-1).scenario === s, scen);
@@ -921,6 +922,12 @@ const TESTS = {
     const seen = [...new Set(await pg.evaluate(() => window.__seen))].filter(x => x !== '');
     check('reload: the first result drawn is the saved settings\' one, never the default example', seen.length === 1 && seen[0] === mine && mine !== '' && mine !== def, seen.join(' | ') + ' · default ' + def);
     check('reload: an identical fresh result is not redrawn', await pg.evaluate(() => document.querySelector('#results .loop .odds').__mark === 1));
+    // the saved result of these settings counts as done: no search runs, the status is its own "Checked …" line
+    await pg.waitForTimeout(1500);
+    check('reload: the saved result is done, no search runs', await pg.evaluate(() => !window.__runs.some(j => j.cmd === 'deck')) && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await pg.locator('#run-note').innerText()),
+      await pg.locator('#run-note').innerText());
+    await pg.click('#rank button[data-v="0.50,0.45,0.05"]'); await settle(pg);
+    check('reload: … and the next edit searches', await pg.evaluate(() => window.__runs.some(j => j.cmd === 'deck')) && (await odds(pg)) === def);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },

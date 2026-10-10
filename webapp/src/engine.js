@@ -32,6 +32,8 @@ function compiled() {
 // whether a job has been posted and not answered yet (a kill would cut it short; with none, the worker is idle)
 export const engineBusy = () => pending.size > 0;
 export function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); }
+// the worker compiled and loaded without a job (a reload that shows a saved result still wants the next search quick)
+export const warmEngine = () => startEngine().catch(() => {});
 function startEngine() {
   if (ready) return ready;
   const gen = engineGen;

@@ -64,8 +64,7 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
    Only worth changing if the owner uses the loop planner to build loops from scratch.
 6. **Three-uma rotations, follow-ups.** Whether to also offer the best single lineage (a player re-training only her
    best trainee); a five-member or mixed structure is not done.
-7. **Loop planner, owner decisions from the 2026-10-09 audit:** treat a reload's cached result as done when the wasm,
-   data and job match (it reruns the search today, up to 10–35 s on shared-deck jobs; recommended); grey out the Deck
+7. **Loop planner, owner decisions from the 2026-10-09 audit:** grey out the Deck
    (i) panel's hints its umas already have (recommended, as the swap rows now do); show a must-include uma's marked
    outfit instead of "any outfit" (recommended); "press Search" after an undo with Auto-search off (leave). Phone layout
    leftovers: a three-member result wraps 2+1; "prioritise Risky Business" wraps to three lines; the schedule's GOAL
@@ -79,6 +78,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 ## 4. Standing decisions and the owner's calls
 
 - The tool is for Independent Training only. Unity Cup is the default scenario; the GM-era JP data is a secondary mode.
+- A reload whose settings match the saved last result (same solver, data, held-back entries and job) shows it as done
+  and searches nothing (owner, 2026-10-10, reversing the earlier "rerun").
 - The player is assumed to set prioritized skills so event choices reach the counted hints.
 - Pal first-year dates don't fire in Unity Cup IT; always left out (the page option was removed 2026-10-03). If that
   changes in the game, the owner will ask for the app to be updated.
