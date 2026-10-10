@@ -38,7 +38,7 @@ one level with the setup panel. On a phone the columns stack, results first.
   gives up to three, numbered.
 
 **Target skills** (in the open under the setup panel; on the career page a dialog from its *Target skills* button; each
-target as the game's skill tile, gold for a scenario gold). Type to add a skill; **8/8 example** loads the eight targets used in our runs. A gold the scenario
+target as the game's skill tile, gold for a scenario gold). Type to add a skill. **Presets** saves the targets under a name and loads them back (Load replaces the targets; a preset's name shows its skills; Update overwrites it with the targets now, Delete asks twice, the pencil renames). It comes with **8/8 example**, the eight targets used in our runs, a preset like any other. To start from a preset, load it, edit, and save under a new name. Presets are shared by both pages and both data sets, and Export carries them: an import adds its presets to yours. A gold the scenario
 guarantees shows as that gold, in gold. Nothing else is set by hand: outfits, decks and events are worked out by the
 search.
 

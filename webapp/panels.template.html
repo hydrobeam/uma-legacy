@@ -24,12 +24,24 @@
       <button class="btn enh" type="button" id="o-cards" aria-haspopup="dialog"><span class="enhimg" aria-hidden="true"></span><span class="enhl">Support cards</span></button>
 <!--/panel:enh-->
 <!--panel:skills--><section class="panel" aria-labelledby="h-skills">
-      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset">Load 8/8 example</button></div>
+      <div class="row between"><h2 id="h-skills">Target skills</h2><button class="btn" id="t-preset" type="button" aria-haspopup="dialog">Presets</button></div>
       <div class="adder">
         <input type="search" id="t-add" placeholder="Add a skill, e.g. Corner Recovery" aria-label="Add a target skill" autocomplete="off">
         <div class="sugg" id="t-sugg" hidden></div>
       </div>
       <div class="targets" id="targets"></div>
+      <dialog id="preset-dlg" class="prdlg" aria-labelledby="pr-title"><div class="dlg">
+        <div class="row between dhead"><h3 id="pr-title">Target skill presets</h3><button class="btn dclose" type="button">Done</button></div>
+        <p class="hint">Load replaces your target skills with the preset's; tap a name to see its skills. To build on a preset, load it, change the targets, then save them under a new name.</p>
+        <div class="prlist" id="pr-list"></div>
+        <div class="prsave"><input type="text" id="pr-name" maxlength="40" autocomplete="off" aria-label="Name for a new preset"><button class="btn primary" id="pr-save" type="button">Save as preset</button></div>
+        <p class="hint" id="pr-msg" role="status"></p>
+      </div></dialog>
+      <dialog id="pr-view" class="prdlg" aria-labelledby="prv-title"><div class="dlg">
+        <div class="row between dhead"><h3 id="prv-title"></h3><button class="btn dclose" type="button">Close</button></div>
+        <div class="targets prvtiles" id="prv-tiles"></div>
+        <div class="row"><button class="btn primary" id="prv-load" type="button">Load these targets</button></div>
+      </div></dialog>
     </section><!--/panel:skills-->
 <!--panel:roster--><section class="panel" aria-labelledby="h-roster">
       <div class="row between"><h2 id="h-roster">Umas</h2>

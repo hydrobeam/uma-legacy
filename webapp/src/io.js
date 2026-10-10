@@ -7,6 +7,7 @@ import { state, ui, goldGiven } from './state.js';
 import { save } from './save.js';
 import { noOutfit, renderRoster, reqOutfits, isRequired, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
+import { mergePresets } from './presets.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
 function exportText() {
   const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
@@ -37,6 +38,7 @@ function exportText() {
 const obj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const VALID = {
   targets: (v) => Array.isArray(v) && v.every(t => obj(t) && Number.isInteger(t.group)),
+  presets: (v) => Array.isArray(v) && v.every(p => obj(p) && typeof p.name === 'string' && p.name.trim() !== '' && Array.isArray(p.groups) && p.groups.every(Number.isInteger)),
   rank: (v) => Object.values(RANKS).includes(v),
   auto: (v) => typeof v === 'boolean', perUma: (v) => typeof v === 'boolean',
   decksTop: (v) => v === '1' || v === '3',
@@ -61,12 +63,13 @@ export function initIO() {
       const era = o.settings.era === 'gm' ? 'gm' : 'global';
       const keys = SETTINGS.filter(k => k in o.settings), use = keys.filter(k => VALID[k](o.settings[k], era)), bad = keys.filter(k => !use.includes(k));
       if (!use.length) throw new Error('nothing to load');
+      const val = (k) => k === 'presets' ? mergePresets(state.presets, o.settings.presets) : o.settings[k];   // presets join yours, never replace them
       if (era !== ERA) {   // settings for the other data set: store them under its keys, then switch
-        for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = o.settings[k];
+        for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = val(k);
         SAVED.era = era; persist();
         location.reload(); return;
       }
-      for (const k of use) state[k] = o.settings[k];
+      for (const k of use) state[k] = val(k);
       save();
       paintRank(); paintTop(); $('c-peruma').checked = state.perUma !== false;
       $('x-auto').checked = state.auto !== false; paintScen();

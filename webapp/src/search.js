@@ -10,6 +10,7 @@ import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { state, ui, DEFAULTS } from './state.js';
 import { noOutfit, reqOutfits, isRequired } from './roster.js';
 import { renderDeck } from './results.js';
+import { loadExample } from './presets.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
 // 'check': the fast result is on screen and the exact check is running
 let phase = 'search';
@@ -78,7 +79,7 @@ function stopEngine() { killEngine(); busy = false; }
 class Blocked extends Error { constructor(kind, text, act) { super(text); this.status = { kind, text, act }; } }
 // The search job for the current settings (throws Blocked when they can't be searched). Used by the search and by firstResult.
 function buildJob() {
-  if (!state.targets.length) throw new Blocked('empty', 'Add a target skill to search.', { label: 'Load the 8/8 example targets', click: 't-preset' });
+  if (!state.targets.length) throw new Blocked('empty', 'Add a target skill to search.', { label: 'Load the 8/8 example targets', click: 't-preset', run: loadExample });
   const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   // must include per outfit: the uma is required, and her outfits that aren't marked are left out
