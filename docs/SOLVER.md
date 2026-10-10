@@ -2,7 +2,7 @@
 
 The Rust crate in `pkg/loopopt/`; paths below are relative to it. Building and running it: `docs/BUILD.md`.
 
-Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). It reads only the game's plaintext `master.mdb` and does math; nothing in the game is modified.
+Finds the best parent loop (a four-uma loop or a three-uma rotation) and support deck for landing target skills in Uma Musume (Global), with the exact race schedule for each uma, and plans careers to a looped parent (`/career`). It reads only the game's plaintext `master.mdb` and GameTora's event data files (card events) and does math; nothing in the game is modified.
 
 ```
 master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──▶ ranked loops + schedules (JSON)
@@ -108,8 +108,6 @@ C = (2 + 8w)/3 for every pair; the optimiser uses w = 1/2 (C = 2, trio coefficie
 
 - C is uniform across pairs for any w, so w does not change a foursome's optimal schedules (w = 1, plain total affinity, gives the same ones); it only scales the objective.
 - Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
-- Older versions also offered a rotation scheme (parents = the previous two runs; C = 1 + 2w adjacent, 4w diagonal) and
-  w as a job field, for the removed affinity-only modes.
 
 ### Fields shared by deck and career jobs
 
@@ -131,7 +129,7 @@ A deck result's `loop`: `members` (3 or 4), `outfits` (the outfit each uma uses 
 
 ### Deck + loop search (`"mode":"deck"`)
 
-Finds the support deck and the loop together. Needs `skills_file`, `cards_file` (`web_cards.json`, from `export/export_cards.py`) and usually `events_file` (`card_events.json`, from `export/build_card_events.py` over the cached GameTora files in `gametora/`).
+Finds the support deck and the loop together. Needs `skills_file`, `cards_file` (`web_cards.json`, from `export/export_cards.py`) and usually `events_file` (`card_events.json`, from `export/build_card_events.py` over the GameTora files that `./build.sh gametora` caches in `cache/gametora/` at the repository root).
 
 ```bash
 target/release/loopopt data.json jobs/deck_unity8.json        # everyone owned
@@ -186,12 +184,13 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   `white` = P(white hint | no gold hint)).
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their rewards land or miss together, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` runs both on every call). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (the old ranking value, `rank_value` in the output), is only used to bound and order the work:
-- **Assumed caps, per structure class.** No deck's exact value exceeds ρ times its product value, V ≤ ρ·V̂, with ρ by the deck's class (`EXACT_CAPS`, `cap_class`): its chain-varying targets are those a chain link of one of its cards feeds (`Src::cm`); at most two and no multi-target group (`Src::multi`) ρ = 1.05; three or more, or a multi-target group, 1.25 = `EXACT_RHO`. All assumed from measurement: chain cards share the run's chain events and compete for them, which can correlate even one target's feeders (no deck with at most one such target has been scored yet). Largest ratios seen on any deck scored: two 1.008, three 1.127 (King Halo, `val/plan/boot_mob`), more 1.18 (`pal_UF`; 1.17 on Grand Masters). A search node takes the class of its cards plus every candidate left (a superset of any completion's), so its cap is at least any completion's; a deck passes at its own. Ceilings that know no deck (`Env::ceiling`, the loop tables' product fallback, the reroll's `y_hi`) take 1.25. Every deck and loop whose product ceiling times its cap could beat the best exact value is examined. Output: `class_caps` and per class `class_max_ratio` / `class_max_deck` (the deck that set it); `val/cmp2.py` and `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap - 1). Job field `cap_audit: true` sets every class cap to 2.0 and ten times the band limit (slow; `val/capaudit.py` compares such runs with normal ones: about 37 s for its three default jobs).
+- **Assumed caps, per structure class.** No deck's exact value exceeds ρ times its product value, V ≤ ρ·V̂, with ρ by the deck's class (`EXACT_CAPS`, `cap_class`): its chain-varying targets are those a chain link of one of its cards feeds (`Src::cm`); at most two and no multi-target group (`Src::multi`) ρ = 1.05; three or more, or a multi-target group, 1.25 = `EXACT_RHO`. All assumed from measurement: chain cards share the run's chain events and compete for them, which can correlate even one target's feeders (no deck with at most one such target has been scored yet). Largest ratios seen on any deck scored: two 1.037 (`pal_Fk3`), three 1.127 (King Halo, `val/plan/boot_mob`; the 1.10 once proposed for three would have been below it, so three takes 1.25), more 1.18 (`pal_UF`; `pal_I` 1.165; 1.17 on Grand Masters with 0-1 pals). No data-free proven cap exists: a target whose only source is one card's last link makes the ratio 1/P(link). Ranking by the product alone misses better answers (Grand Masters all owned: 1 in 202 where 1 in 194 exists), hence the exact ranking. A search node takes the class of its cards plus every candidate left (a superset of any completion's), so its cap is at least any completion's; a deck passes at its own. Ceilings that know no deck (`Env::ceiling`, the loop tables' product fallback, the reroll's `y_hi`) take 1.25. Every deck and loop whose product ceiling times its cap could beat the best exact value is examined. Output: `class_caps` and per class `class_max_ratio` / `class_max_deck` (the deck that set it); `val/cmp2.py` and `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap - 1). Job field `cap_audit: true` sets every class cap to 2.0 and ten times the band limit (slow; `val/capaudit.py` compares such runs with normal ones: about 37 s for its three default jobs).
 - **State-conditioned bound** (career searches' band pass, at each configuration's root): over the configuration's
   chain progress states x, P(x) times the product over targets of each target's factor at its lowest possible misses
   given x (per open slot the best entry of its group at that slot's level); proven >= the exact value of every deck of
   the configuration (given x, sources are independent and one group's per-target hints negatively associated), so a
-  configuration below the bar is dropped without the cap. An extra prune beside the cap's (outputs unchanged);
+  configuration below the bar is dropped without the cap. An extra prune beside the cap's (outputs unchanged): as a
+  replacement for the caps it was about 10-45x slower (`docs/PERF_PLANNER.md`), so the caps stay;
   `SBOUND` 0 turns it off, `SB_CHECK=1` checks the value against every exact scoring and the node bounds against the
   leaves below them.
 - **Every legal deck.** `DeckSpace` enumerates every deck legal for the trainee (for all four members with a shared deck: the character rule is a legality filter, no splitting), by chain-kind key, before card dominance drops any card; cards interchangeable for the trainee (same rewards on the targets her outfits leave open, or none) are merged; a partial deck is dropped when the best its completions could reach is below the threshold: per (chance, outfit) the lower of the per-target ideal point (the r lowest miss chances per target in each kind group) and a submodular bound (each card's ratio P({card})/P({}) for the product of one outfit at one chance, which gains less the more the deck holds; the best ratios of the cards still to add); branches that cannot place a locked card are dropped.
@@ -216,10 +215,9 @@ three. Trainee A has parents B and C; B was bred from (C, A), C from (B, A). Ove
 mean P(all) over the 3 lineages, the loop's over its 12: both are the chance per career when every member trains in turn,
 and the search ranks both sizes together.
 
-- **Repeated character.** A grandparent may be the trainee's own character (907 of 3,179 uma-it runs have one;
+- **Repeated character.** A grandparent may be the trainee's own character (common in uma-it runs: `docs/RESEARCH.md` §5;
   none has a parent of her character). `rel_tables` counts a relation group only for distinct members, so
-  tri(T, P, T) = 0 and pair(a, a) = 0; fitted on 101,536 inspiration trials, that (H0) predicts 521.8 passes from
-  self-grandparents against 523 seen, while counting the trio as pair(T, P) predicts 605.4 (about 13 nats worse).
+  tri(T, P, T) = 0 and pair(a, a) = 0, as fitted on inspiration trials (`docs/RESEARCH.md` §4, *Self-grandparent*).
 - **Her races.** In a steady rotation the grandparent of character T is T's own earlier veteran with T's schedule, so its
   shared wins with parent P are o(P, T), the same overlap as between those two members anywhere in the rotation; the
   ×1.1⁶ spark generation is unchanged (all six legacies carry every spark).
@@ -248,7 +246,9 @@ choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets 
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
 as the page's solver worker runs them: a job's fully checked decks are kept per setup (everything but the pool and the
 places) and bound the later jobs' searches, never the searches that feed the rollout's cache, so every output equals
-the job run alone.
+the job run alone. The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
+search the worker keeps (the second job's search costs about 3 ms in wasm, and the plan does the same work as one
+combined job).
 
 | Field | Meaning | Default |
 |---|---|---|
@@ -287,7 +287,7 @@ most of them: from chances q0 to q a target's factor grows at most by (1 − (1 
 those ratios. The same bound holds between trainees of one deck class (equal outfit coverage and own-skill chances of
 the targets, the same relevant cards barred, as many plain pals: the best deck is then one function of the chances), so
 the fully checked decks and product-search proofs kept between searches and jobs (`seen`, `ruled`) are kept per class:
-a classmate's proof bounds her candidates too (on the owner's 16-veteran pool 47 of 68 umas share one class). Identical
+a classmate's proof bounds her candidates too (on val/plan p16, 47 of the 68 umas of 2026-10-08 share one class). Identical
 deck problems are searched once: a candidate whose trainee, chances and spark scale are bit-identical to an earlier one's
 in the same search takes its outcome (`Twin`: interchangeable veterans, as a sample pool of mob veterans gives, make
 every parent pair one problem), and a deck search without start decks is memoised per job by what it reads (deck class,
@@ -317,16 +317,16 @@ when the worker kept the search from the job before). The best career also carri
 
 The page's plan (`sim::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
 `next: {}` with `no_reports: true`, after the search job (it reuses the search the worker keeps). The model and its
-evidence: `docs/MODEL.md`, *Next career*. Constants are in `deck/career/sim/plan.rs`.
+evidence: `docs/MODEL.md`, *Next career*. Constants are in `src/deck/career/sim/plan.rs`.
 
 | Field of `next` (all optional) | Meaning | Default |
 |---|---|---|
-| `sur`, `sur_margin` | 1: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; 2: both, the differences listed in `sur_diff` (on the owner's 16-veteran pool: none over 68 umas, the same time) | 0, 0 |
+| `sur`, `sur_margin` | 1: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; 2: both, the differences listed in `sur_diff` (on val/plan p16: none over its 68 umas, the same time) | 0, 0 |
 | `value_only` | V alone, no score per candidate | `false` |
 | `exact_all` | every uma's best career searched exactly (no proxies: the rule before builders went through their deck class) | `false` |
 | `proxy_check` | each builder's proxy reported beside her exact career (`proxy_check` in the output); changes nothing else | `false` |
 | `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
-| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. Unused by the page since Compare plans exactly as Add will (b2ecc73) | none |
+| `fit` | `[[chara, lam, phi, pinf], ...]` (a plan's own `fit` output): the stage candidates and their continuations taken as given instead of fitted to this pool. Unused by the page, since Compare plans exactly as Add will | none |
 | `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
 | `search_work`, the other `plan` fields | read from the same structure as `plan` (section *Solver-only career fields*) | as `plan` |
 
@@ -335,7 +335,7 @@ career's lineage and of your veterans, the search's other trainees. Below 4 (`HI
 other-uma veterans) they are filled from the owned umas with the highest odds under a full loop lineage (parents
 hypothetical veterans of the first two candidates' umas, each bred from the other and from her, valued by
 `Env::ceiling`, no deck search; reported in `hint`). Each gets her best career. On the val/plan pools the loop members
-always entered by the other routes, which is why the loop planner's search was dropped from the plan.
+always entered by the other routes, so the loop planner's search is not part of the plan.
 
 **Pass 1**: every allowed uma's best career, exact over her outcomes, giving per candidate the chance her veteran
 raises that candidate's odds and the mean odds raised to.
@@ -360,7 +360,7 @@ best cost, so the cap decides nothing). `Cont::plan` and `Cont::cost_lo` are mem
 `PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap). V = min over trios of side(A) + side(B) + 1/p_C: A and B
 candidates, each side either a real 8/8 veteran of hers (cost 0) or a fresh 8/8 (her step; the veteran her best career
 now would leave, `Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), C
-every allowed uma at her odds with those two as parents. The cheapest choice of sides wins: a real 8/8 with poor parents
+every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real 8/8 with poor parents
 can lose to a fresh one.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
@@ -400,7 +400,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
 **Kept plans.** Each trainee's best careers are kept per plan (the last few, in the worker). A plan of the same setup,
 places and pool takes them as they are (no search: a reload, an edit undone); a plan of the same setup and places whose
 pool is a kept one plus one veteran at the end (Compare, then Add) takes the better of the kept best and a search with
-her fixed, whose bar starts at the kept value (`Env::floor`). Exact (on the owner's 16-veteran pool identical to the
+her fixed, whose bar starts at the kept value (`Env::floor`). Exact (on val/plan p16 identical to the
 plan run cold), about 3 ms instead of 9 s. The kept plans and proofs survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
@@ -484,18 +484,18 @@ Results and commands: `val/sim/README.md`.
   - the objective equals a direct per-legacy sum; optional G1s cost nothing; interchangeable races preserve the score;
   - a three-uma rotation's schedules are a Nash point of its objective.
 
-An independent adversarial review (separate agent, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs in the affinity-only CLI modes (since removed: a force could override a goal, `top = 0` panicked, duplicate turns were accepted); the force check is still tested.
+An independent adversarial review (written without this code, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs (a force could override a goal, `top = 0` panicked, duplicate turns were accepted), all fixed; the force check is tested (`force_conflicting_with_goal_is_infeasible`).
 
 The load step now asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair exactly 24 turns apart.
 
-Measured when the affinity-only modes existed (scores at w = 1 and the rotation scheme, both since removed; their
-fixture and regression tests went with them, and the val references now pin the optimiser's schedules):
+Measured on the objective at w = 1, including a rotation scheme (parents = the previous two runs) the solver no longer
+offers; the val references now pin the optimiser's schedules:
 
 | Check | Result |
 |---|---|
-| Scoring vs the Python reference: 32 known schedules (scf + rot, both sessions' outputs) | max \|diff\| 4.5e-13 |
+| Scoring vs the Python reference: 32 known schedules (scf + rot) | max \|diff\| 4.5e-13 |
 | `dp_exact` vs exact MILP (scipy/HiGHS), random weights, 40 umas × 4 weight types | 160/160 equal |
-| `dp_exact` vs MILP, all 68 umas, incl. forced group moves, turn-49 goal umas (Meisho Doto, Mejiro Palmer, Haru Urara) and multi-turn goal alternatives (Fuji Kiseki, Fine Motion, Fukukitaru, Chiyono O) | 192/192 equal, max \|gap\| 3.4e-13 |
+| `dp_exact` vs MILP, all 68 umas of `tests/fixtures/data_v1.json`, incl. forced group moves, turn-49 goal umas (Meisho Doto, Mejiro Palmer, Haru Urara) and multi-turn goal alternatives (Fuji Kiseki, Fine Motion, Fukukitaru, Chiyono O) | 192/192 equal, max \|gap\| 3.4e-13 |
 | Ceiling table `pb` vs the Python MILP table (2,278 pairs) | max \|diff\| 1.1e-14 |
 | Cold-start search reproduces every known best loop: 11 scf + 3 rot | all reproduced exactly (2058.92, 2011.30, 2008.51, 1961.02, 1958.00, 1956.38, 1948.98, 1945.95, 1942.37, 1941.28, 1936.89; rot 1944.49, 1915.98, 1833.03) |
 | Deep search (200 rounds, no group-move pre-screen) on 6 contenders | no value exceeded the known optima |
@@ -503,21 +503,20 @@ fixture and regression tests went with them, and the val references now pin the 
 
 ## 5. Benchmarks (2-core container)
 
-| Operation | Python (MILP) | Rust v1 | Rust v2 (current) |
-|---|---|---|---|
-| Exact best response, one uma | 110 ms | 35–40 µs | ~5.5 µs, plus a memo: ~99% of calls inside a search are repeats |
-| Ceiling table, all 2,278 pairs | 387 s | 0.18–0.25 s | 0.04 s |
-| Full search, one foursome (scf, 30 rounds) | ~6–7 min | 1.6–2.3 s | ~0.03–0.05 s |
+| Operation | Rust | Python MILP reference |
+|---|---|---|
+| Exact best response, one uma | ~5.5 µs, plus a memo: ~99% of calls inside a search are repeats | 110 ms |
+| Ceiling table, all 2,278 pairs | 0.04 s | 387 s |
+| Full schedule search, one foursome (30 rounds) | ~0.03–0.05 s | ~6–7 min |
 
-v1 → v2 is byte-identical on every job tested (only timing fields differ). The changes:
-- `dp_exact`: precomputed per-option win tables, no per-call allocation, and loops inverted so choice pairs are outer and states inner, which keeps the tie-breaking order.
-- `ascent` skips re-solving members whose partners haven't changed.
-- A best-response memo per `optimize` call, keyed on exact weight bits.
-- `group_moves` reuses probability vectors.
+What makes it fast, with outputs unchanged: `dp_exact` uses precomputed per-option win tables, no per-call allocation,
+and loops with choice pairs outer and states inner (which keeps the tie-breaking order); `ascent` skips re-solving
+members whose partners haven't changed; a best-response memo per `optimize` call is keyed on exact weight bits;
+`group_moves` reuses probability vectors.
 
 ## 6. Limits
 
 - **Schedules are heuristic.** `optimize` reproduces every known optimum and the deep search found nothing better, but no proof is given that a structure's true schedule optimum isn't higher.
-- **Model assumptions (§1) are user-supplied or community-derived:** the win formula and the affinity-only objective. The skill model's per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
+- **Model assumptions (§1) are assumed or community-derived:** the win formula and the affinity objective. The skill model's per-legacy affinity is uma-it-optimizer's receipt-fitted model; its exact parent terms are fitted on totals only, so the split between them is less certain than the overall level. The code doesn't validate them.
 - **Junior G1s need 1,000 fans and a debut win gives 700.** Unless a fan bonus applies, add one extra Junior race the uma wins, before Early Nov. This doesn't change affinity.
 - **Base-outfit aptitudes by default.** Use `OUTFIT=chara:card` for alternate outfits (Vodka 100802, Daiwa 100902, Urara 105202); this needs a re-export.

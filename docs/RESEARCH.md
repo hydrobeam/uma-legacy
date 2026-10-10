@@ -45,8 +45,7 @@ veteran's rank score $R$:
 | 6,500-17,499 | 0.50 / 0.45 / 0.05 | 528,637 white sparks, $p = 0.13$ |
 | 17,500+ | 0.20 / 0.70 / 0.10 | 196,646 white sparks, $p = 0.77$ |
 
-**Fitted** on Champions Meeting room data (goodness-of-fit $p$ shown). An earlier 0.45 / 0.50 / 0.05 matched neither
-band. The default band per scenario is set by the share of Independent Training runs from uma-it reaching 17,500 if
+**Fitted** on Champions Meeting room data (goodness-of-fit $p$ shown). The default band per scenario is set by the share of Independent Training runs from uma-it reaching 17,500 if
 every skill point is spent: URA Finale 0%, Unity Cup 47% (median 17,428), Grand Concert 79% (median 18,094),
 Trackblazer 0% (median 12,386; 282 runs). Hence 17,500+ for Grand Concert, below it for URA Finale, Unity Cup and
 Trackblazer; Grand Masters has no data and takes 17,500+ (**assumed**).
@@ -305,8 +304,9 @@ in 55 of 62 runs. Only 358 of 3,179 Independent Training runs from uma-it show a
 mainly through its consequences (section 12: prioritised targets 1.04, non-prioritised 0.68 on event-only hints).
 
 **Outcomes** (**assumed** unless measured): one choice's outcomes exclude each other, one per firing, equally likely
-unless measured; a card's gold and white of one skill are combined exactly. Measured shares (90% intervals; counted
-only where every outcome could show):
+unless measured (outcome odds are server-side: master.mdb holds none); a card's gold and white of one skill are
+combined exactly. Measured shares (uma-it runs, 2026-10-06; 90% intervals; counted only where every outcome could show:
+her hint credited, the skill's level from other sources below 5):
 
 | Event, outcome | Observed | Adopted |
 |---|---|---|
@@ -315,6 +315,17 @@ only where every outcome could show):
 | Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up (top choice taken) | 527/585 = 0.90 [0.88, 0.92] | 0.75 |
 | Seiun Sky [Foolproof Plan] link 3, Fast-Paced | 33/40 = 0.82 [0.71, 0.90] | 0.75 |
 | Smart Falcon [My Umadol Way! ☆] link 3, Center Stage | 37/51 = 0.73 [0.61, 0.81] | 0.75 |
+
+Anshinzawa's finale is counted on runs without Nakayama Festa [Trusting the Dice] (whose "Upping the Ante" also gives
+Nothing Ventured +1/+3, credited jointly). Hint levels identify the choice: her Nothing Ventured +3 = choice 1, +1 =
+choice 2; a loss on choice 2 shows as her Risky Business at level 2 (storyline choice 3 +1, finale +1). With inherited
+Risky Business levels mixed in, choice 2 reads 0.77-0.87. Choice 1 (Nothing Ventured +3 or nothing): 69/127 = 0.54 if
+the finale always fires; Grand Concert lower (unexplained). With Risky Business prioritised IT also takes the bottom
+choice of her date-start event "A Pleasant Practice Partner?" (Risky Business +1; GameTora marks it 'ee', which outside
+IT declines her dates), yet the finale still fires (at least 75 of 77 such runs show its outcome; her extra Risky
+Business +1 appears in 53 of 54 choice-2 wins with the priority, 1 of 20 without): IT apparently keeps her dates either
+way. The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
+Positioning.
 
 Off 0.5 but left at the equal rule: Tazuna Hayakawa SSR finale Concentration 0.70, Agnes Tachyon [Q≠0] link 1 choice 2
 Murmur 0.70, Marvelous Sunday [Dazzling Day in the Snow] link 3 Position Pilfer 0.58, Light Hello SSR finale +3 See Ya
@@ -385,7 +396,7 @@ $$P(\text{all}) = \sum_{c} P(c) \prod_{k} p_k(c) \qquad (\text{exact, **derived*
 
 The search prunes with $\prod_k p_k$ times a per-class cap (**assumed** from measurement: 1.05 for decks with at most two
 chain-varying targets and no multi-target group, 1.25 otherwise). Exact / product ratios seen: up to 1.18 on Global deck
-jobs and 1.17 on Grand Masters (both in the 1.25 class), at most 1.008 with two such targets, 1.127
+jobs and 1.17 on Grand Masters (both in the 1.25 class), at most 1.037 with two such targets (`pal_Fk3`), 1.127
 with three. No data-free cap exists: a target whose only source is one card's last link makes the ratio
 $1/P(\text{link})$.
 

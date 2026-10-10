@@ -1,11 +1,11 @@
 # Performance work on the solver
 
-How to speed up `pkg/loopopt` without changing its results, learned from the 2026-10-03 run (branch
-`perf-plan-proto`, merged: every search at 42-55% of its previous time, outputs unchanged on all validation jobs).
+How to speed up `pkg/loopopt` without changing its results. The protocol below took every search to 42-55% of its
+previous time (2026-10-03) with outputs unchanged on all validation jobs; no identity check failed at any step.
 
 ## Protocol
 
-1. **Setup.** Work in a worktree. Build the starting binary twice and diff its outputs on every job before trusting
+1. **Setup.** Build the starting binary twice and diff its outputs on every job before trusting
    it as a reference: anything that sums in `HashMap` order changes its last bits from run to run (the old
    `chain_marginals` did, on 9 of 46 job files).
 2. **Reference.** A deterministic build, committed as WIP. Every later item must be byte-identical to the previous
@@ -20,27 +20,28 @@ How to speed up `pkg/loopopt` without changing its results, learned from the 202
    `k_filter` with kmax > 1, frontier caps, branch reuse), and once at the end.
 5. **Commit.** One item per commit, the measured gain in the message. Revert anything under about 3% unless it is
    trivially small.
-6. **Final.** Strip timers, rebuild, full validation, wasm timings on Node, `./build.sh page test` on main.
+6. **Final.** Strip timers, rebuild, full validation, wasm timings on Node, `./build.sh page test`.
 
 ## What wasted time
 
 - Treating a non-deterministic binary as the exact reference.
 - Running checks 4 at a time on an idle machine. Wall time is set by the slowest job; run 12-14 at a time.
 - Callgrind on multi-second jobs (minutes each). Use it on pal_U / pal_A2 only.
-- Timing while another session loads the machine. This laptop (i5-1340P: 4 performance + 8 efficiency cores)
+- Timing while other work loads the machine. The measuring machine (i5-1340P: 4 performance + 8 efficiency cores)
   throttles; full parallel load roughly doubles the slowest job and inflates everything 1.5-2x. Compare only runs at
   the same load.
-- Plan-mode interruptions mid-item. Commit early.
 
-## Estimates that were badly off
+## Measure before estimating
 
-- The beaten-deck bookkeeping (`Kept`): planned as small, measured as the largest win (-20% on slow per-uma searches,
-  -43% on shared three-result ones). The old filter rejected 99% of candidates, so the cost was the scan itself
-  (1.4G signature checks for 15.6M real dominance tests); per-field bitmaps test 64 decks per AND.
-- The precomputed pair-ceiling table: planned at tens of ms, measured at 10-21% of a typical run.
-- Dropping native timers in `probs` / `score`: planned as a gain, measured as none.
-- Lazy class thinning: planned as a gain, infeasible without changing output bits.
-- No identity check failed during the whole run, on any subset.
+Estimates of where time goes were badly off; profile first.
+
+- A filter that rejects nearly everything can cost more than the work it saves: the beaten-deck bookkeeping (`Kept`)
+  rejected 99% of candidates, so its cost was the scan itself (1.4G signature checks for 15.6M real dominance tests).
+  Per-field bitmaps (64 decks per AND) made it the largest win: -20% on slow per-uma searches, -43% on shared
+  three-result ones.
+- The precomputed pair-ceiling table costs 10-21% of a typical run, not tens of ms.
+- Native timers in `probs` / `score` cost nothing measurable; removing them gains nothing.
+- Lazy class thinning cannot be done without changing output bits.
 
 ## Pitfalls in this codebase
 
@@ -60,10 +61,12 @@ How to speed up `pkg/loopopt` without changing its results, learned from the 202
   shared-mode branch cache valid. Recheck it if pool-dependent code enters `run_deck_relaxed` before the frontier is
   built. `run_deck` branches change `exclude`, `require` and `exclude_cards`.
 
-Done in the page afterwards: the wasm is compiled once and the `WebAssembly.Module` posted to each restarted worker
-(worker ready about 100-190 ms against 180-490 ms with base64). The wasm2js fallback was dropped (2026-10-03): it was
-8.8 MB of the then single-file page and 3.6-6x slower than wasm, which runs within 3% of native; the page now requires
-WebAssembly and says so when a host refuses it.
+## In the page
+
+The wasm is compiled once and the `WebAssembly.Module` posted to each restarted worker (worker ready about 100-190 ms,
+against 180-490 ms when each worker decoded a base64 copy). Wasm runs within 3% of native. There is no JS fallback:
+wasm2js output was 8.8 MB and 3.6-6x slower than wasm, so the page requires WebAssembly and says so when a host
+refuses it.
 
 ## Not done (estimates)
 
