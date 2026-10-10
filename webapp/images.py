@@ -211,12 +211,17 @@ def ui_sprites(force, manifest):
 # (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
 # a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
 # face tones set so each dark face stands off the dark panel (#1f2328) by about the CIELAB lightness gap its light face
-# has on white: skill tile ~12 (light 14), spark bar ~10 (9), button ~5 (4)
-DARK_SPRITES = {'spark_white': (0.09, 0.245, 1.0, 0), 'skill_white': (0.09, 0.29, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
+# has on white, the skill tile under it (owner, 2026-10-09: 12, then 9, read too light): skill tile ~6 (light 14), spark
+# bar ~10 (9), button ~5 (4)
+DARK_SPRITES = {'spark_white': (0.09, 0.245, 1.0, 0), 'skill_white': (0.09, 0.235, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
                 'btn_w': (0.09, 0.235, 1.0, 0), 'pill_w': (0.09, 0.235, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
                 'slot_frame': (0.09, 0.21, 1.0, 0), 'slot_empty': (0.07, 0.14, 1.0, 0)}
 CHROMA_CAP = {'btn_w', 'pill_w', 'chk_off', 'spark_white', 'skill_white', 'tog_off', 'slot_frame', 'slot_empty'}   # their saturation is capped by the pixel's real chroma
 SHADE = {'skill_white': 0.35}
+# the light rim's tone drifts along the tile (L 0.84 to 0.74, bluer in patches), which darkened per pixel came out as navy
+# smudges; these keys get one even rim instead: the opaque pixels within this many px of the edge, under the face's
+# darkest end (hi - 0.075), as the light rim is under its face, in the face's lavender
+RIM = {'skill_white': 3}
 MIRROR = {'skill_white'}   # the dark skill tile's face gradient runs the other way (darker left, lighter right); its shape is symmetric   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
 
 
@@ -262,6 +267,16 @@ def dark_sprites(force, manifest):
                 if key in CHROMA_CAP and max(r, g, b) - min(r, g, b) < 40: hh, ss = 0.7, 0.12   # the Enhance buttons' dark band tint
                 rr, gg, bb = colorsys.hls_to_rgb(hh, ll, min(1, ss * sat))
                 px[x, y] = (round(rr * 255), round(gg * 255), round(bb * 255), a)
+        if key in RIM:
+            r, rim = RIM[key], colorsys.hls_to_rgb(0.70, hi - 0.075, 0.14)
+            rim = tuple(round(c * 255) for c in rim)
+            al = [[px[x, y][3] for x in range(w)] for y in range(h)]
+            for y in range(h):
+                for x in range(w):
+                    if al[y][x] < 255: continue
+                    if any(al[yy][xx] < 255 for yy in range(max(0, y - r), min(h, y + r + 1)) for xx in range(max(0, x - r), min(w, x + r + 1))) \
+                       or y < r or y >= h - r or x < r or x >= w - r:
+                        px[x, y] = rim + (255,)
         if key in MIRROR: im = im.transpose(Image.FLIP_LEFT_RIGHT)
         im.save(dst, 'WEBP', lossless=True); manifest['images']['ui:' + key + '_dark'] = f'{key} (darkened)'; n += 1
     return n
