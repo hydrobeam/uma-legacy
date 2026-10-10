@@ -1831,8 +1831,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    skills; Load, Overwrite, the trash can), the one matching the targets now tinted as the Options pick row; Save current
    skills under them, opening a small popup for the name. The view popup: the preset's skills as the editor's tiles,
    Rename and Close at the bottom */
-dialog.prdlg { width: min(620px, calc(100vw - 32px)); }
+dialog.prdlg { width: min(870px, calc(100vw - 32px)); }
 dialog.prsmall { width: min(420px, calc(100vw - 32px)); }
+dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .prlist { display: grid; gap: 8px; margin: 12px 0 6px; }
 .prow { display: flex; flex-wrap: wrap; align-items: stretch; border: 1px solid var(--gm-line, var(--line)); border-radius: 8px; background: var(--gm-cell, var(--panel)); overflow: hidden; }
 .prow.cur { background: var(--gm-tile, var(--accent-soft)); }
@@ -1851,10 +1852,13 @@ dialog.prsmall { width: min(420px, calc(100vw - 32px)); }
 .ptrash svg { width: 20px; height: 20px; color: var(--gm-ink, var(--ink)); }
 .ptrash .slit { stroke: #fff; }
 :root[data-theme="dark"] .ptrash .slit { stroke: #2b2934; }   /* the slits in the dark button's face */
-.pbtns .ptrash.armed, .pbtns .ptrash.armed svg { color: var(--out); font-weight: 700; }
 .prfoot { gap: 8px; margin-top: 8px; }
 .prlab { display: block; font-size: 0.85rem; font-weight: 700; color: var(--gm-ink2, var(--muted)); margin: 12px 0 4px; }
-.prvtiles { margin: 12px 0 4px; }   /* the preset's skills, as the editor's tiles */
+.prvtiles { margin: 14px 0 4px; gap: 8px 10px; }   /* the preset's skills as the editor's tiles, at the game's full tile size
+   (the panel's are compacted to fit its column) */
+.game .lptgt .prvtiles .tgt { min-height: 48px; padding: 4px 6px 8px 10px; }
+.game .lptgt .prvtiles .tgt .name { font-size: 0.95rem; gap: 8px; }
+.game .lptgt .prvtiles .tgt .sic { width: 30px; height: 30px; }
 .prvren input, #prn-name { width: 100%; }
 @media (max-width: 620px) { .pbtns { padding-left: 10px; } }
 /* the career page before its first answer: the Veteran analysis frame with a spinner beside the tree (career.js waitEl),

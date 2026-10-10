@@ -2,15 +2,15 @@
 // state.presets: [{name, groups: [skill group, ...]}], saved with the other shared settings (both pages, both data sets)
 // and carried by Export. The 8/8 example comes preloaded (state.js DEFAULTS) and is a preset like any other.
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
-// (with the targets now) and a trash can (a second click deletes); under it, Save current skills opens a small popup
-// for the name. Starting from a preset is load, edit the targets, save under a new name.
+// (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name (offered as
+// "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
 import { $, el, backdropCloses } from './dom.js';
 import { PRESET } from './data.js';
 import { state } from './state.js';
 import { save } from './save.js';
 import { tileEl } from './targets.js';
 
-const NAME_MAX = 40, EXAMPLE_NAME = '8/8 example';
+const NAME_MAX = 40;
 const same = (a, b) => a.length === b.length && [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
 const count = (n) => `${n} skill${n === 1 ? '' : 's'}`;
 // the game has no trash can among its UI sprites: one drawn in its icon style, in the ink colour, the slits in the face's
@@ -36,12 +36,8 @@ export function mergePresets(mine, theirs) {
 }
 
 const nameTaken = (name, except = null) => state.presets.some(p => p !== except && p.name === name);
-// the name offered for the targets now: the default eight's own name when they are the default eight, else "Preset N"
-function suggestName() {
-  const cur = state.targets.map(t => t.group);
-  if (same(cur, PRESET) && !nameTaken(EXAMPLE_NAME)) return EXAMPLE_NAME;
-  let i = state.presets.length + 1; while (nameTaken(`Preset ${i}`)) i++; return `Preset ${i}`;
-}
+// the name offered: "Preset N+1", N the presets now (counting on past a name already taken)
+function suggestName() { let i = state.presets.length + 1; while (nameTaken(`Preset ${i}`)) i++; return `Preset ${i}`; }
 
 function renderList(msg = '') {
   const box = $('pr-list'); box.textContent = '';
@@ -57,14 +53,8 @@ function renderList(msg = '') {
     const btns = el('div', 'pbtns'), btn = (t) => { const b = el('button', 'btn', t); b.type = 'button'; btns.append(b); return b; };
     btn('Load').onclick = () => { apply(p.groups); $('preset-dlg').close(); };
     btn('Overwrite').onclick = () => { p.groups = [...cur]; save(); renderList(`Overwrote “${p.name}” with your ${count(cur.length)}.`); };
-    // the trash can deletes on a second click within 4 s (the first turns it into "Delete?")
     const del = btn(''); del.classList.add('ptrash'); del.innerHTML = TRASH; del.setAttribute('aria-label', 'Delete'); del.title = 'Delete';
-    let t = 0;
-    del.onclick = () => {
-      if (!del.classList.contains('armed')) { del.classList.add('armed'); del.append(el('span', '', 'Delete?')); del.setAttribute('aria-label', 'Delete? Click again to delete');
-        t = setTimeout(() => { del.classList.remove('armed'); del.lastChild.remove(); del.setAttribute('aria-label', 'Delete'); }, 4000); return; }
-      clearTimeout(t); state.presets = state.presets.filter(q => q !== p); save(); renderList(`Deleted “${p.name}”.`);
-    };
+    del.onclick = () => { state.presets = state.presets.filter(q => q !== p); save(); renderList(`Deleted “${p.name}”.`); };
     row.append(view, btns); box.append(row);
   }
   $('pr-msg').textContent = msg;
