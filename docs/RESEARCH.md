@@ -3,7 +3,7 @@
 How the planner's odds are built and how each piece was set. Every quantity carries a label: **assumed** (a chosen
 rule, or a community figure without published data), **fitted** (estimated from data; sample and method given) or
 **derived** (follows from the other parts). Intervals are 95% unless marked; log-likelihood (LL) differences are in
-natural-log units ("nats").
+natural-log units ("nats"). "Runs" are runs, pooled.
 
 The default targets used in the tests are eight skill pairs (white / gold): Uma Stan / Superstan, Nimble Navigator /
 No Stopping Me!, Playtime's Over! / See Ya Later!, Ramp Up / It's On!, Tail Held High / Tail Nine, Racing Spirit:
@@ -45,7 +45,7 @@ veteran's rank score $R$:
 | 6,500-17,499 | 0.50 / 0.45 / 0.05 | 528,637 white sparks, $p = 0.13$ |
 | 17,500+ | 0.20 / 0.70 / 0.10 | 196,646 white sparks, $p = 0.77$ |
 
-**Fitted** on Champions Meeting room data (goodness-of-fit $p$ shown). The default band per scenario is set by the share of Independent Training runs from uma-it reaching 17,500 if
+**Fitted** on Champions Meeting room data (goodness-of-fit $p$ shown). The default band per scenario is set by the share of runs reaching 17,500 if
 every skill point is spent: URA Finale 0%, Unity Cup 47% (median 17,428), Grand Concert 79% (median 18,094),
 Trackblazer 0% (median 12,386; 282 runs). Hence 17,500+ for Grand Concert, below it for URA Finale, Unity Cup and
 Trackblazer; Grand Masters has no data and takes 17,500+ (**assumed**).
@@ -71,10 +71,9 @@ community measurements (one of 1,000+ trials) and consistent across every source
 
 The odds use skill whites only. Grandparents take the full base (**fitted**: with grandparents halved, every predicted
 spark chance was about half the measured level). Great-grandparents count for nothing (**assumed**, matching the
-game's two-generation lineage). Year-1 skill factors in the career record are the start-of-career application, not a
-third roll (observed in one run). In the loop model $b(s_{lk})$ is replaced by $\bar b$ in each roll.
+game's two-generation lineage). In the loop model $b(s_{lk})$ is replaced by $\bar b$ in each roll.
 
-**Test** (2,936 Independent Training runs from uma-it, section 12): observed / predicted inspiration over 23,488
+**Test** (2,936 runs, section 12): observed / predicted inspiration over 23,488
 run-target rows 0.985 [0.97, 1.00]; by carriers 1-6, 0.957-1.001, every interval covering 1; per roll, spark-years
 0.985 and ancestor hits ($2\sum_l r_l$) 0.987; on 37,785 rows of non-target skills 0.993 [0.97, 1.01]. Reliability:
 
@@ -115,7 +114,7 @@ implementation gives identical numbers on one test loop's 12 veterans (lineage t
 shows the implementations agree, not that the formula is the game's.
 
 **Self-grandparent** ($G = T$, section 5). $\mathrm{tri}(T,P,T) = 0$ is **fitted** on 101,536 inspiration trials
-attributable to a single ancestor in Independent Training runs from uma-it: self-grandparent passes 523 observed,
+attributable to a single ancestor in runs: self-grandparent passes 523 observed,
 521.8 predicted with 0, 605.4 with $\mathrm{tri}(T,P,T) = \mathrm{pair}(T,P)$ (about 13 nats worse); the family
 $\kappa\cdot\mathrm{pair}(T,P)$ fits $\hat\kappa = 0$, 95% upper limit about 0.35.
 
@@ -123,7 +122,7 @@ $\kappa\cdot\mathrm{pair}(T,P)$ fits $\hat\kappa = 0$, 95% upper limit about 0.3
 
 A lineage is $(T, P_1, P_2, X)$: each parent bred from the other parent and $X$. A four-uma loop has 12 lineages (each
 member trains from two of the other three); a three-uma rotation has 3, with $X = T$ (the trainee's own earlier
-veteran). The rotation occurs in practice: 907 of 3,179 Independent Training runs from uma-it have a grandparent of
+veteran). The rotation occurs in practice: 907 of 3,179 runs have a grandparent of
 the trainee's own character (none a parent). A structure $S$ with lineage set $\Lambda_S$ scores
 
 $$\bar P_S = \frac{1}{|\Lambda_S|} \sum_{\lambda \in \Lambda_S} P_\lambda(\text{all}),$$
@@ -156,8 +155,8 @@ $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfl
 
 The shape (uniform draws, $h$ per run, the cap) is **derived** from the data; $\beta$ is **fitted**. Fit: Bernoulli
 likelihood through $M$ per (card-run, pool skill) row, maximum-limit-break card-runs only, rows where no spark hinted
-the skill. The form was fixed on 879 Independent Training runs from uma-it (19,071 rows, 17,079 without a spark); the
-bases were refit with the cap on 2,402 Independent Training runs from uma-it.
+the skill. The form was fixed on 879 runs (19,071 rows, 17,079 without a spark); the
+bases were refit with the cap on 2,402 runs.
 
 | Scenario | Fitted $\beta$ | Adopted | Rows | Runs |
 |---|---|---|---|---|
@@ -237,7 +236,7 @@ decks.
 | Poisson(7.1) | 27 nats worse (variance = mean, too wide) |
 | per scenario | means Unity Cup 7.56, Grand Concert 7.16, URA Finale 6.53; +15.7 nats for 32 extra parameters |
 
-Refit on 1,792 Independent Training runs from uma-it: means 7.52 / 6.84 / 7.20 / 7.92 for 1 / 2 / 3 / 4 pals
+Refit on 1,792 runs: means 7.52 / 6.84 / 7.20 / 7.92 for 1 / 2 / 3 / 4 pals
 (variances 4.0-5.3); Binomial(21, 0.35) kept. The sub-Poisson spread suggests a capped number of chances per run; a
 reading of the shape, not verified.
 
@@ -300,7 +299,7 @@ ends a chain early).
 Evidence on the rule. Sasami Anshinzawa [This Might Sting!]'s finale: with Risky Business prioritised IT took choice 2
 in about 95% of runs (exceptions mostly with Risky Business already at hint Lv 5); with neither skill prioritised, 20 of
 72 runs still took choice 2. Riko Kashimoto [Planned Perfection]: with Lone Wolf prioritised IT took the bottom choice
-in 55 of 62 runs. Only 358 of 3,179 Independent Training runs from uma-it show a priority list, so the rule is tested
+in 55 of 62 runs. Only 358 of 3,179 runs show a priority list, so the rule is tested
 mainly through its consequences (section 12: prioritised targets 1.04, non-prioritised 0.68 on event-only hints).
 
 **Outcomes** (**assumed** unless measured): one choice's outcomes exclude each other, one per firing, equally likely
@@ -346,7 +345,7 @@ $$P(\text{fires}) = 0.21\,(1 - 0.047)^{K - 4},$$
 
 $K$ = random events on offer (every shared event of the deck's characters plus the trainee's own): about 0.15 overall,
 0.21 at $K = 4$, 0.13 at $K = 14$. Readings: top-choice marker skills credited to the character's event; 2,871
-readings from 1,461 Independent Training runs from uma-it, 426 clean hits (58 ambiguous two-card credits counted as
+readings from 1,461 runs, 426 clean hits (58 ambiguous two-card credits counted as
 misses; with them the rate is about 3 points higher).
 
 | Form | LL |
@@ -357,15 +356,9 @@ misses; with them the rate is about 3 points higher).
 | strict competition $1 - (1 - 1/K)^S$, $S = 1.57$ | −1213.4 |
 | every event slot competing (chain links + random events + pals) | no better than constant |
 
-Observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14: 0.17 / 0.20 / 0.19 / 0.17 / 0.14 / 0.13. Logistic fits: −0.058 logit
-per event on offer; with it in, 0 pals −0.02, chain links +0.005 per link, and initial friendship, friendship bonus,
-specialty priority, limit break and scenario indistinguishable from zero. Within a run events fire independently
-(pairs both fired 19 against 22.4 expected). On 4,748 readings from 2,264 Independent Training runs from uma-it (658
-clean hits): −0.043 logit per event (15.7% at 8 on offer, 12.5% at 14); SSR 15.3% against SR 10.9% pooled, but within
-the 22 characters with cards of several rarities SSR is +0.18 logit (odds ratio 1.20), not distinguishable from zero;
-specialty priority +0.026 logit per 10 points (likelihood ratio 1.5), not adopted. Target-relevant cards: Vodka
-(Nimble Navigator) SR 10/104, SSR 9/107 against 15.0% predicted for those decks; Nice Nature SSR (Ramp Up) 16/121 =
-13.2% against 15.2%.
+Observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14: 0.17 / 0.20 / 0.19 / 0.17 / 0.14 / 0.13; within a run events fire
+independently. On a larger sample (4,748 readings, 2,264 runs) the slope holds (15.7% at 8 on offer, 12.5% at 14) and
+rarity, friendship, specialty priority and scenario show no effect distinguishable from zero.
 
 Only top-choice skills hint (bottom-choice ones need a priority; in 175 runs showing a priority list none was ever
 prioritised). Crediting these events at 0.17 (0.9 for the trainee's own) raised the odds by at most 1.7% across the
@@ -416,7 +409,7 @@ Leave-one-pool-out fits ranged 0.6-1.0 and 1-3: a calibration on these pools, no
 
 ## 12. Calibration against real careers
 
-Each of 2,936 Independent Training runs from uma-it (URA Finale 598, Unity Cup 780, Grand Concert 1,477, Trackblazer
+Each of 2,936 runs (URA Finale 598, Unity Cup 780, Grand Concert 1,477, Trackblazer
 81) was rebuilt as a career: trainee in her outfit, scenario, the six cards at their own limit breaks (hint frequency
 and increment at that limit break), both parents with their recorded parents and every ancestor's white sparks, and
 race wins giving the recorded shared-G1 counts. Targets: the default eight; 23,488 run-target rows, of which 1,005 on
@@ -503,12 +496,9 @@ Single-source cards furthest from the model:
 | Maruzensky [Sentimental Flare ♪] > Slipstream | 0.240 | 0.299 | 1.25 [1.01, 1.51] | 224 | open |
 | Daitaku Helios [Let's Get This Party Lit!] > Slipstream | 0.339 | 0.491 | 1.45 [1.08, 1.82] | 57 | open |
 
-**Other skills** (every other skill a deck card or spark could give; a 30% seeded sample, 881 runs, 1,973 jobs):
-inheritance 0.993 [0.97, 1.01] (37,785 rows); training-pool hints 1.051 [1.03, 1.07] (14,609 rows; Grand Concert
-1.05, Unity Cup 1.02, URA Finale 1.12, Trackblazer 1.04); event-only rewards 0.69 [0.66, 0.73], where the choices
-serve a 24-target objective nobody plays for; acquired 1.18 × predicted, because scenario and trainee events hint
-many non-target skills (1,682 of 1,706 acquisitions with neither a deck credit nor an inspiration). Two skills show
-deck credits 2.3-2.5× the model's (Straightaway Acceleration, Medium Corners ◎), unexplained.
+**Other skills** (a 30% sample of every non-target skill a deck card or spark could give): inheritance 0.993
+[0.97, 1.01] over 37,785 rows and training-pool hints 1.051 [1.03, 1.07] over 14,609, so those parts hold beyond the
+eight targets.
 
 **Untested here:** the step from acquired to landed (spark generation, and that everything hinted is bought); the
 priority policy run by run; correlations inside a run beyond $P(\text{all})$; Grand Masters; hint levels. The runs skew
