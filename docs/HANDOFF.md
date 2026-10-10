@@ -35,7 +35,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 | v45 | master.mdb 10008200 (Zenno Rob Roy); banners held ahead turn on at their start time |
 | v46 | game-style header (page tabs, light / dark switch) and wordmark, /about Sources list, career presets popup fix, /loop |
 | v47 | game-style status line and header switch, wordmark spacing, logo not a link, Career choices (i) |
-| v48 | see above |
+| v48 | the runner, swap rows, reload cache, affinity by trainee, Grand Masters art |
+| v49 | see above |
 
 ## 3. Open threads, most valuable first
 
