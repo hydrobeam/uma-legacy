@@ -26,6 +26,7 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 | `pb` | exact pairwise affinity ceilings of every uma pair, stored as `pb` in both `data.json` (`export/add_pb.py` via `loopopt pbtable`); a typical search runs faster with it. It carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns until `pb` is rerun | native |
 | `wasm` | wasm32 build (build-std), `wasm-opt -O3`, then `example.json` (the result shown before the first search) | rust-src, node |
 | `page` | `webapp/dist/` (see below) | node |
+| `runners` | each uma's mini model running: a strip of 18 frames per uma in `webapp/img/run/{chara}.avif` (`webapp/chibi/chibi.py`; see *Runner strips*) | the game's decrypted files, `cache/meta_global.db`, Global master.mdb, node + playwright |
 | `images` | game art into `webapp/img/{kind}/{id}.avif`: character icons, card art, skill icons, race banners, scenario logos, UI sprites (lossless WebP: the friend frame, card type icons, rank badges, and the career page's veteran card: aptitude grade letters `atlas/common utx_ico_statusrank_00..07`, spark bars and bullets `atlas/singlecommon utx_frm_factor_list_01..04_sl` / `utx_ico_factor_01..02`, skill tiles `atlas/common utx_btn_skill_base_00..03_sl`, the tab pill `utx_btn_square_00_sl`; the Enhance-menu buttons `home/ui/texture utx_btn_home_umamusume_00..02`; the game's buttons and check box from the install's `resources.assets`: `utx_btn_s_00..03_sl`, `utx_btn_checkbox_00..01`), dark-mode versions of the light ones (`*_dark`, made here: the game has no dark mode), and the scenario select art (`single/banner/bnr_chara_big_NNN`, kind `scenart`), and every named mob uma's portrait (`mob/mob_chr_icon_ID_*`, kind `mob`: the career planner's sample veterans); only new ids unless `IMAGES_FORCE=1`; `img/manifest.json` lists sources and gaps. Never committed (© Cygames); without it the page shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), `$UMA_GAME_DATA` (default: the Steam install's `UmamusumePrettyDerby_Data`) |
 | `serve` | serves `webapp/dist` on http://localhost:8000 (`PORT=…`). The page fetches its solver and images, so it must be served, not opened as a file | node |
 | `test` | the browser suite (below) | node, Playwright |
@@ -108,6 +109,20 @@ screen), `statestore.js` (the solver's kept work in IndexedDB), `umadump.js` (im
   `val/plan/ref__*.out`, printing the plan's work (nodes, exact scorings) beside the reference's; `val/mono.py` checks
   that adding a veteran never raises the planner's V; `docs/PERF_PLANNER.md` holds the planner's measurements.
   `node webapp/nodebench.mjs <wasm> global pal_A2 …` times the wasm.
+
+## Runner strips
+
+The page's busy sign is the uma being planned running (`webapp/src/images.js` `runnerHTML`; the spinner when a build
+has no strips). `./build.sh runners` (`webapp/chibi/chibi.py [all | ID ...] [--force]`) makes one strip per roster
+uma (both eras) from the game's own files: her mini body, hair, the shared mini face (her skin tone), her tail
+(`chara_data.tail_model_id`), and the game's mini run motion. AssetStudio's CLI exports FBX, FBX2glTF makes glb, the
+run clip is decoded in Python (dense and constant curves, bones by the CRC32 of their path), and
+`webapp/chibi/render.mjs` renders `chibi.html` (three.js, a dev dependency) in headless Chromium: flat game colours with
+an outline, the mouth on the open happy shape, the tail simulated as a spring chain on her hip (run to a steady loop),
+hair, skirt and ears swaying with her steps. 18 frames (0.6 s) at 128 px, cropped to her box over the loop, AVIF.
+The tools (AssetStudioModCLI v0.19.0 with a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 from Arch's libxml2-legacy
+when the system lacks it) are fetched into `cache/chibi/tools` on first use; exports are cached per uma in
+`cache/chibi/work/ID` (delete one to redo it). About 3 s per uma.
 
 ## Data
 

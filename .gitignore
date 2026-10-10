@@ -60,6 +60,8 @@
 !/webapp/icons.py
 !/webapp/icons.mjs
 !/webapp/icons/
+# the runner strips' pipeline (its tools and outputs stay out: cache/chibi, webapp/img/run)
+!/webapp/chibi/
 !/webapp/package.json
 !/webapp/package-lock.json
 !/val/

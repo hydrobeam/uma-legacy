@@ -25,7 +25,7 @@ def fingerprint(name, data):
 # copied to assets/img.<hash>/<kind>/<id>.<ext>, the hash taken over every file's name and content: any change gives
 # the whole set a new folder (images change only when images.py is rerun)
 images = []; ext = {}; isize = 0; files = []; ih = hashlib.sha256()
-for kind in ('uma', 'mob', 'outfit', 'card', 'skill', 'race', 'scen', 'scenart', 'ui'):
+for kind in ('uma', 'mob', 'outfit', 'card', 'skill', 'race', 'scen', 'scenart', 'ui', 'run'):
     d = os.path.join(H, 'img', kind)
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         stem, e = os.path.splitext(f)

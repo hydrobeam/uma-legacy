@@ -1,0 +1,120 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- the runner's renderer (webapp/chibi/chibi.py drives it in headless Chromium): an uma's mini model from the game's
+     files (body, hair, the shared face, her tail), the game's mini run motion on her body's bones, flat game colours
+     with an outline; the tail simulated as a spring chain on her hip, hair / skirt / ears swaying with her steps. -->
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+</head><body style="margin:0;background:transparent">
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+const P = new URLSearchParams(location.search), SIZE = +(P.get('size') || 192), FLIP = P.get('flip') !== '0', ID = P.get('id') || '1001', SKIN = P.get('skin') || '0', TAIL = P.get('tail') || '0001', W = `/work/${ID}/`;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(SIZE, SIZE); renderer.setClearColor(0x000000, 0); renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const effect = new OutlineEffect(renderer, { defaultThickness: 0.0045, defaultColor: [0.24, 0.14, 0.12], defaultAlpha: 1 });
+const scene = new THREE.Scene(), loader = new GLTFLoader(), tl = new THREE.TextureLoader();
+const tex = (f) => new Promise(r => tl.load(W + 't/' + f, t => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; r(t); }));
+const TEX = { [`mtl_mbdy${ID}_00`]: `tex_mbdy${ID}_00_diff.png`, [`mtl_mchr${ID}_00_hair`]: `tex_mchr${ID}_00_hair_diff.png`, mtl_mchr0001_00_face0: `tex_mchr0001_00_face0_${SKIN}_diff.png`,
+  mtl_mchr0001_00_cheek: `tex_mchr0001_00_face0_${SKIN}_cheek0.png`, mtl_mchr0001_00_eye: `tex_mchr${ID}_00_eye_diff.png`, mtl_mchr0001_00_mayu_l: `tex_mchr${ID}_00_mayu_diff.png`,
+  mtl_mchr0001_00_mayu_r: `tex_mchr${ID}_00_mayu_diff.png`, mtl_mchr0001_00_mouth: `tex_mchr${ID}_00_mouth_diff.png`, [`mtl_mtail${TAIL}_00`]: `tex_mtail${TAIL}_00_${ID}_diff.png` };
+const glb = (f) => new Promise((r, e) => loader.load(W + 'glb/' + f, r, undefined, e));
+const [body, hair, face, tail] = await Promise.all([`pfb_mbdy${ID}_00.glb`, `pfb_mchr${ID}_00_hair.glb`, 'pfb_mchr0001_00_face0.glb', `pfb_mtail${TAIL}_00.glb`].map(glb));
+const root = body.scene; scene.add(root);
+const bones = {}; root.traverse(o => { if (o.isBone || o.type === 'Object3D') bones[o.name] = bones[o.name] || o; });
+const bodyBones = {}; root.traverse(o => { if (o.isBone) bodyBones[o.name] = o; });
+const info = [];
+// each piece's skin onto the body's bones by name; its own bones (hair, tail) hung from the body bone they hang from
+for (const part of [hair, face, tail]) {
+  part.scene.updateMatrixWorld(true);
+  const hang = []; part.scene.traverse(o => { if (o.parent && bodyBones[o.parent.name] && !bodyBones[o.name] && !o.isMesh) hang.push(o); });
+  for (const o of hang) { const p = bodyBones[o.parent.name], m = o.matrix.clone(); p.add(o); o.matrix.copy(m); m.decompose(o.position, o.quaternion, o.scale); o.__moved = true; info.push(o.name + '=>' + p.name); }
+  part.scene.traverse(o => { if (!o.isSkinnedMesh) return;
+    const sk = o.skeleton, nb = sk.bones.map(b => {
+      if (bodyBones[b.name]) return bodyBones[b.name];
+      if (b.parent && bodyBones[b.parent.name] && !b.__moved) { const p = bodyBones[b.parent.name]; const local = b.matrix.clone(); p.add(b); b.matrix.copy(local); b.matrix.decompose(b.position, b.quaternion, b.scale); b.__moved = true; }
+      return b; });
+    o.bind(new THREE.Skeleton(nb, sk.boneInverses), o.bindMatrix); info.push(o.name + ':' + nb.length); });
+  // rigid pieces (eyes, brows, mouth, cheeks) hang from the face file's own Head: onto the body's Head, same local offset
+  const rigid = []; part.scene.traverse(o => { if (o.isMesh && !o.isSkinnedMesh && o.parent && bodyBones[o.parent.name]) rigid.push(o); });
+  for (const o of rigid) { const p = bodyBones[o.parent.name], m = o.matrix.clone(); p.add(o); o.matrix.copy(m); m.decompose(o.position, o.quaternion, o.scale); info.push(o.name + '->' + p.name); }
+  root.add(part.scene);
+}
+// materials: the game's colours flat (unlit), cut-out alpha for eyes, brows, mouth and cheeks
+const mats = [];
+root.traverse(o => { if (!o.isMesh) return; const ms = Array.isArray(o.material) ? o.material : [o.material];
+  o.material = ms.map(m => { const nm = m.name; const mm = new THREE.MeshBasicMaterial({ name: nm, map: m.map || null, transparent: /cheek/.test(nm), alphaTest: /mayu/.test(nm) ? 0.5 : 0, depthWrite: !/cheek/.test(nm) });
+    if (/cheek/.test(nm)) { mm.blending = THREE.CustomBlending; mm.blendEquation = THREE.AddEquation; mm.blendSrc = THREE.DstColorFactor; mm.blendDst = THREE.ZeroFactor; }
+    if (/eye|mayu|mouth|cheek/.test(nm)) mm.userData.outlineParameters = { visible: false };
+    mats.push([mm, nm]); return mm; });
+  if (o.material.length === 1) o.material = o.material[0]; });
+for (const [mm, nm] of mats) if (TEX[nm]) mm.map = await tex(TEX[nm]);
+// her expression: the mouth sheet is a 4 x 8 grid of shapes and the mouth reads one cell (the game picks it by offset);
+// mouth=N is cell N in reading order: 0 the neutral line, 1 a closed smile, 2 the open happy mouth (the default)
+const MOUTH = +(P.get('mouth') ?? 2);
+for (const [mm, nm] of mats) if (/mouth/.test(nm) && mm.map) { mm.map = mm.map.clone(); mm.map.wrapS = mm.map.wrapT = THREE.RepeatWrapping;
+  mm.map.offset.set((MOUTH % 4) * 0.25, Math.floor(MOUTH / 4) * 0.125); mm.map.needsUpdate = true; }
+// the run: positions in metres (/100, as the FBX step scaled the rest pose), Unity's left-handed axes mirrored on x
+const run = await (await fetch(W + 'run.json')).json(), tracks = [];
+const times = [...Array(run.frames).keys()].map(i => i / run.fps);
+for (const t of run.tracks) {
+  const b = bodyBones[t.node]; if (!b) continue;
+  if (t.kind === 'position') tracks.push(new THREE.VectorKeyframeTrack(t.node + '.position', times, t.values.flatMap(([x, y, z]) => FLIP ? [-x / 100, y / 100, z / 100] : [x / 100, y / 100, z / 100])));
+  else if (t.kind === 'quaternion') tracks.push(new THREE.QuaternionKeyframeTrack(t.node + '.quaternion', times, t.values.flatMap(([x, y, z, w]) => FLIP ? [x, -y, -z, w] : [x, y, z, w])));
+  else if (t.kind === 'scale') tracks.push(new THREE.VectorKeyframeTrack(t.node + '.scale', times, t.values.flat()));
+}
+const mixer = new THREE.AnimationMixer(root); const action = mixer.clipAction(new THREE.AnimationClip('run', -1, tracks)); action.play();
+// camera: the game's three-quarter view from the front right, fitted to the figure over the whole loop
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -100, 100);
+const yaw = +(P.get('yaw') ?? 35) * Math.PI / 180, pitch = +(P.get('pitch') ?? 8) * Math.PI / 180;
+const box = new THREE.Box3();
+for (let i = 0; i < run.frames; i++) { mixer.setTime(i / run.fps); root.updateMatrixWorld(true); root.traverse(o => { if (o.isSkinnedMesh) { o.computeBoundingBox(); const bb = o.boundingBox.clone().applyMatrix4(o.matrixWorld); box.union(bb); } }); }
+const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), r = Math.max(s.x, s.y, s.z) * 0.62;
+cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r; cam.updateProjectionMatrix();
+cam.position.set(c.x + Math.sin(yaw) * 10, c.y + Math.sin(pitch) * 10, c.z + Math.cos(yaw) * 10); cam.lookAt(c);
+const springs = []; root.traverse(o => { const m = o.isBone && /^Sp_(He_Hair|Hi_MSkirt|He_Ear|Bu_)/.exec(o.name); if (!m) return;
+  const k = +(o.name.match(/_(\d\d)$/) || [0, 0])[1]; springs.push({ o, rest: o.quaternion.clone(), k, kind: m[1] }); });
+const LOOP = run.loop || run.frames, T = LOOP / run.fps, AMP = +(P.get('amp') ?? 1);
+const sway = (t) => { for (const s of springs) {
+  const tail = s.kind === 'Hi_Tail', ph = 2 * Math.PI * (2 * t / T) - s.k * 0.7;   // two steps per loop; each link a little later
+  const a = AMP * (tail ? 0.22 + 0.1 * s.k : s.kind === 'Hi_MSkirt' ? 0.08 : 0.06) * Math.sin(ph), b = AMP * (tail ? 0.12 : 0.04) * Math.sin(ph / 2 + 0.6);
+  s.o.quaternion.copy(s.rest).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(a, b, tail ? b : 0))); } };
+// the tail as the game's physics would move it: a chain of points pinned to her hip, each pulled toward a pose held out
+// behind her (turning with her hips), dragged down by gravity and damped; run until it settles into the run's rhythm,
+// then the last loop is recorded so the strip loops
+const TB = []; root.traverse(o => { if (o.isBone && /^Sp_Hi_Tail\d_B_\d\d$/.test(o.name) && !TB.some(b => b.name === o.name)) TB.push(o); });   // the tail's chain, root first
+TB.sort((a, b) => a.name < b.name ? -1 : 1);
+const V = THREE.Vector3, Q = THREE.Quaternion, wp = (o) => o.getWorldPosition(new V()), wq = (o) => o.getWorldQuaternion(new Q());
+mixer.setTime(0); action.stop(); root.updateMatrixWorld(true);   // the rest pose
+const hip = bodyBones.Hip, hipRest = wq(hip), restP = TB.map(wp);
+const seg = restP.slice(1).map((p, i) => p.distanceTo(restP[i])); seg.push(seg.at(-1) || 0.001);
+const up = new V(0, 1, 0), tc = root.getObjectByName('Tail_Ctrl') || TB[0], back = (tc ? wp(tc) : new V(0, 0, -1)).sub(wp(hip)).setY(0).normalize();
+const DROOP = +(P.get('droop') ?? 30) * Math.PI / 180, K = +(P.get('k') ?? 260), DAMP = +(P.get('damp') ?? 3.5), G = +(P.get('g') ?? 0.35);
+// held-out direction per link, in her hip's frame: back and DROOP below level, each link curling a little lower
+const holdLocal = TB.map((_, i) => { const a = DROOP + i * 0.18; return new V().addScaledVector(back, Math.cos(a)).addScaledVector(up, -Math.sin(a)).normalize().applyQuaternion(hipRest.clone().invert()); });
+action.play();
+const pts = TB.length < 2 ? [] : [...restP, restP.at(-1).clone().add(restP.at(-1).clone().sub(restP.at(-2)))].map(v => v.clone());
+const prev = pts.map(v => v.clone()), dt = 1 / 240, LOOPS = 8, rec = [];
+for (let n = 0, steps = pts.length ? Math.round(LOOPS * T / dt) : -1; n <= steps; n++) {
+  const t = n * dt; mixer.setTime(t % T); root.updateMatrixWorld(true);
+  const hq = wq(hip); pts[0].copy(wp(TB[0])); prev[0].copy(pts[0]);
+  for (let i = 1; i < pts.length; i++) {
+    const target = pts[i - 1].clone().addScaledVector(holdLocal[i - 1].clone().applyQuaternion(hq), seg[i - 1]);
+    const acc = target.sub(pts[i]).multiplyScalar(K).add(new V(0, -G * seg[0] * K, 0));
+    const vel = pts[i].clone().sub(prev[i]).multiplyScalar(1 - DAMP * dt);
+    prev[i].copy(pts[i]); pts[i].add(vel).addScaledVector(acc, dt * dt);
+    const d = pts[i].clone().sub(pts[i - 1]); pts[i].copy(pts[i - 1]).addScaledVector(d.normalize(), seg[i - 1]);   // keep the link's length
+  }
+  const k = Math.round((t - (LOOPS - 1) * T) * run.fps * 1000) / 1000;
+  if (t >= (LOOPS - 1) * T - 1e-9 && Number.isInteger(k) && k < LOOP) rec[k] = pts.map(v => v.clone());
+}
+// each tail bone turned so it points at the next recorded point (its child lies along its local +z)
+const aim = (i) => { const p = rec[i]; if (!p) return;
+  for (let j = 0; j < TB.length; j++) { const b = TB[j]; b.updateMatrixWorld(true);
+    const cur = new V(0, 0, 1).applyQuaternion(wq(b)).normalize(), want = p[j + 1].clone().sub(p[j]).normalize();
+    const nw = new Q().setFromUnitVectors(cur, want).multiply(wq(b)), pq = wq(b.parent);
+    b.quaternion.copy(pq.invert().multiply(nw)); b.updateMatrixWorld(true); } };
+window.frame = (i) => { mixer.setTime(i / run.fps); root.updateMatrixWorld(true); sway(i / run.fps); aim(i); effect.render(scene, cam); return renderer.domElement.toDataURL('image/png'); };
+window.springs = springs.length;
+window.ready = { tail: TB.length + '/' + Object.keys(rec).length, springs: springs.length, frames: LOOP, tracks: tracks.length, parts: info, box: [s.x, s.y, s.z].map(v => +v.toFixed(3)) };
+</script></body></html>

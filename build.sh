@@ -7,6 +7,8 @@
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
 #   wasm     wasm + wasm-opt + example.json
 #   page     webapp/dist: index.html (webapp/src bundled with esbuild, both eras' data), loopopt.wasm, img/
+#   runners  each uma's mini model running, a sprite strip per uma into webapp/img/run (webapp/chibi/chibi.py: the game's
+#            files as for images; fetches its third-party tools into cache/chibi on first use)
 #   images   character icons and card art from the game's decrypted bundles into webapp/img ($UMA_DECRYPTED;
 #            only new ids are extracted; pass --force through IMAGES_FORCE=1 to redo all)
 #   test     browser regression suite on webapp/dist, served locally (webapp/nodebrowser.mjs; Chromium + Firefox): releases
@@ -50,6 +52,7 @@ step_deploy() {
 }
 step_page() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
+step_runners() { "${PY[@]}" "$W/chibi/chibi.py" all; }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
 step_val() { local tag="${1:?val needs a tag}"; shift || true
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
@@ -60,7 +63,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    data|events|native|pb|wasm|page|images|test|testq|serve|deploy) "step_$1" ;;
+    data|events|native|pb|wasm|page|images|runners|test|testq|serve|deploy) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
