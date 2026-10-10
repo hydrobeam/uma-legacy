@@ -3,7 +3,8 @@
 How the planner's odds are built and how each piece was set. Every quantity carries a label: **assumed** (a chosen
 rule, or a community figure without published data), **fitted** (estimated from data; sample and method given) or
 **derived** (follows from the other parts). Intervals are 95% unless marked; log-likelihood (LL) differences are in
-natural-log units ("nats"). "Runs" are runs, pooled.
+natural-log units ("nats"). "Runs" are runs, pooled. The scripts in `research/` recompute the numbers
+(`./build.sh research`).
 
 The default targets used in the tests are eight skill pairs (white / gold): Uma Stan / Superstan, Nimble Navigator /
 No Stopping Me!, Playtime's Over! / See Ya Later!, Ramp Up / It's On!, Tail Held High / Tail Nine, Racing Spirit:
@@ -23,6 +24,8 @@ test against real careers.
 
 ## 1. Spark generation
 
+Reproduced by `research/s01_sparks.py` (the derived numbers).
+
 $$g_k = g_0 \cdot 1.1^{\,n_k}, \qquad g_0 = 0.2 \text{ (white learned)}, \quad g_0 = 0.4 \text{ (gold learned)}$$
 
 $n_k$ = ancestors (of six) carrying the spark of $k$. A bought gold sparks its white. In a running loop every target
@@ -35,6 +38,8 @@ $1.1^6 = 1.771561$ and $g = 0.3543$ (white) / $0.7086$ (gold).
 - That everything acquired is bought: **assumed**, untested (section 12).
 
 ## 2. Star mix of legacy sparks
+
+Reproduced by `research/s02_star_mix.py`.
 
 A legacy's white (and unique) spark has $s \in \{1, 2, 3\}$ stars with shares $\pi = (\pi_1, \pi_2, \pi_3)$ set by the
 veteran's rank score $R$:
@@ -55,6 +60,8 @@ The loop model does not know a legacy's stars and uses the expected base per rol
 $$\bar b = 0.03\,(\pi_1 + 2\pi_2 + 3\pi_3) = 0.0465 \;(\text{below } 17{,}500), \quad 0.057 \;(17{,}500+).$$
 
 ## 3. Inheritance rolls
+
+Reproduced by `research/s12_calibration.py` (the test).
 
 Per legacy $l$, target $k$ and roll:
 
@@ -91,6 +98,8 @@ run-target rows 0.985 [0.97, 1.00]; by carriers 1-6, 0.957-1.001, every interval
 
 ## 4. Affinity
 
+Reproduced by `research/s04_affinity.py` (the self-grandparent fit).
+
 **Relation points** (exact, game data): $\mathrm{pair}(a,b)$ and $\mathrm{tri}(a,b,c)$ sum the relation points of the
 relation groups containing all members. A group counts only distinct characters, so $\mathrm{tri}(T, P, T) = 0$.
 
@@ -123,6 +132,8 @@ $\kappa\cdot\mathrm{pair}(T,P)$ fits $\hat\kappa = 0$, 95% upper limit about 0.3
 
 ## 5. Loop structures, ranking and schedules
 
+Reproduced by `research/s05_loops.py`.
+
 A lineage is $(T, P_1, P_2, X)$: each parent bred from the other parent and $X$. A four-uma loop has 12 lineages (each
 member trains from two of the other three); a three-uma rotation has 3, with $X = T$ (the trainee's own earlier
 veteran). The rotation occurs in practice: 907 of 3,179 runs have a grandparent of
@@ -143,6 +154,8 @@ directly gained at most +0.12% on any loop and +0.065% on a winner, and changed 
 validation setups; the ceiling with every pair at its best possible overlap is only 0.56-2.83% above the odds found.
 
 ## 6. Training hints
+
+Reproduced by `research/s06_hints.py`.
 
 Each deck card makes $h$ training-hint draws per run, each uniform over its skill pool (size $n$; the stat option is
 never drawn) among skills still below hint Lv 5; a skill leaves after $c = \lceil 5 / \iota \rceil$ draws, $\iota$ =
@@ -207,6 +220,8 @@ specialty 0 are over-rated by about 10% in Unity Cup. Prioritised skills raising
 priority list, prioritised skills hinted by training at 0.222 against 0.297 predicted (99 rows); no effect assumed.
 
 ## 7. Chain events
+
+Reproduced by `research/s07_chains.py`.
 
 A run gets $N$ chain events, the same for every deck and scenario (**fitted**):
 
@@ -294,6 +309,8 @@ found to carry marker errors, has no mechanism and fails at 4-6 chain cards: rej
 
 ## 8. Event choices and outcomes
 
+Reproduced by `research/s08_outcomes.py` (the certainty checks: `research/s12_calibration.py`).
+
 **Choice rule** (**assumed**): IT takes an event's top choice unless a prioritised skill (up to 10, set at career start)
 sits on another choice, and the player is assumed to prioritise every target hint the model counts. Where targets sit
 on different choices, a deck entry takes one choice (the solver offers one entry per useful choice, and an entry that
@@ -340,6 +357,8 @@ events are left out in IT (**assumed**). Certainty checks: Light Hello [From the
 event in 852 of 852 runs carrying her; Team Sirius gives Risky Business in 64 of 64.
 
 ## 9. Random card events (not modelled)
+
+Reproduced by `research/s09_random_events.py`.
 
 A support card's character's shared random event fires, per event per career with the card in the deck and another
 uma training, with (**fitted**)
@@ -411,6 +430,8 @@ building on 2, 11 and 19, 70% too pessimistic on 5 (builders improve after the f
 Leave-one-pool-out fits ranged 0.6-1.0 and 1-3: a calibration on these pools, not a law.
 
 ## 12. Calibration against real careers
+
+Reproduced by `research/s12_calibration.py`.
 
 Each of 2,936 runs (URA Finale 598, Unity Cup 780, Grand Concert 1,477, Trackblazer
 81) was rebuilt as a career: trainee in her outfit, scenario, the six cards at their own limit breaks (hint frequency

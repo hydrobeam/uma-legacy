@@ -37,6 +37,7 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
 | `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler` | `wasm`, `page`, `runners`, the tests, `deploy` |
 | `pyproject.toml` (`.venv/`, created by uv) | `UnityPy`, `Pillow` | `images`, `runners` (the exporters use the standard library) |
+| `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
 | `webapp/node_modules` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH=0`) | `test`, `testq`, `runners` |
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json` | `events`, `page` |
 | `cache/chibi/tools/` (`runners`, first use) | AssetStudioModCLI 0.19.0, a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 (Arch's libxml2-legacy; always this copy) | `runners` |
@@ -193,6 +194,7 @@ pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: 
                      base.json and manual.json (hand-entered card events), plus upcoming.json for Global; and the
                      inputs both eras share, event_shares.json and gametora.json (GameTora's pinned versions)
 val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
+research/            scripts reproducing RESEARCH.md's numbers (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
 cache/               downloads: GameTora's files, the runner tools and exports (gitignored)
