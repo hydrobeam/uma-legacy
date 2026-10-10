@@ -239,4 +239,6 @@ for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'
 open(os.path.join(DIST, '_headers'), 'w').write('/*\n  Cache-Control: public, max-age=300\n'
                                                  '/assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n')
 open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nAllow: /\n')
+# /loop is the loop planner too (the header calls it "Loop planner"; Cloudflare Pages reads _redirects)
+open(os.path.join(DIST, '_redirects'), 'w').write('/loop / 301\n/loop/ / 301\n')
 print(f"{VERSION}: dist/index.html {len(html.encode()) / 1e6:.2f} MB, solver data {len(G['engine'].encode()) / 1e6:.2f} MB, loopopt.wasm {len(wasm) / 1e6:.2f} MB, GM era {(len(gm_ui.encode()) + len(M['engine'].encode())) / 1e6:.2f} MB, {IMG_BASE} {len(images)} files {isize / 1e6:.2f} MB, {len(faces)} font files")
