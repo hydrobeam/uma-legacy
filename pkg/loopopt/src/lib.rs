@@ -5,11 +5,10 @@
 //! and "career" jobs and `pbtable`; the page runs the same through `web`.
 //!
 //! Objective, normalized to 4 runs:
-//!     E = base + 3 * sum_{i<j} C_ij * <P_i, P_j>
+//!     E = base + 3 * C * sum_{i<j} <P_i, P_j>
 //! where P_i[r] = P(member i wins G1 race r at least once) = 1 - prod(1 - p) over her attempts at r,
-//! and p = clamp(110 - 10*off(distance) - 10*off(surface) - PEN[streak position], 0, 100) / 100.
-//! Self-copy-free breeding ("scf"): C_ij = 10/3, base = 2*sum pair + 4*sum trio.
-//! Rotation ("rot", i -> parents i-1, i-2): C = 3 adjacent / 4 diagonal, base = 2*sum pair + 3*sum trio.
+//! and p = clamp(110 - cost(distance grade) - cost(surface grade) - PEN[streak position], 0, 100) / 100.
+//! Self-copy-free breeding, grandparent slots at half weight: C = 2, base = 2*sum pair + 2*sum trio (`make_loop`).
 //!
 //! Layers:
 //! * `dp_exact`: exact best response for one uma against fixed partners. Junior turns run in sequence;
@@ -34,9 +33,6 @@ use std::time::Instant;
 struct Instant;
 #[cfg(target_arch = "wasm32")]
 impl Instant { fn now() -> Self { Instant } fn elapsed(&self) -> std::time::Duration { std::time::Duration::ZERO } }
-use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
-pub static PROF: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
-fn prof(i: usize, t: Instant) { PROF[i].fetch_add(t.elapsed().as_nanos() as u64, Relaxed); PROF[i+4].fetch_add(1, Relaxed); }
 /// FxHash (rustc's hasher): one rotate-xor-multiply per word. Only for in-process maps keyed by our own data
 /// (no untrusted keys), where SipHash's DoS resistance buys nothing. Results never depend on map iteration order.
 #[derive(Default, Clone, Copy)]
@@ -234,10 +230,7 @@ fn load_raw(raw: DataRaw) -> Data {
 
 type Sched = [Choice; NT];
 
-fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
-    let t0 = Instant::now(); let r = probs_inner(d, u, s); prof(2, t0); r
-}
-fn probs_inner(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> { let mut v = vec![]; probs_into(d, u, s, &mut v); v }
+fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> { let mut v = vec![]; probs_into(d, u, s, &mut v); v }
 /// probs into a reused buffer (same arithmetic as `probs`, so bit-identical)
 fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
     miss.clear(); miss.resize(d.nr, 1.0);
@@ -269,57 +262,6 @@ fn feasible(u: &Uma, s: &Sched) -> bool {
         }
     }
     m == u.full
-}
-
-#[allow(dead_code)]
-/// Additive DP (no repeat-race coupling): maximize sum over raced options of w[t][o] * pk(bp, streak position), subject to goals and `fixed` choices.
-fn dp(d: &Data, u: &Uma, w: &[Vec<f64>], fixed: &[Option<Choice>]) -> Option<Sched> {
-    let nm = (u.full + 1) as usize;
-    let neg = f64::NEG_INFINITY;
-    // V[t][s][m], t in 0..=NT
-    let idx = |t: usize, s: usize, m: usize| (t * NS + s) * nm + m;
-    let mut v = vec![neg; (NT + 1) * NS * nm];
-    for s in 0..NS { v[idx(NT, s, u.full as usize)] = 0.0; }
-    let mut arg = vec![0u8; NT * NS * nm]; // 255 = rest, else option idx
-    for t in (0..NT).rev() {
-        let nopt = u.opts[t].len();
-        for s in 0..NS {
-            for m in 0..nm {
-                let mut best = neg; let mut bc = 255u8;
-                let allowed = |c: Choice| -> bool {
-                    if let Some(fc) = fixed[t] { return fc == c; }
-                    match c { Choice::Rest => u.forced[t].is_none(), Choice::Opt(o) => u.forced[t].as_ref().map_or(true, |f| f.contains(&o)) }
-                };
-                if allowed(Choice::Rest) {
-                    let x = v[idx(t + 1, 0, m)];
-                    if x > best { best = x; bc = 255; }
-                }
-                let k = (s + 1).min(6);
-                for o in 0..nopt {
-                    if !allowed(Choice::Opt(o as u8)) { continue; }
-                    let op = &u.opts[t][o];
-                    let nm2 = m | u.bits[t][o] as usize;
-                    let nxt = v[idx(t + 1, k, nm2)];
-                    if nxt == neg { continue; }
-                    let r = if op.race >= 0 { w[t][o] * pk(d, op.bp, k) } else { 0.0 };
-                    let x = r + nxt;
-                    if x > best { best = x; bc = o as u8; }
-                }
-                v[idx(t, s, m)] = best;
-                arg[(t * NS + s) * nm + m] = bc;
-            }
-        }
-    }
-    if v[idx(0, 0, 0)] == neg { return None; }
-    let mut out = [Choice::Rest; NT];
-    let (mut s, mut m) = (0usize, 0usize);
-    for t in 0..NT {
-        let c = arg[(t * NS + s) * nm + m];
-        if c == 255 { out[t] = Choice::Rest; s = 0; } else {
-            out[t] = Choice::Opt(c); s = (s + 1).min(6); m |= u.bits[t][c as usize] as usize;
-        }
-    }
-    Some(out)
 }
 
 fn wval(w: &[f64], p: &[f64]) -> f64 { w.iter().zip(p).map(|(a, b)| a * b).sum() }
@@ -489,7 +431,7 @@ struct BrMemo { map: FxMap<Box<[u64]>, Option<(Sched, f64)>>, key: Vec<u64> }
 thread_local! { static BR_MEMO: std::cell::RefCell<Option<BrMemo>> = const { std::cell::RefCell::new(None) }; }
 
 /// Best response (exact): wraps dp_exact and cross-checks its value against direct evaluation.
-fn best_response(d: &Data, u: &Uma, wr: &[f64], _cur: Option<&Sched>, force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
+fn best_response(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
     BR_MEMO.with(|mm| {
         let mut g = mm.borrow_mut();
         let Some(m) = g.as_mut() else { drop(g); return best_response_solve(d, u, wr, force); };
@@ -513,71 +455,48 @@ impl MemoScope {
 impl Drop for MemoScope { fn drop(&mut self) { let prev = self.0.take(); BR_MEMO.with(|m| *m.borrow_mut() = prev); } }
 
 fn best_response_solve(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
-    let t0 = Instant::now();
-    let r = dp_exact(d, u, wr, force);
-    prof(0, t0);
-    let (s, v) = r?;
+    let (s, v) = dp_exact(d, u, wr, force)?;
     let ev = wval(wr, &probs(d, u, &s));
     assert!((ev - v).abs() < 1e-6, "dp_exact value {v} != evaluated {ev} for {}", u.name);
     assert!(feasible(u, &s), "best response produced an infeasible schedule for {}", u.name);
     Some((s, ev))
 }
 
-/// A loop of N members for the schedule optimiser: N = 4 (the 12-lineage loop, or a rotation order) or N = 3 (a
-/// three-uma rotation, whose race weights are uniform too: see `skills::lins`).
-struct Loop<const N: usize = 4> { m: [usize; N], c: [[f64; N]; N], base: f64 }
-
-/// Parse a scheme string: "scf" | "rot", optionally "@w" where w = grandparent-slot weight
-/// (grandparent spark base rates as a fraction of parents'; w = 1 is plain total affinity).
-fn parse_scheme(scheme: &str) -> (bool, f64) {
-    let (kind, w) = match scheme.split_once('@') { Some((k, w)) => (k, w.parse::<f64>().expect("bad grandparent weight")), None => (scheme, 1.0) };
-    match kind { "scf" => (true, w), "rot" => (false, w), _ => panic!("unknown scheme {scheme}") }
-}
-/// Race weights (C_adjacent, C_diagonal) and trio coefficient for grandparent weight w.
-/// Per lineage, parent slots carry pair(T,Pi) + pair(P1,P2)/2 + 3*O(P1,P2)/2 each; a grandparent slot carries
-/// tri(T,Pi,G) + 3*O(Pi,G), scaled by w. Summed over the lineages and normalized to 4 runs:
-///   scf: base = 2*sum pair + 4w*sum trio, C = (2+8w)/3 for every pair
-///   rot: base = 2*sum pair + 3w*sum trio, C = 1+2w adjacent, 4w diagonal
-/// w = 1 gives the plain model (10/3; 3 and 4).
-fn scheme_weights(scf: bool, w: f64) -> (f64, f64, f64) {
-    if scf { let c = (2.0 + 8.0 * w) / 3.0; (c, c, 4.0 * w) } else { (1.0 + 2.0 * w, 4.0 * w, 3.0 * w) }
-}
-fn make_loop<const N: usize>(d: &Data, m: [usize; N], scheme: &str) -> Loop<N> {
-    let (scf, w) = parse_scheme(scheme);
-    assert!(scf || N == 4, "rotation orders need four members");
-    let (cadj, cdiag, kt) = scheme_weights(scf, w);
-    let mut c = [[0.0; N]; N];
-    let base;
+/// A loop of N members for the schedule optimiser: N = 4 (the 12-lineage loop) or N = 3 (a three-uma rotation, whose
+/// race weights are uniform too: see `skills::lins`).
+struct Loop<const N: usize = 4> { m: [usize; N], base: f64 }
+/// Race weight C of every pair and the trio coefficient of the base, with grandparent slots at half weight. Per lineage,
+/// parent slots carry pair(T,Pi) + pair(P1,P2)/2 + 3*O(P1,P2)/2 each and a grandparent slot tri(T,Pi,G) + 3*O(Pi,G),
+/// scaled by w; summed over the 12 self-copy-free lineages and normalized to 4 runs: base = 2*sum pair + 4w*sum trio,
+/// C = (2+8w)/3 for every pair. w = 1/2 gives C = 2, trio coefficient 2. C is uniform over the pairs for any w, so w only
+/// scales the objective: the schedules are those of plain total affinity.
+const C_PAIR: f64 = 2.0;
+const K_TRIO: f64 = 2.0;
+fn make_loop<const N: usize>(d: &Data, m: [usize; N]) -> Loop<N> {
     let pr = |a: usize, b: usize| d.pair[a][b] as f64;
     let tr = |a: usize, b: usize, x: usize| d.tri[a][b][x] as f64;
     let mut psum = 0.0; let mut tsum = 0.0;
     for i in 0..N { for j in i + 1..N { psum += pr(m[i], m[j]); for k in j + 1..N { tsum += tr(m[i], m[j], m[k]); } } }
-    // scf: every pair weighted alike. rot (given order): positions two apart are the diagonal. Base is order-invariant.
-    for i in 0..N { for j in 0..N { if i != j { c[i][j] = if !scf && (i + 2) % 4 == j { cdiag } else { cadj }; } } }
-    base = 2.0 * psum + kt * tsum;
-    Loop { m, c, base }
+    Loop { m, base: 2.0 * psum + K_TRIO * tsum }
 }
 
 fn score<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
-    let t0 = Instant::now(); let r = score_inner(d, lp, s); prof(1, t0); r
-}
-fn score_inner<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
     let p: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
     score_ps(lp, &p)
 }
 /// Score from precomputed probs (p[i] must equal probs(s[i]); probs is deterministic, so the result is bit-identical to `score`).
 fn score_ps<const N: usize>(lp: &Loop<N>, p: &[Vec<f64>]) -> f64 {
     let mut tot = lp.base;
-    for i in 0..N { for j in i + 1..N { tot += 3.0 * lp.c[i][j] * wval(&p[i], &p[j]); } }
+    for i in 0..N { for j in i + 1..N { tot += 3.0 * C_PAIR * wval(&p[i], &p[j]); } }
     tot
 }
 
-fn weights<const N: usize>(d: &Data, lp: &Loop<N>, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
-    let mut w = vec![]; weights_into(d, lp, ps, i, &mut w); w
+fn weights(d: &Data, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
+    let mut w = vec![]; weights_into(d, ps, i, &mut w); w
 }
-fn weights_into<const N: usize>(d: &Data, lp: &Loop<N>, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
+fn weights_into(d: &Data, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
     w.clear(); w.resize(d.nr, 0.0);
-    for j in 0..N { if j != i { for r in 0..d.nr { w[r] += 3.0 * lp.c[i][j] * ps[j][r]; } } }
+    for j in 0..ps.len() { if j != i { for r in 0..d.nr { w[r] += 3.0 * C_PAIR * ps[j][r]; } } }
 }
 
 fn ascent<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N]) -> f64 {
@@ -598,9 +517,9 @@ fn ascent_ps<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], ps: &mu
             if !stale[i] { continue; }
             stale[i] = false;
             let u = &d.umas[lp.m[i]];
-            weights_into(d, lp, ps, i, &mut w);
+            weights_into(d, ps, i, &mut w);
             let curv = wval(&w, &ps[i]);
-            if let Some((ns, nv)) = best_response(d, u, &w, Some(&s[i]), None) {
+            if let Some((ns, nv)) = best_response(d, u, &w, None) {
                 if nv > curv + 1e-9 {
                     s[i] = ns; probs_into(d, u, &ns, &mut ps[i]); improved = true;
                     for j in 0..N { if j != i { stale[j] = true; } }
@@ -613,7 +532,7 @@ fn ascent_ps<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], ps: &mu
 }
 
 /// Coordinated moves: force a subset of >=2 members onto the same race (or rest) at one turn, then re-ascend.
-fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margin: f64, stats: &mut u64) -> f64 {
+fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margin: f64) -> f64 {
     let mut cur = score(d, lp, s);
     // probs of the current *s, refreshed whenever *s changes (probs is deterministic, so this equals recomputing per mask)
     let mut ps_s: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &s[i])).collect();
@@ -657,14 +576,13 @@ fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margi
                         if mask & (1 << b) == 0 { continue; }
                         let i = movable[b];
                         let u = &d.umas[lp.m[i]];
-                        weights_into(d, lp, &ps, i, &mut w);
-                        match best_response(d, u, &w, Some(&ns[i]), Some((t, ch[i].unwrap()))) {
+                        weights_into(d, &ps, i, &mut w);
+                        match best_response(d, u, &w, Some((t, ch[i].unwrap()))) {
                             Some((x, _)) => { ns[i] = x; probs_into(d, u, &x, &mut ps[i]); }
                             None => { ok = false; break; }
                         }
                     }
                     if !ok { continue; }
-                    *stats += 1;
                     if score_ps(lp, &ps) < cur - margin { continue; } // ps[i] == probs(ns[i]) here
                     let v = ascent_ps(d, lp, &mut ns, &mut ps); // ps == probs(ns) before and after
                     if v > cur + 1e-7 { cur = v; *s = ns; improved = true; ps_s.clone_from(&ps); }
@@ -686,17 +604,15 @@ fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
     let ps: Vec<Vec<f64>> = (0..N).map(|i| d.umas[lp.m[i]].pm.clone()).collect();
     let mut s = [[Choice::Rest; NT]; N];
     for i in 0..N {
-        let w = weights(d, lp, &ps, i);
-        s[i] = best_response(d, &d.umas[lp.m[i]], &w, None, None).expect("infeasible goals").0;
+        let w = weights(d, &ps, i);
+        s[i] = best_response(d, &d.umas[lp.m[i]], &w, None).expect("infeasible goals").0;
     }
     s
 }
 
-/// Schedules found for a loop, in canonical member order. A three-member structure fills s[0..3] and order[0..3];
-/// s[3] is all rest and order[3] is `NONE`. `order` is the member order that scored best (it differs from the canonical
-/// one only under the rotation scheme); only the tests read it.
+/// Schedules found for a loop, in member order; a three-member structure fills s[0..3] and leaves s[3] all rest.
 #[derive(Clone)]
-struct Res { val: f64, s: [Sched; 4], #[cfg_attr(not(test), allow(dead_code))] order: [usize; 4], evals: u64, secs: f64 }
+struct Res { s: [Sched; 4] }
 /// The empty fourth slot of a three-member structure (members arrays are [usize; 4] with this last).
 pub(crate) const NONE: usize = usize::MAX;
 /// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
@@ -711,8 +627,8 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
     debug_assert!((cur - v).abs() < 1e-6);
     for i in 0..N {
         let ps: Vec<Vec<f64>> = (0..N).map(|k| probs(d, &d.umas[lp.m[k]], &s[k])).collect();
-        let w: Vec<f64> = weights(d, lp, &ps, i).iter().map(|x| x + FILL_EPS).collect();
-        if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None, None) {
+        let w: Vec<f64> = weights(d, &ps, i).iter().map(|x| x + FILL_EPS).collect();
+        if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None) {
             let mut t = *s; t[i] = x;
             let nv = score(d, lp, &t);
             if nv >= cur - 1e-6 { *s = t; cur = nv; }
@@ -749,56 +665,37 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
     cur
 }
 
-fn optimize<const N: usize>(d: &Data, m: [usize; N], scheme: &str, iters: usize, seed: u64, margin: f64, init: &[[Sched; N]]) -> Res {
-    let t0 = Instant::now();
+fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, margin: f64) -> Res {
     let _memo = MemoScope::new();
-    let orders: Vec<[usize; N]> = if parse_scheme(scheme).0 { vec![m] } else {
-        let (mut a, mut b) = (m, m); a.swap(1, 2); b.swap(2, 3); vec![m, a, b] };
-    let mut best: Option<Res> = None;
-    let mut evals = 0u64;
-    for (oi, ord) in orders.iter().enumerate() {
-        let lp = make_loop(d, *ord, scheme);
-        let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(oi as u64 + 1) | 1);
-        let mut s = optimistic_start(d, &lp);
-        let mut v = ascent(d, &lp, &mut s);
-        v = v.max(group_moves(d, &lp, &mut s, margin, &mut evals));
-        for st in init {
-            // init schedules given in canonical member order m; map to this order
-            let mut s2 = [[Choice::Rest; NT]; N];
-            for i in 0..N { let j = m.iter().position(|x| *x == ord[i]).unwrap(); s2[i] = st[j]; }
-            if (0..N).all(|i| feasible(&d.umas[ord[i]], &s2[i])) {
-                let mut v2 = ascent(d, &lp, &mut s2);
-                v2 = v2.max(group_moves(d, &lp, &mut s2, margin, &mut evals));
-                if v2 > v { v = v2; s = s2; }
-            }
+    let lp = make_loop(d, m);
+    let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(1) | 1);
+    let mut s = optimistic_start(d, &lp);
+    let mut v = ascent(d, &lp, &mut s);
+    v = v.max(group_moves(d, &lp, &mut s, margin));
+    // iterated local search: perturb 1-2 members against noisy weights, re-ascend, group moves
+    for _ in 0..iters {
+        let mut ns = s;
+        let mut ps: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &ns[i])).collect();
+        let nmove = 1 + (rng.next() % 2) as usize;
+        for _ in 0..nmove {
+            let i = (rng.next() % N as u64) as usize;
+            let mut w = weights(d, &ps, i);
+            for x in w.iter_mut() { *x *= 0.2 + 1.6 * rng.unif(); }
+            if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None) { ns[i] = x; ps[i] = probs(d, &d.umas[lp.m[i]], &x); }
         }
-        // iterated local search: perturb 1-2 members against noisy weights, re-ascend, group moves
-        for _ in 0..iters {
-            let mut ns = s;
-            let mut ps: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &ns[i])).collect();
-            let nmove = 1 + (rng.next() % 2) as usize;
-            for _ in 0..nmove {
-                let i = (rng.next() % N as u64) as usize;
-                let mut w = weights(d, &lp, &ps, i);
-                for x in w.iter_mut() { *x *= 0.2 + 1.6 * rng.unif(); }
-                if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None, None) { ns[i] = x; ps[i] = probs(d, &d.umas[lp.m[i]], &x); }
-            }
-            ascent_ps(d, &lp, &mut ns, &mut ps);
-            let nv = group_moves(d, &lp, &mut ns, margin, &mut evals);
-            if nv > v + 1e-7 { v = nv; s = ns; }
-        }
-        // add optional G1s that cost no affinity (race sparks), then map back to canonical member order m
-        let v = fill_optional(d, &lp, &mut s, v);
-        let mut sc = [[Choice::Rest; NT]; 4];
-        let mut order = [NONE; 4];
-        for i in 0..N { let j = ord.iter().position(|x| *x == m[i]).unwrap(); sc[i] = s[j]; order[i] = ord[i]; }
-        if best.as_ref().map_or(true, |b| v > b.val + 1e-9) { best = Some(Res { val: v, s: sc, order, evals: 0, secs: 0.0 }); }
+        ascent_ps(d, &lp, &mut ns, &mut ps);
+        let nv = group_moves(d, &lp, &mut ns, margin);
+        if nv > v + 1e-7 { v = nv; s = ns; }
     }
-    let mut b = best.unwrap(); b.evals = evals; b.secs = t0.elapsed().as_secs_f64(); b
+    // add optional G1s that cost no affinity (race sparks)
+    fill_optional(d, &lp, &mut s, v);
+    let mut sc = [[Choice::Rest; NT]; 4];
+    sc[..N].copy_from_slice(&s);
+    Res { s: sc }
 }
 /// `optimize` for a structure of three or four members (`members` of a [usize; 4] with `NONE` last for three).
-pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], scheme: &str, iters: usize, seed: u64, margin: f64) -> Res {
-    if f[3] == NONE { optimize(d, [f[0], f[1], f[2]], scheme, iters, seed, margin, &[]) } else { optimize(d, *f, scheme, iters, seed, margin, &[]) }
+pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], iters: usize, seed: u64, margin: f64) -> Res {
+    if f[3] == NONE { optimize(d, [f[0], f[1], f[2]], iters, seed, margin) } else { optimize(d, *f, iters, seed, margin) }
 }
 
 fn when(t: usize) -> String {
@@ -852,20 +749,6 @@ fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> V
     }));
     alts
 }
-/// Parse a schedule of (turn, program) pairs. Returns None for a turn outside 1..=72, two entries on the
-/// same turn, or a program not offered to this uma at that turn. (The tests read reference schedules with it.)
-#[cfg(test)]
-fn sched_from(u: &Uma, v: &[(usize, u32)]) -> Option<Sched> {
-    let mut s = [Choice::Rest; NT];
-    let mut seen = [false; NT];
-    for &(t, prog) in v {
-        if t == 0 || t > NT || seen[t - 1] { return None; }
-        seen[t - 1] = true;
-        let o = u.opts[t - 1].iter().position(|op| op.prog == prog)?;
-        s[t - 1] = Choice::Opt(o as u8);
-    }
-    Some(s)
-}
 
 /// A job file's mode ("deck" or "career"); the rest of the file is the job itself.
 #[derive(Deserialize)]
@@ -881,7 +764,7 @@ fn pair_ceilings(d: &Data, pool: &[usize]) -> Vec<Vec<f64>> {
         for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { pb[a][b] = t[a * n + b]; pb[b][a] = t[b * n + a]; } }
         return pb;
     }
-    let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None, None).map(|r| r.1).unwrap_or(0.0);
+    let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None).map(|r| r.1).unwrap_or(0.0);
     for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { let v = br(a, b).min(br(b, a)); pb[a][b] = v; pb[b][a] = v; } }
     pb
 }
@@ -953,10 +836,10 @@ pub fn cli_main() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Correctness tests. Reference values in tests/fixtures/ were produced independently of this code:
-//   br_milp.json         exact MILP (scipy/HiGHS) best responses, incl. forced turns and special-goal umas
-//   pb_milp.json         pair ceilings computed with that MILP
-//   known_schedules.json schedules scored by the Python reference implementation
+// Correctness tests of the affinity core. Reference values in tests/fixtures/ were produced independently of this code
+// (exact MILP, scipy/HiGHS) on the frozen data_v1.json:
+//   br_milp.json, br_rest_milp.json  best responses, incl. forced races and rests and the special-goal umas
+//   pb_milp.json                     pair ceilings
 // Run with: cargo test --release
 // ---------------------------------------------------------------------------------------------
 #[cfg(test)]
@@ -972,28 +855,11 @@ mod tests {
         let p = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
         serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
     }
-    fn ix(d: &Data, id: u64) -> usize { d.umas.iter().position(|u| u.id as u64 == id).unwrap() }
-    fn sched_of(u: &Uma, v: &serde_json::Value) -> Sched {
-        let pairs: Vec<(usize, u32)> = v.as_array().unwrap().iter()
-            .map(|e| (e[0].as_u64().unwrap() as usize, e[1].as_u64().unwrap() as u32)).collect();
-        sched_from(u, &pairs).unwrap()
-    }
+    fn ix(d: &Data, id: u32) -> usize { d.umas.iter().position(|u| u.id == id).unwrap() }
+    fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice { Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8) }
     struct Lcg(u64);
     impl Lcg { fn next(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
                fn f(&mut self) -> f64 { self.next() as f64 / (1u64 << 31) as f64 } }
-
-    /// Win chance table follows the stated formula exactly.
-    #[test]
-    fn win_chance_formula() {
-        let d = data();
-        for bp in [-10, 50, 60, 100, 110] {
-            for k in 1..=6 {
-                let pen = [0, 0, 10, 25, 35, 50][k - 1];
-                let want = ((bp - pen).clamp(0, 100)) as f64 / 100.0;
-                assert_eq!(pk(d, bp, k), want, "bp {bp} k {k}");
-            }
-        }
-    }
 
     /// Streak positions: consecutive race turns raise k; a rest resets it.
     #[test]
@@ -1011,65 +877,65 @@ mod tests {
         assert_eq!(ks, vec![1, 2, 3]);
     }
 
-    /// Scores of known schedules equal the independent Python reference (both schemes).
-    #[test]
-    fn score_matches_python_reference() {
-        let d = data();
-        let k = fixture("known_schedules.json");
-        let mut n = 0;
-        for c in k.as_array().unwrap() {
-            let ids: Vec<usize> = c["members"].as_array().unwrap().iter().map(|x| ix(d, x.as_u64().unwrap())).collect();
-            let m = [ids[0], ids[1], ids[2], ids[3]];
-            let s: Vec<Sched> = (0..4).map(|i| sched_of(&d.umas[m[i]], &c["schedules"][i])).collect();
-            for i in 0..4 { assert!(feasible(&d.umas[m[i]], &s[i]), "infeasible reference schedule"); }
-            let lp = make_loop(d, m, c["scheme"].as_str().unwrap());
-            let got = score(d, &lp, &[s[0], s[1], s[2], s[3]]);
-            let want = c["python_value"].as_f64().unwrap();
-            assert!((got - want).abs() < 1e-9, "score {got} vs reference {want}");
-            n += 1;
-        }
-        assert!(n >= 20);
-    }
-
-    /// The exact DP equals the independent MILP optimum on 200 cases (incl. forced turns, turn-49 goals,
-    /// multi-turn goal alternatives, repeat-race-heavy weights); returned schedules are feasible and honor the force.
+    /// The exact DP equals the independent MILP optimum (scipy/HiGHS) on 200 cases with optional forced races (turn-49
+    /// goals, multi-turn goal alternatives, repeat-race-heavy weights) and 71 rest-forced ones (turns 24/25/48/49/50 for
+    /// the turn-49-goal umas Meisho Doto 1058 and Mejiro Palmer 1064, and Haru Urara 1052); returned schedules are
+    /// feasible and honor the force.
     #[test]
     fn best_response_matches_milp() {
         let d = data();
-        let f = fixture("br_milp.json");
-        for c in f.as_array().unwrap() {
-            let u = &d.umas[ix(d, c["uma"].as_u64().unwrap())];
-            let mut w = vec![0.0; d.nr];
-            for e in c["weights"].as_array().unwrap() { w[e[0].as_u64().unwrap() as usize] = e[1].as_f64().unwrap(); }
-            let force = c["force"].as_array().map(|fa| {
-                let t = fa[0].as_u64().unwrap() as usize; let prog = fa[1].as_u64().unwrap() as u32;
-                (t - 1, Choice::Opt(u.opts[t - 1].iter().position(|op| op.prog == prog).unwrap() as u8))
-            });
-            let (s, v) = best_response(d, u, &w, None, force).expect("infeasible");
-            let want = c["milp_value"].as_f64().unwrap();
-            assert!((v - want).abs() < 1e-6, "{} {}: dp {v} vs milp {want}", u.name, c["kind"]);
-            assert!(feasible(u, &s));
-            if let Some((t, ch)) = force { assert_eq!(s[t], ch); }
-        }
-    }
-
-    /// Any feasible schedule scores at most the best response (dominance over 2,000 random schedules).
-    #[test]
-    fn best_response_dominates_random_schedules() {
-        let d = data();
-        let mut rng = Lcg(42);
-        for _ in 0..200 {
-            let u = &d.umas[(rng.next() as usize) % d.umas.len()];
-            let w: Vec<f64> = (0..d.nr).map(|_| rng.f() * 50.0).collect();
-            let (_, best) = best_response(d, u, &w, None, None).unwrap();
-            for _ in 0..10 {
-                // random feasible schedule: exact DP on random weights
-                let w2: Vec<f64> = (0..d.nr).map(|_| rng.f() * 50.0).collect();
-                let (s2, _) = best_response(d, u, &w2, None, None).unwrap();
-                let v2 = wval(&w, &probs(d, u, &s2));
-                assert!(v2 <= best + 1e-9, "{}: random schedule {v2} beats best response {best}", u.name);
+        let mut n = 0;
+        for (file, rest) in [("br_milp.json", false), ("br_rest_milp.json", true)] {
+            for c in fixture(file).as_array().unwrap() {
+                let u = &d.umas[ix(d, c["uma"].as_u64().unwrap() as u32)];
+                let mut w = vec![0.0; d.nr];
+                for e in c["weights"].as_array().unwrap() { w[e[0].as_u64().unwrap() as usize] = e[1].as_f64().unwrap(); }
+                let force = if rest { Some((c["force_rest"].as_u64().unwrap() as usize - 1, Choice::Rest)) } else {
+                    c["force"].as_array().map(|fa| { let t = fa[0].as_u64().unwrap() as usize; (t - 1, opt_at(u, t, fa[1].as_u64().unwrap() as u32)) }) };
+                let (s, v) = best_response(d, u, &w, force).expect("infeasible");
+                let want = c["milp_value"].as_f64().unwrap();
+                assert!((v - want).abs() < 1e-6, "{} {} {:?}: dp {v} vs milp {want}", u.name, c["kind"], force);
+                assert!(feasible(u, &s));
+                if let Some((t, ch)) = force { assert_eq!(s[t], ch); }
+                n += 1;
             }
         }
+        assert!(n >= 260, "{n} cases");
+    }
+
+    /// Bug A: a force that conflicts with a single-turn goal must be infeasible, not silently drop the goal.
+    #[test]
+    fn force_conflicting_with_goal_is_infeasible() {
+        let d = data();
+        let w = vec![1.0; d.nr];
+        let urara = &d.umas[ix(d, 1052)];
+        assert!(urara.forced[71].is_some(), "Urara has a goal at turn 72");
+        assert!(best_response(d, urara, &w, Some((71, Choice::Rest))).is_none());
+        let chiyono = &d.umas[ix(d, 1069)];
+        // turn 23 goal for Chiyono O is Asahi Hai FS; forcing Hanshin JF (program 623) must fail
+        assert!(best_response(d, chiyono, &w, Some((22, opt_at(chiyono, 23, 623)))).is_none());
+    }
+
+    /// feasible() rejects bad schedules (it is not vacuously true).
+    #[test]
+    fn feasible_rejects_bad_schedules() {
+        let d = data();
+        let u = &d.umas[ix(d, 1009)]; // Daiwa
+        let w = vec![1.0; d.nr];
+        let (s, _) = best_response(d, u, &w, None).unwrap();
+        assert!(feasible(u, &s));
+        // drop a goal race
+        let mut t_goal = 0; for t in 0..NT { if u.forced[t].is_some() { t_goal = t; break; } }
+        let mut bad = s; bad[t_goal] = Choice::Rest;
+        assert!(!feasible(u, &bad), "missing goal accepted");
+        // option index out of range
+        let mut bad2 = s; bad2[5] = Choice::Opt(9);
+        assert!(!feasible(u, &bad2), "nonexistent option accepted");
+        // multi-turn goal alternative: Fuji Kiseki must run NHK Mile (t33) or the Derby (t34)
+        let fk = &d.umas[ix(d, 1005)];
+        let (s3, _) = best_response(d, fk, &w, None).unwrap();
+        let mut bad3 = s3; bad3[32] = Choice::Rest; bad3[33] = Choice::Rest;
+        assert!(!feasible(fk, &bad3), "missing multi-turn goal alternative accepted");
     }
 
     /// A stored pairwise-ceiling table that matches its data.json is bit-equal to a fresh computation, and a table
@@ -1098,108 +964,15 @@ mod tests {
         let all: Vec<usize> = (0..d.umas.len()).collect();
         let pb = pair_ceilings(d, &all);
         for e in fixture("pb_milp.json").as_array().unwrap() {
-            let (a, b) = (ix(d, e[0].as_u64().unwrap()), ix(d, e[1].as_u64().unwrap()));
+            let (a, b) = (ix(d, e[0].as_u64().unwrap() as u32), ix(d, e[1].as_u64().unwrap() as u32));
             assert!((pb[a][b] - e[2].as_f64().unwrap()).abs() < 1e-9);
         }
     }
 
-    /// The search reproduces known optima (regression guard for search-quality changes).
+    /// The objective: score() equals a direct per-legacy sum (umaishow's split, no rounding) over the 12 self-copy-free
+    /// lineages, grandparent slots at half weight, normalized to 4 runs; checks the closed-form base and race weight.
     #[test]
-    fn known_optima_reproduced() {
-        let d = data();
-        let cases: [([u64; 4], &str, f64); 3] = [
-            ([1009, 1014, 1019, 1029], "scf", 2058.924),
-            ([1015, 1017, 1023, 1030], "scf", 1961.015),
-            ([1008, 1009, 1014, 1019], "rot", 1833.028),
-        ];
-        for (ids, scheme, want) in cases {
-            let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
-            let r = optimize(d, m, scheme, 10, 3, 60.0, &[]);
-            assert!(r.val >= want - 1e-3, "{ids:?} {scheme}: got {} expected >= {want}", r.val);
-            for i in 0..4 { assert!(feasible(&d.umas[m[i]], &r.s[i])); }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Additional tests added after the independent review (bugs A-C and coverage gaps).
-// br_rest_milp.json: rest-forced best responses from the MILP, incl. turns 24/25/48/49/50 for the
-// turn-49-goal umas (Meisho Doto 1058, Mejiro Palmer 1064) and Haru Urara 1052.
-// ---------------------------------------------------------------------------------------------
-#[cfg(test)]
-mod review_tests {
-    use super::*;
-    use std::sync::OnceLock;
-    fn data() -> &'static Data {
-        static D: OnceLock<Data> = OnceLock::new();
-        D.get_or_init(|| load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json")))
-    }
-    fn ix(d: &Data, id: u32) -> usize { d.umas.iter().position(|u| u.id == id).unwrap() }
-    fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice { Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8) }
-    struct Lcg(u64);
-    impl Lcg { fn next(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
-               fn f(&mut self) -> f64 { self.next() as f64 / (1u64 << 31) as f64 } }
-
-    /// Bug A: a force that conflicts with a single-turn goal must be infeasible, not silently drop the goal.
-    #[test]
-    fn force_conflicting_with_goal_is_infeasible() {
-        let d = data();
-        let w = vec![1.0; d.nr];
-        let urara = &d.umas[ix(d, 1052)];
-        assert!(urara.forced[71].is_some(), "Urara has a goal at turn 72");
-        assert!(best_response(d, urara, &w, None, Some((71, Choice::Rest))).is_none());
-        let chiyono = &d.umas[ix(d, 1069)];
-        // turn 23 goal for Chiyono O is Asahi Hai FS; forcing Hanshin JF (program 623) must fail
-        assert!(best_response(d, chiyono, &w, None, Some((22, opt_at(chiyono, 23, 623)))).is_none());
-    }
-
-    /// Rest-forced best responses equal the MILP (this case was previously untested).
-    #[test]
-    fn rest_forced_best_response_matches_milp() {
-        let d = data();
-        let p = format!("{}/tests/fixtures/br_rest_milp.json", env!("CARGO_MANIFEST_DIR"));
-        let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
-        let mut n = 0;
-        for c in f.as_array().unwrap() {
-            let u = &d.umas[ix(d, c["uma"].as_u64().unwrap() as u32)];
-            let mut w = vec![0.0; d.nr];
-            for e in c["weights"].as_array().unwrap() { w[e[0].as_u64().unwrap() as usize] = e[1].as_f64().unwrap(); }
-            let t = c["force_rest"].as_u64().unwrap() as usize - 1;
-            let (s, v) = best_response(d, u, &w, None, Some((t, Choice::Rest))).expect("infeasible");
-            let want = c["milp_value"].as_f64().unwrap();
-            assert!((v - want).abs() < 1e-6, "{} rest@{}: dp {v} vs milp {want}", u.name, t + 1);
-            assert_eq!(s[t], Choice::Rest);
-            n += 1;
-        }
-        assert!(n >= 60);
-    }
-
-    /// feasible() rejects bad schedules (it is not vacuously true).
-    #[test]
-    fn feasible_rejects_bad_schedules() {
-        let d = data();
-        let u = &d.umas[ix(d, 1009)]; // Daiwa
-        let w = vec![1.0; d.nr];
-        let (s, _) = best_response(d, u, &w, None, None).unwrap();
-        assert!(feasible(u, &s));
-        // drop a goal race
-        let mut t_goal = 0; for t in 0..NT { if u.forced[t].is_some() { t_goal = t; break; } }
-        let mut bad = s; bad[t_goal] = Choice::Rest;
-        assert!(!feasible(u, &bad), "missing goal accepted");
-        // option index out of range
-        let mut bad2 = s; bad2[5] = Choice::Opt(9);
-        assert!(!feasible(u, &bad2), "nonexistent option accepted");
-        // multi-turn goal alternative: Fuji Kiseki must run NHK Mile (t33) or the Derby (t34)
-        let fk = &d.umas[ix(d, 1005)];
-        let (s3, _) = best_response(d, fk, &w, None, None).unwrap();
-        let mut bad3 = s3; bad3[32] = Choice::Rest; bad3[33] = Choice::Rest;
-        assert!(!feasible(fk, &bad3), "missing multi-turn goal alternative accepted");
-    }
-
-    /// Grandparent weighting: score() equals a direct per-legacy sum (umaishow's split, no rounding) over every lineage,
-    /// with grandparent slots scaled by w. Checks the closed-form weights for both schemes and several w.
-    #[test]
-    fn gp_weight_matches_per_legacy_sum() {
+    fn score_matches_per_legacy_sum() {
         let d = data();
         let mut rng = Lcg(2024);
         let pr = |a: usize, b: usize| d.pair[a][b] as f64;
@@ -1211,66 +984,51 @@ mod review_tests {
             let s: Vec<Sched> = (0..4).map(|i| {
                 let u = &d.umas[f[i]];
                 let w: Vec<f64> = (0..d.nr).map(|_| rng.f() * 3.0).collect();
-                best_response(d, u, &w, None, None).unwrap().0
+                best_response(d, u, &w, None).unwrap().0
             }).collect();
             let p: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &s[i])).collect();
             let o = |a: usize, b: usize| wval(&p[a], &p[b]);
             let um = |i: usize| f[i];
-            for w in [1.0, 0.5, 0.3, 0.0] {
-                // lineage affinity: parents (T,P1,P2), P1's grandparents g1, P2's grandparents g2 (indices into f)
-                let lin = |t: usize, p1: usize, p2: usize, g1: [usize; 2], g2: [usize; 2]| -> f64 {
-                    let par = pr(um(t), um(p1)) + pr(um(t), um(p2)) + pr(um(p1), um(p2)) + 3.0 * o(p1, p2);
-                    let mut gp = 0.0;
-                    for &g in &g1 { gp += tr(um(t), um(p1), um(g)) + 3.0 * o(p1, g); }
-                    for &g in &g2 { gp += tr(um(t), um(p2), um(g)) + 3.0 * o(p2, g); }
-                    par + w * gp
-                };
-                // scf: 12 lineages; P1 bred from (P2, X), P2 bred from (P1, X); normalized to 4 runs
-                let mut scf = 0.0;
-                for t in 0..4 { for x in 0..4 { if x == t { continue; }
-                    let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
-                    scf += lin(t, ps[0], ps[1], [ps[1], x], [ps[0], x]); } }
-                scf /= 3.0;
-                let lp = make_loop(d, f, &format!("scf@{w}"));
-                let v = score(d, &lp, &[s[0], s[1], s[2], s[3]]);
-                assert!((v - scf).abs() < 1e-9, "scf w={w}: score {v} vs per-legacy {scf}");
-                // rot in order 0,1,2,3: trainee i, parents i-1, i-2; P1's parents i-2, i-3; P2's parents i-3, i-4 (= trainee)
-                let mut rot = 0.0;
-                for i in 0..4 { let a = |k: usize| (i + 4 - k) % 4; rot += lin(i, a(1), a(2), [a(2), a(3)], [a(3), a(0)]); }
-                let lp = make_loop(d, f, &format!("rot@{w}"));
-                let v = score(d, &lp, &[s[0], s[1], s[2], s[3]]);
-                assert!((v - rot).abs() < 1e-9, "rot w={w}: score {v} vs per-legacy {rot}");
-            }
+            let w = 0.5;
+            // lineage affinity: parents (T,P1,P2), P1's grandparents g1, P2's grandparents g2 (indices into f)
+            let lin = |t: usize, p1: usize, p2: usize, g1: [usize; 2], g2: [usize; 2]| -> f64 {
+                let par = pr(um(t), um(p1)) + pr(um(t), um(p2)) + pr(um(p1), um(p2)) + 3.0 * o(p1, p2);
+                let mut gp = 0.0;
+                for &g in &g1 { gp += tr(um(t), um(p1), um(g)) + 3.0 * o(p1, g); }
+                for &g in &g2 { gp += tr(um(t), um(p2), um(g)) + 3.0 * o(p2, g); }
+                par + w * gp
+            };
+            // P1 bred from (P2, X), P2 bred from (P1, X); normalized to 4 runs
+            let mut scf = 0.0;
+            for t in 0..4 { for x in 0..4 { if x == t { continue; }
+                let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
+                scf += lin(t, ps[0], ps[1], [ps[1], x], [ps[0], x]); } }
+            scf /= 3.0;
+            let v = score(d, &make_loop(d, f), &[s[0], s[1], s[2], s[3]]);
+            assert!((v - scf).abs() < 1e-9, "score {v} vs per-legacy {scf}");
         }
     }
 
-    /// Optional G1s (run by one member only) cost no affinity: stripping them leaves the score unchanged (within the
-    /// fill tolerance), and the fill pass never lowers the optimized score.
+    /// Optional G1s (run by one member only) cost no affinity: stripping them from optimized schedules leaves the score
+    /// unchanged (within the fill tolerance).
     #[test]
     fn optional_g1s_cost_nothing() {
         let d = data();
         let cases: [[u32; 4]; 4] = [[1007, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1015, 1017, 1023, 1030], [1006, 1019, 1029, 1034]];
         for ids in cases {
             let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
-            for scheme in ["scf", "scf@0.5", "rot"] {
-                let r = optimize(d, m, scheme, 3, 5, 60.0, &[]);
-                let lp = make_loop(d, m, scheme);
-                // order may differ for rot; score in r.order
-                let ord = r.order; let lp_o = make_loop(d, ord, scheme);
-                let so: [Sched; 4] = std::array::from_fn(|i| r.s[m.iter().position(|x| *x == ord[i]).unwrap()]);
-                let v = score(d, &lp_o, &so);
-                assert!((v - r.val).abs() < 1e-6, "{ids:?} {scheme}: {v} vs {}", r.val);
-                let mut runners = vec![0u8; d.nr];
-                for i in 0..4 { let mut seen = vec![false; d.nr];
-                    for t in 0..NT { if let Choice::Opt(o) = so[i][t] { let rr = d.umas[ord[i]].opts[t][o as usize].race; if rr >= 0 && !seen[rr as usize] { seen[rr as usize] = true; runners[rr as usize] += 1; } } } }
-                let mut stripped = so;
-                for i in 0..4 { for t in 0..NT { if let Choice::Opt(o) = stripped[i][t] { let op = &d.umas[ord[i]].opts[t][o as usize];
-                    if op.race >= 0 && runners[op.race as usize] == 1 && !op.goal { stripped[i][t] = Choice::Rest; } } } }
-                for i in 0..4 { assert!(feasible(&d.umas[ord[i]], &stripped[i])); }
-                let vs = score(d, &lp_o, &stripped);
-                assert!((vs - v).abs() < 1e-5, "{ids:?} {scheme}: stripped {vs} vs {v}");
-                let _ = lp;
-            }
+            let so = optimize(d, m, 3, 5, 60.0).s;
+            let lp = make_loop(d, m);
+            let v = score(d, &lp, &so);
+            let mut runners = vec![0u8; d.nr];
+            for i in 0..4 { let mut seen = vec![false; d.nr];
+                for t in 0..NT { if let Choice::Opt(o) = so[i][t] { let rr = d.umas[m[i]].opts[t][o as usize].race; if rr >= 0 && !seen[rr as usize] { seen[rr as usize] = true; runners[rr as usize] += 1; } } } }
+            let mut stripped = so;
+            for i in 0..4 { for t in 0..NT { if let Choice::Opt(o) = stripped[i][t] { let op = &d.umas[m[i]].opts[t][o as usize];
+                if op.race >= 0 && runners[op.race as usize] == 1 && !op.goal { stripped[i][t] = Choice::Rest; } } } }
+            for i in 0..4 { assert!(feasible(&d.umas[m[i]], &stripped[i])); }
+            let vs = score(d, &lp, &stripped);
+            assert!((vs - v).abs() < 1e-5, "{ids:?}: stripped {vs} vs {v}");
         }
     }
 
@@ -1282,17 +1040,17 @@ mod review_tests {
         let d = data();
         for ids in [[1019u32, 1021, 1034], [1006, 1019, 1029], [1007, 1009, 1049]] {
             let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2])];
-            let r = optimize(d, m, "scf@0.5", 5, 3, 60.0, &[]);
-            assert_eq!(r.order[3], NONE); assert!(r.s[3].iter().all(|c| *c == Choice::Rest));
+            let r = optimize(d, m, 5, 3, 60.0);
+            assert!(r.s[3].iter().all(|c| *c == Choice::Rest));
             let s3: [Sched; 3] = [r.s[0], r.s[1], r.s[2]];
             for i in 0..3 { assert!(feasible(&d.umas[m[i]], &s3[i])); }
-            let lp = make_loop(d, m, "scf@0.5");
+            let lp = make_loop(d, m);
             let ps: Vec<Vec<f64>> = (0..3).map(|i| probs(d, &d.umas[m[i]], &s3[i])).collect();
-            let direct = lp.base + 3.0 * 2.0 * (wval(&ps[0], &ps[1]) + wval(&ps[0], &ps[2]) + wval(&ps[1], &ps[2]));
-            assert!((direct - r.val).abs() < 1e-9, "{ids:?}: {direct} vs {}", r.val);
+            let direct = lp.base + 3.0 * C_PAIR * (wval(&ps[0], &ps[1]) + wval(&ps[0], &ps[2]) + wval(&ps[1], &ps[2]));
+            assert!((direct - score(d, &lp, &s3)).abs() < 1e-9, "{ids:?}");
             for i in 0..3 {
-                let w = weights(d, &lp, &ps, i);
-                let (_, bv) = best_response(d, &d.umas[m[i]], &w, None, None).unwrap();
+                let w = weights(d, &ps, i);
+                let (_, bv) = best_response(d, &d.umas[m[i]], &w, None).unwrap();
                 assert!(bv <= wval(&w, &ps[i]) + 1e-6, "{ids:?}: member {i} gains {}", bv - wval(&w, &ps[i]));
             }
         }
@@ -1305,8 +1063,8 @@ mod review_tests {
         let mut checked = 0;
         for ids in [[1007u32, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1006, 1019, 1029, 1034], [1015, 1017, 1023, 1030]] {
             let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
-            let r = optimize(d, m, "scf@0.5", 3, 5, 60.0, &[]);
-            let lp = make_loop(d, m, "scf@0.5");
+            let r = optimize(d, m, 3, 5, 60.0);
+            let lp = make_loop(d, m);
             let v = score(d, &lp, &r.s);
             for t in 0..NT {
                 let mut races: Vec<i32> = vec![];

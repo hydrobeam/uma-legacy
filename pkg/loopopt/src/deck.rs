@@ -98,7 +98,7 @@ pub(crate) struct DeckJob {
 
 /// Fixed schedule for one uma (see DeckJob::schedule).
 fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
-    let solo = best_response(d, u, &vec![1.0; d.nr], None, None).expect("infeasible goals").0;
+    let solo = best_response(d, u, &vec![1.0; d.nr], None).expect("infeasible goals").0;
     if mode != "goals" { return solo; }
     let mut s = solo; let mut mask = 0u32;
     for t in 0..NT {
@@ -3415,8 +3415,8 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
             let r = sched_c.borrow().get(&f).cloned();
             let r = r.unwrap_or_else(|| {
                 let r = match &fixed_s {
-                    Some(fs) => Res { val: 0.0, s: std::array::from_fn(|i| if i < nm { fs[f[i]].unwrap() } else { [Choice::Rest; NT] }), order: f, evals: 0, secs: 0.0 },
-                    None => optimize_fam(d, &f, "scf@0.5", sj.iters, sj.seed, 60.0),
+                    Some(fs) => Res { s: std::array::from_fn(|i| if i < nm { fs[f[i]].unwrap() } else { [Choice::Rest; NT] }) },
+                    None => optimize_fam(d, &f, sj.iters, sj.seed, 60.0),
                 };
                 sched_c.borrow_mut().insert(f, r.clone()); r });
             let ps: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
@@ -3565,7 +3565,7 @@ fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// The allocation-free metric used in the deck search equals the reference metric.
+    /// The deck search's allocation-free lineage chances and per-trainee odds equal the reference forms.
     #[test]
     fn fast_metric_matches_reference() {
         let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
@@ -3581,8 +3581,11 @@ mod tests {
             assert!(qa.iter().zip(&qv).all(|(a, b)| (a - b).abs() < 1e-15));
             let dw: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
             let dg: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
-            let a = m.metric_fast(f, &qa, &dw, &dg); let b = m.metric_d(f, &qv, &dw, &dg);
-            assert!((a - b).abs() < 1e-15 * b.max(1.0), "{a} vs {b}");
+            // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`)
+            for (&(t, ..), &q) in skills::lins(f.len()).iter().zip(&qv) {
+                let (a, b) = (m.trainee_fast(f[t], q, &dw, &dg), m.trainee_d(f[t], q, &dw, &dg).0);
+                assert!((a - b).abs() < 1e-15 * b.max(1.0), "{a} vs {b}");
+            }
         }
     }
     /// dense chain_marginals equals the reference to float noise

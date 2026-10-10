@@ -819,7 +819,7 @@ impl<'a> Env<'a> {
         let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] { for &(r, pr) in &p.me[x].wins { if r < d.nr { wr[r] += pr; } } }
         // her own race table (pinks counted): solved directly (the memo is keyed by uma id)
-        let br = if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None, None) };
+        let br = if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None) };
         let Some((s, _)) = br else { return (json!([]), vec![0.0; d.nr]) };
         let wp = probs(d, u, &s);
         let won = |x: usize, r: usize| p.me[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);

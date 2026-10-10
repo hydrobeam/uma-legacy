@@ -69,19 +69,9 @@ fn diters() -> usize { 30 }
 fn dseed() -> u64 { 3 }
 fn dsizes() -> Vec<usize> { vec![3, 4] }
 
-/// SCF lineages over member positions: (trainee, P1, P2, X); P1 bred from (P2, X), P2 from (P1, X). The tests check
-/// `LIN4` against it.
-#[cfg(test)]
-fn lineages() -> Vec<(usize, usize, usize, usize)> {
-    let mut v = vec![];
-    for t in 0..4 { for x in 0..4 { if x == t { continue; }
-        let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
-        v.push((t, ps[0], ps[1], x)); } }
-    v
-}
 /// A lineage over member positions: (trainee T, parent P1, parent P2, X), P1 bred from (P2, X), P2 from (P1, X).
 pub(crate) type Lin = (usize, usize, usize, usize);
-/// The four-member loop's 12 lineages (`lineages()`, as a table).
+/// The four-member loop's 12 lineages: every trainee T and fourth member X (checked by `rotation_lineage_tables`).
 const LIN4: [Lin; 12] = [(0, 2, 3, 1), (0, 1, 3, 2), (0, 1, 2, 3), (1, 2, 3, 0), (1, 0, 3, 2), (1, 0, 2, 3),
                          (2, 1, 3, 0), (2, 0, 3, 1), (2, 0, 1, 3), (3, 1, 2, 0), (3, 0, 2, 1), (3, 0, 1, 2)];
 /// The three-member rotation's 3 lineages: each member trains from the other two, whose own parents are the other
@@ -241,31 +231,8 @@ impl<'a> Model<'a> {
         let miss = ((1.0 - self.base) * (1.0 - GP_RATE * self.base).powi(2)).powi(2);
         1.0 - miss.powi(INSPIRATIONS)
     }
-    /// `metric_d` without allocation; same numbers (a test reference for the deck search's per-trainee terms).
-    #[cfg(test)]
-    pub(crate) fn metric_fast(&self, f: &[usize], qs: &[f64; 12], dw: &[f64], dg: &[f64]) -> f64 {
-        let mut sum = 0.0;
-        let lin = lins(f.len());
-        for (l, &(t, ..)) in lin.iter().enumerate() {
-            let q = qs[l];
-            let mut best = 0.0f64;
-            for (st, ew) in self.sts[f[t]].iter().zip(&self.ews[f[t]]) {
-                let mut p = 1.0f64;
-                for k in 0..st.len() {
-                    let v = st[k];
-                    p *= if v == 2 { GEN_GOLD } else {
-                        let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
-                        dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
-                    };
-                }
-                if p > best { best = p; }
-            }
-            sum += best;
-        }
-        self.fixed() * sum / lin.len() as f64
-    }
     /// Best-outfit product over the uncertain targets for trainee `u` at proc `q` (the per-lineage term of
-    /// `metric_fast`, before the fixed-gold factor); increasing in q and in every deck odd.
+    /// the structure's metric, before the fixed-gold factor); increasing in q and in every deck odd.
     #[inline]
     pub(crate) fn trainee_fast(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
         let mut best = 0.0f64;
@@ -315,11 +282,6 @@ impl<'a> Model<'a> {
             if v > best.0 { best = (v, k); }
         }
         best
-    }
-    #[cfg(test)]
-    pub(crate) fn metric_d(&self, f: &[usize], qs: &[f64], dw: &[f64], dg: &[f64]) -> f64 {
-        let lin = lins(f.len());
-        self.fixed() * lin.iter().zip(qs).map(|(&(t, ..), &q)| self.trainee_d(f[t], q, dw, dg).0).sum::<f64>() / lin.len() as f64
     }
     /// Everything behind the metric for one loop, for the "how this loop works" view: pairwise relation points and
     /// expected shared G1 wins, then per lineage the six legacy slots (relation part, race part, affinity, proc),
@@ -517,11 +479,16 @@ mod tests {
         assert!(!m2.no_outfit[ix(1001)]);
     }
 
-    /// The lineage tables: the 12-lineage loop as `lineages()` builds it, and the three-member rotation (each member
+    /// The lineage tables: the 12-lineage loop, and the three-member rotation (each member
     /// trains from the other two, whose own parents are the other two of the three: X is the trainee herself).
     #[test]
     fn rotation_lineage_tables() {
-        assert_eq!(lins(4).to_vec(), lineages());
+        // the 12 self-copy-free lineages: every trainee T and fourth member X, P1 bred from (P2, X), P2 from (P1, X)
+        let mut lin4 = vec![];
+        for t in 0..4 { for x in 0..4 { if x == t { continue; }
+            let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
+            lin4.push((t, ps[0], ps[1], x)); } }
+        assert_eq!(lins(4).to_vec(), lin4);
         assert_eq!(lins(3).to_vec(), vec![(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)]);
         for &(t, p1, p2, x) in lins(3) {
             assert_eq!(x, t);

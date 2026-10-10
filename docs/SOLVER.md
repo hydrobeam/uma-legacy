@@ -31,13 +31,9 @@ cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[k] = 0,0,5,20,30,50 for
 E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_i(r)·P_j(r) = expected shared G1 wins
 ```
 
-| Scheme | `scheme` | C_ij | base |
-|---|---|---|---|
-| Self-copy-free 12-lineage breeding | `"scf"` | 10/3 for every pair | 2·Σ pair + 4·Σ trio |
-| Rotation (parents = previous two runs) | `"rot"` | 3 adjacent, 4 diagonal (3 orders tried) | 2·Σ pair + 3·Σ trio |
-
-The deck search optimises loop schedules under `"scf@0.5"` (*Grandparent weighting*, §3); `rot` is kept in the
-affinity core and its tests.
+Self-copy-free 12-lineage breeding: C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio, with grandparent slots at
+half weight (*Grandparent weighting*, §3; `C_PAIR`, `K_TRIO`). A three-uma rotation uses the same uniform weight over its
+three pairs.
 
 - Aptitudes (career page): each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; her first outfit), and `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt); the loop planner reads neither (its `bp` per option is unchanged), the career schedule uses them for the legacies' pink sparks (`Env::pink_career`, MODEL.md).
 - `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver rebuilds both tables at load; older files with stored `pair` / `tri` tables still load.
@@ -62,7 +58,7 @@ affinity core and its tests.
 | `dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 for the 3 umas with goals on turn 49. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. About 0.1 ms. | **Yes** (validated, §4) |
 | `ascent` | Best-response dynamics: each member re-solves against the other three until none improves. It converges to a Nash equilibrium of an identical-interest game, not necessarily the global optimum. | Local |
 | `group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. Escapes coordination traps, e.g. all four moving Hopeful → Zen-Nippon together, which no single member gains from alone. | Local |
-| `optimize` | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). Rotation tries all 3 orders. | Heuristic |
+| `optimize` | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
 | `pair_ceilings` | Exact pairwise ceilings PB(a,b) = min(BR_a(PM_b), BR_b(PM_a)), where PM is a partner's best-case odds per race: no pair of schedules shares more expected G1 wins. The deck search bounds every structure's lineage affinities with them before any schedule is optimised; `loopopt pbtable` stores the table in data.json. | **Guaranteed** bound |
 
 **Why the ceiling is valid:**
@@ -107,17 +103,13 @@ position; `alts` names races that can replace the row's at no cost (`interchange
 
 ### Grandparent weighting
 
-Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w (scheme string `scf@w` / `rot@w`) is:
+Spark proc chance per legacy = base × (1 + affinity/100), and the old community estimate put grandparent base rates at half of parents' (receipt fits since say full rate: `docs/MODEL.md`). Using umaishow's per-legacy split, the objective with grandparent weight w is base = 2·Σ pair + 4w·Σ trio and
+C = (2 + 8w)/3 for every pair; the optimiser uses w = 1/2 (C = 2, trio coefficient 2).
 
-| Scheme | base | C (race weight) |
-|---|---|---|
-| scf | 2·Σ pair + 4w·Σ trio | (2 + 8w)/3 for every pair |
-| rot | 2·Σ pair + 3w·Σ trio | 1 + 2w adjacent, 4w diagonal |
-
-- w = 1 reproduces the plain model (10/3; 3 and 4).
-- For scf, C stays uniform across pairs, so the optimal schedules for a given foursome don't change; only the ranking across foursomes does. The deck search uses `scf@0.5`.
-- For rotation with w = 0.5, adjacent and diagonal pairs weigh the same (2 and 2).
-- Test `gp_weight_matches_per_legacy_sum` checks these closed forms against a direct sum over every lineage and slot.
+- C is uniform across pairs for any w, so w does not change a foursome's optimal schedules (w = 1, plain total affinity, gives the same ones); it only scales the objective.
+- Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
+- Older versions also offered a rotation scheme (parents = the previous two runs; C = 1 + 2w adjacent, 4w diagonal) and
+  w as a job field, for the removed affinity-only modes.
 
 ### Fields shared by deck and career jobs
 
@@ -485,21 +477,23 @@ Results and commands: `val/sim/README.md`.
 - **Reference fixtures** (`tests/fixtures/`):
   - 200 best responses from an exact MILP, including forced races;
   - 71 rest-forced best responses from the MILP, including turns 24/25/48/49/50 for the turn-49 goal umas;
-  - the full 2,278-pair ceiling table;
-  - 23 schedules scored by the Python reference.
+  - the full 2,278-pair ceiling table.
 - **Properties checked:**
   - `feasible()` rejects bad schedules;
   - a force that conflicts with a goal is infeasible;
-  - known optima are reproduced;
-  - the grandparent-weight closed forms equal a direct per-legacy sum; optional G1s cost nothing.
+  - the objective equals a direct per-legacy sum; optional G1s cost nothing; interchangeable races preserve the score;
+  - a three-uma rotation's schedules are a Nash point of its objective.
 
 An independent adversarial review (separate agent, its own MILP and SQL, 576 best-response cases, 6,400 ceiling checks, a full data export cross-check) passed every core claim. It found 3 interface bugs in the affinity-only CLI modes (since removed: a force could override a goal, `top = 0` panicked, duplicate turns were accepted); the force check is still tested.
 
 The load step now asserts the structural fact the exact DP relies on: every race offered twice is a Classic/Senior pair exactly 24 turns apart.
 
+Measured when the affinity-only modes existed (scores at w = 1 and the rotation scheme, both since removed; their
+fixture and regression tests went with them, and the val references now pin the optimiser's schedules):
+
 | Check | Result |
 |---|---|
-| Scoring vs the Python reference: 32 known schedules (scf + rot, both sessions' outputs); 23 of them ship in `tests/fixtures/known_schedules.json` | max \|diff\| 4.5e-13 |
+| Scoring vs the Python reference: 32 known schedules (scf + rot, both sessions' outputs) | max \|diff\| 4.5e-13 |
 | `dp_exact` vs exact MILP (scipy/HiGHS), random weights, 40 umas × 4 weight types | 160/160 equal |
 | `dp_exact` vs MILP, all 68 umas, incl. forced group moves, turn-49 goal umas (Meisho Doto, Mejiro Palmer, Haru Urara) and multi-turn goal alternatives (Fuji Kiseki, Fine Motion, Fukukitaru, Chiyono O) | 192/192 equal, max \|gap\| 3.4e-13 |
 | Ceiling table `pb` vs the Python MILP table (2,278 pairs) | max \|diff\| 1.1e-14 |
