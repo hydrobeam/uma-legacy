@@ -59,10 +59,16 @@ def tools():
     return env
 
 
-def bundles(meta, cid, skin, tail):
+def body_of(meta, cid):
+    """Her mini body's variant: the lowest-numbered one (mbdy{id}_00 for most; a few have only _01 and later)."""
+    vs = sorted(r[0].rsplit('_', 1)[1] for r in meta.execute('select n from a where n like ?', (f'3d/chara/mini/body/mbdy{cid}_%/pfb_mbdy{cid}_%',)) if '/clothes/' not in r[0])
+    return vs[0] if vs else '00'
+
+
+def bundles(meta, cid, skin, tail, body):
     """Her bundles by name, with their prerequisites (the materials live in sourceresources/...)."""
     like = lambda p: [r[0] for r in meta.execute('select n from a where n like ?', (p,))]
-    names = set(like(f'3d/chara/mini/body/mbdy{cid}_00/%') + like(f'3d/chara/mini/head/mchr{cid}_00/%'))
+    names = set(like(f'3d/chara/mini/body/mbdy{cid}_{body}/%') + like(f'3d/chara/mini/head/mchr{cid}_00/%'))
     names |= {'3d/chara/mini/head/mchr0001_00/pfb_mchr0001_00_face0', f'3d/chara/mini/head/mchr0001_00/textures/tex_mchr0001_00_face0_{skin}_diff',
               f'3d/chara/mini/head/mchr0001_00/textures/tex_mchr0001_00_face0_{skin}_cheek0', f'3d/chara/mini/tail/mtail{tail}_00/pfb_mtail{tail}_00',
               f'3d/chara/mini/tail/mtail{tail}_00/textures/tex_mtail{tail}_00_{cid}_diff', RUN}
@@ -73,15 +79,15 @@ def bundles(meta, cid, skin, tail):
     return sorted(names | deps)
 
 
-def export(cid, skin, tail, meta, env):
+def export(cid, skin, tail, body, meta, env):
     w = os.path.join(WORK, str(cid))
     if os.path.exists(os.path.join(w, 'run.json')): return None   # exported before (the game files don't change under an id; delete cache/chibi/work/ID to redo)
     os.makedirs(os.path.join(w, 'in'), exist_ok=True); missing = []
-    for n in bundles(meta, cid, skin, tail):
+    for n in bundles(meta, cid, skin, tail, body):
         src = os.path.join(ASSETS, n)
         if os.path.exists(src): shutil.copyfile(src, os.path.join(w, 'in', n.replace('/', '__')))
         else: missing.append(n)
-    if any(f'pfb_mbdy{cid}_00' in m or f'pfb_mchr{cid}_00_hair' in m for m in missing): return f'no mini model in the game files ({len(missing)} missing)'
+    if any(f'pfb_mbdy{cid}_{body}' in m or f'pfb_mchr{cid}_00_hair' in m for m in missing): return f'no mini model in the game files ({len(missing)} missing)'
     run = lambda *a: subprocess.run([ASMOD, os.path.join(w, 'in'), *a], env=env, capture_output=True, text=True)
     run('-m', 'animator', '--fbx-animation', 'skip', '-o', os.path.join(w, 'fbx')); run('-t', 'tex2d', '-o', os.path.join(w, 'tex'))
     os.makedirs(os.path.join(w, 't'), exist_ok=True); os.makedirs(os.path.join(w, 'glb'), exist_ok=True)
@@ -90,13 +96,13 @@ def export(cid, skin, tail, meta, env):
     for f in glob.glob(os.path.join(w, 'fbx', '**', '*.fbx'), recursive=True):
         subprocess.run([FBX2GLTF, '-b', '-i', f, '-o', os.path.join(w, 'glb', os.path.splitext(os.path.basename(f))[0])], capture_output=True)
     for f in glob.glob(os.path.join(w, 't', '*.png')): shutil.copyfile(f, os.path.join(w, 'glb', os.path.basename(f)))   # the glb files name their textures beside them
-    need = [f'pfb_mbdy{cid}_00.glb', f'pfb_mchr{cid}_00_hair.glb', 'pfb_mchr0001_00_face0.glb', f'pfb_mtail{tail}_00.glb']
+    need = [f'pfb_mbdy{cid}_{body}.glb', f'pfb_mchr{cid}_00_hair.glb', 'pfb_mchr0001_00_face0.glb', f'pfb_mtail{tail}_00.glb']
     lack = [f for f in need if not os.path.exists(os.path.join(w, 'glb', f))]
     if lack: return 'export failed: ' + ', '.join(lack)
-    return decode_run(w, cid)
+    return decode_run(w, cid, body)
 
 
-def decode_run(w, cid):
+def decode_run(w, cid, body):
     """The run clip as per-bone keyframes, its bones named through the CRC32 of their path in her body's skeleton."""
     import UnityPy
     env = UnityPy.load(os.path.join(w, 'in', RUN.replace('/', '__')))
@@ -105,7 +111,7 @@ def decode_run(w, cid):
     dense, const = mc.m_DenseClip, mc.m_ConstantClip.data
     fc, cc, samples = dense.m_FrameCount, dense.m_CurveCount, list(dense.m_SampleArray)
     curve = lambda i: [samples[f * cc + i] for f in range(fc)] if i < cc else [const[i - cc]] * fc   # (this clip streams no curves)
-    b = open(os.path.join(w, 'glb', f'pfb_mbdy{cid}_00.glb'), 'rb').read(); n = struct.unpack('<I', b[12:16])[0]; g = json.loads(b[20:20 + n])
+    b = open(os.path.join(w, 'glb', f'pfb_mbdy{cid}_{body}.glb'), 'rb').read(); n = struct.unpack('<I', b[12:16])[0]; g = json.loads(b[20:20 + n])
     parent = {c: i for i, nd in enumerate(g['nodes']) for c in nd.get('children', [])}
     hashes = {}
     for i in range(len(g['nodes'])):
@@ -156,14 +162,18 @@ def main(argv):
     todo = [c for c in ids if force or not os.path.exists(os.path.join(OUT, f'{c}.avif'))]
     if not todo: print(f'runners: all {len(ids)} present'); return
     env = tools(); meta = sqlite3.connect(f'file:{META}?mode=ro', uri=True); mdb = sqlite3.connect(f'file:{MDB}?mode=ro', uri=True)
-    info = {c: s for c, *s in mdb.execute(f'select id, skin, tail_model_id from chara_data where id in ({",".join(map(str, todo))})')}
+    q = f'select id, skin, tail_model_id from chara_data where id in ({",".join(map(str, todo))})'
+    info = {c: s for c, *s in mdb.execute(q)}
+    jp = os.path.join(R, 'jp', 'export', 'master.mdb')   # umas not yet on Global (their mini models already ship in its files)
+    if os.path.exists(jp): info = {**{c: s for c, *s in sqlite3.connect(f'file:{jp}?mode=ro', uri=True).execute(q)}, **info}
     ready = []
     for c in todo:
         if c not in info: print(f'{c}: not in master.mdb'); continue
         skin, tail = max(0, (info[c][0] or 1) - 1), f'{info[c][1] or 1:04d}'
-        err = export(c, skin, tail, meta, env)
+        body = body_of(meta, c)
+        err = export(c, skin, tail, body, meta, env)
         if err: print(f'{c}: {err}'); continue
-        ready.append(f'{c}:{skin}:{tail}')
+        ready.append(f'{c}:{skin}:{tail}:{body}')
     if ready: subprocess.run(['node', os.path.join(H, 'render.mjs'), WORK, *ready])
     made = 0
     for job in ready:
