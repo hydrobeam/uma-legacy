@@ -1,6 +1,8 @@
-//! # loopopt: Uma Musume (Global) parent-loop affinity optimizer
+//! # loopopt: Uma Musume (Global) legacy loop and deck optimizer
 //!
-//! Chooses 4 umas and a full race schedule for each so that expected legacy affinity is maximal.
+//! The affinity core below finds race schedules for a loop's members that maximise expected legacy affinity; the
+//! skill-target model (`skills`), the deck search and the career planner (`deck`) build on it. The CLI runs "deck"
+//! and "career" jobs and `pbtable`; the page runs the same through `web`.
 //!
 //! Objective, normalized to 4 runs:
 //!     E = base + 3 * sum_{i<j} C_ij * <P_i, P_j>
@@ -17,11 +19,11 @@
 //! * `group_moves`: coalition deviations (2+ members forced onto the same race, or rest, at one turn),
 //!   which escape the coordination equilibria that single-member moves can't leave.
 //! * `optimize`: optimistic start + ascent + group moves + iterated local search (noisy best responses).
-//! * `run_best`: exact pairwise ceilings -> a guaranteed upper bound for every foursome -> best-first
-//!   search that stops once no unsearched foursome can enter the top k.
+//! * `pair_ceilings`: exact pairwise ceilings PB(a, b), the bound the deck search screens structures with
+//!   (stored in data.json by `loopopt pbtable`).
 //!
 //! Relocated-venue G1s are merged into their normal race by the exporter (export/export_rs.py).
-//! See README.md for the data format, modes, validation and benchmarks.
+//! See docs/SOLVER.md for the data format, job fields, validation and benchmarks.
 
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
@@ -63,8 +65,9 @@ const NT: usize = 72;
 const NS: usize = 7; // streak state 0 (rested) ..= 6 (6+)
 const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
 
+/// One race option at a turn. `prog` (the race program id) is read only by the tests, whose fixtures name options by it.
 #[derive(Deserialize, Clone)]
-struct OptRaw { prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #[serde(default)] goal: bool }
+struct OptRaw { #[cfg_attr(not(test), allow(dead_code))] prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #[serde(default)] goal: bool }
 #[derive(Deserialize)]
 struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>>,
     /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
@@ -539,32 +542,6 @@ fn parse_scheme(scheme: &str) -> (bool, f64) {
 fn scheme_weights(scf: bool, w: f64) -> (f64, f64, f64) {
     if scf { let c = (2.0 + 8.0 * w) / 3.0; (c, c, 4.0 * w) } else { (1.0 + 2.0 * w, 4.0 * w, 3.0 * w) }
 }
-/// Per-legacy affinity for each lineage: (trainee, [(uma, is_grandparent, affinity); 6]) in slot order P1, G11, G12, P2, G21, G22.
-/// Parent i: pair(T,Pi) + pair(P1,P2)/2 + 3*O(P1,P2)/2. Grandparent G under Pi: tri(T,Pi,G) + 3*O(Pi,G) (0 trio if G = T).
-/// O = expected shared G1 wins. scf: 12 lineages (P1 bred from P2+X, P2 from P1+X); rot: 4 runs in the given order.
-fn legacy_affinities(d: &Data, m: [usize; 4], s: &[Sched], scf: bool) -> Vec<(usize, Vec<(usize, bool, f64)>)> {
-    let p: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[m[i]], &s[i])).collect();
-    let o = |a: usize, b: usize| wval(&p[a], &p[b]);
-    let pr = |a: usize, b: usize| d.pair[m[a]][m[b]] as f64;
-    let tr = |a: usize, b: usize, c: usize| if c == a || c == b { 0.0 } else { d.tri[m[a]][m[b]][m[c]] as f64 };
-    let lin = |t: usize, p1: usize, p2: usize, g1: [usize; 2], g2: [usize; 2]| {
-        let shared = pr(p1, p2) / 2.0 + 1.5 * o(p1, p2);
-        let mut v = vec![(m[p1], false, pr(t, p1) + shared)];
-        for g in g1 { v.push((m[g], true, tr(t, p1, g) + 3.0 * o(p1, g))); }
-        v.push((m[p2], false, pr(t, p2) + shared));
-        for g in g2 { v.push((m[g], true, tr(t, p2, g) + 3.0 * o(p2, g))); }
-        (m[t], v)
-    };
-    let mut out = vec![];
-    if scf {
-        for t in 0..4 { for x in 0..4 { if x == t { continue; }
-            let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
-            out.push(lin(t, ps[0], ps[1], [ps[1], x], [ps[0], x])); } }
-    } else {
-        for i in 0..4 { let a = |k: usize| (i + 4 - k) % 4; out.push(lin(i, a(1), a(2), [a(2), a(3)], [a(3), a(0)])); }
-    }
-    out
-}
 fn make_loop<const N: usize>(d: &Data, m: [usize; N], scheme: &str) -> Loop<N> {
     let (scf, w) = parse_scheme(scheme);
     assert!(scf || N == 4, "rotation orders need four members");
@@ -716,9 +693,10 @@ fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
 }
 
 /// Schedules found for a loop, in canonical member order. A three-member structure fills s[0..3] and order[0..3];
-/// s[3] is all rest and order[3] is `NONE`.
+/// s[3] is all rest and order[3] is `NONE`. `order` is the member order that scored best (it differs from the canonical
+/// one only under the rotation scheme); only the tests read it.
 #[derive(Clone)]
-struct Res { val: f64, s: [Sched; 4], order: [usize; 4], evals: u64, secs: f64 }
+struct Res { val: f64, s: [Sched; 4], #[cfg_attr(not(test), allow(dead_code))] order: [usize; 4], evals: u64, secs: f64 }
 /// The empty fourth slot of a three-member structure (members arrays are [usize; 4] with this last).
 pub(crate) const NONE: usize = usize::MAX;
 /// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
@@ -828,22 +806,6 @@ fn when(t: usize) -> String {
     let w = tt % 24; let mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][w / 2];
     format!("{} {}-{}", y, if w % 2 == 0 { "E" } else { "L" }, mon)
 }
-/// Per-race detail for one schedule: turn, label, race, goal, streak position, win chance.
-fn sched_detail(d: &Data, u: &Uma, s: &Sched) -> Vec<serde_json::Value> {
-    let mut out = vec![]; let mut k = 0usize;
-    for t in 0..NT {
-        match s[t] {
-            Choice::Rest => k = 0,
-            Choice::Opt(o) => {
-                k = (k + 1).min(6);
-                let op = &u.opts[t][o as usize];
-                let win = if op.race >= 0 { serde_json::json!(pk(d, op.bp, k)) } else { serde_json::Value::Null };
-                out.push(serde_json::json!({"turn": t + 1, "when": when(t), "race": op.name, "program": op.prog, "g1": op.race >= 0, "goal": op.goal, "streak": k, "win": win}));
-            }
-        }
-    }
-    out
-}
 /// Short uma label for chart columns.
 fn short_name(name: &str) -> String {
     let m: &[(&str, &str)] = &[("T.M. Opera O", "Opera O"), ("El Condor Pasa", "Pasa"), ("Agnes Digital", "Digital"), ("Agnes Tachyon", "Tachyon"),
@@ -890,99 +852,9 @@ fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> V
     }));
     alts
 }
-/// Schedule chart in three sections, rows in calendar order, one column per uma:
-///   1. shared G1s: races (by identity, either year) run by 2+ members -- these are the affinity;
-///   2. goal races (non-G1) that are required;
-///   3. optional G1s: races only one member runs anywhere -- no affinity effect, kept because they cost nothing
-///      (the schedule already accounts for their streak effect) and can pass down race sparks.
-/// G1 cell = win % at that attempt (`*` = goal). `·` = not running it.
-fn race_chart(d: &Data, m: &[usize], s: &[Sched]) -> String {
-    let n = m.len();
-    let ks: Vec<Vec<usize>> = (0..n).map(|i| { let mut k = 0; (0..NT).map(|t| { match s[i][t] { Choice::Rest => k = 0, Choice::Opt(_) => k = (k + 1).min(6) }; k }).collect() }).collect();
-    // who runs each G1 (by race identity, any year)
-    let mut runners: Vec<Vec<bool>> = vec![vec![false; n]; d.nr];
-    for i in 0..n { for t in 0..NT { if let Choice::Opt(o) = s[i][t] { let op = &d.umas[m[i]].opts[t][o as usize]; if op.race >= 0 { runners[op.race as usize][i] = true; } } } }
-    let shared = |r: usize| runners[r].iter().filter(|x| **x).count() >= 2;
-    let names: Vec<String> = m.iter().map(|&x| short_name(&d.umas[x].name)).collect();
-    let header = |title: &str, extra: &str| {
-        let mut h = format!("{:<24} {:<9}", title, "when");
-        for nm in &names { h += &format!(" {:>8}", nm); }
-        h += extra; h += "\n"; h += &"─".repeat(34 + 9 * n + extra.len()); h += "\n"; h
-    };
-    // rows: (turn, label, kind) kind 0 = shared G1, 1 = goal non-G1, 2 = optional G1
-    let mut rows: Vec<(usize, String, u8, i32)> = vec![];
-    for t in 0..NT { for i in 0..n {
-        if let Choice::Opt(o) = s[i][t] { let op = &d.umas[m[i]].opts[t][o as usize];
-            let key = if op.race >= 0 { (t, d.race_names[op.race as usize].clone(), if shared(op.race as usize) { 0 } else { 2 }, op.race) }
-                      else { (t, op.name.clone(), 1, -1) };
-            if !rows.contains(&key) { rows.push(key); } } } }
-    rows.sort();
-    let cell = |i: usize, t: usize, label: &str, race: i32| -> (String, bool) {
-        match s[i][t] {
-            Choice::Opt(o) => { let op = &d.umas[m[i]].opts[t][o as usize];
-                let same = if race >= 0 { op.race == race } else { op.race < 0 && op.name == label };
-                if !same { ("·".into(), false) }
-                else if race < 0 { ((if op.goal { "goal" } else { "run" }).into(), true) }
-                else { (format!("{}{:.0}", if op.goal { "*" } else { "" }, pk(d, op.bp, ks[i][t]) * 100.0), true) } }
-            Choice::Rest => ("·".into(), false),
-        }
-    };
-    let mut out = String::new();
-    let mut any_alt = false;
-    // non-G1 goal races (kind 1) are required and carry no sparks or affinity, so they are not listed
-    for (kind, title, extra) in [(0u8, "Shared G1s", "   runners"), (2, "Optional G1s", "")] {
-        let sel: Vec<&(usize, String, u8, i32)> = rows.iter().filter(|r| r.2 == kind).collect();
-        if sel.is_empty() { continue; }
-        if !out.is_empty() { out += "\n"; }
-        out += &header(title, extra);
-        let mut last_year = 99;
-        for (t, label, _, race) in sel {
-            let y = t / 24;
-            if kind == 0 && y != last_year && last_year != 99 { out += "\n"; }
-            last_year = y;
-            let lab = if *race >= 0 { row_label(d, m, s, *t, *race) } else { chart_race_name(label) };
-            if lab.contains('/') { any_alt = true; }
-            let mut line = format!("{:<24} {:<9}", lab, when(*t));
-            let mut cnt = 0;
-            for i in 0..n { let (c, hit) = cell(i, *t, label, *race); if hit { cnt += 1; } line += &format!(" {:>8}", c); }
-            if kind == 0 { line += &format!("   {}/{}", cnt, n); }
-            out += line.trim_end(); out += "\n";
-        }
-    }
-    if any_alt { out += "\nA/B = either race, same odds; every runner must pick the same one.\n"; }
-    out
-}
-
-/// Markdown sheet: schedule chart, P(win at least once) and pair overlaps.
-fn render_md(d: &Data, m: [usize; 4], s: &[Sched; 4], scheme: &str, val: f64) -> String {
-    let lp = make_loop(d, m, scheme);
-    let names: Vec<&str> = m.iter().map(|&x| d.umas[x].name.as_str()).collect();
-    let what = if parse_scheme(scheme).1 != 1.0 { "effective affinity per 4 runs (grandparent slots weighted)" } else { "expected affinity per 4 runs" };
-    let mut md = format!("## {}\n\nScheme `{}` | {} **{:.1}** = base {:.0} + G1 bonus {:.1} | per run {:.1}\n\n", names.join(" / "), scheme, what, val, lp.base, val - lp.base, val / 4.0);
-    md += "**Shared G1s** are the affinity: a race (in either year) run by 2+ members. A row run by one member there is a second attempt at a race the others run in the other year. **Optional G1s** are run by one member only: no affinity effect, included because they cost nothing (streaks are already accounted for) and can pass down race sparks — skip them freely. Number = win % at that attempt (streak penalty included), `*` = goal, `·` = not running it. Turns not listed are rest. Add one extra Junior race win before Jr E-Nov if you have no fan bonus (Junior G1s need 1000 fans; a debut win gives 700).\n\n```text\n";
-    md += &race_chart(d, &m, s);
-    md += "```\n";
-    let ps: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[m[i]], &s[i])).collect();
-    md += &format!("\n| G1: P(win at least once) | {} |\n|---|{}\n", names.join(" | "), "---|".repeat(4));
-    for r in 0..d.nr {
-        if ps.iter().all(|p| p[r] == 0.0) { continue; }
-        md += &format!("| {} | {} |\n", d.race_names[r], ps.iter().map(|p| if p[r] > 0.0 { format!("{:.2}", p[r]) } else { "—".into() }).collect::<Vec<_>>().join(" | "));
-    }
-    md += "\n| Pair | expected shared G1 wins |\n|---|---|\n";
-    for i in 0..4 { for j in i + 1..4 { md += &format!("| {} – {} | {:.2} |\n", names[i], names[j], wval(&ps[i], &ps[j])); } }
-    md + "\n"
-}
-
-#[derive(Serialize)]
-struct OutMember { id: u32, name: String, schedule: Vec<(usize, u32)>, detail: Vec<serde_json::Value> }
-#[derive(Serialize)]
-struct Out { members: Vec<OutMember>, order: Vec<u32>, value: f64, base: f64, scheme: String, secs: f64, group_trials: u64, #[serde(skip)] md: String }
-
-fn sched_to_out(u: &Uma, s: &Sched) -> Vec<(usize, u32)> {
-    (0..NT).filter_map(|t| match s[t] { Choice::Opt(o) => Some((t + 1, u.opts[t][o as usize].prog)), _ => None }).collect()
-}
 /// Parse a schedule of (turn, program) pairs. Returns None for a turn outside 1..=72, two entries on the
-/// same turn, or a program not offered to this uma at that turn.
+/// same turn, or a program not offered to this uma at that turn. (The tests read reference schedules with it.)
+#[cfg(test)]
 fn sched_from(u: &Uma, v: &[(usize, u32)]) -> Option<Sched> {
     let mut s = [Choice::Rest; NT];
     let mut seen = [false; NT];
@@ -995,30 +867,9 @@ fn sched_from(u: &Uma, v: &[(usize, u32)]) -> Option<Sched> {
     Some(s)
 }
 
+/// A job file's mode ("deck" or "career"); the rest of the file is the job itself.
 #[derive(Deserialize)]
-struct Job { members: Vec<u32>, #[serde(default)] init: Vec<Vec<Vec<(usize, u32)>>> }
-#[derive(Deserialize)]
-struct Jobs {
-    scheme: String, iters: usize, seed: u64,
-    #[serde(default = "dm")] margin: f64,
-    #[serde(default = "dt")] threads: usize,
-    #[serde(default)] jobs: Vec<Job>,
-    #[serde(default)] mode: String,
-    /// "best" mode: umas you own (empty = whole roster), umas to exclude, how many loops to return
-    #[serde(default)] owned: Vec<u32>,
-    #[serde(default)] exclude: Vec<u32>,
-    /// "best" mode: umas every returned loop must contain (at most 4)
-    #[serde(default)] require: Vec<u32>,
-    /// grandparent spark base rate as a fraction of parents' (1 = plain total affinity; community estimate 0.5)
-    #[serde(default = "dgw")] gp_weight: f64,
-    #[serde(default = "dtop")] top: usize,
-    /// optional: write a readable Markdown sheet of the results to this path
-    #[serde(default)] markdown: String,
-}
-fn dtop() -> usize { 5 }
-fn dgw() -> f64 { 1.0 }
-fn dm() -> f64 { 60.0 }
-fn dt() -> usize { 2 }
+struct Jobs { #[serde(default)] mode: String }
 
 
 /// Exact pairwise ceilings PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)) for all pairs in `pool`.
@@ -1046,117 +897,6 @@ fn pb_table_json(json: &str) -> serde_json::Value {
     serde_json::to_value(PbRaw { fp, rows }).unwrap()
 }
 
-/// Guaranteed ceiling for foursome f: no schedules can score above this.
-/// scf: 2*sum pair + 4*sum trio + 10*sum PB.  rot: 2*sum pair + 3*sum trio + 3*(3*sum PB + best diagonal pair-sum).
-fn ceiling(d: &Data, pb: &[Vec<f64>], f: [usize; 4], scheme: &str) -> f64 {
-    let mut ps = 0.0; let mut ts = 0.0; let mut sb = 0.0;
-    for a in 0..4 { for b in a + 1..4 { ps += d.pair[f[a]][f[b]] as f64; sb += pb[f[a]][f[b]];
-        for c in b + 1..4 { ts += d.tri[f[a]][f[b]][f[c]] as f64; } } }
-    let (scf, w) = parse_scheme(scheme);
-    let (cadj, cdiag, kt) = scheme_weights(scf, w);
-    if scf { 2.0 * ps + kt * ts + 3.0 * cadj * sb } else {
-        // rot: 3*(cadj*(sum of the 4 adjacent PB) + cdiag*(the 2 diagonal PB)), maximized over the 3 orders
-        let ds = [pb[f[0]][f[1]] + pb[f[2]][f[3]], pb[f[0]][f[2]] + pb[f[1]][f[3]], pb[f[0]][f[3]] + pb[f[1]][f[2]]];
-        let diag = if cdiag >= cadj { ds.iter().cloned().fold(f64::MIN, f64::max) } else { ds.iter().cloned().fold(f64::MAX, f64::min) };
-        2.0 * ps + kt * ts + 3.0 * (cadj * sb + (cdiag - cadj) * diag)
-    }
-}
-
-/// Screen + best-first search. Every foursome gets a guaranteed ceiling UB >= any achievable score.
-/// Foursomes are optimized in descending-UB order until the next ceiling is below the top-k score,
-/// so every foursome NOT optimized is provably outside the top k (under the model).
-struct BestRun { pool: Vec<usize>, cand: Vec<(f64, [usize; 4])>, done: Vec<(f64, [usize; 4], Res)>, next: usize, t_pb: f64, t_screen: f64, total: f64 }
-
-fn run_best(d: &Data, jobs: &Jobs) {
-    let b = best_search(d, jobs);
-    let BestRun { pool, cand, done, next, t_pb, t_screen, total } = b;
-    print_best(d, jobs, &pool, &cand, &done, next, t_pb, t_screen, total);
-}
-
-fn best_search(d: &Data, jobs: &Jobs) -> BestRun {
-    assert!(jobs.top >= 1, "\"top\" must be at least 1");
-    let t0 = Instant::now();
-    let n = d.umas.len();
-    let pool: Vec<usize> = (0..n).filter(|&i| {
-        let id = d.umas[i].id;
-        (jobs.owned.is_empty() || jobs.owned.contains(&id) || jobs.require.contains(&id)) && !jobs.exclude.contains(&id)
-    }).collect();
-    assert!(jobs.require.len() <= 4, "\"require\" can list at most 4 umas");
-    let req: Vec<usize> = jobs.require.iter().map(|&id| {
-        let i = d.umas.iter().position(|u| u.id == id).unwrap_or_else(|| panic!("required uma {id} is not in the data"));
-        assert!(!jobs.exclude.contains(&id), "uma {id} is both required and excluded");
-        i
-    }).collect();
-    // exact pairwise ceilings on the pool
-    let pb = pair_ceilings(d, &pool);
-    let t_pb = t0.elapsed().as_secs_f64();
-    // ceilings for every foursome
-    let mut cand: Vec<(f64, [usize; 4])> = vec![];
-    let k = pool.len();
-    for i in 0..k { for j in i + 1..k { for l in j + 1..k { for m in l + 1..k {
-        let f = [pool[i], pool[j], pool[l], pool[m]];
-        if !req.iter().all(|r| f.contains(r)) { continue; }
-        cand.push((ceiling(d, &pb, f, &jobs.scheme), f));
-    } } } }
-    cand.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-    let t_screen = t0.elapsed().as_secs_f64();
-    // best-first search in parallel batches
-    let mut done: Vec<(f64, [usize; 4], Res)> = vec![];
-    let mut next = 0usize;
-    let kth = |done: &Vec<(f64, [usize; 4], Res)>| -> f64 {
-        if done.len() < jobs.top { f64::NEG_INFINITY } else {
-            let mut v: Vec<f64> = done.iter().map(|x| x.2.val).collect(); v.sort_by(|a, b| b.partial_cmp(a).unwrap()); v[jobs.top - 1] }
-    };
-    while next < cand.len() && cand[next].0 >= kth(&done) {
-        let bar = kth(&done);
-        let batch: Vec<(f64, [usize; 4])> = cand[next..].iter().take(jobs.threads.max(1)).cloned().filter(|c| c.0 >= bar).collect();
-        if batch.is_empty() { break; }
-        next += batch.len();
-        #[cfg(not(target_arch = "wasm32"))]
-        let res: Vec<Res> = std::thread::scope(|sc| {
-            let hs: Vec<_> = batch.iter().map(|&(_, f)| sc.spawn(move || optimize(d, f, &jobs.scheme, jobs.iters, jobs.seed, jobs.margin, &[]))).collect();
-            hs.into_iter().map(|h| h.join().unwrap()).collect()
-        });
-        #[cfg(target_arch = "wasm32")]
-        let res: Vec<Res> = batch.iter().map(|&(_, f)| optimize(d, f, &jobs.scheme, jobs.iters, jobs.seed, jobs.margin, &[])).collect();
-        for ((ub, f), r) in batch.into_iter().zip(res) {
-            #[cfg(not(target_arch = "wasm32"))] eprintln!("  ceiling {:>8.1}  score {:>8.2}  {:>5.1}s  {}", ub, r.val, r.secs, f.iter().map(|&x| d.umas[x].name.as_str()).collect::<Vec<_>>().join(" / "));
-            done.push((ub, f, r));
-        }
-    }
-    done.sort_by(|a, b| b.2.val.partial_cmp(&a.2.val).unwrap());
-    let total = t0.elapsed().as_secs_f64();
-    BestRun { pool, cand, done, next, t_pb, t_screen, total }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn print_best(d: &Data, jobs: &Jobs, pool: &[usize], cand: &[(f64, [usize; 4])], done: &[(f64, [usize; 4], Res)], next: usize, t_pb: f64, t_screen: f64, total: f64) {
-    let next_ceiling = if next < cand.len() { cand[next].0 } else { f64::NEG_INFINITY };
-    let top: Vec<serde_json::Value> = done.iter().take(jobs.top).map(|(ub, f, r)| {
-        let lp = make_loop(d, *f, &jobs.scheme);
-        serde_json::json!({
-            "members": f.iter().map(|&x| d.umas[x].name.clone()).collect::<Vec<_>>(),
-            "ids": f.iter().map(|&x| d.umas[x].id).collect::<Vec<_>>(),
-            "order": r.order.iter().map(|&x| d.umas[x].name.clone()).collect::<Vec<_>>(),
-            "score": r.val, "base": lp.base, "g1_bonus": r.val - lp.base, "ceiling": ub,
-            "schedules": (0..4).map(|i| serde_json::json!({"id": d.umas[f[i]].id, "name": d.umas[f[i]].name, "races": sched_to_out(&d.umas[f[i]], &r.s[i]), "detail": sched_detail(d, &d.umas[f[i]], &r.s[i])})).collect::<Vec<_>>()
-        })
-    }).collect();
-    let out = serde_json::json!({
-        "scheme": jobs.scheme, "pool_size": pool.len(), "foursomes": cand.len(), "optimized": done.len(),
-        "ruled_out_by_ceiling": cand.len() - done.len(),
-        "next_unoptimized_ceiling": if next_ceiling.is_finite() { serde_json::json!(next_ceiling) } else { serde_json::Value::Null },
-        "top": top,
-        "timing_s": {"ceilings": t_pb, "screen": t_screen - t_pb, "search": total - t_screen, "total": total}
-    });
-    if !jobs.markdown.is_empty() {
-        let mut md = format!("# Best loops (scheme `{}`)\n\nPool {} umas, {} foursomes; {} searched, the rest ruled out by guaranteed ceilings.\n\n", jobs.scheme, pool.len(), cand.len(), done.len());
-        for (_, f, r) in done.iter().take(jobs.top) { md += &render_md(d, *f, &r.s, &jobs.scheme, r.val); }
-        std::fs::write(&jobs.markdown, md).unwrap();
-    }
-    println!("{}", serde_json::to_string_pretty(&out).unwrap());
-}
-
 pub fn cli_main() {
     struct SbReport; impl Drop for SbReport { fn drop(&mut self) { if std::env::var("SB_CHECK").is_ok() { deck::SBCHK.with(|c| { let c = c.borrow(); eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5); }); }
         if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() { deck::SBN.with(|c| { let c = c.borrow(); eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2); }); } } }
@@ -1168,179 +908,48 @@ pub fn cli_main() {
         return;
     }
     let job_text = std::fs::read_to_string(&args[2]).unwrap();
-    let mut jobs: Jobs = serde_json::from_str(&job_text).unwrap();
+    let jobs: Jobs = serde_json::from_str(&job_text).unwrap();
+    if jobs.mode != "deck" && jobs.mode != "career" { eprintln!("error: \"mode\" must be \"deck\" or \"career\""); std::process::exit(2); }
     let d = load(&args[1]);
-    if jobs.mode == "skills" {
-        // skill-target search; needs "skills_file" (web_skills.json) plus the SkillJob fields
-        let v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
-        let sk: skills::SkillsRaw = serde_json::from_str(&std::fs::read_to_string(v["skills_file"].as_str().expect("skills_file")).unwrap()).unwrap();
-        let sj: skills::SkillJob = serde_json::from_value(v).unwrap();
-        println!("{}", skills::run_skills(&d, &sk, &sj));
-        return;
+    // joint deck + loop search (or the career planner); needs "skills_file" and "cards_file" (web_cards.json)
+    let mut v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
+    let sk: skills::SkillsRaw = serde_json::from_str(&std::fs::read_to_string(v["skills_file"].as_str().expect("skills_file")).unwrap()).unwrap();
+    if let Some(path) = v["events_file"].as_str() {
+        let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        deck::apply_events_db(&mut v, &sk, &db);
     }
-    if jobs.mode == "deck" || jobs.mode == "career" {
-        // joint deck + loop search (or the career planner); needs "skills_file" and "cards_file" (web_cards.json)
-        let mut v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
-        let sk: skills::SkillsRaw = serde_json::from_str(&std::fs::read_to_string(v["skills_file"].as_str().expect("skills_file")).unwrap()).unwrap();
-        if let Some(path) = v["events_file"].as_str() {
-            let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-            deck::apply_events_db(&mut v, &sk, &db);
-        }
-        let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
-        // the worker's kept work across processes, as the page keeps it across reloads (LOOPOPT_STATE_IN: a file
-        // `state_out` wrote, restored before the jobs; LOOPOPT_STATE_OUT: written after them)
-        if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
-            let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            eprintln!("state_in: {}", deck::run_career(&d, &sk, &cr, &serde_json::json!({"cmd": "state_in", "state": st["state"]})));
-        } }
-        let state_save = |d: &Data| if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
-            std::fs::write(&path, deck::run_career(d, &sk, &cr, &serde_json::json!({"cmd": "state_out"})).to_string()).unwrap();
-        } };
-        // several career jobs (same skills, cards and events files): run in turn in one process, one output line each,
-        // as the page's solver worker runs them (what one job leaves in the solver's caches the next can use)
-        if jobs.mode == "career" && args.len() > 3 {
-            for path in &args[2..] {
-                let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-                if let Some(ev) = v["events_file"].as_str() {
-                    let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ev).unwrap()).unwrap();
-                    deck::apply_events_db(&mut v, &sk, &db);
-                }
-                let t0 = Instant::now();
-                let mut out = deck::run_career(&d, &sk, &cr, &v);
-                out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
-                println!("{}", out);
+    let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
+    // the worker's kept work across processes, as the page keeps it across reloads (LOOPOPT_STATE_IN: a file
+    // `state_out` wrote, restored before the jobs; LOOPOPT_STATE_OUT: written after them)
+    if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
+        let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        eprintln!("state_in: {}", deck::run_career(&d, &sk, &cr, &serde_json::json!({"cmd": "state_in", "state": st["state"]})));
+    } }
+    let state_save = |d: &Data| if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
+        std::fs::write(&path, deck::run_career(d, &sk, &cr, &serde_json::json!({"cmd": "state_out"})).to_string()).unwrap();
+    } };
+    // several career jobs (same skills, cards and events files): run in turn in one process, one output line each,
+    // as the page's solver worker runs them (what one job leaves in the solver's caches the next can use)
+    if jobs.mode == "career" && args.len() > 3 {
+        for path in &args[2..] {
+            let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+            if let Some(ev) = v["events_file"].as_str() {
+                let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ev).unwrap()).unwrap();
+                deck::apply_events_db(&mut v, &sk, &db);
             }
-            state_save(&d);
-            return;
+            let t0 = Instant::now();
+            let mut out = deck::run_career(&d, &sk, &cr, &v);
+            out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
+            println!("{}", out);
         }
-        let t0 = Instant::now();
-        let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
-        out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
-        println!("{}", out);
         state_save(&d);
         return;
     }
-    if jobs.scheme != "scf" && jobs.scheme != "rot" { eprintln!("error: \"scheme\" must be \"scf\" or \"rot\""); std::process::exit(2); }
-    if !(0.0..=1.0).contains(&jobs.gp_weight) { eprintln!("error: \"gp_weight\" must be between 0 and 1"); std::process::exit(2); }
-    if jobs.gp_weight != 1.0 { jobs.scheme = format!("{}@{}", jobs.scheme, jobs.gp_weight); }
-    let ix = |id: u32| d.umas.iter().position(|u| u.id == id).unwrap_or_else(|| panic!("unknown uma {id}"));
-    if jobs.mode == "legacy" {
-        // per-legacy affinity for every lineage (umaishow's split, expected G1 overlaps, no rounding)
-        let mut outs = vec![];
-        for j in &jobs.jobs {
-            let m = [ix(j.members[0]), ix(j.members[1]), ix(j.members[2]), ix(j.members[3])];
-            let parsed: Option<Vec<Sched>> = (0..4).map(|i| sched_from(&d.umas[m[i]], &j.init[0][i])).collect();
-            let Some(s) = parsed else { eprintln!("error: invalid schedule"); std::process::exit(2); };
-            let lin = legacy_affinities(&d, m, &s, parse_scheme(&jobs.scheme).0);
-            outs.push(serde_json::json!({"members": j.members, "lineages": lin.iter().map(|l| serde_json::json!({
-                "trainee": d.umas[l.0].id, "slots": l.1.iter().map(|(u, gp, a)| serde_json::json!({"uma": d.umas[*u].id, "grandparent": gp, "affinity": a})).collect::<Vec<_>>()
-            })).collect::<Vec<_>>()}));
-        }
-        println!("{}", serde_json::to_string_pretty(&outs).unwrap());
-        return;
-    }
-    if jobs.mode == "score" {
-        // score supplied schedules exactly (validation)
-        let mut outs = vec![];
-        for j in &jobs.jobs {
-            let m = [ix(j.members[0]), ix(j.members[1]), ix(j.members[2]), ix(j.members[3])];
-            let lp = make_loop(&d, m, &jobs.scheme);
-            let st = &j.init[0];
-            let parsed: Option<Vec<Sched>> = (0..4).map(|i| sched_from(&d.umas[m[i]], &st[i])).collect();
-            let Some(s) = parsed else {
-                outs.push(serde_json::json!({"members": j.members, "value": null, "error": "invalid schedule: turn outside 1..72, duplicate turn, or program not offered at that turn"}));
-                continue;
-            };
-            let feas: Vec<bool> = (0..4).map(|i| feasible(&d.umas[m[i]], &s[i])).collect();
-            outs.push(serde_json::json!({"members": j.members, "value": score(&d, &lp, &[s[0], s[1], s[2], s[3]]), "feasible": feas}));
-        }
-        println!("{}", serde_json::to_string(&outs).unwrap());
-        return;
-    }
-    if jobs.mode == "best" {
-        if jobs.top == 0 { eprintln!("error: \"top\" must be at least 1"); std::process::exit(2); }
-        if jobs.require.len() > 4 { eprintln!("error: \"require\" can list at most 4 umas"); std::process::exit(2); }
-        for &id in &jobs.require {
-            if !d.umas.iter().any(|u| u.id == id) { eprintln!("error: required uma {id} is not in the data"); std::process::exit(2); }
-            if jobs.exclude.contains(&id) { eprintln!("error: uma {id} is both required and excluded"); std::process::exit(2); }
-        }
-        run_best(&d, &jobs); return;
-    }
-    if jobs.mode == "prof" {
-        let j = &jobs.jobs[0];
-        let m = [ix(j.members[0]), ix(j.members[1]), ix(j.members[2]), ix(j.members[3])];
-        let t0 = Instant::now();
-        let r = optimize(&d, m, &jobs.scheme, jobs.iters, jobs.seed, jobs.margin, &[]);
-        let tot = t0.elapsed().as_secs_f64();
-        let names = ["dp_exact", "score", "probs"];
-        eprintln!("total {:.2}s value {:.2} group trials {}", tot, r.val, r.evals);
-        for i in 0..3 { eprintln!("  {:9} calls {:>8}  time {:>6.2}s  ({:.1}%)  avg {:.1} us", names[i], PROF[i+4].load(Relaxed), PROF[i].load(Relaxed) as f64/1e9, PROF[i].load(Relaxed) as f64/1e9/tot*100.0, PROF[i].load(Relaxed) as f64/1e3/PROF[i+4].load(Relaxed).max(1) as f64); }
-        return;
-    }
-    if jobs.mode == "pb" {
-        // pairwise ceilings: PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)), exact best responses
-        let n = d.umas.len();
-        let t0 = Instant::now();
-        let mut pb = vec![vec![0.0f64; n]; n];
-        let br = |a: usize, b: usize| best_response(&d, &d.umas[a], &d.umas[b].pm, None, None).map(|x| x.1).unwrap_or(0.0);
-        for a in 0..n { for b in a + 1..n { let v = br(a, b).min(br(b, a)); pb[a][b] = v; pb[b][a] = v; } }
-        eprintln!("pb: {} pairs in {:.2}s", n * (n - 1) / 2, t0.elapsed().as_secs_f64());
-        println!("{}", serde_json::to_string(&serde_json::json!({"ids": d.umas.iter().map(|u| u.id).collect::<Vec<_>>(), "pb": pb})).unwrap());
-        return;
-    }
-    if jobs.mode == "br" {
-        // best-response test: init[0][0] holds weights encoded as (race_idx, weight*1e6) pairs; members[0] is the uma
-        let mut outs = vec![];
-        for j in &jobs.jobs {
-            let u = &d.umas[ix(j.members[0])];
-            let mut w = vec![0.0; d.nr];
-            for &(r, x) in &j.init[0][0] { w[r] = x as f64 / 1e6; }
-            let force = match j.init[0].get(1).and_then(|f| f.first()) {
-                None => None,
-                Some(&(t, prog)) => {
-                    if t == 0 || t > NT { outs.push(serde_json::json!({"id": u.id, "value": null, "error": "force turn out of range"})); continue; }
-                    if prog == 0 { Some((t - 1, Choice::Rest)) } else {
-                        match u.opts[t - 1].iter().position(|op| op.prog == prog) {
-                            Some(o) => Some((t - 1, Choice::Opt(o as u8))),
-                            None => { outs.push(serde_json::json!({"id": u.id, "value": null, "error": "forced program not offered at that turn"})); continue; }
-                        }
-                    }
-                }
-            };
-            match best_response(&d, u, &w, None, force) {
-                Some((s, v)) => outs.push(serde_json::json!({"id": u.id, "value": v, "schedule": sched_to_out(u, &s)})),
-                None => outs.push(serde_json::json!({"id": u.id, "value": null})),
-            }
-        }
-        println!("{}", serde_json::to_string(&outs).unwrap());
-        return;
-    }
-    let nth = jobs.threads.max(1);
-    let results: Vec<Out> = std::thread::scope(|sc| {
-        let chunks: Vec<Vec<(usize, &Job)>> = (0..nth).map(|k| jobs.jobs.iter().enumerate().filter(|(i, _)| i % nth == k).collect()).collect();
-        let hs: Vec<_> = chunks.into_iter().map(|ch| {
-            let d = &d; let jobs = &jobs;
-            sc.spawn(move || {
-                ch.into_iter().map(|(_, j)| {
-                    let m = [ix(j.members[0]), ix(j.members[1]), ix(j.members[2]), ix(j.members[3])];
-                    let init: Vec<[Sched; 4]> = j.init.iter().filter_map(|st| {
-                        let v: Option<Vec<Sched>> = (0..4).map(|i| sched_from(&d.umas[m[i]], &st[i])).collect();
-                        v.map(|v| [v[0], v[1], v[2], v[3]])
-                    }).collect();
-                    let r = optimize(d, m, &jobs.scheme, jobs.iters, jobs.seed, jobs.margin, &init);
-                    let lp = make_loop(d, m, &jobs.scheme);
-                    eprintln!("{:>9.2}  {:>6.1}s  {}", r.val, r.secs, (0..4).map(|i| d.umas[m[i]].name.clone()).collect::<Vec<_>>().join(" / "));
-                    Out { members: (0..4).map(|i| OutMember { id: d.umas[m[i]].id, name: d.umas[m[i]].name.clone(), schedule: sched_to_out(&d.umas[m[i]], &r.s[i]), detail: sched_detail(d, &d.umas[m[i]], &r.s[i]) }).collect(),
-                          order: r.order.iter().map(|&x| d.umas[x].id).collect(), value: r.val, base: lp.base, scheme: jobs.scheme.clone(), secs: r.secs, group_trials: r.evals, md: render_md(d, m, &r.s, &jobs.scheme, r.val) }
-                }).collect::<Vec<_>>()
-            })
-        }).collect();
-        hs.into_iter().flat_map(|h| h.join().unwrap()).collect()
-    });
-    if !jobs.markdown.is_empty() {
-        std::fs::write(&jobs.markdown, results.iter().map(|r| r.md.clone()).collect::<String>()).unwrap();
-    }
-    println!("{}", serde_json::to_string_pretty(&results).unwrap());
+    let t0 = Instant::now();
+    let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
+    out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
+    println!("{}", out);
+    state_save(&d);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1397,8 +1006,8 @@ mod tests {
             let o = u.opts[t - 1].iter().position(|op| op.name == name).unwrap();
             s[t - 1] = Choice::Opt(o as u8);
         }
-        let det = sched_detail(d, u, &s);
-        let ks: Vec<u64> = det.iter().map(|e| e["streak"].as_u64().unwrap()).collect();
+        let rows = skills::chart_rows(d, &[ix(d, 1019)], &[s]);
+        let ks: Vec<u64> = rows.as_array().unwrap().iter().map(|r| r["cells"][0]["row"].as_u64().unwrap()).collect();
         assert_eq!(ks, vec![1, 2, 3]);
     }
 
@@ -1494,36 +1103,6 @@ mod tests {
         }
     }
 
-    /// Ceilings bound every achieved score: optimized schedules and random schedules, both schemes.
-    #[test]
-    fn ceilings_bound_achieved_scores() {
-        let d = data();
-        let all: Vec<usize> = (0..d.umas.len()).collect();
-        let pb = pair_ceilings(d, &all);
-        let mut rng = Lcg(7);
-        for scheme in ["scf", "rot"] {
-            for _ in 0..12 {
-                let mut f = [0usize; 4];
-                loop { for x in f.iter_mut() { *x = (rng.next() as usize) % d.umas.len(); }
-                       let mut g = f; g.sort(); if g.windows(2).all(|w| w[0] != w[1]) { break; } }
-                let ub = ceiling(d, &pb, f, scheme);
-                let r = optimize(d, f, scheme, 0, 1, 60.0, &[]);
-                assert!(r.val <= ub + 1e-9, "optimized {} > ceiling {ub}", r.val);
-                for _ in 0..5 {
-                    let s: Vec<Sched> = (0..4).map(|i| {
-                        let w: Vec<f64> = (0..d.nr).map(|_| rng.f()).collect();
-                        best_response(d, &d.umas[f[i]], &w, None, None).unwrap().0 }).collect();
-                    let orders: Vec<[usize; 4]> = vec![[0, 1, 2, 3], [0, 2, 1, 3], [0, 1, 3, 2]];
-                    for o in orders {
-                        let lp = make_loop(d, [f[o[0]], f[o[1]], f[o[2]], f[o[3]]], scheme);
-                        let v = score(d, &lp, &[s[o[0]], s[o[1]], s[o[2]], s[o[3]]]);
-                        assert!(v <= ub + 1e-9, "random schedule {v} > ceiling {ub}");
-                    }
-                }
-            }
-        }
-    }
-
     /// The search reproduces known optima (regression guard for search-quality changes).
     #[test]
     fn known_optima_reproduced() {
@@ -1539,21 +1118,6 @@ mod tests {
             assert!(r.val >= want - 1e-3, "{ids:?} {scheme}: got {} expected >= {want}", r.val);
             for i in 0..4 { assert!(feasible(&d.umas[m[i]], &r.s[i])); }
         }
-    }
-
-    /// Best-first search stops correctly: every foursome not optimized has a ceiling below the k-th best score.
-    #[test]
-    fn best_search_stopping_rule() {
-        let d = data();
-        let jobs: Jobs = serde_json::from_str(r#"{"mode":"best","scheme":"scf","iters":5,"seed":3,"threads":2,"top":3,
-            "owned":[1008,1009,1014,1015,1017,1019,1023,1030,1069]}"#).unwrap();
-        let b = best_search(d, &jobs);
-        let mut vals: Vec<f64> = b.done.iter().map(|x| x.2.val).collect();
-        vals.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        let kth = vals[jobs.top - 1];
-        for (ub, _) in &b.cand[b.next..] { assert!(*ub < kth, "unsearched ceiling {ub} >= k-th best {kth}"); }
-        for (ub, _, r) in &b.done { assert!(r.val <= ub + 1e-9); }
-        assert_eq!(b.cand.len(), 126);
     }
 }
 
@@ -1575,28 +1139,6 @@ mod review_tests {
     struct Lcg(u64);
     impl Lcg { fn next(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
                fn f(&mut self) -> f64 { self.next() as f64 / (1u64 << 31) as f64 } }
-
-    /// `require`: every candidate contains the required umas, the count is exact, and the stopping rule still holds.
-    #[test]
-    fn best_search_require() {
-        let d = data();
-        let jobs: Jobs = serde_json::from_str(r#"{"mode":"best","scheme":"scf","iters":5,"seed":3,"threads":2,"top":2,
-            "owned":[1008,1009,1014,1015,1017,1023,1030],"require":[1029,1019,1034]}"#).unwrap();
-        let b = best_search(d, &jobs);
-        let req: Vec<usize> = [1029u32, 1019, 1034].iter().map(|&id| ix(d, id)).collect();
-        assert_eq!(b.cand.len(), 7); // required umas are added to the pool; 7 choices for the 4th slot
-        for (_, f) in &b.cand { for r in &req { assert!(f.contains(r)); } }
-        let mut vals: Vec<f64> = b.done.iter().map(|x| x.2.val).collect();
-        vals.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        for (ub, _) in &b.cand[b.next..] { assert!(*ub < vals[jobs.top - 1]); }
-    }
-
-    #[test]
-    #[should_panic(expected = "both required and excluded")]
-    fn best_search_require_excluded_conflict() {
-        let jobs: Jobs = serde_json::from_str(r#"{"mode":"best","scheme":"scf","iters":1,"seed":1,"require":[1029],"exclude":[1029]}"#).unwrap();
-        best_search(data(), &jobs);
-    }
 
     /// Bug A: a force that conflicts with a single-turn goal must be infeasible, not silently drop the goal.
     #[test]
@@ -1654,72 +1196,6 @@ mod review_tests {
         assert!(!feasible(fk, &bad3), "missing multi-turn goal alternative accepted");
     }
 
-    /// Bug C: schedule parsing rejects duplicate turns, out-of-range turns and programs not offered.
-    #[test]
-    fn sched_from_rejects_bad_input() {
-        let d = data();
-        let u = &d.umas[ix(d, 1009)];
-        assert!(sched_from(u, &[(23, 623), (23, 623)]).is_none(), "duplicate turn");
-        assert!(sched_from(u, &[(0, 623)]).is_none());
-        assert!(sched_from(u, &[(73, 623)]).is_none());
-        assert!(sched_from(u, &[(23, 999_999)]).is_none(), "program not offered");
-        assert!(sched_from(u, &[(23, 623)]).is_some());
-    }
-
-    /// Bug B: top = 0 is rejected with a clear error instead of an index underflow.
-    #[test]
-    #[should_panic(expected = "must be at least 1")]
-    fn best_search_rejects_top_zero() {
-        let d = data();
-        let jobs: Jobs = serde_json::from_str(r#"{"mode":"best","scheme":"scf","iters":1,"seed":1,"top":0,"owned":[1008,1009,1014,1015,1017]}"#).unwrap();
-        best_search(d, &jobs);
-    }
-
-    /// top larger than the number of foursomes: every foursome gets optimized, nothing is ruled out.
-    #[test]
-    fn best_search_top_exceeds_pool() {
-        let d = data();
-        let jobs: Jobs = serde_json::from_str(r#"{"mode":"best","scheme":"scf","iters":1,"seed":1,"top":50,"owned":[1008,1009,1014,1015,1019]}"#).unwrap();
-        let b = best_search(d, &jobs);
-        assert_eq!(b.cand.len(), 5);
-        assert_eq!(b.done.len(), 5);
-        assert_eq!(b.next, 5);
-    }
-
-    /// Ceilings bound genuinely random feasible schedules (random goal alternatives + random extra races), all schemes/orders.
-    #[test]
-    fn ceilings_bound_truly_random_schedules() {
-        let d = data();
-        let all: Vec<usize> = (0..d.umas.len()).collect();
-        let pb = pair_ceilings(d, &all);
-        let mut rng = Lcg(99);
-        let random_sched = |u: &Uma, rng: &mut Lcg| -> Sched {
-            loop {
-                let mut s = [Choice::Rest; NT];
-                for t in 0..NT {
-                    let n = u.opts[t].len();
-                    if let Some(f) = &u.forced[t] { s[t] = Choice::Opt(f[(rng.next() as usize) % f.len()]); }
-                    else if n > 0 && rng.f() < 0.6 { s[t] = Choice::Opt(((rng.next() as usize) % n) as u8); }
-                }
-                if feasible(u, &s) { return s; } // retry if a multi-turn goal alternative was missed
-            }
-        };
-        for scheme in ["scf", "rot", "scf@0.5", "rot@0.5", "rot@0.3", "scf@0"] {
-            for _ in 0..150 {
-                let mut f = [0usize; 4];
-                loop { for x in f.iter_mut() { *x = (rng.next() as usize) % d.umas.len(); }
-                       let mut g = f; g.sort(); if g.windows(2).all(|w| w[0] != w[1]) { break; } }
-                let ub = ceiling(d, &pb, f, scheme);
-                let s: Vec<Sched> = (0..4).map(|i| random_sched(&d.umas[f[i]], &mut rng)).collect();
-                for o in [[0, 1, 2, 3], [0, 2, 1, 3], [0, 1, 3, 2]] {
-                    let lp = make_loop(d, [f[o[0]], f[o[1]], f[o[2]], f[o[3]]], scheme);
-                    let v = score(d, &lp, &[s[o[0]], s[o[1]], s[o[2]], s[o[3]]]);
-                    assert!(v <= ub + 1e-9, "random schedule {v} > ceiling {ub}");
-                }
-            }
-        }
-    }
-
     /// Grandparent weighting: score() equals a direct per-legacy sum (umaishow's split, no rounding) over every lineage,
     /// with grandparent slots scaled by w. Checks the closed-form weights for both schemes and several w.
     #[test]
@@ -1764,29 +1240,6 @@ mod review_tests {
                 let lp = make_loop(d, f, &format!("rot@{w}"));
                 let v = score(d, &lp, &[s[0], s[1], s[2], s[3]]);
                 assert!((v - rot).abs() < 1e-9, "rot w={w}: score {v} vs per-legacy {rot}");
-            }
-        }
-    }
-
-    /// legacy mode: per-slot affinities sum to the scored objective (parents + w * grandparents) for both schemes.
-    #[test]
-    fn legacy_affinities_sum_to_score() {
-        let d = data();
-        let mut rng = Lcg(77);
-        for _ in 0..30 {
-            let mut f = [0usize; 4];
-            loop { for x in f.iter_mut() { *x = (rng.next() as usize) % d.umas.len(); }
-                   let mut g = f; g.sort(); if g.windows(2).all(|w| w[0] != w[1]) { break; } }
-            let s: Vec<Sched> = (0..4).map(|i| { let w: Vec<f64> = (0..d.nr).map(|_| rng.f() * 3.0).collect();
-                best_response(d, &d.umas[f[i]], &w, None, None).unwrap().0 }).collect();
-            for (scf, norm) in [(true, 3.0), (false, 1.0)] {
-                for w in [1.0, 0.5] {
-                    let lin = legacy_affinities(d, f, &s, scf);
-                    let tot: f64 = lin.iter().flat_map(|l| l.1.iter()).map(|(_, gp, a)| if *gp { w * a } else { *a }).sum::<f64>() / norm;
-                    let lp = make_loop(d, f, &format!("{}@{w}", if scf { "scf" } else { "rot" }));
-                    let v = score(d, &lp, &[s[0], s[1], s[2], s[3]]);
-                    assert!((v - tot).abs() < 1e-9, "scf={scf} w={w}: {v} vs {tot}");
-                }
             }
         }
     }
@@ -1888,7 +1341,6 @@ mod review_tests {
     }
 }
 
-#[allow(dead_code)]
 mod skills;
 mod deck;
 #[cfg(target_arch = "wasm32")]

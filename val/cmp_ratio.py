@@ -22,10 +22,7 @@ for rf in sorted(glob.glob(V + ref + '__*.out')):
         pa = B[0][0]['p_all'] / A[0][0]['p_all']; pm = B[0][0]['p_minus1'] / A[0][0]['p_minus1']
         rows.append((name.replace('.out', ''), same, 1 / A[0][0]['p_all'], 1 / B[0][0]['p_all'], pa, 1 / A[0][0]['p_minus1'], 1 / B[0][0]['p_minus1'], pm, x.get('proven')))
     else:
-        mem = lambda l: tuple(m['name'] if isinstance(m, dict) else m for m in l['members'])
-        A, B = r.get('loops', []), x.get('loops', [])
-        same = [mem(l) for l in A] == [mem(l) for l in B]
-        rows.append((name.replace('.out', ''), same, 1 / A[0]['p_all'], 1 / B[0]['p_all'], B[0]['p_all'] / A[0]['p_all'], 0, 0, 0, x.get('proven_top')))
+        print(name, 'not a deck output: skipped')
 print(f"{'setup':34s} same  all: ref -> new (ratio)        n-1: ref -> new (ratio)   proven")
 for n, s, a0, a1, ra, m0, m1, rm, pv in rows:
     print(f"{n:34s} {'yes' if s else 'NO ':4s} 1 in {a0:6.0f} -> {a1:6.0f} (x{ra:.4f})   " + (f"1 in {m0:5.1f} -> {m1:5.1f} (x{rm:.4f})" if m0 else " " * 33) + f"  {pv}")

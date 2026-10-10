@@ -1,7 +1,6 @@
 //! WebAssembly entry points. The host writes a UTF-8 JSON request into memory from `alloc`, calls `call`,
 //! then reads `result_len()` bytes at the returned pointer. Requests:
 //!   {"cmd":"init","data":<data.json>,"skills":<web_skills.json>}
-//!   {"cmd":"skills", ...SkillJob}   {"cmd":"affinity", ...AffinityJob}
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
@@ -50,14 +49,6 @@ fn handle(req: &str) -> serde_json::Value {
     }
     let v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
     match v["cmd"].as_str().unwrap_or("") {
-        "skills" => STATE.with(|s| {
-            let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            match serde_json::from_value::<SkillJob>(v.clone()) { Ok(job) => run_skills(d, sk, &job), Err(e) => serde_json::json!({"error": format!("bad job: {e}")}) }
-        }),
-        "affinity" => STATE.with(|s| {
-            let st = s.borrow(); let Some((d, _)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            match serde_json::from_value::<AffinityJob>(v.clone()) { Ok(job) => run_affinity(d, &job), Err(e) => serde_json::json!({"error": format!("bad job: {e}")}) }
-        }),
         "deck" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             let dkb = dk.borrow(); let Some((cr, db)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };

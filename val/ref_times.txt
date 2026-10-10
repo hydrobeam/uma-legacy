@@ -25,4 +25,3 @@ pkg_loopopt__pal_N 6.0
 pkg_loopopt__pal_U 1.0
 pkg_loopopt__pal_UF 13.1
 pkg_loopopt__pal_Uk3 0.6
-pkg_loopopt__skills_unity8 1.0

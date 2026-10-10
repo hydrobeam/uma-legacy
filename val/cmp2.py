@@ -40,6 +40,5 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
         print(f"{name}: career values {'OK' if ok else 'DIFF'} picks {'same' if same else 'differ(ties?)'} proven {r.get('proven_top')}/{x.get('proven_top')}{ro}")
         if not ok: bad+=1
     else:
-        sig=lambda j:[(round(l['p_all'],14),tuple(m if isinstance(m,str) else m.get('name') for m in l['members'])) for l in j.get('loops',[])]
-        ok=sig(r)==sig(x); print(name,'skills', 'OK' if ok else 'DIFF'); bad+= not ok
+        print(name,'neither a deck nor a career output'); bad+=1
 print(f'{n} compared, {bad} value mismatches')

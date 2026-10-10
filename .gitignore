@@ -99,5 +99,3 @@
 master.mdb
 master.mdb.*
 __pycache__/
-!/pkg/loopopt/validation/
-/pkg/loopopt/validation/_jobs.json

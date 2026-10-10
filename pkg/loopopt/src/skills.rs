@@ -1,4 +1,5 @@
-//! Skill-target loop search and JSON entry points shared by the CLI tests and the web build.
+//! The skill-target model (`Model`) that the deck search and the career planner score structures with, and the
+//! schedule chart they report.
 //!
 //! Model per training run (one self-copy-free lineage, trainee T):
 //!   - every target skill's spark sits on all 6 legacies, with stars drawn from a rank distribution
@@ -14,9 +15,7 @@
 //!     ancestors carry the spark in a running loop).
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
-//! together. Search: exact upper bound per structure (pair overlaps -> pairwise ceilings PB), then best-first with real
-//! schedules (affinity-optimised: in both structures every pair's shared G1s weigh the same) until the next bound is
-//! below the k-th best.
+//! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
 use super::*;
 use serde_json::{json, Value};
 
@@ -59,7 +58,6 @@ pub(crate) struct SkillJob {
     /// trainee events that hint a target: (chara id for every outfit, or outfit card id; skill group; chance per
     /// career). The hinted white counts like a deck white hint for that trainee only.
     #[serde(default)] pub trainee_hints: Vec<(u32, u32, f64)>,
-    #[serde(default = "dtop5")] pub top: usize,
     #[serde(default = "diters")] pub iters: usize,
     #[serde(default = "dseed")] pub seed: u64,
     /// structure sizes searched: 3 (three-uma rotations) and/or 4 (four-uma loops), ranked together on the mean over
@@ -67,13 +65,14 @@ pub(crate) struct SkillJob {
     #[serde(default = "dsizes")] pub sizes: Vec<usize>,
 }
 fn dstar() -> [f64; 3] { [0.50, 0.45, 0.05] }
-fn dtop5() -> usize { 5 }
 fn diters() -> usize { 30 }
 fn dseed() -> u64 { 3 }
 fn dsizes() -> Vec<usize> { vec![3, 4] }
 
-/// SCF lineages over member positions: (trainee, P1, P2, X); P1 bred from (P2, X), P2 from (P1, X).
-pub(crate) fn lineages() -> Vec<(usize, usize, usize, usize)> {
+/// SCF lineages over member positions: (trainee, P1, P2, X); P1 bred from (P2, X), P2 from (P1, X). The tests check
+/// `LIN4` against it.
+#[cfg(test)]
+fn lineages() -> Vec<(usize, usize, usize, usize)> {
     let mut v = vec![];
     for t in 0..4 { for x in 0..4 { if x == t { continue; }
         let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
@@ -242,8 +241,8 @@ impl<'a> Model<'a> {
         let miss = ((1.0 - self.base) * (1.0 - GP_RATE * self.base).powi(2)).powi(2);
         1.0 - miss.powi(INSPIRATIONS)
     }
-    /// `metric_d` without allocation (hot path of the deck search); same numbers.
-    #[inline]
+    /// `metric_d` without allocation; same numbers (a test reference for the deck search's per-trainee terms).
+    #[cfg(test)]
     pub(crate) fn metric_fast(&self, f: &[usize], qs: &[f64; 12], dw: &[f64], dg: &[f64]) -> f64 {
         let mut sum = 0.0;
         let lin = lins(f.len());
@@ -317,11 +316,11 @@ impl<'a> Model<'a> {
         }
         best
     }
+    #[cfg(test)]
     pub(crate) fn metric_d(&self, f: &[usize], qs: &[f64], dw: &[f64], dg: &[f64]) -> f64 {
         let lin = lins(f.len());
         self.fixed() * lin.iter().zip(qs).map(|(&(t, ..), &q)| self.trainee_d(f[t], q, dw, dg).0).sum::<f64>() / lin.len() as f64
     }
-    pub(crate) fn fixed_pub(&self) -> f64 { self.fixed() }
     /// Everything behind the metric for one loop, for the "how this loop works" view: pairwise relation points and
     /// expected shared G1 wins, then per lineage the six legacy slots (relation part, race part, affinity, proc),
     /// the per-career inheritance chance q, each target's landing chance and P(all land).
@@ -357,10 +356,6 @@ impl<'a> Model<'a> {
                              "fixed_gold": self.n_fixed_gold}));
         }
         json!({"base": self.base, "gp_rate": GP_RATE, "inspirations": INSPIRATIONS, "gen_white": GEN_WHITE, "gen_gold": GEN_GOLD, "pairs": pairs, "lineages": lout})
-    }
-    fn metric(&self, f: &[usize], qs: &[f64]) -> f64 {
-        let lin = lins(f.len());
-        self.fixed() * lin.iter().zip(qs).map(|(&(t, ..), &q)| self.trainee(f[t], q).0).sum::<f64>() / lin.len() as f64
     }
 }
 
@@ -426,13 +421,6 @@ impl OutfitPre {
         sel(g * GEN_GOLD + (1.0 - g) * white, GEN_GOLD, m2)
     }
 }
-/// the chance of exactly k of the independent events landing, k = 0 ..= ps.len()
-pub(crate) fn exactly(ps: &[f64]) -> Vec<f64> {
-    let mut d = vec![1.0f64];
-    for &p in ps { let mut nn = vec![0.0; d.len() + 1]; for (i, x) in d.iter().enumerate() { nn[i] += x * (1.0 - p); nn[i + 1] += x * p; } d = nn; }
-    d
-}
-
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
 pub(crate) fn chart_rows(d: &Data, m: &[usize], s: &[Sched]) -> Value {
     let n = m.len();
@@ -463,23 +451,6 @@ pub(crate) fn member_json(d: &Data, m: &[usize]) -> Vec<Value> {
     m.iter().map(|&x| json!({"id": d.umas[x].id, "name": d.umas[x].name, "short": short_name(&d.umas[x].name)})).collect()
 }
 
-/// Every structure of the job's sizes over `pool` (positions in canonical order, three members padded with `NONE`)
-/// that contains every uma of `req`.
-pub(crate) fn structures(pool: &[usize], req: &[usize], sizes: &[usize], out: &mut dyn FnMut([usize; 4])) {
-    let k = pool.len();
-    if sizes.contains(&4) {
-        for a in 0..k { for b in a + 1..k { for c in b + 1..k { for e in c + 1..k {
-            let f = [pool[a], pool[b], pool[c], pool[e]];
-            if req.iter().all(|r| f.contains(r)) { out(f); }
-        } } } }
-    }
-    if sizes.contains(&3) && req.len() <= 3 {
-        for a in 0..k { for b in a + 1..k { for c in b + 1..k {
-            let f = [pool[a], pool[b], pool[c], NONE];
-            if req.iter().all(|r| f.contains(r)) { out(f); }
-        } } }
-    }
-}
 /// Checks a job's `sizes` and `require` against the pool: an error message, or the smallest size searched.
 pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<usize, String> {
     if sizes.is_empty() || sizes.iter().any(|&s| s != 3 && s != 4) { return Err("sizes: list 3 and/or 4".into()); }
@@ -487,112 +458,6 @@ pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<us
     if req > hi { return Err(format!("At most {hi} umas can be required.")); }
     if pool < lo { return Err(format!("Pick at least {lo} umas to search.")); }
     Ok(lo)
-}
-
-/// Skill-target search. Returns the top loops (three-uma rotations and four-uma loops, ranked together) with odds,
-/// outfits, per-trainee odds and schedules.
-pub(crate) fn run_skills(d: &Data, sk: &SkillsRaw, job: &SkillJob) -> Value {
-    let model = Model::new(d, sk, job);
-    let n = d.umas.len();
-    let id_ok = |id: u32| (job.owned.is_empty() || job.owned.contains(&id) || job.require.contains(&id)) && !job.exclude.contains(&id);
-    let pool: Vec<usize> = (0..n).filter(|&i| id_ok(d.umas[i].id) && !model.no_outfit[i]).collect();
-    let req: Vec<usize> = job.require.iter().filter_map(|&id| d.umas.iter().position(|u| u.id == id)).collect();
-    if let Err(e) = check_sizes(&job.sizes, pool.len(), req.len()) { return json!({"error": e}); }
-    let pb = pair_ceilings(d, &pool);
-    let mut cand: Vec<(f64, [usize; 4])> = vec![];
-    structures(&pool, &req, &job.sizes, &mut |f| {
-        let m = members(&f);
-        let qs = model.lineage_q(m, &|x, y| pb[m[x]][m[y]]);
-        cand.push((model.metric(m, &qs), f));
-    });
-    if cand.is_empty() { return json!({"error": "No loop contains all the required umas."}); }
-    // stable: equal bounds keep generation order (four-member loops first)
-    cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-    let top = job.top.max(1);
-    let mut done: Vec<(f64, f64, [usize; 4], Res, Vec<f64>)> = vec![];   // (value, bound, f, res, qs)
-    let mut next = 0;
-    let kth = |done: &Vec<(f64, f64, [usize; 4], Res, Vec<f64>)>| if done.len() < top { f64::NEG_INFINITY } else {
-        let mut v: Vec<f64> = done.iter().map(|x| x.0).collect(); v.sort_by(|a, b| b.partial_cmp(a).unwrap()); v[top - 1] };
-    while next < cand.len() && cand[next].0 >= kth(&done) {
-        let (ub, f) = cand[next]; next += 1;
-        let m = members(&f);
-        let r = optimize_fam(d, &f, "scf@0.5", job.iters, job.seed, 60.0);
-        let ps: Vec<Vec<f64>> = (0..m.len()).map(|i| probs(d, &d.umas[m[i]], &r.s[i])).collect();
-        let qs = model.lineage_q(m, &|x, y| wval(&ps[x], &ps[y]));
-        let v = model.metric(m, &qs);
-        done.push((v, ub, f, r, qs));
-    }
-    done.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-    let loops: Vec<Value> = done.iter().take(top).map(|(v, ub, f, r, qs)| {
-        let f = members(f); let nm = f.len(); let lin = lins(nm);
-        // per-lineage outfit choice and skill odds
-        // the chance of exactly k targets (each target on its own chance, as `p_minus1`), averaged over the lineages
-        let mut landed: Vec<f64> = vec![];
-        let mut minus1 = 0.0; let mut per: Vec<(f64, usize)> = vec![(0.0, 0); nm];
-        let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
-        for (&(t, ..), &q) in lin.iter().zip(qs) {
-            let (val, kk) = model.trainee(f[t], q);
-            let mut ps = vec![GEN_GOLD; model.n_fixed_gold as usize];
-            ps.extend(model.skill_probs(&model.opts[f[t]][kk].0, &model.ews[f[t]][kk], q));
-            let ex = exactly(&ps);
-            minus1 += ex[job.targets.len().saturating_sub(1).min(ex.len() - 1)..].iter().sum::<f64>();
-            if landed.len() < ex.len() { landed.resize(ex.len(), 0.0); }
-            for (k, x) in ex.iter().enumerate() { landed[k] += x; }
-            per[t].0 += model.fixed() * val; per[t].1 += 1; picks[t].push(kk);
-        }
-        minus1 /= lin.len() as f64;
-        for x in landed.iter_mut() { *x /= lin.len() as f64; }
-        let outfits: Vec<Value> = (0..nm).map(|i| {
-            let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
-            let (st, cards) = &model.opts[f[i]][kk];
-            let default_st: Vec<u8> = model.uncertain.iter().map(|&j| if job.targets[j].guaranteed == 1 { 1 } else { 0 }).collect();
-            let covers: Vec<Value> = st.iter().zip(&model.uncertain).filter(|(lv, j)| **lv > 0 && !(**lv == 1 && job.targets[**j].guaranteed == 1))
-                .map(|(lv, j)| json!({"group": job.targets[*j].group, "level": lv})).collect();
-            json!({"outfits": if *st == default_st { vec![] } else { cards.iter().map(|c| json!({"id": c.0, "label": c.1})).collect::<Vec<_>>() }, "covers": covers})
-        }).collect();
-        let ps: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let detail = model.detail(f, &|x, y| wval(&ps[x], &ps[y]), None);
-        json!({
-            "members": member_json(d, f), "p_all": v, "p_minus1": minus1, "landed": landed, "bound": ub,
-            "per_trainee": per.iter().map(|(s, c)| s / *c as f64).collect::<Vec<_>>(),
-            "outfits": outfits, "mean_proc": qs.iter().sum::<f64>() / qs.len() as f64,
-            "schedule": chart_rows(d, f, &r.s[..nm]),
-            "detail": detail,
-        })
-    }).collect();
-    let next_bound = if next < cand.len() { cand[next].0 } else { 0.0 };
-    // solved loops are known exactly; the best is proven once no unsolved ceiling reaches it
-    let proven_top = !done.is_empty() && next_bound < done[0].0;
-    json!({"loops": loops, "searched": done.len(), "foursomes": cand.len(), "next_bound": next_bound, "proven_top": proven_top})
-}
-
-#[derive(Deserialize)]
-pub(crate) struct AffinityJob {
-    #[serde(default = "dscheme")] pub scheme: String,
-    #[serde(default)] pub owned: Vec<u32>,
-    #[serde(default)] pub exclude: Vec<u32>,
-    #[serde(default)] pub require: Vec<u32>,
-    #[serde(default = "dtop5")] pub top: usize,
-    #[serde(default = "diters")] pub iters: usize,
-}
-fn dscheme() -> String { "scf".into() }
-
-/// Pure affinity search (the original problem): best loops by expected affinity per 4 runs.
-pub(crate) fn run_affinity(d: &Data, job: &AffinityJob) -> Value {
-    let pool: Vec<u32> = d.umas.iter().map(|u| u.id).filter(|id| (job.owned.is_empty() || job.owned.contains(id) || job.require.contains(id)) && !job.exclude.contains(id)).collect();
-    if pool.len() < 4 { return json!({"error": "Pick at least 4 umas to search."}); }
-    if job.require.len() > 4 { return json!({"error": "At most 4 umas can be required."}); }
-    let jobs: Jobs = serde_json::from_value(json!({"mode": "best", "scheme": if job.scheme == "rot" { "rot" } else { "scf" }, "iters": job.iters, "seed": 3,
-        "threads": 1, "top": job.top.max(1), "owned": job.owned, "exclude": job.exclude, "require": job.require})).unwrap();
-    let b = best_search(d, &jobs);
-    let loops: Vec<Value> = b.done.iter().take(jobs.top).map(|(ub, f, r)| {
-        let m: Vec<usize> = r.order.to_vec();
-        let lp = make_loop(d, r.order, &jobs.scheme);
-        let s_o: [Sched; 4] = std::array::from_fn(|i| r.s[f.iter().position(|x| *x == m[i]).unwrap()]);
-        json!({"members": member_json(d, &m), "score": r.val, "base": lp.base, "ceiling": ub, "schedule": chart_rows(d, &m, &s_o)})
-    }).collect();
-    let next_bound = if b.next < b.cand.len() { b.cand[b.next].0 } else { 0.0 };
-    json!({"loops": loops, "searched": b.done.len(), "foursomes": b.cand.len(), "next_bound": next_bound})
 }
 
 #[cfg(test)]
@@ -636,43 +501,20 @@ mod tests {
         }
     }
 
-    /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
-    /// earlier umaishow split with halved grandparents the same loop scored 1 in 283; with
-    /// the rounded 35%/70% spark generation (before the x1.1^6 curve) it was 1 in 140.4, and 127.3 with the 45/50/5 star mix.
-    #[test]
-    fn skills_port_matches_python() {
-        let d = data(); let sk = skills();
-        let job: SkillJob = serde_json::from_value(json!({
-            "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
-                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "top": 3, "sizes": [4]})).unwrap();
-        let r = run_skills(d, &sk, &job);
-        let l = &r["loops"][0];
-        let ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect();
-        let mut s = ids.clone(); s.sort();
-        assert_eq!(s, vec![1007, 1019, 1021, 1034], "best loop {ids:?}");
-        let inv = 1.0 / l["p_all"].as_f64().unwrap();
-        assert!((inv - 130.7).abs() < 1.0, "1 in {inv}");
-        assert_eq!(r["proven_top"], json!(true));
-    }
-
-    /// Excluding one outfit (Summer Special Week) changes only that outfit's skills: regression anchor from the CLI.
+    /// Excluding outfits drops them from an uma's options; excluding every outfit of an uma marks her unowned.
     #[test]
     fn outfit_exclusion() {
         let d = data(); let sk = skills();
-        let job: SkillJob = serde_json::from_value(json!({
-            "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
-                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "exclude": [1034, 1021], "exclude_outfits": [100102], "top": 2, "sizes": [4]})).unwrap();
-        let r = run_skills(d, &sk, &job);
-        let l = &r["loops"][0];
-        let mut ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect(); ids.sort();
-        assert_eq!(ids, vec![1009, 1014, 1019, 1029]);
-        { let inv = 1.0 / l["p_all"].as_f64().unwrap(); assert!((inv - 172.6).abs() < 1.0, "1 in {inv}"); }
-        // every outfit of an uma excluded -> that uma is not owned
-        let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902], "top": 1})).unwrap();
-        let r2 = run_skills(d, &sk, &job2);
-        assert!(r2["loops"][0]["members"].as_array().unwrap().iter().all(|m| m["id"] != json!(1019)));
+        let ix = |id: u32| d.umas.iter().position(|u| u.id == id).unwrap();
+        let outfits = |m: &Model, i: usize| -> Vec<u32> { m.opts[i].iter().flat_map(|o| o.1.iter().map(|c| c.0)).collect() };
+        let job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100102]})).unwrap();
+        let m = Model::new(d, &sk, &job);
+        let sw = outfits(&m, ix(1001));
+        assert!(!sw.contains(&100102) && !sw.is_empty() && !m.no_outfit[ix(1001)], "{sw:?}");
+        let job2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902]})).unwrap();
+        let m2 = Model::new(d, &sk, &job2);
+        assert!(m2.no_outfit[ix(1019)]);
+        assert!(!m2.no_outfit[ix(1001)]);
     }
 
     /// The lineage tables: the 12-lineage loop as `lineages()` builds it, and the three-member rotation (each member
@@ -740,72 +582,5 @@ mod tests {
                 assert_eq!(one, if n == 3 { 30.0 } else { 60.0 }, "pair {a}-{b} of {n}");
             } }
         }
-    }
-
-    /// A rotation's reported odds against a direct computation: its schedules, each lineage's six affinities from the
-    /// formula, the inheritance chance, the trainee's best-outfit landing odds, the mean over the three trainees.
-    #[test]
-    fn rotation_metric_matches_direct() {
-        let d = data(); let sk = skills();
-        let job: SkillJob = serde_json::from_value(json!({
-            "targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
-                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "top": 1, "sizes": [3], "require": [1019, 1021, 1034]})).unwrap();
-        let r = run_skills(d, &sk, &job);
-        let l = &r["loops"][0];
-        let ids: Vec<u64> = l["members"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect();
-        assert_eq!(ids, vec![1019, 1021, 1034]);
-        assert_eq!(r["foursomes"], json!(1));
-        let m = Model::new(d, &sk, &job);
-        let f = [18usize, 20, 33];
-        let res = optimize(d, f, "scf@0.5", job.iters, job.seed, 60.0, &[]);
-        assert_eq!(res.order[3], NONE);
-        let ps: Vec<Vec<f64>> = (0..3).map(|i| probs(d, &d.umas[f[i]], &res.s[i])).collect();
-        let o = |a: usize, b: usize| wval(&ps[a], &ps[b]);
-        let (pr, tr) = (|a: usize, b: usize| d.pair[f[a]][f[b]] as f64, |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64);
-        let mut sum = 0.0;
-        for (t, b, c) in [(0usize, 1usize, 2usize), (1, 0, 2), (2, 0, 1)] {
-            let affs = [pr(t, b) + pr(b, c) + tr(t, b, c) + 6.0 * o(b, c) + 3.0 * o(b, t), tr(t, b, c) + 3.0 * o(b, c), 3.0 * o(b, t),
-                        pr(t, c) + pr(b, c) + tr(t, c, b) + 6.0 * o(b, c) + 3.0 * o(c, t), tr(t, c, b) + 3.0 * o(b, c), 3.0 * o(c, t)];
-            let miss: f64 = affs.iter().map(|a| 1.0 - (m.base * (1.0 + a / 100.0)).min(1.0)).product();
-            let q = 1.0 - miss * miss;
-            let p = m.fixed() * m.trainee(f[t], q).0;
-            let pt = l["per_trainee"][t].as_f64().unwrap();
-            assert!((p - pt).abs() < 1e-12 * p, "trainee {t}: {p} vs {pt}");
-            sum += p;
-        }
-        let pa = l["p_all"].as_f64().unwrap();
-        assert!((sum / 3.0 - pa).abs() < 1e-12 * pa, "{} vs {pa}", sum / 3.0);
-        assert_eq!(l["detail"]["lineages"].as_array().unwrap().len(), 3);
-        assert_eq!(l["schedule"][0]["cells"].as_array().unwrap().len(), 3);
-    }
-
-    /// Both sizes rank together on the mean over lineages: the combined search's best is the better of the two
-    /// single-size searches' bests, and requiring four umas leaves only loops.
-    #[test]
-    fn sizes_rank_together() {
-        let d = data(); let sk = skills();
-        let base = json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166,"guaranteed":2},{"group":20046,"guaranteed":2},
-                        {"group":20161,"deck_white":0.8},{"group":21010},{"group":20165,"deck_gold":0.8},{"group":20203,"guaranteed":2}],
-            "extra": [[1078,20165,1],[1003,20190,1]], "top": 1});
-        let run = |sz: Value, req: Value| { let mut j = base.clone(); j["sizes"] = sz; j["require"] = req;
-            run_skills(d, &sk, &serde_json::from_value(j).unwrap()) };
-        let best = |r: &Value| r["loops"][0]["p_all"].as_f64().unwrap();
-        let (both, three, four) = (run(json!([3, 4]), json!([])), run(json!([3]), json!([])), run(json!([4]), json!([])));
-        assert_eq!(best(&both), best(&three).max(best(&four)));
-        assert_eq!(both["foursomes"].as_u64().unwrap(), three["foursomes"].as_u64().unwrap() + four["foursomes"].as_u64().unwrap());
-        let req4 = run(json!([3, 4]), json!([1019, 1021, 1034, 1006]));
-        assert_eq!(req4["loops"][0]["members"].as_array().unwrap().len(), 4);
-        assert_eq!(req4["foursomes"], json!(1));
-        assert!(run(json!([3]), json!([1019, 1021, 1034, 1006]))["error"].is_string());
-    }
-
-    /// The structured chart agrees with the bound: every schedule cell refers to a race actually run.
-    #[test]
-    fn affinity_entry_point_runs() {
-        let d = data();
-        let job: AffinityJob = serde_json::from_value(json!({"exclude": [1006, 1029, 1034], "top": 2})).unwrap();
-        let r = run_affinity(d, &job);
-        assert!((r["loops"][0]["score"].as_f64().unwrap() - 1961.015).abs() < 1e-2, "{}", r["loops"][0]["score"]);
     }
 }
