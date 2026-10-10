@@ -2,11 +2,11 @@
 
 ## Game data
 
-| What | Where | Notes |
+| What | What it is | Used for |
 |---|---|---|
-| Global `master.mdb` | the game client (Global) | not tracked by git |
-| JP-only art | the JP client's bundles (found by name in the JP asset index of 2025-10-09, the `meta` file of https://github.com/SimpleSandman/UmaMusumeMetaMasterMDB), read by `webapp/images.py` from `game/jp/bundles/` when present (not committed) | what the Global client lacks: the Grand Masters scenario's logo and character art (`single/banner/bnr_005_text`, `bnr_chara_big_005`; its logo in Japanese) and 14 JP-only skill icons |
-| JP `master.mdb` | https://github.com/SimpleSandman/UmaMusumeMetaMasterMDB (`master/master.mdb`, its last update, 2025-10-09) | not tracked by git. The Grand Masters-era export cuts by release date (L'Arc launch, 2023-08-24) |
+| Global `master.mdb` | the Global client's game database | every Global export (umas, outfits, cards, races, skills, release dates) |
+| JP-only art | the JP client's bundles for what the Global client lacks: the Grand Masters scenario's logo and character art and 14 JP-only skill icons | `images` |
+| JP `master.mdb` | the JP client's game database as of 2025-10-09 | the Grand Masters-era export, cut by release date at L'Arc's launch (2023-08-24) |
 
 ## Models we adopted or checked against
 
