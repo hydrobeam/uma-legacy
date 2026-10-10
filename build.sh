@@ -65,7 +65,8 @@ step_wasm() {
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
            && node example.mjs | tail -1)
 }
-step_browsers() { step_npm; (cd "$W" && npx playwright install chromium firefox); }
+step_browsers() { step_npm; local B="$W/node_modules/playwright-core/.local-browsers"
+  ls -d "$B"/chromium-* "$B"/firefox-* >/dev/null 2>&1 || (cd "$W" && npx playwright install chromium firefox); }
 step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; node "$W/nodebrowser.mjs"; }
 step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; node "$W/nodebrowser.mjs" quick; }
 step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
