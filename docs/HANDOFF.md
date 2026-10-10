@@ -34,7 +34,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 | v44 | target skill presets, dark-mode mirror, career page polish, Saves per run explained plainly |
 | v45 | master.mdb 10008200 (Zenno Rob Roy); banners held ahead turn on at their start time |
 | v46 | game-style header (page tabs, light / dark switch) and wordmark, /about Sources list, career presets popup fix, /loop |
-| v47 | see above |
+| v47 | game-style status line and header switch, wordmark spacing, logo not a link, Career choices (i) |
+| v48 | see above |
 
 ## 3. Open threads, most valuable first
 
