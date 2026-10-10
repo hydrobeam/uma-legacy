@@ -1,4 +1,4 @@
-//! Skill-target loop search (Rust port of skills.py) and JSON entry points shared by the CLI tests and the web build.
+//! Skill-target loop search and JSON entry points shared by the CLI tests and the web build.
 //!
 //! Model per training run (one self-copy-free lineage, trainee T):
 //!   - every target skill's spark sits on all 6 legacies, with stars drawn from a rank distribution
@@ -637,7 +637,7 @@ mod tests {
     }
 
     /// Regression anchor (Unity Cup targets, Nothing Ventured guaranteed), uma-it-optimizer's affinity model. Under the
-    /// earlier umaishow split with halved grandparents (and the Python skills.py port) the same loop scored 1 in 283; with
+    /// earlier umaishow split with halved grandparents the same loop scored 1 in 283; with
     /// the rounded 35%/70% spark generation (before the x1.1^6 curve) it was 1 in 140.4, and 127.3 with the 45/50/5 star mix.
     #[test]
     fn skills_port_matches_python() {
