@@ -1,14 +1,12 @@
 # Performance work on the solver
 
 How to speed up `pkg/loopopt` without changing its results (the protocol, the codebase's pitfalls), and the planner's
-speed record: where it stands, what is open, what was tried and rejected. The protocol took every search to 42-55% of
-its previous time (2026-10-03) with outputs unchanged on all validation jobs.
+speed record: where it stands, what is open, what was tried and rejected.
 
 ## Protocol
 
-1. **Setup.** Build the starting binary twice and diff its outputs on every job before trusting
-   it as a reference: anything that sums in `HashMap` order changes its last bits from run to run (the old
-   `chain_marginals` did, on 9 of 46 job files).
+1. **Setup.** Build the starting binary twice and diff its outputs on every job before trusting it as a reference:
+   anything that sums in `HashMap` order changes its last bits from run to run.
 2. **Reference.** A deterministic build, committed as WIP. Every later item must be byte-identical to the previous
    accepted state (ignoring `timing_s`), which is stricter than `val/cmp2.py`.
 3. **Measure.**
@@ -36,7 +34,6 @@ its previous time (2026-10-03) with outputs unchanged on all validation jobs.
     dominance tests). Per-field bitmaps (64 decks per AND) made it the largest win: -20% on slow per-uma searches,
     -43% on shared three-result ones.
   - Computing the pair-ceiling table costs 10-21% of a typical run, hence the stored `pb` table.
-- Lazy class thinning cannot be done without changing output bits.
 
 ## Pitfalls in this codebase
 
@@ -88,9 +85,7 @@ after any change to how builders' careers are built.
   added (warm, native about 0.7-0.9 s). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7% provisional), gm16
   37%, p10, p11 and boot_mob 100%.
 - Where the time goes (callgrind, 2026-10-09): boot_mob 17.05G instructions, `best_sur` and the deck searches under
-  it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s lookups) about 25%. A p16
-  saving-roll plan (8.30G, before the per-class caps): deck searches 3.80G (16 proxy searches from `best_sur`, 2.47G),
-  `score_career` 3.56G (190 calls, 18.7M each), corner tables 0.27G.
+  it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s lookups) about 25%.
 - Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
   deterministic only with the winners-only cache and exact, unbudgeted searches.
 
