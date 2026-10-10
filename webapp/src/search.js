@@ -102,7 +102,7 @@ function buildJob() {
 }
 // The last result per era is kept in localStorage with the job that produced it (plus the solver's and data's
 // fingerprints and what is still held back for a later start, data.js LATER), so a reload with unchanged settings shows
-// it as done, without searching again (the owner's call, 2026-10-10), instead of the default example.
+// it as done, without searching again, instead of the default example.
 const LAST = () => 'llp:last:' + ERA;
 const jobKey = (job) => JSON.stringify([ASSETS.wasm, ASSETS.engine[ERA === 'gm' ? 'gm' : 'global'], LATER, job]);
 let shown = { key: null, r: null, example: false };   // the result on screen

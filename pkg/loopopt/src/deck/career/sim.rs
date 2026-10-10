@@ -35,7 +35,7 @@
 //! has at least her stars on every target and every G1 she won (exact for P(all), see policy_sim's README).
 //!
 //! Policies: `greedy` (surrogate), `greedy_exact` and `planner` (the solver in process per decision: the best career
-//! by P(all), and the page's rollout pick), `loop` (a fixed rotation of `loop_members`: each career's parents are the
+//! by P(all), and the one-step rollout pick the page used before `next`), `loop` (a fixed rotation of `loop_members`: each career's parents are the
 //! latest veterans of the previous two members in rotation order; bootstrap below), and `rollout_greedy` /
 //! `rollout_loop`: at the decision careers (the first; then every `redecide` careers) a candidate set is scored by
 //! running each candidate career and then the base policy (greedy or loop) until S < `cont_eps`, averaged over
@@ -592,7 +592,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         }
         if sn > so { st.rot.latest[m] = Some(vi); }
     }
-    /// the in-process solver's pick (greedy_exact: the best career by P(all); planner: the page's rollout pick)
+    /// the in-process solver's pick (greedy_exact: the best career by P(all); planner: the one-step rollout pick)
     fn exact_cur(&mut self, st: &St, planner: bool) -> Cur {
         let mut job = self.job.clone();
         let o = job.as_object_mut().unwrap();

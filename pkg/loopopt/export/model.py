@@ -1,5 +1,4 @@
 import sqlite3, json, itertools, math
-from rel import pair, tri
 c=sqlite3.connect('master.mdb')
 q=lambda s,*a: c.execute(s,a).fetchall()
 RN={r[0]:r[1] for r in q("select [index],text from text_data where category=32")}
@@ -75,36 +74,3 @@ def options(ch, exclude_det2=True):
             if (t,q_) not in gg: gg.append((t,q_))
         gs2.append(gg)
     return opt, gs2
-
-# ---------- base affinity per run under model G / U ----------
-def run_terms(o,i):
-    n=len(o); T=o[i]; P1=o[(i-1)%n]; P2=o[(i-2)%n]
-    G11,G12=o[(i-2)%n],o[(i-3)%n]; G21,G22=o[(i-3)%n],o[(i-4)%n]
-    base_U=pair(T,P1)+pair(T,P2)+tri(T,P1,G11)+tri(T,P1,G12)+tri(T,P2,G21)+tri(T,P2,G22)
-    base_G=base_U+pair(P1,P2)
-    rels=[(P1,P2),(P1,G11),(P1,G12),(P2,G21),(P2,G22)]
-    return base_G, base_U, rels
-def loop_base(o, model='G'):
-    return sum(run_terms(o,i)[0 if model=='G' else 1] for i in range(4))
-def loop_C(o):
-    C={}
-    for i in range(4):
-        for a,b in run_terms(o,i)[2]:
-            k=tuple(sorted((a,b))); C[k]=C.get(k,0)+1
-    return C
-def Pvec(ch, sched, apt=None):
-    """sched: list of (turn, pid). returns {race_id: P(win at least once)} using streaks from sched (all races incl non-G1)."""
-    s=sorted(sched); miss={}; k=0; prev=None
-    for t,pid in s:
-        k = k+1 if prev==t-1 else 1; prev=t
-        if is_g1(pid):
-            p=pwin(basep(ch,pid,apt),k); r=PROG[pid]['race']
-            miss[r]=miss.get(r,1.0)*(1-p)
-    return {r:1-m for r,m in miss.items()}
-def score(o, scheds, model='G', apts=None):
-    apts=apts or {}
-    P={ch:Pvec(ch,scheds[ch],apts.get(ch)) for ch in o}
-    C=loop_C(o); race=0
-    for (a,b),w in C.items():
-        race+=3*w*sum(P[a][r]*P[b].get(r,0) for r in P[a])
-    return loop_base(o,model)+race, race

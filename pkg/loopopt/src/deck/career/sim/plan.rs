@@ -703,7 +703,7 @@ const PROXY_EFF: f64 = 0.06;
 const PROXY_SAVE: f64 = 0.06;
 /// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
 const OPT_SHOW: usize = 8;
-/// Two deep follows rolls at most this many targets short of 8/8 (on the owner's 10-veteran pool rolls with 4 of 8 never
+/// Two deep follows rolls at most this many targets short of 8/8 (on a 10-veteran pool rolls with 4 of 8 never
 /// opened a builder better than the best career now; 6 and 7 of 8 carried the term)
 const TWO_MISS: usize = 1;
 /// `val` with the deck it found (its index in the cache)
@@ -841,7 +841,7 @@ impl Drop for MemoReport {
 /// A step's continuation (form assumed; the rate and step fitted to the pool now, the shape to traces): builder careers
 /// lift her odds, each lift closing `phi` of the remaining gap in log odds to `pinf`, her effective ceiling; the lift
 /// chance falls with the remaining gap: lam_j = lam ((1 - phi)^j)^LAM_DECAY. pinf = CEIL_SHARE x her full-loop odds.
-/// Both constants fitted (val/sim/README.md E5) to traces of building for Agnes Digital on the owner's 2-, 5-, 11- and
+/// Both constants fitted (val/sim/README.md E5) to traces of building for Agnes Digital on 2-, 5-, 11- and
 /// 19-veteran pools (the best builder each career, 6 runs x 400 careers): within 10-20% on 11 and 19, building
 /// underestimated on 5 and overestimated early on 2; leave-one-pool-out fits ranged 0.6-1.0 and 1-3. lam = 0: none.
 #[derive(Clone)]
@@ -1152,7 +1152,7 @@ fn saving_lo(bs: &ScoreBase, up: &[f64], m: usize, full_m: usize, xi: Option<usi
 /// most 1 is rare at the rank's mix: adding 1 star moved p16's provisional 0.0275 -> 0.0272, gm16 0.0796 -> 0.0742 for
 /// +8.8% and +16.5%
 const HI_STARS: [usize; 2] = [2, 3];
-/// Off by default (owner, 2026-10-09: not worth the plan's +6-11%); 10 gives the numbers above.
+/// Off by default (not worth the plan's +6-11%); 10 gives the numbers above.
 const HI_SEARCHES: usize = 0;
 /// ... and only for band outcomes whose partners' bounds are within this factor of p_now: a cost rule, not part of the
 /// bound. It skips p10 and p11, whose band needs partners at 2.5 times p_now and more: there 15 searches (at 1, 2 and 3
@@ -1190,7 +1190,7 @@ const HI_RISE: f64 = 1.5;
 ///     for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A) (`Env::rise`) <= E_A rise(q', q_A), so her best career
 ///     with partner y is at most c' E_A rise(q', q_A) for every A, and at most its ceiling. In the exact replan with her
 ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
-///     saving. Not bounded (channel 2, out of scope by the owner's decision): what the replan's refits do (Cont fitted
+///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
 #[allow(clippy::too_many_arguments)]
 fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, fix: &[usize], msv: &Solved, ytab: &[f64], x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (Vec<f64>, Vec<f64>) {
@@ -1417,14 +1417,14 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let zeros = vec![0.0f64; n];
     let mut exact_n = 0usize;
     let t3 = now_ms();
-    // Builders through their deck class (owner decision, 2026-10-08): a builder's career is first taken from her class's
-    // winning decks (the main search's and the candidates' best careers of her class: legal for her, the same deck
-    // problem, valued at her own chances through the surrogate, `best_sur`), no career search. Exact searches only where
-    // the plan can turn on her: a lift efficiency within PROXY_EFF of a candidate's second best (Cont's two builders come
-    // from the exactly searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW), the
-    // pick's near-tie band and two deep's builders. Measured on val/plan (`proxy_check`): the proxy's odds only ever read
-    // low (it is a career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it
-    // can also read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
+    // Builders through their deck class: a builder's career is first taken from her class's winning decks (the main
+    // search's and the candidates' best careers of her class: legal for her, the same deck problem, valued at her own
+    // chances through the surrogate, `best_sur`), no career search. Exact searches only where the plan can turn on her:
+    // a lift efficiency within PROXY_EFF of a candidate's second best (Cont's two builders come from the exactly
+    // searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW), the pick's near-tie
+    // band and two deep's builders. Measured on val/plan (`proxy_check`): the proxy's odds only ever read low (it is a
+    // career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it can also
+    // read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
     // `exact_all` restores a search for every uma.
     let proxy_on = pj.sur == 0 && !pj.exact_all && !pj.proxy_check && !pj.value_only;
     let wins: Vec<(usize, Sel)> = sv.found.iter().map(|f| (f.t, f.sel.clone()))

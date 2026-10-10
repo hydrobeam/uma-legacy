@@ -903,7 +903,7 @@ mod tests {
         assert!(n >= 260, "{n} cases");
     }
 
-    /// Bug A: a force that conflicts with a single-turn goal must be infeasible, not silently drop the goal.
+    /// A force that conflicts with a single-turn goal must be infeasible, not silently drop the goal.
     #[test]
     fn force_conflicting_with_goal_is_infeasible() {
         let d = data();

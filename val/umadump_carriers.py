@@ -2,7 +2,8 @@
 planner's "Potential Inheritance" table shows its spark-generation chance for each carrier count.
 
 usage: umadump_carriers.py LOOP_VETERANS OUT_A OUT_B
-  LOOP_VETERANS  output of umadump_lineage.py for the U loop (Oguri, Digital, Tamamo, Inari)
+  LOOP_VETERANS  output of umadump_lineage.py for the four-uma loop Oguri Cap, Agnes Digital, Tamamo Cross and Inari
+                 One (any outfits; a deck output whose first loop is those four, e.g. with `sizes: [4]`)
   OUT_A  P1 = Inari (parents Digital, Tamamo), P2 = Tamamo (parents Digital, Inari); pick Oguri as the target
   OUT_B  the same plus great-grandparents (positions 11/12/21/22 inside each veteran) carrying Nimble Navigator,
          to see whether a tool counts them as carriers or for affinity

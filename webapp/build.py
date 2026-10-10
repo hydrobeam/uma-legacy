@@ -235,8 +235,8 @@ for k, v in [('__THEMEJS__', THEMEJS), ('__NAV__', NAV('career')), ('__VERSION__
 assert not re.search(r'__(?!PURE__)[A-Z]+__', career), re.findall(r'__(?!PURE__)[A-Z]+__', career)
 open(os.path.join(DIST, 'career.html'), 'w').write(career)
 for f in ('favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'og.png'): shutil.copyfile(os.path.join(H, 'icons', f), os.path.join(DIST, f))
-# hosting (Cloudflare Pages reads _headers): indexable (owner, 2026-10-05; the page names its canonical address); the page 5 minutes so a new deploy shows
-# quickly; fingerprinted assets a year, immutable (their names change with their content)
+# hosting (Cloudflare Pages reads _headers): indexable (the page names its canonical address); the page cached 5 minutes so a
+# new deploy shows quickly; fingerprinted assets a year, immutable (their names change with their content)
 open(os.path.join(DIST, '_headers'), 'w').write('/*\n  Cache-Control: public, max-age=300\n'
                                                  '/assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable\n')
 open(os.path.join(DIST, 'robots.txt'), 'w').write('User-agent: *\nAllow: /\n')

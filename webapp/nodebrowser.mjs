@@ -141,9 +141,9 @@ const AUDIT = () => {
     const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[hidden]') || el.closest('select')) continue;
     const { bg, img } = bgOf(el); if (img) continue;
     if (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) continue;   // the brand's coloured "uma": the logo's colours by choice
-    // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA (owner, 2026-10-08)
+    // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA
     if (game && el.closest('.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b')) continue;   // also text on the game's sprites (skill tiles), which the audit can't see behind it
-    if (el.closest('.ptabs [aria-current="page"]')) continue;   // every page's header: the game's green tab with white outlined text (owner, 2026-10-10)
+    if (el.closest('.ptabs [aria-current="page"]')) continue;   // every page's header: the game's green tab with white outlined text
     if (el.closest('.gmdlg')) continue;
     if (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary')) continue;   // the planner pages' game-style dialogs
     const fg0 = parse(cs.color); const fg = over({ ...fg0, a: fg0.a * opac(el) }, bg);

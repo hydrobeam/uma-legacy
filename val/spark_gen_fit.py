@@ -2,7 +2,7 @@
 umadump trained_chara_data.json, by the version bought and by how many of the career's six ancestors carried that
 spark. Fits "x m per carrier" against "+a points per carrier".
 
-usage: spark_gen_fit.py TRAINED_CHARA_DATA_JSON [MASTER_MDB] [--scenario N]
+usage: spark_gen_fit.py TRAINED_CHARA_DATA_JSON [MASTER_MDB] [--scenario N]   (MASTER_MDB default pkg/loopopt/export/master.mdb)
 Ancestors: positions 10/20 are the veteran's parents. Its grandparents are positions 11/12/21/22 when the dump has
 them; otherwise a parent is matched to an owned veteran with the same card, sparks and win saddles, and that
 veteran's parents are used. Skill-observations whose six ancestors are not all known are reported but not fitted.
@@ -11,7 +11,7 @@ import json, math, sqlite3, sys, collections, os
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 scen = int(sys.argv[sys.argv.index('--scenario') + 1]) if '--scenario' in sys.argv else None
 V = json.load(open(args[0]))
-db = sqlite3.connect(args[1] if len(args) > 1 else os.path.dirname(os.path.abspath(__file__)) + '/../master.mdb')
+db = sqlite3.connect(args[1] if len(args) > 1 else os.path.dirname(os.path.abspath(__file__)) + '/../pkg/loopopt/export/master.mdb')
 q = lambda s, *a: db.execute(s, a).fetchall()
 
 # skill -> white spark factor group, and the tier it was bought at

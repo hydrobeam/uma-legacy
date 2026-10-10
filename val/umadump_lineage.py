@@ -2,20 +2,22 @@
 tool (uma.moe's lineage planner) can compute affinity and spark chances for the same lineages, and print what our
 model gives for exactly those veterans.
 
-usage: umadump_lineage.py OUT_JSON [LOOP_OUTPUT] [EXPECT_MD]
-  LOOP_OUTPUT  a deck/skills job output (default val/refpu__pkg_loopopt__pal_U.out); its first loop is used
+usage: umadump_lineage.py OUT_JSON LOOP_OUTPUT [EXPECT_MD]
+  LOOP_OUTPUT  a deck/skills job output whose first loop has four members (e.g. a deck job with `sizes: [4]`; the
+               reference setups' best results are three-uma rotations, which this script does not handle)
 Every member gets one veteran per pair of the other three as its parents (12 veterans): lineage (T, P1, P2, X) uses
-P1 bred from (P2, X) and P2 bred from (P1, X), as in the SCF scheme. Each veteran and each of its parents carries
+P1 bred from (P2, X) and P2 bred from (P1, X), as in the solver's `scf` scheme. Each veteran and each of its parents carries
 all 8 target skill sparks at fixed stars (STARS). A scheduled G1 counts as won when its win chance is >= 50%.
 """
 import json, sqlite3, sys, os, itertools
 S = os.path.dirname(os.path.abspath(__file__)) + '/../'
 out_path = sys.argv[1]
-loop_path = sys.argv[2] if len(sys.argv) > 2 else S + 'val/refpu__pkg_loopopt__pal_U.out'
+loop_path = sys.argv[2]
 md_path = sys.argv[3] if len(sys.argv) > 3 else None
 D = json.load(open(S + 'pkg/loopopt/data.json'))
-db = sqlite3.connect(S + 'master.mdb'); q = lambda s, *a: db.execute(s, a).fetchall()
+db = sqlite3.connect(S + 'pkg/loopopt/export/master.mdb'); q = lambda s, *a: db.execute(s, a).fetchall()
 TOP = json.load(open(loop_path))['top'][0]; L = TOP['loop']
+assert len(L['members']) == 4, f"{loop_path}: the first loop has {len(L['members'])} members; this script needs four"
 DECKS = TOP.get('decks') or ([TOP['deck']] * 4 if 'deck' in TOP else [{'card_ids': []}] * 4)
 members = [m['id'] for m in L['members']]
 UI = {u['id']: i for i, u in enumerate(D['umas'])}

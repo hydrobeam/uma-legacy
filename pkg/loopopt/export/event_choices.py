@@ -66,9 +66,9 @@ def pal_event(gdir, sid, cid):
 
 
 def prioritise(choices, k, reward, skname):
-    """IT takes an event's first choice unless a prioritized skill sits on another (AGENTS.md, IT's rule): the skills that
-    steer it to choice k (1-based) are those on choice k and on no choice above it. [] for k = 1; None when there is
-    none (IT cannot be steered there)."""
+    """IT takes an event's first choice unless a prioritized skill sits on another (docs/MODEL.md, Deck side, "IT event
+    choices"): the skills that steer it to choice k (1-based) are those on choice k and on no choice above it. [] for
+    k = 1; None when there is none (IT cannot be steered there)."""
     chs = [ch for ch in choices if isinstance(ch, list) and len(ch) == 2 and isinstance(ch[1], list)]
     if k == 1: return []
     above = set().union(*[skills_of(ch, reward, skname) for ch in chs[:k - 1]])

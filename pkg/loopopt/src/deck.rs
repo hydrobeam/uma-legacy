@@ -12,10 +12,15 @@
 //!     card is in the deck, e.g. pal golds).
 //! Deck hint odds per target: 1 - prod(1 - p) over sources, separately for white and gold.
 //!
-//! Search (exact for the model): race schedules maximise affinity and do not depend on the deck, so each
-//! foursome's per-lineage proc rates are computed once and every deck on the Pareto frontier is scored against
-//! them. Foursomes are visited in descending order of a ceiling computed with the best odds any deck gives per
-//! target; a foursome is solved only while its ceiling for some pal count can still beat that pal count's best.
+//! Search (exact for the model under the assumed caps `EXACT_CAPS`): race schedules maximise affinity and do not
+//! depend on the deck. Every deck legal for a trainee (the character rule included) is enumerated by chain-kind key
+//! (`DeckSpace`) and ranked by the product of its per-target odds; decks and loops that could still win are scored
+//! exactly (`joint_fast`), bounded by their structure class's cap on exact over product odds. Four-uma loops and
+//! three-uma rotations (`sizes`) are generated in bands of a separable bound and solved (schedules, then exact
+//! values) only while a ceiling (pairwise affinity ceilings first, then the structure's own schedules, with per-uma
+//! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
+//! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (the default, `run_multi`) give each trainee
+//! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
 use super::*;
 use crate::skills::{chart_rows, check_sizes, lins, member_json, Model, SkillJob, SkillsRaw, GEN_GOLD};
 use serde_json::{json, Value};
@@ -1181,10 +1186,10 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
 /// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Chain
 /// cards share one run's chain events, so the targets their links feed ("chain-varying") land or miss together through
 /// the event count, and chain cards compete for those events, which can correlate even one target's feeders: every cap
-/// is assumed, from measurement. At most one chain-varying target and no multi-target group 1.05 (no such deck scored
-/// yet); two 1.05 (largest seen 1.0082); three or more, or a multi-target group, 1.25 (largest seen: three 1.127, King
-/// Halo in boot_mob, so the 1.10 first proposed for three is not used; four or more 1.164). Every deck scored reports
-/// its ratio by class (`exact.class_max_ratio`).
+/// is assumed, from measurement. At most one chain-varying target and no multi-target group 1.05 (no ratio above 1.0
+/// seen); two 1.05 (largest seen 1.037, val/ref pal_Fk3); three, and four or more or a multi-target group, 1.25 (largest
+/// seen: three 1.127, King Halo in val/plan boot_mob, which rules out a 1.10 cap for three; four or more 1.180, val/ref
+/// pal_UF). Every deck scored reports its ratio by class (`exact.class_max_ratio`).
 pub(crate) const EXACT_CAPS: [f64; 4] = [1.05, 1.05, 1.25, 1.25];
 /// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
 pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];

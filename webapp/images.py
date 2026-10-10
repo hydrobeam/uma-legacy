@@ -220,7 +220,7 @@ def ui_sprites(force, manifest):
 # (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
 # a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
 # face tones set so each dark face stands off the dark panel (#1f2328) by about the CIELAB lightness gap its light face
-# has on white, the skill tile under it (owner, 2026-10-09: 12, then 9, read too light): skill tile ~6 (light 14), spark
+# has on white, the skill tile below it (gaps of 12 and 9 read too light): skill tile ~6 (light 14), spark
 # bar ~10 (9), button ~5 (4)
 DARK_SPRITES = {'spark_white': (0.09, 0.245, 1.0, 0), 'skill_white': (0.09, 0.235, 1.0, 0), 'star_off': (0.30, 0.58, 1.15, 0),
                 'btn_w': (0.09, 0.235, 1.0, 0), 'pill_w': (0.09, 0.235, 1.0, 0), 'chk_off': (0.09, 0.26, 1.0, 0), 'tog_off': (0.09, 0.24, 1.0, 0),
