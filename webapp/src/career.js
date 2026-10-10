@@ -199,7 +199,9 @@ const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results
 // the plan's row for a career (null before the plan is made)
 const planRow = (r) => planS.state === 'done' ? planS.r.options.find(o => keyOf(o) === keyOf(r)) || null : null;
 // an option's role: the best odds now, a loop member, or an uma of the best career's lineage or of your veterans
-const roleText = (o) => o.role === 'plan' ? 'in the plan\'s trio' : o.role === 'finish' ? 'the plan\'s finisher' : o.role === 'loop' ? 'loop member' : o.role === 'candidate' ? 'candidate' : 'builder';
+// her place in today's estimate (the route the (i) popup walks through), in plain words
+const roleText = (o) => o.role === 'plan' ? 'One of the two parents in today\'s estimate' : o.role === 'finish' ? 'The last run in today\'s estimate (with the two 8/8 parents)'
+  : o.role === 'loop' ? 'In your loop' : o.role === 'candidate' ? 'A possible parent, not on today\'s cheapest route' : 'Not on today\'s estimated route';
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
 // an option's score: one career deep, plus (for the few highest and the best odds) what her veteran opens for the next
@@ -846,11 +848,13 @@ function optionsEl() {
     c0.appendChild(pickWhat(r));
     const tags = el('span', 'otags');
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
-    if (P && r.near) { const a = el('span', 'otag', 'about the same'); a.title = 'Within a quarter of a career of the best Saves per run: too close for the estimate to call, so the planner takes the better odds'; tags.appendChild(a); }
+    if (P && r.near) { const a = el('span', 'otag', 'about the same'); a.title = 'Within 5% of the best Saves per run (at least a quarter of a career): too close for the estimate to call, so the planner takes the better odds'; tags.appendChild(a); }
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
     if (tags.childElementCount) c0.appendChild(tags);
-    const sv = el('td', 'orole', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–');
-    if (P && r.index != null) { sv.title = `${roleText(r)}` + (r.lift > 0 ? `: ${pct(r.lift)} of her rolls make the plan cheaper` : '') + (r.two_step != null ? `; ${netText(r.two_step)} from the next career her best rolls open` : '') + (r.near ? '; about the same as the pick' : ''); }
+    // the number carries the tooltip (its balloon points at the number, not the middle of the cell)
+    const sv = el('td', 'orole'), num = el('span', 'onum', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–'); sv.append(num);
+    if (P && r.index != null) { num.tabIndex = 0; num.title = `${roleText(r)}` + (r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : '')
+      + (r.two_step != null ? `; ${netText(r.two_step)} counting the next career her best results open up` : '') + (r.near ? '. About the same as the pick' : ''); }
     row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
@@ -890,7 +894,7 @@ function openSaveWhy(P) {
     para(`<b>This career</b>: her chance of landing all ${n} targets in this one run.`),
     para(`<b>Saves per run</b>: how many careers sooner you reach a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}) if you run this career next, <i>counting the run itself</i>, going by the planner's estimate below. <b>+5</b> means about five careers sooner.`),
     para(`The best odds aren't always the best choice: a career can be worth more for <b>the veteran she leaves behind</b>, who becomes a parent for your next runs.`),
-    para(`<b>About the same</b>: a career within a quarter of a career of the best Saves per run. That is closer than the rough estimate can tell apart, so among those the planner <i>takes the better odds</i>.`),
+    para(`<b>About the same</b>: a career within <b>5%</b> of the best Saves per run (at least a quarter of a career either way). That is closer than the rough estimate can tell apart, so among those the planner <i>takes the better odds</i>.`),
     el('div', 'gmdsub', 'How it is worked out'),
     para(`The planner makes a <b>rough estimate</b> of how many careers you still need${V ? ` (<b>about ${V}</b> today)` : ''}. Then, for every way this career could turn out, it adds her veteran to your parents and estimates again. <i>How much the estimate drops</i>, minus the run itself, is the saving.`),
     drop('Today\'s estimate, step by step', el('p', 'oloop', route),
