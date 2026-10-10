@@ -972,7 +972,9 @@ const TESTS = {
     await pg.keyboard.press('Escape');
     await navClick(pg, '#era-global'); await settle(pg);
     check('back on Global: Unity Cup with its golds, rank below SS', (await scen(pg)) === 'unity' && (await pg.getAttribute('#rank', 'data-value')) === '0.50,0.45,0.05'
-      && (await pg.getAttribute('#g-20049', 'data-g')) === '2' && await pg.evaluate(() => window.__runs.at(-1).scenario === 'unity'));
+      && (await pg.getAttribute('#g-20049', 'data-g')) === '2'
+      // (Global's result from before the switch is saved: it shows as done, no search; else the search is Unity Cup's)
+      && await pg.evaluate(() => window.__runs.length === 0 ? /^Checked [\d,]+ decks/.test(document.getElementById('run-note').textContent) : window.__runs.at(-1).scenario === 'unity'));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
