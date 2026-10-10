@@ -9,7 +9,8 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 - Rust 1.98.1 with `rust-src` and the `wasm32-unknown-unknown` target (`rust-toolchain.toml`; rustup installs them
   on first use). The wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1`.
 - Node + npm: `npm ci` in `webapp/` runs on first use (binaryen's `wasm-opt`, esbuild, wrangler, three, Playwright).
-  The browser suite needs Playwright's browsers once: `cd webapp && npx playwright install chromium firefox`.
+  Playwright's browsers go into `webapp/node_modules` (`./build.sh browsers`, run by `test`, `testq` and `runners`;
+  `build.sh` sets `PLAYWRIGHT_BROWSERS_PATH=0`).
 - uv: the Python environment (UnityPy and Pillow for the image steps; everything else is stdlib).
 - What a fresh clone builds with no game files: `./build.sh` (native with its tests, wasm, page: the page reads the
   tracked data files; `page` downloads GameTora's pinned files once), `./build.sh testq` / `test`, and
@@ -31,14 +32,17 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 | `wasm` | wasm32 build (build-std), `wasm-opt -O3`, then `example.json` (the result shown before the first search) | rust-src, node |
 | `page` | `webapp/dist/` (see below) | node |
 | `runners` | each uma's mini model running: a strip of 18 frames per uma in `webapp/img/run/{chara}.avif` (`webapp/chibi/chibi.py`; see *Runner strips*) | the game's decrypted files, `cache/meta_global.db`, Global master.mdb, node + playwright |
-| `images` | game art into `webapp/img/{kind}/{id}.avif`: character icons, card art, skill icons, race banners, scenario logos, UI sprites (lossless WebP: the friend frame, card type icons, rank badges, and the career page's veteran card: aptitude grade letters `atlas/common utx_ico_statusrank_00..07`, spark bars and bullets `atlas/singlecommon utx_frm_factor_list_01..04_sl` / `utx_ico_factor_01..02`, skill tiles `atlas/common utx_btn_skill_base_00..03_sl`, the tab pill `utx_btn_square_00_sl`; the Enhance-menu buttons `home/ui/texture utx_btn_home_umamusume_00..02`; the game's buttons and check box from the install's `resources.assets`: `utx_btn_s_00..03_sl`, `utx_btn_checkbox_00..01`), dark-mode versions of the light ones (`*_dark`, made here: the game has no dark mode), and the scenario select art (`single/banner/bnr_chara_big_NNN`, kind `scenart`), and every named mob uma's portrait (`mob/mob_chr_icon_ID_*`, kind `mob`: the career planner's sample veterans); only new ids unless `IMAGES_FORCE=1`; `img/manifest.json` lists sources and gaps. Never committed (© Cygames); without it the page shows initials | `$UMA_DECRYPTED` (default: the Steam/Proton install's `LocalLow/Cygames/Umamusume/decrypted`), `$UMA_GAME_DATA` (default: the Steam install's `UmamusumePrettyDerby_Data`) |
+| `images` | game art into `webapp/img/{kind}/{id}.avif`: character icons, card art, skill icons, race banners, scenario logos, UI sprites (lossless WebP: the friend frame, card type icons, rank badges, and the career page's veteran card: aptitude grade letters `atlas/common utx_ico_statusrank_00..07`, spark bars and bullets `atlas/singlecommon utx_frm_factor_list_01..04_sl` / `utx_ico_factor_01..02`, skill tiles `atlas/common utx_btn_skill_base_00..03_sl`, the tab pill `utx_btn_square_00_sl`; the Enhance-menu buttons `home/ui/texture utx_btn_home_umamusume_00..02`; the game's buttons and check box from the install's `resources.assets`: `utx_btn_s_00..03_sl`, `utx_btn_checkbox_00..01`), dark-mode versions of the light ones (`*_dark`, made here: the game has no dark mode), and the scenario select art (`single/banner/bnr_chara_big_NNN`, kind `scenart`), and every named mob uma's portrait (`mob/mob_chr_icon_ID_*`, kind `mob`: the career planner's sample veterans); only new ids unless `IMAGES_FORCE=1`; `img/manifest.json` lists sources and gaps. Never committed (© Cygames); without it the page shows initials | `game/decrypted/` and `game/data/` (or `$UMA_DECRYPTED`, `$UMA_GAME_DATA`) |
 | `serve` | serves `webapp/dist` on http://localhost:8000 (`PORT=…`). The page fetches its solver and images, so it must be served, not opened as a file | node |
 | `test` | the browser suite (below) | node, Playwright |
 | `testq` | the browser suite's fast tier (below) | node, Playwright |
 | `deploy` | builds the page, uploads `webapp/dist` to Cloudflare Pages with wrangler (project `uma-legacy` unless `CF_PAGES_PROJECT`; `CF_PAGES_BRANCH=preview` publishes to the preview URL; `SITE_URL` sets the link-preview tags' host). Refuses when `webapp/`, `pkg/` or `jp/` have uncommitted changes (`DEPLOY_DIRTY=1` overrides). One-time setup: `cd webapp && npx wrangler login`, then `npx wrangler pages project create uma-legacy --production-branch main` (plus `--force` to stay on classic Pages, see *Releases*) | node, a Cloudflare login |
 | `val TAG` / `valq TAG` | validation (below) | native |
 
-Game files: `images` and `runners` read game files already decrypted on your machine (`$UMA_DECRYPTED`), plus, for
+Everything a build reads lives inside the repository folder (all gitignored); nothing is looked up elsewhere on the
+machine. Game files: `images` and `runners` read the game's decrypted asset tree in `game/decrypted/` (paths as in the
+game, e.g. `chara/chr1001/...`) and `images` the install's `*_Data` folder in `game/data/` (`$UMA_DECRYPTED` and
+`$UMA_GAME_DATA` point elsewhere instead), plus, for
 the runners, a plain SQLite copy of the game's asset index at `cache/meta_global.db` and, for JP-only art, bundles
 placed in `cache/jp_bundles/`. The module that reads the game's encrypted asset index and fetches bundles is not
 published in this repository. Without these files the page builds and works, with initials in place of art and the
@@ -136,8 +140,8 @@ run clip is decoded in Python (dense and constant curves, bones by the CRC32 of 
 `webapp/chibi/render.mjs` renders `chibi.html` (three.js, a dev dependency) in headless Chromium: flat game colours with
 an outline, the mouth on the open happy shape, the tail simulated as a spring chain on her hip (run to a steady loop),
 hair, skirt and ears swaying with her steps. 18 frames (0.6 s) at 128 px, cropped to her box over the loop, AVIF.
-The tools (AssetStudioModCLI v0.19.0 with a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 from Arch's libxml2-legacy
-when the system lacks it) are fetched into `cache/chibi/tools` on first use; exports are cached per uma in
+The tools (AssetStudioModCLI v0.19.0 with a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 from Arch's libxml2-legacy,
+always this copy, never the system's) are fetched into `cache/chibi/tools` on first use; exports are cached per uma in
 `cache/chibi/work/ID` (delete one to redo it). About 3 s per uma; all 83 roster umas render (4.9 MB, a page loads one).
 
 What the pipeline learned, for when it breaks:

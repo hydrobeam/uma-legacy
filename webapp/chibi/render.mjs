@@ -3,14 +3,14 @@
 // Reads WORK_DIR/ID/{glb,t,run.json} (webapp/chibi/chibi.py writes them) and writes WORK_DIR/ID/frames/fNN.png: one
 // loop of her run, 192 px square on a transparent background, from the game's three-quarter view.
 import { createRequire } from 'module';
-import { execSync } from 'child_process';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const H = path.dirname(fileURLToPath(import.meta.url));
-let pw; try { pw = createRequire(import.meta.url)('playwright'); } catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('playwright'); }
+process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';   // the browsers live in webapp/node_modules (./build.sh browsers)
+let pw; try { pw = createRequire(import.meta.url)('playwright'); } catch { console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)'); process.exit(1); }
 const { chromium } = pw;
 const [work, ...jobs] = process.argv.slice(2);
 const ROOTS = { '/three/': path.join(H, '..', 'node_modules', 'three'), '/work/': path.resolve(work) };

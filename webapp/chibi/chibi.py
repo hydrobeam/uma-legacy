@@ -15,15 +15,14 @@ has only the newer libxml2.
 
 usage: uv run webapp/chibi/chibi.py [all | ID ...] [--force]     (./build.sh runners: all)
 """
-import ctypes.util, glob, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, urllib.request, zipfile, zlib
+import glob, io, json, os, shutil, sqlite3, struct, subprocess, sys, tarfile, urllib.request, zipfile, zlib
 
 H = os.path.dirname(os.path.abspath(__file__)); W = os.path.dirname(H); R = os.path.dirname(W)
 CACHE = os.path.join(R, 'cache', 'chibi'); TOOLS = os.path.join(CACHE, 'tools'); WORK = os.path.join(CACHE, 'work')
 OUT = os.path.join(W, 'img', 'run')
 META = os.path.join(R, 'cache', 'meta_global.db')
 MDB = os.path.join(R, 'pkg', 'loopopt', 'export', 'master.mdb')
-ASSETS = os.environ.get('UMA_DECRYPTED', os.path.expanduser(
-    '~/.local/share/Steam/steamapps/compatdata/3224770/pfx/drive_c/users/steamuser/AppData/LocalLow/Cygames/Umamusume/decrypted'))
+ASSETS = os.environ.get('UMA_DECRYPTED', os.path.join(R, 'game', 'decrypted'))   # as webapp/images.py
 RUN = '3d/motion/mini/event/body/type00/anm_min_eve_type00_run00_loop'
 TILE, FRAMES_Q = 128, 60
 ASMOD = os.path.join(TOOLS, 'asmod', 'AssetStudioModCLI_net9_linux64', 'AssetStudioModCLI')
@@ -50,11 +49,10 @@ def tools():
         print('fetching FBX2glTF'); open(FBX2GLTF, 'wb').write(get(DOWNLOADS['fbx2gltf'])); os.chmod(FBX2GLTF, 0o755)
     if not os.path.exists(os.path.join(DOTNET, 'dotnet')):
         print('fetching the .NET 9 runtime'); tarfile.open(fileobj=io.BytesIO(get(DOWNLOADS['dotnet']))).extractall(DOTNET)
-    if not ctypes.util.find_library('xml2') or not any(os.path.exists(p) for p in ('/usr/lib/libxml2.so.2', '/usr/lib/x86_64-linux-gnu/libxml2.so.2')):
-        if not os.path.exists(os.path.join(XML, 'libxml2.so.2')):
-            print('fetching libxml2.so.2 (libxml2-legacy)'); d = os.path.join(TOOLS, 'xml'); os.makedirs(d, exist_ok=True)
-            pkg = os.path.join(d, 'libxml2-legacy.pkg.tar.zst'); open(pkg, 'wb').write(get(DOWNLOADS['libxml2']))
-            subprocess.run(['tar', '--zstd', '-xf', pkg, '-C', d], check=True)
+    if not os.path.exists(os.path.join(XML, 'libxml2.so.2')):   # always the copy in cache/chibi/tools, never the system's
+        print('fetching libxml2.so.2 (libxml2-legacy)'); d = os.path.join(TOOLS, 'xml'); os.makedirs(d, exist_ok=True)
+        pkg = os.path.join(d, 'libxml2-legacy.pkg.tar.zst'); open(pkg, 'wb').write(get(DOWNLOADS['libxml2']))
+        subprocess.run(['tar', '--zstd', '-xf', pkg, '-C', d], check=True)
     env = dict(os.environ, DOTNET_ROOT=DOTNET, LD_LIBRARY_PATH=XML + (':' + os.environ['LD_LIBRARY_PATH'] if os.environ.get('LD_LIBRARY_PATH') else ''))
     return env
 

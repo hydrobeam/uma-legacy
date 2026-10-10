@@ -186,7 +186,7 @@ print(f"bounded {len(allF)} foursomes", file=sys.stderr)
 
 # ---- 2. best-first with real schedules ---------------------------------------------------------
 def run_crate(job):
-    p = '/tmp/skills_job.json'
+    p = os.path.join(HERE, '..', '..', '..', 'cache', 'skills_job.json'); os.makedirs(os.path.dirname(p), exist_ok=True)
     json.dump(job, open(p, 'w'))
     r = subprocess.run([os.path.join(CRATE, 'target/release/loopopt'), os.path.join(CRATE, 'data.json'), p], capture_output=True, text=True, check=True)
     return json.loads(r.stdout)

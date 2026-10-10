@@ -7,15 +7,15 @@
 // a group's lines print together when it ends. Exit code 1 if any check fails. Expectations come from the page's own embedded data where possible, so a data
 // update does not break the suite; the one fixed number is the Global default search (1 in 119, R cards off, Unity Cup).
 import { createRequire } from 'module';
-import { execSync } from 'child_process';
 import { AsyncLocalStorage } from 'async_hooks';
 import { serveDist } from './serve.mjs';
 
 const local = process.env.LLP_URL ? null : await serveDist();
 const URL = process.env.LLP_URL || local.url;
+process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';   // the browsers live in webapp/node_modules (./build.sh browsers)
 let pw;
 try { pw = createRequire(import.meta.url)('playwright'); }
-catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('playwright'); }
+catch { console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)'); process.exit(1); }
 
 const argv = process.argv.slice(2);
 // the fast tier (`quick`; ./build.sh testq): each page's core path, Chromium only unless a browser is named: the planner

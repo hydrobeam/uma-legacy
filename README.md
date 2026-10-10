@@ -27,7 +27,7 @@ Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.ast
 ```
 ./build.sh            # the solver with its tests, the wasm and the page (webapp/dist)
 ./build.sh serve      # http://localhost:8000 (the page needs http: it loads WebAssembly)
-./build.sh testq      # the browser suite's fast tier (once: cd webapp && npx playwright install chromium firefox)
+./build.sh testq      # the browser suite's fast tier (installs its browsers into webapp/node_modules once)
 ./build.sh valq TAG   # the validation jobs against the reference outputs
 ```
 

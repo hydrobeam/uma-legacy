@@ -39,11 +39,13 @@ import UnityPy
 from PIL import Image
 
 H = os.path.dirname(os.path.abspath(__file__)); R = os.path.dirname(H)
-ASSETS = os.environ.get('UMA_DECRYPTED', os.path.expanduser(
-    '~/.local/share/Steam/steamapps/compatdata/3224770/pfx/drive_c/users/steamuser/AppData/LocalLow/Cygames/Umamusume/decrypted'))
+# the game's files, inside the repository (gitignored): game/decrypted/ holds the client's decrypted asset tree
+# (paths as in the game, e.g. chara/chr1001/...), game/data/ its install's *_Data folder; either can be pointed
+# elsewhere with UMA_DECRYPTED / UMA_GAME_DATA
+ASSETS = os.environ.get('UMA_DECRYPTED', os.path.join(R, 'game', 'decrypted'))
 OUT = os.path.join(H, 'img')
 # the game install's built-in assets: the common buttons live in resources.assets, not in the downloaded bundles
-GAME_DATA = os.environ.get('UMA_GAME_DATA', os.path.expanduser('~/.local/share/Steam/steamapps/common/UmamusumePrettyDerby/UmamusumePrettyDerby_Data'))
+GAME_DATA = os.environ.get('UMA_GAME_DATA', os.path.join(R, 'game', 'data'))
 SIZE = {'uma': 96, 'mob': 96, 'outfit': 192, 'card': 192, 'skill': 48, 'race': (256, 128), 'scen': (288, 160), 'scenart': (360, 360)}   # 2x the largest display (race banners ~128x64; scenario logos fit 144x80)
 # the scenario logos' textures are square, but the game draws them 1.25x as wide as tall (resources.assets:
 # PartsSingleModeStartScenarioLogo/bnr_00N RawImage 642x514, DialogSingleModeStartScenarioDetail/scenarioImage 446x355);
