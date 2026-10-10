@@ -103,8 +103,7 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 `images` writes `webapp/img/{kind}/{id}.avif` (AVIF q55, loaded lazily) and `img/manifest.json` (sources and gaps):
 character icons, card art, skill icons, race banners, scenario logos and select art, mob portraits, and the UI
 sprites as lossless WebP with dark versions made here (the game has no dark mode). The full list of kinds and the
-bundles they come from is in `webapp/images.py`'s docstring. The Global client indexes some content before Global
-releases it, which is why Grand Masters-era art exists locally. `uv run webapp/icons.py` renders the favicons and the
+bundles they come from is in `webapp/images.py`'s docstring. `uv run webapp/icons.py` renders the favicons and the
 link-preview image from `webapp/icons/favicon.svg`.
 
 `runners` writes one sprite strip per uma to `webapp/img/run/{chara}.avif`, the uma being planned running while a
@@ -130,12 +129,9 @@ The solver runs as WebAssembly in a Web Worker (`worker.template.js`). Saved set
 `localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
 settings, `ui`: what is on screen). No framework.
 
-`src/` at a glance: `main.js` (entry), `settings.js`, `state.js`, `data.js`, `search.js` (auto-search), `save.js` (what
-a settings change does), `engine.js` (the worker), `job.js` (the job fields both pages send), `setup.js` (the shared
-settings editors), `roster.js`, `targets.js`, `scenario.js`, `cards.js`, `results.js`, `popover.js`, `agenda.js` (race
-schedule), `affinity.js`, `afftable.js`, `odds.js`, `io.js` (export and import), `images.js`, `sortmenu.js`, `dom.js`,
-`gmtip.js` (tooltips); the career page: `career.js`, `vets.js` (veterans), `details.js` (the veteran card),
-`statestore.js` (the solver's kept work in IndexedDB), `umadump.js` (import).
+In `src/`, `main.js` and `career.js` are the two pages' entries; `engine.js` talks to the worker, `job.js` builds the
+job both pages send, `save.js` decides what a settings change does, and `statestore.js` keeps the solver's work in
+IndexedDB.
 
 ## Tests
 
