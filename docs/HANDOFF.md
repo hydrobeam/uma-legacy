@@ -1,4 +1,4 @@
-# Handoff: where the Legacy Loop Planner stands (2026-10-09)
+# Handoff: where the Legacy Loop Planner stands (2026-10-10)
 
 ## 1. Current results (val references, 2026-10-09; per-uma decks, star mix below SS)
 
@@ -16,13 +16,6 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 
 ## 2. Releases
 
-Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases): v44 in production, deployed 2026-10-10
-(page only, solver unchanged: target skill presets; dark mode mirrors light mode, the dark skill tile darker with one
-even rim; no CSS pills behind sprite buttons and tiles; the career page's header, loading frame beside the tree,
-Career choices with an (i) explanation in plain words, Saves per run measured by a rough estimate).
-Open from this round: the end-to-end calibration on the uma-it runs (`docs/CALIBRATION.md`, in progress), then the
-policy simulator to the fully-looped goal to measure V against simulated play (`val/sim/README.md`).
-
 | Tag | State |
 |---|---|
 | v24 | page rework (outfit tiles, card grid, agenda, auto-search), browser suite, versioned settings, ES modules |
@@ -38,7 +31,8 @@ policy simulator to the fully-looped goal to measure V against simulated play (`
 | v41 | career planner speed (first plan about 12 s -> under 2 s), Reroll's per-outcome table, the career planner on /about |
 | v42 | one run, one answer on the career page; sample veterans 3x faster; mobile pass; loop planner audit fixes |
 | v43 | Reroll and Grand Masters speed: per-class exact caps, gm16 plan -27.5%; band-overflow ladder; deck and corner memos kept between jobs; `y_hi` tightened |
-| v44 | see above |
+| v44 | target skill presets, dark-mode mirror, career page polish, Saves per run explained plainly |
+| v45 | see above |
 
 ## 3. Open threads, most valuable first
 
