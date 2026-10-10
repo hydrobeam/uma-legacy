@@ -591,6 +591,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rbtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .rbtitle h2 { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
 .rbtitle .rhead { flex: 1 1 24em; }
+.rhead.quiet { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* career: heard, not shown (career.js paint) */
 /* the pedigree: trainee, then her parents, then theirs, left to right, joined by brackets */
 .ped { display: flex; align-items: center; margin-top: 6px; min-width: 0; }
 .pt { flex: 0 0 290px; min-width: 0; }
