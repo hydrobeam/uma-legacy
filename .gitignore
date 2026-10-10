@@ -2,7 +2,6 @@
 /*
 !/.gitignore
 !/build.sh
-!/BUILD.md
 !/README.md
 !/AGENTS.md
 !/LICENSE
@@ -23,11 +22,9 @@
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
 !/pkg/loopopt/README.md
-!/pkg/loopopt/results/
 !/pkg/loopopt/card_events.json
 !/pkg/loopopt/event_shares.json
 !/pkg/loopopt/data.json
-!/pkg/loopopt/data_xmas_vodka.json
 !/pkg/loopopt/web_cards.json
 !/pkg/loopopt/web_skills.json
 !/pkg/loopopt/career.json
@@ -36,7 +33,6 @@
 /jp/*
 !/jp/export/
 !/jp/jobs/
-!/jp/decode_ev.py
 !/jp/data.json
 !/jp/web_cards.json
 !/jp/web_skills.json
@@ -70,10 +66,8 @@
 /val/*
 !/val/runval.py
 !/val/slow.json
-!/val/cmp.py
 !/val/cmp2.py
 !/val/jobs.json
-!/val/jobs_noR.json
 !/val/ref__*.out
 !/val/ref_times.txt
 !/val/planval.py
@@ -98,7 +92,6 @@
 !/val/owncheck.py
 !/val/permcheck.py
 !/val/joint_check.py
-!/val/permcheck_big.py
 !/val/policy_sim.mjs
 !/val/policy/
 /val/policy/*
@@ -111,3 +104,4 @@ master.mdb
 master.mdb.*
 __pycache__/
 !/pkg/loopopt/validation/
+/pkg/loopopt/validation/_jobs.json

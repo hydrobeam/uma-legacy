@@ -1,4 +1,4 @@
-"""Build ../card_events.json from the cached GameTora training-event files (cache/gametora/: ./build.sh gametora) + master.mdb.
+"""Build ../card_events_nodates.json (no pal first-year dates) from the cached GameTora training-event files (cache/gametora/: ./build.sh gametora) + master.mdb.
 Chain links come from master.mdb (single_mode_story_data.show_progress_1 for the event's story id).
 Reward codes index dict/evrew with an offset of 36 (verified: every card's bond reward decodes to its own
 character, and King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match the wiki).

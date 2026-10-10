@@ -18,7 +18,7 @@
 #   serve    serve webapp/dist on http://localhost:8000 (PORT=...); the page fetches its wasm and images, so open it there
 #   deploy   build the page and upload webapp/dist to Cloudflare Pages (CF_PAGES_PROJECT, default uma-legacy;
 #            CF_PAGES_BRANCH=preview for a preview URL); refuses with uncommitted changes under webapp/ pkg/ jp/
-#   val TAG  run the 24 validation jobs (shared deck, and the 23 deck jobs again with per-uma decks) in parallel with
+#   val TAG  run the 29 validation jobs (23 deck, 1 skills, 5 career; the 23 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
 #   all      data events native pb wasm page (not images: it needs the game install)

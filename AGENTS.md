@@ -53,8 +53,8 @@ Verdict first, then numbers; no padding. For this project:
   the latest tag). Then stop and say "ready to deploy": `./build.sh deploy` (Cloudflare Pages) is the maintainer's,
   run only on their explicit word each time (rollbacks are deploys too). Verify a deploy on its own hash URL; branch
   URLs cache HTML for 5 minutes.
-- Keep docs current: README (user-facing), `pkg/loopopt/README.md` (model and job fields), `BUILD.md`,
-  `docs/MODEL.md`. A change to a modelling constant updates the page's model text too
+- Keep docs current: README (user-facing), `docs/SOLVER.md` (model and job fields), `docs/BUILD.md`,
+  `docs/MODEL.md`, `docs/RESEARCH.md`. A change to a modelling constant updates the page's model text too
   (`webapp/about.template.html`, search "Model."). Docs are long-term memory: keep them lean, one place per fact.
 - **Shell safety.** No `rm` on paths built from variables or globs, even in scratch: write fresh output to a new
   directory at a literal path instead. Every `rm` targets a file you created, by literal path, for a stated reason.
