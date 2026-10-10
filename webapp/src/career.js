@@ -833,13 +833,14 @@ function optionsEl() {
   const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen) : last.r.results;
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // the two number columns' headers explain themselves on hover or keyboard focus (gmtip.js); on touch, "What do these mean?"
+  // This career explains itself on hover or keyboard focus (gmtip.js); Saves per run needs the (i) popup
   const n = state.targets.length, ths = tb.tHead.rows[0].cells;
-  for (const [i, text, tip] of [[1, 'This career', `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`],
-    [2, 'Saves per run', `Careers to a fully looped parent now, minus careers if you run this one first, her own run included, by the planner's crude estimate. +1.1: about 1.1 careers sooner by that estimate.`]]) {
-    const t = el('span', 'thtip', text); t.title = tip; t.tabIndex = 0; ths[i].appendChild(t); }
+  const t = el('span', 'thtip', 'This career'); t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`; t.tabIndex = 0;
+  ths[1].appendChild(t); ths[2].textContent = 'Saves per run';
   // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
-  if (P) { const q = el('button', 'btn savewhy', 'What do these mean?'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog'); q.onclick = () => openSaveWhy(P); box.appendChild(q); }
+  // (the popup behind an (i) at the right end of the section's header bar, where it shows at every width)
+  if (P) { const q = el('button', 'oinfo savewhy', 'i'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog');
+    q.setAttribute('aria-label', 'What these numbers mean'); q.title = 'What these numbers mean'; q.onclick = () => openSaveWhy(P); box.appendChild(q); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
@@ -887,12 +888,12 @@ function openSaveWhy(P) {
   const drop = (title, ...kids) => { const d = el('details', 'savemore'); d.append(el('summary', '', title), ...kids); return d; };
   body.append(
     para(`<b>This career</b>: her chance of landing all ${n} targets in this one run.`),
-    para(`<b>Saves per run</b>: how many careers sooner you reach a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}) if you run this career next, <i>counting the run itself</i>, measured by the planner's <i>crude estimate</i> below. <b>+5</b> means about five careers sooner by that estimate.`),
+    para(`<b>Saves per run</b>: how many careers sooner you reach a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}) if you run this career next, <i>counting the run itself</i>, going by the planner's estimate below. <b>+5</b> means about five careers sooner.`),
     para(`The best odds aren't always the best choice: a career can be worth more for <b>the veteran she leaves behind</b>, who becomes a parent for your next runs.`),
     el('div', 'gmdsub', 'How it is worked out'),
-    para(`The planner makes a <b>crude estimate</b> of how many careers you still need${V ? ` (<b>about ${V}</b> today)` : ''}. Then, for every way this career could turn out, it adds her veteran to your parents and estimates again. <i>How much the estimate drops</i>, minus the run itself, is the saving.`),
+    para(`The planner makes a <b>rough estimate</b> of how many careers you still need${V ? ` (<b>about ${V}</b> today)` : ''}. Then, for every way this career could turn out, it adds her veteran to your parents and estimates again. <i>How much the estimate drops</i>, minus the run itself, is the saving.`),
     drop('Today\'s estimate, step by step', el('p', 'oloop', route),
-      para(`A <i>crude yardstick</i>, not advice: it assumes the simplest road (${n}/${n}s of two umas, then a career of a third with them as parents), and only its total is used.`)));
+      para(`A <i>yardstick</i>, not advice: it assumes the simplest road (${n}/${n}s of two umas, then a career of a third with them as parents), and only its total is used.`)));
   if (exTxt) body.append(drop('An example', para(exTxt)));
   saveDlg.appendChild(body);
   const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
