@@ -73,6 +73,10 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
    badge is clipped.
 8. **Pending the owner's review:** the solver's affinity-only modes and jobs (off the page: "not the aim, and broken")
    and the `skills` job (fixed odds, unused since "Set odds by hand" left the page) stay in the Rust code.
+11. **Runner follow-ups (2026-10-10).** Attachments (`attachment_model_id`) aren't drawn; `chibi.py`'s tool downloads
+   were never run (the spike's tools were copied in); on the first search after a load the strip can be blank while it
+   downloads (it is fetched when she is picked, so later searches are covered). Ideas offered, not requested: idle and
+   cheer rows in the strip (other mini motions) for the end of a search; her running across the status bar as progress.
 9. **Smaller ideas offered earlier, not requested:** reuse the deck search across shared-mode branches (slow case:
    `pal_Fk3` shared about 575 s historically); diff WASM vs native outputs; a "JP, latest" data mode (needs GameTora's
    support-card file for hint frequency); a "set these as prioritized skills" list on the page.
@@ -80,6 +84,8 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 ## 4. Standing decisions and the owner's calls
 
 - The tool is for Independent Training only. Unity Cup is the default scenario; the GM-era JP data is a secondary mode.
+- The busy sign is the runner, each uma's mini model running (owner, 2026-10-10; `docs/BUILD.md`, Runner strips).
+- Deploys only on the owner's explicit "deploy" each time; v46 went out on a misread reply (2026-10-10).
 - A reload whose settings match the saved last result (same solver, data, held-back entries and job) shows it as done
   and searches nothing (owner, 2026-10-10, reversing the earlier "rerun").
 - The player is assumed to set prioritized skills so event choices reach the counted hints.
@@ -102,6 +108,15 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 
 ## 5. Lessons
 
+- A summary between context windows can drop facts this session itself made: the JP asset index in `cache/` was
+  fetched earlier in the same session (from SimpleSandman's mirror), and the next window called it found. Record every
+  outside fetch in `docs/SOURCES.md` when it happens.
+- A broad CSS descendant rule on one page (`.rb .lptgt .targets { grid-area: list }`) reached a dialog inside the panel
+  and split it into two columns; scope page-layout rules to the panel's own children (`> .targets`).
+- A `url()` inside a CSS custom property resolves against the stylesheet that uses the variable, not the element's
+  page: set image URLs as the property itself.
+- `gmtip.js` lifts a hovered element's title into `data-tip` while its balloon shows: a test reading `title` after a
+  click can see it empty when layout moves the pointer onto it.
 - Compare plans of two pools only under one fit, and know what a refit moves (V by several percent of itself).
 - A model property such as "a veteran never costs careers" needs a tripwire (`val/mono.py`), not an assumption.
 - Forks re-read the whole conversation; use general-purpose agents with briefs for self-contained work.

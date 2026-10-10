@@ -122,7 +122,31 @@ an outline, the mouth on the open happy shape, the tail simulated as a spring ch
 hair, skirt and ears swaying with her steps. 18 frames (0.6 s) at 128 px, cropped to her box over the loop, AVIF.
 The tools (AssetStudioModCLI v0.19.0 with a .NET 9 runtime, FBX2glTF 0.9.7, libxml2.so.2 from Arch's libxml2-legacy
 when the system lacks it) are fetched into `cache/chibi/tools` on first use; exports are cached per uma in
-`cache/chibi/work/ID` (delete one to redo it). About 3 s per uma.
+`cache/chibi/work/ID` (delete one to redo it). About 3 s per uma; all 83 roster umas render (4.9 MB, a page loads one).
+
+What the pipeline learned, for when it breaks:
+- **Pieces and joins.** Body `mbdy{id}_NN` (her lowest variant: seven umas have no `_00`), hair `mchr{id}_00_hair`, the
+  shared face `mchr0001_00_face0` (texture `face0_{skin-1}`), tail `mtail{tail_model_id:04}_00` with
+  `tex_mtail…_{id}_diff`. The renderer joins skins onto the body's bones by name; nodes whose parent is a body bone
+  (Tail_Ctrl under Hip, the hair and ear chains under Head) are moved under it, and the face's eyes, brows, mouth and
+  cheeks are rigid meshes under the face file's own Head, moved to the body's Head. Materials need their
+  `sourceresources/...` prerequisites (the index's `d` column).
+- **Coordinates.** FBX2glTF scales positions by 1/100 (the clip's Hip position /100 matches the rest pose); rotations
+  convert with Unity's x mirror: position (-x, y, z), quaternion (x, -y, -z, w). The run clip is generic (65 tracks),
+  20 samples of which the loop is 18 (frame 18 = frame 0): `run.json` carries `loop`.
+- **Looks.** Cheeks: the blush texture has no alpha (white with pink), drawn as a multiply. Mouth: a 4 x 8 sheet of
+  shapes read through one cell; `mouth=2` (the open happy mouth) shifts the texture by a quarter width per column.
+  Tail: the clip leaves spring bones (`Sp_…`) still; the tail is a spring chain pinned to her hip, pulled toward a pose
+  held behind her and down (`droop` 30°, `k` 260, `damp` 3.5, `g` 0.35), run 8 loops at 240 Hz and the last recorded;
+  hair, skirt and ears sway on a sine at the step rate.
+- **Umas not yet on Global** (1104–1106) take skin and tail from the JP master.mdb; their mini models already ship in
+  the Global files.
+- **Not drawn:** attachments (`chara_data.attachment_model_id`, e.g. `mattach1048_00`); accessories inside the hair
+  model (hats, glasses) are. The tool downloads in `tools()` were never run (the spike's copies were moved into
+  `cache/chibi/tools`).
+- **Page.** Who runs: the loop planner one of the loop's umas at random, kept while that loop is on show; the career
+  page your trainee, else the planner's pick; before either, a random uma. Her strip is fetched when she is picked.
+  The strip is an inline `background-image` (a `url()` in a custom property resolves against the stylesheet).
 
 ## Data
 
