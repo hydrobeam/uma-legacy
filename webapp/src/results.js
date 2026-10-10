@@ -2,7 +2,7 @@
 import { $, esc, fmtIn } from './dom.js';
 import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
-import { umaAv, cardAv, skillIcon } from './images.js';
+import { umaAv, cardAv, skillIcon, setRunner } from './images.js';
 import { cardTitle } from './cards.js';
 import { closePop, markOwn, popHasFocus } from './popover.js';
 import { pickOutfit, outfitNote } from './roster.js';
@@ -141,6 +141,7 @@ export function renderDeck(res, meta) {
   const box = $('results'), refocus = popHasFocus() || box.contains(document.activeElement);
   closePop(); box.textContent = '';
   ui.headline = fmtIn(res.top[0].loop.p_all);   // only results with loops reach this (search.js keeps errors off the page)
+  setRunner(res.top[0].loop.members[0].id);   // the runner while the next search works: her loop's first uma
   const many = res.top.length > 1;
   res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0] })));
   if (refocus) $('rcol').focus({ preventScroll: true });

@@ -316,6 +316,14 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; display: inline-block; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+/* the runner in place of the spinner (images.js runnerHTML): her strip of 18 frames stepped by CSS, 0.6 s a loop as in
+   the game; 30 px in a status line (overhanging its row a little), 96 px in the analysis frame; held on her first
+   frame for reduced motion */
+.runner { --s: 30px; display: inline-block; flex: none; width: var(--s); height: var(--s); margin: -7px 0 -5px; vertical-align: middle;
+  background: 0 0 / auto 100% no-repeat; animation: runner .6s steps(18) infinite; }   /* the strip: background-image, set on the element (a url() in a custom property resolves against the stylesheet) */
+.runner.big { --s: 96px; margin: 0; }
+@keyframes runner { to { background-position: calc(-18 * var(--s)) 0; } }
+@media (prefers-reduced-motion: reduce) { .runner { animation: none; } }
 .av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-family: var(--font-data); font-weight: 600; color: var(--ink); background: hsl(var(--h, 220) var(--av-c) var(--av-l)); line-height: 1; vertical-align: middle;
   outline: 1px solid var(--img-edge); outline-offset: 0;   /* a faint edge just outside the portrait */ }
 .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1801,12 +1809,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the status line while a run works: what the search found, then the spinner and its phase on the next line when both
    don't fit (side by side on a phone each was squeezed to a narrow two-line column) */
 .runnote { flex-wrap: wrap; row-gap: 2px; }
-.runnote > span:has(> .spin) { display: inline-flex; align-items: center; gap: 6px; }
+.runnote > span:has(> .spin, > .runner) { display: inline-flex; align-items: center; gap: 6px; }
 /* a spinner before the words (the loop planner's "Checking the exact odds… The result below may still change."): the
    words wrap beside it, never under it with the spinner left alone on the line above */
-.runnote:has(> .spin) { flex-wrap: nowrap; align-items: flex-start; }
+.runnote:has(> .spin, > .runner) { flex-wrap: nowrap; align-items: flex-start; }
 .runnote > .spin { flex: none; margin-top: .2em; }
-.runnote > .spin + span { min-width: 0; }
+.runnote > .spin + span, .runnote > .runner + span { min-width: 0; }
+.runnote > .runner { margin-top: -6px; }
 /* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
 @media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
 .game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */

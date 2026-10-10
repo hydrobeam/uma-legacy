@@ -200,7 +200,7 @@ async function careerPage(b) {
     // got (her sparks), whether the old answer is dimmed
     window.__seq = [];
     const snap = () => { const n = document.getElementById('run-note'); if (!n) return;
-      const s = { busy: !!n.querySelector('.spin'), phase: /Planning your next career…/.test(n.textContent) ? 'plan' : /Searching careers…/.test(n.textContent) ? 'search' : '',
+      const s = { busy: !!n.querySelector('.spin, .runner'), phase: /Planning your next career…/.test(n.textContent) ? 'plan' : /Searching careers…/.test(n.textContent) ? 'search' : '',
         who: document.querySelector('#tree .pn.trainee .nm')?.textContent || '', draft: (document.querySelector('#simulation .ud') ? 'v:' + [...document.querySelectorAll('#simulation .simskills .vskb')].map(b => b.getAttribute('aria-label')).join('|') : ''),
         stale: !!document.querySelector('#results.stale') };
       const k = JSON.stringify(s); if (window.__seq.at(-1)?.k !== k) window.__seq.push({ ...s, k }); };
@@ -224,7 +224,7 @@ async function careerPage(b) {
   const note = () => pg.textContent('#run-note');
   // the run an action started has ended. A change puts the spinner up at once (the search itself starts after a short
   // pause), so no sleep past the pause is needed; an action that starts no run returns at once
-  const done = () => timed('done', pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin') && n.textContent.length > 0; }, null, { timeout: 180000 }));
+  const done = () => timed('done', pg.waitForFunction(() => { const n = document.getElementById('run-note'); return !n.querySelector('.spin, .runner') && n.textContent.length > 0; }, null, { timeout: 180000 }));
   const planned = () => timed('done', pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 }));
   const ask = async (label) => { await dialog(pg, 'ask-dlg'); await pg.locator('#ask-btns button', { hasText: label }).click(); };
   // the tree is portraits; a portrait opens its node popup (sparks, G1 wins, choose or hand back the place)
@@ -1288,8 +1288,8 @@ const TESTS = {
     const [rj0, rr0, rm0] = [await policyJobs(), await policyResults(), await mainJobs()];
     const usable = await pg.evaluate(() => { const r = Math.random, ok = [];
       for (const u of [0.999999999, 0.999999999, 0]) { const b = document.getElementById('sim-roll'); ok.push(!b.disabled); Math.random = () => u; b.click(); Math.random = r; }
-      return ok.every(Boolean) && !!document.querySelector('#sim-result .spin'); });
-    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
+      return ok.every(Boolean) && !!document.querySelector('#sim-result .spin, #sim-result .runner'); });
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'), null, { timeout: 180000 });
     await pg.waitForTimeout(1500);   // time for a stray comparison to answer, were one still running
     const [rj, rr, rm] = [await policyJobs() - rj0, await policyResults() - rr0, await mainJobs() - rm0];
     // an exact comparison in flight is killed (one runs); a quick one (the roll read from the plan's table) runs out with its
@@ -1307,7 +1307,7 @@ const TESTS = {
       await b.click();
     }
     await pg.click('#sim-compare');
-    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'), null, { timeout: 180000 });
     check('career: an n/n veteran: Compare says step 1 of the goal is done (or, with n/n parents, a fully looped parent)', /^((\d+)\/\2: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict')), await pg.textContent('#sim-verdict'));
     await roll(0);   // (no reset: a roll that lands nothing leaves her short of n/n)
     await simStars(3);
@@ -1327,7 +1327,7 @@ const TESTS = {
     // which finishes, and no plan job is sent
     const aheadJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.next && !j.compare).length), la0 = await aheadJobs();
     await pg.evaluate(() => { document.getElementById('sim-compare').click(); document.getElementById('sim-compare').click(); });
-    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#run-note .spin'), null, { timeout: 180000 });
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#run-note .spin, #run-note .runner'), null, { timeout: 180000 });
     check('career: with the trainee chosen no plan runs, and Compare pressed twice finishes', await aheadJobs() === la0 && !/Planning|Planned in/.test(await note())
       && /^(Saves [\d,]+ careers|No careers saved|Better odds|Parent of the next career|\d+\/\d+: step 1 done|Fully looped parent)/.test(await pg.textContent('#sim-verdict')), await note());
     check('career: with the trainee fixed, Compare reuses today\'s best instead of searching it again', await baselineRuns() === cachedRuns);
@@ -1486,7 +1486,7 @@ const TESTS = {
     await simStars(3);
     // Compare first: it plans exactly as the run after Add will, so Add takes that plan instead of planning again
     await pg.click('#sim-compare');
-    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin'), null, { timeout: 180000 });
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'), null, { timeout: 180000 });
     const planJobs = () => pg.evaluate(() => window.__careerJobs.filter(j => j.next && !j.compare).length);
     const pj0 = await planJobs(), cmpPick = await pg.evaluate(() => window.__careerResults.filter(r => r.next && r.next.options).at(-1)?.next.choice?.trainee.id);
     await pg.click('#sim-add'); await done();

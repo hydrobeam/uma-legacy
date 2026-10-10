@@ -2,14 +2,14 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-import { $, spinHTML, el, esc, fmtIn } from './dom.js';
+import { $, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, killEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
 import { onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
-import { umaAv, skillIcon, cardAv } from './images.js';
+import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
 import { initCards, cardTitle } from './cards.js';
@@ -41,6 +41,7 @@ let status = { kind: 'loading', text: 'Loading…' };
 let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
   const n = $('run-note');
+  setRunner(plan.trainee || shown()?.trainee?.id);   // the runner: the trainee you chose, else the career on show
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
   const old = searching && started && !!shown();   // the previous answer, on screen until this run's
   $('results').classList.toggle('stale', old || (!searching && ['error', 'empty'].includes(status.kind)));
@@ -48,7 +49,7 @@ function paint() {
   $('results').setAttribute('aria-busy', String(searching));
   if (searching) { const s = Math.floor((performance.now() - t0) / 1000);
     n.textContent = phase === 'plan' && phaseNote ? phaseNote + ' ' : '';
-    const sp = el('span'); sp.innerHTML = spinHTML();
+    const sp = el('span'); sp.innerHTML = runnerHTML();
     sp.append(phase === 'plan' ? 'Planning your next career…' : 'Searching careers…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
     n.appendChild(sp); }
   else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
@@ -61,7 +62,7 @@ function paint() {
 }
 function waitEl() {
   const w = el('div', 'simwait'), box = sec('simulation', 'Veteran analysis'), body = el('div', 'ud simwbody');
-  const p = el('p'); p.innerHTML = spinHTML(); p.append('Her card, sparks and the comparison appear here once the planner has picked the career.');
+  const p = el('p'); p.innerHTML = runnerHTML(true); p.append('Warming up! The deck, sparks and comparison will be here as soon as the planner picks her career.');
   body.append(p); box.append(body); w.append(box); return w;
 }
 // the plan's line: finished, or stopped by its time limit, or failed
@@ -761,7 +762,7 @@ function simulationBody() {
   }
   result.appendChild(hdr);
   if (!busy && !simulation.error && !simulation.r) result.appendChild(el('p', 'simidle', 'Compare or reroll to see if she improves your loop.'));
-  if (busy) { const p = el('p', 'runnote'); p.innerHTML = spinHTML() + '<span>Comparing…</span>'; result.appendChild(p); }
+  if (busy) { const p = el('p', 'runnote'); p.innerHTML = runnerHTML() + '<span>Comparing…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
@@ -782,7 +783,7 @@ function simulationBody() {
     verdict.append(el('strong', '', head));
     if (/^Saves /.test(head) && simulation.where) verdict.append(simulation.where);
     result.appendChild(verdict);
-    if (simulation.refining || simulation.provisional) { const p = el('p', 'runnote simrefine'); p.innerHTML = spinHTML() + (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>'); result.appendChild(p); }
+    if (simulation.refining || simulation.provisional) { const p = el('p', 'runnote simrefine'); p.innerHTML = runnerHTML() + (simulation.provisional ? '<span>Checking…</span>' : '<span>Working out how many careers it saves…</span>'); result.appendChild(p); }
     const figs = el('div', 'simodds' + (simulation.refining ? ' held' : ''));
     // a figure turns green when she makes it better, red when worse (fewer careers, higher odds are better)
     // one figure per row: its label, then now → with her
