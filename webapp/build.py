@@ -202,7 +202,12 @@ THEMEBTN = ('<button type="button" class="themebtn" id="theme-btn" aria-label="D
             '<svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/></svg>'
             '<svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round">'
             '<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg></button>')
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', MAIN_JS), ('__DATAJS__', DATA_JS),
+# the header's page tabs, the same on every page in the same order, the page you are on selected (the game's tab bar)
+PAGES = [('loop', './', 'Loop planner'), ('career', 'career', 'Career planner'), ('about', 'about', 'How this works')]
+def NAV(cur):
+    tabs = ''.join(f'<a href="{h}"' + (' aria-current="page"' if k == cur else '') + f'>{t}</a>' for k, h, t in PAGES)
+    return f'<nav class="tnav" aria-label="Pages"><div class="ptabs">{tabs}</div> {THEMEBTN}</nav>'
+for k, v in [('__THEMEJS__', THEMEJS), ('__NAV__', NAV('loop')), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', MAIN_JS), ('__DATAJS__', DATA_JS),
              ('__EXAMPLE__', js(example)), ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)),
              ('__FONTPRELOAD__', '\n'.join(preloads) + '\n' + script_preloads(DATA_JS, MAIN_JS)), ('__WORKER__', worker)]:
     assert '</script' not in v.lower(), k
@@ -215,13 +220,13 @@ assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
 # "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
 about = open(os.path.join(H, 'about.template.html')).read()
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK + '\n<style>\n' + MATHFACE + '\n</style>'), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
+for k, v in [('__THEMEJS__', THEMEJS), ('__NAV__', NAV('about')), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK + '\n<style>\n' + MATHFACE + '\n</style>'), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)
 open(os.path.join(DIST, 'about.html'), 'w').write(about)
 # the career planner (/career): the planner's settings, styles, data and engine, its own script and veteran data
 career = open(os.path.join(H, 'career.template.html')).read()
 career = panels(career)   # the shared setup rows, Enhance buttons and settings editors
-for k, v in [('__THEMEJS__', THEMEJS), ('__THEMEBTN__', THEMEBTN), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', CAREER_JS), ('__DATAJS__', DATA_JS), ('__CAREERDATAJS__', CAREER_DATA_JS),
+for k, v in [('__THEMEJS__', THEMEJS), ('__NAV__', NAV('career')), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK), ('__APP__', CAREER_JS), ('__DATAJS__', DATA_JS), ('__CAREERDATAJS__', CAREER_DATA_JS),
              ('__ASSETS__', js(ASSETS)), ('__ASSETS__', js(ASSETS)),
              ('__FONTPRELOAD__', '\n'.join(preloads) + '\n' + script_preloads(DATA_JS, CAREER_DATA_JS, CAREER_JS)), ('__WORKER__', worker), ('__LOGO__', LOGO)]:
     assert '</script' not in v.lower(), k

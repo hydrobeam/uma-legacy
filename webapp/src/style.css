@@ -50,16 +50,21 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .skip { position: absolute; left: 16px; top: -200px; z-index: 100; background: var(--panel); color: var(--accent); font-weight: 700; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 8px; }
 .skip:focus { top: 8px; }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
-/* the header in the game's style on every page: the page links as its white pill buttons, light / dark as its two-way
-   switch (the green knob on the mode in use, both icons shown). Brown on white keeps /about's AAA (8.2:1) */
-.tnav { margin-left: auto; align-self: center; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 10px; }
-.tnav a { display: inline-flex; align-items: center; min-height: 34px; box-sizing: border-box; padding: 3px 16px 5px; border-radius: 999px;
-  font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; line-height: 1.2; color: var(--gm-ink); text-decoration: none;
-  background: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge);
-  box-shadow: inset 0 -3px 0 var(--gm-tab-edge), 0 1px 3px var(--gm-shadow); }
-.tnav a:hover { border-color: var(--gm-green); }
-.tnav a:active { box-shadow: inset 0 -1px 0 var(--gm-tab-edge); transform: translateY(1px); }
-.tnav a:focus-visible, .themebtn:focus-visible { outline: 3px solid var(--gm-green2); outline-offset: 2px; }
+/* the header in the game's style, the same on every page: the pages as the game's tab bar (an uma's Details tabs), the
+   page you are on the green tab; light / dark as its two-way switch (the green knob on the mode in use, both icons
+   shown). The other tabs' brown on white keeps /about's AAA (8.2:1); the green tab is the game's white outlined text */
+.tnav { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 10px; }
+.ptabs { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-radius: 999px; overflow: hidden; border: 1px solid var(--gm-tab-edge);
+  background: var(--gm-tab); box-shadow: inset 0 -3px 0 var(--gm-tab-low), 0 1px 3px var(--gm-shadow); }
+.ptabs a { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 3px 18px 6px; box-sizing: border-box; white-space: nowrap;
+  font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; line-height: 1.2; color: var(--gm-ink); text-decoration: none; }
+.ptabs a + a { box-shadow: inset 1px 0 0 var(--gm-tab-edge); }
+.ptabs a:not([aria-current]):hover { background: var(--gm-tab-low); }
+.ptabs a[aria-current="page"] { color: #fff; text-shadow: var(--gm-outline); background: linear-gradient(var(--gm-bright), var(--gm-bright2));
+  box-shadow: inset 0 -3px 0 #5aa300, inset 0 2px 0 rgba(255, 255, 255, .3); }
+:root[data-theme="dark"] .ptabs a[aria-current="page"] { box-shadow: inset 0 -3px 0 #3f7d08, inset 0 2px 0 rgba(255, 255, 255, .15); }
+.ptabs a:focus-visible { outline: 3px solid var(--gm-green2); outline-offset: -3px; }
+.themebtn:focus-visible { outline: 3px solid var(--gm-green2); outline-offset: 2px; }
 .themebtn { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; align-items: center; width: 72px; height: 34px; padding: 3px 3px 5px;
   box-sizing: border-box; border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); box-shadow: inset 0 -3px 0 var(--gm-tab-low);
   color: var(--gm-ink2); cursor: pointer; }
@@ -71,7 +76,14 @@ header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: w
 :root:not([data-theme="dark"]) .themebtn .i-sun, :root[data-theme="dark"] .themebtn .i-moon { color: #fff;
   filter: drop-shadow(0 1px 0 #3c7a00) drop-shadow(0 -1px 0 #3c7a00) drop-shadow(1px 0 0 #3c7a00) drop-shadow(-1px 0 0 #3c7a00); }
 @media (prefers-reduced-motion: reduce) { .themebtn::before { transition: none; } }
-@media (max-width: 620px) { .tnav { gap: 8px; } .tnav a { min-height: 44px; padding-inline: 10px; font-size: .9rem; } .themebtn { width: 78px; height: 44px; } }   /* two links and the switch in one 343 px row */
+/* phones: the brand and the switch on one row, the page tabs the full width under them */
+@media (max-width: 620px) {
+  header.top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+  .tnav { display: contents; }
+  .ptabs { grid-column: 1 / -1; grid-row: 2; display: grid; }
+  .ptabs a { min-height: 44px; padding-inline: 4px; font-size: .9rem; }
+  .themebtn { grid-column: 2; grid-row: 1; width: 78px; height: 44px; }
+}
 header.top h1 a.home { color: inherit; text-decoration: none; }
 /* the brand: the favicon's sparkles, then "uma-legacy" */
 h1.brand, h1.brand a.home { display: inline-flex; align-items: center; gap: 0.3em; }

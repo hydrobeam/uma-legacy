@@ -142,6 +142,7 @@ const AUDIT = () => {
     if (el.closest('h1.brand') && /^b[uma]$/.test(el.className)) continue;   // the brand's coloured "uma": the logo's colours by choice
     // the planner pages' recreation of the game's UI (html.game): the game's colours by choice over AAA (owner, 2026-10-08)
     if (game && el.closest('.ud, #simulation > h3, .rbsec > h3, .btn.primary, .seg [aria-pressed="true"], .vsk.pink, .pflab, .simhdr, .sethdr, .otag.pick, .lp .swhead, .lptgt h2, .afpick [aria-pressed="true"], .rankseg [aria-checked="true"], .udsk, .spark.g, .tgt, .agenda.game h4, .ag-slot.pre, .agenda.game .ag-when b')) continue;   // also text on the game's sprites (skill tiles), which the audit can't see behind it
+    if (el.closest('.ptabs [aria-current="page"]')) continue;   // every page's header: the game's green tab with white outlined text (owner, 2026-10-10)
     if (el.closest('.gmdlg')) continue;
     if (game && el.closest('dialog > .dlg > .dhead, dialog .btn.primary')) continue;   // the planner pages' game-style dialogs
     const fg0 = parse(cs.color); const fg = over({ ...fg0, a: fg0.a * opac(el) }, bg);
@@ -991,7 +992,11 @@ const TESTS = {
   async about(b) {
     // "How this works": a link in the header to its own page (/about), which links back
     const pg = await open(b);
+    // the header is the same on every page: the three pages in one order, the page you are on marked
+    const tabs = () => pg.evaluate(() => [...document.querySelectorAll('header.top .ptabs a')].map(a => a.textContent + (a.getAttribute('aria-current') === 'page' ? '*' : '')).join(','));
+    const t0 = await tabs();
     await pg.locator('header.top .tnav a', { hasText: 'How this works' }).click(); await pg.waitForLoadState();
+    check('header: the same page tabs everywhere, the current page marked', t0 === 'Loop planner*,Career planner,How this works' && await tabs() === 'Loop planner,Career planner,How this works*', `${t0} | ${await tabs()}`);
     check('header link opens /about', new globalThis.URL(pg.url()).pathname === '/about' && /How this works/i.test(await pg.locator('main.about h2').innerText()));
     const spec = pg.locator('main.about details.spec').first(), cspec = pg.locator('main.about details.spec').nth(1);
     check('/about: the detailed model starts folded and opens to the model text; the version shows', !(await spec.getAttribute('open') !== null) && !/Model\./.test(await pg.locator('main.about').innerText())
@@ -999,7 +1004,7 @@ const TESTS = {
     check('/about: the career planner in detail starts folded and opens to its steps', (await cspec.getAttribute('open')) === null
       && await (async () => { await cspec.locator('summary').click(); const t = await cspec.innerText(); return /C1\. Legal careers/.test(t) && /C8b\. Which careers are searched exactly/.test(t) && /The Comparison panel/.test(t); })());
     if (b.browserType().name() === 'chromium') { const f = await pg.evaluate(AUDIT); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
-    await pg.locator('header.top .tnav a').click(); await pg.waitForSelector('#targets');
+    await pg.locator('header.top .tnav a', { hasText: 'Loop planner' }).click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
     await pg.context().close();
   },

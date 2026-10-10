@@ -1,8 +1,5 @@
 # Using the page
 
-The live page is https://uma-legacy.pages.dev. Its own "How this works" page (`/about`) explains the model in plain
-words; this file is the reference for the controls.
-
 Both planner pages are drawn in the game's style (the same rules, html class `game`): game panels, the game's buttons,
 check boxes and switches, green section bars, pink setup ribbon. The loop planner has two columns. On the left, the
 **Loop setup** panel with the same rows as the career's *Career setup* (built from the same markup,
