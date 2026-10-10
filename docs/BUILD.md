@@ -44,9 +44,10 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 | `game/jp/master.mdb` | the JP client's game database (plain SQLite), for the Grand Masters era | `data`, `events` |
 | `game/global/resources.assets` | the Global PC install's built-in assets file (the game's common buttons and check box) | `images` |
 | `game/global/decrypted/` | the Global client's asset bundles, decrypted, laid out by asset path (`chara/chr1001/...`) | `images`, `runners` |
+| `game/global/meta.db` | the Global client's asset index, decrypted to plain SQLite | `runners` |
 | `game/jp/bundles/` | the JP client's bundles for JP-only art (the Grand Masters banner, 14 skill icons), by asset path | `images` |
 
-The tool that decrypts the client's bundles is not published in this repository. Game files and
+The tool that decrypts the client's bundles and asset index is not published in this repository. Game files and
 game art are never committed.
 
 ## Reproducing it
@@ -129,8 +130,8 @@ For when it breaks:
   the shared face `mchr0001_00_face0` (texture `face0_{skin-1}`), tail `mtail{tail_model_id:04}_00` with
   `tex_mtail…_{id}_diff`. Skins join the body's bones by name; nodes whose parent is a body bone (Tail_Ctrl under Hip,
   the hair and ear chains under Head) move under it, and the face's rigid eye, brow, mouth and cheek meshes move from
-  the face file's Head to the body's. Materials need their `sourceresources/...` prerequisites, which each bundle lists
-  itself (`m_Dependencies`, names with a `.a` suffix).
+  the face file's Head to the body's. Materials need their `sourceresources/...` prerequisites (the index's `d` column;
+  each bundle also lists them itself in `m_Dependencies`, names with a `.a` suffix).
 - **Coordinates.** FBX2glTF scales positions by 1/100; Unity's x mirror converts position (-x, y, z) and quaternion
   (x, -y, -z, w). The run clip has 20 samples of which the loop is 18 (frame 18 = frame 0); `run.json` carries `loop`.
 - **Looks.** The blush texture has no alpha and is drawn as a multiply. The mouth is a 4 x 8 sheet read through one
