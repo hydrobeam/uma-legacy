@@ -7,12 +7,13 @@ Every step goes through `./build.sh [step...]` at the repository root.
 A fresh clone needs two commands:
 
 ```
-./build.sh            # the solver and its tests, the wasm, the page (webapp/dist)
+./build.sh            # the solver and its tests, the wasm, the art (with game files), the page (webapp/dist)
 ./build.sh serve      # http://localhost:8000 (WebAssembly needs the page served, not opened as a file)
 ```
 
 The first `./build.sh` installs what it needs into the folder: the Rust toolchain through rustup, the npm packages
-and GameTora's data files. To check a change, `./build.sh testq` (the browser suite's fast tier; it installs its
+and GameTora's data files. With the game files in `game/` (below) it extracts the art too; without them it says so
+and the page shows initials. To check a change, `./build.sh testq` (the browser suite's fast tier; it installs its
 browsers the first time) and `./build.sh valq TAG` (the validation jobs against their reference outputs).
 
 A fresh clone builds the page from the tracked data files and passes the solver tests and validation. Without game
@@ -64,13 +65,14 @@ game art are never committed.
    game databases the exports come out byte-identical, except `upcoming.json` (what starts after the build date) once
    a banner in it has started; a newer Global database adds its new umas, cards and races. Check with
    `uv run val/event_audit.py` and `./build.sh val TAG`.
-3. **The art:** with the rest of `game/` in place, `./build.sh images runners page`.
+3. **The art:** with the rest of `game/` in place, `./build.sh` extracts it.
 
 ## Steps
 
 | Step | Does |
 |---|---|
-| `all` | `data events native pb wasm page` |
+| `all` | `data events native pb wasm art page` |
+| `art` | `images` and `runners`, each when its game files are in `game/global/` (skipped with a note otherwise); part of the default build |
 | `data` | the Global and Grand Masters-era exports from `master.mdb`: `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first. Run by `events` and `page` |
 | `events` | the card event files from GameTora's files plus the manual entries (Global, Grand Masters, Grand Masters without first-year dates) |

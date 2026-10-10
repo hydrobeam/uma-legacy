@@ -20,7 +20,7 @@ whose parents are 8/8s). For the veteran you actually got, it shows how many car
 Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.astral.sh/uv/):
 
 ```
-./build.sh            # build everything (fetches its packages and data the first time)
+./build.sh            # build everything (fetches its packages and data the first time; art from game/ if present)
 ./build.sh serve      # http://localhost:8000
 ```
 

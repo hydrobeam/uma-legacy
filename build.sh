@@ -1,5 +1,5 @@
 #!/bin/bash
-# One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm page)
+# One entry point for every build step. Usage: ./build.sh [step...]   (no step = native wasm art page)
 #   data     Global + GM-era exports (needs game/global/master.mdb, game/jp/master.mdb)
 #   gametora GameTora's data files at the pinned versions (pkg/loopopt/gametora.json) into cache/gametora
 #   events   card event caches from the GameTora files + manual entries (Global and both GM variants); runs gametora first
@@ -21,7 +21,8 @@
 #   val TAG  run the 24 validation jobs (20 deck, 4 career; the 20 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
-#   all      data events native pb wasm page (not images: it needs the game install)
+#   art      images and runners when their game files are in game/global/ (skipped, with a note, when not)
+#   all      data events native pb wasm art page
 # Python runs in the project's uv environment (pyproject.toml, uv.lock; .venv is created on first use).
 set -euo pipefail
 R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
@@ -62,16 +63,20 @@ step_page() { step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
 step_runners() { step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }
 step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
+step_art() {
+  if [ -d "$R/game/global/decrypted" ]; then step_images; else echo "images: no game/global/decrypted, skipped (the page shows initials)"; fi
+  if [ -d "$R/game/global/decrypted" ] && [ -f "$R/game/global/meta.db" ]; then step_runners; else echo "runners: needs game/global/decrypted and game/global/meta.db, skipped"; fi
+}
 step_val() { local tag="${1:?val needs a tag}"; shift || true
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
-[ $# -eq 0 ] && set -- native wasm page
+[ $# -eq 0 ] && set -- native wasm art page
 while [ $# -gt 0 ]; do
   case "$1" in
-    all) step_data; step_events; step_native; step_pb; step_wasm; step_page ;;
+    all) step_data; step_events; step_native; step_pb; step_wasm; step_art; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    gametora|data|events|native|pb|wasm|page|images|runners|browsers|test|testq|serve|deploy) "step_$1" ;;
+    gametora|data|events|native|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
