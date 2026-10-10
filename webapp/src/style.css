@@ -1593,6 +1593,11 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 :root.game .foot { margin-top: 14px; }
 /* the lineage rank pill fills its row on the planner pages: two equal halves, the badges a little larger, centred */
 :root.game .setlist .rankseg { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; width: 100%; box-sizing: border-box; }
+/* Game data's pill the rank selector's size: the row's width (its two options sharing what their labels leave) and
+   the rank buttons' height (their letters are 26 px images) */
+:root.game .setlist .gctl > .seg:not(.rankseg) { display: flex; justify-self: stretch; width: 100%; box-sizing: border-box; }
+:root.game .setlist .gctl > .seg:not(.rankseg) > button { flex: 1 1 auto; justify-content: center; text-align: center; }
+@media (min-width: 621px) { :root.game .setlist .gctl > .seg > button { min-height: 34px; } }   /* both pills one height (phones: the 44 px tap rule) */
 :root.game .setlist .rankseg button { justify-content: center; }
 :root.game .setlist .rankseg .rk.img, :root.game .setlist .rankseg .rk.img img { height: 26px; }
 /* the chosen lineage rank on the game's green pill, as the other pill switches */
