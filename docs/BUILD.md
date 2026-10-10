@@ -6,14 +6,17 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 
 ## Toolchain and a fresh checkout
 
-- Rust stable with `rust-src`: the wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1` (with the
-  `wasm32-unknown-unknown` target installed it also works without build-std).
-- Node + npm: `cd webapp && npm ci` (binaryen's `wasm-opt`, esbuild, wrangler, Playwright).
-- uv: the Python environment (UnityPy and Pillow for the image step; everything else is stdlib). Playwright with
-  Chromium and Firefox for the browser suite.
-- Data: the Global `master.mdb` in `pkg/loopopt/export/`, the JP one in `jp/export/` (sources: `docs/SOURCES.md`).
-- Check: `./build.sh all` (data, events, native with its tests, pb, wasm, page), `uv run val/event_audit.py` ("every
-  target hint is accounted for"), `./build.sh val TAG` (everything should match the references).
+- Rust 1.98.1 with `rust-src` and the `wasm32-unknown-unknown` target (`rust-toolchain.toml`; rustup installs them
+  on first use). The wasm build uses `-Z build-std` via `RUSTC_BOOTSTRAP=1`.
+- Node + npm: `npm ci` in `webapp/` runs on first use (binaryen's `wasm-opt`, esbuild, wrangler, three, Playwright).
+  The browser suite needs Playwright's browsers once: `cd webapp && npx playwright install chromium firefox`.
+- uv: the Python environment (UnityPy and Pillow for the image steps; everything else is stdlib).
+- What a fresh clone builds with no game files: `./build.sh` (native with its tests, wasm, page: the page reads the
+  tracked data files; `page` downloads GameTora's pinned files once), `./build.sh testq` / `test`, and
+  `./build.sh val TAG`. The page shows initials in place of game art.
+- Check after a data change: `./build.sh all` (data, events, native with its tests, pb, wasm, page),
+  `uv run val/event_audit.py` ("every target hint is accounted for"), `./build.sh val TAG` (everything should match
+  the references).
 
 ## Steps
 

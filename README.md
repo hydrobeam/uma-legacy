@@ -1,4 +1,4 @@
-# uma-legacy
+# uma-legacy: the Legacy Loop Planner
 
 Finds the best legacy loop (a three-uma rotation or a four-uma loop) and support decks (Uma Musume: Pretty Derby, Global) for landing a set of target
 skills in Independent Training, with each uma's race schedule.
@@ -16,8 +16,28 @@ borrows one friend's card when it helps. See `docs/USAGE.md`.
 - Using the page: `docs/USAGE.md` (the page's own "How this works" explains the model in plain words)
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
 - The solver (model, algorithms, job fields, command line): `docs/SOLVER.md`
-- Every modelling assumption with its evidence: `docs/MODEL.md`; outside sources: `docs/SOURCES.md`
+- The maths behind each fitted value: `docs/RESEARCH.md`; every modelling assumption with its evidence:
+  `docs/MODEL.md`; outside sources: `docs/SOURCES.md`
+- Contributing: `CONTRIBUTING.md`
+
+## Building it
+
+Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.astral.sh/uv/):
+
+```
+./build.sh            # the solver with its tests, the wasm and the page (webapp/dist)
+./build.sh serve      # http://localhost:8000 (the page needs http: it loads WebAssembly)
+./build.sh testq      # the browser suite's fast tier (once: cd webapp && npx playwright install chromium firefox)
+./build.sh valq TAG   # the validation jobs against the reference outputs
+```
+
+## Credits and licence
 
 Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts
-([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)). Character icons and card art come from the
-game's own files, © Cygames, and are not part of this repository.
+([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)). Measured rates come from Independent
+Training runs from [uma-it](https://training.umaladder.moe). Card events come from [GameTora](https://gametora.com)'s
+data files, downloaded at build time. Release dates come from [uma.moe](https://uma.moe).
+
+The code is licensed under the GNU General Public License v3.0 or later (`LICENSE`). Uma Musume: Pretty Derby, its
+names, game data and art are © Cygames, Inc.; they are not covered by this licence and the art is not part of this
+repository. This is an unofficial fan tool, not affiliated with or endorsed by Cygames.

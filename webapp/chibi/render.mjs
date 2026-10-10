@@ -10,8 +10,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const H = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(execSync('npm root -g').toString().trim() + '/');
-const { chromium } = require('playwright');
+let pw; try { pw = createRequire(import.meta.url)('playwright'); } catch { pw = createRequire(execSync('npm root -g').toString().trim() + '/')('playwright'); }
+const { chromium } = pw;
 const [work, ...jobs] = process.argv.slice(2);
 const ROOTS = { '/three/': path.join(H, '..', 'node_modules', 'three'), '/work/': path.resolve(work) };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.glb': 'model/gltf-binary' };
