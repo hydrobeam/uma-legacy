@@ -419,14 +419,17 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .deck { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .deck .dcards { display: grid; grid-template-columns: repeat(6, minmax(0, 84px)); gap: 10px; align-items: start; }
 .deck.swap { border-style: dashed; }
-/* another member's deck: one row, "Agnes Digital's deck swaps [card] → [card]", the cards smaller than the main deck's */
-.swrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; }
-/* cards line up by their art (a caption under one doesn't shift the row); the words and arrow sit at the art's middle */
-.swrow > :not(.swc) { min-height: 64px; display: inline-flex; align-items: center; }
-.swt { color: var(--muted); }
+/* another member's deck by its changes to the shared one (under the Swaps bar): her face, the card that goes (greyed)
+   ➜ the card that comes in, smaller than the main deck's, then what it does to the odds. Everything lines up by the
+   cards' art (a caption under one, "chain end: link 2", doesn't shift the row); the arrow sits at the art's middle */
+.swrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 14px; }
+.swrow > :not(.swcards) { min-height: 64px; display: inline-flex; align-items: center; }
+.swcards { display: flex; align-items: flex-start; gap: 10px; }
 .swc { display: inline-flex; align-items: flex-start; gap: 6px; }
 .swc .dc { width: 64px; }
-.swa { font-size: 1.2rem; color: var(--muted); }
+.swout .dc .cav { filter: grayscale(1); opacity: .5; }   /* the card that goes: its art greyed (its caption stays legible) */
+.swa { height: 64px; display: flex; align-items: center; }
+.swa svg { display: block; }
 /* a deck card: its art (click for the panel); without art, its name */
 .dc { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font: inherit; font-size: 0.75rem; color: inherit; background: none;
   border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 8px; }
@@ -524,7 +527,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
 .rankctl { position: relative; }   /* the ? popup hangs below the whole control, not over it */
 .gpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: max-content; max-width: 240px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4;
   color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
-@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
+@media (max-width: 620px) { .swho .av { width: 52px !important; height: 52px !important; } .swc .dc { width: 52px; } .swa { height: 52px; } .swrow > :not(.swcards) { min-height: 52px; } .swrow { gap: 6px 8px; } }   /* phone: a swap row fits on one line beside its (i) */
 /* affinity popup: the formula, and umas as portraits whose names show on hover, focus or tap */
 .afx { display: grid; gap: 4px; margin-bottom: 6px; }
 .afx p { margin: 0; }
@@ -1541,10 +1544,10 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .lp .mem .sk .spark.g::before { content: ''; position: absolute; inset: 0; z-index: -1; border: 0 solid transparent;
   border-image: var(--skill-gold, linear-gradient(#fff0b0, var(--gm-gold2))) 12 14 16 14 fill / 7px 8px 10px 8px / 0 stretch; }
 .lp .mem .sk .spark.g .sic { width: 24px; height: 24px; }
-.lp .swhead { margin: 4px 0 0; justify-self: start; min-width: 40%; font-size: 1rem; text-transform: none; letter-spacing: .01em; }
 .lp .deck { background: var(--gm-pane); border: 0; border-radius: 12px; }
+.lp .swhead { margin: 4px 0 0; justify-self: start; min-width: 40%; font-size: 1rem; text-transform: none; letter-spacing: .01em; }
 .lp .deck .dtitle { color: var(--gm-ink); font-weight: 900; }
-:root.game[data-theme="dark"] .lp .mem .av { box-shadow: 0 0 0 3px #3a3f4a, 0 1px 4px var(--gm-shadow); }
+.lp .swout :root.game[data-theme="dark"] .lp .mem .av { box-shadow: 0 0 0 3px #3a3f4a, 0 1px 4px var(--gm-shadow); }
 .lp .setlist .gctl { grid-template-columns: 6.4em minmax(0, 1fr); gap: 8px; }
 .lp .setlist .glab, .lp .setlist .gctl > span:first-child { padding: 4px 8px; font-size: 0.86rem; }
 .lp .rbbar .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, auto); max-width: 100%; }

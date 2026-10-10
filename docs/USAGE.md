@@ -56,8 +56,9 @@ member trains in turn, and a rotation usually comes first. For each loop:
 - each uma as a tile with her outfit, the targets on her own skill list (as the game's gold skill tile), and her odds as the trainee (click her name for her
   panel: owned switch, GameTora link);
 - the deck, with pals and the borrowed card marked, and "prioritise …" on a card whose event needs that skill set as an IT priority (the search's choice at a chain link, or a pal finale such as Sasami Anshinzawa SSR's); the (i) button shows the chance of each hint it gives. With a
-  deck per uma, the deck most of the loop shares comes first and each other uma's swaps follow;
-- *Swaps* under a green bar: each row "her face swaps card → card";
+  deck per uma, the deck most of the loop shares comes first and each other uma's deck follows by its changes to it;
+- under a green *Swaps* bar, one row per other deck: her face, the card that goes (greyed) ➜ the card that comes in,
+  and what it does to the targets' odds;
 - **Odds** (the career page's odds table for the loop: the chance of landing exactly each count of targets, 8/8 to 0/8, and
   the count expected), **Race schedule** (the game's Scheduled Races calendar, all three years; a tab per uma, then *All three* or *All four*: shared G1s build affinity; optional G1s are free extra race sparks; "A/B" means either race,
   but every runner must pick the same one) and **Affinity** (as the career page's: the loop's careers as pill switches, each trainee with her six legacies'

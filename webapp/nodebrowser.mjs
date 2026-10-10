@@ -302,7 +302,13 @@ const TESTS = {
       check('clicking a swap\'s changes shows them all, again folds them', (await more.locator('.swd1:visible').count()) > n0 && (await more.getAttribute('aria-expanded')) === 'true'
         && (await more.click(), (await more.locator('.swd1:visible').count()) === n0)); }
     check('a label marks where the swap rows start', await pg.evaluate(() => { const h = document.querySelector('#results .loop .swhead'), s = document.querySelector('#results .loop .deck.swap'); return !!h && /swaps/i.test(h.textContent) && !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); }));
-    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && (x.av === 1 ? /deck/ : / and /).test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
+    // each swap row: the card that goes greyed ➜ the card that comes in, every card's art on one line, the arrow at its middle
+    const rows = await pg.evaluate(() => [...document.querySelectorAll('#results .loop .deck.swap')].map(d => { const art = [...d.querySelectorAll('.swc .dc .cav')].map(x => x.getBoundingClientRect()), a = d.querySelector('.swa svg').getBoundingClientRect();
+      return { outN: d.querySelectorAll('.swout .dc').length, inN: d.querySelectorAll('.swin .dc').length, tops: art.map(x => Math.round(x.top)),
+        mid: Math.round(Math.abs((a.top + a.bottom) / 2 - (art[0].top + art[0].bottom) / 2)), grey: getComputedStyle(d.querySelector('.swout .dc .cav')).filter }; }));
+    check('swap rows: the card out greyed ➜ the card in, every card\'s art on one line, the arrow at its middle', rows.length > 0 && rows.every(r =>
+      r.outN > 0 && r.outN === r.inN && new Set(r.tops).size === 1 && r.mid <= 1 && /grayscale/.test(r.grey)), JSON.stringify(rows));
+    check('swap rows show the uma as a character icon, named for screen readers', sw.length > 0 && sw.every(x => x.av > 0 && /’s deck:$/.test(x.label) && x.tips.length === x.av && x.tips.every(t => t && !/ and |’s deck/.test(t)) && x.shown === ''), JSON.stringify(sw));
     // two columns: the Loop setup panel (the status row at its foot) beside the results, level at the top; the editors in dialogs
     check('desktop: Loop setup beside the results, their tops level, the whole page in one 900 px screen', await pg.evaluate(() => { const set = document.querySelector('.lp .rbbar').getBoundingClientRect(), res = document.querySelector('#results .loop').getBoundingClientRect();
       return set.right <= res.left && Math.abs(set.top - res.top) <= 1 && document.querySelector('.lpside').getBoundingClientRect().bottom <= innerHeight + 60; }));

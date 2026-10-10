@@ -72,22 +72,24 @@ function loopCard(l, meta, ctx) {
       return dk; };
     if (same) card.appendChild(block(meta.deck, D ? `Deck for all ${M.length === 3 ? 'three' : 'four'}` : 'Deck'));
     else {
-      // the deck most members share, then each other member's swaps against it, one row each: "X swaps A → B"
+      // the deck most members share, then each other member's deck by its changes to it, one row each: her face, the card
+      // that goes (greyed) ➜ the card that comes in, and what it does to the odds
       const users = M.map((m, k) => k).filter(k => key(D[k]) === key(meta.deck));
       card.appendChild(block(meta.deck, `Deck for <span class="dwho">${users.map(k => face(k, 42)).join('')}</span><span class="vh">${esc(users.map(k => M[k].name).join(', '))}</span>`));
       const seen = new Set();
-      // a label where the swap rows start: each row is another uma's deck, given by what it swaps from the deck above
+      // a label where the other decks start: each row below is another uma's deck, by its changes to the deck above
       if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps'; card.appendChild(h); }
       M.forEach((m, k) => { if (key(D[k]) === key(meta.deck) || seen.has(key(D[k]))) return; seen.add(key(D[k]));
         const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
         // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
-        const whoT = who.length === 1 ? `${who[0]}’s deck` : who.slice(0, -1).join(', ') + ' and ' + who.at(-1);   // "X’s deck swaps …", "X and Y swap …"
+        const whoT = (who.length === 1 ? who[0] : who.slice(0, -1).join(', ') + ' and ' + who.at(-1)) + '’s deck';   // "X’s deck", "X and Y’s deck"
         const js = M.map((x, j) => j).filter(j => key(D[j]) === key(d)), faces = js.map(j => face(j, 64)).join('');   // each portrait its own tooltip
         const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
         const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
         const dk = document.createElement('div'); dk.className = 'deck swap';
-        dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}</span></span><span class="swt">${who.length === 1 ? 'swaps' : 'swap'}</span><span class="swc">${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">→</span><span class="vh">for</span><span class="swc">${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span>${deltas(d, js)}</div>${info}` + oddsOf(d);
+        dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}:</span></span>` +
+          `<div class="swcards"><span class="swc swout"><span class="vh">out:</span>${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
+          `<span class="swa" aria-hidden="true">${ARROW}</span><span class="swc swin"><span class="vh">in:</span>${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span></div>${deltas(d, js)}</div>${info}` + oddsOf(d);
         card.appendChild(dk); });
     }
     card.querySelectorAll('.swd.more').forEach(b => b.onclick = () => { const open = b.getAttribute('aria-expanded') !== 'true';
@@ -131,6 +133,9 @@ function loopCard(l, meta, ctx) {
   card.appendChild(acts);
   return card;
 }
+// the game's green arrow (white-edged, dark green outline) between the card that goes and the one that comes in
+const ARROW = '<svg viewBox="0 0 30 24" width="30" height="24" focusable="false"><path d="M2 8h13V2.5L28 12 15 21.5V16H2z" fill="#7ecf08" stroke="#3c7a00" stroke-width="2" stroke-linejoin="round"/>'
+  + '<path d="M4.5 10h12.5V7.3L24 12" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 export function renderDeck(res, meta) {
   // focus inside the old result (an open panel's Owned switch, say) would fall back to the page top: keep it in the results
   const box = $('results'), refocus = popHasFocus() || box.contains(document.activeElement);
