@@ -17,7 +17,7 @@
 const base = (job) => ({ ...job, lookahead: false, policy: undefined });
 
 export const POLICIES = {
-  // The page's planner: the job's one-step rollout over the K best careers (`rollout.choice`, lowest Q).
+  // The page's planner before `next`: the job's one-step rollout over the K best careers (`rollout.choice`, lowest Q).
   planner: async (job, { solve, opt }) => {
     const out = await solve({ ...base(job), rollout: opt.k ?? job.rollout ?? 6 });
     const r = out.rollout;

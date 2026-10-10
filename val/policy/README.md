@@ -85,15 +85,15 @@ careers ran under it, and the veteran that ended it: landed mask, stars per targ
 printed table.
 
 A policy is one function in `val/policy/policies.mjs`: `(job, {solve, opt}) => {pick, best, diag}`. `planner` is
-the page's rollout pick (`rollout.choice`), `greedy` the best P(all) now (`results[0]` of a job with no rollout,
+the solver's one-step rollout pick (`rollout.choice`, the page's rule before `next` replaced it), `greedy` the best P(all) now (`results[0]` of a job with no rollout,
 `top: 1`, `per_trainee: false`), `repeat` today's best forever (E = 1/p* exactly, computed once).
 
 ## Pools (`pools/`)
 
 | File | What | Today's best (1/p*) |
 |---|---|---|
-| `owner4.json` | the owner's 4-veteran pool (Unity Cup, owned roster and cards, borrowing on), `rollout: 6` | 7,589 |
-| `owner14.json` | the owner's 14-veteran pool, same settings | 817 |
+| `pool4.json` | a player's 4-veteran pool (Unity Cup, owned roster and cards, borrowing on), `rollout: 6` | 7,589 |
+| `pool14.json` | the same player's 14-veteran pool, same settings | 817 |
 | u4 (no copy here: `pkg/loopopt/jobs/career_U5.json`) | the `career_U4` test pool of 12 veterans with `rollout: 6` | 587 |
 
 ## Baselines (seed 1, settle K = 2 on the best career)
@@ -112,26 +112,26 @@ table below is the comparison.
 | Pool | Runs | H | Planner, mean (95% CI) | Greedy | Repeat (exact) | Planner − greedy, paired (95% CI) | Planner lower / higher | Planner unsettled at H | Wall (-j 4) |
 |---|---|---|---|---|---|---|---|---|---|
 | u4 | 48 | 60 | 432 (400 to 465) | 576 (568 to 584) | 587 | −143 (−175 to −112) | 36 / 12 | 1 | 31 min (H 20, then 60) |
-| owner4 | 48 | 20 | 5,446 (4,907 to 5,985) | 7,589 (every run) | 7,589 | −2,143 (−2,683 to −1,604) | 38 / 10 | 12 | 47 min |
-| owner14 | 24 | 20 | 817 (every run) | 817 | 817 | 0 | 0 / 0 | 0 | 4 min |
+| pool4 | 48 | 20 | 5,446 (4,907 to 5,985) | 7,589 (every run) | 7,589 | −2,143 (−2,683 to −1,604) | 38 / 10 | 12 | 47 min |
+| pool14 | 24 | 20 | 817 (every run) | 817 | 817 | 0 | 0 / 0 | 0 | 4 min |
 
 Sensitivity to H (planner mean ± 95% half-width, runs unsettled at that H; the same paths cut short):
 
 | Pool | H 4 | H 6 | H 10 | H 20 | H 50 | H 60 |
 |---|---|---|---|---|---|---|
 | u4 | 598 ±19 (45) | 564 ±19 (37) | 539 ±22 (31) | 485 ±30 (21) | 436 ±31 (5) | 432 ±33 (1) |
-| owner4 | 6,812 ±465 (48) | 5,944 ±493 (24) | 5,814 ±517 (17) | 5,446 ±539 (12) | | |
+| pool4 | 6,812 ±465 (48) | 5,944 ±493 (24) | 5,814 ±517 (17) | 5,446 ±539 (12) | | |
 
-On owner4 a quarter of the planner's runs are still breeding at H = 20 and the mean is still falling, so 5,446 is
+On pool4 a quarter of the planner's runs are still breeding at H = 20 and the mean is still falling, so 5,446 is
 an upper estimate of this (already pessimistic) quantity; raising H costs about 25 s per planner call on a pool
-of 20+ veterans. On owner14 the planner's pick is today's best career (Agnes Digital [Full-Color Fangirling]
+of 20+ veterans. On pool14 the planner's pick is today's best career (Agnes Digital [Full-Color Fangirling]
 from legacies 8 and 10, 1 in 817) and the first failure leaves it best in every run, so all three coincide.
 
 ### Long horizon (u4, greedy only; stopped early)
 
 Never settle; follow the policy until survival is below 0.001 (tail S/p about 0.2 careers). Planned as greedy
-N = 16 and planner N = 8 (`u4_long/`); stopped by the owner after 4 greedy runs (indices 0 to 3), because a faster
-surrogate simulator reproduces exact-model greedy runs. No long-horizon planner run finished, so there is no
+N = 16 and planner N = 8; stopped after 4 greedy runs (indices 0 to 3), because a faster surrogate simulator
+reproduces exact-model greedy runs. The numbers are recorded here; the raw runs are not tracked. No long-horizon planner run finished, so there is no
 long-horizon planner − greedy difference here.
 
 | Run | E (careers) | Careers simulated | Solver calls | Veterans pruned | Final pool | Final best career (1/p; outfit not recorded) | Solver time |
@@ -151,13 +151,13 @@ Under the model, the pool keeps improving long after any reasonable H. Greedy on
 after one career it scores 576; followed until the hit is all but certain it scores 261 (n = 4). Its pool's best
 career rose to 1 in 172 to 1 in 247, and in two of four runs it was still rising after 1,000 careers. So a
 settle-on-best figure is the cost of "breed for at most H decisions, then never improve again", which neither
-policy actually does. The settle-on-best planner − greedy differences (−143 on u4, −2,143 on owner4) measure the
+policy actually does. The settle-on-best planner − greedy differences (−143 on u4, −2,143 on pool4) measure the
 planner's head start over a greedy that has been frozen, not which policy reaches a hit sooner.
 
 Where runs settled (settle-on-best files): on u4, 12 of 48 planner runs bred, gained nothing and returned to
 today's best (Inari One [Edomurasaki] from legacies 2 and 3, 1 in 587). The rest settled between 1 in 198 and
 1 in 510 (median 418 over all 48). Greedy settled at 1 in 587 (36 runs) or on Agnes Digital (outfit not recorded) from legacies 2 and
-12 at 1 in 556 to 582 (12 runs). On owner4, 8 of 48 planner runs returned to Agnes Digital [Full-Color Fangirling]
+12 at 1 in 556 to 582 (12 runs). On pool4, 8 of 48 planner runs returned to Agnes Digital [Full-Color Fangirling]
 from legacies 2 and 3 (1 in 7,589). The rest settled between 1 in 1,525 and 1 in 6,919. All 48 greedy runs stayed
 at 1 in 7,589.
 

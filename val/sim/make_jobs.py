@@ -1,7 +1,7 @@
 """Write the simulator jobs behind val/sim/README.md into a directory.
 
     uv run val/sim/make_jobs.py OUT_DIR
-    cd pkg/loopopt && target/release/loopopt data.json OUT_DIR/NAME.json > OUT_DIR/NAME.out   # per job (one line of JSON)
+    (cd pkg/loopopt && target/release/loopopt data.json OUT_DIR/NAME.json > OUT_DIR/NAME.out)   # per job (one line of JSON)
     uv run val/sim/report.py runs OUT_DIR/*.out ; uv run val/sim/report.py audit OUT_DIR/*.out ; ... e1 OUT_DIR/e1_*.out
 
 Each job is a pool file (career mode) plus a `simulate` block (docs/SOLVER.md "Policy simulator"). Paths inside the
@@ -11,10 +11,10 @@ import json, os, sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 U5 = f'{REPO}/pkg/loopopt/jobs/career_U5.json'
-O4 = f'{REPO}/val/policy/pools/owner4.json'
-O14 = f'{REPO}/val/policy/pools/owner14.json'
+O4 = f'{REPO}/val/policy/pools/pool4.json'
+O14 = f'{REPO}/val/policy/pools/pool14.json'
 LU = [1019, 1021, 1034]   # the loop planner's best for career_U5's settings (val/refpu__pkg_loopopt__pal_U.out)
-LO = [1014, 1019, 1078]   # the loop planner's best for the owner's roster (coordinator)
+LO = [1014, 1019, 1078]   # the loop planner's best for pool4/pool14's roster and cards
 G = dict(margin=-1)       # exact-backed greedy
 L = dict(margin=0.02)
 
@@ -54,7 +54,7 @@ def main(out):
         mk(O4, f'o4_rg1_{a}', policy='rollout_greedy', runs=1, first=a, samples=4, **G, **A)
     for a in range(8):
         mk(O4, f'o4_rl1_{a}', policy='rollout_loop', runs=1, first=a, samples=4, loop_members=LO, **L, **A)
-    # today's planner (the page's rollout pick, the solver in process per decision): slow, one run per job
+    # the rollout planner (the page's pick before `next` replaced it; the solver in process per decision): slow, one run per job
     for a in range(4):
         mk(U5, f'u5_pl_{a}', policy='planner', runs=1, first=a, progress=100)
     # whole trajectories under the exact model
