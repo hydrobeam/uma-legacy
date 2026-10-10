@@ -71,7 +71,10 @@ community measurements (one of 1,000+ trials) and consistent across every source
 
 The odds use skill whites only. Grandparents take the full base (**fitted**: with grandparents halved, every predicted
 spark chance was about half the measured level). Great-grandparents count for nothing (**assumed**, matching the
-game's two-generation lineage). In the loop model $b(s_{lk})$ is replaced by $\bar b$ in each roll.
+game's two-generation lineage). In the loop model $b(s_{lk})$ is replaced by $\bar b$ in each roll. That is exact for
+one roll but not for two: a legacy's stars are the same in both rolls, and by convexity
+$E[(1 - r)^2] \ge (1 - E[r])^2$, so the loop model slightly overstates $q_k$ (**derived**). The career planner uses
+each veteran's real stars and is not affected.
 
 **Test** (2,936 runs, section 12): observed / predicted inspiration over 23,488
 run-target rows 0.985 [0.97, 1.00]; by carriers 1-6, 0.957-1.001, every interval covering 1; per roll, spark-years
@@ -156,7 +159,7 @@ $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfl
 The shape (uniform draws, $h$ per run, the cap) is **derived** from the data; $\beta$ is **fitted**. Fit: Bernoulli
 likelihood through $M$ per (card-run, pool skill) row, maximum-limit-break card-runs only, rows where no spark hinted
 the skill. The form was fixed on 879 runs (19,071 rows, 17,079 without a spark); the
-bases were refit with the cap on 2,402 runs.
+bases were refit with the cap on 2,402 runs (the table's Runs column counts the 2,373 of them that add a row to the fit).
 
 | Scenario | Fitted $\beta$ | Adopted | Rows | Runs |
 |---|---|---|---|---|
@@ -223,7 +226,7 @@ the chain on $k$ of its $n$ outcomes, $q_l = k/n$ and the stopping link $\sigma$
 $P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$; a stopped chain's slots return to the pool. The solver enumerates the
 exact distribution of final chain states (no simulation); an independent recomputation agrees to about $10^{-16}$.
 
-**Fit of $N$.** Chain progress per card is read from marker skills: a link is observable only if every choice and
+**Fit of $N$** (1,299 runs, the pal-count table below; a refit on 1,792 runs follows). Chain progress per card is read from marker skills: a link is observable only if every choice and
 outcome of its event carries a skill appearing in no other event of that card; ambiguous two-card credits and
 inspiration-only listings are treated as unknown. $N$'s distribution is the one that best explains progress over all
 decks.

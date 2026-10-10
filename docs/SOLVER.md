@@ -33,10 +33,11 @@ The algorithm tests run on frozen data with an older table (`tests/fixtures/data
 E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_i(r)·P_j(r) = expected shared G1 wins
 ```
 
-Over the loop's 12 lineages C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio (`C_PAIR`, `K_TRIO`). C is the same
-for every pair whatever weight the grandparent slots get, so that weight scales the objective without changing the
-best schedules; a three-uma rotation likewise weights its three pairs equally. Test `score_matches_per_legacy_sum`
-checks the closed form against a direct sum over every lineage and slot.
+The optimiser uses C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio (`C_PAIR`, `K_TRIO`), the normalisation of
+the earlier per-legacy split with grandparents at half weight. The adopted model (grandparents at full weight) weights
+every pair's overlap 20 times over a loop's 12 lineages (`docs/RESEARCH.md` §5): a different scale, but the same
+weight for every pair, so both rank schedules identically; a three-uma rotation likewise weights its three pairs
+equally. Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
 
 - Aptitudes: each uma carries `apt` (ten codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer; from her first outfit); `race_cat` / `race_ground` give each race's distance class (0 short .. 3 long) and surface (1 turf, 2 dirt). Only the career schedule uses them, for the legacies' pink sparks (`Env::pink_career`).
 - `pair(a,b)` / `tri(a,b,c)`: the sum of `succession_relation.relation_point` over the relation groups shared by all of them. `data.json` stores the groups (`relations`: `[points, [roster indices]]`, groups with at least two roster members) and the solver builds both tables at load.

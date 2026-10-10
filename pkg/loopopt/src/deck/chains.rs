@@ -2,8 +2,8 @@
 //! and the per-key level tables.
 use super::*;
 
-/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 879 uma-it Independent Training runs whose chain
-/// progress is readable from event hints (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
+/// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 1,299 uma-it Independent Training runs whose chain
+/// progress is readable from event hints (first on 879; a refit on 1,792 runs kept it) (mean 7.35, variance 4.8; no difference between scenarios; a Poisson count,
 /// variance = mean, fits much worse). It slightly underestimates decks with two chain cards: both chains finish in
 /// 82% of such runs, 75% predicted.
 pub(super) const CHAIN_N: u32 = 21;
