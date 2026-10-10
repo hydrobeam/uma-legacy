@@ -16,13 +16,10 @@ per member). The SS+ and owner-roster rows of the v23 table were not regenerated
 
 ## 2. Releases
 
-Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases): v42 in production, deployed and verified on
-its hash address 2026-10-09 (one run, one answer on the career page; sample veterans 3x faster; a mobile pass; loop
-planner audit fixes; browser suite 233 -> 99 s with the fast tier `./build.sh testq`).
-
-On main since v42, unreleased: Compare plans exactly as Add will (b2ecc73: under the old plan's frozen fit, Compare and
-Add named different next careers on a small pool); the Cont memos and `cost_lo`'s early exit (byte-identical, boot_mob
-plan 1.59 -> 0.92 s native); the planner memo audit and its refit test (`tests/plan_memo.rs`).
+Live at https://uma-legacy.pages.dev (hosting: `docs/BUILD.md`, Releases): v43 in production, deployed 2026-10-09
+(Reroll and Grand Masters speed: per-class exact caps, gm16 plan -27.5%; the band-overflow ladder; deck and corner
+memos kept between jobs, p16 rolls that only confirm no saving -35%; `y_hi` tightened, p16 rolls that run that check
+31% -> 14%, exact anchors built but off; Compare plans exactly as Add will; the Cont memos).
 
 | Tag | State |
 |---|---|
@@ -37,7 +34,8 @@ plan 1.59 -> 0.92 s native); the planner memo audit and its refit test (`tests/p
 | v34–v37 | redesign and /about; scenario card bans; measured event outcome shares; dark mode; the model spec on /about |
 | v38–v40 | ranking by exact odds with a certified cap (`EXACT_RHO`); the career planner (`/career`); three-uma rotations; both planner pages in the game's style |
 | v41 | career planner speed (first plan about 12 s -> under 2 s), Reroll's per-outcome table, the career planner on /about |
-| v42 | see above |
+| v42 | one run, one answer on the career page; sample veterans 3x faster; mobile pass; loop planner audit fixes |
+| v43 | see above |
 
 ## 3. Open threads, most valuable first
 
