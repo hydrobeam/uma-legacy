@@ -21,7 +21,8 @@ the system Python. Node tooling lives in `webapp/node_modules` (`npm ci` on firs
 |---|---|---|
 | `all` | `data events native pb wasm page` | everything below |
 | `data` | Global and Grand Masters-era exports (`data.json`, `web_skills.json`, `web_cards.json` with the scenario card bans, `career.json`: the veteran import's spark-factor and win-saddle tables) | `pkg/loopopt/export/master.mdb`, `jp/export/master.mdb` |
-| `events` | card event caches from `pkg/loopopt/gametora/` plus the manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
+| `gametora` | GameTora's data files at the versions pinned in `pkg/loopopt/gametora.json`, into `cache/gametora/` (`GAMETORA_LATEST=1` moves the pins to the newest first); run by `events` and `page` | network |
+| `events` | card event caches from `cache/gametora/` plus the manual entries (Global, GM, GM without first-year dates) | Global master.mdb |
 | `native` | release binary and its tests | cargo |
 | `pb` | exact pairwise affinity ceilings of every uma pair, stored as `pb` in both `data.json` (`export/add_pb.py` via `loopopt pbtable`); a typical search runs faster with it. It carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns until `pb` is rerun | native |
 | `wasm` | wasm32 build (build-std), `wasm-opt -O3`, then `example.json` (the result shown before the first search) | rust-src, node |
