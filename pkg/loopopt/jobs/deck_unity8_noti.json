@@ -1,6 +1,6 @@
 {
  "mode": "deck",
- "scheme": "scf",
+ 
  "iters": 30,
  "seed": 3,
  "skills_file": "web_skills.json",
