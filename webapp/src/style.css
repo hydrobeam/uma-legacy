@@ -50,16 +50,28 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .skip { position: absolute; left: 16px; top: -200px; z-index: 100; background: var(--panel); color: var(--accent); font-weight: 700; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 8px; }
 .skip:focus { top: 8px; }
 header.top { max-width: 1320px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
-.tnav { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
-/* light / dark: one button, the moon in light mode and the sun in dark */
-.themebtn { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 1px solid var(--line);
-  background: var(--panel); color: var(--ink); cursor: pointer; align-self: center; }
-.themebtn:hover { border-color: var(--accent); color: var(--accent); }
-.themebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.themebtn svg { width: 18px; height: 18px; }
-:root[data-theme="dark"] .themebtn .i-moon, :root:not([data-theme="dark"]) .themebtn .i-sun { display: none; }
-@media (max-width: 620px) { .themebtn { width: 44px; height: 44px; } }
-.tnav a { font-weight: 600; color: var(--accent); }
+/* the header in the game's style on every page: the page links as its white pill buttons, light / dark as its two-way
+   switch (the green knob on the mode in use, both icons shown). Brown on white keeps /about's AAA (8.2:1) */
+.tnav { margin-left: auto; align-self: center; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 10px; }
+.tnav a { display: inline-flex; align-items: center; min-height: 34px; box-sizing: border-box; padding: 3px 16px 5px; border-radius: 999px;
+  font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; line-height: 1.2; color: var(--gm-ink); text-decoration: none;
+  background: linear-gradient(var(--gm-cell), var(--gm-tab-low)); border: 1px solid var(--gm-edge);
+  box-shadow: inset 0 -3px 0 var(--gm-tab-edge), 0 1px 3px var(--gm-shadow); }
+.tnav a:hover { border-color: var(--gm-green); }
+.tnav a:active { box-shadow: inset 0 -1px 0 var(--gm-tab-edge); transform: translateY(1px); }
+.tnav a:focus-visible, .themebtn:focus-visible { outline: 3px solid var(--gm-green2); outline-offset: 2px; }
+.themebtn { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; align-items: center; width: 72px; height: 34px; padding: 3px 3px 5px;
+  box-sizing: border-box; border-radius: 999px; border: 1px solid var(--gm-tab-edge); background: var(--gm-tab); box-shadow: inset 0 -3px 0 var(--gm-tab-low);
+  color: var(--gm-ink2); cursor: pointer; }
+.themebtn::before { content: ''; position: absolute; top: 3px; bottom: 5px; left: 3px; width: calc(50% - 3px); border-radius: 999px;
+  background: linear-gradient(var(--gm-bright), var(--gm-bright2)); box-shadow: inset 0 -2px 0 var(--gm-green); transition: transform .15s; }
+:root[data-theme="dark"] .themebtn::before { transform: translateX(100%); }
+.themebtn svg { position: relative; justify-self: center; width: 17px; height: 17px; }
+.themebtn .i-sun { order: 0; } .themebtn .i-moon { order: 1; }
+:root:not([data-theme="dark"]) .themebtn .i-sun, :root[data-theme="dark"] .themebtn .i-moon { color: #fff;
+  filter: drop-shadow(0 1px 0 #3c7a00) drop-shadow(0 -1px 0 #3c7a00) drop-shadow(1px 0 0 #3c7a00) drop-shadow(-1px 0 0 #3c7a00); }
+@media (prefers-reduced-motion: reduce) { .themebtn::before { transition: none; } }
+@media (max-width: 620px) { .tnav { gap: 8px; } .tnav a { min-height: 44px; padding-inline: 10px; font-size: .9rem; } .themebtn { width: 78px; height: 44px; } }   /* two links and the switch in one 343 px row */
 header.top h1 a.home { color: inherit; text-decoration: none; }
 /* the brand: the favicon's sparkles, then "uma-legacy" */
 h1.brand, h1.brand a.home { display: inline-flex; align-items: center; gap: 0.3em; }
