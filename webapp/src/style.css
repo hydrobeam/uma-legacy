@@ -1060,9 +1060,10 @@ h1.brand .sub { margin-left: 0.5em; font-size: 0.55em; font-weight: 700; color: 
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2));
   background-size: 28% 100%, 100% 100%; background-repeat: no-repeat; }
 :root.game dialog:not(.gmdlg) > .dlg > .dhead h3 { color: #fff; text-shadow: var(--gm-outline); flex: 1; text-align: center; }
-:root.game dialog:not(.gmdlg) .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); border-radius: 999px; border: 1px solid var(--gm-edge);
-  background-color: var(--gm-cell); background-image: linear-gradient(var(--gm-cell), var(--gm-tab-low)); box-shadow: inset 0 -3px 0 var(--gm-tab-edge); }
-:root.game dialog:not(.gmdlg) .btn.primary { color: #fff; text-shadow: var(--gm-outline); background-color: var(--gm-bright); background-image: linear-gradient(#b4ec52, var(--gm-bright2)); border-color: #5aa300; box-shadow: inset 0 -3px 0 #5aa300; }
+/* (the button's face is the game's sprite, set with the other buttons below; a CSS pill here showed behind the sprite's
+   angled end, a second button behind the first) */
+:root.game dialog:not(.gmdlg) .btn { font-family: inherit; font-weight: 700; color: var(--gm-ink); }
+:root.game dialog:not(.gmdlg) .btn.primary { color: #fff; text-shadow: var(--gm-outline); }
 :root.game .cpop, :root.game #add-pop { font-family: "Zen Maru Gothic", var(--font-ui); color: var(--gm-ink); background: var(--gm-panel); border: 2px solid var(--gm-bright2); border-radius: 12px; box-shadow: 0 6px 18px var(--gm-shadow); }
 /* tooltips: the game's balloon */
 .gmtip { position: fixed; z-index: 1000; max-width: 300px; pointer-events: none; font-family: "Zen Maru Gothic", var(--font-ui); font-weight: 700; font-size: 0.82rem; line-height: 1.3;
