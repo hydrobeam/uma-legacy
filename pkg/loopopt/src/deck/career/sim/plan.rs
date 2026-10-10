@@ -1126,6 +1126,38 @@ fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa
     }
     rz
 }
+/// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
+/// bound allows (into `up`), then `saving_lo`; `c1` scratch
+#[allow(clippy::too_many_arguments)]
+fn hi_at(bs: &ScoreBase, hs: &[(usize, Vec<f64>, Vec<f64>)], leaf: usize, m: usize, full_m: usize, xi: Option<usize>, her: &[(usize, bool, f64)], goal: bool, c1: &mut [f64], up: &mut [f64]) -> f64 {
+    up.copy_from_slice(&bs.pnow);
+    for (ui, bd, sc) in hs { let v = sc[m] * bd[leaf]; if v > up[*ui] { up[*ui] = v; } }
+    saving_lo(bs, up, m, full_m, xi, her, goal, c1)
+}
+/// V - V_lo at candidate odds `up`: each step that rose at `Cont::cost_lo`, her own 8/8 (`xi`, `her_trios`) on the full
+/// set, the goal's V; `c1` scratch
+#[allow(clippy::too_many_arguments)]
+fn saving_lo(bs: &ScoreBase, up: &[f64], m: usize, full_m: usize, xi: Option<usize>, her: &[(usize, bool, f64)], goal: bool, c1: &mut [f64]) -> f64 {
+    let n = bs.cands.len();
+    c1.copy_from_slice(&bs.c1);
+    for ui in 0..n { if up[ui] > bs.pnow[ui] * (1.0 + 1e-9) { let cc = bs.cost_lo(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; } } }
+    if m == full_m { if let Some(xi) = xi { c1[xi] = 0.0; } }
+    let mut va = if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) } else { trio_v(c1, &bs.combos) };
+    if m == full_m && !her.is_empty() { va = with_her(va, her, c1); }
+    if goal && m == full_m { bs.v0 } else { (bs.v0 - va).max(0.0) }
+}
+/// The pick's bound's exact anchors (`outcome_hi`): her best deck searched with her at each of these stars on every
+/// uncertain target, for at most HI_SEARCHES / 2 partners (with no limit p16 took 5 and left the same). Callgrind per
+/// search: p16 55M, gm16 151M instructions (the val/plan jobs +6.0% and +11.1% in all). A leaf whose stars are all at
+/// most 1 is rare at the rank's mix: adding 1 star moved p16's provisional 0.0275 -> 0.0272, gm16 0.0796 -> 0.0742 for
+/// +8.8% and +16.5%
+const HI_STARS: [usize; 2] = [2, 3];
+const HI_SEARCHES: usize = 10;
+/// ... and only for band outcomes whose partners' bounds are within this factor of p_now: a cost rule, not part of the
+/// bound. It skips p10 and p11, whose band needs partners at 2.5 times p_now and more: there 15 searches (at 1, 2 and 3
+/// stars) freed nothing (p11: 233 ms native spent), and only 63 (805 ms) moved p10 (0.474 -> 0.378); 1.3 and 1.5 chose
+/// the same
+const HI_RISE: f64 = 1.5;
 /// The pick's upper bound per outcome (`outcomes.y_hi`, read by the page's reroll): the most V can fall through her
 /// veteran's DIRECT lifts. The outcomes, base and own-8/8 credit (`her_trios`) are `score_career`'s; but each stage
 /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
@@ -1137,7 +1169,11 @@ fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa
 /// worth at most val_f there, `Env::seen`, under the caps every search assumes; the found careers are the search's
 /// answer, so the anchors depend on the job alone)
 ///     value(y, her) <= c' val_f rise(q', q_f);
-/// also at most the ceiling
+/// and, for the partners behind the band's likeliest outcomes (y < 0.5 <= the bound so far; `HI_SEARCHES`, `HI_RISE`),
+/// over her best deck searched at her s = 2, 3 stars on every uncertain target (q^s, `best_deck` fully checked: E_best
+/// there, under the caps every search assumes)
+///     value(y, her) <= c' E_best(q^s) rise(q', q^s),
+/// rise 1 where her stars are at most s (the band's outcomes are bounded again after); also at most the ceiling
 /// (`Env::ceiling` through `Sim::fastc`, under EXACT_RHO: per outfit and target A - B (1 - q'), `outfit_fast`'s factor at
 /// q'; before 2026-10-09 the bound took A + B q', B more per target, valid and on p16 3.3 times as high at the pick's
 /// partners). A candidate's step costs the lowest cost at those odds
@@ -1148,16 +1184,17 @@ fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa
 ///     Her best partners are among every partner. So up_hi >= up for every candidate.
 /// (2) cost_lo(up_hi) <= cost(up) (`Cont::cost_lo`), a step cost never rises from the base, and V over the trios (and
 ///     `with_her`) does not fall when a step cost rises; so V_lo <= V_table and y_hi >= y.
-/// (3) In the exact replan with her in the pool, with today's Cont and trios, a candidate's best career with her as a
-///     parent is at most its ceiling, so her step costs at least cost_lo(up_hi): y_hi bounds the replan's direct-lift
+/// (3) Each anchor A (a pair (y, z), a found career, a search at q^s) has a value E_A with E_best(q_A) <= E_A (a career
+///     of today's pool is worth at most pnow; a fully checked deck search is the best under the caps). Every deck D legal
+///     for the candidate has E_D(q') <= E_D(q_A) rise(q', q_A) (`Env::rise`) <= E_A rise(q', q_A), so her best career
+///     with partner y is at most c' E_A rise(q', q_A) for every A, and at most its ceiling. In the exact replan with her
+///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
 ///     saving. Not bounded (channel 2, out of scope by the owner's decision): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
 #[allow(clippy::too_many_arguments)]
-fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, fix: &[usize], msv: &Solved, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (Vec<f64>, Vec<f64>) {
+fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, fix: &[usize], msv: &Solved, ytab: &[f64], x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (Vec<f64>, Vec<f64>) {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
-    let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
-        else { trio_v(c1, &bs.combos) };
     let xi = bs.cands.iter().position(|&u| u == x);
     let goal = is_full(s.env.sj, &legs[a].sparks) && is_full(s.env.sj, &legs[b].sparks);
     let c = s.make_cur(pool, x, a, b, sel, false);
@@ -1166,6 +1203,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let nleaf = 1usize << (2 * nu); let nm = 1usize << ntar;
     let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];   // (candidate, bound at scale 1 per leaf, spark scale per m)
+    let mut hq: Vec<(usize, Vec<f64>, Vec<f64>, [f64; 4])> = vec![];   // per partner: (trainee, q0, x0, xms), for the anchors
     let rf = s.env.space.rho_top() * s.fixed;
     let (mut lp, mut lp_tmp): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
     for ui in 0..n {
@@ -1217,13 +1255,13 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             for (cv, av) in ceil.iter_mut().zip(&anc) { *cv = (rf * *cv).min(*av); }
             let pw: Vec<[f64; 2]> = (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect();
             let sc: Vec<f64> = (0..nm).map(|m| (0..ntar).map(|k| pw[k][(m >> k & 1) as usize]).product()).collect();
-            hs.push((ui, ceil, sc));
+            hs.push((ui, ceil, sc)); hq.push((u, q0, x0, xms));
         }
     }
     let full_m = nm - 1;
     let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
     let nf = fixed_t.len();
-    let mut ys: Vec<f64> = vec![0.0; nleaf << nf]; let mut prs: Vec<f64> = vec![0.0; nleaf << nf];
+    let mut ys: Vec<f64> = vec![0.0; nleaf << nf]; let mut prs: Vec<f64> = vec![0.0; nleaf << nf]; let mut ms: Vec<usize> = vec![0; nleaf << nf];
     let mut c1 = bs.c1.clone(); let mut up = vec![0.0f64; n];
     for leaf in 0..nleaf {
         let mut mu = 0usize; let mut pr_st = 1.0f64;
@@ -1232,16 +1270,52 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
             let pr = c.os[m] * pr_st;
             if pr <= 0.0 { continue; }
-            prs[leaf << nf | fm] = pr;
-            c1.copy_from_slice(&bs.c1); up.copy_from_slice(&bs.pnow);
-            for (ui, bd, sc) in &hs { let v = sc[m] * bd[leaf]; if v > up[*ui] { up[*ui] = v; } }
-            for ui in 0..n { if up[ui] > bs.pnow[ui] * (1.0 + 1e-9) { let cc = bs.cost_lo(ui, up[ui]); if cc < c1[ui] { c1[ui] = cc; } } }
-            if m == full_m { if let Some(xi) = xi { c1[xi] = 0.0; } }
-            let mut va = v0_after(&c1);
-            if m == full_m && !her.is_empty() { va = with_her(va, &her, &c1); }
-            ys[leaf << nf | fm] = if goal && m == full_m { bs.v0 } else { (bs.v0 - va).max(0.0) };
+            prs[leaf << nf | fm] = pr; ms[leaf << nf | fm] = m;
+            ys[leaf << nf | fm] = hi_at(bs, &hs, leaf, m, full_m, xi, &her, goal, &mut c1, &mut up);
         }
     }
+    // exact anchors (`HI_SEARCHES`) for the partners that hold the most likely outcomes of the band (y < 0.5 <= y_hi) in
+    // it: per band outcome, most likely first, the partners that must all fall for it to leave the band (every partner
+    // above p_now of each candidate whose odds move V; none further than HI_RISE above p_now), taken whole while they fit
+    let mut band: Vec<usize> = (0..ys.len()).filter(|&i| prs[i] > 0.0 && ytab[i] < 0.5 && ys[i].max(ytab[i]) >= 0.5).collect();
+    band.sort_by(|&i, &j| prs[j].partial_cmp(&prs[i]).unwrap().then(i.cmp(&j)));
+    let cap = HI_SEARCHES / HI_STARS.len();
+    let mut chosen: Vec<usize> = vec![];
+    for &i in &band {
+        if chosen.len() >= cap { break; }
+        let (leaf, m) = (i >> nf, ms[i]);
+        let h = hi_at(bs, &hs, leaf, m, full_m, xi, &her, goal, &mut c1, &mut up);
+        let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
+        for ui in 0..n {
+            if up[ui] <= bs.pnow[ui] * (1.0 + 1e-9) { continue; }
+            let keep = up[ui]; up[ui] = bs.pnow[ui];
+            let h2 = saving_lo(bs, &up, m, full_m, xi, &her, goal, &mut c1); up[ui] = keep;
+            if h2 >= h - 1e-9 { continue; }
+            for (pi, (pu, bd, sc)) in hs.iter().enumerate() {
+                if *pu != ui { continue; }
+                let v = sc[m] * bd[leaf];
+                if v > bs.pnow[ui] * (1.0 + 1e-9) { need.push(pi); if v > HI_RISE * bs.pnow[ui] { far = true; } }
+            }
+        }
+        if far || need.is_empty() { continue; }
+        need.retain(|pi| !chosen.contains(pi));
+        if chosen.len() + need.len() <= cap { chosen.extend(need); }
+    }
+    // each one: her best deck searched at her s stars on every uncertain target (q^s, `HI_STARS`), proven (`best_deck`
+    // full, under the caps): value(y, her) <= c' E_best(q^s) rise(q', q^s) for every outcome (rise 1 where her stars <= s)
+    for &pi in &chosen {
+        let (u, q0, x0, xms) = &hq[pi];
+        let (sts, ews) = (s.env.sts0[*u].clone(), s.env.ew0[*u].clone());
+        for &st in &HI_STARS {
+            let mut q = q0.clone(); for k in 0..nu { q[uncv[k]] = 1.0 - x0[k] * xms[st]; }
+            s.env.set_trainee(*u, &q); s.env.work = 0; let mut nsc = 0;
+            if let DeckRes::Done(v, _, true) = s.env.best_deck(*u, 1.0, 0.0, &[], &mut nsc) {
+                let rz = rise_leaves(&sts, &ews, x0, xms, &q, &uncv, &mut lp, &mut lp_tmp);
+                for (bv, r) in hs[pi].1.iter_mut().zip(&rz) { let v2 = v * r; if v2 < *bv { *bv = v2; } }
+            }
+        }
+    }
+    if !chosen.is_empty() { for &i in &band { ys[i] = hi_at(bs, &hs, i >> nf, ms[i], full_m, xi, &her, goal, &mut c1, &mut up); } }
     (ys, prs)
 }
 
@@ -1641,7 +1715,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         for i in 0..runs.len() { if near(i) && runs[i].1.val > runs[pk].1.val { pk = i; } }
         let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
         let (x, f) = (runs[pk].0, runs[pk].1.clone());
-        Some((pk, outcome_hi(&mut s, d, &base, legs, pool, fix, sv, x, f.a, f.b, &f.sel, &mut buf)))
+        Some((pk, outcome_hi(&mut s, d, &base, legs, pool, fix, sv, &ytabs[pk], x, f.a, f.b, &f.sel, &mut buf)))
     } else { None };
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time

@@ -172,7 +172,22 @@ plan/compare/reroll state machines, views and import/export.
   Every proof the plan holds (`Env::seen`, every search's fully checked decks) took p16 to 0.036, but `seen` and the main
   search's other Refs depend on the worker's history (kept plans, kept proofs: a candidate a kept proof bounds leaves
   no Ref), and with them a roll's verdict could too (a check that runs can find a channel-2 saving the bound leaves
-  out); the found careers are the search's answer, the same in any history.
+  out); the found careers are the search's answer, the same in any history. (3) Exact anchors: for the partners behind
+  the band's likeliest outcomes (per outcome, most likely first, every partner above p_now of each candidate whose odds
+  move V, taken whole while they fit; none past `HI_RISE` = 1.5 x p_now), her best deck searched at her 2 and 3 stars on
+  every uncertain target, at most `HI_SEARCHES` = 10: p16 0.144 -> 0.0275, gm16 0.132 -> 0.080, p16_ss 0.229 -> 0.086,
+  p16_ura 0.144 -> 0.0275; p10, p11 none run (their band needs partners at 2.5 x p_now and more; 63 searches moved p10
+  only to 0.378). Callgrind, the val/plan job (search and plan), main against this: p16 9.745G -> 10.332G (+6.0%; the
+  10 searches 0.555G), gm16 13.976G -> 15.522G (+11.1%; 1.511G), p10 22.955G -> 22.980G (+0.1%). The plan's `work`
+  counters do not count these searches (it is taken before the bound). At 1, 2 and 3 stars (15 searches) p16 0.0272,
+  gm16 0.0742 for p16 +8.8%, gm16 +16.5%. Not taken: a cap of 1.05 on the ceiling (p16 with every proof 0.036 -> 0.023)
+  needs the deck's class, which a bound over every deck does not know; a rise that counts the targets whose chance falls
+  needs per-term hint odds the exact model does not bound (an outcome group gives a target for sure in some terms).
+  Checked exactly (each sampled outcome's every partner whose bound could matter: her best career with that partner
+  searched): p16 92 sampled band outcomes, gm16 95, p16_ss 63, p10 18, p11 all 12; 4,610 partner checks, none above
+  its bound, no y_hi below the exact direct saving (all 0 on the band). Provisional (the chance a roll runs the full plan
+  only to confirm no saving), main -> now: p16 0.307 -> 0.0275, gm16 0.311 -> 0.080, p16_ss 0.401 -> 0.086, p10 0.474
+  -> 0.474.
 - Per-class exact caps (2026-10-09, owner's call; outputs identical on the seven val/plan jobs, mono and the full val
   apart from cap fields and counters; the budget ladder now certifies higher caps on five val jobs). The cap on exact /
   product odds by the deck's chain-varying targets: 0-2 1.05 (assumed), 3+ or a multi-target group 1.25; a node
