@@ -75,7 +75,7 @@ game art are never committed.
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3`, then `webapp/example.json` (the result shown before the first search) |
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
-| `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Runner strips*) |
+| `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
 | `browsers` | Playwright's browsers into `webapp/node_modules` (once) |
 | `test` / `testq` | the browser suite, full or its fast tier (see *Tests*) |
 | `serve` | `webapp/dist` on http://localhost:8000 (`PORT=…`) |
@@ -100,50 +100,16 @@ Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, val
 
 ## Art
 
-`images` writes `webapp/img/{kind}/{id}.avif` (AVIF q55: half the size of WebP q82 at the same look; loaded lazily)
-and `img/manifest.json` (sources and gaps):
-- character icons (keyed by dress id, `card_rarity_data.race_dress_id`, not outfit id), card art, skill icons, race
-  banners, scenario logos and the scenario select art (`single/banner/bnr_chara_big_NNN`, kind `scenart`), and every
-  named mob uma's portrait (kind `mob`: the career planner's sample veterans);
-- UI sprites as lossless WebP: the friend frame, card type icons, rank badges, the career page's veteran card (aptitude
-  grade letters, spark bars and bullets, skill tiles), the tab pill, the Enhance-menu buttons, and the game's buttons
-  and check box (from the install's `resources.assets`);
-- dark versions of the light sprites (`*_dark`, made here: the game has no dark mode): each pixel keeps its hue and
-  alpha while its lightness moves into a dark band (`images.py` `dark_sprites`, `dark_enh`).
+`images` writes `webapp/img/{kind}/{id}.avif` (AVIF q55, loaded lazily) and `img/manifest.json` (sources and gaps):
+character icons, card art, skill icons, race banners, scenario logos and select art, mob portraits, and the UI
+sprites as lossless WebP with dark versions made here (the game has no dark mode). The full list of kinds and the
+bundles they come from is in `webapp/images.py`'s docstring. The Global client indexes some content before Global
+releases it, which is why Grand Masters-era art exists locally. `uv run webapp/icons.py` renders the favicons and the
+link-preview image from `webapp/icons/favicon.svg`.
 
-The Global client indexes some content before Global releases it, which is why Grand Masters-era art exists locally.
-`uv run webapp/icons.py` renders the favicons and the link-preview image from `webapp/icons/favicon.svg`.
-
-## Runner strips
-
-While a search runs, the page shows the uma being planned running (`webapp/src/images.js` `runnerHTML`; a spinner
-when a build has no strips). `./build.sh runners` (`webapp/chibi/chibi.py [all | ID ...] [--force]`) makes one strip
-per roster uma, both eras: her mini body, hair, the shared mini face in her skin tone, her tail
-(`chara_data.tail_model_id`) and the game's mini run motion. AssetStudio's CLI exports FBX, FBX2glTF makes glb, the
-run clip is decoded in Python (dense and constant curves, bones by the CRC32 of their path), and
-`webapp/chibi/render.mjs` renders `chibi.html` (three.js) in headless Chromium: flat colours with an outline, 18 frames
-(0.6 s) at 128 px, cropped to her box over the loop, one AVIF. Exports are cached per uma in `cache/chibi/work/ID`
-(delete one to redo it). About 3 s per uma; the 83 roster umas come to 4.9 MB, and a page loads one.
-
-For when it breaks:
-- **Pieces and joins.** Body `mbdy{id}_NN` (her lowest variant: seven umas have no `_00`), hair `mchr{id}_00_hair`,
-  the shared face `mchr0001_00_face0` (texture `face0_{skin-1}`), tail `mtail{tail_model_id:04}_00` with
-  `tex_mtail…_{id}_diff`. Skins join the body's bones by name; nodes whose parent is a body bone (Tail_Ctrl under Hip,
-  the hair and ear chains under Head) move under it, and the face's rigid eye, brow, mouth and cheek meshes move from
-  the face file's Head to the body's. Materials need their `sourceresources/...` prerequisites (the index's `d` column;
-  each bundle also lists them itself in `m_Dependencies`, names with a `.a` suffix).
-- **Coordinates.** FBX2glTF scales positions by 1/100; Unity's x mirror converts position (-x, y, z) and quaternion
-  (x, -y, -z, w). The run clip has 20 samples of which the loop is 18 (frame 18 = frame 0); `run.json` carries `loop`.
-- **Looks.** The blush texture has no alpha and is drawn as a multiply. The mouth is a 4 x 8 sheet read through one
-  cell (`mouth=2`, the open happy shape). The clip leaves the tail still, so the tail is a spring chain pinned to her
-  hip (`droop` 30°, `k` 260, `damp` 3.5, `g` 0.35), run 8 loops at 240 Hz with the last recorded; hair, skirt and ears
-  sway on a sine at the step rate.
-- **Umas not yet on Global** (1104–1106) take skin and tail from the JP `master.mdb`; their mini models already ship in
-  the Global files.
-- **Not drawn:** attachments (`chara_data.attachment_model_id`); accessories inside the hair model are.
-- **On the page:** the loop planner runs one of the result loop's umas (kept while that loop is shown), the career
-  page the trainee; before either, a random uma. Her strip loads when she is picked. It is set as an inline
-  `background-image`, since a `url()` in a CSS custom property resolves against the stylesheet, not the page.
+`runners` writes one sprite strip per uma to `webapp/img/run/{chara}.avif`, the uma being planned running while a
+search works (a spinner when a build has none). How the pipeline works and what to check when it breaks:
+`webapp/chibi/README.md`.
 
 ## The page
 
