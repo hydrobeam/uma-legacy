@@ -97,6 +97,9 @@ Milestones since 2026-10-03 (v24; v20–v39 are lightweight tags, v40 on annotat
 ## 4. Standing decisions
 
 - The tool is for Independent Training only. Unity Cup is the default scenario; the GM-era JP data is a secondary mode.
+- The page is game-styled throughout, /about included (2026-10-10): one header on every page (the three pages as
+  the game's tab bar, the current one green; the light / dark switch), the wordmark in the game's title style, /about's
+  headings as the game's section titles. /about keeps AAA except the current tab. Copy: less is more, a cute touch.
 - The busy sign is the runner, each uma's mini model running (2026-10-10; `docs/BUILD.md`, Runner strips).
 - Deploys only on the maintainer's explicit word, each time.
 - A reload whose settings match the saved last result (same solver, data, held-back entries and job) shows it as done

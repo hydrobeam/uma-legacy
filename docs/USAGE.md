@@ -1,5 +1,11 @@
 # Using the page
 
+The live page is https://uma-legacy.pages.dev. While a search works, the uma being planned runs (her mini model; the loop planner: one of
+the loop's umas at random, kept while the loop on show has her; the career page: your trainee, else the planner's pick; a random
+uma before either). Its own "How this works" page (`/about`) explains the model in plain
+words; this file is the reference for the controls. Every page has the same header: the three pages as the game's tab
+bar (Loop planner, Career planner, How this works; the page you are on in green) and the light / dark switch.
+
 Both planner pages are drawn in the game's style (the same rules, html class `game`): game panels, the game's buttons,
 check boxes and switches, green section bars, pink setup ribbon. The loop planner has two columns. On the left, the
 **Loop setup** panel with the same rows as the career's *Career setup* (built from the same markup,

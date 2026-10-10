@@ -62,6 +62,12 @@ lazily.
 - `career.html` (the career planner, served at `/career`): `career.template.html` with the same stylesheet, data and
   worker, its own bundle (`src/career.js`) and its own data script: the era's `career.json` tables and each G1's turns
   (`race_turns`, from `data.json`, for the G1-wins calendar).
+- Shared markup: `panels.template.html` holds the blocks both planner pages use (the setup rows `era`, `scen`, `rank`,
+  `targets`; the Enhance buttons `enh`; the settings editors `skills`, `roster`, `deck` and their dialogs `setdlgs`),
+  each marked `<!--panel:name-->` ... `<!--/panel:name-->`; build.py fills every `__PANEL_NAME__` in both templates
+  (a block may hold others). `src/setup.js` wires the editors' buttons and dialogs on both pages; the modules report
+  changes through `save.js` (each page sets what a change does). Both pages carry `class="game"` on `<html>`: the
+  game-style rules in `style.css` are scoped to it (career-only layout stays under `.rb`, the loop planner's under `.lp`).
 - `assets/`: every file named with a fingerprint of its content and cached for a year (an update gets new names):
   `style.<hash>.css` (`src/style.css` minified, the font faces and the UI sprites as CSS variables, `--btn-w` etc.,
   with paths relative to `assets/`: a `url()` in a custom property resolves against the stylesheet that uses it);
