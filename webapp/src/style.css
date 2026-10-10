@@ -599,7 +599,13 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rbtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .rbtitle h2 { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
 .rbtitle .rhead { flex: 1 1 24em; }
-.rhead.quiet { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* career: heard, not shown (career.js paint) */
+/* the career page's status beside Next career: the game's brown words, no box (a search shows the green spinner); only
+   something to act on gets a frame, the game's pink-edged note for an error */
+.game .rbtitle .rhead { min-height: 0; padding: 2px 4px; background: none; border: 0; font-family: "Zen Maru Gothic", var(--font-ui);
+  font-weight: 700; font-size: .9rem; color: var(--gm-ink2); transition: none; }
+.game .rbtitle .rhead .runnote { color: inherit; font-weight: inherit; }
+.game .rbtitle .rhead .spin { border-color: var(--gm-line); border-top-color: var(--gm-green2); }
+.game .rbtitle .rhead[data-kind="error"] { padding: 5px 14px; border-radius: 999px; background: var(--gm-cell); border: 2px solid var(--gm-pink2); color: var(--gm-ink); }
 /* the pedigree: trainee, then her parents, then theirs, left to right, joined by brackets */
 .ped { display: flex; align-items: center; margin-top: 6px; min-width: 0; }
 .pt { flex: 0 0 290px; min-width: 0; }

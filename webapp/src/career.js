@@ -42,9 +42,6 @@ let last = null;   // the answer on show: {r, job, key, plan} (the search's resu
 function paint() {
   const n = $('run-note');
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
-  // the counts and timings ("Weighed N careers in X s", "Planned in X s") are for screen readers only: the bar shows
-  // only what asks something of you (no veterans yet, an error, a plan that failed); the analysis frame shows the work
-  $('rhead').classList.toggle('quiet', searching || status.kind === 'loading' || (status.kind === 'done' && planS.state !== 'error'));
   const old = searching && started && !!shown();   // the previous answer, on screen until this run's
   $('results').classList.toggle('stale', old || (!searching && ['error', 'empty'].includes(status.kind)));
   $('tree').classList.toggle('stale', old);

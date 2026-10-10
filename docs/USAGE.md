@@ -86,10 +86,9 @@ pick*. Picking a new uma, or changing who a grandparent is, asks whether to add 
 legacies hold (parents' and grandparents' parts).
 
 Every edit starts one run, and a run gives one answer. It searches the careers by odds, then, with the trainee left
-to the planner, plans (nothing simulated); while it works the *Veteran analysis* frame beside the tree shows a spinner.
-The status line beside *Next career* shows only what asks something of you (no veterans yet, an error, a plan that
-failed); its progress and timings ("Searching careers… 2 s", "Weighed 3,618 careers in 0.4 s. Planning your next
-career… 3 s", "… Planned in X s") are read to screen readers but not drawn. Nothing of the run is drawn before it ends: the tree's picks, the career, the veteran you
+to the planner, plans (nothing simulated); the status line names the phase at work ("Searching careers… 2 s", then
+"Weighed 3,618 careers in 0.4 s. Planning your next career… 3 s") and ends on "Weighed … The best odds are checked
+exact … Planned in X s". Nothing of the run is drawn before it ends: the tree's picks, the career, the veteran you
 got and *Career choices* all come from its answer, the planner's pick (the best odds when the trainee is yours, or when the
 plan fails: "Plan not made: …"). Until then the previous answer stays on screen, dimmed, with *Compare*, *Reroll*,
 *Add to veterans* and *Use this* off; an edit during a run stops it and starts a new one. Internally a run is two
