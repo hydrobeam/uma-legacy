@@ -1802,6 +1802,11 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    don't fit (side by side on a phone each was squeezed to a narrow two-line column) */
 .runnote { flex-wrap: wrap; row-gap: 2px; }
 .runnote > span:has(> .spin) { display: inline-flex; align-items: center; gap: 6px; }
+/* a spinner before the words (the loop planner's "Checking the exact odds… The result below may still change."): the
+   words wrap beside it, never under it with the spinner left alone on the line above */
+.runnote:has(> .spin) { flex-wrap: nowrap; align-items: flex-start; }
+.runnote > .spin { flex: none; margin-top: .2em; }
+.runnote > .spin + span { min-width: 0; }
 /* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
 @media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
 .game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */

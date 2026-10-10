@@ -27,7 +27,7 @@ one level with the setup panel. On a phone the columns stack, results first.
 - No loop-size setting: the search ranks 3-uma rotations and 4-uma loops together and shows the best. A 3-uma rotation
   holds at most three must-include umas.
 - The status line (at the foot of the setup panel): searching; then "Checking the exact odds…" with the first result already shown (ranked by the
-  odds with targets treated as independent); done ("Checked N decks / M loops in T s"; the result is checked on exact odds, so nothing else does
+  odds with targets treated as independent; its tooltip says the order can still change); done ("Checked N decks / M loops in T s"; the result is checked on exact odds, so nothing else does
   better; only when the exact check ran out of time a short caveat follows: "exact check: decks within 11% of it" or
   "not checked exactly"); or
   what keeps the settings from being searched, with the button that fixes it; **Stop** ends a long search and keeps the

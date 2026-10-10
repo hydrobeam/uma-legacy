@@ -36,11 +36,13 @@ export function paintRunNote() {
     const sec = Math.floor((performance.now() - searchT0) / 1000), t = sec >= 1 ? ` ${sec} s` : '';
     // the seconds are hidden from screen readers: the live region would read them out every second
     const what = phase === 'check' ? 'Checking the exact odds…' : 'Searching…';
+    // one line beside the spinner: the exact check's caveat is its tooltip (and read to screen readers)
     n.innerHTML = spinHTML() + '<span>' + what + '<span aria-hidden="true">' + t + '</span>' +
-      (phase === 'check' ? (t ? '. ' : ' ') + 'The result below may still change.' : sec >= 1 && shown ? '. The results below are from before your change.' : '') + '</span>';
+      (phase === 'check' ? '<span class="vh"> The result below may still change.</span>' : sec >= 1 && shown ? '. The results below are from before your change.' : '') + '</span>';
+    n.title = phase === 'check' ? 'The result below is ranked by quick odds; the exact check can still reorder it' : '';
     setAct('stop', 'Stop', stopSearch); pill = what + t;
   } else {
-    n.textContent = st.text;
+    n.textContent = st.text; n.title = '';
     if (st.act) setAct(st.act.click || st.act.label, st.act.label, st.act.run || (() => $(st.act.click).click())); else setAct(null);
     pill = st.kind === 'done' || st.kind === 'example' ? (ui.headline ? ui.headline + ' · see result ↑' : st.text) : st.kind === 'loading' ? st.text : 'Not searched · see why ↑';
   }
