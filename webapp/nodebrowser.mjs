@@ -1526,8 +1526,8 @@ const TESTS = {
     const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');
     await pg.mouse.click(5, 5);   // a click on the backdrop closes it
     check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
-      && trioRes.next.members.length === 2 && /^From the veterans you have now, the cheapest route the planner finds: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
-      && /1 in [\d,]+/.test(trioLoop) && /^What these meanSaves per runCareers to a fully looped parent .+ now, minus careers if you run this career first/.test(saveTxt) && /Saves per run = [\d,]+ − that average − 1\./.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && trioRes.next.members.length === 2 && /^Today's estimate: .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
+      && /1 in [\d,]+/.test(trioLoop) && /^What these meanSaves per runHow many careers sooner you reach a fully looped parent .+: Saves per run = V − V after her − 1\./.test(saveTxt) && /V is the cheapest total/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
       `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));

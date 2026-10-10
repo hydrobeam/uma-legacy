@@ -876,18 +876,20 @@ function openSaveWhy(P) {
     const who = m.have8 ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
     return m.builds > 0 ? `${who}lift ${m.trainee}'s odds with about ${m.builds} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
       : `${who}rerun ${m.trainee}'s best career (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`; };
-  const route = pl && ms.length >= 2 && V ? `From the veterans you have now, the cheapest route the planner finds: ${step(ms[0], 0)}; then ${step(ms[1], 1)}; then ${pl.c} with those two ${n}/${n}s as parents${pl.careers?.[2] != null ? ` (about ${fmtN(pl.careers[2])} careers)` : ''}. About ${V} careers in all.` : 'No route found from the veterans you have now.';
+  const route = pl && ms.length >= 2 && V ? `Today's estimate: ${step(ms[0], 0)}; then ${step(ms[1], 1)}; then ${pl.c} with those two ${n}/${n}s as parents${pl.careers?.[2] != null ? ` (about ${fmtN(pl.careers[2])} careers)` : ''}. About ${V} careers in all.` : 'No estimate: no route from the veterans you have now.';
   // the example: the route's first step that is a plain rerun, her odds lifted by 6% (one helpful parent)
   const ex = ms.find(m => !m.real && !(m.builds > 0) && m.p > 0);
   const exTxt = ex ? ` For example, if as a parent she lifted ${ex.trainee}'s best odds from ${fmtIn(ex.p)} to ${fmtIn(ex.p * 1.06)}, that step would take about ${fmtN(1 / ex.p - 1 / (ex.p * 1.06))} fewer careers.` : '';
-  // the definition first, as a subtraction; then the route it is measured on, how her side is worked out, and the odds column
+  // the definition first, as a subtraction of two estimates; then what V is (a model's measuring stick, not a schedule:
+  // the cheapest A + B -> C in the planner's simplified model), its value today, and how V after her is worked out
   const loop = `a fully looped parent (an ${n}/${n} whose parents are both ${n}/${n})`;
   body.append(el('div', 'gmdsub', 'Saves per run'),
-    el('p', '', `Careers to ${loop} now, minus careers if you run this career first, her own run included. +1.1: running her first gets you there 1.1 careers sooner on average.`),
-    el('div', 'gmdsub', 'Now: the plan\'s route'),
+    el('p', '', `How many careers sooner you reach ${loop} if you run this career next, after paying for the run itself: Saves per run = V − V after her − 1. V is the planner's estimate of the careers you still need now; V after her is the same estimate with her veteran added. +1.1: about 1.1 careers sooner on average.`),
+    el('div', 'gmdsub', 'V: how far you are now'),
+    el('p', '', `The planner can't play your future careers out, so it measures the distance with a simplified model. A fully looped parent comes from three careers: an ${n}/${n} of one uma (A), an ${n}/${n} of another (B), then a career of a third (C) with those two as parents. For every A, B and C it adds up the expected careers: nothing for an ${n}/${n} you already have, otherwise reruns of her best career at her odds, after a few building careers when raising her odds first pays off (a curve fitted to your veterans, not a searched plan); then C's reruns with A and B as parents. V is the cheapest total. It is a measuring stick, not a recommended road: what you actually run will differ, and only the total is used.`),
     el('p', 'oloop', route),
-    el('div', 'gmdsub', 'Running her first'),
-    el('p', '', `Her veteran joins your parents and can make the route's steps cheaper.${exTxt} The planner reworks the route for every result she could roll (which of the ${n} targets land, at how many stars), weighted by its chance; most change nothing. Saves per run = ${V || 'the route\'s careers'} − that average − 1. The top rows also count what her best results open for the career after.`),
+    el('div', 'gmdsub', 'V after her'),
+    el('p', '', `Her career's result is random: which of the ${n} targets land, at how many stars. For every possible result the planner adds her veteran to your parents and works V out again; a good result can make a step cheaper, most change nothing.${exTxt} V after her is the average over all results, weighted by their chances. For the top rows it also looks one career further, at what her best results would open next.`),
     el('div', 'gmdsub', 'This career'),
     el('p', '', `Her odds of landing all ${n} in this one run. The best odds aren't always the best move: Saves per run also counts what her veteran does for the runs after.`));
   saveDlg.appendChild(body);
