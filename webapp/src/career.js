@@ -154,9 +154,9 @@ async function search() {
     if (id !== myId) return;
     if (m.r.error) fail('Not searched: ' + m.r.error);
     else {
-      const cert = m.r.proven_top ? 'The best odds are checked exact: no career does better.' : 'The exact check of the best odds ran out of time: their order may not be final.';
+      const cert = m.r.proven_top ? '' : ' The exact check of the best odds ran out of time: their order may not be final.';
       const n = m.r.candidates, found = n > 1 ? `Weighed ${n.toLocaleString()} careers in ${(m.ms / 1000).toFixed(1)} s.` : `Scored in ${(m.ms / 1000).toFixed(1)} s.`;
-      let st = { kind: 'done', text: found + ' ' + cert };
+      let st = { kind: 'done', text: found + cert };
       // no career can land every target: say which targets nothing can give (no veteran or parent carries their spark;
       // no deck, outfit or event gives them either, or some career would have them)
       if (!m.r.results.length) {

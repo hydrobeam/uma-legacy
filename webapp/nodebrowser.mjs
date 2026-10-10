@@ -1102,7 +1102,7 @@ const TESTS = {
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),
       `copy: ${await pg.textContent('#vx-msg')}, download same: ${dlSame}`);
     await done(); await planned();   // the pasted export's plan (the same pool)
-    check('career: the planner weighs every career, checked on exact odds', /Weighed 3,618 careers.*The best odds are checked exact/.test(await note()), await note());
+    check('career: the planner weighs every career, checked on exact odds (only a check that ran out of time is mentioned)', /Weighed 3,618 careers/.test(await note()) && !/ran out of time|checked exact/.test(await note()), await note());
     check('career: the tree shows the planner\'s trainee and parents', await pg.locator('#tree .pn.ghost').count() === 3 && await pg.locator('#tree .pn.gp').count() === 4);
     const deckShut = !(await pg.locator('#tree-deck').count()) && (await pg.getAttribute('#deck-open', 'aria-expanded')) === 'false';
     await pg.click('#deck-open');
