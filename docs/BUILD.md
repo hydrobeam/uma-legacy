@@ -4,12 +4,16 @@ Every step goes through `./build.sh [step...]` at the repository root.
 
 ## Quick start
 
+A fresh clone needs two commands:
+
 ```
-./build.sh            # native (the solver and its tests), wasm, page -> webapp/dist
-./build.sh serve      # http://localhost:8000 (the page loads WebAssembly, so it must be served, not opened as a file)
-./build.sh testq      # the browser suite's fast tier
-./build.sh valq TAG   # the validation jobs against their reference outputs
+./build.sh            # the solver and its tests, the wasm, the page (webapp/dist)
+./build.sh serve      # http://localhost:8000 (WebAssembly needs the page served, not opened as a file)
 ```
+
+The first `./build.sh` installs what it needs into the folder: the Rust toolchain through rustup, the npm packages
+and GameTora's data files. To check a change, `./build.sh testq` (the browser suite's fast tier; it installs its
+browsers the first time) and `./build.sh valq TAG` (the validation jobs against their reference outputs).
 
 A fresh clone builds the page from the tracked data files and passes the solver tests and validation. Without game
 art the page shows initials in place of pictures and a spinner in place of the runner; without art the browser

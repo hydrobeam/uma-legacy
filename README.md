@@ -20,13 +20,11 @@ whose parents are 8/8s). For the veteran you actually got, it shows how many car
 Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.astral.sh/uv/):
 
 ```
-./build.sh            # the solver with its tests, the wasm and the page (webapp/dist)
-./build.sh serve      # http://localhost:8000 (the page needs http: it loads WebAssembly)
-./build.sh testq      # the browser suite's fast tier (installs its browsers into webapp/node_modules once)
-./build.sh valq TAG   # the validation jobs against the reference outputs
+./build.sh            # build everything (fetches its packages and data the first time)
+./build.sh serve      # http://localhost:8000
 ```
 
-A clone builds and tests the page from the tracked data files. Refreshing the game data and making the art need
+That is all a fresh clone needs; `docs/BUILD.md` has the checks and the other steps. Refreshing the game data and making the art need
 game files in `game/` (`docs/BUILD.md` lists them); without art the page shows initials.
 
 ## Credits and licence
