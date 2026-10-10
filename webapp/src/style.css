@@ -127,8 +127,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
 .btn:hover { border-color: var(--accent); }
 .btn:active { background: var(--accent-soft); border-color: var(--accent); }
-input[type="search"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
-input[type="search"] { width: 100%; }
+input[type="search"], input[type="text"], select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
+input[type="search"], input[type="text"] { width: 100%; }
 /* the uma picker: a grid of portrait tiles */
 .roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 12px 4px 4px; scrollbar-gutter: stable; align-items: start; }
 /* uma tile: portrait (tap cycles owned / not owned / must include), name, outfit as a subtitle */
@@ -462,7 +462,7 @@ dialog::backdrop { background: rgba(10, 14, 24, 0.45); }
   .sched th.mh .av { margin: 0 auto; } }
 /* phone: buttons, selects and search boxes at least 44 px high (touch); the portraits and cards are larger already */
 @media (max-width: 620px) {
-  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], .sugg button, .sortmenu button, .x, .rowbtn { min-height: 44px; }
+  .btn, .seg button, .stab, .scenbtn, select, input[type="search"], input[type="text"], .sugg button, .sortmenu button, .x, .rowbtn { min-height: 44px; }
   .tgt .x { width: 44px; height: 44px; }
   .mem .memb { min-height: 44px; }
   .extras label { min-height: 44px; align-items: center; }
@@ -1827,30 +1827,36 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
   .lp .deck .dcards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .agenda.game .ag-goal { top: 2px; right: 2px; }
 }
-/* the Target skills Presets dialog: one row per preset (its name and count, a button that shows its skills; Load, Update, Delete), the one
-   matching the targets now tinted as the Options pick row; the save row under them */
+/* the Target skills Presets dialog: one row per preset (its name and count, the row's whole left a button that opens its
+   skills; Load, Overwrite, the trash can), the one matching the targets now tinted as the Options pick row; Save current
+   skills under them, opening a small popup for the name. The view popup: the preset's skills as the editor's tiles,
+   Rename and Close at the bottom */
 dialog.prdlg { width: min(620px, calc(100vw - 32px)); }
-.prlist { display: grid; gap: 8px; margin: 10px 0 14px; }
-.prow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--gm-line, var(--line)); border-radius: 8px; background: var(--gm-cell, var(--panel)); }
+dialog.prsmall { width: min(420px, calc(100vw - 32px)); }
+.prlist { display: grid; gap: 8px; margin: 12px 0 6px; }
+.prow { display: flex; flex-wrap: wrap; align-items: stretch; border: 1px solid var(--gm-line, var(--line)); border-radius: 8px; background: var(--gm-cell, var(--panel)); overflow: hidden; }
 .prow.cur { background: var(--gm-tile, var(--accent-soft)); }
 :root[data-theme="dark"] .prow.cur { background: #37334b; }
-.phead { flex: 1 1 200px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.pview { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; border: 0; background: none; padding: 4px 6px; margin: -4px -6px; font: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
-.pview:hover { background: color-mix(in srgb, var(--gm-ink2, var(--muted)) 12%, transparent); }
+.pview { flex: 1 1 200px; min-width: 0; min-height: 56px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; border: 0; background: none;
+  padding: 10px 12px; font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.pview:hover { background: color-mix(in srgb, var(--gm-ink2, var(--muted)) 10%, transparent); }
+.pview:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .pview .pmeta::after { content: ' ›'; }   /* opens its skills */
 .pname { font-weight: 700; color: var(--gm-ink, var(--ink)); overflow-wrap: anywhere; }
 .pmeta { font-size: 0.82rem; color: var(--gm-ink2, var(--muted)); }
 .pcur { font-size: 0.75rem; font-weight: 700; color: var(--gm-bright-ink, #fff); background: var(--gm-green2, var(--req)); border-radius: 999px; padding: 0 8px; }
-.prvtiles { margin: 12px 0 14px; }   /* the preset's skills, as the editor's tiles */
-.pbtns { display: flex; flex-wrap: wrap; gap: 6px; }
-.pbtns .btn { padding-inline: 14px; font-size: 0.88rem; }   /* Load, Update, Delete fit one row at 375 px */
-.pren-b { border: 0; background: none; color: var(--gm-ink2, var(--muted)); font: inherit; font-size: 1rem; line-height: 1; padding: 4px 6px; margin: -4px 0; cursor: pointer; border-radius: 6px; }
-.pren-b:hover { background: color-mix(in srgb, var(--gm-ink2, var(--muted)) 14%, transparent); }
-.pbtns .btn.armed { color: var(--out); font-weight: 700; }
-.pren { font: inherit; font-weight: 700; min-width: 0; width: min(100%, 22ch); }
-.prsave { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.prsave input { flex: 1 1 180px; min-width: 0; }
-@media (max-width: 620px) { .pren-b { min-width: 44px; min-height: 44px; margin: -12px -8px; } }   /* phone: a 44 px tap area round the pencil */
+.pbtns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px 8px 4px; }
+.pbtns .btn { padding-inline: 14px; font-size: 0.88rem; }   /* Load, Overwrite and the trash can fit one row at 375 px */
+.pbtns .ptrash { display: inline-flex; align-items: center; gap: 6px; padding-inline: 12px; }
+.ptrash svg { width: 20px; height: 20px; color: var(--gm-ink, var(--ink)); }
+.ptrash .slit { stroke: #fff; }
+:root[data-theme="dark"] .ptrash .slit { stroke: #2b2934; }   /* the slits in the dark button's face */
+.pbtns .ptrash.armed, .pbtns .ptrash.armed svg { color: var(--out); font-weight: 700; }
+.prfoot { gap: 8px; margin-top: 8px; }
+.prlab { display: block; font-size: 0.85rem; font-weight: 700; color: var(--gm-ink2, var(--muted)); margin: 12px 0 4px; }
+.prvtiles { margin: 12px 0 4px; }   /* the preset's skills, as the editor's tiles */
+.prvren input, #prn-name { width: 100%; }
+@media (max-width: 620px) { .pbtns { padding-left: 10px; } }
 /* the career page before its first answer: the Veteran analysis frame with a spinner beside the tree (career.js waitEl),
    at full strength (the results' busy dimming is for an old answer on screen) */
 #results:has(> .simwait) { opacity: 1; }
@@ -1859,4 +1865,3 @@ dialog.prdlg { width: min(620px, calc(100vw - 32px)); }
 /* a column header with a tooltip (the career Options' This career and Saves per run): dotted, as a hint that it explains */
 .thtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .thtip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
-@media (max-width: 620px) { .pview { min-height: 44px; } }   /* phone: the name is a 44 px tap target */
