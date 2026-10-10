@@ -838,9 +838,9 @@ function optionsEl() {
   const t = el('span', 'thtip', 'This career'); t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`; t.tabIndex = 0;
   ths[1].appendChild(t); ths[2].textContent = 'Saves per run';
   // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
-  // (the popup behind an (i) at the right end of the section's header bar, where it shows at every width)
+  // (the popup behind a small (i) right after the section's title, in its header bar)
   if (P) { const q = el('button', 'oinfo savewhy', 'i'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog');
-    q.setAttribute('aria-label', 'What these numbers mean'); q.title = 'What these numbers mean'; q.onclick = () => openSaveWhy(P); box.appendChild(q); }
+    q.setAttribute('aria-label', 'What these numbers mean'); q.title = 'What these numbers mean'; q.onclick = () => openSaveWhy(P); box.querySelector(':scope > h3').append(q); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
     c0.appendChild(pickWhat(r));
