@@ -69,6 +69,9 @@ game art are never committed.
 
 ## Steps
 
+Each step checks its requirements first and, when something is missing, names every missing tool or file and what
+it is before it stops; the `art` step instead says what it skipped.
+
 | Step | Does |
 |---|---|
 | `all` | `data events native pb wasm art page` |

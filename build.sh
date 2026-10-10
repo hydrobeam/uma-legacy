@@ -29,27 +29,45 @@ R="$(cd "$(dirname "$0")" && pwd)"; C="$R/pkg/loopopt"; W="$R/webapp"
 PY=(uv run --quiet --project "$R" python)
 export PLAYWRIGHT_BROWSERS_PATH=0   # Playwright's browsers live in webapp/node_modules, not in the home directory
 WFLAGS="--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-mutable-globals"
+# Requirements: each step checks what it needs first and names everything missing before it stops.
+GLOBAL_MDB="game/global/master.mdb: the Global client's game database"
+JP_MDB="game/jp/master.mdb: the JP client's game database (Grand Masters era)"
+MISSING=()
+need_cmd() { command -v "$1" >/dev/null 2>&1 || MISSING+=("$1 ($2)"); }
+need_file() { [ -e "$R/$1" ] || MISSING+=("$1${2:+: $2}"); }
+need() { local f; for f in "$@"; do need_file "${f%%:*}" "$(printf %s "$f" | sed -n 's/^[^:]*: //p')"; done; }
+have() { local f; for f in "$@"; do [ -e "$R/${f%%:*}" ] || return 1; done; }
+missing_of() { local f; for f in "$@"; do [ -e "$R/${f%%:*}" ] || printf '%s, ' "${f%%:*}"; done | sed 's/, $//'; }
+check() {
+  if [ ${#MISSING[@]} -gt 0 ]; then
+    { echo "$1: cannot run, missing:"; printf '  - %s\n' "${MISSING[@]}"; echo "  (docs/BUILD.md, What is needed)"; } >&2; exit 1
+  fi
+}
+TOOLS_RUST="https://rustup.rs"; TOOLS_NODE="Node.js with npm"; TOOLS_UV="https://docs.astral.sh/uv/"
 step_data() {
+  MISSING=(); need_cmd uv "$TOOLS_UV"; need "$GLOBAL_MDB" "$JP_MDB"; check data
   (cd "$C/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" export_career.py ../data.json ../career.json && "${PY[@]}" upcoming.py)
   (cd "$R/jp/export" && "${PY[@]}" build_base.py && "${PY[@]}" export_rs.py && "${PY[@]}" export_web.py && "${PY[@]}" export_cards.py && "${PY[@]}" "$C/export/export_career.py" ../data.json ../career.json)
 }
-step_gametora() { "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}; }
+step_gametora() { MISSING=(); need_cmd uv "$TOOLS_UV"; check gametora; "${PY[@]}" "$C/export/gametora.py" ${GAMETORA_LATEST:+--latest}; }
 step_events() {
+  MISSING=(); need_cmd uv "$TOOLS_UV"; need "$GLOBAL_MDB" "$JP_MDB"; check events
   step_gametora
   (cd "$C/export" && "${PY[@]}" build_card_events.py)
   (cd "$R/jp/export" && "${PY[@]}" build_card_events.py && "${PY[@]}" build_card_events_nodates.py)
 }
-step_native() { (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test --release 2>&1 | grep -E "^test result" | head -3); }
+step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && cargo test --release 2>&1 | grep -E "^test result" | head -3); }
 step_wasm() {
+  MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
   step_npm
   (cd "$C" && RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown -Z build-std=std,panic_abort 2>&1 | tail -1)
   (cd "$W" && npx wasm-opt -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
            && node example.mjs | tail -1)
 }
 step_browsers() { step_npm; (cd "$W" && npx playwright install chromium firefox); }
-step_test() { step_browsers; node "$W/nodebrowser.mjs"; }
-step_testq() { step_browsers; node "$W/nodebrowser.mjs" quick; }
-step_serve() { node "$W/serve.mjs" "${PORT:-8000}"; }
+step_test() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check test; step_browsers; node "$W/nodebrowser.mjs"; }
+step_testq() { MISSING=(); need "webapp/dist/index.html: the built page (./build.sh)"; check testq; step_browsers; node "$W/nodebrowser.mjs" quick; }
+step_serve() { MISSING=(); need_cmd node "$TOOLS_NODE"; need "webapp/dist/index.html: the built page (./build.sh)"; check serve; node "$W/serve.mjs" "${PORT:-8000}"; }
 # Cloudflare Pages, direct upload of webapp/dist (one-time setup: npx wrangler login; npx wrangler pages project create)
 step_deploy() {
   local dirty; dirty=$(git -C "$R" status --porcelain --untracked-files=no -- webapp pkg jp)
@@ -58,16 +76,23 @@ step_deploy() {
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty=$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false))
 }
-step_npm() { [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
-step_page() { step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }
-step_pb() { "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
-step_runners() { step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }
-step_images() { "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
-step_art() {
-  if [ -d "$R/game/global/decrypted" ]; then step_images; else echo "images: no game/global/decrypted, skipped (the page shows initials)"; fi
-  if [ -d "$R/game/global/decrypted" ] && [ -f "$R/game/global/meta.db" ]; then step_runners; else echo "runners: needs game/global/decrypted and game/global/meta.db, skipped"; fi
+step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check npm; [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
+step_page() { MISSING=(); need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; need "webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"; check page; step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }
+step_pb() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check pb; "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data.json" "$R/jp/data.json"; }
+step_runners() { MISSING=(); need_cmd uv "$TOOLS_UV"; [ -e "$R/cache/chibi/tools/xml/usr/lib/libxml2.so.2" ] || { need_cmd tar "to unpack libxml2 once"; need_cmd zstd "to unpack libxml2 once"; }; need "${RUNNER_FILES[@]}"; check runners; step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }
+step_images() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "${IMAGE_FILES[0]}"; check images; art_notes; "${PY[@]}" "$W/images.py" ${IMAGES_FORCE:+--force}; }
+IMAGE_FILES=("game/global/decrypted: the Global client's asset bundles, decrypted, by asset path")
+RUNNER_FILES=("game/global/decrypted: the Global client's asset bundles, decrypted, by asset path" "game/global/meta.db: the Global client's asset index as plain SQLite" "$GLOBAL_MDB")
+art_notes() {   # optional inputs of images: missing ones only lose their pictures
+  [ -e "$R/game/global/resources.assets" ] || echo "images: no game/global/resources.assets (the install's built-in assets): the game's buttons and check box keep their drawn fallbacks"
+  [ -d "$R/game/jp/bundles" ] || echo "images: no game/jp/bundles (the JP client's bundles): the Grand Masters art and 14 JP-only skill icons keep their fallbacks"
+}
+step_art() {   # in the default build: runs what the game files in game/ allow, says what it skips
+  if have "${IMAGE_FILES[@]}"; then step_images; else echo "images: skipped, missing $(missing_of "${IMAGE_FILES[@]}") (the page shows initials)"; fi
+  if have "${RUNNER_FILES[@]}"; then step_runners; else echo "runners: skipped, missing $(missing_of "${RUNNER_FILES[@]}") (the page shows a spinner)"; fi
 }
 step_val() { local tag="${1:?val needs a tag}"; shift || true
+  MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check val
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
 [ $# -eq 0 ] && set -- native wasm art page
