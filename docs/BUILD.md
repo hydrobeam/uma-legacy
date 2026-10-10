@@ -111,8 +111,9 @@ screen), `statestore.js` (the solver's kept work in IndexedDB), `umadump.js` (im
 
 ## Data
 
-- Game data update: put the Global `master.mdb` (from the game's local data folder) in `pkg/loopopt/export/` and the
-  JP one in `jp/export/`, then `./build.sh data events pb`. `master.mdb` files are never committed.
+  - `data` counts an uma once her start date has passed and an outfit once its first gacha has started, both at
+    build time, so a master fetched ahead shows nothing early: rebuild after the banner starts.
+  - New characters' art still comes from the game install (`./build.sh images`); without it the page shows initials.
 - Manual card entries (pal and group cards; the builder decodes only SR/SSR chains): Global in
   `pkg/loopopt/card_events.json` (entries whose `src` is not exactly "gametora training_events" survive `events`),
   GM in `jp/export/manual_gm*.json`. The card-event builders share one decoder, `pkg/loopopt/export/event_choices.py`.

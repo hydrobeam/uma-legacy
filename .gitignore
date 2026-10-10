@@ -103,5 +103,6 @@
 !/val/policy/baseline/
 /val/policy/baseline/*/tmp/
 master.mdb
+master.mdb.*
 __pycache__/
 !/pkg/loopopt/validation/
