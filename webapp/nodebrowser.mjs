@@ -845,8 +845,8 @@ const TESTS = {
     const pills = await pg.evaluate(PILLS);
     check('career phone: the pill tracks (Game data, rank, her card\'s tabs) are filled flush by their segments', !pills.length && await pg.locator('.udtabs').count() === 1, pills.slice(0, 4).join(' | '));
     const pick = await pg.evaluate(() => { const tr = document.querySelector('.alts .optab tbody tr.on'); if (!tr) return null; const th = tr.querySelector('th');
-      return { bg: getComputedStyle(tr).backgroundColor, cell: getComputedStyle(th).backgroundColor, wide: th.getBoundingClientRect().width >= tr.getBoundingClientRect().width - 20 }; });
-    check('career phone: Options shades the planner\'s pick as one card, its career the card\'s full width', pick && pick.bg !== 'rgba(0, 0, 0, 0)' && pick.cell === 'rgba(0, 0, 0, 0)' && pick.wide, JSON.stringify(pick));
+      return { bg: getComputedStyle(tr).backgroundColor, cell: getComputedStyle(th).backgroundColor, wide: th.getBoundingClientRect().width >= tr.clientWidth - parseFloat(getComputedStyle(tr).paddingLeft) - parseFloat(getComputedStyle(tr).paddingRight) - 4 }; });   // the card's content width (it has inner padding)
+    check('career phone: Career choices shades the planner\'s pick as one card, its career the card\'s full width', pick && pick.bg !== 'rgba(0, 0, 0, 0)' && pick.cell === 'rgba(0, 0, 0, 0)' && pick.wide, JSON.stringify(pick));
     const side = [];
     const shut = () => pg.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close()));
     for (const [open, label] of [[() => pg.click('#v-toggle'), 'veterans'], [() => pg.click('#o-umas'), 'umas'], [() => pg.click('#o-cards'), 'cards'],

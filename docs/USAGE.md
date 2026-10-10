@@ -92,7 +92,7 @@ Every edit starts one run, and a run gives one answer. It searches the careers b
 to the planner, plans (nothing simulated); the status line names the phase at work ("Searching careers… 2 s", then
 "Weighed 3,564 careers in 0.4 s. Planning your next career… 3 s") and ends on "Weighed … The best odds are checked
 exact … Planned in X s". Nothing of the run is drawn before it ends: the tree's picks, the career, the veteran you
-got and *Options* all come from its answer, the planner's pick (the best odds when the trainee is yours, or when the
+got and *Career choices* all come from its answer, the planner's pick (the best odds when the trainee is yours, or when the
 plan fails: "Plan not made: …"). Until then the previous answer stays on screen, dimmed, with *Compare*, *Reroll*,
 *Add to veterans* and *Use this* off; an edit during a run stops it and starts a new one. Internally a run is two
 solver jobs, the search and then the same job with `next`, which reuses the search the worker keeps (a second job
@@ -107,7 +107,7 @@ career is scored by how many careers it brings that goal closer, on average over
 minus the run itself: her own 8/8 counts for her own step, and her veteran counts wherever she'd be a better parent
 for a step still to run (so a strong uma's career is a stepping stone for her partners as well as a shot at her
 8/8). For the few highest and the best odds, plus what her best rolls open for the next career (two careers deep).
-Above *Options*: the trio and its expected careers, and per step her odds now and how many lifts building pays for
+Above *Career choices*: the trio and its expected careers, and per step her odds now and how many lifts building pays for
 (or "your 8/8, no careers"). The planner runs the highest (near-ties: the better odds) and repeats it until a roll changes the
 plan. Under the odds a line says why the career on show
 is (or is not) the pick. With the trainee chosen by hand there is nothing for it to pick, and with every place set by
@@ -141,10 +141,10 @@ Details* popup (set the stars, Remove). *Your veterans* open from the setup pane
 dialog with *Import*, *Paste*, *Export* and *Remove all*. These game-style parts use the game's colours rather than WCAG AAA (the rest of the site keeps AAA).
 
 **Layout (career page, wide screens):** the tree runs down the left (the trainee, then Legacy 1 and Legacy 2), the
-*Veteran analysis* beside it, its top level with the tree's (its comparison a compact panel beside the card); *Target skills* and *Options* follow at full width. The
+*Veteran analysis* beside it, its top level with the tree's (its comparison a compact panel beside the card); *Target skills* and *Career choices* follow at full width. The
 career's odds sit in the card's header (1 in N to land all n); a click opens *Odds of this career*: the chance
 of landing exactly k of the n targets, for every k, in percent (exact over the landed sets; n/n is the solver's own
-figure), and the targets expected. No prose: the planner's pick shows as the tree and the *planner's pick* tag in *Options*. *Options* has no prose under it: **What do these
+figure), and the targets expected. No prose: the planner's pick shows as the tree and the *planner's pick* tag in *Career choices*. *Career choices* has no prose under it: **What do these
 mean?** opens a popup saying what *saves per run* means and why the best odds aren't the loop's best pick, with the plan
 the numbers come from. The comparison sits in a panel beside her card headed *Comparison* ("Compare/reroll to see if she
 improves your loop" until you do). Under *Target skills*: *Pinks passed on*, *Start aptitudes*, *Her pink*. In *Career
@@ -196,7 +196,7 @@ the window, each turn the game's white slot with the race's banner and its win o
 game's grey cells. The G1 wins editor uses the same calendar: its empty turns where a G1 is held show the game's green
 +, opening the races held then as their banners in the game's slots.
 
-With any place left to the planner, *Options* is a table of what it weighed, under the planner's expected careers
+With any place left to the planner, *Career choices* is a table of what it weighed, under the planner's expected careers
 to a fully looped parent and its plan (e.g. "about 1,905 (Agnes Digital → Special Week → Seiun Sky, each until her
 8/8)"): per option "This career: 1 in X" and *Saves per run* (hover for her role, how often she lifts the step-1 trainee and
 to what odds, and the two-deep part; **What do these mean?** explains it: the planner's expected careers to a fully looped

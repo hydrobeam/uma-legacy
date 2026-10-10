@@ -826,7 +826,7 @@ function useBtn(r) {
 }
 const OPT_SHOW = 8;
 function optionsEl() {
-  const box = sec('alts', 'Options');
+  const box = sec('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
   // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below
   const P = planS.state === 'done' ? planS.r : null, on = shown();
