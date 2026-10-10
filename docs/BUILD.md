@@ -180,7 +180,7 @@ pkg/loopopt/         the Rust solver (src/, tests/), data.json, web_skills.json,
 pkg/loopopt/export/  Python exporters (master.mdb -> data files)
 jp/                  Grand Masters-era data and exporters (JP master.mdb, cut at L'Arc's launch)
 val/                 validation jobs, reference outputs and checks
-docs/                USAGE, SOLVER, MODEL, RESEARCH, SOURCES, PERF and this file
+docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
 cache/               downloads: GameTora's files, the runner tools and exports (gitignored)
 ```

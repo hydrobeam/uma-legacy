@@ -2,7 +2,7 @@
 
 Read this file before doing anything. The docs: `docs/BUILD.md` (building, testing, the repository layout),
 `docs/SOLVER.md` (the solver's model, algorithms and job fields), `docs/MODEL.md` (every modelling assumption and its
-evidence), `docs/RESEARCH.md` (the maths behind each fitted value), `docs/SOURCES.md`, `docs/USAGE.md` (the page) and
+evidence), `docs/RESEARCH.md` (the maths behind each fitted value), `docs/USAGE.md` (the page) and
 `docs/PERF.md` (the speed protocol and record). Read only the section you need.
 
 ## What this is

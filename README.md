@@ -13,7 +13,7 @@ whose parents are 8/8s). For the veteran you actually got, it shows how many car
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
 - The solver (model, algorithms, job fields, command line): `docs/SOLVER.md`
 - The maths behind each fitted value: `docs/RESEARCH.md`; every modelling assumption with its evidence:
-  `docs/MODEL.md`; outside sources: `docs/SOURCES.md`
+  `docs/MODEL.md`
 
 ## Building it
 
@@ -31,10 +31,20 @@ game files in `game/` (`docs/BUILD.md` lists them); without art the page shows i
 
 ## Credits and licence
 
-Inheritance chances use uma-it-optimizer's per-legacy affinity model, fitted to Independent Training receipts
-([Acrith/uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer)). Measured rates come from Independent
-Training runs from [uma-it](https://training.umaladder.moe). Card events come from [GameTora](https://gametora.com)'s
-data files, downloaded at build time.
+The model builds on community research and tools:
+- [uma-it-optimizer](https://github.com/Acrith/uma-it-optimizer) (Acrith): the per-legacy affinity model, fitted on
+  Independent Training receipts.
+- [uma-it](https://training.umaladder.moe): the Independent Training runs behind the measured hint, chain-event and
+  outcome rates and the calibration (pooled aggregates only).
+- [hakuraku.moe](https://hakuraku.moe/notes/spark_generation): spark generation and the star mix by rank score.
+- [umamusustation](https://umamusustation.com/factor/red_factor_analysis.html): pink spark generation.
+- [GameTora](https://gametora.com): card event data (downloaded at build time) and its
+  [legacies guide](https://gametora.com/umamusume/legacies).
+- [umamusu.wiki](https://umamusu.wiki/Game:Inheritance), [uma.guide](https://uma.guide/guides/sparks) and
+  [umareference](https://www.umareference.com/guide/legacies/chance-of-inheriting-sparks): inheritance and pink-spark
+  rules and base rates; JP community notes (herohero's 1,000+ trial inheritance rates among them).
+- [uma.moe](https://uma.moe): its lineage planner, which our affinity and odds match; its lineage exports import here.
+- [umadump](https://github.com/Werseter/umadump) (Werseter): the veteran export the career planner imports.
 
 The code is licensed under the GNU General Public License v3.0 or later (`LICENSE`). Uma Musume: Pretty Derby, its
 names, game data and art are © Cygames, Inc.; they are not covered by this licence and the art is not part of this
