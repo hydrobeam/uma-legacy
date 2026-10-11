@@ -9,13 +9,17 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   wins for each pair. H0 sets tri(T, P, T) = 0 for a self-grandparent; H1 sets it to pair(T, P); kappa scales between.
 - the log-likelihood difference sums the self-grandparent trials and their parents' trials (both move with tri).
 Also checks the records' relation-point column (base) against pair and tri computed from master.mdb.
+Findings: each hypothesis's predicted pass sum against the observed one (sd from the sum of p (1 - p)), the kappa
+likelihood interval, the same sums for ordinary ancestors (the fit's premise), and the records' +3 per shared win.
 """
 import collections, math
 import common
+from common import Value
 
 SEC = '4'
 BASE = (0.03, 0.06, 0.09)
 G_OF = {0: (1, 2), 3: (4, 5)}           # ancestor slots: 0 P1, 1 G1a, 2 G1b, 3 P2, 4 G2a, 5 G2b
+CHI95 = 1.920729                        # chi2(1) 95% / 2: a 95% likelihood interval
 GLBL = {1: 'parent 1 × grandparent 1a', 2: 'parent 1 × grandparent 1b', 4: 'parent 2 × grandparent 2a',
         5: 'parent 2 × grandparent 2b'}
 
@@ -118,10 +122,7 @@ def table_check(R):
 
 def claims():
     R = common.runs()
-    items = [('trials attributable to one ancestor', '101,536'), ('self-grandparent passes observed', '523'),
-             ('predicted, tri(T,P,T) = 0', '521.8'), ('predicted, tri(T,P,T) = pair(T,P)', '605.4'),
-             ('LL(0) - LL(pair), nats', '13'), ('kappa fitted', '0'), ('kappa 95% upper limit', '0.35')]
-    if R is None: return common.need_data(SEC, items)
+    if R is None: return []
     ts = trials(R)
     gs = [t for t in ts if t[0] == 'G_self']
     sub = [t for t in ts if t[0] in ('G_self', 'P_selfgp')]
@@ -129,13 +130,42 @@ def claims():
     grid = [i / 1000 for i in range(0, 1001)]
     L = [ll(sub, k) for k in grid]
     i = max(range(len(grid)), key=L.__getitem__)
-    up = next((k for k, v in zip(grid[i:], L[i:]) if L[i] - v > 1.920729), None)   # chi2(1) 95% / 2
-    got = [len(ts), sum(f for *_, f in gs), pred(0), pred(1), ll(sub, 0) - ll(sub, 1), grid[i], up]
-    out = []
-    for (n, s), g in zip(items, got):
-        out.append(common.Claim(SEC, n, s, g, tol=0.5 if 'nats' in n else 0.05 if 'upper' in n else 0,
-                                note='"about 13"' if 'nats' in n else '"about 0.35"' if 'upper' in n else ''))
+    up = next((k for k, v in zip(grid[i:], L[i:]) if L[i] - v > CHI95), None)
+    out = [Value(SEC, 'trials attributable to one ancestor', len(ts)),
+           Value(SEC, 'self-grandparent passes observed', sum(f for *_, f in gs)),
+           Value(SEC, 'predicted, tri(T,P,T) = 0', pred(0)), Value(SEC, 'predicted, tri(T,P,T) = pair(T,P)', pred(1)),
+           Value(SEC, 'LL(0) - LL(pair), nats', ll(sub, 0) - ll(sub, 1)), Value(SEC, 'kappa fitted', grid[i]),
+           Value(SEC, 'kappa 95% upper limit', up)]
+    # findings: the self-grandparent rule, the premise that the rest of the model fits these trials, the +3 rule
+    z = {(k, h): zsum(ts, k, h) for k in ('G_self', 'P_selfgp', 'P', 'G') for h in (0, 1)}
+    ev = lambda c, h: f'{c}: {z[c, h][0]} obs, {z[c, h][1]:.1f} pred, z {z[c, h][2]:+.2f}'
+    out.append(common.finding(SEC, 'tri(T, P, T) = 0 predicts the self-grandparent passes and tri(T, P, T) = pair(T, P) '
+                              'does not: observed within 1.96 sd of the H0 sum, beyond 1.96 sd of the H1 sum',
+                              abs(z['G_self', 0][2]) < 1.96 and abs(z['G_self', 1][2]) > 1.96,
+                              f'H0 {ev("G_self", 0)}; H1 {ev("G_self", 1)}; their parents: H0 {ev("P_selfgp", 0)}, '
+                              f'H1 {ev("P_selfgp", 1)}'))
+    out.append(common.finding(SEC, 'The family kappa pair(T, P) fits kappa = 0 and excludes pair (kappa = 1) at 95%: '
+                              'kappa-hat at 0 and LL(kappa-hat) - LL(1) > 1.92 (chi2(1) 95% / 2)',
+                              grid[i] == 0 and L[i] - ll(sub, 1) > CHI95,
+                              f'kappa-hat {grid[i]}, 95% upper {up}, LL(kappa-hat) - LL(1) = {L[i] - ll(sub, 1):.1f} nats'))
+    out.append(common.finding(SEC, 'Premise of the fit (implicit in RESEARCH.md): the inspiration model fits the ordinary '
+                              'parents and grandparents of the same runs (each sum within 1.96 sd), so the self-grandparent '
+                              'gap is not a model-wide offset', all(abs(z[c, 0][2]) < 1.96 for c in ('P', 'G')),
+                              f'{ev("P", 0)}; {ev("G", 0)}'))
+    tc = table_check(R)
+    rows = sum(v for k, v in tc.items() if k[0] == 'all rows'); bad = tc[('all rows', 'other')]
+    out.append(common.finding(SEC, 'The records\' affinity tables apply the assumed +3 per shared G1 win (bonus = 3 x shared, '
+                              'total = base + bonus) on every row: a further implementation agreeing, not the game\'s rule',
+                              rows > 0 and bad == 0, f'{rows - bad:,} of {rows:,} rows'))
     return out
+
+
+def zsum(ts, cat, h):
+    """(observed passes, predicted sum, z) for one ancestor category under H0 (h = 0) or H1 (h = 1); the sum's variance is
+    the sum of p (1 - p) (independent rolls)"""
+    ps = [(min(1.0, b * (1 + (a1 if h else a0) / 100)), f) for c, a0, a1, b, f in ts if c == cat]
+    o = sum(f for _, f in ps); e = sum(p for p, _ in ps); v = sum(p * (1 - p) for p, _ in ps)
+    return o, e, (o - e) / math.sqrt(v)
 
 
 def detail():

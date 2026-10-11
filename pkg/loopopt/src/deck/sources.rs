@@ -179,9 +179,12 @@ impl<'a> Sources<'a> {
         v
     }
     pub(super) fn odds_for(&self, id: u32) -> Vec<(usize, u8, f64)> { self.dj.odds_events.iter().filter(|e| e.0 == id).filter_map(|e| self.unc.iter().position(|&g| g == e.1).map(|k| (k, e.2, e.3))).collect() }
-    /// Training-hint draws per run: base(scenario) x (1 + hint frequency / 100), each uniform over the card's skill
-    /// options still below Lv 5. Per target in the pool: P(hinted) = 1 - hint_miss(1).
-    pub(super) fn draws(&self, c: &Card) -> f64 { hint_base(&self.dj.scenario) * (1.0 + c.hf / 100.0) }
+    /// Training-hint draws per run: base(scenario) x (1 + hint frequency / 100) x (1 + d(scenario) x specialty / 100),
+    /// each uniform over the card's skill options still below Lv 5. Per target in the pool: P(hinted) = 1 - hint_miss(1).
+    pub(super) fn draws(&self, c: &Card) -> f64 {
+        let s = &self.dj.scenario;
+        hint_base(s) * (1.0 + c.hf / 100.0) * (1.0 + hint_spec(s) * c.spec / 100.0)
+    }
     pub(super) fn train(&self, c: &Card) -> Vec<(usize, f64)> {
         if c.nskill == 0 { return vec![]; }
         let p = 1.0 - hint_miss(1, c.nskill as usize, self.draws(c), c.hinc);

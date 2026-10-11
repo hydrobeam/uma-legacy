@@ -194,7 +194,7 @@ pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: 
                      base.json and manual.json (hand-entered card events), plus upcoming.json for Global; and the
                      inputs both eras share, event_shares.json and gametora.json (GameTora's pinned versions)
 val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
-research/            scripts reproducing RESEARCH.md's numbers (`./build.sh research`; research/README.md)
+research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
 cache/               downloads: GameTora's files, the runner tools and exports (gitignored)

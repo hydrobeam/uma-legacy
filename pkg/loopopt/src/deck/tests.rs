@@ -77,7 +77,7 @@ fn training_draws_over_two_targets() {
     for (k, _, ph) in &gh { assert!((ph - tr[*k].1).abs() < 1e-12, "{gh:?} vs {tr:?}"); }
     let both = g.iter().filter(|x| x.1.len() == 2).map(|x| x.0).sum::<f64>();
     assert!(both < tr[0].1 * tr[1].1);
-    let h = 2.70 * (1.0 + c.hf / 100.0);
+    let h = hint_base("unity") * (1.0 + c.hf / 100.0) * (1.0 + hint_spec("unity") * c.spec / 100.0);
     assert!((tr[0].1 - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12);        // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
     let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
     src_miss(&sb.src(c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);

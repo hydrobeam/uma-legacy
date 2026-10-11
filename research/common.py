@@ -1,9 +1,9 @@
 """Shared helpers for the research scripts: paths, the run records, game data, intervals and the claim table.
 
 Each section script defines `claims()`, returning a list of Claim, and prints its own detail when run alone.
-The run records (research/data/runs.jsonl and summary.jsonl, not included) are optional: without them a script returns
+The run records (research/data/runs.jsonl, not included) are optional: without them a script returns
 its data claims as "needs data" and still checks the derived ones."""
-import json, math, os, sqlite3, sys
+import json, math, os, re, sqlite3, sys
 from dataclasses import dataclass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -11,7 +11,6 @@ ROOT = os.path.dirname(HERE)
 DATA = os.path.join(HERE, 'data')
 OUT = os.path.join(DATA, 'out')            # intermediate outputs of the scripts (job files, solver results)
 RUNS = os.path.join(DATA, 'runs.jsonl')
-SUMMARY = os.path.join(DATA, 'summary.jsonl')
 GD = os.path.join(ROOT, 'pkg', 'loopopt', 'data', 'global')
 MDB = os.path.join(ROOT, 'game', 'global', 'master.mdb')
 SOLVER = os.path.join(ROOT, 'pkg', 'loopopt', 'target', 'release', 'loopopt')
@@ -37,11 +36,13 @@ def runs():
     return _cache['runs']
 
 
-def summary():
-    if not os.path.exists(SUMMARY): return None
-    if 'summary' not in _cache:
-        _cache['summary'] = [json.loads(l) for l in open(SUMMARY, encoding='utf-8')]
-    return _cache['summary']
+def batch(name):
+    """a separate batch of run records (research/data/NAME, e.g. runs_festa.jsonl: runs fetched for one card), never
+    part of the research pool; [] without it"""
+    path = os.path.join(DATA, name)
+    if not os.path.exists(path): return []
+    if name not in _cache: _cache[name] = [json.loads(l) for l in open(path, encoding='utf-8')]
+    return _cache[name]
 
 
 def gjson(name):
@@ -109,55 +110,74 @@ def binom_pmf(n, p):
 
 
 # ---------------------------------------------------------------- claims
+def key_of(section, name):
+    """a value's key in results.json and in the document template: section.slug_of_the_name"""
+    for a_, b_ in (('+-', ' pm '), ('±', ' pm '), ('%', ' pct '), ('>=', ' ge '), ('<', ' lt '), ('>', ' gt '), ('/', ' per ')):
+        name = name.replace(a_, b_)
+    return f"{section}.{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
+
+
 @dataclass
-class Claim:
-    """One number RESEARCH.md states. `stated` is the text as written (its decimals set the precision); `got` the
-    reproduced value (None when it could not be computed: `status` says why). Verdicts: match (equal at the stated
-    precision; exact for counts), within tolerance (|got - stated| <= tol), differs, needs data."""
+class Value:
+    """One number a section computes: its name (the key in results.json and in the document template is
+    key_of(section, name)) and the computed value; None when it could not be computed (`status` says why, e.g.
+    'needs data' without the run records)."""
     section: str
     name: str
-    stated: str
     got: float | None = None
-    tol: float = 0.0
     status: str = ''
     note: str = ''
 
     def missing(self):
         return self.got is None or (isinstance(self.got, float) and math.isnan(self.got))
 
-    def verdict(self):
-        if self.missing(): return self.status or 'needs data'
-        s = self.stated.replace(',', '').replace('−', '-').rstrip('%')
-        try: v = float(s)
-        except ValueError: return self.status or 'differs'
-        dec = len(s.split('.')[1]) if '.' in s else 0
-        g = self.got * 100 if self.stated.endswith('%') else self.got
-        if round(g, dec) == round(v, dec): return 'match'
-        if self.tol and abs(g - v) <= self.tol + 1e-12: return 'within tolerance'
-        return 'differs'
-
     def shown(self):
-        if self.missing(): return '-'
-        g = self.got * 100 if self.stated.endswith('%') else self.got
-        s = self.stated.replace(',', '').replace('−', '-').rstrip('%')
-        dec = len(s.split('.')[1]) if '.' in s else 0
-        return f'{g:,.{max(dec, 0)}f}' + ('%' if self.stated.endswith('%') else '')
+        return '-' if self.missing() else f'{self.got:,.6g}'
 
 
-def need_data(section, items, why='needs data'):
-    """claims that need the run records, when they are missing: [(name, stated), ...]"""
-    return [Claim(section, n, s, status=why) for n, s in items]
+@dataclass
+class Finding:
+    """One conclusion RESEARCH.md draws, tested on the reproduced numbers: `holds` is the test's outcome (None when the
+    numbers could not be computed), `evidence` the numbers it rests on, as printed."""
+    section: str
+    statement: str
+    holds: bool | None
+    evidence: str = ''
+
+    def verdict(self):
+        return 'needs data' if self.holds is None else 'holds' if self.holds else 'FAILS'
+
+
+def finding(section, statement, test, evidence=''):
+    """a Finding from a test that may need missing numbers: `test` is a bool or a function returning one; any error
+    computing it (a missing number) gives holds = None"""
+    try: holds = bool(test() if callable(test) else test)
+    except (TypeError, KeyError, ValueError, ZeroDivisionError): holds = None
+    if callable(evidence):
+        try: evidence = evidence()
+        except (TypeError, KeyError, ValueError, ZeroDivisionError): evidence = ''
+    return Finding(section, statement, holds, evidence)
 
 
 def say_missing():
     print('run records not found (research/data/runs.jsonl, not included): data claims skipped')
 
 
-def table(claims, out=print):
-    w = max([len(c.name) for c in claims] + [10])
-    out(f'{"section":7s}  {"claim":{w}s}  {"stated":>12s}  {"reproduced":>12s}  verdict')
-    for c in claims:
-        out(f'{c.section:7s}  {c.name:{w}s}  {c.stated:>12s}  {c.shown():>12s}  {c.verdict()}' + (f'  ({c.note})' if c.note else ''))
+def findings_table(fs, out=print):
+    if not fs: return
+    out('\nFindings (each conclusion, tested on the reproduced numbers):')
+    for f in fs:
+        out(f'{f.section:7s}  {f.verdict():10s}  {f.statement}')
+        if f.evidence: out(f'{"":19s}{f.evidence}')
+
+
+def table(items, out=print):
+    vals = [c for c in items if isinstance(c, Value)]
+    w = max([len(c.name) for c in vals] + [10])
+    out(f'{"section":7s}  {"value":{w}s}  {"computed":>14s}')
+    for c in vals:
+        out(f'{c.section:7s}  {c.name:{w}s}  {c.shown():>14s}' + (f'  ({c.status or c.note})' if (c.status or c.note) else ''))
+    findings_table([f for f in items if isinstance(f, Finding)], out)
 
 
 def main(claims_fn):

@@ -21,8 +21,8 @@
 #   val TAG  run the 24 validation jobs (20 deck, 4 career; the 20 deck jobs again with per-uma decks) in parallel with
 #            the current binary into val/TAG__*.out and val/TAGpu__*.out, compared with val/ref__* and val/refpu__*
 #   valq TAG the same without the three slow shared three-result jobs (val/slow.json): for iterating on a change
-#   research reproduce docs/RESEARCH.md's numbers (research/run_all.py); the run records it reads (research/data/) are
-#            not included, and without them only the derived claims run
+#   research compute the research numbers (research/run_all.py -> research/results.json) and render docs/RESEARCH.md
+#            from docs/RESEARCH.template.md; without the run records (research/data/) the committed results are kept
 #   art      images and runners when their game files are in game/global/ (skipped, with a note, when not)
 #   all      data events native pb wasm art page
 # Python runs in the project's uv environment (pyproject.toml, uv.lock; .venv is created on first use).
@@ -99,7 +99,7 @@ step_val() { local tag="${1:?val needs a tag}"; shift || true
   MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check val
   "${PY[@]}" "$R/val/runval.py" "$C/target/release/loopopt" "$tag" "$@"
   "${PY[@]}" "$R/val/cmp2.py" "$tag" ref; "${PY[@]}" "$R/val/cmp2.py" "${tag}pu" refpu; }
-step_research() { uv run --quiet --project "$R" --group research python "$R/research/run_all.py"; }
+step_research() { uv run --quiet --project "$R" --group research python "$R/research/run_all.py" && uv run --quiet --project "$R" --group research python "$R/research/render.py"; }
 [ $# -eq 0 ] && set -- native wasm art page
 while [ $# -gt 0 ]; do
   case "$1" in

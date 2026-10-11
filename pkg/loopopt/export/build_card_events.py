@@ -3,7 +3,11 @@
 Chain links come from master.mdb (single_mode_story_data.show_progress_1 for the event's story id). The files are
 read and decoded by gametora.py.
 A skill in every outcome of some choice is certain when the link fires; a skill in k of a choice's n outcomes
-(split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand."""
+(split by 'di') is stored with chance k/n, outcomes taken as equally likely. Pal entries and bug notes are kept by hand.
+Per card: `chain` [link, rewards of the choice IT takes by default]; `end` [link, rewards of a choice that ends the chain
+early at that link] (always a link before the last: reaching the last link is the chain's normal end, not an `end`
+entry); `stop_risk` [link, k, n] when IT's default choice there ends the chain on k of n outcomes; `alts` [link, every
+choice's outcomes] where choices differ in targets."""
 import json, os
 import gametora
 from event_choices import decode, fmt, manual_entry, apply_shares

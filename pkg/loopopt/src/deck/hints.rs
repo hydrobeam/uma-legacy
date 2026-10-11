@@ -1,13 +1,18 @@
 //! Training hints: the base draw count per scenario and the chance a card's draws miss a target.
 
-/// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` below: h = base x (1 + hf/100),
-/// refit 2026-10-05 on 2,402 runs with the Lv-5 cap, docs/RESEARCH.md section 6; Grand Masters (JP) has no runs: a placeholder.)
+/// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` and `hint_spec` below:
+/// h = base x (1 + hf/100) x (1 + d x specialty/100), fitted 2026-10-11 on 3,179 runs with the Lv-5 cap,
+/// docs/RESEARCH.md section 6; Grand Masters (JP) has no runs: the pooled fit, a placeholder.)
 pub(super) fn scenario_name(s: &str) -> &str {
     match s { "unity" => "Unity Cup", "gc" => "Grand Concert", "ura" => "URA Finale", "trackblazer" => "Trackblazer", "grandmasters" => "Grand Masters", x => x }
 }
 pub(crate) fn hint_base(scenario: &str) -> f64 {
-    // fitted on uma-it IT runs (docs/RESEARCH.md section 6, refit 2026-10-05 on 2,402 runs); Grand Masters has no data: a placeholder
-    match scenario { "gc" => 2.03, "ura" => 1.60, "trackblazer" => 1.81, "grandmasters" => 2.30, _ => 2.70 }
+    // fitted on uma-it IT runs (docs/RESEARCH.md section 6); Grand Masters has no data: the pooled fit, a placeholder
+    match scenario { "gc" => 1.97, "ura" => 1.34, "trackblazer" => 1.70, "grandmasters" => 1.86, _ => 2.36 }
+}
+/// Specialty priority's weight in the draws: h scales by 1 + d x specialty/100 (fitted with `hint_base`).
+pub(crate) fn hint_spec(scenario: &str) -> f64 {
+    match scenario { "gc" => 0.08, "ura" => 0.39, "trackblazer" => 0.11, "grandmasters" => 0.26, _ => 0.36 }
 }
 /// P(none of `k` given skills of a card's pool is drawn) in `t` training-hint draws over its `n` skills, each draw
 /// uniform over the skills still below Lv 5; a skill leaves the pool after `cap` draws (ceil(5 / hint levels per

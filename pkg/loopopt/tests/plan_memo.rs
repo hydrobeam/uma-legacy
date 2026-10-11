@@ -1,7 +1,8 @@
 //! The career planner's memos (per Cont, by the bits of p) return what the functions compute, through a refit of Cont
-//! as well: the val/plan p10 pool with its pass-1 builders left to their proxies (`next.proxy_eff` -1: none searched
+//! as well: the val/plan p11 pool with its pass-1 builders left to their proxies (`next.proxy_eff` -1: none searched
 //! there), so the pass-2 searches change a candidate's best builders and index_rule fits Cont again (new Conts, new
-//! memos; one candidate's step moves 1122.8 -> 1128.4 careers). Two checks: with `PLAN_MEMO_CHECK` every hit is computed
+//! memos). The pool is the one of the val/plan set that refits under the current model (p10 did before the hint
+//! rates took specialty priority). Two checks: with `PLAN_MEMO_CHECK` every hit is computed
 //! again and compared bit for bit (the plan panics on a stale value; a memo carried across the refit fails here, while
 //! the output alone would not show it: that candidate is in no cheapest trio), with the cap lifted (`PLAN_MEMO_CAP`; at
 //! the default cap the pre-refit entries are cleared before the rescoring reads them again, so a stale memo would pass
@@ -39,7 +40,7 @@ fn stat(err: &str, key: &str) -> u64 {
 
 #[test]
 fn memos_exact_through_a_refit() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p10.json")).unwrap()).unwrap();
+    let mut job: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p11.json")).unwrap()).unwrap();
     job["next"] = json!({"proxy_eff": -1.0});
     let (mut on, err_on) = run(&job, false);
     let (mut off, err_off) = run(&job, true);

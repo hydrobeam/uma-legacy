@@ -4,12 +4,27 @@ For every deck result of a validation run, recompute P(all targets land) from th
 reported decks and loops, jointly over the chain process (Binomial(21, 0.35) events, each advancing a random remaining
 chain slot, weight = links left, stop-risk mixture), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
-skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100)), and compare with the
+skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
+(1 + d(scenario) x specialty/100), the two constants read from src/deck/hints.rs), and compare with the
 reported p_all. Written separately from the Rust code: final chain states by plain forward iteration, and the joint
 expectation by inclusion-exclusion over per-target "no gold" / "no hint" requirements.
 
 usage: uv run val/joint_check.py TAG        (val/TAG__*.out and val/TAGpu__*.out)"""
 import functools, itertools, json, math, os, sys
+
+
+def _hint_constants():
+    """hint_base and hint_spec, read from the solver's source (constants, not code: the check stays independent)"""
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'pkg', 'loopopt', 'src', 'deck', 'hints.rs')).read()
+    out = {}
+    for fn in ('hint_base', 'hint_spec'):
+        body = re.search(r'fn ' + fn + r'[^{]*\{.*?match scenario \{(.*?)\}', src, re.S).group(1)
+        v = {k: float(x) for k, x in re.findall(r'"(\w+)" => ([\d.]+)', body)}
+        dflt = float(re.search(r'_ => ([\d.]+)', body).group(1))
+        out[fn] = lambda s, v=v, dflt=dflt: v.get(s, dflt)
+    return out
+HINT = _hint_constants()
 V = os.path.dirname(os.path.abspath(__file__)); S = os.path.dirname(V)
 GW, GG = 0.2 * 1.771561, 0.4 * 1.771561
 
@@ -42,10 +57,10 @@ def check(out, job, d):
         if gd: look[gd] = (g, 2)
     cards = {c['id']: c for c in rd(job['cards_file'])['cards']}
     db = rd(job.get('events_file', 'card_events.json'))['cards']
-    # the solver's model, restated: chain events ~ Binomial(n, p); training draws h = base(scenario) x (1 + hf/100)
-    # over the card's skill options (nskill)
+    # the solver's model, restated: chain events ~ Binomial(n, p); training draws h = base(scenario) x (1 + hf/100) x
+    # (1 + d(scenario) x specialty/100) over the card's skill options (nskill)
     bn, bp = job.get('chain_events') or (21, 0.35)
-    base = {'gc': 2.08, 'ura': 1.60, 'trackblazer': 2.30, 'grandmasters': 2.30}.get(job.get('scenario', 'unity'), 2.70)
+    base, spec_d = HINT['hint_base'](job.get('scenario', 'unity')), HINT['hint_spec'](job.get('scenario', 'unity'))
     pmf = lambda e: math.comb(bn, e) * bp ** e * (1 - bp) ** (bn - e) if 0 <= e <= bn else 0.0
     unc = [t['group'] for t in job['targets'] if t.get('guaranteed', 0) != 2]
     nfix = len(job['targets']) - len(unc); K = len(unc)
@@ -55,10 +70,12 @@ def check(out, job, d):
     def choice_groups(cid):
         """per alts link: the choices with targets, as outcome groups [(p, [(k, lvl)])], dominated ones dropped"""
         res = {}
+        aw = dict((l, w) for l, w in db.get(str(cid), {}).get('alt_w', []))   # measured outcome shares, else equal
         for lk, chs in db.get(str(cid), {}).get('alts', []):
             gs = []
-            for ch in chs:
-                g = [(1 / len(ch), sorted({x for x in map(tk, o) if x})) for o in ch]
+            for ci, ch in enumerate(chs):
+                wt = aw[lk][ci] if lk in aw else [1 / len(ch)] * len(ch)
+                g = [(wt[oi], sorted({x for x in map(tk, o) if x})) for oi, o in enumerate(ch)]
                 gs.append([x for x in g if x[1]])
             def prof(g):
                 p = [[0.0, 0.0] for _ in range(K)]
@@ -104,7 +121,7 @@ def check(out, job, d):
                     for n, p in map(nm, names):
                         if tk(n): chain.setdefault(lk, []).append([(p, [tk(n)])])
             kind = (c['links'], stop, tuple(tuple(r) for r in e.get('stop_risk', []) if r[0] < stop and r[0] <= 4))
-        return dict(train=(tr, base * (1 + c['hf'] / 100), c['nskill'], c.get('hinc', 1)), fixed=fixed, chain=chain, kind=kind)
+        return dict(train=(tr, base * (1 + c['hf'] / 100) * (1 + spec_d * c.get('spec', 0) / 100), c['nskill'], c.get('hinc', 1)), fixed=fixed, chain=chain, kind=kind)
 
     skills_db = rd(job['skills_file'])
     names = {g: (w, gd) for g, w, gd in skills_db['skills']}

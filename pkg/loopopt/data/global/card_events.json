@@ -3918,11 +3918,11 @@
      [
       [
        "Nothing Ventured",
-       0.5
+       0.6
       ],
       [
        "Risky Business",
-       0.5
+       0.4
       ]
      ]
     ]
@@ -3949,7 +3949,20 @@
     ]
    ],
    "status": "complete",
-   "src": "gametora training_events"
+   "src": "gametora training_events",
+   "alt_w": [
+    [
+     3,
+     [
+      [
+       0.3,
+       0.2,
+       0.3,
+       0.2
+      ]
+     ]
+    ]
+   ]
   },
   "30109": {
    "name": "[A Good Heart Blossoms to Its Fullest] Sakura Chiyono O",

@@ -4,6 +4,8 @@
   "30008": [{"link": 3, "choice": 1, "shares": {"Fast-Paced": 0.75, "Escape Artist": 0.25},
              "src": "It's All to Win: Fast-Paced 33/40 = 0.82 [0.71, 0.90], 2026-10-06; set to 0.75"}],
   "30017": [{"link": 3, "choice": 1, "shares": {"Center Stage": 0.75, "Prudent Positioning": 0.25},
-             "src": "My Umadol Way! ☆: Center Stage 37/51 = 0.73 [0.61, 0.81], 2026-10-06; set to 0.75"}]
+             "src": "My Umadol Way! ☆: Center Stage 37/51 = 0.73 [0.61, 0.81], 2026-10-06; set to 0.75"}],
+  "30108": [{"link": 3, "choice": 1, "shares": {"Nothing Ventured": 0.6, "Risky Business": 0.4},
+             "src": "Upping the Ante: Nothing Ventured 138/228 = 0.61 [0.55, 0.66] (90%; shared Risky Business credits attributed by each card's own rate, blank runs with Risky Business at Lv 5 split by the event's firing rate), 601 runs with the card, 2026-10-11; set to 0.6 (docs/RESEARCH.md section 8)"}]
  }
 }

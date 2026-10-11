@@ -28,6 +28,8 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Clone)]
 pub(crate) struct Card { pub id: u32, pub name: String, pub chara: u32, pub rarity: u8, pub pal: bool, pub links: u8, pub hf: f64,
+    /// specialty priority at max limit break (unique effect included): more training hints (`hint_spec`)
+    #[serde(default)] pub spec: f64,
     /// training-hint options that are skills (the stat option is never drawn in Independent Training)
     #[serde(default)] pub nskill: u32, pub whites: Vec<u32>,
     /// hint levels per training-hint draw at max limit break (1 + hint-level effect); a skill at Lv 5 leaves the pool

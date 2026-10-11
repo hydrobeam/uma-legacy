@@ -97,8 +97,9 @@ def apply_shares(out, path):
             alt = next((a for l, a in e.get('alts', []) if l == lk), None)
             if alt is None or k > len(alt): raise SystemExit(f'card {cid} link {lk}: no choice {k} in alts')
             w = [[1 / len(ch)] * len(ch) for ch in alt]
+            per = {n: sum(n in o for o in alt[k - 1]) for n in sh}          # a skill on several outcomes splits its share
             for j, o in enumerate(alt[k - 1]):
-                hits = [sh[n] for n in o if n in sh]
+                hits = [sh[n] / per[n] for n in o if n in sh]
                 if len(hits) != 1: raise SystemExit(f'card {cid} link {lk} outcome {j + 1}: needs exactly one listed skill, has {o}')
                 w[k - 1][j] = hits[0]
             e.setdefault('alt_w', []).append([lk, w])

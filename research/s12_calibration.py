@@ -12,13 +12,14 @@ Steps (outputs under research/data/out/calib/, reused while the jobs and the sol
   jobs            default eight targets (Unity Cup's two golds guaranteed there); --wide: every other skill a deck card
                   or an ancestor's spark could give, in jobs of at most 24 targets, on a seeded 30% sample of the runs
   solver          one process, 100 jobs per call (--wide: one job per call, 2 s limit each)
-  analysis        the tests of RESEARCH.md section 12; the full tables go to report8.txt / reportW.txt
+  analysis        the tests of RESEARCH.md section 12 and the conclusions drawn on them (Findings); the full tables go
+                  to report8.txt / reportW.txt
 
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice, shared-G1 counts that do not fit the race list."""
 import collections, hashlib, json, math, os, random, subprocess, sys, time
 import common
-from common import Claim, wilson, DEFAULT, UNITY_GOLDS
+from common import Value, finding, wilson, DEFAULT, UNITY_GOLDS
 
 OUTD = os.path.join(common.OUT, 'calib')
 GD = common.GD
@@ -55,15 +56,16 @@ def card_variants():
         eff, rar = q("select effect_table_id, rarity from support_card_data where id=?", sid)[0]
         lv = cap[rar][lb]
         return (max(0, math.floor(effect(eff, 18, lv))) + unique(sid, 18, lv),
-                1 + max(0, math.floor(effect(eff, 17, lv))) + unique(sid, 17, lv))
+                1 + max(0, math.floor(effect(eff, 17, lv))) + unique(sid, 17, lv),
+                max(0, math.floor(effect(eff, 19, lv))) + unique(sid, 19, lv))
 
     W = common.gjson('web_cards.json'); E = common.gjson('card_events.json')
     out, bad = list(W['cards']), []
     for card in W['cards']:
-        if at_lb(card['id'], 4) != (card['hf'], card['hinc']): bad.append(card['id'])
+        if at_lb(card['id'], 4) != (card['hf'], card['hinc'], card.get('spec', 0)): bad.append(card['id'])
         for lb in range(4):
-            hf, hinc = at_lb(card['id'], lb)
-            out.append(dict(card, id=variant(card['id'], lb), hf=hf, hinc=hinc))
+            hf, hinc, spec = at_lb(card['id'], lb)
+            out.append(dict(card, id=variant(card['id'], lb), hf=hf, hinc=hinc, spec=spec))
     restrict = {sc: ids + [variant(i, lb) for i in ids for lb in range(4)] for sc, ids in W['restrict'].items()}
     ev = dict(E['cards'])
     for k, v in E['cards'].items():
@@ -343,14 +345,26 @@ def boot(f, xs, B=1000, seed=1):
     v.sort(); return v[int(0.025 * B)], v[int(0.975 * B)]
 
 
-# ---------------------------------------------------------------- claims
+# ---------------------------------------------------------------- values
+STAT = {'rows': 'n', 'predicted': 'pred', 'observed': 'obs', 'obs / pred': 'ratio', 'ratio 95% low': 'rlo', 'ratio 95% high': 'rhi'}
+RATIO = ('obs / pred', 'ratio 95% low', 'ratio 95% high')
+# the single-source (card, target) pairs the document's table lists
+SINGLE = [('[This Might Sting!] Sasami Anshinzawa', 20203), ('[Planned Perfection] Riko Kashimoto', 20046),
+          ('[Tonight, We Waltz] King Halo', 20159), ('[That Time I Became the Strongest] Gold Ship', 20159),
+          ('[Cute + Cute = ?] Mayano Top Gun', 20049), ('[Sentimental Flare ♪] Maruzensky', 20165),
+          ("[Let's Get This Party Lit!] Daitaku Helios", 20165), ('[Sunlit Angel ♪] Daitaku Helios', 20165),
+          ('[Lamplit Training of a Witch-to-Be] Sweep Tosho', 20165)]
+# the three event sources of Playtime's Over! (the skill on the chain-ending choice 2)
+PO_CARDS = ('[Fiery Discipline] Yaeno Muteki', '[Dancing Light into the Night] Yukino Bijin', '[Escorte Étoile] Sirius Symboli')
+
+
 def claims(wide=None):
     S3, S8, S12 = '3', '8', '12'
     R = common.runs()
     out = []
     why = 'needs data' if R is None else 'needs master.mdb' if common.mdb() is None else None
     M = Model()
-    if why:   # every claim listed, none computed
+    if why:   # nothing computed: only the findings, as "needs data"
         bad, drop, rows, runrows, badrows = [], {}, [], [], {}
     else:
         os.makedirs(OUTD, exist_ok=True)
@@ -362,11 +376,11 @@ def claims(wide=None):
     rep = Report(rows)
     rep.out(f'card variants: max-limit-break check {"all equal" if not bad else bad}; dropped {dict(drop)}; problems {dict(badrows)}')
     sc = collections.Counter(x['scen'] for x in runrows)
-    out += [Claim(S12, 'runs used', '2,936', len(runrows)), Claim(S12, 'URA Finale runs', '598', sc[1]),
-            Claim(S12, 'Unity Cup runs', '780', sc[2]), Claim(S12, 'Grand Concert runs', '1,477', sc[3]),
-            Claim(S12, 'Trackblazer runs', '81', sc[4]), Claim(S12, 'run-target rows', '23,488', len(rows)),
-            Claim(S12, 'rows on her outfit', '1,005', sum(1 for r in rows if r['outfit'])),
-            Claim(S12, 'scenario-gold rows', '1,560', sum(1 for r in rows if r['scen_gold']))]
+    out += [Value(S12, 'runs used', len(runrows)), Value(S12, 'URA Finale runs', sc[1]),
+            Value(S12, 'Unity Cup runs', sc[2]), Value(S12, 'Grand Concert runs', sc[3]),
+            Value(S12, 'Trackblazer runs', sc[4]), Value(S12, 'run-target rows', len(rows)),
+            Value(S12, 'rows on her outfit', sum(1 for r in rows if r['outfit'])),
+            Value(S12, 'scenario-gold rows', sum(1 for r in rows if r['scen_gold']))]
     free = lambda r: not r['outfit'] and not r['scen_gold']
     pdeck = lambda r: r['dg'] + (1 - r['dg']) * r['dw']
     d_sel = lambda r: free(r) and not r['o_insp'] and not r['o_insp_src']
@@ -376,88 +390,128 @@ def claims(wide=None):
     acq = lambda r: r['acq']; o_any = lambda r: r['o_any']
     modelled = lambda r: r['o_deck'] or r['o_insp'] or r['o_insp_src']
 
-    def add(name, s, st_rows=None, st_pred=None, st_obs=None, st_ratio=None, ci=None, note=''):
-        new = []
-        if st_rows: new.append(Claim(S12, f'{name}: rows', st_rows, s['n']))
-        if st_pred: new.append(Claim(S12, f'{name}: predicted', st_pred, s['pred']))
-        if st_obs: new.append(Claim(S12, f'{name}: observed', st_obs, s['obs']))
-        if st_ratio: new.append(Claim(S12, f'{name}: obs / pred', st_ratio, s['ratio']))
-        if ci: new += [Claim(S12, f'{name}: ratio 95% low', ci[0], s['rlo']), Claim(S12, f'{name}: ratio 95% high', ci[1], s['rhi'])]
-        for c in new: c.note = note
-        out.extend(new)
+    def add(name, s, fields=tuple(STAT), note=''):
+        """the named values of one test (rows, predicted, observed, obs / pred, ratio 95% low / high), from its stat"""
+        out.extend(Value(S12, f'{name}: {f}', s[STAT[f]], note=note) for f in fields)
 
-    s = rep.stat(d_sel, pdeck, o_deck); add('1. deck hint, no inspiration', s, '14,015', '0.247', '0.231', '0.932', ('0.90', '0.96'))
-    out += [Claim(S12, '1. deck hint: observed 95% low', '0.224', s['lo']), Claim(S12, '1. deck hint: observed 95% high', '0.238', s['hi'])]
-    add('1. training pool only', rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only', pdeck, o_deck), '2,982', '0.372', '0.357', '0.959', ('0.91', '1.01'))
-    add('1. events only', rep.stat(lambda r: d_sel(r) and kind(r) == 'events only', pdeck, o_deck), '1,864', '0.887', '0.807', '0.910', ('0.89', '0.93'))
+    s_deck = s = rep.stat(d_sel, pdeck, o_deck); add('1. deck hint, no inspiration', s)
+    out += [Value(S12, '1. deck hint: observed 95% low', s['lo']), Value(S12, '1. deck hint: observed 95% high', s['hi'])]
+    s_pool = rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only', pdeck, o_deck)
+    add('1. training pool only', s_pool)
+    add('1. events only', rep.stat(lambda r: d_sel(r) and kind(r) == 'events only', pdeck, o_deck))
     pl = lambda r: d_sel(r) and r['prio'] is not None and kind(r) == 'events only'
-    add('1. events only, prioritised', rep.stat(lambda r: pl(r) and r['prio'], pdeck, o_deck), '151', '0.889', '0.907', '1.021', ('0.96', '1.06'))
-    add('1. events only, not prioritised', rep.stat(lambda r: pl(r) and not r['prio'], pdeck, o_deck), '193', '0.849', '0.549', '0.647', ('0.56', '0.73'))
-    s = rep.stat(lambda r: True, lambda r: r['q'], lambda r: r['o_insp'])
-    add('2. inheritance', s, '23,488', '0.350', '0.345', '0.985', ('0.97', '1.00'))
-    out += [Claim(S3, 'inheritance obs / pred (23,488 rows)', '0.985', s['ratio']), Claim(S3, 'inheritance ratio 95% low', '0.97', s['rlo']),
-            Claim(S3, 'inheritance ratio 95% high', '1.00', s['rhi'])]
+    s_evp = rep.stat(lambda r: pl(r) and r['prio'], pdeck, o_deck); s_evn = rep.stat(lambda r: pl(r) and not r['prio'], pdeck, o_deck)
+    s_evu = rep.stat(lambda r: d_sel(r) and r['prio'] is None and kind(r) == 'events only', pdeck, o_deck)
+    add('1. events only, prioritised', s_evp)
+    add('1. events only, not prioritised', s_evn)
+    out += [Value(S8, 'event-only hints, prioritised targets: obs / pred', s_evp['ratio']),
+            Value(S8, 'event-only hints, non-prioritised targets: obs / pred', s_evn['ratio'])]
+    s_inh = s = rep.stat(lambda r: True, lambda r: r['q'], lambda r: r['o_insp'])
+    add('2. inheritance', s)
+    out += [Value(S12, '2. inheritance: observed 95% low', s['lo']), Value(S12, '2. inheritance: observed 95% high', s['hi'])]
+    out += [Value(S3, 'runs tested', len(runrows)), Value(S3, 'run-target rows', s['n']),
+            Value(S3, 'inheritance obs / pred (23,488 rows)', s['ratio']), Value(S3, 'inheritance ratio 95% low', s['rlo']),
+            Value(S3, 'inheritance ratio 95% high', s['rhi'])]
     byc = rep.table('2. inheritance by carriers', lambda r: True, lambda r: r['q'], lambda r: r['o_insp'], lambda r: r['nc'])
     rat = [byc[k]['ratio'] for k in range(1, 7) if k in byc] or [float('nan')]
-    out += [Claim(S3, 'by carriers 1-6: lowest ratio', '0.957', min(rat)), Claim(S3, 'by carriers 1-6: highest ratio', '1.001', max(rat)),
-            Claim(S3, 'by carriers 1-6: intervals covering 1', '6', sum(1 for k in range(1, 7) if k in byc and byc[k]['rlo'] <= 1 <= byc[k]['rhi']))]
+    out += [Value(S3, 'by carriers 1-6: lowest ratio', min(rat)), Value(S3, 'by carriers 1-6: highest ratio', max(rat))]
     e_h = sum(2 * sum(r['plegs']) for r in rows); o_h = sum(r['o_insp_hits'] for r in rows)
     e_y = sum(2 * (1 - math.prod(1 - x for x in r['plegs'])) for r in rows); o_y = sum(r['o_insp_years'] for r in rows)
-    out += [Claim(S3, 'per roll: spark-years obs / exp', '0.985', common.div(o_y, e_y)), Claim(S3, 'per roll: ancestor hits obs / exp', '0.987', common.div(o_h, e_h))]
+    # the model's own variance of each count: a spark-year fires per roll with y = 1 - prod(1 - r_l), a legacy hits with r_l
+    v_y = sum(2 * y * (1 - y) for y in (1 - math.prod(1 - x for x in r['plegs']) for r in rows)); v_h = sum(2 * x * (1 - x) for r in rows for x in r['plegs'])
+    z_y, z_h = (o_y - e_y) / math.sqrt(v_y or float('nan')), (o_h - e_h) / math.sqrt(v_h or float('nan'))
+    out += [Value(S3, 'per roll: spark-years obs / exp', common.div(o_y, e_y)), Value(S3, 'per roll: ancestor hits obs / exp', common.div(o_h, e_h)),
+            Value(S3, 'per roll: spark-years, SDs below expectation', -z_y)]
     edges = [0, 1e-12, 0.2, 0.4, 0.6, 0.8, 0.95, 1 + 1e-9]
-    stated_rel = [('7,785', '0.002', None), ('2,278', '0.154', '0.16'), ('2,868', '0.299', '0.30'), ('3,585', '0.487', '0.50'),
-                  ('4,851', '0.691', '0.70'), ('2,121', '0.835', '0.84')]
     rel = rep.reliab('inheritance', lambda r: True, lambda r: r['q'], lambda r: r['o_insp'], edges)
-    for (a, b, n, ob, ep), (sn, so, sp) in zip(rel, stated_rel):
+    for a, b, n, ob, ep in rel[:-1]:                     # the document's table stops at 0.95
         lab = '0' if b <= 1e-12 else f'{a:.2f}-{b:.2f}'
-        out += [Claim(S3, f'reliability q {lab}: rows', sn, n), Claim(S3, f'reliability q {lab}: observed', so, ob)]
-        if sp: out.append(Claim(S3, f'reliability q {lab}: mean predicted', sp, ep))
+        out += [Value(S3, f'reliability q {lab}: rows', n), Value(S3, f'reliability q {lab}: observed', ob)]
+        if b > 1e-12: out.append(Value(S3, f'reliability q {lab}: mean predicted', ep))
+    rel_miss = [(a, b, n, ob, ep, wilson(round(ob * n), n)) for a, b, n, ob, ep in rel if n and b > 1e-12]   # buckets with a positive prediction
+    rel_miss = [(a, b, n, ob, ep, lo, hi) for a, b, n, ob, ep, (lo, hi) in rel_miss if not lo <= ep <= hi]
+    b46 = next(((n, ob, ep) + wilson(round(ob * n), n) for a, b, n, ob, ep in rel if a == 0.4 and n), (0,) + (float('nan'),) * 4)
+    out += [Value(S3, 'reliability q 0.40-0.60: observed 95% low', b46[3]), Value(S3, 'reliability q 0.40-0.60: observed 95% high', b46[4]),
+            Value(S3, 'reliability q 0.40-0.60: mean predicted, three places', b46[2])]
     c_sel = free
-    add('3. acquired, any source', rep.stat(c_sel, acq, o_any), '20,923', '0.498', '0.495', '0.993', ('0.98', '1.01'))
-    add('3. acquired, deck or inspiration only', rep.stat(c_sel, acq, modelled), None, None, '0.485', '0.972', ('0.96', '0.99'))
-    add('3. acquired, prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any), '1,052', '0.711', '0.736', '1.036', ('1.00', '1.07'))
-    add('3. acquired, not prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any), '1,316', '0.535', '0.487', '0.910', ('0.86', '0.96'))
+    s_any = rep.stat(c_sel, acq, o_any); s_mod = rep.stat(c_sel, acq, modelled)
+    add('3. acquired, any source', s_any)
+    out += [Value(S12, '3. acquired, any source: observed 95% low', s_any['lo']), Value(S12, '3. acquired, any source: observed 95% high', s_any['hi'])]
+    add('3. acquired, deck or inspiration only', s_mod)
+    add('3. acquired, prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any))
+    add('3. acquired, not prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any))
     rs = [r for r in rows if c_sel(r)]
     a, b = sum(r['p_pred'] for r in rs), sum(r['l_obs'] for r in rs)
-    out += [Claim(S12, '4. landing: sum of p', '3,669.8', a), Claim(S12, '4. landing: sum observed-equivalent', '3,631.5', b), Claim(S12, '4. landing: ratio', '0.990', common.div(b, a))]
+    out += [Value(S12, '4. landing: rows', len(rs)), Value(S12, '4. landing: sum of p', a),
+            Value(S12, '4. landing: sum observed-equivalent', b), Value(S12, '4. landing: ratio', common.div(b, a))]
     miss = [r for r in rs if r['o_any'] and not modelled(r)]
-    out.append(Claim(S12, 'acquisitions from unmodelled events', '208', sum(1 for r in miss if r['o_events'] and not r['o_other'])))
-    # per target
-    stated_t = {20159: ('0.79', '1.005', '0.996', '0.997'), 20049: ('0.95', '0.977', '1.057', '1.035'), 20166: ('0.973', '0.993', '0.984', '0.993'),
-                20046: ('0.886', '1.003', '0.938', '0.924'), 20161: ('0.948', '0.928', '0.959', '0.962'), 21010: (None, '0.997', '1.060', '1.048'),
-                20165: ('1.004', '0.993', '1.018', '0.976'), 20203: ('0.833', '0.968', '0.918', '0.917')}
-    for g, (sd, si, sa, sl) in stated_t.items():
+    n_unm = sum(1 for r in miss if r['o_events'] and not r['o_other'])
+    out += [Value(S12, 'acquisitions from unmodelled events', n_unm),
+            Value(S12, 'acquisitions from unmodelled events, share of rows', common.div(n_unm, len(rs)))]
+    # where the deck test's shortfall (predicted minus observed hints) sits: by source kind, by reliability bucket
+    short = lambda sel: sum(pdeck(r) - r['o_deck'] for r in rows if d_sel(r) and sel(r))
+    sh_all = short(lambda r: True); sh_ev = short(lambda r: kind(r) in ('events only', 'pool+event'))
+    # per target: the deck test where a deck card can hint the target (not Racing Spirit: Stamina), the intervals the
+    # document quotes
+    no_deck = {21010}
+    ci_ti = {20161}; ci_ta = {20046, 20203}               # inheritance, acquired
+    t_inh = {}
+    for g in DEFAULT:
         nm = gn[g][0]
-        if sd: out.append(Claim(S12, f'{nm}: deck hint', sd, rep.stat(lambda r: d_sel(r) and r['g'] == g, pdeck, o_deck)['ratio']))
-        out.append(Claim(S12, f'{nm}: inheritance', si, rep.stat(lambda r: r['g'] == g, lambda r: r['q'], lambda r: r['o_insp'])['ratio']))
-        out.append(Claim(S12, f'{nm}: acquired', sa, rep.stat(lambda r: c_sel(r) and r['g'] == g, acq, o_any)['ratio']))
+        if g not in no_deck:
+            s = rep.stat(lambda r: d_sel(r) and r['g'] == g, pdeck, o_deck)
+            out += [Value(S12, f'{nm}: deck hint', s['ratio']), Value(S12, f'{nm}: deck hint 95% low', s['rlo']),
+                    Value(S12, f'{nm}: deck hint 95% high', s['rhi'])]
+        s = t_inh[g] = rep.stat(lambda r: r['g'] == g, lambda r: r['q'], lambda r: r['o_insp'])
+        out.append(Value(S12, f'{nm}: inheritance', s['ratio']))
+        if g in ci_ti: out += [Value(S12, f'{nm}: inheritance 95% low', s['rlo']), Value(S12, f'{nm}: inheritance 95% high', s['rhi'])]
+        s = rep.stat(lambda r: c_sel(r) and r['g'] == g, acq, o_any)
+        out.append(Value(S12, f'{nm}: acquired', s['ratio']))
+        if g in ci_ta: out += [Value(S12, f'{nm}: acquired 95% low', s['rlo']), Value(S12, f'{nm}: acquired 95% high', s['rhi'])]
         rg = [r for r in rs if r['g'] == g]
-        out.append(Claim(S12, f'{nm}: landing', sl, common.div(sum(r['l_obs'] for r in rg), sum(r['p_pred'] for r in rg))))
+        out.append(Value(S12, f'{nm}: landing', common.div(sum(r['l_obs'] for r in rg), sum(r['p_pred'] for r in rg))))
     # training pool by scenario, by limit break
-    for scn, st, lo, hi in ((3, '1.000', '0.94', '1.06'), (2, '0.935', '0.83', '1.05'), (1, '0.893', '0.78', '1.02'), (4, '0.747', '0.58', '0.94')):
-        add(f'1. training pool only, {common.SCEN[scn]}', rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['scen'] == scn, pdeck, o_deck), None, None, None, st, (lo, hi))
-    for lb, st in ((4, '0.960'), (3, '0.953')):
-        out.append(Claim(S12, f'1. training pool only, lowest LB {lb}', st, rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['pool_lb'] == lb, pdeck, o_deck)['ratio']))
+    s_scn = {}
+    for scn in (3, 2, 1, 4):
+        s_scn[scn] = rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['scen'] == scn, pdeck, o_deck)
+        add(f'1. training pool only, {common.SCEN[scn]}', s_scn[scn], RATIO)
+    for lb in (4, 3):
+        out.append(Value(S12, f'1. training pool only, lowest LB {lb}', rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['pool_lb'] == lb, pdeck, o_deck)['ratio']))
     low = [rep.stat(lambda r: d_sel(r) and kind(r) == 'training pool only' and r['pool_lb'] == lb, pdeck, o_deck) for lb in (0, 1, 2)]
-    out += [Claim(S12, '1. training pool only, LB0-2 lowest ratio', '0.83', min(s['ratio'] for s in low)),
-            Claim(S12, '1. training pool only, LB0-2 highest ratio', '1.06', max(s['ratio'] for s in low)),
-            Claim(S12, '1. training pool only, LB0-2 fewest rows', '33', min(s['n'] for s in low)),
-            Claim(S12, '1. training pool only, LB0-2 most rows', '87', max(s['n'] for s in low))]
-    out.append(Claim(S12, "Unity Cup's guaranteed golds: runs with both", '780', sum(1 for x in runrows if x['scen'] == 2 and
-                                                                                      all(r['o_gold'] for r in x['rows'] if r['scen_gold']))))
-    for g, st, n, cond in ((20203, '0.899', '449', None), (20165, '0.833', '366', None), (20046, '0.437', '109', 'nu'), (20049, '0.894', '62', 'nu'), (20166, '1.000', '2,336', None)):
+    out += [Value(S12, '1. training pool only, LB0-2 lowest ratio', min(s['ratio'] for s in low)),
+            Value(S12, '1. training pool only, LB0-2 highest ratio', max(s['ratio'] for s in low)),
+            Value(S12, '1. training pool only, LB0-2 fewest rows', min(s['n'] for s in low)),
+            Value(S12, '1. training pool only, LB0-2 most rows', max(s['n'] for s in low))]
+    n_uc = sum(1 for x in runrows if x['scen'] == 2)
+    k_uc = sum(1 for x in runrows if x['scen'] == 2 and all(r['o_gold'] for r in x['rows'] if r['scen_gold']))
+    out.append(Value(S12, "Unity Cup's guaranteed golds: runs with both", k_uc))
+    ci_g = {20203, 20165, 20046}                          # the golds whose interval the document quotes
+    for g, cond in ((20203, None), (20165, None), (20046, 'nu'), (20049, 'nu'), (20166, None)):   # nu: outside Unity Cup
         nm = gn[g][1]
         s = rep.stat(lambda r: c_sel(r) and r['gold'] > 0 and r['g'] == g and (cond is None or r['scen'] != 2), lambda r: r['gold'], lambda r: r['o_gold'])
-        out += [Claim(S12, f'gold acquisition {nm}', st, s['ratio']), Claim(S12, f'gold acquisition {nm}: rows', n, s['n'])]
+        out += [Value(S12, f'gold acquisition {nm}', s['ratio']), Value(S12, f'gold acquisition {nm}: rows', s['n'])]
+        if g in ci_g: out += [Value(S12, f'gold acquisition {nm}: 95% low', s['rlo']), Value(S12, f'gold acquisition {nm}: 95% high', s['rhi'])]
     # reliability, deck hint and acquired
     edges = [0, 1e-12, 0.2, 0.4, 0.6, 0.8, 0.95, 1 + 1e-9]
     rd = rep.reliab('deck hint', d_sel, pdeck, o_deck, edges); ra = rep.reliab('acquired', c_sel, acq, o_any, edges)
-    st_d = [('8,247', '0.001'), ('81', '0.247'), ('2,151', '0.300'), ('1,011', '0.465'), ('736', '0.632'), ('403', '0.722'), ('1,386', '0.957')]
-    st_a = [('4,958', '0.015'), ('1,238', '0.164'), ('2,343', '0.316'), ('2,718', '0.501'), ('3,899', '0.703'), ('2,672', '0.826'), ('3,095', '0.975')]
-    for nm, rr, st in (('deck hint', rd, st_d), ('acquired', ra, st_a)):
-        for (a, b, n, ob, ep), (sn, so) in zip(rr, st):
+    for nm, rr in (('deck hint', rd), ('acquired', ra)):
+        for a, b, n, ob, ep in rr:
             lab = '0' if b <= 1e-12 else f'{a:.2f}-{min(b, 1):.2f}'
-            out += [Claim(S12, f'reliability {nm} {lab}: rows', sn, n), Claim(S12, f'reliability {nm} {lab}: observed', so, ob)]
+            out += [Value(S12, f'reliability {nm} {lab}: rows', n), Value(S12, f'reliability {nm} {lab}: observed', ob)]
+            if b > 1e-12: out.append(Value(S12, f'reliability {nm} {lab}: mean predicted', ep))
+    # the deck's shortfall in its buckets predicted 0.6 and above, and how many of their rows have an event source
+    top = lambda r: pdeck(r) >= 0.6
+    sh_top = short(top)
+    n_top = sum(1 for r in rows if d_sel(r) and top(r)); n_top_ev = sum(1 for r in rows if d_sel(r) and top(r) and r['cards_ev'])
+    rd_w = [(a, b, n, ob, ep) + wilson(round(ob * n), n) for a, b, n, ob, ep in rd if n and b > 1e-12]
+    d24 = next((x for x in rd_w if x[0] == 0.2), (0.2, 0.4) + (float('nan'),) * 5)
+    n24_pool = sum(1 for r in rows if d_sel(r) and 0.2 <= pdeck(r) < 0.4 and kind(r) == 'training pool only')
+    out += [Value(S12, 'deck shortfall in buckets predicted 0.6 and above', common.div(sh_top, sh_all)),
+            Value(S12, 'their rows with an event source', common.div(n_top_ev, n_top)),
+            Value(S12, 'reliability deck hint 0.20-0.40: observed (sentence)', d24[3]),
+            Value(S12, 'reliability deck hint 0.20-0.40: observed 95% low', d24[5]),
+            Value(S12, 'reliability deck hint 0.20-0.40: observed 95% high', d24[6]),
+            Value(S12, 'reliability deck hint 0.20-0.40: mean predicted, three places', d24[4])]
     # per run
     P = []
     for pr in sorted(runrows, key=lambda x: x['id']):   # bootstrap draws in run-id order
@@ -466,50 +520,203 @@ def claims(wide=None):
                       ao=all(r['o_any'] for r in fr), pa=pr['p_all'], po=math.prod(r['l_obs'] for r in rs_), scen=pr['scen']))
     n = len(P) or float('nan')
     lo, hi = wilson(sum(x['ao'] for x in P), n)
-    out += [Claim(S12, 'per run: open targets', '7.13', sum(x['n'] for x in P) / n),
-            Claim(S12, 'per run: acquired, expected', '3.551', sum(x['e'] for x in P) / n),
-            Claim(S12, 'per run: acquired, observed', '3.525', sum(x['o'] for x in P) / n),
-            Claim(S12, 'per run: all open acquired, product of odds', '0.035', sum(x['ap'] for x in P) / n),
-            Claim(S12, 'per run: all open acquired, observed', '0.031', sum(x['ao'] for x in P) / n),
-            Claim(S12, 'per run: all open acquired, 95% low', '0.025', lo), Claim(S12, 'per run: all open acquired, 95% high', '0.038', hi),
-            Claim(S12, 'runs acquiring every open target', '90', sum(x['ao'] for x in P))]
-    for nm, sub, st, ci in (('all', P, '0.847', ('0.66', '1.05')), ('Unity Cup', [x for x in P if x['scen'] == 2], '0.834', ('0.61', '1.07')),
-                            ('Grand Concert', [x for x in P if x['scen'] == 3], '1.30', ('0.78', '1.83')),
-                            ('URA Finale', [x for x in P if x['scen'] == 1], '0.81', ('0.23', '1.58'))):
+    n_run, lo_ao, hi_ao, ao_rate = n, lo, hi, sum(x['ao'] for x in P) / n
+    out += [Value(S12, 'per run: open targets', sum(x['n'] for x in P) / n),
+            Value(S12, 'per run: acquired, expected', sum(x['e'] for x in P) / n),
+            Value(S12, 'per run: acquired, observed', sum(x['o'] for x in P) / n),
+            Value(S12, 'per run: all open acquired, product of odds', sum(x['ap'] for x in P) / n),
+            Value(S12, 'per run: all open acquired, observed', sum(x['ao'] for x in P) / n),
+            Value(S12, 'per run: all open acquired, 95% low', lo), Value(S12, 'per run: all open acquired, 95% high', hi),
+            Value(S12, 'runs acquiring every open target', sum(x['ao'] for x in P))]
+    pall = {}
+    for nm, sub in (('all', P), ('Unity Cup', [x for x in P if x['scen'] == 2]), ('Grand Concert', [x for x in P if x['scen'] == 3]),
+                    ('URA Finale', [x for x in P if x['scen'] == 1])):
         pp = sum(x['pa'] for x in sub); po = sum(x['po'] for x in sub)
         blo, bhi = (float('nan'),) * 2 if not sub else boot(lambda s: sum(x['po'] for x in s) / max(1e-300, sum(x['pa'] for x in s)), sub)
-        out += [Claim(S12, f'P(all eight) ratio, {nm}', st, common.div(po, pp)),   # bootstrap bounds: Monte Carlo, tolerance 0.01
-                Claim(S12, f'P(all eight) ratio, {nm}: 95% low', ci[0], blo, tol=0.01), Claim(S12, f'P(all eight) ratio, {nm}: 95% high', ci[1], bhi, tol=0.01)]
-    out.append(Claim(S12, "Trackblazer's model P(all)", '0', sum(x['pa'] for x in P if x['scen'] == 4)))
+        pall[nm] = (common.div(po, pp), blo, bhi)
+        out += [Value(S12, f'P(all eight) ratio, {nm}', common.div(po, pp)),   # bootstrap bounds: Monte Carlo (seeded)
+                Value(S12, f'P(all eight) ratio, {nm}: 95% low', blo), Value(S12, f'P(all eight) ratio, {nm}: 95% high', bhi)]
+    out.append(Value(S12, 'P(all eight): optimism the interval allows (1 / 95% low)', common.div(1, pall['all'][1])))
+    out.append(Value(S12, "Trackblazer's model P(all)", sum(x['pa'] for x in P if x['scen'] == 4)))
+    # the solver's exact P(all) against the product of its per-target p, summed over runs (what 90 runs would have to separate)
+    pa_exact = sum(x['p_all'] for x in runrows); pa_prod = sum(math.prod(r['p_pred'] for r in x['rows']) for x in runrows)
+    # per run, acquired: the observed mean's 95% interval over runs
+    m_o = sum(x['o'] for x in P) / n_run; sd_o = math.sqrt(sum((x['o'] - m_o) ** 2 for x in P) / max(1, len(P) - 1)) if P else float('nan')
+    m_e = sum(x['e'] for x in P) / n_run; ap_mean = sum(x['ap'] for x in P) / n_run
     # single-source cards
     one = lambda r: len(set(r['cards_pool']) | set(r['cards_ev'])) == 1
     cn = lambda r: (set(r['cards_pool']) | set(r['cards_ev'])).pop()
     byname = {c['name']: c['id'] for c in common.gjson('web_cards.json')['cards']}
-    for card, g, sp, so, sr, sn in (('[This Might Sting!] Sasami Anshinzawa', 20203, '1.000', '0.730', '0.73', '185'),
-                                    ('[Planned Perfection] Riko Kashimoto', 20046, '0.750', '0.596', '0.79', '359'),
-                                    ('[Tonight, We Waltz] King Halo', 20159, '0.937', '0.726', '0.77', '73'),
-                                    ('[That Time I Became the Strongest] Gold Ship', 20159, '0.205', '0.122', '0.59', '74'),
-                                    ('[Cute + Cute = ?] Mayano Top Gun', 20049, '0.298', '0.070', '0.23', '43'),
-                                    ('[Sentimental Flare ♪] Maruzensky', 20165, '0.240', '0.299', '1.25', '224'),
-                                    ("[Let's Get This Party Lit!] Daitaku Helios", 20165, '0.339', '0.491', '1.45', '57')):
-        cid = byname.get(card)
+    listed, s_one = set(), {}
+    for card, g in SINGLE:
+        cid = byname.get(card); listed.add((cid, g))
+        s = s_one[cid, g] = rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == cid and r['g'] == g, pdeck, o_deck)
+        nm = card + ' > ' + gn[g][0]                     # the full card name: two Helios cards share a target
+        out += [Value(S12, f'{nm}: rows', s['n']), Value(S12, f'{nm}: predicted', s['pred']), Value(S12, f'{nm}: observed', s['obs']),
+                Value(S12, f'{nm}: ratio', s['ratio']), Value(S12, f'{nm}: ratio 95% low', s['rlo']), Value(S12, f'{nm}: ratio 95% high', s['rhi'])]
+    # every single-source (card, target) pair whose ratio interval excludes 1
+    cname = {c['id']: c['name'] for c in common.gjson('web_cards.json')['cards']}
+    pairs = sorted({(cn(r), r['g']) for r in rows if d_sel(r) and one(r)})
+    off = []
+    for cid, g in pairs:
         s = rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == cid and r['g'] == g, pdeck, o_deck)
-        nm = card.split('] ')[1] + ' > ' + gn[g][0]
-        out += [Claim(S12, f'{nm}: rows', sn, s['n']), Claim(S12, f'{nm}: predicted', sp, s['pred']), Claim(S12, f'{nm}: observed', so, s['obs']),
-                Claim(S12, f'{nm}: ratio', sr, s['ratio'])]
+        if s['pred'] and not s['rlo'] <= 1 <= s['rhi']: off.append((cid, g, s))
+    gship = (byname.get('[That Time I Became the Strongest] Gold Ship'), 20159)
+    off40 = {(cid, g) for cid, g, s in off if s['n'] >= 40}
+    off_unlisted = [(cid, g, s) for cid, g, s in off if s['n'] >= 40 and (cid, g) not in listed]
+    small = [(cid, g, s) for cid, g, s in off if s['n'] < 40]
+    po_small = [(cid, g, s) for cid, g, s in small if g == 20166 and s['ratio'] < 1]     # Playtime's Over! below its prediction
+    po_k, po_n = sum(s['k'] for _, _, s in po_small), sum(s['n'] for _, _, s in po_small)
+    po_lo = min([s['pred'] for _, _, s in po_small] or [float('nan')])
+    out += [Value(S12, 'pairs under 40 rows excluding 1', len(small)),
+            Value(S12, "pairs under 40 rows excluding 1: Playtime's Over! event sources", len(po_small)),
+            Value(S12, "pairs under 40 rows excluding 1: Playtime's Over! event sources, runs", po_n),
+            Value(S12, "pairs under 40 rows excluding 1: Playtime's Over! event sources, hinted", po_k),
+            Value(S12, "pairs under 40 rows excluding 1: Playtime's Over! lowest predicted", po_lo),
+            Value(S12, "pairs under 40 rows excluding 1: Playtime's Over! highest predicted", max([s['pred'] for _, _, s in po_small] or [float('nan')]))]
+    # the likely reasons the table gives, read on the runs that show a priority list (priority by skill name)
+    plist = {r['id']: r['priority'] for r in (R or [])}
+    onp = lambda r, skill: None if plist.get(r['run']) is None else skill in plist[r['run']]
+    by_prio = lambda card, g, skill, v: rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == byname.get(card) and r['g'] == g and onp(r, skill) is v, pdeck, o_deck)
+    sas = [by_prio('[This Might Sting!] Sasami Anshinzawa', 20203, 'Risky Business', v) for v in (True, False)]
+    kh = [by_prio('[Tonight, We Waltz] King Halo', 20159, 'Uma Stan', v) for v in (True, False)]
+    rk = [by_prio('[Planned Perfection] Riko Kashimoto', 20046, 'Lone Wolf', v) for v in (True, False, None)]
+    # the three Playtime's Over! event sources, pooled, by whether the target is prioritised
+    po_ids = {byname.get(c) for c in PO_CARDS}
+    po = [rep.stat(lambda r: d_sel(r) and one(r) and cn(r) in po_ids and r['g'] == 20166 and r['prio'] is v, pdeck, o_deck) for v in (True, False, None)]
+    out += [Value(S12, "Playtime's Over! event sources: runs showing a priority list", po[0]['n'] + po[1]['n']),
+            Value(S12, "Playtime's Over! event sources: prioritised", po[0]['n']),
+            Value(S12, "Playtime's Over! event sources: hinted with a list shown", po[0]['k'] + po[1]['k']),
+            Value(S12, "Playtime's Over! event sources: runs without a list", po[2]['n']),
+            Value(S12, "Playtime's Over! event sources: hinted without a list", po[2]['k'])]
     # section 8 certainty checks: every credited, where the card is the skill's one deck source
-    for card, g, st in (('[From the Ground Up] Light Hello', 20166, '852'), ('[Team Sirius] Team Sirius', 20203, '64')):
+    cert = {}
+    for card, g in (('[From the Ground Up] Light Hello', 20166), ('[Team Sirius] Team Sirius', 20203)):
         cid = byname.get(card) or next((c['id'] for c in common.gjson('web_cards.json')['cards'] if card.split('] ')[1] in c['name']), None)
-        s = rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == cid and r['g'] == g, pdeck, o_deck)
-        out += [Claim(S8, f'{card.split("] ")[1]} credited: runs carrying her', st, s['n'], note='her the one deck source, no inspiration of it'),
-                Claim(S8, f'{card.split("] ")[1]} credited: credited', st, s['k'])]
+        s = cert[card.split('] ')[1]] = rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == cid and r['g'] == g, pdeck, o_deck)
+        out += [Value(S8, f'{card.split("] ")[1]} credited: runs carrying her', s['n'], note='her the one deck source, no inspiration of it'),
+                Value(S8, f'{card.split("] ")[1]} credited: credited', s['k'])]
+
+    # ------------------------------------------------------------ findings: each conclusion, tested on the numbers above
+    covers = lambda s: s['rlo'] <= 1 <= s['rhi']
+    below = lambda s: s['rhi'] < 1
+    rt = lambda s: f"{s['ratio']:.3f} [{s['rlo']:.3f}, {s['rhi']:.3f}], {s['n']:,} rows"
+    lab = lambda a, b: f'{a:.2f}-{min(b, 1):.2f}'
+    tn = lambda g: gn[g][0]
+    t_off = [g for g in DEFAULT if g in t_inh and not covers(t_inh[g])]
+    F = [
+        # section 3
+        finding(S3, 'inspiration odds q are calibrated: observed / predicted over all run-target rows has a 95% interval covering 1',
+                lambda: covers(s_inh), lambda: rt(s_inh) + '; per target, intervals excluding 1: '
+                + (', '.join(f'{tn(g)} {rt(t_inh[g])}' for g in t_off) or 'none')),
+        finding(S3, 'by carriers 1-6, every interval covers 1',
+                lambda: all(k in byc and covers(byc[k]) for k in range(1, 7)),
+                lambda: '; '.join(f'{k}: {byc[k]["ratio"]:.3f} [{byc[k]["rlo"]:.3f}, {byc[k]["rhi"]:.3f}]' for k in range(1, 7) if k in byc)),
+        finding(S3, 'per roll, spark-years and ancestor hits each sit within the model\'s 95% band (|z| < 1.96, z on the model\'s own binomial variance)',
+                lambda: abs(z_y) < 1.96 and abs(z_h) < 1.96,
+                lambda: f'spark-years {o_y:,} vs {e_y:,.1f} expected (z {z_y:+.2f}); hits {o_h:,} vs {e_h:,.1f} (z {z_h:+.2f})'),
+        finding(S3, 'reliability: calibrated in every bucket with a positive prediction but 0.40-0.60, which sits just below: only that '
+                    'bucket\'s 95% interval misses its mean prediction, from below, with the observed rate under 0.03 short of it',
+                lambda: [x[0] for x in rel_miss] == [0.4] and all(hi < ep and ep - ob < 0.03 for a, b, n, ob, ep, lo, hi in rel_miss),
+                lambda: ('misses: ' + '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f} ({n:,} rows)' for a, b, n, ob, ep, lo, hi in rel_miss)
+                         if rel_miss else 'no bucket misses') + f' (of {sum(1 for _, b, n, _, _ in rel if n and b > 1e-12)} buckets tested at 95% each; '
+                f'q = 0 bucket observed {rel[0][3]:.4f} over {rel[0][2]:,} rows)'),
+        # section 8
+        finding(S8, 'the choice rule shows in its consequences: event-only hints of prioritised targets land at the model\'s rate (interval covers 1), '
+                    'of non-prioritised targets below it (interval entirely below 1)',
+                lambda: covers(s_evp) and below(s_evn), lambda: f'prioritised {rt(s_evp)}; not prioritised {rt(s_evn)}'),
+        *[finding(S8, f'{nm} credits her finale skill in every run carrying her (the finale is certain)',
+                  lambda s=s: s['n'] > 0 and s['k'] == s['n'], lambda s=s: f'{s["k"]} of {s["n"]} (Wilson 95% low {s["lo"]:.4f})') for nm, s in cert.items()],
+        # section 12
+        finding(S12, 'the composed acquisition odds are calibrated: acquired from any source, observed / predicted, 95% interval covers 1',
+                lambda: covers(s_any), lambda: rt(s_any) + '; reliability buckets whose interval lies off their mean prediction: '
+                + '; '.join(f'{lab(a, b)} {ob:.3f} vs {ep:.3f}' for a, b, n, ob, ep in ra if n and b > 1e-12
+                            and not wilson(round(ob * n), n)[0] <= ep <= wilson(round(ob * n), n)[1])),
+        finding(S12, 'inheritance is right: observed / predicted inspiration, 95% interval covers 1; one target of eight, Tail Held High, '
+                     'has its interval off 1',
+                lambda: covers(s_inh) and t_off == [20161], lambda: rt(s_inh) + '; per-target exceptions: ' + (', '.join(f'{tn(g)} {rt(t_inh[g])}' for g in t_off) or 'none')),
+        finding(S12, 'deck hints read optimistic: the deck test\'s observed / predicted interval lies entirely below 1',
+                lambda: below(s_deck), lambda: rt(s_deck)),
+        finding(S12, 'the deck\'s shortfall is almost all from the priority assumption: rows with an event source carry at least 80% of the shortfall '
+                     '(predicted minus observed hints), and on runs showing a priority list event-only hints land at the model\'s rate when the target '
+                     'is prioritised (interval covers 1) and below it when not (interval below 1)',
+                lambda: sh_ev / sh_all >= 0.8 and covers(s_evp) and below(s_evn),
+                lambda: f'event-source shortfall {sh_ev:.1f} of {sh_all:.1f} hints ({sh_ev / sh_all:.0%}); training pool only {rt(s_pool)}; '
+                        f'prioritised {rt(s_evp)}; not prioritised {rt(s_evn)}; no priority list shown {rt(s_evu)}'),
+        finding(S12, 'unmodelled scenario and trainee events supply what the deck loses: acquired from any source covers 1, '
+                     'acquired from the deck or an inspiration lies below 1',
+                lambda: covers(s_any) and below(s_mod),
+                lambda: f'any source {rt(s_any)}; deck or inspiration {rt(s_mod)}; rows acquired with no modelled source {len(miss)}, '
+                        f'{n_unm} of them credited to events only'),
+        finding(S12, 'Racing Spirit: Stamina has no deck source: no deck card in any run can hint it',
+                lambda: any(r['g'] == 21010 for r in rows) and not any(r['g'] == 21010 and (r['cards_pool'] or r['cards_ev']) for r in rows),
+                lambda: f'{sum(1 for r in rows if r["g"] == 21010 and (r["cards_pool"] or r["cards_ev"]))} of {sum(1 for r in rows if r["g"] == 21010):,} rows with a deck source'),
+        finding(S12, 'training-pool hints (beta): Grand Concert, Unity Cup and URA Finale each have an interval covering 1',
+                lambda: all(covers(s_scn[k]) for k in (3, 2, 1)), lambda: '; '.join(f'{common.SCEN[k]} {rt(s_scn[k])}' for k in (3, 2, 1))),
+        finding(S12, 'only Trackblazer\'s interval excludes 1, its beta over-predicting: its interval lies entirely below 1, the other '
+                     'three cover 1',
+                lambda: below(s_scn[4]) and all(covers(s_scn[k]) for k in (3, 2, 1)), lambda: f'Trackblazer {rt(s_scn[4])}'),
+        finding(S12, 'training pool by lowest limit break: LB0, LB1 and LB2 each have an interval covering 1',
+                lambda: all(covers(s) for s in low), lambda: '; '.join(f'LB{lb} {rt(s)}' for lb, s in zip((0, 1, 2), low))),
+        finding(S12, 'Unity Cup\'s two golds are guaranteed: every Unity Cup run shows both hinted',
+                lambda: n_uc > 0 and k_uc == n_uc, lambda: f'{k_uc} of {n_uc} runs'),
+        finding(S12, 'the deck\'s over-prediction sits in its top buckets, the event rewards: buckets predicted 0.6 and above carry over half the '
+                     'shortfall, each lies below its mean prediction, and over half their rows have an event source',
+                lambda: sh_top / sh_all > 0.5 and n_top_ev / n_top > 0.5 and all(hi < ep for a, b, n, ob, ep, lo, hi in rd_w if a >= 0.6),
+                lambda: f'top-bucket shortfall {sh_top:.1f} of {sh_all:.1f} ({sh_top / sh_all:.0%}); event-source rows {n_top_ev:,} of {n_top:,} '
+                        f'({n_top_ev / n_top:.0%}); buckets lying below their mean prediction: '
+                        + '; '.join(f'{lab(a, b)} {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f}' for a, b, n, ob, ep, lo, hi in rd_w if hi < ep)),
+        finding(S12, 'per run, acquisition is calibrated: the all-open-acquired interval covers the product of the model\'s odds, and the mean '
+                     'targets acquired per run has a 95% interval covering the expected mean',
+                lambda: lo_ao <= ap_mean <= hi_ao and abs(m_o - m_e) <= 1.96 * sd_o / math.sqrt(len(P)),
+                lambda: f'all open: {ao_rate:.4f} [{lo_ao:.4f}, {hi_ao:.4f}] vs {ap_mean:.4f}; targets acquired {m_o:.3f} '
+                        f'[{m_o - 1.96 * sd_o / math.sqrt(len(P)):.3f}, {m_o + 1.96 * sd_o / math.sqrt(len(P)):.3f}] vs {m_e:.3f}'),
+        finding(S12, 'landing P(all eight) is consistent with calibrated: the bootstrap interval covers 1, pooled and in each scenario with a model value',
+                lambda: all(b0 <= 1 <= b1 for _, b0, b1 in pall.values()),
+                lambda: '; '.join(f'{k} {v:.3f} [{b0:.2f}, {b1:.2f}]' for k, (v, b0, b1) in pall.items())),
+        finding(S12, 'too few runs acquired every open target to separate the exact joint from the product: the solver\'s exact P(all) differs '
+                     'from the product of its per-target p by less than the relative half-width of the all-acquired interval',
+                lambda: abs(pa_exact / pa_prod - 1) < (hi_ao - lo_ao) / 2 / ao_rate,
+                lambda: f'exact / product {pa_exact / pa_prod:.3f} (sums over runs {pa_exact:.4f} / {pa_prod:.4f}); all acquired '
+                        f'{sum(x["ao"] for x in P)} runs, relative half-width {(hi_ao - lo_ao) / 2 / ao_rate:.0%}'),
+        finding(S12, 'the single-source table holds every pair of 40+ rows whose ratio interval excludes 1, plus Gold Ship\'s, and nothing else',
+                lambda: bool(pairs) and not off_unlisted and listed <= off40 | {gship} and gship in listed,
+                lambda: f'{len(off)} of {len(pairs)} pairs exclude 1; not listed: ' + ('; '.join(
+                    f'{cname[c]} > {tn(g)} {s["k"]}/{s["n"]} vs pred {s["pred"]:.3f} = {s["ratio"]:.2f} [{s["rlo"]:.2f}, {s["rhi"]:.2f}]'
+                    for c, g, s in sorted(off_unlisted, key=lambda x: -x[2]['n'])) or 'none') + '; listed without excluding 1: '
+                    + (', '.join(f'{cname[c]} > {tn(g)} [{s_one[c, g]["rlo"]:.2f}, {s_one[c, g]["rhi"]:.2f}]' for c, g in sorted(listed - off40)) or 'none')),
+        finding(S12, 'below 40 rows more pairs exclude 1; among them, below their prediction, are exactly Playtime\'s Over!\'s three event sources '
+                     '(Yaeno Muteki, Yukino Bijin, Sirius Symboli), whose pooled hint rate has a 95% interval entirely under their lowest prediction',
+                lambda: bool(small) and {c for c, _, _ in po_small} == po_ids and wilson(po_k, po_n)[1] < po_lo,
+                lambda: f'{len(small)} pairs; Playtime\'s Over! sources hinted {po_k}/{po_n} [{wilson(po_k, po_n)[0]:.3f}, {wilson(po_k, po_n)[1]:.3f}] '
+                        f'vs lowest prediction {po_lo:.3f}; ' + '; '.join(f'{cname[c]} > {tn(g)} {s["k"]}/{s["n"]} vs pred {s["pred"]:.3f} '
+                                                                          f'[{s["rlo"]:.2f}, {s["rhi"]:.2f}]' for c, g, s in small)),
+        finding(S12, 'the Playtime\'s Over! miss is the priority assumption (the skill sits on a chain-ending choice 2, taken only when '
+                     'prioritised): prioritised rows cover 1 or are too few to test (under 5), rows on a list without it lie below 1 '
+                     '(untestable, "needs data", when fewer than 5 rows are on a list without it)',
+                lambda: (po[0]['n'] < 5 or covers(po[0])) and below(po[1]) if po[1]['n'] >= 5 else {}['too few rows on a list'],
+                lambda: f'prioritised {po[0]["k"]}/{po[0]["n"]} ' + (rt(po[0]) if po[0]['n'] else '') + f'; on a list, not prioritised '
+                        f'{po[1]["k"]}/{po[1]["n"]} {rt(po[1])}; no list shown {po[2]["k"]}/{po[2]["n"]} {rt(po[2])}'),
+        finding(S12, 'the 0.20-0.40 deck bucket, almost all training-pool rows (at least 90%), is within its interval: the interval covers its mean prediction',
+                lambda: d24[5] <= d24[4] <= d24[6] and n24_pool / d24[2] >= 0.9,
+                lambda: f'{d24[3]:.3f} [{d24[5]:.3f}, {d24[6]:.3f}] vs {d24[4]:.3f}; training-pool rows {n24_pool:,} of {d24[2]:,}'),
+        finding(S12, 'Sasami Anshinzawa [This Might Sting!] > Risky Business: the model assumes Risky Business prioritised: with it on the '
+                     'priority list her hint lands at the model\'s rate (interval covers 1), without it below (interval below 1)',
+                lambda: covers(sas[0]) and below(sas[1]), lambda: f'prioritised {rt(sas[0])}; on a list, not prioritised {rt(sas[1])}'),
+        finding(S12, 'King Halo [Tonight, We Waltz] > Uma Stan sits on a choice that needs a priority: prioritised covers 1, not prioritised below 1',
+                lambda: covers(kh[0]) and below(kh[1]), lambda: f'prioritised {rt(kh[0])}; on a list, not prioritised {rt(kh[1])}'),
+        finding(S12, 'Riko Kashimoto [Planned Perfection] > Ramp Up: her Lone Wolf choice when prioritised accounts for part: rows with Lone '
+                     'Wolf prioritised lie below 1, and rows from runs showing no priority list still lie below 1',
+                lambda: below(rk[0]) and below(rk[2]),
+                lambda: f'Lone Wolf prioritised {rt(rk[0])}; on a list, not prioritised {rt(rk[1])}; no list shown {rt(rk[2])}'),
+    ]
     if why:
-        for c in out: c.got, c.status = None, why
-        return out + [Claim(S12, 'other skills: inheritance', '0.993', status=why), Claim(S12, 'other skills: training-pool hints', '1.051', status=why)]
+        for f in F: f.holds, f.evidence = None, why
+        return F + wide_findings(None, None, why)
+    out += F
     open(os.path.join(OUTD, 'report8.txt'), 'w').write('\n'.join(rep.lines) + '\n')
     if wide is None: wide = '--wide' in sys.argv
-    out += wide_claims(R, M) if wide else [Claim(S12, 'other skills: inheritance', '0.993', status='not run (--wide)'),
-                                           Claim(S12, 'other skills: training-pool hints', '1.051', status='not run (--wide)')]
+    out += wide_claims(R, M) if wide else wide_findings(None, None, 'not run (--wide)')
     return out
 
 
@@ -529,12 +736,28 @@ def wide_claims(R, M):
     s_i = rep.stat(lambda r: True, lambda r: r['q'], lambda r: r['o_insp'])
     s_p = rep.stat(lambda r: d_sel(r) and r['cards_pool'] and not r['cards_ev'], pdeck, lambda r: r['o_deck'])
     open(os.path.join(OUTD, 'reportW.txt'), 'w').write(f'runs {len({r["run"] for r in rows})}, jobs {len(res)}, over the limit {nt}\n')
-    return [Claim(S, 'other skills: runs sampled', '881', len({x[0] for x in man if any(f.startswith(f'{x[0]}_') for f in res)})),
-            Claim(S, 'other skills: jobs over the 2 s limit', '8', nt),
-            Claim(S, 'other skills: inheritance rows', '37,785', s_i['n']), Claim(S, 'other skills: inheritance', '0.993', s_i['ratio']),
-            Claim(S, 'other skills: inheritance 95% low', '0.97', s_i['rlo']), Claim(S, 'other skills: inheritance 95% high', '1.01', s_i['rhi']),
-            Claim(S, 'other skills: training-pool rows', '14,609', s_p['n']), Claim(S, 'other skills: training-pool hints', '1.051', s_p['ratio']),
-            Claim(S, 'other skills: training-pool 95% low', '1.03', s_p['rlo']), Claim(S, 'other skills: training-pool 95% high', '1.07', s_p['rhi'])]
+    return [Value(S, 'other skills: runs sampled', len({x[0] for x in man if any(f.startswith(f'{x[0]}_') for f in res)})),
+            Value(S, 'other skills: jobs over the 2 s limit', nt),
+            Value(S, 'other skills: inheritance rows', s_i['n']), Value(S, 'other skills: inheritance', s_i['ratio']),
+            Value(S, 'other skills: inheritance 95% low', s_i['rlo']), Value(S, 'other skills: inheritance 95% high', s_i['rhi']),
+            Value(S, 'other skills: training-pool rows', s_p['n']), Value(S, 'other skills: training-pool hints', s_p['ratio']),
+            Value(S, 'other skills: training-pool 95% low', s_p['rlo']), Value(S, 'other skills: training-pool 95% high', s_p['rhi']),
+            Value('3', 'non-target skills: inheritance rows', s_i['n']), Value('3', 'non-target skills: inheritance', s_i['ratio']),
+            Value('3', 'non-target skills: inheritance 95% low', s_i['rlo']), Value('3', 'non-target skills: inheritance 95% high', s_i['rhi'])] \
+        + wide_findings(s_i, s_p)
+
+
+def wide_findings(s_i, s_p, why=None):
+    """the conclusions drawn on the other skills (section 3's non-target rows, section 12's "Other skills")"""
+    covers = lambda s: s['rlo'] <= 1 <= s['rhi']
+    rt = lambda s: f"{s['ratio']:.3f} [{s['rlo']:.3f}, {s['rhi']:.3f}], {s['n']:,} rows"
+    fs = [finding('3', 'inspiration odds hold on non-target skills: interval covers 1', lambda: covers(s_i), lambda: rt(s_i)),
+          finding('12', 'other skills: inheritance holds beyond the eight targets (interval covers 1)', lambda: covers(s_i), lambda: rt(s_i)),
+          finding('12', 'other skills: training-pool hints under-predicted: interval entirely above 1',
+                  lambda: s_p['rlo'] > 1, lambda: rt(s_p))]
+    if why:
+        for f in fs: f.holds, f.evidence = None, why
+    return fs
 
 
 if __name__ == '__main__': common.main(claims)

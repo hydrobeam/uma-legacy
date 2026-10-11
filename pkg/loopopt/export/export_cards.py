@@ -28,9 +28,13 @@ for sid, chara, rar, typ, eff, sd, cmd in q("select id,chara_id,rarity,support_c
     hl = q("select max(init,limit_lv5,limit_lv10,limit_lv15,limit_lv20,limit_lv25,limit_lv30,limit_lv35,limit_lv40,limit_lv45,limit_lv50) from support_card_effect_table where id=? and type=17", eff)
     uhl = sum(v for t0, v0, t1, v1 in q("select type_0, value_0, type_1, value_1 from support_card_unique_effect where id=?", sid)
               for t, v in ((t0, v0), (t1, v1)) if t == 17)
+    # specialty priority at max limit break (effect 19, plus the unique effect's): more training hints (hints.rs hint_spec)
+    sp = q("select max(init,limit_lv5,limit_lv10,limit_lv15,limit_lv20,limit_lv25,limit_lv30,limit_lv35,limit_lv40,limit_lv45,limit_lv50) from support_card_effect_table where id=? and type=19", eff)
+    usp = sum(v for t0, v0, t1, v1 in q("select type_0, value_0, type_1, value_1 from support_card_unique_effect where id=?", sid)
+              for t, v in ((t0, v0), (t1, v1)) if t == 19)
     links = q("select max(show_progress_2) from single_mode_story_data where support_card_id=?", sid)[0][0] or 0
     out.append({"id": sid, "name": cn[sid], "chara": chara, "rarity": rar, "pal": typ in (2, 3), "links": links,
-                "hf": (max(0, hf[0][0]) if hf else 0) + uhf, "opts": opts, "nskill": nskill, "hinc": 1 + (max(0, hl[0][0]) if hl and hl[0][0] is not None else 0) + uhl, "whites": whites, "charas": sorted(members.get(sid, set()) | {chara}), "kind": 'pal' if typ == 2 else 'group' if typ == 3 else KIND.get(cmd, 'other')})
+                "hf": (max(0, hf[0][0]) if hf else 0) + uhf, "spec": (max(0, sp[0][0]) if sp and sp[0][0] is not None else 0) + usp, "opts": opts, "nskill": nskill, "hinc": 1 + (max(0, hl[0][0]) if hl and hl[0][0] is not None else 0) + uhl, "whites": whites, "charas": sorted(members.get(sid, set()) | {chara}), "kind": 'pal' if typ == 2 else 'group' if typ == 3 else KIND.get(cmd, 'other')})
 # cards the game bans from a scenario's deck (single_mode_restrict_support: Team Sirius in Unity Cup and Grand
 # Concert), keyed by the solver's scenario names (single_mode_scenario ids 1-5; later JP scenarios are out of scope)
 SCEN = {1: 'ura', 2: 'unity', 3: 'gc', 4: 'trackblazer', 5: 'grandmasters'}; have = {c['id'] for c in out}; restrict = {}
