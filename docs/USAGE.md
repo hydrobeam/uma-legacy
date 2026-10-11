@@ -19,7 +19,7 @@ skill as a spark, with each uma's race schedule. Results update by themselves 0.
   Each scenario sets its usual rank; change it if yours differs.
 - *Deck per uma* (on by default): each trainee gets her own best deck. Every deck may borrow one friend's card.
 - *Results*: 1 or 3.
-- **Umas**: one tile per outfit; tap to cycle owned, not owned, must include. Up to four umas can be must-include.
+- **Umas**: one tile per outfit; tap to mark it owned or not owned.
 - **Support cards**: tap the cards you don't own. Only cards that can give a target are listed.
 - **Target skills**: type to add. **Presets** save, load, overwrite and rename sets of targets; *8/8 example* holds the
   eight default targets. Presets are shared by both pages and carried by Export.

@@ -3,9 +3,9 @@ import { $, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
-import { state, ui, goldGiven } from './state.js';
+import { state, ui, goldGiven, dropRequired } from './state.js';
 import { save } from './save.js';
-import { noOutfit, renderRoster, reqOutfits, isRequired, pickOutfit } from './roster.js';
+import { noOutfit, renderRoster, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
 import { mergePresets } from './presets.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
@@ -15,7 +15,6 @@ function exportText() {
   const readable = {
     targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: goldGiven(t.group) ? 'gold' : 'no' })),
     umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
-    umas_required: UMAS.filter(isRequired).map(u => u.name + (reqOutfits(u).length ? ' ' + reqOutfits(u).map(o => o.label).join(' or ') : '')),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenario: scenarioOf(state.scen).name,
@@ -45,8 +44,8 @@ const VALID = {
   scen: (v, era) => SCENARIOS.some(s => s.v === v && (!s.era || s.era === era)),
   rsort: (v) => v === 'rel' || v === 'name', csort: (v) => v === 'rel' || v === 'name',
   rdir: (v) => v === 'asc' || v === 'desc', cdir: (v) => v === 'asc' || v === 'desc',
-  roster: (v) => obj(v) && Object.values(v).every(x => x === 'out' || x === 'req'),
-  outfits: (v) => obj(v) && Object.values(v).every(x => x === false || x === 'req'),
+  roster: (v) => obj(v) && Object.values(v).every(x => x === 'out' || x === 'req'),   // 'req': an old export's "must include",
+  outfits: (v) => obj(v) && Object.values(v).every(x => x === false || x === 'req'),   // read as owned (dropRequired)
   cardsOff: (v) => obj(v) && Object.values(v).every(x => x === false),
 };
 export function initIO() {
@@ -70,7 +69,7 @@ export function initIO() {
         location.reload(); return;
       }
       for (const k of use) state[k] = val(k);
-      save();
+      dropRequired(state); save();
       paintRank(); paintTop(); $('c-peruma').checked = state.perUma !== false;
       $('x-auto').checked = state.auto !== false; paintScen();
       renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.' + (bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : '');

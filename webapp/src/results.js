@@ -13,10 +13,10 @@ const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits
 // one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
 // only one result is shown), top: the #1 result (to say what differs from it)}
 function loopCard(l, meta, ctx) {
-  const n = meta.targets.length, forced = l.members.filter(m => (meta.forced || []).includes(m.id)).map(m => m.id);   // umas the job required
+  const n = meta.targets.length;
   const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
   const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
-  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span>${forced.length ? '<span class="lkey" title="Marked must include under Umas: the search had to put her in the loop"><i aria-hidden="true"></i>Must include</span>' : ''}</div>`;
+  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span></div>`;
   if (meta.deck) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
@@ -110,7 +110,6 @@ function loopCard(l, meta, ctx) {
         `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(l.per_trainee[k])}</span></span>`;
       d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit; d.dataset.outfitNote = outfitNote(f);
       d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
-      if (forced.includes(m.id)) { d.classList.add('forced'); const t = document.createElement('span'); t.className = 'vh'; t.textContent = ' (must include)'; d.querySelector('.nm').after(t); }
       d.querySelector('.head').prepend(umaAv(m.id, f.list[0]?.id ?? null, 38));
       // targets on her own outfit's skill list (she has them when she is the trainee)
       const sk = d.querySelector('.sk');

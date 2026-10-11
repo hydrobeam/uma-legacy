@@ -106,15 +106,6 @@ async function open(browser, { w = 1440, h = 900, mobile = false, init, before, 
   await timed('goto', pg.goto(URL)); await timed('settle.load', settle(pg));
   return pg;
 }
-// a click that, when it times out, says what covers the target or whether it is missing (for intermittent failures)
-async function clickSay(pg, loc, label) {
-  try { await loc.click({ timeout: 15000 }); }
-  catch (e) {
-    const why = await loc.count() ? await loc.evaluate(el => { const r = el.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return `covered by ${top ? top.tagName.toLowerCase() + '.' + top.className : 'nothing'} at ${Math.round(r.left)},${Math.round(r.top)}; busy ${document.getElementById('run-note').classList.contains('busy')}`; }) : 'not on the page';
-    throw new Error(`click on ${label} timed out: ${why}`);
-  }
-}
 const busy = (pg) => pg.evaluate(() => document.getElementById('run-note').classList.contains('busy'));
 // wait for the current (auto) search to finish. A setting change marks the status line busy at once (the search
 // itself starts after a short pause), so no fixed sleep is needed; after a page load, the page's first job must have
@@ -499,14 +490,13 @@ const TESTS = {
     const byName = [...all].sort((a, c) => a.n.localeCompare(c.n))[0].n;
     check('Name sorts A to Z', (await pg.locator('#rs').innerText()) === 'Name ↑' && await firstTile() === byName, await firstTile());
     await pg.keyboard.press('Escape'); check('Escape closes the menu', await pg.locator('#rs-menu').isHidden());
-    // cycle an uma with several outfits: one outfit out, then must include (that outfit only), then owned
+    // an uma with several outfits: a tap marks that outfit not owned, a second tap owned again
     const multi = umas.find(u => u.outfits.length > 1);
     const states = () => pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s).join(','), multi.id);
     const tile = pg.locator(`#roster .ut[data-uma="${multi.id}"] .up`).first();
-    await tile.click(); const s1 = await states(); await tile.click(); const s2 = await states(); await tile.click(); const s3 = await states();
-    check('tile cycle: that outfit not owned', s1.split(',').filter(x => x === 'out').length === 1, s1);
-    check('tile cycle: must include marks only that outfit', s2.split(',').filter(x => x === 'req').length === 1 && s2.split(',').filter(x => x === 'own').length === s2.split(',').length - 1, s2);
-    check('tile cycle: back to owned', s3.split(',').every(x => x === 'own'), s3);
+    await tile.click(); const s1 = await states(); await tile.click(); const s2 = await states();
+    check('tile toggle: that outfit not owned', s1.split(',').filter(x => x === 'out').length === 1, s1);
+    check('tile toggle: back to owned', s2.split(',').every(x => x === 'own'), s2);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -602,21 +592,6 @@ const TESTS = {
     await pg.locator('.cpop .sw').click();
     check('member Owned switch updates the roster and greys her', (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0);
     await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
-    // must include, then Owned off in her panel: she is not owned and no longer must include (no contradiction left)
-    const m0 = pg.locator('.loop').first().locator('.mem').first(), uid = await m0.getAttribute('data-uma'), anyOutfit = !(await m0.getAttribute('data-outfit'));
-    const tile = pg.locator(`#roster .ut[data-uma="${uid}"] .up`).first(); await clickSay(pg, tile, 'her roster tile'); await clickSay(pg, tile, 'her roster tile again'); await settle(pg);
-    const marked = await pg.locator(`#roster .ut[data-uma="${uid}"][data-s="req"]`).count();
-    const ring = await pg.evaluate((id) => { const c = document.querySelector('.loop'), f = [...c.querySelectorAll('.mem.forced')].map(m => m.dataset.uma);
-      return f.length === 1 && f[0] === id && /Must include/.test((c.querySelector('.lhead .lkey') || {}).textContent || '')
-        && getComputedStyle(c.querySelector('.mem.forced .av')).boxShadow !== 'none' && /must include/.test(c.querySelector('.mem.forced .memb').textContent); }, uid);
-    check('a must-include uma has the green ring in the result, with the legend at the top right', ring);
-    await clickSay(pg, pg.locator('.loop').first().locator(`.mem[data-uma="${uid}"] .memb`), 'her name in the result'); await clickSay(pg, pg.locator('.cpop .sw'), 'the Owned switch'); await pg.keyboard.press('Escape'); await settle(pg);
-    const after = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), uid);
-    // (her first tile's outfit is the one marked, so the loop uses it and the switch turns that outfit off; with "any
-    // outfit" every tile of hers goes off)
-    check('must include, then Owned off in the member panel: not owned, no longer must include, and the search runs', marked === 1 && after[0] === 'out' && !after.includes('req')
-      && (!anyOutfit || after.every(x => x === 'out')) && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(await note(pg)), after.join(',') + ' · ' + await note(pg));
-    check('… and with nothing required, no ring and no legend', !(await pg.locator('.mem.forced, .lhead .lkey').count()));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -707,6 +682,7 @@ const TESTS = {
     const trapped = await until(pg, () => document.getElementById('rhead').dataset.kind === 'error', null, 15000); let h = await head();
     check('a job that fails in the worker ends the search on its error, the results kept, the worker restarted', trapped && /^Not searched: the solver stopped with an error/.test(h.note) && h.loops > 0 && h.stale
       && (await pg.evaluate(() => window.__killed)) > kt, JSON.stringify(h));
+    if (b.browserType().name() === 'chromium') { const cf = (await pg.evaluate(AUDIT)).filter(x => /^p\.runnote/.test(x)); check('contrast: the error status line meets WCAG AAA', !cf.length, cf.join(' | ')); }
     await pg.evaluate(() => { window.__trap = false; }); await pg.locator('#cards .ct').nth(6).click(); await settle(pg);
     check('… and the next search runs', /^Checked [\d,]+ decks/.test(await note(pg)));
     while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
@@ -717,14 +693,13 @@ const TESTS = {
     await pg.click('#r-none'); await kind(pg, 'empty'); h = await head();
     check('no umas owned: a neutral status with "Mark all umas owned"', h.kind === 'empty' && /at least 3 umas/.test(h.note) && /Mark all umas owned/.test(h.act) && h.loops > 0, JSON.stringify(h));
     await pg.click('#r-act button'); await settle(pg);
-    // contradictory settings (an import can carry them): the status says what is wrong, the result stays
+    // an old export's "must include" mark ('req', since removed) loads as owned
     const u = (await json(pg, 'data-umas')).find(x => x.outfits.length > 1);
     await pg.click('#ex-open'); const ex = JSON.parse(await pg.inputValue('#ex-text'));
-    ex.settings.roster = { [u.id]: 'out' }; ex.settings.outfits = { [u.outfits[0].id]: 'req' };
-    await pg.fill('#ex-text', JSON.stringify(ex)); await pg.click('#ex-load'); await pg.click('#ex-close'); await kind(pg, 'error'); h = await head();
-    check('must include but not owned: an error naming her, in the status line; results kept', h.kind === 'error' && h.note.includes(u.name + ' is marked Must include but not owned') && h.loops > 0 && h.stale, JSON.stringify(h));
-    if (b.browserType().name() === 'chromium') { const cf = (await pg.evaluate(AUDIT)).filter(x => /^p\.runnote/.test(x)); check('contrast: the error status line meets WCAG AAA', !cf.length, cf.join(' | ')); }
-    await pg.click('#r-all'); await settle(pg);
+    ex.settings.outfits = { [u.outfits[0].id]: 'req' };
+    await pg.fill('#ex-text', JSON.stringify(ex)); await pg.click('#ex-load'); await pg.click('#ex-close'); await settle(pg); h = await head();
+    const tiles = await pg.evaluate((id) => [...document.querySelectorAll(`#roster .ut[data-uma="${id}"]`)].map(t => t.dataset.s), u.id);
+    check('an old export\'s must-include mark loads as owned, and the search runs', tiles.every(x => x === 'own') && h.kind === 'done' && /^Checked [\d,]+ decks/.test(h.note), tiles.join(',') + ' · ' + JSON.stringify(h));
     // Stop: a slow search (three results, one shared deck) is stopped; the results stay and the worker is killed;
     // "Search again" runs it to the end, and the three results are told apart
     const r0 = await pg.evaluate(() => window.__runs.length);

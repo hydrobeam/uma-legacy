@@ -9,7 +9,7 @@ import { warmEngine } from './engine.js';
 import { initRoster, renderRoster } from './roster.js';
 import { initTargets, renderTargets } from './targets.js';
 import { initScenario, eraScenario } from './scenario.js';
-import { initCards, renderCards } from './cards.js';
+import { initCards } from './cards.js';
 import { renderDeck } from './results.js';
 import { initPopover } from './popover.js';
 import { initIO } from './io.js';
@@ -45,7 +45,7 @@ function start() {
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
   // (showing the default example under other settings flashed a result that wasn't theirs)
   const first = firstResult();
-  if (first) { ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets, forced: first.forced || [] });
+  if (first) { ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });
     ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
     ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : first.status; }
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'

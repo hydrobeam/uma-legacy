@@ -56,10 +56,8 @@ function openUmaPop(btn, d = btn.closest('.mem')) {   // d: her member block (a 
   sw.onchange = () => {
     if (sw.checked) { if (state.roster[u.id] === 'out') delete state.roster[u.id]; if (oid) delete state.outfits[oid];
       else for (const o of u.outfits || []) delete state.outfits[o.id]; }
-    // not owned can't also be must include: the uma as a whole drops her must-include marks (an outfit's own mark is
-    // replaced by its not-owned one; her other marked outfits still stand)
     else if (oid) state.outfits[oid] = false;
-    else { state.roster[u.id] = 'out'; for (const o of u.outfits || []) if (state.outfits[o.id] === 'req') delete state.outfits[o.id]; }
+    else state.roster[u.id] = 'out';
     save(); paintRoster(u.id); markOwn(); sw.checked = owned(); };
 }
 // GameTora's character page: /characters/<outfit id>-<slug>, the slug from her support cards' url_name (build.py),

@@ -9,7 +9,7 @@ import { run, killEngine } from './engine.js';
 import { save, onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { state, ui, DEFAULTS } from './state.js';
-import { noOutfit, reqOutfits, isRequired } from './roster.js';
+import { noOutfit } from './roster.js';
 import { renderDeck } from './results.js';
 import { loadExample } from './presets.js';
 let searching = false, searchT0 = 0, searchTick = null, pauseTimer = null, searchId = 0;
@@ -85,17 +85,10 @@ function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'Add a target skill to search.', { label: 'Load the 8/8 example targets', click: 't-preset', run: loadExample });
   const exclude = UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.id);
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
-  // must include per outfit: the uma is required, and her outfits that aren't marked are left out
-  for (const u of UMAS) { const r = reqOutfits(u); if (r.length) for (const o of u.outfits) if (!r.includes(o) && !exclude_outfits.includes(o.id)) exclude_outfits.push(o.id); }
-  // what the solver would refuse, said in the page's terms
-  const req = UMAS.filter(isRequired), bad = req.filter(u => exclude.includes(u.id)), and = (l) => l.length > 1 ? l.slice(0, -1).join(', ') + ' and ' + l.at(-1) : l[0];
-  if (bad.length) throw new Blocked('error', `Not searched: ${and(bad.map(u => u.name))} ${bad.length > 1 ? 'are' : 'is'} marked Must include but not owned.`);
-  if (req.length > 4) throw new Blocked('error', `Not searched: a loop has at most four umas, and ${req.length} are marked Must include.`);
   const owned = UMAS.length - exclude.length;
   if (owned < 3) throw new Blocked('empty', `Mark at least 3 umas as owned to search (${owned} owned now).`, { label: 'Mark all umas owned', click: 'r-all' });
-  const require = UMAS.filter(isRequired).map(u => u.id);
   const targets = jobTargets();
-  const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, require, exclude_outfits, extra: EXTRA,
+  const job = { cmd: 'deck', targets, star_dist: state.rank.split(',').map(Number), exclude, exclude_outfits, extra: EXTRA,
     owned_cards: ownedCards(), borrow: true, top_decks: +state.decksTop, per_uma: state.perUma !== false, scenario: state.scen || 'unity',
     ...rcardsOff() };
   return { job, targets };
@@ -118,7 +111,7 @@ export function firstResult() {
   try { const c = JSON.parse(localStorage.getItem(LAST()) || 'null');
     if (c && c.key === key && c.r && c.r.top && c.r.top.length) { shown = { key, r: JSON.stringify(c.r.top), example: false };
       doneKey = key; doneStatus = doneText(c.r, c.ms);   // the search of these settings, finished before: done, nothing to rerun
-      return { r: c.r, ms: c.ms, targets: b.targets, forced: b.job.require, status: doneStatus }; } } catch {}
+      return { r: c.r, ms: c.ms, targets: b.targets, status: doneStatus }; } } catch {}
   if (ERA === 'global' && key === defaultKey()) { shown = { key, r: null, example: true }; return { r: EXAMPLE, example: true, targets: b.targets }; }
   return null;
 }
@@ -149,7 +142,7 @@ export async function doSearch(auto = false) {
     const key = jobKey(job);
     // a result is drawn unless the same loops and decks are already on screen
     const draw = (r) => {
-      ui.lastRender = () => renderDeck(r, { targets, forced: job.require }); ui.lastResult = { kind: 'deck', r, meta: {} };
+      ui.lastRender = () => renderDeck(r, { targets }); ui.lastResult = { kind: 'deck', r, meta: {} };
       const str = JSON.stringify(r.top);
       if (shown.example || shown.key !== key || shown.r !== str) ui.lastRender();
       shown = { key, r: str, example: false };

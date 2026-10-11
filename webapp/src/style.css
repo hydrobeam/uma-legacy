@@ -174,24 +174,16 @@ input[type="search"], input[type="text"], select { background: var(--bg); border
 input[type="search"], input[type="text"] { width: 100%; }
 /* the uma picker: a grid of portrait tiles */
 .roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; max-height: min(560px, 62vh); overflow: auto; padding: 4px 12px 4px 4px; scrollbar-gutter: stable; align-items: start; }
-/* uma tile: portrait (tap cycles owned / not owned / must include), name, outfit as a subtitle */
+/* uma tile: portrait (tap toggles owned / not owned), name, outfit as a subtitle */
 .ut { display: grid; gap: 4px; min-width: 0; }
-.ut .up { position: relative; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; display: block; }
+.ut .up { padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; display: block; }
 .ut .up .av { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 12px; font-size: 1.4rem !important; display: grid; }
 .ut[data-s="out"] .up .av { filter: grayscale(1); opacity: 0.45; }
-.ut[data-s="req"] .up .av { box-shadow: 0 0 0 3px var(--req); }
-.ut[data-s="req"] .up::after { content: "must"; position: absolute; top: 4px; right: 4px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .04em; color: var(--panel); background: var(--req); border-radius: 999px; padding: 1px 6px; }
 .ut .un { font-size: 0.78rem; font-weight: 600; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ut .uol { font-size: 0.68rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .rtools { gap: 6px; }
 /* the roster and card boxes scroll: their bottom edge fades while there is more below (main.js sets .more) */
 .roster.more, .cards.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
-.tkey { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--ink); }
-.tkey span { display: inline-flex; align-items: center; gap: 6px; }
-.tkey i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
-.tkey i.k-out { background: #a3a9b3; }
-.tkey i.k-req { background: var(--req); }
 .sortdd { position: relative; flex: none; }
 .sortmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 140px; background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); padding: 4px; }
@@ -241,7 +233,6 @@ input[type="search"], input[type="text"] { width: 100%; }
 .sest-s { display: none; text-decoration: none; }
 @container (max-width: 380px) { .sest-l { display: none; } .sest-s { display: inline; } }
 .ut[data-s="out"] .un { color: var(--muted); }
-.ut[data-s="req"] .un { color: var(--req); }
 /* target skills */
 /* target tiles, two per row: icon and name (a scenario-guaranteed gold reads as the gold), remove */
 .targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }
@@ -336,9 +327,6 @@ table.sched { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
 .mem .memb:hover .nm { text-decoration: underline; }
 .mem .memb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .mem.off .av { filter: grayscale(1); opacity: 0.5; }
-.mem.forced .av { box-shadow: 0 0 0 3px var(--req); }   /* must include (Umas): the roster's ring */
-.lhead .lkey { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--ink); }
-.lhead .lkey i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 3px var(--req); }
 .mem.off .nm { color: var(--muted); }
 .sbtn { justify-self: start; font-weight: 600; color: var(--accent); }
 .stabs { display: flex; flex-wrap: wrap; gap: 6px; }

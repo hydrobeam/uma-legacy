@@ -5,9 +5,11 @@ export const DEFAULTS = { targets: PRESET.map(group => ({ group })), presets: [{
   rcards: false,   // R cards (not pals) stay out: their hint model is untested; no setting turns them on
   scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {} };
 const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
-// roster: uma id -> 'out' | 'req' ('req' only for umas without separate outfits); outfits: id -> false (not owned) | 'req'
-// (must include this outfit); cardsOff: id -> false when not owned
+// roster: uma id -> 'out' (not owned); outfits: id -> false (not owned); cardsOff: id -> false when not owned
 export const state = Object.fromEntries([...COMMON, ...PER_ERA].map(k => [k, saved(k) !== undefined ? saved(k) : DEFAULTS[k]]));
+// The page once had a third mark, "must include" ('req' in roster and outfits); a saved or imported one reads as owned.
+export function dropRequired(s) { for (const k of ['roster', 'outfits']) s[k] = Object.fromEntries(Object.entries(s[k] || {}).filter(([, v]) => v !== 'req')); }
+dropRequired(state);
 // status: the status line when no search runs (search.js paintRunNote); headline: the top result's odds ("1 in 139"),
 // for the phone's floating button; lastRender: redraws the results on screen; lastResult: {kind, r, meta} for export
 // a target the scenario hands out as a gold whatever the deck (Unity Cup: No Stopping Me!, It's On!); nothing else is
