@@ -318,6 +318,25 @@ def binom_profile(M, ns=range(8, 41)):
     return out
 
 
+def held_out(xs, M):
+    """each half of the runs (by record order) fits the free distribution, the binomial by likelihood (n 10..40, p
+    re-fitted) and the binomial by moments (n = mean^2 / (mean - variance) of the free fit, rounded; p = mean / n); each
+    is scored on the other half against Binomial(21, 0.35): {(direction, form): held-out LL gain}, and the fitted pairs"""
+    seq = np.array([r['seq'] for r, *_ in xs]); med = np.median(seq)
+    halves = {'earlier': M[seq < med], 'later': M[seq >= med]}
+    gain, pairs = {}, {}
+    for tr, te in (('earlier', 'later'), ('later', 'earlier')):
+        T, E = halves[tr], halves[te]
+        free = em(T); m, v = mean_var(free)
+        bn, bp, _ = max(binom_profile(T, range(10, 41)), key=lambda x: x[2])
+        nm = round(m * m / (m - v)); pm = m / nm
+        base = ll(lump(BIN), E)
+        for form, pmf in (('free', list(free)), ('binomial by likelihood', lump(binom_pmf(bn, bp))), ('binomial by moments', lump(binom_pmf(nm, pm)))):
+            gain[(tr, form)] = ll(pmf, E) - base
+        pairs[tr] = ((bn, bp), (nm, pm))
+    return gain, pairs
+
+
 def binom_mle(xs):
     """the Binomial(n, p) grid MLE (n 6..40, p 0.200..0.995 step 0.005), exact over the chain states: (loglik, n, p)"""
     ab = [run_levels(k, o) for _, k, _, o in xs]
@@ -366,6 +385,7 @@ def fit_claims():
     mn, vr = mean_var(pooled)
     l21 = ll(lump(BIN), M); l15 = ll(lump(binom_pmf(15, 0.48)), M); lp = ll(lump(POIS), M)
     prof = binom_profile(M); bn, bp, lb = max(prof, key=lambda x: x[2])
+    ho, hp = held_out(xs, M)
     out = [V('fit of N: runs', len(xs), note=note),
            V('distribution-free: mean', mn), V('distribution-free: variance', vr),
            V('Binomial(21, 0.35): nats behind distribution-free', llp - l21, note=f'LL {l21:.1f} vs {llp:.1f}'),
@@ -380,6 +400,9 @@ def fit_claims():
            V('binomial n = 21, p re-fitted: nats below the best n', lb - dict((n_, l_) for n_, _, l_ in prof)[21]),
            V('binomial mean n p at the best n', bn * bp),
            V('distribution-free: variance / mean', vr / mn),
+           *[V(f'held out, fitted on the {tr} half: {form}, nats over (21, 0.35)', g_) for (tr, form), g_ in ho.items()],
+           *[V(f'held out, fitted on the {tr} half: binomial by likelihood, {w}', x) for tr, ((bn_, bp_), _) in hp.items() for w, x in (('n', bn_), ('p', bp_))],
+           *[V(f'held out, fitted on the {tr} half: binomial by moments, {w}', x) for tr, (_, (nm_, pm_)) in hp.items() for w, x in (('n', nm_), ('p', pm_))],
            V('Conway-Maxwell-Poisson: nats behind distribution-free', llp - cmp_ll(M)[0]),
            V('Conway-Maxwell-Poisson: LR p', float(chi2.sf(2 * (llp - cmp_ll(M)[0]), KMAX - 2)))]
     by = collections.defaultdict(list)
@@ -598,8 +621,12 @@ def findings(out, res, fl, al, sens):
                 'the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the '
                 'Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)',
                 vm < 1 and bp_ > 0.05 and cp_ > 0.05, f'variance / mean {vm:.2f}; best binomial p {bp_:.3f}; CMP p {cp_:.3f}'))
+    hg = {k: v for k, v in g.items() if k.startswith('held out') and k.endswith('nats over (21, 0.35)')}
+    fs.append(F('Held out, no alternative beats Binomial(21, 0.35) by more than 1.92 nats: the free distribution and the binomial '
+                'fitted by likelihood or by moments, each fitted on one half of the runs and scored on the other, both ways',
+                max(hg.values()) <= 1.920729, '; '.join(f'{k[9:].split(",")[0]} / {k.split(": ")[1].split(",")[0]} {v:+.1f}' for k, v in hg.items())))
     lo_, hi_, b21 = g['binomial n: 95% profile interval low'], g['binomial n: 95% profile interval high'], g['binomial n = 21, p re-fitted: nats below the best n']
-    fs.append(F(f'Known miss: n = 21 lies outside the 95% profile-likelihood interval for the binomial\'s n (p re-fitted at each n; '
+    fs.append(F(f'In-sample, n = 21 lies just outside the 95% profile-likelihood interval for the binomial\'s n (p re-fitted at each n; '
                 'more than 1.92 nats below the best n)', b21 > 1.920729 and not lo_ <= 21 <= hi_,
                 f'n in [{lo_:.0f}, {hi_:.0f}], best n {g["best binomial n free: n"]:.0f}; n = 21 is {b21:.2f} nats below'))
     pg = g['per scenario: log-likelihood gain']; dfs = g['per scenario: extra parameters']

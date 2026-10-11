@@ -19,7 +19,7 @@ acquired every target.
 | Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them), {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] over {{4.race_attempts_at_the_34|,.0f}} G1 attempts | 4 |
 | Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than {{5.schedules_pb_ceiling_gain_max_pct|.1f}}% (solver's pair ceilings) | 5 |
 | Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form derived, $\beta$ and $d$ fitted | {{6.specialty_rows|,.0f}} rows; held out +{{6.specialty_held_out_gain_nats|.1f}} nats; real careers {{12.1_training_pool_only_obs_per_pred|.3f}} [{{12.1_training_pool_only_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model | 6 |
-| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; not rejected against a free distribution (p-value {{7.binomial_21_0_35_lr_p|.2f}}); fitted $n$ {{7.binomial_n_95_pct_profile_interval_low|.0f}}-{{7.binomial_n_95_pct_profile_interval_high|.0f}} | 7 |
+| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; not rejected against a free distribution (p-value {{7.binomial_21_0_35_lr_p|.2f}}); held out, no alternative fits better | 7 |
 | Chain events spread over remaining links | fitted | {{7.allocation_slot_over_card_nats|.0f}} nats over uniform-by-card | 7 |
 | Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets {{12.1_events_only_prioritised_obs_per_pred|.2f}} of the model | 8, 12 |
 | Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured {{8.festa_share|.2f}} [{{8.festa_share_90_pct_low|.2f}}, {{8.festa_share_90_pct_high|.2f}}] (90%) | 8 |
@@ -28,8 +28,7 @@ acquired every target.
 
 **Known misses**, each measured and tested in its section:
 
-- Chain events: $n = 21$ lies just outside the 95% interval for the binomial's $n$ ({{7.binomial_n_95_pct_profile_interval_low|.0f}}-{{7.binomial_n_95_pct_profile_interval_high|.0f}}; same mean, slightly
-  wider spread); in crowded decks early links run
+- Chain events: in crowded decks early links run
   short and more chains never start than predicted ({{7.never_started_6_chain_cards_observed|.2f}} against {{7.never_started_6_chain_cards_model|.2f}} with six chain cards); final links fit pooled
   ({{7.final_links_by_card_pooled_observed|.3f}} against {{7.final_links_by_card_pooled_model|.3f}}) but individual cards differ far beyond chance ($\chi^2$ = {{7.final_links_by_card_chi2|.0f}} on {{7.final_links_by_card_cards|.0f}} cards) (7).
 - Deck hints read {{12.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{12.1_deck_hint_no_inspiration_ratio_95_pct_low|.2f}}, {{12.1_deck_hint_no_inspiration_ratio_95_pct_high|.2f}}] of the model, almost all from event hints of targets the
@@ -377,8 +376,8 @@ against {{6.priority_predicted|.3f}} predicted ({{6.priority_rows|.0f}} rows); n
 
 Computed by `research/s07_chains.py`.
 
-A run gets $N$ chain events, the same for every deck and scenario (**fitted**; $n$ = 21 sits just outside the fitted
-interval, below):
+A run gets $N$ chain events, the same for every deck and scenario (**fitted**; tested against alternatives in-sample
+and held out, below):
 
 $$N \sim \mathrm{Binomial}(21, 0.35), \qquad P(N = e) = \binom{21}{e}\, 0.35^{e}\, 0.65^{21-e}, \quad E N = {{7.binomial_21_0_35_mean|.2f}},\ \mathrm{Var}\, N = {{7.binomial_21_0_35_variance|.1f}}.$$
 
@@ -426,8 +425,23 @@ How $n$ and $p$ are read: a binomial counts successes in $n$ chances, each succe
 $np$ and its variance $np(1-p)$. Fitting both, the runs fix the mean ({{7.binomial_mean_n_p_at_the_best_n|.2f}} at the best $n$) and, more
 loosely, the spread, so $n$ and $p$ trade off along a ridge: re-fitting $p$ at each $n$, every $n$ from
 {{7.binomial_n_95_pct_profile_interval_low|.0f}} to {{7.binomial_n_95_pct_profile_interval_high|.0f}} lies within 1.92 nats of the best (the 95% interval), so the best single pair is not itself a finding. The adopted
-$n = 21$ lies just outside it ({{7.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best $n$): a known miss in the spread of $N$
-(variance $21 \cdot 0.35 \cdot 0.65 = 4.78$ against {{7.distribution_free_variance|.2f}} free). Fitted per pal count, the means are
+$n = 21$ lies just outside it in-sample ({{7.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best $n$; variance
+$21 \cdot 0.35 \cdot 0.65 = 4.78$ against {{7.distribution_free_variance|.2f}} free).
+
+**Held out**, that preference does not survive. Each half of the runs (by record order) fits the free distribution and
+the binomial, by likelihood and by moments ($n = \text{mean}^2 / (\text{mean} - \text{variance})$, $p = \text{mean}/n$), and
+each is scored on the other half against Binomial(21, 0.35):
+
+| Fitted on | Free | Binomial by likelihood | Binomial by moments |
+|---|---|---|---|
+| earlier half | {{7.held_out_fitted_on_the_earlier_half_free_nats_over_21_0_35|u+.1f}} nats | {{7.held_out_fitted_on_the_earlier_half_binomial_by_likelihood_nats_over_21_0_35|u+.1f}} ($n$ = {{7.held_out_fitted_on_the_earlier_half_binomial_by_likelihood_n|.0f}}, $p$ = {{7.held_out_fitted_on_the_earlier_half_binomial_by_likelihood_p|.3f}}) | {{7.held_out_fitted_on_the_earlier_half_binomial_by_moments_nats_over_21_0_35|u+.1f}} ($n$ = {{7.held_out_fitted_on_the_earlier_half_binomial_by_moments_n|.0f}}, $p$ = {{7.held_out_fitted_on_the_earlier_half_binomial_by_moments_p|.3f}}) |
+| later half | {{7.held_out_fitted_on_the_later_half_free_nats_over_21_0_35|u+.1f}} | {{7.held_out_fitted_on_the_later_half_binomial_by_likelihood_nats_over_21_0_35|u+.1f}} ($n$ = {{7.held_out_fitted_on_the_later_half_binomial_by_likelihood_n|.0f}}, $p$ = {{7.held_out_fitted_on_the_later_half_binomial_by_likelihood_p|.3f}}) | {{7.held_out_fitted_on_the_later_half_binomial_by_moments_nats_over_21_0_35|u+.1f}} ($n$ = {{7.held_out_fitted_on_the_later_half_binomial_by_moments_n|.0f}}, $p$ = {{7.held_out_fitted_on_the_later_half_binomial_by_moments_p|.3f}}) |
+
+No alternative beats (21, 0.35) on runs it was not fitted to: what the free distribution's 14 extra parameters fit does
+not carry over,
+and the fitted $n$ moves between halves as the ridge allows. The in-sample gap is not a reason to change it.
+
+Fitted per pal count, the means are
 {{7.per_pal_count_mean_1_pals|.2f}} / {{7.per_pal_count_mean_2_pals|.2f}} / {{7.per_pal_count_mean_3_pals|.2f}} / {{7.per_pal_count_mean_4_pals|.2f}} for 1 / 2 / 3 / 4 pals ({{7.per_pal_count_runs_1_4_pals|,.0f}} runs): more pals do not lower $N$, so pal events do not consume chain events.
 
 Final-link completion by pal count; the binomial lies inside every interval except at 2 pals, where it predicts more
