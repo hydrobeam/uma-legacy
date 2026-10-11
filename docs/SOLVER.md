@@ -35,7 +35,7 @@ E = base + 3 · Σ_{i<j} C_ij · ⟨P_i, P_j⟩          ⟨P_i,P_j⟩ = Σ_r P_
 
 The optimiser uses C_ij = 2 for every pair and base = 2·Σ pair + 2·Σ trio (`C_PAIR`, `K_TRIO`), the normalisation of
 the earlier per-legacy split with grandparents at half weight. The adopted model (grandparents at full weight) weights
-every pair's overlap 20 times over a loop's 12 lineages (`docs/RESEARCH.md` §5): a different scale, but the same
+every pair's overlap 20 times over a loop's 12 lineages (`docs/RESEARCH.md` §6): a different scale, but the same
 weight for every pair, so both rank schedules identically; a three-uma rotation likewise weights its three pairs
 equally. Test `score_matches_per_legacy_sum` checks the closed form against a direct sum over every lineage and slot.
 
@@ -215,7 +215,7 @@ Typical time natively: about 0.3–4 s per search with one result (the Global de
 
 Skill model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or
 inherited; an acquired skill becomes a spark at the generation rate. The equations and fitted values (inheritance,
-per-legacy affinity, spark generation, star mix) are in `docs/RESEARCH.md` §1-4. Odds are averaged over the
+per-legacy affinity, spark generation, star mix) are in `docs/RESEARCH.md` §1-5. Odds are averaged over the
 structure's lineages (12 in a loop, 3 in a rotation).
 
 ### Three-uma rotations (`sizes`)
@@ -226,9 +226,9 @@ three. Trainee A has parents B and C; B was bred from (C, A), C from (B, A). Ove
 mean P(all) over the 3 lineages, the loop's over its 12: both are the chance per career when every member trains in turn,
 and the search ranks both sizes together.
 
-- **Repeated character.** A grandparent may be the trainee's own character (common in uma-it runs: `docs/RESEARCH.md` §5;
+- **Repeated character.** A grandparent may be the trainee's own character (common in uma-it runs: `docs/RESEARCH.md` §6;
   none has a parent of her character). `rel_tables` counts a relation group only for distinct members, so
-  tri(T, P, T) = 0 and pair(a, a) = 0, as fitted on inspiration trials (`docs/RESEARCH.md` §4, *Self-grandparent*).
+  tri(T, P, T) = 0 and pair(a, a) = 0, as fitted on inspiration trials (`docs/RESEARCH.md` §5, *Self-grandparent*).
 - **Her races.** In a steady rotation the grandparent of character T is T's own earlier veteran with T's schedule, so its
   shared wins with parent P are o(P, T), the same overlap as between those two members anywhere in the rotation; the
   ×1.1⁶ spark generation is unchanged (all six legacies carry every spark).
@@ -452,7 +452,7 @@ when her later parent arrives; a trainee whose static ceiling (q = 1, every spar
 
 | Field of `simulate` | Meaning | Default |
 |---|---|---|
-| `policy` | `greedy` (surrogate), `greedy_exact` (the career search in process per decision: the best career by P(all)), `loop` (a fixed rotation of `loop_members`), `trace` (building for `loop_members[0]` with the others as builders: each career the builder whose best career lifts her odds most efficiently runs; records her odds before and after, the builder, lam and the odds raised to, as `docs/RESEARCH.md` §11 fits `Cont`'s shape to) | `greedy` |
+| `policy` | `greedy` (surrogate), `greedy_exact` (the career search in process per decision: the best career by P(all)), `loop` (a fixed rotation of `loop_members`), `trace` (building for `loop_members[0]` with the others as builders: each career the builder whose best career lifts her odds most efficiently runs; records her odds before and after, the builder, lam and the odds raised to, the traces `Cont`'s shape constants were set against, *Continuation and V*) | `greedy` |
 | `runs`, `first`, `seed` | run indices `first` .. `first + runs - 1`; the seed | 16, 0, 1 |
 | `eps`, `max_careers` | stop at S < eps or this many careers (tail S/p added) | 1e-3, 100000 |
 | `margin` | refresh margin m; -1: every valuation a bound does not rule out gets a fresh exact deck search (exact-backed: the same proofs as the career search, no trust in cached decks) | 0 |

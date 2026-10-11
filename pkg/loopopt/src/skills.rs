@@ -4,7 +4,7 @@
 //! Model per training run (one self-copy-free lineage, trainee T):
 //!   - every target skill's spark sits on all 6 legacies, with stars drawn from a rank distribution
 //!     (the expected base rate stands in for a legacy's unknown stars: exact for one roll, but over the career's two rolls
-//!     it slightly overstates the chance, since a legacy's stars are the same in both: docs/RESEARCH.md section 3);
+//!     it slightly overstates the chance, since a legacy's stars are the same in both: docs/RESEARCH.md section 2);
 //!   - a skill is acquired if guaranteed, on T's own outfit skill list, hinted by the deck, or proc'd from the lineage
 //!     (P = 1 - prod(1 - base*(1+aff/100))^INSPIRATIONS over the six legacies, parents and grandparents alike);
 //!   - each legacy's affinity follows uma-it-optimizer's fit on 8,155 Independent Training receipts

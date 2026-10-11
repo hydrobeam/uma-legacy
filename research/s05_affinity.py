@@ -5,7 +5,7 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   one of the six ancestors, so a year's inspiration of it can come only from her; a trial passes when that factor shows
   among the year's inspirations. Runs where the trainee equals a parent, or the parents are one character, are left out.
 - each trial's predicted chance is one roll, min(1, b (1 + A / 100)), b = 3/6/9% by stars, A the ancestor's affinity
-  (section 4) from relation points (master.mdb, a group counting distinct characters) plus 3 x the record's shared G1
+  (section 5) from relation points (master.mdb, a group counting distinct characters) plus 3 x the record's shared G1
   wins for each pair. H0 sets tri(T, P, T) = 0 for a self-grandparent; H1 sets it to pair(T, P); kappa scales between.
 - the log-likelihood difference sums the self-grandparent trials and their parents' trials (both move with tri).
 Also checks the records' relation-point column (base) against pair and tri computed from master.mdb.
@@ -16,7 +16,7 @@ import collections, math
 import common
 from common import Value
 
-SEC = '4'
+SEC = '5'
 BASE = (0.03, 0.06, 0.09)
 G_OF = {0: (1, 2), 3: (4, 5)}           # ancestor slots: 0 P1, 1 G1a, 2 G1b, 3 P2, 4 G2a, 5 G2b
 CHI95 = 1.920729                        # chi2(1) 95% / 2: a 95% likelihood interval

@@ -20,7 +20,7 @@ manual.json), Anshinzawa's choice 1 by scenario and her dates, the shares off or
 import collections, json, os
 import common
 
-SEC = '8'
+SEC = '9'
 N_RECORDS = 2865
 ANSHIN, FESTA, RIKO, HELIOS = 30080, 30108, 30036, 30116
 HER_A = 'Sasami Anshinzawa event'
@@ -379,7 +379,7 @@ def finale_rule(X):
 
 
 def findings(R, S, a, X, got):
-    """the conclusions of section 8, each on its 90% Wilson intervals (the section's)"""
+    """the conclusions of section 9, each on its 90% Wilson intervals (the section's)"""
     F = lambda st, test, ev: common.finding(SEC, st, test, ev)
     wil = lambda k, n: common.wilson(k, n, Z90)
     iv = lambda k, n: f'{k}/{n} = {k / n:.2f} [{wil(k, n)[0]:.2f}, {wil(k, n)[1]:.2f}]'

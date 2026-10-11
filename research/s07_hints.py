@@ -1,4 +1,4 @@
-"""Section 6 (training hints): reproduces docs/RESEARCH.md section 6 from the run records
+"""Section 7 (training hints): reproduces docs/RESEARCH.md section 7 from the run records
 (research/data/runs.jsonl, not included; Independent Training runs from uma-it) and master.mdb.
 
 One observation per (run, non-pal deck card); its rows are the card's training-hint pool skills (master.mdb
@@ -13,18 +13,20 @@ Every analysis runs on every record, on three row sets:
   the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs) on its max-limit-break rows
   no spark hinted the cap, joint draws and pool size;
 - the fit: max-limit-break card-runs, rows no spark hinted, R cards out, through the Lv-5 cap, with
-  h = base_s (1 + hf/100) (1 + d_s spec/100); its held-out test fits on the earlier half of the records (by seq) and
+  h = base_s (1 + hf/100) (1 + d_s spec/100); its later-runs test fits on the earlier half of the records (by seq) and
   scores the later half;
 - tests of the current model: the adopted rate (the same h with hints.rs's constants) on the fit's card-runs, for the
   other covariates (a free level per scenario in both fits), the spark deficit (every row), drop-out and priority.
-Every other result is in-sample on the pooled runs.
+Every model choice is also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
+on the other four, per-run held-out log-likelihoods compared by common.compare_held_out (z > 1.96 = predicts unseen runs
+better). Every other result is in-sample on the pooled runs.
 """
 import collections, functools, math, re, unicodedata
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 import common
 
-SEC = '6'
+SEC = '7'
 MIL = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 norm = lambda s: re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', s)).strip()
 
@@ -146,9 +148,36 @@ def mix(tab, h):
     return (1 - f) * tab[r, t0] + f * tab[r, t0 + 1]
 
 
-def bern_ll(p, y):
+def row_ll(p, y):
+    """each row's Bernoulli log-likelihood"""
     p = np.clip(p, 1e-12, 1 - 1e-12)
-    return np.where(y > 0, np.log(p), np.log(1 - p)).sum()
+    return np.where(y > 0, np.log(p), np.log(1 - p))
+
+
+def bern_ll(p, y):
+    return row_ll(p, y).sum()
+
+
+# ---------------------------------------------------------------- held out (5-fold cross-validation by run)
+CV_FOLDS = None           # every fold; a list of folds times a subset
+
+
+def cv(run_rows, fold_fn):
+    """5-fold cross-validation by common.fold(run), a run's rows all in one fold: fold_fn(train, test) fits every model on
+    the rows in `train` (boolean masks over the rows) and returns {model: log-likelihood of each row in `test`, in row
+    order}. Returns {model: held-out log-likelihood per run}, runs in sorted order"""
+    runs = np.unique(run_rows); fo = np.array([common.fold(int(r)) for r in run_rows]); ll = {}
+    for f in (range(common.K_FOLDS) if CV_FOLDS is None else CV_FOLDS):
+        te = fo == f
+        for m, v in fold_fn(~te, te).items(): ll.setdefault(m, np.zeros(len(run_rows)))[te] = v
+    ix = np.searchsorted(runs, run_rows)
+    return {m: np.bincount(ix, weights=v, minlength=len(runs)) for m, v in ll.items()}
+
+
+def compared(name, a, b):
+    """the Values of a held-out comparison, a (the more complex model) minus b, summed over runs: nats, SE, z"""
+    s, se, z = common.compare_held_out(a, b)
+    return [V(f'held out: {name}: nats', s), V(f'held out: {name}: SE', se), V(f'held out: {name}: z', z)]
 
 
 def fitB(D, hfun, x0, rows=None, nn=None):
@@ -278,6 +307,24 @@ def claims():
     # per-scenario bases against one base (form study)
     add('per-scenario bases gain, nats', ll4 - ll1)
 
+    # the form study's rate forms held out: each fold's fits on the other four folds' rows, every row scored
+    one = lambda th: th[0] * (1 + hf / 100); per = lambda th: B4(D, th) * (1 + hf / 100)
+    free = lambda th: B4(D, th) * (1 + hf / th[4]); const = lambda th: th[0] + 0 * hf
+    sc_h = lambda h, te, nn=n: row_ll(1 - (1 - 1 / nn[ci][te]) ** h[ci][te], hit[te])
+
+    def fold_form(tr, te):
+        t4 = fitB(D, per, [1.5, 2.6, 2., 1.7], rows=tr)[0]
+        return {'one base': sc_h(one(fitB(D, one, [2.], rows=tr)[0]), te), 'per-scenario': sc_h(per(t4), te),
+                'free divisor': sc_h(free(fitB(D, free, list(t4) + [100.], rows=tr)[0]), te),
+                'constant': sc_h(const(fitB(D, const, [2.], rows=tr)[0]), te),
+                '1+hf/25 over options': sc_h(1 + hf / 25, te, D['opts'].astype(float)), '1+hf/25 over skills': sc_h(1 + hf / 25, te)}
+    hof = cv(np.array([x['run'] for x in D['obs']])[ci], fold_form)
+    add('held out: form study runs', len(hof['per-scenario']))
+    out.extend(compared('free divisor vs 1/100', hof['free divisor'], hof['per-scenario']))
+    out.extend(compared('per-scenario bases vs one base', hof['per-scenario'], hof['one base']))
+    for m in ('constant', '1+hf/25 over options', '1+hf/25 over skills'):
+        out.extend(compared(f'per-scenario bases vs {m}', hof['per-scenario'], hof[m]))
+
     # the Lv-5 cap against drawing with replacement (max limit break, rows no spark hinted)
     rows = max4 & NI
     _, llc_, pc = fit_cap(D, rows); _, llr_, pr_ = fit_cap(D, rows, cap=False)
@@ -335,12 +382,14 @@ def claims():
     # gain by absorbing an offset of the adopted bases), rows no spark hinted
     nim = NI[jm]; yk = hit[jm][nim]; tk = tabm[nim]; hk = hA[cm][nim]; sk = sc[cm][nim] - 1; ck = cm[nim]
 
-    def fit_cov(X):
-        k = X.shape[1]
-        nll = lambda th: -bern_ll(1 - mix(tk, clip(hk * np.exp(th[:4][sk] + X @ th[4:]))), yk)
+    p_cov = lambda th, X, q: 1 - mix(tk[q], clip(hk[q] * np.exp(th[:4][sk[q]] + X[q] @ th[4:])))
+
+    def fit_cov(X, q=None, theta=False):
+        k = X.shape[1]; q = np.ones(len(yk), bool) if q is None else q
+        nll = lambda th: -bern_ll(p_cov(th, X, q), yk[q])
         r = minimize(nll, np.zeros(4 + k), method='Nelder-Mead', options=dict(xatol=1e-6, fatol=1e-7, maxiter=40000, maxfev=80000))
         r2 = minimize(nll, r.x, method='L-BFGS-B'); b = r2 if r2.fun <= r.fun else r
-        return -b.fun, np.exp(b.x[4:])
+        return b.x if theta else (-b.fun, np.exp(b.x[4:]))
     TY = ['stamina', 'power', 'guts', 'wit']                     # against speed
     covs = {'card type': np.stack([(D['ctype'] == t).astype(float) for t in TY], 1), 'SR': (D['rar'] == 2).astype(float)[:, None],
             'pals per deck': (D['npal'] - 2.5)[:, None].astype(float), 'initial bond': (D['bond0'] / 10)[:, None],
@@ -352,6 +401,13 @@ def claims():
         add(f'covariate gain {nm}, nats', ll_ - l0, note=f'{X.shape[1]} parameter(s), factor(s) ' + ', '.join(f'{x:.3f}' for x in f_))
         if X.shape[1] == 1: add(f'covariate factor {nm}', f_[0])
     add('covariate factor min', min(facs)); add('covariate factor max', max(facs))
+    # the detectable covariates held out: the adopted rate with a free level per scenario, with and without each
+    held = {'none': np.zeros((len(ck), 0)), 'SR': covs['SR'][ck], 'pals per deck': covs['pals per deck'][ck]}
+    hoc = cv(np.array([x['run'] for x in D['obs']])[ck],
+             lambda tr, te: {m: row_ll(p_cov(fit_cov(X, tr, theta=True), X, te), yk[te]) for m, X in held.items()})
+    add('held out: covariate runs', len(hoc['none']))
+    for nm in ('SR', 'pals per deck'):
+        out.extend(compared(f'covariate {nm} vs none', hoc[nm], hoc['none']))
 
     # spark deficit by the other sources of the same skill (every row of those card-runs)
     cat = D['cat']
@@ -384,13 +440,18 @@ def findings(out):
     """the section's conclusions, each tested on the numbers above"""
     from scipy.stats import binom, chi2
     g = {c.name: c.got for c in out}; F = lambda *a: common.finding(SEC, *a); fs = []
-    ll = {k: g[k] for k in ('LL 1+hf/25 over options', 'LL 1+hf/25 over skills', 'LL constant', 'LL base(1+hf/100)')}
     lps = g['LL per-scenario base(1+hf/100)']
-    fs.append(F('h = beta_s (1 + hf/100) beats the other rate forms tried (1 + hf/25 over options or skills, a constant, one base)',
-                all(lps > v for v in ll.values()), ', '.join(f'{k[3:]} {v - lps:+.1f}' for k, v in ll.items()) + ' nats against it'))
+    H = lambda c: (g[f'held out: {c}: nats'], g[f'held out: {c}: SE'], g[f'held out: {c}: z'])
+    hs = lambda c: '{:+.1f} +- {:.1f} nats, z = {:.2f}'.format(*H(c))
+    rf = ('constant', '1+hf/25 over options', '1+hf/25 over skills')
+    fs.append(F('h = beta_s (1 + hf/100) predicts unseen runs better than the other rate forms tried without a free slope (a constant, '
+                '1 + hf/25 over options or over skills; 5-fold held out, each z > 1.96)', all(H(f'per-scenario bases vs {m}')[2] > 1.96 for m in rf),
+                '; '.join(f'against {m} ' + hs(f'per-scenario bases vs {m}') for m in rf) + f' on {g["held out: form study runs"]:,.0f} runs'))
     gc = g['LL free divisor'] - lps
-    fs.append(F('Known miss: the slope 1/100 is assumed; a free divisor fits better (gain above 1.92 nats, the 1-parameter 5% bound)',
-                gc > 1.92, f'c = {g["free divisor c"]:.0f}, +{gc:.1f} nats on {g["form: runs"]:,.0f} runs'))
+    fs.append(F('Known miss (form study, without the specialty term): the slope 1/100 is assumed; a free divisor is detectable (LR gain above 1.92 nats, the 1-parameter 5% '
+                'bound) and predicts unseen runs better than 1/100 (5-fold held out, z > 1.96)', gc > 1.92 and H('free divisor vs 1/100')[2] > 1.96,
+                f'c = {g["free divisor c"]:.0f}; in-sample +{gc:.1f} nats; held out ' + hs('free divisor vs 1/100')
+                + f' on {g["held out: form study runs"]:,.0f} runs'))
     k, n = g['cells var below stat-option floor'], g['cells (card, hf)']
     fs.append(F('The stat option is never drawn: the draw-count variance is below the floor a drawn stat option implies in most (card, hf) '
                 'cells (sign test p < 0.05)', binom.sf(k - 1, n, 0.5) < 0.05, f'{k:.0f} of {n:.0f} cells, p = {binom.sf(k - 1, n, 0.5):.4f}'))
@@ -400,12 +461,17 @@ def findings(out):
     gb = g['per-scenario bases gain, nats']
     fs.append(F('Bases differ by scenario (per-scenario bases against one base, LR p < 0.001 on 3 parameters)', chi2.sf(2 * gb, 3) < 0.001,
                 f'+{gb:.0f} nats, LR p = {chi2.sf(2 * gb, 3):.1e}'))
+    fs.append(F('Per-scenario bases predict unseen runs better than one base (form study, 5-fold held out, z > 1.96)',
+                H('per-scenario bases vs one base')[2] > 1.96, hs('per-scenario bases vs one base')))
     cv = {nm: (g[f'covariate gain {nm}, nats'], chi2.sf(2 * g[f'covariate gain {nm}, nats'], k_))
           for nm, k_ in (('card type', 4), ('SR', 1), ('pals per deck', 1), ('initial bond', 1), ('pool size', 1))}
     miss_c, none_c = ('SR', 'pals per deck'), ('card type', 'initial bond', 'pool size')
-    fs.append(F('Known miss (not modelled): rarity (SR against SSR) and pals per deck change the rate beyond the adopted rate '
+    fs.append(F('Known miss (not modelled): rarity (SR against SSR) and pals per deck are detectable on top of the adopted rate '
                 '(each LR p < 0.05)', all(cv[nm][1] < 0.05 for nm in miss_c),
                 '; '.join(f'{nm} +{cv[nm][0]:.1f} nats, p = {cv[nm][1]:.1e}' for nm in miss_c)))
+    fs.append(F('Known miss (not modelled): rarity (SR against SSR) and pals per deck each predict unseen runs better than the adopted '
+                'rate without them (5-fold held out, each z > 1.96)', all(H(f'covariate {nm} vs none')[2] > 1.96 for nm in miss_c),
+                '; '.join(f'{nm} ' + hs(f'covariate {nm} vs none') for nm in miss_c) + f' on {g["held out: covariate runs"]:,.0f} runs'))
     fs.append(F('Card type, initial bond and pool size add nothing significant to the adopted rate (each LR p > 0.05)',
                 all(cv[nm][1] > 0.05 for nm in none_c), '; '.join(f'{nm} +{cv[nm][0]:.1f} nats, p = {cv[nm][1]:.3f}' for nm in none_c)))
     fs.append(F('The Lv-5 cap (a skill leaves the pool at Lv 5) beats drawing with replacement, with no parameter',
@@ -433,8 +499,12 @@ def findings(out):
     fs.append(F('Spark-hinted skills do not drop out of the draws (observed nearer no drop-out than full drop-out)', abs(o - nd) < abs(o - dd),
                 f'observed {o:.3f}, no drop-out {nd:.3f}, drop-out {dd:.3f}'))
     gs = g['specialty gain per scenario, nats']
-    fs.append(F('Specialty priority raises training hints: (1 + d_s sp/100) gains significantly (4 parameters, LR p < 0.001)',
+    fs.append(F('Specialty priority raises training hints: (1 + d_s sp/100) is detectable (4 parameters, LR p < 0.001)',
                 chi2.sf(2 * gs, 4) < 0.001, f'+{gs:.1f} nats, LR p = {chi2.sf(2 * gs, 4):.1e}'))
+    fs.append(F('The specialty term (a d per scenario) predicts unseen runs better than no term (5-fold held out, z > 1.96)',
+                H('specialty term vs none')[2] > 1.96, hs('specialty term vs none') + f' on {g["held out: specialty runs"]:,.0f} runs'))
+    fs.append(F('A d per scenario predicts unseen runs better than one pooled d (5-fold held out, z > 1.96)',
+                H('per-scenario d vs one d')[2] > 1.96, hs('per-scenario d vs one d') + '; one d against none ' + hs('one d vs none')))
     bf = [(b_, g[f'specialty band {b_} before'], g[f'specialty band {b_} after']) for b_ in ('0', '1-29', '30-59', '60+')]
     fs.append(F('With it the residual by specialty is flat: every band within 0.98-1.02 and no (scenario, band) cell beyond |z| = 2',
                 all(0.98 <= a_ <= 1.02 for _, _, a_ in bf) and g['specialty cells max |z| after'] < 2,
@@ -442,9 +512,16 @@ def findings(out):
     fs.append(F('The specialty effect is not an artefact of one card, one rarity or one period: one pooled d stays positive and within '
                 'a factor 2 everywhere', 0 < g['specialty d robustness min'] and g['specialty d robustness max'] < 2 * g['specialty d robustness min'],
                 f'd {g["specialty d robustness min"]:.2f}-{g["specialty d robustness max"]:.2f}'))
-    fs.append(F('Specialty priority predicts runs it was not fitted to: fitted on the earlier runs, it raises the later runs\' '
-                'likelihood (held-out gain above 0; smaller than in-sample)', 0 < g['specialty held-out gain, nats'] < g['specialty gain per scenario, nats'],
-                f"held out +{g['specialty held-out gain, nats']:.1f} nats on {g['specialty held-out rows']:,.0f} rows; in-sample +{g['specialty gain per scenario, nats']:.1f}"))
+    gd = g['specialty model: free divisor gain, nats']
+    fs.append(F('On the adopted model (a base and d per scenario, the specialty fit\'s rows) a free divisor is detectable in-sample (LR '
+                'gain above 1.92 nats, the 1-parameter 5% bound) but does not predict unseen runs better than 1/100 (5-fold held out, '
+                'z <= 1.96): 1/100 stays', gd > 1.92 and H('specialty model, free divisor vs 1/100')[2] <= 1.96,
+                f"c = {g['specialty model: free divisor c']:.0f}; in-sample +{gd:.2f} nats, LR p = {chi2.sf(2 * gd, 1):.3f}; held out "
+                + hs('specialty model, free divisor vs 1/100') + f" on {g['held out: specialty runs']:,.0f} runs"))
+    fs.append(F('Later runs: fitted on the earlier half of the records, the specialty term predicts the later half better than no term '
+                '(z > 1.96; the gain smaller than in-sample)', H('later runs: specialty term vs none')[2] > 1.96
+                and g['specialty held-out gain, nats'] < g['specialty gain per scenario, nats'],
+                'held out ' + hs('later runs: specialty term vs none') + f" on {g['specialty held-out rows']:,.0f} rows; in-sample +{g['specialty gain per scenario, nats']:.1f}"))
     fs.append(F('Not shown to be causal: within the same card across limit breaks the estimate agrees in size with the across-card '
                 'one but is not significant (gain under 1.92 nats)', g['specialty same-card: gain, nats'] < 1.92 and g['specialty same-card: d'] > 0,
                 f"same-card d {g['specialty same-card: d']:.2f} on {g['specialty same-card: cards']:.0f} cards, +{g['specialty same-card: gain, nats']:.1f} nats; "
@@ -521,20 +598,53 @@ def specialty(A):
     add('specialty d robustness max', max(ds.values()))
     # held out: bases and d fitted on the earlier half of the records, scored on the later half, against the same
     # without d
-    tr, te = seq < cut, seq >= cut; ho = {}
-    for spec in (False, True):
-        ll = 0.0
+    def d_of(q, xatol=1e-5, base=hfm):
+        return minimize_scalar(lambda d: -fit(q, base * (1 + d * sp / 100))[0], bounds=(-0.5, 1.5), method='bounded', options=dict(xatol=xatol)).x
+
+    # the adopted model with a free hf divisor: beta_s (1 + hf/c) (1 + d_s sp/100), one c, a base and d per scenario;
+    # fitted as the slope 1/c in [0, 0.05] (c >= 20), each slope's bases and d's profiled out
+    hfr = A['hf'][c]
+
+    def ll_ds(q, base):
+        """LL with a base and d per scenario on top of multiplier `base`"""
+        return sum(fit(q & (sc == k), base * (1 + d_of(q & (sc == k), base=base) * sp / 100))[0] for k in (1, 2, 3, 4) if (q & (sc == k)).any())
+
+    def slope_of(q):
+        return minimize_scalar(lambda s_: -ll_ds(q, 1 + s_ * hfr), bounds=(0, 0.05), method='bounded', options=dict(xatol=1e-6)).x
+    allq = np.ones(len(y), bool); s_free = slope_of(allq)
+    add('specialty model: free divisor c', 1 / s_free)
+    add('specialty model: free divisor gain, nats', ll_ds(allq, 1 + s_free * hfr) - ll_ds(allq, hfm))
+
+    def scored(qa, qb, m):
+        """rows qb's log-likelihoods under the base fitted on rows qa for multiplier m"""
+        return row_ll(1 - mix(tab[qb], np.minimum(fit(qa, m)[1] * m[qb], TMAX - 1e-6)), y[qb])
+    tr, te = seq < cut, seq >= cut; ho = {spec: np.zeros(len(y)) for spec in (False, True)}
+    for k in (1, 2, 3, 4):
+        qa, qb = tr & (sc == k), te & (sc == k)
+        if not qb.any(): continue
+        ho[False][qb] = scored(qa, qb, hfm); ho[True][qb] = scored(qa, qb, hfm * (1 + d_of(qa, 1e-4) * sp / 100))
+    ix = np.searchsorted(np.unique(run[te]), run[te])
+    add('specialty held-out gain, nats', ho[True][te].sum() - ho[False][te].sum()); add('specialty held-out rows', te.sum())
+    add('specialty held-out fit rows', tr.sum()); add('specialty held-out first later record', cut, note='seq; records before it fit')
+    out.extend(compared('later runs: specialty term vs none', *(np.bincount(ix, weights=ho[s][te]) for s in (True, False))))
+
+    # 5-fold: no term, one pooled d and a d per scenario (each with a base per scenario), fitted on four folds
+    def fold_spec(tr, te):
+        r = {m: np.zeros(len(y)) for m in ('none', 'one d', 'per-scenario d', 'free divisor')}; dp = pooled_d(tr)[0]
+        hfc = 1 + slope_of(tr) * hfr
         for k in (1, 2, 3, 4):
             qa, qb = tr & (sc == k), te & (sc == k)
             if not qb.any(): continue
-            m = hfm
-            if spec:
-                dd = minimize_scalar(lambda d: -fit(qa, hfm * (1 + d * sp / 100))[0], bounds=(-0.5, 1.5), method='bounded', options=dict(xatol=1e-4)).x
-                m = hfm * (1 + dd * sp / 100)
-            b = fit(qa, m)[1]; ll += bern_ll(1 - mix(tab[qb], np.minimum(b * m[qb], TMAX - 1e-6)), y[qb])
-        ho[spec] = ll
-    add('specialty held-out gain, nats', ho[True] - ho[False]); add('specialty held-out rows', te.sum())
-    add('specialty held-out fit rows', tr.sum()); add('specialty held-out first later record', cut, note='seq; records before it fit')
+            r['none'][qb] = scored(qa, qb, hfm); r['one d'][qb] = scored(qa, qb, hfm * (1 + dp * sp / 100))
+            r['per-scenario d'][qb] = scored(qa, qb, hfm * (1 + d_of(qa) * sp / 100))
+            r['free divisor'][qb] = scored(qa, qb, hfc * (1 + d_of(qa, base=hfc) * sp / 100))
+        return {m: v[te] for m, v in r.items()}
+    hos = cv(run, fold_spec)
+    add('held out: specialty runs', len(hos['none']))
+    out.extend(compared('specialty term vs none', hos['per-scenario d'], hos['none']))
+    out.extend(compared('per-scenario d vs one d', hos['per-scenario d'], hos['one d']))
+    out.extend(compared('one d vs none', hos['one d'], hos['none']))
+    out.extend(compared('specialty model, free divisor vs 1/100', hos['free divisor'], hos['per-scenario d']))
     # the same card at different limit breaks: a base per (card, scenario), d pooled, every limit break
     cidall = np.array([x['cid'] for x in A['obs']])
     lv = collections.defaultdict(set)

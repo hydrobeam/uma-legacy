@@ -40,7 +40,7 @@ from scipy.stats import chi2
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 
-S = '7'
+S = '8'
 EPS = 0.03     # chance a fired link's marker hint does not show (the fits' allowance)
 KMAX = 16      # distribution-free fit: P(N = 0..15) and P(N >= 16)
 ALL = {0, 1, 2, 3, 4, 5}    # pal counts of decks with a chain card
@@ -297,6 +297,10 @@ def dropped(groups):
     return sum(1 for r in common.runs() if pals(r) in groups and _obs[r['id']] is None)
 
 
+def cmp_pmf(lam, nu, upto=61):
+    lw = np.array([k * math.log(lam) - nu * math.lgamma(k + 1) for k in range(upto)]); w = np.exp(lw - lw.max()); return list(w / w.sum())
+
+
 def cmp_ll(M):
     """the Conway-Maxwell-Poisson fit (P(N = k) proportional to lam^k / (k!)^nu: another two-parameter count family that
     can be under-dispersed), by Nelder-Mead from three starts: (loglik, lam, nu)"""
@@ -319,22 +323,24 @@ def binom_profile(M, ns=range(8, 41)):
 
 
 def held_out(xs, M):
-    """each half of the runs (by record order) fits the free distribution, the binomial by likelihood (n 10..40, p
-    re-fitted) and the binomial by moments (n = mean^2 / (mean - variance) of the free fit, rounded; p = mean / n); each
-    is scored on the other half against Binomial(21, 0.35): {(direction, form): held-out LL gain}, and the fitted pairs"""
-    seq = np.array([r['seq'] for r, *_ in xs]); med = np.median(seq)
-    halves = {'earlier': M[seq < med], 'later': M[seq >= med]}
-    gain, pairs = {}, {}
-    for tr, te in (('earlier', 'later'), ('later', 'earlier')):
-        T, E = halves[tr], halves[te]
+    """5-fold cross-validation (common.fold by run id): each fold's runs are scored by forms fitted on the other four, the
+    free distribution, the binomial by likelihood (n 10..40, p re-fitted), the binomial by moments (n = mean^2 / (mean -
+    variance) of the free fit, rounded; p = mean / n), the Conway-Maxwell-Poisson and the Poisson (mean fitted), against
+    Binomial(21, 0.35) (nothing fitted). Per run held-out log-likelihoods; {form: (nats, SE, z)} from
+    common.compare_held_out, positive when the form predicts unseen runs better than (21, 0.35)"""
+    fo = np.array([common.fold(r['id']) for r, *_ in xs])
+    per = {f: np.zeros(len(xs)) for f in ('free', 'binomial by likelihood', 'binomial by moments', 'Conway-Maxwell-Poisson', 'Poisson', 'base')}
+    for k in range(common.K_FOLDS):
+        tr, te = fo != k, fo == k
+        T, E = M[tr], M[te]
         free = em(T); m, v = mean_var(free)
         bn, bp, _ = max(binom_profile(T, range(10, 41)), key=lambda x: x[2])
         nm = round(m * m / (m - v)); pm = m / nm
-        base = ll(lump(BIN), E)
-        for form, pmf in (('free', list(free)), ('binomial by likelihood', lump(binom_pmf(bn, bp))), ('binomial by moments', lump(binom_pmf(nm, pm)))):
-            gain[(tr, form)] = ll(pmf, E) - base
-        pairs[tr] = ((bn, bp), (nm, pm))
-    return gain, pairs
+        _, lam, nu = cmp_ll(T)
+        pmfs = {'free': list(free), 'binomial by likelihood': lump(binom_pmf(bn, bp)), 'binomial by moments': lump(binom_pmf(nm, pm)),
+                'Conway-Maxwell-Poisson': lump(cmp_pmf(lam, nu)), 'Poisson': lump(pois_pmf(m)), 'base': lump(BIN)}
+        for f, pmf in pmfs.items(): per[f][te] = np.log(np.maximum(1e-300, E @ np.asarray(pmf)))
+    return {f: common.compare_held_out(per[f], per['base']) for f in per if f != 'base'}
 
 
 def binom_mle(xs):
@@ -385,7 +391,7 @@ def fit_claims():
     mn, vr = mean_var(pooled)
     l21 = ll(lump(BIN), M); l15 = ll(lump(binom_pmf(15, 0.48)), M); lp = ll(lump(POIS), M)
     prof = binom_profile(M); bn, bp, lb = max(prof, key=lambda x: x[2])
-    ho, hp = held_out(xs, M)
+    ho = held_out(xs, M)
     out = [V('fit of N: runs', len(xs), note=note),
            V('distribution-free: mean', mn), V('distribution-free: variance', vr),
            V('Binomial(21, 0.35): nats behind distribution-free', llp - l21, note=f'LL {l21:.1f} vs {llp:.1f}'),
@@ -400,9 +406,7 @@ def fit_claims():
            V('binomial n = 21, p re-fitted: nats below the best n', lb - dict((n_, l_) for n_, _, l_ in prof)[21]),
            V('binomial mean n p at the best n', bn * bp),
            V('distribution-free: variance / mean', vr / mn),
-           *[V(f'held out, fitted on the {tr} half: {form}, nats over (21, 0.35)', g_) for (tr, form), g_ in ho.items()],
-           *[V(f'held out, fitted on the {tr} half: binomial by likelihood, {w}', x) for tr, ((bn_, bp_), _) in hp.items() for w, x in (('n', bn_), ('p', bp_))],
-           *[V(f'held out, fitted on the {tr} half: binomial by moments, {w}', x) for tr, (_, (nm_, pm_)) in hp.items() for w, x in (('n', nm_), ('p', pm_))],
+           *[V(f'held out: {form} over Binomial(21, 0.35): {w}', x) for form, t_ in ho.items() for w, x in zip(('nats', 'SE', 'z'), t_)],
            V('Conway-Maxwell-Poisson: nats behind distribution-free', llp - cmp_ll(M)[0]),
            V('Conway-Maxwell-Poisson: LR p', float(chi2.sf(2 * (llp - cmp_ll(M)[0]), KMAX - 2)))]
     by = collections.defaultdict(list)
@@ -621,10 +625,11 @@ def findings(out, res, fl, al, sens):
                 'the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the '
                 'Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)',
                 vm < 1 and bp_ > 0.05 and cp_ > 0.05, f'variance / mean {vm:.2f}; best binomial p {bp_:.3f}; CMP p {cp_:.3f}'))
-    hg = {k: v for k, v in g.items() if k.startswith('held out') and k.endswith('nats over (21, 0.35)')}
-    fs.append(F('Held out, no alternative beats Binomial(21, 0.35) by more than 1.92 nats: the free distribution and the binomial '
-                'fitted by likelihood or by moments, each fitted on one half of the runs and scored on the other, both ways',
-                max(hg.values()) <= 1.920729, '; '.join(f'{k[9:].split(",")[0]} / {k.split(": ")[1].split(",")[0]} {v:+.1f}' for k, v in hg.items())))
+    hz = {k.split(': ')[1].replace(' over Binomial(21, 0.35)', ''): v for k, v in g.items() if k.startswith('held out:') and k.endswith(': z')}
+    fs.append(F('No alternative form predicts unseen runs better than Binomial(21, 0.35): 5-fold cross-validation, per-run held-out '
+                'log-likelihoods compared pairwise, every z at most 1.96 (the free distribution, the binomial fitted by likelihood or '
+                'by moments, Conway-Maxwell-Poisson, Poisson)', max(hz.values()) <= 1.96,
+                '; '.join(f'{f} z {z:+.2f}' for f, z in hz.items())))
     lo_, hi_, b21 = g['binomial n: 95% profile interval low'], g['binomial n: 95% profile interval high'], g['binomial n = 21, p re-fitted: nats below the best n']
     fs.append(F(f'In-sample, n = 21 lies just outside the 95% profile-likelihood interval for the binomial\'s n (p re-fitted at each n; '
                 'more than 1.92 nats below the best n)', b21 > 1.920729 and not lo_ <= 21 <= hi_,

@@ -5,17 +5,17 @@ its event's condition (GameTora), her career goals (master.mdb single_mode_route
 place the goal requires) and, in the run records (research/data/runs.jsonl, not included; Independent Training runs
 from uma-it), the runs training her.
 
-Effect on real careers (section 12's calibration rows, read through s09_random_events.calib: each run rebuilt on its
+Effect on real careers (section 13's calibration rows, read through s10_random_events.calib: each run rebuilt on its
 own deck, default targets). Section 12's jobs carry no trainee event hints (e_k = 0 on every row) and the run records
 credit every trainee and scenario event alike as "Events", so neither separates ordinary trainee events from
-conditional ones; they are separated here by game data (s09_random_events.event_groups):
+conditional ones; they are separated here by game data (s10_random_events.event_groups):
   rows        free rows (not on the trainee's outfit, not a scenario gold) whose trainee has a current conditional event
               that can hint the target; a row counts as conditional-only when none of her story or date events, her
               outfit's events, her shared random event, nor the run's scenario's events can hint it, so an "Events"
               credit there can only be a conditional event; rows where her shared random event can also hint it are
               kept apart (her events together, not separable)
   rate        per (trainee, target), and pooled over the conditional-only rows: "Events" credits / rows, Wilson 95%
-  crediting   each row at its (trainee, target) rate, as in section 9 (m multiplied by (1 - r), section 11):
+  crediting   each row at its (trainee, target) rate, as in section 10 (m multiplied by (1 - r), section 12):
               relative change of each run's product of per-target odds, and acquisition observed against predicted
               without and with crediting (obs / pred, Wilson 95%; Bernoulli log-likelihood over the rows with a
               positive prediction, tested against the chi2 95% point of one degree of freedom per fitted rate)
@@ -25,7 +25,7 @@ from scipy.stats import chi2
 import common
 from common import Value
 
-S = '10'
+S = '11'
 TARGETS = set(common.DEFAULT)                                          # skill groups of the eight default targets
 
 
@@ -91,18 +91,18 @@ def careers():
     """the conditional events touching default targets on real careers: rates, effect on the odds, calibration"""
     R = common.runs()
     if R is None: return []
-    import s09_random_events as s09
+    import s10_random_events as s10
     F = lambda st, test, ev: common.finding(S, st, test, ev)
-    E = s09.event_groups(); rows, runrows = s09.calib(); byid = {r['id']: r for r in R}
+    E = s10.event_groups(); rows, runrows = s10.calib(); byid = {r['id']: r for r in R}
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6')); gn = common.skills()
     sel, skipped = [], collections.Counter()
     for row in rows:
         r = byid[row['run']]; u, g = r['chara'], row['g']
         if not any(g in gs for gs, _ in E['cond'].get(u, [])): continue
-        if not s09.free(row): skipped['outfit or scenario gold'] += 1; continue
+        if not s10.free(row): skipped['outfit or scenario gold'] += 1; continue
         if g in E['ordinary'].get(u, set()) | E['outfit'].get(r['outfit'], set()) | E['scen'].get(r['scenario'], set()):
             skipped['story, date, outfit or scenario event can hint it'] += 1; continue
-        hit = any('Events' in h['src'] for h in s09.hint_srcs(r)[g])
+        hit = any('Events' in h['src'] for h in s10.hint_srcs(r)[g])
         sel.append(dict(row=row, key=(u, g), mixed=g in E['shared'].get(u, set()), hit=hit))
     groups = collections.defaultdict(list)
     for x in sel: groups[x['key']].append(x)
@@ -122,21 +122,21 @@ def careers():
         out += [Value(S, f'{lab(k)}: rows', len(xs)), Value(S, f'{lab(k)}: from her events', h),
                 Value(S, f'{lab(k)}: rate 95% low', l_), Value(S, f'{lab(k)}: rate 95% high', h_)]
     rr = {id(x['row']): rate[x['key']] for x in sel}
-    ch, tch, lifted, pos = s09.odds_change(runrows, lambda row: rr.get(id(row), 0.0))
+    ch, tch, lifted, pos = s10.odds_change(runrows, lambda row: rr.get(id(row), 0.0))
     for lb, xs in (('', ch), (', runs with a credited row', tch), (', targets with a positive chance, runs with a credited row', pos)):
-        m, md, mx = s09.summary(xs)
+        m, md, mx = s10.summary(xs)
         out += [Value(S, f'odds change{lb}: runs', len(xs)), Value(S, f'odds change{lb}: mean', m),
                 Value(S, f'odds change{lb}: median', md), Value(S, f'odds change{lb}: max', mx)]
     out.append(Value(S, 'odds change: runs lifted from zero', lifted))
-    t = s09.calib_test([x['row'] for x in sel], lambda row: rr[id(row)])
-    tc = s09.calib_test([x['row'] for x in cond], lambda row: rr[id(row)])
+    t = s10.calib_test([x['row'] for x in sel], lambda row: rr[id(row)])
+    tc = s10.calib_test([x['row'] for x in cond], lambda row: rr[id(row)])
     for pre, tt in (('calibration', t), ('calibration, conditional-only', tc)):
         out += [Value(S, f'{pre}: rows', tt['n']), Value(S, f'{pre}: observed', tt['obs']),
                 Value(S, f'{pre}: obs / pred, left out', tt['ratio0']), Value(S, f'{pre}: ratio 95% low, left out', tt['rlo0']),
                 Value(S, f'{pre}: ratio 95% high, left out', tt['rhi0']), Value(S, f'{pre}: obs / pred, credited', tt['ratio1']),
                 Value(S, f'{pre}: ratio 95% low, credited', tt['rlo1']), Value(S, f'{pre}: ratio 95% high, credited', tt['rhi1']),
                 Value(S, f'{pre}: LL credited minus left out, positive rows', tt['ll1'] - tt['ll0'])]
-    zc = [x for x in cond if s09.credit(x['row'], 0.0)[1] <= 1e-12]
+    zc = [x for x in cond if s10.credit(x['row'], 0.0)[1] <= 1e-12]
     out += [Value(S, 'careers: conditional-only rows the model gives no chance', len(zc)),
             Value(S, 'careers: of them acquired', sum(x['row']['o_any'] for x in zc)),
             Value(S, 'careers: of them from her events', sum(x['hit'] for x in zc))]

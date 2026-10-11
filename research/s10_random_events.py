@@ -1,4 +1,4 @@
-"""Section 9: how often a support card's character's shared random event fires, from the run records
+"""Section 10: how often a support card's character's shared random event fires, from the run records
 (research/data/runs.jsonl, not included; Independent Training runs from uma-it), and what leaving these events out of
 the model does on real careers. Every run record is used; one sample.
 
@@ -11,14 +11,16 @@ trainee's own.
 The fits are maximum likelihood over readings: constant, a (1 - b)^(K - 4) form, power law, strict competition
 1 - (1 - 1/K)^S, every event slot competing (chain links, random events and pals weighted in one pool), and a logistic
 model in K. As stated in RESEARCH.md, the population includes R cards; `detail()` prints the SR/SSR-only fit beside it.
-Findings: likelihood-ratio tests between the forms and on profiled parameters (uniform competition, chain-link and pal
+Findings: held-out comparisons of the forms (5-fold cross-validation by common.fold(run id), each run scored by the
+forms fitted on the other folds, compared with common.compare_held_out), likelihood-ratio tests between nested forms and
+on profiled parameters (uniform competition, chain-link and pal
 weights), within-run independence (pairs of hits against Binomial(n, p) per run), the logistic slope, and the covariates
 next to K (card effects at their limit break from master.mdb; rarity within a character); and, over every run that shows
 a priority list, how often a bottom-choice skill of these events was prioritised and credited to the event (prioritised
 or not), against the pooled top-choice marker rate. The pal weight's interval is its profile likelihood in the c / T form.
 
-Effect on real careers (section 12's calibration rows: each run rebuilt on its own deck, default targets, the solver's
-per-target p, d^g, d^w, q, read through s12_calibration's build_jobs / run_solver / rows_of, cached results reused):
+Effect on real careers (section 13's calibration rows: each run rebuilt on its own deck, default targets, the solver's
+per-target p, d^g, d^w, q, read through s13_calibration's build_jobs / run_solver / rows_of, cached results reused):
   rows        free rows (not on the trainee's outfit, not a scenario gold) where a deck card's character's marker is the
               target's white, under the reading's rules (not the trainee, not a group card, not given by the card's
               own events); the trainee's own shared event where it is identifiable: her marker is the target's white
@@ -26,22 +28,24 @@ per-target p, d^g, d^w, q, read through s12_calibration's build_jobs / run_solve
               so an "Events" credit can only be that event (GameTora training_events_char / _char_card / _scenario)
   contribution  rows whose target was credited to "<her name> event" (and to nothing else); for the trainee's own,
               to "Events"
-  crediting   section 11: p = d^g G + (1 - d^g) W [1 - m], m = (1 - d^w)(1 - e)(1 - q); m is recovered from the row's p
+  crediting   section 12: p = d^g G + (1 - d^g) W [1 - m], m = (1 - d^w)(1 - e)(1 - q); m is recovered from the row's p
               (G = 0.4 x 1.1^n, W = 0.2 x 1.1^n) and multiplied by (1 - r), r the fitted form at the run's K (the
               trainee's own at her measured rate); acquisition = d^g + (1 - d^g)(1 - m)
   odds        each run's product of per-target odds, relative change from crediting: over the eight targets (mean,
               median, max over runs with a nonzero product, and over those with a credited row), and over the targets
               the model gives a positive chance without crediting (runs with a credited row among them)
   calibration on the rows, acquisition (hinted from any source or owned) against the predicted acquisition with and
-              without crediting: obs / pred with Wilson 95% intervals, and the Bernoulli log-likelihood difference
+              without crediting: obs / pred with Wilson 95% intervals, and the Bernoulli log-likelihood difference;
+              held out, the same rows by 5-fold cross-validation (the rate fitted on the other folds' readings), per-run
+              log-likelihoods credited against left out
 """
 import collections, math, os
 import numpy as np
 from scipy.optimize import minimize
 import common
 
-SEC = '9'
-GEN_W, GEN_G = 0.2, 0.4          # section 11's W_k, G_k at n_k = 0
+SEC = '10'
+GEN_W, GEN_G = 0.2, 0.4          # section 12's W_k, G_k at n_k = 0
 
 
 def markers():
@@ -124,12 +128,39 @@ def fits(rows):
     o = minimize(lambda s: -ll(y, 1 - (1 - 1 / K) ** s[0]), [1.0], bounds=[(0.01, 50)])
     out['strict'] = (o.x[0], -o.fun)
     best = None
-    for fn in (lambda s, T: 1 - (1 - 1 / T) ** s, lambda s, T: s / T):
+    for i, fn in enumerate(SLOT_FNS):
         o = minimize(lambda p: -ll(y, fn(p[0], p[2] * Lk + K + p[1] * Pl)), [3.0, 3.0, 1.0],
                      bounds=[(0.01, 200), (0, 30), (0, 10)])
-        if best is None or -o.fun > best[1]: best = (tuple(o.x), -o.fun)
+        if best is None or -o.fun > best[1]: best = (tuple(o.x), -o.fun); out['slots form'] = i
     out['slots'] = best
     return out
+
+
+SLOT_FNS = (lambda s, T: 1 - (1 - 1 / T) ** s, lambda s, T: s / T)
+
+
+def form_p(f, rows):
+    """each form's P(fires) on `rows`, with the parameters of fits() output f"""
+    K = np.array([r['K'] for r in rows], float)
+    Lk = np.array([r['links'] for r in rows], float); Pl = np.array([r['pals'] for r in rows], float)
+    (a, b), (c, pa), S, (sc, sw, sl) = f['exp'][0], f['power'][0], f['strict'][0], f['slots'][0]
+    return {'const': np.full_like(K, f['const'][0]), 'exp': a * (1 - b) ** (K - 4), 'power': c * (K / 8) ** (-pa),
+            'strict': 1 - (1 - 1 / K) ** S, 'slots': SLOT_FNS[f['slots form']](sc, sl * Lk + K + sw * Pl)}
+
+
+def held_out(rows):
+    """rule 3: per-run held-out log-likelihood of each form. Runs fall in five folds by common.fold(run id), all of a
+    run's readings in one; each fold's readings are scored by the forms fitted (fits()) on the other four folds. Returns
+    form -> list over runs (sorted by id) of the run's summed Bernoulli log-likelihood"""
+    runs = sorted({r['run'] for r in rows}); out = collections.defaultdict(lambda: collections.defaultdict(float))
+    for k in range(common.K_FOLDS):
+        test = [r for r in rows if common.fold(r['run']) == k]
+        P = form_p(fits([r for r in rows if common.fold(r['run']) != k]), test)
+        y = np.array([r['hit'] for r in test], float)
+        for nm, p in P.items():
+            p = np.clip(p, 1e-9, 1 - 1e-9); lr = y * np.log(p) + (1 - y) * np.log(1 - p)
+            for r, v in zip(test, lr): out[nm][r['run']] += float(v)
+    return {nm: [d[i] for i in runs] for nm, d in out.items()}
 
 
 def by_k(rows):
@@ -220,8 +251,16 @@ def claims():
     g['bottom-choice, not prioritised: 95% low'], g['bottom-choice, not prioritised: 95% high'] = \
         common.wilson(bh[(False, True)], bh[(False, True)] + bh[(False, False)])
     g['top-choice marker rate'] = y / n
+    h = held_out(rows); g['held out: runs'] = len(h['exp'])
+    for lab, x, z in HELD_OUT:
+        g[f'held out: {lab}: nats'], g[f'held out: {lab}: SE'], g[f'held out: {lab}: z'] = common.compare_held_out(h[x], h[z])
     out = [common.Value(SEC, name, v) for name, v in g.items()] + findings(rows, f, g, cand, bh)
-    return out + careers(R, (a, b))
+    return out + careers(R, (a, b), rows)
+
+
+# rule 3's comparisons of the forms: (label, first form, second form); nats, SE and z are first minus second
+HELD_OUT = (('fitted form against constant', 'exp', 'const'), ('every slot competing against fitted form', 'slots', 'exp'),
+            ('power law against fitted form', 'power', 'exp'), ('strict competition against fitted form', 'strict', 'exp'))
 
 
 # ---------------------------------------------------------------- findings: each conclusion as a likelihood or interval test
@@ -290,21 +329,22 @@ def findings(rows, f, g, cand, bh):
     F = lambda st, test, ev: common.finding(SEC, st, test, ev)
     from scipy.stats import chi2
     L0, (ab, Le), (pw, Lp), (_, Ls), Lslot = f['const'][1], f['exp'], f['power'], f['strict'], f['slots'][1]
-    out = [F('Events on offer matter: the adopted form a (1 - b)^(K - 4) beats a constant by more than 1.92 nats '
-             '(one extra parameter, 95%)', Le - L0 > 1.92,
-             f'a {ab[0]:.2f}, b {ab[1]:.3f}: LL {Le:.1f} against {L0:.1f}: {Le - L0:+.1f} nats')]
+    out = [F('The slope in K is detectable: the adopted form a (1 - b)^(K - 4) against a constant (b = 0, nested), '
+             'LR = 2 x (LL difference) above 3.84 (chi2, df 1, 95%)', 2 * (Le - L0) > 3.84,
+             f'a {ab[0]:.2f}, b {ab[1]:.3f}: LL {Le:.1f} against {L0:.1f}: LR {2 * (Le - L0):.2f}')]
+    out += held_out_findings(g)
     y = np.array([r['hit'] for r in rows], float); K = np.array([r['K'] for r in rows], float)
     L1 = -minimize(lambda q: -ll(y, q[0] * (K / 8) ** -1.0), [0.17], bounds=[(0.01, 0.9)]).fun
-    out.append(F('Competition is far weaker than uniform: the power law\'s a = 1 (uniform competition) is rejected against '
-                 'the fitted a by more than 1.92 nats', Lp - L1 > 1.92, f'a = {pw[1]:.2f}: LL {Lp:.1f}; a = 1: LL {L1:.1f}'))
-    out.append(F('Strict competition 1 - (1 - 1/K)^S is rejected: it fits worse than a constant with the same number of '
-                 'parameters', Ls < L0, f'LL {Ls:.1f} against constant {L0:.1f}'))
-    out.append(F('The every-slot form fits about as well as the adopted one: within 1.92 nats of it', abs(Lslot - Le) < 1.92,
-                 f'slots LL {Lslot:.1f} ({Lslot - L0:+.1f} over constant, two extra parameters); adopted {Le:.1f}'))
+    out.append(F('Competition is far weaker than uniform: in the power law, a = 1 (uniform competition) is rejected against '
+                 'the fitted a, LR above 3.84 (chi2, df 1)', 2 * (Lp - L1) > 3.84,
+                 f'a = {pw[1]:.2f}: LL {Lp:.1f}; a = 1: LL {L1:.1f}; LR {2 * (Lp - L1):.2f}'))
+    out.append(F('Strict competition 1 - (1 - 1/K)^S has a lower in-sample log-likelihood than a constant, which has the '
+                 'same number of parameters (one)', Ls < L0, f'LL {Ls:.1f} against constant {L0:.1f}'))
     Lk1 = slot_ll(rows, link=1.0)
     out.append(F('Chain links play no part: their fitted weight is 0, and weight 1 (a link competing like a random event) '
-                 'is rejected by more than 1.92 nats', g['every slot competing: chain-link weight'] < 0.01 and Lslot - Lk1 > 1.92,
-                 f'weight {g["every slot competing: chain-link weight"]:.2f}: LL {Lslot:.1f}; weight 1: LL {Lk1:.1f}'))
+                 'is rejected, LR above 3.84 (chi2, df 1)', g['every slot competing: chain-link weight'] < 0.01 and 2 * (Lslot - Lk1) > 3.84,
+                 f'weight {g["every slot competing: chain-link weight"]:.2f}: LL {Lslot:.1f}; weight 1: LL {Lk1:.1f}; '
+                 f'LR {2 * (Lslot - Lk1):.2f}'))
     plo, phi = g['every slot competing: pal weight 95% low'], g['every slot competing: pal weight 95% high']
     out.append(F('Pals compete with random events: pal weight 0 is rejected (outside the 95% profile-likelihood interval, '
                  '1.92 nats)', plo > 0,
@@ -315,9 +355,9 @@ def findings(rows, f, g, cand, bh):
                  'the count independence predicts', abs(z) < 1.96, f'{o:.0f} pairs observed, {e:.1f} expected, z {z:+.2f}'))
     yb = np.array([r['hit'] for r in rows], float); one = np.ones(len(rows)); Kb = np.array([r['K'] for r in rows], float)
     base = logit_ll(yb, np.column_stack([one, Kb])); Lc = logit_ll(yb, one[:, None])
-    out.append(F('In logistic form too the slope holds: K gains more than 1.92 nats, and the rate falls',
-                 base - Lc > 1.92 and g['logistic: rate at K = 14'] < g['logistic: rate at K = 8'],
-                 f'{base - Lc:+.1f} nats; {g["logistic: rate at K = 8"]:.3f} at 8, {g["logistic: rate at K = 14"]:.3f} at 14'))
+    out.append(F('In logistic form too the slope is detectable: K\'s LR above 3.84 (chi2, df 1), and the rate falls',
+                 2 * (base - Lc) > 3.84 and g['logistic: rate at K = 14'] < g['logistic: rate at K = 8'],
+                 f'LR {2 * (base - Lc):.2f}; {g["logistic: rate at K = 8"]:.3f} at 8, {g["logistic: rate at K = 14"]:.3f} at 14'))
     # covariates next to K: likelihood-ratio tests at 95%
     lr = lambda cols: 2 * (logit_ll(yb, np.column_stack([one, Kb] + cols)) - base)
     eff = {}
@@ -351,18 +391,36 @@ def findings(rows, f, g, cand, bh):
     return out
 
 
-# ---------------------------------------------------------------- effect on real careers (section 12's rows)
+def held_out_findings(g):
+    """rule 3 on the forms, criteria fixed before the numbers: the adopted form predicts unseen runs better than a
+    constant (z > 1.96); the every-slot form predicts them about as well as the adopted one (|z| <= 1.96); the power law
+    and strict competition do not predict them better than the adopted form (z <= 1.96, worded by what the data give)"""
+    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    v = lambda lab: (g[f'held out: {lab}: nats'], g[f'held out: {lab}: SE'], g[f'held out: {lab}: z'])
+    ev = lambda lab: f'{g["held out: runs"]:,} runs, 5 folds: {v(lab)[0]:+.2f} nats, SE {v(lab)[1]:.2f}, z {v(lab)[2]:+.2f} ({lab})'
+    out = [F('The slope in K does not predict unseen runs better than a constant rate: the form a (1 - b)^(K - 4) against a '
+             'constant has z <= 1.96', v('fitted form against constant')[2] <= 1.96, ev('fitted form against constant')),
+           F('The every-slot form does not predict unseen runs better than the adopted form, nor worse (|z| <= 1.96)',
+             abs(v('every slot competing against fitted form')[2]) <= 1.96, ev('every slot competing against fitted form'))]
+    out.append(F('The power law does not predict unseen runs better than the K form (z <= 1.96)',
+                 v('power law against fitted form')[2] <= 1.96, ev('power law against fitted form')))
+    out.append(F('Strict competition predicts unseen runs worse than the K form (z < -1.96)',
+                 v('strict competition against fitted form')[2] < -1.96, ev('strict competition against fitted form')))
+    return out
+
+
+# ---------------------------------------------------------------- effect on real careers (section 13's rows)
 def calib():
-    """section 12's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
-    s12_calibration.claims builds them; the solver's results are reused from its cache while nothing they read changes"""
+    """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
+    s13_calibration.claims builds them; the solver's results are reused from its cache while nothing they read changes"""
     if 'calib' not in common._cache:
-        import s12_calibration as s12
-        R = common.runs(); M = s12.Model()
-        s12.card_variants()
-        jobdir = os.path.join(s12.OUTD, 'jobs8')
-        man, files, _ = s12.build_jobs(R, M, False, jobdir)
-        res = s12.run_solver(jobdir, files, os.path.join(s12.OUTD, 'res8.jsonl'))
-        rows, runrows, _ = s12.rows_of(R, M, res, man)
+        import s13_calibration as s13
+        R = common.runs(); M = s13.Model()
+        s13.card_variants()
+        jobdir = os.path.join(s13.OUTD, 'jobs8')
+        man, files, _ = s13.build_jobs(R, M, False, jobdir)
+        res = s13.run_solver(jobdir, files, os.path.join(s13.OUTD, 'res8.jsonl'))
+        rows, runrows, _ = s13.rows_of(R, M, res, man)
         common._cache['calib'] = (rows, runrows)
     return common._cache['calib']
 
@@ -393,7 +451,7 @@ def event_groups():
 
 
 def hint_srcs(r):
-    """skill group -> the run's hint records of it (white or gold), names mapped as section 12 maps them"""
+    """skill group -> the run's hint records of it (white or gold), names mapped as section 13 maps them"""
     names = common.skill_names(); pn = {v[1]: gid for gid, vs in r.get('hint_groups', []) for v in vs}
     out = collections.defaultdict(list)
     for h in r['hints']:
@@ -406,7 +464,7 @@ def free(row): return not row['outfit'] and not row['scen_gold']
 
 
 def credit(row, r):
-    """(p, acquisition) of a calibration row with m multiplied by (1 - r) (section 11; m recovered from the row's p);
+    """(p, acquisition) of a calibration row with m multiplied by (1 - r) (section 12; m recovered from the row's p);
     a row on the trainee's outfit or a scenario gold does not move"""
     if not free(row): return row['p'], row['acq']
     s = 1.1 ** row['nc']; dg = row['dg']
@@ -488,7 +546,33 @@ def random_rows(R, ab):
     return out, skipped
 
 
-def careers(R, ab):
+def bern_ll(pr, acquired):
+    """one row's Bernoulli log-likelihood (as calib_test scores it)"""
+    if 0 < pr < 1: return math.log(pr) if acquired else math.log(1 - pr)
+    return 0.0 if (pr >= 1) == bool(acquired) else -math.inf
+
+
+def careers_held_out(dk, R, rows):
+    """rule 3 on the calibration rows: per-run held-out log-likelihood of the acquisition rows a deck card's random
+    event could hint, credited against left out. Runs fall in five folds by common.fold(run id); each fold's rows are
+    credited at the adopted form fitted on the other four folds' readings. Scored on the rows the model gives a positive
+    chance without crediting (as calib_test). Returns (credited, left out) per run, and the number of rows"""
+    nshared, _, _, sc = markers(); byid = {r['id']: r for r in R}
+    l1, l0 = collections.defaultdict(float), collections.defaultdict(float); n = 0
+    for k in range(common.K_FOLDS):
+        a, b = fits([r for r in rows if common.fold(r['run']) != k])['exp'][0]
+        for x in dk:
+            row = x['row']
+            if common.fold(row['run']) != k: continue
+            p0 = credit(row, 0.0)[1]
+            if p0 <= 1e-12: continue
+            p1 = credit(row, a * (1 - b) ** (offer(byid[row['run']], nshared, sc) - 4))[1]
+            l0[row['run']] += bern_ll(p0, row['o_any']); l1[row['run']] += bern_ll(p1, row['o_any']); n += 1
+    runs = sorted(l0)
+    return [l1[i] for i in runs], [l0[i] for i in runs], n
+
+
+def careers(R, ab, rows):
     F = lambda st, test, ev: common.finding(SEC, st, test, ev)
     V = lambda nm, v: common.Value(SEC, nm, v)
     rr, skipped = random_rows(R, ab); _, runrows = calib()
@@ -505,6 +589,7 @@ def careers(R, ab):
     nshared, _, _, sc = markers(); byid = {r['id']: r for r in R}
     hrate = {id(x['row']): ha * (1 - hb) ** (offer(byid[x['row']['run']], nshared, sc) - 4) for x in dk}
     th = calib_test([x['row'] for x in dk], lambda row: hrate[id(row)])
+    c1, c0, nho = careers_held_out(dk, R, rows); hd, hse, hz = common.compare_held_out(c1, c0)
     ch, tch, lifted, pos = odds_change(runrows, lambda row: rate.get(id(row), 0.0))
     out = [V('careers: rows a deck card\'s random event could hint', len(dk)),
            V('careers: runs with such a row', len({x['row']['run'] for x in dk})),
@@ -536,17 +621,26 @@ def careers(R, ab):
             V(f'{pre}: LL credited minus left out, positive rows', t['ll1'] - t['ll0']),
             V(f'{pre}, rate held out: obs / pred, credited', th['ratio1']),
             V(f'{pre}, rate held out: ratio 95% low, credited', th['rlo1']), V(f'{pre}, rate held out: ratio 95% high, credited', th['rhi1']),
-            V(f'{pre}, rate held out: LL credited minus left out, positive rows', th['ll1'] - th['ll0'])]
+            V(f'{pre}, rate held out: LL credited minus left out, positive rows', th['ll1'] - th['ll0']),
+            V('held out: credited against left out: runs', len(c1)), V('held out: credited against left out: rows', nho),
+            V('held out: credited against left out: nats', hd), V('held out: credited against left out: SE', hse),
+            V('held out: credited against left out: z', hz)]
     rt = lambda t, k: f'{t["ratio" + k]:.3f} [{t["rlo" + k]:.2f}, {t["rhi" + k]:.2f}]'
     covers = lambda t, k: t[f'rlo{k}'] <= 1 <= t[f'rhi{k}']
     out += [F('Deck cards\' random events, left out: acquisition on the rows they could hint is under-predicted: obs / pred '
               'has a 95% interval entirely above 1', lambda: t['rlo0'] > 1, lambda: f'{t["n"]} rows, {t["k"]} acquired; left out {rt(t, "0")}; credited {rt(t, "1")}'),
             F('Deck cards\' random events, credited at the fitted rate: acquisition obs / pred has a 95% interval covering 1',
               lambda: covers(t, '1'), lambda: f'credited {rt(t, "1")}; with the rate fitted without these rows {rt(th, "1")}'),
-            F('Crediting deck cards\' random events at the fitted rate improves the fit by more than 1.92 nats on the rows the '
-              'model gives a positive chance without them', lambda: t['ll1'] - t['ll0'] > 1.92 and th['ll1'] - th['ll0'] > 1.92,
+            F('Crediting deck cards\' random events at the fitted rate raises the log-likelihood of the rows the model gives a '
+              'positive chance without them by more than 1.92 nats, with the rate fitted on every reading and with it fitted '
+              'without these rows\' readings (a check on the size of the gain; the claim that crediting predicts better is '
+              'the 5-fold test)', lambda: t['ll1'] - t['ll0'] > 1.92 and th['ll1'] - th['ll0'] > 1.92,
               lambda: f'{t["n_pos"]} rows: LL {t["ll0"]:.1f} left out, {t["ll1"]:.1f} credited ({t["ll1"] - t["ll0"]:+.1f} nats); '
                       f'rate held out {th["ll1"] - th["ll0"]:+.1f} nats'),
+            F('Crediting deck cards\' random events at the fitted rate is not shown to predict unseen runs\' acquisition better '
+              'than leaving them out: the held-out gain is positive but z <= 1.96', lambda: 0 < hd and hz <= 1.96,
+              lambda: f'{len(c1)} runs, {nho} rows with a positive chance left out; rate fitted on the other four folds\' readings: '
+                      f'{hd:+.2f} nats, SE {hse:.2f}, z {hz:+.2f} (credited against left out)'),
             F('Left out, the model gives some of these targets no chance at all, and the event hinted the target on at least one of them',
               lambda: len(zero) > 0 and sum(x['hit'] for x in zero) > 0,
               lambda: f'{len(zero)} rows at 0; {sum(x["row"]["o_any"] for x in zero)} acquired, {sum(x["hit"] for x in zero)} through the event')]

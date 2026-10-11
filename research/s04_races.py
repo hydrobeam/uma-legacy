@@ -83,9 +83,10 @@ def attempts(R):
         for y, t0 in APRIL.items():
             for f, n in (r.get('years') or {}).get(y, []):
                 if f < 10000 and f // 100 in pk: fired[f // 100] += [t0] * n
-        j = 0; prev = None
+        j = 0; prev = None; pw = None
         for t, x in races:
-            j = j + 1 if prev == t - 1 else 1; prev = t
+            cons = prev == t - 1; j = j + 1 if cons else 1; prev = t
+            last, pw = (pw if cons else None), int(x['won'])   # the previous race's result, when it was the turn before
             name = ALIAS.get(x['race'], x['race'])
             if name not in idx:
                 if x['grade'] == 'G1': unk[x['race']] += 1
@@ -96,17 +97,18 @@ def attempts(R):
             if op is None: skip['race not offered to her at that turn'] += 1; continue
             cat, gr = d['race_cat'][ri], d['race_ground'][ri]
             gd, gs = PINK_DIST[cat], PINK_SURF[gr]
-            adj = []
+            adj = []; early = []
             for k, g in ((cat, gd), (4 if gr == 1 else 5, gs)):
                 a = u['apt'][k]
                 a = max(a, min(a + sum(pk[g] >= s for s in (1, 4, 7, 10)), 7))
                 adj.append(min(8, a + sum(t0 <= t for t0 in fired[g])))
+                early.append(min(8, a + sum(t0 - 6 <= t for t0 in fired[g])))   # the year's proc counted from its first turn
             bpa = max(-20, 110 - COST[adj[0]] - COST[adj[1]])
-            out.append(dict(bp=op['bp'], bpa=bpa, j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
+            out.append(dict(bp=op['bp'], bpa=bpa, apt=tuple(adj), j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
                             p0=win_p(op['bp'], 1, pen), pa=win_p(bpa, j, pen), pa0=win_p(bpa, 1, pen),
                             scen=r['scenario'], goal=bool(x['required']), outfit=r['outfit'],
                             fired=any(t0 <= t for g in (gd, gs) for t0 in fired[g]), later=2 * i >= len(R),
-                            pg=win_p(bpa, j - 1 if x['required'] and j > 1 else j, pen)))
+                            last=last, t=t, pe=win_p(max(-20, 110 - COST[early[0]] - COST[early[1]]), j, pen), pg=win_p(bpa, j - 1 if x['required'] and j > 1 else j, pen)))
     return out, skip, unk
 
 
@@ -179,6 +181,49 @@ def cv(c):
     return f'obs/pred {c[3]:.3f} [{c[4]:.3f}, {c[5]:.3f}], n {c[0]:,}'
 
 
+def after_result(A):
+    """{(j bucket, 'win' | 'loss'): calib} on spark-raised aptitudes, for attempts in a streak (j >= 2) by the result of the
+    race the turn before"""
+    out = {}
+    for jb in ('2', '3', '4+'):
+        for res in ('win', 'loss'):
+            S = [a for a in A if a['j'] >= 2 and (str(a['j']) == jb or (jb == '4+' and a['j'] >= 4)) and a['last'] == (res == 'win')]
+            out[(jb, res)] = calib(S, 'pa')
+    return out
+
+
+GRADE = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'A'}     # aptitude codes; S costs what A does
+
+
+def grid(A, pen, minn=30, mincol=200):
+    """the community table's layout from the runs: columns the (distance, surface) grade pair as a sorted pair of letters
+    (spark-raised grades, S as A), rows the race's position in a run of consecutive races (1 to 6+); each cell the
+    observed win rate, with the table's chance in parentheses; pairs with `mincol` or more attempts in all, cells under
+    `minn` attempts show a dot. Returns the
+    markdown table and the attempts table"""
+    cell = collections.defaultdict(lambda: [0, 0])
+    for a in A:
+        pair = ''.join(sorted((GRADE[a['apt'][0]], GRADE[a['apt'][1]])))
+        c = cell[(pair, min(a['j'], 6))]; c[0] += a['won']; c[1] += 1
+    pairs = {}
+    for (pair, j), (w, n) in cell.items(): pairs[pair] = pairs.get(pair, 0) + n
+    cols = sorted((p for p, n in pairs.items() if n >= mincol), key=lambda p: (-(110 - COST_L[p[0]] - COST_L[p[1]]), p))
+    rows = ['1 race', '2 races', '3 races', '4 races', '5 races', '6 or more']
+    head = '| Races in a row | ' + ' | '.join(cols) + ' |\n|---|' + '---|' * len(cols) + '\n'
+    body = cnt = ''
+    for j in range(1, 7):
+        line, cline = f'| {rows[j - 1]} |', f'| {rows[j - 1]} |'
+        for p in cols:
+            w, n = cell.get((p, j), (0, 0)); pred = min(100, max(0, 110 - COST_L[p[0]] - COST_L[p[1]] - pen[j - 1]))
+            line += f' {100 * w / n:.0f}% ({pred}%) |' if n >= minn else f' · ({pred}%) |'
+            cline += f' {n:,} |'
+        body += line + '\n'; cnt += cline + '\n'
+    return head + body.rstrip('\n'), head + cnt.rstrip('\n')
+
+
+COST_L = {'A': 0, 'B': 10, 'C': 20, 'D': 30, 'E': 40, 'F': 60, 'G': 90}
+
+
 def claims():
     R = common.runs()
     if R is None: return []
@@ -214,7 +259,7 @@ def claims():
          'shape': L['pink cells bp x j'] - L['pink table, recalibrated']}
     out += [Value(SEC, 'race LL recalibrated pink table - recalibrated base table, nats', d['pink']),
             Value(SEC, 'race LL recalibrated pink table - recalibrated pink no penalty, nats', d['pen']),
-            Value(SEC, 'race pink cells bp x j', ncell),
+            Value(SEC, 'race pink cells bp x j', ncell), Value(SEC, 'race LL pink cells bp x j: extra parameters', ncell - 2),
             Value(SEC, 'race LL pink cells bp x j - recalibrated pink table, nats', d['shape']),
             Value(SEC, 'race LL threshold, pink cells bp x j', thr(ncell - 2))]
 
@@ -240,6 +285,31 @@ def claims():
     sc = cells['scenario']
     f('Pink-adjusted, the table is calibrated in every scenario: each obs/pred 95% interval covers 1',
       bool(sc) and all(v[4] <= 1 <= v[5] for v in sc.values()), '; '.join(f'{c}: {cv(v)}' for c, v in sc.items()))
+    g_tab, g_n = grid(A, common.gjson('data.json')['pen'])
+    out += [Value(SEC, 'race grid by aptitude and streak', g_tab), Value(SEC, 'race grid attempts', g_n)]
+    # when a mid-run pink takes effect: the records say which year's inspiration fired it; the rule puts it at that year's
+    # April (turns 30, 54). Senior January-March attempts where counting it from the year's first turn would change the grade
+    S_ = [a for a in A if 48 <= a['t'] < 54 and a['pe'] != a['pa']]
+    tw = sum(a['won'] for a in S_); tlo, thi = common.wilson(tw, len(S_)) if S_ else (float('nan'),) * 2
+    e_apr, e_start = (sum(a[k] for a in S_) / len(S_) if S_ else float('nan') for k in ('pa', 'pe'))
+    out += [Value(SEC, 'proc timing: attempts', len(S_)), Value(SEC, 'proc timing: observed', tw / len(S_) if S_ else None),
+            Value(SEC, 'proc timing: observed 95% low', tlo), Value(SEC, 'proc timing: observed 95% high', thi),
+            Value(SEC, 'proc timing: predicted, from April', e_apr), Value(SEC, 'proc timing: predicted, from the year start', e_start)]
+    f('A pink fired at an inspiration takes effect from that April, not from the start of the year: on Senior January-March '
+      'attempts where the two timings differ, the April prediction lies inside the observed 95% interval and the year-start '
+      'one outside', bool(S_) and tlo <= e_apr <= thi and not tlo <= e_start <= thi,
+      f'{tw}/{len(S_)} won [{tlo:.3f}, {thi:.3f}]; April {e_apr:.3f}, year start {e_start:.3f}')
+    ar = after_result(A)
+    for (jb, res), c in ar.items():
+        out += [Value(SEC, f'race in a streak, j {jb}, after a {res}: attempts', c[0]), Value(SEC, f'race in a streak, j {jb}, after a {res}: obs/pred', c[3]),
+                Value(SEC, f'race in a streak, j {jb}, after a {res}: obs/pred 95% low', c[4]), Value(SEC, f'race in a streak, j {jb}, after a {res}: obs/pred 95% high', c[5])]
+    f('Within a streak the previous race\'s result does not change the next chance beyond the table: at the 2nd and 3rd race '
+      'in a row, attempts after a win and after a loss each have an obs/pred 95% interval covering 1',
+      all(ar[(jb, r_)][4] <= 1 <= ar[(jb, r_)][5] for jb in ('2', '3') for r_ in ('win', 'loss')),
+      '; '.join(f'j {jb} after a {r_}: {cv(ar[(jb, r_)])}' for jb in ('2', '3', '4+') for r_ in ('win', 'loss')))
+    f('From the 4th race in a row, attempts after a win and after a loss both win more than the table predicts (each 95% '
+      'interval entirely above 1)', all(ar[('4+', r_)][4] > 1 for r_ in ('win', 'loss')),
+      '; '.join(f'after a {r_}: {cv(ar[("4+", r_)])}' for r_ in ('win', 'loss')))
     return out
 
 

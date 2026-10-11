@@ -9,14 +9,14 @@ an unselected veteran cannot be read from them. What is computed here:
 - the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) for each mix (the mixes read from webapp/src/data.js
   RANKS, the solver's default from pkg/loopopt/src/skills.rs);
 - what replacing a legacy's stars by that expected base costs: per run of the records (research/data/runs.jsonl), with
-  its six real affinities (s04_affinity), q with b in each of the two rolls against the exact
+  its six real affinities (s05_affinity), q with b in each of the two rolls against the exact
   1 - prod_l E_s[(1 - b(s)(1 + A_l / 100))^2] (a legacy's stars are the same in both rolls), for one target carried by
   all six legacies.
 """
 import math, os, re, statistics
 import common
 from common import Value
-import s04_affinity
+import s05_affinity
 
 SEC = '2'
 CUT = 17500
@@ -55,14 +55,14 @@ def claims():
                                   not bad, '; '.join(bad) or 'every scenario agrees'))
     R = common.runs()
     if R is None: return out
-    S, _ = s04_affinity.relations()
+    S, _ = s05_affinity.relations()
     ratios = {k: [] for k in mix}
     for r in R:
-        anc = s04_affinity.lineage(r); aff = r.get('affinity') or {}
-        if anc is None or any(l not in aff for l in list(s04_affinity.GLBL.values()) + ['parent 1 × parent 2']): continue
+        anc = s05_affinity.lineage(r); aff = r.get('affinity') or {}
+        if anc is None or any(l not in aff for l in list(s05_affinity.GLBL.values()) + ['parent 1 × parent 2']): continue
         T = r['chara']; A = [a['chara'] for a in anc]
         if len({T, A[0], A[3]}) < 3: continue
-        Aff = s04_affinity.six_affinities(T, A, aff, S)
+        Aff = s05_affinity.six_affinities(T, A, aff, S)
         for k, pi in mix.items():
             b = bbar(pi)
             miss_loop = math.prod((1 - min(1.0, b * (1 + a / 100))) ** 2 for a in Aff.values())

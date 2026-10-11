@@ -1,10 +1,10 @@
-"""Section 12 (and the inheritance test of section 3, the certainty checks of section 8): the career model against real
+"""Section 12 (and the inheritance test of section 3, the certainty checks of section 9): the career model against real
 careers. Each run record is rebuilt as a career-planner job (trainee in her outfit, scenario, the six cards locked at
 their own limit breaks, both parents with their recorded parents and every ancestor's white and pink sparks, race wins
 laid out so every pair the model reads shares the record's shared-G1 count), run through the native solver, and
 compared with what the run shows, per (run, target) row, pooled, with Wilson 95% intervals.
 
-  uv run --group research research/s12_calibration.py [--wide]
+  uv run --group research research/s13_calibration.py [--wide]
 
 Steps (outputs under research/data/out/calib/, reused while the jobs and the solver are unchanged):
   card variants   every card at limit breaks 0-3: hint frequency and increment read at that limit break's level cap
@@ -12,7 +12,7 @@ Steps (outputs under research/data/out/calib/, reused while the jobs and the sol
   jobs            default eight targets (Unity Cup's two golds guaranteed there); --wide: every other skill a deck card
                   or an ancestor's spark could give, in jobs of at most 24 targets, on a seeded 30% sample of the runs
   solver          one process, 100 jobs per call (--wide: one job per call, 2 s limit each)
-  analysis        the tests of RESEARCH.md section 12 and the conclusions drawn on them (Findings); the full tables go
+  analysis        the tests of RESEARCH.md section 13 and the conclusions drawn on them (Findings); the full tables go
                   to report8.txt / reportW.txt
 
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
@@ -360,7 +360,7 @@ PO_CARDS = ('[Fiery Discipline] Yaeno Muteki', '[Dancing Light into the Night] Y
 
 
 def claims(wide=None):
-    S3, S8, S12 = '3', '8', '12'
+    S3, S8, S12 = '3', '9', '13'
     R = common.runs()
     out = []
     why = 'needs data' if R is None else 'needs master.mdb' if common.mdb() is None else None
@@ -600,7 +600,7 @@ def claims(wide=None):
             Value(S12, "Playtime's Over! event sources: hinted with a list shown", po[0]['k'] + po[1]['k']),
             Value(S12, "Playtime's Over! event sources: runs without a list", po[2]['n']),
             Value(S12, "Playtime's Over! event sources: hinted without a list", po[2]['k'])]
-    # section 8 certainty checks: every credited, where the card is the skill's one deck source
+    # section 9 certainty checks: every credited, where the card is the skill's one deck source
     cert = {}
     for card, g in (('[From the Ground Up] Light Hello', 20166), ('[Team Sirius] Team Sirius', 20203)):
         cid = byname.get(card) or next((c['id'] for c in common.gjson('web_cards.json')['cards'] if card.split('] ')[1] in c['name']), None)
@@ -635,13 +635,13 @@ def claims(wide=None):
         finding(S3, 'reliability: the only bucket outside its own 95% interval (as the text names it) is 0.40-0.60',
                 lambda: [(a, b) for a, b, *_ in rel_miss] == [(0.4, 0.6)],
                 lambda: '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f}' for a, b, n, ob, ep, lo, hi in rel_miss) or 'none'),
-        # section 8
+        # section 9
         finding(S8, 'the choice rule shows in its consequences: event-only hints of prioritised targets land at the model\'s rate (interval covers 1), '
                     'of non-prioritised targets below it (interval entirely below 1)',
                 lambda: covers(s_evp) and below(s_evn), lambda: f'prioritised {rt(s_evp)}; not prioritised {rt(s_evn)}'),
         *[finding(S8, f'{nm} credits her finale skill in every run carrying her (the finale is certain)',
                   lambda s=s: s['n'] > 0 and s['k'] == s['n'], lambda s=s: f'{s["k"]} of {s["n"]} (Wilson 95% low {s["lo"]:.4f})') for nm, s in cert.items()],
-        # section 12
+        # section 13
         finding(S12, 'the composed acquisition odds are calibrated: acquired from any source, observed / predicted, 95% interval covers 1',
                 lambda: covers(s_any), lambda: rt(s_any) + '; reliability buckets whose interval lies off their mean prediction: '
                 + '; '.join(f'{lab(a, b)} {ob:.3f} vs {ep:.3f}' for a, b, n, ob, ep in ra if n and b > 1e-12
@@ -735,7 +735,7 @@ def claims(wide=None):
 
 
 def wide_claims(R, M):
-    S = '12'
+    S = '13'
     jobdir = os.path.join(OUTD, 'jobsW')
     man, files, drop = build_jobs(R, M, True, jobdir)
     res = run_solver(jobdir, files, os.path.join(OUTD, 'resW.jsonl'), timeout=2, share=0.3, man=man)
@@ -762,12 +762,12 @@ def wide_claims(R, M):
 
 
 def wide_findings(s_i, s_p, why=None):
-    """the conclusions drawn on the other skills (section 3's non-target rows, section 12's "Other skills")"""
+    """the conclusions drawn on the other skills (section 3's non-target rows, section 13's "Other skills")"""
     covers = lambda s: s['rlo'] <= 1 <= s['rhi']
     rt = lambda s: f"{s['ratio']:.3f} [{s['rlo']:.3f}, {s['rhi']:.3f}], {s['n']:,} rows"
     fs = [finding('3', 'inspiration odds hold on non-target skills: interval covers 1', lambda: covers(s_i), lambda: rt(s_i)),
-          finding('12', 'other skills: inheritance holds beyond the eight targets (interval covers 1)', lambda: covers(s_i), lambda: rt(s_i)),
-          finding('12', 'other skills: training-pool hints under-predicted: interval entirely above 1',
+          finding('13', 'other skills: inheritance holds beyond the eight targets (interval covers 1)', lambda: covers(s_i), lambda: rt(s_i)),
+          finding('13', 'other skills: training-pool hints under-predicted: interval entirely above 1',
                   lambda: s_p['rlo'] > 1, lambda: rt(s_p))]
     if why:
         for f in fs: f.holds, f.evidence = None, why

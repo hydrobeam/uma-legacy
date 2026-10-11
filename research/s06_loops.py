@@ -29,12 +29,12 @@ import collections, itertools, json, math, os, statistics, struct, sys
 import common
 from common import Value
 
-S = '5'
+S = '6'
 
 
 def lineage_terms(T, P1, P2, X):
     """coefficient of each o(a, b) (unordered pair) in the six affinities of lineage (T, P1, P2, X), in units of 3:
-    A_P = ... + 3 o(P, P') + sum over G in par(P) of 3 o(P, G); A_G = ... + 3 o(P, G) (RESEARCH.md section 4)"""
+    A_P = ... + 3 o(P, P') + sum over G in par(P) of 3 o(P, G); A_G = ... + 3 o(P, G) (RESEARCH.md section 5)"""
     c = collections.Counter()
     par = {P1: (P2, X), P2: (P1, X)}
     for P, Pp in ((P1, P2), (P2, P1)):
@@ -144,7 +144,7 @@ def o_pb(lp, data):
 
 def lineage_q(L, o, det):
     """q of lineage L when the pairs' shared wins are o: each slot's affinity = its relation part + 3 x its o terms
-    (section 4), r = min(1, b (1 + A/100)) (x gp_rate for a grandparent), q = 1 - prod (1 - r)^inspirations; also the
+    (section 5), r = min(1, b (1 + A/100)) (x gp_rate for a grandparent), q = 1 - prod (1 - r)^inspirations; also the
     slots' race parts, to check against the reported ones"""
     (p1, p2), x = L['p'], L['x']
     par = {p1: (p2, x), p2: (p1, x)}

@@ -6,9 +6,9 @@ in by hand; a placeholder without a computed value stops the rendering.
 
 ```
 ./build.sh research                                   # compute everything, then render docs/RESEARCH.md
-uv run --group research research/run_all.py [--quick] # compute: print the values and the tests, write results.json
+uv run --group research research/run_all.py [--quick] [--force] # compute (scripts whose code and inputs are unchanged are reused), write results.json
 uv run --group research research/render.py [--check]  # render (or check that docs/RESEARCH.md is current)
-uv run --group research research/s07_chains.py        # one section, with its detail
+uv run --group research research/s08_chains.py        # one section, with its detail
 ```
 
 Each script, one per section that has something to compute, returns:
@@ -21,21 +21,25 @@ Each script, one per section that has something to compute, returns:
   it rests on.
 
 `run_all.py` writes both to `research/results.json` (aggregates only) and lists computed values the template does not
-use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips section 12's run over every other skill.
+use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips section 13's run over every other skill.
 
 | Script | Computes |
 |---|---|
 | `s02_stars.py` | §2 the band each scenario's careers reach (rank scores), the expected base per roll, what averaging the stars costs |
 | `s03_inheritance.py` | §3 the roll's parts on single-ancestor trials: grandparent weight, affinity slope (relation points and shared wins apart), base by stars, affinity bands |
-| `s04_affinity.py` | §4 the self-grandparent fit (trio points 0 against pair(T, P), κ) |
-| `s04_races.py` | §4 the race win table against every G1 attempt in the runs, on base and on spark-raised aptitudes |
-| `s05_loops.py` | §5 the race weights; trainees with their own character as a grandparent; on the validation results, what shared wins are worth and how far any other schedule could raise the odds |
-| `s06_hints.py` | §6 training hints: the form study, bases and specialty weights per scenario, the Lv-5 cap, joint draws, spark deficit, held-out and same-card tests |
-| `s07_chains.py` | §7 chain events: the fit of N, the marker allowance, final links by pals and by card, the allocation rule, the exact link tables, known misses |
-| `s08_outcomes.py` | §8 measured outcome shares and the choice-rule evidence |
-| `s09_random_events.py` | §9 random card events: the fitted rate, the form comparison, what leaving them out costs on real decks |
-| `s10_conditional.py` | §10 conditional character events: counts, how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
-| `s12_calibration.py` | §12 the calibration against real careers, §3's test on whole careers, §8's certainty checks |
+| `s04_races.py` | §4 the race win table against every G1 attempt in the runs: base and spark-raised aptitudes, the streak penalty, the previous race's result, when a pink takes effect, the table in the community layout |
+| `s05_affinity.py` | §5 the self-grandparent fit (trio points 0 against pair(T, P), κ) |
+| `s06_loops.py` | §6 the race weights; trainees with their own character as a grandparent; on the validation results, what shared wins are worth and how far any other schedule could raise the odds |
+| `s07_hints.py` | §7 training hints: the form study, bases and specialty weights per scenario, the Lv-5 cap, joint draws, spark deficit, held-out and same-card tests |
+| `s08_chains.py` | §8 chain events: the fit of N and its held-out comparison, the marker allowance, final links by pals and by card, the allocation rule, the exact link tables, known misses |
+| `s09_outcomes.py` | §9 measured outcome shares and the choice-rule evidence |
+| `s10_random_events.py` | §10 random card events: the fitted rate, the form comparison, what leaving them out costs on real decks |
+| `s11_conditional.py` | §11 conditional character events: counts, how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
+| `s13_calibration.py` | §13 the calibration against real careers, §3's test on whole careers, §9's certainty checks |
+
+§12 (the composed model) is derived and has no script. Comparisons follow the three rules in *How to read*: same
+parameter count, compared directly; an extra parameter, by likelihood ratio (detectable or not); whether a model
+predicts better, by 5-fold cross-validation by run id (`common.fold`, `common.compare_held_out`).
 
 Every analysis runs on every run in the pool. What the runs cannot test is labelled **assumed** in the document and
 claims no evidence: §1's spark curve, §2's star mixes and §3's base rates other than the skill whites (community
@@ -46,8 +50,8 @@ figures).
 (`research/data/summary.jsonl`). **The run records are not in this repository.** Without
 them the scripts compute only what needs game data, and `results.json` keeps the committed values for the rest, so a
 clone still renders the whole document. Everything else comes from the repository: `pkg/loopopt/data/global/`, the
-GameTora files (through `pkg/loopopt/export/gametora.py`) and `game/global/master.mdb`. Section 5 recomputes the odds of
-every validation result (`val/ref__*`, `val/refpu__*`) through `val/joint_check.py`: about a minute. Section 12 also runs the native
+GameTora files (through `pkg/loopopt/export/gametora.py`) and `game/global/master.mdb`. Section 6 recomputes the odds of
+every validation result (`val/ref__*`, `val/refpu__*`) through `val/joint_check.py`: about a minute. Section 13 also runs the native
 solver (`cd pkg/loopopt && cargo build --release`): about a minute for the default targets, several more for the
 other-skills sample, one process; results are kept in `research/data/out/` and reused while nothing they read changes.
 numpy and scipy come with the `research` dependency group.

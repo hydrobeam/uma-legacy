@@ -1,10 +1,10 @@
 """Section 3: the inheritance roll's parts, tested on single-ancestor trials from the run records
 (research/data/runs.jsonl, not included; Independent Training runs from uma-it).
 
-A trial (built by s04_affinity.trials) is one (ancestor, white skill spark, career year 2 or 3) where the spark's skill
+A trial (built by s05_affinity.trials) is one (ancestor, white skill spark, career year 2 or 3) where the spark's skill
 is carried by exactly one of the six ancestors, so a year's inspiration of it can only come from her; it passes when the
 factor shows among that year's inspirations. The model gives one roll per year, r = min(1, b(s) (1 + A / 100)),
-b(s) = 3 / 6 / 9% by stars, A the ancestor's affinity (section 4, from master.mdb relation points and the record's
+b(s) = 3 / 6 / 9% by stars, A the ancestor's affinity (section 5, from master.mdb relation points and the record's
 shared G1 wins). Ordinary ancestors only (no self-grandparent or grandparent equal to the parent).
 Tests: the grandparent weight (r scaled by kappa_G: full base kappa_G = 1 against halved 0.5), the affinity slope
 (r = b (1 + s A / 100), s free; the model has s = 1), and the base by stars (observed / predicted per star count and per
@@ -14,7 +14,7 @@ import math
 from scipy.stats import chi2 as _chi2
 import common
 from common import Value
-import s04_affinity
+import s05_affinity
 
 SEC = '3'
 CHI1 = 1.920729                          # chi2(1) 95% / 2
@@ -52,7 +52,7 @@ def ratio(ts):
 def claims():
     R = common.runs()
     if R is None: return []
-    full = [t for t in s04_affinity.trials(R, race=True) if t[0] in ('P', 'G')]
+    full = [t for t in s05_affinity.trials(R, race=True) if t[0] in ('P', 'G')]
     ts = [(c, a0, b, f) for c, a0, _, b, f, _ in full]
     out = []
     P = [t for t in ts if t[0] == 'P']; G = [t for t in ts if t[0] == 'G']

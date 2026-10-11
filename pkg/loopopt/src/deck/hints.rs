@@ -2,12 +2,12 @@
 
 /// A scenario's display name. (Training-hint draws per run by scenario are `hint_base` and `hint_spec` below:
 /// h = base x (1 + hf/100) x (1 + d x specialty/100), fitted 2026-10-11 on 3,179 runs with the Lv-5 cap,
-/// docs/RESEARCH.md section 6; Grand Masters (JP) has no runs: the pooled fit, a placeholder.)
+/// docs/RESEARCH.md section 7; Grand Masters (JP) has no runs: the pooled fit, a placeholder.)
 pub(super) fn scenario_name(s: &str) -> &str {
     match s { "unity" => "Unity Cup", "gc" => "Grand Concert", "ura" => "URA Finale", "trackblazer" => "Trackblazer", "grandmasters" => "Grand Masters", x => x }
 }
 pub(crate) fn hint_base(scenario: &str) -> f64 {
-    // fitted on uma-it IT runs (docs/RESEARCH.md section 6); Grand Masters has no data: the pooled fit, a placeholder
+    // fitted on uma-it IT runs (docs/RESEARCH.md section 7); Grand Masters has no data: the pooled fit, a placeholder
     match scenario { "gc" => 1.97, "ura" => 1.34, "trackblazer" => 1.70, "grandmasters" => 1.86, _ => 2.36 }
 }
 /// Specialty priority's weight in the draws: h scales by 1 + d x specialty/100 (fitted with `hint_base`).

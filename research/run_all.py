@@ -1,20 +1,65 @@
 """Run every section script: print each computed value and each tested conclusion, and write research/results.json.
 
-  uv run --group research research/run_all.py [--quick]     (or ./build.sh research)
+  uv run --group research research/run_all.py [--quick] [--force]     (or ./build.sh research)
 
---quick skips the section 12 variant over every other skill (a solver run of several minutes the first time; its
+Each script's results are kept in research/data/out/claims/ with a fingerprint of its code (its source, the research
+scripts it imports, common.py, val/joint_check.py) and of the data inputs' sizes and times (DATA_INPUTS, val's reference
+outputs); a script whose fingerprint is unchanged is not run again. --force recomputes everything.
+
+--quick skips the section 13 variant over every other skill (a solver run of several minutes the first time; its
 results are reused while nothing it reads changes). The computed values go to research/results.json, from which
 research/render.py renders docs/RESEARCH.md. Without the run records (research/data/runs.jsonl, not included)
 the data claims read "needs data" and the derived ones still run."""
-import collections, glob, importlib, inspect, json, os, re, sys, traceback
+import collections, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
 for v in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'): os.environ.setdefault(v, '1')   # one core
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 from common import Value, Finding
 
 
+# inputs every script may read; a change to any of them (size or time) recomputes every script
+DATA_INPUTS = ['research/data/runs.jsonl', 'research/data/summary.jsonl', 'game/global/master.mdb', 'pkg/loopopt/data',
+               'pkg/loopopt/src', 'pkg/loopopt/export', 'pkg/loopopt/target/release/loopopt', 'cache/gametora', 'val/jobs.json',
+               'val/jobs', 'webapp/src/data.js']
+CACHE = os.path.join(common.OUT, 'claims')
+
+
+def data_stamp():
+    """size and modification time of every data input (content hashing 100 MB of inputs on every run would cost more
+    than it saves); val's reference outputs included, which section 6 reads"""
+    items = []
+    paths = [os.path.join(common.ROOT, x) for x in DATA_INPUTS] + sorted(glob.glob(os.path.join(common.ROOT, 'val', 'ref*__*.out')))
+    for p in paths:
+        if os.path.isdir(p):
+            for d, _, fs in os.walk(p):
+                for f in sorted(fs):
+                    st = os.stat(os.path.join(d, f)); items.append((os.path.relpath(os.path.join(d, f), common.ROOT), st.st_size, st.st_mtime_ns))
+        elif os.path.exists(p):
+            st = os.stat(p); items.append((os.path.relpath(p, common.ROOT), st.st_size, st.st_mtime_ns))
+    return items
+
+
+def code_of(name, seen=None):
+    """the source of a script, of common.py, of val/joint_check.py and of every research script it imports, transitively"""
+    seen = set() if seen is None else seen
+    if name in seen: return ''
+    seen.add(name)
+    src = open(os.path.join(common.HERE, name + '.py')).read()
+    deps = sorted(set(re.findall(r'^\s*import (s\d\d_\w+)', src, re.M)))
+    return src + ''.join(code_of(d, seen) for d in deps)
+
+
+def fingerprint(name, kw, stamp):
+    h = hashlib.sha256()
+    for part in (code_of(name), open(os.path.join(common.HERE, 'common.py')).read(),
+                 open(os.path.join(common.ROOT, 'val', 'joint_check.py')).read(), repr(sorted(kw.items())), repr(stamp)):
+        h.update(part.encode())
+    return h.hexdigest()
+
+
 def main():
-    quick = '--quick' in sys.argv
+    quick = '--quick' in sys.argv; force = '--force' in sys.argv
+    stamp = data_stamp(); os.makedirs(CACHE, exist_ok=True)
     if not common.have_runs(): common.say_missing()
     allc = []
     for path in sorted(glob.glob(os.path.join(common.HERE, 's[0-9][0-9]_*.py'))):
@@ -22,7 +67,16 @@ def main():
         try:
             m = importlib.import_module(name)
             kw = {'wide': not quick} if 'wide' in inspect.signature(m.claims).parameters else {}
-            allc += m.claims(**kw)
+            fp = fingerprint(name, kw, stamp); cf = os.path.join(CACHE, name + '.pkl')
+            hit = None
+            if not force and os.path.exists(cf):
+                with open(cf, 'rb') as f: hit = pickle.load(f)
+            if hit and hit[0] == fp:
+                print(f'{name}: unchanged, results reused', file=sys.stderr); allc += hit[1]; continue
+            t0 = time.time(); got = m.claims(**kw); allc += got
+            print(f'{name}: computed in {time.time() - t0:.0f} s', file=sys.stderr)
+            if common.have_runs() and not any(isinstance(c, Value) and c.status == 'error' for c in got):
+                with open(cf, 'wb') as f: pickle.dump((fp, got), f)
         except Exception as e:
             traceback.print_exc()
             allc.append(Value(name[1:3].lstrip('0'), f'{name} failed: {type(e).__name__}', status='error'))
@@ -47,7 +101,7 @@ def write_results(items, fresh):
         if not isinstance(c, Value) or c.missing(): continue
         k = common.key_of(c.section, c.name)
         if k in seen and seen[k] != c.name: sys.exit(f'two values share the key {k}: {seen[k]!r} and {c.name!r}')
-        seen[k] = c.name; values[k] = float(c.got)
+        seen[k] = c.name; values[k] = c.got if isinstance(c.got, str) else float(c.got)
     findings = {(f['section'], f['statement']): f for f in old['findings']}
     for f in items:                                       # a finding evaluated now replaces the committed one
         if isinstance(f, Finding) and f.holds is not None:

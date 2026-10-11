@@ -110,6 +110,25 @@ def binom_pmf(n, p):
 
 
 # ---------------------------------------------------------------- claims
+# ---------------------------------------------------------------- held-out comparison
+K_FOLDS = 5
+
+
+def fold(run_id, k=K_FOLDS):
+    """the cross-validation group of a run: its id mod k (fixed, unrelated to record order or who ran it)"""
+    return run_id % k
+
+
+def compare_held_out(a, b):
+    """paired comparison of two models' held-out log-likelihoods, one entry per run (each run scored by the model fitted
+    on the other folds): (sum of a - b in nats, its standard error, z). z > 1.96 means a predicts unseen runs better than
+    b beyond chance (Vuong 1989: the per-run differences are independent across runs)"""
+    import numpy as _np
+    d = _np.asarray(a, float) - _np.asarray(b, float)
+    se = float(_np.sqrt(len(d)) * d.std(ddof=1)) if len(d) > 1 else float('nan')
+    return float(d.sum()), se, float(d.sum() / se) if se else float('nan')
+
+
 def key_of(section, name):
     """a value's key in results.json and in the document template: section.slug_of_the_name"""
     for a_, b_ in (('+-', ' pm '), ('±', ' pm '), ('%', ' pct '), ('>=', ' ge '), ('<', ' lt '), ('>', ' gt '), ('/', ' per ')):
@@ -132,6 +151,7 @@ class Value:
         return self.got is None or (isinstance(self.got, float) and math.isnan(self.got))
 
     def shown(self):
+        if isinstance(self.got, str): return f'(table, {self.got.count(chr(10)) + 1} lines)'
         return '-' if self.missing() else f'{self.got:,.6g}'
 
 
