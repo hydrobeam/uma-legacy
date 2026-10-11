@@ -133,6 +133,20 @@ def cluster_ci(obs, exp, run, z=1.96):
     return R, max(0.0, R - z * se), R + z * se, C
 
 
+def robust_interval(run_ll, theta, h=1e-3, z=1.96):
+    """run-clustered (Huber-White sandwich) interval for a one-parameter maximum-likelihood fit whose observations
+    come several to a run: run_ll(t) -> {run: that run's log-likelihood at parameter t}. Each run's score is the
+    central difference of its log-likelihood at the fit, the information the second difference of the total;
+    se = sqrt(C / (C - 1) sum_runs score^2) / |second difference|. Returns (low, high, se)."""
+    lo_, mid, hi_ = run_ll(theta - h), run_ll(theta), run_ll(theta + h)
+    runs = list(mid)
+    sc = [(hi_[r] - lo_[r]) / (2 * h) for r in runs]
+    H = (sum(hi_.values()) - 2 * sum(mid.values()) + sum(lo_.values())) / h ** 2
+    C = len(runs)
+    se = math.sqrt(C / (C - 1) * sum(x * x for x in sc)) / abs(H) if H and C > 1 else float('nan')
+    return theta - z * se, theta + z * se, se
+
+
 def cluster_chi2(resid, run):
     """joint test that several groups' residuals (observed - predicted, one vector entry per group, e.g. reliability
     buckets) are all zero, when one run's rows fall in several groups: Wald chi2 = r' V^-1 r with V the run-clustered

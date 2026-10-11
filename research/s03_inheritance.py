@@ -6,13 +6,15 @@ is carried by exactly one of the six ancestors, so a year's inspiration of it ca
 factor shows among that year's inspirations. The model gives one roll per year, r = min(1, b(s) (1 + A / 100)),
 b(s) = 3 / 6 / 9% by stars, A the ancestor's affinity (section 5, from master.mdb relation points and the record's
 shared G1 wins). Ordinary ancestors only (no self-grandparent or grandparent equal to the parent).
+Fitted parameters carry run-clustered (sandwich) 95% intervals, since one run gives many trials.
 Tests: the grandparent weight (r scaled by kappa_G: full base kappa_G = 1 against halved 0.5), the affinity slope
 (r = b (1 + s A / 100), s free; the model has s = 1), and the base by stars (observed / predicted per star count and per
 affinity band). A sum's interval is observed / predicted by the run-clustered ratio estimator (common.cluster_ci: a
 run's trials share its lineage, so the variance comes from each run's residual against the model); the bands' joint
 test is the run-clustered Wald chi2 (common.cluster_chi2), since one run's trials fall in several bands.
 """
-import math
+import collections, math
+from scipy.optimize import minimize_scalar
 import common
 from common import Value
 import s05_affinity
@@ -30,6 +32,23 @@ def ll(ts, kp=1.0, kg=1.0, s=1.0):
         p = min(max(p, 1e-12), 1 - 1e-12)
         t += math.log(p if f else 1 - p)
     return t
+
+
+def llr(ts, kp=1.0, kg=1.0, s=1.0):
+    """{run: log-likelihood of that run's trials}"""
+    out = collections.defaultdict(float)
+    for cat, a, b, f, run in ts:
+        p = min(max(min(1.0, (kg if cat == 'G' else kp) * b * (1 + s * a / 100)), 1e-12), 1 - 1e-12)
+        out[run] += math.log(p if f else 1 - p)
+    return out
+
+
+def fit1(run_ll, lo, hi):
+    """(maximum-likelihood estimate on [lo, hi], run-clustered 95% low, high): a run gives many trials, so the
+    interval is the sandwich one (common.robust_interval), not the likelihood interval of independent trials"""
+    r = minimize_scalar(lambda x: -sum(run_ll(x).values()), bounds=(lo, hi), method='bounded', options={'xatol': 1e-5})
+    a, b, _ = common.robust_interval(run_ll, float(r.x))
+    return float(r.x), a, b
 
 
 def profile(f, grid):
@@ -66,7 +85,7 @@ def claims():
     eh = sum(min(1.0, 0.5 * b * (1 + a / 100)) for _, a, b, _, _ in G)
     d_half = ll(ts) - ll(ts, kg=0.5)
     grid = [i / 100 for i in range(20, 201)]
-    kg, _, (kg_lo, kg_hi) = profile(lambda k: ll(ts, kg=k), grid)
+    kg, kg_lo, kg_hi = fit1(lambda k: llr(ts, kg=k), 0.2, 2.0)
     out += [Value(SEC, 'grandparents: predicted, halved base', eh), Value(SEC, 'grandparents full over halved, nats', d_half),
             Value(SEC, 'grandparent weight fitted', kg), Value(SEC, 'grandparent weight 95% low', kg_lo),
             Value(SEC, 'grandparent weight 95% high', kg_hi)]
@@ -75,7 +94,7 @@ def claims():
                               kg_lo <= 1 <= kg_hi and not kg_lo <= 0.5 <= kg_hi and d_half > CHI1,
                               f'weight {kg:.2f} [{kg_lo:.2f}, {kg_hi:.2f}] on {len(G):,} trials; full over halved {d_half:.1f} nats'))
     sg = [i / 100 for i in range(0, 301)]
-    s_hat, _, (s_lo, s_hi) = profile(lambda s: ll(ts, s=s), sg)
+    s_hat, s_lo, s_hi = fit1(lambda s: llr(ts, s=s), 0.0, 3.0)
     d0 = ll(ts) - ll(ts, s=0)
     out += [Value(SEC, 'affinity slope fitted', s_hat), Value(SEC, 'affinity slope 95% low', s_lo),
             Value(SEC, 'affinity slope 95% high', s_hi), Value(SEC, 'affinity over none, nats', d0)]
@@ -89,8 +108,14 @@ def claims():
             p = min(max(min(1.0, b * (1 + (sr * (a - rc) + sc * rc) / 100)), 1e-12), 1 - 1e-12)
             t += math.log(p if f else 1 - p)
         return t
-    sc_hat, _, (sc_lo, sc_hi) = profile(lambda x: ll2(1.0, x), sg)
-    sr_hat, _, (sr_lo, sr_hi) = profile(lambda x: ll2(x, 1.0), sg)
+    def ll2r(sr, sc):
+        out_ = collections.defaultdict(float)
+        for c, a, _, b, f, run, rc in full:
+            p = min(max(min(1.0, b * (1 + (sr * (a - rc) + sc * rc) / 100)), 1e-12), 1 - 1e-12)
+            out_[run] += math.log(p if f else 1 - p)
+        return out_
+    sc_hat, sc_lo, sc_hi = fit1(lambda x: ll2r(1.0, x), 0.0, 3.0)
+    sr_hat, sr_lo, sr_hi = fit1(lambda x: ll2r(x, 1.0), 0.0, 3.0)
     out += [Value(SEC, 'race part slope fitted', sc_hat), Value(SEC, 'race part slope 95% low', sc_lo),
             Value(SEC, 'race part slope 95% high', sc_hi), Value(SEC, 'relation part slope fitted', sr_hat),
             Value(SEC, 'relation part slope 95% low', sr_lo), Value(SEC, 'relation part slope 95% high', sr_hi),

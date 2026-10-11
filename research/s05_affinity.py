@@ -141,24 +141,19 @@ def claims():
     grid = [i / 1000 for i in range(0, 1001)]
     L = [ll(sub, k) for k in grid]
     i = max(range(len(grid)), key=L.__getitem__)
-    up = next((k for k, v in zip(grid[i:], L[i:]) if L[i] - v > CHI95), None)
     out = [Value(SEC, 'trials attributable to one ancestor', len(ts)),
            Value(SEC, 'self-grandparent passes observed', sum(f for _, _, _, _, f, _ in gs)),
            Value(SEC, 'predicted, tri(T,P,T) = 0', pred(0)), Value(SEC, 'predicted, tri(T,P,T) = pair(T,P)', pred(1)),
-           Value(SEC, 'LL(0) - LL(pair), nats', ll(sub, 0) - ll(sub, 1)), Value(SEC, 'kappa fitted', grid[i]),
-           Value(SEC, 'kappa 95% upper limit', up)]
+           Value(SEC, 'LL(0) - LL(pair), nats', ll(sub, 0) - ll(sub, 1)), Value(SEC, 'kappa fitted', grid[i])]
     # findings: the self-grandparent rule, the premise that the rest of the model fits these trials, the +3 rule
     z = {(k, h): zsum(ts, k, h) for k in ('G_self', 'P_selfgp', 'P', 'G') for h in (0, 1)}
+    out += [Value(SEC, 'self-grandparent passes: z with 0', z['G_self', 0][2]), Value(SEC, 'self-grandparent passes: z with pair', z['G_self', 1][2])]
     ev = lambda c, h: f'{c}: {z[c, h][0]} obs, {z[c, h][1]:.1f} pred, z {z[c, h][2]:+.2f}'
     out.append(common.finding(SEC, 'tri(T, P, T) = 0 predicts the self-grandparent passes and tri(T, P, T) = pair(T, P) '
                               'does not: observed within 1.96 sd of the H0 sum, beyond 1.96 sd of the H1 sum',
                               abs(z['G_self', 0][2]) < 1.96 and abs(z['G_self', 1][2]) > 1.96,
                               f'H0 {ev("G_self", 0)}; H1 {ev("G_self", 1)}; their parents: H0 {ev("P_selfgp", 0)}, '
                               f'H1 {ev("P_selfgp", 1)}'))
-    out.append(common.finding(SEC, 'The family kappa pair(T, P) fits kappa = 0 and excludes pair (kappa = 1) at 95%: '
-                              'kappa-hat at 0 and LL(kappa-hat) - LL(1) > 1.92 (chi2(1) 95% / 2)',
-                              grid[i] == 0 and L[i] - ll(sub, 1) > CHI95,
-                              f'kappa-hat {grid[i]}, 95% upper {up}, LL(kappa-hat) - LL(1) = {L[i] - ll(sub, 1):.1f} nats'))
     out.append(common.finding(SEC, 'Premise of the fit (implicit in RESEARCH.md): the inspiration model fits the ordinary '
                               'parents and grandparents of the same runs (each sum within 1.96 sd), so the self-grandparent '
                               'gap is not a model-wide offset', all(abs(z[c, 0][2]) < 1.96 for c in ('P', 'G')),
