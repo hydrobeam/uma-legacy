@@ -20,7 +20,7 @@ where the analysis is by pal count:
   - the marker allowance: the share of links implied fired (a later link of the card shows) whose marker is missing,
     and the best p at n = 21 under allowances 0.01-0.045 and with none on the runs without such a contradiction;
   - final links by pal count against Binomial(21, 0.35) and Poisson(7.1);
-  - final links by card against the model, the spread between cards with 60+ observations (chi2);
+  - final links by card against the model, the spread between cards with 60+ observations (run-clustered Wald chi2);
   - the allocation rule: slot rule against card rule, per-observation log-likelihood, and final links at 2 and 0 pals;
   - known misses: two-chain decks (two plain 3-link SSRs, 4 pals), early links (1 and 2) per pal count with the run as
     a cluster, chains never started with five or six chain cards;
@@ -31,7 +31,9 @@ weight = links left ("slots") or uniformly ("cards"); stop risk (card_events.jso
 Fits of N are exact over the chain states, with a 3% chance that a fired link's marker does not show (without it a run
 whose later link shows while an earlier one does not has likelihood 0; allowance_claims measures the rate); the
 allocation, final-link and early-link comparisons score each observation on its own
-(P(card reaches link) on the run's deck)."""
+(P(card reaches link) on the run's deck). Intervals on rates over observations that come several to a run (final
+links, the allowance, chains never started) are run-clustered (common.cluster_ci), the spread between cards a
+run-clustered Wald test (common.cluster_chi2); a share with one observation per run (two-chain decks) takes Wilson."""
 import collections, itertools, math, os, re, sys
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
@@ -436,18 +438,31 @@ def pal_count_claims():
     return out, res
 
 
+def obs_ci(rows):
+    """the observed rate's 95% interval over (observed, predicted, run id) rows that come several to a run: the mean
+    prediction times the run-clustered interval of observed / predicted (common.cluster_ci); Wilson when every run gives
+    one row (5 pals: one chain card)"""
+    o, e, r = zip(*rows)
+    if len(set(r)) == len(r): return common.wilson(round(sum(o)), len(o))
+    _, lo, hi, _ = common.cluster_ci(o, e, r); m = sum(e) / len(e)
+    return lo * m, hi * m
+
+
 def final_claims():
-    """the final-link table and the early-link shortfall (every run)"""
+    """the final-link table (each observed rate with its run-clustered 95% interval against Binomial(21, 0.35)) and the
+    early-link shortfall (every run)"""
     out = []; tab = {}
     for npal in (5, 4, 3, 2, 1, 0):
-        xs = dataset({npal}); o = b = p = 0.0; n = 0
+        xs = dataset({npal}); o = b = p = 0.0; n = 0; rows = []
         for r, kinds, chain, obs in xs:
             mb, mp = reach(kinds, BIN), reach(kinds, POIS)
             for ci, lk, seen in obs:
-                if lk == kinds[ci][0]: o += seen; b += mb[(ci, lk)]; p += mp[(ci, lk)]; n += 1
-        tab[npal] = (len(xs), o / n, b / n, p / n, n)
+                if lk == kinds[ci][0]: o += seen; b += mb[(ci, lk)]; p += mp[(ci, lk)]; n += 1; rows.append((seen, mb[(ci, lk)], r['id']))
+        lo, hi = obs_ci(rows)
+        tab[npal] = (len(xs), o / n, b / n, p / n, n, lo, hi)
         out += [V(f'final-link table, {npal} pals: runs', len(xs)),
                 V(f'final-link table, {npal} pals: observed', o / n, note=f'{n} card-links'),
+                V(f'final-link table, {npal} pals: observed 95% low', lo), V(f'final-link table, {npal} pals: observed 95% high', hi),
                 V(f'final-link table, {npal} pals: Binomial(21, 0.35)', b / n),
                 V(f'final-link table, {npal} pals: Poisson(7.1)', p / n)]
     out.append(V('final-link table: runs in all', sum(t[0] for t in tab.values()), note=f'every run; {dropped(ALL)} decks with a non-pal R card left out'))
@@ -470,33 +485,37 @@ def final_claims():
 
 def allowance_claims():
     """the marker allowance: links fire in order, so a card's later link seen means its earlier links fired; the share of
-    those earlier links whose marker is missing measures how often a fired link goes unseen (every run)"""
-    imp = un = 0
+    those earlier links whose marker is missing measures how often a fired link goes unseen (every run; its 95% interval
+    run-clustered)"""
+    imp = un = 0; rows = []
     for r, kinds, chain, obs in dataset(ALL):
         per = collections.defaultdict(dict)
         for ci, lk, seen in obs: per[ci][lk] = seen
         for d in per.values():
             for lk, seen in d.items():
-                if any(l2 > lk and s2 for l2, s2 in d.items()): imp += 1; un += not seen
-    lo, hi = common.wilson(un, imp)
+                if any(l2 > lk and s2 for l2, s2 in d.items()): imp += 1; un += not seen; rows.append((int(not seen), 1, r['id']))
+    lo, hi = obs_ci(rows)          # one run gives several such links: the run-clustered interval of the rate
     return [V('allowance: earlier links implied fired', imp, note='every run'), V('allowance: marker not shown', un),
             V('allowance: share', un / imp), V('allowance: 95% low', lo), V('allowance: 95% high', hi)]
 
 
 def final_by_card():
     """final-link reach by card (every run) against the chain model on each run's deck: the pooled rate and the spread
-    between cards with 60+ observations (sum of squared z against chi2 with one df per card)"""
-    from scipy.stats import chi2
-    per = collections.defaultdict(lambda: [0, 0.0, 0, 0.0])
+    between cards with 60+ observations (a joint Wald test that every card's observed - predicted is zero, one df per
+    card, its covariance run-clustered by common.cluster_chi2: the chain cards of one run share its N). Each card's z
+    (binomial variance; one observation per run) only ranks the cards"""
+    per = collections.defaultdict(lambda: [0, 0.0, 0, 0.0]); res = []
     for r, kinds, chain, obs in dataset(ALL):
         mb = reach(kinds)
         for ci, lk, seen in obs:
             if lk != kinds[ci][0]: continue
             a = per[chain[ci]]; p_ = mb[(ci, lk)]; a[0] += seen; a[1] += p_; a[2] += 1; a[3] += p_ * (1 - p_)
+            res.append((chain[ci], seen - p_, r['id']))
     k = sum(v[0] for v in per.values()); e = sum(v[1] for v in per.values()); n = sum(v[2] for v in per.values())
     zs = {c: (v[0] - v[1]) / math.sqrt(v[3]) for c, v in per.items() if v[2] >= 60}
-    x2 = sum(z * z for z in zs.values()); names = game()['cards']
-    return dict(obs=k / n, model=e / n, n=n, cards=len(zs), chi2=x2, p=chi2.sf(x2, len(zs)),
+    kept = [(c, d, r) for c, d, r in res if c in zs]
+    x2, _, pv = common.cluster_chi2([(c, d) for c, d, _ in kept], [r for _, _, r in kept]); names = game()['cards']
+    return dict(obs=k / n, model=e / n, n=n, cards=len(zs), chi2=x2, p=pv,
                 low=sorted(zs.items(), key=lambda t: t[1])[:3], high=sorted(zs.items(), key=lambda t: -t[1])[:3],
                 rate={c: (per[c][0] / per[c][2], per[c][1] / per[c][2]) for c in zs}, name=lambda c: names[c]['name'])
 
@@ -524,17 +543,18 @@ def allowance_sens():
 
 
 def alloc_claims():
-    """slot rule against card rule (every run, 0-5 pals; per-observation likelihood)"""
+    """slot rule against card rule (every run, 0-5 pals; per-observation likelihood); final links observed with the
+    run-clustered 95% interval against each rule"""
     tot = collections.Counter(); fin = {}; runs = 0
     for npal in (5, 4, 3, 2, 1, 0):
         xs = dataset({npal}); runs += len(xs)
         for rule in ('slots', 'cards'):
-            tot[rule] += obs_ll(xs, BIN, rule); o = p = 0.0; n = 0
+            tot[rule] += obs_ll(xs, BIN, rule); o = p = 0.0; n = 0; rows = []
             for r, kinds, chain, obs in xs:
                 mb = reach(kinds, BIN, rule)
                 for ci, lk, seen in obs:
-                    if lk == kinds[ci][0]: o += seen; p += mb[(ci, lk)]; n += 1
-            fin[(npal, rule)] = (o / n, p / n, n)
+                    if lk == kinds[ci][0]: o += seen; p += mb[(ci, lk)]; n += 1; rows.append((seen, mb[(ci, lk)], r['id']))
+            fin[(npal, rule)] = (o / n, p / n, n, *obs_ci(rows))     # the observed rate's interval against this rule
     out = [V('allocation: runs', runs, note='every run, 0-5 pals'),
            V('allocation: total LL, slot rule', tot['slots']), V('allocation: total LL, card rule', tot['cards'])]
     for npal in (2, 0):
@@ -564,16 +584,19 @@ def miss_claims():
             V('two-chain decks: predicted, P(N >= 6)', sum(BIN[6:]))]
     MISC['two-chain'] = (k, n, lo, hi)
     # chains never started: link 1 not reached, by chain cards in the deck
-    rows = collections.defaultdict(lambda: [0, 0.0, 0])
+    rows = collections.defaultdict(lambda: [0, 0.0, 0]); nrows = collections.defaultdict(list)
     for r, kinds, chain, obs in dataset(ALL):
         mb = reach(kinds, BIN)
         for ci, lk, seen in obs:
-            if lk == 1: a = rows[len(kinds)]; a[0] += seen; a[1] += mb[(ci, 1)]; a[2] += 1
+            if lk == 1:
+                a = rows[len(kinds)]; a[0] += seen; a[1] += mb[(ci, 1)]; a[2] += 1
+                nrows[len(kinds)].append((1 - seen, 1 - mb[(ci, 1)], r['id']))
     MISC['never rows'] = dict(rows)
-    for nc in (5, 6):
-        o, p_, n = rows[nc]
-        MISC[('never', nc)] = (n - o, n, 1 - p_ / n)
+    for nc in (5, 6):       # several chain cards per run: the observed rate's interval is run-clustered
+        o, p_, n = rows[nc]; lo, hi = obs_ci(nrows[nc])
+        MISC[('never', nc)] = (n - o, n, 1 - p_ / n, lo, hi)
         out += [V(f'never started, {nc} chain cards: observed', 1 - o / n, note=f'link 1 not reached, {n} card-links'),
+                V(f'never started, {nc} chain cards: observed 95% low', lo), V(f'never started, {nc} chain cards: observed 95% high', hi),
                 V(f'never started, {nc} chain cards: model', 1 - p_ / n)]
     # activation parameter, jointly with N ~ Binomial(CHAIN_N, p), exact over the chain process, every deck
     xs = dataset(ALL)
@@ -645,8 +668,8 @@ def findings(out, res, fl, al, sens):
                 min(ps) >= lo_ and max(ps) <= hi_,
                 ', '.join(f'eps {k}: {v:.3f}' for k, v in sens.items() if k != 'clean runs') + f' (eps 0.0 on the {sens["clean runs"]} runs without a contradiction)'))
     pos = {}
-    for npal, (runs, o, b, p_, n) in fl['final'].items():
-        l_, h_ = common.wilson(o * n, n); pos[npal] = ('inside' if l_ <= b <= h_ else 'above' if b > h_ else 'below', o, b, l_, h_)
+    for npal, (runs, o, b, p_, n, l_, h_) in fl['final'].items():
+        pos[npal] = ('inside' if l_ <= b <= h_ else 'above' if b > h_ else 'below', o, b, l_, h_)
     fs.append(F('Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 5, 4, 3, 1 and 0 pals and above it at 2 pals',
                 {k: v[0] for k, v in pos.items()} == {5: 'inside', 4: 'inside', 3: 'inside', 2: 'above', 1: 'inside', 0: 'inside'},
                 '; '.join(f'{k} pals {c[1]:.3f} [{c[3]:.3f}, {c[4]:.3f}] vs {c[2]:.3f} ({c[0]})' for k, c in sorted(pos.items(), reverse=True))))
@@ -658,7 +681,7 @@ def findings(out, res, fl, al, sens):
                 f'slots {tl["slots"]:.1f}, cards {tl["cards"]:.1f}: {tl["slots"] - tl["cards"]:+.1f} nats'))
 
     def where(npal, rule):
-        o, p_, n = fin[(npal, rule)]; l_, h_ = common.wilson(o * n, n)
+        o, p_, n, l_, h_ = fin[(npal, rule)]
         return ('inside' if l_ <= p_ <= h_ else 'above' if p_ > h_ else 'below'), p_, f'{npal} pals obs {o:.3f} [{l_:.3f}, {h_:.3f}], {rule} {p_:.3f}'
     w = {(k, r): where(k, r) for k in (0, 2) for r in ('slots', 'cards')}
     fs.append(F('Final links in crowded decks: at 0 pals the slot rule lies inside the observed interval and the card rule outside; at 2 pals '
@@ -671,7 +694,7 @@ def findings(out, res, fl, al, sens):
     zs = {k: g[f'early-link shortfall, {k} pals: z'] for k in (4, 3, 2, 1, 0)}
     fs.append(F('Known miss: early links run short of the model (z > 2) at exactly 3, 2, 1 and 0 pals', {k for k, v in zs.items() if v > 2} == {3, 2, 1, 0},
                 ', '.join(f'{k} pals z {v:.1f}' for k, v in zs.items())))
-    nv = [(nc, *MISC[('never', nc)]) for nc in (5, 6)]; nv = [(nc, k / n, *common.wilson(k, n), m) for nc, k, n, m in nv]
+    nv = [(nc, *MISC[('never', nc)]) for nc in (5, 6)]; nv = [(nc, k / n, lo, hi, m) for nc, k, n, m, lo, hi in nv]
     fs.append(F('Known miss: more chains never start than predicted with five or six chain cards (model below the observed interval)',
                 all(lo > m for _, _, lo, _, m in nv), ', '.join(f'{nc} cards {o:.2f} [{lo:.2f}, {hi:.2f}] vs {m:.2f}' for nc, o, lo, hi, m in nv)))
     fb = MISC['final_by_card']

@@ -10,11 +10,14 @@ the chance the model gives each target of being acquired is calibrated: observed
 targets reads {{13.p_all_eight_ratio_all|.2f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] of the model, consistent with calibrated but on only {{13.runs_acquiring_every_open_target|.0f}} runs that
 acquired every target.
 
+Terms used below (nats, held out, the bracketed intervals, the game's terms) are defined in *How to read*, after
+this summary.
+
 | Part | How it is set | Main evidence | Section |
 |---|---|---|---|
 | Spark generation, $0.2$ / $0.4 \times 1.1^n$ | assumed | none here: the runs show inherited sparks, not produced ones | 1 |
 | Star mix of sparks | mixes assumed; band per scenario derived | each scenario's band is the one most of its careers reach ({{2.grand_concert_runs|,.0f}} Grand Concert runs, {{2.grand_concert_share_at_17_500_or_more|.0%}} at 17,500+) | 2 |
-| Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}], affinity slope {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}] on {{3.trials_grandparents|,.0f}} + {{3.trials_parents|,.0f}} trials; careers {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}] | 3 |
+| Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}], affinity slope {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}] on {{3.trials_grandparents|,.0f}} + {{3.trials_parents|,.0f}} trials; careers {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.3f}}, {{3.inheritance_ratio_95_pct_high|.3f}}] | 3 |
 | Affinity: +3 per shared G1 win; own grandparent adds no trio points | fitted | shared-win slope {{3.race_part_slope_fitted|.2f}} [{{3.race_part_slope_95_pct_low|.2f}}, {{3.race_part_slope_95_pct_high|.2f}}]; trio rule {{5.ll_0_ll_pair_nats|.0f}} nats over the alternative | 3, 5 |
 | Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them), {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] over {{4.race_attempts_at_the_34|,.0f}} G1 attempts | 4 |
 | Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than {{6.schedules_pb_ceiling_gain_max_pct|.1f}}% (solver's pair ceilings) | 6 |
@@ -52,8 +55,31 @@ the star mixes, Grand Masters (no runs), hint levels, and the priority policy ru
 
 Every quantity carries a label: **fitted** (estimated from the runs; sample and method given), **derived** (follows
 from the other parts, computed) or **assumed** (a chosen rule or an outside figure the runs cannot test; its source is
-named and no evidence is claimed for it). Intervals are 95% unless marked. "Runs" are Independent Training runs from
+named and no evidence is claimed for it). A number written $x$ [$a$, $b$] is an estimate with its 95% interval (90% where marked): the range of values the data
+are consistent with, so a prediction outside it is contradicted by the data at the 5% level. Three methods, by kind:
+
+- a rate with one observation per run (a share of runs): the Wilson score interval;
+- observed / predicted, or a rate, over rows that come several to a run (targets, race attempts, inheritance
+  trials): the ratio estimator with its variance taken from each run's residual against the model (each run's
+  observed total minus its predicted total), which stays valid when one run's rows are correlated;
+- a fitted parameter (a slope, a weight, $n$): the profile-likelihood interval, every value whose fit is within 1.92
+  nats of the best.
+
+"Runs" are Independent Training runs from
 uma-it, pooled; every run record is in the pool.
+
+**Game terms.** *IT*: Independent Training, the career mode modelled. A *career* trains one uma (the *trainee*); it
+ends as a *veteran*, which can later be a *legacy* (a parent or grandparent) of another career. A veteran carries
+*sparks* (factors), each with 1-3 stars: *white* sparks of skills, *pink* sparks of aptitudes, *blue* of stats, *green*
+of the unique skill. At the start of a career the legacies' blue and green sparks fire and their pink sparks raise
+her aptitudes (section 4); at two *inspirations* (Classic and Senior April) each spark can fire again, a white spark
+giving that skill a *hint*, a pink raising that aptitude. A skill is *hinted* when some source gives it a hint level
+(1-5); only hinted skills can be bought. *Affinity* is a compatibility score between trainee and
+legacies (section 5). The *deck* is six support cards; a card hints skills from its *training pool* and through its
+events, and a *chain* card has a 2- or 3-link chain of events. *Pal* (and group) cards have their own events and no
+chain. *Hint frequency* and *specialty priority* are card effects (section 7); a card's *limit break* (0-4) sets its
+effect levels. A *target* is a skill the planner tries to land; a target *lands* when it becomes a spark on the new
+veteran. *G1*: the top race grade; *aptitude grades* S to G for distance and surface set race win chances (section 4).
 
 **Where the numbers come from.** Every number this document states is computed from the runs, the game data or the
 other parts by the scripts in `research/`, and written in when the document is rendered: `./build.sh research` runs
@@ -67,6 +93,11 @@ committed results and recomputes what needs only game data.
 of the probability the model gave to what was actually seen; the higher (closer to 0), the better the model explains
 the data. A difference of $\Delta$ in LL ("$\Delta$ nats") means the better model made the observed data $e^{\Delta}$
 times as likely: 1 nat is a factor of 2.7, 5 nats about 150, 30 nats about $10^{13}$.
+
+A *free* fit estimates each quantity separately from the data, with no formula tying them together (a free
+distribution of $N$ has its own probability for every value; a free win rate is each cell's own share of wins; a free
+divisor is fitted instead of fixed at 100). It is the most flexible model of its kind and serves as a yardstick: a
+formula that explains the data about as well as its free version leaves nothing detectable unexplained.
 
 A model fitted to the data always explains that same data at least as well as a simpler one, because its extra freedom
 also fits chance. So each comparison here is one of three kinds, each with its own rule:
@@ -86,11 +117,18 @@ also fits chance. So each comparison here is one of three kinds, each with its o
 Every test's criterion is a fixed rule of this kind (a threshold, or an interval covering or excluding a prediction),
 written into the script. A miss is reported as a miss.
 
-**Targets.** The model is the same for every skill. Tests that need a fixed set of skills to score (mainly the
-calibration of section 13) use the planner's default targets, eight skill pairs (white / gold): Uma Stan / Superstan,
-Nimble Navigator / No Stopping Me!, Playtime's Over! / See Ya Later!, Ramp Up / It's On!, Tail Held High / Tail Nine,
-Racing Spirit: Stamina, Slipstream / Perfect Spot!, Risky Business / Nothing Ventured (Unity Cup guarantees the No
-Stopping Me! and It's On! golds). Section 12 also checks a sample of every other skill a deck card or spark could give.
+**Targets.** The model is the same for every skill: for any skill it predicts the chance that a career acquires it
+(hinted, so it could be bought) from that career's own deck, lineage and trainee, not from what the player was aiming
+for. So a prediction can be checked on any skill in any run, whatever its owner targeted: "acquired" means hinted, not
+bought, and each prediction uses the run's own deck and lineage, so players choosing decks for their own goals does not
+bias the comparison. Intent enters in one place: the model assumes every target is prioritised, which steers IT's event
+choices, and a player chasing other skills does not prioritise these; section 13 measures that effect (event-only
+hints of non-prioritised targets fall well below the model). The tests that score a fixed set of skills use the
+planner's default targets, because they are what the planner is used for: eight skill pairs (white / gold): Uma Stan /
+Superstan, Nimble Navigator / No Stopping Me!, Playtime's Over! / See Ya Later!, Ramp Up / It's On!, Tail Held High /
+Tail Nine, Racing Spirit: Stamina, Slipstream / Perfect Spot!, Risky Business / Nothing Ventured (Unity Cup guarantees
+the No Stopping Me! and It's On! golds). Section 13 also checks a sample of every other skill a deck card or spark
+could give.
 
 ## 0. What is computed
 
@@ -186,17 +224,17 @@ self-grandparent is section 5's):
 
 | Affinity | Trials | Observed / predicted |
 |---|---|---|
-| 0-49 | {{3.affinity_0_49_trials|,.0f}} | {{3.affinity_0_49_obs_per_pred|.3f}} [{{3.affinity_0_49_95_pct_low|.2f}}, {{3.affinity_0_49_95_pct_high|.2f}}] |
-| 50-99 | {{3.affinity_50_99_trials|,.0f}} | {{3.affinity_50_99_obs_per_pred|.3f}} [{{3.affinity_50_99_95_pct_low|.2f}}, {{3.affinity_50_99_95_pct_high|.2f}}] |
-| 100-149 | {{3.affinity_100_149_trials|,.0f}} | {{3.affinity_100_149_obs_per_pred|.3f}} [{{3.affinity_100_149_95_pct_low|.2f}}, {{3.affinity_100_149_95_pct_high|.2f}}] |
-| 150-199 | {{3.affinity_150_199_trials|,.0f}} | {{3.affinity_150_199_obs_per_pred|.3f}} [{{3.affinity_150_199_95_pct_low|.2f}}, {{3.affinity_150_199_95_pct_high|.2f}}] |
-| 200+ | {{3.affinity_200_trials|,.0f}} | {{3.affinity_200_obs_per_pred|.3f}} [{{3.affinity_200_95_pct_low|.2f}}, {{3.affinity_200_95_pct_high|.2f}}] |
+| 0-49 | {{3.affinity_0_49_trials|,.0f}} | {{3.affinity_0_49_obs_per_pred|.3f}} [{{3.affinity_0_49_95_pct_low|.3f}}, {{3.affinity_0_49_95_pct_high|.3f}}] |
+| 50-99 | {{3.affinity_50_99_trials|,.0f}} | {{3.affinity_50_99_obs_per_pred|.3f}} [{{3.affinity_50_99_95_pct_low|.3f}}, {{3.affinity_50_99_95_pct_high|.3f}}] |
+| 100-149 | {{3.affinity_100_149_trials|,.0f}} | {{3.affinity_100_149_obs_per_pred|.3f}} [{{3.affinity_100_149_95_pct_low|.3f}}, {{3.affinity_100_149_95_pct_high|.3f}}] |
+| 150-199 | {{3.affinity_150_199_trials|,.0f}} | {{3.affinity_150_199_obs_per_pred|.3f}} [{{3.affinity_150_199_95_pct_low|.3f}}, {{3.affinity_150_199_95_pct_high|.3f}}] |
+| 200+ | {{3.affinity_200_trials|,.0f}} | {{3.affinity_200_obs_per_pred|.3f}} [{{3.affinity_200_95_pct_low|.3f}}, {{3.affinity_200_95_pct_high|.3f}}] |
 
 **Test on whole careers** (section 13): observed / predicted inspiration on {{3.runs_tested|,.0f}} real careers,
 
-- all {{3.run_target_rows|,.0f}} run-target rows: {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}];
+- all {{3.run_target_rows|,.0f}} run-target rows: {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.3f}}, {{3.inheritance_ratio_95_pct_high|.3f}}];
 - by the number of carriers, 1 to 6: {{3.by_carriers_1_6_lowest_ratio|.3f}}-{{3.by_carriers_1_6_highest_ratio|.3f}}, every interval covering 1;
-- per roll: spark-years {{3.per_roll_spark_years_obs_per_exp|.3f}} ({{3.per_roll_spark_years_sds_below_expectation|.2f}} standard deviations below the model's expectation, at the edge of its
+- per roll: spark-years {{3.per_roll_spark_years_obs_per_exp|.3f}} ({{3.per_roll_spark_years_sds_below_expectation|.2f}} standard deviations below the model's expectation, run-clustered; inside its
   95% band), ancestor hits ($2\sum_l r_l$) {{3.per_roll_ancestor_hits_obs_per_exp|.3f}};
 - {{3.non_target_skills_inheritance_rows|,.0f}} rows of non-target skills: {{3.non_target_skills_inheritance|.3f}} [{{3.non_target_skills_inheritance_95_pct_low|.2f}}, {{3.non_target_skills_inheritance_95_pct_high|.2f}}].
 
@@ -278,11 +316,13 @@ previous race's result does not move the next chance beyond the table (observed 
 
 From the 4th race on both read above 1: that is the goal-race excess below.
 
-The table is not exact: a free win rate per (chance, streak position) cell ({{4.race_pink_cells_bp_x_j|.0f}} cells) beats it by
-{{4.race_ll_pink_cells_bp_x_j_recalibrated_pink_table_nats|.0f}} nats, more than chance allows for its {{4.race_ll_pink_cells_bp_x_j_extra_parameters|.0f}} extra parameters ({{4.race_ll_threshold_pink_cells_bp_x_j|.0f}} nats, the likelihood-ratio
-bound). The excess sits in goal races from the fourth race in a row, which win more
+Giving every (chance, streak position) cell its own win rate, read straight from its attempts ({{4.race_pink_cells_bp_x_j|.0f}} cells), explains
+the attempts {{4.race_ll_pink_cells_bp_x_j_recalibrated_pink_table_nats|.0f}} nats better than the table's one formula in-sample, beyond the {{4.race_ll_threshold_pink_cells_bp_x_j|.0f}} nats chance allows for its
+{{4.race_ll_pink_cells_bp_x_j_extra_parameters|.0f}} extra parameters if attempts were independent. They are not (one trainee's stats carry through her races),
+and held out the per-cell rates do not predict unseen runs better than the table ({{4.held_out_cells_vs_table_nats|.0f}} ± {{4.held_out_cells_vs_table_se|.0f}} nats,
+$z$ = {{4.held_out_cells_vs_table_z|.2f}}). So the table stands; two departures are clear in their own intervals. Goal races from the fourth race in a row win more
 than the penalty allows ({{4.race_pink_goal_j_ge_4_obs_per_pred|.2f}} [{{4.race_pink_goal_j_ge_4_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_goal_j_ge_4_obs_per_pred_95_pct_high|.2f}}], {{4.race_pink_goal_j_ge_4_attempts|,.0f}} attempts), while chosen races there match
-({{4.race_pink_chosen_j_ge_4_obs_per_pred|.2f}} [{{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_high|.2f}}]); and low chances win a little less than predicted. The test is conditional on IT
+({{4.race_pink_chosen_j_ge_4_obs_per_pred|.2f}} [{{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_high|.2f}}]); and chances of 70 or less win a little less than predicted ({{4.race_pink_bp_lt_70_obs_per_pred|.3f}} [{{4.race_pink_bp_lt_70_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_lt_70_obs_per_pred_95_pct_high|.3f}}]). The test is conditional on IT
 having chosen each non-goal race; stats are not modelled.
 
 ## 5. Affinity
@@ -420,7 +460,7 @@ that rises with specialty: observed / predicted {{7.specialty_band_0_before|.3f}
 30-59 ({{7.specialty_band_30_59_rows|,.0f}}), {{7.specialty_band_60_before|.3f}} at 60+ ({{7.specialty_band_60_rows|,.0f}}). The term gains {{7.specialty_gain_per_scenario_nats|.1f}} nats in-sample for 4 parameters (one $d$ for every scenario: {{7.specialty_gain_one_d_nats|.1f}}
 nats, $d = {{7.specialty_d_pooled|.3f}}$; held out it predicts unseen runs better than no term, {{7.held_out_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_specialty_term_vs_none_se|.1f}}, $z$ = {{7.held_out_specialty_term_vs_none_z|.1f}}, and a $d$ per
 scenario better than one, {{7.held_out_per_scenario_d_vs_one_d_nats|.1f}} ± {{7.held_out_per_scenario_d_vs_one_d_se|.1f}}, $z$ = {{7.held_out_per_scenario_d_vs_one_d_z|.1f}}; an exponential form $e^{g_s\,\mathit{sp}/10}$ fits the same, {{7.specialty_gain_exp_form_nats|.1f}} nats). The bands then read {{7.specialty_band_0_after|.3f}} /
-{{7.specialty_band_1_29_after|.3f}} / {{7.specialty_band_30_59_after|.3f}} / {{7.specialty_band_60_after|.3f}}, no (scenario, band) cell with 200+ rows is off by more than $|z| = {{7.specialty_cells_max_z_after|.2f}}$, and Unity Cup cards
+{{7.specialty_band_1_29_after|.3f}} / {{7.specialty_band_30_59_after|.3f}} / {{7.specialty_band_60_after|.3f}}, the {{7.specialty_cells_df|.0f}} (scenario, band) cells with 200+ rows are jointly consistent with the model (run-clustered $\chi^2$ = {{7.specialty_cells_joint_chi2|.1f}}, p-value {{7.specialty_cells_p|.2f}}), and Unity Cup cards
 with $hf = 0$ and specialty 0 go from {{7.unity_hf_0_spec_0_before|.3f}} to {{7.unity_hf_0_spec_0_after|.3f}}. One pooled $d$ stays within {{7.specialty_d_robustness_min|.2f}}-{{7.specialty_d_robustness_max|.2f}} on either half of the runs,
 on SR or SSR cards alone and without any one of the eight most-used cards. Fitted on the earlier half of the runs and scored on
 the later {{7.specialty_held_out_rows|,.0f}} rows, it gains {{7.held_out_later_runs_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_later_runs_specialty_term_vs_none_se|.1f}}, $z$ = {{7.held_out_later_runs_specialty_term_vs_none_z|.1f}}: it also predicts later runs. Against real careers
@@ -549,8 +589,9 @@ the card rule $(\tfrac12)^3 = 12.5\%$.)
 | $z$ | {{8.early_link_shortfall_4_pals_z|.1f}} | {{8.early_link_shortfall_3_pals_z|.1f}} | {{8.early_link_shortfall_2_pals_z|.1f}} | {{8.early_link_shortfall_1_pals_z|.1f}} | {{8.early_link_shortfall_0_pals_z|.1f}} |
 
 Final links fit when pooled ({{8.final_links_by_card_pooled_observed|.3f}} observed against {{8.final_links_by_card_pooled_model|.3f}}) but individual cards differ
-from the model far beyond chance: over the {{8.final_links_by_card_cards|.0f}} cards with 60 or more final-link observations the squared
-standardised differences sum to {{8.final_links_by_card_chi2|.0f}} (expected about {{8.final_links_by_card_cards|.0f}}). The cause is not known.
+from the model far beyond chance: over the {{8.final_links_by_card_cards|.0f}} cards with 60 or more final-link observations, a joint test
+that every card matches the model (clustered by run, since one run's chain cards share its $N$) gives $\chi^2$ =
+{{8.final_links_by_card_chi2|.0f}} on {{8.final_links_by_card_cards|.0f}} degrees of freedom, where chance alone gives about {{8.final_links_by_card_cards|.0f}}. The cause is not known.
 
 More chains never start in crowded decks than predicted: {{8.never_started_5_chain_cards_observed|.2f}} against {{8.never_started_5_chain_cards_model|.2f}} with five chain cards, {{8.never_started_6_chain_cards_observed|.2f}} against {{8.never_started_6_chain_cards_model|.2f}} with
 six. A per-card activation parameter (a chain card active with probability $a$), fitted jointly with $N$, gains
@@ -628,7 +669,8 @@ the number of random events on offer, $K$:
 
 $$P(\text{fires}) = {{10.fitted_p_at_k_4|.2f}}\,(1 - {{10.fitted_form_1_ratio_per_event|.3f}})^{K - 4},$$
 
-a slope that is detectable (likelihood ratio, below) but does not predict unseen runs better than the constant rate.
+a slope that is detectable (run-clustered Wald test, $|z|$ = {{10.slope_in_k_robust_z|u.2f}}) but does not predict unseen runs better than the
+constant rate.
 $K$ counts every shared event of the deck's characters plus the trainee's own: the form gives {{10.fitted_p_at_k_4|.2f}} at $K = 4$ and
 {{10.fitted_p_at_k_14|.2f}} at $K = 14$. Readings: top-choice marker skills credited to the character's event; {{10.readings|,.0f}}
 readings from {{10.runs|,.0f}} runs, {{10.clean_hits|.0f}} clean hits ({{10.ambiguous_credits|.0f}} ambiguous two-card credits counted as
@@ -647,16 +689,17 @@ below). The rate is therefore a lower bound.
 
 Held out (five groups of runs, each scored by the form fitted on the other four), no form predicts unseen runs better
 than the constant rate, and strict competition predicts them worse. Within the slot form, chain links take no weight
-(weight 1 is rejected by likelihood ratio) and pals compete: a pal weighs $w$ = {{10.every_slot_competing_pal_weight|.2f}} [{{10.every_slot_competing_pal_weight_95_pct_low|.2f}}, {{10.every_slot_competing_pal_weight_95_pct_high|.2f}}] random
-events, with 0 excluded.
+(weight 1 is rejected, run-clustered score test) and pals compete: a pal weighs $w$ = {{10.every_slot_competing_pal_weight|.2f}} [{{10.every_slot_competing_pal_weight_robust_95_pct_low|.2f}}, {{10.every_slot_competing_pal_weight_robust_95_pct_high|.2f}}] random
+events (run-clustered interval), with 0 excluded.
 
 Observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14: {{10.hit_rate_k_4|.2f}} / {{10.hit_rate_k_6|.2f}} / {{10.hit_rate_k_8|.2f}} / {{10.hit_rate_k_10|.2f}} / {{10.hit_rate_k_12|.2f}} / {{10.hit_rate_k_14|.2f}}; within a run events fire
-independently. A logistic slope in $K$ gives {{10.logistic_rate_at_k_8|.1%}} at 8 on offer and {{10.logistic_rate_at_k_14|.1%}} at 14; friendship, specialty priority and
-scenario show no effect distinguishable from zero, nor does rarity within a character (pooled, SSR markers fire at
-{{10.pooled_ssr_marker_rate|.1%}} against SR {{10.pooled_sr_marker_rate|.1%}}, mostly which characters have SR cards).
+independently. A logistic slope in $K$ gives {{10.logistic_rate_at_k_8|.1%}} at 8 on offer and {{10.logistic_rate_at_k_14|.1%}} at 14; friendship and specialty priority show no effect (run-clustered Wald tests), nor does rarity within a character
+(pooled, SSR markers fire at {{10.pooled_ssr_marker_rate|.1%}} against SR {{10.pooled_sr_marker_rate|.1%}}, mostly which characters have SR cards). Scenario
+is borderline detectable in-sample (p-value {{10.scenario_robust_p|.3f}}) but a rate per scenario does not predict unseen runs better
+($z$ = {{10.held_out_scenario_next_to_k_z|.2f}}).
 
 Bottom-choice skills are rarely credited: in the {{10.runs_showing_a_priority_list|.0f}} runs showing a priority list, {{10.bottom_choice_markers_prioritised_there|.0f}} of {{10.bottom_choice_candidates_there|.0f}} candidates were
-prioritised; without a priority they were credited in {{10.bottom_choice_not_prioritised_credited_rate|.3f}} [{{10.bottom_choice_not_prioritised_95_pct_low|.3f}}, {{10.bottom_choice_not_prioritised_95_pct_high|.3f}}] of runs, against {{10.top_choice_marker_rate|.3f}} for
+prioritised; without a priority they were credited in {{10.bottom_choice_not_prioritised_credited_rate|.3f}} [{{10.bottom_choice_not_prioritised_95_pct_low|.3f}}, {{10.bottom_choice_not_prioritised_95_pct_high|.3f}}] of candidates, against {{10.top_choice_marker_rate|.3f}} for
 top-choice markers ({{10.bottom_choice_prioritised_credited_to_her_event|.0f}} of {{10.bottom_choice_markers_prioritised_there|.0f}} with a priority).
 
 **What leaving them out costs on real careers** (section 13's rows, each run's own deck; this test scores whether the
@@ -721,20 +764,35 @@ $P(\text{all})$ (**derived**).
 
 Computed by `research/s13_calibration.py`.
 
-Each of {{13.runs_used|,.0f}} runs (URA Finale {{13.ura_finale_runs|.0f}}, Unity Cup {{13.unity_cup_runs|.0f}}, Grand Concert {{13.grand_concert_runs|,.0f}}, Trackblazer
-{{13.trackblazer_runs|.0f}}) was rebuilt as a career: trainee in her outfit, scenario, the six cards at their own limit breaks (hint frequency
-and increment at that limit break), both parents with their recorded parents and every ancestor's white sparks, and
-race wins giving the recorded shared-G1 counts. Targets: the default eight; {{13.run_target_rows|,.0f}} run-target rows, of which {{13.rows_on_her_outfit|,.0f}} on
-the trainee's outfit and {{13.scenario_gold_rows|,.0f}} scenario golds sit outside tests 1 and 3. Intervals: Wilson 95% on the observed rate;
-ratio intervals are that interval over the mean prediction. The runs end before skills are bought, so "acquired"
-means hinted and buyable, the model's own meaning.
+**What is compared.** Each of {{13.runs_used|,.0f}} real careers (URA Finale {{13.ura_finale_runs|.0f}}, Unity Cup {{13.unity_cup_runs|,.0f}}, Grand Concert {{13.grand_concert_runs|,.0f}},
+Trackblazer {{13.trackblazer_runs|.0f}}) is rebuilt as the model sees a career: the trainee in her outfit, the scenario, the six cards
+at their own limit breaks, both parents with their recorded parents and every ancestor's white sparks, and race wins
+giving the recorded shared-G1 counts. The solver then gives, for each default target of that career, the chance of
+each step (sections 3-12); the run record says what actually happened. One target in one career is a **row**
+({{13.run_target_rows|,.0f}} rows). A target the trainee's outfit gives ({{13.rows_on_her_outfit|,.0f}} rows) or the scenario guarantees as a gold
+({{13.scenario_gold_rows|,.0f}} rows) is certain, so it is left out of tests 1 and 3 below (it could only count as a success).
 
-| Test | Predicted | Observed when |
-|---|---|---|
-| 1. Deck hint | $d^g + (1 - d^g)d^w$ | a deck card is credited with a hint of the skill; rows with no inspiration of it |
-| 2. Inheritance | $q$ | a factor of the skill fired in Year 2 or 3 |
-| 3. Acquired | from every modelled source | the skill was hinted from any source or owned |
-| 4. Landing | the solver's $p$ | $0.4\cdot 1.1^n$ if a gold was hinted, $0.2\cdot 1.1^n$ if only the white |
+Each test adds up, over a set of rows, the model's chances (**predicted**: the expected number of successes) and the
+successes seen (**observed**), and reports observed / predicted: 1 means calibrated, above 1 the model is pessimistic,
+below 1 optimistic. Intervals are 95%, clustered by run (a run's eight targets share its deck and lineage; *How to
+read*). The runs end before skills are bought, so "acquired" means hinted and buyable, the model's own meaning.
+
+The four tests, each isolating one part of the model:
+
+1. **Deck hint**: does a deck card hint the skill (by training or by its events) as often as sections 7-9 predict
+   ($d^g + (1 - d^g)d^w$, the chance the deck hints the gold or else the white)? Observed: a deck card is credited with
+   a hint of the skill. Only rows where no inspiration hinted the skill are used: the hint rates are fitted on such rows,
+   and with an inspiration a card's hint is seen less often (section 7's spark deficit). Split by where the deck's
+   chance comes from: **training pool only** (only cards' training can hint it), **events only** (only cards' events can), and, for events only, whether
+   the target was on the run's priority list (**prioritised**, for runs that show one).
+2. **Inheritance**: does an inspiration of the skill fire as often as section 3 predicts ($q$)? Observed: a factor of
+   the skill fired at the Classic or Senior inspiration.
+3. **Acquired**: does the skill end up hinted, from any source, as often as all modelled sources together predict?
+   This is what the planner's odds rest on.
+4. **Landing**: the solver's chance that the target lands as a spark ($p$), against the same chance computed from
+   what the run actually acquired ($0.4 \cdot 1.1^n$ if the gold was hinted, $0.2 \cdot 1.1^n$ if only the white): a
+   consistency check of the acquired step through the spark step, not a test of spark generation, which the runs do
+   not show (section 1).
 
 | Test | Rows | Predicted | Observed [95%] | Obs / pred [95%] |
 |---|---|---|---|---|
@@ -746,13 +804,16 @@ means hinted and buyable, the model's own meaning.
 | 2. Inheritance | {{13.2_inheritance_rows|,.0f}} | {{13.2_inheritance_predicted|.3f}} | {{13.2_inheritance_observed|.3f}} [{{13.2_inheritance_observed_95_pct_low|.3f}}, {{13.2_inheritance_observed_95_pct_high|.3f}}] | {{13.2_inheritance_obs_per_pred|.3f}} [{{13.2_inheritance_ratio_95_pct_low|.2f}}, {{13.2_inheritance_ratio_95_pct_high|.2f}}] |
 | 3. Acquired, any source | {{13.3_acquired_any_source_rows|,.0f}} | {{13.3_acquired_any_source_predicted|.3f}} | {{13.3_acquired_any_source_observed|.3f}} [{{13.3_acquired_any_source_observed_95_pct_low|.3f}}, {{13.3_acquired_any_source_observed_95_pct_high|.3f}}] | {{13.3_acquired_any_source_obs_per_pred|.3f}} [{{13.3_acquired_any_source_ratio_95_pct_low|.2f}}, {{13.3_acquired_any_source_ratio_95_pct_high|.2f}}] |
 | 3. Acquired, deck or inspiration only | {{13.3_acquired_deck_or_inspiration_only_rows|,.0f}} | {{13.3_acquired_deck_or_inspiration_only_predicted|.3f}} | {{13.3_acquired_deck_or_inspiration_only_observed|.3f}} | {{13.3_acquired_deck_or_inspiration_only_obs_per_pred|.3f}} [{{13.3_acquired_deck_or_inspiration_only_ratio_95_pct_low|.2f}}, {{13.3_acquired_deck_or_inspiration_only_ratio_95_pct_high|.2f}}] |
-| 3. Acquired, prioritised | {{13.3_acquired_prioritised_rows|,.0f}} | {{13.3_acquired_prioritised_predicted|.3f}} | {{13.3_acquired_prioritised_observed|.3f}} | {{13.3_acquired_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_prioritised_ratio_95_pct_low|.2f}}, {{13.3_acquired_prioritised_ratio_95_pct_high|.2f}}] |
-| 3. Acquired, not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_predicted|.3f}} | {{13.3_acquired_not_prioritised_observed|.3f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.2f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.2f}}] |
+| 3. Acquired, prioritised | {{13.3_acquired_prioritised_rows|,.0f}} | {{13.3_acquired_prioritised_predicted|.3f}} | {{13.3_acquired_prioritised_observed|.3f}} | {{13.3_acquired_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_prioritised_ratio_95_pct_high|.3f}}] |
+| 3. Acquired, not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_predicted|.3f}} | {{13.3_acquired_not_prioritised_observed|.3f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}] |
 | 4. Landing (sums of $p$) | {{13.4_landing_rows|,.0f}} | {{13.4_landing_sum_of_p|,.1f}} | {{13.4_landing_sum_observed_equivalent|,.1f}} | {{13.4_landing_ratio|.3f}} |
+
+Split by the priority list (runs that show one), prioritised targets are acquired slightly more often than predicted
+and non-prioritised ones less; the pooled test averages the two.
 
 The prioritised / not prioritised rows use the runs that show a priority list.
 
-**Verdict.** The composed acquisition odds are calibrated ({{13.3_acquired_any_source_obs_per_pred|.3f}}). Inheritance is right (one target of eight, Tail Held High, reads {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.2f}}, {{13.tail_held_high_inheritance_95_pct_high|.2f}}]). Deck hints read optimistic ({{13.1_deck_hint_no_inspiration_obs_per_pred|.3f}} of the model), almost all from the
+**Verdict.** The composed acquisition odds are calibrated ({{13.3_acquired_any_source_obs_per_pred|.3f}}). Inheritance is calibrated; of the eight targets, only Tail Held High's interval excludes 1 (it reads {{13.tail_held_high_inheritance|.3f}} [{{13.tail_held_high_inheritance_95_pct_low|.2f}}, {{13.tail_held_high_inheritance_95_pct_high|.2f}}]). Deck hints read optimistic ({{13.1_deck_hint_no_inspiration_obs_per_pred|.3f}} of the model), almost all from the
 priority assumption: event hints land at {{13.1_events_only_prioritised_obs_per_pred|.2f}} × predicted for prioritised targets and {{13.1_events_only_not_prioritised_obs_per_pred|.2f}} for others. Unmodelled scenario and
 trainee events supply the few points the deck loses ({{13.acquisitions_from_unmodelled_events|.0f}} target acquisitions in {{13.3_acquired_any_source_rows|,.0f}} rows, {{13.acquisitions_from_unmodelled_events_share_of_rows|.1%}}).
 
@@ -779,7 +840,8 @@ Gold acquisition (obs / pred): Nothing Ventured {{13.gold_acquisition_nothing_ve
 On! outside Unity Cup {{13.gold_acquisition_it_s_on|.3f}} [{{13.gold_acquisition_it_s_on_95_pct_low|.2f}}, {{13.gold_acquisition_it_s_on_95_pct_high|.2f}}] ({{13.gold_acquisition_it_s_on_rows|.0f}}), No Stopping Me! outside Unity Cup {{13.gold_acquisition_no_stopping_me|.3f}} ({{13.gold_acquisition_no_stopping_me_rows|.0f}}), See Ya Later! {{13.gold_acquisition_see_ya_later|.3f}}
 ({{13.gold_acquisition_see_ya_later_rows|,.0f}}).
 
-Reliability, deck hint and acquired (observed, mean prediction in brackets):
+**Reliability.** Rows grouped by the model's predicted chance; if the model is calibrated, each group's observed
+rate matches its mean prediction. Deck hint and acquired (observed, mean prediction in brackets):
 
 | Predicted | Deck hint: rows, observed | Acquired: rows, observed |
 |---|---|---|
@@ -795,15 +857,17 @@ The deck's over-prediction sits in its top buckets, the event rewards: those pre
 shortfall, and {{13.their_rows_with_an_event_source|.0%}} of their rows have an event source. The 0.20-0.40 bucket, almost all training-pool rows, is within
 its interval ({{13.reliability_deck_hint_0_20_0_40_observed_sentence|.3f}} [{{13.reliability_deck_hint_0_20_0_40_observed_95_pct_low|.3f}}, {{13.reliability_deck_hint_0_20_0_40_observed_95_pct_high|.3f}}] against {{13.reliability_deck_hint_0_20_0_40_mean_predicted_three_places|.3f}}).
 
-**Per run** ({{13.per_run_open_targets|.2f}} open targets each): targets acquired, expected {{13.per_run_acquired_expected|.3f}}, observed {{13.per_run_acquired_observed|.3f}}; all open targets acquired,
+**Per run.** A run's open targets are the ones not certain (not on her outfit, not a scenario gold), {{13.per_run_open_targets|.2f}} per run
+on average: targets acquired, expected {{13.per_run_acquired_expected|.3f}}, observed {{13.per_run_acquired_observed|.3f}}; all open targets acquired,
 product of the model's odds {{13.per_run_all_open_acquired_product_of_odds|.3f}}, observed {{13.per_run_all_open_acquired_observed|.3f}} [{{13.per_run_all_open_acquired_95_pct_low|.3f}}, {{13.per_run_all_open_acquired_95_pct_high|.3f}}]. Landing $P(\text{all eight})$ recomputed from what
-each run acquired against the solver's exact $P(\text{all})$: {{13.p_all_eight_ratio_all|.3f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] (bootstrap over runs; Unity Cup {{13.p_all_eight_ratio_unity_cup|.3f}}
+each run acquired against the solver's exact $P(\text{all})$: {{13.p_all_eight_ratio_all|.3f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] (bootstrap over runs, resampling whole runs; Unity Cup {{13.p_all_eight_ratio_unity_cup|.3f}}
 [{{13.p_all_eight_ratio_unity_cup_95_pct_low|.2f}}, {{13.p_all_eight_ratio_unity_cup_95_pct_high|.2f}}], Grand Concert {{13.p_all_eight_ratio_grand_concert|.2f}} [{{13.p_all_eight_ratio_grand_concert_95_pct_low|.2f}}, {{13.p_all_eight_ratio_grand_concert_95_pct_high|.2f}}], URA Finale {{13.p_all_eight_ratio_ura_finale|.2f}} [{{13.p_all_eight_ratio_ura_finale_95_pct_low|.2f}}, {{13.p_all_eight_ratio_ura_finale_95_pct_high|.2f}}]; Trackblazer's model value is {{13.trackblazer_s_model_p_all|.0f}}). Consistent
 with calibrated, though the interval allows up to about {{13.p_all_eight_optimism_the_interval_allows_1_per_95_pct_low|.1f}}× optimism (1/{{13.p_all_eight_ratio_all_95_pct_low|.2f}}). Only {{13.runs_acquiring_every_open_target|.0f}} runs acquired every open
 target, too few to separate the exact joint from the product.
 
-Single-source cards furthest from the model (every pair of 40 or more rows whose interval excludes 1, and Gold
-Ship's):
+**Single-source cards.** A (card, target) pair where that card is the deck's only source of the target, so the deck test
+scores that card alone. The pairs furthest from the model (every pair of 40 or more rows whose interval excludes 1,
+and Gold Ship's):
 
 | Card > target | Pred | Obs | Ratio | Rows | Likely reason |
 |---|---|---|---|---|---|

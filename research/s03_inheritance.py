@@ -8,10 +8,11 @@ b(s) = 3 / 6 / 9% by stars, A the ancestor's affinity (section 5, from master.md
 shared G1 wins). Ordinary ancestors only (no self-grandparent or grandparent equal to the parent).
 Tests: the grandparent weight (r scaled by kappa_G: full base kappa_G = 1 against halved 0.5), the affinity slope
 (r = b (1 + s A / 100), s free; the model has s = 1), and the base by stars (observed / predicted per star count and per
-affinity band). A sum's interval is observed / predicted with the sum's own sd, sqrt(sum p (1 - p)).
+affinity band). A sum's interval is observed / predicted by the run-clustered ratio estimator (common.cluster_ci: a
+run's trials share its lineage, so the variance comes from each run's residual against the model); the bands' joint
+test is the run-clustered Wald chi2 (common.cluster_chi2), since one run's trials fall in several bands.
 """
 import math
-from scipy.stats import chi2 as _chi2
 import common
 from common import Value
 import s05_affinity
@@ -22,12 +23,9 @@ STARS = {0.03: 1, 0.06: 2, 0.09: 3}
 BANDS = [(0, 50), (50, 100), (100, 150), (150, 200), (200, 10 ** 6)]
 
 
-def chi2_sf(x, k): return _chi2.sf(x, k)
-
-
 def ll(ts, kp=1.0, kg=1.0, s=1.0):
     t = 0.0
-    for cat, a, b, f in ts:
+    for cat, a, b, f, _ in ts:
         p = min(1.0, (kg if cat == 'G' else kp) * b * (1 + s * a / 100))
         p = min(max(p, 1e-12), 1 - 1e-12)
         t += math.log(p if f else 1 - p)
@@ -42,18 +40,22 @@ def profile(f, grid):
     return grid[i], L[i], (min(ok), max(ok))
 
 
+def pred(a, b): return min(1.0, b * (1 + a / 100))
+
+
 def ratio(ts):
-    """(trials, observed, predicted, obs / pred, low, high) under the model"""
-    ps = [(min(1.0, b * (1 + a / 100)), f) for _, a, b, f in ts]
-    o = sum(f for _, f in ps); e = sum(p for p, _ in ps); sd = math.sqrt(sum(p * (1 - p) for p, _ in ps))
-    return len(ps), o, e, common.div(o, e), common.div(o - 1.96 * sd, e), common.div(o + 1.96 * sd, e)
+    """(trials, observed, predicted, obs / pred, low, high) under the model; the interval is run-clustered
+    (common.cluster_ci)"""
+    o = sum(f for _, _, _, f, _ in ts); e = sum(pred(a, b) for _, a, b, _, _ in ts)
+    _, lo, hi, _ = common.cluster_ci([f for *_, f, _ in ts], [pred(a, b) for _, a, b, _, _ in ts], [run for *_, run in ts])
+    return len(ts), o, e, common.div(o, e), lo, hi
 
 
 def claims():
     R = common.runs()
     if R is None: return []
     full = [t for t in s05_affinity.trials(R, race=True) if t[0] in ('P', 'G')]
-    ts = [(c, a0, b, f) for c, a0, _, b, f, _ in full]
+    ts = [(c, a0, b, f, run) for c, a0, _, b, f, run, _ in full]
     out = []
     P = [t for t in ts if t[0] == 'P']; G = [t for t in ts if t[0] == 'G']
     for lab, sub in (('parents', P), ('grandparents', G)):
@@ -61,7 +63,7 @@ def claims():
         out += [Value(SEC, f'trials, {lab}', n), Value(SEC, f'{lab}: passes observed', o),
                 Value(SEC, f'{lab}: predicted, full base', e), Value(SEC, f'{lab}: obs / pred', r),
                 Value(SEC, f'{lab}: obs / pred 95% low', lo), Value(SEC, f'{lab}: obs / pred 95% high', hi)]
-    eh = sum(min(1.0, 0.5 * b * (1 + a / 100)) for _, a, b, _ in G)
+    eh = sum(min(1.0, 0.5 * b * (1 + a / 100)) for _, a, b, _, _ in G)
     d_half = ll(ts) - ll(ts, kg=0.5)
     grid = [i / 100 for i in range(20, 201)]
     kg, _, (kg_lo, kg_hi) = profile(lambda k: ll(ts, kg=k), grid)
@@ -83,7 +85,7 @@ def claims():
     # the two parts of A apart: relation points (rel) and 3 x shared G1 wins (race), each with its own slope
     def ll2(sr, sc):
         t = 0.0
-        for c, a, b, f, rc in ((c, a0, b, f, rc) for c, a0, _, b, f, rc in full):
+        for c, a, b, f, rc in ((c, a0, b, f, rc) for c, a0, _, b, f, _, rc in full):
             p = min(max(min(1.0, b * (1 + (sr * (a - rc) + sc * rc) / 100)), 1e-12), 1 - 1e-12)
             t += math.log(p if f else 1 - p)
         return t
@@ -92,7 +94,7 @@ def claims():
     out += [Value(SEC, 'race part slope fitted', sc_hat), Value(SEC, 'race part slope 95% low', sc_lo),
             Value(SEC, 'race part slope 95% high', sc_hi), Value(SEC, 'relation part slope fitted', sr_hat),
             Value(SEC, 'relation part slope 95% low', sr_lo), Value(SEC, 'relation part slope 95% high', sr_hi),
-            Value(SEC, 'trials with shared wins', sum(1 for t in full if t[5] > 0))]
+            Value(SEC, 'trials with shared wins', sum(1 for t in full if t[6] > 0))]
     out.append(common.finding(SEC, 'Each part of A carries its assumed weight: with the other part fixed, the slope of the '
                               'relation points and of 3 x shared G1 wins each has a 95% interval covering 1',
                               sr_lo <= 1 <= sr_hi and sc_lo <= 1 <= sc_hi,
@@ -105,19 +107,20 @@ def claims():
         if n and not lo <= 1 <= hi: miss.append(f'{st} star {r:.3f} [{lo:.2f}, {hi:.2f}]')
     out.append(common.finding(SEC, 'The base by stars (3 / 6 / 9%) holds for each star count: every interval covers 1',
                               not miss, '; '.join(miss) or 'all cover 1'))
-    miss = []; chi2 = 0.0
-    for a, b in BANDS:
+    miss = []; resid = []
+    for j, (a, b) in enumerate(BANDS):
         sub = [t for t in ts if a <= t[1] < b]
         n, o, e, r, lo, hi = ratio(sub)
-        chi2 += (o - e) ** 2 / sum(min(1.0, bb * (1 + aa / 100)) * (1 - min(1.0, bb * (1 + aa / 100))) for _, aa, bb, _ in sub)
+        resid += [((j, f - pred(aa, bb)), run) for _, aa, bb, f, run in sub]
         lab = f'{a}+' if b > 10 ** 5 else f'{a}-{b - 1}'
         out += [Value(SEC, f'affinity {lab} trials', n), Value(SEC, f'affinity {lab} obs / pred', r),
                 Value(SEC, f'affinity {lab} 95% low', lo), Value(SEC, f'affinity {lab} 95% high', hi)]
         if n >= 200 and not lo <= 1 <= hi: miss.append(f'{lab} {r:.3f} [{lo:.2f}, {hi:.2f}]')
-    out += [Value(SEC, 'affinity bands chi2', chi2), Value(SEC, 'affinity bands chi2 p', float(chi2_sf(chi2, len(BANDS))))]
+    chi2, k, chi2_p = common.cluster_chi2([x for x, _ in resid], [run for _, run in resid])
+    out += [Value(SEC, 'affinity bands chi2', chi2), Value(SEC, 'affinity bands chi2 p', chi2_p)]
     out.append(common.finding(SEC, 'By affinity band the model holds jointly: chi2 over the five bands (5 degrees of freedom, '
-                              'no parameter fitted) has p above 0.05', chi2_sf(chi2, len(BANDS)) > 0.05,
-                              f'chi2 {chi2:.1f}, p {chi2_sf(chi2, len(BANDS)):.3f}; outside their own 95% interval: '
+                              'no parameter fitted) has p above 0.05', chi2_p > 0.05,
+                              f'chi2 {chi2:.1f} on {k} bands, p {chi2_p:.3f}; outside their own 95% interval: '
                               + ('; '.join(miss) or 'none')))
     out.append(common.finding(SEC, 'The bands outside their own 95% interval (as the text names them) are 150-199 and 200+',
                               [m.split(' ')[0] for m in miss] == ['150-199', '200+'], '; '.join(miss) or 'none'))

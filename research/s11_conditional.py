@@ -14,11 +14,14 @@ conditional ones; they are separated here by game data (s10_random_events.event_
               outfit's events, her shared random event, nor the run's scenario's events can hint it, so an "Events"
               credit there can only be a conditional event; rows where her shared random event can also hint it are
               kept apart (her events together, not separable)
-  rate        per (trainee, target), and pooled over the conditional-only rows: "Events" credits / rows, Wilson 95%
+  rate        per (trainee, target), and pooled over the conditional-only rows: "Events" credits / rows, 95% interval
+              run-clustered (common.cluster_ci: a run gives several rows when her events touch several targets; with one
+              row per run, as within a (trainee, target) and on the current runs' pooled rows, it is the Wilson interval)
   crediting   each row at its (trainee, target) rate, as in section 10 (m multiplied by (1 - r), section 12):
               relative change of each run's product of per-target odds, and acquisition observed against predicted
-              without and with crediting (obs / pred, Wilson 95%; Bernoulli log-likelihood over the rows with a
-              positive prediction, tested against the chi2 95% point of one degree of freedom per fitted rate)
+              without and with crediting (obs / pred, run-clustered 95%, s10_random_events.calib_test; Bernoulli
+              log-likelihood over the rows with a positive prediction, tested against the chi2 95% point of one degree
+              of freedom per fitted rate)
 """
 import collections
 from scipy.stats import chi2
@@ -109,7 +112,8 @@ def careers():
     rate = {k: sum(x['hit'] for x in xs) / len(xs) for k, xs in groups.items()}
     lab = lambda k: f'{name.get(k[0])}, any outfit, {gn[k[1]][0]}'
     cond = [x for x in sel if not x['mixed']]; mixed = [x for x in sel if x['mixed']]
-    kc = sum(x['hit'] for x in cond); lo, hi = common.wilson(kc, len(cond))
+    kc = sum(x['hit'] for x in cond)
+    _, lo, hi, _ = common.cluster_ci([int(x['hit']) for x in cond], [1] * len(cond), [x['row']['run'] for x in cond])
     out = [Value(S, 'careers: conditional-only rows', len(cond)), Value(S, 'careers: conditional-only, from her events', kc),
            Value(S, 'careers: conditional-only rate', common.div(kc, len(cond))),
            Value(S, 'careers: conditional-only rate 95% low', lo), Value(S, 'careers: conditional-only rate 95% high', hi),
@@ -118,7 +122,8 @@ def careers():
            Value(S, 'careers: rows left out, another event can hint it', skipped['story, date, outfit or scenario event can hint it']),
            Value(S, 'careers: rows left out, outfit or scenario gold', skipped['outfit or scenario gold'])]
     for k in sorted(groups, key=lab):
-        xs = groups[k]; h = sum(x['hit'] for x in xs); l_, h_ = common.wilson(h, len(xs))
+        xs = groups[k]; h = sum(x['hit'] for x in xs)
+        _, l_, h_, _ = common.cluster_ci([int(x['hit']) for x in xs], [1] * len(xs), [x['row']['run'] for x in xs])
         out += [Value(S, f'{lab(k)}: rows', len(xs)), Value(S, f'{lab(k)}: from her events', h),
                 Value(S, f'{lab(k)}: rate 95% low', l_), Value(S, f'{lab(k)}: rate 95% high', h_)]
     rr = {id(x['row']): rate[x['key']] for x in sel}

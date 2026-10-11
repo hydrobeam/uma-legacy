@@ -56,6 +56,8 @@ solver (`cd pkg/loopopt && cargo build --release`): about a minute for the defau
 other-skills sample, one process; results are kept in `research/data/out/` and reused while nothing they read changes.
 numpy and scipy come with the `research` dependency group.
 
-**Rules of the analysis.** Pooled counts with Wilson intervals; nothing split or explained by who ran a career; R cards
+**Rules of the analysis.** Pooled counts; intervals and tests treat a run as the unit wherever a run gives several
+rows (`common.cluster_ci`, `common.cluster_chi2`, run-clustered standard errors), Wilson intervals where it gives one;
+nothing split or explained by who ran a career; R cards
 left out of measured results unless a fit says it includes them; every comparison is against the model on the run's
 own deck. A number comes out as the data give it, and the text follows the number, never the reverse.

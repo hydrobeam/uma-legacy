@@ -10,11 +10,13 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   option data.json offers her at that turn index, t = (year - 1) * 24 + (month - 1) * 2 + (half - 1); attempts
   that do not match are counted and listed by detail();
 - j from the run's own race turns (every race the career ran: debut, goals, G2/G3/OP);
-- won = the record's win flag; predicted p from the table; obs / pred with the Wilson 95% interval of the observed rate
-  over the mean prediction, overall, by bp, by j, by scenario, goal or chosen, and by predicted p;
+- won = the record's win flag; predicted p from the table; obs / pred with its run-clustered 95% interval
+  (common.cluster_ci: one run gives several attempts), overall, by bp, by j, by scenario, goal or chosen, and by
+  predicted p;
 - log-likelihoods on the same attempts: the table as stated (minus infinity when a certain prediction misses), a
   constant rate, the table with and without streak penalties each recalibrated as lo + (hi - lo) p (2 parameters),
-  and free fits: a rate per (bp, j) cell and per bp (j capped at 6);
+  and free fits: a rate per (bp, j) cell and per bp (j capped at 6); these are in-sample, attempts treated as
+  independent; the cells against the recalibrated pink table are also compared held out (5-fold by run, held_out_cells);
 - aptitude raised by pink sparks: the planner's rule (docs/MODEL.md: at the start the six legacies' pink stars per
   aptitude raise the base grade by 1/2/3/4 at 1/4/7/10 stars, at most A; each April firing recorded in the run, years
   2 and 3 from turns 30 and 54 on, +1 grade, at most S) gives a pink-adjusted bp. Every calibration is reported on both
@@ -23,7 +25,7 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
 - where the residual sits: goal and chosen races from the 4th in a row; detail() also scores a goal race one streak
   position earlier (j - 1), a lead those cells suggest, on each half of the runs (record order).
 Findings: one per claim of section 4 (base under-predicts; pink-adjusted calibrated overall and per scenario; pink
-beats base; the streak penalty; the table not exact; the excess in goal races from the 4th in a row). The other
+beats base; the streak penalty; the table not exact in-sample, the cells not better held out; the excess in goal races from the 4th in a row). The other
 cells, the certain-outcome counts and the fits behind them are printed by detail().
 
 Conditional on selection: IT chose to run every non-goal attempt, presumably when she was likely to win, and the
@@ -104,7 +106,7 @@ def attempts(R):
                 adj.append(min(8, a + sum(t0 <= t for t0 in fired[g])))
                 early.append(min(8, a + sum(t0 - 6 <= t for t0 in fired[g])))   # the year's proc counted from its first turn
             bpa = max(-20, 110 - COST[adj[0]] - COST[adj[1]])
-            out.append(dict(bp=op['bp'], bpa=bpa, apt=tuple(adj), j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
+            out.append(dict(run=r['id'], bp=op['bp'], bpa=bpa, apt=tuple(adj), j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
                             p0=win_p(op['bp'], 1, pen), pa=win_p(bpa, j, pen), pa0=win_p(bpa, 1, pen),
                             scen=r['scenario'], goal=bool(x['required']), outfit=r['outfit'],
                             fired=any(t0 <= t for g in (gd, gs) for t0 in fired[g]), later=2 * i >= len(R),
@@ -114,11 +116,13 @@ def attempts(R):
 
 # ---------------------------------------------------------------- statistics
 def calib(A, key):
-    """(n, observed rate, mean predicted, obs / pred, low, high): Wilson 95% on the observed rate over the mean"""
+    """(n, observed rate, mean predicted, obs / pred, low, high): the run-clustered 95% interval of obs / pred
+    (common.cluster_ci; one run gives several attempts)"""
     n = len(A)
     if not n: return 0, *(float('nan'),) * 5
-    k = sum(a['won'] for a in A); e = sum(a[key] for a in A) / n; lo, hi = common.wilson(k, n)
-    return n, k / n, e, k / n / e, lo / e, hi / e
+    k = sum(a['won'] for a in A); e = sum(a[key] for a in A) / n
+    r, lo, hi, _ = common.cluster_ci([a['won'] for a in A], [a[key] for a in A], [a['run'] for a in A])
+    return n, k / n, e, r, lo, hi
 
 
 def ll(ps, y):
@@ -159,6 +163,29 @@ def fits(A):
     out['pink cells bp x j'] = saturated(A, lambda a: (a['bpa'], min(a['j'], 6)))
     out['pink cells bp'] = saturated(A, lambda a: a['bpa'])
     return out
+
+
+def held_out_cells(A):
+    """rule 3 for the cells: 5-fold cross-validation by common.fold(run). On four folds, a rate per (pink bp, j) cell,
+    (wins + 1/2) / (attempts + 1) (Jeffreys; a raw 0 or 1 makes the held-out score that of the 1e-12 clip; a cell absent
+    there takes the pink table's chance), and the pink table, each recalibrated as lo + (hi - lo) q on those folds; each
+    run of the fifth scored by both. Returns common.compare_held_out(cells, table) and the run count"""
+    cell = lambda a: (a['bpa'], min(a['j'], 6))
+    y = np.array([a['won'] for a in A]); pa = np.array([a['pa'] for a in A])
+    run = np.array([a['run'] for a in A]); fo = np.array([common.fold(r) for r in run])
+    lc = np.zeros(len(A)); lt = np.zeros(len(A))
+    for k in range(common.K_FOLDS):
+        tr, te = fo != k, fo == k
+        g = collections.defaultdict(lambda: [0, 0])
+        for a in (a for a, t in zip(A, tr) if t): c = g[cell(a)]; c[0] += a['won']; c[1] += 1
+        q = np.array([(g[cell(a)][0] + 0.5) / (g[cell(a)][1] + 1) if cell(a) in g else a['pa'] for a in A])
+        for qq, dst in ((q, lc), (pa, lt)):
+            _, lo, hi = recal(qq[tr], y[tr]); p_ = np.clip(lo + (hi - lo) * qq[te], 1e-12, 1 - 1e-12)   # as recal() fits
+            dst[te] = np.where(y[te] == 1, np.log(p_), np.log(1 - p_))
+    runs_ = sorted(set(run.tolist())); ix = {r: i for i, r in enumerate(runs_)}
+    per_c = np.zeros(len(runs_)); per_t = np.zeros(len(runs_))
+    np.add.at(per_c, [ix[r] for r in run], lc); np.add.at(per_t, [ix[r] for r in run], lt)
+    return common.compare_held_out(per_c, per_t), len(runs_)
 
 
 # ---------------------------------------------------------------- claims
@@ -257,11 +284,16 @@ def claims():
     d = {'pink': L['pink table, recalibrated'] - L['table, recalibrated'],
          'pen': L['pink table, recalibrated'] - L['pink no penalty, recalibrated'],
          'shape': L['pink cells bp x j'] - L['pink table, recalibrated']}
-    out += [Value(SEC, 'race LL recalibrated pink table - recalibrated base table, nats', d['pink']),
-            Value(SEC, 'race LL recalibrated pink table - recalibrated pink no penalty, nats', d['pen']),
+    ins = 'in-sample, attempts treated as independent'
+    out += [Value(SEC, 'race LL recalibrated pink table - recalibrated base table, nats', d['pink'], note=ins),
+            Value(SEC, 'race LL recalibrated pink table - recalibrated pink no penalty, nats', d['pen'], note=ins),
             Value(SEC, 'race pink cells bp x j', ncell), Value(SEC, 'race LL pink cells bp x j: extra parameters', ncell - 2),
-            Value(SEC, 'race LL pink cells bp x j - recalibrated pink table, nats', d['shape']),
-            Value(SEC, 'race LL threshold, pink cells bp x j', thr(ncell - 2))]
+            Value(SEC, 'race LL pink cells bp x j - recalibrated pink table, nats', d['shape'], note=ins),
+            Value(SEC, 'race LL threshold, pink cells bp x j', thr(ncell - 2), note=ins)]
+    (ho_n, ho_se, ho_z), ho_runs = held_out_cells(A)
+    out += [Value(SEC, 'held out: cells vs table: nats', ho_n, note=f'5-fold by run, {ho_runs:,} runs'),
+            Value(SEC, 'held out: cells vs table: SE', ho_se), Value(SEC, 'held out: cells vs table: z', ho_z),
+            Value(SEC, 'held out: cells vs table: runs', ho_runs)]
 
     # ---- findings: one per claim the section makes
     f = lambda *a: out.append(common.finding(SEC, *a))
@@ -273,9 +305,11 @@ def claims():
       f'{thr(1):.2f} nats (same 2 parameters)', d['pink'] > thr(1), f'{d["pink"]:+,.1f} nats')
     f(f'The streak penalty is supported: the recalibrated pink table fits better with PEN than without (same 2 '
       f'parameters) by more than {thr(1):.2f} nats', d['pen'] > thr(1), f'{d["pen"]:+,.1f} nats')
-    f(f'The table is not exact: a free rate per (pink bp, j) cell beats the recalibrated pink table by more than '
+    f(f'In-sample (attempts treated as independent), the table is not exact: a free rate per (pink bp, j) cell beats the recalibrated pink table by more than '
       f'chi2({ncell - 2}) 95% / 2 = {thr(ncell - 2):.2f} nats', d['shape'] > thr(ncell - 2),
       f'{d["shape"]:+,.1f} nats ({ncell} cells)')
+    f('The per-cell rates do not predict unseen runs better than the recalibrated pink table (5-fold held out by run, '
+      'z <= 1.96)', ho_z <= 1.96, f'{ho_n:+.1f} +- {ho_se:.1f} nats, z = {ho_z:.2f} on {ho_runs:,} runs')
     f('The excess sits in goal races from the 4th in a row: their obs/pred 95% interval lies entirely above 1, while '
       'chosen races from the 4th in a row cover 1', gj['goal'][4] > 1 and gj['chosen'][4] <= 1 <= gj['chosen'][5],
       f'goal {cv(gj["goal"])}; chosen {cv(gj["chosen"])}')
@@ -288,9 +322,11 @@ def claims():
     g_tab, g_n = grid(A, common.gjson('data.json')['pen'])
     out += [Value(SEC, 'race grid by aptitude and streak', g_tab), Value(SEC, 'race grid attempts', g_n)]
     # when a mid-run pink takes effect: the records say which year's inspiration fired it; the rule puts it at that year's
-    # April (turns 30, 54). Senior January-March attempts where counting it from the year's first turn would change the grade
+    # April (turns 30, 54). Senior January-March attempts where counting it from the year's first turn would change the grade;
+    # the observed rate's 95% interval is run-clustered (common.cluster_ci with one expected per attempt)
     S_ = [a for a in A if 48 <= a['t'] < 54 and a['pe'] != a['pa']]
-    tw = sum(a['won'] for a in S_); tlo, thi = common.wilson(tw, len(S_)) if S_ else (float('nan'),) * 2
+    tw = sum(a['won'] for a in S_)
+    tlo, thi = common.cluster_ci([a['won'] for a in S_], [1] * len(S_), [a['run'] for a in S_])[1:3] if S_ else (float('nan'),) * 2
     e_apr, e_start = (sum(a[k] for a in S_) / len(S_) if S_ else float('nan') for k in ('pa', 'pe'))
     out += [Value(SEC, 'proc timing: attempts', len(S_)), Value(SEC, 'proc timing: observed', tw / len(S_) if S_ else None),
             Value(SEC, 'proc timing: observed 95% low', tlo), Value(SEC, 'proc timing: observed 95% high', thi),

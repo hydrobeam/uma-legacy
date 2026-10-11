@@ -9,7 +9,8 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   wins for each pair. H0 sets tri(T, P, T) = 0 for a self-grandparent; H1 sets it to pair(T, P); kappa scales between.
 - the log-likelihood difference sums the self-grandparent trials and their parents' trials (both move with tri).
 Also checks the records' relation-point column (base) against pair and tri computed from master.mdb.
-Findings: each hypothesis's predicted pass sum against the observed one (sd from the sum of p (1 - p)), the kappa
+Findings: each hypothesis's predicted pass sum against the observed one (z with a run-clustered sd: a run's trials
+share its lineage, so the variance sums each run's squared residual, observed minus predicted passes), the kappa
 likelihood interval, the same sums for ordinary ancestors (the fit's premise), and the records' +3 per shared win.
 """
 import collections, math
@@ -67,7 +68,7 @@ def six_affinities(T, A, aff, S, h=0, part='all'):
 
 def trials(R, race=False):
     S, ftype = relations()
-    out = []   # (category, a0, a1, base, passed), with race: + (the shared-win part of a0,)
+    out = []   # (category, a0, a1, base, passed, run id), with race: + (the shared-win part of a0,)
     for r in R:
         anc = lineage(r)
         if anc is None: continue
@@ -92,14 +93,14 @@ def trials(R, race=False):
             for n, f in sp[i].items():
                 if ftype.get(f) != 4 or carriers[n] != 1: continue
                 for y in ('2', '3'):
-                    out.append((cat, aff0[i], aff1[i], BASE[f % 10 - 1], f in got[y]) + ((rc[i],) if race else ()))
+                    out.append((cat, aff0[i], aff1[i], BASE[f % 10 - 1], f in got[y], r['id']) + ((rc[i],) if race else ()))
     return out
 
 
 def ll(ts, k):
     """log-likelihood with tri(T, P, T) = k pair(T, P)"""
     s = 0.0
-    for _, a0, a1, b, f in ts:
+    for _, a0, a1, b, f, _ in ts:
         p = min(1.0, b * (1 + (a0 + k * (a1 - a0)) / 100))
         s += math.log(p if f else 1 - p)
     return s
@@ -136,13 +137,13 @@ def claims():
     ts = trials(R)
     gs = [t for t in ts if t[0] == 'G_self']
     sub = [t for t in ts if t[0] in ('G_self', 'P_selfgp')]
-    pred = lambda k: sum(min(1.0, b * (1 + (a0 + k * (a1 - a0)) / 100)) for _, a0, a1, b, _ in gs)
+    pred = lambda k: sum(min(1.0, b * (1 + (a0 + k * (a1 - a0)) / 100)) for _, a0, a1, b, _, _ in gs)
     grid = [i / 1000 for i in range(0, 1001)]
     L = [ll(sub, k) for k in grid]
     i = max(range(len(grid)), key=L.__getitem__)
     up = next((k for k, v in zip(grid[i:], L[i:]) if L[i] - v > CHI95), None)
     out = [Value(SEC, 'trials attributable to one ancestor', len(ts)),
-           Value(SEC, 'self-grandparent passes observed', sum(f for *_, f in gs)),
+           Value(SEC, 'self-grandparent passes observed', sum(f for _, _, _, _, f, _ in gs)),
            Value(SEC, 'predicted, tri(T,P,T) = 0', pred(0)), Value(SEC, 'predicted, tri(T,P,T) = pair(T,P)', pred(1)),
            Value(SEC, 'LL(0) - LL(pair), nats', ll(sub, 0) - ll(sub, 1)), Value(SEC, 'kappa fitted', grid[i]),
            Value(SEC, 'kappa 95% upper limit', up)]
@@ -172,17 +173,19 @@ def claims():
 
 def zsum(ts, cat, h):
     """(observed passes, predicted sum, z) for one ancestor category under H0 (h = 0) or H1 (h = 1); the sum's variance is
-    the sum of p (1 - p) (independent rolls)"""
-    ps = [(min(1.0, b * (1 + (a1 if h else a0) / 100)), f) for c, a0, a1, b, f in ts if c == cat]
-    o = sum(f for _, f in ps); e = sum(p for p, _ in ps); v = sum(p * (1 - p) for p, _ in ps)
-    return o, e, (o - e) / math.sqrt(v)
+    run-clustered (common.cluster_chi2 with one group): C / (C - 1) times the sum over runs of (a run's passes - its
+    predicted passes)^2, since one run's trials share a lineage and need not be independent"""
+    ps = [(min(1.0, b * (1 + (a1 if h else a0) / 100)), f, run) for c, a0, a1, b, f, run in ts if c == cat]
+    o = sum(f for _, f, _ in ps); e = sum(p for p, _, _ in ps)
+    x2, _, _ = common.cluster_chi2([(0, f - p) for p, f, _ in ps], [run for _, _, run in ps])
+    return o, e, math.copysign(math.sqrt(x2), o - e)
 
 
 def detail():
     R = common.runs()
     ts = trials(R)
     agg = collections.defaultdict(lambda: [0, 0, 0.0, 0.0])
-    for cat, a0, a1, b, f in ts:
+    for cat, a0, a1, b, f, _ in ts:
         x = agg[cat]; x[0] += 1; x[1] += f
         x[2] += min(1, b * (1 + a0 / 100)); x[3] += min(1, b * (1 + a1 / 100))
     print(f'{"ancestor":10s} {"trials":>7s} {"passed":>7s} {"pred H0":>8s} {"pred H1":>8s}')

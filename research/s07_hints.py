@@ -19,7 +19,9 @@ Every analysis runs on every record, on three row sets:
   other covariates (a free level per scenario in both fits), the spark deficit (every row), drop-out and priority.
 Every model choice is also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
 on the other four, per-run held-out log-likelihoods compared by common.compare_held_out (z > 1.96 = predicts unseen runs
-better). Every other result is in-sample on the pooled runs.
+better). Every other result is in-sample on the pooled runs. Intervals and z on observed / predicted over rows (the
+spark deficit, priority, the specialty cells) are run-clustered (common.cluster_ci): one run gives many rows; the
+specialty cells are tested jointly by a run-clustered Wald chi2 (common.cluster_chi2), their largest |z| only described.
 """
 import collections, functools, math, re, unicodedata
 import numpy as np
@@ -409,13 +411,22 @@ def claims():
     for nm in ('SR', 'pals per deck'):
         out.extend(compared(f'covariate {nm} vs none', hoc[nm], hoc['none']))
 
-    # spark deficit by the other sources of the same skill (every row of those card-runs)
-    cat = D['cat']
+    # spark deficit by the other sources of the same skill (every row of those card-runs); the observed rate's 95% interval
+    # is the predicted rate times the run-clustered interval of obs / pred (common.cluster_ci: a run gives several rows)
+    cat = D['cat']; rrun = np.array([x['run'] for x in D['obs']])[ci]
+
+    def obs_ci(q_, ratio=False):
+        r_, lo_, hi_, _ = common.cluster_ci(hit[q_], pA[q_], rrun[q_]); e_ = pA[q_].mean()
+        return (r_, lo_, hi_) if ratio else (lo_ * e_, hi_ * e_)
     for c, key in (('none', 'none'), ('inspiration', 'Inspiration'), ('inspiration + card event', 'Inspiration+card event'),
                    ('card event', 'card event'), ('other card training', 'other card')):
         q_ = M & (cat == key)
         add(f'spark {c} rows', q_.sum(), note=note); add(f'spark {c} observed', hit[q_].mean())
         add(f'spark {c} predicted', pA[q_].mean()); add(f'spark {c} ratio', hit[q_].mean() / pA[q_].mean())
+        lo_, hi_ = obs_ci(q_); add(f'spark {c} observed 95% low', lo_); add(f'spark {c} observed 95% high', hi_)
+        if c == 'none':
+            r_, lo_, hi_ = obs_ci(q_, True); add('spark none obs/pred', r_)
+            add('spark none obs/pred 95% low', lo_); add('spark none obs/pred 95% high', hi_)
     # drop-out: card-runs with exactly two pool skills spark-hinted, their other (no-spark) rows
     ins = np.bincount(ci, weights=(~NI).astype(float), minlength=D['N'])[ci]
     jj = np.nonzero(NI & M & (ins == 2))[0]; c_ = ci[jj]
@@ -433,6 +444,7 @@ def claims():
     add('priority runs', len({x['run'] for x in D['obs'] if x['prio'] is not None}))
     add('priority rows', isp.sum()); add('priority observed', hit[isp].mean())
     add('priority predicted', pA[isp].mean(), note=note)
+    lo_, hi_ = obs_ci(isp); add('priority observed 95% low', lo_); add('priority observed 95% high', hi_)
     return derived() + out + findings(out)
 
 
@@ -487,11 +499,16 @@ def findings(out):
                 'or the max-limit-break value)', fl >= stp and fl >= mx, f'floored-linear {fl:.1f}, step {stp:.1f}, max-LB {mx:.1f}'))
     sp = {}
     for c in ('none', 'inspiration', 'card event', 'other card training'):
-        rows, ob, pr = g[f'spark {c} rows'], g[f'spark {c} observed'], g[f'spark {c} predicted']; lo, hi = common.wilson(ob * rows, rows)
+        ob, pr, lo, hi = (g[f'spark {c} {k}'] for k in ('observed', 'predicted', 'observed 95% low', 'observed 95% high'))
         sp[c] = (lo <= pr <= hi, ob, pr, lo, hi)
-    fs.append(F('With no other source of the skill the adopted rate is calibrated, and a card\'s own event or another card\'s training '
-                'leaves it calibrated too (prediction inside the observed interval)', sp['none'][0] and sp['card event'][0] and sp['other card training'][0],
-                '; '.join(f'{c} {v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}' for c, v in sp.items() if c != 'inspiration')))
+    v = sp['none']
+    fs.append(F('With no other source of the skill the adopted rate slightly under-predicts (the run-clustered interval lies entirely '
+                'above the prediction)', v[3] > v[2],
+                f'{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}; obs/pred {g["spark none obs/pred"]:.3f} '
+                f'[{g["spark none obs/pred 95% low"]:.3f}, {g["spark none obs/pred 95% high"]:.3f}]'))
+    fs.append(F('A card\'s own event or another card\'s training leaves the adopted rate calibrated (prediction inside the interval)',
+                sp['card event'][0] and sp['other card training'][0],
+                '; '.join(f'{c} {v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}' for c, v in sp.items() if c in ('card event', 'other card training'))))
     v = sp['inspiration']
     fs.append(F('Known miss (not modelled): a skill also hinted by inspiration is hinted by training less than predicted', v[4] < v[2],
                 f'{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}'))
@@ -506,9 +523,11 @@ def findings(out):
     fs.append(F('A d per scenario predicts unseen runs better than one pooled d (5-fold held out, z > 1.96)',
                 H('per-scenario d vs one d')[2] > 1.96, hs('per-scenario d vs one d') + '; one d against none ' + hs('one d vs none')))
     bf = [(b_, g[f'specialty band {b_} before'], g[f'specialty band {b_} after']) for b_ in ('0', '1-29', '30-59', '60+')]
-    fs.append(F('With it the residual by specialty is flat: every band within 0.98-1.02 and no (scenario, band) cell beyond |z| = 2',
-                all(0.98 <= a_ <= 1.02 for _, _, a_ in bf) and g['specialty cells max |z| after'] < 2,
-                '; '.join(f'{b_} {x:.3f} -> {y:.3f}' for b_, x, y in bf) + f'; max |z| {g["specialty cells max |z| after"]:.2f}'))
+    fs.append(F('With it the residual by specialty is flat: every band within 0.98-1.02',
+                all(0.98 <= a_ <= 1.02 for _, _, a_ in bf), '; '.join(f'{b_} {x:.3f} -> {y:.3f}' for b_, x, y in bf)))
+    x2, dfc, pc = g['specialty cells: joint chi2'], g['specialty cells: df'], g['specialty cells: p']
+    fs.append(F('After the specialty term the (scenario, band) cells with 200+ rows are jointly consistent with the model (run-clustered '
+                'Wald chi2, p > 0.05)', pc > 0.05, f'chi2 {x2:.1f} on {dfc:.0f} cells, p = {pc:.3f}; largest single |z| {g["specialty cells max |z| after"]:.2f} (descriptive)'))
     fs.append(F('The specialty effect is not an artefact of one card, one rarity or one period: one pooled d stays positive and within '
                 'a factor 2 everywhere', 0 < g['specialty d robustness min'] and g['specialty d robustness max'] < 2 * g['specialty d robustness min'],
                 f'd {g["specialty d robustness min"]:.2f}-{g["specialty d robustness max"]:.2f}'))
@@ -526,7 +545,7 @@ def findings(out):
                 'one but is not significant (gain under 1.92 nats)', g['specialty same-card: gain, nats'] < 1.92 and g['specialty same-card: d'] > 0,
                 f"same-card d {g['specialty same-card: d']:.2f} on {g['specialty same-card: cards']:.0f} cards, +{g['specialty same-card: gain, nats']:.1f} nats; "
                 f"across cards d {g['specialty d URA Finale']:.2f} URA Finale, {g['specialty d Unity Cup']:.2f} Unity Cup"))
-    rows, ob, pr = g['priority rows'], g['priority observed'], g['priority predicted']; lo, hi = common.wilson(ob * rows, rows)
+    rows, ob, pr = g['priority rows'], g['priority observed'], g['priority predicted']; lo, hi = g['priority observed 95% low'], g['priority observed 95% high']
     fs.append(F('No evidence that prioritising a skill raises its training hints (the observed rate is not above the prediction)',
                 ob <= pr or lo <= pr, f'{ob:.3f} [{lo:.3f}, {hi:.3f}] vs {pr:.3f} ({rows:.0f} rows); a weak test'))
     return fs
@@ -580,12 +599,18 @@ def specialty(A):
     for a_, b_, nm in bands:
         q = (sp >= a_) & (sp < b_); add(f'specialty band {nm} rows', q.sum())
         add(f'specialty band {nm} before', y[q].sum() / p0[q].sum()); add(f'specialty band {nm} after', y[q].sum() / p1[q].sum())
-    zcell = []
+    zcell = []; cres, crun = [], []
     for k in (1, 2, 3, 4):
         for a_, b_, nm in bands:
             q = (sc == k) & (sp >= a_) & (sp < b_)
-            if q.sum() >= 200: zcell.append((y[q].sum() - p1[q].sum()) / np.sqrt((p1[q] * (1 - p1[q])).sum()))
-    add('specialty cells max |z| after', max(abs(z) for z in zcell), note=f'{len(zcell)} (scenario, band) cells with 200+ rows')
+            if q.sum() >= 200:     # z of obs / pred against 1, its standard error run-clustered (common.cluster_ci)
+                r_, _, hi_, _ = common.cluster_ci(y[q], p1[q], run[q]); zcell.append((r_ - 1) / ((hi_ - r_) / 1.96))
+                cres += [((k, nm), d_) for d_ in y[q] - p1[q]]; crun += list(run[q])
+    add('specialty cells max |z| after', max(abs(z) for z in zcell), note=f'{len(zcell)} (scenario, band) cells with 200+ rows, run-clustered; descriptive')
+    # the cells jointly: one Wald test, the covariance run-clustered (one run's rows fall in several cells)
+    x2c, dfc, pc = common.cluster_chi2(cres, crun)
+    add('specialty cells: joint chi2', x2c, note='run-clustered Wald, (scenario, band) cells with 200+ rows, after the term')
+    add('specialty cells: df', dfc); add('specialty cells: p', pc)
     u = (sc == 2) & (A['hf'][c] == 0) & (sp == 0)
     add('Unity hf-0 spec-0 before', y[u].sum() / p0[u].sum()); add('Unity hf-0 spec-0 after', y[u].sum() / p1[u].sum())
     # robustness of one pooled d: halves of the records, rarity, without each of the eight most-used cards

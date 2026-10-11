@@ -1,8 +1,12 @@
-"""Section 12 (and the inheritance test of section 3, the certainty checks of section 9): the career model against real
+"""Section 13 (and the inheritance test of section 3, the certainty checks of section 9): the career model against real
 careers. Each run record is rebuilt as a career-planner job (trainee in her outfit, scenario, the six cards locked at
 their own limit breaks, both parents with their recorded parents and every ancestor's white and pink sparks, race wins
 laid out so every pair the model reads shares the record's shared-G1 count), run through the native solver, and
-compared with what the run shows, per (run, target) row, pooled, with Wilson 95% intervals.
+compared with what the run shows, per (run, target) row, pooled. Intervals (95%): observed / predicted over rows by the
+run-clustered ratio estimator (common.cluster_ci; a run's targets share its deck and lineage), the observed rate's
+interval that ratio interval times the mean prediction; where every run gives one row, Wilson on the observed rate
+(divided by the mean prediction for the ratio). Joint tests over buckets: the run-clustered Wald chi2
+(common.cluster_chi2).
 
   uv run --group research research/s13_calibration.py [--wide]
 
@@ -18,7 +22,6 @@ Steps (outputs under research/data/out/calib/, reused while the jobs and the sol
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice, shared-G1 counts that do not fit the race list."""
 import collections, hashlib, json, math, os, random, subprocess, sys, time
-import scipy.stats
 import common
 from common import Value, finding, wilson, DEFAULT, UNITY_GOLDS
 
@@ -303,18 +306,33 @@ def rows_of(R, M, res, man):
 
 
 # ---------------------------------------------------------------- tables
+def row_ci(rs, pred, obs):
+    """(n, mean predicted, observed rate, hits, rate low, rate high, obs / pred, ratio low, ratio high) over rows: where
+    a run gives several rows, the run-clustered ratio estimator (common.cluster_ci) and the rate's interval that ratio
+    interval times the mean prediction (nothing predicted: the rate's own run-clustered interval); where every run gives
+    one row, Wilson on the observed rate, divided by the mean prediction for the ratio"""
+    nan = float('nan'); n = len(rs)
+    if n == 0: return 0, nan, nan, 0, nan, nan, nan, nan, nan
+    ps = [pred(r) for r in rs]; os_ = [1 if obs(r) else 0 for r in rs]
+    ep = sum(ps) / n; k = sum(os_)
+    if len({r['run'] for r in rs}) == n:
+        lo, hi = wilson(k, n)
+        return n, ep, k / n, k, lo, hi, common.div(k / n, ep), common.div(lo, ep), common.div(hi, ep)
+    if not ep:   # nothing predicted (no ratio): the observed rate with its run-clustered interval
+        _, lo, hi, _ = common.cluster_ci(os_, [1] * n, [r['run'] for r in rs])
+        return n, ep, k / n, k, lo, hi, nan, nan, nan
+    ratio, rlo, rhi, _ = common.cluster_ci(os_, ps, [r['run'] for r in rs])
+    return n, ep, k / n, k, rlo * ep, rhi * ep, ratio, rlo, rhi
+
+
 class Report:
     def __init__(self, rows): self.rows, self.lines = rows, []
 
     def out(self, *a): self.lines.append(' '.join(str(x) for x in a))
 
     def stat(self, sel, pred, obs):
-        rs = [r for r in self.rows if sel(r)]
-        n = len(rs)
-        if n == 0: return dict(n=0, pred=float('nan'), obs=float('nan'), k=0, lo=float('nan'), hi=float('nan'), ratio=float('nan'), rlo=float('nan'), rhi=float('nan'))
-        ep = sum(pred(r) for r in rs) / n; k = sum(1 for r in rs if obs(r)); lo, hi = wilson(k, n)
-        nan = float('nan')
-        return dict(n=n, pred=ep, obs=k / n, k=k, lo=lo, hi=hi, ratio=(k / n) / ep if ep else nan, rlo=lo / ep if ep else nan, rhi=hi / ep if ep else nan)
+        """the rows sel picks: counts, the observed rate and obs / pred with their 95% intervals (row_ci)"""
+        return dict(zip(('n', 'pred', 'obs', 'k', 'lo', 'hi', 'ratio', 'rlo', 'rhi'), row_ci([r for r in self.rows if sel(r)], pred, obs)))
 
     def table(self, title, sel, pred, obs, key=None, minn=0):
         self.out(f'\n## {title}')
@@ -329,13 +347,14 @@ class Report:
         return res
 
     def reliab(self, title, sel, pred, obs, edges):
+        """per bucket of the prediction: (low edge, high edge, rows, observed, mean predicted, observed 95% low, high),
+        the interval by row_ci"""
         self.out(f'\n## Reliability: {title}')
         res = []
         for a, b in zip(edges, edges[1:]):
-            rs = [r for r in self.rows if sel(r) and a <= pred(r) < b]
-            if not rs: res.append((a, b, 0, float('nan'), float('nan'))); continue
-            n = len(rs); ep = sum(pred(r) for r in rs) / n; k = sum(1 for r in rs if obs(r))
-            res.append((a, b, n, k / n, ep)); self.out(f'[{a:.3g}, {b:.3g}) n {n:6d} pred {ep:.3f} obs {k / n:.3f}')
+            n, ep, ob, _, lo, hi, *_ = row_ci([r for r in self.rows if sel(r) and a <= pred(r) < b], pred, obs)
+            res.append((a, b, n, ob, ep, lo, hi))
+            if n: self.out(f'[{a:.3g}, {b:.3g}) n {n:6d} pred {ep:.3f} obs {ob:.3f} [{lo:.3f}, {hi:.3f}]')
         return res
 
 
@@ -418,30 +437,34 @@ def claims(wide=None):
     out += [Value(S3, 'by carriers 1-6: lowest ratio', min(rat)), Value(S3, 'by carriers 1-6: highest ratio', max(rat))]
     e_h = sum(2 * sum(r['plegs']) for r in rows); o_h = sum(r['o_insp_hits'] for r in rows)
     e_y = sum(2 * (1 - math.prod(1 - x for x in r['plegs'])) for r in rows); o_y = sum(r['o_insp_years'] for r in rows)
-    # the model's own variance of each count: a spark-year fires per roll with y = 1 - prod(1 - r_l), a legacy hits with r_l
-    v_y = sum(2 * y * (1 - y) for y in (1 - math.prod(1 - x for x in r['plegs']) for r in rows)); v_h = sum(2 * x * (1 - x) for r in rows for x in r['plegs'])
-    z_y, z_h = (o_y - e_y) / math.sqrt(v_y or float('nan')), (o_h - e_h) / math.sqrt(v_h or float('nan'))
+    # z of each count, run-clustered (a run's targets share its lineage and years): a spark-year fires per roll with
+    # y = 1 - prod(1 - r_l), a legacy hits with r_l; each row's residual is its count minus that expectation
+    def zc(resid):
+        if not resid: return float('nan')
+        x2, _, _ = common.cluster_chi2([(0, d) for d in resid], [r['run'] for r in rows])
+        return math.copysign(math.sqrt(x2), sum(resid))
+    z_y = zc([r['o_insp_years'] - 2 * (1 - math.prod(1 - x for x in r['plegs'])) for r in rows])
+    z_h = zc([r['o_insp_hits'] - 2 * sum(r['plegs']) for r in rows])
     out += [Value(S3, 'per roll: spark-years obs / exp', common.div(o_y, e_y)), Value(S3, 'per roll: ancestor hits obs / exp', common.div(o_h, e_h)),
             Value(S3, 'per roll: spark-years, SDs below expectation', -z_y)]
     edges = [0, 1e-12, 0.2, 0.4, 0.6, 0.8, 0.95, 1 + 1e-9]
     rel = rep.reliab('inheritance', lambda r: True, lambda r: r['q'], lambda r: r['o_insp'], edges)
-    for a, b, n, ob, ep in rel[:-1]:                     # the document's table stops at 0.95
+    for a, b, n, ob, ep, _, _ in rel[:-1]:               # the document's table stops at 0.95
         lab = '0' if b <= 1e-12 else f'{a:.2f}-{b:.2f}'
         out += [Value(S3, f'reliability q {lab}: rows', n), Value(S3, f'reliability q {lab}: observed', ob)]
         if b > 1e-12: out.append(Value(S3, f'reliability q {lab}: mean predicted', ep))
-    rel_miss = [(a, b, n, ob, ep, wilson(round(ob * n), n)) for a, b, n, ob, ep in rel if n and b > 1e-12]   # buckets with a positive prediction
-    rel_miss = [(a, b, n, ob, ep, lo, hi) for a, b, n, ob, ep, (lo, hi) in rel_miss if not lo <= ep <= hi]
-    # jointly over the buckets with a positive prediction: chi2 = sum (observed - expected)^2 / sum q (1 - q), one degree
-    # of freedom per bucket, nothing fitted
-    rel_chi2, rel_k = 0.0, 0
-    for a, b in zip(edges, edges[1:]):
-        if b <= 1e-12: continue
-        qs = [(r['q'], r['o_insp']) for r in rows if a <= r['q'] < b]
-        v = sum(q * (1 - q) for q, _ in qs)
-        if v > 0: rel_chi2 += (sum(o for _, o in qs) - sum(q for q, _ in qs)) ** 2 / v; rel_k += 1
-    rel_p = float(scipy.stats.chi2.sf(rel_chi2, rel_k)) if rel_k else float('nan')
+    rel_miss = [x for x in rel if x[2] and x[1] > 1e-12 and not x[5] <= x[4] <= x[6]]   # buckets with a positive prediction
+    # jointly over the buckets with a positive prediction (and some q strictly between 0 and 1): the run-clustered Wald
+    # chi2 of the buckets' observed - expected (a run's targets fall in several buckets), one degree of freedom per
+    # bucket, nothing fitted
+    resid, rruns = [], []
+    for j, (a, b) in enumerate(zip(edges, edges[1:])):
+        qs = [r for r in rows if a <= r['q'] < b]
+        if b <= 1e-12 or not any(0 < r['q'] < 1 for r in qs): continue
+        resid += [(j, r['o_insp'] - r['q']) for r in qs]; rruns += [r['run'] for r in qs]
+    rel_chi2, rel_k, rel_p = common.cluster_chi2(resid, rruns) if resid else (0.0, 0, float('nan'))
     out += [Value(S3, 'reliability chi2', rel_chi2), Value(S3, 'reliability chi2 buckets', rel_k), Value(S3, 'reliability chi2 p', rel_p)]
-    b46 = next(((n, ob, ep) + wilson(round(ob * n), n) for a, b, n, ob, ep in rel if a == 0.4 and n), (0,) + (float('nan'),) * 4)
+    b46 = next(((n, ob, ep, lo, hi) for a, b, n, ob, ep, lo, hi in rel if a == 0.4 and n), (0,) + (float('nan'),) * 4)
     out += [Value(S3, 'reliability q 0.40-0.60: observed 95% low', b46[3]), Value(S3, 'reliability q 0.40-0.60: observed 95% high', b46[4]),
             Value(S3, 'reliability q 0.40-0.60: mean predicted, three places', b46[2])]
     c_sel = free
@@ -449,8 +472,8 @@ def claims(wide=None):
     add('3. acquired, any source', s_any)
     out += [Value(S12, '3. acquired, any source: observed 95% low', s_any['lo']), Value(S12, '3. acquired, any source: observed 95% high', s_any['hi'])]
     add('3. acquired, deck or inspiration only', s_mod)
-    add('3. acquired, prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any))
-    add('3. acquired, not prioritised', rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any))
+    s_pr = rep.stat(lambda r: c_sel(r) and r['prio'] is True, acq, o_any); add('3. acquired, prioritised', s_pr)
+    s_np = rep.stat(lambda r: c_sel(r) and r['prio'] is False, acq, o_any); add('3. acquired, not prioritised', s_np)
     rs = [r for r in rows if c_sel(r)]
     a, b = sum(r['p_pred'] for r in rs), sum(r['l_obs'] for r in rs)
     out += [Value(S12, '4. landing: rows', len(rs)), Value(S12, '4. landing: sum of p', a),
@@ -506,7 +529,7 @@ def claims(wide=None):
     edges = [0, 1e-12, 0.2, 0.4, 0.6, 0.8, 0.95, 1 + 1e-9]
     rd = rep.reliab('deck hint', d_sel, pdeck, o_deck, edges); ra = rep.reliab('acquired', c_sel, acq, o_any, edges)
     for nm, rr in (('deck hint', rd), ('acquired', ra)):
-        for a, b, n, ob, ep in rr:
+        for a, b, n, ob, ep, _, _ in rr:
             lab = '0' if b <= 1e-12 else f'{a:.2f}-{min(b, 1):.2f}'
             out += [Value(S12, f'reliability {nm} {lab}: rows', n), Value(S12, f'reliability {nm} {lab}: observed', ob)]
             if b > 1e-12: out.append(Value(S12, f'reliability {nm} {lab}: mean predicted', ep))
@@ -514,7 +537,7 @@ def claims(wide=None):
     top = lambda r: pdeck(r) >= 0.6
     sh_top = short(top)
     n_top = sum(1 for r in rows if d_sel(r) and top(r)); n_top_ev = sum(1 for r in rows if d_sel(r) and top(r) and r['cards_ev'])
-    rd_w = [(a, b, n, ob, ep) + wilson(round(ob * n), n) for a, b, n, ob, ep in rd if n and b > 1e-12]
+    rd_w = [x for x in rd if x[2] and x[1] > 1e-12]
     d24 = next((x for x in rd_w if x[0] == 0.2), (0.2, 0.4) + (float('nan'),) * 5)
     n24_pool = sum(1 for r in rows if d_sel(r) and 0.2 <= pdeck(r) < 0.4 and kind(r) == 'training pool only')
     out += [Value(S12, 'deck shortfall in buckets predicted 0.6 and above', common.div(sh_top, sh_all)),
@@ -623,18 +646,22 @@ def claims(wide=None):
         finding(S3, 'by carriers 1-6, every interval covers 1',
                 lambda: all(k in byc and covers(byc[k]) for k in range(1, 7)),
                 lambda: '; '.join(f'{k}: {byc[k]["ratio"]:.3f} [{byc[k]["rlo"]:.3f}, {byc[k]["rhi"]:.3f}]' for k in range(1, 7) if k in byc)),
-        finding(S3, 'per roll, spark-years and ancestor hits each sit within the model\'s 95% band (|z| < 1.96, z on the model\'s own binomial variance)',
+        finding(S3, 'per roll, spark-years and ancestor hits each sit within the model\'s 95% band (|z| < 1.96, z run-clustered)',
                 lambda: abs(z_y) < 1.96 and abs(z_h) < 1.96,
                 lambda: f'spark-years {o_y:,} vs {e_y:,.1f} expected (z {z_y:+.2f}); hits {o_h:,} vs {e_h:,.1f} (z {z_h:+.2f})'),
         finding(S3, 'reliability: calibrated jointly over the buckets with a positive prediction (chi2 over the buckets, one degree of '
                     'freedom each, nothing fitted, p above 0.05); the buckets outside their own 95% interval are listed',
                 lambda: rel_p > 0.05,
                 lambda: ('misses: ' + '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f} ({n:,} rows)' for a, b, n, ob, ep, lo, hi in rel_miss)
-                         if rel_miss else 'no bucket misses') + f' (of {sum(1 for _, b, n, _, _ in rel if n and b > 1e-12)} buckets tested at 95% each; '
+                         if rel_miss else 'no bucket misses') + f' (of {sum(1 for _, b, n, *_ in rel if n and b > 1e-12)} buckets tested at 95% each; '
                 f'q = 0 bucket observed {rel[0][3]:.4f} over {rel[0][2]:,} rows); chi2 {rel_chi2:.1f} on {rel_k} buckets, p {rel_p:.3f}'),
         finding(S3, 'reliability: the only bucket outside its own 95% interval (as the text names it) is 0.40-0.60',
                 lambda: [(a, b) for a, b, *_ in rel_miss] == [(0.4, 0.6)],
                 lambda: '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f}' for a, b, n, ob, ep, lo, hi in rel_miss) or 'none'),
+        finding(S12, 'acquired: prioritised targets slightly above the model and non-prioritised below it (each run-clustered '
+                     'interval entirely on its side of 1), the two averaging out in the pooled test',
+                lambda: s_pr['rlo'] > 1 and s_np['rhi'] < 1,
+                lambda: f'prioritised {s_pr["ratio"]:.3f} [{s_pr["rlo"]:.3f}, {s_pr["rhi"]:.3f}]; not prioritised {s_np["ratio"]:.3f} [{s_np["rlo"]:.3f}, {s_np["rhi"]:.3f}]'),
         # section 9
         finding(S8, 'the choice rule shows in its consequences: event-only hints of prioritised targets land at the model\'s rate (interval covers 1), '
                     'of non-prioritised targets below it (interval entirely below 1)',
@@ -644,8 +671,8 @@ def claims(wide=None):
         # section 13
         finding(S12, 'the composed acquisition odds are calibrated: acquired from any source, observed / predicted, 95% interval covers 1',
                 lambda: covers(s_any), lambda: rt(s_any) + '; reliability buckets whose interval lies off their mean prediction: '
-                + '; '.join(f'{lab(a, b)} {ob:.3f} vs {ep:.3f}' for a, b, n, ob, ep in ra if n and b > 1e-12
-                            and not wilson(round(ob * n), n)[0] <= ep <= wilson(round(ob * n), n)[1])),
+                + '; '.join(f'{lab(a, b)} {ob:.3f} vs {ep:.3f}' for a, b, n, ob, ep, lo, hi in ra if n and b > 1e-12
+                            and not lo <= ep <= hi)),
         finding(S12, 'inheritance is right: observed / predicted inspiration, 95% interval covers 1; one target of eight, Tail Held High, '
                      'has its interval off 1',
                 lambda: covers(s_inh) and t_off == [20161], lambda: rt(s_inh) + '; per-target exceptions: ' + (', '.join(f'{tn(g)} {rt(t_inh[g])}' for g in t_off) or 'none')),

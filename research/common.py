@@ -110,6 +110,45 @@ def binom_pmf(n, p):
 
 
 # ---------------------------------------------------------------- claims
+# ---------------------------------------------------------------- intervals on rows grouped by run
+def cluster_ci(obs, exp, run, z=1.96):
+    """observed / predicted over rows that come in groups (one run gives several rows, which need not be independent):
+    (ratio, low, high, number of runs). R = sum obs / sum exp; its variance by the ratio estimator's linearisation over
+    runs, Var(R) = C / (C - 1) * sum_runs (O_c - R E_c)^2 / E^2 (Cochran, Sampling Techniques, ch. 6: each run's
+    residual against the model, so it holds whichever way rows of one run are correlated). With exp = 1 per row this is
+    the observed rate with a run-clustered interval. When every run gives one row and exp = 1 per row, the Wilson
+    interval is used instead (better for small counts). Bounds are clipped at 0."""
+    import collections as _c
+    obs, exp, run = list(obs), list(exp), list(run)
+    E = sum(exp); O = sum(obs); n = len(obs)
+    if not n or not E: return float('nan'), float('nan'), float('nan'), 0
+    R = O / E
+    by = _c.defaultdict(lambda: [0.0, 0.0])
+    for o, e, r in zip(obs, exp, run): b = by[r]; b[0] += o; b[1] += e
+    C = len(by)
+    if C == n and all(e == 1 for e in exp):
+        lo, hi = wilson(round(O), n, z); return R, lo, hi, C
+    if C < 2: return R, float('nan'), float('nan'), C
+    se = math.sqrt(C / (C - 1) * sum((a - R * b) ** 2 for a, b in by.values())) / E
+    return R, max(0.0, R - z * se), R + z * se, C
+
+
+def cluster_chi2(resid, run):
+    """joint test that several groups' residuals (observed - predicted, one vector entry per group, e.g. reliability
+    buckets) are all zero, when one run's rows fall in several groups: Wald chi2 = r' V^-1 r with V the run-clustered
+    covariance of the group sums (sum over runs of each run's residual vector, outer product, times C / (C - 1)).
+    `resid` is a list of (group index, residual) per row. Returns (chi2, degrees of freedom, p)."""
+    import collections as _c, numpy as _np
+    from scipy.stats import chi2 as _chi2
+    groups = sorted({g for g, _ in resid}); ix = {g: i for i, g in enumerate(groups)}; k = len(groups)
+    per = _c.defaultdict(lambda: _np.zeros(k))
+    for (g, d), r in zip(resid, run): per[r][ix[g]] += d
+    M = _np.array(list(per.values())); C = len(M)
+    tot = M.sum(0); V = C / (C - 1) * (M.T @ M)
+    x2 = float(tot @ _np.linalg.solve(V, tot))
+    return x2, k, float(_chi2.sf(x2, k))
+
+
 # ---------------------------------------------------------------- held-out comparison
 K_FOLDS = 5
 
