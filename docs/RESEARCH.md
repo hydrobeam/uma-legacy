@@ -19,7 +19,7 @@ acquired every target.
 | Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them), 1.000 [0.998, 1.002] over 76,402 G1 attempts | 4 |
 | Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than 2.0% (solver's pair ceilings) | 5 |
 | Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form derived, $\beta$ and $d$ fitted | 61,856 rows; held out +12.9 nats; real careers 0.988 [0.94, 1.03] of the model | 6 |
-| Chain events, Binomial(21, 0.35) per career | fitted | 3,424 runs; not rejected against a free distribution ($p$ = 0.06) | 7 |
+| Chain events, Binomial(21, 0.35) per career | fitted | 3,424 runs; not rejected against a free distribution (p-value 0.06); fitted $n$ 16-20 | 7 |
 | Chain events spread over remaining links | fitted | 66 nats over uniform-by-card | 7 |
 | Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets 1.01 of the model | 8, 12 |
 | Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured 0.61 [0.55, 0.66] (90%) | 8 |
@@ -28,7 +28,8 @@ acquired every target.
 
 **Known misses**, each measured and tested in its section:
 
-- Chain events: a binomial with another $n$, Binomial(18, 0.405), fits 3.4 nats better; in crowded decks early links run
+- Chain events: $n = 21$ lies just outside the 95% interval for the binomial's $n$ (16-20; same mean, slightly
+  wider spread); in crowded decks early links run
   short and more chains never start than predicted (0.34 against 0.20 with six chain cards); final links fit pooled
   (0.352 against 0.357) but individual cards differ far beyond chance ($\chi^2$ = 263 on 42 cards) (7).
 - Deck hints read 0.937 [0.91, 0.96] of the model, almost all from event hints of targets the
@@ -376,8 +377,8 @@ against 0.318 predicted (470 rows); no effect assumed.
 
 Computed by `research/s07_chains.py`.
 
-A run gets $N$ chain events, the same for every deck and scenario (**fitted**; a binomial with another $n$ fits better,
-below):
+A run gets $N$ chain events, the same for every deck and scenario (**fitted**; $n$ = 21 sits just outside the fitted
+interval, below):
 
 $$N \sim \mathrm{Binomial}(21, 0.35), \qquad P(N = e) = \binom{21}{e}\, 0.35^{e}\, 0.65^{21-e}, \quad E N = 7.35,\ \mathrm{Var}\, N = 4.8.$$
 
@@ -410,9 +411,9 @@ none on the 3,402 runs that show no such case, the best $p$ at $n = 21$ is 0.34-
 | Form for $N$ | Result |
 |---|---|
 | distribution-free | mean 7.28, variance 4.47 |
-| Binomial(21, 0.35) | 11.4 nats behind distribution-free with 14 fewer parameters (not rejected, $p$ = 0.06) |
-| Binomial(18, 0.405) | the best binomial with $n$ free: 8.0 nats behind distribution-free ($p$ = 0.31), 3.4 better than (21, 0.35) |
-| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: 10.1 nats behind distribution-free ($p$ = 0.12) |
+| Binomial(21, 0.35) | 11.4 nats behind distribution-free with 14 fewer parameters (not rejected, p-value 0.06) |
+| Binomial($n$, $p$), both fitted | best at $n$ = 18, $p$ = 0.406: 8.0 nats behind distribution-free (p-value 0.31); $n$ is only known to lie in 16-20 |
+| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: 10.1 nats behind distribution-free (p-value 0.12) |
 | Binomial(15, 0.48) | 15.9 nats behind distribution-free |
 | Poisson(7.1) | 87.8 nats behind distribution-free (variance = mean, too wide; rejected) |
 | per scenario | means Unity Cup 7.57, Grand Concert 7.21, URA Finale 7.06, Trackblazer 7.03; +27.7 nats for 48 extra parameters (not significant) |
@@ -421,8 +422,12 @@ Why a binomial: the free fit's variance is 0.61 of its mean, so $N$ is under-dis
 the Poisson and every over-dispersed count. A binomial (a fixed number of chances, each taken with the same
 probability) is the simplest under-dispersed count, but the data do not single it out: the Conway-Maxwell-Poisson fits
 about as well. What the model uses is the distribution of $N$, not the family behind it.
-The adopted (21, 0.35) is not rejected, but Binomial(18, 0.405) fits better by more than chance allows for its one
-extra parameter (a known miss; the adopted form was chosen on fewer runs). Fitted per pal count, the means are
+How $n$ and $p$ are read: a binomial counts successes in $n$ chances, each succeeding with probability $p$; its mean is
+$np$ and its variance $np(1-p)$. Fitting both, the runs fix the mean (7.30 at the best $n$) and, more
+loosely, the spread, so $n$ and $p$ trade off along a ridge: re-fitting $p$ at each $n$, every $n$ from
+16 to 20 lies within 1.92 nats of the best (the 95% interval), so the best single pair is not itself a finding. The adopted
+$n = 21$ lies just outside it (2.95 nats below the best $n$): a known miss in the spread of $N$
+(variance $21 \cdot 0.35 \cdot 0.65 = 4.78$ against 4.47 free). Fitted per pal count, the means are
 7.58 / 7.12 / 7.41 / 8.40 for 1 / 2 / 3 / 4 pals (2,918 runs): more pals do not lower $N$, so pal events do not consume chain events.
 
 Final-link completion by pal count; the binomial lies inside every interval except at 2 pals, where it predicts more

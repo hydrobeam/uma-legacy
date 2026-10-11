@@ -828,16 +828,20 @@
   "7.allowance_sensitivity_highest_best_p_at_n_21": 0.35,
   "7.allowance_sensitivity_lowest_best_p_at_n_21": 0.34,
   "7.allowance_share": 0.020887728459530026,
-  "7.best_binomial_n_free_lr_p": 0.3087203388692027,
+  "7.best_binomial_n_free_lr_p": 0.3118323126480237,
   "7.best_binomial_n_free_n": 18.0,
-  "7.best_binomial_n_free_nats_behind_distribution_free": 8.038287395804218,
-  "7.best_binomial_n_free_nats_better_than_21_0_35": 3.3744549803777772,
-  "7.best_binomial_n_free_p": 0.405,
+  "7.best_binomial_n_free_nats_behind_distribution_free": 8.012644750368054,
+  "7.best_binomial_n_free_nats_better_than_21_0_35": 3.4000976258139417,
+  "7.best_binomial_n_free_p": 0.40559100615581006,
   "7.binomial_15_0_48_nats_behind_distribution_free": 15.936668848866248,
   "7.binomial_21_0_35_lr_p": 0.06316933228455249,
   "7.binomial_21_0_35_mean": 7.35,
   "7.binomial_21_0_35_nats_behind_distribution_free": 11.412742376181995,
   "7.binomial_21_0_35_variance": 4.7775,
+  "7.binomial_mean_n_p_at_the_best_n": 7.300638110804581,
+  "7.binomial_n_21_p_re_fitted_nats_below_the_best_n": 2.9472481628645255,
+  "7.binomial_n_95_pct_profile_interval_high": 20.0,
+  "7.binomial_n_95_pct_profile_interval_low": 16.0,
   "7.conway_maxwell_poisson_lr_p": 0.12452413073352955,
   "7.conway_maxwell_poisson_nats_behind_distribution_free": 10.090718383034982,
   "7.distribution_free_fit_parameters_more_than_the_binomial": 14.0,
@@ -1448,13 +1452,13 @@
    "section": "7",
    "statement": "N is under-dispersed (the free fit's variance / mean below 1, so no Poisson or over-dispersed family fits), and the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)",
    "verdict": "holds",
-   "evidence": "variance / mean 0.61; best binomial p 0.309; CMP p 0.125"
+   "evidence": "variance / mean 0.61; best binomial p 0.312; CMP p 0.125"
   },
   {
    "section": "7",
-   "statement": "Known miss: a binomial with n free fits better than (21, 0.35) by more than 1.92 nats (the 1-parameter 5% bound)",
+   "statement": "Known miss: n = 21 lies outside the 95% profile-likelihood interval for the binomial's n (p re-fitted at each n; more than 1.92 nats below the best n)",
    "verdict": "holds",
-   "evidence": "Binomial(18, 0.41) is 3.4 nats better"
+   "evidence": "n in [16, 20], best n 18; n = 21 is 2.95 nats below"
   },
   {
    "section": "7",

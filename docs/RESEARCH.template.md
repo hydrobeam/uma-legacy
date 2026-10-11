@@ -19,7 +19,7 @@ acquired every target.
 | Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them), {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] over {{4.race_attempts_at_the_34|,.0f}} G1 attempts | 4 |
 | Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than {{5.schedules_pb_ceiling_gain_max_pct|.1f}}% (solver's pair ceilings) | 5 |
 | Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form derived, $\beta$ and $d$ fitted | {{6.specialty_rows|,.0f}} rows; held out +{{6.specialty_held_out_gain_nats|.1f}} nats; real careers {{12.1_training_pool_only_obs_per_pred|.3f}} [{{12.1_training_pool_only_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model | 6 |
-| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; not rejected against a free distribution ($p$ = {{7.binomial_21_0_35_lr_p|.2f}}) | 7 |
+| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; not rejected against a free distribution (p-value {{7.binomial_21_0_35_lr_p|.2f}}); fitted $n$ {{7.binomial_n_95_pct_profile_interval_low|.0f}}-{{7.binomial_n_95_pct_profile_interval_high|.0f}} | 7 |
 | Chain events spread over remaining links | fitted | {{7.allocation_slot_over_card_nats|.0f}} nats over uniform-by-card | 7 |
 | Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets {{12.1_events_only_prioritised_obs_per_pred|.2f}} of the model | 8, 12 |
 | Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured {{8.festa_share|.2f}} [{{8.festa_share_90_pct_low|.2f}}, {{8.festa_share_90_pct_high|.2f}}] (90%) | 8 |
@@ -28,7 +28,8 @@ acquired every target.
 
 **Known misses**, each measured and tested in its section:
 
-- Chain events: a binomial with another $n$, Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}), fits {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better; in crowded decks early links run
+- Chain events: $n = 21$ lies just outside the 95% interval for the binomial's $n$ ({{7.binomial_n_95_pct_profile_interval_low|.0f}}-{{7.binomial_n_95_pct_profile_interval_high|.0f}}; same mean, slightly
+  wider spread); in crowded decks early links run
   short and more chains never start than predicted ({{7.never_started_6_chain_cards_observed|.2f}} against {{7.never_started_6_chain_cards_model|.2f}} with six chain cards); final links fit pooled
   ({{7.final_links_by_card_pooled_observed|.3f}} against {{7.final_links_by_card_pooled_model|.3f}}) but individual cards differ far beyond chance ($\chi^2$ = {{7.final_links_by_card_chi2|.0f}} on {{7.final_links_by_card_cards|.0f}} cards) (7).
 - Deck hints read {{12.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{12.1_deck_hint_no_inspiration_ratio_95_pct_low|.2f}}, {{12.1_deck_hint_no_inspiration_ratio_95_pct_high|.2f}}] of the model, almost all from event hints of targets the
@@ -376,8 +377,8 @@ against {{6.priority_predicted|.3f}} predicted ({{6.priority_rows|.0f}} rows); n
 
 Computed by `research/s07_chains.py`.
 
-A run gets $N$ chain events, the same for every deck and scenario (**fitted**; a binomial with another $n$ fits better,
-below):
+A run gets $N$ chain events, the same for every deck and scenario (**fitted**; $n$ = 21 sits just outside the fitted
+interval, below):
 
 $$N \sim \mathrm{Binomial}(21, 0.35), \qquad P(N = e) = \binom{21}{e}\, 0.35^{e}\, 0.65^{21-e}, \quad E N = {{7.binomial_21_0_35_mean|.2f}},\ \mathrm{Var}\, N = {{7.binomial_21_0_35_variance|.1f}}.$$
 
@@ -410,9 +411,9 @@ none on the {{7.allowance_0_runs_without_a_contradiction|,.0f}} runs that show n
 | Form for $N$ | Result |
 |---|---|
 | distribution-free | mean {{7.distribution_free_mean|.2f}}, variance {{7.distribution_free_variance|.2f}} |
-| Binomial(21, 0.35) | {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind distribution-free with {{7.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters (not rejected, $p$ = {{7.binomial_21_0_35_lr_p|.2f}}) |
-| Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}) | the best binomial with $n$ free: {{7.best_binomial_n_free_nats_behind_distribution_free|.1f}} nats behind distribution-free ($p$ = {{7.best_binomial_n_free_lr_p|.2f}}), {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} better than (21, 0.35) |
-| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: {{7.conway_maxwell_poisson_nats_behind_distribution_free|.1f}} nats behind distribution-free ($p$ = {{7.conway_maxwell_poisson_lr_p|.2f}}) |
+| Binomial(21, 0.35) | {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind distribution-free with {{7.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters (not rejected, p-value {{7.binomial_21_0_35_lr_p|.2f}}) |
+| Binomial($n$, $p$), both fitted | best at $n$ = {{7.best_binomial_n_free_n|.0f}}, $p$ = {{7.best_binomial_n_free_p|.3f}}: {{7.best_binomial_n_free_nats_behind_distribution_free|.1f}} nats behind distribution-free (p-value {{7.best_binomial_n_free_lr_p|.2f}}); $n$ is only known to lie in {{7.binomial_n_95_pct_profile_interval_low|.0f}}-{{7.binomial_n_95_pct_profile_interval_high|.0f}} |
+| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: {{7.conway_maxwell_poisson_nats_behind_distribution_free|.1f}} nats behind distribution-free (p-value {{7.conway_maxwell_poisson_lr_p|.2f}}) |
 | Binomial(15, 0.48) | {{7.binomial_15_0_48_nats_behind_distribution_free|.1f}} nats behind distribution-free |
 | Poisson(7.1) | {{7.poisson_7_1_nats_behind_distribution_free|.1f}} nats behind distribution-free (variance = mean, too wide; rejected) |
 | per scenario | means Unity Cup {{7.per_scenario_mean_unity_cup|.2f}}, Grand Concert {{7.per_scenario_mean_grand_concert|.2f}}, URA Finale {{7.per_scenario_mean_ura_finale|.2f}}, Trackblazer {{7.per_scenario_mean_trackblazer|.2f}}; +{{7.per_scenario_log_likelihood_gain|.1f}} nats for {{7.per_scenario_extra_parameters|.0f}} extra parameters (not significant) |
@@ -421,8 +422,12 @@ Why a binomial: the free fit's variance is {{7.distribution_free_variance_per_me
 the Poisson and every over-dispersed count. A binomial (a fixed number of chances, each taken with the same
 probability) is the simplest under-dispersed count, but the data do not single it out: the Conway-Maxwell-Poisson fits
 about as well. What the model uses is the distribution of $N$, not the family behind it.
-The adopted (21, 0.35) is not rejected, but Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}) fits better by more than chance allows for its one
-extra parameter (a known miss; the adopted form was chosen on fewer runs). Fitted per pal count, the means are
+How $n$ and $p$ are read: a binomial counts successes in $n$ chances, each succeeding with probability $p$; its mean is
+$np$ and its variance $np(1-p)$. Fitting both, the runs fix the mean ({{7.binomial_mean_n_p_at_the_best_n|.2f}} at the best $n$) and, more
+loosely, the spread, so $n$ and $p$ trade off along a ridge: re-fitting $p$ at each $n$, every $n$ from
+{{7.binomial_n_95_pct_profile_interval_low|.0f}} to {{7.binomial_n_95_pct_profile_interval_high|.0f}} lies within 1.92 nats of the best (the 95% interval), so the best single pair is not itself a finding. The adopted
+$n = 21$ lies just outside it ({{7.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best $n$): a known miss in the spread of $N$
+(variance $21 \cdot 0.35 \cdot 0.65 = 4.78$ against {{7.distribution_free_variance|.2f}} free). Fitted per pal count, the means are
 {{7.per_pal_count_mean_1_pals|.2f}} / {{7.per_pal_count_mean_2_pals|.2f}} / {{7.per_pal_count_mean_3_pals|.2f}} / {{7.per_pal_count_mean_4_pals|.2f}} for 1 / 2 / 3 / 4 pals ({{7.per_pal_count_runs_1_4_pals|,.0f}} runs): more pals do not lower $N$, so pal events do not consume chain events.
 
 Final-link completion by pal count; the binomial lies inside every interval except at 2 pals, where it predicts more

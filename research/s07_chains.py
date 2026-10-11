@@ -13,7 +13,7 @@ unknown. Decks with an unknown card or a non-pal R card are left out.
 Data. Every analysis runs on every run record, selected only by pal count
 where the analysis is by pal count:
   - the fit of N (0-5 pals): a distribution-free fit (EM over P(N = 0..15), P(N >= 16)) against Binomial(21, 0.35),
-    Binomial(15, 0.48), Poisson(7.1) and the best binomial on a grid (n 6..24, p 0.20..0.99), each by likelihood ratio
+    Binomial(15, 0.48), Poisson(7.1) and the binomial's profile over n (p re-fitted at each n), each by likelihood ratio
     (Binomial(21, 0.35) with 14 fewer parameters, Poisson with 15, n and p free with 1 more than (21, 0.35)); the same
     fit per scenario (scenarios with 30+ runs) against one N for all;
   - N per pal count (1-4 pals): the binomial grid MLE on each pal count's runs;
@@ -34,7 +34,7 @@ allocation, final-link and early-link comparisons score each observation on its 
 (P(card reaches link) on the run's deck)."""
 import collections, itertools, math, os, re, sys
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import chi2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -307,6 +307,17 @@ def cmp_ll(M):
     return -r.fun, math.exp(r.x[0]), math.exp(r.x[1])
 
 
+def binom_profile(M, ns=range(8, 41)):
+    """the profile likelihood of the binomial's n: at each n the best p (bounded scalar search), exact over the chain
+    states through the run matrix M. Returns [(n, p, loglik)]; the data fix the mean n p well and n only within an
+    interval, since n and p trade off along a ridge"""
+    out = []
+    for n in ns:
+        r = minimize_scalar(lambda p: -ll(lump(binom_pmf(n, p)), M), bounds=(0.05, 0.95), method='bounded', options={'xatol': 1e-5})
+        out.append((n, float(r.x), -float(r.fun)))
+    return out
+
+
 def binom_mle(xs):
     """the Binomial(n, p) grid MLE (n 6..40, p 0.200..0.995 step 0.005), exact over the chain states: (loglik, n, p)"""
     ab = [run_levels(k, o) for _, k, _, o in xs]
@@ -354,16 +365,20 @@ def fit_claims():
     M = lk_matrix([(k, o) for _, k, _, o in xs]); pooled = em(M); llp = ll(pooled, M)
     mn, vr = mean_var(pooled)
     l21 = ll(lump(BIN), M); l15 = ll(lump(binom_pmf(15, 0.48)), M); lp = ll(lump(POIS), M)
-    _, bn, bp = binom_mle(xs)
+    prof = binom_profile(M); bn, bp, lb = max(prof, key=lambda x: x[2])
     out = [V('fit of N: runs', len(xs), note=note),
            V('distribution-free: mean', mn), V('distribution-free: variance', vr),
            V('Binomial(21, 0.35): nats behind distribution-free', llp - l21, note=f'LL {l21:.1f} vs {llp:.1f}'),
            V('Binomial(15, 0.48): nats behind distribution-free', llp - l15),
            V('Poisson(7.1): nats behind distribution-free', llp - lp),
-           V('best binomial (n free): nats better than (21, 0.35)', ll(lump(binom_pmf(bn, bp)), M) - l21),
-           V('best binomial n free: n', bn), V('best binomial n free: p', bp, note='grid n 6..40, p step 0.005'),
-           V('best binomial n free: nats behind distribution-free', llp - ll(lump(binom_pmf(bn, bp)), M)),
-           V('best binomial n free: LR p', float(chi2.sf(2 * (llp - ll(lump(binom_pmf(bn, bp)), M)), KMAX - 2))),
+           V('best binomial (n free): nats better than (21, 0.35)', lb - l21),
+           V('best binomial n free: n', bn), V('best binomial n free: p', bp, note='p re-fitted at each n'),
+           V('best binomial n free: nats behind distribution-free', llp - lb),
+           V('best binomial n free: LR p', float(chi2.sf(2 * (llp - lb), KMAX - 2))),
+           V('binomial n: 95% profile interval low', min(n_ for n_, _, l_ in prof if lb - l_ <= 1.920729)),
+           V('binomial n: 95% profile interval high', max(n_ for n_, _, l_ in prof if lb - l_ <= 1.920729)),
+           V('binomial n = 21, p re-fitted: nats below the best n', lb - dict((n_, l_) for n_, _, l_ in prof)[21]),
+           V('binomial mean n p at the best n', bn * bp),
            V('distribution-free: variance / mean', vr / mn),
            V('Conway-Maxwell-Poisson: nats behind distribution-free', llp - cmp_ll(M)[0]),
            V('Conway-Maxwell-Poisson: LR p', float(chi2.sf(2 * (llp - cmp_ll(M)[0]), KMAX - 2)))]
@@ -583,9 +598,10 @@ def findings(out, res, fl, al, sens):
                 'the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the '
                 'Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)',
                 vm < 1 and bp_ > 0.05 and cp_ > 0.05, f'variance / mean {vm:.2f}; best binomial p {bp_:.3f}; CMP p {cp_:.3f}'))
-    bg = g['best binomial (n free): nats better than (21, 0.35)']
-    fs.append(F(f'Known miss: a binomial with n free fits better than ({CN}, {CP}) by more than 1.92 nats (the 1-parameter 5% bound)',
-                bg > 1.92, f'Binomial({g["best binomial n free: n"]:.0f}, {g["best binomial n free: p"]:.2f}) is {bg:.1f} nats better'))
+    lo_, hi_, b21 = g['binomial n: 95% profile interval low'], g['binomial n: 95% profile interval high'], g['binomial n = 21, p re-fitted: nats below the best n']
+    fs.append(F(f'Known miss: n = 21 lies outside the 95% profile-likelihood interval for the binomial\'s n (p re-fitted at each n; '
+                'more than 1.92 nats below the best n)', b21 > 1.920729 and not lo_ <= 21 <= hi_,
+                f'n in [{lo_:.0f}, {hi_:.0f}], best n {g["best binomial n free: n"]:.0f}; n = 21 is {b21:.2f} nats below'))
     pg = g['per scenario: log-likelihood gain']; dfs = g['per scenario: extra parameters']
     fs.append(F(f'One N for every scenario: per-scenario distributions gain nothing significant (likelihood ratio on {dfs:.0f} parameters, p > 0.05)',
                 chi2.sf(2 * pg, dfs) > 0.05, f'+{pg:.1f} nats, LR p = {chi2.sf(2 * pg, dfs):.2f}'))
