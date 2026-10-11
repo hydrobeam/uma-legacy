@@ -255,6 +255,14 @@ def claims():
         add(f'adopted {nm}', ADOPTED[s], note='the solver\'s hint_base (pkg/loopopt/src/deck/hints.rs)')
         add(f'adopted d {nm}', ADOPTED_D[s], note='the solver\'s hint_spec')
 
+    # ---- a worked example: the median card in the runs' decks (SR/SSR, not pal or group), at maximum limit break
+    wc = common.cards(); deckc = [wc[c] for r in common.runs() for c, _, _ in r['deck'] if c in wc and wc[c]['rarity'] > 1 and not wc[c]['pal'] and wc[c].get('kind') != 'group']
+    mhf = float(np.median([c['hf'] for c in deckc])); msp = float(np.median([c['spec'] for c in deckc]))
+    add('example: median hint frequency', mhf, note=f'{len(deckc):,} deck cards in the runs'); add('example: median specialty priority', msp)
+    for s_, nm in ((2, 'Unity Cup'), (3, 'Grand Concert'), (1, 'URA Finale'), (4, 'Trackblazer')):
+        add(f'example: hints per career, median card, {nm}', ADOPTED[s_] * (1 + mhf / 100) * (1 + ADOPTED_D[s_] * msp / 100))
+        add(f'example: hints per career, no effects, {nm}', ADOPTED[s_])
+
     # ---- the form study: every record, every limit break, no specialty term
     D = build(); ci = D['ci']; hit = D['hit']; NI = D['noinsp']; hf = D['hf']; n = D['nskill'].astype(float)
     sc = D['scen']; max4 = D['lb'][ci] == 4

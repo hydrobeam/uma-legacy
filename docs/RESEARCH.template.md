@@ -68,18 +68,33 @@ are consistent with, so a prediction outside it is contradicted by the data at t
 "Runs" are Independent Training runs from
 uma-it, pooled; every run record is in the pool.
 
-**Game terms.** *IT*: Independent Training, the career mode modelled. A *career* trains one uma (the *trainee*); it
-ends as a *veteran*, which can later be a *legacy* (a parent or grandparent) of another career. A veteran carries
-*sparks* (factors), each with 1-3 stars: *white* sparks of skills, *pink* sparks of aptitudes, *blue* of stats, *green*
-of the unique skill. At the start of a career the legacies' blue and green sparks fire and their pink sparks raise
-her aptitudes (section 4); at two *inspirations* (Classic and Senior April) each spark can fire again, a white spark
-giving that skill a *hint*, a pink raising that aptitude. A skill is *hinted* when some source gives it a hint level
-(1-5); only hinted skills can be bought. *Affinity* is a compatibility score between trainee and
-legacies (section 5). The *deck* is six support cards; a card hints skills from its *training pool* and through its
-events, and a *chain* card has a 2- or 3-link chain of events. *Pal* (and group) cards have their own events and no
-chain. *Hint frequency* and *specialty priority* are card effects (section 7); a card's *limit break* (0-4) sets its
-effect levels. A *target* is a skill the planner tries to land; a target *lands* when it becomes a spark on the new
-veteran. *G1*: the top race grade; *aptitude grades* S to G for distance and surface set race win chances (section 4).
+**Game terms.**
+
+- *IT*: Independent Training, the career mode modelled.
+- *Career*: one training run of one uma, the *trainee*. It ends as a *veteran*.
+- *Legacy*: a veteran used as a parent or grandparent of a later career; a career has six (two parents, four
+  grandparents).
+- *Spark* (factor): what a veteran passes on, each with 1-3 stars: *white* sparks of skills, *pink* of aptitudes,
+  *blue* of stats, *green* of the unique skill.
+- *Inspiration*: Classic and Senior April, when each legacy's sparks can fire; a white spark that fires gives its
+  skill a hint, a pink raises that aptitude. At the start of a career the legacies' blue and green sparks fire and
+  their pinks raise her aptitudes (section 4).
+- *Hint*: raises a skill's *hint level* (1-5). A skill is *hinted* once it has a level; only hinted skills can be
+  bought.
+- *Affinity*: a compatibility score between the trainee and each legacy; it raises the chance a legacy's sparks fire
+  (section 5).
+- *Deck*: the six support cards a career trains with. A card hints skills from its *training pool* and through its
+  events.
+- *Rarity*: SSR, SR or R (R cards are left out of measured results).
+- *Chain card*: a card whose events form a sequence of 2 or 3 *links*. *Pal* and *group* cards have their own events
+  and no chain.
+- *Hint frequency*, *specialty priority*: card effects (section 7).
+- *Limit break*: 0-4, written LB0-LB4; it sets a card's effect levels.
+- *Card-run*: one card in one run's deck.
+- *Marker skill*: a skill only one particular event can give, so seeing it among a run's hints shows that event fired
+  (sections 8 and 10).
+- *Target*: a skill the planner tries to land. It *lands* when it becomes a spark on the new veteran.
+- *G1*: the top race grade. *Aptitude grades* S to G for distance and surface set race win chances (section 4).
 
 **Where the numbers come from.** Every number this document states is computed from the runs, the game data or the
 other parts by the scripts in `research/`, and written in when the document is rendered: `./build.sh research` runs
@@ -418,25 +433,51 @@ pair at its highest possible overlap. Over {{6.schedules_result_files|.0f}} vali
 
 Computed by `research/s07_hints.py`.
 
-A deck card's training is the main way targets get hinted. This section gives how many hints a card draws and over
-which skills, fits the rates per scenario, and tests the form on runs it was not fitted to.
+A deck card's training is the main way targets get hinted. When a card joins a training session it can show a hint,
+which raises one skill from the card's list of hintable skills (its *pool*) by a hint level or more.
 
-Each deck card makes $h$ training-hint draws per run, each uniform over its skill pool (size $n$; the stat option is
-never drawn) among skills still below hint Lv 5; a skill leaves after $c = \lceil 5 / \iota \rceil$ draws, $\iota$ =
-hint levels per draw ($c$ = {{7.draws_to_lv_5_1_card|.0f}}, {{7.draws_to_lv_5_2_card|.0f}}, {{7.draws_to_lv_5_3_card|.0f}}, {{7.draws_to_lv_5_4_card|.0f}}, {{7.draws_to_lv_5_5_card|.0f}} for +1 ... +5 cards).
+**What we find.**
 
-$$h = \beta_{\text{scenario}}\,\left(1 + \frac{hf}{100}\right)\left(1 + d_{\text{scenario}}\,\frac{\mathit{sp}}{100}\right)$$
+- **A card gives about the same number of training hints every career, each a random skill from its pool.** A typical card in
+  the runs' decks (hint frequency +{{7.example_median_hint_frequency|.0f}}%, specialty priority {{7.example_median_specialty_priority|.0f}}) gives about {{7.example_hints_per_career_median_card_unity_cup|.1f}} hints per career in Unity
+  Cup, {{7.example_hints_per_career_median_card_grand_concert|.1f}} in Grand Concert, {{7.example_hints_per_career_median_card_trackblazer|.1f}} in Trackblazer and {{7.example_hints_per_career_median_card_ura_finale|.1f}} in URA Finale. Each hint picks a skill uniformly from the pool;
+  a skill already at hint level 5 is no longer picked.
+- **Hint frequency scales that number directly**: a card with Hint Frequency +40% gives 40% more hints.
+- **Specialty priority also raises it.** The game describes Specialty Priority only as making the character join her
+  preferred training type more often; in the runs, cards with more of it give more hints, by an amount that differs
+  between scenarios. The effect predicts careers it was not fitted to, but it is an association: across limit breaks
+  of the same card it is the same size without being significant, so it is not shown to be a cause.
+- **Scenarios differ**: each has its own base and its own specialty weight (table below).
+- **Known misses**: SR cards give slightly fewer hints than SSR cards with the same effects, decks with more pals
+  slightly more, and a skill also hinted by inheritance is hinted by training less than predicted.
 
-$hf$ = hint frequency and $\mathit{sp}$ = specialty priority at maximum limit break, unique effects included. For $k$
-targets in one card's pool the miss chance is joint:
+**Terms.**
 
-$$m(k, n, t) = \left(1 - \frac{k}{n}\right)^{t} \quad (t \le c), \qquad \text{exact Markov chain over the other skills' draw counts otherwise},$$
-$$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfloor + 1), \qquad f = h - \lfloor h \rfloor.$$
+- *Hint level*: a skill's hints add up to level 5, the cap.
+- *Pool*: the skills a card's training can hint; $n$ = their number.
+- $\iota$: hint levels one hint gives (the card's hint increment, +1 to +5). A skill leaves the pool after
+  $c = \lceil 5 / \iota \rceil$ hints ({{7.draws_to_lv_5_1_card|.0f}}, {{7.draws_to_lv_5_2_card|.0f}}, {{7.draws_to_lv_5_3_card|.0f}}, {{7.draws_to_lv_5_4_card|.0f}}, {{7.draws_to_lv_5_5_card|.0f}} for +1 to +5).
+- $hf$: the card's Hint Frequency in percent; $\mathit{sp}$: its Specialty Priority. Both at maximum limit break,
+  unique effects included.
+- $h$: training hints the card gives in one career.
+- $\beta_s$, the *base*: hints per career in scenario $s$ for a card with neither effect.
+- $d_s$, the *specialty weight*: how much each point of specialty priority adds in scenario $s$, relative to the base.
 
-The shape (uniform draws, $h$ per run, the cap) is **derived** from the data; $\beta$ and $d$ are **fitted**. Fit:
-Bernoulli likelihood through $M$ per (card-run, pool skill) row, maximum-limit-break card-runs only, rows where no spark
-hinted the skill, R cards out. The form study uses every card-run at any limit break, R cards included, scored without the specialty term
-({{7.form_rows|,.0f}} rows from {{7.form_runs|,.0f}} runs, {{7.form_rows_without_a_spark|,.0f}} without a spark); $\beta$ and $d$ are fitted ({{7.specialty_rows|,.0f}} rows, {{7.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row):
+**The model.**
+
+$$h = \beta_s \left(1 + \frac{hf}{100}\right)\left(1 + d_s\,\frac{\mathit{sp}}{100}\right).$$
+
+$h$ is rarely a whole number; a career gets $\lfloor h \rfloor$ or $\lfloor h \rfloor + 1$ hints, the latter with chance
+$f = h - \lfloor h \rfloor$. The chance that none of $k$ targets in one card's pool is hinted is joint over them:
+
+$$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfloor + 1), \qquad
+m(k, n, t) = \left(1 - \frac{k}{n}\right)^{t} \ (t \le c),$$
+
+and an exact Markov chain over the other skills' hint counts once a skill can reach the cap ($t > c$).
+
+**Fitted values** (**fitted**: maximum likelihood on every hint row, a row being one pool skill of one card in one
+run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; {{7.specialty_rows|,.0f}} rows from
+{{7.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row; *Adopted* is what the solver uses):
 
 | Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
 |---|---|---|---|---|---|
@@ -446,7 +487,36 @@ hinted the skill, R cards out. The form study uses every card-run at any limit b
 | Trackblazer | {{7.specialty_base_trackblazer|.3f}} | {{7.specialty_d_trackblazer|.3f}} | {{7.adopted_trackblazer|.2f}} / {{7.adopted_d_trackblazer|.2f}} | {{7.specialty_rows_trackblazer|,.0f}} | {{7.specialty_runs_trackblazer|.0f}} |
 | Grand Masters | no runs | | {{7.adopted_grand_masters|.2f}} / {{7.adopted_d_grand_masters|.2f}} (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
 
-What fixed the form (the form study):
+**Evidence.**
+
+*Specialty priority.* Without the specialty term, cards with more specialty priority give more hints than predicted;
+with it, the excess is gone:
+
+| Specialty priority | Rows | Observed / predicted, without the term | with it |
+|---|---|---|---|
+| 0 | {{7.specialty_band_0_rows|,.0f}} | {{7.specialty_band_0_before|.3f}} | {{7.specialty_band_0_after|.3f}} |
+| 1-29 | {{7.specialty_band_1_29_rows|,.0f}} | {{7.specialty_band_1_29_before|.3f}} | {{7.specialty_band_1_29_after|.3f}} |
+| 30-59 | {{7.specialty_band_30_59_rows|,.0f}} | {{7.specialty_band_30_59_before|.3f}} | {{7.specialty_band_30_59_after|.3f}} |
+| 60+ | {{7.specialty_band_60_rows|,.0f}} | {{7.specialty_band_60_before|.3f}} | {{7.specialty_band_60_after|.3f}} |
+
+- It predicts careers it was not fitted to: held out, the term gains {{7.held_out_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_specialty_term_vs_none_se|.1f}} nats, $z$ = {{7.held_out_specialty_term_vs_none_z|.1f}}; fitted on the earlier
+  half of the runs, it predicts the later half better ({{7.held_out_later_runs_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_later_runs_specialty_term_vs_none_se|.1f}} nats, $z$ = {{7.held_out_later_runs_specialty_term_vs_none_z|.1f}}).
+- A weight per scenario predicts better than one shared weight ({{7.held_out_per_scenario_d_vs_one_d_nats|.1f}} ± {{7.held_out_per_scenario_d_vs_one_d_se|.1f}} nats, $z$ = {{7.held_out_per_scenario_d_vs_one_d_z|.1f}}).
+- Split by scenario and specialty band, the {{7.specialty_cells_df|.0f}} cells with 200 or more rows are jointly consistent with the
+  model (run-clustered $\chi^2$ = {{7.specialty_cells_joint_chi2|.1f}}, p-value {{7.specialty_cells_p|.2f}}).
+- One shared weight stays between {{7.specialty_d_robustness_min|.2f}} and {{7.specialty_d_robustness_max|.2f}} on either half of the runs, on SR or SSR cards alone, and
+  without any one of the eight most-used cards.
+- Cause or association: the same card at different limit breaks has different specialty priority but is otherwise
+  the same card. Across {{7.specialty_same_card_cards|.0f}} such cards (a base per card and scenario) the weight is {{7.specialty_same_card_d|.2f}}, the same size as
+  across cards, but the gain ({{7.specialty_same_card_gain_nats|.1f}} nats) is not significant, so the data do not show the effect is caused by
+  specialty priority itself.
+
+*Hint frequency's slope.* The $1/100$ in $(1 + hf/100)$ is **assumed** (a card's +40% read as 40% more hints) and
+tested: on the adopted model a fitted slope ($hf/{{7.specialty_model_free_divisor_c|.0f}}$) is detectable in-sample but does not predict unseen careers
+better ({{7.held_out_specialty_model_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_specialty_model_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_specialty_model_free_divisor_vs_1_per_100_z|.1f}}).
+
+*The form.* Fixed on every card at any limit break, R cards included, without the specialty term
+({{7.form_rows|,.0f}} rows from {{7.form_runs|,.0f}} runs):
 
 | Question | Evidence |
 |---|---|
@@ -460,16 +530,9 @@ What fixed the form (the form study):
 | Per-draw increment | {{7.increment_multiples_of_iota|,.0f}} of {{7.increment_single_source_levels|,.0f}} single-source levels are multiples of $\iota$, capped at 5 |
 | $hf$ by card level | floored linear interpolation {{7.ll_hf_floored_linear|u,.1f}}, step {{7.ll_hf_step|u,.1f}}, max-limit-break $hf$ for all {{7.ll_hf_max_lb_for_all|u,.1f}} |
 
-The slope $1/100$ is **assumed** and tested. In the form study (no specialty term) a free divisor ($c = {{7.free_divisor_c|.0f}}$) predicts
-unseen runs better ({{7.held_out_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_free_divisor_vs_1_per_100_se|.1f}}, $z$ = {{7.held_out_free_divisor_vs_1_per_100_z|.1f}}). On the adopted model, with the specialty term, it is
-detectable in-sample ($c = {{7.specialty_model_free_divisor_c|.0f}}$, +{{7.specialty_model_free_divisor_gain_nats|.1f}} nats) but does not predict unseen runs better
-({{7.held_out_specialty_model_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_specialty_model_free_divisor_vs_1_per_100_se|.1f}}, $z$ = {{7.held_out_specialty_model_free_divisor_vs_1_per_100_z|.2f}}), so $1/100$ stays.
-
-Reading $h$ as a floor/ceiling mixture against a two-point count differs by under 1% ($n = 5$, $h = 2.74$: miss
-{{7.miss_1_1_per_n_h_n_5_h_2_74|.4f}} vs {{7.miss_floor_per_ceiling_n_5_h_2_74|.4f}}). $hf$ spans 0-{{7.hf_max_in_the_data|.0f}} in the data.
-
-**Spark deficit** (not modelled; the fit conditions on no spark, the case in which a card's hint matters). Scored
-against the adopted rate on maximum-limit-break card-runs, R cards out:
+*Other sources of the same skill.* The fit uses rows where no inspiration hinted the skill. Where something else also
+hinted it, the card's own hint is seen this often (scored against the adopted rate on maximum-limit-break cards, R
+cards out):
 
 | Other source of the skill | Rows | Observed | Predicted | Ratio |
 |---|---|---|---|---|
@@ -479,27 +542,14 @@ against the adopted rate on maximum-limit-break card-runs, R cards out:
 | card event | {{7.spark_card_event_rows|,.0f}} | {{7.spark_card_event_observed|.3f}} | {{7.spark_card_event_predicted|.3f}} | {{7.spark_card_event_ratio|.2f}} |
 | other card's training | {{7.spark_other_card_training_rows|,.0f}} | {{7.spark_other_card_training_observed|.3f}} | {{7.spark_other_card_training_predicted|.3f}} | {{7.spark_other_card_training_ratio|.2f}} |
 
-Full drop-out of spark-hinted skills from the draws is rejected (with two pool skills spark-hinted, the rest are hinted
-at {{7.drop_out_test_observed|.3f}} against {{7.drop_out_test_no_drop_out|.3f}} without drop-out and {{7.drop_out_test_drop_out|.3f}} with it).
+A skill hinted by inspiration is hinted by training less than predicted (not modelled). It is not that such a skill
+leaves the card's pool: with two pool skills hinted by inspiration, the rest are hinted at {{7.drop_out_test_observed|.3f}}, against
+{{7.drop_out_test_no_drop_out|.3f}} if nothing leaves and {{7.drop_out_test_drop_out|.3f}} if they leave.
 
-**Specialty priority** (effect 19). On the fit's setup above, the rate without the specialty term leaves a residual
-that rises with specialty: observed / predicted {{7.specialty_band_0_before|.3f}} at specialty 0 ({{7.specialty_band_0_rows|,.0f}} rows), {{7.specialty_band_1_29_before|.3f}} at 1-29 ({{7.specialty_band_1_29_rows|.0f}}), {{7.specialty_band_30_59_before|.3f}} at
-30-59 ({{7.specialty_band_30_59_rows|,.0f}}), {{7.specialty_band_60_before|.3f}} at 60+ ({{7.specialty_band_60_rows|,.0f}}). The term gains {{7.specialty_gain_per_scenario_nats|.1f}} nats in-sample for 4 parameters (one $d$ for every scenario: {{7.specialty_gain_one_d_nats|.1f}}
-nats, $d = {{7.specialty_d_pooled|.3f}}$; held out it predicts unseen runs better than no term, {{7.held_out_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_specialty_term_vs_none_se|.1f}}, $z$ = {{7.held_out_specialty_term_vs_none_z|.1f}}, and a $d$ per
-scenario better than one, {{7.held_out_per_scenario_d_vs_one_d_nats|.1f}} ± {{7.held_out_per_scenario_d_vs_one_d_se|.1f}}, $z$ = {{7.held_out_per_scenario_d_vs_one_d_z|.1f}}; an exponential form $e^{g_s\,\mathit{sp}/10}$ fits the same, {{7.specialty_gain_exp_form_nats|.1f}} nats). The bands then read {{7.specialty_band_0_after|.3f}} /
-{{7.specialty_band_1_29_after|.3f}} / {{7.specialty_band_30_59_after|.3f}} / {{7.specialty_band_60_after|.3f}}, the {{7.specialty_cells_df|.0f}} (scenario, band) cells with 200+ rows are jointly consistent with the model (run-clustered $\chi^2$ = {{7.specialty_cells_joint_chi2|.1f}}, p-value {{7.specialty_cells_p|.2f}}), and Unity Cup cards
-with $hf = 0$ and specialty 0 go from {{7.unity_hf_0_spec_0_before|.3f}} to {{7.unity_hf_0_spec_0_after|.3f}}. One pooled $d$ stays within {{7.specialty_d_robustness_min|.2f}}-{{7.specialty_d_robustness_max|.2f}} on either half of the runs,
-on SR or SSR cards alone and without any one of the eight most-used cards. Fitted on the earlier half of the runs and scored on
-the later {{7.specialty_held_out_rows|,.0f}} rows, it gains {{7.held_out_later_runs_specialty_term_vs_none_nats|.1f}} ± {{7.held_out_later_runs_specialty_term_vs_none_se|.1f}}, $z$ = {{7.held_out_later_runs_specialty_term_vs_none_z|.1f}}: it also predicts later runs. Against real careers
-(section 13) training-pool hints read {{13.1_training_pool_only_obs_per_pred|.3f}} of the model with it.
+*Prioritised skills.* {{7.priority_runs|.0f}} runs show a priority list; prioritised skills are hinted by training at {{7.priority_observed|.3f}} against
+{{7.priority_predicted|.3f}} predicted ({{7.priority_rows|.0f}} rows): no effect, as the model assumes.
 
-The term is an association, not shown to be a cause: high-specialty cards might share another trait that raises
-hints. The cleanest test compares the same card at different limit breaks, where specialty changes and the card does
-not ({{7.specialty_same_card_cards|.0f}} cards, a base per card and scenario): $d$ = {{7.specialty_same_card_d|.2f}}, the same size as across cards, but a gain of only
-{{7.specialty_same_card_gain_nats|.1f}} nats, not significant.
-
-Prioritised skills raising training hints: {{7.priority_runs|.0f}} runs show a priority list, prioritised skills hinted by training at {{7.priority_observed|.3f}}
-against {{7.priority_predicted|.3f}} predicted ({{7.priority_rows|.0f}} rows); no effect assumed.
+Against real careers (section 13), training-pool hints read {{13.1_training_pool_only_obs_per_pred|.3f}} of the model.
 
 ## 8. Chain events
 
