@@ -24,19 +24,28 @@ spark deficit, priority, the specialty cells) are run-clustered (common.cluster_
 specialty cells are tested jointly by a run-clustered Wald chi2 (common.cluster_chi2), their largest |z| only described.
 """
 import collections, functools, math, re, unicodedata
+from collections.abc import Callable, Sequence
+from typing import Any
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 import common
 
-SEC = '7'
-MIL = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-norm = lambda s: re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', s)).strip()
+SEC: str = '7'
+MIL: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]     # the milestone levels of support_card_effect_table
+
+Rate = Callable[[np.ndarray], np.ndarray]     # parameters -> h per card-run
+Mask = np.ndarray                             # a boolean mask over rows
+Data = dict[str, Any]                         # build()'s arrays, card-runs and rows
+
+
+def norm(s: str) -> str:
+    return re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', s)).strip()
 
 
 # ---------------------------------------------------------------- game data
-def _game():
+def _game() -> dict[str, Any]:
     if 'g' in common._cache: return common._cache['g']
-    db = common.mdb(); q = lambda s: db.execute(s).fetchall()
+    db = common.mdb(); q: Callable[[str], list[tuple]] = lambda s: db.execute(s).fetchall()
     lim = {r[0]: r[1:] for r in q('select rarity, limit_0, limit_1, limit_2, limit_3, limit_4 from support_card_limit')}
     eff = collections.defaultdict(dict)
     for row in q('select id, type, init,' + ','.join(f'limit_lv{l}' for l in range(5, 55, 5)) + ' from support_card_effect_table'):
@@ -53,7 +62,7 @@ def _game():
     return g
 
 
-def effect(g, cid, typ, level, mode='lin'):
+def effect(g: dict[str, Any], cid: int, typ: int, level: int, mode: str = 'lin') -> int:
     """support effect `typ` at `level`: floored linear interpolation between milestones (or the last milestone
     reached, mode 'step'), plus the unique effect once its level is reached"""
     vals = g['eff'][g['info'][cid][1]].get(typ); x = 0
@@ -69,7 +78,7 @@ def effect(g, cid, typ, level, mode='lin'):
 
 
 # ---------------------------------------------------------------- observations
-def build():
+def build() -> Data:
     """card-runs and pool-skill rows of every record"""
     key = 'obs'
     if key in common._cache: return common._cache[key]
@@ -107,7 +116,7 @@ def build():
     D = dict(obs=obs, ci=np.array(ci, int), skn=np.array(skn), kk=np.array(kk), kind=np.array(kind), cat=np.array(cat))
     D['hit'] = (D['kk'] >= 1).astype(float)
     D['noinsp'] = np.array(['Inspiration' not in c for c in cat])
-    A = lambda k, t=float: np.array([x[k] for x in obs], t)
+    A: Callable[..., np.ndarray] = lambda k, t=float: np.array([x[k] for x in obs], t)
     for k in ('hf', 'hf_step', 'hf_max', 'spec', 'bond0'): D[k] = A(k)
     for k in ('scen', 'lb', 'rar', 'npal', 'nskill', 'opts', 'hinc'): D[k] = A(k, int)
     D['inc'] = 1 + A('hlv', int)
@@ -120,7 +129,7 @@ def build():
 
 # ---------------------------------------------------------------- the draw model
 @functools.lru_cache(None)
-def miss(k, n, t, cap):
+def miss(k: int, n: int, t: int, cap: int) -> float:
     """P(none of k given pool skills drawn) in t draws, each uniform over the n skills still below Lv 5; a skill
     leaves after `cap` draws (pkg/loopopt/src/deck/hints.rs miss_draws)"""
     if k == 0: return 1.0
@@ -138,33 +147,65 @@ def miss(k, n, t, cap):
     return sum(st.values())
 
 
-TMAX = 12
-def miss_table(k, n, cap):
-    """rows x (TMAX + 1): miss(k, n, t, cap) for t = 0..TMAX"""
-    return np.array([[miss(int(a), int(b), t, int(c)) for t in range(TMAX + 1)] for a, b, c in zip(k, n, cap)])
+TMAX: int = 12            # the most draws a table covers
 
 
-def mix(tab, h):
+def miss_table(k: np.ndarray, n: np.ndarray, cap: np.ndarray) -> np.ndarray:
+    """rows x (TMAX + 1): miss(k, n, t, cap) for t = 0..TMAX (computed once per distinct (k, n, cap))"""
+    u, inv = np.unique(np.stack([np.asarray(k), np.asarray(n), np.asarray(cap)], 1).astype(int), axis=0, return_inverse=True)
+    t = np.array([[miss(int(a), int(b), t, int(c)) for t in range(TMAX + 1)] for a, b, c in u]).reshape(len(u), TMAX + 1)
+    return t[inv.ravel()]
+
+
+def mix(tab: np.ndarray, h: np.ndarray) -> np.ndarray:
     """h read as floor(h) or floor(h) + 1 draws, weighted by the fraction"""
     t0 = np.floor(h).astype(int); f = h - t0; r = np.arange(len(h))
     return (1 - f) * tab[r, t0] + f * tab[r, t0 + 1]
 
 
-def row_ll(p, y):
+def row_ll(p: np.ndarray, y: np.ndarray) -> np.ndarray:
     """each row's Bernoulli log-likelihood"""
     p = np.clip(p, 1e-12, 1 - 1e-12)
     return np.where(y > 0, np.log(p), np.log(1 - p))
 
 
-def bern_ll(p, y):
+def bern_ll(p: np.ndarray, y: np.ndarray) -> float:
     return row_ll(p, y).sum()
 
 
+# ---------------------------------------------------------------- classes: rows that a fit predicts alike
+# A fit's prediction for a row reads only its card-run's covariates (scenario, hf, specialty, pool size, ...), so rows
+# with equal covariates share P(hit): a fit sums hits * log p + misses * log(1 - p) over these classes instead of over
+# rows (the same log-likelihood up to rounding, many times fewer terms).
+def alike(*cols: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """rows alike in every column: (class of each row, a row of each class)"""
+    _, first, inv = np.unique(np.stack([np.asarray(c, float) for c in cols], 1), axis=0, return_index=True, return_inverse=True)
+    return inv.ravel(), first
+
+
+def tally(cls: np.ndarray, y: np.ndarray, rows: Mask, ncls: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """the classes of rows `rows` (a mask): (classes present, hits in each, rows in each)"""
+    c = cls[rows]; n = np.bincount(c, minlength=ncls); w = np.nonzero(n)[0]
+    return w, np.bincount(c, weights=y[rows], minlength=ncls)[w], n[w].astype(float)
+
+
+def class_ll(p: np.ndarray, hits: np.ndarray, n: np.ndarray) -> float:
+    """Bernoulli log-likelihood of classes with `hits` hits of `n` rows, each row P(hit) = p (clipped as row_ll)"""
+    p = np.clip(p, 1e-12, 1 - 1e-12)
+    return float(hits @ np.log(p) + (n - hits) @ np.log(1 - p))
+
+
+def on_rows(w: np.ndarray, v: np.ndarray, cls: np.ndarray, ncls: int) -> np.ndarray:
+    """class values v (of classes w) on rows of classes `cls`"""
+    full = np.zeros(ncls); full[w] = v
+    return full[cls]
+
+
 # ---------------------------------------------------------------- held out (5-fold cross-validation by run)
-CV_FOLDS = None           # every fold; a list of folds times a subset
+CV_FOLDS: list[int] | None = None           # every fold; a list of folds times a subset
 
 
-def cv(run_rows, fold_fn):
+def cv(run_rows: np.ndarray, fold_fn: Callable[[Mask, Mask], dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
     """5-fold cross-validation by common.fold(run), a run's rows all in one fold: fold_fn(train, test) fits every model on
     the rows in `train` (boolean masks over the rows) and returns {model: log-likelihood of each row in `test`, in row
     order}. Returns {model: held-out log-likelihood per run}, runs in sorted order"""
@@ -176,58 +217,67 @@ def cv(run_rows, fold_fn):
     return {m: np.bincount(ix, weights=v, minlength=len(runs)) for m, v in ll.items()}
 
 
-def compared(name, a, b):
+def compared(name: str, a: np.ndarray, b: np.ndarray) -> list[common.Value]:
     """the Values of a held-out comparison, a (the more complex model) minus b, summed over runs: nats, SE, z"""
     s, se, z = common.compare_held_out(a, b)
     return [V(f'held out: {name}: nats', s), V(f'held out: {name}: SE', se), V(f'held out: {name}: z', z)]
 
 
-def fitB(D, hfun, x0, rows=None, nn=None):
-    """the form study's fits: P(row hit) = 1 - (1 - 1/n)^h, h = hfun(theta) per card-run; Nelder-Mead then L-BFGS-B"""
-    ci = D['ci']; nn = (D['nskill'] if nn is None else nn).astype(float)
+def form_classes(D: Data) -> tuple[np.ndarray, np.ndarray]:
+    """card-runs alike for every rate of the form study (scenario, hf in its three readings, pool size): (class of each
+    card-run, a card-run of each class)"""
+    if 'form_classes' not in D: D['form_classes'] = alike(D['scen'], D['hf'], D['hf_step'], D['hf_max'], D['nskill'])
+    return D['form_classes']
+
+
+def fitB(D: Data, hfun: Rate, x0: Sequence[float], rows: Mask | None = None) -> tuple[np.ndarray, float]:
+    """the form study's fits: P(row hit) = 1 - (1 - 1/n)^h, h = hfun(theta) per card-run (reading only the scenario and
+    hf); Nelder-Mead then L-BFGS-B"""
+    ci = D['ci']; cc, rep = form_classes(D)
     rows = np.ones(len(ci), bool) if rows is None else rows
-    nr = nn[ci][rows]; y = D['hit'][rows]; cr = ci[rows]
-    def nll(th):
+    w, hits, nr = tally(cc[ci], D['hit'], rows, len(rep)); cr = rep[w]; keep = 1 - 1 / D['nskill'][cr].astype(float)
+    def nll(th: np.ndarray) -> float:
         h = hfun(th)
         if np.any(h <= 0) or not np.all(np.isfinite(h)): return 1e12
-        return -bern_ll(1 - (1 - 1 / nr) ** h[cr], y)
+        return -class_ll(1 - keep ** h[cr], hits, nr)
     r = minimize(nll, x0, method='Nelder-Mead', options=dict(xatol=1e-6, fatol=1e-7, maxiter=40000, maxfev=80000))
     r2 = minimize(nll, r.x, method='L-BFGS-B')
     b = r2 if r2.fun <= r.fun else r
     return b.x, -b.fun
 
 
-def fit_cap(D, rows, cap=True, pooled=False):
+def fit_cap(D: Data, rows: Mask, cap: bool = True, pooled: bool = False) -> tuple[dict[int, float], float, np.ndarray]:
     """per-scenario (or pooled) base for h = base (1 + hf/100), Bernoulli through the floor/ceiling mixture of
     miss(1, n, t, cap); cap=False draws with replacement. Returns bases, log-likelihood, per-row P(hit)"""
     ci = D['ci']; j = np.nonzero(rows)[0]; c = ci[j]
-    capv = np.ceil(5 / D['hinc'][c]).astype(int) if cap else np.full(len(j), 99)
-    tab = miss_table(np.ones(len(j), int), D['nskill'][c], capv)
+    cc, rep = alike(D['scen'], D['hf'], D['nskill'], D['hinc']); rc = cc[c]; nc = len(rep)
+    capv = np.ceil(5 / D['hinc'][rep]).astype(int) if cap else np.full(nc, 99)
+    tab = miss_table(np.ones(nc, int), D['nskill'][rep], capv)          # per class
     y = D['hit'][j]; g = np.zeros(len(j), int) if pooled else D['scen'][c]
     bases, ll, p = {}, 0.0, np.zeros(len(j))
     for s in sorted(set(g)):
-        q = g == s; mult = 1 + D['hf'][c][q] / 100
-        f = lambda b: -bern_ll(1 - mix(tab[q], b * mult), y[q])
+        q = g == s; w, hits, nr = tally(rc, y, q, nc); tq = tab[w]; mult = 1 + D['hf'][rep[w]] / 100
+        f = lambda b: -class_ll(1 - mix(tq, b * mult), hits, nr)
         r = minimize_scalar(f, bounds=(0.5, 5), method='bounded', options=dict(xatol=1e-8))
-        bases[int(s)] = r.x; ll -= r.fun; p[q] = 1 - mix(tab[q], r.x * mult)
+        bases[int(s)] = r.x; ll -= r.fun; p[q] = on_rows(w, 1 - mix(tq, r.x * mult), rc[q], nc)
     return bases, ll, p
 
 
-def B4(D, th):
+def B4(D: Data, th: Sequence[float] | np.ndarray) -> np.ndarray:
     return np.asarray(th[:4])[D['scen'] - 1]
 
 
 # ---------------------------------------------------------------- values
-def V(name, got, **kw):
+def V(name: str, got: float | np.number | None, **kw: str) -> common.Value:
     return common.Value(SEC, name, None if got is None else float(got), **kw)
 
 
-def adopted():
+def adopted() -> tuple[dict[int, float], dict[int, float]]:
     """the solver's training-hint bases and specialty weights by scenario (hint_base, hint_spec in
     pkg/loopopt/src/deck/hints.rs)"""
     src = open(f'{common.ROOT}/pkg/loopopt/src/deck/hints.rs', encoding='utf-8').read()
 
-    def table(fn):
+    def table(fn: str) -> dict[int, float]:
         body = re.search(r'fn ' + fn + r'[^{]*\{.*?match scenario \{(.*?)\}', src, re.S).group(1)
         v = {k: float(x) for k, x in re.findall(r'"(\w+)" => ([\d.]+)', body)}
         v['unity'] = float(re.search(r'_ => ([\d.]+)', body).group(1))
@@ -235,7 +285,7 @@ def adopted():
     return table('hint_base'), table('hint_spec')
 
 
-def derived():
+def derived() -> list[common.Value]:
     """the h-reading example: n = 5, h = 2.74; smooth (1 - 1/n)^h against floor/ceiling draws"""
     n, h = 5, 2.74
     caps = [V(f'draws to Lv 5, +{i} card', math.ceil(5 / i), note='derived') for i in range(1, 6)]
@@ -243,11 +293,11 @@ def derived():
             V('miss floor/ceiling, n=5 h=2.74', mix(np.array([[(1 - 1 / n) ** t for t in range(TMAX + 1)]]), np.array([h]))[0], note='derived')]
 
 
-def claims():
+def claims() -> list[common.Value | common.Finding]:
     if not common.have_runs() or common.mdb() is None:
         return derived()
-    out = []
-    def add(name, got, **kw): out.append(V(name, got, **kw))
+    out: list[common.Value] = []
+    def add(name: str, got: float | np.number | None, **kw: str) -> None: out.append(V(name, got, **kw))
 
     # ---- the solver's constants (read, not fitted)
     ADOPTED, ADOPTED_D = adopted()
@@ -268,7 +318,7 @@ def claims():
     sc = D['scen']; max4 = D['lb'][ci] == 4
     add('form: rows', len(ci)); add('form: rows without a spark', NI.sum())
     add('form: runs', len({D['obs'][i]['run'] for i in ci}), note='runs that add a row')
-    llB = lambda h, nn=n: bern_ll(1 - (1 - 1 / nn[ci]) ** h[ci], hit)
+    llB: Callable[..., float] = lambda h, nn=n: bern_ll(1 - (1 - 1 / nn[ci]) ** h[ci], hit)
     add('LL 1+hf/25 over options', llB(1 + hf / 25, D['opts'].astype(float)))
     add('LL 1+hf/25 over skills', llB(1 + hf / 25))
     add('LL constant', fitB(D, lambda th: th[0] + 0 * hf, [2.])[1])
@@ -297,7 +347,7 @@ def claims():
     inc, kk, kind = D['inc'][ci], D['kk'], D['kind']
     k1 = (kind == 0) & (kk == 1); k2 = ((kind == 0) & (kk >= 2)) | ((kind == 1) & (kk >= 2))
     use = (k1 | k2) & (inc <= 4); p = 1 / n[ci]; hh = h[ci]; f0 = np.floor(hh); fr = hh - f0
-    q = lambda t: (1 - (1 - p) ** t, 1 - (1 - p) ** t - t * p * (1 - p) ** (t - 1))      # P(k >= 1), P(k >= 2)
+    q: Callable[[np.ndarray], tuple[np.ndarray, np.ndarray]] = lambda t: (1 - (1 - p) ** t, 1 - (1 - p) ** t - t * p * (1 - p) ** (t - 1))      # P(k >= 1), P(k >= 2)
     (a1, a2), (b1, b2) = q(f0), q(f0 + 1)
     r_two = ((1 - fr) * a2 + fr * b2) / ((1 - fr) * a1 + fr * b1)
     mu = hh / n[ci]; r_poi = 1 - mu * np.exp(-mu) / (1 - np.exp(-mu))
@@ -318,11 +368,11 @@ def claims():
     add('per-scenario bases gain, nats', ll4 - ll1)
 
     # the form study's rate forms held out: each fold's fits on the other four folds' rows, every row scored
-    one = lambda th: th[0] * (1 + hf / 100); per = lambda th: B4(D, th) * (1 + hf / 100)
-    free = lambda th: B4(D, th) * (1 + hf / th[4]); const = lambda th: th[0] + 0 * hf
-    sc_h = lambda h, te, nn=n: row_ll(1 - (1 - 1 / nn[ci][te]) ** h[ci][te], hit[te])
+    one: Rate = lambda th: th[0] * (1 + hf / 100); per: Rate = lambda th: B4(D, th) * (1 + hf / 100)
+    free: Rate = lambda th: B4(D, th) * (1 + hf / th[4]); const: Rate = lambda th: th[0] + 0 * hf
+    sc_h: Callable[..., np.ndarray] = lambda h, te, nn=n: row_ll(1 - (1 - 1 / nn[ci][te]) ** h[ci][te], hit[te])
 
-    def fold_form(tr, te):
+    def fold_form(tr: Mask, te: Mask) -> dict[str, np.ndarray]:
         t4 = fitB(D, per, [1.5, 2.6, 2., 1.7], rows=tr)[0]
         return {'one base': sc_h(one(fitB(D, one, [2.], rows=tr)[0]), te), 'per-scenario': sc_h(per(t4), te),
                 'free divisor': sc_h(free(fitB(D, free, list(t4) + [100.], rows=tr)[0]), te),
@@ -384,7 +434,7 @@ def claims():
     tabm = miss_table(np.ones(len(jm), int), D['nskill'][cm], np.ceil(5 / D['hinc'][cm]).astype(int))
     bA = np.array([ADOPTED[s] for s in (1, 2, 3, 4)]); dA = np.array([ADOPTED_D[s] for s in (1, 2, 3, 4)])
     hA = bA[sc - 1] * (1 + hf / 100) * (1 + dA[sc - 1] * D['spec'] / 100)           # per card-run
-    clip = lambda x: np.minimum(x, TMAX - 1e-6)
+    clip: Callable[[np.ndarray], np.ndarray] = lambda x: np.minimum(x, TMAX - 1e-6)
     pA = np.full(len(ci), np.nan); pA[jm] = 1 - mix(tabm, clip(hA[cm]))
     note = 'the adopted rate, Lv-5 cap, max limit break, R cards out'
 
@@ -392,18 +442,21 @@ def claims():
     # gain by absorbing an offset of the adopted bases), rows no spark hinted
     nim = NI[jm]; yk = hit[jm][nim]; tk = tabm[nim]; hk = hA[cm][nim]; sk = sc[cm][nim] - 1; ck = cm[nim]
 
-    p_cov = lambda th, X, q: 1 - mix(tk[q], clip(hk[q] * np.exp(th[:4][sk[q]] + X[q] @ th[4:])))
-
-    def fit_cov(X, q=None, theta=False):
-        k = X.shape[1]; q = np.ones(len(yk), bool) if q is None else q
-        nll = lambda th: -bern_ll(p_cov(th, X, q), yk[q])
-        r = minimize(nll, np.zeros(4 + k), method='Nelder-Mead', options=dict(xatol=1e-6, fatol=1e-7, maxiter=40000, maxfev=80000))
-        r2 = minimize(nll, r.x, method='L-BFGS-B'); b = r2 if r2.fun <= r.fun else r
-        return b.x if theta else (-b.fun, np.exp(b.x[4:]))
+    p_cov: Callable[[np.ndarray, np.ndarray, Mask], np.ndarray] = lambda th, X, q: 1 - mix(tk[q], clip(hk[q] * np.exp(th[:4][sk[q]] + X[q] @ th[4:])))
     TY = ['stamina', 'power', 'guts', 'wit']                     # against speed
     covs = {'card type': np.stack([(D['ctype'] == t).astype(float) for t in TY], 1), 'SR': (D['rar'] == 2).astype(float)[:, None],
             'pals per deck': (D['npal'] - 2.5)[:, None].astype(float), 'initial bond': (D['bond0'] / 10)[:, None],
             'pool size': (n - 8)[:, None]}
+    kc, krep = alike(sk, hk, D['nskill'][ck], D['hinc'][ck], *np.concatenate([X[ck] for X in covs.values()], 1).T)
+
+    def fit_cov(X: np.ndarray, q: Mask | None = None, theta: bool = False) -> np.ndarray | tuple[float, np.ndarray]:
+        """X: the covariates of each row (columns of covs[...][ck])"""
+        k = X.shape[1]; q = np.ones(len(yk), bool) if q is None else q
+        w, hits, nr = tally(kc, yk, q, len(krep)); r_ = krep[w]; tw_, hw_, sw_, Xw = tk[r_], hk[r_], sk[r_], X[r_]
+        nll = lambda th: -class_ll(1 - mix(tw_, clip(hw_ * np.exp(th[:4][sw_] + Xw @ th[4:]))), hits, nr)
+        r = minimize(nll, np.zeros(4 + k), method='Nelder-Mead', options=dict(xatol=1e-6, fatol=1e-7, maxiter=40000, maxfev=80000))
+        r2 = minimize(nll, r.x, method='L-BFGS-B'); b = r2 if r2.fun <= r.fun else r
+        return b.x if theta else (-b.fun, np.exp(b.x[4:]))
     l0, _ = fit_cov(np.zeros((len(ck), 0))); facs = []
     add('covariate rows', nim.sum(), note=note)
     for nm, X in covs.items():
@@ -423,7 +476,7 @@ def claims():
     # is the predicted rate times the run-clustered interval of obs / pred (common.cluster_ci: a run gives several rows)
     cat = D['cat']; rrun = np.array([x['run'] for x in D['obs']])[ci]
 
-    def obs_ci(q_, ratio=False):
+    def obs_ci(q_: Mask, ratio: bool = False) -> tuple[float, ...]:
         r_, lo_, hi_, _ = common.cluster_ci(hit[q_], pA[q_], rrun[q_]); e_ = pA[q_].mean()
         return (r_, lo_, hi_) if ratio else (lo_ * e_, hi_ * e_)
     for c, key in (('none', 'none'), ('inspiration', 'Inspiration'), ('inspiration + card event', 'Inspiration+card event'),
@@ -456,13 +509,14 @@ def claims():
     return derived() + out + findings(out)
 
 
-def findings(out):
+def findings(out: list[common.Value]) -> list[common.Finding]:
     """the section's conclusions, each tested on the numbers above"""
     from scipy.stats import binom, chi2
-    g = {c.name: c.got for c in out}; F = lambda *a: common.finding(SEC, *a); fs = []
+    g: dict[str, Any] = {c.name: c.got for c in out}; F: Callable[..., common.Finding] = lambda *a: common.finding(SEC, *a)
+    fs: list[common.Finding] = []
     lps = g['LL per-scenario base(1+hf/100)']
-    H = lambda c: (g[f'held out: {c}: nats'], g[f'held out: {c}: SE'], g[f'held out: {c}: z'])
-    hs = lambda c: '{:+.1f} +- {:.1f} nats, z = {:.2f}'.format(*H(c))
+    H: Callable[[str], tuple[float, float, float]] = lambda c: (g[f'held out: {c}: nats'], g[f'held out: {c}: SE'], g[f'held out: {c}: z'])
+    hs: Callable[[str], str] = lambda c: '{:+.1f} +- {:.1f} nats, z = {:.2f}'.format(*H(c))
     rf = ('constant', '1+hf/25 over options', '1+hf/25 over skills')
     fs.append(F('h = beta_s (1 + hf/100) predicts unseen runs better than the other rate forms tried without a free slope (a constant, '
                 '1 + hf/25 over options or over skills; 5-fold held out, each z > 1.96)', all(H(f'per-scenario bases vs {m}')[2] > 1.96 for m in rf),
@@ -559,7 +613,7 @@ def findings(out):
     return fs
 
 
-def specialty(A):
+def specialty(A: Data) -> list[common.Value]:
     """specialty priority (effect 19, at the card's level) on the fit's setup over every record: max-limit-break
     card-runs, rows no spark hinted, Lv-5 cap, R cards out. h = base_s (1 + hf/100) (1 + d spec/100)."""
     ci = A['ci']; rows = (A['lb'][ci] == 4) & A['noinsp'] & (A['rar'][ci] != 1)
@@ -567,32 +621,40 @@ def specialty(A):
     tab = miss_table(np.ones(len(j), int), A['nskill'][c], np.ceil(5 / A['hinc'][c]).astype(int))
     y = A['hit'][j]; hfm = 1 + A['hf'][c] / 100; sp = A['spec'][c]; sc = A['scen'][c]
     cid = np.array([x['cid'] for x in A['obs']])[c]; seq = A['seq'][c]; rar = A['rar'][c]
-    out = []; add = lambda name, got, **kw: out.append(V(name, got, **kw))
+    out: list[common.Value] = []; add: Callable[..., None] = lambda name, got, **kw: out.append(V(name, got, **kw))
 
-    def fit(q, m):
-        """one scenario's base for multiplier m: (LL, base, P(hit) per row)"""
-        f = lambda b: -bern_ll(1 - mix(tab[q], np.minimum(b * m[q], TMAX - 1e-6)), y[q])
+    # every multiplier below is a function of hf and specialty: rows alike in those, the pool size and the increment
+    # (the draw table) are predicted alike
+    rc, rep = alike(A['hf'][c], sp, A['nskill'][c], A['hinc'][c]); tabc = tab[rep]
+    tallies: dict[bytes, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+
+    def fit(q: Mask, m: np.ndarray, rows: bool = False) -> tuple[float, float, np.ndarray | None]:
+        """one scenario's base for multiplier m: (LL, base, P(hit) per row of q if `rows`, else None)"""
+        key = q.tobytes()
+        if key not in tallies: tallies[key] = tally(rc, y, q, len(rep))
+        w, hits, nr = tallies[key]; tq = tabc[w]; mq = m[rep[w]]
+        f = lambda b: -class_ll(1 - mix(tq, np.minimum(b * mq, TMAX - 1e-6)), hits, nr)
         b = minimize_scalar(f, bounds=(0.3, 6), method='bounded', options=dict(xatol=1e-7)).x
-        return -f(b), b, 1 - mix(tab[q], np.minimum(b * m[q], TMAX - 1e-6))
+        return -f(b), b, on_rows(w, 1 - mix(tq, np.minimum(b * mq, TMAX - 1e-6)), rc[q], len(rep)) if rows else None
 
-    def total(m, q=None):
+    def total(m: np.ndarray, q: Mask | None = None) -> float:
         q = np.ones(len(y), bool) if q is None else q
         return sum(fit(q & (sc == k), m)[0] for k in (1, 2, 3, 4) if (q & (sc == k)).any())
 
-    def pooled_d(q=None):
+    def pooled_d(q: Mask | None = None) -> tuple[float, float]:
         r = minimize_scalar(lambda d: -total(hfm * (1 + d * sp / 100), q), bounds=(-0.5, 1.5), method='bounded', options=dict(xatol=1e-4))
         return r.x, -r.fun - total(hfm, q)
     add('specialty rows', len(j)); add('specialty card-runs', len(set(c)))
     run = np.array([A['obs'][i]['run'] for i in c])
     for k, nm in ((1, 'URA Finale'), (2, 'Unity Cup'), (3, 'Grand Concert'), (4, 'Trackblazer')):
         add(f'specialty rows {nm}', (sc == k).sum()); add(f'specialty runs {nm}', len(set(run[sc == k])))
-    d_s, p0, p1, bases = {}, np.zeros(len(y)), np.zeros(len(y)), {}
+    d_s, p0, p1, bases, l1s = {}, np.zeros(len(y)), np.zeros(len(y)), {}, []
     gain_s = 0.0
     for k in (1, 2, 3, 4):
         q = sc == k
         r = minimize_scalar(lambda d: -fit(q, hfm * (1 + d * sp / 100))[0], bounds=(-0.5, 1.5), method='bounded', options=dict(xatol=1e-5))
-        l1, bases[k], p1[q] = fit(q, hfm * (1 + r.x * sp / 100)); l0, _, p0[q] = fit(q, hfm)
-        d_s[k] = r.x; gain_s += l1 - l0
+        l1, bases[k], p1[q] = fit(q, hfm * (1 + r.x * sp / 100), True); l0, _, p0[q] = fit(q, hfm, True)
+        d_s[k] = r.x; gain_s += l1 - l0; l1s.append(l1)
     add('specialty gain per scenario, nats', gain_s)
     for k, nm in ((1, 'URA Finale'), (2, 'Unity Cup'), (3, 'Grand Concert'), (4, 'Trackblazer')):
         add(f'specialty d {nm}', d_s[k]); add(f'specialty base {nm}', bases[k])
@@ -631,24 +693,25 @@ def specialty(A):
     add('specialty d robustness max', max(ds.values()))
     # held out: bases and d fitted on the earlier half of the records, scored on the later half, against the same
     # without d
-    def d_of(q, xatol=1e-5, base=hfm):
+    def d_of(q: Mask, xatol: float = 1e-5, base: np.ndarray = hfm) -> float:
         return minimize_scalar(lambda d: -fit(q, base * (1 + d * sp / 100))[0], bounds=(-0.5, 1.5), method='bounded', options=dict(xatol=xatol)).x
 
     # the adopted model with a free hf divisor: beta_s (1 + hf/c) (1 + d_s sp/100), one c, a base and d per scenario;
     # fitted as the slope 1/c in [0, 0.05] (c >= 20), each slope's bases and d's profiled out
     hfr = A['hf'][c]
 
-    def ll_ds(q, base):
+    def ll_ds(q: Mask, base: np.ndarray) -> float:
         """LL with a base and d per scenario on top of multiplier `base`"""
         return sum(fit(q & (sc == k), base * (1 + d_of(q & (sc == k), base=base) * sp / 100))[0] for k in (1, 2, 3, 4) if (q & (sc == k)).any())
 
-    def slope_of(q):
+    def slope_of(q: Mask) -> float:
         return minimize_scalar(lambda s_: -ll_ds(q, 1 + s_ * hfr), bounds=(0, 0.05), method='bounded', options=dict(xatol=1e-6)).x
     allq = np.ones(len(y), bool); s_free = slope_of(allq)
     add('specialty model: free divisor c', 1 / s_free)
-    add('specialty model: free divisor gain, nats', ll_ds(allq, 1 + s_free * hfr) - ll_ds(allq, hfm))
+    # ll_ds(allq, hfm) is the per-scenario fit above (the same d fits, the same rows)
+    add('specialty model: free divisor gain, nats', ll_ds(allq, 1 + s_free * hfr) - sum(l1s))
 
-    def scored(qa, qb, m):
+    def scored(qa: Mask, qb: Mask, m: np.ndarray) -> np.ndarray:
         """rows qb's log-likelihoods under the base fitted on rows qa for multiplier m"""
         return row_ll(1 - mix(tab[qb], np.minimum(fit(qa, m)[1] * m[qb], TMAX - 1e-6)), y[qb])
     tr, te = seq < cut, seq >= cut; ho = {spec: np.zeros(len(y)) for spec in (False, True)}
@@ -662,7 +725,7 @@ def specialty(A):
     out.extend(compared('later runs: specialty term vs none', *(np.bincount(ix, weights=ho[s][te]) for s in (True, False))))
 
     # 5-fold: no term, one pooled d and a d per scenario (each with a base per scenario), fitted on four folds
-    def fold_spec(tr, te):
+    def fold_spec(tr: Mask, te: Mask) -> dict[str, np.ndarray]:
         r = {m: np.zeros(len(y)) for m in ('none', 'one d', 'per-scenario d', 'free divisor')}; dp = pooled_d(tr)[0]
         hfc = 1 + slope_of(tr) * hfr
         for k in (1, 2, 3, 4):
@@ -687,10 +750,14 @@ def specialty(A):
     jr = np.nonzero(A['noinsp'] & (A['rar'][ci] != 1) & np.isin(cidall[ci], vary))[0]; cw = ci[jr]
     tw = miss_table(np.ones(len(jr), int), A['nskill'][cw], np.ceil(5 / A['hinc'][cw]).astype(int)); yw = A['hit'][jr]
     hw = 1 + A['hf'][cw] / 100; sw = A['spec'][cw]; gw = np.array([f'{a}-{b}' for a, b in zip(cidall[cw], A['scen'][cw])])
-    gq = [gw == u for u in sorted(set(gw))]
+    gu, gcode = np.unique(gw, return_inverse=True)                      # (card, scenario) groups, in sorted order
+    wc, wrep = alike(gcode, A['hf'][cw], sw, A['nskill'][cw], A['hinc'][cw]); nwc = len(wrep)
+    wh = np.bincount(wc, weights=yw, minlength=nwc); wn = np.bincount(wc, minlength=nwc).astype(float); twc = tw[wrep]
+    gq = [np.nonzero(gcode[wrep] == u)[0] for u in range(len(gu))]     # each group's classes
 
-    def lw(m):
-        return sum(-minimize_scalar(lambda b: -bern_ll(1 - mix(tw[q], np.minimum(b * m[q], TMAX - 1e-6)), yw[q]), bounds=(0.05, 12),
+    def lw(m: np.ndarray) -> float:
+        mc = m[wrep]
+        return sum(-minimize_scalar(lambda b: -class_ll(1 - mix(twc[q], np.minimum(b * mc[q], TMAX - 1e-6)), wh[q], wn[q]), bounds=(0.05, 12),
                                     method='bounded', options=dict(xatol=1e-6)).fun for q in gq)
     l0 = lw(hw); rw = minimize_scalar(lambda d: -lw(hw * (1 + d * sw / 100)), bounds=(-0.5, 0.7), method='bounded', options=dict(xatol=1e-3))
     add('specialty same-card: cards', len(vary)); add('specialty same-card: d', rw.x); add('specialty same-card: gain, nats', -rw.fun - l0)
@@ -698,11 +765,11 @@ def specialty(A):
     return out
 
 
-SPEC = {}
+SPEC: dict[str, Any] = {}     # specialty()'s fitted d, gains, bases, largest cell |z| and robustness d's
 
 
 @functools.lru_cache(None)
-def distinct_pmf(n, t):
+def distinct_pmf(n: int, t: int) -> np.ndarray:
     """P(d distinct of n skills after t uniform draws with replacement), d = 0..t"""
     S = [[0] * (t + 1) for _ in range(t + 1)]; S[0][0] = 1          # Stirling numbers of the second kind
     for i in range(1, t + 1):
