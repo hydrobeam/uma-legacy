@@ -17,6 +17,14 @@ const local = process.env.LLP_URL ? null : await serveDist();
 const URL = process.env.LLP_URL || local.url;
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';   // the browsers live in webapp/node_modules (./build.sh browsers)
 let pw;
+// the scenario tiles' "Hint rate ×" lines as the solver's hint_base gives them (a multiple of URA Finale's)
+function hintRates() {
+  const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'pkg', 'loopopt', 'src', 'deck', 'hints.rs'), 'utf8');
+  const body = /fn hint_base[^{]*\{[^]*?match scenario \{([^}]*)\}/.exec(src)[1];
+  const v = Object.fromEntries([...body.matchAll(/"(\w+)" => ([\d.]+)/g)].map(m => [m[1], +m[2]])), dflt = +/_ => ([\d.]+)/.exec(body)[1];
+  const of = s => v[s] ?? dflt;
+  return Object.fromEntries(['unity', 'gc', 'ura', 'trackblazer', 'grandmasters'].map(s => [s, `Hint rate ×${(of(s) / of('ura')).toFixed(2)}`]));
+}
 try { pw = createRequire(import.meta.url)('playwright'); }
 catch { console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)'); process.exit(1); }
 
@@ -370,8 +378,8 @@ const TESTS = {
     const t = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect();
       const sub = t.querySelector('.ssub'), sr = sub.getBoundingClientRect(), pad = parseFloat(getComputedStyle(t).paddingBottom) + parseFloat(getComputedStyle(t).borderBottomWidth);
       return { v: t.dataset.v, sub: sub.innerText.replace(/\s+/g, ' ').trim(), w: Math.round(r.width), h: Math.round(r.height), gap: Math.round(r.bottom - pad - sr.bottom), subH: Math.round(sr.height) }; }));
-    // hint rate as a multiple of URA Finale's (2.70, 2.03, 1.60, 1.81 hints per card over 1.60)
-    const want = { unity: 'Hint rate ×1.69', gc: 'Hint rate ×1.27', ura: 'Hint rate ×1.00', trackblazer: 'Hint rate ×1.13' };
+    // hint rate as a multiple of URA Finale's, from the solver's hint_base (pkg/loopopt/src/deck/hints.rs)
+    const want = hintRates();
     check('each tile has the same hover text as the button gives the chosen scenario', await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].every(t => t.title && t.title === t.getAttribute('aria-label')) && document.querySelector('#scen-menu .stile[data-v="unity"]').title === document.getElementById('x-scen').title));
     check('opens with four tiles, each with its hint rate against URA Finale', !(await menu.isHidden()) && t.length === 4 && t.every(x => x.sub === want[x.v]), t.map(x => x.v + ': ' + x.sub).join(' | '));
     check('the four tiles are the same size', new Set(t.map(x => x.w + 'x' + x.h)).size === 1, t.map(x => x.w + 'x' + x.h).join(' '));
@@ -969,7 +977,7 @@ const TESTS = {
     await pg.click('#x-scen');
     const gt = await pg.evaluate(() => [...document.querySelectorAll('#scen-menu .stile')].map(t => { const r = t.getBoundingClientRect(); return { v: t.dataset.v, sub: t.querySelector('.ssub').innerText.replace(/\s+/g, ' ').trim(), size: Math.round(r.width) + 'x' + Math.round(r.height), x: Math.round(r.left + r.width / 2) }; }));
     const mid = await pg.evaluate(() => { const r = document.getElementById('scen-menu').getBoundingClientRect(); return Math.round(r.left + r.width / 2); });
-    check('GM era: five equal tiles, Grand Masters last and centred', gt.length === 5 && gt[4].v === 'grandmasters' && /^Hint rate ×1\.44 \((estimate|est\.)\)$/.test(gt[4].sub) && new Set(gt.map(t => t.size)).size === 1 && Math.abs(gt[4].x - mid) <= 1, JSON.stringify(gt));
+    check('GM era: five equal tiles, Grand Masters last and centred', gt.length === 5 && gt[4].v === 'grandmasters' && gt[4].sub.replace(/ \((estimate|est\.)\)$/, '') === hintRates().grandmasters && / \((estimate|est\.)\)$/.test(gt[4].sub) && new Set(gt.map(t => t.size)).size === 1 && Math.abs(gt[4].x - mid) <= 1, JSON.stringify(gt));
     if (process.env.LLP_SHOTS) await pg.locator('#scen-menu').screenshot({ path: `${process.env.LLP_SHOTS}/${b.browserType().name()}-scen-picker-gm.png` });
     await pg.keyboard.press('Escape');
     await navClick(pg, '#era-global'); await settle(pg);
