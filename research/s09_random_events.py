@@ -102,7 +102,9 @@ def readings(R):
             nm = name.get(ch); srcs = [s for h in r['hints'] if h['name'] == m for s in h['src']]
             hit = f'{nm} event' in srcs
             amb = not hit and any(nm in s and ' or ' in s for s in srcs)
-            rows.append(dict(run=r['id'], card=cid, rar=x['rarity'], hit=int(hit), amb=int(amb), K=K, pals=pals, links=links,
+            # censored: the marker already at hint Lv 5 from other sources, so the event's hint could not show
+            cens = not hit and not amb and max([h['lv'] or 0 for h in r['hints'] if h['name'] == m] or [0]) >= 5
+            rows.append(dict(run=r['id'], card=cid, rar=x['rarity'], hit=int(hit), amb=int(amb), cens=int(cens), K=K, pals=pals, links=links,
                              char=ch, lb=lbs[cid], scen=r['scenario']))
     return rows
 
@@ -189,6 +191,9 @@ def claims():
     y = sum(r['hit'] for r in rows); n = len(rows); amb = sum(r['amb'] for r in rows)
     g.update({'readings': n, 'runs': len({r['run'] for r in rows}), 'clean hits': y, 'ambiguous credits': amb,
               'rate with ambiguous, points higher': 100 * amb / n})
+    cz = sum(r['cens'] for r in rows)
+    g.update({'readings where the event could not show (marker at Lv 5 from other sources)': cz,
+              'rate where the event could show': y / (n - cz), 'rate where it could show, ambiguous as hits': (y + amb) / (n - cz)})
     g['constant p'], g['LL constant'] = f['const']
     (a, b), g['LL fitted form'] = f['exp']; g['fitted form: P at K = 4'] = a; g['fitted form: 1 - ratio per event'] = b
     (_, g['power law a']), g['LL power law'] = f['power']

@@ -28,7 +28,7 @@ acquired every target.
 
 **Known misses**, each measured and tested in its section:
 
-- Chain events: a binomial with another $n$, Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}), fits {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better; in crowded decks early links run
+- Chain events: a binomial with another $n$, Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}), fits {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better; in crowded decks early links run
   short and more chains never start than predicted ({{7.never_started_6_chain_cards_observed|.2f}} against {{7.never_started_6_chain_cards_model|.2f}} with six chain cards); final links fit pooled
   ({{7.final_links_by_card_pooled_observed|.3f}} against {{7.final_links_by_card_pooled_model|.3f}}) but individual cards differ far beyond chance ($\chi^2$ = {{7.final_links_by_card_chi2|.0f}} on {{7.final_links_by_card_cards|.0f}} cards) (7).
 - Deck hints read {{12.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{12.1_deck_hint_no_inspiration_ratio_95_pct_low|.2f}}, {{12.1_deck_hint_no_inspiration_ratio_95_pct_high|.2f}}] of the model, almost all from event hints of targets the
@@ -411,12 +411,17 @@ none on the {{7.allowance_0_runs_without_a_contradiction|,.0f}} runs that show n
 |---|---|
 | distribution-free | mean {{7.distribution_free_mean|.2f}}, variance {{7.distribution_free_variance|.2f}} |
 | Binomial(21, 0.35) | {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind distribution-free with {{7.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters (not rejected, $p$ = {{7.binomial_21_0_35_lr_p|.2f}}) |
-| Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}) | the best binomial with $n$ free: {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better than (21, 0.35) |
+| Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}) | the best binomial with $n$ free: {{7.best_binomial_n_free_nats_behind_distribution_free|.1f}} nats behind distribution-free ($p$ = {{7.best_binomial_n_free_lr_p|.2f}}), {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} better than (21, 0.35) |
+| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: {{7.conway_maxwell_poisson_nats_behind_distribution_free|.1f}} nats behind distribution-free ($p$ = {{7.conway_maxwell_poisson_lr_p|.2f}}) |
 | Binomial(15, 0.48) | {{7.binomial_15_0_48_nats_behind_distribution_free|.1f}} nats behind distribution-free |
 | Poisson(7.1) | {{7.poisson_7_1_nats_behind_distribution_free|.1f}} nats behind distribution-free (variance = mean, too wide; rejected) |
 | per scenario | means Unity Cup {{7.per_scenario_mean_unity_cup|.2f}}, Grand Concert {{7.per_scenario_mean_grand_concert|.2f}}, URA Finale {{7.per_scenario_mean_ura_finale|.2f}}, Trackblazer {{7.per_scenario_mean_trackblazer|.2f}}; +{{7.per_scenario_log_likelihood_gain|.1f}} nats for {{7.per_scenario_extra_parameters|.0f}} extra parameters (not significant) |
 
-The adopted (21, 0.35) is not rejected, but Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}) fits better by more than chance allows for its one
+Why a binomial: the free fit's variance is {{7.distribution_free_variance_per_mean|.2f}} of its mean, so $N$ is under-dispersed, which rules out
+the Poisson and every over-dispersed count. A binomial (a fixed number of chances, each taken with the same
+probability) is the simplest under-dispersed count, but the data do not single it out: the Conway-Maxwell-Poisson fits
+about as well. What the model uses is the distribution of $N$, not the family behind it.
+The adopted (21, 0.35) is not rejected, but Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.3f}}) fits better by more than chance allows for its one
 extra parameter (a known miss; the adopted form was chosen on fewer runs). Fitted per pal count, the means are
 {{7.per_pal_count_mean_1_pals|.2f}} / {{7.per_pal_count_mean_2_pals|.2f}} / {{7.per_pal_count_mean_3_pals|.2f}} / {{7.per_pal_count_mean_4_pals|.2f}} for 1 / 2 / 3 / 4 pals ({{7.per_pal_count_runs_1_4_pals|,.0f}} runs): more pals do not lower $N$, so pal events do not consume chain events.
 
@@ -543,7 +548,10 @@ $$P(\text{fires}) = {{9.fitted_p_at_k_4|.2f}}\,(1 - {{9.fitted_form_1_ratio_per_
 $K$ = random events on offer (every shared event of the deck's characters plus the trainee's own): about {{9.fitted_p_overall|.2f}} overall,
 {{9.fitted_p_at_k_4|.2f}} at $K = 4$, {{9.fitted_p_at_k_14|.2f}} at $K = 14$. Readings: top-choice marker skills credited to the character's event; {{9.readings|,.0f}}
 readings from {{9.runs|,.0f}} runs, {{9.clean_hits|.0f}} clean hits ({{9.ambiguous_credits|.0f}} ambiguous two-card credits counted as
-misses; with them the rate is about {{9.rate_with_ambiguous_points_higher|.0f}} points higher).
+misses; with them the rate is about {{9.rate_with_ambiguous_points_higher|.0f}} points higher). A reading misses a firing when the marker was already at hint Lv 5
+from other sources ({{9.readings_where_the_event_could_not_show_marker_at_lv_5_from_other_sources|.0f}} readings): where the event could show, the rate is {{9.rate_where_the_event_could_show|.3f}}, or {{9.rate_where_it_could_show_ambiguous_as_hits|.3f}} counting the ambiguous
+credits as hits. A firing is also missed when IT takes another choice for a prioritised skill (bottom-choice rates
+below). The fitted rate is therefore a lower bound.
 
 | Form | LL |
 |---|---|
@@ -565,7 +573,8 @@ Bottom-choice skills are rarely credited: in the {{9.runs_showing_a_priority_lis
 prioritised; without a priority they were credited in {{9.bottom_choice_not_prioritised_credited_rate|.3f}} [{{9.bottom_choice_not_prioritised_95_pct_low|.3f}}, {{9.bottom_choice_not_prioritised_95_pct_high|.3f}}] of runs, against {{9.top_choice_marker_rate|.3f}} for
 top-choice markers ({{9.bottom_choice_prioritised_credited_to_her_event|.0f}} of {{9.bottom_choice_markers_prioritised_there|.0f}} with a priority).
 
-**What leaving them out costs on real careers** (section 12's rows, each run's own deck). Of the default targets only
+**What leaving them out costs on real careers** (section 12's rows, each run's own deck; this test scores whether the
+target was acquired from any source, so it does not depend on reading the event). Of the default targets only
 two are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nature's Ramp Up). On the {{9.calibration_rows|.0f}} run-target rows
 where a deck card's random event could hint the target, it was credited to that event {{9.careers_acquired_through_that_event|.0f}} times, {{9.careers_acquired_through_that_event_only|.0f}} with no other
 source; {{9.careers_rows_the_model_gives_no_chance|.0f}} rows get no chance from the model, and the event hinted the target on {{9.careers_of_them_acquired_through_that_event|.0f}} of them. Left out,

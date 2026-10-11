@@ -34,6 +34,8 @@ allocation, final-link and early-link comparisons score each observation on its 
 (P(card reaches link) on the run's deck)."""
 import collections, itertools, math, os, re, sys
 import numpy as np
+from scipy.optimize import minimize
+from scipy.stats import chi2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
@@ -295,11 +297,21 @@ def dropped(groups):
     return sum(1 for r in common.runs() if pals(r) in groups and _obs[r['id']] is None)
 
 
+def cmp_ll(M):
+    """the Conway-Maxwell-Poisson fit (P(N = k) proportional to lam^k / (k!)^nu: another two-parameter count family that
+    can be under-dispersed), by Nelder-Mead from three starts: (loglik, lam, nu)"""
+    def pmf(lam, nu):
+        lw = np.array([k * math.log(lam) - nu * math.lgamma(k + 1) for k in range(61)]); w = np.exp(lw - lw.max()); return list(w / w.sum())
+    f = lambda th: -ll(lump(pmf(math.exp(th[0]), math.exp(th[1]))), M)
+    r = min((minimize(f, x0, method='Nelder-Mead') for x0 in ([2, 0], [3, 0.5], [4, 0.7])), key=lambda r: r.fun)
+    return -r.fun, math.exp(r.x[0]), math.exp(r.x[1])
+
+
 def binom_mle(xs):
-    """the Binomial(n, p) grid MLE (n 6..24, p 0.20..0.99), exact over the chain states: (loglik, n, p)"""
+    """the Binomial(n, p) grid MLE (n 6..40, p 0.200..0.995 step 0.005), exact over the chain states: (loglik, n, p)"""
     ab = [run_levels(k, o) for _, k, _, o in xs]
     A = np.array([a for a, _ in ab]); B = np.array([b for _, b in ab])
-    grid = [(n, k / 200) for n in range(6, 25) for k in range(40, 200, 2)]
+    grid = [(n, k / 200) for n in range(6, 41) for k in range(40, 200)]
     PM = np.array([binom_pmf(n, p, 41) for n, p in grid]); TL = np.hstack([np.ones((len(grid), 1)), 1 - np.cumsum(PM, 1)[:, :40]])
     V = A @ PM.T + B @ TL.T
     lls = np.where((V <= 0).any(0), -1e18, np.log(np.maximum(V, 1e-300)).sum(0))
@@ -349,7 +361,12 @@ def fit_claims():
            V('Binomial(15, 0.48): nats behind distribution-free', llp - l15),
            V('Poisson(7.1): nats behind distribution-free', llp - lp),
            V('best binomial (n free): nats better than (21, 0.35)', ll(lump(binom_pmf(bn, bp)), M) - l21),
-           V('best binomial n free: n', bn), V('best binomial n free: p', bp, note='grid n 6..24, p 0.20..0.99 step 0.01')]
+           V('best binomial n free: n', bn), V('best binomial n free: p', bp, note='grid n 6..40, p step 0.005'),
+           V('best binomial n free: nats behind distribution-free', llp - ll(lump(binom_pmf(bn, bp)), M)),
+           V('best binomial n free: LR p', float(chi2.sf(2 * (llp - ll(lump(binom_pmf(bn, bp)), M)), KMAX - 2))),
+           V('distribution-free: variance / mean', vr / mn),
+           V('Conway-Maxwell-Poisson: nats behind distribution-free', llp - cmp_ll(M)[0]),
+           V('Conway-Maxwell-Poisson: LR p', float(chi2.sf(2 * (llp - cmp_ll(M)[0]), KMAX - 2)))]
     by = collections.defaultdict(list)
     for i, (r, *_rest) in enumerate(xs): by[r['scenario']].append(i)
     sep = {sc: em(M[ix]) for sc, ix in by.items() if len(ix) >= 30}
@@ -561,6 +578,11 @@ def findings(out, res, fl, al, sens):
     pg_ = g['Poisson(7.1): nats behind distribution-free']; dfp = KMAX - 1
     fs.append(F(f'Poisson(7.1) is rejected against a free distribution of N (likelihood ratio on its {dfp} fewer parameters, p < 0.05)',
                 chi2.sf(2 * pg_, dfp) < 0.05, f'{pg_:.1f} nats behind distribution-free, LR p = {chi2.sf(2 * pg_, dfp):.2g}'))
+    vm, cp_, bp_ = g['distribution-free: variance / mean'], g['Conway-Maxwell-Poisson: LR p'], g['best binomial n free: LR p']
+    fs.append(F('N is under-dispersed (the free fit\'s variance / mean below 1, so no Poisson or over-dispersed family fits), and '
+                'the data do not single out the binomial among under-dispersed two-parameter families: the best binomial and the '
+                'Conway-Maxwell-Poisson fit are each not rejected against a free distribution (p > 0.05)',
+                vm < 1 and bp_ > 0.05 and cp_ > 0.05, f'variance / mean {vm:.2f}; best binomial p {bp_:.3f}; CMP p {cp_:.3f}'))
     bg = g['best binomial (n free): nats better than (21, 0.35)']
     fs.append(F(f'Known miss: a binomial with n free fits better than ({CN}, {CP}) by more than 1.92 nats (the 1-parameter 5% bound)',
                 bg > 1.92, f'Binomial({g["best binomial n free: n"]:.0f}, {g["best binomial n free: p"]:.2f}) is {bg:.1f} nats better'))

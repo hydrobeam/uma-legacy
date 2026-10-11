@@ -28,7 +28,7 @@ acquired every target.
 
 **Known misses**, each measured and tested in its section:
 
-- Chain events: a binomial with another $n$, Binomial(17, 0.43), fits 3.1 nats better; in crowded decks early links run
+- Chain events: a binomial with another $n$, Binomial(18, 0.405), fits 3.4 nats better; in crowded decks early links run
   short and more chains never start than predicted (0.34 against 0.20 with six chain cards); final links fit pooled
   (0.352 against 0.357) but individual cards differ far beyond chance ($\chi^2$ = 263 on 42 cards) (7).
 - Deck hints read 0.937 [0.91, 0.96] of the model, almost all from event hints of targets the
@@ -411,14 +411,19 @@ none on the 3,402 runs that show no such case, the best $p$ at $n = 21$ is 0.34-
 |---|---|
 | distribution-free | mean 7.28, variance 4.47 |
 | Binomial(21, 0.35) | 11.4 nats behind distribution-free with 14 fewer parameters (not rejected, $p$ = 0.06) |
-| Binomial(17, 0.43) | the best binomial with $n$ free: 3.1 nats better than (21, 0.35) |
+| Binomial(18, 0.405) | the best binomial with $n$ free: 8.0 nats behind distribution-free ($p$ = 0.31), 3.4 better than (21, 0.35) |
+| Conway-Maxwell-Poisson | another under-dispersed two-parameter family: 10.1 nats behind distribution-free ($p$ = 0.12) |
 | Binomial(15, 0.48) | 15.9 nats behind distribution-free |
 | Poisson(7.1) | 87.8 nats behind distribution-free (variance = mean, too wide; rejected) |
 | per scenario | means Unity Cup 7.57, Grand Concert 7.21, URA Finale 7.06, Trackblazer 7.03; +27.7 nats for 48 extra parameters (not significant) |
 
-The adopted (21, 0.35) is not rejected, but Binomial(17, 0.43) fits better by more than chance allows for its one
+Why a binomial: the free fit's variance is 0.61 of its mean, so $N$ is under-dispersed, which rules out
+the Poisson and every over-dispersed count. A binomial (a fixed number of chances, each taken with the same
+probability) is the simplest under-dispersed count, but the data do not single it out: the Conway-Maxwell-Poisson fits
+about as well. What the model uses is the distribution of $N$, not the family behind it.
+The adopted (21, 0.35) is not rejected, but Binomial(18, 0.405) fits better by more than chance allows for its one
 extra parameter (a known miss; the adopted form was chosen on fewer runs). Fitted per pal count, the means are
-7.65 / 7.03 / 7.44 / 7.92 for 1 / 2 / 3 / 4 pals (2,918 runs): more pals do not lower $N$, so pal events do not consume chain events.
+7.58 / 7.12 / 7.41 / 8.40 for 1 / 2 / 3 / 4 pals (2,918 runs): more pals do not lower $N$, so pal events do not consume chain events.
 
 Final-link completion by pal count; the binomial lies inside every interval except at 2 pals, where it predicts more
 completions than seen:
@@ -543,7 +548,10 @@ $$P(\text{fires}) = 0.18\,(1 - 0.036)^{K - 4},$$
 $K$ = random events on offer (every shared event of the deck's characters plus the trainee's own): about 0.14 overall,
 0.18 at $K = 4$, 0.13 at $K = 14$. Readings: top-choice marker skills credited to the character's event; 5,596
 readings from 2,884 runs, 786 clean hits (102 ambiguous two-card credits counted as
-misses; with them the rate is about 2 points higher).
+misses; with them the rate is about 2 points higher). A reading misses a firing when the marker was already at hint Lv 5
+from other sources (106 readings): where the event could show, the rate is 0.143, or 0.162 counting the ambiguous
+credits as hits. A firing is also missed when IT takes another choice for a prioritised skill (bottom-choice rates
+below). The fitted rate is therefore a lower bound.
 
 | Form | LL |
 |---|---|
@@ -565,7 +573,8 @@ Bottom-choice skills are rarely credited: in the 532 runs showing a priority lis
 prioritised; without a priority they were credited in 0.035 [0.025, 0.050] of runs, against 0.140 for
 top-choice markers (3 of 22 with a priority).
 
-**What leaving them out costs on real careers** (section 12's rows, each run's own deck). Of the default targets only
+**What leaving them out costs on real careers** (section 12's rows, each run's own deck; this test scores whether the
+target was acquired from any source, so it does not depend on reading the event). Of the default targets only
 two are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nature's Ramp Up). On the 286 run-target rows
 where a deck card's random event could hint the target, it was credited to that event 32 times, 21 with no other
 source; 72 rows get no chance from the model, and the event hinted the target on 6 of them. Left out,
