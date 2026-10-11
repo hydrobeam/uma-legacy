@@ -36,15 +36,6 @@ def runs():
     return _cache['runs']
 
 
-def batch(name):
-    """a separate batch of run records (research/data/NAME, e.g. runs_festa.jsonl: runs fetched for one card), never
-    part of the research pool; [] without it"""
-    path = os.path.join(DATA, name)
-    if not os.path.exists(path): return []
-    if name not in _cache: _cache[name] = [json.loads(l) for l in open(path, encoding='utf-8')]
-    return _cache[name]
-
-
 def gjson(name):
     """a tracked Global data file (pkg/loopopt/data/global/NAME)"""
     if name not in _cache: _cache[name] = json.load(open(os.path.join(GD, name), encoding='utf-8'))

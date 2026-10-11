@@ -39,8 +39,7 @@ Meeting data), §3's base rates and §4's race win table (community figures), an
 in §5, §9, §10 and §11 (`val/joint_check.py` recomputes the solver's exact odds independently).
 
 **Data.** The measured values rest on Independent Training runs from uma-it, read as run records
-(`research/data/runs.jsonl`, plus a separate batch of runs with Nakayama Festa [Trusting the Dice] in
-`runs_festa.jsonl` used only for her outcome share in §8). **The run records are not in this repository.** Without
+(`research/data/runs.jsonl`; every run fetched is part of the pool). **The run records are not in this repository.** Without
 them the scripts compute only what needs game data, and `results.json` keeps the committed values for the rest, so a
 clone still renders the whole document. Everything else comes from the repository: `pkg/loopopt/data/global/`, the
 GameTora files (through `pkg/loopopt/export/gametora.py`) and `game/global/master.mdb`. Section 12 also runs the native

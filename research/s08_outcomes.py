@@ -263,15 +263,14 @@ def festa(R):
 
 
 def festa_numbers():
-    """Festa's share on every research run with her card plus the separate batch fetched for her (runs_festa.jsonl).
+    """Festa's share on every research run with her card.
     Her exclusive credits ("Nakayama Festa event") are wins; a Risky Business credit shared with another card's event
     ("A or B event") is hers with chance r_F / (1 - (1 - r_F)(1 - r_o)), r_F her exclusive Risky Business rate per run,
     r_o the other card's rate in runs without her; blank runs with Risky Business at Lv 5 are split by the firing rate
-    where both outcomes can show. {} without the batch."""
-    extra = common.batch('runs_festa.jsonl')
-    if not extra: return {}
+    where both outcomes can show. {} without the run records."""
+    R = common.runs()
+    if R is None: return {}
     wil = lambda k, n: common.wilson(k, n, Z90)
-    R = common.runs() + extra
     src = lambda hs, k: hs[k]['src'] if k in hs else []
     t = collections.Counter(); shared = collections.Counter(); n_f = 0
     for r in R:

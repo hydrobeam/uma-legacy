@@ -150,8 +150,8 @@ each veteran's real stars and is not affected.
   95% band), ancestor hits ($2\sum_l r_l$) {{3.per_roll_ancestor_hits_obs_per_exp|.3f}};
 - {{3.non_target_skills_inheritance_rows|,.0f}} rows of non-target skills: {{3.non_target_skills_inheritance|.3f}} [{{3.non_target_skills_inheritance_95_pct_low|.2f}}, {{3.non_target_skills_inheritance_95_pct_high|.2f}}].
 
-By predicted chance, every bucket but one matches its prediction; 0.40-0.60 sits just below it ({{3.reliability_q_0_40_0_60_observed|.3f}}
-[{{3.reliability_q_0_40_0_60_observed_95_pct_low|.3f}}, {{3.reliability_q_0_40_0_60_observed_95_pct_high|.3f}}] against {{3.reliability_q_0_40_0_60_mean_predicted_three_places|.3f}}):
+By predicted chance, every bucket's interval covers its prediction; the closest is 0.40-0.60
+({{3.reliability_q_0_40_0_60_observed|.3f}} [{{3.reliability_q_0_40_0_60_observed_95_pct_low|.3f}}, {{3.reliability_q_0_40_0_60_observed_95_pct_high|.3f}}] against {{3.reliability_q_0_40_0_60_mean_predicted_three_places|.3f}}):
 
 | Predicted $q$ | Rows | Observed (mean predicted) |
 |---|---|---|
@@ -448,8 +448,7 @@ Murmur {{8.tachyon_link_1_choice_2_murmur|.2f}}, Marvelous Sunday [Dazzling Day 
 Later! {{8.light_hello_finale_see_ya_later_3|,.0f}} of {{8.light_hello_finale_readings|,.0f}} ({{8.light_hello_finale_share|.2f}}). Consistent with 0.5: Gold Ship [That Time I Became the Strongest] {{8.gold_ship_link_3_innate_experience|.2f}}, King Halo
 [Tonight, We Waltz] {{8.king_halo_link_3_gap_closer|.2f}}, Daitaku Helios [Sunlit Angel ♪] Tail Held High {{8.helios_link_2_tail_held_high_given_link_3|.2f}} (link 2, on runs where link 3 visibly fired).
 
-Nakayama Festa's share is measured on every research run with her card plus a separate batch of runs with her card
-({{8.festa_runs_with_the_card|.0f}} in all; the batch is kept out of every other fit, since every run in it has her card). Her event is credited
+Nakayama Festa's share is measured on every run with her card ({{8.festa_runs_with_the_card|.0f}}). Her event is credited
 to her alone with Nothing Ventured in {{8.festa_nv_wins|.0f}} runs and with Risky Business in {{8.festa_rb_wins|.0f}}. In {{8.festa_rb_shared_credits|.0f}} more, Risky Business is credited to
 "her or another card's event"; the other card gives it alone in {{8.festa_team_sirius_alone_rb_rate|.3f}} of runs without her (Team Sirius, {{8.festa_shared_with_team_sirius|.0f}} of the {{8.festa_rb_shared_credits|.0f}})
 or {{8.festa_anshinzawa_alone_rb_rate|.3f}} (Sasami Anshinzawa), she in {{8.festa_her_rb_rate|.3f}} of hers, so a shared credit is hers with chance
@@ -644,6 +643,7 @@ Ship's):
 | Daitaku Helios [Let's Get This Party Lit!] > Slipstream | {{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_predicted|.3f}} | {{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_observed|.3f}} | {{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio|.2f}} [{{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | {{12.let_s_get_this_party_lit_daitaku_helios_gt_slipstream_rows|.0f}} | open |
 | Daitaku Helios [Sunlit Angel ♪] > Slipstream | {{12.sunlit_angel_daitaku_helios_gt_slipstream_predicted|.3f}} | {{12.sunlit_angel_daitaku_helios_gt_slipstream_observed|.3f}} | {{12.sunlit_angel_daitaku_helios_gt_slipstream_ratio|.2f}} [{{12.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_low|.2f}}, {{12.sunlit_angel_daitaku_helios_gt_slipstream_ratio_95_pct_high|.2f}}] | {{12.sunlit_angel_daitaku_helios_gt_slipstream_rows|.0f}} | open |
 | Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | {{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_predicted|.3f}} | {{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_observed|.3f}} | {{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio|.2f}} [{{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio_95_pct_low|.2f}}, {{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_ratio_95_pct_high|.3f}}] | {{12.lamplit_training_of_a_witch_to_be_sweep_tosho_gt_slipstream_rows|.0f}} | open |
+| Nakayama Festa [Trusting the Dice] > Risky Business | {{12.trusting_the_dice_nakayama_festa_gt_risky_business_predicted|.3f}} | {{12.trusting_the_dice_nakayama_festa_gt_risky_business_observed|.3f}} | {{12.trusting_the_dice_nakayama_festa_gt_risky_business_ratio|.2f}} [{{12.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_low|.2f}}, {{12.trusting_the_dice_nakayama_festa_gt_risky_business_ratio_95_pct_high|.2f}}] | {{12.trusting_the_dice_nakayama_festa_gt_risky_business_rows|.0f}} | open |
 
 Below 40 rows {{12.pairs_under_40_rows_excluding_1|.0f}} more pairs exclude 1; {{12.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources|.0f}} of them are event sources of Playtime's Over! that hinted it in {{12.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_hinted|.0f}} of {{12.pairs_under_40_rows_excluding_1_playtime_s_over_event_sources_runs|.0f}} runs
 against {{12.pairs_under_40_rows_excluding_1_playtime_s_over_lowest_predicted|.2f}}-{{12.pairs_under_40_rows_excluding_1_playtime_s_over_highest_predicted|.2f}} predicted (Yukino Bijin [Dancing Light into the Night], Yaeno Muteki [Fiery Discipline], Sirius

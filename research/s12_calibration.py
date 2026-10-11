@@ -353,7 +353,7 @@ SINGLE = [('[This Might Sting!] Sasami Anshinzawa', 20203), ('[Planned Perfectio
           ('[Tonight, We Waltz] King Halo', 20159), ('[That Time I Became the Strongest] Gold Ship', 20159),
           ('[Cute + Cute = ?] Mayano Top Gun', 20049), ('[Sentimental Flare ♪] Maruzensky', 20165),
           ("[Let's Get This Party Lit!] Daitaku Helios", 20165), ('[Sunlit Angel ♪] Daitaku Helios', 20165),
-          ('[Lamplit Training of a Witch-to-Be] Sweep Tosho', 20165)]
+          ('[Lamplit Training of a Witch-to-Be] Sweep Tosho', 20165), ('[Trusting the Dice] Nakayama Festa', 20203)]
 # the three event sources of Playtime's Over! (the skill on the chain-ending choice 2)
 PO_CARDS = ('[Fiery Discipline] Yaeno Muteki', '[Dancing Light into the Night] Yukino Bijin', '[Escorte Étoile] Sirius Symboli')
 
@@ -560,7 +560,7 @@ def claims(wide=None):
     off = []
     for cid, g in pairs:
         s = rep.stat(lambda r: d_sel(r) and one(r) and cn(r) == cid and r['g'] == g, pdeck, o_deck)
-        if s['pred'] and not s['rlo'] <= 1 <= s['rhi']: off.append((cid, g, s))
+        if s['pred'] and not s['rlo'] - 1e-9 <= 1 <= s['rhi'] + 1e-9: off.append((cid, g, s))   # a tolerance: k = n at a prediction of 1 is no miss
     gship = (byname.get('[That Time I Became the Strongest] Gold Ship'), 20159)
     off40 = {(cid, g) for cid, g, s in off if s['n'] >= 40}
     off_unlisted = [(cid, g, s) for cid, g, s in off if s['n'] >= 40 and (cid, g) not in listed]
@@ -615,9 +615,9 @@ def claims(wide=None):
         finding(S3, 'per roll, spark-years and ancestor hits each sit within the model\'s 95% band (|z| < 1.96, z on the model\'s own binomial variance)',
                 lambda: abs(z_y) < 1.96 and abs(z_h) < 1.96,
                 lambda: f'spark-years {o_y:,} vs {e_y:,.1f} expected (z {z_y:+.2f}); hits {o_h:,} vs {e_h:,.1f} (z {z_h:+.2f})'),
-        finding(S3, 'reliability: calibrated in every bucket with a positive prediction but 0.40-0.60, which sits just below: only that '
-                    'bucket\'s 95% interval misses its mean prediction, from below, with the observed rate under 0.03 short of it',
-                lambda: [x[0] for x in rel_miss] == [0.4] and all(hi < ep and ep - ob < 0.03 for a, b, n, ob, ep, lo, hi in rel_miss),
+        finding(S3, 'reliability: calibrated in every bucket with a positive prediction (each bucket\'s 95% interval covers its mean '
+                    'prediction)',
+                lambda: not rel_miss,
                 lambda: ('misses: ' + '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f} ({n:,} rows)' for a, b, n, ob, ep, lo, hi in rel_miss)
                          if rel_miss else 'no bucket misses') + f' (of {sum(1 for _, b, n, _, _ in rel if n and b > 1e-12)} buckets tested at 95% each; '
                 f'q = 0 bucket observed {rel[0][3]:.4f} over {rel[0][2]:,} rows)'),
