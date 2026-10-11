@@ -24,20 +24,22 @@ conditional ones; they are separated here by game data (s10_random_events.event_
               of freedom per fitted rate)
 """
 import collections
+from collections.abc import Callable, Collection
+from typing import Any
 from scipy.stats import chi2
 import common
-from common import Value
+from common import Finding, Value
 
-S = '11'
-TARGETS = set(common.DEFAULT)                                          # skill groups of the eight default targets
+S: str = '11'
+TARGETS: set[int] = set(common.DEFAULT)                                          # skill groups of the eight default targets
 
 
-def claims():
+def claims() -> list[Value | Finding]:
     gt = common.gametora(); db = common.mdb()
     grp = dict(db.execute("select id, group_id from skill_data")); rar = dict(db.execute("select id, rarity from skill_data"))
     sk = dict(db.execute("select [index],text from text_data where category=47"))
     glob = {u['id'] for u in common.gjson('data.json')['umas']}
-    ev = []
+    ev: list[tuple[int, list[int]]] = []
     for r in gt.load('training_events_char'):
         for tag, ve in gt.conditional_events(r):
             if not tag.startswith('current'): continue
@@ -54,10 +56,11 @@ def claims():
         head_on(ev, sk) + careers()
 
 
+TEIO: int; CROWN: tuple[str, str, str]
 TEIO, CROWN = 1003, ('Satsuki Sho', 'Tokyo Yushun (Japanese Derby)', 'Kikuka Sho')   # the Triple Crown's three races
 
 
-def head_on(ev, sk):
+def head_on(ev: list[tuple[int, list[int]]], sk: dict[int, str]) -> list[Value | Finding]:
     """Tokai Teio's Head-On: the Triple Crown event, her goals, and the runs training her"""
     gt = common.gametora(); db = common.mdb()
     conds = [gt.extra(ve, 0) for r in gt.load('training_events_char') if r[0] == TEIO
@@ -68,7 +71,7 @@ def head_on(ev, sk):
         'select ri.race_id, r.condition_value_1 from single_mode_route_race r join single_mode_route m on m.race_set_id = r.race_set_id '
         'join single_mode_program p on p.id = r.condition_id join race_instance ri on ri.id = p.race_instance_id '
         'where m.chara_id = ? and m.scenario_id = 0 and r.condition_type = 1', (TEIO,))}
-    out = [common.finding(S, 'Game data: Tokai Teio\'s Head-On event needs the Triple Crown, and all three of its races are '
+    out: list[Value | Finding] = [common.finding(S, 'Game data: Tokai Teio\'s Head-On event needs the Triple Crown, and all three of its races are '
                           'her career goals', conds == [[['triple_crown']]] and all(c in goals for c in CROWN),
                           f'conditions {conds}; goal places required ' + ', '.join(f'{c} {goals.get(c)}' for c in CROWN))]
     R = common.runs()
@@ -90,14 +93,15 @@ def head_on(ev, sk):
     return out
 
 
-def careers():
+def careers() -> list[Value | Finding]:
     """the conditional events touching default targets on real careers: rates, effect on the odds, calibration"""
     R = common.runs()
     if R is None: return []
     import s10_random_events as s10
-    F = lambda st, test, ev: common.finding(S, st, test, ev)
+    F: Callable[[str, Any, Any], Finding] = lambda st, test, ev: common.finding(S, st, test, ev)
     E = s10.event_groups(); rows, runrows = s10.calib(); byid = {r['id']: r for r in R}
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6')); gn = common.skills()
+    sel: list[dict[str, Any]]; skipped: collections.Counter[str]
     sel, skipped = [], collections.Counter()
     for row in rows:
         r = byid[row['run']]; u, g = r['chara'], row['g']
@@ -107,14 +111,14 @@ def careers():
             skipped['story, date, outfit or scenario event can hint it'] += 1; continue
         hit = any('Events' in h['src'] for h in s10.hint_srcs(r)[g])
         sel.append(dict(row=row, key=(u, g), mixed=g in E['shared'].get(u, set()), hit=hit))
-    groups = collections.defaultdict(list)
+    groups: dict[tuple[int, int], list[dict[str, Any]]] = collections.defaultdict(list)
     for x in sel: groups[x['key']].append(x)
     rate = {k: sum(x['hit'] for x in xs) / len(xs) for k, xs in groups.items()}
-    lab = lambda k: f'{name.get(k[0])}, any outfit, {gn[k[1]][0]}'
+    lab: Callable[[tuple[int, int]], str] = lambda k: f'{name.get(k[0])}, any outfit, {gn[k[1]][0]}'
     cond = [x for x in sel if not x['mixed']]; mixed = [x for x in sel if x['mixed']]
     kc = sum(x['hit'] for x in cond)
     _, lo, hi, _ = common.cluster_ci([int(x['hit']) for x in cond], [1] * len(cond), [x['row']['run'] for x in cond])
-    out = [Value(S, 'careers: conditional-only rows', len(cond)), Value(S, 'careers: conditional-only, from her events', kc),
+    out: list[Value | Finding] = [Value(S, 'careers: conditional-only rows', len(cond)), Value(S, 'careers: conditional-only, from her events', kc),
            Value(S, 'careers: conditional-only rate', common.div(kc, len(cond))),
            Value(S, 'careers: conditional-only rate 95% low', lo), Value(S, 'careers: conditional-only rate 95% high', hi),
            Value(S, 'careers: rows with her random event too', len(mixed)),
@@ -145,9 +149,9 @@ def careers():
     out += [Value(S, 'careers: conditional-only rows the model gives no chance', len(zc)),
             Value(S, 'careers: of them acquired', sum(x['row']['o_any'] for x in zc)),
             Value(S, 'careers: of them from her events', sum(x['hit'] for x in zc))]
-    rt = lambda tt, k: f'{tt["ratio" + k]:.3f} [{tt["rlo" + k]:.2f}, {tt["rhi" + k]:.2f}]'
-    covers = lambda tt, k: tt[f'rlo{k}'] <= 1 <= tt[f'rhi{k}']
-    lim = lambda keys: chi2.ppf(0.95, len(keys)) / 2
+    rt: Callable[[dict[str, Any], str], str] = lambda tt, k: f'{tt["ratio" + k]:.3f} [{tt["rlo" + k]:.2f}, {tt["rhi" + k]:.2f}]'
+    covers: Callable[[dict[str, Any], str], bool] = lambda tt, k: tt[f'rlo{k}'] <= 1 <= tt[f'rhi{k}']
+    lim: Callable[[Collection[Any]], float] = lambda keys: chi2.ppf(0.95, len(keys)) / 2
     kall = set(groups); kcond = {x['key'] for x in cond}
     out += [F('Conditional events touching default targets hint them on real careers: on the conditional-only rows, the '
               'pooled rate\'s 95% interval excludes 0', lambda: lo > 0,

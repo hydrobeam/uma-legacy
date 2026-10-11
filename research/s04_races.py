@@ -33,34 +33,65 @@ runs are probably skewed to good careers; goal races are run regardless (scored 
 skills are not modelled, by the table or here. A win is the record's flag (first place).
 """
 import collections, math
+from collections.abc import Callable, Hashable
+from typing import Any, TypedDict
 import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import chi2
 import common
-from common import Value
+from common import Finding, Run, Value
 
-SEC = '4'
-ALIAS = {'M.C. Nambu Hai': 'Mile Championship Nambu Hai'}     # the records' short name for the data.json race
-MON = {m: i for i, m in enumerate('Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split())}
-COST = {8: 0, 7: 0, 6: 10, 5: 20, 4: 30, 3: 40, 2: 60, 1: 90}   # grade codes 1..8 = G..S
+SEC: str = '4'
+ALIAS: dict[str, str] = {'M.C. Nambu Hai': 'Mile Championship Nambu Hai'}     # the records' short name for the data.json race
+MON: dict[str, int] = {m: i for i, m in enumerate('Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split())}
+COST: dict[int, int] = {8: 0, 7: 0, 6: 10, 5: 20, 4: 30, 3: 40, 2: 60, 1: 90}   # grade codes 1..8 = G..S
+PINK_DIST: tuple[int, ...]; PINK_SURF: dict[int, int]
 PINK_DIST, PINK_SURF = (31, 32, 33, 34), {1: 11, 2: 12}         # pink factor groups (factor id // 100)
-APRIL = {'2': 30, '3': 54}                                       # inspiration years -> first turn index they count for
-BPB = ((110, '110'), (100, '100'), (90, '90'), (80, '80'), (-99, '<=70'))
-PB = ((1.0, '100%'), (0.9, '90-99%'), (0.8, '80-89%'), (0.6, '60-79%'), (0.0, '<60%'))
+APRIL: dict[str, int] = {'2': 30, '3': 54}                                       # inspiration years -> first turn index they count for
+BPB: tuple[tuple[int, str], ...] = ((110, '110'), (100, '100'), (90, '90'), (80, '80'), (-99, '<=70'))
+PB: tuple[tuple[float, str], ...] = ((1.0, '100%'), (0.9, '90-99%'), (0.8, '80-89%'), (0.6, '60-79%'), (0.0, '<60%'))
 
 
-def tindex(year, turn):
+
+class Attempt(TypedDict):
+    """one attempt at a race at the 34 (built by attempts())"""
+    run: int
+    bp: int                     # the table's bp on base aptitudes
+    bpa: int                    # on spark-raised (pink) aptitudes
+    apt: tuple[int, ...]        # (distance, surface) aptitude codes, spark-raised
+    j: int                      # the race's position in a run of consecutive races
+    won: int
+    p: float                    # win chance: table on base aptitudes
+    p0: float                   # ... without the streak penalty
+    pa: float                   # pink table
+    pa0: float                  # pink table without the streak penalty
+    scen: int
+    goal: bool
+    outfit: int
+    fired: bool
+    later: bool
+    last: int | None            # the previous race's result, when it was the turn before
+    t: int
+    pe: float                   # pink table, a mid-run pink counted from the year's first turn
+    pg: float                   # pink table, a goal race scored one streak position earlier
+
+
+# (n, observed rate, mean predicted, obs / pred, low, high)
+Calib = tuple[int, float, float, float, float, float]
+
+
+def tindex(year: int, turn: str) -> int:
     m, h = turn.split()
     return (year - 1) * 24 + MON[m] * 2 + int(h) - 1
 
 
-def win_p(bp, j, pen):
+def win_p(bp: int, j: int, pen: list[int]) -> float:
     return min(100, max(0, bp - pen[min(j, 6) - 1])) / 100
 
 
-def lineage_pinks(r):
+def lineage_pinks(r: Run) -> collections.Counter[int]:
     """pink group -> stars summed over the six legacies"""
-    out = collections.Counter()
+    out: collections.Counter[int] = collections.Counter()
     for p in r.get('parents') or []:
         for a in [p] + list(p.get('gps') or []):
             for f, _ in (a or {}).get('factors') or []:
@@ -68,12 +99,13 @@ def lineage_pinks(r):
     return out
 
 
-def attempts(R):
+def attempts(R: list[Run]) -> tuple[list[Attempt], collections.Counter[str], collections.Counter[str]]:
     """(attempts, skipped Counter, unmatched G1 names Counter): one dict per attempt at the 34"""
     d = common.gjson('data.json')
     U = {u['id']: u for u in d['umas']}
     idx = {n: i for i, n in enumerate(d['race_names'])}
     pen = d['pen']
+    out: list[Attempt]; skip: collections.Counter[str]; unk: collections.Counter[str]
     out, skip, unk = [], collections.Counter(), collections.Counter()
     for i, r in enumerate(R):
         races = sorted(((tindex(x['year'], x['turn']), x) for x in r['races']), key=lambda t: t[0])
@@ -81,11 +113,11 @@ def attempts(R):
         if len(set(ts)) != len(ts): skip['run with two races on one turn'] += 1; continue
         u = U.get(r['chara'])
         pk = lineage_pinks(r)
-        fired = collections.defaultdict(list)   # pink group -> first turn index of each firing
+        fired: dict[int, list[int]] = collections.defaultdict(list)   # pink group -> first turn index of each firing
         for y, t0 in APRIL.items():
             for f, n in (r.get('years') or {}).get(y, []):
                 if f < 10000 and f // 100 in pk: fired[f // 100] += [t0] * n
-        j = 0; prev = None; pw = None
+        j = 0; prev: int | None = None; pw: int | None = None
         for t, x in races:
             cons = prev == t - 1; j = j + 1 if cons else 1; prev = t
             last, pw = (pw if cons else None), int(x['won'])   # the previous race's result, when it was the turn before
@@ -99,14 +131,14 @@ def attempts(R):
             if op is None: skip['race not offered to her at that turn'] += 1; continue
             cat, gr = d['race_cat'][ri], d['race_ground'][ri]
             gd, gs = PINK_DIST[cat], PINK_SURF[gr]
-            adj = []; early = []
+            adj: list[int] = []; early: list[int] = []
             for k, g in ((cat, gd), (4 if gr == 1 else 5, gs)):
                 a = u['apt'][k]
                 a = max(a, min(a + sum(pk[g] >= s for s in (1, 4, 7, 10)), 7))
                 adj.append(min(8, a + sum(t0 <= t for t0 in fired[g])))
                 early.append(min(8, a + sum(t0 - 6 <= t for t0 in fired[g])))   # the year's proc counted from its first turn
             bpa = max(-20, 110 - COST[adj[0]] - COST[adj[1]])
-            out.append(dict(run=r['id'], bp=op['bp'], bpa=bpa, apt=tuple(adj), j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
+            out.append(Attempt(run=r['id'], bp=op['bp'], bpa=bpa, apt=tuple(adj), j=j, won=int(x['won']), p=win_p(op['bp'], j, pen),
                             p0=win_p(op['bp'], 1, pen), pa=win_p(bpa, j, pen), pa0=win_p(bpa, 1, pen),
                             scen=r['scenario'], goal=bool(x['required']), outfit=r['outfit'],
                             fired=any(t0 <= t for g in (gd, gs) for t0 in fired[g]), later=2 * i >= len(R),
@@ -115,7 +147,7 @@ def attempts(R):
 
 
 # ---------------------------------------------------------------- statistics
-def calib(A, key):
+def calib(A: list[Attempt], key: str) -> Calib:
     """(n, observed rate, mean predicted, obs / pred, low, high): the run-clustered 95% interval of obs / pred
     (common.cluster_ci; one run gives several attempts)"""
     n = len(A)
@@ -125,37 +157,37 @@ def calib(A, key):
     return n, k / n, e, r, lo, hi
 
 
-def ll(ps, y):
+def ll(ps: np.ndarray, y: np.ndarray) -> float:
     """log-likelihood; -inf when a certain prediction misses"""
     with np.errstate(divide='ignore'):
         return float(np.sum(np.where(y == 1, np.log(ps), np.log(1 - ps))))
 
 
-def recal(q, y):
+def recal(q: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """the table recalibrated as lo + (hi - lo) q: (LL, lo, hi), fitted by maximum likelihood"""
-    sig = lambda z: 1 / (1 + np.exp(-z))
-    nll = lambda th: -ll(np.clip(sig(th[0]) + (sig(th[1]) - sig(th[0])) * q, 1e-12, 1 - 1e-12), y)
+    sig: Callable[[Any], Any] = lambda z: 1 / (1 + np.exp(-z))
+    nll: Callable[[np.ndarray], float] = lambda th: -ll(np.clip(sig(th[0]) + (sig(th[1]) - sig(th[0])) * q, 1e-12, 1 - 1e-12), y)
     res = minimize(nll, [-1.0, 4.0], method='Nelder-Mead', options=dict(xatol=1e-8, fatol=1e-9, maxiter=20000))
     return -res.fun, sig(res.x[0]), sig(res.x[1])
 
 
-def saturated(A, key):
+def saturated(A: list[Attempt], key: Callable[[Attempt], Hashable]) -> tuple[float, int]:
     """(LL, cells): every cell of `key` gets its own observed rate"""
-    g = collections.defaultdict(lambda: [0, 0])
+    g: dict[Hashable, list[int]] = collections.defaultdict(lambda: [0, 0])
     for a in A: c = g[key(a)]; c[0] += a['won']; c[1] += 1
-    xl = lambda x: x * math.log(x) if x else 0.0
+    xl: Callable[[float], float] = lambda x: x * math.log(x) if x else 0.0
     return sum(xl(k / n) * n + xl(1 - k / n) * n for k, n in g.values()), len(g)
 
 
-def thr(k):
+def thr(k: int) -> float:
     """the likelihood-ratio threshold for k extra parameters: chi2(k) 95% / 2"""
     return chi2.ppf(0.95, k) / 2
 
 
-def fits(A):
+def fits(A: list[Attempt]) -> dict[str, Any]:
     """model -> (LL, parameters) on the same attempts; '_recal' -> {prediction: (lo, hi)}"""
     y = np.array([a['won'] for a in A]); k = int(y.sum()); n = len(y)
-    out = {'constant': (k * math.log(k / n) + (n - k) * math.log(1 - k / n), 1), '_recal': {}}
+    out: dict[str, Any] = {'constant': (k * math.log(k / n) + (n - k) * math.log(1 - k / n), 1), '_recal': {}}
     for key, lab in (('p', 'table'), ('p0', 'no penalty'), ('pa', 'pink table'), ('pa0', 'pink no penalty')):
         q = np.array([a[key] for a in A])
         out[lab] = (ll(q, y), 0)
@@ -165,18 +197,18 @@ def fits(A):
     return out
 
 
-def held_out_cells(A):
+def held_out_cells(A: list[Attempt]) -> tuple[tuple[float, float, float], int]:
     """rule 3 for the cells: 5-fold cross-validation by common.fold(run). On four folds, a rate per (pink bp, j) cell,
     (wins + 1/2) / (attempts + 1) (Jeffreys; a raw 0 or 1 makes the held-out score that of the 1e-12 clip; a cell absent
     there takes the pink table's chance), and the pink table, each recalibrated as lo + (hi - lo) q on those folds; each
     run of the fifth scored by both. Returns common.compare_held_out(cells, table) and the run count"""
-    cell = lambda a: (a['bpa'], min(a['j'], 6))
+    cell: Callable[[Attempt], tuple[int, int]] = lambda a: (a['bpa'], min(a['j'], 6))
     y = np.array([a['won'] for a in A]); pa = np.array([a['pa'] for a in A])
     run = np.array([a['run'] for a in A]); fo = np.array([common.fold(r) for r in run])
     lc = np.zeros(len(A)); lt = np.zeros(len(A))
     for k in range(common.K_FOLDS):
         tr, te = fo != k, fo == k
-        g = collections.defaultdict(lambda: [0, 0])
+        g: dict[tuple[int, int], list[int]] = collections.defaultdict(lambda: [0, 0])
         for a in (a for a, t in zip(A, tr) if t): c = g[cell(a)]; c[0] += a['won']; c[1] += 1
         q = np.array([(g[cell(a)][0] + 0.5) / (g[cell(a)][1] + 1) if cell(a) in g else a['pa'] for a in A])
         for qq, dst in ((q, lc), (pa, lt)):
@@ -189,29 +221,29 @@ def held_out_cells(A):
 
 
 # ---------------------------------------------------------------- claims
-def bucket(v, bs):
+def bucket(v: float, bs: tuple[tuple[float, str], ...]) -> str:
     return next(lab for lo, lab in bs if v >= lo)
 
 
-def jlab(j):
+def jlab(j: int) -> str:
     return str(j) if j < 6 else '6+'
 
 
-def by(A, grp, key):
+def by(A: list[Attempt], grp: Callable[[Attempt], Any], key: str) -> dict[Any, Calib]:
     """cell -> calib(cell's attempts, key)"""
-    g = collections.defaultdict(list)
+    g: dict[Any, list[Attempt]] = collections.defaultdict(list)
     for a in A: g[grp(a)].append(a)
     return {c: calib(S, key) for c, S in sorted(g.items())}
 
 
-def cv(c):
+def cv(c: Calib) -> str:
     return f'obs/pred {c[3]:.3f} [{c[4]:.3f}, {c[5]:.3f}], n {c[0]:,}'
 
 
-def after_result(A):
+def after_result(A: list[Attempt]) -> dict[tuple[str, str], Calib]:
     """{(j bucket, 'win' | 'loss'): calib} on spark-raised aptitudes, for attempts in a streak (j >= 2) by the result of the
     race the turn before"""
-    out = {}
+    out: dict[tuple[str, str], Calib] = {}
     for jb in ('2', '3', '4+'):
         for res in ('win', 'loss'):
             S = [a for a in A if a['j'] >= 2 and (str(a['j']) == jb or (jb == '4+' and a['j'] >= 4)) and a['last'] == (res == 'win')]
@@ -219,20 +251,20 @@ def after_result(A):
     return out
 
 
-GRADE = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'A'}     # aptitude codes; S costs what A does
+GRADE: dict[int, str] = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'A'}     # aptitude codes; S costs what A does
 
 
-def grid(A, pen, minn=30, mincol=200):
+def grid(A: list[Attempt], pen: list[int], minn: int = 30, mincol: int = 200) -> tuple[str, str]:
     """the community table's layout from the runs: columns the (distance, surface) grade pair as a sorted pair of letters
     (spark-raised grades, S as A), rows the race's position in a run of consecutive races (1 to 6+); each cell the
     observed win rate, with the table's chance in parentheses; pairs with `mincol` or more attempts in all, cells under
     `minn` attempts show a dot. Returns the
     markdown table and the attempts table"""
-    cell = collections.defaultdict(lambda: [0, 0])
+    cell: dict[tuple[str, int], list[int]] = collections.defaultdict(lambda: [0, 0])
     for a in A:
         pair = ''.join(sorted((GRADE[a['apt'][0]], GRADE[a['apt'][1]])))
         c = cell[(pair, min(a['j'], 6))]; c[0] += a['won']; c[1] += 1
-    pairs = {}
+    pairs: dict[str, int] = {}
     for (pair, j), (w, n) in cell.items(): pairs[pair] = pairs.get(pair, 0) + n
     cols = sorted((p for p, n in pairs.items() if n >= mincol), key=lambda p: (-(110 - COST_L[p[0]] - COST_L[p[1]]), p))
     rows = ['1 race', '2 races', '3 races', '4 races', '5 races', '6 or more']
@@ -248,15 +280,15 @@ def grid(A, pen, minn=30, mincol=200):
     return head + body.rstrip('\n'), head + cnt.rstrip('\n')
 
 
-COST_L = {'A': 0, 'B': 10, 'C': 20, 'D': 30, 'E': 40, 'F': 60, 'G': 90}
+COST_L: dict[str, int] = {'A': 0, 'B': 10, 'C': 20, 'D': 30, 'E': 40, 'F': 60, 'G': 90}
 
 
-def claims():
+def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None: return []
     A, skip, unk = attempts(R)
     base, pink = calib(A, 'p'), calib(A, 'pa')
-    out = [Value(SEC, 'race attempts at the 34', len(A)), Value(SEC, 'race attempts won', sum(a['won'] for a in A)),
+    out: list[Value | Finding] = [Value(SEC, 'race attempts at the 34', len(A)), Value(SEC, 'race attempts won', sum(a['won'] for a in A)),
            Value(SEC, 'race attempts skipped', sum(skip.values())),
            Value(SEC, 'race goal attempts', sum(a['goal'] for a in A)),
            Value(SEC, 'race win rate observed', base[1]),
@@ -296,7 +328,7 @@ def claims():
             Value(SEC, 'held out: cells vs table: runs', ho_runs)]
 
     # ---- findings: one per claim the section makes
-    f = lambda *a: out.append(common.finding(SEC, *a))
+    f: Callable[..., None] = lambda *a: out.append(common.finding(SEC, *a))
     f('On base aptitudes (the solver\'s bp) the table under-predicts IT\'s wins: the obs/pred 95% interval lies '
       'entirely above 1', base[4] > 1, cv(base))
     f('On pink-adjusted aptitudes the table is calibrated overall: the obs/pred 95% interval covers 1',
@@ -349,7 +381,7 @@ def claims():
     return out
 
 
-def detail():
+def detail() -> None:
     """the numbers behind the findings that the section does not state"""
     R = common.runs()
     A, skip, unk = attempts(R)
@@ -374,7 +406,7 @@ def detail():
                      ('scenario', lambda k: (lambda a: common.SCEN[a['scen']]))):
         cb, cp = by(A, grp('p'), 'p'), by(A, grp('pa'), 'pa')
         for c in sorted(set(cb) | set(cp)):
-            s = lambda v: f'{v[3]:.3f} [{v[4]:.3f}, {v[5]:.3f}] n {v[0]:<6,}' if v else '-'
+            s: Callable[[Calib | None], str] = lambda v: f'{v[3]:.3f} [{v[4]:.3f}, {v[5]:.3f}] n {v[0]:<6,}' if v else '-'
             print(f'  {lab:9s} {c:14s} {s(cb.get(c)):34s} | {s(cp.get(c))}')
     for lab, S in (('bp moved by the pink rule', [a for a in A if a['bpa'] != a['bp']]),
                    ('after an April pink firing of the race\'s aptitudes', [a for a in A if a['fired']])):
@@ -383,7 +415,7 @@ def detail():
         print(f'\n{lab}: wins/attempts, mean predicted')
         print(f'{"bp \\ j":>7s}' + ''.join(f'{j:>18s}' for j in ('1', '2', '3', '4', '5', '6+')))
         for _, b in BPB:
-            row = []
+            row: list[str] = []
             for j in range(1, 7):
                 S = [a for a in A if bucket(a[bpk], BPB) == b and min(a['j'], 6) == j]
                 row.append(f'{sum(a["won"] for a in S):>6d}/{len(S):<6d}{(sum(a[key] for a in S) / len(S) if S else 0):5.2f}')

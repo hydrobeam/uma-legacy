@@ -13,22 +13,23 @@ the data claims read "needs data" and the derived ones still run."""
 import collections, concurrent.futures, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
 for v in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'): os.environ.setdefault(v, '1')   # one core
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from typing import Any
 import common
 from common import Value, Finding
 
 
 # inputs every script may read; a change to any of them (size or time) recomputes every script
-DATA_INPUTS = ['research/data/runs.jsonl', 'research/data/summary.jsonl', 'game/global/master.mdb', 'pkg/loopopt/data',
+DATA_INPUTS: list[str] = ['research/data/runs.jsonl', 'research/data/summary.jsonl', 'game/global/master.mdb', 'pkg/loopopt/data',
                'pkg/loopopt/src', 'pkg/loopopt/export', 'pkg/loopopt/target/release/loopopt', 'cache/gametora', 'val/jobs.json',
                'val/jobs', 'webapp/src/data.js']
-CACHE = os.path.join(common.OUT, 'claims')
-JOBS = 4      # scripts run at once, one core each (--jobs=N; 1 runs them one after another)
+CACHE: str = os.path.join(common.OUT, 'claims')
+JOBS: int = 4      # scripts run at once, one core each (--jobs=N; 1 runs them one after another)
 
 
-def data_stamp():
+def data_stamp() -> list[tuple[str, int, int]]:
     """size and modification time of every data input (content hashing 100 MB of inputs on every run would cost more
     than it saves); val's reference outputs included, which section 6 reads"""
-    items = []
+    items: list[tuple[str, int, int]] = []
     paths = [os.path.join(common.ROOT, x) for x in DATA_INPUTS] + sorted(glob.glob(os.path.join(common.ROOT, 'val', 'ref*__*.out')))
     for p in paths:
         if os.path.isdir(p):
@@ -40,7 +41,7 @@ def data_stamp():
     return items
 
 
-def code_of(name, seen=None):
+def code_of(name: str, seen: set[str] | None = None) -> str:
     """the source of a script, of common.py, of val/joint_check.py and of every research script it imports, transitively"""
     seen = set() if seen is None else seen
     if name in seen: return ''
@@ -50,7 +51,7 @@ def code_of(name, seen=None):
     return src + ''.join(code_of(d, seen) for d in deps)
 
 
-def fingerprint(name, kw, stamp):
+def fingerprint(name: str, kw: dict[str, Any], stamp: list[tuple[str, int, int]]) -> str:
     h = hashlib.sha256()
     for part in (code_of(name), open(os.path.join(common.HERE, 'common.py')).read(),
                  open(os.path.join(common.ROOT, 'val', 'joint_check.py')).read(), repr(sorted(kw.items())), repr(stamp)):
@@ -58,10 +59,10 @@ def fingerprint(name, kw, stamp):
     return h.hexdigest()
 
 
-AFTER = {'s10_random_events': 's13_calibration', 's11_conditional': 's13_calibration'}   # read s13's solver job files
+AFTER: dict[str, str] = {'s10_random_events': 's13_calibration', 's11_conditional': 's13_calibration'}   # read s13's solver job files
 
 
-def compute(name, kw):
+def compute(name: str, kw: dict[str, Any]) -> tuple[list[Value | Finding], float] | tuple[None, str]:
     """one script's claims (run in a worker process): (claims, seconds) or (None, traceback text)"""
     try:
         m = importlib.import_module(name); t0 = time.time()
@@ -70,13 +71,13 @@ def compute(name, kw):
         return None, traceback.format_exc()
 
 
-def main():
+def main() -> None:
     quick = '--quick' in sys.argv; force = '--force' in sys.argv
     jobs = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--jobs=')), JOBS))
     stamp = data_stamp(); os.makedirs(CACHE, exist_ok=True)
     if not common.have_runs(): common.say_missing()
     names = [os.path.basename(p)[:-3] for p in sorted(glob.glob(os.path.join(common.HERE, 's[0-9][0-9]_*.py')))]
-    got, todo = {}, {}
+    got: dict[str, list[Value | Finding]] = {}; todo: dict[str, tuple[dict[str, Any], str, str]] = {}
     for name in names:   # reuse what is unchanged
         m = importlib.import_module(name)
         kw = {'wide': not quick} if 'wide' in inspect.signature(m.claims).parameters else {}
@@ -109,13 +110,13 @@ def main():
     unused(vals)
 
 
-def write_results(items, fresh):
+def write_results(items: list[Value | Finding], fresh: bool) -> None:
     """research/results.json: every computed value by key, and the findings with their verdicts. A full run with the run
     records rebuilds it; otherwise (a clone, or --quick) what this run computes replaces the committed entries and the
     rest are kept, so the whole document still renders."""
     path = os.path.join(common.HERE, 'results.json')
     old = json.load(open(path)) if os.path.exists(path) and not fresh else {'values': {}, 'findings': []}
-    values = dict(old['values']); seen = {}
+    values: dict[str, Any] = dict(old['values']); seen: dict[str, str] = {}
     for c in items:
         if not isinstance(c, Value) or c.missing(): continue
         k = common.key_of(c.section, c.name)
@@ -135,7 +136,7 @@ def write_results(items, fresh):
     print(f'wrote research/results.json: {len(values)} values, {len(findings)} findings')
 
 
-def unused(vals):
+def unused(vals: list[Value]) -> None:
     """computed values the document template never uses: either missing from the document or not needed"""
     t = open(os.path.join(common.ROOT, 'docs', 'RESEARCH.template.md'), encoding='utf-8').read()
     used = set(re.findall(r'\{\{([0-9]+\.[a-z0-9_]+)\|', t))

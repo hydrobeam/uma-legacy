@@ -35,57 +35,66 @@ allocation, final-link and early-link comparisons score each observation on its 
 links, the allowance, chains never started) are run-clustered (common.cluster_ci), the spread between cards a
 run-clustered Wald test (common.cluster_chi2); a share with one observation per run (two-chain decks) takes Wilson."""
 import collections, itertools, math, os, re, sys
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import chi2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
+from common import Run
 
-S = '8'
-EPS = 0.03     # chance a fired link's marker hint does not show (the fits' allowance)
-KMAX = 16      # distribution-free fit: P(N = 0..15) and P(N >= 16)
-ALL = {0, 1, 2, 3, 4, 5}    # pal counts of decks with a chain card
-MISC = {}      # numbers the findings and the detail use that the document does not state
+Kind = tuple[int, int, tuple[tuple[float, ...], ...]]   # a chain card: (links, links, stop risk: (link, k, n) each)
+Obs = tuple[int, int, bool]                             # an observation: (card index in the chain cards, link, seen)
+Row = tuple[Run, list[Kind], list[int], list[Obs]]      # a run in a data set: (run, chain kinds, chain card ids, observations)
+Paths = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+Pmf = Sequence[float] | np.ndarray
+
+S: str = '8'
+EPS: float = 0.03     # chance a fired link's marker hint does not show (the fits' allowance)
+KMAX: int = 16      # distribution-free fit: P(N = 0..15) and P(N >= 16)
+ALL: set[int] = {0, 1, 2, 3, 4, 5}    # pal counts of decks with a chain card
+MISC: dict[Any, Any] = {}      # numbers the findings and the detail use that the document does not state
 
 
 # ---------------------------------------------------------------- the model
-def binom_pmf(n, p, upto=61):
+def binom_pmf(n: int, p: float, upto: int = 61) -> list[float]:
     return [math.comb(n, e) * p ** e * (1 - p) ** (n - e) if e <= n else 0.0 for e in range(upto)]
 
 
-def pois_pmf(lam, upto=61):
+def pois_pmf(lam: float, upto: int = 61) -> list[float]:
     return [math.exp(-lam) * lam ** e / math.factorial(e) for e in range(upto)]
 
 
-def chain_model():
+def chain_model() -> tuple[int, float]:
     """the solver's event count, N ~ Binomial(CHAIN_N, CHAIN_P) (pkg/loopopt/src/deck/chains.rs)"""
     src = open(f'{common.ROOT}/pkg/loopopt/src/deck/chains.rs', encoding='utf-8').read()
     return int(re.search(r'CHAIN_N: u32 = (\d+);', src).group(1)), float(re.search(r'CHAIN_P: f64 = ([\d.]+);', src).group(1))
 
 
 CN, CP = chain_model()
-BIN = binom_pmf(CN, CP)
-POIS = pois_pmf(7.1)
+BIN: list[float] = binom_pmf(CN, CP)
+POIS: list[float] = pois_pmf(7.1)
 
 
-def canon(kinds):
+def canon(kinds: Sequence[Kind]) -> tuple[tuple[Kind, ...], dict[int, int]]:
     """the deck's chain kinds in a canonical order, and each card's position in it"""
     order = sorted(range(len(kinds)), key=lambda i: kinds[i])
     return tuple(kinds[i] for i in order), {ci: j for j, ci in enumerate(order)}
 
 
-_paths = {}
+_paths: dict[tuple[tuple[Kind, ...], str], Paths] = {}
 
 
-def paths(ck, rule='slots'):
+def paths(ck: tuple[Kind, ...], rule: str = 'slots') -> Paths:
     """Every (state, events taken, absorbed) the chain process passes through, with its probability, summed over
     stop-risk outcomes, as arrays (S: links fired per card, L, A, P). A state at level l is final with P(N = l), or with
     P(N >= l) when nothing can advance (absorbed). rule: 'slots' (weight = links left) or 'cards' (uniform)."""
     key = (ck, rule)
     if key in _paths: return _paths[key]
-    n = len(ck); acc = collections.defaultdict(float)
-    alts = []
+    n = len(ck); acc: collections.defaultdict[tuple[tuple[int, ...], int, bool], float] = collections.defaultdict(float)
+    alts: list[list[tuple[float, float]]] = []
     for links, stop, risk in ck:
         v, go = [], 1.0
         for l, k, m in sorted(risk): v.append((l, go * k / m)); go *= 1 - k / m
@@ -93,9 +102,9 @@ def paths(ck, rule='slots'):
     for combo in itertools.product(*alts):
         w = math.prod(p for _, p in combo); stops = [s for s, _ in combo]
         if w == 0: continue
-        layer = {tuple([0] * n): 1.0}; lvl = 0
+        layer: dict[tuple[int, ...], float] = {tuple([0] * n): 1.0}; lvl = 0
         while layer:
-            nxt = collections.defaultdict(float)
+            nxt: collections.defaultdict[tuple[int, ...], float] = collections.defaultdict(float)
             for s, p in layer.items():
                 left = [(ck[i][0] - s[i]) if s[i] < stops[i] else 0 for i in range(n)]
                 ws = left if rule == 'slots' else [1 if x else 0 for x in left]
@@ -110,7 +119,7 @@ def paths(ck, rule='slots'):
     return out
 
 
-def final_w(ck, pmf, rule='slots'):
+def final_w(ck: tuple[Kind, ...], pmf: Pmf, rule: str = 'slots') -> tuple[np.ndarray, np.ndarray]:
     """each path entry's probability of being the final state under the event-count pmf"""
     S, L, A, P = paths(ck, rule); pm = np.asarray(pmf, float)
     tail = np.concatenate([[1.0], 1.0 - np.cumsum(pm)])
@@ -118,10 +127,10 @@ def final_w(ck, pmf, rule='slots'):
     return S, np.where(ok, P * np.where(A, tail[Lc], pm[Lc]), 0.0)
 
 
-_reach = {}
+_reach: dict[tuple[Any, ...], dict[tuple[int, int], float]] = {}
 
 
-def reach(kinds, pmf=BIN, rule='slots'):
+def reach(kinds: Sequence[Kind], pmf: Pmf = BIN, rule: str = 'slots') -> dict[tuple[int, int], float]:
     """{(card index, link): P(the card reaches the link)} for a deck's chain kinds"""
     ck, pos = canon(tuple(kinds))
     key = (ck, rule, 'B' if pmf is BIN else 'P' if pmf is POIS else tuple(pmf))
@@ -132,7 +141,7 @@ def reach(kinds, pmf=BIN, rule='slots'):
     return {(ci, k): r[(j, k)] for ci, j in pos.items() for k in range(1, kinds[ci][0] + 1)}
 
 
-def run_levels(kinds, obs, eps=EPS, rule='slots'):
+def run_levels(kinds: Sequence[Kind], obs: Iterable[Obs], eps: float = EPS, rule: str = 'slots') -> tuple[np.ndarray, np.ndarray]:
     """the run's observations weighted over the chain process, by events taken: (A, B) arrays over levels 0..40,
     A for states that end there with N = l, B for absorbed states (N >= l)"""
     ck, pos = canon(tuple(kinds)); S, L, A, P = paths(ck, rule); w = P.copy()
@@ -143,13 +152,13 @@ def run_levels(kinds, obs, eps=EPS, rule='slots'):
     return a, b
 
 
-def lump(v):
+def lump(v: Pmf) -> list[float]:
     v = list(v[:KMAX]); v += [0.0] * (KMAX - len(v)); return v + [max(0.0, 1 - sum(v))]
 
 
-def lk_matrix(xs):
+def lk_matrix(xs: Iterable[tuple[list[Kind], list[Obs]]]) -> np.ndarray:
     """per run, P(observations | N = k) for k = 0..KMAX-1 and N >= KMAX (the distribution-free fit's design)"""
-    out = []
+    out: list[list[float]] = []
     for kinds, obs in xs:
         a, b = run_levels(kinds, obs)
         row = [a[k] + b[:k + 1].sum() for k in range(KMAX)] + [b.sum() + a[KMAX:].sum()]
@@ -157,21 +166,21 @@ def lk_matrix(xs):
     return np.array(out)
 
 
-def em(M, iters=500):
+def em(M: np.ndarray, iters: int = 500) -> np.ndarray:
     pi = np.full(KMAX + 1, 1 / (KMAX + 1))
     for _ in range(iters):
         w = pi * M; pi = (w / w.sum(1, keepdims=True)).mean(0)
     return pi
 
 
-def ll(pi, M): return float(np.log(np.maximum(1e-300, M @ np.asarray(pi))).sum())
+def ll(pi: Pmf, M: np.ndarray) -> float: return float(np.log(np.maximum(1e-300, M @ np.asarray(pi))).sum())
 
 
-def mean_var(v):
+def mean_var(v: np.ndarray) -> tuple[float, float]:
     k = np.arange(len(v)); m = float((k * v).sum()); return m, float((k * k * v).sum()) - m * m
 
 
-def obs_ll(xs, pmf=BIN, rule='slots'):
+def obs_ll(xs: Iterable[Row], pmf: Pmf = BIN, rule: str = 'slots') -> float:
     """the per-observation log-likelihood of the runs' observations: each link scored on its own by P(the card reaches
     the link) on the run's deck"""
     t = 0.0
@@ -183,10 +192,10 @@ def obs_ll(xs, pmf=BIN, rule='slots'):
 
 
 # ---------------------------------------------------------------- markers (GameTora card events)
-_m = {}
+_m: dict[str, Any] = {}
 
 
-def game():
+def game() -> dict[str, Any]:
     """skill names, chain link of each story, decoded SR/SSR card events, the per-card skill pools and each card's
     observable links with their markers"""
     if _m: return _m
@@ -194,44 +203,44 @@ def game():
     sk = dict(db.execute("select [index],text from text_data where category=47"))
     link_of = dict(db.execute("select story_id,show_progress_1 from single_mode_story_data where show_progress_1>0"))
 
-    def names(hs):
-        out = set()
+    def names(hs: Iterable[tuple[str, Any, Any]]) -> set[str]:
+        out: set[str] = set()
         for kind, sid, _ in hs:
             for i in ([sid] if kind == 'hint' else sid):
                 if i in sk: out.add(sk[i])
         return out
-    evs = collections.defaultdict(list)     # card -> [(link or None, [choice -> [(outcome skills, ends chain)]])]
+    evs: collections.defaultdict[int, list[tuple[int | None, list[list[tuple[set[str], Any]]]]]] = collections.defaultdict(list)     # card -> [(link or None, [choice -> [(outcome skills, ends chain)]])]
     for f in ('training_events_sr', 'training_events_ssr'):
         for cid, es in gt.load(f):
             for e in es:
                 chs = [[(names(h), end) for h, end in gt.outcomes(ch[1])] for ch in gt.choices(e[1])]
                 evs[cid].append((link_of.get(int(e[2])), chs))
     # every skill each card's events can give: SR/SSR events, pal / group events, card_events.json
-    pool = collections.defaultdict(set)
+    pool: collections.defaultdict[int, set[str]] = collections.defaultdict(set)
     for cid, es in evs.items():
         for _, chs in es: pool[cid] |= {s for ch in chs for o, _ in ch for s in o}
 
-    def walk(x, acc):
+    def walk(x: Any, acc: set[str]) -> None:
         if isinstance(x, list):
             if len(x) == 2 and isinstance(x[1], list) and x[1] and all(isinstance(k, int) for k in x[1]):
                 acc |= names(gt.hints(x[1]))
             for y in x: walk(y, acc)
     for kindf in ('friend', 'group'):
         for row in gt.load(f'training_events_{kindf}'):
-            acc = set(); walk(row[1:], acc)
+            acc: set[str] = set(); walk(row[1:], acc)
             for cid, c in cards.items():
                 if c['pal'] and ((kindf == 'friend' and c['chara'] == row[0]) or (kindf == 'group' and cid == row[0])): pool[cid] |= acc
     cev = common.gjson('card_events.json')['cards']
     for cid, e in cev.items():
         pool[int(cid)] |= set(e.get('always', [])) | {n for n, _ in e.get('disabled', [])} | {n for n, _ in e.get('chance', [])}
     # markers: link -> skills unique to the link's single event, when every choice and outcome carries one
-    markers = {}
+    markers: dict[int, dict[int, set[str]]] = {}
     for cid, es in evs.items():
-        per = collections.defaultdict(list); cnt = collections.Counter()
+        per: collections.defaultdict[int, list[list[list[tuple[set[str], Any]]]]] = collections.defaultdict(list); cnt: collections.Counter[str] = collections.Counter()
         for lk, chs in es:
             cnt.update({s for ch in chs for o, _ in ch for s in o})
             if lk: per[lk].append(chs)
-        out = {}
+        out: dict[int, set[str]] = {}
         for lk, lst in per.items():
             if len(lst) != 1 or not lst[0]: continue
             uniq = {s for ch in lst[0] for o, _ in ch for s in o if cnt[s] == 1}
@@ -241,7 +250,7 @@ def game():
     return _m
 
 
-def kind(cid):
+def kind(cid: int) -> Kind | None:
     """(links, links, stop risk) for a chain card, None for a pal, group or chainless card"""
     g = game(); c = g['cards'][cid]
     if c['pal'] or c['links'] == 0: return None
@@ -249,12 +258,12 @@ def kind(cid):
     return (c['links'], c['links'], risk)
 
 
-def pals(r):
+def pals(r: Run) -> int:
     cards = game()['cards']
     return sum(1 for c, _, _ in r['deck'] if c in cards and cards[c]['pal'])
 
 
-def observations(r):
+def observations(r: Run) -> tuple[list[Kind], list[int], list[Obs]] | None:
     """a run's chain observations: (chain kinds, chain card ids, [(card index, link, seen)]), or None for a deck with an
     unknown or non-pal R card"""
     g = game(); cards = g['cards']; deck = [c for c, _, _ in r['deck']]
@@ -263,7 +272,7 @@ def observations(r):
     hints = {h['name']: h['src'] for h in r['hints']}
     name = {c: common.bare(n) for c, _, n in r['deck']}
     by_name = {name[c]: c for c in deck}
-    chain = [c for c in deck if kind(c)]; obs = []
+    chain = [c for c in deck if kind(c)]; obs: list[Obs] = []
     for ci, cid in enumerate(chain):
         nm = name[cid]
         for lk, mk in g['markers'].get(cid, {}).items():
@@ -279,13 +288,13 @@ def observations(r):
 
 
 # ---------------------------------------------------------------- data sets
-_obs = {}
+_obs: dict[int, tuple[list[Kind], list[int], list[Obs]] | None] = {}
 
 
-def dataset(groups):
+def dataset(groups: set[int]) -> list[Row]:
     """[(run, kinds, chain card ids, observations)] for every run record with a pal count in `groups` (decks with an
     unknown or non-pal R card left out)"""
-    out = []
+    out: list[Row] = []
     for r in common.runs():
         if pals(r) not in groups: continue
         if r['id'] not in _obs: _obs[r['id']] = observations(r)
@@ -293,38 +302,38 @@ def dataset(groups):
     return out
 
 
-def dropped(groups):
+def dropped(groups: set[int]) -> int:
     """records with a pal count in `groups` left out for an unknown or non-pal R card"""
     dataset(groups)
     return sum(1 for r in common.runs() if pals(r) in groups and _obs[r['id']] is None)
 
 
-def cmp_pmf(lam, nu, upto=61):
+def cmp_pmf(lam: float, nu: float, upto: int = 61) -> list[float]:
     lw = np.array([k * math.log(lam) - nu * math.lgamma(k + 1) for k in range(upto)]); w = np.exp(lw - lw.max()); return list(w / w.sum())
 
 
-def cmp_ll(M):
+def cmp_ll(M: np.ndarray) -> tuple[float, float, float]:
     """the Conway-Maxwell-Poisson fit (P(N = k) proportional to lam^k / (k!)^nu: another two-parameter count family that
     can be under-dispersed), by Nelder-Mead from three starts: (loglik, lam, nu)"""
-    def pmf(lam, nu):
+    def pmf(lam: float, nu: float) -> list[float]:
         lw = np.array([k * math.log(lam) - nu * math.lgamma(k + 1) for k in range(61)]); w = np.exp(lw - lw.max()); return list(w / w.sum())
-    f = lambda th: -ll(lump(pmf(math.exp(th[0]), math.exp(th[1]))), M)
+    f: Callable[[np.ndarray], float] = lambda th: -ll(lump(pmf(math.exp(th[0]), math.exp(th[1]))), M)
     r = min((minimize(f, x0, method='Nelder-Mead') for x0 in ([2, 0], [3, 0.5], [4, 0.7])), key=lambda r: r.fun)
     return -r.fun, math.exp(r.x[0]), math.exp(r.x[1])
 
 
-def binom_profile(M, ns=range(8, 41)):
+def binom_profile(M: np.ndarray, ns: Iterable[int] = range(8, 41)) -> list[tuple[int, float, float]]:
     """the profile likelihood of the binomial's n: at each n the best p (bounded scalar search), exact over the chain
     states through the run matrix M. Returns [(n, p, loglik)]; the data fix the mean n p well and n only within an
     interval, since n and p trade off along a ridge"""
-    out = []
+    out: list[tuple[int, float, float]] = []
     for n in ns:
         r = minimize_scalar(lambda p: -ll(lump(binom_pmf(n, p)), M), bounds=(0.05, 0.95), method='bounded', options={'xatol': 1e-5})
         out.append((n, float(r.x), -float(r.fun)))
     return out
 
 
-def held_out(xs, M):
+def held_out(xs: list[Row], M: np.ndarray) -> dict[str, tuple[float, float, float]]:
     """5-fold cross-validation (common.fold by run id): each fold's runs are scored by forms fitted on the other four, the
     free distribution, the binomial by likelihood (n 10..40, p re-fitted), the binomial by moments (n = mean^2 / (mean -
     variance) of the free fit, rounded; p = mean / n), the Conway-Maxwell-Poisson and the Poisson (mean fitted), against
@@ -345,7 +354,7 @@ def held_out(xs, M):
     return {f: common.compare_held_out(per[f], per['base']) for f in per if f != 'base'}
 
 
-def binom_mle(xs):
+def binom_mle(xs: list[Row]) -> tuple[float, int, float]:
     """the Binomial(n, p) grid MLE (n 6..40, p 0.200..0.995 step 0.005), exact over the chain states: (loglik, n, p)"""
     ab = [run_levels(k, o) for _, k, _, o in xs]
     A = np.array([a for a, _ in ab]); B = np.array([b for _, b in ab])
@@ -358,16 +367,16 @@ def binom_mle(xs):
 
 # ---------------------------------------------------------------- values
 # example decks: chain kinds, and the cards shown (one of identical cards)
-ALLOC = [('two 3-link SSRs', [(3, 3, ())] * 2, ('',)), ('3-link SSR + 2-link SR', [(3, 3, ()), (2, 2, ())], (' SSR', ' SR')),
+ALLOC: list[tuple[str, list[Kind], tuple[str, ...]]] = [('two 3-link SSRs', [(3, 3, ())] * 2, ('',)), ('3-link SSR + 2-link SR', [(3, 3, ()), (2, 2, ())], (' SSR', ' SR')),
          ('three 3-link SSRs', [(3, 3, ())] * 3, ('',)), ('four 3-link SSRs', [(3, 3, ())] * 4, ('',))]
 
 
-def V(name, got, **kw):
+def V(name: str, got: float | int | str | None, **kw: str) -> common.Value:
     return common.Value(S, name, got, **kw)
 
 
-def derived():
-    out = []
+def derived() -> list[common.Value | common.Finding]:
+    out: list[common.Value | common.Finding] = []
     m, v = CN * CP, CN * CP * (1 - CP)
     out += [V('Binomial(21, 0.35): mean', m), V('Binomial(21, 0.35): variance', v, note=f'{v:.4f}')]
     S2, w = final_w(((3, 3, ()), (3, 3, ())), BIN)
@@ -386,7 +395,7 @@ def derived():
     return out
 
 
-def fit_claims():
+def fit_claims() -> list[common.Value | common.Finding]:
     """the fit of N (every run, 0-5 pals) and its per-scenario split"""
     xs = dataset(ALL); note = f'every run, 0-5 pals; {dropped(ALL)} decks with a non-pal R card left out'
     M = lk_matrix([(k, o) for _, k, _, o in xs]); pooled = em(M); llp = ll(pooled, M)
@@ -394,7 +403,7 @@ def fit_claims():
     l21 = ll(lump(BIN), M); l15 = ll(lump(binom_pmf(15, 0.48)), M); lp = ll(lump(POIS), M)
     prof = binom_profile(M); bn, bp, lb = max(prof, key=lambda x: x[2])
     ho = held_out(xs, M)
-    out = [V('fit of N: runs', len(xs), note=note),
+    out: list[common.Value | common.Finding] = [V('fit of N: runs', len(xs), note=note),
            V('distribution-free: mean', mn), V('distribution-free: variance', vr),
            V('Binomial(21, 0.35): nats behind distribution-free', llp - l21, note=f'LL {l21:.1f} vs {llp:.1f}'),
            V('Binomial(15, 0.48): nats behind distribution-free', llp - l15),
@@ -411,7 +420,7 @@ def fit_claims():
            *[V(f'held out: {form} over Binomial(21, 0.35): {w}', x) for form, t_ in ho.items() for w, x in zip(('nats', 'SE', 'z'), t_)],
            V('Conway-Maxwell-Poisson: nats behind distribution-free', llp - cmp_ll(M)[0]),
            V('Conway-Maxwell-Poisson: LR p', float(chi2.sf(2 * (llp - cmp_ll(M)[0]), KMAX - 2)))]
-    by = collections.defaultdict(list)
+    by: collections.defaultdict[int, list[int]] = collections.defaultdict(list)
     for i, (r, *_rest) in enumerate(xs): by[r['scenario']].append(i)
     sep = {sc: em(M[ix]) for sc, ix in by.items() if len(ix) >= 30}
     lls = sum(ll(sep[sc], M[by[sc]]) for sc in sep) + sum(ll(pooled, M[ix]) for sc, ix in by.items() if sc not in sep)
@@ -424,9 +433,9 @@ def fit_claims():
     return out
 
 
-def pal_count_claims():
+def pal_count_claims() -> tuple[list[common.Value | common.Finding], dict[int, tuple[int, tuple[float, int, float]]]]:
     """N per pal count: the binomial grid MLE on each pal count's runs (every run, 1-4 pals)"""
-    out = []; res = {}
+    out: list[common.Value | common.Finding] = []; res: dict[int, tuple[int, tuple[float, int, float]]] = {}
     for npal in (1, 2, 3, 4):
         xs = dataset({npal}); res[npal] = (len(xs), binom_mle(xs))
     out.append(V('per pal count: runs (1-4 pals)', sum(n for n, _ in res.values()), note='every run'))
@@ -438,7 +447,7 @@ def pal_count_claims():
     return out, res
 
 
-def obs_ci(rows):
+def obs_ci(rows: list[tuple[float, float, int]]) -> tuple[float, float]:
     """the observed rate's 95% interval over (observed, predicted, run id) rows that come several to a run: the mean
     prediction times the run-clustered interval of observed / predicted (common.cluster_ci); Wilson when every run gives
     one row (5 pals: one chain card)"""
@@ -448,12 +457,12 @@ def obs_ci(rows):
     return lo * m, hi * m
 
 
-def final_claims():
+def final_claims() -> tuple[list[common.Value | common.Finding], dict[str, dict[int, tuple[Any, ...]]]]:
     """the final-link table (each observed rate with its run-clustered 95% interval against Binomial(21, 0.35)) and the
     early-link shortfall (every run)"""
-    out = []; tab = {}
+    out: list[common.Value | common.Finding] = []; tab: dict[int, tuple[Any, ...]] = {}
     for npal in (5, 4, 3, 2, 1, 0):
-        xs = dataset({npal}); o = b = p = 0.0; n = 0; rows = []
+        xs = dataset({npal}); o = b = p = 0.0; n = 0; rows: list[tuple[float, float, int]] = []
         for r, kinds, chain, obs in xs:
             mb, mp = reach(kinds, BIN), reach(kinds, POIS)
             for ci, lk, seen in obs:
@@ -467,9 +476,9 @@ def final_claims():
                 V(f'final-link table, {npal} pals: Poisson(7.1)', p / n)]
     out.append(V('final-link table: runs in all', sum(t[0] for t in tab.values()), note=f'every run; {dropped(ALL)} decks with a non-pal R card left out'))
     # early links (1 and 2), per run as a cluster
-    early = {}
+    early: dict[int, tuple[Any, ...]] = {}
     for npal in (4, 3, 2, 1, 0):
-        per = []
+        per: list[tuple[float, float, int]] = []
         for r, kinds, chain, obs in dataset({npal}):
             mb = reach(kinds, BIN); o = e = 0.0; k = 0
             for ci, lk, seen in obs:
@@ -483,13 +492,13 @@ def final_claims():
     return out, dict(final=tab, early=early)
 
 
-def allowance_claims():
+def allowance_claims() -> list[common.Value | common.Finding]:
     """the marker allowance: links fire in order, so a card's later link seen means its earlier links fired; the share of
     those earlier links whose marker is missing measures how often a fired link goes unseen (every run; its 95% interval
     run-clustered)"""
-    imp = un = 0; rows = []
+    imp = un = 0; rows: list[tuple[float, float, int]] = []
     for r, kinds, chain, obs in dataset(ALL):
-        per = collections.defaultdict(dict)
+        per: collections.defaultdict[int, dict[int, bool]] = collections.defaultdict(dict)
         for ci, lk, seen in obs: per[ci][lk] = seen
         for d in per.values():
             for lk, seen in d.items():
@@ -499,12 +508,12 @@ def allowance_claims():
             V('allowance: share', un / imp), V('allowance: 95% low', lo), V('allowance: 95% high', hi)]
 
 
-def final_by_card():
+def final_by_card() -> dict[str, Any]:
     """final-link reach by card (every run) against the chain model on each run's deck: the pooled rate and the spread
     between cards with 60+ observations (a joint Wald test that every card's observed - predicted is zero, one df per
     card, its covariance run-clustered by common.cluster_chi2: the chain cards of one run share its N). Each card's z
     (binomial variance; one observation per run) only ranks the cards"""
-    per = collections.defaultdict(lambda: [0, 0.0, 0, 0.0]); res = []
+    per: collections.defaultdict[int, list[float]] = collections.defaultdict(lambda: [0, 0.0, 0, 0.0]); res: list[tuple[int, float, int]] = []
     for r, kinds, chain, obs in dataset(ALL):
         mb = reach(kinds)
         for ci, lk, seen in obs:
@@ -520,21 +529,21 @@ def final_by_card():
                 rate={c: (per[c][0] / per[c][2], per[c][1] / per[c][2]) for c in zs}, name=lambda c: names[c]['name'])
 
 
-def allowance_sens():
+def allowance_sens() -> dict[float | str, float]:
     """the best p at n = CHAIN_N under several allowances, and with none on the runs showing no contradiction"""
-    xs = dataset(ALL); out = {}
+    xs = dataset(ALL); out: dict[float | str, float] = {}
 
-    def best_p(xs, e):
+    def best_p(xs: list[Row], e: float) -> float:
         ab = [run_levels(k, o, eps=e) for _, k, _, o in xs]
-        A = np.array([a for a, _ in ab]); B = np.array([b for _, b in ab]); res = []
+        A = np.array([a for a, _ in ab]); B = np.array([b for _, b in ab]); res: list[tuple[float, float]] = []
         for p_ in [i / 1000 for i in range(300, 401, 5)]:
             pm = np.array(binom_pmf(CN, p_, 41)); v = A @ pm + B @ np.concatenate([[1.0], 1 - np.cumsum(pm)[:40]])
             if (v > 0).all(): res.append((float(np.log(v).sum()), p_))
         return max(res)[1]
     for e in (0.01, 0.02, 0.03, 0.045): out[e] = best_p(xs, e)
 
-    def contra(o):
-        per = collections.defaultdict(dict)
+    def contra(o: list[Obs]) -> bool:
+        per: collections.defaultdict[int, dict[int, bool]] = collections.defaultdict(dict)
         for ci, lk, seen in o: per[ci][lk] = seen
         return any(not sn and any(l2 > lk and s2 for l2, s2 in d.items()) for d in per.values() for lk, sn in d.items())
     clean = [x for x in xs if not contra(x[3])]
@@ -542,20 +551,20 @@ def allowance_sens():
     return out
 
 
-def alloc_claims():
+def alloc_claims() -> tuple[list[common.Value | common.Finding], dict[str, Any]]:
     """slot rule against card rule (every run, 0-5 pals; per-observation likelihood); final links observed with the
     run-clustered 95% interval against each rule"""
-    tot = collections.Counter(); fin = {}; runs = 0
+    tot = collections.Counter(); fin: dict[tuple[int, str], tuple[float, ...]] = {}; runs = 0
     for npal in (5, 4, 3, 2, 1, 0):
         xs = dataset({npal}); runs += len(xs)
         for rule in ('slots', 'cards'):
-            tot[rule] += obs_ll(xs, BIN, rule); o = p = 0.0; n = 0; rows = []
+            tot[rule] += obs_ll(xs, BIN, rule); o = p = 0.0; n = 0; rows: list[tuple[float, float, int]] = []
             for r, kinds, chain, obs in xs:
                 mb = reach(kinds, BIN, rule)
                 for ci, lk, seen in obs:
                     if lk == kinds[ci][0]: o += seen; p += mb[(ci, lk)]; n += 1; rows.append((seen, mb[(ci, lk)], r['id']))
             fin[(npal, rule)] = (o / n, p / n, n, *obs_ci(rows))     # the observed rate's interval against this rule
-    out = [V('allocation: runs', runs, note='every run, 0-5 pals'),
+    out: list[common.Value | common.Finding] = [V('allocation: runs', runs, note='every run, 0-5 pals'),
            V('allocation: total LL, slot rule', tot['slots']), V('allocation: total LL, card rule', tot['cards'])]
     for npal in (2, 0):
         out += [V(f'allocation: final links, {npal} pals, observed', fin[(npal, 'slots')][0], note=f'{fin[(npal, "slots")][2]} card-links'),
@@ -565,15 +574,15 @@ def alloc_claims():
     return out, dict(total=tot, final=fin)
 
 
-def with_activation(kinds, a):
+def with_activation(kinds: Sequence[Kind], a: float) -> tuple[Kind, ...]:
     """the chain kinds with each card active with probability a (a stop at link 0 with chance 1 - a)"""
     return tuple((l, s_, tuple(sorted(rk + ((0, round(1 - a, 6), 1),)))) for l, s_, rk in kinds) if a < 1 else tuple(kinds)
 
 
-def miss_claims():
-    out = []
+def miss_claims() -> list[common.Value | common.Finding]:
+    out: list[common.Value | common.Finding] = []
     # two-chain decks: two plain 3-link SSRs with four pals, both final links observable
-    clean = []
+    clean: list[bool] = []
     for r, kinds, chain, obs in dataset({4}):
         if len(kinds) != 2 or any(k != (3, 3, ()) for k in kinds): continue
         fz = {ci: seen for ci, lk, seen in obs if lk == 3}
@@ -584,7 +593,8 @@ def miss_claims():
             V('two-chain decks: predicted, P(N >= 6)', sum(BIN[6:]))]
     MISC['two-chain'] = (k, n, lo, hi)
     # chains never started: link 1 not reached, by chain cards in the deck
-    rows = collections.defaultdict(lambda: [0, 0.0, 0]); nrows = collections.defaultdict(list)
+    rows: collections.defaultdict[int, list[float]] = collections.defaultdict(lambda: [0, 0.0, 0])
+    nrows: collections.defaultdict[int, list[tuple[float, float, int]]] = collections.defaultdict(list)
     for r, kinds, chain, obs in dataset(ALL):
         mb = reach(kinds, BIN)
         for ci, lk, seen in obs:
@@ -601,7 +611,7 @@ def miss_claims():
     # activation parameter, jointly with N ~ Binomial(CHAIN_N, p), exact over the chain process, every deck
     xs = dataset(ALL)
 
-    def LL(p_, a):
+    def LL(p_: float, a: float) -> float:
         pm = np.array(binom_pmf(CN, p_, 41)); tl = np.concatenate([[1.0], 1 - np.cumsum(pm)[:40]]); t = 0.0
         for _, k, _, o in xs:
             A, B = run_levels(with_activation(k, a), o); t += math.log(max(float(A @ pm + B @ tl), 1e-300))
@@ -613,7 +623,7 @@ def miss_claims():
     return out
 
 
-def claims():
+def claims() -> list[common.Value | common.Finding]:
     out = derived()
     if not common.have_runs(): return out
     fc = fit_claims(); pc, res = pal_count_claims(); flc, fl = final_claims(); ac, al = alloc_claims()
@@ -632,11 +642,13 @@ def claims():
     return out + findings(out, res, fl, al, sens)
 
 
-def findings(out, res, fl, al, sens):
+def findings(out: list[common.Value | common.Finding], res: dict[int, tuple[int, tuple[float, int, float]]],
+             fl: dict[str, dict[int, tuple[Any, ...]]], al: dict[str, Any], sens: dict[float | str, float]) -> list[common.Finding]:
     """the section's conclusions, each tested on the numbers above"""
     from scipy.stats import chi2
-    g = {c.name: c.got for c in out if isinstance(c, common.Value)}; F = lambda *a: common.finding(S, *a)
-    gap = g['Binomial(21, 0.35): nats behind distribution-free']; df = g['distribution-free fit: parameters more than the binomial']; fs = []
+    g: dict[str, Any] = {c.name: c.got for c in out if isinstance(c, common.Value)}
+    F: Callable[..., common.Finding] = lambda *a: common.finding(S, *a)
+    gap = g['Binomial(21, 0.35): nats behind distribution-free']; df = g['distribution-free fit: parameters more than the binomial']; fs: list[common.Finding] = []
     lrp = g['binomial(21, 0.35) LR p']
     fs.append(F(f'Binomial({CN}, {CP}) is not rejected against a free distribution of N (likelihood ratio on its {df:.0f} fewer '
                 'parameters, p > 0.05)', lrp > 0.05, f'{gap:.1f} nats behind distribution-free, LR p = {lrp:.3f}'))
@@ -667,7 +679,7 @@ def findings(out, res, fl, al, sens):
     fs.append(F(f'The fit of N does not depend on the allowance: over allowances 0-0.045 the best p at n = {CN} stays within {lo_}-{hi_}',
                 min(ps) >= lo_ and max(ps) <= hi_,
                 ', '.join(f'eps {k}: {v:.3f}' for k, v in sens.items() if k != 'clean runs') + f' (eps 0.0 on the {sens["clean runs"]} runs without a contradiction)'))
-    pos = {}
+    pos: dict[int, tuple[Any, ...]] = {}
     for npal, (runs, o, b, p_, n, l_, h_) in fl['final'].items():
         pos[npal] = ('inside' if l_ <= b <= h_ else 'above' if b > h_ else 'below', o, b, l_, h_)
     fs.append(F('Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 5, 4, 3, 1 and 0 pals and above it at 2 pals',
@@ -680,7 +692,7 @@ def findings(out, res, fl, al, sens):
     fs.append(F('The slot rule beats the card rule on total log-likelihood by more than 1.92 nats', g['allocation: slot over card, nats'] > 1.92,
                 f'slots {tl["slots"]:.1f}, cards {tl["cards"]:.1f}: {tl["slots"] - tl["cards"]:+.1f} nats'))
 
-    def where(npal, rule):
+    def where(npal: int, rule: str) -> tuple[str, float, str]:
         o, p_, n, l_, h_ = fin[(npal, rule)]
         return ('inside' if l_ <= p_ <= h_ else 'above' if p_ > h_ else 'below'), p_, f'{npal} pals obs {o:.3f} [{l_:.3f}, {h_:.3f}], {rule} {p_:.3f}'
     w = {(k, r): where(k, r) for k in (0, 2) for r in ('slots', 'cards')}
@@ -709,7 +721,7 @@ def findings(out, res, fl, al, sens):
     return fs
 
 
-def detail():
+def detail() -> None:
     """the fits' exact figures and the breakdowns behind the known misses (from the run of claims())"""
     if not common.have_runs() or 'fit' not in MISC: return
     f = MISC['fit']

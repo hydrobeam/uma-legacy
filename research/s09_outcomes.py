@@ -18,24 +18,39 @@ shares against the equal rule (k of n outcomes, from the game data) and the mode
 manual.json), Anshinzawa's choice 1 by scenario and her dates, the shares off or near the equal rule.
 """
 import collections, json, os
+from collections.abc import Callable
+from typing import Any
 import common
+from common import Finding, Hint, Run, Value
 
-SEC = '9'
-N_RECORDS = 2865
+# one outcome of a choice: skill name -> hint level, or '?' when the level is random
+Outcome = dict[str, int | str]
+# one SR/SSR split choice (split_choices()): card, cid, event, link, choice, outs, sigs, cnt, cntr, nrun
+SplitChoice = dict[str, Any]
+# one Anshinzawa run (anshin_runs()): festa, scen, shown, nv_pri, pri, NV, RB, c
+AnshinRun = dict[str, Any]
+# the outcome markers a choice's outcomes are read by: (skill name, level) or None
+Sig = tuple[str, int | str] | None
+# a 90% Wilson interval
+Wil = Callable[[float, float], tuple[float, float]]
+
+SEC: str = '9'
+N_RECORDS: int = 2865
+ANSHIN: int; FESTA: int; RIKO: int; HELIOS: int
 ANSHIN, FESTA, RIKO, HELIOS = 30080, 30108, 30036, 30116
-HER_A = 'Sasami Anshinzawa event'
-C1_LV = 3                                # her finale's Nothing Ventured at this level or above: choice 1
-Z90 = 1.645
+HER_A: str = 'Sasami Anshinzawa event'
+C1_LV: int = 3                                # her finale's Nothing Ventured at this level or above: choice 1
+Z90: float = 1.645
 
 
-def deck_ids(r): return [d[0] for d in r['deck']]
+def deck_ids(r: Run) -> list[int]: return [d[0] for d in r['deck']]
 
 
-def hints(r): return {h['name']: h for h in r['hints']}
+def hints(r: Run) -> dict[str, Hint]: return {h['name']: h for h in r['hints']}
 
 
 # ---------------------------------------------------------------- outcome shares (every split choice)
-def split_choices(R):
+def split_choices(R: list[Run]) -> list[SplitChoice]:
     """[dict(card, event, link, choice, outs, sigs, cnt, cntr, nrun)] for every SR/SSR split choice"""
     gt = common.gametora(); db = common.mdb()
     sk = dict(db.execute('select [index], text from text_data where category = 47'))
@@ -46,10 +61,10 @@ def split_choices(R):
     crar = dict(db.execute('select id, rarity from support_card_data'))
     link = dict(db.execute('select story_id, show_progress_1 from single_mode_story_data where show_progress_1 > 0'))
 
-    def outcomes(rewards):   # one choice -> [ {skill name: level or '?'} ] per outcome
-        out = []
+    def outcomes(rewards: Any) -> list[Outcome]:   # one choice -> [ {skill name: level or '?'} ] per outcome
+        out: list[Outcome] = []
         for hs, _ in gt.outcomes(rewards):
-            o = {}
+            o: Outcome = {}
             for kind, x, lv in hs:
                 if kind == 'hint' and x in sk:
                     s = str(lv).lstrip('+') if lv else '1'
@@ -60,14 +75,14 @@ def split_choices(R):
             out.append(o)
         return out
 
-    evs = collections.defaultdict(list)   # card -> [(title, story id, [choice rewards])]
+    evs: dict[int, list[tuple[str, int, list[Any]]]] = collections.defaultdict(list)   # card -> [(title, story id, [choice rewards])]
     for key in ('training_events_sr', 'training_events_ssr'):
         for cid, es in gt.load(key):
             for e in es: evs[cid].append((title.get(int(e[2]), str(e[2])), int(e[2]), [ch[1] for ch in gt.choices(e[1])]))
-    by_chara = collections.defaultdict(list)
+    by_chara: dict[int, list[int]] = collections.defaultdict(list)
     for cid, ch in cchar.items(): by_chara[ch].append(cid)
     for row in gt.load('training_events_friend'):
-        base = {}; var = collections.defaultdict(dict)
+        base: dict[int, Any] = {}; var: dict[int, dict[Any, Any]] = collections.defaultdict(dict)
         for e, only, chs in gt.events(row, 'friend'):
             if only is None: base[id(e)] = e
             else: var[id(e)][only] = chs
@@ -75,17 +90,17 @@ def split_choices(R):
             for cid in by_chara[row[0]]:
                 chs = var[k].get(cid, e[1])
                 evs[cid].append((title.get(int(e[2]), str(e[2])), int(e[2]), [ch[1] for ch in gt.choices(chs)]))
-    shared = collections.defaultdict(list)
+    shared: dict[int, list[list[Any]]] = collections.defaultdict(list)
     for chara, es in gt.load('training_events_shared'):
         for e in es: shared[chara].append([ch[1] for ch in gt.choices(e[1])])
 
     runs = [(r, set(deck_ids(r)), hints(r)) for r in R]
-    out = []
+    out: list[SplitChoice] = []
     for cid, es in evs.items():
         if crar.get(cid, 0) < 2: continue                       # SR / SSR only
         chara = cchar.get(cid); nm = chn.get(chara)
         if not nm: continue
-        giver = set()
+        giver: set[tuple[int | str, str]] = set()
         for _, sid, chs in es:
             for ch in chs:
                 for o in outcomes(ch): giver |= {(sid, s) for s in o}
@@ -98,12 +113,12 @@ def split_choices(R):
             for ci, ch in enumerate(chs):
                 outs = outcomes(ch)
                 if len(outs) < 2 or len({tuple(sorted(o.items(), key=str)) for o in outs}) < 2: continue
-                sigs = []
+                sigs: list[Sig] = []
                 for o in outs:
                     m = [(k, v) for k, v in o.items() if v != '?' and nsrc[k] == 1 and sum(o2.get(k) == v for o2 in outs) == 1]
                     sigs.append(m[0] if m else None)
                 if not any(sigs): continue
-                cnt = collections.Counter(); cntr = collections.Counter()
+                cnt: collections.Counter[int] = collections.Counter(); cntr: collections.Counter[int] = collections.Counter()
                 ev = f'{nm} event'
                 distinct = all(sigs) and len({m[0] for m in sigs}) == len(sigs)
                 for r, hs in mine:
@@ -114,7 +129,7 @@ def split_choices(R):
                         if (h['src'] == [ev] and h['lv'] == m[1]) if bylevel else ev in h['src']: cnt[j] += 1
                     hit = [j for j, m in enumerate(sigs) if m and hs.get(m[0]) and ev in hs[m[0]]['src']]
 
-                    def room(j):   # outcome j would show: the skill's level from other sources is below 5
+                    def room(j: int) -> bool:   # outcome j would show: the skill's level from other sources is below 5
                         h = hs.get(sigs[j][0])
                         if not h: return True
                         return h['lv'] - (sigs[j][1] if j in hit and isinstance(sigs[j][1], int) else 0) < 5
@@ -126,7 +141,7 @@ def split_choices(R):
     return out
 
 
-def equal(X, cid, event, choice, skill):
+def equal(X: list[SplitChoice], cid: int, event: str, choice: int, skill: str) -> float:
     """the equal rule's share for one outcome's marker skill (k of n outcomes, game data): the outcomes giving the skill,
     or those giving it at the marker's level when every outcome gives it (a split by level)"""
     x = next(x for x in X if x['cid'] == cid and x['event'].startswith(event) and x['choice'] == choice)
@@ -136,14 +151,14 @@ def equal(X, cid, event, choice, skill):
     return len(gives) / len(x['outs'])
 
 
-def adopted(cid, skill):
+def adopted(cid: int, skill: str) -> float:
     """the model's share for one outcome: a measured split in event_shares.json, else the card's chance in manual.json"""
     for e in json.load(open(os.path.join(common.ROOT, 'pkg/loopopt/data/event_shares.json')))['cards'].get(str(cid), []):
         if skill in e['shares']: return e['shares'][skill]
     return dict(common.gjson('manual.json')['cards'][str(cid)]['chance'])[skill]
 
 
-def find(X, cid, event, choice, skill):
+def find(X: list[SplitChoice], cid: int, event: str, choice: int, skill: str) -> tuple[int, int] | tuple[None, None]:
     """(count, total) for one outcome's marker skill: cntr where every outcome could show, cnt for level splits"""
     for x in X:
         if x['cid'] == cid and x['event'].startswith(event) and x['choice'] == choice:
@@ -155,8 +170,8 @@ def find(X, cid, event, choice, skill):
 
 
 # ---------------------------------------------------------------- Sasami Anshinzawa's finale
-def anshin_runs(R):
-    out = []
+def anshin_runs(R: list[Run]) -> list[AnshinRun]:
+    out: list[AnshinRun] = []
     for r in R:
         d = deck_ids(r)
         if ANSHIN not in d: continue
@@ -169,8 +184,8 @@ def anshin_runs(R):
     return out
 
 
-def classify(o):
-    her = lambda x: x and any('Anshinzawa' in s for s in x[1])
+def classify(o: AnshinRun) -> str:
+    her: Callable[[tuple[int, list[str]] | None], Any] = lambda x: x and any('Anshinzawa' in s for s in x[1])
     nv, rb = o['NV'], o['RB']
     if nv: return 'c1_win' if nv[0] >= C1_LV else 'c2_win'
     if her(rb):
@@ -181,15 +196,15 @@ def classify(o):
     return 'none'
 
 
-def anshin(R):
+def anshin(R: list[Run]) -> dict[str, Any]:
     A = [o for o in anshin_runs(R) if not o['festa']]
     rbp = [o for o in A if 'Risky Business' in o['pri']]
     nei = [o for o in A if o['shown'] and not o['pri'] and not o['nv_pri']]
     nvp = [o for o in A if o['nv_pri'] and not o['pri']]
     c = collections.Counter(o['c'] for o in rbp)
     c2 = c['c2_win'] + c['c2_lose'] + c['c2_lose?']
-    inh = lambda o: bool(o['RB'] and 'Inspiration' in o['RB'][1])
-    her_rb = lambda o: bool(o['RB'] and any('Anshinzawa' in s for s in o['RB'][1]))
+    inh: Callable[[AnshinRun], bool] = lambda o: bool(o['RB'] and 'Inspiration' in o['RB'][1])
+    her_rb: Callable[[AnshinRun], bool] = lambda o: bool(o['RB'] and any('Anshinzawa' in s for s in o['RB'][1]))
     w_clean = sum(o['c'] == 'c2_win' and not inh(o) for o in rbp)
     l_clean = sum(o['c'] == 'c2_lose' and o['RB'] == (2, [HER_A]) for o in rbp)
     l_mixed = sum(o['c'] == 'c2_lose' and inh(o) for o in rbp)
@@ -212,19 +227,19 @@ def anshin(R):
 
 
 # ---------------------------------------------------------------- Riko's Lone Wolf, Helios's link 2, Festa's "Upping the Ante"
-def riko_lone_wolf(R, prioritised=True):
+def riko_lone_wolf(R: list[Run], prioritised: bool = True) -> tuple[int, int]:
     """runs showing a priority list with Lone Wolf on it (not Ramp Up), or without Lone Wolf: her bottom choice's Lone Wolf
     alone"""
     n = k = 0
     for r in R:
         p = r.get('priority')
         if RIKO not in deck_ids(r) or p is None or ('Lone Wolf' in p) != prioritised or prioritised and 'Ramp Up' in p: continue
-        hs = hints(r); her = lambda s: s in hs and 'Riko Kashimoto event' in hs[s]['src']
+        hs = hints(r); her: Callable[[str], bool] = lambda s: s in hs and 'Riko Kashimoto event' in hs[s]['src']
         n += 1; k += her('Lone Wolf') and not her('Ramp Up') and not her('Maverick ○')
     return k, n
 
 
-def riko_firings(R):
+def riko_firings(R: list[Run]) -> tuple[int, int, int, int, int]:
     """her "Unexpected Side": top choice Ramp Up +3 or Maverick ○ +5, bottom choice Lone Wolf +3 (its middle choice gives
     nothing and cannot be seen). Every credited outcome is one firing, counted where all three could show (each skill's
     level from other sources below 5). Returns (Ramp Up, Maverick, Lone Wolf firings, runs counted, runs with Ramp Up)"""
@@ -238,23 +253,23 @@ def riko_firings(R):
     return (*c, n, k)
 
 
-def helios(R):
+def helios(R: list[Run]) -> tuple[int, int]:
     """Tail Held High (link 2) among runs where link 3 visibly fired (her Perfect Spot!)"""
     k = n = 0
     for r in R:
         if HELIOS not in deck_ids(r) or r['chara'] == 1071: continue
-        hs = hints(r); her = lambda s: s in hs and 'Daitaku Helios event' in hs[s]['src']
+        hs = hints(r); her: Callable[[str], bool] = lambda s: s in hs and 'Daitaku Helios event' in hs[s]['src']
         if her('Perfect Spot!'): n += 1; k += her('Tail Held High')
     return k, n
 
 
-def festa(R):
+def festa(R: list[Run]) -> collections.Counter[str]:
     """'Upping the Ante': her Nothing Ventured against her Risky Business; blank runs with Risky Business at 5 may hide one"""
-    t = collections.Counter()
+    t: collections.Counter[str] = collections.Counter()
     for r in R:
         d = deck_ids(r)
         if FESTA not in d or ANSHIN in d or r['chara'] == 1049: continue
-        hs = hints(r); her = lambda s: s in hs and 'Nakayama Festa event' in hs[s]['src']
+        hs = hints(r); her: Callable[[str], bool] = lambda s: s in hs and 'Nakayama Festa event' in hs[s]['src']
         nv, rb = her('Nothing Ventured'), her('Risky Business')
         if nv and not rb: t['NV'] += 1
         elif rb and not nv: t['RB'] += 1
@@ -262,7 +277,7 @@ def festa(R):
     return t
 
 
-def festa_numbers():
+def festa_numbers() -> dict[str, float]:
     """Festa's share on every research run with her card.
     Her exclusive credits ("Nakayama Festa event") are wins; a Risky Business credit shared with another card's event
     ("A or B event") is hers with chance r_F / (1 - (1 - r_F)(1 - r_o)), r_F her exclusive Risky Business rate per run,
@@ -270,9 +285,9 @@ def festa_numbers():
     where both outcomes can show. {} without the run records."""
     R = common.runs()
     if R is None: return {}
-    wil = lambda k, n: common.wilson(k, n, Z90)
-    src = lambda hs, k: hs[k]['src'] if k in hs else []
-    t = collections.Counter(); shared = collections.Counter(); n_f = 0
+    wil: Wil = lambda k, n: common.wilson(k, n, Z90)
+    src: Callable[[dict[str, Hint], str], list[str]] = lambda hs, k: hs[k]['src'] if k in hs else []
+    t: collections.Counter[str] = collections.Counter(); shared: collections.Counter[str] = collections.Counter(); n_f = 0
     for r in R:
         d = deck_ids(r)
         if FESTA not in d or ANSHIN in d or r['chara'] == 1049: continue
@@ -288,7 +303,7 @@ def festa_numbers():
         else: t['none'] += 1
     r_f = (t['RB'] + t['both']) / n_f
 
-    def alone(nm):                                         # the co-source's own Risky Business rate, runs without Festa
+    def alone(nm: str) -> float:                                         # the co-source's own Risky Business rate, runs without Festa
         k = n = 0
         for r in R:
             if FESTA in deck_ids(r) or not any(common.bare(x) == nm for _, _, x in r['deck']): continue
@@ -300,7 +315,7 @@ def festa_numbers():
     fire = (nv + rb + hers) / (nv + rb + t['shared'] + t['none'])
     split = nv + rb + hers + hid * fire
     sh = json.load(open(os.path.join(common.ROOT, 'pkg/loopopt/data/event_shares.json')))['cards'].get(str(FESTA), [{}])[0]
-    out = {'Festa: runs with the card': sum(FESTA in deck_ids(r) for r in R), 'Festa: NV wins': nv, 'Festa: RB wins': rb,
+    out: dict[str, float] = {'Festa: runs with the card': sum(FESTA in deck_ids(r) for r in R), 'Festa: NV wins': nv, 'Festa: RB wins': rb,
            'Festa: RB shared credits': t['shared'], 'Festa: shared, with Team Sirius': shared.get('Team Sirius', 0),
            'Festa: Team Sirius alone RB rate': rates.get('Team Sirius', float('nan')),
            'Festa: Anshinzawa alone RB rate': rates.get('Sasami Anshinzawa', float('nan')), 'Festa: her RB rate': r_f,
@@ -314,13 +329,13 @@ def festa_numbers():
 
 
 # ---------------------------------------------------------------- values
-def claims():
+def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None: return [finale_rule(split_choices([]))]
     S = [r for r in R if r['seq'] < N_RECORDS]
     a = anshin(S); X = split_choices(S)
-    wil = lambda k, n: common.wilson(k, n, Z90)
-    got = {}
+    wil: Wil = lambda k, n: common.wilson(k, n, Z90)
+    got: dict[str, Any] = {}
     got['Anshinzawa: RB prioritised, took choice 2'] = a['choice2_share']
     got['Anshinzawa: neither prioritised, choice 2 won'] = a['nei_c2']; got['Anshinzawa: neither prioritised, runs'] = a['nei']
     got['Anshinzawa: runs with the card (no Festa)'] = a['n']
@@ -363,27 +378,27 @@ def claims():
     got['Anshinzawa: choice-1 exceptions with RB at Lv 5'], got['Anshinzawa: choice-1 exceptions, RB prioritised'] = a['c1_exc']
     got['runs showing a priority list'] = sum(r.get('priority') is not None for r in R); got['runs'] = len(R)
     note = {'Anshinzawa: neither prioritised, choice 2 won': 'Risky Business alone not prioritised: %d/%d' % a['rb_not']}
-    out = [common.Value(SEC, n, v, note=note.get(n, '')) for n, v in got.items()]
+    out: list[Value | Finding] = [common.Value(SEC, n, v, note=note.get(n, '')) for n, v in got.items()]
     return out + findings(R, S, a, X, got)
 
 
-def finale_rule(X):
+def finale_rule(X: list[SplitChoice]) -> Finding:
     """game data: the finale's hint levels identify the choice as classify() reads them"""
     fin = [x['outs'] for x in X if x['cid'] == ANSHIN and x['link'] == 3]
-    nv = lambda ch: {o['Nothing Ventured'] for o in ch if 'Nothing Ventured' in o}
-    rb = lambda ch: any('Risky Business' in o for o in ch)
+    nv: Callable[[list[Outcome]], set[int | str]] = lambda ch: {o['Nothing Ventured'] for o in ch if 'Nothing Ventured' in o}
+    rb: Callable[[list[Outcome]], bool] = lambda ch: any('Risky Business' in o for o in ch)
     return common.finding(SEC, 'Game data: the hint levels identify the finale\'s choice (choice 1 Nothing Ventured at the level '
                           'read as choice 1 or nothing, choice 2 Nothing Ventured below it or Risky Business)',
                           lambda: len(fin) == 2 and min(nv(fin[0])) >= C1_LV > max(nv(fin[1])) and any(not o for o in fin[0])
                           and not rb(fin[0]) and rb(fin[1]), f'outcomes by choice {fin}; level read as choice 1: {C1_LV} or above')
 
 
-def findings(R, S, a, X, got):
+def findings(R: list[Run], S: list[Run], a: dict[str, Any], X: list[SplitChoice], got: dict[str, Any]) -> list[Value | Finding]:
     """the conclusions of section 9, each on its 90% Wilson intervals (the section's)"""
-    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
-    wil = lambda k, n: common.wilson(k, n, Z90)
-    iv = lambda k, n: f'{k}/{n} = {k / n:.2f} [{wil(k, n)[0]:.2f}, {wil(k, n)[1]:.2f}]'
-    out = []
+    F: Callable[[str, Any, Any], Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    wil: Wil = lambda k, n: common.wilson(k, n, Z90)
+    iv: Callable[[float, float], str] = lambda k, n: f'{k}/{n} = {k / n:.2f} [{wil(k, n)[0]:.2f}, {wil(k, n)[1]:.2f}]'
+    out: list[Value | Finding] = []
     L = collections.Counter(len(r['priority']) for r in R if r.get('priority') is not None)
     out.append(F('A priority list has a cap that lists fill: none is longer than the commonest length', max(L) == L.most_common(1)[0][0],
                  f'cap {max(L)}: ' + ', '.join(f'{n} skills: {L[n]}' for n in sorted(L, reverse=True))))
@@ -464,7 +479,7 @@ def findings(R, S, a, X, got):
     return out
 
 
-def detail():
+def detail() -> None:
     S = [r for r in common.runs() if r['seq'] < N_RECORDS]; a = anshin(S)
     print('Anshinzawa finale by priority (no Festa): neither shown-prioritised', a['nei'], dict(a['nei_c']),
           '| Nothing Ventured prioritised (not Risky Business)', sum(a['nvp'].values()), dict(a['nvp']))

@@ -26,16 +26,23 @@ computed by the solver's best-response search over feasible schedules (`loopopt 
 `pair_ceilings`; not independent of the solver, only checked here to sit between o and o_max). P_PB is the odds with
 every pair at PB."""
 import collections, itertools, json, math, os, statistics, struct, sys
+from collections.abc import Callable, Hashable, Iterable
+from typing import Any
 import common
-from common import Value
+from common import Finding, Run, Value
 
-S = '6'
+S: str = '6'
+
+# o(a, b): shared wins of each pair of a loop's members, by member index (a < b)
+Overlap = dict[tuple[int, int], float]
+# one checked loop of schedule_bound(): its file, odds and overlap sums
+ScheduleRow = dict[str, Any]
 
 
-def lineage_terms(T, P1, P2, X):
+def lineage_terms(T: Hashable, P1: Hashable, P2: Hashable, X: Hashable) -> collections.Counter[frozenset[Hashable]]:
     """coefficient of each o(a, b) (unordered pair) in the six affinities of lineage (T, P1, P2, X), in units of 3:
     A_P = ... + 3 o(P, P') + sum over G in par(P) of 3 o(P, G); A_G = ... + 3 o(P, G) (RESEARCH.md section 5)"""
-    c = collections.Counter()
+    c: collections.Counter[frozenset[Hashable]] = collections.Counter()
     par = {P1: (P2, X), P2: (P1, X)}
     for P, Pp in ((P1, P2), (P2, P1)):
         c[frozenset((P, Pp))] += 1                       # A_P: o(P, P')
@@ -45,13 +52,13 @@ def lineage_terms(T, P1, P2, X):
     return c
 
 
-def weights(lineages):
-    tot = collections.Counter()
+def weights(lineages: Iterable[tuple[Hashable, ...]]) -> collections.Counter[frozenset[Hashable]]:
+    tot: collections.Counter[frozenset[Hashable]] = collections.Counter()
     for l in lineages: tot.update(lineage_terms(*l))
     return tot
 
 
-def shape(r):
+def shape(r: Run) -> str | None:
     """'rotation' when the lineage is (T, P1, P2, T) by character, 'loop' when (T, P1, P2, X) with X not T, else None"""
     T, ps = r['chara'], r['parents']
     if len(ps) != 2 or any(len(p['gps']) != 2 for p in ps): return None
@@ -62,8 +69,8 @@ def shape(r):
     return 'rotation' if X[0] == T else 'loop'
 
 
-def claims():
-    out = []
+def claims() -> list[Value | Finding]:
+    out: list[Value | Finding] = []
     one = lineage_terms('T', 'P1', 'P2', 'X')
     out += [Value(S, 'one lineage: o(P1, P2) weight', one[frozenset(('P1', 'P2'))]),
             Value(S, 'one lineage: o(P1, X) weight', one[frozenset(('P1', 'X'))])]
@@ -103,13 +110,13 @@ def claims():
 
 
 # ---------------------------------------------------------------- schedules: the bound on a different objective
-VAL = os.path.join(common.ROOT, 'val')
+VAL: str = os.path.join(common.ROOT, 'val')
 
 
-def o_chart(lp):
+def o_chart(lp: dict[str, Any]) -> Overlap:
     """o(a, b) from a result's schedule chart: P_a(r) = 1 - prod over a's attempts at race r (by name, either year) of
     (1 - win %), the cell's win % including the streak penalty"""
-    n = len(lp['members']); miss = [collections.defaultdict(lambda: 1.0) for _ in range(n)]
+    n = len(lp['members']); miss: list[dict[int, float]] = [collections.defaultdict(lambda: 1.0) for _ in range(n)]
     for row in lp['schedule']:
         for a, c in enumerate(row['cells']):
             if c is not None: miss[a][row['race']] *= 1 - c['p'] / 100
@@ -117,12 +124,12 @@ def o_chart(lp):
     return {(a, b): sum(v * P[b].get(r, 0.0) for r, v in P[a].items()) for a, b in itertools.combinations(range(n), 2)}
 
 
-def o_max(lp, data):
+def o_max(lp: dict[str, Any], data: dict[str, Any]) -> Overlap:
     """o_max(a, b) = sum_r Pmax_a(r) Pmax_b(r), Pmax over every turn offering race r, no streak penalty"""
     umas = {u['id']: u for u in data['umas']}
-    pm = []
+    pm: list[dict[int, float]] = []
     for m in lp['members']:
-        miss = collections.defaultdict(lambda: 1.0)
+        miss: dict[int, float] = collections.defaultdict(lambda: 1.0)
         for turn in umas[m['id']]['turns']:
             for op in turn:
                 if op['race'] >= 0: miss[op['race']] *= 1 - min(100, max(0, op['bp'])) / 100
@@ -131,24 +138,25 @@ def o_max(lp, data):
     return {(a, b): sum(v * pm[b].get(r, 0.0) for r, v in pm[a].items()) for a, b in itertools.combinations(range(n), 2)}
 
 
-def o_pb(lp, data):
+def o_pb(lp: dict[str, Any], data: dict[str, Any]) -> Overlap:
     """the solver's exact pairwise ceilings PB(a, b) (data.json "pb", written by `loopopt pbtable`: the best-response DP
     over feasible schedules, docs/SOLVER.md `pair_ceilings`); tighter than o_max but computed by the Rust solver"""
     idx = {u['id']: i for i, u in enumerate(data['umas'])}; rows = data['pb']['rows']
-    def pb(a, b):
+    def pb(a: int, b: int) -> float:
         a, b = sorted((a, b)); k = b - a - 1
         return struct.unpack('<d', int(rows[a][16 * k:16 * k + 16], 16).to_bytes(8, 'little'))[0]
     ids = [idx[m['id']] for m in lp['members']]
     return {(a, b): pb(ids[a], ids[b]) for a, b in itertools.combinations(range(len(ids)), 2)}
 
 
-def lineage_q(L, o, det):
+def lineage_q(L: dict[str, Any], o: Overlap, det: dict[str, Any]) -> tuple[float, list[float]]:
     """q of lineage L when the pairs' shared wins are o: each slot's affinity = its relation part + 3 x its o terms
     (section 5), r = min(1, b (1 + A/100)) (x gp_rate for a grandparent), q = 1 - prod (1 - r)^inspirations; also the
     slots' race parts, to check against the reported ones"""
     (p1, p2), x = L['p'], L['x']
     par = {p1: (p2, x), p2: (p1, x)}
-    oo = lambda a, b: o[(min(a, b), max(a, b))]
+    oo: Callable[[int, int], float] = lambda a, b: o[(min(a, b), max(a, b))]
+    races: list[float]
     miss, races = 1.0, []
     for sl in L['slots']:
         if sl['kind'] == 'parent':
@@ -161,13 +169,14 @@ def lineage_q(L, o, det):
     return 1 - miss ** det['inspirations'], races
 
 
-def schedule_bound(tags=('ref', 'refpu')):
+def schedule_bound(tags: tuple[str, ...] = ('ref', 'refpu')) -> tuple[list[ScheduleRow], dict[str, float], set[int]]:
     """per deck result of the validation reference outputs: the winner's (and each listed runner-up loop's) P_found,
     P_floor, P_ceiling, recomputed by val/joint_check.py at q rebuilt from o"""
     sys.path.insert(0, VAL)
     import joint_check
+    rows: list[ScheduleRow]; err: dict[str, float]
     rows, err = [], {'p': 0.0, 'q': 0.0, 'race': 0.0, 'o': 0.0}
-    pens = set()
+    pens: set[int] = set()
     for era, j in json.load(open(os.path.join(VAL, 'jobs.json'))):
         job = json.load(open(os.path.join(VAL, 'jobs', j + '.json')))
         if job.get('mode') != 'deck': continue
@@ -180,13 +189,13 @@ def schedule_bound(tags=('ref', 'refpu')):
             # the winner, and each listed loop with other members (a listed same-loop entry differs only in its deck)
             keep = [t for i, t in enumerate(tops) if i == 0 or [m['id'] for m in t['loop']['members']]
                     != [m['id'] for m in tops[0]['loop']['members']]]
-            qv = {}
+            qv: dict[int, list[list[float]]] = {}
             for t in keep:
                 lp = t['loop']; det = lp['detail']
                 o_rep = {(p['a'], p['b']): p['wins'] for p in det['pairs']}
                 for k, v in o_chart(lp).items(): err['o'] = max(err['o'], abs(v - o_rep[k]))
                 om = o_max(lp, data); opb = o_pb(lp, data)
-                vs = []
+                vs: list[list[float]] = []
                 for o in (o_rep, {k: 0.0 for k in o_rep}, om, opb):
                     vs.append([lineage_q(L, o, det)[0] for L in det['lineages']])
                 for L, q in zip(det['lineages'], vs[0]):
@@ -203,8 +212,8 @@ def schedule_bound(tags=('ref', 'refpu')):
     return rows, err, pens
 
 
-def schedule_claims():
-    out = []
+def schedule_claims() -> list[Value | Finding]:
+    out: list[Value | Finding] = []
     rows, err, pens = schedule_bound()
     W = [r for r in rows if r['top']]; RU = [r for r in rows if not r['top']]
     gain = [100 * (r['ceil'] / r['found'] - 1) for r in W]

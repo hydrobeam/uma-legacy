@@ -8,24 +8,25 @@ the data did not produce.
   uv run --group research research/render.py           write docs/RESEARCH.md
   uv run --group research research/render.py --check   exit 1 if docs/RESEARCH.md differs from the rendering"""
 import json, os, re, sys
-HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
+HERE: str = os.path.dirname(os.path.abspath(__file__)); ROOT: str = os.path.dirname(HERE)
+TEMPLATE: str; OUT: str; RESULTS: str
 TEMPLATE, OUT, RESULTS = (os.path.join(ROOT, 'docs', 'RESEARCH.template.md'), os.path.join(ROOT, 'docs', 'RESEARCH.md'),
                           os.path.join(HERE, 'results.json'))
-PH = re.compile(r'\{\{([0-9]+\.[a-z0-9_]+)\|(u?[^}]+)\}\}')
+PH: re.Pattern[str] = re.compile(r'\{\{([0-9]+\.[a-z0-9_]+)\|(u?[^}]+)\}\}')
 
 
-def fmt(v, spec):
+def fmt(v: float | str, spec: str) -> str:
     u = spec.startswith('u'); out = format(v, spec[1:] if u else spec)
     return out.replace('-', '−') if u else out
 
 
-def render(template, values):
+def render(template: str, values: dict[str, float | str]) -> str:
     missing = sorted({k for k, _ in PH.findall(template) if k not in values})
     if missing: sys.exit('no computed value for: ' + ', '.join(missing))
     return PH.sub(lambda m: fmt(values[m.group(1)], m.group(2)), template)
 
 
-def main():
+def main() -> None:
     values = json.load(open(RESULTS))['values']
     text = render(open(TEMPLATE, encoding='utf-8').read(), values)
     if '--check' in sys.argv:

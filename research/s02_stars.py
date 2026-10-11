@@ -15,14 +15,17 @@ an unselected veteran cannot be read from them. What is computed here:
 """
 import math, os, re, statistics
 import common
-from common import Value
+from common import Finding, Value
 import s05_affinity
 
-SEC = '2'
-CUT = 17500
+SEC: str = '2'
+CUT: int = 17500
+
+# a star mix: the shares of 1, 2 and 3-star legacies
+Mix = tuple[float, ...]
 
 
-def mixes():
+def mixes() -> tuple[dict[str, Mix], dict[int, bool], Mix]:
     src = open(os.path.join(common.ROOT, 'webapp', 'src', 'data.js')).read()
     rk = dict(re.findall(r"(\w+): '([\d.]+,[\d.]+,[\d.]+)'", re.search(r'RANKS = \{(.*?)\}', src).group(1)))
     mix = {k: tuple(float(x) for x in v.split(',')) for k, v in rk.items()}
@@ -32,17 +35,17 @@ def mixes():
     return mix, ss, dflt
 
 
-def bbar(pi): return 0.03 * (pi[0] + 2 * pi[1] + 3 * pi[2])
+def bbar(pi: Mix) -> float: return 0.03 * (pi[0] + 2 * pi[1] + 3 * pi[2])
 
 
-def claims():
+def claims() -> list[Value | Finding]:
     mix, ss, dflt = mixes()
-    out = [Value(SEC, 'base per roll, below 17,500', bbar(mix['below'])), Value(SEC, 'base per roll, 17,500 and up', bbar(mix['ss']))]
+    out: list[Value | Finding] = [Value(SEC, 'base per roll, below 17,500', bbar(mix['below'])), Value(SEC, 'base per roll, 17,500 and up', bbar(mix['ss']))]
     out.append(common.finding(SEC, 'The solver\'s default mix is the page\'s below-17,500 mix', dflt == mix['below'],
                               f'solver {dflt}, page {mix["below"]}'))
     L = common.run_list()
     if L is not None:
-        bad = []
+        bad: list[str] = []
         for sid, name in common.SCEN.items():
             v = [x['score_ceiling'] for x in L if x['scenario_id'] == sid and x['score_ceiling']]
             k = sum(x >= CUT for x in v); lo, hi = common.wilson(k, len(v))
@@ -56,7 +59,7 @@ def claims():
     R = common.runs()
     if R is None: return out
     S, _ = s05_affinity.relations()
-    ratios = {k: [] for k in mix}
+    ratios: dict[str, list[float]] = {k: [] for k in mix}
     for r in R:
         anc = s05_affinity.lineage(r); aff = r.get('affinity') or {}
         if anc is None or any(l not in aff for l in list(s05_affinity.GLBL.values()) + ['parent 1 × parent 2']): continue

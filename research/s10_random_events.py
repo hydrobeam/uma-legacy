@@ -44,20 +44,34 @@ per-target p, d^g, d^w, q, read through s13_calibration's build_jobs / run_solve
               log-likelihoods credited against left out
 """
 import collections, math, os
+from collections.abc import Callable, Sequence
+from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 import common
+from common import Run
 
-SEC = '10'
+SEC: str = '10'
 GEN_W, GEN_G = 0.2, 0.4          # section 12's W_k, G_k at n_k = 0
 
 
-def markers():
+
+# one reading (readings()): a deck card of another character in a run, and whether her marker was credited to her
+# event: run, card, rar, hit, amb, cens, K, pals, links, char, lb, scen (all int)
+Reading = dict[str, int]
+CalRow = dict[str, Any]          # one of section 13's calibration rows (s13_calibration.rows_of)
+RunRows = dict[str, Any]         # one of section 13's per-run rows: its calibration rows under 'rows'
+RandomRow = dict[str, Any]       # random_rows(): row, kind ('deck' / 'own'), who, rate, hit, only, amb
+Fits = dict[str, Any]            # fits(): form -> (parameters, max LL); 'slots form' -> index into SLOT_FNS
+Markers = tuple[collections.Counter[int], dict[int, str], collections.defaultdict[int, set[str]], dict[int, dict[str, Any]]]
+
+
+def markers() -> Markers:
     gt = common.gametora(); db = common.mdb()
     sk = dict(db.execute('select [index], text from text_data where category = 47'))
 
-    def outs(rewards):
-        out = []
+    def outs(rewards: Any) -> list[set[str]]:
+        out: list[set[str]] = []
         for hs, _ in gt.outcomes(rewards):
             s = set()
             for kind, x, _ in hs:
@@ -66,9 +80,9 @@ def markers():
             out.append(s)
         return out
 
-    def sure(rewards):
+    def sure(rewards: Any) -> set[str]:
         o = outs(rewards); return set.intersection(*o) if o else set()
-    nshared = collections.Counter(); marker = {}
+    nshared: collections.Counter[int] = collections.Counter(); marker: dict[int, str] = {}
     for chara, es in gt.load('training_events_shared'):
         for e in es:
             chs = gt.choices(e[1])
@@ -77,7 +91,7 @@ def markers():
             if len(chs) >= 2:
                 a, b = sure(chs[0][1]), set().union(*[sure(ch[1]) for ch in chs[1:]])
                 if a and not b: marker[chara] = sorted(a)[0]
-    cardsk = collections.defaultdict(set)    # every skill a card's own events can give
+    cardsk: collections.defaultdict[int, set[str]] = collections.defaultdict(set)    # every skill a card's own events can give
     for key in ('training_events_sr', 'training_events_ssr'):
         for cid, es in gt.load(key):
             for e in es:
@@ -86,17 +100,17 @@ def markers():
     return nshared, marker, cardsk, sc
 
 
-def offer(r, nshared, sc):
+def offer(r: Run, nshared: collections.Counter[int], sc: dict[int, dict[str, Any]]) -> int:
     """K: random events on offer in run r (every shared event of the deck's characters plus the trainee's own)"""
     chars = {sc[x]['char_id'] for x in (d[0] for d in r['deck']) if x in sc and sc[x].get('type') != 'group'}
     return sum(nshared[ch] for ch in chars - {r['chara']}) + nshared[r['chara']]
 
 
-def readings(R):
+def readings(R: list[Run]) -> list[Reading]:
     nshared, marker, cardsk, sc = markers()
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
     wc = common.cards()
-    rows = []
+    rows: list[Reading] = []
     for r in R:
         dk = [d[0] for d in r['deck']]; tr = r['chara']; lbs = {d[0]: d[1] for d in r['deck']}
         pals = sum(1 for x in dk if wc.get(x, {}).get('pal'))
@@ -117,21 +131,21 @@ def readings(R):
     return rows
 
 
-def ll(y, p):
+def ll(y: np.ndarray, p: np.ndarray) -> float:
     p = np.clip(p, 1e-9, 1 - 1e-9); return float(np.sum(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
 
-def fits(rows):
+def fits(rows: Sequence[Reading]) -> Fits:
     y = np.array([r['hit'] for r in rows], float); K = np.array([r['K'] for r in rows], float)
     Lk = np.array([r['links'] for r in rows], float); Pl = np.array([r['pals'] for r in rows], float)
-    out = {'const': (y.mean(), ll(y, np.full_like(y, y.mean())))}
+    out: Fits = {'const': (y.mean(), ll(y, np.full_like(y, y.mean())))}
     o = minimize(lambda s: -ll(y, s[0] * (1 - s[1]) ** (K - 4)), [0.2, 0.05], bounds=[(0.01, 0.99), (-0.5, 0.5)])
     out['exp'] = (tuple(o.x), -o.fun)
     o = minimize(lambda s: -ll(y, s[0] * (K / 8) ** (-s[1])), [0.17, 0.5], bounds=[(0.01, 0.9), (-3, 3)])
     out['power'] = (tuple(o.x), -o.fun)
     o = minimize(lambda s: -ll(y, 1 - (1 - 1 / K) ** s[0]), [1.0], bounds=[(0.01, 50)])
     out['strict'] = (o.x[0], -o.fun)
-    best = None
+    best: tuple[tuple[float, ...], float] | None = None
     for i, fn in enumerate(SLOT_FNS):
         o = minimize(lambda p: -ll(y, fn(p[0], p[2] * Lk + K + p[1] * Pl)), [3.0, 3.0, 1.0],
                      bounds=[(0.01, 200), (0, 30), (0, 10)])
@@ -140,10 +154,10 @@ def fits(rows):
     return out
 
 
-SLOT_FNS = (lambda s, T: 1 - (1 - 1 / T) ** s, lambda s, T: s / T)
+SLOT_FNS: tuple[Callable[[Any, Any], Any], ...] = (lambda s, T: 1 - (1 - 1 / T) ** s, lambda s, T: s / T)
 
 
-def form_p(f, rows):
+def form_p(f: Fits, rows: Sequence[Reading]) -> dict[str, np.ndarray]:
     """each form's P(fires) on `rows`, with the parameters of fits() output f"""
     K = np.array([r['K'] for r in rows], float)
     Lk = np.array([r['links'] for r in rows], float); Pl = np.array([r['pals'] for r in rows], float)
@@ -152,11 +166,12 @@ def form_p(f, rows):
             'strict': 1 - (1 - 1 / K) ** S, 'slots': SLOT_FNS[f['slots form']](sc, sl * Lk + K + sw * Pl)}
 
 
-def held_out(rows):
+def held_out(rows: Sequence[Reading]) -> dict[str, list[float]]:
     """rule 3: per-run held-out log-likelihood of each form. Runs fall in five folds by common.fold(run id), all of a
     run's readings in one; each fold's readings are scored by the forms fitted (fits()) on the other four folds. Returns
     form -> list over runs (sorted by id) of the run's summed Bernoulli log-likelihood"""
-    runs = sorted({r['run'] for r in rows}); out = collections.defaultdict(lambda: collections.defaultdict(float))
+    runs = sorted({r['run'] for r in rows})
+    out: collections.defaultdict[str, collections.defaultdict[int, float]] = collections.defaultdict(lambda: collections.defaultdict(float))
     for k in range(common.K_FOLDS):
         test = [r for r in rows if common.fold(r['run']) == k]
         P = form_p(fits([r for r in rows if common.fold(r['run']) != k]), test)
@@ -167,7 +182,7 @@ def held_out(rows):
     return {nm: [d[i] for i in runs] for nm, d in out.items()}
 
 
-def scen_fit(rows, scen):
+def scen_fit(rows: Sequence[Reading], scen: list[int]) -> np.ndarray:
     """the K form with a per-scenario factor, a_s (1 - b)^(K - 4), s the run's scenario (indices into `scen`): (a_s..., b)"""
     y = np.array([r['hit'] for r in rows], float); K = np.array([r['K'] for r in rows], float)
     si = np.array([scen.index(r['scen']) for r in rows])
@@ -176,11 +191,12 @@ def scen_fit(rows, scen):
     return o.x
 
 
-def held_out_scenario(rows):
+def held_out_scenario(rows: Sequence[Reading]) -> tuple[list[float], list[float]]:
     """rule 3 for scenario next to K: per-run held-out log-likelihood of the K form with a per-scenario factor
     (scen_fit) and without (fits()' a (1 - b)^(K - 4)), each fold scored by the forms fitted on the other four folds
     (common.fold(run id)). Returns (with, without), lists over runs sorted by id"""
-    scen = sorted({r['scen'] for r in rows}); w1, w0 = collections.defaultdict(float), collections.defaultdict(float)
+    scen = sorted({r['scen'] for r in rows})
+    w1: collections.defaultdict[int, float] = collections.defaultdict(float); w0: collections.defaultdict[int, float] = collections.defaultdict(float)
     for k in range(common.K_FOLDS):
         tr = [r for r in rows if common.fold(r['run']) != k]; te = [r for r in rows if common.fold(r['run']) == k]
         q = scen_fit(tr, scen); a, b = fits(tr)['exp'][0]
@@ -191,27 +207,27 @@ def held_out_scenario(rows):
     runs = sorted(w0); return [w1[i] for i in runs], [w0[i] for i in runs]
 
 
-def by_k(rows):
-    t = collections.defaultdict(lambda: [0, 0])
+def by_k(rows: Sequence[Reading]) -> collections.defaultdict[int, list[int]]:
+    t: collections.defaultdict[int, list[int]] = collections.defaultdict(lambda: [0, 0])
     for r in rows: k = min(r['K'], 14); t[k][0] += 1; t[k][1] += r['hit']
     return t
 
 
-def logistic_k(rows):
+def logistic_k(rows: Sequence[Reading]) -> np.ndarray:
     """logit P = b0 + b1 K"""
     y = np.array([r['hit'] for r in rows], float); X = np.column_stack([np.ones(len(rows)), [r['K'] for r in rows]])
     o = minimize(lambda b: float(np.sum(np.logaddexp(0, X @ b) - y * (X @ b))), np.zeros(2), method='BFGS')
     return o.x
 
 
-def bottom_prioritised(R):
+def bottom_prioritised(R: list[Run]) -> tuple[int, int, int, collections.Counter[tuple[bool, bool]], list[tuple[int, bool, bool]]]:
     """runs showing a priority list, and how many prioritise a bottom-choice-only skill of a deck card's character;
     also each (run, skill) candidate as (run id, prioritised, credited to her event), several to a run"""
     gt = common.gametora(); db = common.mdb()
     sk = dict(db.execute('select [index], text from text_data where category = 47'))
 
-    def sure(rewards):
-        o = []
+    def sure(rewards: Any) -> set[str]:
+        o: list[set[str]] = []
         for hs, _ in gt.outcomes(rewards):
             s = set()
             for kind, x, _ in hs:
@@ -219,7 +235,7 @@ def bottom_prioritised(R):
                 elif kind == 'random': s |= {sk[i] for i in x if i in sk}
             o.append(s)
         return set.intersection(*o) if o else set()
-    bottom = collections.defaultdict(set)
+    bottom: collections.defaultdict[int, set[str]] = collections.defaultdict(set)
     for chara, es in gt.load('training_events_shared'):
         for e in es:
             chs = gt.choices(e[1])
@@ -228,7 +244,7 @@ def bottom_prioritised(R):
             if b and not a: bottom[chara] |= b
     _, _, cardsk, sc = markers()
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
-    shown = n = cand = 0; hits = collections.Counter(); each = []   # (prioritised, credited to her event) -> candidates
+    shown = n = cand = 0; hits: collections.Counter[tuple[bool, bool]] = collections.Counter(); each: list[tuple[int, bool, bool]] = []   # (prioritised, credited to her event) -> candidates
     for r in R:
         p = r.get('priority')
         if p is None: continue
@@ -244,11 +260,11 @@ def bottom_prioritised(R):
     return shown, n, cand, hits, each
 
 
-def claims():
+def claims() -> list[common.Value | common.Finding]:
     R = common.runs()
     if R is None: return []
     rows = readings(R)
-    f = fits(rows); g = {}
+    f = fits(rows); g: dict[str, Any] = {}
     y = sum(r['hit'] for r in rows); n = len(rows); amb = sum(r['amb'] for r in rows)
     g.update({'readings': n, 'runs': len({r['run'] for r in rows}), 'clean hits': y, 'ambiguous credits': amb,
               'rate with ambiguous, points higher': 100 * amb / n})
@@ -293,39 +309,40 @@ def claims():
 
 
 # rule 3's comparisons of the forms: (label, first form, second form); nats, SE and z are first minus second
-HELD_OUT = (('fitted form against constant', 'exp', 'const'), ('every slot competing against fitted form', 'slots', 'exp'),
+HELD_OUT: tuple[tuple[str, str, str], ...] = (('fitted form against constant', 'exp', 'const'), ('every slot competing against fitted form', 'slots', 'exp'),
             ('power law against fitted form', 'power', 'exp'), ('strict competition against fitted form', 'strict', 'exp'))
 
 
 # ---------------------------------------------------------------- findings: each conclusion as a likelihood or interval test
-def slot_fit(rows, link=None, pal=None):
+def slot_fit(rows: Sequence[Reading], link: float | None = None,
+             pal: float | None = None) -> tuple[tuple[float, float, float], float]:
     """the c / T fit, T = link x chain links + K + pal x pals, with either weight held fixed: ((c, pal, link), max LL)"""
     y = np.array([r['hit'] for r in rows], float); K = np.array([r['K'] for r in rows], float)
     Lk = np.array([r['links'] for r in rows], float); Pl = np.array([r['pals'] for r in rows], float)
-    fx = lambda v, x: x if v is None else v
+    fx: Callable[[float | None, float], float] = lambda v, x: x if v is None else v
     o = minimize(lambda q: -ll(y, q[0] / (fx(link, q[2]) * Lk + K + fx(pal, q[1]) * Pl)), [3.0, 1.0, 0.5],
                  bounds=[(0.01, 200), (0, 30), (0, 10)])
     return (o.x[0], fx(pal, o.x[1]), fx(link, o.x[2])), -o.fun
 
 
-def slot_ll(rows, link=None, pal=None):
+def slot_ll(rows: Sequence[Reading], link: float | None = None, pal: float | None = None) -> float:
     """max LL of c / T, T = link x chain links + K + pal x pals, with either weight held fixed"""
     return slot_fit(rows, link, pal)[1]
 
 
-def pal_interval(rows):
+def pal_interval(rows: Sequence[Reading]) -> tuple[float, float]:
     """the pal weight's 95% profile-likelihood interval in the c / T form (chain-link weight and c free): where the
     profile falls 1.92 nats below its maximum"""
     from scipy.optimize import brentq, minimize_scalar
-    prof = lambda w: slot_ll(rows, pal=w)
+    prof: Callable[[float], float] = lambda w: slot_ll(rows, pal=w)
     o = minimize_scalar(lambda w: -prof(w), bounds=(0, 10), method='bounded'); top, w0 = -o.fun, o.x
-    d = lambda w: top - prof(w) - 1.92
+    d: Callable[[float], float] = lambda w: top - prof(w) - 1.92
     lo = brentq(d, 0.0, w0) if d(0.0) > 0 else 0.0
     hi = brentq(d, w0, 10.0) if d(10.0) > 0 else float('nan')
     return lo, hi
 
 
-def logit_ll(y, X):
+def logit_ll(y: np.ndarray, X: np.ndarray) -> float:
     """max log-likelihood of a logistic regression (X holds its own intercept columns)"""
     f = lambda b: float(np.sum(np.logaddexp(0, X @ b) - y * (X @ b)))
     gr = lambda b: X.T @ (1 / (1 + np.exp(-(X @ b))) - y)
@@ -337,13 +354,14 @@ def logit_ll(y, X):
 # which treat readings as independent, can overstate the evidence. Each test is redone with the run as the unit:
 # per-run scores s_r (the run's derivative of its log-likelihood) and H (the second derivative of the total), the
 # robust covariance H^-1 B H^-1 with B = C / (C - 1) sum_r s_r s_r' (Huber 1967, White 1982; Liang and Zeger 1986).
-def run_scores(p_fn, y, run, th, free):
+def run_scores(p_fn: Callable[[np.ndarray], np.ndarray], y: np.ndarray, run: Sequence[int], th: Sequence[float] | np.ndarray,
+               free: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
     """per-run scores (C x k) and the Hessian (k x k) of the total Bernoulli log-likelihood of P = p_fn(theta) in the
     parameters `free` (indices into theta; the rest held fixed), by central differences at theta"""
     th = np.asarray(th, float); free = list(free)
     ix = {r: i for i, r in enumerate(sorted(set(run)))}; ri = np.array([ix[r] for r in run])
 
-    def rowscore(t):
+    def rowscore(t: np.ndarray) -> np.ndarray:
         p = np.clip(p_fn(t), 1e-9, 1 - 1e-9); w = y / p - (1 - y) / (1 - p); J = np.empty((len(y), len(free)))
         for j, q in enumerate(free):
             h = 1e-6 * max(1.0, abs(t[q])); a, b = t.copy(), t.copy(); a[q] += h; b[q] -= h
@@ -357,14 +375,14 @@ def run_scores(p_fn, y, run, th, free):
     return S, (H + H.T) / 2
 
 
-def logit_fit(y, X):
+def logit_fit(y: np.ndarray, X: np.ndarray) -> np.ndarray:
     """a logistic regression's coefficients (as logit_ll fits it)"""
     f = lambda b: float(np.sum(np.logaddexp(0, X @ b) - y * (X @ b)))
     gr = lambda b: X.T @ (1 / (1 + np.exp(-(X @ b))) - y)
     return minimize(f, np.zeros(X.shape[1]), jac=gr, method='BFGS').x
 
 
-def logit_scores(y, X, run, b):
+def logit_scores(y: np.ndarray, X: np.ndarray, run: Sequence[int], b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """a logistic regression's per-run scores and Hessian at b (exact)"""
     p = 1 / (1 + np.exp(-(X @ b)))
     ix = {r: i for i, r in enumerate(sorted(set(run)))}; ri = np.array([ix[r] for r in run])
@@ -372,20 +390,20 @@ def logit_scores(y, X, run, b):
     return S, -(X.T * (p * (1 - p))) @ X
 
 
-def sandwich(S, H):
+def sandwich(S: np.ndarray, H: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(robust covariance H^-1 B H^-1, B = C / (C - 1) S'S; the model's covariance -H^-1)"""
     C = len(S); Hi = np.linalg.inv(H)
     return Hi @ (C / (C - 1) * S.T @ S) @ Hi, -Hi
 
 
-def wald(b, V, idx, null=None):
+def wald(b: np.ndarray, V: np.ndarray, idx: list[int], null: Sequence[float] | None = None) -> tuple[float, int, float]:
     """Wald chi2 of b[idx] = null (0 by default) under covariance V: (chi2, df, p)"""
     from scipy.stats import chi2
     d = np.asarray(b, float)[idx] - (0 if null is None else np.asarray(null, float)); Vs = np.asarray(V)[np.ix_(idx, idx)]
     x2 = float(d @ np.linalg.solve(Vs, d)); return x2, len(idx), float(chi2.sf(x2, len(idx)))
 
 
-def score_z(S, H, j):
+def score_z(S: np.ndarray, H: np.ndarray, j: int) -> float:
     """run-clustered score test of parameter j at its null value (S, H at the fit restricted to it; the other parameters
     fitted): the efficient score's sum over runs over its run-clustered SD, a z (Boos 1992)"""
     o = [i for i in range(S.shape[1]) if i != j]
@@ -393,12 +411,12 @@ def score_z(S, H, j):
     C = len(s); return float(s.sum() / np.sqrt(C / (C - 1) * (s ** 2).sum()))
 
 
-def robust(rows, f):
+def robust(rows: Sequence[Reading], f: Fits) -> dict[str, float]:
     """each likelihood-ratio / profile test of the findings, redone run-clustered: Values by name"""
     y = np.array([r['hit'] for r in rows], float); K = np.array([r['K'] for r in rows], float)
     Lk = np.array([r['links'] for r in rows], float); Pl = np.array([r['pals'] for r in rows], float)
-    run = [r['run'] for r in rows]; g = {}
-    zs = lambda b, V, naive, j, null=0.0: ((b[j] - null) / np.sqrt(V[j, j]), (b[j] - null) / np.sqrt(naive[j, j]))
+    run = [r['run'] for r in rows]; g: dict[str, Any] = {}
+    zs: Callable[..., tuple[float, float]] = lambda b, V, naive, j, null=0.0: ((b[j] - null) / np.sqrt(V[j, j]), (b[j] - null) / np.sqrt(naive[j, j]))
     # slope in K: b of a (1 - b)^(K - 4), Wald against 0
     ab = np.array(f['exp'][0]); V, Vn = sandwich(*run_scores(lambda t: t[0] * (1 - t[1]) ** (K - 4), y, run, ab, [0, 1]))
     g['slope in K: robust z'], g['slope in K: model z'] = zs(ab, V, Vn, 1)
@@ -406,7 +424,7 @@ def robust(rows, f):
     ca = np.array(f['power'][0]); V, Vn = sandwich(*run_scores(lambda t: t[0] * (K / 8) ** (-t[1]), y, run, ca, [0, 1]))
     g['uniform competition (power law a = 1): robust z'], g['uniform competition (power law a = 1): model z'] = zs(ca, V, Vn, 1, 1.0)
     # c / T: t = (c, pal weight, chain-link weight)
-    ct = lambda t: t[0] / (t[2] * Lk + K + t[1] * Pl)
+    ct: Callable[[np.ndarray], np.ndarray] = lambda t: t[0] / (t[2] * Lk + K + t[1] * Pl)
     # chain-link weight 1: the fitted weight sits on its bound 0, where a Wald test is not valid; a score test at the null
     # (weight 1, c and the pal weight fitted) is
     th1, _ = slot_fit(rows, link=1.0); S, H = run_scores(ct, y, run, th1, [0, 1, 2])
@@ -424,15 +442,15 @@ def robust(rows, f):
     V, Vn = sandwich(*logit_scores(y, X, run, b))
     g['logistic slope in K: robust z'], g['logistic slope in K: model z'] = zs(b, V, Vn, 1)
     # covariates next to K
-    cache = {}
-    cov = {nm: [np.array([cache.setdefault((r['card'], r['lb'], t), card_effect(r['card'], r['lb'], t)) for r in rows]) / 10]
+    cache: dict[tuple[int, int, int], float] = {}
+    cov: dict[str, list[np.ndarray]] = {nm: [np.array([cache.setdefault((r['card'], r['lb'], t), card_effect(r['card'], r['lb'], t)) for r in rows]) / 10]
            for t, nm in ((1, 'friendship bonus'), (14, 'initial friendship gauge'), (19, 'specialty priority'))}
     cov['scenario'] = [np.array([r['scen'] == v for r in rows], float) for v in sorted({r['scen'] for r in rows})[1:]]
     for nm, cols in cov.items():
         X = np.column_stack([one, K] + cols); b = logit_fit(y, X); V, _ = sandwich(*logit_scores(y, X, run, b))
         g[f'{nm}: robust Wald chi2'], _, g[f'{nm}: robust p'] = wald(b, V, list(range(2, X.shape[1])))
     # rarity within a character (characters with cards of more than one rarity)
-    multi = collections.defaultdict(set)
+    multi: collections.defaultdict[int, set[int]] = collections.defaultdict(set)
     for r in rows: multi[r['char']].add(r['rar'])
     ch = sorted(c for c, v in multi.items() if len(v) > 1); w = [i for i, r in enumerate(rows) if r['char'] in ch]
     X = np.column_stack([np.array([[rows[i]['char'] == c for c in ch] for i in w], float), K[w], [rows[i]['rar'] for i in w]])
@@ -441,7 +459,7 @@ def robust(rows, f):
     return {k: float(v) for k, v in g.items()}
 
 
-def card_effect(cid, lb, typ):
+def card_effect(cid: int, lb: int, typ: int) -> float:
     """a support card's effect of one type at its limit break's level cap (master.mdb: linear between milestone levels,
     plus unique effects reached)"""
     db = common.mdb()
@@ -460,10 +478,10 @@ def card_effect(cid, lb, typ):
     return v
 
 
-def pairs_test(rows, a, b):
+def pairs_test(rows: Sequence[Reading], a: float, b: float) -> tuple[float, float, float]:
     """within-run independence: pairs of readings of one run that both hit, against Binomial(n, p) per run with the
     fitted p (one K per run); the variance is exact per run"""
-    by = collections.defaultdict(list)
+    by: collections.defaultdict[int, list[Reading]] = collections.defaultdict(list)
     for r in rows: by[r['run']].append(r)
     o = e = v = 0.0
     for rs in by.values():
@@ -473,11 +491,12 @@ def pairs_test(rows, a, b):
     return o, e, (o - e) / math.sqrt(v)
 
 
-def findings(rows, f, g, cand, bh):
-    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
+def findings(rows: Sequence[Reading], f: Fits, g: dict[str, Any], cand: int,
+             bh: collections.Counter[tuple[bool, bool]]) -> list[common.Finding]:
+    F: Callable[[str, Any, Any], common.Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
     from scipy.stats import chi2
     L0, (ab, Le), (pw, Lp), (_, Ls), Lslot = f['const'][1], f['exp'], f['power'], f['strict'], f['slots'][1]
-    rz = lambda nm: f'run-clustered z {g[nm + ": robust z"]:+.2f} (independent readings {g[nm + ": model z"]:+.2f})'
+    rz: Callable[[str], str] = lambda nm: f'run-clustered z {g[nm + ": robust z"]:+.2f} (independent readings {g[nm + ": model z"]:+.2f})'
     out = [F('The slope in K is detectable: the adopted form a (1 - b)^(K - 4) against a constant (b = 0, nested), '
              'run-clustered Wald |z| above 1.96 (95%)', abs(g['slope in K: robust z']) > 1.96,
              f'a {ab[0]:.2f}, b {ab[1]:.3f}: LL {Le:.1f} against {L0:.1f}: LR {2 * (Le - L0):.2f}; {rz("slope in K")}')]
@@ -515,15 +534,15 @@ def findings(rows, f, g, cand, bh):
                  f'LR {2 * (base - Lc):.2f}; {rz("logistic slope in K")}; {g["logistic: rate at K = 8"]:.3f} at 8, '
                  f'{g["logistic: rate at K = 14"]:.3f} at 14'))
     # covariates next to K: likelihood-ratio tests at 95%
-    lr = lambda cols: 2 * (logit_ll(yb, np.column_stack([one, Kb] + cols)) - base)
-    eff = {}
+    lr: Callable[[list[np.ndarray]], float] = lambda cols: 2 * (logit_ll(yb, np.column_stack([one, Kb] + cols)) - base)
+    eff: dict[str, tuple[float, int]] = {}
     for t, nm in ((1, 'friendship bonus'), (14, 'initial friendship gauge'), (19, 'specialty priority')):
-        cache = {}
+        cache: dict[tuple[int, int], float] = {}
         x = np.array([cache.setdefault((r['card'], r['lb']), card_effect(r['card'], r['lb'], t)) for r in rows]) / 10
         eff[nm] = (lr([x]), 1)
     sc = sorted({r['scen'] for r in rows})[1:]
     eff['scenario'] = (lr([np.array([r['scen'] == v for r in rows], float) for v in sc]), len(sc))
-    ev = lambda ks: '; '.join(f'{k} {g[k + ": robust Wald chi2"]:.2f} (df {eff[k][1]}, limit {chi2.ppf(0.95, eff[k][1]):.2f}, '
+    ev: Callable[[Sequence[str]], str] = lambda ks: '; '.join(f'{k} {g[k + ": robust Wald chi2"]:.2f} (df {eff[k][1]}, limit {chi2.ppf(0.95, eff[k][1]):.2f}, '
                               f'p {g[k + ": robust p"]:.3f}; LR {eff[k][0]:.2f})' for k in ks)
     fr = ('friendship bonus', 'initial friendship gauge', 'specialty priority')
     out.append(F('Friendship (bonus, initial gauge) and specialty priority show no effect next to K: each run-clustered Wald '
@@ -531,7 +550,7 @@ def findings(rows, f, g, cand, bh):
     out.append(F('Scenario is detectable next to K at the 5% level: run-clustered Wald p < 0.05 (df 3)',
                  g['scenario: robust p'] < 0.05, ev(('scenario',))))
     rar = np.array([r['rar'] for r in rows], float)
-    multi = collections.defaultdict(set)
+    multi: collections.defaultdict[int, set[int]] = collections.defaultdict(set)
     for r in rows: multi[r['char']].add(r['rar'])
     ch = sorted(c for c, v in multi.items() if len(v) > 1)
     w = [i for i, r in enumerate(rows) if r['char'] in ch]
@@ -553,14 +572,14 @@ def findings(rows, f, g, cand, bh):
     return out
 
 
-def held_out_findings(g):
+def held_out_findings(g: dict[str, Any]) -> list[common.Finding]:
     """rule 3 on the forms, criteria fixed before the numbers: the adopted form predicts unseen runs better than a
     constant (z > 1.96); the every-slot form predicts them about as well as the adopted one (|z| <= 1.96); the power law
     and strict competition do not predict them better than the adopted form (z <= 1.96, worded by what the data give);
     a per-scenario factor on the K form predicts them better than without (z > 1.96) or not, worded by what the data give"""
-    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
-    v = lambda lab: (g[f'held out: {lab}: nats'], g[f'held out: {lab}: SE'], g[f'held out: {lab}: z'])
-    ev = lambda lab: f'{g["held out: runs"]:,} runs, 5 folds: {v(lab)[0]:+.2f} nats, SE {v(lab)[1]:.2f}, z {v(lab)[2]:+.2f} ({lab})'
+    F: Callable[[str, Any, Any], common.Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    v: Callable[[str], tuple[float, float, float]] = lambda lab: (g[f'held out: {lab}: nats'], g[f'held out: {lab}: SE'], g[f'held out: {lab}: z'])
+    ev: Callable[[str], str] = lambda lab: f'{g["held out: runs"]:,} runs, 5 folds: {v(lab)[0]:+.2f} nats, SE {v(lab)[1]:.2f}, z {v(lab)[2]:+.2f} ({lab})'
     out = [F('The slope in K does not predict unseen runs better than a constant rate: the form a (1 - b)^(K - 4) against a '
              'constant has z <= 1.96', v('fitted form against constant')[2] <= 1.96, ev('fitted form against constant')),
            F('The every-slot form does not predict unseen runs better than the adopted form, nor worse (|z| <= 1.96)',
@@ -575,7 +594,7 @@ def held_out_findings(g):
 
 
 # ---------------------------------------------------------------- effect on real careers (section 13's rows)
-def calib():
+def calib() -> tuple[list[CalRow], list[RunRows]]:
     """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
     s13_calibration.claims builds them; the solver's results are reused from its cache while nothing they read changes"""
     if 'calib' not in common._cache:
@@ -590,7 +609,7 @@ def calib():
     return common._cache['calib']
 
 
-def event_groups():
+def event_groups() -> dict[str, Any]:
     """skill groups each kind of event can hint (GameTora, through gametora.py): a trainee's story and date events
     (training_events_char), each outfit's own events (training_events_char_card), a character's shared events
     (training_events_shared), a trainee's current conditional events with their conditions, each scenario's events
@@ -598,12 +617,13 @@ def event_groups():
     if 'evgroups' in common._cache: return common._cache['evgroups']
     gt = common.gametora(); grp = dict(common.mdb().execute('select id, group_id from skill_data'))
 
-    def of(chs):
+    def of(chs: Any) -> set[int | None]:
         return {grp.get(x) for ch in gt.choices(chs) for kind, x0, _ in gt.hints(ch[1]) for x in ([x0] if kind == 'hint' else x0)}
 
-    def of_list(lst):
+    def of_list(lst: Any) -> set[int | None]:
         return set().union(set(), *[of(e[1]) for e in (lst if isinstance(lst, list) else []) if isinstance(e, list) and len(e) >= 2])
-    ordinary, cond = {}, collections.defaultdict(list)
+    ordinary: dict[int, set[int | None]] = {}
+    cond: collections.defaultdict[int, list[tuple[set[int | None], Any]]] = collections.defaultdict(list)
     for row in gt.load('training_events_char'):
         ordinary[row[0]] = of_list(row[2]) | of_list(row[3])
         for tag, ve in gt.conditional_events(row):
@@ -615,20 +635,20 @@ def event_groups():
     return out
 
 
-def hint_srcs(r):
+def hint_srcs(r: Run) -> collections.defaultdict[int, list[common.Hint]]:
     """skill group -> the run's hint records of it (white or gold), names mapped as section 13 maps them"""
     names = common.skill_names(); pn = {v[1]: gid for gid, vs in r.get('hint_groups', []) for v in vs}
-    out = collections.defaultdict(list)
+    out: collections.defaultdict[int, list[common.Hint]] = collections.defaultdict(list)
     for h in r['hints']:
         g = names[h['name']][0] if h['name'] in names else pn.get(h['name'])
         if g is not None: out[g].append(h)
     return out
 
 
-def free(row): return not row['outfit'] and not row['scen_gold']
+def free(row: CalRow) -> bool: return not row['outfit'] and not row['scen_gold']
 
 
-def credit(row, r):
+def credit(row: CalRow, r: float) -> tuple[float, float]:
     """(p, acquisition) of a calibration row with m multiplied by (1 - r) (section 12; m recovered from the row's p);
     a row on the trainee's outfit or a scenario gold does not move"""
     if not free(row): return row['p'], row['acq']
@@ -638,12 +658,12 @@ def credit(row, r):
     return dg * GEN_G * s + (1 - dg) * GEN_W * s * (1 - mm), dg + (1 - dg) * (1 - mm)
 
 
-def odds_change(runrows, rate):
+def odds_change(runrows: Sequence[RunRows], rate: Callable[[CalRow], float]) -> tuple[list[float], list[float], int, list[float]]:
     """relative change of each run's product of per-target odds when each row is credited at rate(row) (0: not): over
     the eight targets (runs with a nonzero product; those of them with a credited row; runs whose product crediting
     lifts from 0), and over the targets the model gives a positive chance without crediting (runs with a credited
     row among them)"""
-    ch, tch, lifted, pos = [], [], 0, []
+    ch: list[float] = []; tch: list[float] = []; lifted = 0; pos: list[float] = []
     for pr in runrows:
         new = [credit(x, rate(x))[0] for x in pr['rows']]
         p0 = math.prod(x['p'] for x in pr['rows']); p1 = math.prod(new)
@@ -656,11 +676,11 @@ def odds_change(runrows, rate):
     return ch, tch, lifted, pos
 
 
-def summary(xs):
+def summary(xs: Sequence[float]) -> tuple[float, ...]:
     return (float(np.mean(xs)), float(np.median(xs)), float(np.max(xs))) if xs else (float('nan'),) * 3
 
 
-def calib_test(rs, rate):
+def calib_test(rs: Sequence[CalRow], rate: Callable[[CalRow], float]) -> dict[str, Any]:
     """acquisition observed (hinted from any source, or owned) against predicted, without and with crediting each row at
     rate(row): rows, observed (its 95% interval run-clustered), predicted, obs / pred and its 95% interval each way
     (common.cluster_ci: a run can give several rows, and the predictions differ by row); the Bernoulli log-likelihood each way
@@ -681,7 +701,7 @@ def calib_test(rs, rate):
     return out
 
 
-def random_rows(R, ab):
+def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow], collections.Counter[str]]:
     """the calibration rows a random event could hint: (row, kind, rate, hit, only, ambiguous); kind 'deck' (a deck
     card's character's event, at the fitted form at the run's K) or 'own' (the trainee's own, rate filled in later)"""
     a, b = ab
@@ -689,7 +709,7 @@ def random_rows(R, ab):
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
     gn = common.skills(); white = {g: gn[g][0] for g in common.DEFAULT}
     rows, _ = calib(); byid = {r['id']: r for r in R}
-    out, skipped = [], collections.Counter()
+    out: list[RandomRow] = []; skipped: collections.Counter[str] = collections.Counter()
     for row in rows:
         if not free(row): continue
         r = byid[row['run']]; g = row['g']; hs = hint_srcs(r)[g]; srcs = [x for h in hs for x in h['src']]
@@ -713,19 +733,19 @@ def random_rows(R, ab):
     return out, skipped
 
 
-def bern_ll(pr, acquired):
+def bern_ll(pr: float, acquired: Any) -> float:
     """one row's Bernoulli log-likelihood (as calib_test scores it)"""
     if 0 < pr < 1: return math.log(pr) if acquired else math.log(1 - pr)
     return 0.0 if (pr >= 1) == bool(acquired) else -math.inf
 
 
-def careers_held_out(dk, R, rows):
+def careers_held_out(dk: Sequence[RandomRow], R: list[Run], rows: Sequence[Reading]) -> tuple[list[float], list[float], int]:
     """rule 3 on the calibration rows: per-run held-out log-likelihood of the acquisition rows a deck card's random
     event could hint, credited against left out. Runs fall in five folds by common.fold(run id); each fold's rows are
     credited at the adopted form fitted on the other four folds' readings. Scored on the rows the model gives a positive
     chance without crediting (as calib_test). Returns (credited, left out) per run, and the number of rows"""
     nshared, _, _, sc = markers(); byid = {r['id']: r for r in R}
-    l1, l0 = collections.defaultdict(float), collections.defaultdict(float); n = 0
+    l1: collections.defaultdict[int, float] = collections.defaultdict(float); l0: collections.defaultdict[int, float] = collections.defaultdict(float); n = 0
     for k in range(common.K_FOLDS):
         a, b = fits([r for r in rows if common.fold(r['run']) != k])['exp'][0]
         for x in dk:
@@ -739,9 +759,9 @@ def careers_held_out(dk, R, rows):
     return [l1[i] for i in runs], [l0[i] for i in runs], n
 
 
-def careers(R, ab, rows):
-    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
-    V = lambda nm, v: common.Value(SEC, nm, v)
+def careers(R: list[Run], ab: tuple[float, float], rows: Sequence[Reading]) -> list[common.Value | common.Finding]:
+    F: Callable[[str, Any, Any], common.Finding] = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    V: Callable[[str, Any], common.Value] = lambda nm, v: common.Value(SEC, nm, v)
     rr, skipped = random_rows(R, ab); _, runrows = calib()
     dk = [x for x in rr if x['kind'] == 'deck']; own = [x for x in rr if x['kind'] == 'own']
     ko = sum(x['hit'] for x in own); r_own = common.div(ko, len(own))
@@ -759,7 +779,7 @@ def careers(R, ab, rows):
     th = calib_test([x['row'] for x in dk], lambda row: hrate[id(row)])
     c1, c0, nho = careers_held_out(dk, R, rows); hd, hse, hz = common.compare_held_out(c1, c0)
     ch, tch, lifted, pos = odds_change(runrows, lambda row: rate.get(id(row), 0.0))
-    out = [V('careers: rows a deck card\'s random event could hint', len(dk)),
+    out: list[common.Value | common.Finding] = [V('careers: rows a deck card\'s random event could hint', len(dk)),
            V('careers: runs with such a row', len({x['row']['run'] for x in dk})),
            V('careers: acquired through that event', sum(x['hit'] for x in dk)),
            V('careers: acquired through that event only', sum(x['only'] for x in dk)),
@@ -793,8 +813,8 @@ def careers(R, ab, rows):
             V('held out: credited against left out: runs', len(c1)), V('held out: credited against left out: rows', nho),
             V('held out: credited against left out: nats', hd), V('held out: credited against left out: SE', hse),
             V('held out: credited against left out: z', hz)]
-    rt = lambda t, k: f'{t["ratio" + k]:.3f} [{t["rlo" + k]:.2f}, {t["rhi" + k]:.2f}]'
-    covers = lambda t, k: t[f'rlo{k}'] <= 1 <= t[f'rhi{k}']
+    rt: Callable[[dict[str, Any], str], str] = lambda t, k: f'{t["ratio" + k]:.3f} [{t["rlo" + k]:.2f}, {t["rhi" + k]:.2f}]'
+    covers: Callable[[dict[str, Any], str], bool] = lambda t, k: t[f'rlo{k}'] <= 1 <= t[f'rhi{k}']
     out += [F('Deck cards\' random events, left out: acquisition on the rows they could hint is under-predicted: obs / pred '
               'has a 95% interval entirely above 1', lambda: t['rlo0'] > 1, lambda: f'{t["n"]} rows, {t["k"]} acquired; left out {rt(t, "0")}; credited {rt(t, "1")}'),
             F('Deck cards\' random events, credited at the fitted rate: acquisition obs / pred has a 95% interval covering 1',
@@ -815,7 +835,7 @@ def careers(R, ab, rows):
     return out
 
 
-def careers_detail(R):
+def careers_detail(R: list[Run]) -> None:
     a = fits(readings(R))['exp'][0]
     rr, skipped = random_rows(R, a)
     print('\ncareers: rows by who', collections.Counter((x['kind'], x['who'], x['row']['g'], x['hit']) for x in rr), dict(skipped))
@@ -824,11 +844,11 @@ def careers_detail(R):
     print(f'careers: largest |acquisition from m recovered from p - the solver\'s acquisition| over {len(rows):,} rows: {dev:.2e}')
 
 
-def detail():
+def detail() -> None:
     R = common.runs()
     rows = readings(R)
     print('all records: rate by K', ', '.join(f'{k}: {h}/{n}' for k, (n, h) in sorted(by_k(rows).items())))
-    t = collections.defaultdict(lambda: [0, 0])
+    t: collections.defaultdict[int, list[int]] = collections.defaultdict(lambda: [0, 0])
     for r in rows: t[r['rar']][0] += 1; t[r['rar']][1] += r['hit']
     print('   by rarity (1 R, 2 SR, 3 SSR):', ', '.join(f'{k}: {h}/{n} = {h / n:.3f}' for k, (n, h) in sorted(t.items())))
     sr = [r for r in rows if r['rar'] >= 2]; f = fits(sr); (a, b), L = f['exp']

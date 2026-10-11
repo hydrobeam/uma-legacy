@@ -14,18 +14,25 @@ run's trials share its lineage, so the variance comes from each run's residual a
 test is the run-clustered Wald chi2 (common.cluster_chi2), since one run's trials fall in several bands.
 """
 import collections, math
+from collections.abc import Callable, Sequence
+from typing import Any
 from scipy.optimize import minimize_scalar
 import common
-from common import Value
+from common import Finding, Value
 import s05_affinity
 
-SEC = '3'
-CHI1 = 1.920729                          # chi2(1) 95% / 2
-STARS = {0.03: 1, 0.06: 2, 0.09: 3}
-BANDS = [(0, 50), (50, 100), (100, 150), (150, 200), (200, 10 ** 6)]
+# a trial with its affinity: (category, a, base, passed, run id)
+Trial = tuple[str, int, float, bool, int]
+# a fitted parameter's log-likelihood per run
+RunLL = Callable[[float], dict[int, float]]
+
+SEC: str = '3'
+CHI1: float = 1.920729                          # chi2(1) 95% / 2
+STARS: dict[float, int] = {0.03: 1, 0.06: 2, 0.09: 3}
+BANDS: list[tuple[int, int]] = [(0, 50), (50, 100), (100, 150), (150, 200), (200, 10 ** 6)]
 
 
-def ll(ts, kp=1.0, kg=1.0, s=1.0):
+def ll(ts: list[Trial], kp: float = 1.0, kg: float = 1.0, s: float = 1.0) -> float:
     t = 0.0
     for cat, a, b, f, _ in ts:
         p = min(1.0, (kg if cat == 'G' else kp) * b * (1 + s * a / 100))
@@ -34,16 +41,16 @@ def ll(ts, kp=1.0, kg=1.0, s=1.0):
     return t
 
 
-def llr(ts, kp=1.0, kg=1.0, s=1.0):
+def llr(ts: list[Trial], kp: float = 1.0, kg: float = 1.0, s: float = 1.0) -> dict[int, float]:
     """{run: log-likelihood of that run's trials}"""
-    out = collections.defaultdict(float)
+    out: dict[int, float] = collections.defaultdict(float)
     for cat, a, b, f, run in ts:
         p = min(max(min(1.0, (kg if cat == 'G' else kp) * b * (1 + s * a / 100)), 1e-12), 1 - 1e-12)
         out[run] += math.log(p if f else 1 - p)
     return out
 
 
-def fit1(run_ll, lo, hi):
+def fit1(run_ll: RunLL, lo: float, hi: float) -> tuple[float, float, float]:
     """(maximum-likelihood estimate on [lo, hi], run-clustered 95% low, high): a run gives many trials, so the
     interval is the sandwich one (common.robust_interval), not the likelihood interval of independent trials"""
     r = minimize_scalar(lambda x: -sum(run_ll(x).values()), bounds=(lo, hi), method='bounded', options={'xatol': 1e-5})
@@ -51,7 +58,7 @@ def fit1(run_ll, lo, hi):
     return float(r.x), a, b
 
 
-def profile(f, grid):
+def profile(f: Callable[[float], float], grid: Sequence[float]) -> tuple[float, float, tuple[float, float]]:
     """(best x, LL at best, 95% likelihood interval) over a grid"""
     L = [f(x) for x in grid]
     i = max(range(len(grid)), key=L.__getitem__)
@@ -59,10 +66,10 @@ def profile(f, grid):
     return grid[i], L[i], (min(ok), max(ok))
 
 
-def pred(a, b): return min(1.0, b * (1 + a / 100))
+def pred(a: float, b: float) -> float: return min(1.0, b * (1 + a / 100))
 
 
-def ratio(ts):
+def ratio(ts: list[Trial]) -> tuple[int, int, float, float, float, float]:
     """(trials, observed, predicted, obs / pred, low, high) under the model; the interval is run-clustered
     (common.cluster_ci)"""
     o = sum(f for _, _, _, f, _ in ts); e = sum(pred(a, b) for _, a, b, _, _ in ts)
@@ -70,12 +77,12 @@ def ratio(ts):
     return len(ts), o, e, common.div(o, e), lo, hi
 
 
-def claims():
+def claims() -> list[Value | Finding]:
     R = common.runs()
     if R is None: return []
     full = [t for t in s05_affinity.trials(R, race=True) if t[0] in ('P', 'G')]
     ts = [(c, a0, b, f, run) for c, a0, _, b, f, run, _ in full]
-    out = []
+    out: list[Value | Finding] = []
     P = [t for t in ts if t[0] == 'P']; G = [t for t in ts if t[0] == 'G']
     for lab, sub in (('parents', P), ('grandparents', G)):
         n, o, e, r, lo, hi = ratio(sub)
@@ -102,14 +109,14 @@ def claims():
                               'the term beats no affinity by more than 1.92 nats',
                               s_lo <= 1 <= s_hi and d0 > CHI1, f'slope {s_hat:.2f} [{s_lo:.2f}, {s_hi:.2f}]; over none {d0:.1f} nats'))
     # the two parts of A apart: relation points (rel) and 3 x shared G1 wins (race), each with its own slope
-    def ll2(sr, sc):
+    def ll2(sr: float, sc: float) -> float:
         t = 0.0
         for c, a, b, f, rc in ((c, a0, b, f, rc) for c, a0, _, b, f, _, rc in full):
             p = min(max(min(1.0, b * (1 + (sr * (a - rc) + sc * rc) / 100)), 1e-12), 1 - 1e-12)
             t += math.log(p if f else 1 - p)
         return t
-    def ll2r(sr, sc):
-        out_ = collections.defaultdict(float)
+    def ll2r(sr: float, sc: float) -> dict[int, float]:
+        out_: dict[int, float] = collections.defaultdict(float)
         for c, a, _, b, f, run, rc in full:
             p = min(max(min(1.0, b * (1 + (sr * (a - rc) + sc * rc) / 100)), 1e-12), 1 - 1e-12)
             out_[run] += math.log(p if f else 1 - p)
@@ -124,7 +131,7 @@ def claims():
                               'relation points and of 3 x shared G1 wins each has a 95% interval covering 1',
                               sr_lo <= 1 <= sr_hi and sc_lo <= 1 <= sc_hi,
                               f'relation {sr_hat:.2f} [{sr_lo:.2f}, {sr_hi:.2f}]; shared wins {sc_hat:.2f} [{sc_lo:.2f}, {sc_hi:.2f}]'))
-    miss = []
+    miss: list[str] = []
     for b, st in STARS.items():
         n, o, e, r, lo, hi = ratio([t for t in ts if t[2] == b])
         out += [Value(SEC, f'{st} star trials', n), Value(SEC, f'{st} star obs / pred', r),
@@ -132,7 +139,7 @@ def claims():
         if n and not lo <= 1 <= hi: miss.append(f'{st} star {r:.3f} [{lo:.2f}, {hi:.2f}]')
     out.append(common.finding(SEC, 'The base by stars (3 / 6 / 9%) holds for each star count: every interval covers 1',
                               not miss, '; '.join(miss) or 'all cover 1'))
-    miss = []; resid = []
+    miss = []; resid: list[tuple[tuple[int, float], int]] = []
     for j, (a, b) in enumerate(BANDS):
         sub = [t for t in ts if a <= t[1] < b]
         n, o, e, r, lo, hi = ratio(sub)
