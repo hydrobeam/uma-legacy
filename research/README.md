@@ -6,7 +6,7 @@ in by hand; a placeholder without a computed value stops the rendering.
 
 ```
 ./build.sh research                                   # compute everything, then render docs/RESEARCH.md
-uv run --group research research/run_all.py [--quick] [--force] # compute (scripts whose code and inputs are unchanged are reused), write results.json
+uv run --group research research/run_all.py [--quick] [--force] [--jobs=N] # compute (unchanged scripts reused, the rest in parallel), write results.json
 uv run --group research research/render.py [--check]  # render (or check that docs/RESEARCH.md is current)
 uv run --group research research/s08_chains.py        # one section, with its detail
 ```

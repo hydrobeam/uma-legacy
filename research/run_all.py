@@ -1,6 +1,6 @@
 """Run every section script: print each computed value and each tested conclusion, and write research/results.json.
 
-  uv run --group research research/run_all.py [--quick] [--force]     (or ./build.sh research)
+  uv run --group research research/run_all.py [--quick] [--force] [--jobs=N]     (or ./build.sh research)
 
 Each script's results are kept in research/data/out/claims/ with a fingerprint of its code (its source, the research
 scripts it imports, common.py, val/joint_check.py) and of the data inputs' sizes and times (DATA_INPUTS, val's reference
@@ -10,7 +10,7 @@ outputs); a script whose fingerprint is unchanged is not run again. --force reco
 results are reused while nothing it reads changes). The computed values go to research/results.json, from which
 research/render.py renders docs/RESEARCH.md. Without the run records (research/data/runs.jsonl, not included)
 the data claims read "needs data" and the derived ones still run."""
-import collections, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
+import collections, concurrent.futures, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
 for v in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'): os.environ.setdefault(v, '1')   # one core
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
@@ -22,6 +22,7 @@ DATA_INPUTS = ['research/data/runs.jsonl', 'research/data/summary.jsonl', 'game/
                'pkg/loopopt/src', 'pkg/loopopt/export', 'pkg/loopopt/target/release/loopopt', 'cache/gametora', 'val/jobs.json',
                'val/jobs', 'webapp/src/data.js']
 CACHE = os.path.join(common.OUT, 'claims')
+JOBS = 4      # scripts run at once, one core each (--jobs=N; 1 runs them one after another)
 
 
 def data_stamp():
@@ -57,29 +58,47 @@ def fingerprint(name, kw, stamp):
     return h.hexdigest()
 
 
+AFTER = {'s10_random_events': 's13_calibration', 's11_conditional': 's13_calibration'}   # read s13's solver job files
+
+
+def compute(name, kw):
+    """one script's claims (run in a worker process): (claims, seconds) or (None, traceback text)"""
+    try:
+        m = importlib.import_module(name); t0 = time.time()
+        return m.claims(**kw), time.time() - t0
+    except Exception:
+        return None, traceback.format_exc()
+
+
 def main():
     quick = '--quick' in sys.argv; force = '--force' in sys.argv
+    jobs = int(next((a.split('=')[1] for a in sys.argv if a.startswith('--jobs=')), JOBS))
     stamp = data_stamp(); os.makedirs(CACHE, exist_ok=True)
     if not common.have_runs(): common.say_missing()
-    allc = []
-    for path in sorted(glob.glob(os.path.join(common.HERE, 's[0-9][0-9]_*.py'))):
-        name = os.path.basename(path)[:-3]
-        try:
-            m = importlib.import_module(name)
-            kw = {'wide': not quick} if 'wide' in inspect.signature(m.claims).parameters else {}
-            fp = fingerprint(name, kw, stamp); cf = os.path.join(CACHE, name + '.pkl')
-            hit = None
-            if not force and os.path.exists(cf):
-                with open(cf, 'rb') as f: hit = pickle.load(f)
-            if hit and hit[0] == fp:
-                print(f'{name}: unchanged, results reused', file=sys.stderr); allc += hit[1]; continue
-            t0 = time.time(); got = m.claims(**kw); allc += got
-            print(f'{name}: computed in {time.time() - t0:.0f} s', file=sys.stderr)
-            if common.have_runs() and not any(isinstance(c, Value) and c.status == 'error' for c in got):
-                with open(cf, 'wb') as f: pickle.dump((fp, got), f)
-        except Exception as e:
-            traceback.print_exc()
-            allc.append(Value(name[1:3].lstrip('0'), f'{name} failed: {type(e).__name__}', status='error'))
+    names = [os.path.basename(p)[:-3] for p in sorted(glob.glob(os.path.join(common.HERE, 's[0-9][0-9]_*.py')))]
+    got, todo = {}, {}
+    for name in names:   # reuse what is unchanged
+        m = importlib.import_module(name)
+        kw = {'wide': not quick} if 'wide' in inspect.signature(m.claims).parameters else {}
+        fp = fingerprint(name, kw, stamp); cf = os.path.join(CACHE, name + '.pkl')
+        hit = None
+        if not force and os.path.exists(cf):
+            with open(cf, 'rb') as f: hit = pickle.load(f)
+        if hit and hit[0] == fp: print(f'{name}: unchanged, results reused', file=sys.stderr); got[name] = hit[1]
+        else: todo[name] = (kw, fp, cf)
+    # the rest in parallel, one core each; a script that reads another's files waits for it
+    waves = [[n for n in todo if AFTER.get(n) not in todo], [n for n in todo if AFTER.get(n) in todo]]
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, jobs)) as ex:
+        for wave in waves:
+            fut = {n: ex.submit(compute, n, todo[n][0]) for n in wave}
+            for n in wave:
+                res, info = fut[n].result()
+                if res is None:
+                    print(info, file=sys.stderr); got[n] = [Value(n[1:3].lstrip('0'), f'{n} failed', status='error')]; continue
+                print(f'{n}: computed in {info:.0f} s', file=sys.stderr); got[n] = res
+                if common.have_runs() and not any(isinstance(c, Value) and c.status == 'error' for c in res):
+                    with open(todo[n][2], 'wb') as f: pickle.dump((todo[n][1], res), f)
+    allc = [c for n in names for c in got[n]]
     common.table(allc)
     write_results(allc, fresh=common.have_runs() and not quick)
     vals = [c for c in allc if isinstance(c, Value)]; fs = [f for f in allc if isinstance(f, Finding)]

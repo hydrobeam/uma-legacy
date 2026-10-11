@@ -1,10 +1,11 @@
 # The model's mathematics
 
-How the planner computes its odds, how each part was set, and how well it holds against real careers.
+A model of how a career in Uma Musume's Independent Training acquires and passes on skills: what each part is, how it
+was set from data, and how well it holds against real careers.
 
 ## Results
 
-The planner's odds rest on one prediction: the chance that a career acquires each target. Against
+The model's odds rest on one prediction: the chance that a career acquires each target. Against
 3,348 real Independent Training careers, each rebuilt from its own deck and lineage (section 13), that chance is
 calibrated: observed / predicted 0.994 [0.98, 1.00] over 23,919 run-target rows. The chance of landing
 all eight default targets reads 0.86 [0.69, 1.05] of the model: consistent with calibrated, but only
@@ -19,8 +20,8 @@ defined in *How to read*, after this summary.
 | Star mix of sparks | mixes assumed; band per scenario derived | each scenario uses the band most of its careers reach (14,742 Grand Concert runs, 79% at 17,500+) | 2 |
 | Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight 1.01 [0.98, 1.03], affinity slope 0.98 [0.95, 1.01] on 69,840 + 30,368 trials; whole careers 0.989 [0.976, 1.001] | 3 |
 | Affinity: +3 per shared G1 win; own grandparent adds no trio points | +3 assumed and tested; trio rule fitted | shared-win slope 0.97 [0.93, 1.01]; trio rule 19 nats better than the alternative | 3, 5 |
-| Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them): 1.000 [0.999, 1.002] over 76,402 G1 attempts | 4 |
-| Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than 2.02% (solver's pair ceilings) | 6 |
+| Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 1.000 [0.999, 1.002] over 76,402 G1 attempts | 4 |
+| Loop schedules for shared wins | derived | on the reference loops, no other schedule could raise the best loop's odds by more than 2.02% | 6 |
 | Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 61,856 rows; specialty term fitted on earlier runs gains +12.9 nats on later ones; real careers 0.988 [0.95, 1.03] of the model | 7 |
 | Chain events, Binomial(21, 0.35) per career | fitted | 3,424 runs; not rejected against a free distribution (p-value 0.06); no alternative predicts unseen runs better | 8 |
 | Chain events spread over remaining links | fitted | 66 nats better than equal shares per card | 8 |
@@ -123,7 +124,7 @@ kind of estimate:
 - *Priority list*: up to 10 skills the player marks at the start of an IT career for IT to favour (section 9).
 - *Marker skill*: a skill only one particular event can give, so seeing it among a run's hints shows that event fired
   (sections 8 and 10).
-- *Target*: a skill the planner tries to land. It *lands* when it becomes a spark on the new veteran.
+- *Target*: a skill one wants the new veteran to carry as a spark. It *lands* when it becomes a spark on the new veteran.
 - *G1*: the top race grade. *Aptitude grades* S to G for distance and surface set race win chances (section 4).
 
 ### Where the numbers come from
@@ -178,15 +179,19 @@ Intent enters in one place. The model assumes every target is prioritised, which
 player chasing other skills does not prioritise these. Section 13 measures that effect: event-only hints of
 non-prioritised targets fall well below the model.
 
-The tests that score a fixed set of skills use the planner's default targets, because they are what the planner is
-used for: eight skill pairs (white / gold): Uma Stan / Superstan, Nimble Navigator / No Stopping Me!, Playtime's Over!
+The tests that score a fixed set of skills use eight common targets (the default set of the Legacy Loop Planner,
+which this model was built for), eight skill pairs (white / gold): Uma Stan / Superstan, Nimble Navigator / No Stopping Me!, Playtime's Over!
 / See Ya Later!, Ramp Up / It's On!, Tail Held High / Tail Nine, Racing Spirit: Stamina, Slipstream / Perfect Spot!,
 Risky Business / Nothing Ventured. Unity Cup guarantees the No Stopping Me! and It's On! golds. Section 13 also checks
 a sample of every other skill a deck card or spark could give.
 
 ## 0. What is computed
 
-The planner ranks careers, loops and decks by one number: the chance that every target lands.
+The model gives one number per career: the chance that every target lands. It is used in two ways:
+
+- *For a planned loop*, whose veterans are not trained yet: their sparks' stars are averaged (section 2) and their
+  race wins come from base aptitudes (section 4).
+- *For a career with real legacies*: their actual stars, G1 wins and parents are used.
 
 ### Terms
 
@@ -237,8 +242,8 @@ keeps veterans that landed everything), so $n_k = 6$, $1.1^6 = 1.771561$ and $g 
 
 Computed by `research/s02_stars.py`.
 
-A spark's stars set its inheritance base (section 3), but the loop model does not know how many stars each legacy's
-sparks have. This section sets the star mix it assumes, which mix each scenario uses, and what averaging over stars
+A spark's stars set its inheritance base (section 3), but for a planned loop the stars of each legacy's sparks
+are not known yet. This section sets the star mix it assumes, which mix each scenario uses, and what averaging over stars
 costs.
 
 ### Findings
@@ -248,7 +253,7 @@ costs.
 - **Grand Concert uses the higher mix**: most of its careers reach a rank score of 17,500 or more (79%). URA Finale,
   Unity Cup and Trackblazer use the lower one; Unity Cup is close to even.
 - **Averaging over stars overstates the inheritance chance slightly**: by at most 0.57% for a target carried by
-  all six legacies. The career planner uses each veteran's real stars and is not affected.
+  all six legacies. With real legacies their actual stars are used, so this does not arise.
 
 ### Terms
 
@@ -260,7 +265,7 @@ costs.
 ### Model
 
 The star mix is **assumed** (community figures). A legacy's white spark has $s$ stars with shares $\pi$ set by her rank
-score: $0.50 / 0.45 / 0.05$ below 17,500 and $0.20 / 0.70 / 0.10$ from 17,500 up. The loop model does not know a
+score: $0.50 / 0.45 / 0.05$ below 17,500 and $0.20 / 0.70 / 0.10$ from 17,500 up. For a planned loop the model does not know a
 legacy's stars and uses the expected base per roll (**derived** from section 3's bases):
 
 $$\bar b = 0.03\,(\pi_1 + 2\pi_2 + 3\pi_3) = 0.0465 \;(\text{below } 17{,}500), \quad 0.057 \;(17{,}500+).$$
@@ -280,7 +285,7 @@ reach. A career's rank score is estimated with every skill point spent, over eve
 Grand Masters has no runs and is **assumed** 17,500+.
 
 *What does averaging over stars cost?* (**derived**.) $\bar b$ is exact for one roll but not for two: a legacy's stars
-are the same in both rolls, and by convexity $E[(1 - r)^2] \ge (1 - E[r])^2$, so the loop model overstates $q_k$. On
+are the same in both rolls, and by convexity $E[(1 - r)^2] \ge (1 - E[r])^2$, so averaging overstates $q_k$. On
 the six real affinities of each of the 3,607 lineages in the runs, for a target carried by all six, it overstates $q$ by
 at most 0.57% below 17,500 (mean 0.50%) and 0.33% at 17,500+.
 
@@ -331,7 +336,7 @@ The square is the two rolls, Classic and Senior April. The base by spark type an
 | $b$ | 3 / 6 / 9% | 1 / 2 / 3% | 5 / 10 / 15% | 1 / 3 / 5% | 70 / 80 / 90% |
 
 The odds use skill whites only. Great-grandparents count for nothing (**assumed**, matching the game's two-generation
-lineage; the runs show no great-grandparents). In the loop model $b(s_{lk})$ is replaced by $\bar b$ (section 2).
+lineage; the runs show no great-grandparents). For a planned loop $b(s_{lk})$ is replaced by $\bar b$ (section 2).
 
 ### Evidence
 
@@ -387,20 +392,37 @@ outside their own 95% interval:
 Computed by `research/s04_races.py`.
 
 Race wins matter through affinity: two umas that won the same G1s inherit more from each other (section 5). This
-section gives the win chance the model uses and tests it on every G1 attempt in the runs.
+section measures how a trainee's chance of winning a race depends on her aptitudes and on how many races she has run
+in a row, and tests a widely used community table of that chance.
 
 ### Findings
 
-- **The community win table matches the runs** once a trainee's grades are raised by her legacies' pink sparks:
-  observed / predicted 1.000 [0.999, 1.002] over 76,402 G1 attempts, calibrated in every scenario. The career
-  planner uses these raised grades.
-- **On base aptitudes the table under-predicts wins** (1.079 of the model), because pink sparks raise grades during
-  the career. The loop model keeps base aptitudes as a simplification: it does not know its veterans' pink sparks.
-- **The streak penalty is real**, and it counts races in a row, not wins: the previous race's result does not change
-  the next chance beyond the table.
-- **A pink spark takes effect from the April of its inspiration**, not from the start of that year.
-- **Two departures**: goal races from the fourth race in a row win more than the penalty allows, and chances of 70 or
-  less win slightly less than predicted.
+A race's win chance depends on the trainee's grades for its distance and surface (written as a pair, better grade
+first) and on how many races she has run in a row. Over 76,402 attempts at the 34 single-race G1s, the observed win
+rates are (the community table's chance in parentheses; grades include those raised by inherited aptitude sparks; S is
+shown as A, since both have the same chance; a dot where a cell has under 30 attempts; grade pairs with 200 or more
+attempts):
+
+| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | BE | CD | AF | AG |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 race | 100% (100%) | 100% (100%) | 89% (90%) | 90% (90%) | 80% (80%) | 76% (80%) | 67% (70%) | 70% (70%) | 58% (60%) | 57% (60%) | 47% (50%) | 20% (20%) |
+| 2 races | 100% (100%) | 100% (100%) | 91% (90%) | 91% (90%) | 81% (80%) | 81% (80%) | 62% (70%) | 70% (70%) | 51% (60%) | 67% (60%) | 54% (50%) | 20% (20%) |
+| 3 races | 100% (100%) | 97% (95%) | 85% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | · (65%) | · (55%) | · (55%) | 62% (45%) | 13% (15%) |
+| 4 races | 92% (90%) | 81% (80%) | 77% (70%) | · (70%) | 49% (60%) | 62% (60%) | · (50%) | 62% (50%) | · (40%) | 21% (40%) | · (30%) | · (0%) |
+| 5 races | 86% (80%) | 72% (70%) | 56% (60%) | · (60%) | 69% (50%) | · (50%) | 36% (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
+| 6 or more | 63% (60%) | 70% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
+
+- **The community table predicts these rates**: observed / predicted 1.000 [0.999, 1.002] over all
+  attempts, and calibrated within every scenario.
+- **Grades must include inherited aptitude sparks.** With the trainee's base grades the table predicts too few wins
+  (observed / predicted 1.079 [1.075, 1.083], 1.83 where base grades give a chance of 70 or less). Pink sparks
+  raise grades at the start of a career and at each inspiration, from that April on.
+- **Races in a row lower the chance; wins do not.** The penalty counts races entered, and the previous race's result
+  does not change the next chance beyond the table.
+- **Two departures**: goal races (the races a career requires) from the fourth race in a row win more than the
+  penalty allows
+  (1.13 [1.11, 1.15]), and chances of 70 or less win slightly less than predicted (0.96
+  [0.94, 0.98]).
 
 ### Terms
 
@@ -436,9 +458,9 @@ them goals), of which 93.1% were won.
 
 *Base aptitudes or raised grades?* Raised grades.
 
-- On base aptitudes, which the loop model uses, the table predicts 86.3%: observed / predicted
+- On base aptitudes (as for a planned loop), the table predicts 86.3%: observed / predicted
   1.079 [1.075, 1.083], and 1.83 where the table gives 70 or less (14,047 attempts).
-- With her grades raised by the career planner's aptitude-spark rule (`docs/MODEL.md`: the legacies' pink stars at the
+- With her grades raised by the aptitude-spark rule (`docs/MODEL.md`: the legacies' pink stars at the
   start, at most to A; then each pink the run records firing at a Classic or Senior inspiration, from that April on),
   it predicts 93.1%: observed / predicted 1.000 [0.999, 1.002], 2,119 nats better than
   base aptitudes, and calibrated in every scenario.
@@ -465,20 +487,7 @@ pink, and inspirations sit at fixed turns. On the 372 Senior January-March attem
 0.739 [0.691, 0.787] were won, against 0.755 predicted with the pink counted from April and 0.865 counted
 from the year's start.
 
-*The table in the community layout.* Grades are raised by pink sparks; S costs what A does, so it is shown as A, as in
-the community table. Each cell gives the observed win rate, the table's chance in parentheses, and a dot under 30
-attempts; grade pairs with 200 or more attempts are shown:
-
-| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | BE | CD | AF | AG |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 race | 100% (100%) | 100% (100%) | 89% (90%) | 90% (90%) | 80% (80%) | 76% (80%) | 67% (70%) | 70% (70%) | 58% (60%) | 57% (60%) | 47% (50%) | 20% (20%) |
-| 2 races | 100% (100%) | 100% (100%) | 91% (90%) | 91% (90%) | 81% (80%) | 81% (80%) | 62% (70%) | 70% (70%) | 51% (60%) | 67% (60%) | 54% (50%) | 20% (20%) |
-| 3 races | 100% (100%) | 97% (95%) | 85% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | · (65%) | · (55%) | · (55%) | 62% (45%) | 13% (15%) |
-| 4 races | 92% (90%) | 81% (80%) | 77% (70%) | · (70%) | 49% (60%) | 62% (60%) | · (50%) | 62% (50%) | · (40%) | 21% (40%) | · (30%) | · (0%) |
-| 5 races | 86% (80%) | 72% (70%) | 56% (60%) | · (60%) | 69% (50%) | · (50%) | 36% (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
-| 6 or more | 63% (60%) | 70% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
-
-Attempts per cell:
+*How many attempts is each cell of the table in Findings?*
 
 | Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | BE | CD | AF | AG |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -576,18 +585,18 @@ this $A$ at slope 0.98 [0.95, 1.01].
 
 Computed by `research/s06_loops.py`.
 
-The planner ranks loops, three or four umas breeding each other in turn, by the odds their lineages give. This section
-defines the lineages and the ranking, and bounds what a different choice of race schedules could gain.
+A breeding loop is three or four umas bred from each other in turn. This section defines a loop's lineages and how a
+loop is scored, and bounds what a different choice of race schedules could gain.
 
 ### Findings
 
 - **A four-uma loop has 12 lineages, a three-uma rotation 3.** In a rotation the trainee is her own grandparent,
   and that occurs in practice: 1,087 of 3,610 runs have a grandparent of the trainee's own character.
 - **A structure is ranked by its lineages' average odds**: the long-run rate of a player who trains every member in
-  turn. This is a definition of what the planner ranks, not a claim.
-- **Every pair of umas carries the same weight**, so the solver schedules each structure for the most expected shared
+  turn. This is a definition of the score, not a claim.
+- **Every pair of umas carries the same weight**, so a loop's race schedules can be chosen for the most expected shared
   wins over all its pairs.
-- **Scheduling for shared wins instead of odds costs little**: no schedule could raise a validated winner's odds by
+- **Scheduling for shared wins instead of odds costs little**: no schedule could raise a reference loop's odds by
   more than 2.02%, and no listed runner-up could overtake its winner.
 
 ### Terms
@@ -597,8 +606,8 @@ defines the lineages and the ranking, and bounds what a different choice of race
 - $P_\lambda(\text{all})$: section 0's $P(\text{all})$ for lineage $\lambda$; $\bar P_S$: the structure's score.
 - $o(a,b)$: expected shared G1 wins (section 5); $o_{\max}(a,b)$: its value with every offering of every G1
   attempted and no streak penalty.
-- *Pair ceiling*: the solver's best-response search for the highest overlap a pair can reach over feasible schedules.
-- *Validation results*: the solver's pinned reference outputs.
+- *Pair ceiling*: the highest expected overlap a pair can reach over feasible schedules, found by search.
+- *Reference loops*: the best loops and decks found for a fixed set of reference setups (rosters and scenarios).
 
 ### Model
 
@@ -607,7 +616,7 @@ rotation has 3, with $X = T$ (the trainee's own earlier veteran). A structure $S
 
 $$\bar P_S = \frac{1}{|\Lambda_S|} \sum_{\lambda \in \Lambda_S} P_\lambda(\text{all}),$$
 
-the long-run rate of a player who trains every member in turn. It is a definition of what the planner ranks, not a
+the long-run rate of a player who trains every member in turn. It is a definition of the score, not a
 claim: a player who re-trains only the best trainee would score a structure by its best lineage.
 
 *Race weights* (**derived**). In one lineage $o(P_1,P_2)$ enters the six affinities 6 times, and $o(P_1,X)$ and
@@ -620,18 +629,17 @@ $\sum_{a<b} o(a,b)$.
 *Does the rotation occur?* Yes: 1,087 of 3,610 runs have a grandparent of the trainee's own character, and
 0 have a parent of her character.
 
-*What could a different schedule gain?* (**derived**, on the validation results.) The solver schedules each structure
-for $\sum_{a<b} o(a,b)$, not for $\bar P_S$. $\bar P_S$ rises with every $o$: $o$ enters each legacy's affinity with
+*What could a different schedule gain?* (**derived**, on the reference loops.) Schedules are chosen for $\sum_{a<b} o(a,b)$, not for $\bar P_S$. $\bar P_S$ rises with every $o$: $o$ enters each legacy's affinity with
 weight +3, and $r$, $q$ and every target's odds are nondecreasing in their inputs. So, with a loop's decks fixed, any
 schedule (including one chosen for $\bar P_S$ directly) scores between the odds found and the odds with every pair at
-its highest possible overlap. Over 40 validation results, recomputed independently to within
-2e-15 of the solver:
+its highest possible overlap. Over 40 reference results, whose odds an independent implementation reproduces to within
+2e-15:
 
 - the shared wins found are worth 31-85% over no race affinity;
 - the independent ceiling $o_{\max}(a,b) = \sum_r P^{\max}_a(r)\,P^{\max}_b(r)$ caps the gain from a different
   objective at 17.5%. It is far from reachable (the schedules found reach about 68% of it) and cannot
   settle the ranking: 8 of 12 listed runner-up loops reach their winner under it;
-- the solver's pair ceilings come from its own search, so they are not an independent check, but they sit between
+- the pair ceilings come from the same search code that chose the schedules, so they are not an independent check, but they sit between
   $o$ and $o_{\max}$ on every pair. They put the ceiling only 0.54-2.02% above the odds found (median 0.90%), and no listed runner-up's ceiling
   reaches its winner (0 of 12).
 
@@ -685,7 +693,7 @@ and an exact Markov chain over the other skills' hint counts once a skill can re
 
 These are **fitted** by maximum likelihood on every hint row, a row being one pool skill of one card in one
 run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; 61,856 rows from
-10,712 card-runs; the Runs column counts the runs that add a row; *Adopted* is what the solver uses:
+10,712 card-runs; the Runs column counts the runs that add a row; *Adopted*: the values the model uses:
 
 | Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
 |---|---|---|---|---|---|
@@ -809,9 +817,9 @@ two 3-link cards, $P(N \ge 6) = 0.80$.
 
 *Stop risk* (**derived** from the event data and the choice rule, section 9). If IT's default choice at link $l$ ends
 the chain on $k$ of its $n$ outcomes, $q_l = k/n$, and the stopping link $\sigma$ has
-$P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$. A stopped chain's slots return to the pool. The solver enumerates
-the exact distribution of final chain states (no simulation); an independent recomputation of the solver's odds
-agrees to 2e-15 on every validated loop (section 6).
+$P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$. A stopped chain's slots return to the pool. The model enumerates
+the exact distribution of final chain states (no simulation); an independent recomputation of the model's odds
+agrees to 2e-15 on every reference loop (section 6).
 
 ### Evidence
 
@@ -957,7 +965,7 @@ Both rules are **assumed**.
 
 *Choice rule.* IT takes an event's top choice unless a prioritised skill (up to 10, set at career start) sits on
 another choice, and the player is assumed to prioritise every target hint the model counts. Where targets sit on
-different choices, a deck entry takes one choice: the solver offers one entry per useful choice, and an entry that ends
+different choices, a deck entry takes one choice: the model treats each useful choice as a separate deck option, and an entry that ends
 a chain early.
 
 *Outcomes* (**assumed** unless measured). One choice's outcomes exclude each other, one per firing, and are equally
@@ -1058,7 +1066,7 @@ what leaving it out costs on real careers.
 
 ### Model
 
-Not modelled: the planner leaves these events out. The fitted rate (**fitted**) is about 0.14 per event
+The model leaves these events out. The fitted rate (**fitted**) is about 0.14 per event
 per career. It falls a little with $K$:
 
 $$P(\text{fires}) = 0.18\,(1 - 0.036)^{K - 4},$$
@@ -1162,17 +1170,17 @@ show credits Head-On.
 
 ## 12. The composed career model
 
-The composition is **derived** from sections 1-11; there is nothing to fit. How the solver searches it (pruning caps,
-the career planner's continuation) is search design, in `docs/SOLVER.md`; `val/joint_check.py` recomputes the solver's
-exact odds independently.
+The composition is **derived** from sections 1-11; there is nothing to fit. How a planner searches over loops and decks
+with it is outside this document (`docs/SOLVER.md`); an independent implementation (`val/joint_check.py`) reproduces
+its exact odds.
 
 ### Findings
 
 - **Each target's chance of landing combines its sources**: the deck's gold hint, then the white from the deck, the
   trainee's own events or inheritance, each followed by spark generation.
 - **Targets are not independent**: chain cards share one run's $N$, and one event's outcomes exclude each other. The
-  planner sums over the final chain states exactly instead of multiplying the targets' chances.
-- **The career planner uses the same model** with each veteran's real stars, G1 wins and parents.
+  model sums over the final chain states exactly instead of multiplying the targets' chances.
+- **With real legacies the model is the same**, using each veteran's real stars, G1 wins and parents.
 
 ### Terms
 
@@ -1196,7 +1204,7 @@ Given $c$, sources are independent except one card's training draws, which are j
 
 $$P(\text{all}) = \sum_{c} P(c) \prod_{k} p_k(c) \qquad (\text{exact, **derived**}).$$
 
-*Career planner.* The same model with each veteran's real stars, real G1 wins and recorded parents (an unknown parent
+*Real legacies.* The same model with each veteran's real stars, real G1 wins and recorded parents (an unknown parent
 brings no relation points; her sparks count); $n_k$ = the legacies actually carrying $k$. Since $q_k$ and $e_k$ enter
 only as $(1 - e_k)(1 - q_k)$, $e_k$ is replaced by $1 - (1 - e_k)(1 - q_k)$, and $1.1^{n_k - 6}$ scales $P(\text{all})$
 (**derived**).
@@ -1209,7 +1217,7 @@ This section rebuilds real careers as the model sees them and compares what the 
 
 ### Findings
 
-- **The planner's acquisition odds are calibrated**: observed / predicted 0.994 [0.98, 1.00].
+- **The model's acquisition odds are calibrated**: observed / predicted 0.994 [0.98, 1.00].
 - **Inheritance is calibrated.** Of the eight targets, only Tail Held High's interval excludes 1 (0.946 [0.90, 0.99]).
 - **Deck hints read optimistic** (0.937 of the model), almost all from the priority assumption: event hints land at
   1.01 × predicted for prioritised targets and 0.71 for others. Unmodelled scenario and trainee events supply the
@@ -1235,7 +1243,7 @@ This section rebuilds real careers as the model sees them and compares what the 
 Each of 3,348 real careers (URA Finale 645, Unity Cup 853, Grand Concert 1,768,
 Trackblazer 82) is rebuilt as the model sees a career: the trainee in her outfit, the scenario, the six cards at
 their own limit breaks, both parents with their recorded parents and every ancestor's white sparks, and race wins
-giving the recorded shared-G1 counts. The solver then gives, for each default target of that career, the chance of
+giving the recorded shared-G1 counts. The model then gives, for each default target of that career, the chance of
 each step (sections 3-12), and the run record says what actually happened. There are 26,784 rows. Certain rows
 (1,159 on her outfit, 1,706 scenario golds) could only count as successes, so they are left out of tests 1 and 3.
 
@@ -1255,8 +1263,8 @@ The four tests, each isolating one part of the model:
 2. **Inheritance**: does an inspiration of the skill fire as often as section 3 predicts ($q$)? Observed: a spark of
    the skill fired at the Classic or Senior inspiration.
 3. **Acquired**: does the skill end up hinted, from any source, as often as all modelled sources together predict?
-   This is what the planner's odds rest on.
-4. **Landing**: the solver's chance that the target lands as a spark ($p$), against the same chance computed from
+   This is what the model's odds rest on.
+4. **Landing**: the model's chance that the target lands as a spark ($p$), against the same chance computed from
    what the run actually acquired ($0.4 \cdot 1.1^n$ if the gold was hinted, $0.2 \cdot 1.1^n$ if only the white). It
    checks the acquired step through the spark step; it does not test spark generation, which the runs do not show
    (section 1).
@@ -1329,7 +1337,7 @@ rows, is within its interval (0.297 [0.280, 0.314] against 0.308).
 
 - Targets acquired per run: expected 3.673, observed 3.650.
 - All open targets acquired: product of the model's odds 0.041, observed 0.039 [0.033, 0.047].
-- Landing $P(\text{all eight})$, recomputed from what each run acquired, against the solver's exact $P(\text{all})$:
+- Landing $P(\text{all eight})$, recomputed from what each run acquired, against the model's exact $P(\text{all})$:
   0.863 [0.69, 1.05] (bootstrap over runs, resampling whole runs); Unity Cup 0.851 [0.67, 1.03],
   Grand Concert 1.27 [0.84, 1.71], URA Finale 0.88 [0.36, 1.60]; Trackblazer's model value is 0.
 
