@@ -1,27 +1,47 @@
 """Section 9: how often a support card's character's shared random event fires, from the run records
-(research/data/runs.jsonl, not included; Independent Training runs from uma-it).
+(research/data/runs.jsonl, not included; Independent Training runs from uma-it), and what leaving these events out of
+the model does on real careers. Every run record is used; one sample.
 
 Markers (GameTora training_events_shared, through gametora.py): a character's shared event with two or more choices
 whose top choice gives a skill in every outcome and whose other choices give none; the skill is her marker (one per
 character). A reading is one run with a card of hers in the deck (any rarity, group cards aside), someone else
 training, and the marker not given by that card's own events; a hit is the marker credited to "<her name> event"
 ("A or B event" counts as a miss). K = random events on offer: every shared event of the deck's characters plus the
-trainee's own. The first fit used the first 1,850 records, the larger sample the first 2,653, the priority-list check
-the first 1,300.
+trainee's own.
 The fits are maximum likelihood over readings: constant, a (1 - b)^(K - 4) form, power law, strict competition
-1 - (1 - 1/K)^S, and every event slot competing (chain links, random events and pals weighted in one pool).
-As stated in RESEARCH.md, the population includes R cards; `detail()` prints the SR/SSR-only fit beside it.
+1 - (1 - 1/K)^S, every event slot competing (chain links, random events and pals weighted in one pool), and a logistic
+model in K. As stated in RESEARCH.md, the population includes R cards; `detail()` prints the SR/SSR-only fit beside it.
 Findings: likelihood-ratio tests between the forms and on profiled parameters (uniform competition, chain-link and pal
-weights), within-run independence (pairs of hits against Binomial(n, p) per run), and on the larger sample the slope and
-the covariates next to K (card effects at their limit break from master.mdb; rarity within a character).
+weights), within-run independence (pairs of hits against Binomial(n, p) per run), the logistic slope, and the covariates
+next to K (card effects at their limit break from master.mdb; rarity within a character); and, over every run that shows
+a priority list, how often a bottom-choice skill of these events was prioritised and credited to the event (prioritised
+or not), against the pooled top-choice marker rate. The pal weight's interval is its profile likelihood in the c / T form.
+
+Effect on real careers (section 12's calibration rows: each run rebuilt on its own deck, default targets, the solver's
+per-target p, d^g, d^w, q, read through s12_calibration's build_jobs / run_solver / rows_of, cached results reused):
+  rows        free rows (not on the trainee's outfit, not a scenario gold) where a deck card's character's marker is the
+              target's white, under the reading's rules (not the trainee, not a group card, not given by the card's
+              own events); the trainee's own shared event where it is identifiable: her marker is the target's white
+              and no other event of hers (story, date, outfit, conditional) nor of the run's scenario can hint it,
+              so an "Events" credit can only be that event (GameTora training_events_char / _char_card / _scenario)
+  contribution  rows whose target was credited to "<her name> event" (and to nothing else); for the trainee's own,
+              to "Events"
+  crediting   section 11: p = d^g G + (1 - d^g) W [1 - m], m = (1 - d^w)(1 - e)(1 - q); m is recovered from the row's p
+              (G = 0.4 x 1.1^n, W = 0.2 x 1.1^n) and multiplied by (1 - r), r the fitted form at the run's K (the
+              trainee's own at her measured rate); acquisition = d^g + (1 - d^g)(1 - m)
+  odds        each run's product of per-target odds, relative change from crediting: over the eight targets (mean,
+              median, max over runs with a nonzero product, and over those with a credited row), and over the targets
+              the model gives a positive chance without crediting (runs with a credited row among them)
+  calibration on the rows, acquisition (hinted from any source or owned) against the predicted acquisition with and
+              without crediting: obs / pred with Wilson 95% intervals, and the Bernoulli log-likelihood difference
 """
-import collections, math
+import collections, math, os
 import numpy as np
 from scipy.optimize import minimize
 import common
 
 SEC = '9'
-FIRST, LARGER, PRIO = 1850, 2653, 1300
+GEN_W, GEN_G = 0.2, 0.4          # section 11's W_k, G_k at n_k = 0
 
 
 def markers():
@@ -58,6 +78,12 @@ def markers():
     return nshared, marker, cardsk, sc
 
 
+def offer(r, nshared, sc):
+    """K: random events on offer in run r (every shared event of the deck's characters plus the trainee's own)"""
+    chars = {sc[x]['char_id'] for x in (d[0] for d in r['deck']) if x in sc and sc[x].get('type') != 'group'}
+    return sum(nshared[ch] for ch in chars - {r['chara']}) + nshared[r['chara']]
+
+
 def readings(R):
     nshared, marker, cardsk, sc = markers()
     name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
@@ -67,8 +93,7 @@ def readings(R):
         dk = [d[0] for d in r['deck']]; tr = r['chara']; lbs = {d[0]: d[1] for d in r['deck']}
         pals = sum(1 for x in dk if wc.get(x, {}).get('pal'))
         links = sum(wc.get(x, {}).get('links', 0) for x in dk if not wc.get(x, {}).get('pal'))
-        chars = {sc[x]['char_id'] for x in dk if x in sc and sc[x].get('type') != 'group'}
-        K = sum(nshared[ch] for ch in chars - {tr}) + nshared[tr]
+        K = offer(r, nshared, sc)
         for cid in dk:
             x = sc.get(cid)
             if not x or x.get('type') == 'group': continue
@@ -140,7 +165,8 @@ def bottom_prioritised(R):
             a, b = sure(chs[0][1]), set().union(*[sure(ch[1]) for ch in chs[1:]])
             if b and not a: bottom[chara] |= b
     _, _, cardsk, sc = markers()
-    shown = n = cand = 0
+    name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
+    shown = n = cand = 0; hits = collections.Counter()      # (prioritised, credited to her event) -> candidates
     for r in R:
         p = r.get('priority')
         if p is None: continue
@@ -148,14 +174,17 @@ def bottom_prioritised(R):
         for cid in (d[0] for d in r['deck']):
             x = sc.get(cid)
             if not x or x.get('type') == 'group' or x['char_id'] == r['chara']: continue
-            n += sum(s in p for s in bottom[x['char_id']] - cardsk[cid]); cand += len(bottom[x['char_id']] - cardsk[cid])
-    return shown, n, cand
+            ev = f'{name.get(x["char_id"])} event'
+            for sk_ in bottom[x['char_id']] - cardsk[cid]:
+                n += sk_ in p; cand += 1
+                hits[(sk_ in p, any(h['name'] == sk_ and ev in h['src'] for h in r['hints']))] += 1
+    return shown, n, cand, hits
 
 
 def claims():
     R = common.runs()
     if R is None: return []
-    rows = readings([r for r in R if r['seq'] < FIRST])
+    rows = readings(R)
     f = fits(rows); g = {}
     y = sum(r['hit'] for r in rows); n = len(rows); amb = sum(r['amb'] for r in rows)
     g.update({'readings': n, 'runs': len({r['run'] for r in rows}), 'clean hits': y, 'ambiguous credits': amb,
@@ -170,17 +199,24 @@ def claims():
     for k in (4, 6, 8, 10, 12, 14): g[f'hit rate K = {k}'] = t[k][1] / t[k][0]
     g['fitted P overall'] = float(np.mean([a * (1 - b) ** (r['K'] - 4) for r in rows]))
     g['fitted P at K = 4'] = a; g['fitted P at K = 14'] = a * (1 - b) ** 10
-    big = readings([r for r in R if r['seq'] < LARGER])
-    g['larger sample readings'] = len(big); g['larger sample runs'] = len({r['run'] for r in big})
-    b0, b1 = logistic_k(big)
+    b0, b1 = logistic_k(rows)
     for rr, lab in ((3, 'SSR'), (2, 'SR')):
-        xs = [r['hit'] for r in big if r['rar'] == rr]; g[f'larger sample, pooled: {lab} marker rate'] = sum(xs) / len(xs)
-    g['larger sample: rate at K = 8'] = 1 / (1 + math.exp(-(b0 + 8 * b1)))
-    g['larger sample: rate at K = 14'] = 1 / (1 + math.exp(-(b0 + 14 * b1)))
-    g['runs showing a priority list (first 1,300 records)'], g['bottom-choice markers prioritised there'], cand = \
-        bottom_prioritised([r for r in R if r['seq'] < PRIO])
+        xs = [r['hit'] for r in rows if r['rar'] == rr]; g[f'pooled: {lab} marker rate'] = sum(xs) / len(xs)
+    g['logistic: rate at K = 8'] = 1 / (1 + math.exp(-(b0 + 8 * b1)))
+    g['logistic: rate at K = 14'] = 1 / (1 + math.exp(-(b0 + 14 * b1)))
+    g['runs showing a priority list'], g['bottom-choice markers prioritised there'], cand, bh = bottom_prioritised(R)
+    g['bottom-choice candidates there'] = cand
+    g['bottom-choice, not prioritised: credited to her event'] = bh[(False, True)]
+    g['bottom-choice, prioritised: credited to her event'] = bh[(True, True)]
     g['every slot competing: LL over constant'] = f['slots'][1] - f['const'][1]
-    return [common.Value(SEC, name, v) for name, v in g.items()] + findings(rows, f, big, g, cand)
+    g['every slot competing: pal weight 95% low'], g['every slot competing: pal weight 95% high'] = pal_interval(rows)
+    g['bottom-choice, prioritised: credited rate'] = common.div(bh[(True, True)], bh[(True, True)] + bh[(True, False)])
+    g['bottom-choice, not prioritised: credited rate'] = nb = common.div(bh[(False, True)], bh[(False, True)] + bh[(False, False)])
+    g['bottom-choice, not prioritised: 95% low'], g['bottom-choice, not prioritised: 95% high'] = \
+        common.wilson(bh[(False, True)], bh[(False, True)] + bh[(False, False)])
+    g['top-choice marker rate'] = y / n
+    out = [common.Value(SEC, name, v) for name, v in g.items()] + findings(rows, f, g, cand, bh)
+    return out + careers(R, (a, b))
 
 
 # ---------------------------------------------------------------- findings: each conclusion as a likelihood or interval test
@@ -192,6 +228,18 @@ def slot_ll(rows, link=None, pal=None):
     o = minimize(lambda q: -ll(y, q[0] / (fx(link, q[2]) * Lk + K + fx(pal, q[1]) * Pl)), [3.0, 1.0, 0.5],
                  bounds=[(0.01, 200), (0, 30), (0, 10)])
     return -o.fun
+
+
+def pal_interval(rows):
+    """the pal weight's 95% profile-likelihood interval in the c / T form (chain-link weight and c free): where the
+    profile falls 1.92 nats below its maximum"""
+    from scipy.optimize import brentq, minimize_scalar
+    prof = lambda w: slot_ll(rows, pal=w)
+    o = minimize_scalar(lambda w: -prof(w), bounds=(0, 10), method='bounded'); top, w0 = -o.fun, o.x
+    d = lambda w: top - prof(w) - 1.92
+    lo = brentq(d, 0.0, w0) if d(0.0) > 0 else 0.0
+    hi = brentq(d, w0, 10.0) if d(10.0) > 0 else float('nan')
+    return lo, hi
 
 
 def logit_ll(y, X):
@@ -233,7 +281,7 @@ def pairs_test(rows, a, b):
     return o, e, (o - e) / math.sqrt(v)
 
 
-def findings(rows, f, big, g, cand):
+def findings(rows, f, g, cand, bh):
     F = lambda st, test, ev: common.finding(SEC, st, test, ev)
     from scipy.stats import chi2
     L0, (ab, Le), (pw, Lp), (_, Ls), Lslot = f['const'][1], f['exp'], f['power'], f['strict'], f['slots'][1]
@@ -252,59 +300,275 @@ def findings(rows, f, big, g, cand):
     out.append(F('Chain links play no part: their fitted weight is 0, and weight 1 (a link competing like a random event) '
                  'is rejected by more than 1.92 nats', g['every slot competing: chain-link weight'] < 0.01 and Lslot - Lk1 > 1.92,
                  f'weight {g["every slot competing: chain-link weight"]:.2f}: LL {Lslot:.1f}; weight 1: LL {Lk1:.1f}'))
-    Lp0, Lp1 = slot_ll(rows, pal=0.0), slot_ll(rows, pal=1.0)
-    out.append(F('A pal counts about as one more random event: pal weight 1 inside the 95% likelihood interval (within 1.92 '
-                 'nats), weight 0 outside it', Lslot - Lp1 < 1.92 and Lslot - Lp0 > 1.92,
-                 f'weight {g["every slot competing: pal weight"]:.2f}: LL {Lslot:.1f}; weight 1: {Lp1:.1f}; weight 0: {Lp0:.1f}'))
+    plo, phi = g['every slot competing: pal weight 95% low'], g['every slot competing: pal weight 95% high']
+    out.append(F('Pals compete with random events: pal weight 0 is rejected (outside the 95% profile-likelihood interval, '
+                 '1.92 nats)', plo > 0,
+                 f'weight {g["every slot competing: pal weight"]:.2f} [{plo:.2f}, {phi:.2f}]; LL at 0 {slot_ll(rows, pal=0.0):.1f}, '
+                 f'at 1 {slot_ll(rows, pal=1.0):.1f}, maximum {slot_ll(rows):.1f}'))
     o, e, z = pairs_test(rows, *ab)
     out.append(F('Within a run events fire independently: pairs of one run\'s readings that both hit are within 1.96 sd of '
                  'the count independence predicts', abs(z) < 1.96, f'{o:.0f} pairs observed, {e:.1f} expected, z {z:+.2f}'))
-    yb = np.array([r['hit'] for r in big], float); one = np.ones(len(big)); Kb = np.array([r['K'] for r in big], float)
+    yb = np.array([r['hit'] for r in rows], float); one = np.ones(len(rows)); Kb = np.array([r['K'] for r in rows], float)
     base = logit_ll(yb, np.column_stack([one, Kb])); Lc = logit_ll(yb, one[:, None])
-    out.append(F('On the larger sample the slope holds: K in the logistic model gains more than 1.92 nats, and the rate falls',
-                 base - Lc > 1.92 and g['larger sample: rate at K = 14'] < g['larger sample: rate at K = 8'],
-                 f'{base - Lc:+.1f} nats; {g["larger sample: rate at K = 8"]:.3f} at 8, {g["larger sample: rate at K = 14"]:.3f} at 14'))
-    # covariates next to K, larger sample: likelihood-ratio tests at 95%
+    out.append(F('In logistic form too the slope holds: K gains more than 1.92 nats, and the rate falls',
+                 base - Lc > 1.92 and g['logistic: rate at K = 14'] < g['logistic: rate at K = 8'],
+                 f'{base - Lc:+.1f} nats; {g["logistic: rate at K = 8"]:.3f} at 8, {g["logistic: rate at K = 14"]:.3f} at 14'))
+    # covariates next to K: likelihood-ratio tests at 95%
     lr = lambda cols: 2 * (logit_ll(yb, np.column_stack([one, Kb] + cols)) - base)
     eff = {}
     for t, nm in ((1, 'friendship bonus'), (14, 'initial friendship gauge'), (19, 'specialty priority')):
         cache = {}
-        x = np.array([cache.setdefault((r['card'], r['lb']), card_effect(r['card'], r['lb'], t)) for r in big]) / 10
+        x = np.array([cache.setdefault((r['card'], r['lb']), card_effect(r['card'], r['lb'], t)) for r in rows]) / 10
         eff[nm] = (lr([x]), 1)
-    sc = sorted({r['scen'] for r in big})[1:]
-    eff['scenario'] = (lr([np.array([r['scen'] == v for r in big], float) for v in sc]), len(sc))
+    sc = sorted({r['scen'] for r in rows})[1:]
+    eff['scenario'] = (lr([np.array([r['scen'] == v for r in rows], float) for v in sc]), len(sc))
     out.append(F('Friendship (bonus, initial gauge), specialty priority and scenario show no effect next to K: each '
                  'likelihood-ratio statistic below its chi2 95% point', all(s < chi2.ppf(0.95, d) for s, d in eff.values()),
                  '; '.join(f'{k} {s:.2f} (df {d}, limit {chi2.ppf(0.95, d):.2f})' for k, (s, d) in eff.items())))
-    rar = np.array([r['rar'] for r in big], float)
+    rar = np.array([r['rar'] for r in rows], float)
     multi = collections.defaultdict(set)
-    for r in big: multi[r['char']].add(r['rar'])
+    for r in rows: multi[r['char']].add(r['rar'])
     ch = sorted(c for c, v in multi.items() if len(v) > 1)
-    w = [i for i, r in enumerate(big) if r['char'] in ch]
-    D = np.array([[big[i]['char'] == c for c in ch] for i in w], float)
+    w = [i for i, r in enumerate(rows) if r['char'] in ch]
+    D = np.array([[rows[i]['char'] == c for c in ch] for i in w], float)
     fe = logit_ll(yb[w], np.column_stack([D, Kb[w]])); fe_r = logit_ll(yb[w], np.column_stack([D, Kb[w], rar[w]]))
     out.append(F('Rarity shows no effect within a character (character intercepts and K, characters with cards of more than '
                  'one rarity): likelihood-ratio statistic below 3.84; pooled across characters it is shown alongside',
                  2 * (fe_r - fe) < 3.84, f'within {len(ch)} characters ({len(w):,} readings): {2 * (fe_r - fe):.2f}; pooled: {lr([rar]):.2f}'))
-    out.append(F('Bottom-choice skills of these events need a priority, and none was prioritised: 0 of the bottom-choice '
-                 'skills on offer in the runs showing a priority list', g['bottom-choice markers prioritised there'] == 0,
-                 f'{g["bottom-choice markers prioritised there"]} of {cand:,} (run, skill) candidates in '
-                 f'{g["runs showing a priority list (first 1,300 records)"]} runs'))
+    out.append(F('Bottom-choice skills are credited to the character\'s event less often than top-choice markers: the '
+                 'non-prioritised bottom-choice rate\'s 95% interval lies entirely below the pooled top-choice marker rate',
+                 g['bottom-choice, not prioritised: 95% high'] < g['top-choice marker rate'],
+                 f'not prioritised {bh[(False, True)]}/{bh[(False, True)] + bh[(False, False)]} = '
+                 f'{g["bottom-choice, not prioritised: credited rate"]:.3f} [{g["bottom-choice, not prioritised: 95% low"]:.3f}, '
+                 f'{g["bottom-choice, not prioritised: 95% high"]:.3f}]; prioritised {bh[(True, True)]}/{bh[(True, True)] + bh[(True, False)]}; '
+                 f'top-choice {g["top-choice marker rate"]:.3f}; {g["bottom-choice markers prioritised there"]} of {cand:,} (run, skill) '
+                 f'candidates prioritised in {g["runs showing a priority list"]} runs'))
     return out
+
+
+# ---------------------------------------------------------------- effect on real careers (section 12's rows)
+def calib():
+    """section 12's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
+    s12_calibration.claims builds them; the solver's results are reused from its cache while nothing they read changes"""
+    if 'calib' not in common._cache:
+        import s12_calibration as s12
+        R = common.runs(); M = s12.Model()
+        s12.card_variants()
+        jobdir = os.path.join(s12.OUTD, 'jobs8')
+        man, files, _ = s12.build_jobs(R, M, False, jobdir)
+        res = s12.run_solver(jobdir, files, os.path.join(s12.OUTD, 'res8.jsonl'))
+        rows, runrows, _ = s12.rows_of(R, M, res, man)
+        common._cache['calib'] = (rows, runrows)
+    return common._cache['calib']
+
+
+def event_groups():
+    """skill groups each kind of event can hint (GameTora, through gametora.py): a trainee's story and date events
+    (training_events_char), each outfit's own events (training_events_char_card), a character's shared events
+    (training_events_shared), a trainee's current conditional events with their conditions, each scenario's events
+    (training_events_scenario; its ids are the game's scenario ids)"""
+    if 'evgroups' in common._cache: return common._cache['evgroups']
+    gt = common.gametora(); grp = dict(common.mdb().execute('select id, group_id from skill_data'))
+
+    def of(chs):
+        return {grp.get(x) for ch in gt.choices(chs) for kind, x0, _ in gt.hints(ch[1]) for x in ([x0] if kind == 'hint' else x0)}
+
+    def of_list(lst):
+        return set().union(set(), *[of(e[1]) for e in (lst if isinstance(lst, list) else []) if isinstance(e, list) and len(e) >= 2])
+    ordinary, cond = {}, collections.defaultdict(list)
+    for row in gt.load('training_events_char'):
+        ordinary[row[0]] = of_list(row[2]) | of_list(row[3])
+        for tag, ve in gt.conditional_events(row):
+            if tag.startswith('current'): cond[row[0]].append((of(ve[1]), gt.extra(ve, 0)))
+    outfit = {row[0]: of_list(row[1]) for row in gt.load('training_events_char_card')}
+    shared = {ch: of_list(es) for ch, es in gt.load('training_events_shared')}
+    scen = {row[0]: set().union(set(), *[of_list(part) for part in row[1:]]) for row in gt.load('training_events_scenario')}
+    common._cache['evgroups'] = out = dict(ordinary=ordinary, cond=cond, outfit=outfit, shared=shared, scen=scen)
+    return out
+
+
+def hint_srcs(r):
+    """skill group -> the run's hint records of it (white or gold), names mapped as section 12 maps them"""
+    names = common.skill_names(); pn = {v[1]: gid for gid, vs in r.get('hint_groups', []) for v in vs}
+    out = collections.defaultdict(list)
+    for h in r['hints']:
+        g = names[h['name']][0] if h['name'] in names else pn.get(h['name'])
+        if g is not None: out[g].append(h)
+    return out
+
+
+def free(row): return not row['outfit'] and not row['scen_gold']
+
+
+def credit(row, r):
+    """(p, acquisition) of a calibration row with m multiplied by (1 - r) (section 11; m recovered from the row's p);
+    a row on the trainee's outfit or a scenario gold does not move"""
+    if not free(row): return row['p'], row['acq']
+    s = 1.1 ** row['nc']; dg = row['dg']
+    if dg >= 1: return row['p'], 1.0
+    m = 1 - (row['p'] - dg * GEN_G * s) / ((1 - dg) * GEN_W * s); mm = m * (1 - r)
+    return dg * GEN_G * s + (1 - dg) * GEN_W * s * (1 - mm), dg + (1 - dg) * (1 - mm)
+
+
+def odds_change(runrows, rate):
+    """relative change of each run's product of per-target odds when each row is credited at rate(row) (0: not): over
+    the eight targets (runs with a nonzero product; those of them with a credited row; runs whose product crediting
+    lifts from 0), and over the targets the model gives a positive chance without crediting (runs with a credited
+    row among them)"""
+    ch, tch, lifted, pos = [], [], 0, []
+    for pr in runrows:
+        new = [credit(x, rate(x))[0] for x in pr['rows']]
+        p0 = math.prod(x['p'] for x in pr['rows']); p1 = math.prod(new)
+        touched = [rate(x) > 0 and free(x) for x in pr['rows']]
+        if any(t and x['p'] > 0 for t, x in zip(touched, pr['rows'])):
+            pos.append(math.prod(q for q, x in zip(new, pr['rows']) if x['p'] > 0) / math.prod(x['p'] for x in pr['rows'] if x['p'] > 0) - 1)
+        if p0 <= 0: lifted += p1 > 0; continue
+        ch.append(p1 / p0 - 1)
+        if any(touched): tch.append(p1 / p0 - 1)
+    return ch, tch, lifted, pos
+
+
+def summary(xs):
+    return (float(np.mean(xs)), float(np.median(xs)), float(np.max(xs))) if xs else (float('nan'),) * 3
+
+
+def calib_test(rs, rate):
+    """acquisition observed (hinted from any source, or owned) against predicted, without and with crediting each row at
+    rate(row): rows, observed, predicted, obs / pred and its 95% interval each way; the Bernoulli log-likelihood each way
+    over the rows whose prediction without crediting is positive (a row predicted at 0 and acquired has no finite
+    likelihood; those rows are counted apart)"""
+    n = len(rs); k = sum(1 for x in rs if x['o_any']); lo, hi = common.wilson(k, n)
+    out = dict(n=n, k=k, obs=common.div(k, n), lo=lo, hi=hi)
+    p0 = [credit(x, 0.0)[1] for x in rs]; p1 = [credit(x, rate(x))[1] for x in rs]
+    pos = [i for i, q in enumerate(p0) if q > 1e-12]
+    for tag, pr in (('0', p0), ('1', p1)):
+        ep = common.div(sum(pr), n)
+        out.update({f'pred{tag}': ep, f'ratio{tag}': common.div(common.div(k, n), ep),
+                    f'rlo{tag}': common.div(lo, ep), f'rhi{tag}': common.div(hi, ep),
+                    f'll{tag}': sum(math.log(pr[i]) if rs[i]['o_any'] else math.log(1 - pr[i]) for i in pos if 0 < pr[i] < 1)
+                    + sum(0.0 if (pr[i] >= 1) == bool(rs[i]['o_any']) else -math.inf for i in pos if not 0 < pr[i] < 1)})
+    out['n_pos'] = len(pos); out['n_zero'] = n - len(pos)
+    return out
+
+
+def random_rows(R, ab):
+    """the calibration rows a random event could hint: (row, kind, rate, hit, only, ambiguous); kind 'deck' (a deck
+    card's character's event, at the fitted form at the run's K) or 'own' (the trainee's own, rate filled in later)"""
+    a, b = ab
+    nshared, marker, cardsk, sc = markers(); E = event_groups()
+    name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
+    gn = common.skills(); white = {g: gn[g][0] for g in common.DEFAULT}
+    rows, _ = calib(); byid = {r['id']: r for r in R}
+    out, skipped = [], collections.Counter()
+    for row in rows:
+        if not free(row): continue
+        r = byid[row['run']]; g = row['g']; hs = hint_srcs(r)[g]; srcs = [x for h in hs for x in h['src']]
+        K = offer(r, nshared, sc)
+        for cid in (d[0] for d in r['deck']):
+            x = sc.get(cid)
+            if not x or x.get('type') == 'group' or marker.get(x['char_id']) != white[g]: continue
+            if x['char_id'] == r['chara']: skipped['own character'] += 1; continue
+            if white[g] in cardsk[cid]: skipped['card\'s own events give it'] += 1; continue
+            nm = name.get(x['char_id']); ev = f'{nm} event'
+            out.append(dict(row=row, kind='deck', who=nm, rate=a * (1 - b) ** (K - 4), hit=ev in srcs,
+                            only=ev in srcs and set(srcs) == {ev} and g not in {s // 10 for s in r.get('owned', [])},
+                            amb=ev not in srcs and any(nm in t and ' or ' in t for t in srcs)))
+        u = r['chara']
+        if marker.get(u) == white[g]:
+            other = E['ordinary'].get(u, set()) | E['outfit'].get(r['outfit'], set()) | E['scen'].get(r['scenario'], set()) \
+                | set().union(set(), *[gs for gs, _ in E['cond'].get(u, [])])
+            if g in other: skipped['trainee\'s own, not identifiable'] += 1; continue
+            out.append(dict(row=row, kind='own', who=name.get(u), rate=None, hit='Events' in srcs,
+                            only=set(srcs) == {'Events'} and g not in {s // 10 for s in r.get('owned', [])}, amb=False))
+    return out, skipped
+
+
+def careers(R, ab):
+    F = lambda st, test, ev: common.finding(SEC, st, test, ev)
+    V = lambda nm, v: common.Value(SEC, nm, v)
+    rr, skipped = random_rows(R, ab); _, runrows = calib()
+    dk = [x for x in rr if x['kind'] == 'deck']; own = [x for x in rr if x['kind'] == 'own']
+    ko = sum(x['hit'] for x in own); lo_o, hi_o = common.wilson(ko, len(own)); r_own = common.div(ko, len(own))
+    for x in own: x['rate'] = r_own
+    rate = {id(x['row']): x['rate'] for x in rr}
+    t = calib_test([x['row'] for x in dk], lambda row: rate[id(row)])
+    zero = [x for x in dk if credit(x['row'], 0.0)[1] <= 1e-12]
+    # held out: the form refitted without the readings of these rows' cards in these runs
+    used = {(x['row']['run'], x['who']) for x in dk}
+    name = dict(common.mdb().execute('select [index], text from text_data where category = 6'))
+    ha, hb = fits([r for r in readings(R) if (r['run'], name.get(r['char'])) not in used])['exp'][0]
+    nshared, _, _, sc = markers(); byid = {r['id']: r for r in R}
+    hrate = {id(x['row']): ha * (1 - hb) ** (offer(byid[x['row']['run']], nshared, sc) - 4) for x in dk}
+    th = calib_test([x['row'] for x in dk], lambda row: hrate[id(row)])
+    ch, tch, lifted, pos = odds_change(runrows, lambda row: rate.get(id(row), 0.0))
+    out = [V('careers: rows a deck card\'s random event could hint', len(dk)),
+           V('careers: runs with such a row', len({x['row']['run'] for x in dk})),
+           V('careers: acquired through that event', sum(x['hit'] for x in dk)),
+           V('careers: acquired through that event only', sum(x['only'] for x in dk)),
+           V('careers: ambiguous credits there', sum(x['amb'] for x in dk)),
+           V('careers: mean fitted rate there', float(np.mean([x['rate'] for x in dk])) if dk else float('nan')),
+           V('careers: rows the model gives no chance', len(zero)),
+           V('careers: of them acquired', sum(x['row']['o_any'] for x in zero)),
+           V('careers: of them acquired through that event', sum(x['hit'] for x in zero)),
+           V('careers: rows of the trainee\'s own event, identifiable', len(own)),
+           V('careers: trainee\'s own, rows not identifiable', skipped['trainee\'s own, not identifiable']),
+           V('careers: trainee\'s own, acquired through her events', ko),
+           V('careers: trainee\'s own, rate', r_own), V('careers: trainee\'s own, rate 95% low', lo_o),
+           V('careers: trainee\'s own, rate 95% high', hi_o)]
+    for lab, xs in (('', ch), (', runs with a credited row', tch), (', targets with a positive chance, runs with a credited row', pos)):
+        m, md, mx = summary(xs)
+        out += [V(f'odds change{lab}: runs', len(xs)), V(f'odds change{lab}: mean', m), V(f'odds change{lab}: median', md),
+                V(f'odds change{lab}: max', mx)]
+    out += [V('odds change: runs with a credited row and a zero product', len({x['row']['run'] for x in dk}) - len(tch)),
+            V('odds change: runs lifted from zero', lifted)]
+    pre = 'calibration'
+    out += [V(f'{pre}: rows', t['n']), V(f'{pre}: acquired', t['k']), V(f'{pre}: observed', t['obs']),
+            V(f'{pre}: predicted, left out', t['pred0']), V(f'{pre}: obs / pred, left out', t['ratio0']),
+            V(f'{pre}: ratio 95% low, left out', t['rlo0']), V(f'{pre}: ratio 95% high, left out', t['rhi0']),
+            V(f'{pre}: predicted, credited', t['pred1']), V(f'{pre}: obs / pred, credited', t['ratio1']),
+            V(f'{pre}: ratio 95% low, credited', t['rlo1']), V(f'{pre}: ratio 95% high, credited', t['rhi1']),
+            V(f'{pre}: rows with a positive prediction', t['n_pos']),
+            V(f'{pre}: LL credited minus left out, positive rows', t['ll1'] - t['ll0']),
+            V(f'{pre}, rate held out: obs / pred, credited', th['ratio1']),
+            V(f'{pre}, rate held out: ratio 95% low, credited', th['rlo1']), V(f'{pre}, rate held out: ratio 95% high, credited', th['rhi1']),
+            V(f'{pre}, rate held out: LL credited minus left out, positive rows', th['ll1'] - th['ll0'])]
+    rt = lambda t, k: f'{t["ratio" + k]:.3f} [{t["rlo" + k]:.2f}, {t["rhi" + k]:.2f}]'
+    covers = lambda t, k: t[f'rlo{k}'] <= 1 <= t[f'rhi{k}']
+    out += [F('Deck cards\' random events, left out: acquisition on the rows they could hint is under-predicted: obs / pred '
+              'has a 95% interval entirely above 1', lambda: t['rlo0'] > 1, lambda: f'{t["n"]} rows, {t["k"]} acquired; left out {rt(t, "0")}; credited {rt(t, "1")}'),
+            F('Deck cards\' random events, credited at the fitted rate: acquisition obs / pred has a 95% interval covering 1',
+              lambda: covers(t, '1'), lambda: f'credited {rt(t, "1")}; with the rate fitted without these rows {rt(th, "1")}'),
+            F('Crediting deck cards\' random events at the fitted rate improves the fit by more than 1.92 nats on the rows the '
+              'model gives a positive chance without them', lambda: t['ll1'] - t['ll0'] > 1.92 and th['ll1'] - th['ll0'] > 1.92,
+              lambda: f'{t["n_pos"]} rows: LL {t["ll0"]:.1f} left out, {t["ll1"]:.1f} credited ({t["ll1"] - t["ll0"]:+.1f} nats); '
+                      f'rate held out {th["ll1"] - th["ll0"]:+.1f} nats'),
+            F('Left out, the model gives some of these targets no chance at all, and the event hinted the target on at least one of them',
+              lambda: len(zero) > 0 and sum(x['hit'] for x in zero) > 0,
+              lambda: f'{len(zero)} rows at 0; {sum(x["row"]["o_any"] for x in zero)} acquired, {sum(x["hit"] for x in zero)} through the event')]
+    return out
+
+
+def careers_detail(R):
+    a = fits(readings(R))['exp'][0]
+    rr, skipped = random_rows(R, a)
+    print('\ncareers: rows by who', collections.Counter((x['kind'], x['who'], x['row']['g'], x['hit']) for x in rr), dict(skipped))
+    rows, _ = calib()
+    dev = max(abs(credit(x, 0.0)[1] - x['acq']) for x in rows)
+    print(f'careers: largest |acquisition from m recovered from p - the solver\'s acquisition| over {len(rows):,} rows: {dev:.2e}')
 
 
 def detail():
     R = common.runs()
-    for lab, cut in (('first sample', FIRST), ('larger sample', LARGER)):
-        rows = readings([r for r in R if r['seq'] < cut])
-        print(f'{lab} ({cut} records): rate by K', ', '.join(f'{k}: {h}/{n}' for k, (n, h) in sorted(by_k(rows).items())))
-        t = collections.defaultdict(lambda: [0, 0])
-        for r in rows: t[r['rar']][0] += 1; t[r['rar']][1] += r['hit']
-        print('   by rarity (1 R, 2 SR, 3 SSR):', ', '.join(f'{k}: {h}/{n} = {h / n:.3f}' for k, (n, h) in sorted(t.items())))
-        sr = [r for r in rows if r['rar'] >= 2]; f = fits(sr); (a, b), L = f['exp']
-        print(f'   SR/SSR only: {len(sr)} readings, {len({r["run"] for r in sr})} runs, {sum(r["hit"] for r in sr)} hits; '
-              f'constant {f["const"][0]:.3f} LL {f["const"][1]:.1f}; {a:.3f} (1 - {b:.3f})^(K-4) LL {L:.1f}; '
-              f'strict S {f["strict"][0]:.2f} LL {f["strict"][1]:.1f}; power a {f["power"][0][1]:.2f} LL {f["power"][1]:.1f}')
+    rows = readings(R)
+    print('all records: rate by K', ', '.join(f'{k}: {h}/{n}' for k, (n, h) in sorted(by_k(rows).items())))
+    t = collections.defaultdict(lambda: [0, 0])
+    for r in rows: t[r['rar']][0] += 1; t[r['rar']][1] += r['hit']
+    print('   by rarity (1 R, 2 SR, 3 SSR):', ', '.join(f'{k}: {h}/{n} = {h / n:.3f}' for k, (n, h) in sorted(t.items())))
+    sr = [r for r in rows if r['rar'] >= 2]; f = fits(sr); (a, b), L = f['exp']
+    print(f'   SR/SSR only: {len(sr)} readings, {len({r["run"] for r in sr})} runs, {sum(r["hit"] for r in sr)} hits; '
+          f'constant {f["const"][0]:.3f} LL {f["const"][1]:.1f}; {a:.3f} (1 - {b:.3f})^(K-4) LL {L:.1f}; '
+          f'strict S {f["strict"][0]:.2f} LL {f["strict"][1]:.1f}; power a {f["power"][0][1]:.2f} LL {f["power"][1]:.1f}')
+    careers_detail(R)
 
 
 if __name__ == '__main__':

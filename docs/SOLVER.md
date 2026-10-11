@@ -364,7 +364,8 @@ raises that candidate's odds and the mean odds raised to.
   chances and one search proves her class. Counted in `umas_certified`.
 - Cont's two builders come from the exactly searched careers.
 
-**Continuation and V.** Per candidate a continuation (`Cont`, assumed form): builder careers lift her odds with chance
+**Continuation and V.** Per candidate a continuation (`Cont`, assumed form; its shape constants 0.6 and 1.5 are tuning
+choices, set against simulated builder traces on four veteran pools, a comparison not reproduced in the repository): builder careers lift her odds with chance
 lam_j = lam ((1 - phi)^j)^`LAM_DECAY` (1.5) at the j-th success, each closing phi of the gap in log odds to
 p_inf = `CEIL_SHARE` (0.6) x her odds with a full loop lineage (parents hypothetical 8/8s of her two most efficient
 builders, bred from each other and from her), at least her odds now. Her step (a fresh 8/8) costs

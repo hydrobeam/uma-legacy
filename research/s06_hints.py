@@ -3,13 +3,21 @@
 
 One observation per (run, non-pal deck card); its rows are the card's training-hint pool skills (master.mdb
 single_mode_hint_gain), a row hit when the run's hint list names the card's character as a source of the skill. Hint
-frequency (effect 18) and hint levels per draw (1 + effect 17) are read at the card's level: floored linear
-interpolation between milestone levels, plus the unique effect.
+frequency (effect 18), hint levels per draw (1 + effect 17) and specialty priority (effect 19) are read at the card's
+level: floored linear interpolation between milestone levels, plus the unique effect.
 
-The form study uses the first 879 records, every limit break: Bernoulli rows, P(hit) = 1 - (1 - 1/n)^h. The adopted
-bases are refit on the first 2,402 records, max-limit-break card-runs and rows no spark hinted, through the Lv-5 cap
-(uniform draws over the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs). Every
-result is in-sample on the pooled runs.
+Every analysis runs on every record, on three row sets:
+- the form study: every limit break, R cards included, the rate without the specialty term (h = base_s (1 + hf/100)):
+  it compares forms of the hf rate (Bernoulli rows, P(hit) = 1 - (1 - 1/n)^h), the stat option, repeats and distinct
+  counts, per-scenario bases, hf by card level and the per-draw increment, and through the Lv-5 cap (uniform draws over
+  the skills still below Lv 5, h read as floor or ceiling; pkg/loopopt/src/deck/hints.rs) on its max-limit-break rows
+  no spark hinted the cap, joint draws and pool size;
+- the fit: max-limit-break card-runs, rows no spark hinted, R cards out, through the Lv-5 cap, with
+  h = base_s (1 + hf/100) (1 + d_s spec/100); its held-out test fits on the earlier half of the records (by seq) and
+  scores the later half;
+- tests of the current model: the adopted rate (the same h with hints.rs's constants) on the fit's card-runs, for the
+  other covariates (a free level per scenario in both fits), the spark deficit (every row), drop-out and priority.
+Every other result is in-sample on the pooled runs.
 """
 import collections, functools, math, re, unicodedata
 import numpy as np
@@ -57,12 +65,12 @@ def effect(g, cid, typ, level, mode='lin'):
 
 
 # ---------------------------------------------------------------- observations
-def build(nrec):
-    """card-runs and pool-skill rows of the first `nrec` records"""
-    key = ('obs', nrec)
+def build():
+    """card-runs and pool-skill rows of every record"""
+    key = 'obs'
     if key in common._cache: return common._cache[key]
     g = _game(); C = g['cards']; obs = []
-    for r in common.runs()[:nrec]:
+    for r in common.runs():
         hints = [(norm(h['name']), h['lv'], tuple(h['src'])) for h in r['hints']]
         npal = sum(1 for c, _, _ in r['deck'] if C.get(c, {}).get('pal'))
         for cid, lb, nm in r['deck']:
@@ -144,7 +152,7 @@ def bern_ll(p, y):
 
 
 def fitB(D, hfun, x0, rows=None, nn=None):
-    """the 879-run fits: P(row hit) = 1 - (1 - 1/n)^h, h = hfun(theta) per card-run; Nelder-Mead then L-BFGS-B"""
+    """the form study's fits: P(row hit) = 1 - (1 - 1/n)^h, h = hfun(theta) per card-run; Nelder-Mead then L-BFGS-B"""
     ci = D['ci']; nn = (D['nskill'] if nn is None else nn).astype(float)
     rows = np.ones(len(ci), bool) if rows is None else rows
     nr = nn[ci][rows]; y = D['hit'][rows]; cr = ci[rows]
@@ -210,28 +218,17 @@ def claims():
     out = []
     def add(name, got, **kw): out.append(V(name, got, **kw))
 
-    # ---- the adopted fit: first 2,402 records, max-limit-break card-runs, rows no spark hinted, Lv-5 cap
+    # ---- the solver's constants (read, not fitted)
     ADOPTED, ADOPTED_D = adopted()
-    A = build(len(common.runs())); ca = A['ci']
-    fitset = (A['seq'][ca] < 2402) & (A['lb'][ca] == 4) & A['noinsp']
-    bases, ll_cap, _ = fit_cap(A, fitset)
-    _, ll_rep, _ = fit_cap(A, fitset, cap=False)
-    noR = fit_cap(A, fitset & (A['rar'][ca] != 1))[0]      # the refit included R cards; shown for reference
-    for s, nm in ((2, 'Unity Cup'), (3, 'Grand Concert'), (1, 'URA Finale'), (4, 'Trackblazer')):
-        q = fitset & (A['scen'][ca] == s)
-        add(f'refit base {nm}', bases[s], note='R card-runs included, as fitted')
-        add(f'refit base without R cards {nm}', noR[s])
-        add(f'refit rows {nm}', q.sum())
+    for s, nm in ((2, 'Unity Cup'), (3, 'Grand Concert'), (1, 'URA Finale'), (4, 'Trackblazer'), (5, 'Grand Masters')):
         add(f'adopted {nm}', ADOPTED[s], note='the solver\'s hint_base (pkg/loopopt/src/deck/hints.rs)')
         add(f'adopted d {nm}', ADOPTED_D[s], note='the solver\'s hint_spec')
-        add(f'refit runs {nm}', len({A['obs'][i]['run'] for i in ca[q]}))
-    add('refit runs adding a row', len({A['obs'][i]['run'] for i in ca[fitset]}))
-    add('adopted Grand Masters', ADOPTED[5]); add('adopted d Grand Masters', ADOPTED_D[5])
 
-    # ---- the 879-record set (every limit break)
-    D = build(879); ci = D['ci']; hit = D['hit']; NI = D['noinsp']; hf = D['hf']; n = D['nskill'].astype(float)
+    # ---- the form study: every record, every limit break, no specialty term
+    D = build(); ci = D['ci']; hit = D['hit']; NI = D['noinsp']; hf = D['hf']; n = D['nskill'].astype(float)
     sc = D['scen']; max4 = D['lb'][ci] == 4
-    add('879: rows', len(ci)); add('879: rows without a spark', NI.sum())
+    add('form: rows', len(ci)); add('form: rows without a spark', NI.sum())
+    add('form: runs', len({D['obs'][i]['run'] for i in ci}), note='runs that add a row')
     llB = lambda h, nn=n: bern_ll(1 - (1 - 1 / nn[ci]) ** h[ci], hit)
     add('LL 1+hf/25 over options', llB(1 + hf / 25, D['opts'].astype(float)))
     add('LL 1+hf/25 over skills', llB(1 + hf / 25))
@@ -278,26 +275,13 @@ def claims():
         add(f'distinct {k} observed', np.mean(dist[has] == k))
         add(f'distinct {k} model', model[k], note='exact')
 
-    # covariates on all rows of the 879 set
+    # per-scenario bases against one base (form study)
     add('per-scenario bases gain, nats', ll4 - ll1)
-    base = lambda th: B4(D, th) * (1 + hf / 100)
-    TY = ['stamina', 'power', 'guts', 'wit']
-    covs = {'card type': np.stack([(D['ctype'] == t).astype(float) for t in TY], 1),
-            'SR': (D['rar'] == 2).astype(float)[:, None], 'LB < 4': (D['lb'] < 4).astype(float)[:, None],
-            'pals per deck': (D['npal'] - 2.5)[:, None].astype(float), 'initial bond': (D['bond0'] / 10)[:, None],
-            'pool size': (n - 8)[:, None]}
-    gains, facs = {}, []
-    for nm, X in covs.items():
-        k = X.shape[1]
-        th, ll = fitB(D, lambda th, X=X, k=k: base(th[:4]) * np.exp(X @ th[4:4 + k]), list(th4) + [0.] * k)
-        gains[nm] = ll - ll4; facs += list(np.exp(th[4:]))
-    add('other covariates max gain', max(gains.values()), note=', '.join(f'{k} {v:.1f}' for k, v in gains.items()))
-    add('covariate factor min', min(facs)); add('covariate factor max', max(facs))
 
     # the Lv-5 cap against drawing with replacement (max limit break, rows no spark hinted)
     rows = max4 & NI
-    _, l879c, pc = fit_cap(D, rows); _, l879r, pr_ = fit_cap(D, rows, cap=False)
-    add('cap gain 879, nats', l879c - l879r); add('cap gain 2,402, nats', ll_cap - ll_rep)
+    _, llc_, pc = fit_cap(D, rows); _, llr_, pr_ = fit_cap(D, rows, cap=False)
+    add('cap gain, nats', llc_ - llr_)
     j = np.nonzero(rows)[0]; capd = np.ceil(5 / D['hinc'][ci[j]]).astype(int)
     for d in (5, 3, 2, 1):
         q_ = capd == d
@@ -337,31 +321,62 @@ def claims():
     for nm, H in (('LL hf step', D['hf_step']), ('LL hf max-LB for all', D['hf_max'])):
         add(nm, fitB(D, lambda th, H=H: B4(D, th) * (1 + H / 100), list(bs), rows=NI)[1])
 
-    # spark deficit by the other sources of the same skill (every row; model fitted on rows no spark hinted)
-    prow = (1 - (1 - 1 / np.maximum(n, 1)) ** h)[ci]; cat = D['cat']
+    # ---- tests of the current model: the adopted rate (hints.rs constants, specialty term in) through the Lv-5 cap, on
+    # max-limit-break card-runs with R cards out (the fit's card-runs; spark-hinted rows only where a test reads them)
+    M = max4 & (D['rar'][ci] != 1); jm = np.nonzero(M)[0]; cm = ci[jm]
+    tabm = miss_table(np.ones(len(jm), int), D['nskill'][cm], np.ceil(5 / D['hinc'][cm]).astype(int))
+    bA = np.array([ADOPTED[s] for s in (1, 2, 3, 4)]); dA = np.array([ADOPTED_D[s] for s in (1, 2, 3, 4)])
+    hA = bA[sc - 1] * (1 + hf / 100) * (1 + dA[sc - 1] * D['spec'] / 100)           # per card-run
+    clip = lambda x: np.minimum(x, TMAX - 1e-6)
+    pA = np.full(len(ci), np.nan); pA[jm] = 1 - mix(tabm, clip(hA[cm]))
+    note = 'the adopted rate, Lv-5 cap, max limit break, R cards out'
+
+    # covariates: the adopted rate times exp(X theta), a free level per scenario in both fits (so a covariate cannot
+    # gain by absorbing an offset of the adopted bases), rows no spark hinted
+    nim = NI[jm]; yk = hit[jm][nim]; tk = tabm[nim]; hk = hA[cm][nim]; sk = sc[cm][nim] - 1; ck = cm[nim]
+
+    def fit_cov(X):
+        k = X.shape[1]
+        nll = lambda th: -bern_ll(1 - mix(tk, clip(hk * np.exp(th[:4][sk] + X @ th[4:]))), yk)
+        r = minimize(nll, np.zeros(4 + k), method='Nelder-Mead', options=dict(xatol=1e-6, fatol=1e-7, maxiter=40000, maxfev=80000))
+        r2 = minimize(nll, r.x, method='L-BFGS-B'); b = r2 if r2.fun <= r.fun else r
+        return -b.fun, np.exp(b.x[4:])
+    TY = ['stamina', 'power', 'guts', 'wit']                     # against speed
+    covs = {'card type': np.stack([(D['ctype'] == t).astype(float) for t in TY], 1), 'SR': (D['rar'] == 2).astype(float)[:, None],
+            'pals per deck': (D['npal'] - 2.5)[:, None].astype(float), 'initial bond': (D['bond0'] / 10)[:, None],
+            'pool size': (n - 8)[:, None]}
+    l0, _ = fit_cov(np.zeros((len(ck), 0))); facs = []
+    add('covariate rows', nim.sum(), note=note)
+    for nm, X in covs.items():
+        ll_, f_ = fit_cov(X[ck]); facs += list(f_)
+        add(f'covariate gain {nm}, nats', ll_ - l0, note=f'{X.shape[1]} parameter(s), factor(s) ' + ', '.join(f'{x:.3f}' for x in f_))
+        if X.shape[1] == 1: add(f'covariate factor {nm}', f_[0])
+    add('covariate factor min', min(facs)); add('covariate factor max', max(facs))
+
+    # spark deficit by the other sources of the same skill (every row of those card-runs)
+    cat = D['cat']
     for c, key in (('none', 'none'), ('inspiration', 'Inspiration'), ('inspiration + card event', 'Inspiration+card event'),
                    ('card event', 'card event'), ('other card training', 'other card')):
-        q_ = cat == key
-        add(f'spark {c} rows', q_.sum()); add(f'spark {c} observed', hit[q_].mean())
-        add(f'spark {c} predicted', prow[q_].mean()); add(f'spark {c} ratio', hit[q_].mean() / prow[q_].mean())
-    # drop-out: max-limit-break card-runs with exactly two pool skills spark-hinted, their other (no-spark) rows
+        q_ = M & (cat == key)
+        add(f'spark {c} rows', q_.sum(), note=note); add(f'spark {c} observed', hit[q_].mean())
+        add(f'spark {c} predicted', pA[q_].mean()); add(f'spark {c} ratio', hit[q_].mean() / pA[q_].mean())
+    # drop-out: card-runs with exactly two pool skills spark-hinted, their other (no-spark) rows
     ins = np.bincount(ci, weights=(~NI).astype(float), minlength=D['N'])[ci]
-    q_ = NI & max4 & (ins == 2); jj = np.nonzero(q_)[0]; c_ = ci[jj]
-    capj = np.ceil(5 / D['hinc'][c_]).astype(int); hj = B4(D, [bases[s] for s in (1, 2, 3, 4)])[c_] * (1 + hf[c_] / 100)
+    jj = np.nonzero(NI & M & (ins == 2))[0]; c_ = ci[jj]
+    capj = np.ceil(5 / D['hinc'][c_]).astype(int); hj = clip(hA[c_])
     keep = 1 - mix(miss_table(np.ones(len(jj), int), D['nskill'][c_], capj), hj)
     drop = 1 - mix(miss_table(np.ones(len(jj), int), D['nskill'][c_] - 2, capj), hj)
-    note = 'adopted bases, Lv-5 cap'
-    add('drop-out test observed', hit[jj].mean(), note=note)
-    add('drop-out test no drop-out', keep.mean(), note=note); add('drop-out test drop-out', drop.mean(), note=note)
+    add('drop-out test rows', len(jj), note=note); add('drop-out test observed', hit[jj].mean())
+    add('drop-out test no drop-out', keep.mean()); add('drop-out test drop-out', drop.mean())
 
-    out += specialty(A)
+    out += specialty(D)
 
     # prioritised skills
     prio = [None if x['prio'] is None else {norm(s) for s in x['prio']} for x in D['obs']]
-    isp = np.array([prio[ci[r_]] is not None and D['skn'][r_] in prio[ci[r_]] for r_ in range(len(ci))]) & NI
+    isp = np.array([prio[ci[r_]] is not None and D['skn'][r_] in prio[ci[r_]] for r_ in range(len(ci))]) & NI & M
     add('priority runs', len({x['run'] for x in D['obs'] if x['prio'] is not None}))
     add('priority rows', isp.sum()); add('priority observed', hit[isp].mean())
-    add('priority predicted', prow[isp].mean())
+    add('priority predicted', pA[isp].mean(), note=note)
     return derived() + out + findings(out)
 
 
@@ -375,18 +390,26 @@ def findings(out):
                 all(lps > v for v in ll.values()), ', '.join(f'{k[3:]} {v - lps:+.1f}' for k, v in ll.items()) + ' nats against it'))
     gc = g['LL free divisor'] - lps
     fs.append(F('Known miss: the slope 1/100 is assumed; a free divisor fits better (gain above 1.92 nats, the 1-parameter 5% bound)',
-                gc > 1.92, f'c = {g["free divisor c"]:.0f}, +{gc:.1f} nats on 879 runs'))
+                gc > 1.92, f'c = {g["free divisor c"]:.0f}, +{gc:.1f} nats on {g["form: runs"]:,.0f} runs'))
     k, n = g['cells var below stat-option floor'], g['cells (card, hf)']
     fs.append(F('The stat option is never drawn: the draw-count variance is below the floor a drawn stat option implies in most (card, hf) '
                 'cells (sign test p < 0.05)', binom.sf(k - 1, n, 0.5) < 0.05, f'{k:.0f} of {n:.0f} cells, p = {binom.sf(k - 1, n, 0.5):.4f}'))
     o, t2, po = g['repeat rate observed'], g['repeat rate two-point count'], g['repeat rate Poisson count']
     fs.append(F('Draws repeat skills as uniform draws with a near-fixed count do, not as a Poisson count', abs(o - t2) < abs(o - po),
                 f'repeat rate observed {o:.3f}, two-point {t2:.3f}, Poisson {po:.3f}'))
-    fs.append(F('Bases differ by scenario; card type, rarity, limit break beyond hf, pals, initial bond and pool size do not matter '
-                '(per-scenario gain far above any other covariate)', g['per-scenario bases gain, nats'] > 10 * g['other covariates max gain'],
-                f'per-scenario +{g["per-scenario bases gain, nats"]:.0f} nats, any other at most +{g["other covariates max gain"]:.1f}'))
+    gb = g['per-scenario bases gain, nats']
+    fs.append(F('Bases differ by scenario (per-scenario bases against one base, LR p < 0.001 on 3 parameters)', chi2.sf(2 * gb, 3) < 0.001,
+                f'+{gb:.0f} nats, LR p = {chi2.sf(2 * gb, 3):.1e}'))
+    cv = {nm: (g[f'covariate gain {nm}, nats'], chi2.sf(2 * g[f'covariate gain {nm}, nats'], k_))
+          for nm, k_ in (('card type', 4), ('SR', 1), ('pals per deck', 1), ('initial bond', 1), ('pool size', 1))}
+    miss_c, none_c = ('SR', 'pals per deck'), ('card type', 'initial bond', 'pool size')
+    fs.append(F('Known miss (not modelled): rarity (SR against SSR) and pals per deck change the rate beyond the adopted rate '
+                '(each LR p < 0.05)', all(cv[nm][1] < 0.05 for nm in miss_c),
+                '; '.join(f'{nm} +{cv[nm][0]:.1f} nats, p = {cv[nm][1]:.1e}' for nm in miss_c)))
+    fs.append(F('Card type, initial bond and pool size add nothing significant to the adopted rate (each LR p > 0.05)',
+                all(cv[nm][1] > 0.05 for nm in none_c), '; '.join(f'{nm} +{cv[nm][0]:.1f} nats, p = {cv[nm][1]:.3f}' for nm in none_c)))
     fs.append(F('The Lv-5 cap (a skill leaves the pool at Lv 5) beats drawing with replacement, with no parameter',
-                g['cap gain 2,402, nats'] > 1.92, f'+{g["cap gain 2,402, nats"]:.1f} nats on 2,402 runs, +{g["cap gain 879, nats"]:.1f} on 879'))
+                g['cap gain, nats'] > 1.92, f'+{g["cap gain, nats"]:.1f} nats on {g["form: runs"]:,.0f} runs'))
     b, j, i = g['P(both) observed'], g['P(both) joint'], g['P(both) independent']
     fs.append(F('Two targets in one card\'s pool land jointly as the draws imply, not independently', abs(b - j) < abs(b - i),
                 f'P(both) observed {b:.4f}, joint {j:.4f}, independent {i:.4f} ({g["joint pairs"]:,.0f} pairs)'))
@@ -400,8 +423,8 @@ def findings(out):
     for c in ('none', 'inspiration', 'card event', 'other card training'):
         rows, ob, pr = g[f'spark {c} rows'], g[f'spark {c} observed'], g[f'spark {c} predicted']; lo, hi = common.wilson(ob * rows, rows)
         sp[c] = (lo <= pr <= hi, ob, pr, lo, hi)
-    fs.append(F('With no other source of the skill the rate is calibrated, and a card\'s own event or another card\'s training leaves it '
-                'calibrated too (prediction inside the observed interval)', sp['none'][0] and sp['card event'][0] and sp['other card training'][0],
+    fs.append(F('With no other source of the skill the adopted rate is calibrated, and a card\'s own event or another card\'s training '
+                'leaves it calibrated too (prediction inside the observed interval)', sp['none'][0] and sp['card event'][0] and sp['other card training'][0],
                 '; '.join(f'{c} {v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}' for c, v in sp.items() if c != 'inspiration')))
     v = sp['inspiration']
     fs.append(F('Known miss (not modelled): a skill also hinted by inspiration is hinted by training less than predicted', v[4] < v[2],
@@ -433,7 +456,7 @@ def findings(out):
 
 
 def specialty(A):
-    """specialty priority (effect 19, at the card's level) on the adopted fit's setup over every record: max-limit-break
+    """specialty priority (effect 19, at the card's level) on the fit's setup over every record: max-limit-break
     card-runs, rows no spark hinted, Lv-5 cap, R cards out. h = base_s (1 + hf/100) (1 + d spec/100)."""
     ci = A['ci']; rows = (A['lb'][ci] == 4) & A['noinsp'] & (A['rar'][ci] != 1)
     j = np.nonzero(rows)[0]; c = ci[j]
@@ -489,14 +512,16 @@ def specialty(A):
     u = (sc == 2) & (A['hf'][c] == 0) & (sp == 0)
     add('Unity hf-0 spec-0 before', y[u].sum() / p0[u].sum()); add('Unity hf-0 spec-0 after', y[u].sum() / p1[u].sum())
     # robustness of one pooled d: halves of the records, rarity, without each of the eight most-used cards
-    rob = {'records < 1,500': seq < 1500, 'records >= 1,500': seq >= 1500, 'SR': rar == 2, 'SSR': rar == 3}
+    runs_ = common.runs(); cut = runs_[len(runs_) // 2]['seq']          # the later half of the records starts here
+    rob = {'earlier half': seq < cut, 'later half': seq >= cut, 'SR': rar == 2, 'SSR': rar == 3}
     top = [k for k, _ in collections.Counter(cid).most_common(8)]
     rob.update({f'without card {k}': cid != k for k in top})
     ds = {nm: pooled_d(q)[0] for nm, q in rob.items()}
     add('specialty d robustness min', min(ds.values()), note='; '.join(f'{k} {v:.2f}' for k, v in ds.items() if not k.startswith('without')))
     add('specialty d robustness max', max(ds.values()))
-    # held out: bases and d fitted on records < 1,500, scored on the later ones, against the same without d
-    tr, te = seq < 1500, seq >= 1500; ho = {}
+    # held out: bases and d fitted on the earlier half of the records, scored on the later half, against the same
+    # without d
+    tr, te = seq < cut, seq >= cut; ho = {}
     for spec in (False, True):
         ll = 0.0
         for k in (1, 2, 3, 4):
@@ -509,6 +534,7 @@ def specialty(A):
             b = fit(qa, m)[1]; ll += bern_ll(1 - mix(tab[qb], np.minimum(b * m[qb], TMAX - 1e-6)), y[qb])
         ho[spec] = ll
     add('specialty held-out gain, nats', ho[True] - ho[False]); add('specialty held-out rows', te.sum())
+    add('specialty held-out fit rows', tr.sum()); add('specialty held-out first later record', cut, note='seq; records before it fit')
     # the same card at different limit breaks: a base per (card, scenario), d pooled, every limit break
     cidall = np.array([x['cid'] for x in A['obs']])
     lv = collections.defaultdict(set)

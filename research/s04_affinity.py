@@ -46,9 +46,28 @@ def lineage(r):
     return out
 
 
-def trials(R):
+def six_affinities(T, A, aff, S, h=0, part='all'):
+    """{slot: affinity} for the six ancestors (slots as G_OF), relation points from master.mdb plus 3 x the record's
+    shared G1 wins per pair; h = 0: tri(T, P, T) = 0, h = 1: tri(T, P, T) = pair(T, P); part 'rel' or 'race' keeps
+    only the relation points or only the shared-win terms"""
+    w = 0 if part == 'rel' else 3
+    shP = w * aff['parent 1 × parent 2'][1]
+    shG = {g: w * aff[l][1] for g, l in GLBL.items()}
+    if part == 'race': S = lambda *xs: 0
+
+    def tri(p, g):
+        if A[g] in (T, A[p]): return S(T, A[p]) if h else 0
+        return S(T, A[p], A[g])
+    d = {}
+    for p, o in ((0, 3), (3, 0)):
+        d[p] = S(T, A[p]) + S(A[p], A[o]) + shP + sum(tri(p, g) + shG[g] for g in G_OF[p])
+        for g in G_OF[p]: d[g] = tri(p, g) + shG[g]
+    return d
+
+
+def trials(R, race=False):
     S, ftype = relations()
-    out = []   # (category, a0, a1, base, passed)
+    out = []   # (category, a0, a1, base, passed), with race: + (the shared-win part of a0,)
     for r in R:
         anc = lineage(r)
         if anc is None: continue
@@ -56,20 +75,11 @@ def trials(R):
         if len({T, A[0], A[3]}) < 3: continue
         aff = r.get('affinity') or {}
         if any(l not in aff for l in list(GLBL.values()) + ['parent 1 × parent 2']): continue
-        shP = 3 * aff['parent 1 × parent 2'][1]
-        shG = {g: 3 * aff[l][1] for g, l in GLBL.items()}
         yrs = r.get('years') or {}
         if '2' not in yrs or '3' not in yrs: continue
         got = {y: {f for f, _ in yrs[y]} for y in ('2', '3')}
-
-        def tri(p, g, h):   # h = 0: tri(T, P, T) = 0; h = 1: tri(T, P, T) = pair(T, P)
-            if A[g] in (T, A[p]): return S(T, A[p]) if h else 0
-            return S(T, A[p], A[g])
-        aff0, aff1 = {}, {}
-        for p, o in ((0, 3), (3, 0)):
-            for h, d in ((0, aff0), (1, aff1)):
-                d[p] = S(T, A[p]) + S(A[p], A[o]) + shP + sum(tri(p, g, h) + shG[g] for g in G_OF[p])
-                for g in G_OF[p]: d[g] = tri(p, g, h) + shG[g]
+        aff0, aff1 = six_affinities(T, A, aff, S, 0), six_affinities(T, A, aff, S, 1)
+        rc = six_affinities(T, A, aff, S, 0, 'race') if race else None
         sp = [{f // 100: f for f, _ in (a.get('factors') or [])} for a in anc]
         carriers = collections.Counter(n for s in sp for n in s)
         for i in range(6):
@@ -82,7 +92,7 @@ def trials(R):
             for n, f in sp[i].items():
                 if ftype.get(f) != 4 or carriers[n] != 1: continue
                 for y in ('2', '3'):
-                    out.append((cat, aff0[i], aff1[i], BASE[f % 10 - 1], f in got[y]))
+                    out.append((cat, aff0[i], aff1[i], BASE[f % 10 - 1], f in got[y]) + ((rc[i],) if race else ()))
     return out
 
 

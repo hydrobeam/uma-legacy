@@ -18,6 +18,7 @@ Steps (outputs under research/data/out/calib/, reused while the jobs and the sol
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
 same parent twice, shared-G1 counts that do not fit the race list."""
 import collections, hashlib, json, math, os, random, subprocess, sys, time
+import scipy.stats
 import common
 from common import Value, finding, wilson, DEFAULT, UNITY_GOLDS
 
@@ -410,7 +411,7 @@ def claims(wide=None):
     add('2. inheritance', s)
     out += [Value(S12, '2. inheritance: observed 95% low', s['lo']), Value(S12, '2. inheritance: observed 95% high', s['hi'])]
     out += [Value(S3, 'runs tested', len(runrows)), Value(S3, 'run-target rows', s['n']),
-            Value(S3, 'inheritance obs / pred (23,488 rows)', s['ratio']), Value(S3, 'inheritance ratio 95% low', s['rlo']),
+            Value(S3, 'inheritance obs / pred', s['ratio']), Value(S3, 'inheritance ratio 95% low', s['rlo']),
             Value(S3, 'inheritance ratio 95% high', s['rhi'])]
     byc = rep.table('2. inheritance by carriers', lambda r: True, lambda r: r['q'], lambda r: r['o_insp'], lambda r: r['nc'])
     rat = [byc[k]['ratio'] for k in range(1, 7) if k in byc] or [float('nan')]
@@ -430,6 +431,16 @@ def claims(wide=None):
         if b > 1e-12: out.append(Value(S3, f'reliability q {lab}: mean predicted', ep))
     rel_miss = [(a, b, n, ob, ep, wilson(round(ob * n), n)) for a, b, n, ob, ep in rel if n and b > 1e-12]   # buckets with a positive prediction
     rel_miss = [(a, b, n, ob, ep, lo, hi) for a, b, n, ob, ep, (lo, hi) in rel_miss if not lo <= ep <= hi]
+    # jointly over the buckets with a positive prediction: chi2 = sum (observed - expected)^2 / sum q (1 - q), one degree
+    # of freedom per bucket, nothing fitted
+    rel_chi2, rel_k = 0.0, 0
+    for a, b in zip(edges, edges[1:]):
+        if b <= 1e-12: continue
+        qs = [(r['q'], r['o_insp']) for r in rows if a <= r['q'] < b]
+        v = sum(q * (1 - q) for q, _ in qs)
+        if v > 0: rel_chi2 += (sum(o for _, o in qs) - sum(q for q, _ in qs)) ** 2 / v; rel_k += 1
+    rel_p = float(scipy.stats.chi2.sf(rel_chi2, rel_k)) if rel_k else float('nan')
+    out += [Value(S3, 'reliability chi2', rel_chi2), Value(S3, 'reliability chi2 buckets', rel_k), Value(S3, 'reliability chi2 p', rel_p)]
     b46 = next(((n, ob, ep) + wilson(round(ob * n), n) for a, b, n, ob, ep in rel if a == 0.4 and n), (0,) + (float('nan'),) * 4)
     out += [Value(S3, 'reliability q 0.40-0.60: observed 95% low', b46[3]), Value(S3, 'reliability q 0.40-0.60: observed 95% high', b46[4]),
             Value(S3, 'reliability q 0.40-0.60: mean predicted, three places', b46[2])]
@@ -615,12 +626,15 @@ def claims(wide=None):
         finding(S3, 'per roll, spark-years and ancestor hits each sit within the model\'s 95% band (|z| < 1.96, z on the model\'s own binomial variance)',
                 lambda: abs(z_y) < 1.96 and abs(z_h) < 1.96,
                 lambda: f'spark-years {o_y:,} vs {e_y:,.1f} expected (z {z_y:+.2f}); hits {o_h:,} vs {e_h:,.1f} (z {z_h:+.2f})'),
-        finding(S3, 'reliability: calibrated in every bucket with a positive prediction (each bucket\'s 95% interval covers its mean '
-                    'prediction)',
-                lambda: not rel_miss,
+        finding(S3, 'reliability: calibrated jointly over the buckets with a positive prediction (chi2 over the buckets, one degree of '
+                    'freedom each, nothing fitted, p above 0.05); the buckets outside their own 95% interval are listed',
+                lambda: rel_p > 0.05,
                 lambda: ('misses: ' + '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f} ({n:,} rows)' for a, b, n, ob, ep, lo, hi in rel_miss)
                          if rel_miss else 'no bucket misses') + f' (of {sum(1 for _, b, n, _, _ in rel if n and b > 1e-12)} buckets tested at 95% each; '
-                f'q = 0 bucket observed {rel[0][3]:.4f} over {rel[0][2]:,} rows)'),
+                f'q = 0 bucket observed {rel[0][3]:.4f} over {rel[0][2]:,} rows); chi2 {rel_chi2:.1f} on {rel_k} buckets, p {rel_p:.3f}'),
+        finding(S3, 'reliability: the only bucket outside its own 95% interval (as the text names it) is 0.40-0.60',
+                lambda: [(a, b) for a, b, *_ in rel_miss] == [(0.4, 0.6)],
+                lambda: '; '.join(f'{lab(a, b)}: {ob:.3f} [{lo:.3f}, {hi:.3f}] vs {ep:.3f}' for a, b, n, ob, ep, lo, hi in rel_miss) or 'none'),
         # section 8
         finding(S8, 'the choice rule shows in its consequences: event-only hints of prioritised targets land at the model\'s rate (interval covers 1), '
                     'of non-prioritised targets below it (interval entirely below 1)',

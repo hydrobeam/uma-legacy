@@ -417,9 +417,10 @@ def findings(R, S, a, X, got):
     for t, (k, n, c) in rows.items():
         if t.startswith('Riko'): continue
         ex = f'; choice 2 alone {iv(c2k, c2n)}' if t.startswith('Anshinzawa') else ''
-        v = adopted(c[0], c[3])
+        v = adopted(c[0], c[3]); out.append(common.Value(SEC, f'adopted: {t}', v))
         out.append(F(f'Adopted {v:g} for {t} lies inside its measured 90% interval', wil(k, n)[0] <= v <= wil(k, n)[1], iv(k, n) + ex))
     ru, mv, lw, nr, rr = riko_firings(S); fire = ru + mv + lw; v = adopted(RIKO, 'Ramp Up')
+    out.append(common.Value(SEC, 'adopted: Riko "Unexpected Side", Ramp Up', v))
     out.append(F(f'Riko\'s adopted {v:g} is the chance a run gets her Ramp Up hint (the model\'s per-run chance), whichever choice '
                  f'IT took: {v:g} inside the per-run 90% interval',
                  wil(rr, nr)[0] <= v <= wil(rr, nr)[1],

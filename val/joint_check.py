@@ -49,7 +49,9 @@ def hint_miss(k, n, h, hinc):
     return (1 - f) * draws_miss(k, n, t0, cap) + (f * draws_miss(k, n, t0 + 1, cap) if f else 0.0)
 
 
-def check(out, job, d):
+def check(out, job, d, alt_q=None):
+    """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
+    vectors) also, per loop, the mean P(all) at each of those q vectors: returns (worst, [[P per vector] per loop])"""
     rd = lambda f: json.load(open(os.path.join(d, f)))
     look = {}
     for g, w, gd in rd(job['skills_file'])['skills']:
@@ -196,7 +198,7 @@ def check(out, job, d):
             if c: tot += c * pmiss(req)
         return tot * GG ** nfix
 
-    worst = 0.0
+    worst = 0.0; alt = []
     for top in out.get('top', []):
         lp = top['loop']; decks = top.get('decks') or [top['deck']] * 4
         pm = [deck_eval(dk) for dk in decks]
@@ -220,18 +222,22 @@ def check(out, job, d):
         lins = lp['detail']['lineages']
         mine = sum(max(lineage(pm[L['t']], lv, L['q'], ew) for lv, ew in options(L['t'])) for L in lins) / len(lins)
         worst = max(worst, abs(mine / lp['p_all'] - 1))
-    return worst
+        if alt_q is not None:
+            alt.append([sum(max(lineage(pm[L['t']], lv, q, ew) for lv, ew in options(L['t'])) for L, q in zip(lins, qs)) / len(lins)
+                        for qs in alt_q(top)])
+    return worst if alt_q is None else (worst, alt)
 
 
-tag = sys.argv[1]; bad = 0
-for era, j in json.load(open(os.path.join(V, 'jobs.json'))):
-    job = json.load(open(os.path.join(V, 'jobs', j + '.json')))
-    if job.get('mode') != 'deck': continue
-    name = era + '__' + j
-    for m in ('', 'pu'):
-        f = os.path.join(V, f'{tag}{m}__{name}.out')
-        if not os.path.exists(f): continue
-        w = check(json.load(open(f)), job, os.path.join(S, 'pkg', 'loopopt', 'data', era))
-        flag = w > 1e-3; bad += flag
-        print(f"{m or 'sh'} {name}: max |python / solver - 1| = {w:.1e}{'  <<' if flag else ''}", flush=True)
-print('all within 1e-3' if not bad else f'{bad} outside 1e-3')
+if __name__ == '__main__':
+    tag = sys.argv[1]; bad = 0
+    for era, j in json.load(open(os.path.join(V, 'jobs.json'))):
+        job = json.load(open(os.path.join(V, 'jobs', j + '.json')))
+        if job.get('mode') != 'deck': continue
+        name = era + '__' + j
+        for m in ('', 'pu'):
+            f = os.path.join(V, f'{tag}{m}__{name}.out')
+            if not os.path.exists(f): continue
+            w = check(json.load(open(f)), job, os.path.join(S, 'pkg', 'loopopt', 'data', era))
+            flag = w > 1e-3; bad += flag
+            print(f"{m or 'sh'} {name}: max |python / solver - 1| = {w:.1e}{'  <<' if flag else ''}", flush=True)
+    print('all within 1e-3' if not bad else f'{bad} outside 1e-3')

@@ -36,6 +36,15 @@ def runs():
     return _cache['runs']
 
 
+def run_list():
+    """the run list's rows (every completed run, with uma-it's rank-score estimates; more runs than the records),
+    one dict per run; None without it"""
+    f = os.path.join(DATA, 'summary.jsonl')
+    if not os.path.exists(f): return None
+    if 'list' not in _cache: _cache['list'] = [json.loads(l) for l in open(f, encoding='utf-8')]
+    return _cache['list']
+
+
 def gjson(name):
     """a tracked Global data file (pkg/loopopt/data/global/NAME)"""
     if name not in _cache: _cache[name] = json.load(open(os.path.join(GD, name), encoding='utf-8'))

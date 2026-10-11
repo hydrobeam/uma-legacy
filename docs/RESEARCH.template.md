@@ -12,52 +12,56 @@ acquired every target.
 
 | Part | How it is set | Main evidence | Section |
 |---|---|---|---|
-| Spark generation, $0.2$ / $0.4 \times 1.1^n$ | external fit | about 1.2M observations of Champions Meeting rooms (not ours) | 1 |
-| Star mix of sparks | external fit | Champions Meeting room data (not ours) | 2 |
-| Inheritance rolls | community bases, grandparents fitted | observed / predicted {{3.inheritance_obs_per_pred_23_488_rows|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}] on {{3.run_target_rows|,.0f}} rows | 3 |
-| Affinity of a trainee's own grandparent: no trio points | fitted | {{4.ll_0_ll_pair_nats|.0f}} nats over the alternative, {{4.trials_attributable_to_one_ancestor|,.0f}} trials | 4 |
-| Loop ranking by the average over lineages | assumed; race weights derived | | 5 |
-| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form derived, $\beta$ and $d$ fitted | {{6.specialty_rows|,.0f}} rows; real careers {{12.1_training_pool_only_obs_per_pred|.3f}} [{{12.1_training_pool_only_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model | 6 |
-| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats from a free distribution with 14 fewer parameters, Poisson {{7.poisson_7_1_nats_behind_distribution_free|.1f}} | 7 |
-| Chain events spread over remaining links | assumed, preferred by the data | final links with 0 pals {{7.allocation_final_links_0_pals_slot_rule|.2f}} against {{7.allocation_final_links_0_pals_observed|.2f}} observed (spread over cards: {{7.allocation_final_links_0_pals_card_rule|.2f}}) | 7 |
+| Spark generation, $0.2$ / $0.4 \times 1.1^n$ | assumed | none here: the runs show inherited sparks, not produced ones | 1 |
+| Star mix of sparks | mixes assumed; band per scenario derived | each scenario's band is the one most of its careers reach ({{2.grand_concert_runs|,.0f}} Grand Concert runs, {{2.grand_concert_share_at_17_500_or_more|.0%}} at 17,500+) | 2 |
+| Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}], affinity slope {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}] on {{3.trials_grandparents|,.0f}} + {{3.trials_parents|,.0f}} trials; careers {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}] | 3 |
+| Affinity: +3 per shared G1 win; own grandparent adds no trio points | fitted | shared-win slope {{3.race_part_slope_fitted|.2f}} [{{3.race_part_slope_95_pct_low|.2f}}, {{3.race_part_slope_95_pct_high|.2f}}]; trio rule {{4.ll_0_ll_pair_nats|.0f}} nats over the alternative | 3, 4 |
+| Race win table | community table, tested | calibrated on spark-raised aptitudes (as the career planner uses them), {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] over {{4.race_attempts_at_the_34|,.0f}} G1 attempts | 4 |
+| Loop schedules for shared wins | derived | no schedule could raise a validated winner by more than {{5.schedules_pb_ceiling_gain_max_pct|.1f}}% (solver's pair ceilings) | 5 |
+| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form derived, $\beta$ and $d$ fitted | {{6.specialty_rows|,.0f}} rows; held out +{{6.specialty_held_out_gain_nats|.1f}} nats; real careers {{12.1_training_pool_only_obs_per_pred|.3f}} [{{12.1_training_pool_only_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model | 6 |
+| Chain events, Binomial(21, 0.35) per career | fitted | {{7.fit_of_n_runs|,.0f}} runs; not rejected against a free distribution ($p$ = {{7.binomial_21_0_35_lr_p|.2f}}) | 7 |
+| Chain events spread over remaining links | fitted | {{7.allocation_slot_over_card_nats|.0f}} nats over uniform-by-card | 7 |
 | Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets {{12.1_events_only_prioritised_obs_per_pred|.2f}} of the model | 8, 12 |
 | Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured {{8.festa_share|.2f}} [{{8.festa_share_90_pct_low|.2f}}, {{8.festa_share_90_pct_high|.2f}}] (90%) | 8 |
-| Random card events | fitted, not modelled | {{9.readings|,.0f}} readings; crediting them moves the odds by at most 1.7% | 9 |
-| Conditional character events | not modelled | | 10 |
+| Random card events | not modelled | left out, acquisition on the rows they could hint reads {{9.calibration_obs_per_pred_left_out|.2f}} [{{9.calibration_ratio_95_pct_low_left_out|.2f}}, {{9.calibration_ratio_95_pct_high_left_out|.2f}}] of the model; credited, {{9.calibration_obs_per_pred_credited|.2f}} | 9 |
+| Conditional character events | not modelled | where only they can hint a target, left out reads {{10.calibration_conditional_only_obs_per_pred_left_out|.2f}} [{{10.calibration_conditional_only_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_conditional_only_ratio_95_pct_high_left_out|.2f}}]; Vodka's own Nimble Navigator {{10.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{10.vodka_any_outfit_nimble_navigator_rows|.0f}} | 10 |
 
-**Known misses**, each measured in its section:
+**Known misses**, each measured and tested in its section:
 
+- Chain events: a binomial with another $n$, Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}), fits {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better; in crowded decks early links run
+  short and more chains never start than predicted ({{7.never_started_6_chain_cards_observed|.2f}} against {{7.never_started_6_chain_cards_model|.2f}} with six chain cards); final links fit pooled
+  ({{7.final_links_by_card_pooled_observed|.3f}} against {{7.final_links_by_card_pooled_model|.3f}}) but individual cards differ far beyond chance ($\chi^2$ = {{7.final_links_by_card_chi2|.0f}} on {{7.final_links_by_card_cards|.0f}} cards) (7).
 - Deck hints read {{12.1_deck_hint_no_inspiration_obs_per_pred|.3f}} [{{12.1_deck_hint_no_inspiration_ratio_95_pct_low|.2f}}, {{12.1_deck_hint_no_inspiration_ratio_95_pct_high|.2f}}] of the model, almost all from event hints of targets the
-  player did not prioritise ({{12.1_events_only_not_prioritised_obs_per_pred|.2f}} of the model; the model assumes every target is prioritised).
-- Trackblazer's hint base over-predicts real careers: its training-pool hints read {{12.1_training_pool_only_trackblazer_obs_per_pred|.3f}} [{{12.1_training_pool_only_trackblazer_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_trackblazer_ratio_95_pct_high|.2f}}] of the model.
-- In crowded decks early chain links run short and more chains never start than predicted ({{7.never_started_6_chain_cards_observed|.2f}} against
-  {{7.never_started_6_chain_cards_model|.2f}} with six chain cards). Final links fit when pooled ({{7.final_links_by_card_pooled_observed|.3f}} against {{7.final_links_by_card_pooled_model|.3f}}) but individual cards
-  differ from the model far beyond chance ($\chi^2$ = {{7.final_links_by_card_chi2|.0f}} on {{7.final_links_by_card_cards|.0f}} cards).
-- A skill also hinted by inspiration is hinted by training less than predicted ({{6.spark_inspiration_ratio|.2f}} of the model).
-- Training-pool hints of non-target skills read {{12.other_skills_training_pool_hints|.3f}} [{{12.other_skills_training_pool_95_pct_low|.2f}}, {{12.other_skills_training_pool_95_pct_high|.2f}}] of the model.
+  player did not prioritise ({{12.1_events_only_not_prioritised_obs_per_pred|.2f}} of the model; the model assumes every target is prioritised) (12).
+- Trackblazer's hint base over-predicts real careers: training-pool hints read {{12.1_training_pool_only_trackblazer_obs_per_pred|.3f}} [{{12.1_training_pool_only_trackblazer_ratio_95_pct_low|.2f}}, {{12.1_training_pool_only_trackblazer_ratio_95_pct_high|.2f}}] of the model (12).
+- Training hints: SR cards and decks with more pals depart from the adopted rate (+{{6.covariate_gain_sr_nats|.1f}} and +{{6.covariate_gain_pals_per_deck_nats|.1f}} nats); a skill
+  also hinted by inspiration is hinted by training less than predicted ({{6.spark_inspiration_ratio|.2f}} of the model) (6).
+- Left out of the model: deck cards' random events, which under-predicts the targets they can hint
+  ({{9.calibration_obs_per_pred_left_out|.2f}} [{{9.calibration_ratio_95_pct_low_left_out|.2f}}, {{9.calibration_ratio_95_pct_high_left_out|.2f}}] of the model on those rows) (9), and Vodka's own Nimble Navigator ({{10.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{10.vodka_any_outfit_nimble_navigator_rows|.0f}} runs) (10).
+- Training-pool hints of non-target skills read {{12.other_skills_training_pool_hints|.3f}} [{{12.other_skills_training_pool_95_pct_low|.2f}}, {{12.other_skills_training_pool_95_pct_high|.2f}}] of the model (12).
 
 **Not settled.** Specialty priority predicts runs it was not fitted to (+{{6.specialty_held_out_gain_nats|.1f}} nats held out), but whether it
 causes more hints is not shown: across limit breaks of the same card the estimate has the same size ($d$ =
 {{6.specialty_same_card_d|.2f}}) without being significant (+{{6.specialty_same_card_gain_nats|.1f}} nats). The hint-frequency slope $1/100$ is assumed; a free
 divisor fits better.
 
-**Untested:** the step from acquired to landed (spark generation, and that everything hinted is bought), Grand
-Masters (no runs), hint levels, and the priority policy run by run.
+**Assumed and untested:** the step from acquired to landed (spark generation, and that everything hinted is bought),
+the star mixes, Grand Masters (no runs), hint levels, and the priority policy run by run.
 
 ## How to read this document
 
-Every quantity carries a label: **assumed** (a chosen rule, or a community figure without published data), **fitted**
-(estimated from data; sample and method given) or **derived** (follows from the other parts). Intervals are 95% unless
-marked. "Runs" are Independent Training runs from uma-it, pooled.
+Every quantity carries a label: **fitted** (estimated from the runs; sample and method given), **derived** (follows
+from the other parts, computed) or **assumed** (a chosen rule or an outside figure the runs cannot test; its source is
+named and no evidence is claimed for it). Intervals are 95% unless marked. "Runs" are Independent Training runs from
+uma-it, pooled; every run record is in the pool.
 
-**Where the numbers come from.** Every number this document states about the runs, the game data or a derived
-quantity is computed by the scripts in `research/`, one per section, and written in when the document is rendered:
-`./build.sh research` runs them, they write `research/results.json`, and `research/render.py` fills
-`docs/RESEARCH.template.md` to produce this file. A number that is not computed is cited and says so: external fits
-and community figures (sections 1-4) and solver experiments (sections 5, 9, 10, 11). Each script also tests the
-conclusions its section draws (a likelihood-ratio test, an interval covering or excluding a prediction) and reports
-each as holding or failing. The run records are not in this repository; a clone renders from the committed results
-and recomputes what needs only game data.
+**Where the numbers come from.** Every number this document states is computed from the runs, the game data or the
+other parts by the scripts in `research/`, and written in when the document is rendered: `./build.sh research` runs
+them, they write `research/results.json`, and `research/render.py` fills `docs/RESEARCH.template.md` to produce this
+file. Each conclusion the text draws is also a test in those scripts (a likelihood-ratio test, an interval covering or
+excluding a prediction), reported as holding or failing; a miss the text states is tested as a miss. The only numbers
+not computed are the assumed inputs themselves. The run records are not in this repository; a clone renders from the
+committed results and recomputes what needs only game data.
 
 **Reading the fit comparisons.** A model's log-likelihood (LL) is the sum, over every observation, of the natural log
 of the probability the model gave to what was actually seen; the higher (closer to 0), the better the model explains
@@ -86,7 +90,7 @@ A target lands if the trainee acquires the skill (hinted, so it can be bought), 
 Sections 1-4 give the inheritance side, 5 the loop structure, 6-10 the deck and event side, 11 the composition, 12 its
 test against real careers.
 
-## 1. Spark generation
+## 1. Spark generation (assumed)
 
 $$g_k = g_0 \cdot 1.1^{\,n_k}, \qquad g_0 = 0.2 \text{ (white learned)}, \quad g_0 = 0.4 \text{ (gold learned)}$$
 
@@ -94,33 +98,45 @@ $n_k$ = ancestors (of six) carrying the spark of $k$. A bought gold sparks its w
 spark sits on all six legacies (**assumed**: a loop keeps veterans that landed everything), so $n_k = 6$,
 $1.1^6 = 1.771561$ and $g = 0.3543$ (white) / $0.7086$ (gold).
 
-- $g_0$ and the $\times 1.1$ curve: a community curve, **fitted** externally on about 1.2M white/gold observations
-  from Champions Meeting room data, $p \ge 0.84$ per tier. An additive alternative (+2.5 points per carrier) is
-  rejected, $p \approx 10^{-14}$. The data cannot separate 0.35 from 0.354 at six carriers.
-- That everything acquired is bought: **assumed**, untested (section 12).
+The curve is **assumed**, a community figure (README, sources), and not tested here: the run records show which
+sparks a career inherited, not which sparks it produced, and the veterans they do show were chosen for their sparks.
+That everything acquired is bought is also **assumed** and untested.
 
 ## 2. Star mix of legacy sparks
 
-A legacy's white (and unique) spark has $s \in \{1, 2, 3\}$ stars with shares $\pi = (\pi_1, \pi_2, \pi_3)$ set by the
-veteran's rank score $R$:
+Computed by `research/s02_stars.py`.
 
-| Rank score | $\pi_1 / \pi_2 / \pi_3$ | Fit |
-|---|---|---|
-| below 6,500 | 0.90 / 0.10 / 0 | |
-| 6,500-17,499 | 0.50 / 0.45 / 0.05 | 528,637 white sparks, $p = 0.13$ |
-| 17,500+ | 0.20 / 0.70 / 0.10 | 196,646 white sparks, $p = 0.77$ |
+A legacy's white spark has $s \in \{1, 2, 3\}$ stars with shares $\pi = (\pi_1, \pi_2, \pi_3)$ set by the veteran's
+rank score: $0.50 / 0.45 / 0.05$ below 17,500 and $0.20 / 0.70 / 0.10$ from 17,500 up. The mixes are **assumed**
+(community figures): the run records show only legacies their players chose, which are picked for their sparks, so the
+mix of an unselected veteran cannot be read from them.
 
-**Fitted** on Champions Meeting room data (goodness-of-fit $p$ shown). The band per scenario is **assumed**: 17,500+
-for Grand Concert and Grand Masters, below it for URA Finale, Unity Cup and Trackblazer (by the rank score a typical
-career of each scenario reaches if every skill point is spent; not recomputed here).
+**Band per scenario** (**derived** from the runs). Each scenario takes the band most of its careers reach, by the
+rank-score estimate with every skill point spent over every completed run in the run list:
 
-The loop model does not know a legacy's stars and uses the expected base per roll (**derived** from section 3):
+| Scenario | Runs | Median rank score | Share at 17,500+ | Band |
+|---|---|---|---|---|
+| URA Finale | {{2.ura_finale_runs|,.0f}} | {{2.ura_finale_median_rank_score|,.0f}} | {{2.ura_finale_share_at_17_500_or_more|.3f}} [{{2.ura_finale_share_95_pct_low|.3f}}, {{2.ura_finale_share_95_pct_high|.3f}}] | below |
+| Unity Cup | {{2.unity_cup_runs|,.0f}} | {{2.unity_cup_median_rank_score|,.0f}} | {{2.unity_cup_share_at_17_500_or_more|.3f}} [{{2.unity_cup_share_95_pct_low|.3f}}, {{2.unity_cup_share_95_pct_high|.3f}}] | below |
+| Grand Concert | {{2.grand_concert_runs|,.0f}} | {{2.grand_concert_median_rank_score|,.0f}} | {{2.grand_concert_share_at_17_500_or_more|.3f}} [{{2.grand_concert_share_95_pct_low|.3f}}, {{2.grand_concert_share_95_pct_high|.3f}}] | 17,500+ |
+| Trackblazer | {{2.trackblazer_runs|,.0f}} | {{2.trackblazer_median_rank_score|,.0f}} | {{2.trackblazer_share_at_17_500_or_more|.3f}} [{{2.trackblazer_share_95_pct_low|.3f}}, {{2.trackblazer_share_95_pct_high|.3f}}] | below |
 
-$$\bar b = 0.03\,(\pi_1 + 2\pi_2 + 3\pi_3) = 0.0465 \;(\text{below } 17{,}500), \quad 0.057 \;(17{,}500+).$$
+Unity Cup is close to even. Grand Masters has no runs and is **assumed** 17,500+.
+
+The loop model does not know a legacy's stars and uses the expected base per roll (**derived**, section 3's bases):
+
+$$\bar b = 0.03\,(\pi_1 + 2\pi_2 + 3\pi_3) = {{2.base_per_roll_below_17_500|.4f}} \;(\text{below } 17{,}500), \quad {{2.base_per_roll_17_500_and_up|.3f}} \;(17{,}500+).$$
+
+That is exact for one roll but not for two: a legacy's stars are the same in both rolls, and by convexity
+$E[(1 - r)^2] \ge (1 - E[r])^2$, so the loop model overstates $q_k$ (**derived**). On the six real affinities of each of
+the {{2.lineages|,.0f}} lineages in the runs, for a target carried by all six, it overstates $q$ by at most
+{{2.q_overstatement_below_17_500_max|.2%}} (below 17,500; mean {{2.q_overstatement_below_17_500_mean|.2%}}) and {{2.q_overstatement_17_500_and_up_max|.2%}} (17,500+). The career planner uses each
+veteran's real stars and is not affected.
 
 ## 3. Inheritance rolls
 
-Computed by `research/s12_calibration.py` (the test).
+Computed by `research/s03_inheritance.py` (the roll's parts) and `research/s12_calibration.py` (the test on whole
+careers).
 
 Per legacy $l$, target $k$ and roll:
 
@@ -128,29 +144,50 @@ $$r_{lk} = \min\!\left\{1,\; b(s_{lk})\left(1 + \frac{A_l}{100}\right)\right\}, 
 q_k = 1 - \left[\prod_{l=1}^{6} (1 - r_{lk})\right]^{2}$$
 
 $q_k$ = P(at least one inspiration of $k$ in the career); two rolls (Classic and Senior April); $A_l$ is the legacy's
-affinity (section 4); $b(s) = 0$ without a spark. Base by spark type and stars ($1/2/3\star$), **assumed** from
-community measurements (one of 1,000+ trials) and consistent across every source checked:
+affinity (section 4); $b(s) = 0$ without a spark. Base by spark type and stars ($1/2/3\star$), **assumed** (community
+figures); the skill-white bases are tested below:
 
 | Spark | Skill / scenario white | Race white | Green (unique) | Pink | Blue |
 |---|---|---|---|---|---|
 | $b$ | 3 / 6 / 9% | 1 / 2 / 3% | 5 / 10 / 15% | 1 / 3 / 5% | 70 / 80 / 90% |
 
-The odds use skill whites only. Grandparents take the full base (**fitted**: with grandparents halved, every predicted
-spark chance was about half the measured level). Great-grandparents count for nothing (**assumed**, matching the
-game's two-generation lineage). In the loop model $b(s_{lk})$ is replaced by $\bar b$ in each roll. That is exact for
-one roll but not for two: a legacy's stars are the same in both rolls, and by convexity
-$E[(1 - r)^2] \ge (1 - E[r])^2$, so the loop model slightly overstates $q_k$ (**derived**). The career planner uses
-each veteran's real stars and is not affected.
+The odds use skill whites only. Great-grandparents count for nothing (**assumed**, matching the game's two-generation
+lineage; the runs show no great-grandparents). In the loop model $b(s_{lk})$ is replaced by $\bar b$ (section 2).
 
-**Test** on {{3.runs_tested|,.0f}} real careers (section 12), observed / predicted inspiration:
+**The roll's parts** (**fitted**). A trial is one (ancestor, white skill spark, year 2 or 3) where exactly one of the six
+ancestors carries the skill, so that year's inspiration of it can only come from her; it passes when the factor shows
+among the year's inspirations. Over {{3.trials_parents|,.0f}} parent and {{3.trials_grandparents|,.0f}} grandparent trials (ordinary ancestors; the
+self-grandparent is section 4's):
 
-- all {{3.run_target_rows|,.0f}} run-target rows: {{3.inheritance_obs_per_pred_23_488_rows|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}];
+- Grandparents take the full base: scaling their roll by a free weight fits {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}], and the full
+  base beats a halved one by {{3.grandparents_full_over_halved_nats|,.0f}} nats ({{3.grandparents_passes_observed|,.0f}} passes observed, {{3.grandparents_predicted_full_base|,.0f}} predicted with the full base,
+  {{3.grandparents_predicted_halved_base|,.0f}} halved). Parents read {{3.parents_obs_per_pred|.3f}} [{{3.parents_obs_per_pred_95_pct_low|.2f}}, {{3.parents_obs_per_pred_95_pct_high|.2f}}] of the model.
+- Affinity scales the roll as $(1 + A/100)$: a free slope on $A$ fits {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}], and the term beats no
+  affinity by {{3.affinity_over_none_nats|,.0f}} nats. Its two parts apart, each with the other fixed: relation points {{3.relation_part_slope_fitted|.2f}}
+  [{{3.relation_part_slope_95_pct_low|.2f}}, {{3.relation_part_slope_95_pct_high|.2f}}], $3 \times$ shared G1 wins {{3.race_part_slope_fitted|.2f}} [{{3.race_part_slope_95_pct_low|.2f}}, {{3.race_part_slope_95_pct_high|.2f}}] ({{3.trials_with_shared_wins|,.0f}} trials with shared wins).
+- The base by stars holds: observed / predicted {{3.1_star_obs_per_pred|.3f}} [{{3.1_star_95_pct_low|.2f}}, {{3.1_star_95_pct_high|.2f}}] at 1★ ({{3.1_star_trials|,.0f}} trials),
+  {{3.2_star_obs_per_pred|.3f}} [{{3.2_star_95_pct_low|.2f}}, {{3.2_star_95_pct_high|.2f}}] at 2★ ({{3.2_star_trials|,.0f}}), {{3.3_star_obs_per_pred|.3f}} [{{3.3_star_95_pct_low|.2f}}, {{3.3_star_95_pct_high|.2f}}] at 3★ ({{3.3_star_trials|,.0f}}).
+- By affinity band the model holds jointly ($\chi^2$ = {{3.affinity_bands_chi2|.1f}} on five bands, $p$ = {{3.affinity_bands_chi2_p|.3f}}), but two bands lie outside their
+  own 95% interval:
+
+| Affinity | Trials | Observed / predicted |
+|---|---|---|
+| 0-49 | {{3.affinity_0_49_trials|,.0f}} | {{3.affinity_0_49_obs_per_pred|.3f}} [{{3.affinity_0_49_95_pct_low|.2f}}, {{3.affinity_0_49_95_pct_high|.2f}}] |
+| 50-99 | {{3.affinity_50_99_trials|,.0f}} | {{3.affinity_50_99_obs_per_pred|.3f}} [{{3.affinity_50_99_95_pct_low|.2f}}, {{3.affinity_50_99_95_pct_high|.2f}}] |
+| 100-149 | {{3.affinity_100_149_trials|,.0f}} | {{3.affinity_100_149_obs_per_pred|.3f}} [{{3.affinity_100_149_95_pct_low|.2f}}, {{3.affinity_100_149_95_pct_high|.2f}}] |
+| 150-199 | {{3.affinity_150_199_trials|,.0f}} | {{3.affinity_150_199_obs_per_pred|.3f}} [{{3.affinity_150_199_95_pct_low|.2f}}, {{3.affinity_150_199_95_pct_high|.2f}}] |
+| 200+ | {{3.affinity_200_trials|,.0f}} | {{3.affinity_200_obs_per_pred|.3f}} [{{3.affinity_200_95_pct_low|.2f}}, {{3.affinity_200_95_pct_high|.2f}}] |
+
+**Test on whole careers** (section 12): observed / predicted inspiration on {{3.runs_tested|,.0f}} real careers,
+
+- all {{3.run_target_rows|,.0f}} run-target rows: {{3.inheritance_obs_per_pred|.3f}} [{{3.inheritance_ratio_95_pct_low|.2f}}, {{3.inheritance_ratio_95_pct_high|.2f}}];
 - by the number of carriers, 1 to 6: {{3.by_carriers_1_6_lowest_ratio|.3f}}-{{3.by_carriers_1_6_highest_ratio|.3f}}, every interval covering 1;
 - per roll: spark-years {{3.per_roll_spark_years_obs_per_exp|.3f}} ({{3.per_roll_spark_years_sds_below_expectation|.2f}} standard deviations below the model's expectation, at the edge of its
   95% band), ancestor hits ($2\sum_l r_l$) {{3.per_roll_ancestor_hits_obs_per_exp|.3f}};
 - {{3.non_target_skills_inheritance_rows|,.0f}} rows of non-target skills: {{3.non_target_skills_inheritance|.3f}} [{{3.non_target_skills_inheritance_95_pct_low|.2f}}, {{3.non_target_skills_inheritance_95_pct_high|.2f}}].
 
-By predicted chance, every bucket's interval covers its prediction; the closest is 0.40-0.60
+By predicted chance the buckets are calibrated jointly ($\chi^2$ = {{3.reliability_chi2|.1f}} on {{3.reliability_chi2_buckets|.0f}} buckets, $p$ = {{3.reliability_chi2_p|.2f}}); one lies
+outside its own 95% interval, 0.40-0.60
 ({{3.reliability_q_0_40_0_60_observed|.3f}} [{{3.reliability_q_0_40_0_60_observed_95_pct_low|.3f}}, {{3.reliability_q_0_40_0_60_observed_95_pct_high|.3f}}] against {{3.reliability_q_0_40_0_60_mean_predicted_three_places|.3f}}):
 
 | Predicted $q$ | Rows | Observed (mean predicted) |
@@ -164,21 +201,47 @@ By predicted chance, every bucket's interval covers its prediction; the closest 
 
 ## 4. Affinity
 
-Computed by `research/s04_affinity.py` (the self-grandparent fit).
+Computed by `research/s04_affinity.py` (the self-grandparent fit) and `research/s04_races.py` (the win table).
 
 **Relation points** (exact, game data): $\mathrm{pair}(a,b)$ and $\mathrm{tri}(a,b,c)$ sum the relation points of the
 relation groups containing all members. A group counts only distinct characters, so $\mathrm{tri}(T, P, T) = 0$.
 
-**Race affinity** (**assumed**, the game rule as community tools implement it; two independent implementations
-agree exactly): +3 per single-race G1 both won, counted per race (relocated venues are the same race), multi-race
-titles 0. With schedules fixed in advance and two careers independent (**assumed**), expected shared wins are
+**Race affinity**: +3 per single-race G1 both won, counted per race (relocated venues are the same race), multi-race
+titles 0 (**assumed** as the game rule; the weight 3 per shared win is tested in section 3, slope
+{{3.race_part_slope_fitted|.2f}} [{{3.race_part_slope_95_pct_low|.2f}}, {{3.race_part_slope_95_pct_high|.2f}}]). With schedules fixed in advance and two careers independent (**assumed**), expected shared wins are
 
 $$o(a,b) = \sum_r P_a(r)\,P_b(r), \qquad P_a(r) = 1 - \prod_{\text{attempts}} (1 - p),$$
 $$p = \mathrm{clamp}\big(110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_j,\ 0,\ 100\big) / 100,$$
 
 $c$ = 0 for S/A, 10 B, 20 C, 30 D, 40 E, 60 F, 90 G; $\mathrm{PEN}_j$ = 0, 0, 5, 20, 30, 50 for the $j$-th race in a
-row (any race, goals included; a rest resets). The win table is a community table (**assumed**). Stats and training
+row (any race, goals included; a rest resets). The win table is a community table, tested below. Stats and training
 turns are not modelled.
+
+**The win table, tested** (**fitted**; `research/s04_races.py`). The runs record every race a career ran. Over
+{{4.race_attempts_at_the_34|,.0f}} attempts at the 34 single-race G1s ({{4.race_goal_attempts|,.0f}} of them goals), {{4.race_win_rate_observed|.1%}} were won:
+
+- On the trainee's base aptitudes, which is what the loop model uses, the table predicts {{4.race_win_rate_predicted_base|.1%}}: observed / predicted
+  {{4.race_obs_per_pred_base|.3f}} [{{4.race_obs_per_pred_base_95_pct_low|.3f}}, {{4.race_obs_per_pred_base_95_pct_high|.3f}}], and {{4.race_base_bp_lt_70_obs_per_pred|.2f}} where the table gives 70 or less ({{4.race_base_bp_lt_70_attempts|,.0f}} attempts): aptitude
+  sparks raise her grades during the career. The loop model does not know its veterans' pink sparks and keeps base
+  aptitudes (a simplification); the career planner, which plans with real veterans, raises them by the rule below.
+- With her grades raised by the career planner's aptitude-spark rule (`docs/MODEL.md`: the legacies' pink stars at the
+  start, then each April inspiration the run records), it predicts {{4.race_win_rate_predicted_pink|.1%}}: observed / predicted
+  {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}], {{4.race_ll_recalibrated_pink_table_recalibrated_base_table_nats|,.0f}} nats better than base aptitudes, and calibrated in every scenario.
+- The streak penalty is real: without it the fit is {{4.race_ll_recalibrated_pink_table_recalibrated_pink_no_penalty_nats|,.0f}} nats worse.
+
+| Table's chance (raised grades) | Attempts | Observed / predicted |
+|---|---|---|
+| 110 | {{4.race_pink_bp_110_attempts|,.0f}} | {{4.race_pink_bp_110_obs_per_pred|.3f}} [{{4.race_pink_bp_110_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_110_obs_per_pred_95_pct_high|.3f}}] |
+| 100 | {{4.race_pink_bp_100_attempts|,.0f}} | {{4.race_pink_bp_100_obs_per_pred|.3f}} [{{4.race_pink_bp_100_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_100_obs_per_pred_95_pct_high|.3f}}] |
+| 90 | {{4.race_pink_bp_90_attempts|,.0f}} | {{4.race_pink_bp_90_obs_per_pred|.3f}} [{{4.race_pink_bp_90_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_90_obs_per_pred_95_pct_high|.3f}}] |
+| 80 | {{4.race_pink_bp_80_attempts|,.0f}} | {{4.race_pink_bp_80_obs_per_pred|.3f}} [{{4.race_pink_bp_80_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_80_obs_per_pred_95_pct_high|.3f}}] |
+| 70 or less | {{4.race_pink_bp_lt_70_attempts|,.0f}} | {{4.race_pink_bp_lt_70_obs_per_pred|.3f}} [{{4.race_pink_bp_lt_70_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_bp_lt_70_obs_per_pred_95_pct_high|.3f}}] |
+
+The table is not exact: a free win rate per (chance, streak position) cell ({{4.race_pink_cells_bp_x_j|.0f}} cells) beats it by
+{{4.race_ll_pink_cells_bp_x_j_recalibrated_pink_table_nats|.0f}} nats, more than chance allows ({{4.race_ll_threshold_pink_cells_bp_x_j|.0f}}). The excess sits in goal races from the fourth race in a row, which win more
+than the penalty allows ({{4.race_pink_goal_j_ge_4_obs_per_pred|.2f}} [{{4.race_pink_goal_j_ge_4_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_goal_j_ge_4_obs_per_pred_95_pct_high|.2f}}], {{4.race_pink_goal_j_ge_4_attempts|,.0f}} attempts), while chosen races there match
+({{4.race_pink_chosen_j_ge_4_obs_per_pred|.2f}} [{{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_chosen_j_ge_4_obs_per_pred_95_pct_high|.2f}}]); and low chances win a little less than predicted. The test is conditional on IT
+having chosen each non-goal race; stats are not modelled.
 
 **Per-legacy affinity.** For parent $P$ with other parent $P'$ and own parents $\mathrm{par}(P)$, and grandparent
 $G \in \mathrm{par}(P)$:
@@ -186,10 +249,8 @@ $G \in \mathrm{par}(P)$:
 $$A_P = \mathrm{pair}(T,P) + \mathrm{pair}(P_1,P_2) + 3\,o(P,P') + \sum_{G \in \mathrm{par}(P)} \big[\mathrm{tri}(T,P,G) + 3\,o(P,G)\big]$$
 $$A_G = \mathrm{tri}(T,P,G) + 3\,o(P,G)$$
 
-In a loop $P'$ is also one of $P$'s own parents, so $o(P, P')$ counts twice in $A_P$. **Fitted** externally (not
-recomputed here) to 8,155 Independent Training receipts (fired against predicted within 0.1% for parents, 2% for grandparents). A second
-implementation gives identical numbers on one test loop's 12 veterans (lineage total 452 = 184 + 97 + 171), which
-shows the implementations agree, not that the formula is the game's.
+In a loop $P'$ is also one of $P$'s own parents, so $o(P, P')$ counts twice in $A_P$. Tested in section 3 on the runs'
+real lineages and shared wins: the roll scales with this $A$ at slope {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}].
 
 **Self-grandparent** ($G = T$, section 5). $\mathrm{tri}(T,P,T) = 0$ is **fitted** on {{4.trials_attributable_to_one_ancestor|,.0f}} inspiration trials
 attributable to a single ancestor in runs: self-grandparent passes {{4.self_grandparent_passes_observed|.0f}} observed,
@@ -207,17 +268,29 @@ the trainee's own character ({{5.a_parent_of_her_own_character|.0f}} have a pare
 
 $$\bar P_S = \frac{1}{|\Lambda_S|} \sum_{\lambda \in \Lambda_S} P_\lambda(\text{all}),$$
 
-the long-run rate of a player who trains every member in turn (**assumed**: a player who re-trains only the best
-trainee would score a structure by its best lineage).
+the long-run rate of a player who trains every member in turn (a definition of what the planner ranks, not a claim: a
+player who re-trains only the best trainee would score a structure by its best lineage).
 
 **Race weights** (**derived**). In one lineage $o(P_1,P_2)$ enters the six affinities {{5.one_lineage_o_p1_p2_weight|.0f}} times and $o(P_1,X)$,
 $o(P_2,X)$ twice each. Summed over the 12 loop lineages every pair gets ${{5.one_lineage_o_p1_p2_weight|.0f}}\cdot 2 + {{5.one_lineage_o_p1_x_weight|.0f}}\cdot 4 = {{5.loop_weight_per_pair|.0f}}$; over the 3
 rotation lineages ${{5.one_lineage_o_p1_p2_weight|.0f}} + {{5.one_lineage_o_p1_x_weight|.0f}} + {{5.one_lineage_o_p1_x_weight|.0f}} = {{5.rotation_weight_per_pair|.0f}}$. Both are uniform over pairs, so a structure's schedules maximise
 $\sum_{a<b} o(a,b)$.
 
-**Schedules for shared wins, not odds** (**measured** by a solver experiment, not recomputed here). Re-optimising every solved loop's schedules for $\bar P_S$
-directly gained at most +0.12% on any loop and +0.065% on a winner, and changed no top-1 or top-3 loop over 46
-validation setups; the ceiling with every pair at its best possible overlap is only 0.56-2.83% above the odds found.
+**Schedules for shared wins, not odds** (**derived**, computed on the validation results). The solver schedules each
+structure for $\sum_{a<b} o(a,b)$, not for $\bar P_S$. $\bar P_S$ rises with every $o$: $o$ enters each legacy's
+affinity with weight +3, and $r$, $q$ and every target's odds are nondecreasing in their inputs. So, with a loop's decks
+fixed, any schedule (one chosen for $\bar P_S$ directly included) scores between the odds found and the odds with every
+pair at its highest possible overlap. Over {{5.schedules_result_files|.0f}} validation results, recomputed independently to within
+{{5.schedules_recomputed_odds_max_relative_error|.0e}} of the solver:
+
+- the shared wins found are worth {{5.schedules_shared_win_value_min_pct|.0f}}-{{5.schedules_shared_win_value_max_pct|.0f}}% over no race affinity;
+- the independent ceiling $o_{\max}(a,b) = \sum_r P^{\max}_a(r)\,P^{\max}_b(r)$ (every offering of every G1 attempted, no
+  streak penalty) caps the gain from a different objective at {{5.schedules_ceiling_gain_max_pct|.1f}}%; it is far from reachable (the schedules
+  found reach about {{5.schedules_overlap_found_as_pct_of_o_max_median|.0f}}% of it) and cannot settle the ranking: {{5.schedules_runner_ups_whose_ceiling_reaches_the_winner|.0f}} of {{5.schedules_runner_up_loops_checked|.0f}} listed runner-up loops reach their
+  winner under it;
+- the solver's exact pair ceilings (its best-response search over feasible schedules, so not independent; they sit
+  between $o$ and $o_{\max}$ on every pair) put the ceiling only {{5.schedules_pb_ceiling_gain_min_pct|.2f}}-{{5.schedules_pb_ceiling_gain_max_pct|.2f}}% above the odds found (median
+  {{5.schedules_pb_ceiling_gain_median_pct|.2f}}%), and no listed runner-up's ceiling reaches its winner ({{5.schedules_runner_ups_whose_pb_ceiling_reaches_the_winner|.0f}} of {{5.schedules_runner_up_loops_checked|.0f}}).
 
 ## 6. Training hints
 
@@ -237,8 +310,8 @@ $$M(k, n, h) = (1 - f)\, m(k, n, \lfloor h \rfloor) + f\, m(k, n, \lfloor h \rfl
 
 The shape (uniform draws, $h$ per run, the cap) is **derived** from the data; $\beta$ and $d$ are **fitted**. Fit:
 Bernoulli likelihood through $M$ per (card-run, pool skill) row, maximum-limit-break card-runs only, rows where no spark
-hinted the skill, R cards out. The form was fixed on 879 runs ({{6.879_rows|,.0f}} rows, {{6.879_rows_without_a_spark|,.0f}} without a spark); $\beta$ and $d$
-are fitted on all runs ({{6.specialty_rows|,.0f}} rows, {{6.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row):
+hinted the skill, R cards out. The form study uses every card-run at any limit break, R cards included, scored without the specialty term
+({{6.form_rows|,.0f}} rows from {{6.form_runs|,.0f}} runs, {{6.form_rows_without_a_spark|,.0f}} without a spark); $\beta$ and $d$ are fitted ({{6.specialty_rows|,.0f}} rows, {{6.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row):
 
 | Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
 |---|---|---|---|---|---|
@@ -248,15 +321,15 @@ are fitted on all runs ({{6.specialty_rows|,.0f}} rows, {{6.specialty_card_runs|
 | Trackblazer | {{6.specialty_base_trackblazer|.3f}} | {{6.specialty_d_trackblazer|.3f}} | {{6.adopted_trackblazer|.2f}} / {{6.adopted_d_trackblazer|.2f}} | {{6.specialty_rows_trackblazer|,.0f}} | {{6.specialty_runs_trackblazer|.0f}} |
 | Grand Masters | no runs | | {{6.adopted_grand_masters|.2f}} / {{6.adopted_d_grand_masters|.2f}} (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
 
-What fixed the form (879 runs):
+What fixed the form (the form study):
 
 | Question | Evidence |
 |---|---|
-| Rate form, LL on {{6.879_rows|,.0f}} rows | $1 + hf/25$ over options {{6.ll_1_hf_per_25_over_options|u,.1f}}; $1 + hf/25$ over skills {{6.ll_1_hf_per_25_over_skills|u,.1f}}; constant {{6.ll_constant|u,.1f}}; $\beta(1 + hf/100)$ {{6.ll_base_1_hf_per_100|u,.1f}}; per-scenario $\beta(1 + hf/100)$ {{6.ll_per_scenario_base_1_hf_per_100|u,.1f}}; free divisor ($c = {{6.free_divisor_c|.0f}}$) {{6.ll_free_divisor|u,.1f}} |
+| Rate form, LL on {{6.form_rows|,.0f}} rows | $1 + hf/25$ over options {{6.ll_1_hf_per_25_over_options|u,.1f}}; $1 + hf/25$ over skills {{6.ll_1_hf_per_25_over_skills|u,.1f}}; constant {{6.ll_constant|u,.1f}}; $\beta(1 + hf/100)$ {{6.ll_base_1_hf_per_100|u,.1f}}; per-scenario $\beta(1 + hf/100)$ {{6.ll_per_scenario_base_1_hf_per_100|u,.1f}}; free divisor ($c = {{6.free_divisor_c|.0f}}$) {{6.ll_free_divisor|u,.1f}} |
 | Skills only, not skills + stat option | in {{6.cells_var_below_stat_option_floor|.0f}} of {{6.cells_card_hf|.0f}} (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies |
 | Uniform draws with repeats | repeat rate $P(k \ge 2 \mid k \ge 1)$: {{6.repeat_rate_observed|.3f}} observed, {{6.repeat_rate_two_point_count|.3f}} two-point count, {{6.repeat_rate_poisson_count|.3f}} Poisson count; distinct skills 1/2/3/4 per card-run {{6.distinct_1_observed|.3f}} / {{6.distinct_2_observed|.3f}} / {{6.distinct_3_observed|.3f}} / {{6.distinct_4_observed|.3f}} observed, {{6.distinct_1_model|.3f}} / {{6.distinct_2_model|.3f}} / {{6.distinct_3_model|.3f}} / {{6.distinct_4_model|.3f}} model |
-| Covariates | per-scenario bases +{{6.per_scenario_bases_gain_nats|.0f}} nats; card type, rarity, limit break beyond $hf$, pals per deck, initial bond, pool size each at most {{6.other_covariates_max_gain|.1f}} nats (factors {{6.covariate_factor_min|.2f}}-{{6.covariate_factor_max|.2f}}) |
-| Lv-5 cap | beats drawing with replacement by {{6.cap_gain_879_nats|.1f}} nats with no parameter ({{6.cap_gain_2_402_nats|.1f}} on 2,402 runs); obs / pred by draws to Lv 5, replacement vs cap: 5 draws ({{6.cap_table_5_draws_rows|,.0f}} rows) {{6.cap_table_5_draws_replacement|.3f}} / {{6.cap_table_5_draws_cap|.3f}}, 3 ({{6.cap_table_3_draws_rows|.0f}}) {{6.cap_table_3_draws_replacement|.3f}} / {{6.cap_table_3_draws_cap|.3f}}, 2 ({{6.cap_table_2_draws_rows|,.0f}}) {{6.cap_table_2_draws_replacement|.3f}} / {{6.cap_table_2_draws_cap|.3f}}, 1 ({{6.cap_table_1_draws_rows|.0f}}) {{6.cap_table_1_draws_replacement|.3f}} / {{6.cap_table_1_draws_cap|.3f}} |
+| Covariates | per-scenario bases +{{6.per_scenario_bases_gain_nats|.0f}} nats (form study). On top of the adopted rate ({{6.covariate_rows|,.0f}} rows): card type +{{6.covariate_gain_card_type_nats|.1f}} nats (4 parameters), initial bond +{{6.covariate_gain_initial_bond_nats|.1f}}, pool size +{{6.covariate_gain_pool_size_nats|.1f}}, none significant; rarity (SR against SSR) +{{6.covariate_gain_sr_nats|.1f}} and pals per deck +{{6.covariate_gain_pals_per_deck_nats|.1f}} are (known misses, factors {{6.covariate_factor_sr|.3f}} for SR and {{6.covariate_factor_pals_per_deck|.3f}} per pal) |
+| Lv-5 cap | beats drawing with replacement by {{6.cap_gain_nats|.1f}} nats with no parameter; obs / pred by draws to Lv 5, replacement vs cap: 5 draws ({{6.cap_table_5_draws_rows|,.0f}} rows) {{6.cap_table_5_draws_replacement|.3f}} / {{6.cap_table_5_draws_cap|.3f}}, 3 ({{6.cap_table_3_draws_rows|,.0f}}) {{6.cap_table_3_draws_replacement|.3f}} / {{6.cap_table_3_draws_cap|.3f}}, 2 ({{6.cap_table_2_draws_rows|,.0f}}) {{6.cap_table_2_draws_replacement|.3f}} / {{6.cap_table_2_draws_cap|.3f}}, 1 ({{6.cap_table_1_draws_rows|.0f}}) {{6.cap_table_1_draws_replacement|.3f}} / {{6.cap_table_1_draws_cap|.3f}} |
 | Joint draws over targets | {{6.joint_pairs|,.0f}} pairs of no-spark pool skills on one card-run (Trackblazer left out): $P(\text{both})$ {{6.p_both_observed|.4f}} observed, {{6.p_both_joint|.4f}} joint, {{6.p_both_independent|.4f}} independent; $P(\text{neither})$ {{6.p_neither_observed|.4f}} vs {{6.p_neither_joint|.4f}} |
 | Pool size | obs / pred {{6.pool_size_obs_per_pred_min|.2f}}-{{6.pool_size_obs_per_pred_max|.2f}} for every $n$ with at least 150 rows |
 | Per-draw increment | {{6.increment_multiples_of_iota|,.0f}} of {{6.increment_single_source_levels|,.0f}} single-source levels are multiples of $\iota$, capped at 5 |
@@ -265,17 +338,18 @@ What fixed the form (879 runs):
 The slope $1/100$ is **assumed**: a free divisor fits better ($c = {{6.free_divisor_c|.0f}}$ in the table above) and is not adopted.
 
 Reading $h$ as a floor/ceiling mixture against a two-point count differs by under 1% ($n = 5$, $h = 2.74$: miss
-{{6.miss_1_1_per_n_h_n_5_h_2_74|.4f}} vs {{6.miss_floor_per_ceiling_n_5_h_2_74|.4f}}). A given setup can sit about half a draw off the smooth formula; $hf$ spans 0-{{6.hf_max_in_the_data|.0f}} in the data.
+{{6.miss_1_1_per_n_h_n_5_h_2_74|.4f}} vs {{6.miss_floor_per_ceiling_n_5_h_2_74|.4f}}). $hf$ spans 0-{{6.hf_max_in_the_data|.0f}} in the data.
 
-**Spark deficit** (not modelled; the fit conditions on no spark, the case in which a card's hint matters):
+**Spark deficit** (not modelled; the fit conditions on no spark, the case in which a card's hint matters). Scored
+against the adopted rate on maximum-limit-break card-runs, R cards out:
 
 | Other source of the skill | Rows | Observed | Predicted | Ratio |
 |---|---|---|---|---|
 | none | {{6.spark_none_rows|,.0f}} | {{6.spark_none_observed|.3f}} | {{6.spark_none_predicted|.3f}} | {{6.spark_none_ratio|.2f}} |
 | inspiration | {{6.spark_inspiration_rows|,.0f}} | {{6.spark_inspiration_observed|.3f}} | {{6.spark_inspiration_predicted|.3f}} | {{6.spark_inspiration_ratio|.2f}} |
-| inspiration + card event | {{6.spark_inspiration_card_event_rows|.0f}} | {{6.spark_inspiration_card_event_observed|.3f}} | {{6.spark_inspiration_card_event_predicted|.3f}} | {{6.spark_inspiration_card_event_ratio|.2f}} |
-| card event | {{6.spark_card_event_rows|.0f}} | {{6.spark_card_event_observed|.3f}} | {{6.spark_card_event_predicted|.3f}} | {{6.spark_card_event_ratio|.2f}} |
-| other card's training | {{6.spark_other_card_training_rows|.0f}} | {{6.spark_other_card_training_observed|.3f}} | {{6.spark_other_card_training_predicted|.3f}} | {{6.spark_other_card_training_ratio|.2f}} |
+| inspiration + card event | {{6.spark_inspiration_card_event_rows|,.0f}} | {{6.spark_inspiration_card_event_observed|.3f}} | {{6.spark_inspiration_card_event_predicted|.3f}} | {{6.spark_inspiration_card_event_ratio|.2f}} |
+| card event | {{6.spark_card_event_rows|,.0f}} | {{6.spark_card_event_observed|.3f}} | {{6.spark_card_event_predicted|.3f}} | {{6.spark_card_event_ratio|.2f}} |
+| other card's training | {{6.spark_other_card_training_rows|,.0f}} | {{6.spark_other_card_training_observed|.3f}} | {{6.spark_other_card_training_predicted|.3f}} | {{6.spark_other_card_training_ratio|.2f}} |
 
 Full drop-out of spark-hinted skills from the draws is rejected (with two pool skills spark-hinted, the rest are hinted
 at {{6.drop_out_test_observed|.3f}} against {{6.drop_out_test_no_drop_out|.3f}} without drop-out and {{6.drop_out_test_drop_out|.3f}} with it).
@@ -293,8 +367,7 @@ the later {{6.specialty_held_out_rows|,.0f}} rows, it gains {{6.specialty_held_o
 The term is an association, not shown to be a cause: high-specialty cards might share another trait that raises
 hints. The cleanest test compares the same card at different limit breaks, where specialty changes and the card does
 not ({{6.specialty_same_card_cards|.0f}} cards, a base per card and scenario): $d$ = {{6.specialty_same_card_d|.2f}}, the same size as across cards, but a gain of only
-{{6.specialty_same_card_gain_nats|.1f}} nats, not significant. The game's placement rule (each facility weighs 100, a card's specialty facility
-100 + $\mathit{sp}$, absence 50) suggests a mechanism; it is not tested here.
+{{6.specialty_same_card_gain_nats|.1f}} nats, not significant.
 
 Prioritised skills raising training hints: {{6.priority_runs|.0f}} runs show a priority list, prioritised skills hinted by training at {{6.priority_observed|.3f}}
 against {{6.priority_predicted|.3f}} predicted ({{6.priority_rows|.0f}} rows); no effect assumed.
@@ -303,7 +376,8 @@ against {{6.priority_predicted|.3f}} predicted ({{6.priority_rows|.0f}} rows); n
 
 Computed by `research/s07_chains.py`.
 
-A run gets $N$ chain events, the same for every deck and scenario (**fitted**):
+A run gets $N$ chain events, the same for every deck and scenario (**fitted**; a binomial with another $n$ fits better,
+below):
 
 $$N \sim \mathrm{Binomial}(21, 0.35), \qquad P(N = e) = \binom{21}{e}\, 0.35^{e}\, 0.65^{21-e}, \quad E N = {{7.binomial_21_0_35_mean|.2f}},\ \mathrm{Var}\, N = {{7.binomial_21_0_35_variance|.1f}}.$$
 
@@ -312,14 +386,15 @@ SR 2; a filler slot counts as a 2-link SR) and $d_i$ links fired is picked with
 
 $$P(i) = \frac{w_i}{\sum_j w_j}, \qquad w_i = L_i - d_i \text{ while running, } 0 \text{ once stopped},$$
 
-i.e. uniform over the remaining chain slots (**assumed**, preferred empirically). Pal and group cards take no slot
+i.e. uniform over the remaining chain slots (**fitted** against the alternative, below). Pal and group cards take no slot
 (**assumed**, supported below). Without stop risk $P(\text{all chains complete}) = P(N \ge \sum_i L_i)$; two 3-link
 cards: $P(N \ge 6) = {{7.two_3_link_cards_p_n_ge_6_p_both_chains_complete|.2f}}$.
 
 **Stop risk** (**derived** from the event data and the choice rule, section 8): if IT's default choice at link $l$ ends
 the chain on $k$ of its $n$ outcomes, $q_l = k/n$ and the stopping link $\sigma$ has
 $P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$; a stopped chain's slots return to the pool. The solver enumerates the
-exact distribution of final chain states (no simulation); an independent recomputation agrees to about $10^{-16}$.
+exact distribution of final chain states (no simulation); an independent recomputation of the solver's odds agrees to
+{{5.schedules_recomputed_odds_max_relative_error|.0e}} on every validated loop (section 5).
 
 **Fit of $N$** ({{7.fit_of_n_runs|,.0f}} runs, the pal-count table below). Chain progress per card is read from marker skills: a link is
 observable only if every choice and outcome of its event carries a skill appearing in no other event of that card. A
@@ -335,29 +410,29 @@ none on the {{7.allowance_0_runs_without_a_contradiction|,.0f}} runs that show n
 | Form for $N$ | Result |
 |---|---|
 | distribution-free | mean {{7.distribution_free_mean|.2f}}, variance {{7.distribution_free_variance|.2f}} |
-| Binomial(21, 0.35) | {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind distribution-free with {{7.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters; with $n = 21$, $p = 0.35$ fits best |
+| Binomial(21, 0.35) | {{7.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind distribution-free with {{7.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters (not rejected, $p$ = {{7.binomial_21_0_35_lr_p|.2f}}) |
+| Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}) | the best binomial with $n$ free: {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better than (21, 0.35) |
 | Binomial(15, 0.48) | {{7.binomial_15_0_48_nats_behind_distribution_free|.1f}} nats behind distribution-free |
-| Poisson(7.1) | {{7.poisson_7_1_nats_behind_distribution_free|.1f}} nats behind distribution-free (variance = mean, too wide) |
-| per scenario | means Unity Cup {{7.per_scenario_mean_unity_cup|.2f}}, Grand Concert {{7.per_scenario_mean_grand_concert|.2f}}, URA Finale {{7.per_scenario_mean_ura_finale|.2f}}; +{{7.per_scenario_log_likelihood_gain|.1f}} nats for {{7.per_scenario_extra_parameters|.0f}} extra parameters |
+| Poisson(7.1) | {{7.poisson_7_1_nats_behind_distribution_free|.1f}} nats behind distribution-free (variance = mean, too wide; rejected) |
+| per scenario | means Unity Cup {{7.per_scenario_mean_unity_cup|.2f}}, Grand Concert {{7.per_scenario_mean_grand_concert|.2f}}, URA Finale {{7.per_scenario_mean_ura_finale|.2f}}, Trackblazer {{7.per_scenario_mean_trackblazer|.2f}}; +{{7.per_scenario_log_likelihood_gain|.1f}} nats for {{7.per_scenario_extra_parameters|.0f}} extra parameters (not significant) |
 
-The best binomial with $n$ free fits {{7.best_binomial_n_free_nats_better_than_21_0_35|.1f}} nats better than (21, {{7.p_refit_on_the_1_299_runs_n_21|.2f}}). A first fit on
-{{7.first_fit_runs|.0f}} runs, with markers read from IT's default choice only, chose the same Binomial({{7.first_fit_binomial_n|.0f}}, {{7.first_fit_binomial_p|.2f}}); so did a refit on {{7.refit_runs_1_4_pals|,.0f}}
-runs with those markers (means {{7.refit_mean_1_pals|.2f}} / {{7.refit_mean_2_pals|.2f}} / {{7.refit_mean_3_pals|.2f}} / {{7.refit_mean_4_pals|.2f}} for 1 / 2 / 3 / 4 pals, variances {{7.refit_variance_lowest|.1f}}-{{7.refit_variance_highest|.1f}}). The sub-Poisson
-spread suggests a capped number of chances per run; a reading of the shape, not verified.
+The adopted (21, 0.35) is not rejected, but Binomial({{7.best_binomial_n_free_n|.0f}}, {{7.best_binomial_n_free_p|.2f}}) fits better by more than chance allows for its one
+extra parameter (a known miss; the adopted form was chosen on fewer runs). Fitted per pal count, the means are
+{{7.per_pal_count_mean_1_pals|.2f}} / {{7.per_pal_count_mean_2_pals|.2f}} / {{7.per_pal_count_mean_3_pals|.2f}} / {{7.per_pal_count_mean_4_pals|.2f}} for 1 / 2 / 3 / 4 pals ({{7.per_pal_count_runs_1_4_pals|,.0f}} runs): more pals do not lower $N$, so pal events do not consume chain events.
 
-One $N$ reproduces final-link completion at every pal count, so pal events do not consume chain events:
+Final-link completion by pal count; the binomial lies inside every interval except at 2 pals, where it predicts more
+completions than seen:
 
 | Pals | Chain cards | Runs | Final link reached: observed / Binomial(21, 0.35) / Poisson(7.1) |
 |---|---|---|---|
-| 5 | 1 | {{7.final_link_table_5_pals_runs|.0f}} | {{7.final_link_table_5_pals_observed|.2f}} / {{7.final_link_table_5_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_5_pals_poisson_7_1|.2f}} |
-| 4 | 2 | {{7.final_link_table_4_pals_runs|.0f}} | {{7.final_link_table_4_pals_observed|.2f}} / {{7.final_link_table_4_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_4_pals_poisson_7_1|.2f}} |
-| 3 | 3 | {{7.final_link_table_3_pals_runs|.0f}} | {{7.final_link_table_3_pals_observed|.2f}} / {{7.final_link_table_3_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_3_pals_poisson_7_1|.2f}} |
-| 2 | 4 | {{7.final_link_table_2_pals_runs|.0f}} | {{7.final_link_table_2_pals_observed|.2f}} / {{7.final_link_table_2_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_2_pals_poisson_7_1|.2f}} |
-| 1 | 5 | {{7.final_link_table_1_pals_runs|.0f}} | {{7.final_link_table_1_pals_observed|.2f}} / {{7.final_link_table_1_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_1_pals_poisson_7_1|.2f}} |
-| 0 | 6 | {{7.final_link_table_0_pals_runs|.0f}} | {{7.final_link_table_0_pals_observed|.2f}} / {{7.final_link_table_0_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_0_pals_poisson_7_1|.2f}} |
+| 5 | 1 | {{7.final_link_table_5_pals_runs|,.0f}} | {{7.final_link_table_5_pals_observed|.2f}} / {{7.final_link_table_5_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_5_pals_poisson_7_1|.2f}} |
+| 4 | 2 | {{7.final_link_table_4_pals_runs|,.0f}} | {{7.final_link_table_4_pals_observed|.2f}} / {{7.final_link_table_4_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_4_pals_poisson_7_1|.2f}} |
+| 3 | 3 | {{7.final_link_table_3_pals_runs|,.0f}} | {{7.final_link_table_3_pals_observed|.2f}} / {{7.final_link_table_3_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_3_pals_poisson_7_1|.2f}} |
+| 2 | 4 | {{7.final_link_table_2_pals_runs|,.0f}} | {{7.final_link_table_2_pals_observed|.2f}} / {{7.final_link_table_2_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_2_pals_poisson_7_1|.2f}} |
+| 1 | 5 | {{7.final_link_table_1_pals_runs|,.0f}} | {{7.final_link_table_1_pals_observed|.2f}} / {{7.final_link_table_1_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_1_pals_poisson_7_1|.2f}} |
+| 0 | 6 | {{7.final_link_table_0_pals_runs|,.0f}} | {{7.final_link_table_0_pals_observed|.2f}} / {{7.final_link_table_0_pals_binomial_21_0_35|.2f}} / {{7.final_link_table_0_pals_poisson_7_1|.2f}} |
 
-**Allocation rule.** Against uniform over cards (each running card's next event equally likely), on 1,193 runs with
-markers read from IT's default choice:
+**Allocation rule.** Against uniform over cards (each running card's next event equally likely), on {{7.allocation_runs|,.0f}} runs:
 
 | | Uniform over remaining slots (adopted) | Uniform over cards |
 |---|---|---|
@@ -365,8 +440,8 @@ markers read from IT's default choice:
 | Final links, 2 pals (observed {{7.allocation_final_links_2_pals_observed|.2f}}) | {{7.allocation_final_links_2_pals_slot_rule|.2f}} | {{7.allocation_final_links_2_pals_card_rule|.2f}} |
 | Final links, 0 pals (observed {{7.allocation_final_links_0_pals_observed|.2f}}) | {{7.allocation_final_links_0_pals_slot_rule|.2f}} | {{7.allocation_final_links_0_pals_card_rule|.2f}} |
 
-The total LL is level; the slot rule is preferred because the card rule's extra completions in crowded decks are not
-seen. Exact consequences with Binomial(21, 0.35), P(reach link 1 / 2 / 3):
+The slot rule fits better by {{7.allocation_slot_over_card_nats|.1f}} nats. With no pals it lies inside the observed interval and the card rule
+outside; with two pals both predict more final links than seen, the card rule further. Exact consequences with Binomial(21, 0.35), P(reach link 1 / 2 / 3):
 
 | Deck | Slots (adopted) | Cards |
 |---|---|---|
@@ -391,13 +466,8 @@ from the model far beyond chance: over the {{7.final_links_by_card_cards|.0f}} c
 standardised differences sum to {{7.final_links_by_card_chi2|.0f}} (expected about {{7.final_links_by_card_cards|.0f}}). The cause is not known.
 
 More chains never start in crowded decks than predicted: {{7.never_started_5_chain_cards_observed|.2f}} against {{7.never_started_5_chain_cards_model|.2f}} with five chain cards, {{7.never_started_6_chain_cards_observed|.2f}} against {{7.never_started_6_chain_cards_model|.2f}} with
-six. The shortfall concentrates in a few cards (obs / pred): Special Week [Take Hold of Our Dreams!] {{7.early_links_special_week_take_hold_of_our_dreams_observed|.2f}} / {{7.early_links_special_week_take_hold_of_our_dreams_predicted|.2f}}, Yaeno
-Muteki [Fiery Discipline] {{7.early_links_yaeno_muteki_fiery_discipline_observed|.2f}} / {{7.early_links_yaeno_muteki_fiery_discipline_predicted|.2f}}, Zenno Rob Roy ["Rhodonite and the Dreamstone"] {{7.early_links_zenno_rob_roy_rhodonite_and_the_dreamstone_observed|.2f}} / {{7.early_links_zenno_rob_roy_rhodonite_and_the_dreamstone_predicted|.2f}}, Hishi Akebono [Who
-Wants the First Bite?] {{7.early_links_hishi_akebono_who_wants_the_first_bite_observed|.2f}} / {{7.early_links_hishi_akebono_who_wants_the_first_bite_predicted|.2f}}, Smart Falcon [My Umadol Way! ☆] {{7.early_links_smart_falcon_my_umadol_way_observed|.2f}} / {{7.early_links_smart_falcon_my_umadol_way_predicted|.2f}}, Silence Suzuka [Beyond This Shining
-Moment] {{7.early_links_silence_suzuka_beyond_this_shining_moment_observed|.2f}} / {{7.early_links_silence_suzuka_beyond_this_shining_moment_predicted|.2f}}; their event data look like those of cards that fit (King Halo [Tonight, We Waltz] {{7.early_links_king_halo_tonight_we_waltz_observed|.2f}} / {{7.early_links_king_halo_tonight_we_waltz_predicted|.2f}}, n =
-{{7.early_links_king_halo_tonight_we_waltz_n|.0f}}). A per-card activation parameter (a chain card active with probability $a$) fitted three-card decks ($a = {{7.activation_parameter_a_three_chain_cards|.2f}}$) on
-the first reading, which carried marker errors; on the corrected reading, fitted jointly with $N$, it gains {{7.activation_corrected_reading_joint_with_n_gain_nats|.1f}} nats
-($a = {{7.activation_corrected_reading_joint_with_n_a|.2f}}$): rejected.
+six. A per-card activation parameter (a chain card active with probability $a$), fitted jointly with $N$, gains
+{{7.activation_corrected_reading_joint_with_n_gain_nats|.1f}} nats ($a = {{7.activation_corrected_reading_joint_with_n_a|.2f}}$): rejected.
 
 ## 8. Event choices and outcomes
 
@@ -411,7 +481,7 @@ ends a chain early).
 Evidence on the rule. Sasami Anshinzawa [This Might Sting!]'s finale: with Risky Business prioritised IT took choice 2
 in about {{8.anshinzawa_rb_prioritised_took_choice_2|.0%}} of runs ({{8.anshinzawa_choice_1_exceptions_with_rb_at_lv_5|.0f}} of the {{8.anshinzawa_choice_1_exceptions_rb_prioritised|.0f}} exceptions with Risky Business already at hint Lv 5); with neither skill prioritised, {{8.anshinzawa_neither_prioritised_choice_2_won|.0f}} of
 {{8.anshinzawa_neither_prioritised_runs|.0f}} runs took choice 2. Riko Kashimoto [Planned Perfection]: with Lone Wolf prioritised IT took the bottom choice
-in {{8.riko_lone_wolf_prioritised_bottom_choice|.0f}} of {{8.riko_lone_wolf_prioritised_runs|.0f}} runs. Every run has a priority list, but the run pages show it for only {{8.runs_showing_a_priority_list|.0f}} of {{8.runs|,.0f}} (the rest count as
+in {{8.riko_lone_wolf_prioritised_bottom_choice|.0f}} of {{8.riko_lone_wolf_prioritised_runs|.0f}} runs. Every run has a priority list, but the run records show it for only {{8.runs_showing_a_priority_list|.0f}} of {{8.runs|,.0f}} (the rest count as
 unknown, never as an empty list), so the rule is tested mainly through its consequences (section 12: prioritised targets
 {{8.event_only_hints_prioritised_targets_obs_per_pred|.2f}}, non-prioritised {{8.event_only_hints_non_prioritised_targets_obs_per_pred|.2f}} on event-only hints).
 
@@ -422,11 +492,11 @@ her hint credited, the skill's level from other sources below 5):
 
 | Event, outcome | Observed | Adopted |
 |---|---|---|
-| Sasami Anshinzawa [This Might Sting!] finale, Nothing Ventured (Risky Business prioritised; {{8.anshinzawa_runs_with_the_card_no_festa|.0f}} runs with the card) | {{8.anshinzawa_nv_with_rb_prioritised|.0f}}/{{8.anshinzawa_rb_prioritised_runs|.0f}} = {{8.anshinzawa_nv_share|.2f}} [{{8.anshinzawa_nv_share_90_pct_low|.2f}}, {{8.anshinzawa_nv_share_90_pct_high|.2f}}] | 0.75 |
+| Sasami Anshinzawa [This Might Sting!] finale, Nothing Ventured (Risky Business prioritised; {{8.anshinzawa_runs_with_the_card_no_festa|.0f}} runs with the card) | {{8.anshinzawa_nv_with_rb_prioritised|.0f}}/{{8.anshinzawa_rb_prioritised_runs|.0f}} = {{8.anshinzawa_nv_share|.2f}} [{{8.anshinzawa_nv_share_90_pct_low|.2f}}, {{8.anshinzawa_nv_share_90_pct_high|.2f}}] | {{8.adopted_anshinzawa_finale_nothing_ventured|.2f}} |
 | same, choice 2 alone, no inherited Risky Business | {{8.anshinzawa_choice_2_no_inherited_rb_won|.0f}}/{{8.anshinzawa_choice_2_no_inherited_rb_runs|.0f}} = {{8.anshinzawa_choice_2_share|.2f}} [{{8.anshinzawa_choice_2_90_pct_low|.2f}}, {{8.anshinzawa_choice_2_90_pct_high|.2f}}] | |
-| Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up (top choice taken) | {{8.riko_ramp_up_top_choice_taken|.0f}}/{{8.riko_readings|.0f}} = {{8.riko_share|.2f}} [{{8.riko_90_pct_low|.2f}}, {{8.riko_90_pct_high|.2f}}] | 0.75 |
-| Seiun Sky [Foolproof Plan] link 3, Fast-Paced | {{8.seiun_sky_link_3_fast_paced|.0f}}/{{8.seiun_sky_link_3_readings|.0f}} = {{8.seiun_sky_share|.2f}} [{{8.seiun_sky_90_pct_low|.2f}}, {{8.seiun_sky_90_pct_high|.2f}}] | 0.75 |
-| Smart Falcon [My Umadol Way! ☆] link 3, Center Stage | {{8.smart_falcon_link_3_center_stage|.0f}}/{{8.smart_falcon_link_3_readings|.0f}} = {{8.smart_falcon_share|.2f}} [{{8.smart_falcon_90_pct_low|.2f}}, {{8.smart_falcon_90_pct_high|.2f}}] | 0.75 |
+| Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up (top choice taken) | {{8.riko_ramp_up_top_choice_taken|.0f}}/{{8.riko_readings|.0f}} = {{8.riko_share|.2f}} [{{8.riko_90_pct_low|.2f}}, {{8.riko_90_pct_high|.2f}}] | {{8.adopted_riko_unexpected_side_ramp_up|.2f}} |
+| Seiun Sky [Foolproof Plan] link 3, Fast-Paced | {{8.seiun_sky_link_3_fast_paced|.0f}}/{{8.seiun_sky_link_3_readings|.0f}} = {{8.seiun_sky_share|.2f}} [{{8.seiun_sky_90_pct_low|.2f}}, {{8.seiun_sky_90_pct_high|.2f}}] | {{8.adopted_seiun_sky_link_3_fast_paced|.2f}} |
+| Smart Falcon [My Umadol Way! ☆] link 3, Center Stage | {{8.smart_falcon_link_3_center_stage|.0f}}/{{8.smart_falcon_link_3_readings|.0f}} = {{8.smart_falcon_share|.2f}} [{{8.smart_falcon_90_pct_low|.2f}}, {{8.smart_falcon_90_pct_high|.2f}}] | {{8.adopted_smart_falcon_link_3_center_stage|.2f}} |
 | Nakayama Festa [Trusting the Dice] link 3 "Upping the Ante", Nothing Ventured ({{8.festa_runs_with_the_card|.0f}} runs with the card, below) | {{8.festa_nv_wins|.0f}}/{{8.festa_readings|.0f}} = {{8.festa_share|.2f}} [{{8.festa_share_90_pct_low|.2f}}, {{8.festa_share_90_pct_high|.2f}}] | {{8.festa_adopted|.1f}} |
 
 Anshinzawa's finale is counted on runs without Nakayama Festa [Trusting the Dice] (whose "Upping the Ante" also gives
@@ -440,7 +510,7 @@ Business +1 appears in {{8.anshinzawa_her_extra_rb_in_choice_2_wins_prioritised|
 way. The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
 Positioning.
 
-Riko Kashimoto's 0.75 is a per-run chance: a run gets her Ramp Up hint in {{8.riko_per_run_runs_with_ramp_up|.0f}} of {{8.riko_per_run_runs|.0f}} runs, {{8.riko_per_run_share|.3f}} [{{8.riko_per_run_90_pct_low|.3f}}, {{8.riko_per_run_90_pct_high|.3f}}], whichever
+Riko Kashimoto's {{8.adopted_riko_unexpected_side_ramp_up|.2f}} is a per-run chance: a run gets her Ramp Up hint in {{8.riko_per_run_runs_with_ramp_up|.0f}} of {{8.riko_per_run_runs|.0f}} runs, {{8.riko_per_run_share|.3f}} [{{8.riko_per_run_90_pct_low|.3f}}, {{8.riko_per_run_90_pct_high|.3f}}], whichever
 choice IT took (the top choice in {{8.riko_firings_top_choice|.0f}} of {{8.riko_firings_all|.0f}} firings, {{8.riko_firings_top_choice_rate|.2f}}; the bottom choice, Lone Wolf, in {{8.riko_firings_bottom_choice|.0f}}).
 
 Off 0.5 but left at the equal rule: Tazuna Hayakawa SSR finale Concentration {{8.tazuna_finale_concentration|.2f}}, Agnes Tachyon [Q≠0] link 1 choice 2
@@ -465,8 +535,8 @@ event in {{8.light_hello_credited_credited|.0f}} of {{8.light_hello_credited_run
 
 Computed by `research/s09_random_events.py`.
 
-A support card's character's shared random event fires, per event per career with a card of hers in the deck (any rarity, R cards included) and another
-uma training, with (**fitted**)
+A support card's character's shared random event fires, per event per career with a card of hers in the deck (any
+rarity, R cards included) and another uma training, with (**fitted**)
 
 $$P(\text{fires}) = {{9.fitted_p_at_k_4|.2f}}\,(1 - {{9.fitted_form_1_ratio_per_event|.3f}})^{K - 4},$$
 
@@ -481,34 +551,56 @@ misses; with them the rate is about {{9.rate_with_ambiguous_points_higher|.0f}} 
 | ${{9.fitted_form_p_at_k_4|.2f}}(1 - {{9.fitted_form_1_ratio_per_event|.3f}})^{K-4}$ | {{9.ll_fitted_form|u.1f}} |
 | power law $c(K/8)^{-a}$, $a = {{9.power_law_a|.2f}}$ (uniform competition would be $a = 1$) | {{9.ll_power_law|u.1f}} |
 | strict competition $1 - (1 - 1/K)^S$, $S = {{9.strict_competition_s|.2f}}$ | {{9.ll_strict_competition|u.1f}} |
-| every event slot competing, $c / T$ with $T = K + {{9.every_slot_competing_pal_weight|.2f}} \cdot \text{pals}$ (chain links weigh {{9.every_slot_competing_chain_link_weight|.0f}}), $c = {{9.every_slot_competing_c|.2f}}$ | {{9.ll_every_slot_competing|u.1f}} |
+| every event slot competing, $c / T$ with $T = K + w \cdot \text{pals}$ (chain links weigh {{9.every_slot_competing_chain_link_weight|.0f}}), $c = {{9.every_slot_competing_c|.2f}}$ | {{9.ll_every_slot_competing|u.1f}} |
 
 The slot form fits about as well as the adopted one ({{9.every_slot_competing_ll_over_constant|+.1f}} nats over constant for two extra parameters): chain links play
-no part, and a pal counts about as one more random event.
+no part, and pals compete, a pal weighing $w$ = {{9.every_slot_competing_pal_weight|.2f}} [{{9.every_slot_competing_pal_weight_95_pct_low|.2f}}, {{9.every_slot_competing_pal_weight_95_pct_high|.2f}}] random events.
 
 Observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14: {{9.hit_rate_k_4|.2f}} / {{9.hit_rate_k_6|.2f}} / {{9.hit_rate_k_8|.2f}} / {{9.hit_rate_k_10|.2f}} / {{9.hit_rate_k_12|.2f}} / {{9.hit_rate_k_14|.2f}}; within a run events fire
-independently. On a larger sample ({{9.larger_sample_readings|,.0f}} readings, {{9.larger_sample_runs|,.0f}} runs) the slope holds ({{9.larger_sample_rate_at_k_8|.1%}} at 8 on offer, {{9.larger_sample_rate_at_k_14|.1%}} at 14) and
-friendship, specialty priority and scenario show no effect distinguishable from zero, nor does rarity within a
-character (pooled, SSR markers fire at {{9.larger_sample_pooled_ssr_marker_rate|.1%}} against SR {{9.larger_sample_pooled_sr_marker_rate|.1%}}, mostly which characters have SR cards).
+independently. A logistic slope in $K$ gives {{9.logistic_rate_at_k_8|.1%}} at 8 on offer and {{9.logistic_rate_at_k_14|.1%}} at 14; friendship, specialty priority and
+scenario show no effect distinguishable from zero, nor does rarity within a character (pooled, SSR markers fire at
+{{9.pooled_ssr_marker_rate|.1%}} against SR {{9.pooled_sr_marker_rate|.1%}}, mostly which characters have SR cards).
 
-Only top-choice skills hint (bottom-choice ones need a priority; in {{9.runs_showing_a_priority_list_first_1_300_records|.0f}} runs showing a priority list {{9.bottom_choice_markers_prioritised_there|.0f}} were
-prioritised). In a solver experiment (not recomputed here), crediting these events at 0.17 (0.9 for the trainee's
-own) raised the odds by at most 1.7% across the rosters and scenarios tested and changed no best loop, so they stay out.
+Bottom-choice skills are rarely credited: in the {{9.runs_showing_a_priority_list|.0f}} runs showing a priority list, {{9.bottom_choice_markers_prioritised_there|.0f}} of {{9.bottom_choice_candidates_there|.0f}} candidates were
+prioritised; without a priority they were credited in {{9.bottom_choice_not_prioritised_credited_rate|.3f}} [{{9.bottom_choice_not_prioritised_95_pct_low|.3f}}, {{9.bottom_choice_not_prioritised_95_pct_high|.3f}}] of runs, against {{9.top_choice_marker_rate|.3f}} for
+top-choice markers ({{9.bottom_choice_prioritised_credited_to_her_event|.0f}} of {{9.bottom_choice_markers_prioritised_there|.0f}} with a priority).
+
+**What leaving them out costs on real careers** (section 12's rows, each run's own deck). Of the default targets only
+two are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nature's Ramp Up). On the {{9.calibration_rows|.0f}} run-target rows
+where a deck card's random event could hint the target, it was credited to that event {{9.careers_acquired_through_that_event|.0f}} times, {{9.careers_acquired_through_that_event_only|.0f}} with no other
+source; {{9.careers_rows_the_model_gives_no_chance|.0f}} rows get no chance from the model, and the event hinted the target on {{9.careers_of_them_acquired_through_that_event|.0f}} of them. Left out,
+acquisition there reads {{9.calibration_obs_per_pred_left_out|.2f}} [{{9.calibration_ratio_95_pct_low_left_out|.2f}}, {{9.calibration_ratio_95_pct_high_left_out|.2f}}] of the model, an under-prediction; credited at the fitted rate
+(about {{9.careers_mean_fitted_rate_there|.2f}} there) it reads {{9.calibration_obs_per_pred_credited|.2f}} [{{9.calibration_ratio_95_pct_low_credited|.2f}}, {{9.calibration_ratio_95_pct_high_credited|.2f}}] and the fit improves by {{9.calibration_ll_credited_minus_left_out_positive_rows|.1f}} nats
+({{9.calibration_rate_held_out_ll_credited_minus_left_out_positive_rows|.1f}} with the rate fitted without these rows' readings). Crediting raises an affected run's odds over the targets it
+can land by a median factor {{9.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_median|.2f}} (at most {{9.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_max|.2f}}; {{9.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_runs|.0f}} runs). The trainee's own random event can be told
+apart only for Nice Nature: {{9.careers_trainee_s_own_acquired_through_her_events|.0f}} of {{9.careers_rows_of_the_trainee_s_own_event_identifiable|.0f}} rows. The model leaves these events out; the data say it under-predicts
+the two affected targets on decks with those characters.
 
 ## 10. Conditional character events (not modelled)
 
-Computed by `research/s10_conditional.py` (the counts).
+Computed by `research/s10_conditional.py`.
 
 Secret and race-result events: {{10.events_with_hints|.0f}} events with hints for {{10.umas_with_a_hint_event|.0f}} umas ({{10.events_with_hints_global|.0f}} for {{10.umas_with_a_hint_event_global|.0f}} umas in Global), {{10.events_touching_a_default_target|.0f}} touching the default
-targets (Nimble Navigator, Ramp Up, Tail Held High), {{10.of_them_giving_a_gold|.0f}} of them giving a gold. In a solver experiment (not recomputed here), forcing every
-target-relevant one to fire with certainty, even as a gold, left the best loop unchanged on every setup tested. One exception is modelled as always acquired: Tokai
-Teio's Head-On (all three of its races are her career goals; the goals ask only for top 5, top 5 and top 3, but IT
-won all three in {{10.of_them_winning_all_three|.0f}} of {{10.runs_training_tokai_teio|.0f}} runs training her, and every run where her event could show credits Head-On), like Yamanin Zephyr's Slipstream.
+targets (Nimble Navigator, Ramp Up, Tail Held High), {{10.of_them_giving_a_gold|.0f}} of them giving a gold.
+
+**On real careers.** Where only a conditional event can give the target (none of the trainee's story, date, outfit or
+shared random events, nor the scenario's, can), it did so on {{10.careers_conditional_only_from_her_events|.0f}} of {{10.careers_conditional_only_rows|.0f}} rows, {{10.careers_conditional_only_rate|.3f}} [{{10.careers_conditional_only_rate_95_pct_low|.3f}}, {{10.careers_conditional_only_rate_95_pct_high|.3f}}]:
+Daiwa Scarlet, any outfit, {{10.daiwa_scarlet_any_outfit_nimble_navigator_from_her_events|.0f}} of {{10.daiwa_scarlet_any_outfit_nimble_navigator_rows|.0f}} (Nimble Navigator); Mejiro Ardan, any outfit, {{10.mejiro_ardan_any_outfit_ramp_up_from_her_events|.0f}} of {{10.mejiro_ardan_any_outfit_ramp_up_rows|.0f}} (Ramp Up). Left
+out, acquisition there reads {{10.calibration_conditional_only_obs_per_pred_left_out|.2f}} [{{10.calibration_conditional_only_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_conditional_only_ratio_95_pct_high_left_out|.2f}}] of the model, and crediting the measured rates gains only
+{{10.calibration_conditional_only_ll_credited_minus_left_out_positive_rows|.1f}} nats. The exception is Vodka, any outfit, whose own events give her Nimble Navigator in
+{{10.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{10.vodka_any_outfit_nimble_navigator_rows|.0f}} runs ([{{10.vodka_any_outfit_nimble_navigator_rate_95_pct_low|.2f}}, {{10.vodka_any_outfit_nimble_navigator_rate_95_pct_high|.2f}}]; her random and conditional events both give it and cannot be told
+apart): with her rows, the model left as it is reads {{10.calibration_obs_per_pred_left_out|.2f}} [{{10.calibration_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_ratio_95_pct_high_left_out|.2f}}] and crediting gains
+{{10.calibration_ll_credited_minus_left_out_positive_rows|.1f}} nats. Not modelled, so the model under-predicts Vodka's Nimble Navigator.
+
+One exception is modelled as always acquired: Tokai Teio's Head-On (all three of its races are her career goals; the
+goals ask only for top 5, top 5 and top 3, but IT won all three in {{10.of_them_winning_all_three|.0f}} of {{10.runs_training_tokai_teio|.0f}} runs training her, and every run
+where her event could show credits Head-On), like Yamanin Zephyr's Slipstream.
 
 ## 11. The composed career model
 
-Not recomputed in `research/`: the composition is derived; `val/joint_check.py` recomputes the solver's exact odds
-independently; the exact / product ratios and the continuation fit come from solver and simulator runs.
+The composition is **derived** from sections 1-10; there is nothing to fit. How the solver searches it (pruning caps,
+the career planner's continuation) is search design, in `docs/SOLVER.md`; `val/joint_check.py` recomputes the solver's
+exact odds independently.
 
 For a target $k$ not guaranteed, with $G_k = 0.4\cdot 1.1^{n_k}$, $W_k = 0.2\cdot 1.1^{n_k}$:
 
@@ -524,25 +616,10 @@ are joint over its targets (section 6):
 
 $$P(\text{all}) = \sum_{c} P(c) \prod_{k} p_k(c) \qquad (\text{exact, **derived**}).$$
 
-The search prunes with $\prod_k p_k$ times a per-class cap (**assumed** from measurement: 1.05 for decks with at most two
-chain-varying targets and no multi-target group, 1.25 otherwise). Exact / product ratios seen: up to 1.18 on Global deck
-jobs and 1.17 on Grand Masters (both in the 1.25 class), at most 1.037 with two such targets (`pal_Fk3`), 1.127
-with three. No data-free cap exists: a target whose only source is one card's last link makes the ratio
-$1/P(\text{link})$.
-
 **Career planner.** The same model with each veteran's real stars, real G1 wins and recorded parents (an unknown
 parent brings no relation points; her sparks count); $n_k$ = legacies actually carrying $k$. Since $q_k$ and $e_k$
 enter only as $(1 - e_k)(1 - q_k)$, $e_k$ is replaced by $1 - (1 - e_k)(1 - q_k)$ and $1.1^{n_k - 6}$ scales
-$P(\text{all})$ (**derived**; checked to 9 digits against the loop model on a uniform-star case).
-
-**Next-career continuation** (**assumed** form, **fitted** parameters). The planner's target is $V$, the expected
-careers to a fully looped parent. A trainee's building step: builder careers lift her odds with chance
-$\lambda_j = \lambda\,\big((1 - \phi)^j\big)^{1.5}$ at the $j$-th success, each closing a share $\phi$ of the
-remaining log-odds gap to $p_\infty = 0.6 \times$ her odds with a full loop lineage; the step costs
-$\min_n \big[\sum_{j<n} 1/\lambda_j + 1/p_n\big]$. $\lambda, \phi$ are fitted to the current pool; the shape (0.6,
-1.5) to simulated builder traces on four real veteran pools (2, 5, 11, 19 veterans): within 0-5% of achievable
-building on 2, 11 and 19, 70% too pessimistic on 5 (builders improve after the first lift; the form only decays).
-Leave-one-pool-out fits ranged 0.6-1.0 and 1-3: a calibration on these pools, not a law.
+$P(\text{all})$ (**derived**).
 
 ## 12. Calibration against real careers
 
