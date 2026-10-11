@@ -144,6 +144,9 @@ test against real careers.
 
 ## 1. Spark generation (assumed)
 
+A target lands only if the skill, once bought, becomes a spark on the new veteran. This section gives the chance of
+that step; it is an outside figure the runs cannot test.
+
 $$g_k = g_0 \cdot 1.1^{\,n_k}, \qquad g_0 = 0.2 \text{ (white learned)}, \quad g_0 = 0.4 \text{ (gold learned)}$$
 
 $n_k$ = ancestors (of six) carrying the spark of $k$. A bought gold sparks its white. In a running loop every target
@@ -157,6 +160,10 @@ That everything acquired is bought is also **assumed** and untested.
 ## 2. Star mix of legacy sparks
 
 Computed by `research/s02_stars.py`.
+
+The loop model does not know how many stars each legacy's sparks have, and stars set the inheritance base (section 3).
+This section states the star mix it assumes, derives from the runs which band applies to each scenario, and measures
+what averaging over stars costs.
 
 A legacy's white spark has $s \in \{1, 2, 3\}$ stars with shares $\pi = (\pi_1, \pi_2, \pi_3)$ set by the veteran's
 rank score: $0.50 / 0.45 / 0.05$ below 17,500 and $0.20 / 0.70 / 0.10$ from 17,500 up. The mixes are **assumed**
@@ -189,6 +196,9 @@ veteran's real stars and is not affected.
 
 Computed by `research/s03_inheritance.py` (the roll's parts) and `research/s13_calibration.py` (the test on whole
 careers).
+
+Inheritance is one way a target gets hinted: at each inspiration a legacy's spark of the skill may fire. This section
+gives that chance, then tests its parts on single-ancestor trials and the whole on real careers.
 
 Per legacy $l$, target $k$ and roll:
 
@@ -254,6 +264,9 @@ outside its own 95% interval, 0.40-0.60
 ## 4. Race wins
 
 Computed by `research/s04_races.py`.
+
+Race wins matter through affinity: two umas that won the same G1s inherit more from each other (section 5). This
+section gives the win chance the model uses and tests it on every G1 attempt in the runs.
 
 A trainee's chance of winning a race she enters (**assumed**: a community table, tested below):
 
@@ -329,8 +342,15 @@ having chosen each non-goal race; stats are not modelled.
 
 Computed by `research/s05_affinity.py` (the self-grandparent fit).
 
-**Relation points** (exact, game data): $\mathrm{pair}(a,b)$ and $\mathrm{tri}(a,b,c)$ sum the relation points of the
-relation groups containing all members. A group counts only distinct characters, so $\mathrm{tri}(T, P, T) = 0$.
+A legacy's affinity $A_l$ scales her inheritance roll, $r = b\,(1 + A_l/100)$ (section 3). This section defines how
+$A_l$ is computed, from the characters' relation points and the race wins two umas share, and fits the one rule the
+game data leave open: what a trio of characters counts when the trainee is her own grandparent. The formula as a whole
+is tested in section 3, where the roll scales with this $A$ as predicted.
+
+**Relation points** (game data): $\mathrm{pair}(a,b)$ and $\mathrm{tri}(a,b,c)$ sum the relation points of the relation
+groups containing all the characters named. When a character appears twice, as in $\mathrm{tri}(T, P, T)$, the data do
+not say what the group counts; the model counts only distinct characters, so $\mathrm{tri}(T, P, T) = 0$ (**fitted**,
+*Self-grandparent* below).
 
 **Race affinity**: +3 per single-race G1 both won, counted per race (relocated venues are the same race), multi-race
 titles 0 (**assumed** as the game rule; the weight 3 per shared win is tested in section 3, slope
@@ -358,6 +378,10 @@ $\kappa\cdot\mathrm{pair}(T,P)$ fits $\hat\kappa = {{5.kappa_fitted|.0f}}$, 95% 
 ## 6. Loop structures, ranking and schedules
 
 Computed by `research/s06_loops.py`.
+
+The planner ranks loops, three or four umas breeding each other in turn, by the odds their lineages give. This section
+defines the lineages and the ranking, shows the trainee-as-grandparent case occurs in practice, and bounds what a
+different choice of race schedules could gain.
 
 A lineage is $(T, P_1, P_2, X)$: each parent bred from the other parent and $X$. A four-uma loop has {{6.four_uma_loop_lineages|.0f}} lineages (each
 member trains from two of the other three); a three-uma rotation has {{6.three_uma_rotation_lineages|.0f}}, with $X = T$ (the trainee's own earlier
@@ -393,6 +417,9 @@ pair at its highest possible overlap. Over {{6.schedules_result_files|.0f}} vali
 ## 7. Training hints
 
 Computed by `research/s07_hints.py`.
+
+A deck card's training is the main way targets get hinted. This section gives how many hints a card draws and over
+which skills, fits the rates per scenario, and tests the form on runs it was not fitted to.
 
 Each deck card makes $h$ training-hint draws per run, each uniform over its skill pool (size $n$; the stat option is
 never drawn) among skills still below hint Lv 5; a skill leaves after $c = \lceil 5 / \iota \rceil$ draws, $\iota$ =
@@ -477,6 +504,9 @@ against {{7.priority_predicted|.3f}} predicted ({{7.priority_rows|.0f}} rows); n
 ## 8. Chain events
 
 Computed by `research/s08_chains.py`.
+
+A chain card hints its skills through a fixed sequence of events, so how far a chain gets depends on how many chain
+events a career gets and how they are shared among the deck's chain cards. This section fits both.
 
 A run gets $N$ chain events, the same for every deck and scenario (**fitted**; tested against alternatives in-sample
 and held out, below):
@@ -601,6 +631,9 @@ six. A per-card activation parameter (a chain card active with probability $a$),
 
 Computed by `research/s09_outcomes.py` (the certainty checks: `research/s13_calibration.py`).
 
+An event can put different skills on different choices, and an outcome can be random. This section states which
+choice IT takes, and measures the outcome shares that are not equal.
+
 **Choice rule** (**assumed**): IT takes an event's top choice unless a prioritised skill (up to 10, set at career start)
 sits on another choice, and the player is assumed to prioritise every target hint the model counts. Where targets sit
 on different choices, a deck entry takes one choice (the solver offers one entry per useful choice, and an entry that
@@ -663,6 +696,9 @@ event in {{9.light_hello_credited_credited|.0f}} of {{9.light_hello_credited_run
 
 Computed by `research/s10_random_events.py`.
 
+Some events are left out of the model. This section measures how often a deck character's shared random event fires
+and what leaving it out costs on real careers.
+
 A support card's character's shared random event fires, per event per career with a card of hers in the deck (any
 rarity, R cards included) and another uma training, at a rate of about {{10.constant_p|.2f}} (**fitted**). The rate falls a little with
 the number of random events on offer, $K$:
@@ -718,6 +754,9 @@ the two affected targets on decks with those characters.
 ## 11. Conditional character events (not modelled)
 
 Computed by `research/s11_conditional.py`.
+
+The trainee's secret and race-result events are also left out. This section counts them and measures what leaving
+them out costs.
 
 Secret and race-result events: {{11.events_with_hints|.0f}} events with hints for {{11.umas_with_a_hint_event|.0f}} umas ({{11.events_with_hints_global|.0f}} for {{11.umas_with_a_hint_event_global|.0f}} umas in Global), {{11.events_touching_a_default_target|.0f}} touching the default
 targets (Nimble Navigator, Ramp Up, Tail Held High), {{11.of_them_giving_a_gold|.0f}} of them giving a gold.
