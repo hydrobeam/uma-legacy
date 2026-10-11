@@ -661,7 +661,11 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
   preferred training type more often; in the runs, cards with more of it give more hints, by an amount that differs
   between scenarios. The effect predicts careers it was not fitted to, but it is an association: across limit breaks
   of the same card it is the same size without being significant, so it is not shown to be a cause.
-- **Scenarios differ**: each has its own base and its own specialty weight (table below).
+- **Scenarios differ**: each has its own base (table below). The specialty weight differs too: fitted, about
+  0.35 in Unity Cup and 0.37 in URA Finale against 0.10 in Grand Concert and 0.11 in Trackblazer, and a weight per scenario
+  predicts careers it was not fitted to better than one shared weight. Nothing in the game's description of Specialty
+  Priority depends on the scenario, so this weight is an association measured in each scenario's careers, not a game
+  constant; why it differs is not tested here.
 - **Known misses**: SR cards give slightly fewer hints than SSR cards with the same effects, decks with more pals
   slightly more, and a skill also hinted by inheritance is hinted by training less than predicted.
 
@@ -675,7 +679,8 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
   unique effects included.
 - $h$: training hints the card gives in one career.
 - $\beta_s$, the *base*: hints per career in scenario $s$ for a card with neither effect.
-- $d_s$, the *specialty weight*: how much each point of specialty priority adds in scenario $s$, relative to the base.
+- $d_s$, the *specialty weight*: how much more hinting goes with each point of specialty priority in scenario $s$'s
+  careers, relative to the base. A fitted parameter, not a game value.
 
 ### Model
 
