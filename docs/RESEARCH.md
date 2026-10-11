@@ -29,7 +29,9 @@ defined in *How to read*, after this summary.
 | Random card events | not modelled | where they could hint a target, acquisition reads 1.26 [1.11, 1.41] of the model left out, 1.00 credited | 10 |
 | Conditional character events | not modelled | where only they can hint a target, left out reads 1.20 [0.75, 1.64]; Vodka's own Nimble Navigator 25 of 27 runs | 11 |
 
-**Known misses**, each measured and tested in its section:
+### Known misses
+
+Each measured and tested in its section:
 
 - Chain events (8): in crowded decks early links run short, and more chains never start than predicted
   (0.34 against 0.20 with six chain cards). Final links fit pooled (0.352 against 0.357), but
@@ -44,24 +46,32 @@ defined in *How to read*, after this summary.
   section 11).
 - Non-target skills (13): training-pool hints read 1.064 [1.05, 1.08] of the model.
 
-**Not settled.** Specialty priority predicts runs it was not fitted to (fitted on earlier runs, +12.9 nats on later
+### Not settled
+
+Specialty priority predicts runs it was not fitted to (fitted on earlier runs, +12.9 nats on later
 ones), but it is not shown to cause more hints: across limit breaks of the same card the estimate is the same size
 ($d$ = 0.41) but not significant (+1.5 nats). On the adopted model, a free hint-frequency divisor
 does not predict unseen runs better than $1/100$ (section 7).
 
-**Assumed and untested:** the step from acquired to landed (spark generation, and that everything hinted is bought),
+### Assumed and untested
+
+the step from acquired to landed (spark generation, and that everything hinted is bought),
 the star mixes, Grand Masters (no runs), hint levels, and the priority policy run by run.
 
 ## How to read this document
 
-**Labels.** Every quantity carries one:
+### Labels
+
+Every quantity carries one:
 
 - **fitted**: estimated from the runs; the sample and method are given.
 - **derived**: follows from the other parts by computation.
 - **assumed**: a chosen rule or an outside figure the runs cannot test. Its source is named, and no evidence is
   claimed for it.
 
-**Intervals.** $x$ [$a$, $b$] is an estimate with its 95% interval (90% where marked): the range of values the data
+### Intervals
+
+$x$ [$a$, $b$] is an estimate with its 95% interval (90% where marked): the range of values the data
 are consistent with. A prediction outside it is contradicted by the data at the 5% level. The method depends on the
 kind of estimate:
 
@@ -73,7 +83,8 @@ kind of estimate:
   run's contribution to the fit taken as one unit) where a run gives several observations; the profile-likelihood
   interval (every value whose fit is within 1.92 nats of the best) where a run gives one, as for $n$ in section 8.
 
-**Data terms.**
+### Data terms
+
 
 - *Run*: one career from the Independent Training runs from uma-it, pooled; every run record is in the pool.
 - *Row*: one observation within a run, such as one target in one career (a *run-target row*), one race attempt or one
@@ -83,7 +94,8 @@ kind of estimate:
   (it is optimistic).
 - *Log-likelihood*, *nats*, *free fit*, *in-sample* and *held out*: see *Reading the fit comparisons* below.
 
-**Game terms.**
+### Game terms
+
 
 - *IT*: Independent Training, the career mode modelled.
 - *Career*: one training run of one uma, the *trainee*. It ends as a *veteran*. *Outfit*: which version of a
@@ -114,7 +126,9 @@ kind of estimate:
 - *Target*: a skill the planner tries to land. It *lands* when it becomes a spark on the new veteran.
 - *G1*: the top race grade. *Aptitude grades* S to G for distance and surface set race win chances (section 4).
 
-**Where the numbers come from.** The scripts in `research/` compute every number this document states, from the
+### Where the numbers come from
+
+The scripts in `research/` compute every number this document states, from the
 runs, the game data or the other parts. `./build.sh research` runs them; they write `research/results.json`, and
 `research/render.py` fills `docs/RESEARCH.template.md` to produce this file. Each conclusion the text draws is also a
 test in those scripts (a likelihood-ratio test, an interval covering or excluding a prediction), reported as holding
@@ -122,7 +136,9 @@ or failing; a miss the text states is tested as a miss. The only numbers not com
 themselves. The run records are not in this repository; a clone renders from the committed results and recomputes
 what needs only game data.
 
-**Reading the fit comparisons.** A model's *log-likelihood* (LL) is the sum, over every observation, of the natural
+### Reading the fit comparisons
+
+A model's *log-likelihood* (LL) is the sum, over every observation, of the natural
 log of the probability the model gave to what was actually seen. The higher (closer to 0), the better the model
 explains the data. A difference of $\Delta$ in LL ("$\Delta$ *nats*") means the better model made the observed data
 $e^{\Delta}$ times as likely: 1 nat is a factor of 2.7, 5 nats about 150, 30 nats about $10^{13}$.
@@ -150,7 +166,9 @@ freedom also fits chance. So each comparison is one of three kinds, each with it
 Every test's criterion is a fixed rule of this kind (a threshold, or an interval covering or excluding a prediction),
 written into the script. A miss is reported as a miss.
 
-**Targets.** The model is the same for every skill. For any skill it predicts the chance that a career *acquires* it
+### Targets
+
+The model is the same for every skill. For any skill it predicts the chance that a career *acquires* it
 (hints it, so it could be bought) from that career's own deck, lineage and trainee, not from what the player was
 aiming for. So a prediction can be checked on any skill in any run, whatever its owner targeted. "Acquired" means
 hinted, not bought, and each prediction uses the run's own deck and lineage, so players choosing decks for their own
@@ -170,7 +188,7 @@ a sample of every other skill a deck card or spark could give.
 
 The planner ranks careers, loops and decks by one number: the chance that every target lands.
 
-**Terms.**
+### Terms
 
 - $T$: the trainee. $P_1, P_2$: her parents. With the parents' own parents (her grandparents) they make six legacies,
   $l = 1..6$.
@@ -193,20 +211,22 @@ then becomes a spark. The sections take the parts in turn:
 A target lands only if the skill, once bought, becomes a spark on the new veteran. This section gives the chance of
 that step.
 
-**What we find.**
+### Findings
 
 - **Nothing is measured here.** The curve is a community figure (README, sources), and the runs cannot test it: the
   run records show which sparks a career inherited, not which sparks it produced, and the veterans they do show were
   chosen for their sparks.
 - **That everything acquired is bought** is also **assumed** and untested.
 
-**Terms.**
+### Terms
 
 - $g_k$: the chance that target $k$, once bought, becomes a spark on the veteran.
 - $g_0$: its base, 0.2 when the white skill is learned and 0.4 when the gold is.
 - $n_k$: the number of ancestors (of six) carrying a spark of $k$.
 
-**The model** (**assumed**).
+### Model
+
+The chance a learned skill becomes a spark (**assumed**):
 
 $$g_k = g_0 \cdot 1.1^{\,n_k}, \qquad g_0 = 0.2 \text{ (white learned)}, \quad g_0 = 0.4 \text{ (gold learned)}$$
 
@@ -221,7 +241,7 @@ A spark's stars set its inheritance base (section 3), but the loop model does no
 sparks have. This section sets the star mix it assumes, which mix each scenario uses, and what averaging over stars
 costs.
 
-**What we find.**
+### Findings
 
 - **The star mix is assumed**, a community figure. The runs cannot measure it: players choose legacies for their
   sparks, so an unselected veteran's mix cannot be read from them.
@@ -230,20 +250,22 @@ costs.
 - **Averaging over stars overstates the inheritance chance slightly**: by at most 0.57% for a target carried by
   all six legacies. The career planner uses each veteran's real stars and is not affected.
 
-**Terms.**
+### Terms
 
 - *Rank score*: a veteran's end-of-career score. Its *band* is below 17,500, or 17,500 and up.
 - $s \in \{1, 2, 3\}$: a white spark's stars. $\pi = (\pi_1, \pi_2, \pi_3)$: the share of sparks with each.
 - $\bar b$: the inheritance base per roll, averaged over stars.
 - $r$, $q_k$: the chance of one roll and of at least one inspiration in a career (section 3).
 
-**The model** (**assumed**, community figures). A legacy's white spark has $s$ stars with shares $\pi$ set by her rank
+### Model
+
+The star mix is **assumed** (community figures). A legacy's white spark has $s$ stars with shares $\pi$ set by her rank
 score: $0.50 / 0.45 / 0.05$ below 17,500 and $0.20 / 0.70 / 0.10$ from 17,500 up. The loop model does not know a
 legacy's stars and uses the expected base per roll (**derived** from section 3's bases):
 
 $$\bar b = 0.03\,(\pi_1 + 2\pi_2 + 3\pi_3) = 0.0465 \;(\text{below } 17{,}500), \quad 0.057 \;(17{,}500+).$$
 
-**Evidence.**
+### Evidence
 
 *Which mix does each scenario use?* (**derived** from the runs.) Each scenario takes the band most of its careers
 reach. A career's rank score is estimated with every skill point spent, over every completed run in the run list:
@@ -270,7 +292,7 @@ careers).
 Inheritance is one way a target gets hinted: at each inspiration, a legacy's spark of the skill may fire. This section
 gives that chance, tests its parts on single-ancestor trials, and tests the whole on real careers.
 
-**What we find.**
+### Findings
 
 - **Each legacy carrying the target gets two rolls**, at the Classic and Senior inspirations. A roll's chance is a
   base set by the spark's stars, raised in proportion to the legacy's affinity.
@@ -282,7 +304,7 @@ gives that chance, tests its parts on single-ancestor trials, and tests the whol
 - **Known misses**: two affinity bands (150-199 and 200+) and one band of predicted chance (0.40-0.60) lie outside
   their own intervals, though each set of bands holds jointly.
 
-**Terms.**
+### Terms
 
 - *Roll*: one inspiration's chance for one legacy's spark to fire. $r_{lk}$: that chance for legacy $l$ and target
   $k$.
@@ -294,7 +316,9 @@ gives that chance, tests its parts on single-ancestor trials, and tests the whol
 - *Carriers*: the legacies with a spark of the target.
 - *Self-grandparent*: a grandparent of the trainee's own character (sections 5 and 6).
 
-**The model.** Per legacy $l$, target $k$ and roll:
+### Model
+
+Per legacy $l$, target $k$ and roll:
 
 $$r_{lk} = \min\!\left\{1,\; b(s_{lk})\left(1 + \frac{A_l}{100}\right)\right\}, \qquad
 q_k = 1 - \left[\prod_{l=1}^{6} (1 - r_{lk})\right]^{2}$$
@@ -309,7 +333,9 @@ The square is the two rolls, Classic and Senior April. The base by spark type an
 The odds use skill whites only. Great-grandparents count for nothing (**assumed**, matching the game's two-generation
 lineage; the runs show no great-grandparents). In the loop model $b(s_{lk})$ is replaced by $\bar b$ (section 2).
 
-**Evidence.** The roll's parts are **fitted** on 30,368 parent and 69,840 grandparent trials of ordinary ancestors (the
+### Evidence
+
+The roll's parts are **fitted** on 30,368 parent and 69,840 grandparent trials of ordinary ancestors (the
 self-grandparent is section 5's).
 
 *Do grandparents take the full base?* Yes. A free weight on the grandparents' roll fits 1.01 [0.98, 1.03],
@@ -363,7 +389,7 @@ Computed by `research/s04_races.py`.
 Race wins matter through affinity: two umas that won the same G1s inherit more from each other (section 5). This
 section gives the win chance the model uses and tests it on every G1 attempt in the runs.
 
-**What we find.**
+### Findings
 
 - **The community win table matches the runs** once a trainee's grades are raised by her legacies' pink sparks:
   observed / predicted 1.000 [0.999, 1.002] over 76,402 G1 attempts, calibrated in every scenario. The career
@@ -376,7 +402,7 @@ section gives the win chance the model uses and tests it on every G1 attempt in 
 - **Two departures**: goal races from the fourth race in a row win more than the penalty allows, and chances of 70 or
   less win slightly less than predicted.
 
-**Terms.**
+### Terms
 
 - *Grade*: the trainee's aptitude grade, S to G, for the race's distance and surface; $c_{\text{dist}}$ and
   $c_{\text{surf}}$ are what each grade costs.
@@ -389,7 +415,9 @@ section gives the win chance the model uses and tests it on every G1 attempt in 
 - *Base aptitudes*: her grades before any spark. *Raised grades*: her grades after her legacies' pink sparks (the rule
   in the evidence below).
 
-**The model** (**assumed**: a community table, tested below).
+### Model
+
+A trainee's chance of winning a race she enters is a community table (**assumed**, tested below):
 
 $$p = \mathrm{clamp}\big(110 - c_{\text{dist}} - c_{\text{surf}} - \mathrm{PEN}_j,\ 0,\ 100\big) / 100,$$
 
@@ -401,7 +429,9 @@ $$P_a(r) = 1 - \prod_{\text{attempts}} (1 - p);$$
 
 section 5 turns these into race affinity.
 
-**Evidence.** The runs record every race a career ran: 76,402 attempts at the 34 single-race G1s (22,387 of
+### Evidence
+
+The runs record every race a career ran: 76,402 attempts at the 34 single-race G1s (22,387 of
 them goals), of which 93.1% were won.
 
 *Base aptitudes or raised grades?* Raised grades.
@@ -492,7 +522,7 @@ Computed by `research/s05_affinity.py` (the self-grandparent fit).
 A legacy's affinity $A_l$ scales her inheritance roll, $r = b\,(1 + A_l/100)$ (section 3). This section defines how
 $A_l$ is computed and fits the one rule the game data leave open.
 
-**What we find.**
+### Findings
 
 - **Affinity adds the characters' relation points (game data) and 3 for each single-race G1 both umas
   won.** The 3 per shared win is **assumed** as the game's rule; section 3 finds the roll scales with it as stated
@@ -501,7 +531,7 @@ $A_l$ is computed and fits the one rule the game data leave open.
   one character twice counts. Counting nothing predicts the self-grandparent's inspirations in the runs; counting it
   as the pair is about 19 nats worse.
 
-**Terms.**
+### Terms
 
 - *Relation group*: a set of characters to which the game data give relation points.
 - $\mathrm{pair}(a,b)$, $\mathrm{tri}(a,b,c)$: the summed relation points of the groups containing all the characters
@@ -511,7 +541,7 @@ $A_l$ is computed and fits the one rule the game data leave open.
 - $P$: a parent; $P'$: the other parent; $\mathrm{par}(P)$: $P$'s own parents; $G$: one of them.
 - $\kappa$: a free multiplier for the self-grandparent's trio, $\mathrm{tri}(T,P,T) = \kappa\cdot\mathrm{pair}(T,P)$.
 
-**The model.**
+### Model
 
 *Relation points* (game data). When a character appears twice, as in $\mathrm{tri}(T, P, T)$, the data do not say what
 the group counts; the model counts only distinct characters, so $\mathrm{tri}(T, P, T) = 0$ (**fitted**, below).
@@ -531,7 +561,7 @@ $$A_G = \mathrm{tri}(T,P,G) + 3\,o(P,G)$$
 
 In a loop $P'$ is also one of $P$'s own parents, so $o(P, P')$ counts twice in $A_P$.
 
-**Evidence.**
+### Evidence
 
 *What does a self-grandparent's trio count?* ($G = T$, section 6.) $\mathrm{tri}(T,P,T) = 0$ is **fitted** on
 114,240 inspiration trials attributable to a single ancestor. Self-grandparent passes: 610 observed, 621.6
@@ -549,7 +579,7 @@ Computed by `research/s06_loops.py`.
 The planner ranks loops, three or four umas breeding each other in turn, by the odds their lineages give. This section
 defines the lineages and the ranking, and bounds what a different choice of race schedules could gain.
 
-**What we find.**
+### Findings
 
 - **A four-uma loop has 12 lineages, a three-uma rotation 3.** In a rotation the trainee is her own grandparent,
   and that occurs in practice: 1,087 of 3,610 runs have a grandparent of the trainee's own character.
@@ -560,7 +590,7 @@ defines the lineages and the ranking, and bounds what a different choice of race
 - **Scheduling for shared wins instead of odds costs little**: no schedule could raise a validated winner's odds by
   more than 2.02%, and no listed runner-up could overtake its winner.
 
-**Terms.**
+### Terms
 
 - *Lineage* $(T, P_1, P_2, X)$: a trainee, her parents, and $X$; each parent was bred from the other parent and $X$.
 - *Structure* $S$: a loop or rotation; $\Lambda_S$: its set of lineages; $|\Lambda_S|$: their number.
@@ -570,7 +600,9 @@ defines the lineages and the ranking, and bounds what a different choice of race
 - *Pair ceiling*: the solver's best-response search for the highest overlap a pair can reach over feasible schedules.
 - *Validation results*: the solver's pinned reference outputs.
 
-**The model.** A four-uma loop has 12 lineages (each member trains from two of the other three); a three-uma
+### Model
+
+A four-uma loop has 12 lineages (each member trains from two of the other three); a three-uma
 rotation has 3, with $X = T$ (the trainee's own earlier veteran). A structure $S$ scores
 
 $$\bar P_S = \frac{1}{|\Lambda_S|} \sum_{\lambda \in \Lambda_S} P_\lambda(\text{all}),$$
@@ -583,7 +615,7 @@ $o(P_2,X)$ twice each. Summed over the 12 loop lineages, every pair gets $6\cdot
 rotation lineages, $6 + 2 + 2 = 10$. Both are uniform over pairs, so a structure's schedules maximise
 $\sum_{a<b} o(a,b)$.
 
-**Evidence.**
+### Evidence
 
 *Does the rotation occur?* Yes: 1,087 of 3,610 runs have a grandparent of the trainee's own character, and
 0 have a parent of her character.
@@ -610,7 +642,7 @@ Computed by `research/s07_hints.py`.
 A deck card's training is the main way targets get hinted. When a card joins a training session it can show a hint,
 which raises one skill from the card's list of hintable skills (its *pool*) by a hint level or more.
 
-**What we find.**
+### Findings
 
 - **A card gives about the same number of training hints every career, each a random skill from its pool.** A typical card in
   the runs' decks (hint frequency +20%, specialty priority 35) gives about 3.2 hints per career in Unity
@@ -625,7 +657,7 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
 - **Known misses**: SR cards give slightly fewer hints than SSR cards with the same effects, decks with more pals
   slightly more, and a skill also hinted by inheritance is hinted by training less than predicted.
 
-**Terms.**
+### Terms
 
 - *Hint level*: a skill's hints add up to level 5, the cap.
 - *Pool*: the skills a card's training can hint; $n$ = their number.
@@ -637,7 +669,7 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
 - $\beta_s$, the *base*: hints per career in scenario $s$ for a card with neither effect.
 - $d_s$, the *specialty weight*: how much each point of specialty priority adds in scenario $s$, relative to the base.
 
-**The model.**
+### Model
 
 $$h = \beta_s \left(1 + \frac{hf}{100}\right)\left(1 + d_s\,\frac{\mathit{sp}}{100}\right).$$
 
@@ -649,9 +681,11 @@ m(k, n, t) = \left(1 - \frac{k}{n}\right)^{t} \ (t \le c),$$
 
 and an exact Markov chain over the other skills' hint counts once a skill can reach the cap ($t > c$).
 
-**Fitted values** (**fitted**: maximum likelihood on every hint row, a row being one pool skill of one card in one
+### Fitted values
+
+These are **fitted** by maximum likelihood on every hint row, a row being one pool skill of one card in one
 run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; 61,856 rows from
-10,712 card-runs; the Runs column counts the runs that add a row; *Adopted* is what the solver uses):
+10,712 card-runs; the Runs column counts the runs that add a row; *Adopted* is what the solver uses:
 
 | Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
 |---|---|---|---|---|---|
@@ -661,7 +695,7 @@ run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R
 | Trackblazer | 1.700 | 0.108 | 1.70 / 0.11 | 2,370 | 99 |
 | Grand Masters | no runs | | 1.86 / 0.26 (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
 
-**Evidence.**
+### Evidence
 
 *Specialty priority.* Without the specialty term, cards with more specialty priority give more hints than predicted;
 with it, the excess is gone:
@@ -732,7 +766,7 @@ Computed by `research/s08_chains.py`.
 A chain card hints its skills through a fixed sequence of events, so how far a chain gets depends on how many chain
 events a career gets and how they are shared among the deck's chain cards. This section fits both.
 
-**What we find.**
+### Findings
 
 - **A career gets a random number of chain events, Binomial(21, 0.35)** (mean 7.35), the same for every deck and
   scenario. No alternative predicts unseen runs better. The data do not single out the binomial family; what the
@@ -743,7 +777,7 @@ events a career gets and how they are shared among the deck's chain cards. This 
 - **Known misses, causes unknown**: in crowded decks early links run short and more chains never start than
   predicted; final links fit pooled, but individual cards differ far beyond chance.
 
-**Terms.**
+### Terms
 
 - $N$: the number of chain events in one career.
 - *Link*: one event of a chain; links fire in order. The *final link* completes the chain; the others are *early
@@ -758,7 +792,9 @@ events a career gets and how they are shared among the deck's chain cards. This 
   distribution that can be under-dispersed; the *Poisson* has variance equal to its mean.
 - *Marker allowance*: the chance that a fired link's marker skill goes unseen.
 
-**The model.** A run gets $N$ chain events, the same for every deck and scenario (**fitted**; tested against
+### Model
+
+A run gets $N$ chain events, the same for every deck and scenario (**fitted**; tested against
 alternatives in-sample and held out, below):
 
 $$N \sim \mathrm{Binomial}(21, 0.35), \qquad P(N = e) = \binom{21}{e}\, 0.35^{e}\, 0.65^{21-e}, \quad E N = 7.35,\ \mathrm{Var}\, N = 4.78.$$
@@ -777,7 +813,7 @@ $P(\sigma = l) = q_l \prod_{l' < l} (1 - q_{l'})$. A stopped chain's slots retur
 the exact distribution of final chain states (no simulation); an independent recomputation of the solver's odds
 agrees to 2e-15 on every validated loop (section 6).
 
-**Evidence.**
+### Evidence
 
 *How is a chain's progress read?* From marker skills, on 3,424 runs (the pal-count table below). A link is observable
 only if every choice and outcome of its event carries a skill appearing in no other event of that card. A credit
@@ -895,7 +931,7 @@ Computed by `research/s09_outcomes.py` (the certainty checks: `research/s13_cali
 An event can put different skills on different choices, and an outcome can be random. This section states which
 choice IT takes and measures the outcome shares that are not equal.
 
-**What we find.**
+### Findings
 
 - **The model assumes IT takes an event's top choice unless a prioritised skill sits on another**, and that the
   player prioritises every target. In the two events where priority lists show the choice taken, IT follows the rule, and its consequence
@@ -906,7 +942,7 @@ choice IT takes and measures the outcome shares that are not equal.
 - **Pal and group finales are modelled as certain**, and both checked hold: Light Hello and Team Sirius credit their finale
   skill in every run carrying them.
 
-**Terms.**
+### Terms
 
 - *Choice*: an option of an event. *Top* and *bottom choice*: the first and the last.
 - *Outcome*: what a choice gives. *Firing*: one occurrence of an event in a run.
@@ -915,7 +951,9 @@ choice IT takes and measures the outcome shares that are not equal.
 - *Share*: the fraction of firings with a given outcome. *Equal rule*: each of a choice's outcomes equally likely.
 - *Reading*: a firing whose outcome could show.
 
-**The model** (**assumed**).
+### Model
+
+Both rules are **assumed**.
 
 *Choice rule.* IT takes an event's top choice unless a prioritised skill (up to 10, set at career start) sits on
 another choice, and the player is assumed to prioritise every target hint the model counts. Where targets sit on
@@ -926,7 +964,9 @@ a chain early.
 likely unless measured (outcome odds are server-side: master.mdb holds none). A card's gold and white of one skill are
 combined exactly.
 
-**Measured shares** (**fitted**; 90% intervals). Counted only where every outcome could show: her hint credited, and
+### Measured shares
+
+These shares are **fitted**, with 90% intervals, counted only where every outcome could show: her hint credited, and
 the skill's level from other sources below 5.
 
 | Event, outcome | Observed | Adopted |
@@ -941,7 +981,7 @@ the skill's level from other sources below 5.
 The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
 Positioning.
 
-**Evidence.**
+### Evidence
 
 *Does IT follow the choice rule?* Where it can be seen, yes. At Sasami Anshinzawa [This Might Sting!]'s finale, with
 Risky Business prioritised IT took choice 2 in about 95% of runs (3 of the 4 exceptions had Risky
@@ -995,7 +1035,7 @@ Computed by `research/s10_random_events.py`.
 The model leaves some events out. This section measures how often a deck character's shared random event fires and
 what leaving it out costs on real careers.
 
-**What we find.**
+### Findings
 
 - **A deck character's shared random event fires in about 0.14 of the careers it can fire in**, a lower bound. The
   rate falls a little as more such events are on offer, but a constant rate predicts unseen runs as well.
@@ -1005,7 +1045,7 @@ what leaving it out costs on real careers.
 - **Two default targets are affected**: Vodka's Nimble Navigator and Nice Nature's Ramp Up, the only ones that are a
   character's top-choice marker.
 
-**Terms.**
+### Terms
 
 - *Shared random event*: a character's random event that can fire in another uma's career when a card of hers is in
   the deck (any rarity, R cards included).
@@ -1016,7 +1056,9 @@ what leaving it out costs on real careers.
 - *Slot form*: a form in which every event slot competes. $T = K + w \cdot \text{pals}$ counts them, $w$ being what a
   pal weighs in random events.
 
-**The model.** Not modelled: the planner leaves these events out. The fitted rate (**fitted**) is about 0.14 per event
+### Model
+
+Not modelled: the planner leaves these events out. The fitted rate (**fitted**) is about 0.14 per event
 per career. It falls a little with $K$:
 
 $$P(\text{fires}) = 0.18\,(1 - 0.036)^{K - 4},$$
@@ -1024,7 +1066,7 @@ $$P(\text{fires}) = 0.18\,(1 - 0.036)^{K - 4},$$
 which gives 0.18 at $K = 4$ and 0.13 at $K = 14$. The slope is detectable (run-clustered Wald test, $|z|$ =
 2.90) but does not predict unseen runs better than the constant rate.
 
-**Evidence.**
+### Evidence
 
 *How is the rate read?* From top-choice marker skills credited to the character's event: 5,596 readings from
 2,884 runs, 786 clean hits. The 102 ambiguous credits count as misses; as hits, they would raise the rate by about
@@ -1084,7 +1126,7 @@ Computed by `research/s11_conditional.py`.
 The model also leaves out the trainee's secret and race-result events. This section counts them and measures what
 leaving them out costs.
 
-**What we find.**
+### Findings
 
 - **168 secret and race-result events give hints**, for 81 umas. 11 touch the default targets, none with a gold.
 - **Where only such an event can give a target, leaving them out shows no significant cost**: acquisition reads
@@ -1093,13 +1135,13 @@ leaving them out costs.
   under-predicts it.
 - **Tokai Teio's Head-On is modelled as always acquired**, like Yamanin Zephyr's Slipstream.
 
-**Terms.**
+### Terms
 
 - *Conditional character event*: a trainee's secret or race-result event.
 - *Conditional-only row*: a run-target row where only such an event can give the target: none of the trainee's story,
   date, outfit or shared random events can, nor the scenario's.
 
-**Evidence.**
+### Evidence
 
 *How many are there?* 168 events with hints for 81 umas (110 for 55 umas in Global); 11 touch the default
 targets (Nimble Navigator, Ramp Up, Tail Held High), 0 of them giving a gold.
@@ -1124,7 +1166,7 @@ The composition is **derived** from sections 1-11; there is nothing to fit. How 
 the career planner's continuation) is search design, in `docs/SOLVER.md`; `val/joint_check.py` recomputes the solver's
 exact odds independently.
 
-**What we find.**
+### Findings
 
 - **Each target's chance of landing combines its sources**: the deck's gold hint, then the white from the deck, the
   trainee's own events or inheritance, each followed by spark generation.
@@ -1132,7 +1174,7 @@ exact odds independently.
   planner sums over the final chain states exactly instead of multiplying the targets' chances.
 - **The career planner uses the same model** with each veteran's real stars, G1 wins and parents.
 
-**Terms.**
+### Terms
 
 - $G_k = 0.4\cdot 1.1^{n_k}$, $W_k = 0.2\cdot 1.1^{n_k}$: the chance target $k$ becomes a spark when the gold, or only
   the white, is learned (section 1).
@@ -1141,7 +1183,9 @@ exact odds independently.
 - $p_k$: the chance target $k$ lands.
 - $c$: the final chain state, with the links where chains stopped.
 
-**The model.** For a target $k$ not guaranteed:
+### Model
+
+For a target $k$ not guaranteed:
 
 $$p_k = d^{g}_k\, G_k + (1 - d^{g}_k)\, W_k \left[1 - (1 - d^{w}_k)(1 - e_k)(1 - q_k)\right]$$
 
@@ -1163,7 +1207,7 @@ Computed by `research/s13_calibration.py`.
 
 This section rebuilds real careers as the model sees them and compares what the model predicted with what happened.
 
-**What we find.**
+### Findings
 
 - **The planner's acquisition odds are calibrated**: observed / predicted 0.994 [0.98, 1.00].
 - **Inheritance is calibrated.** Of the eight targets, only Tail Held High's interval excludes 1 (0.946 [0.90, 0.99]).
@@ -1175,7 +1219,7 @@ This section rebuilds real careers as the model sees them and compares what the 
   every open target and the interval allows up to about 1.4× optimism.
 - **Beyond the eight targets**, inheritance holds, and training-pool hints are under-predicted (1.064 of the model).
 
-**Terms.**
+### Terms
 
 - *Row*: one default target in one career.
 - *Certain row*: a target the trainee's outfit gives, or one the scenario guarantees as a gold. *Open target*: one
@@ -1186,7 +1230,9 @@ This section rebuilds real careers as the model sees them and compares what the 
 - *Bucket*: the rows whose predicted chance falls in one range.
 - *Single-source pair*: a (card, target) pair where that card is the deck's only source of the target.
 
-**What is compared.** Each of 3,348 real careers (URA Finale 645, Unity Cup 853, Grand Concert 1,768,
+### What is compared
+
+Each of 3,348 real careers (URA Finale 645, Unity Cup 853, Grand Concert 1,768,
 Trackblazer 82) is rebuilt as the model sees a career: the trainee in her outfit, the scenario, the six cards at
 their own limit breaks, both parents with their recorded parents and every ancestor's white sparks, and race wins
 giving the recorded shared-G1 counts. The solver then gives, for each default target of that career, the chance of
@@ -1229,7 +1275,7 @@ The four tests, each isolating one part of the model:
 | 3. Acquired, not prioritised | 1,888 | 0.556 | 0.519 | 0.932 [0.903, 0.960] |
 | 4. Landing (sums of $p$) | 23,919 | 4,358.0 | 4,313.2 | 0.990 |
 
-**Evidence.**
+### Evidence
 
 *Does the priority list matter?* Yes. On the runs that show a priority list, prioritised targets are acquired slightly
 more often than predicted and non-prioritised ones less; the pooled test averages the two.
@@ -1317,7 +1363,9 @@ untested here.
 (1,004): inheritance reads 0.993 [0.98, 1.01] over 43,244 rows, so it holds beyond the eight
 targets; training-pool hints read 1.064 [1.05, 1.08] over 16,978, under-predicted.
 
-**Untested here:** the step from acquired to landed (spark generation, and that everything hinted is bought); the
+### Untested here
+
+the step from acquired to landed (spark generation, and that everything hinted is bought); the
 priority policy run by run; correlations inside a run beyond $P(\text{all})$; Grand Masters; hint levels. The runs skew
 to good careers; every comparison is per run on that run's own deck and lineage. Rows with an inspiration are left out
 of the deck test, which is then conditional on no spark, treated as independent of the deck.
