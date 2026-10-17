@@ -1,8 +1,8 @@
 """Build a career-planner job from a veteran export (umadump's trained_chara_data.json), the way the career page
 reads one: each veteran's white skill sparks (factor_id = factor group * 100 + stars, factor group -> skill group from
 career.json), its single-race G1 wins (win saddle -> race index, career.json) and the same for its two parents
-(succession_chara_array positions 10 and 20). A veteran counts as borrowed when owner_viewer_id is set and is not the
-exporting player's viewer_id.
+(succession_chara_array positions 10 and 20). A veteran counts as borrowed when owner_viewer_id is set: it is 0 on the
+player's own veterans and the lender's viewer_id on the ones offered for borrowing (rental_chara_data.json).
 
 usage: career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB [TABLES]
   BASE_JOB  a deck job (targets, cards, events files...); its mode becomes "career"
@@ -27,7 +27,7 @@ def anc(x): return {'chara': x['card_id'] // 100, 'sparks': sparks(x['factor_inf
 legs = []
 for v in vets:
     a = anc(v)
-    a['borrowed'] = bool(v.get('owner_viewer_id')) and v.get('owner_viewer_id') != v.get('viewer_id')
+    a['borrowed'] = bool(v.get('owner_viewer_id'))
     a['parents'] = [anc(p) for p in sorted(v['succession_chara_array'], key=lambda p: p['position_id']) if p['position_id'] in (10, 20)]
     legs.append(a)
 job = json.load(open(base_path)); job['mode'] = 'career'; job['legacies'] = legs

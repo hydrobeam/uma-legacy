@@ -268,9 +268,12 @@ export function newVet(chara, sparks) {
     parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })) };
   vets.push(v); return v;
 }
-// imported veterans replace earlier imports; hand-made ones stay (a plan slot holding a replaced one goes back to the planner)
-export function importVets(list) {
-  for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'import') vets.splice(i, 1);
+// imported veterans replace earlier imports of the same kind (yours, borrowed), so your own file and the borrow list
+// load side by side, or every earlier import (`all`: an Export of this page holds both); hand-made ones stay (a plan
+// slot holding a replaced one goes back to the planner)
+export function importVets(list, all = false) {
+  const kinds = new Set(list.map(v => !!v.borrowed));
+  for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'import' && (all || kinds.has(!!vets[i].borrowed))) vets.splice(i, 1);
   vets.unshift(...list); dropMissing(); changed();
 }
 // sample veterans to try the planner with (no veterans yet): 18 mob umas drawn at random from the game's (those with a

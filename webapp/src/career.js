@@ -1024,13 +1024,14 @@ function downloadExport() {
 function ownExport(text) { try { const o = JSON.parse(text); return o && o.app === EXPORT_APP && Array.isArray(o.veterans) ? o : null; } catch { return null; } }
 function importText(text) {
   const own = ownExport(text);
-  if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })));
+  if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })), true);
     $('v-msg').textContent = `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`; return true; }
   const tree = parseTree(text);
   if (tree) { if (!tree.length) { $('v-msg').textContent = 'No veteran in that uma.moe tree.'; return false; }
     addVets(tree); $('v-msg').textContent = `Added ${tree.map(v => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${vets.length - tree.length + 1}${tree.length > 1 ? `-#${vets.length}` : ''} (marked yours: switch to Borrowed if she is a friend's).`; return true; }
   try { const list = parseExport(text); importVets(list); const nb = list.filter(v => v.borrowed).length;
-    $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}.`; return true; }
+    const kept = vets.filter(v => v.src === 'import').length - list.length;   // the other kind's import (yours, borrowed) stays
+    $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}${kept ? `; the ${kept} imported before stay` : ''}.`; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }
 }
 document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close(); });   // a backdrop click closes

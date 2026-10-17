@@ -1099,7 +1099,19 @@ const TESTS = {
     const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#vx-dl')]);
     const dlSame = (await import('fs')).readFileSync(await dl.path(), 'utf8') === exText;
     await pg.locator('#vx-dlg .dclose').click();
-    await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', exText); await pg.click('#paste-load'); await vetsShut();
+    // umadump's borrow list (rental_chara_data.json: the lender's viewer id as owner_viewer_id, trained_chara_ids that
+    // can repeat yours) loads beside your own veterans, and your own file then replaces only yours
+    const dump = JSON.parse(fs.readFileSync(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url), 'utf8'));
+    const lent = dump.slice(0, 2).map(r => ({ ...r, viewer_id: 900000000001, owner_viewer_id: 900000000001 }));
+    const paste = async (t) => { await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', t); await pg.click('#paste-load'); await vetsShut(); };
+    await paste(JSON.stringify(lent)); const lentMsg = await pg.textContent('#v-msg');
+    const lentN = [await pg.locator('#vets .vet').count(), await pg.locator('#vets .vet.bor').count()];
+    await paste(JSON.stringify(dump)); const ownMsg = await pg.textContent('#v-msg');
+    const ownN = [await pg.locator('#vets .vet').count(), await pg.locator('#vets .vet.bor').count()];
+    check('career: a borrow list loads beside your veterans, marked borrowed, and your own file then replaces only yours',
+      /^Imported 2 veterans \(2 borrowed\); the 12 imported before stay\.$/.test(lentMsg) && lentN.join() === '14,2'
+      && /^Imported 12 veterans; the 2 imported before stay\.$/.test(ownMsg) && ownN.join() === '14,2', `${lentMsg} ${lentN} / ${ownMsg} ${ownN}`);
+    await paste(exText);   // an Export replaces every import: the 12 again
     check('career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back', ex.app === 'uma-legacy-veterans'
       && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
       && /Imported 12 veterans from an export/.test(await pg.textContent('#v-msg')) && await pg.locator('#vets .vet').count() === 12 && !(await pg.locator('#paste-dlg[open]').count()),

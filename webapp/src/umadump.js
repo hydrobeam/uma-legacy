@@ -1,9 +1,10 @@
-// ---------- veteran import: umadump's trained_chara_data.json (github.com/Werseter/umadump) ----------
+// ---------- veteran import: umadump's trained_chara_data.json and rental_chara_data.json (github.com/Werseter/umadump) ----------
 // Per veteran: card_id (outfit; character = card_id / 100), factor_info_array (sparks: factor_id = factor group * 100 +
 // stars; white skill sparks map to a skill group through CAREER.factors), win_saddle_id_array (single-race G1 saddles
 // map to a race index through CAREER.saddles; titles are left out) and succession_chara_array (her parents at
-// position_id 10 and 20, same fields). A veteran counts as borrowed when owner_viewer_id is set and is not the
-// exporting player's own viewer_id.
+// position_id 10 and 20, same fields). A veteran counts as borrowed when owner_viewer_id is set: it is 0 on your own
+// veterans and the lender's viewer_id (= viewer_id) on the ones offered for borrowing (rental_chara_data.json, the
+// career start screen's borrow list); use_type is 0 on both.
 import { CAREER } from './data.js';
 
 function sparksOf(fs) {
@@ -51,12 +52,13 @@ export function parseTree(text) {
   }));
 }
 export function parseExport(text) {
-  let o; try { o = JSON.parse(text); } catch { throw new Error('That is not JSON. Pick umadump\'s trained_chara_data.json.'); }
+  let o; try { o = JSON.parse(text); } catch { throw new Error('That is not JSON. Pick umadump\'s trained_chara_data.json or rental_chara_data.json.'); }
   const rs = records(o);
-  if (!rs.length) throw new Error('No veterans found. Pick umadump\'s trained_chara_data.json.');
+  if (!rs.length) throw new Error('No veterans found. Pick umadump\'s trained_chara_data.json or rental_chara_data.json.');
   return rs.map(r => ({
-    ...node(r), id: 'tc' + (r.trained_chara_id ?? Math.random().toString(36).slice(2)), src: 'import',
-    borrowed: !!r.owner_viewer_id && r.owner_viewer_id !== r.viewer_id,
+    ...node(r), src: 'import', borrowed: !!r.owner_viewer_id,
+    // trained_chara_id counts per player: a lender's id is kept apart from yours by her viewer id
+    id: (r.owner_viewer_id ? 'tr' + r.owner_viewer_id + '-' : 'tc') + (r.trained_chara_id ?? Math.random().toString(36).slice(2)),
     parents: [10, 20].map(pos => { const p = (r.succession_chara_array || []).find(x => x.position_id === pos); return p ? node(p) : { chara: null, sparks: {}, pinks: {}, wins: [] }; }),
   }));
 }
