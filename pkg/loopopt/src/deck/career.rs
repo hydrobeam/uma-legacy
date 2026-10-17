@@ -185,7 +185,7 @@ const SEEN_KEEP: usize = 256;
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-const STATE_VERSION: u64 = 1;
+const STATE_VERSION: u64 = 2;   // 2: the kept plans carry each uma's looped career
 fn hx(x: f64) -> Value { Value::String(format!("{:016x}", x.to_bits())) }
 fn ux(x: u64) -> Value { Value::String(format!("{:016x}", x)) }
 fn fx(v: &Value) -> Option<f64> { Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)) }

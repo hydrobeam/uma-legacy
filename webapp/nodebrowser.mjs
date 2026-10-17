@@ -1594,6 +1594,12 @@ const TESTS = {
       && goalJob && goalJob.fix.length === 0 && goalRes && goalRes.next.mode === 'trio' && goalRes.next.members.length === 2 && goalRes.next.members.every(m => typeof m.real === 'boolean')
       && await pg.locator('.alts .otag.pick').count() === 1,
       `${JSON.stringify(goalJob && goalJob.fix)} | ${goalRes && JSON.stringify(goalRes.next.v0_plan)} | pick ${goalRes && JSON.stringify(goalRes.next.choice && [goalRes.next.choice.trainee.name, goalRes.next.choice.parents])}`);
+    // each uma also gets her career on two of those 8/8s (only there is her own 8/8 a fully looped parent), the trio's last
+    // run is one, and the table tags them
+    const nTags = await pg.locator('.alts .otag', { hasText: /^\d+\/\d+ parents$/ }).count();
+    check('career: with 8/8 veterans the plan offers careers on two of them, the route\'s last run among them, tagged in the table',
+      goalRes && goalRes.next.options.some(o => o.looped) && goalRes.next.options.filter(o => o.role === 'finish').every(o => o.looped) && nTags >= 1,
+      `${goalRes && goalRes.next.options.filter(o => o.looped).length} looped rows, ${nTags} tagged`);
     // a borrowed fully looped veteran is a parent to use, not the goal: the note stays at step 1 and the planner plans on
     const borEx = JSON.parse(exText);
     for (const v of borEx.veterans) for (const g of v.parents) g.sparks = {};

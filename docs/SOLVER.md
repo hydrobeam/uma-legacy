@@ -363,6 +363,14 @@ raises that candidate's odds and the mean odds raised to.
   the proxy's value, so it is her best career's value); with mob or affinity-free parents every classmate has the same
   chances and one search proves her class. Counted in `umas_certified`.
 - Cont's two builders come from the exactly searched careers.
+- **Looped careers.** Each uma whose career above is not on two 8/8 parents also gets her best career on two real 8/8
+  veterans (a legal pair, all of `fix` among them; pairs by ceiling, each searched exactly with both fixed, stopping
+  below the best found; the surrogate's under `sur` 1), as a row of its own: only there is her own 8/8 a fully looped
+  parent. The trios' last step is such a career (C on A's and B's 8/8s), so without these rows the career V itself
+  prices was never offered, and an uma whose best-odds pair happened to be two 8/8s took the goal's credit alone. They
+  are not among Cont's builders and not added to the deck cache, so V and every other row are unchanged; a looped row
+  that repeats another row's career is left out. On a 315-veteran pool with six 8/8s (one owned) they added 37 rows and
+  took the plan from 11 s to 16 s natively; on pools without two 8/8s they cost nothing.
 
 **Continuation and V.** Per candidate a continuation (`Cont`, assumed form; its shape constants 0.6 and 1.5 are tuning
 choices, set against simulated builder traces on four veteran pools, a comparison not reproduced in the repository): builder careers lift her odds with chance
@@ -386,8 +394,10 @@ best score. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the b
 next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
 
 **Output `next`:**
-- `options`: per career `role` (plan / finish / loop / candidate / builder), `index`, `two_step`, `score`, `lift` (the
-  chance her roll lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
+- `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
+  8/8s, the trios' last step, only when both sides are real and her parents are both 8/8s), `looped` (both parents
+  8/8s), `best_odds` (the main search's best career, one row), `index`, `two_step`, `score`, `lift` (the chance her roll
+  lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
 - `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds,
   p_switch, careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their
   continuations, `[chara, lam, phi, pinf]`).

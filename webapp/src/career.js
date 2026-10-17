@@ -108,6 +108,8 @@ function buildJob() {
 }
 // an 8/8 veteran: a spark of every target (with 8/8 parents: a fully looped parent)
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t => (nd.sparks || {})[t.group] > 0);
+// a career on two 8/8 parents: her own 8/8 there is a fully looped parent (the plan says so; a search's row is read off the veterans)
+const looped = (r) => r.looped ?? r.parents.every(i => isFull(vets[i]));
 const ROLL_K = 6;
 // the job of today's best career over everything (no place set, one result, no rollout): the comparison's baseline
 const baseOf = (job) => ({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], per_trainee: false, top: 1, rollout: undefined, p_now: undefined });
@@ -851,6 +853,7 @@ function optionsEl() {
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
     if (P && r.near) { const a = el('span', 'otag', 'about the same'); a.title = 'Within 5% of the best Saves per run (at least a quarter of a career): too close for the estimate to call, so the planner takes the better odds'; tags.appendChild(a); }
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
+    if (looped(r)) { const a = el('span', 'otag', `${n}/${n} parents`); a.title = `Both parents are ${n}/${n}s: if she lands all ${n}, her veteran is a fully looped parent`; tags.appendChild(a); }
     if (tags.childElementCount) c0.appendChild(tags);
     // the number carries the tooltip (its balloon points at the number, not the middle of the cell)
     const sv = el('td', 'orole'), num = el('span', 'onum', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–'); sv.append(num);
