@@ -12,7 +12,7 @@ import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
 import { initRoster, renderRoster, noOutfit, pickOutfit, outfitNote } from './roster.js';
-import { initCards, cardTitle } from './cards.js';
+import { initCards, cardTitle, borLast } from './cards.js';
 import { initPopover, markOwn } from './popover.js';
 import { openSched } from './agenda.js';
 import { initSetup } from './setup.js';
@@ -463,8 +463,8 @@ function deckEl(r, title = 'Deck', extra = null) {
   dk.querySelector('.dtitle b').textContent = title;
   if (extra) dk.querySelector('.dtitle').appendChild(extra);
   const box = dk.querySelector('.dcards');
-  d.cards.forEach((name, i) => {
-    const bor = /\(borrowed\)$/.test(name), base = name.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d+: [^)]*\)$/, '');
+  borLast(d.cards).forEach((i) => {
+    const name = d.cards[i], bor = /\(borrowed\)$/.test(name), base = name.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d+: [^)]*\)$/, '');
     const id = d.card_ids[i] ?? d.plain_ids[i - d.card_ids.length], c = CARD_BY_ID.get(id) || CARDS.find(x => x.name === base);
     const endAt = (d.end_chain_at || [])[i] || 0, pick = (d.choices || [])[i] || (c && c.pri ? c.pri.join(', ') : '');
     const t = c ? cardTitle(c) : { nm: base, ti: '' }, tag = bor ? 'borrowed' : c && c.pal ? 'pal' : '';

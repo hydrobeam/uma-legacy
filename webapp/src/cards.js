@@ -7,6 +7,8 @@ import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
 const RAR = { 1: 'R', 2: 'SR', 3: 'SSR' };
 // rar: append the rarity ("Daitaku Helios SSR"); the card list leaves it out, its frame and section heading show it
+// a deck's card indices with the borrowed card last: the sixth slot, as in the game
+export const borLast = (cards) => cards.map((_, i) => i).sort((a, b) => /\(borrowed\)$/.test(cards[a]) - /\(borrowed\)$/.test(cards[b]));
 export const cardTitle = (c, rar = true) => { const m = /^\[(.*)\] (.*)$/.exec(c.name); return m ? { nm: m[2] + (rar ? ' ' + RAR[c.rar] : ''), ti: m[1] } : { nm: c.name, ti: '' }; };
 // how a card gives a target, as a short note and a one-line tooltip: from training with it, from an event, or from its
 // n-th story event (they come in order, so a later one needs the earlier ones first); "50%": the event gives it on

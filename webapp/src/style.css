@@ -1244,6 +1244,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .udcard.dc { all: unset; position: relative; line-height: 0; border-radius: 6px; cursor: pointer; }
 .udcard.dc:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .udcard.dc.bor { box-shadow: 0 0 0 3px var(--gm-pink2); container-type: inline-size; }   /* `all: unset` above drops .dc.bor's container: the friend frame's 100cqw is the card's width, not the page's */
+.udcard.dc.bor:has(.cav.art) { box-shadow: none; } .udcard.dc:has(.cav.art) .udfr { display: none; }   /* with art the friend frame marks her, as in the decks; the ring and the Friends tag only without */
 /* Career choices: the explanation behind a button */
 .rb .alts { position: relative; }
 .rb .alts > h3 > .savewhy { position: relative; display: inline-grid; place-items: center; vertical-align: 2px; width: 18px; height: 18px;

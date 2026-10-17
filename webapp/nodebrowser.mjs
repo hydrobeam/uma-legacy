@@ -1175,6 +1175,11 @@ const TESTS = {
     check('career: an edit undone within the pause runs nothing and never dims the answer', seq3.length > 0 && !seq3.some(s => s.stale) && (await showsNow()) === pre3, JSON.stringify(seq3.map(s => [s.busy, s.stale])).slice(0, 120));
     check('career: a deck card\'s panel marks it not owned; the search drops it or borrows it', await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:settings')).global.cardsOff[id] === false, dcid)
       && (!(await pg.locator(`#tree-deck .dc[data-cid="${dcid}"]`).count()) || await pg.locator(`#tree-deck .dc.bor[data-cid="${dcid}"]`).count() === 1));
+    {   // with a card borrowed, every deck on the page (the tree's, Career Info's) lists it last: the sixth slot, as in the game
+      const rows = await pg.$$eval('.dcards, .udcards', l => l.map(r => [...r.querySelectorAll(':scope > .dc')].map(e => e.classList.contains('bor'))).filter(k => k.length));
+      const bad = rows.filter(k => k.some((b, i) => b && k.slice(i + 1).some(x => !x))).length, nb = rows.filter(k => k.includes(true)).length;
+      check('career: decks list the borrowed card last', nb > 0 && bad === 0, `${rows.length} decks, ${nb} with a borrowed card, ${bad} out of order`);
+    }
     await pg.click('#o-cards'); await dialog(pg, 'set-cards'); await pg.click('#c-all'); await pg.locator('#set-cards .dclose').click(); await done();
     // the schedule: the planner's window, one trainee, from a button beside the deck
     check('career: the race schedule is a button under the trainee, beside the deck\'s', await pg.locator('#tree .pn.trainee #sched-open').count() === 1
@@ -1360,11 +1365,14 @@ const TESTS = {
     if (ART) {
       const fr = await pg.evaluate(() => {
         const row = document.querySelector('#udpane-info .udcards'), c = row.querySelector('.udcard').cloneNode(true);
-        c.classList.add('bor'); row.appendChild(c);
-        const r = c.getBoundingClientRect(), a = getComputedStyle(c, '::after'), out = [parseFloat(a.width), parseFloat(a.height), r.width, r.height];
+        c.classList.add('bor'); c.appendChild(Object.assign(document.createElement('span'), { className: 'udfr', textContent: 'Friends' })); row.appendChild(c);
+        const r = c.getBoundingClientRect(), a = getComputedStyle(c, '::after'), out = [parseFloat(a.width), parseFloat(a.height), r.width, r.height,
+          getComputedStyle(c).boxShadow, getComputedStyle(c.querySelector('.udfr')).display];
         c.remove(); return out;
       });
-      check('career: in Career Info a borrowed card\'s friend frame stays on its card', fr[0] <= fr[2] + 10 && fr[1] <= fr[3] + 20, `frame ${fr[0]}x${fr[1]}, card ${fr[2]}x${fr[3]}`);
+      // and wears it alone: the old pink ring and Friends tag (for cards without art) once framed the frame
+      check('career: in Career Info a borrowed card\'s friend frame stays on its card, without the ring and tag', fr[0] <= fr[2] + 10 && fr[1] <= fr[3] + 20
+        && fr[4] === 'none' && fr[5] === 'none', `frame ${fr[0]}x${fr[1]}, card ${fr[2]}x${fr[3]}, ring ${fr[4]}, tag ${fr[5]}`);
     }
     await pg.click('#sim-wins'); await dialog(pg, 'wins-dlg');
     const wb0 = pg.locator('#wins-dlg .ag-race.wbtn').first(), wname = (await wb0.getAttribute('aria-label')).replace(/, won: remove$/, '');

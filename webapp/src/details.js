@@ -8,6 +8,7 @@ import { el } from './dom.js';
 import { SK, CARD_BY_ID, CARDS } from './data.js';
 import { srcFor, umaAv, skillIcon, cardAv } from './images.js';
 import { umaName, sparksEl } from './vets.js';
+import { borLast } from './cards.js';
 
 let tab = 'insp';
 // a spark bar's name on one line, its type shrunk until it fits (the game's way), down to 9 px; panes on show only
@@ -189,7 +190,8 @@ function infoPane({ d, races, raceName, winsBtn, deck, legacies, parentLabel }) 
   if (deck) {
     p.appendChild(el('div', 'udsub', 'Support Cards'));
     const row = el('div', 'udcards deck');
-    deck.cards.forEach((nm, i) => {
+    borLast(deck.cards).forEach((i) => {
+      const nm = deck.cards[i];
       const bor = /\(borrowed\)$/.test(nm), base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d+: [^)]*\)$/, '');
       const id = deck.card_ids[i] ?? deck.plain_ids?.[i - deck.card_ids.length], c = CARD_BY_ID.get(id) || CARDS.find(x => x.name === base);
       const cell = el('button', 'udcard dc' + (bor ? ' bor' : '')); cell.type = 'button'; cell.appendChild(cardAv(c || null, 64)); cell.title = base + (bor ? ' (borrowed)' : '');

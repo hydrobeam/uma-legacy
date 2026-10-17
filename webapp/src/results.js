@@ -3,7 +3,7 @@ import { $, esc, fmtIn } from './dom.js';
 import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
 import { umaAv, cardAv, skillIcon, setRunnerFrom } from './images.js';
-import { cardTitle } from './cards.js';
+import { cardTitle, borLast } from './cards.js';
 import { closePop, markOwn, popHasFocus } from './popover.js';
 import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
@@ -21,7 +21,7 @@ function loopCard(l, meta, ctx) {
     const D = meta.decks, M = l.members;
     const key = (d) => d.cards.join('|');
     const same = !D || D.every(d => key(d) === key(meta.deck));
-    const lastBor = (d, idx) => [...idx].sort((a, b) => /\(borrowed\)$/.test(d.cards[a]) - /\(borrowed\)$/.test(d.cards[b]));   // borrowed card in the sixth slot, as in the game
+    const lastBor = (d, idx) => { const o = borLast(d.cards); return o.filter(i => idx.includes(i)); };   // borrowed card in the sixth slot
     const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
       const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
       const c = CARD_BY_ID.get(d.card_ids[ci]) || CARDS.find(x => x.name === base);   // plain pals have a name but no entry in card_ids
