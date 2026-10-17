@@ -1243,7 +1243,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .udcards.deck { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; background: none; box-shadow: none; border-radius: 0; }
 .udcard.dc { all: unset; position: relative; line-height: 0; border-radius: 6px; cursor: pointer; }
 .udcard.dc:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.udcard.dc.bor { box-shadow: 0 0 0 3px var(--gm-pink2); }
+.udcard.dc.bor { box-shadow: 0 0 0 3px var(--gm-pink2); container-type: inline-size; }   /* `all: unset` above drops .dc.bor's container: the friend frame's 100cqw is the card's width, not the page's */
 /* Career choices: the explanation behind a button */
 .rb .alts { position: relative; }
 .rb .alts > h3 > .savewhy { position: relative; display: inline-grid; place-items: center; vertical-align: 2px; width: 18px; height: 18px;
@@ -1253,7 +1253,9 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .savebody p { margin: 0; line-height: 1.45; }
 .savebody .oloop { color: var(--gm-ink); }   /* the route: body text like the rest of the popup */
 .gmdlg { width: min(520px, calc(100vw - 32px)); }
-.gmdlg .gmdbody { max-height: calc(100vh - 160px); overflow: auto; }
+.gmdlg[open] { display: flex; flex-direction: column; }   /* header, body, footer within the dialog's max-height: the body scrolls in what
+   the footer leaves, however many rows its buttons wrap to (a fixed 100vh - 160px cut a wrapped footer's last row off) */
+.gmdlg > * { flex: none; } .gmdlg > .gmdbody { flex: 1 1 auto; min-height: 0; overflow: auto; }
 
 .simhdr { font-weight: 900; font-size: 0.92rem; color: #fff; text-shadow: var(--gm-outline); padding: 3px 26px 3px 10px; margin: -10px -10px 0; border-radius: 12px 12px 0 0;
   background-color: var(--gm-green); background-image: linear-gradient(90deg, transparent 0, var(--gm-green) 32%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 12px), linear-gradient(var(--gm-green), var(--gm-green2)); }

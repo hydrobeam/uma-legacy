@@ -1355,6 +1355,17 @@ const TESTS = {
       await pg.locator('#udpane-info .udcard').count() >= 1 && await pg.locator('#udpane-info .udleg').count() === 2 && await pg.locator('#udpane-info .udleggx').count() === 4
       && rec.length > 0 && rec.filter(Boolean).length === w0 && new RegExp(`Wins: ${w0}\\b`).test(recLine) && racesShut && !(await pg.locator('#ud-races').isHidden()),
       `${rec.length} races, ${rec.filter(Boolean).length} won, button ${w0}, ${recLine}`);
+    // a borrowed card there wears the friend frame within its own card (`all: unset` on these cards once dropped the
+    // container the frame's 100cqw is measured on, and the frame grew to the page's width)
+    if (ART) {
+      const fr = await pg.evaluate(() => {
+        const row = document.querySelector('#udpane-info .udcards'), c = row.querySelector('.udcard').cloneNode(true);
+        c.classList.add('bor'); row.appendChild(c);
+        const r = c.getBoundingClientRect(), a = getComputedStyle(c, '::after'), out = [parseFloat(a.width), parseFloat(a.height), r.width, r.height];
+        c.remove(); return out;
+      });
+      check('career: in Career Info a borrowed card\'s friend frame stays on its card', fr[0] <= fr[2] + 10 && fr[1] <= fr[3] + 20, `frame ${fr[0]}x${fr[1]}, card ${fr[2]}x${fr[3]}`);
+    }
     await pg.click('#sim-wins'); await dialog(pg, 'wins-dlg');
     const wb0 = pg.locator('#wins-dlg .ag-race.wbtn').first(), wname = (await wb0.getAttribute('aria-label')).replace(/, won: remove$/, '');
     const nShown = await pg.locator('#wins-dlg .ag-race.wbtn').count();
@@ -1455,7 +1466,15 @@ const TESTS = {
     await pg.locator('.alts tbody tr').filter({ has: pg.getByRole('button', { name: 'Use this' }) }).first().getByRole('button', { name: 'Use this' }).click(); await done();
     check('career: "Use this" sets the places; with all set the career is just scored', /Scored in/.test(await note()) && !(await pg.locator('.alts').count())
       && await pg.locator('#tree .pn.ghost').count() === 0, await note());
-    await node('node:p1'); await inNode('Let the planner pick').click(); await closeNode(); await done();
+    // the chosen parent's popup shows its actions: the footer (Close, Change parent, Let the planner pick) wraps on narrow
+    // popups and once ran past the popup's bottom, hiding the only way to unselect a parent; desktop and phone
+    await node('node:p1');
+    const footIn = () => pg.evaluate(() => { const d = document.getElementById('node-dlg').getBoundingClientRect();
+      return [...document.querySelectorAll('#node-dlg .gmdfoot button')].every(b => { const r = b.getBoundingClientRect(); return r.top >= d.top && r.bottom <= d.bottom + 0.5 && r.bottom <= innerHeight; }); });
+    const vp0 = pg.viewportSize(), footWide = await footIn(); await pg.setViewportSize({ width: 375, height: 740 }); const footPhone = await footIn(); await pg.setViewportSize(vp0);
+    check('career: a chosen parent\'s popup shows Change parent and Let the planner pick inside it (desktop and phone)', footWide && footPhone
+      && await inNode('Let the planner pick').count() === 1, `desktop ${footWide}, phone ${footPhone}`);
+    await inNode('Let the planner pick').click(); await closeNode(); await done();
     check('career: "Let the planner pick" hands a place back', await pg.locator('#tree .pn.ghost').count() === 1 && /Weighed/.test(await note()));
     // a settings change searches again
     await pg.click('#o-umas'); await dialog(pg, 'set-umas');
