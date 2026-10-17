@@ -40,8 +40,10 @@ Picks the next career from the veterans you have, aiming at a *fully looped pare
 8/8s). It shares the loop planner's settings, plus **Veteran Umamusume**:
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
   parents) or its `rental_chara_data.json`, the veterans the career start screen offers for borrowing (same fields,
-  marked borrowed). Each replaces the earlier import of its kind, so both can be loaded; *Paste* takes the same text,
-  an Export from this page, or an uma.moe lineage planner export.
+  marked borrowed). The dialog's *Yours* and *Borrowed* tabs hold each kind. Your veterans merge by veteran (the
+  file's version replaces the same one, nothing is removed); a borrow list replaces the earlier one, since it is who
+  lends today; *Remove all* clears the open tab. *Paste* takes the same text, an Export from this page (which replaces
+  every import), or an uma.moe lineage planner export.
 - With no veterans, **Try sample veterans** adds six random mob umas carrying only the targets that inheritance alone
   gives, the minimum to start a loop.
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.

@@ -923,7 +923,7 @@ function vetCardEl(v, i) {
   const seg = el('div', 'seg sm'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
   for (const [b, l] of [[false, 'Yours'], [true, 'Borrowed']]) {
     const x = el('button', '', l); x.type = 'button'; x.setAttribute('aria-pressed', String(v.borrowed === b));
-    x.onclick = () => { if (v.borrowed !== b) { v.borrowed = b; changed(); } }; seg.appendChild(x);
+    x.onclick = () => { if (v.borrowed !== b) { v.borrowed = b; $('v-msg').textContent = `Moved ${umaName(v.chara)} (#${i + 1}) to ${l}.`; changed(); } }; seg.appendChild(x);   // she moves to that tab
   }
   top.appendChild(seg);
   const k = plan.parents.indexOf(v.id);
@@ -946,18 +946,29 @@ function vetCardEl(v, i) {
 }
 // your veterans: the game's Veteran Umamusume button in the setup bar opens them in a dialog
 // (the cards are drawn only while the dialog is open, and when it opens: every edit and result redraws the page)
-let poolStale = true;
+// Two tabs over the one list, yours and borrowed; a veteran keeps her number (her place in the whole list) in either.
+let poolStale = true, vTab = 'own';
+const inTab = (v) => !!v.borrowed === (vTab === 'bor');
+function setVTab(t) {
+  vTab = t;
+  for (const x of ['own', 'bor']) $('v-tab-' + x).setAttribute('aria-selected', String(x === t));
+  $('vets').setAttribute('aria-labelledby', 'v-tab-' + t);
+  renderPool();
+}
 function renderPool() {
   if (nodeDlg?.open && nodeOpen?.kind === 'v') fillNode();
   const nb = vets.filter(v => v.borrowed).length;
   $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}` + (nb ? `, ${nb} borrowed` : '') + '.' : '';
+  $('v-tab-own').textContent = `Yours · ${vets.length - nb}`; $('v-tab-bor').textContent = `Borrowed · ${nb}`;
   if (!$('set-vets').open) { poolStale = true; return; }
   drawPool();
 }
 function drawPool() {
   const box = $('vets'); box.textContent = ''; poolStale = false;
-  vets.forEach((v, i) => box.appendChild(vetCardEl(v, i)));
-  if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet. Import an umadump file, or make one with Choose parent.</p>';
+  vets.forEach((v, i) => { if (inTab(v)) box.appendChild(vetCardEl(v, i)); });
+  if (!box.children.length) box.innerHTML = vTab === 'own'
+    ? '<p class="hint">No veterans of yours yet. Import umadump\'s trained_chara_data.json, or make one with Choose parent.</p>'
+    : '<p class="hint">None borrowed yet. Import umadump\'s rental_chara_data.json (the borrow list on the career start screen), or mark a veteran Borrowed.</p>';
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
@@ -1024,14 +1035,16 @@ function downloadExport() {
 function ownExport(text) { try { const o = JSON.parse(text); return o && o.app === EXPORT_APP && Array.isArray(o.veterans) ? o : null; } catch { return null; } }
 function importText(text) {
   const own = ownExport(text);
-  if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })), true);
+  if (own) { importVets(own.veterans.map(v => ({ pinks: {}, wins: [], ...v, src: 'import' })), true); setVTab('own');
     $('v-msg').textContent = `Imported ${own.veterans.length} veteran${own.veterans.length === 1 ? '' : 's'} from an export of this page.`; return true; }
   const tree = parseTree(text);
   if (tree) { if (!tree.length) { $('v-msg').textContent = 'No veteran in that uma.moe tree.'; return false; }
     addVets(tree); $('v-msg').textContent = `Added ${tree.map(v => umaName(v.chara)).join(', ')} from an uma.moe tree, with her parents, as #${vets.length - tree.length + 1}${tree.length > 1 ? `-#${vets.length}` : ''} (marked yours: switch to Borrowed if she is a friend's).`; return true; }
-  try { const list = parseExport(text); importVets(list); const nb = list.filter(v => v.borrowed).length;
-    const kept = vets.filter(v => v.src === 'import').length - list.length;   // the other kind's import (yours, borrowed) stays
-    $('v-msg').textContent = `Imported ${list.length} veteran${list.length > 1 ? 's' : ''}${nb ? ` (${nb} borrowed)` : ''}${kept ? `; the ${kept} imported before stay` : ''}.`; return true; }
+  try { const r = importVets(parseExport(text)), n = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`, said = [];
+    if (r.added || r.updated) said.push(`Imported ${n(r.added + r.updated, 'veteran')} of yours: ` + [r.added && `${r.added} new`, r.updated && `${r.updated} already here, updated`].filter(Boolean).join(', '));
+    if (r.borrowed) said.push(`${said.length ? 'r' : 'R'}eplaced the borrow list with ${n(r.borrowed, 'borrowed veteran')}${r.dropped ? ` (it had ${r.dropped})` : ''}`);
+    setVTab(r.added || r.updated ? 'own' : 'bor');
+    $('v-msg').textContent = said.join('; ') + '.'; return true; }
   catch (e) { $('v-msg').textContent = e.message; return false; }
 }
 document.addEventListener('click', (e) => { if (e.target instanceof HTMLDialogElement && e.target.open) e.target.close(); });   // a backdrop click closes
@@ -1055,6 +1068,10 @@ loadData().then(() => {
   $('v-toggle').onclick = () => { if (poolStale) drawPool(); $('set-vets').showModal(); };
   // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
   new MutationObserver(() => { if ($('set-vets').open && poolStale) drawPool(); }).observe($('set-vets'), { attributes: true, attributeFilter: ['open'] });
-  $('v-clear').onclick = () => { if (vets.length && confirm(`Remove all ${vets.length} veterans?`)) clearVets(); };
+  $('v-clear').onclick = () => {   // the open tab's veterans
+    const n = vets.filter(inTab).length, what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
+    if (n && confirm(`Remove all ${what}?`)) { clearVets(inTab); $('v-msg').textContent = `Removed ${what}.`; }
+  };
+  for (const x of ['own', 'bor']) $('v-tab-' + x).onclick = () => setVTab(x);
   renderAll(); search();
 }, (e) => { status = { kind: 'error', text: e.message }; paint(); });

@@ -268,13 +268,25 @@ export function newVet(chara, sparks) {
     parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })) };
   vets.push(v); return v;
 }
-// imported veterans replace earlier imports of the same kind (yours, borrowed), so your own file and the borrow list
-// load side by side, or every earlier import (`all`: an Export of this page holds both); hand-made ones stay (a plan
-// slot holding a replaced one goes back to the planner)
+// an import never loses one of your veterans: yours merge by id (a veteran already here takes the file's version in
+// her place, new ones go after your other imports), while borrowed ones replace the earlier borrow list (it is who
+// lends today), after all of yours so your numbers keep. `all` (an Export of this page, holding both kinds): every
+// earlier import goes. Hand-made ones stay (a plan slot holding a removed one goes back to the planner).
+// Returns { added, updated } for yours and { borrowed, dropped } for the borrow list.
 export function importVets(list, all = false) {
-  const kinds = new Set(list.map(v => !!v.borrowed));
-  for (let i = vets.length - 1; i >= 0; i--) if (vets[i].src === 'import' && (all || kinds.has(!!vets[i].borrowed))) vets.splice(i, 1);
-  vets.unshift(...list); dropMissing(); changed();
+  const isImp = (v) => v.src === 'import';
+  if (all) { for (let i = vets.length - 1; i >= 0; i--) if (isImp(vets[i])) vets.splice(i, 1); }
+  const own = list.filter(v => !v.borrowed), bor = list.filter(v => v.borrowed), fresh = [];
+  let updated = 0, dropped = 0;
+  for (const v of own) { const old = vetById(v.id); if (old) { Object.assign(old, v); updated++; } else fresh.push(v); }
+  const at = vets.reduce((a, v, i) => (isImp(v) && !v.borrowed ? i + 1 : a), 0);
+  vets.splice(at, 0, ...fresh);
+  if (bor.length) {
+    for (let i = vets.length - 1; i >= 0; i--) if (isImp(vets[i]) && vets[i].borrowed) { vets.splice(i, 1); dropped++; }
+    vets.push(...bor);
+  }
+  dropMissing(); changed();
+  return { added: fresh.length, updated, borrowed: bor.length, dropped };
 }
 // sample veterans to try the planner with (no veterans yet): 18 mob umas drawn at random from the game's (those with a
 // portrait), six veterans with two mob parents each, the bare minimum to start a loop: each veteran carries, at 1 star,
@@ -295,7 +307,8 @@ export function sampleVets() {
 // veterans from an uma.moe tree: added after the others (the numbers you have keep)
 export function addVets(list) { vets.push(...list); changed(); }
 export function removeVet(i) { vets.splice(i, 1); dropMissing(); changed(); }
-export function clearVets() { vets.length = 0; dropMissing(); changed(); }
+// every veteran, or those `drop` picks
+export function clearVets(drop = () => true) { for (let i = vets.length - 1; i >= 0; i--) if (drop(vets[i])) vets.splice(i, 1); dropMissing(); changed(); }
 function dropMissing() { plan.parents = plan.parents.map(id => (id && vetById(id) ? id : null)); }
 // the job's legacies (skill groups and stars as pairs; an unknown parent counts with character 0: no relation points)
 export function legaciesJob() {

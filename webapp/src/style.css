@@ -1375,6 +1375,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
    never scrolls, as the other editors) */
 .vetdlg > .dlg > * { flex: none; }
 .vetdlg > .dlg > .vets { flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; padding-right: 4px; }
+.vetdlg > .dlg > .seg { display: flex; margin-top: 10px; } .vetdlg > .dlg > .seg > button { flex: 1 1 0; justify-content: center; }   /* Yours / Borrowed: two tabs sharing the dialog's width */
 @media (max-width: 860px) { .game .rbbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hdr" "list" "enh"; } .game .setenh { padding-top: 14px; } }
 @media (max-width: 640px) { .game .setlist { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 520px) { .game .setlist .gctl { grid-template-columns: 6.6em minmax(0, 1fr); gap: 8px; } .game .setlist .seg button { white-space: normal; line-height: 1.2; }

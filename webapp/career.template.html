@@ -70,7 +70,11 @@ __PANEL_ENH__
     <button class="btn" type="button" id="v-clear">Remove all</button>
     <span class="hint" id="v-msg" role="status"></span>
   </div>
-  <div class="vets" id="vets"></div>
+  <div class="seg" role="tablist" aria-label="Whose veterans">
+    <button type="button" role="tab" id="v-tab-own" aria-selected="true" aria-controls="vets">Yours</button>
+    <button type="button" role="tab" id="v-tab-bor" aria-selected="false" aria-controls="vets">Borrowed</button>
+  </div>
+  <div class="vets" id="vets" role="tabpanel" aria-labelledby="v-tab-own"></div>
 </div></dialog>
 __PANEL_DLGUMAS____PANEL_DLGCARDS__
 
@@ -102,7 +106,7 @@ __PANEL_DLGUMAS____PANEL_DLGCARDS__
 </div></dialog>
 <dialog id="paste-dlg" aria-labelledby="paste-title"><div class="dlg">
   <div class="row between dhead"><h3 id="paste-title">Paste veterans</h3><button class="btn dclose">Close</button></div>
-  <p>The contents of umadump's <code>trained_chara_data.json</code> (yours) or <code>rental_chara_data.json</code> (the veterans you can borrow), the text from this page's Export, or an uma.moe lineage planner export (one veteran with her parents, added after yours). An umadump file replaces earlier imports of the same kind, yours or borrowed, and an Export replaces both; veterans you made here stay.</p>
+  <p>The contents of umadump's <code>trained_chara_data.json</code> (yours) or <code>rental_chara_data.json</code> (the veterans you can borrow), the text from this page's Export, or an uma.moe lineage planner export (one veteran with her parents, added after yours). Your veterans merge with those already here (the file's version replaces the same veteran, nothing is removed); a borrow list replaces the earlier one, since it is who lends today; an Export replaces every import. Veterans you made here stay.</p>
   <textarea id="paste-text" rows="10" spellcheck="false" aria-label="umadump, Export or uma.moe text"></textarea>
   <div class="row"><button class="btn" id="paste-load">Import</button></div>
 </div></dialog>

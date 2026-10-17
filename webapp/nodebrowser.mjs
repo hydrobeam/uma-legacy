@@ -1100,17 +1100,25 @@ const TESTS = {
     const dlSame = (await import('fs')).readFileSync(await dl.path(), 'utf8') === exText;
     await pg.locator('#vx-dlg .dclose').click();
     // umadump's borrow list (rental_chara_data.json: the lender's viewer id as owner_viewer_id, trained_chara_ids that
-    // can repeat yours) loads beside your own veterans, and your own file then replaces only yours
+    // can repeat yours) goes to the Borrowed tab beside your own veterans; a later borrow list replaces it; your own file
+    // merges (a partial one removes nothing); Remove all takes only the open tab's
     const dump = JSON.parse(fs.readFileSync(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url), 'utf8'));
-    const lent = dump.slice(0, 2).map(r => ({ ...r, viewer_id: 900000000001, owner_viewer_id: 900000000001 }));
-    const paste = async (t) => { await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', t); await pg.click('#paste-load'); await vetsShut(); };
-    await paste(JSON.stringify(lent)); const lentMsg = await pg.textContent('#v-msg');
-    const lentN = [await pg.locator('#vets .vet').count(), await pg.locator('#vets .vet.bor').count()];
-    await paste(JSON.stringify(dump)); const ownMsg = await pg.textContent('#v-msg');
-    const ownN = [await pg.locator('#vets .vet').count(), await pg.locator('#vets .vet.bor').count()];
-    check('career: a borrow list loads beside your veterans, marked borrowed, and your own file then replaces only yours',
-      /^Imported 2 veterans \(2 borrowed\); the 12 imported before stay\.$/.test(lentMsg) && lentN.join() === '14,2'
-      && /^Imported 12 veterans; the 2 imported before stay\.$/.test(ownMsg) && ownN.join() === '14,2', `${lentMsg} ${lentN} / ${ownMsg} ${ownN}`);
+    const lend = (rows, id) => rows.map(r => ({ ...r, viewer_id: id, owner_viewer_id: id }));
+    const paste = async (t) => { await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', t); await pg.click('#paste-load'); };
+    const seen = async () => [await pg.textContent('#v-msg'), await pg.getAttribute('#v-tab-bor', 'aria-selected'), await pg.locator('#vets .vet').count(),
+      (await pg.textContent('#v-tab-own')).trim(), (await pg.textContent('#v-tab-bor')).trim()].join(' | ');
+    await paste(JSON.stringify(lend(dump.slice(0, 3), 900000000001))); const lent1 = await seen();
+    await paste(JSON.stringify(lend(dump.slice(0, 2), 900000000002))); const lent2 = await seen();
+    await paste(JSON.stringify(dump.slice(0, 5))); const part = await seen();
+    check('career: a borrow list goes to the Borrowed tab and the next one replaces it; your partial file merges and removes nothing',
+      lent1 === 'Replaced the borrow list with 3 borrowed veterans. | true | 3 | Yours · 12 | Borrowed · 3'
+      && lent2 === 'Replaced the borrow list with 2 borrowed veterans (it had 3). | true | 2 | Yours · 12 | Borrowed · 2'
+      && part === 'Imported 5 veterans of yours: 5 already here, updated. | false | 12 | Yours · 12 | Borrowed · 2', `${lent1} / ${lent2} / ${part}`);
+    await pg.click('#v-tab-bor'); pg.once('dialog', d => d.accept()); await pg.click('#v-clear');
+    const cleared = await seen(), emptyHint = await pg.textContent('#vets'); await pg.click('#v-tab-own');
+    check('career: Remove all on the Borrowed tab removes only the borrowed, and the empty tab says how to fill it',
+      /^Removed 2 borrowed veterans\. \| true \| 0 \| Yours · 12 \| Borrowed · 0$/.test(cleared) && /None borrowed yet/.test(emptyHint) && await pg.locator('#vets .vet').count() === 12, cleared);
+    await vetsShut();
     await paste(exText);   // an Export replaces every import: the 12 again
     check('career: Export shows the veterans and the search job as text, Copy copies it, Download saves it, and Paste takes it back', ex.app === 'uma-legacy-veterans'
       && ex.veterans.length === 12 && ex.job && ex.job.cmd === 'career' && ex.job.legacies.length === 12 && copied && dlSame
