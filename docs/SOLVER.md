@@ -256,8 +256,13 @@ Several career jobs run in one process with `target/release/loopopt data.json a.
 as the page's solver worker runs them: a job's fully checked decks are kept per setup (everything but the pool and the
 places) and bound the later jobs' searches, never the search that seeds the simulator's cache, so every output equals
 the job run alone. The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
-search the worker keeps (the second job's search costs about 3 ms in wasm, and the plan does the same work as one
-combined job).
+search the worker keeps (`LAST_SOLVE`, the last three, keyed by the whole job without `next` and `no_reports`; the
+second job's search costs about 3 ms in wasm) together with what its product searches proved (`Env::ruled` as the
+search left it), so the plan starts from the state a combined job's plan starts from: on the nine val/plan jobs its
+output and its deck-search nodes equal the combined job's (`tests/plan_state.rs`). Without the proofs the plan job did
+up to 0.45% more nodes (gm16_nu8), outputs equal. The proofs go no further than their own search: `certified` takes a
+proxy career a proof certifies in place of an exact search, which may name another pair or deck of equal value, so
+proofs from other pools could change an output.
 
 | Field | Meaning | Default |
 |---|---|---|
@@ -270,7 +275,7 @@ combined job).
 | `simulate` | runs the policy simulator instead of the search (section *Policy simulator*) | none |
 | `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
-| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above) and the kept proofs (fully checked decks per setup and deck class), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
+| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class) and the kept main searches (`LAST_SOLVE` with their product proofs, so a reload's first run searches nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
 

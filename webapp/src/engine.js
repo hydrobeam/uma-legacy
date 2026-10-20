@@ -57,6 +57,7 @@ function startEngine() {
         for (const p of waiting) p.done({ r: { error: 'the solver stopped with an error (' + m.message + ')' }, ms: 0 });
       }
       else if (m.type === 'interim') { const p = pending.get(m.id); p && p.interim && p.interim(m); }
+      else if (m.type === 'progress') { const p = pending.get(m.id); p && p.progress && p.progress(m); }
       else if (m.type === 'result') { const p = pending.get(m.id); pending.delete(m.id); p && p.done(m); }
     };
     worker.onerror = (e) => reject(new Error('The solver failed to start: ' + (e.message || 'unknown error')));
@@ -95,5 +96,6 @@ export function engineSaveState() {
 const gate = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
   exclude: [...(job.exclude || []), ...LATER.umas], exclude_outfits: [...(job.exclude_outfits || []), ...LATER.outfits],
   exclude_cards: [...(job.exclude_cards || []), ...LATER.cards] };
-// interim: called with the fast first pass of a deck search, before the exact one resolves the promise
-export function run(job, interim) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim }); worker.postMessage({ type: 'run', id, job: gate(job) }); })); }
+// interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
+// with the career plan's phase reports ({ph, k, n}: sim/plan.rs `index_rule`) while it runs
+export function run(job, interim, progress) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim, progress }); worker.postMessage({ type: 'run', id, job: gate(job) }); })); }

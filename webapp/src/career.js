@@ -37,6 +37,12 @@ const btn = (label, cls, fn) => { const b = el('button', 'btn' + (cls ? ' ' + cl
 let searching = false, phase = 'search', t0 = 0, tick = null, timer = null, myId = 0;
 let started = false;   // a job of this run is under way (the pause before it dims nothing: an edit that ends where it started runs none)
 let phaseNote = '';   // the plan phase's lead: what the search found ("Weighed N careers in X s.")
+let prog = '';   // the plan's progress, as the solver reports it from inside the plan (`progText`)
+let inflight = null;   // the run under way: its job and places (`runKey`); null when none is
+const runKey = (job) => JSON.stringify([ERA, job]) + '\n' + JSON.stringify(plan);
+// the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
+const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
+  : ph === 4 ? `weighing ${n} careers` : ph === 5 ? 'looking two careers ahead' : ph === 6 ? 'checking the pick' : '';
 let status = { kind: 'loading', text: 'Loading…' };
 let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
@@ -51,6 +57,8 @@ function paint() {
     n.textContent = phase === 'plan' && phaseNote ? phaseNote + ' ' : '';
     const sp = el('span'); sp.innerHTML = runnerHTML();
     sp.append(phase === 'plan' ? 'Planning your next career…' : 'Searching careers…', el('span', '', s >= 1 ? ` ${s} s` : '')); sp.lastChild.setAttribute('aria-hidden', 'true');
+    // (the plan's progress, before the seconds; like them, not read out at every step)
+    if (phase === 'plan' && prog) { const pg = el('span', 'runprog', ` (${prog})`); pg.setAttribute('aria-hidden', 'true'); sp.insertBefore(pg, sp.lastChild); }
     n.appendChild(sp); }
   else { n.textContent = status.text + (status.kind === 'done' ? planNote() : '');
     if (status.act && !searching) { const b = btn(status.act.label, 'primary', status.act.run); b.id = 'run-act'; n.append(' ', b); } }   // e.g. Try sample veterans
@@ -73,7 +81,12 @@ function planNote() {
 }
 // every change: redraw now, search again after a short pause (a change during a search stops it)
 function schedule() {
-  clearTimeout(timer); myId++;
+  // an edit that leaves the job as it is (a preset saved or renamed, a setting changed and back) asks for the answer
+  // already coming or on show: a run under way goes on, and an answer on show stands (with her comparison, if one is
+  // running); a job that can't be built (`Blocked`) goes on as any other edit
+  let k = null; try { k = runKey(buildJob()); } catch { /* the search says why */ }
+  if (k !== null && (inflight ? inflight === k : !searching && last && last.key + '\n' + last.plan === k && planS.state !== 'error')) return;
+  clearTimeout(timer); myId++; inflight = null;
   // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
   // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
   if (engineBusy()) killEngine();
@@ -133,7 +146,7 @@ const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } =
 // every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
 // one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
 function oneOutfit(t) { if (!t || t.outfitNote != null) return; const f = pickOutfit(t.id, t.outfits || []); t.outfits = f.list; t.anyOutfit = f.any; t.outfitNote = outfitNote(f); }
-const runN = async (job) => { const m = await run(job), r = m.r || {};
+const runN = async (job, progress) => { const m = await run(job, undefined, progress), r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   return m; };
 // (the loop members kept per setup until the plan stopped running the loop planner's search: the old store goes)
@@ -164,7 +177,7 @@ async function search() {
     simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
-  searching = true; started = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
+  searching = true; started = true; inflight = key + '\n' + places; phase = 'search'; phaseNote = ''; prog = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
   const fail = (text) => { status = { kind: 'error', text }; last = null; planS = { state: 'none' }; simulation = { state: 'none' }; };
   try {
     const m = await runN(job);
@@ -187,11 +200,11 @@ async function search() {
       // reads `next` alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick.
       let P = { state: 'none' };
       if (best && !plan.trainee) {
-        phase = 'plan'; phaseNote = found; t0 = performance.now(); paint();
+        phase = 'plan'; phaseNote = found; prog = ''; t0 = performance.now(); paint();
         const { rollout: _r, p_now: _p, ...plain } = job;
         try {
           const jp = { ...plain, next: {}, no_reports: true }, kept = planKept && planKept.key === planKey(jp) ? planKept : null;
-          const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runN(jp);
+          const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runN(jp, (p) => { if (id === myId) { prog = progText(p); paint(); } });
           if (id !== myId) return;
           const x = m2.r.next;
           P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
@@ -211,7 +224,7 @@ async function search() {
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
     }
   } catch (e) { if (id !== myId) return; fail(e.message); }
-  searching = false; clearInterval(tick); renderAll(); paint();
+  searching = false; inflight = null; clearInterval(tick); renderAll(); paint();
 }
 
 // ---------- the pedigree ----------

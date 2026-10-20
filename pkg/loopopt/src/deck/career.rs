@@ -41,6 +41,16 @@ fn now_ms() -> f64 {
     static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
 }
+/// the plan's progress for the page's status line, at its phase boundaries (`sim::plan::index_rule`): phase, k of n. In
+/// wasm the host's `env.progress` (the worker posts it to the page while the plan runs); elsewhere nothing
+#[cfg(target_arch = "wasm32")]
+fn progress(phase: u32, k: usize, n: usize) {
+    #[link(wasm_import_module = "env")]
+    unsafe extern "C" { #[link_name = "progress"] fn host_progress(phase: u32, k: u32, n: u32); }
+    unsafe { host_progress(phase, k as u32, n as u32) }
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn progress(_phase: u32, _k: usize, _n: usize) {}
 // phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
 thread_local! { static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = Default::default(); }
 fn prof(k: &'static str, v: f64) { PROF.with(|p| *p.borrow_mut().entry(k).or_insert(0.0) += v); }
@@ -196,9 +206,17 @@ pub(super) fn setup_fp(v: &Value) -> u64 {
 }
 fn setup_hash(s: &str) -> u64 { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); s.hash(&mut h); h.finish() }
 thread_local! {
-    /// the last job's main search, keyed by the whole job without `plan` (the page's plan job repeats the job it follows)
-    static LAST_SOLVE: std::cell::RefCell<Option<(u64, Solved)>> = const { std::cell::RefCell::new(None) };
+    /// the last few jobs' main searches (the most recent last), each keyed by the whole job without `next` and
+    /// `no_reports` (the page's plan job repeats the job it follows), with what the search's product searches proved
+    /// (`Env::ruled` as the search left it: a job that takes a kept search starts its plan from the Env state a combined
+    /// job's plan starts from); kept across page reloads (`state_out`)
+    static LAST_SOLVE: std::cell::RefCell<Vec<(u64, Solved, Ruled)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
+/// per deck class, the product searches' proofs (`Env::ruled`)
+type Ruled = Vec<Vec<(Vec<f64>, f64)>>;
+/// main searches kept (`LAST_SOLVE`): the page's run, and one it goes back to (a setting changed and back, a Compare or
+/// Reroll plan in between)
+const SOLVE_KEEP: usize = 3;
 thread_local! {
     /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
     /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
@@ -213,7 +231,7 @@ const SEEN_KEEP: usize = 256;
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-const STATE_VERSION: u64 = 2;   // 2: the kept plans carry each uma's looped career
+const STATE_VERSION: u64 = 3;   // 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`)
 fn hx(x: f64) -> Value { Value::String(format!("{:016x}", x.to_bits())) }
 fn ux(x: u64) -> Value { Value::String(format!("{:016x}", x)) }
 fn fx(v: &Value) -> Option<f64> { Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)) }
@@ -252,15 +270,50 @@ fn seen_in(v: &Value) -> Option<Vec<(u64, Vec<Vec<Ref>>)>> {
         Some((fp, vv))
     }).collect()
 }
-fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out()}}) }
-/// replaces the kept plans and proofs with the page's stored ones (all or nothing: a store that does not parse is refused)
+/// per-uma (or per-class) lists as [length, [[index, [items]], ...]] (only the non-empty ones)
+fn lists_out<T>(vv: &[Vec<T>], f: impl Fn(&T) -> Value) -> Value {
+    json!([vv.len(), vv.iter().enumerate().filter(|(_, rs)| !rs.is_empty()).map(|(i, rs)| json!([i, rs.iter().map(&f).collect::<Vec<_>>()])).collect::<Vec<_>>()])
+}
+fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<Vec<Vec<T>>> {
+    let a = v.as_array()?; let n = usz(a.first()?)?;
+    let mut vv: Vec<Vec<T>> = vec![vec![]; n];
+    for c in a.get(1)?.as_array()? {
+        let ca = c.as_array()?; let i = usz(ca.first()?)?;
+        if i >= n { return None; }
+        vv[i] = ca.get(1)?.as_array()?.iter().map(&f).collect::<Option<_>>()?;
+    }
+    Some(vv)
+}
+/// LAST_SOLVE as [key, search, proofs] per kept search: every field of `Solved`, floats as bit patterns
+fn solve_out() -> Value {
+    LAST_SOLVE.with(|c| Value::Array(c.borrow().iter().map(|(k, s, r)| json!([ux(*k), {
+        "found": s.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&s.refs, ref_out),
+        "n": [s.work, s.cands, s.solved, s.bounded, s.scored, s.skipped], "next_bound": hx(s.next_bound), "complete": s.complete, "proven": s.proven, "cert": hx(s.cert)
+    }, lists_out(r, |(q, x)| json!([fvec(q), hx(*x)]))])).collect()))
+}
+fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
+    v.as_array()?.iter().map(|e| {
+        let a = e.as_array()?; let s = a.get(1)?;
+        let n: Vec<usize> = s["n"].as_array()?.iter().map(usz).collect::<Option<_>>()?;
+        if n.len() != 6 { return None; }
+        let sv = Solved { found: s["found"].as_array()?.iter().map(found_in).collect::<Option<_>>()?, refs: lists_in(&s["refs"], ref_in)?,
+            work: n[0], cands: n[1], solved: n[2], bounded: n[3], scored: n[4], skipped: n[5], next_bound: fx(&s["next_bound"])?,
+            complete: s["complete"].as_bool()?, proven: s["proven"].as_bool()?, cert: fx(&s["cert"])? };
+        let ruled = lists_in(a.get(2)?, |x| { let p = x.as_array()?; Some((fvec_r(p.first()?)?, fx(p.get(1)?)?)) })?;
+        Some((uxr(a.first()?)?, sv, ruled))
+    }).collect()
+}
+fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out(), "solve": solve_out()}}) }
+/// replaces the kept plans, proofs and main searches with the page's stored ones (all or nothing: a store that does not
+/// parse is refused)
 fn state_in(v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) { return json!({"error": "state: another version"}); }
-    let (Some(b), Some(sn)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"])) else { return json!({"error": "state: does not parse"}) };
-    let (nb, ns) = (b.len(), sn.len());
+    let (Some(b), Some(sn), Some(so)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"]), solve_in(&v["solve"])) else { return json!({"error": "state: does not parse"}) };
+    let (nb, ns, nm) = (b.len(), sn.len(), so.len());
     sim::plan::bests_set(b);
     SEEN.with(|c| *c.borrow_mut() = sn);
-    json!({"ok": true, "bests": nb, "seen": ns})
+    LAST_SOLVE.with(|c| *c.borrow_mut() = so);
+    json!({"ok": true, "bests": nb, "seen": ns, "solve": nm})
 }
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
@@ -1182,9 +1235,12 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
     // search was kept from the job before
     let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
-    let sv = match LAST_SOLVE.with(|c| c.borrow().as_ref().filter(|x| x.0 == skey).map(|x| x.1.clone())) {
-        Some(s) => s,
-        None => { let s = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top); LAST_SOLVE.with(|c| *c.borrow_mut() = Some((skey, s.clone()))); s }
+    // (a kept search brings back what its product searches proved: `env.ruled` as a combined job's plan finds it)
+    let kept_sv = LAST_SOLVE.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|x| x.0 == skey)?; let e = c.remove(i); c.push(e); c.last().map(|e| (e.1.clone(), e.2.clone())) });
+    let sv = match kept_sv {
+        Some((s, r)) if r.len() == n => { env.ruled = r; s }
+        _ => { let s = env.solve(&pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
+               LAST_SOLVE.with(|c| { let mut c = c.borrow_mut(); c.retain(|x| x.0 != skey); c.push((skey, s.clone(), env.ruled.clone())); while c.len() > SOLVE_KEEP { c.remove(0); } }); s }
     };
     let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - sj0});
     env.use_seen = true;

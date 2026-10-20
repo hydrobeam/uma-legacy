@@ -196,8 +196,8 @@ const SIDEWAYS = () => {
 const still = (pg) => until(pg, () => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
 
 // the career planner (/career) in a fresh context, its first (empty) run done: the job and result hooks, the record of
-// what the page shows, and the helpers the career groups share (career, careerpool, careervets and careergen run in
-// parallel, each from its own fresh page)
+// what the page shows, and the helpers the career groups share (career, careerpool, careervets, careergen and careerrun
+// run in parallel, each from its own fresh page)
 async function careerPage(b) {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => {
@@ -1646,6 +1646,43 @@ const TESTS = {
       && /1 in [\d,]+/.test(trioLoop) && /Saves per run: how many careers sooner you reach a fully looped parent .+ if you run this career next, counting the run itself, going by the planner's estimate below\./.test(saveTxt) && /The planner makes a rough estimate of how many careers you still need \(about [\d,]+ today\)/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
       `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
+  // the career planner's run (the 12 test veterans): an edit that leaves the job as it is lets the plan under way go on,
+  // the status line says how far the plan has got, and after a reload the stored main search is taken (no search again)
+  async careerrun(b) {
+    const { ctx, pg, note, done, planned, importDump } = await careerPage(b);
+    // the status line's texts, and the workers started (a stopped plan takes its worker with it)
+    await pg.evaluate(() => { window.__notes = []; const n = document.getElementById('run-note');
+      new MutationObserver(() => { if (window.__notes.at(-1) !== n.textContent) window.__notes.push(n.textContent); }).observe(n, { subtree: true, childList: true, characterData: true });
+      const W = window.Worker; window.__workers = 0; window.Worker = function (...a) { window.__workers++; return new W(...a); }; });
+    await importDump();
+    await pg.waitForFunction(() => window.__careerJobs.some(j => j.next));   // the plan job is in the worker
+    // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
+    const edit = await pg.evaluate(() => { const plan = () => /Planning your next career/.test(document.getElementById('run-note').textContent), was = plan();
+      const jobs = window.__careerJobs.length, workers = window.__workers;
+      document.getElementById('t-preset').click(); document.getElementById('pr-save').click(); document.getElementById('prn-save').click(); document.getElementById('preset-dlg').close();
+      return { was, now: plan(), jobs, workers, presets: JSON.parse(localStorage.getItem('llp:settings') || '{}').common?.presets?.length }; });
+    await planned();
+    const after = await pg.evaluate(() => ({ jobs: window.__careerJobs.filter(j => j.cmd === 'career').length, posted: window.__careerJobs.length, workers: window.__workers,
+      plans: window.__careerResults.filter(r => r.next).length }));
+    check('career: a preset saved during the plan (the job as it was) lets the plan go on: no new job, no new worker, one plan answered',
+      edit.was && edit.now && after.posted === edit.jobs && after.workers === edit.workers && after.plans === 1 && edit.presets > 1, JSON.stringify({ edit, after }));
+    const prog = await pg.evaluate(() => window.__notes.filter(t => /Planning your next career… \(.+\)/.test(t)).map(t => t.match(/\((.+?)\)/)[1]));
+    check('career: the plan says how far it has got ("scoring k of n umas"), the counts rising', prog.some(t => /^scoring \d+ of \d+ umas$/.test(t))
+      && prog.filter(t => /^scoring/.test(t)).map(t => +t.match(/\d+/)[0]).every((k, i, a) => !i || k >= a[i - 1]), [...new Set(prog)].slice(0, 8).join(' | '));
+    // the worker's kept work, stored once the worker is idle after the plan; then a reload: the main search is the stored one
+    // (an evaluate awaits the promise; a waitForFunction would take the promise itself as true)
+    const stored = () => pg.evaluate(() => new Promise(res => { const rq = indexedDB.open('llp-solver');
+      rq.onsuccess = () => { try { const g = rq.result.transaction('state').objectStore('state').getAll(); g.onsuccess = () => res(g.result.some(s => s.v === 3 && s.solve?.length > 0)); g.onerror = () => res(false); } catch { res(false); } };
+      rq.onerror = () => res(false); }));
+    let saved = false; for (let i = 0; i < 80 && !(saved = await stored()); i++) await pg.waitForTimeout(250);
+    const before = await note();
+    await pg.reload(); await done(); await planned();
+    const re = await pg.evaluate(() => ({ restored: window.__careerResults.find(r => r.solve !== undefined), search: window.__careerResults.find(r => r.results) }));
+    check('career: after a reload the stored main search is taken: the search job searches no deck', saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0 && /Planned in/.test(await note()),
+      `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },

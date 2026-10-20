@@ -1,5 +1,5 @@
 // Solver worker: the Rust solver compiled to WebAssembly.
-let ex = null;
+let ex = null, runId;   // runId: the job in the solver now (its progress reports name it)
 const enc = new TextEncoder(), dec = new TextDecoder();
 function callRaw(text) {
   const b = enc.encode(text);
@@ -16,8 +16,9 @@ self.onmessage = async (e) => {
   try {
     if (m.type === 'init') {
       try {
-        // env.clock_ms: the solver's wall clock (the career plan's time budget)
-        const imports = { env: { clock_ms: () => performance.now() } };
+        // env.clock_ms: the solver's wall clock (the career plan's time budget); env.progress: the career plan's phase (k
+        // of n), posted to the page from inside the call
+        const imports = { env: { clock_ms: () => performance.now(), progress: (ph, k, n) => self.postMessage({ type: 'progress', id: runId, ph, k, n }) } };
         if (m.module) ex = (await WebAssembly.instantiate(m.module, imports)).exports;   // compiled once by the page
         else ex = (await WebAssembly.instantiate(m.bytes, imports)).instance.exports;
       } catch (err) {
@@ -27,7 +28,7 @@ self.onmessage = async (e) => {
       if (r.error) throw new Error(r.error);
       self.postMessage({ type: 'ready' });
     } else if (m.type === 'run') {
-      const t = performance.now();
+      const t = performance.now(); runId = m.id;
       // a deck search runs twice: first ranked by per-target odds (fast, posted at once), then by exact odds
       if ((m.job.cmd === 'deck' || m.job.mode === 'deck') && m.job.exact !== false) {
         const r0 = callRaw(JSON.stringify(Object.assign({}, m.job, { exact: false })));

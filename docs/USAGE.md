@@ -49,8 +49,10 @@ Picks the next career from the veterans you have, aiming at a *fully looped pare
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.
 
 The pedigree shows the trainee, her two parents and their parents. Each place is set by hand (*Choose parent*) or left
-to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed). Every edit starts
-one run; the previous answer stays dimmed until the new one arrives.
+to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed). Every edit that
+changes the job starts one run (one that leaves it as it is, such as renaming a preset, lets the run under way go on);
+the previous answer stays dimmed until the new one arrives, and the status line says what the plan is at (*scoring 12
+of 83 umas*).
 
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
 odds and *Saves per run*, how many careers sooner it brings a fully looped parent, averaged over every result she could

@@ -905,6 +905,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
 pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, legs: &[Legacy],
                                        pool: &Pool, sv: &Solved, fix: &[usize], trainees: &[usize], pj: &PlanJob) -> Value {
     let t_all = now_ms();
+    progress(1, 0, 0);   // the page's status line: the plan begins (its candidates' best careers)
     // (first in, dropped last: after every memo of this plan)
     let _memo_report = MemoReport;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
@@ -1029,6 +1030,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     if !pj.value_only {
         let mut order: Vec<usize> = vec![g.t]; for &x in &all { if x != g.t { order.push(x); } }
         for &x in &order {
+            progress(2, order.iter().position(|&y| y == x).unwrap_or(0), order.len());   // pass 1: uma k of n
             if proxy_on && best[x].is_none() {
                 let ts = now_ms();
                 let cx = s.env.cls[x];
@@ -1098,6 +1100,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
     let mut lbest: Vec<Option<Option<Found>>> = vec![None; d.umas.len()];
+    progress(3, 0, 0);   // the looped careers
     if !pj.value_only && fix.len() < 2 {
         let full8: Vec<usize> = (0..nl).filter(|&i| is_full(sj, &legs[i].sparks)).collect();
         let her8 = nl > 0 && full8.contains(&(nl - 1));
@@ -1211,6 +1214,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         (ey - 1.0, lift, ys)
     };
     let mut score: Vec<f64> = vec![]; let mut lifts: Vec<f64> = vec![]; let mut ytabs: Vec<Vec<f64>> = vec![];
+    progress(4, 0, runs.len());   // pass 2: every career against V
     if !runs.is_empty() && vnow.is_finite() {
         for r in &runs { let (sc, lift, ys) = score_one(&mut s, r, &c1, vnow, &cont, &combos3, &sides, &mut buf); score.push(sc); lifts.push(lift); ytabs.push(ys); }
         // the proxies a shown row, the pick's near-tie band or two deep's builders can turn on: searched exactly (their
@@ -1254,6 +1258,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // two deep, in the same units: her strong rolls (at most TWO_MISS targets short of 8/8, stars at the rank's mix) as a
     // parent of the TWO_BUILDERS highest builders; the next career's gain over today's best score
     let t4 = now_ms();
+    progress(5, 0, 0);   // two deep
     let mut two: Vec<Option<f64>> = vec![None; runs.len()];
     if !pj.value_only && !score.is_empty() {
         let istar = score.iter().cloned().fold(0.0f64, f64::max);
@@ -1343,6 +1348,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let dup: Vec<bool> = (0..runs.len()).map(|i| i >= nbase && (0..nbase).any(|j| runs[j].0 == runs[i].0 && pair(&runs[j].1) == pair(&runs[i].1))).collect();
     let undup: Vec<usize> = (0..runs.len()).map(|i| if dup[i] { (0..nbase).find(|&j| runs[j].0 == runs[i].0 && pair(&runs[j].1) == pair(&runs[i].1)).unwrap() } else { i }).collect();
     // the pick's upper bound per outcome (`outcome_hi`; the pick as below, with the same scores)
+    progress(6, 0, 0);   // the pick's outcome bound
     let ys_hi: Option<(usize, (Vec<f64>, Vec<f64>))> = if !runs.is_empty() && !score.is_empty() && vnow.is_finite() {
         let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY) + two[i].unwrap_or(0.0);
         let mut pk = 0usize; for i in 0..runs.len() { if total(i) > total(pk) + 1e-9 { pk = i; } }

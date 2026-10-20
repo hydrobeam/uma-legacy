@@ -82,7 +82,9 @@ after any change to how builders' careers are built.
 
 - Whole job (search and plan), native, `val/planval.py` on 2026-10-10: p16 0.75 s, p16_ss 0.77 s, p16_ura 0.71 s,
   p10 1.69 s, p11 1.71 s, gm16 0.98 s, boot_mob 0.79 s.
-- In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted).
+- In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted). Since
+  2026-10-20 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job searches nothing
+  (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state 31-149 KB).
 - Reroll: about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run with her
   added (warm, native about 0.7-0.9 s). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7% provisional), gm16
   37%, p10, p11 and boot_mob 100%.
@@ -100,7 +102,8 @@ after any change to how builders' careers are built.
   allocations and the band test's second evaluation of the same clause value (3-15%); reusing pass 1's setups in
   pass 2 (about 90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf
   jump when near-tied builders swap).
-- Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them); reuse
+- Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
+  that leaves the job as it is no longer stops the plan); reuse
   kept plans for pools that grow by several veterans or lose one (today: the same pool, or one more veteran at the
   end).
 
