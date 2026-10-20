@@ -578,12 +578,14 @@ impl<'a> Env<'a> {
     fn gen_cands<C>(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C) -> Vec<C> {
         let d = self.d; let nl = p.me.len(); let ntar = self.ntar;
         // (`inherit`'s miss factor, with its affinity term fa = 1 + A / 100 of the slot computed once)
-        let m = |st: f64, fa: f64| 1.0 - (0.03 * st * fa).min(1.0);
+        #[inline(always)]
+        fn m(st: f64, fa: f64) -> f64 { 1.0 - (0.03 * st * fa).min(1.0) }
         // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone
-        let fac = |st: u8, mix: Option<[f64; 3]>, fa: f64| -> (f64, f64) {
+        #[inline(always)]
+        fn fac(st: u8, mix: Option<[f64; 3]>, fa: f64) -> (f64, f64) {
             if st == 0 { return (1.0, 1.0); }
             match mix { None => (m(st as f64, fa), 1.0), Some(w) => (1.0, (0..3).map(|i| w[i] * m(i as f64 + 1.0, fa).powi(2)).sum::<f64>()) }
-        };
+        }
         // 1.1^(n - 6) per carrier count n, as `scale` computes it (black_box: the same runtime powi, never folded)
         let maxs = (0..nl).map(|x| 1 + p.gp[x].len()).max().unwrap_or(0) * 2;
         let pw: Vec<f64> = (0..=maxs).map(|n| 1.1f64.powi(std::hint::black_box(n as i32 - 6))).collect();
@@ -617,6 +619,54 @@ impl<'a> Env<'a> {
         let go: Vec<usize> = std::iter::once(0).chain((0..nl).scan(0, |s, x| { *s += p.gp[x].len(); Some(*s) })).collect();
         let mut gr = vec![0.0f64; go[nl]];
         let mut gf = vec![(1.0f64, 1.0f64); go[nl] * ntar];
+        // per outfit and uncertain target, `outfit_fast`'s factor as Fixed (no chance in it) or Open(1 - e, 1 - dw, dg GOLD,
+        // 1 - dg): the same subexpressions, each computed once for her
+        enum Fac { Fixed(f64), Open(f64, f64, f64, f64) }
+        // what one trainee's pair loop reads
+        struct Cx<'c> { p: &'c Pool, pairs: &'c [Pre], tid: u32, ntar: usize, pt: &'c [f64], go: &'c [usize], gr: &'c [f64],
+                        gf: &'c [(f64, f64)], ft: &'c [Vec<Fac>], uncv: &'c [usize], gw: f64, rho: f64, fixed: f64, tp: usize, t: usize }
+        // One trainee's candidates, pair by pair; true when it made one (q then holds the last one's chances). Its own
+        // function, entered once per trainee: a wasm call keeps the code it started in (V8 has no on-stack replacement
+        // for wasm), so a loop over every trainee in one frame would run in baseline code throughout (docs/PERF.md).
+        #[inline(never)]
+        fn trainee_cands<C>(cx: &Cx, q: &mut [f64], nq: &mut [f64], out: &mut Vec<C>, mk: &mut impl FnMut(f64, usize, usize, usize, usize) -> C) -> bool {
+            let (p, go, gw, ntar) = (cx.p, cx.go, cx.gw, cx.ntar);
+            let mut last = false;
+            for pr in cx.pairs {
+                let (a, b) = (pr.a, pr.b);
+                if p.me[a].chara == cx.tid || p.me[b].chara == cx.tid { continue; }
+                // each parent slot's affinity, summed as `slots` sums it (as fa)
+                let fa = [0, 1].map(|s| {
+                    let x = if s == 0 { a } else { b };
+                    let mut rel = cx.pt[x] + pr.pp[s];
+                    for j in go[x]..go[x + 1] { rel += cx.gr[j]; }
+                    1.0 + (rel + pr.race[s]) / 100.0
+                });
+                for k in 0..ntar {
+                    let (mut miss, mut mix2) = (1.0f64, 1.0f64);
+                    for (s, x) in [a, b].into_iter().enumerate() {
+                        let (fm, fx) = fac(p.me[x].stars[k], p.me[x].mix, fa[s]); miss *= fm; mix2 *= fx;
+                        for j in go[x]..go[x + 1] { let (fm, fx) = cx.gf[j * ntar + k]; miss *= fm; mix2 *= fx; }
+                    }
+                    q[k] = 1.0 - miss * miss * mix2;
+                }
+                // `ceiling_at` without writing the model state: per outfit `outfit_fast` at q = 0 on the hint chances
+                // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
+                // (an open factor: ew = 1 - (1 - e)(1 - q_k), white = GEN_WHITE (1 - (1 - dw)(1 - ew)), dg GOLD + (1 - dg) white)
+                for k in 0..nq.len() { nq[k] = 1.0 - q[cx.uncv[k]]; }
+                let mut pv = 0.0f64;
+                for fo in cx.ft {
+                    let mut po = 1.0f64;
+                    for (k, f) in fo.iter().enumerate() {
+                        po *= match *f { Fac::Fixed(x) => x, Fac::Open(ne, ndw, a, nd) => { let ew = 1.0 - ne * nq[k]; a + nd * (gw * (1.0 - ndw * (1.0 - ew))) } };
+                    }
+                    pv = f64::max(pv, po);
+                }
+                last = true;
+                out.push(mk(cx.rho * pr.c * cx.fixed * pv, cx.tp, cx.t, a, b));
+            }
+            last
+        }
         for (tp, &t) in trainees.iter().enumerate() {
             if self.dmax[t].is_none() { continue; }
             let (ti, tid) = (Some(t), d.umas[t].id);
@@ -630,51 +680,15 @@ impl<'a> Env<'a> {
                     for k in 0..ntar { gf[j * ntar + k] = fac(g.stars[k], g.mix, fa); }
                 }
             }
-            // per outfit and uncertain target, `outfit_fast`'s factor as Fixed (no chance in it) or Open(1 - e, 1 - dw, dg GOLD,
-            // 1 - dg): the same subexpressions, each computed once for her
             let (dw, dg) = self.dmax[t].as_ref().unwrap();
             debug_assert!(self.sts0[t].len() == self.model.n_outfits(t));
             let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
-            enum Fac { Fixed(f64), Open(f64, f64, f64, f64) }
             let ft: Vec<Vec<Fac>> = self.sts0[t].iter().zip(&self.ew0[t]).map(|(st, e0)| (0..st.len()).map(|k| match st[k] {
                 2 => Fac::Fixed(gg), 1 => Fac::Fixed(dg[k] * gg + (1.0 - dg[k]) * gw),
                 _ => Fac::Open(1.0 - e0[k], 1.0 - dw[k], dg[k] * gg, 1.0 - dg[k]) }).collect()).collect();
-            let uncv = &self.uncv;
             let mut nq = vec![0.0f64; ft.iter().map(|f| f.len()).max().unwrap_or(0)];
-            let mut last = false;
-            for pr in &pairs {
-                let (a, b) = (pr.a, pr.b);
-                if p.me[a].chara == tid || p.me[b].chara == tid { continue; }
-                // each parent slot's affinity, summed as `slots` sums it (as fa)
-                let fa = [0, 1].map(|s| {
-                    let x = if s == 0 { a } else { b };
-                    let mut rel = pt[x] + pr.pp[s];
-                    for j in go[x]..go[x + 1] { rel += gr[j]; }
-                    1.0 + (rel + pr.race[s]) / 100.0
-                });
-                for k in 0..ntar {
-                    let (mut miss, mut mix2) = (1.0f64, 1.0f64);
-                    for (s, x) in [a, b].into_iter().enumerate() {
-                        let (fm, fx) = fac(p.me[x].stars[k], p.me[x].mix, fa[s]); miss *= fm; mix2 *= fx;
-                        for j in go[x]..go[x + 1] { let (fm, fx) = gf[j * ntar + k]; miss *= fm; mix2 *= fx; }
-                    }
-                    q[k] = 1.0 - miss * miss * mix2;
-                }
-                // `ceiling_at` without writing the model state: per outfit `outfit_fast` at q = 0 on the hint chances
-                // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
-                // (an open factor: ew = 1 - (1 - e)(1 - q_k), white = GEN_WHITE (1 - (1 - dw)(1 - ew)), dg GOLD + (1 - dg) white)
-                for k in 0..nq.len() { nq[k] = 1.0 - q[uncv[k]]; }
-                let mut pv = 0.0f64;
-                for fo in &ft {
-                    let mut po = 1.0f64;
-                    for (k, f) in fo.iter().enumerate() {
-                        po *= match *f { Fac::Fixed(x) => x, Fac::Open(ne, ndw, a, nd) => { let ew = 1.0 - ne * nq[k]; a + nd * (gw * (1.0 - ndw * (1.0 - ew))) } };
-                    }
-                    pv = f64::max(pv, po);
-                }
-                last = true;
-                out.push(mk(rho * pr.c * fixed * pv, tp, t, a, b));
-            }
+            let cx = Cx { p, pairs: &pairs, tid, ntar, pt: &pt, go: &go, gr: &gr, gf: &gf, ft: &ft, uncv: &self.uncv, gw, rho, fixed, tp, t };
+            let last = trainee_cands(&cx, &mut q, &mut nq, &mut out, &mut mk);
             // the model state the last candidate's `ceiling` left (q still holds its chances)
             if last { self.set_trainee(t, &q); }
         }

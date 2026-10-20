@@ -60,6 +60,15 @@ against 180-490 ms when each worker decoded a base64 copy). Wasm runs within 3% 
 wasm2js output was 8.8 MB and 3.6-6x slower than wasm, so the page requires WebAssembly and says so when a host
 refuses it.
 
+V8 (Chrome, Edge) runs a wasm function in baseline code (Liftoff) until it has run enough to be compiled optimised
+(TurboFan), in the background; a call already running stays in the code it started in (no on-stack replacement for
+wasm). A long loop in a function entered once therefore runs in baseline code throughout: the main search's candidate
+generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a loop's body is its own `#[inline(never)]`
+function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0`, as by default it
+inlines every function that has one caller, whatever its size. The optimised code belongs to the compiled module: a
+restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
+(`--liftoff-only`) takes export 2's plan 39 s against 22 s, so slow tier-up costs at most about 1.8x.
+
 ## Open in the deck search (estimates)
 
 - Lazy k-best for shared `top_decks` > 1: pal_I shared k3 spends 68 of 75 s in the second enumeration pass. A k-best
