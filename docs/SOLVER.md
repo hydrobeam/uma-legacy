@@ -209,9 +209,9 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
 - **Certificate and budget.** The pass at ρ = 1.25 (each class at its cap) runs first; if it exceeds the work budget (`EXACT_BUDGET`, counted in work units so results do not depend on machine load: about 3 s natively), passes with every cap at most 1.12, then 1.05 follow (likewise when a deck search would return over `EXACT_CAP` = 50,000 decks, `cap_hit`), each reusing every exact value, table cell and schedule already computed; if none finishes, a pass at ρ = 1 (product-odds pruning, no deck searches) answers. Output `exact`: `rho` the cap the answer is certified under, `max_ratio` the largest V/V̂ on any deck scored (a value above `rho` would contradict the assumption), `complete`, counts. Job field `exact: false` runs the ρ = 1 pass alone: the page shows it first, then the exact one.
 - `p_all`, `p_minus1`, `per_trainee` and the detail's per-lineage `p_all` are exact.
 
-"Proven" (`proven`, `exact.complete`) means the search ended by its stop rule under the certified cap. It is relative to the schedules the optimiser finds (iterated local search, not proven optimal; `exact.schedule_rejects` counts loops rejected only after their schedule was built) and to the cap.
+"Proven" (`proven`, `exact.complete`) means the search ended by its stop rule under the certified cap. It is relative to the schedules the optimiser finds (iterated local search, not proven optimal; `exact.schedule_rejects` counts loops rejected only after their schedule was built) and to the cap, which is assumed: a scored deck whose ratio passes its class's cap shows in `class_max_ratio` but leaves `complete` as it is here (the career search instead marks itself not complete, *Search and output* below).
 
-Typical time natively: about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
+Typical time natively (measured 2026-10-07): about 0.3–4 s per search with one result (the Global default 0.25 s, Grand Masters all owned 0.9 s on an i5-1340P; with four-uma loops only, `sizes: [4]`, 0.97 s and 1.15 s: a strong rotation found early prunes most loops), most of it the exact deck searches; three-result shared searches 10–35 s. The browser's exact pass is about 1–2× native; its first pass (ρ = 1) takes under 0.5 s. Dominance tests in the skyline enumeration use a 64-bit signature (16 coordinates × 4 bits) as a fast necessary check before the exact comparison.
 
 Skill model: a target is acquired if guaranteed, on the trainee's own outfit skill list, hinted by the deck, or
 inherited; an acquired skill becomes a spark at the generation rate. The equations and fitted values (inheritance,
@@ -320,7 +320,7 @@ do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: 
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
 veteran's pink is that one; her schedule's win chances count them; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
-when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's cap (`EXACT_CAPS`, an assumption) makes every search that saw it not `complete` (it may have pruned a better deck), and the output lists the classes in `cap_exceeded` ([class, highest ratio, cap]); none passes on val/plan, a 10-target export reached 1.297 in class 3. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
+when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's cap (`EXACT_CAPS`, an assumption) makes every search that saw it not `complete` (it may have pruned a better deck), and the output lists the classes in `cap_exceeded` ([class, highest ratio, cap]); none passes on val/plan, a 10-target export reached 1.297 in class 3 (four or more chain-fed targets or a multi-target group; cap 1.25). The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
   chart name, `when`, `year`, `cells` = [win %, goal, aptitude and streak terms] or [null], `shared` = a parent won it)
@@ -363,21 +363,26 @@ raises that candidate's odds and the mean odds raised to.
   efficiency is within `PROXY_EFF` (6%) of a candidate's second best, or her saving within `PROXY_SAVE` (6%) of the
   lowest that the shown rows (`OPT_SHOW` = 8) or the pick's near-tie band take. Recalibrated 2026-10-09 with
   `proxy_check` on val/plan: the proxy reads at most 2.79% / 2.67% low. A row left on its proxy carries `exact: false`.
-  A row whose career search ran out of its work cap (`search_work`; `complete` false: the best career it found, not a
-  proven best) carries `proven: false`, and the page notes it under the table.
+  A row whose career search is not `complete` (it ran out of its work cap, `search_work`; a band overflowed; or a deck
+  it scored passed its class's cap: the best career it found, not a proven best) carries `proven: false`, and the page
+  notes it under the table.
 - Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
   every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below
   the proxy's value, so it is her best career's value); with mob or affinity-free parents every classmate has the same
   chances and one search proves her class. Counted in `umas_certified`.
 - Cont's two builders come from the exactly searched careers.
 - **Looped careers.** Each uma whose career above is not on two 8/8 parents also gets her best career on two real 8/8
-  veterans (a legal pair, all of `fix` among them; pairs by ceiling, each searched exactly with both fixed, stopping
-  below the best found; the surrogate's under `sur` 1), as a row of its own: only there is her own 8/8 a fully looped
+  veterans (a legal pair, all of `fix` among them; pairs by ceiling, each searched exactly with both fixed and the best
+  looped value so far as its bar, `Env::floor`, stopping when the next ceiling is below it; the surrogate's under `sur`
+  1), as a row of its own: only there is her own 8/8 a fully looped
   parent. The trios' last step is such a career (C on A's and B's 8/8s), so without these rows the career V itself
   prices was never offered, and an uma whose best-odds pair happened to be two 8/8s took the goal's credit alone. They
   are not among Cont's builders and not added to the deck cache, so V and every other row are unchanged; a looped row
-  that repeats another row's career is left out. On a 315-veteran pool with six 8/8s (one owned) they added 37 rows and
-  took the plan from 11 s to 16 s natively; on pools without two 8/8s they cost nothing.
+  that repeats another row's career is left out. The bar changes no looped value, but a barred search keeps fewer proofs,
+  which pass 2's `certified` reads, so on an exact tie another pair of equal value could be named (not seen on
+  val/plan or the large exports). On a 315-veteran pool with six 8/8s (one owned) they added 37 rows and, when added
+  (2026-10-17, before the bar), took the plan from 11 s to 16 s natively; the bar cut their deck-search nodes there
+  from 21.7M to 7.5M. On pools without two 8/8s they cost nothing.
 
 **Continuation and V.** Per candidate a continuation (`Cont`, assumed form; its shape constants 0.6 and 1.5 are tuning
 choices, set against simulated builder traces on four veteran pools, a comparison not reproduced in the repository): builder careers lift her odds with chance
@@ -395,9 +400,12 @@ can lose to a fresh one.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
 raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
-(V after 0). A target whose stars can't move any table value of hers (per scoring, every setup: her x the same
-f64 at 1-3 stars, or every kept table the same with the target landed or not) is folded at 1 star only, its 2 and 3
-stars reading 1 star's y (to rounding: a flat table's fold rounds per star level); `outcomes.y` keeps every leaf. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
+(V after 0). A target whose stars can't move any table value (per scoring and for every setup, either her miss factor
+for it is the same f64 at 1, 2 and 3 stars, or every kept table reads the same with the target landed or not) is folded
+at 0 and 1 star only: an outcome with 2 or 3 stars there reads the 1-star outcome's y and lifted odds, and every
+outcome is still summed at its own chance, in order. Exact in reals; a flat table's fold rounds differently per star
+level, so scores move by at most about 1e-13 relative (decisions identical on val/plan). `outcomes.y` keeps every
+leaf. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
 next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
 
 **Output `next`:**
@@ -428,7 +436,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
 - `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
   trios' fresh sides, with every candidate side and the best C).
 - `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `umas_unproven` (umas whose best or
-  looped career search ran out of its work cap), `hint`, `sur`, `sur_diff`, `work` (this
+  looped career search is not `complete`, as for `proven` above), `hint`, `sur`, `sur_diff`, `work` (this
   plan's deck-search nodes and exact scorings, deterministic: a speed change can be measured at any machine load;
   `work.max_ratio` the largest exact/product ratio scored, `class_max_ratio` / `class_max_deck` per class, `class_caps`,
   `cap` the cap the plan's deck searches hold under), timings. A career deck search whose band would list over
@@ -439,15 +447,18 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
 places and pool takes them as they are (no search: a reload, an edit undone); a plan of the same setup and places whose
 pool is a kept one plus one veteran at the end (Compare, then Add) takes the better of the kept best and a search with
 her fixed, whose bar starts at the kept value (`Env::floor`). Exact (on val/plan p16 identical to the
-plan run cold), about 3 ms instead of 9 s. `best_deck`'s results (with their certificates, band overflows, work counts
+plan run cold), about 3 ms (2026-10-10). `best_deck`'s results (with their certificates, band overflows, work counts
 and per-class ratios) and the corner tables are also kept between jobs of one setup (`DECK_KEEP`), so a reroll's plan
-repeats none of the base plan's proxy searches. The kept plans and proofs survive a page reload through `cmd: "state_out"` /
+repeats none of the base plan's proxy searches. The kept plans, proofs and main searches survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
 #### Work budget
 
-A career search has its own work budget (`CAREER_BUDGET`, 300M units: pools up to 400 veterans need 10M-85M; the loop
-planner's 30M left pools of 100 and more unproven; `EXACT_BUDGET` in the environment overrides it). Candidates are kept
+A career search has its own work budget (`CAREER_BUDGET`, 300M units: synthetic pools of 12-400 veterans at the default
+8 targets needed 10M-85M for a proven result, measured 2026-10-07; the loop planner's 30M left pools of 100 and more
+unproven; `EXACT_BUDGET` in the environment overrides it). It does not stop the search: past it each deck search scores
+only its product deck and start decks, so the search is not `complete`, and `solve` goes on to its stop rule (only the
+plan's `search_work`, a hard cap, stops it taking candidates). Candidates are kept
 as (ceiling, trainee, parents) and their chances recomputed when solved, which keeps memory low on large pools.
 
 ### Policy simulator (`simulate` on a career job)

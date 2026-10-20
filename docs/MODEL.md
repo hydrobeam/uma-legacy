@@ -66,7 +66,9 @@ The mechanics (objective V, `Cont`, a career's score, builders through their dec
   2, 11 and 19 veterans and is 70% too pessimistic on 5, where lam rises after the first lift (builders improve) while
   Cont only lets it decay (taking lam as the larger of now and one lift later fixes most of it: 995 -> 734
   careers on 5 veterans, the others unchanged; not built); leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
-  these pools, not a law. Not yet measured against other policies.
+  these pools, not a law. Not yet measured against other policies: the simulator's `index` policy runs the page's
+  planner on the same draws as `greedy` (`docs/SOLVER.md`, *Policy simulator*), but no comparison of useful size has
+  been run.
 - **Builders through their deck class** (2026-10-08): the proxy, checked 2026-10-09 with `proxy_check` on val/plan,
   reads at most 2.79% low (efficiency) and 2.67% (saving), so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice
   the worst error; picks, the top-8 rows, V and the shown scores are unchanged on val/plan.

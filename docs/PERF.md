@@ -55,8 +55,11 @@ speed record: where it stands, what is open, what was tried and rejected.
 
 ## In the page
 
-The wasm is compiled once and the `WebAssembly.Module` posted to each restarted worker (worker ready about 100-190 ms,
-against 180-490 ms when each worker decoded a base64 copy). Wasm runs within 3% of native. There is no JS fallback:
+The wasm is compiled once, with `WebAssembly.compileStreaming` (Chrome keeps compiled code across visits only for
+streaming compiles; `compile` on the bytes where it is missing or refuses), and the `WebAssembly.Module` posted to
+each restarted worker (worker ready about 100-190 ms, against 180-490 ms when each worker decoded a base64 copy;
+2026-10-10). Optimised wasm ran within 3% of native when measured (2026-10-10); code V8 has not optimised yet runs
+slower (below). There is no JS fallback:
 wasm2js output was 8.8 MB and 3.6-6x slower than wasm, so the page requires WebAssembly and says so when a host
 refuses it.
 
@@ -67,13 +70,18 @@ generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a l
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0`, as by default it
 inlines every function that has one caller, whatever its size. The planner's long loops are split the same way:
 `outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s fold and outcome loop (`sc_fold`,
-`sc_outcomes`); on e2_full (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
+`sc_outcomes`); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
 the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
-(`--liftoff-only`) takes export 2's plan 39 s against 22 s, so slow tier-up costs at most about 1.8x.
+(`--liftoff-only`) took export 2's plan 39 s against 22 s (at be6bb44, before the planner's loops were split), so slow
+tier-up cost at most about 1.8x then.
 
 ## Open in the deck search (estimates)
 
+- Pruning without the assumed caps (in progress): the class caps (`EXACT_CAPS`) are assumed, and a 10-target export
+  scored a deck past one (1.297 against 1.25). Such a search is reported not complete (`cap_exceeded`) but not redone;
+  the work under way reruns it under a proven bound (the per-event-count mixture bound, `upper_na`'s form) in place of
+  the cap.
 - Lazy k-best for shared `top_decks` > 1: pal_I shared k3 spends 68 of 75 s in the second enumeration pass. A k-best
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.
@@ -92,61 +100,79 @@ after any change to how builders' careers are built.
 
 ### Where it stands
 
-- Whole job (search and plan), native, `val/planval.py` on 2026-10-10: p16 0.75 s, p16_ss 0.77 s, p16_ura 0.71 s,
-  p10 1.69 s, p11 1.71 s, gm16 0.98 s, boot_mob 0.79 s.
-- Large pools (2026-10-20, native, loaded machine): a 316-veteran export on Grand Masters (8 uncertain targets, every
-  card and uma) 125 s and 1.26 GB -> about 10-12 s and 283 MB; a 315-veteran export on Unity Cup (6 uncertain targets)
-  13.9 -> about 6 s. The cost had been `outcome_hi`, about 110 s: (candidate x partner x anchor) x 4^nu leaves, untimed,
-  and its per-partner leaf store; no planval job had 8 uncertain targets (gm16_nu8 now does) or 8/8s (p16_88). What
-  is left there: deck searches about 5 s, `score_career` about 3 s, `outcome_hi` about 1.4 s (`next.work.prof`).
-- Pass 2's per-outcome tables kept only for rows that can still be the pick, `score_career` building them only for
-  pass 2, `outcome_hi` only at the y < 0.5 outcomes, and a builder's proxy scorings reused when her exact search finds
-  the same career (2026-10-20, against cb93545; results unchanged, `y_hi` null where y >= 0.5): peak RSS on the
-  `.perf/p0` jobs 230 -> 188 MB (e2_v24), 229 -> 189 (e2_v48), 94 -> 84 (e1_full), 285 -> 222 (e2_full); scorings
-  234 -> 166 on e2_v24/v48 (68 reused), 332 -> 330 on e2_full; gm16_nu8 34.30G -> 32.58G instructions (-5.0%:
-  `score_career` -1.56G, the anchors' branch and bound -0.9G). y < 0.5 holds at about 90% of the outcomes on the
-  8-target jobs (little to skip) but at 1% on a 10-target one (e2_v24_t10: 10,823 of 1,048,576), where the whole job
-  took 54 s and 490 MB (an older binary: 7.6 min and 2.44 GB, the tables then 8 MB per row over 323 rows); there
-  `outcome_hi` is 0.6 s and 73 of its 75 per-uma searches stop at `search_work` (`umas_unproven`).
-- Collapsed targets in `score_career` (2026-10-20): an uncertain target none of whose setups' table values can move
-  with her 1-3 stars (`sc_fold`) is folded at 0 and 1 star only, and the outcome loop reads 1 star's y and odds at 2 and
-  3 stars while every sum still takes every outcome at its own chance. On the `.perf/p0` and val/plan jobs every scoring
-  collapses 2 of 6 or 3 of 8 targets, all by flat tables; native `score_ms` e2_v24 1.27 -> 0.46 s, e2_full 2.81 -> 1.26 s,
-  e1_full 0.40 -> 0.33 s, e2_v24_t10 23.2 -> 9.5 s (3 of 10; its job 65 -> 54 s). Not byte-identical (a flat table's fold
-  rounds differently per star level): decisions identical on all twelve jobs; largest relative change 1.2e-13 (a score
-  near 0.06), savings 1.1e-15, every `y` and lift identical.
-- In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted). Since
-  2026-10-20 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job searches nothing
-  (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state 31-149 KB).
-- Reroll: about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run with her
-  added (warm, native about 0.7-0.9 s). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7% provisional), gm16
-  37%, p10, p11 and boot_mob 100%.
-- Where the time goes (callgrind, 2026-10-09): boot_mob 17.05G instructions, `best_sur` and the deck searches under
-  it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s lookups) about 25%.
-- Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
-  deterministic only with the winners-only cache and exact, unbudgeted searches.
+The large pools are two exports (`.perf/p0/`, not tracked): export 2 (e2_full), 316 veterans on Grand Masters with
+every card and uma (8 uncertain targets: the scenario guarantees none), with 24- and 48-veteran cuts (e2_v24, e2_v48);
+and export 1 (e1_full), 315 veterans on Unity Cup (6 uncertain targets). Times are native on the i5-1340P unless
+marked, each from the commit named; nothing after that commit has re-timed it.
+
+- val/plan, whole job (search and plan), `val/planval.py` at its default two jobs at a time, cb93545
+  (`val/plan/ref_times.txt`): p16 0.85 s, p16_ss 0.95 s, p16_ura 0.80 s, p10 2.38 s, p11 2.24 s, gm16 0.92 s,
+  gm16_nu8 2.66 s, p16_88 1.82 s, boot_mob 0.84 s. Compare only at the same load (*Rules of thumb*).
+- Export 2: 125 s and 1.26 GB at 95f4de8 (about 110 s of it `outcome_hi`, untimed until then: (candidate x partner
+  x anchor) x 4^nu leaves and a per-partner leaf store); 18.0 s and 279 MB with `outcome_hi`'s branch and bound
+  (eb1c5dc); 9.96 s with `score_career`'s one-walk fold (4ad4491); peak 285 -> 221 MB with per-outcome tables kept
+  only for rows that can still be the pick (8c657b7); 8.6 -> 6.1 s with the star-inert collapse (d7e0cc0). In wasm
+  (Node, `.perf/careerbench.mjs`) the plan took 10.1 s at fa20726, before the collapse.
+- Export 1: 13.9 s at 95f4de8, 9.0 s at eb1c5dc, 5.8 s at 4ad4491. Later commits cut its work (looped-row nodes
+  21.7M -> 7.5M, 8c68adc; product-search nodes -25%, 2228d93; `score_ms` 0.40 -> 0.33 s, d7e0cc0); the whole job is
+  not re-timed since 4ad4491.
+- 8c657b7 against cb93545 (results unchanged, `y_hi` null where y >= 0.5): peak RSS e2_v24 230 -> 188 MB, e2_v48
+  229 -> 189, e1_full 94 -> 84, e2_full 285 -> 222; scorings 234 -> 166 on e2_v24/v48 (68 proxy scores reused),
+  332 -> 330 on e2_full; gm16_nu8 34.30G -> 32.58G instructions (-5.0%: `score_career` -1.56G, the anchors' branch and
+  bound -0.9G).
+- The star-inert collapse (d7e0cc0): an uncertain target none of whose setups' table values can move with her 1-3 stars
+  (`sc_fold`) is folded at 0 and 1 star only, and the outcome loop reads 1 star's y and odds at 2 and 3 stars while
+  every sum still takes every outcome at its own chance. On the `.perf/p0` and val/plan jobs every scoring collapses 2
+  of 6 or 3 of 8 targets, all by flat tables; `score_ms` e2_v24 1.27 -> 0.46 s, e2_full 2.81 -> 1.26 s, e1_full
+  0.40 -> 0.33 s, e2_v24_t10 23.2 -> 9.5 s (3 of 10). Not byte-identical (a flat table's fold rounds differently per
+  star level): decisions identical on all twelve jobs; largest relative change 1.2e-13 (a score near 0.06), savings
+  1.1e-15, every `y` and lift identical.
+- 10 uncertain targets (e2_v24_t10: e2_v24 plus two targets, one, Straight Descent, with no carrier in the pool): 7.6
+  min and 2.44 GB at 95f4de8 (the per-outcome tables 8 MB a row over 323 rows), about 54 s and 490 MB at 8c657b7.
+  There y < 0.5 holds at 1% of the outcomes (10,823 of 1,048,576; about 90% on the 8-target jobs, where restricting
+  `outcome_hi` to them skips little), `outcome_hi` took 0.6 s, and 73 of its 75 per-uma searches stopped at
+  `search_work` (`umas_unproven`). The zero- and low-base bound split (e8fced4) has since cut the deck-search nodes of
+  such targets (a 10-target job 7.6M -> 0.34M, gm16_nu8 5.7M -> 2.3M) and the collapse its `score_ms`; the combined
+  code is not timed at 10 targets.
+- In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
+  work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job
+  searches nothing (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
+  31-149 KB).
+- Reroll (2026-10-10): about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run
+  with her added (warm, native about 0.7-0.9 s then). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7%
+  provisional), gm16 37%, p10, p11 and boot_mob 100% (`provisional` is unchanged by 8c657b7).
+- Small pools (callgrind, 2026-10-09, before the 2026-10-20 work): boot_mob 17.05G instructions, `best_sur` and the
+  deck searches under it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s
+  lookups) about 25%.
 
 ### Open
 
-- `outcome_hi`: y_hi is computed only where y < 0.5 (since 2026-10-20); stopping each cell's bound once it reaches 0.5
-  would keep every page decision but change those cells' rounded y_hi (planval would differ).
-- `score_career`: `legs.to_vec()` + `env.pool` per call (about 165 ms per job on export 1; sim.rs builds its pool
-  differently, so it needs its own entry point); the outcome loop's per-candidate branches (about 70 ns per outcome).
-- `joint_eval`'s per-state cluster loop allocates `par`, clusters, alts and cdist; `multi.rs`'s `ents_of` still clones.
+- `outcome_hi`: y_hi is computed only where y < 0.5; stopping each cell's bound once it reaches 0.5 would keep every
+  page decision but change those cells' rounded y_hi (planval would differ).
+- More than 8 uncertain targets: the planner's tables grow as 2^nu (corner tables), 4^nu (outcome tables) and 2^T
+  (`outcome_sets`, up to 12 targets). A design for 10-20 targets, not built: a factored exact form of the corner tables
+  per chain state, outcomes as count-indexed brackets refined only where the pick is undecided, decks by local search
+  with the exact search as verifier, and a second tier whose decisions match the exact one's within a stated
+  tolerance instead of byte for byte.
+- The page's planner against simpler policies: the simulator's `index` policy (468c861) runs it on the same draws as
+  `greedy`; no comparison of useful size has been run (about 0.2-0.5 s per plan step on 10-16-veteran pools, minutes
+  per run of a few hundred careers).
+- `score_career`'s outcome loop: its per-candidate branches (about 70 ns per outcome, estimated before 4ad4491 reworked
+  the loop). `multi.rs`'s `ents_of` still clones.
 - Cooperative cancel (a superseded plan keeps its worker and caches): a SharedArrayBuffer flag polled at the progress
   points and in `best_deck`, with no partial work stored; it needs COOP/COEP headers on the site (a deploy decision),
   terminate-and-restart kept as the fallback.
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
   pass-2 replay (Tried) may fold in there.
-- A skip-ahead in `Cont::plan` (x_n is convex in n analytically) needs a float-exact argument for its first stop.
 - Not tried, estimates only: a node-marginal ratio bound at depth <= 2; the deck search's per-leaf `dw`/`dg`
   allocations and the band test's second evaluation of the same clause value (3-15%); reusing pass 1's setups in
   pass 2 (about 90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf
   jump when near-tied builders swap).
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
-  that leaves the job as it is no longer stops the plan); reuse
-  kept plans for pools that grow by several veterans or lose one (today: the same pool, or one more veteran at the
-  end).
+  that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
+  lose one (today: the same pool, or one more veteran at the end).
+- Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
+  deterministic only with the winners-only cache and exact, unbudgeted searches.
 
 ### Tried and not kept
 

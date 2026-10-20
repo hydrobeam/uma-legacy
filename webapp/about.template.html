@@ -581,8 +581,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><msub><mi>H</mi><mi>j</mi></msub></math>; with <math><msubsup><mo>∏</mo><mrow></mrow><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup></math> the product of the six lowest (one deck's slots, ignoring the one-per-character rule
   and the competition for chain events),</p>
   <math display="block"><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>G</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>H</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><mn>1</mn><mo>−</mo><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow><mrow><mn>1</mn><mo>−</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow></mfrac></math>
-  <p>Each target's best is taken separately, so no real deck can beat it; <math><mi>ρ</mi></math> is the top cap, 1.25 (no deck is known yet). The main search has a work budget of 300 million units (the units of step 18); each planner search
-  5 million, past which it stops taking candidates and its answer is marked unproven. A deck search listing more than
+  <p>Each target's best is taken separately, so no real deck can beat it; <math><mi>ρ</mi></math> is the top cap, 1.25 (no deck is known yet). The main search has a work budget of 300 million units (the units of step 18), past which its deck searches score only
+  their best deck by product (and the decks they start from) and its answer is marked unproven; each planner search has 5 million, past which it also stops
+  taking candidates. A deck scored above its class's cap (the cap's assumption failing) also marks the search unproven, and
+  the result names the class. A deck search listing more than
   50,000 decks is rerun with <math><mi>ρ</mi></math> at most 1.12, then 1.05, then 1; the plan then says it is not complete and which cap it holds under. Candidates are taken best ceiling first; each gets its exact best deck
   (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
   <ul>
@@ -676,8 +678,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   another character that lifts her are sorted; every proxy at or above <math><mo>(</mo><mn>1</mn><mo>−</mo><mn>0.06</mn><mo>)</mo></math> times the second best is
   searched exactly. Repeated until no proxy is admitted. Cont's two builders come from exactly searched careers only.</li>
   <li><strong>Admission by savings.</strong> With scores sorted, the line is
-  <math><mi>t</mi><mo>=</mo><mi>min</mi><mo>(</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>8</mn><mo>)</mo></mrow></msub><mo>,</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>3</mn><mo>)</mo></mrow></msub><mo>,</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>−</mo><mi>max</mi><mo>(</mo><mn>0.25</mn><mo>,</mo><mn>0.05</mn><mo>|</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>|</mo><mo>)</mo><mo>)</mo><mo>+</mo><mn>1</mn></math> (the eighth shown row, the second
-  step's third, the pick's near-tie band; in savings, score + 1); every proxy with <math><mtext>score</mtext><mo>+</mo><mn>1</mn><mo>≥</mo><mo>(</mo><mn>1</mn><mo>−</mo><mn>0.06</mn><mo>)</mo><mi>t</mi></math> is
+  <math><mi>t</mi><mo>=</mo><mi>min</mi><mo>(</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>8</mn><mo>)</mo></mrow></msub><mo>,</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>−</mo><mi>max</mi><mo>(</mo><mn>0.25</mn><mo>,</mo><mn>0.05</mn><mo>|</mo><msub><mtext>score</mtext><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow></msub><mo>|</mo><mo>)</mo><mo>)</mo><mo>+</mo><mn>1</mn></math> (the eighth shown row, the pick's
+  near-tie band; in savings, score + 1); every proxy with <math><mtext>score</mtext><mo>+</mo><mn>1</mn><mo>≥</mo><mo>(</mo><mn>1</mn><mo>−</mo><mn>0.06</mn><mo>)</mo><mi>t</mi></math> is
   searched exactly. When a search changes a candidate's two builders, Cont, the trios, <math><mi>V</mi></math> and every score are worked
   out again; repeated until none is admitted.</li>
   <li><strong>Certification.</strong> Before an admitted proxy is searched, every legal pair <math><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>)</mo></math> of hers keeping the
@@ -686,7 +688,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   exceeds the proxy's value, the proxy is her best career's value and no search runs.</li>
   </ol>
   <p>The margins, 6%, are about twice the largest proxy error measured on the reference setups (2.8%; the proxy is
-  exact for every builder on five of seven). Careers left as proxies are marked as not searched; the full exact plan
+  exact for every builder on five of the seven measured). Careers left as proxies are marked as not searched; the full exact plan
   (every uma searched) is a job option.</p>
 
   <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
@@ -696,7 +698,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
   pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
-  found (its continuations are the plan's, C10). So each outcome also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
+  found (its continuations are the plan's, C10). So each outcome with <math><mi>y</mi><mo>&lt;</mo><mn>0.5</mn></math> (the only ones where a bound can decide anything, below) also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
   effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
   outcome <math><mi>ω</mi></math> (chances <math><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> and scale <math><msup><mi>C</mi><mo>′</mo></msup></math> of the lineage with her):</p>
   <math display="block"><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><munder><mo>max</mo><mi>y</mi></munder><mspace width="0.2em"/><msup><mi>C</mi><mo>′</mo></msup><mi>min</mi><mrow><mo>(</mo><msub><mtext>ceil</mtext><mi>y</mi></msub><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><munder><mo>min</mo><mi>z</mi></munder><mfrac><msub><mi>p</mi><mi>u</mi></msub><msub><mi>C</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></mfrac><mtext>rise</mtext><mo>(</mo><msup><mi>q</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>,</mo><msub><mi>q</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub><mo>)</mo><mo>)</mo></mrow></math>

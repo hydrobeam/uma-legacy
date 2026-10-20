@@ -1,10 +1,6 @@
 //! The assumed caps on exact over product odds, per deck structure class, and the exact search's budgets.
 use super::*;
 
-/// The search ranks decks and loops by the product of per-target odds; the reported ones are then scored exactly
-/// (`joint_trainee`), and so are the decks and loops whose ranking value is at least this share of the best. On the
-/// reference setups the exact value was 1.00-1.19 times the product (the most for 0-1-pal decks), so 0.8 covers a
-/// gap well beyond that.
 /// Assumed caps on a deck's exact odds over its product odds, by the deck's structure class (`cap_class`): decks and
 /// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Chain
 /// cards share one run's chain events, so the targets their links feed ("chain-varying") land or miss together through

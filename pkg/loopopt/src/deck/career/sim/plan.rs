@@ -13,7 +13,8 @@ pub(in super::super) struct Bests { key: (u64, u64), best: Vec<Option<Option<Fou
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
     /// only when she is an 8/8)
     looped: Vec<Option<Option<Found>>>,
-    /// per uma whether the search behind her kept best (and her looped best) ran out of work (`Solved::complete` false)
+    /// per uma whether a search behind her kept best (and her looped best) was not complete (`Solved::complete` false: it
+    /// ran out of work, a band overflowed, or a scored deck passed its class's cap)
     unp: Vec<bool>, lunp: Vec<bool> }
 thread_local! { static BESTS: std::cell::RefCell<Vec<Bests>> = const { std::cell::RefCell::new(Vec::new()) }; }
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
@@ -51,8 +52,8 @@ fn bests_key(job: &Value, fix: &[usize], n: usize) -> (u64, u64) {
     let ls = job.get("legacies").and_then(|l| l.as_array()).map(|a| Value::Array(a[..n.min(a.len())].to_vec()).to_string()).unwrap_or_default();
     (crate::deck::career::setup_fp(job) ^ h64(&format!("{fix:?}")).rotate_left(1), h64(&ls))
 }
-/// trainee u's best career in `pool` (and the refs to absorb, and whether every search behind it was complete: false
-/// when one ran out of its work cap, `Solved::complete`), reusing a kept plan of the pool less its last veteran
+/// trainee u's best career in `pool` (and the refs to absorb, and whether every search behind it was complete,
+/// `Solved::complete`), reusing a kept plan of the pool less its last veteran
 fn best_of(env: &mut Env, pool: &Pool, fix: &[usize], u: usize, same: Option<&Bests>, prev: Option<&Bests>, nl: usize) -> (Option<Found>, Vec<Vec<Ref>>, bool) {
     // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
     if let Some(sm) = same { if let Some(Some(x)) = sm.best.get(u) { return (x.clone(), vec![], !sm.unp.get(u).copied().unwrap_or(false)); } }
@@ -553,10 +554,6 @@ fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, p8: &mut Pool, iv: usize, x:
 fn with_her(v: f64, her: &[(usize, bool, f64)], c1: &[f64]) -> f64 {
     her.iter().map(|&(ib, real, c3)| (if real { 0.0 } else { c1[ib] }) + c3).fold(v, f64::min)
 }
-/// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
-/// above 0, Y per outcome (only with `want_ys`; else empty), and per candidate (P(her veteran lifts her), the summed lifted odds). Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
-/// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
-/// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 /// `Env::pool` of `legs` and her veteran (career x with parents a, b, schedule `c`): with `of_legs` (`pool` is
@@ -567,6 +564,11 @@ fn her_pool(s: &Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: u
     if of_legs { debug_assert_eq!(pool.me.len(), legs.len()); let mut pv = pool.clone(); s.env.pool_push(&mut pv, &v); pv }
     else { let mut lv = legs.to_vec(); lv.push(v); s.env.pool(&lv) }
 }
+/// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
+/// above 0, Y per outcome (only with `want_ys`; else empty), and per candidate (P(her veteran lifts her), the summed lifted odds). Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
+/// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
+/// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
+///
 /// `pool` must be `Env::pool(legs)` (the planner's callers): the pool with her veteran is then that pool with her entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
 pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, want_ys: bool, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>) {
@@ -1490,7 +1492,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let same: Option<Bests> = { let k = bests_key(job, fix, nl); BESTS.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|b| b.key == k); i.map(|i| c.remove(i)) }) };
     let prev: Option<Bests> = if nl > 1 { let k = bests_key(job, fix, nl - 1); BESTS.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|b| b.key == k); i.map(|i| c.remove(i)) }) } else { None };
     let mut urefs: Vec<Vec<Vec<Ref>>> = vec![vec![]; d.umas.len()];
-    // per uma: her best career's search ran out of work (`best_of`), and her looped one's
+    // per uma: her best career's search was not complete (`best_of`), and her looped one's
     let mut unp: Vec<bool> = vec![false; d.umas.len()]; let mut lunp: Vec<bool> = vec![false; d.umas.len()];
     if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r, ok) = best_of(env, pool, fix, u, same.as_ref(), prev.as_ref(), nl); urefs[u] = r; best[u] = Some(f); unp[u] = !ok; } } }
     let mut search_ms = now_ms() - t1;
@@ -1933,7 +1935,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         o.insert("looped".into(), json!(looped(f)));
         // false: a builder the plan could not turn on, her career from her deck class's winning decks (no career search)
         o.insert("exact".into(), json!(exact_run.get(i).copied().unwrap_or(true)));
-        // her career search ran out of its work cap (`search_work`): the best it found, not proven her best
+        // her career search was not complete (its work cap `search_work`, a band overflow or a deck past its class's cap):
+        // the best it found, not proven her best
         if exact_run.get(i).copied().unwrap_or(false) && (if i < nbase { unp[*x] } else { lunp[*x] }) { o.insert("proven".into(), json!(false)); }
         o.insert("stage_cost".into(), json!(cands.iter().position(|&c| c == *x).map(|ui| c1[ui])));
         o.insert("index".into(), json!(score.get(i))); o.insert("saving".into(), json!(score.get(i).map(|v| v + 1.0)));

@@ -905,8 +905,9 @@ function optionsEl() {
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  // a row whose career search hit its work cap (`proven: false`): the best it found, maybe not her best
-  if (P && list.some(o => o.proven === false)) box.appendChild(el('p', 'hint optnote', 'The search ran out of time for some of these umas: a better career may exist for them.'));
+  // a row whose career search was not complete (`proven: false`: its work cap, a band overflow or a deck past its class's
+  // cap): the best it found, maybe not her best
+  if (P && list.some(o => o.proven === false)) box.appendChild(el('p', 'hint optnote', 'The search could not prove the best career for some of these umas: a better one may exist for them.'));
   if (ref &&JSON.stringify(ref.places) !== JSON.stringify(plan)) {
     const back = btn('Back to the planner\'s pick', '', () => { plan.trainee = ref.places.trainee; plan.parents = ref.places.parents.slice(); changed(); });
     back.id = 'opt-back'; back.disabled = searching; const f = el('div', 'optfoot'); f.appendChild(back); box.appendChild(f);

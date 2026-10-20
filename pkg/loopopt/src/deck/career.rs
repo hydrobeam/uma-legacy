@@ -815,7 +815,9 @@ impl<'a> Env<'a> {
     /// The best careers: trainees from `trainees` (uma indices), two legacies of `p` as parents (all of `fix` among
     /// them, at most one borrowed), each with her best deck; `top` of them, one per trainee when `per_trainee`.
     /// Candidates are kept as (ceiling, trainee, parents) only (a pool of 400 veterans has millions); their chances
-    /// are recomputed when one is solved (the same numbers, so the same results).
+    /// are recomputed when one is solved (the same numbers, so the same results). The search is `complete` unless a
+    /// deck search was not `full` (the work budget ran out, or a band was certified below the top cap) or a deck scored
+    /// during it passed its class's cap (`cap_breach`).
     fn solve(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], per_trainee: bool, top: usize) -> Solved {
         let d = self.d;
         self.work = 0;   // each search has its own work budget

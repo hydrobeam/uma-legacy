@@ -59,8 +59,8 @@ odds and *Saves per run*, how much it lowers that estimate of the careers to a f
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two 8/8 parents
 (*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. A line under
-the table says when the search for a shown uma ran out of time (on large pools): her row is the best it found, and a
-better career may exist. **What do
+the table says when the search for a shown uma could not prove its answer (on large pools it usually ran out of time):
+her row is the best it found, and a better career may exist. **What do
 these mean?** explains the numbers on the page. **Use this** sets the career's places; the table stays (the last plan's,
 while the veterans and settings are unchanged), with your career marked (*your choice* when the plan didn't list it),
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going

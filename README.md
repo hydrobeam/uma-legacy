@@ -6,8 +6,9 @@ skills in Independent Training, with each uma's race schedule.
 Use it at https://uma-legacy.pages.dev.
 
 The career planner at `/career` picks the next career from your own veterans (imported from umadump or uma.moe): the
-trainee, her parents and her deck, chosen by how many careers it brings you closer to a fully looped parent (an 8/8
-whose parents are 8/8s). For the veteran you actually got, it shows how many careers she saves.
+trainee, her parents and her deck, chosen by how much it lowers the planner's estimate of the careers you still need
+for a fully looped parent (an 8/8 whose parents are 8/8s). For the veteran you actually got, it shows how many careers
+she saves by that estimate.
 
 - Using the page: `docs/USAGE.md`; the page's own "How this works" explains the model in plain words
 - Building, testing, deploying, repository layout: `docs/BUILD.md`
