@@ -1444,8 +1444,14 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                     let mut lf: Option<Found> = start.flatten();
                     for (ub, a, b) in cs {
                         if ub <= lf.as_ref().map_or(0.0, |f| f.val) { break; }
+                        // (the exact search's bar starts at the best looped career so far: only a career above it can
+                        // replace it, as in `best_of`; a tie keeps the earlier pair either way)
                         let f = if pj.sur == 1 { best_sur(&mut s, d, pool, &[a, b], x, pj.sur_margin, &mut buf) }
-                                else { s.env.solve(pool, &[a, b], &[x], false, 1).found.into_iter().next() };
+                                else {
+                                    s.env.floor = lf.as_ref().map_or(f64::NEG_INFINITY, |f| f.val);
+                                    let r = s.env.solve(pool, &[a, b], &[x], false, 1).found.into_iter().next();
+                                    s.env.floor = f64::NEG_INFINITY; r
+                                };
                         if let Some(f) = f { if f.val > lf.as_ref().map_or(0.0, |g| g.val) { lf = Some(f); } }
                     }
                     lf
