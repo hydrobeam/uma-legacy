@@ -255,14 +255,11 @@ fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool { sj.targets.iter().all(
 /// cached decks only grow, so the first `nd` are the ones there when the setup was made)
 struct Setup { ui: usize, x0: Vec<f64>, pw: Vec<[f64; 2]>, xm: [f64; 4], nd: usize }
 
-/// Two deep: candidates given the term (the highest by index, plus the best career's trainee), and builders tried
-const TWO_TOP: usize = 3;
 /// Scores within this many careers per run of the best (or 5% of it) count as tied
 const NEAR: f64 = 0.25;
-const TWO_BUILDERS: usize = 3;
 /// Builders through their deck class (`index_rule`): a proxy is searched exactly when her lift efficiency is within this
-/// share of a candidate's second best, or her saving within this share of the lowest saving the shown rows, the pick's
-/// near-tie band or two deep take. Recalibrated 2026-10-09 (val/plan `proxy_check`, with the own-8/8 credit): the proxy is
+/// share of a candidate's second best, or her saving within this share of the lowest saving the shown rows or the pick's
+/// near-tie band take. Recalibrated 2026-10-09 (val/plan `proxy_check`, with the own-8/8 credit): the proxy is
 /// the exact career for every builder on five of the seven jobs; it reads at most 2.79% low on a contender's efficiency
 /// (exact at least 0.7 of a candidate's second best; p11) and 2.67% low on a builder's saving (p11): 0.06 is 2.15x and
 /// 2.25x those. (The first measurement, on the planner as it was before the class winners and the merges since, had 11%
@@ -272,15 +269,6 @@ const PROXY_EFF: f64 = 0.06;
 const PROXY_SAVE: f64 = 0.06;
 /// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
 const OPT_SHOW: usize = 8;
-/// Two deep follows rolls at most this many targets short of 8/8 (on a 10-veteran pool rolls with 4 of 8 never
-/// opened a builder better than the best career now; 6 and 7 of 8 carried the term)
-const TWO_MISS: usize = 1;
-/// `val` with the deck it found (its index in the cache)
-fn val_d(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
-    let (q, _, c) = s.env.lineage(p, u, a, b);
-    let ub = s.env.ceiling(u, &q, c)?;
-    s.deck_for(u, &q, c, ub, 0.0, buf)
-}
 /// Trainee u's odds with a full loop lineage: parents hypothetical veterans of b1 and b2 (every target, stars at the
 /// rank's mix, G1 wins `w1` / `w2`), each bred from the other and from u (grandparents every target at 2 stars)
 #[allow(clippy::too_many_arguments)]
@@ -1271,8 +1259,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
 /// while it pays, then run her" (`Cont`, fitted to the pool now; free when an 8/8 of hers exists), C the best allowed
 /// uma with A's and B's 8/8s as parents (1 / her full-loop odds). A career is scored E[V - V with her veteran] - 1, exact
 /// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own 8/8 ends her own
-/// step; a roll that changes nothing leaves every score as it was (repeat). Two deep for the 3 highest and the best
-/// odds: her rolls one target short, as a parent of the 3 highest builders, over today's best score. Pick: the highest;
+/// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
 #[allow(clippy::too_many_arguments)]
@@ -1356,7 +1343,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         search_ms += now_ms() - ts;
     }
     let fb: Vec<Option<Found>> = cands.iter().map(|&u| best[u].clone().flatten()).collect();
-    let ntar = s.env.ntar; let n = cands.len();
+    let n = cands.len();
     let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
     let sj = s.env.sj;
     // per candidate whether an 8/8 of hers exists (a free side of the trios)
@@ -1368,8 +1355,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // search's and the candidates' best careers of her class: legal for her, the same deck problem, valued at her own
     // chances through the surrogate, `best_sur`), no career search. Exact searches only where the plan can turn on her:
     // a lift efficiency within PROXY_EFF of a candidate's second best (Cont's two builders come from the exactly
-    // searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW), the pick's near-tie
-    // band and two deep's builders. Measured on val/plan (`proxy_check`): the proxy's odds only ever read low (it is a
+    // searched careers), or a saving within PROXY_SAVE of the shown rows (the page's top OPT_SHOW) or the pick's near-tie
+    // band. Measured on val/plan (`proxy_check`): the proxy's odds only ever read low (it is a
     // career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it can also
     // read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
     // `exact_all` restores a search for every uma.
@@ -1597,13 +1584,13 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     progress(4, 0, runs.len());   // pass 2: every career against V
     if !runs.is_empty() && vnow.is_finite() {
         for r in &runs { let (sc, lift, ys) = score_one(&mut s, r, &c1, vnow, &cont, &combos3, &sides, &mut buf); score.push(sc); lifts.push(lift); ytabs.push(ys); }
-        // the proxies a shown row, the pick's near-tie band or two deep's builders can turn on: searched exactly (their
+        // the proxies a shown row or the pick's near-tie band can turn on: searched exactly (their
         // saving, score + 1, within PROXY_SAVE of the lowest saving those take), then scored again; when one of them joins a
         // candidate's two most efficient builders, Cont, the trios, V and every score are computed again
         while proxy_on {
             let mut sv: Vec<f64> = score.clone(); sv.sort_by(|x, y| y.partial_cmp(x).unwrap());
-            let (top, k8, k3) = (sv[0], sv[(OPT_SHOW - 1).min(sv.len() - 1)], sv[(TWO_BUILDERS - 1).min(sv.len() - 1)]);
-            let t = k8.min(k3).min(top - NEAR.max(0.05 * top.abs())) + 1.0;
+            let (top, k8) = (sv[0], sv[(OPT_SHOW - 1).min(sv.len() - 1)]);
+            let t = k8.min(top - NEAR.max(0.05 * top.abs())) + 1.0;
             let add: Vec<usize> = (0..runs.len()).filter(|&i| !exact_run[i] && score[i] + 1.0 >= t * (1.0 - PROXY_SAVE)).collect();
             if add.is_empty() { break; }
             let ts = now_ms();
@@ -1631,60 +1618,9 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         exact_n = score.len();
     }
     let (c1, cont, combos, combos3, vnow, sides) = (c1, cont, combos, combos3, vnow, sides);
-    let vof = |c: &[f64]| trio_v(c, &combos3);
     let step = |ui: usize, real: bool| if real { 0.0 } else { c1[ui] };
     let best_combo = combos.iter().min_by(|x, y| (step(x.0, x.4) + step(x.1, x.5) + x.2).partial_cmp(&(step(y.0, y.4) + step(y.1, y.5) + y.2)).unwrap()).copied();
     let index_ms = now_ms() - t3;
-    // two deep, in the same units: her strong rolls (at most TWO_MISS targets short of 8/8, stars at the rank's mix) as a
-    // parent of the TWO_BUILDERS highest builders; the next career's gain over today's best score
-    let t4 = now_ms();
-    progress(5, 0, 0);   // two deep
-    let mut two: Vec<Option<f64>> = vec![None; runs.len()];
-    if !pj.value_only && !score.is_empty() {
-        let istar = score.iter().cloned().fold(0.0f64, f64::max);
-        let mut ord: Vec<usize> = (0..runs.len()).collect();
-        ord.sort_by(|&p, &q| score[q].partial_cmp(&score[p]).unwrap());
-        let builders: Vec<usize> = ord.iter().take(TWO_BUILDERS).map(|&i| runs[i].0).collect();
-        let mut who: Vec<usize> = ord.iter().take(TWO_TOP).copied().collect();
-        if let Some(gi) = runs.iter().position(|r| r.0 == g.t) { if !who.contains(&gi) { who.push(gi); } }
-        let full = (1usize << ntar) - 1;
-        for &wi in &who {
-            let (x, f) = (runs[wi].0, runs[wi].1.clone());
-            let c = s.make_cur(pool, x, f.a, f.b, &f.sel, false);
-            let mut gain = 0.0f64;
-            for m in (0..full).filter(|m| m.count_ones() as usize + TWO_MISS >= ntar) {
-                let pm = c.os[m]; if pm <= 0.0 { continue; }
-                let keep: Vec<u32> = (0..ntar).filter(|&k| m >> k & 1 == 1).map(|k| s.env.sj.targets[k].group).collect();
-                let mut v = s.env.veteran(legs, x, f.a, f.b, c.wp.to_vec()); v.sparks.retain(|sp| keep.contains(&sp.0));
-                let mut lv = legs.to_vec(); lv.push(v); let iv = lv.len() - 1; let pv = s.env.pool(&lv);
-                // her direct lifts: the base after her
-                let mut pvn = pnow.clone(); let mut c1v = c1.clone(); let tv = now_ms();
-                for ui in 0..n {
-                    let u = cands[ui];
-                    if d.umas[u].id == d.umas[x].id { continue; }
-                    for y in 0..iv { if legal_pair(d, &pv, u, y, iv) { let vv = val(&mut s, &pv, u, y, iv, &mut buf); if vv > pvn[ui] { pvn[ui] = vv; } } }
-                    if pvn[ui] > pnow[ui] { c1v[ui] = c1v[ui].min(cont[ui].cost(pvn[ui])); }
-                }
-                prof("two_val_ms", now_ms() - tv);
-                let v0v = vof(&c1v);
-                let basev = ScoreBase { cands: &cands, c1: c1v, m23: &zeros, v0: v0v, pnow: pvn, cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
-                let mut bestg = 0.0f64;
-                for &bd in &builders {
-                    if d.umas[bd].id == d.umas[x].id { continue; }
-                    let mut bp = (0.0f64, usize::MAX, usize::MAX); let tv = now_ms();
-                    for y in 0..iv { if legal_pair(d, &pv, bd, y, iv) { if let Some((vv, di)) = val_d(&mut s, &pv, bd, y, iv, &mut buf) { if vv > bp.0 { bp = (vv, y, di); } } } }
-                    prof("two_val_ms", now_ms() - tv);
-                    if bp.1 == usize::MAX { continue; }
-                    let sel = s.cache.decks[bd][bp.2].sel.clone();
-                    let (ey2, _, _, _, _) = score_career(&mut s, d, &basev, &lv, &pv, bd, bp.1, iv, &sel, &mut buf);
-                    bestg = bestg.max(ey2 - 1.0 - istar);
-                }
-                gain += pm * bestg;
-            }
-            two[wi] = Some(gain);
-        }
-    }
-    let two_ms = now_ms() - t4;
     let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
@@ -1732,7 +1668,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // the pick's upper bound per outcome (`outcome_hi`; the pick as below, with the same scores)
     progress(6, 0, 0);   // the pick's outcome bound
     let ys_hi: Option<(usize, (Vec<f64>, Vec<f64>))> = if !runs.is_empty() && !score.is_empty() && vnow.is_finite() {
-        let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY) + two[i].unwrap_or(0.0);
+        let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY);
         let mut pk = 0usize; for i in 0..runs.len() { if total(i) > total(pk) + 1e-9 { pk = i; } }
         let top = total(pk); let near = |i: usize| total(i) >= top - NEAR.max(0.05 * top.abs());
         for i in 0..runs.len() { if near(i) && runs[i].1.val > runs[pk].1.val { pk = i; } }
@@ -1746,9 +1682,9 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time
       BESTS.with(|c| { let mut c = c.borrow_mut(); c.retain(|b| b.key != key); c.push(Bests { key, best: kb, refs: urefs, looped: lbest }); if let Some(p) = prev { c.push(p); } while c.len() > 4 { c.remove(0); } }); }
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
-    if runs.is_empty() && !pj.value_only { for f in &sv.found { runs.push((f.t, f.clone(), vec![])); two.push(None); } }
+    if runs.is_empty() && !pj.value_only { for f in &sv.found { runs.push((f.t, f.clone(), vec![])); } }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
-    let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY) + two[i].unwrap_or(0.0);
+    let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY);
     let mut pick = 0usize;
     for i in 0..runs.len() { if total(i) > total(pick) + 1e-9 { pick = i; } }
     let top = if runs.is_empty() { 0.0 } else { total(pick) };
@@ -1772,7 +1708,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         o.insert("stage_cost".into(), json!(cands.iter().position(|&c| c == *x).map(|ui| c1[ui])));
         o.insert("index".into(), json!(score.get(i))); o.insert("saving".into(), json!(score.get(i).map(|v| v + 1.0)));
         o.insert("lift".into(), json!(lifts.get(i))); o.insert("near".into(), json!(near(i) && i != pick));
-        o.insert("two_step".into(), json!(two[i])); o.insert("score".into(), json!(if score.is_empty() { None } else { Some(total(i)) }));
+        o.insert("score".into(), json!(if score.is_empty() { None } else { Some(total(i)) }));
         opts.push(rp);
     }
     opts.sort_by(|a, b| b["score"].as_f64().unwrap_or(f64::NEG_INFINITY).partial_cmp(&a["score"].as_f64().unwrap_or(f64::NEG_INFINITY)).unwrap());
@@ -1798,7 +1734,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let mut out = json!({"options": opts, "choice": choice, "rule": "index", "mode": "trio", "v0": if vnow.is_finite() { json!(vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
            "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[cands[ui]].id, cont[ui].lam, cont[ui].phi, cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count() - n_cert, "umas_certified": n_cert, "work": work,
-           "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
+           "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "total_ms": now_ms() - t_all});
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
     out["work"]["prof"] = json!(PROF.with(|p| std::mem::take(&mut *p.borrow_mut())));
     out

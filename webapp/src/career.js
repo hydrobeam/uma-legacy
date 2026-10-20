@@ -42,7 +42,7 @@ let inflight = null;   // the run under way: its job and places (`runKey`); null
 const runKey = (job) => JSON.stringify([ERA, job]) + '\n' + JSON.stringify(plan);
 // the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
-  : ph === 4 ? `weighing ${n} careers` : ph === 5 ? 'looking two careers ahead' : ph === 6 ? 'checking the pick' : '';
+  : ph === 4 ? `weighing ${n} careers` : ph === 6 ? 'checking the pick' : '';
 let status = { kind: 'loading', text: 'Loading…' };
 let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
@@ -896,8 +896,7 @@ function optionsEl() {
     if (tags.childElementCount) c0.appendChild(tags);
     // the number carries the tooltip (its balloon points at the number, not the middle of the cell)
     const sv = el('td', 'orole'), num = el('span', 'onum', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–'); sv.append(num);
-    if (P && r.index != null) { num.tabIndex = 0; num.title = `${roleText(r)}` + (r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : '')
-      + (r.two_step != null ? `; ${netText(r.two_step)} counting the next career her best results open up` : '') + (r.near ? '. About the same as the pick' : ''); }
+    if (P && r.index != null) { num.tabIndex = 0; num.title = `${roleText(r)}` + (r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : '') + (r.near ? '. About the same as the pick' : ''); }
     row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r, pl));

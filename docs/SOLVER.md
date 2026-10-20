@@ -361,7 +361,7 @@ raises that candidate's odds and the mean odds raised to.
 - A builder's career goes through her deck class: her class's winning decks (the main search's and the candidates'
   best careers), valued at her own chances by the surrogate, no career search. She is searched exactly when her lift
   efficiency is within `PROXY_EFF` (6%) of a candidate's second best, or her saving within `PROXY_SAVE` (6%) of the
-  lowest that the shown rows (`OPT_SHOW` = 8), the pick's near-tie band or two deep take. Recalibrated 2026-10-09 with
+  lowest that the shown rows (`OPT_SHOW` = 8) or the pick's near-tie band take. Recalibrated 2026-10-09 with
   `proxy_check` on val/plan: the proxy reads at most 2.79% / 2.67% low. A row left on its proxy carries `exact: false`.
 - Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
   every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below
@@ -393,15 +393,13 @@ can lose to a fresh one.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
 raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
-(V after 0). Two deep, for the 3 highest (`TWO_TOP`) and the best odds: her rolls one target short of 8/8 (`TWO_MISS`;
-stars at the rank's mix), as a parent of the 3 highest builders (`TWO_BUILDERS`), scored the same way, over today's
-best score. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
+(V after 0). Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
 next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
 
 **Output `next`:**
 - `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
   8/8s, the trios' last step, only when both sides are real and her parents are both 8/8s), `looped` (both parents
-  8/8s), `best_odds` (the main search's best career, one row), `index`, `two_step`, `score`, `lift` (the chance her roll
+  8/8s), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
   lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
 - `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds,
   p_switch, careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their
