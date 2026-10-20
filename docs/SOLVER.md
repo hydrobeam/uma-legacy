@@ -320,7 +320,7 @@ do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: 
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
 veteran's pink is that one; her schedule's win chances count them; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
-when the worker kept the search from the job before). The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
+when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's cap (`EXACT_CAPS`, an assumption) makes every search that saw it not `complete` (it may have pruned a better deck), and the output lists the classes in `cap_exceeded` ([class, highest ratio, cap]); none passes on val/plan, a 10-target export reached 1.297 in class 3. The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
   chart name, `when`, `year`, `cells` = [win %, goal, aptitude and streak terms] or [null], `shared` = a parent won it)

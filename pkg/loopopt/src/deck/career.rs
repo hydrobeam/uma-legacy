@@ -368,6 +368,9 @@ struct Env<'a> {
     /// per structure class (`cap_class`), the largest exact / product value of any deck `best_deck` scored (the class's
     /// assumed cap must exceed it; the planner reports it and `val/planval.py` fails when it comes near the cap)
     pub(crate) max_ratio: [f64; 4],
+    /// exact scorings whose exact / product ratio passed their class's cap: the cap is an assumption (`EXACT_CAPS`), so
+    /// a search that saw one may have pruned a deck that beats its answer; such a search is not `complete`
+    pub(crate) cap_breach: usize,
     /// per class, the trainee and deck that set `max_ratio`
     pub(crate) max_deck: [Option<(usize, Sel)>; 4],
     /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
@@ -423,7 +426,9 @@ impl Drop for Env<'_> {
 }
 impl<'a> Env<'a> {
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
-    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) { if r > self.max_ratio[k] { self.max_ratio[k] = r; self.max_deck[k] = Some((t, sel.clone())); } }
+    fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) { self.note_breach(k, r); if r > self.max_ratio[k] { self.max_ratio[k] = r; self.max_deck[k] = Some((t, sel.clone())); } }
+    /// a ratio past its class's cap (`cap_breach`)
+    fn note_breach(&mut self, k: usize, r: f64) { if r > self.space.caps()[k] * (1.0 + 1e-9) { self.cap_breach += 1; } }
     /// per class, the deck that set `max_ratio` (trainee name, cards), for the cap audit
     pub(crate) fn max_decks(&self) -> Value {
         json!(self.max_deck.iter().map(|x| x.as_ref().map(|(t, s)| json!({"trainee": self.d.umas[*t].name, "cards": self.space.pdeck(s, &[self.d.umas[*t].id]).names}))).collect::<Vec<_>>())
@@ -730,6 +735,8 @@ impl<'a> Env<'a> {
                 crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
                 for k in 0..4 { if let Some((r, t2, sel)) = &m.ratio[k] { if *r > self.max_ratio[k] { self.max_ratio[k] = *r; self.max_deck[k] = Some((*t2, sel.clone())); } } }
             }
+            let caps = self.space.caps();
+            for k in 0..4 { if let Some((r, _, _)) = &m.ratio[k] { if *r > caps[k] * (1.0 + 1e-9) { self.cap_breach += 1; } } }
             return m.res.clone();
         } }
         let (w0, s0, c0, o0, n0, j0) = (self.work, *scored, std::mem::replace(&mut self.cert, f64::INFINITY), self.overflows, self.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
@@ -841,6 +848,7 @@ impl<'a> Env<'a> {
         prof("gen_ms", now_ms() - t_gen); prof("gen_cands", cands.len() as f64); prof("solves", 1.0);
         let top = top.max(1);
         let mut complete = true;
+        let breach0 = self.cap_breach;
         let mut done: Vec<(f64, usize, Sel)> = vec![];
         let floor = self.floor;
         let kth = |done: &[(f64, usize, Sel)]| if done.len() < top { floor } else { done[top - 1].0.max(floor) };
@@ -960,6 +968,7 @@ impl<'a> Env<'a> {
         }
         for (t, rs) in refs.iter().enumerate() { let ct = self.cls[t]; for r in rs { if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) { self.seen[ct].push(r.clone()); } } }
         let next_bound = if next < cands.len() { sort_to(&mut cands, next, &mut upto); cands[next].ub } else { 0.0 };
+        if self.cap_breach > breach0 { complete = false; }
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
         let cert = self.cert; self.cert = cert0.min(cert);
@@ -1261,7 +1270,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let kept = DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1) }).unwrap_or_default();
     let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { Default::default() };
     let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { Default::default() };
-    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo, corner_memo, memo_fp, job, cls: (0..n).collect() };
+    let mut env = Env { d, sj: &sj, model, ew0, uncv, fixed_t, ntar, nu, unc, space, dmax, sts0, owned, budget, work: 0, seen: vec![vec![]; n], use_seen: true, ruled: vec![vec![]; n], last_pv: None, floor: f64::NEG_INFINITY, hard: 0, max_ratio: [0.0; 4], cap_breach: 0, max_deck: Default::default(), cert: f64::INFINITY, overflows: 0, deck_memo, corner_memo, memo_fp, job, cls: (0..n).collect() };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {
@@ -1323,6 +1332,9 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     } }
     keep(&env);
     if env.overflows > 0 { out["complete"] = json!(false); out["cap"] = json!(rho_top.min(env.cert)); out["band_overflows"] = json!(env.overflows); }
+    // a scored deck past its class's assumed cap (in any search of the job): per class [class, ratio, cap]
+    if env.cap_breach > 0 { let caps = env.space.caps();
+        out["cap_exceeded"] = json!((0..4).filter(|&k| env.max_ratio[k] > caps[k] * (1.0 + 1e-9)).map(|k| json!([k, env.max_ratio[k], caps[k]])).collect::<Vec<_>>()); }
     out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
     out
 }
