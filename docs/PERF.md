@@ -82,6 +82,11 @@ after any change to how builders' careers are built.
 
 - Whole job (search and plan), native, `val/planval.py` on 2026-10-10: p16 0.75 s, p16_ss 0.77 s, p16_ura 0.71 s,
   p10 1.69 s, p11 1.71 s, gm16 0.98 s, boot_mob 0.79 s.
+- Large pools (2026-10-20, native, loaded machine): a 316-veteran export on Grand Masters (8 uncertain targets, every
+  card and uma) 125 s and 1.26 GB -> about 10-12 s and 283 MB; a 315-veteran export on Unity Cup (6 uncertain targets)
+  13.9 -> about 6 s. The cost had been `outcome_hi`, about 110 s: (candidate x partner x anchor) x 4^nu leaves, untimed,
+  and its per-partner leaf store; no planval job had 8 uncertain targets (gm16_nu8 now does) or 8/8s (p16_88). What
+  is left there: deck searches about 5 s, `score_career` about 3 s, `outcome_hi` about 1.4 s (`next.work.prof`).
 - In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted). Since
   2026-10-20 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job searches nothing
   (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state 31-149 KB).
@@ -95,6 +100,16 @@ after any change to how builders' careers are built.
 
 ### Open
 
+- `outcome_hi`'s anchors: `Env::lineage` is about 60% of their cost (a `Vec<Slot>`, Rc clones, four Vecs per call),
+  about 0.2-0.3 s on the 316-veteran job; `rise_factors` builds every factor before the root test, which about 98% of
+  anchors fail (the 0-star factors alone would decide it). A y_hi computed only where y < 0.5, stopped once >= 0.5,
+  keeps every page decision but changes the other cells' rounded y_hi (planval would differ).
+- `score_career`: `legs.to_vec()` + `env.pool` per call (about 165 ms per job on export 1; sim.rs builds its pool
+  differently, so it needs its own entry point); the outcome loop's per-candidate branches (about 70 ns per outcome).
+- `joint_eval`'s per-state cluster loop allocates `par`, clusters, alts and cdist; `multi.rs`'s `ents_of` still clones.
+- Cooperative cancel (a superseded plan keeps its worker and caches): a SharedArrayBuffer flag polled at the progress
+  points and in `best_deck`, with no partial work stored; it needs COOP/COEP headers on the site (a deploy decision),
+  terminate-and-restart kept as the fallback.
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
   pass-2 replay (Tried) may fold in there.
 - A skip-ahead in `Cont::plan` (x_n is convex in n analytically) needs a float-exact argument for its first stop.
@@ -111,6 +126,13 @@ after any change to how builders' careers are built.
 
 | Item | Result | Why not |
 |---|---|---|
+| A Pareto filter on `outcome_hi`'s anchors (about 30% survive) | not needed | the branch and bound's root test drops about 98% of anchors at about 0.3 us each |
+| A fused depth-first ceiling pass in `outcome_hi` | slower | the vectorised `leaf_products` is memory-bound but faster |
+| Partner pruning by ceiling in `score_career`'s setups | not exact | `val` can run a fill-mode deck search that adds to the cache; setups cost 48-80 ms |
+| Skipping cost lookups for candidates whose step can't move (`cost_lo` bound) | exact; lookups -62% | about 6% of the outcome loop |
+| Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
+| An index on `ruled` | scans about 1 ms per job | nothing to gain |
+| Carrying `ruled` across pools (per setup, like SEEN) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
 | Seed each builder's floor with the previous builder's career | -7% / -4% / +5% | noise |
 | Pass 2 against the bar the candidate must beat (not its own best) | -6% | worse with class sharing (fewer proofs to share) |
 | Classmate's best deck as the product search's starting bar | nodes -4% (p16), -0.3% (p10) | bound looseness, not the incumbent, sets pass 1's tree |

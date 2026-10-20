@@ -415,7 +415,10 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   candidate's deck class at their `Ref`s, and, for the partners behind the band's likeliest outcomes, her best deck
   searched at her 2 and 3 stars on every uncertain target (`HI_STARS`; at most `HI_SEARCHES` searches, 0 by default = off, 10 when on; outcomes whose
   partners' bounds pass `HI_RISE` = 1.5 x p_now are left as they are), the latter two under the caps; and by the ceiling
-  (C4's, `outfit_fast` at q'); the step at `Cont::cost_lo`); `provisional`: the chance a roll reads
+  (C4's, `outfit_fast` at q'); the step at `Cont::cost_lo`). The least over anchors is found per (candidate, partner)
+  by an exact branch and bound over the leaves' star-digit prefixes (an anchor's factors are positive, so its prefix's
+  product times each remaining digit's least factor bounds its leaves from below; a subtree it can't lower is
+  skipped), and the outcome table is folded as each partner finishes; `provisional`: the chance a roll reads
   y < 0.5 <= y_hi, which the page checks exactly. The replan's other careers with her as a parent are not bounded (its
   candidates and Cont are the plan's).
 - `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
