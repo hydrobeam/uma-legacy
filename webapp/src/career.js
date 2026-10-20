@@ -876,10 +876,11 @@ function optionsEl() {
   if (mine) list.unshift(mine);
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
-  // This career explains itself on hover or keyboard focus (gmtip.js); Saves per run needs the (i) popup
+  // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about Saves per run
   const n = state.targets.length, ths = tb.tHead.rows[0].cells;
   const t = el('span', 'thtip', 'This career'); t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`; t.tabIndex = 0;
-  ths[1].appendChild(t); ths[2].textContent = 'Saves per run';
+  const sp = el('span', 'thtip', 'Saves per run'); sp.title = 'How much this career lowers the planner\'s estimate of the careers you still need, minus the run itself. For comparing careers, not a forecast.'; sp.tabIndex = 0;
+  ths[1].appendChild(t); ths[2].appendChild(sp);
   // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
   // (the popup behind a small (i) right after the section's title, in its header bar)
   if (P) { const q = el('button', 'oinfo savewhy', 'i'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog');
@@ -940,7 +941,7 @@ function openSaveWhy(P) {
   const drop = (title, ...kids) => { const d = el('details', 'savemore'); d.append(el('summary', '', title), ...kids); return d; };
   body.append(
     para(`<b>This career</b>: her chance of landing all ${n} targets in this one run.`),
-    para(`<b>Saves per run</b>: how many careers sooner you reach a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}) if you run this career next, <i>counting the run itself</i>, going by the planner's estimate below. <b>+5</b> means about five careers sooner.`),
+    para(`<b>Saves per run</b>: how much running this career next lowers the planner's estimate (below) of the careers you still need for a <i>fully looped parent</i> (an ${n}/${n} whose parents are both ${n}/${n}), <i>counting the run itself</i>. <b>+5</b> means about five careers fewer by that estimate. It is for <i>comparing careers</i>, not a forecast of careers you will save.`),
     para(`The best odds aren't always the best choice: a career can be worth more for <b>the veteran she leaves behind</b>, who becomes a parent for your next runs.`),
     para(`<b>About the same</b>: a career within <b>5%</b> of the best Saves per run (at least a quarter of a career either way). That is closer than the rough estimate can tell apart, so among those the planner <i>takes the better odds</i>.`),
     el('div', 'gmdsub', 'How it is worked out'),

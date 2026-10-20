@@ -20,10 +20,19 @@ function eraEngineData() {
 }
 function compiled() {
   if (!wasmModule) wasmModule = (async () => {
-    let bytes;
-    try { const r = await fetch(ASSETS.wasm); if (!r.ok) throw 0; bytes = await r.arrayBuffer(); }
-    catch { throw new Error(loadFail('the solver')); }
-    let module = null; try { module = await WebAssembly.compile(bytes); } catch { module = null; }
+    // compiled as it streams in, so Chrome keeps the optimised code for the next visit (it caches only streaming compiles);
+    // a clone of the response gives the bytes (for a worker that can't take the module, and for compiling them where the
+    // streaming compile is missing or refuses, e.g. a host serving the wasm under another type)
+    let r, streamed = null, bytes;
+    try { r = await fetch(ASSETS.wasm); if (!r.ok) throw 0; } catch { throw new Error(loadFail('the solver')); }
+    if (WebAssembly.compileStreaming) {
+      const whole = r.clone();
+      try { streamed = WebAssembly.compileStreaming(r).catch(() => null); } catch { streamed = null; }
+      r = whole;
+    }
+    try { bytes = await r.arrayBuffer(); } catch { throw new Error(loadFail('the solver')); }
+    let module = streamed && await streamed;
+    if (!module) try { module = await WebAssembly.compile(bytes); } catch { module = null; }
     return { module, bytes };
   })();
   wasmModule.catch(() => { wasmModule = null; });   // a failed load is retried on the next search

@@ -55,8 +55,8 @@ the previous answer stays dimmed until the new one arrives, and the status line 
 of 83 umas*).
 
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
-odds and *Saves per run*, how many careers sooner it brings a fully looped parent, averaged over every result she could
-roll, minus the run itself. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
+odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
+result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two 8/8 parents
 (*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. A line under
 the table says when the search for a shown uma ran out of time (on large pools): her row is the best it found, and a

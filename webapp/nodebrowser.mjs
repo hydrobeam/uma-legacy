@@ -1643,7 +1643,7 @@ const TESTS = {
     await pg.mouse.click(5, 5);   // a click on the backdrop closes it
     check('career: with no looped parent the plan scores every career against the cheapest trio; its explanation popup names each step and says what saves per run means', !!trioRes && trioRes.next.mode === 'trio'
       && trioRes.next.members.length === 2 && /^First .+; then .+; then .+ with those two \d+\/\d+s as parents.*\. About [\d,]+ careers in all\.$/.test(trioLoop)
-      && /1 in [\d,]+/.test(trioLoop) && /Saves per run: how many careers sooner you reach a fully looped parent .+ if you run this career next, counting the run itself, going by the planner's estimate below\./.test(saveTxt) && /The planner makes a rough estimate of how many careers you still need \(about [\d,]+ today\)/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
+      && /1 in [\d,]+/.test(trioLoop) && /Saves per run: how much running this career next lowers the planner's estimate \(below\) of the careers you still need for a fully looped parent .+, counting the run itself\. .+ It is for comparing careers, not a forecast of careers you will save\./.test(saveTxt) && /The planner makes a rough estimate of how many careers you still need \(about [\d,]+ today\)/.test(saveTxt) && trioCells.length >= 2 && trioCells.every(c => /^[+−]\d+\.\d$/.test(c))
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#save-dlg[open]').count()) && !(await pg.locator('.alts p.hint, .alts .oloop').count()),
       `${trioRes && trioRes.next.mode} | ${trioLoop} | ${trioCells.join(' ')}`);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
