@@ -36,8 +36,16 @@
 //! Policies (`simulate`'s match on `policy`): `greedy` (surrogate), `greedy_exact` (the career search in process per
 //! decision: the best career by P(all)), `loop` (a fixed rotation of `loop_members`: each career's parents are the
 //! latest veterans of the previous two members in rotation order; bootstrap below), and `trace` (building for
-//! `loop_members[0]` with the others as builders: the measurement `Cont`'s shape is fitted to). A policy picks the
-//! next career (`Cur`) from the state (`St`) in `play`; `trace` runs its own loop and returns its rows.
+//! `loop_members[0]` with the others as builders: the measurement `Cont`'s shape is fitted to), and `index` (the page's
+//! plan: `index_rule` on the step's pool, run as the page's plan job in process, its `choice` the career run). A policy
+//! picks the next career (`Cur`) from the state (`St`) in `play`; `trace` runs its own loop and returns its rows.
+//!
+//! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`plan::BESTS`), proofs (`SEEN`),
+//! main searches (`LAST_SOLVE`) and deck memos (`DECK_KEEP`). Each run starts with all four empty (`kept_swap`; the
+//! state before the simulation is put back after it), so a run's plans read only what its own earlier steps left: a
+//! run's careers are a function of the job and the run index, not of the runs before it or their order. Within a run
+//! a step's pool is the last one plus her veteran at the end (or the same pool, when she is pruned), the case the kept
+//! plans serve (`Bests`).
 //!
 //! Loop bootstrap: a member whose two parents (the latest rotation veterans of the previous two members) both exist
 //! runs with them; otherwise her parents are the best pair for her by exact P(all) from the pool (the career search
@@ -61,7 +69,7 @@ fn d_aevery() -> usize { 50 }
 
 #[derive(Deserialize, Clone)]
 pub(super) struct SimJob {
-    /// greedy | greedy_exact | loop | trace
+    /// greedy | greedy_exact | loop | trace | index
     #[serde(default = "d_policy")] policy: String,
     #[serde(default = "d_runs")] runs: usize,
     #[serde(default)] first: usize,
@@ -88,6 +96,21 @@ pub(super) struct SimJob {
     #[serde(default = "d_aevery")] audit_every: usize,
     /// log progress to stderr every this many careers (0: off)
     #[serde(default)] progress: usize,
+    /// index: the plan job's `next` (docs/SOLVER.md "Next career"); the page sends `{}`
+    #[serde(default = "d_next")] next: Value,
+}
+fn d_next() -> Value { json!({}) }
+/// index: the page's `top` for its plan job (`ROLL_K` in webapp/src/career.js)
+const PAGE_TOP: usize = 6;
+/// The worker's kept state across jobs: the kept plans, proofs, main searches and deck memos
+type KeptState = (Vec<plan::Bests>, Vec<(u64, Vec<Vec<Ref>>)>, Vec<(u64, Solved, super::Ruled)>, Vec<(u64, super::Kept)>);
+/// replaces the worker's kept state with `k`, returning what it was (`index`: module notes)
+fn kept_swap(k: KeptState) -> KeptState {
+    let b = plan::bests_take(); plan::bests_set(k.0);
+    let s = super::SEEN.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.1));
+    let l = super::LAST_SOLVE.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.2));
+    let d = super::DECK_KEEP.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.3));
+    (b, s, l, d)
 }
 
 // ---- random numbers ----
@@ -127,7 +150,7 @@ struct St { legs: Vec<Legacy>, pool: Pool, gpc: Vec<Vec<f64>>, fam: crate::FxMap
             mb: Vec<Option<Pick>> }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Base { Greedy, Loop, Trace }
+enum Base { Greedy, Loop, Trace, Index }
 #[derive(Default, Clone, Copy)]
 struct Count { cands: usize, ceil_pass: usize, tables: usize, searches: usize, partial: usize, added: usize }
 
@@ -145,6 +168,10 @@ struct Sim<'s, 'a> {
     /// a bar (so she has one from then on), instead of a search at the bar that caches nothing when it ends Bounded
     fill: bool,
 }
+/// index, this run: plan jobs run, each one's seconds, the picks' roles (`next.options[].role`), picks that were the best
+/// odds career (`best_odds`)
+type IxCount = (usize, Vec<f64>, std::collections::BTreeMap<String, usize>, usize);
+thread_local! { static IX: std::cell::RefCell<IxCount> = std::cell::RefCell::new(Default::default()); }
 
 fn canon(chara: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
     let (mut s, mut p, mut w) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
@@ -411,6 +438,32 @@ impl<'s, 'a> Sim<'s, 'a> {
         let wp = self.wins(&st.pool, t, a, b);
         Cur { t, a, b, p: pick["p_all"].as_f64().unwrap(), os, wp, rot: false }
     }
+    /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
+    /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.
+    /// The job's `trainees` stay (the page sends none: every owned uma)
+    fn index_cur(&mut self, st: &St) -> Cur {
+        let mut job = self.job.clone();
+        let o = job.as_object_mut().unwrap();
+        o.remove("simulate");
+        o.insert("legacies".into(), Value::Array(st.legs.iter().map(leg_json).collect()));
+        o.insert("fix".into(), json!([])); o.insert("top".into(), json!(PAGE_TOP)); o.insert("per_trainee".into(), json!(false));
+        o.insert("next".into(), self.cfg.next.clone()); o.insert("no_reports".into(), json!(true));
+        let tm = std::time::Instant::now();
+        let out = run_career(self.d, self.sk, self.cr, &job);
+        let pick = out["next"]["choice"].clone();
+        assert!(pick.is_object(), "index: the plan gave no pick: {}", out.to_string().chars().take(300).collect::<String>());
+        IX.with(|ix| { let mut ix = ix.borrow_mut();
+            ix.0 += 1; ix.1.push((tm.elapsed().as_secs_f64() * 1e3).round() / 1e3);
+            if let Some(c) = out["next"]["options"].as_array().and_then(|v| v.iter().find(|x| x["chosen"].as_bool() == Some(true))) {
+                *ix.2.entry(c["role"].as_str().unwrap_or("?").to_string()).or_default() += 1;
+                if c["best_odds"].as_bool() == Some(true) { ix.3 += 1; }
+            } });
+        let t = self.env.uix(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
+        let (a, b) = (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
+        let os: Vec<f64> = pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
+        let wp = self.wins(&st.pool, t, a, b);
+        Cur { t, a, b, p: pick["p_all"].as_f64().unwrap(), os, wp, rot: false }
+    }
     /// the veteran a failed career leaves and her landed mask
     fn draw(&self, c: &Cur, legs: &[Legacy], keys: &Keys, t: usize) -> (Legacy, usize) {
         let tot: f64 = self.order.iter().map(|&m| c.os[m]).sum();
@@ -470,7 +523,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                           rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![None; self.members.len()] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }
-        if base != Base::Loop {
+        if !matches!(base, Base::Loop | Base::Index) {
             // seed the cache with the career search's fully checked decks
             self.env.use_seen = false;
             let trainees = self.trainees.clone();
@@ -603,7 +656,8 @@ impl<'s, 'a> Sim<'s, 'a> {
         if decide.is_some() && self.cfg.check > 0 && base == Base::Greedy { checks.push(self.check(st, true)); }
         loop {
             let cur: Rc<Cur> = if exact { match &ecur { Some(c) => c.clone(), None => { let c = Rc::new(self.exact_cur(st)); ecur = Some(c.clone()); c } } }
-                else { match base { Base::Greedy => self.greedy_cur(st), Base::Loop => self.loop_cur(st), Base::Trace => unreachable!("trace runs its own loop") } };
+                else { match base { Base::Greedy => self.greedy_cur(st), Base::Loop => self.loop_cur(st), Base::Trace => unreachable!("trace runs its own loop"),
+                    Base::Index => match &ecur { Some(c) => c.clone(), None => { let c = Rc::new(self.index_cur(st)); ecur = Some(c.clone()); c } } } };
             if decide.is_some() {
                 let k = self.key(&cur);
                 if k != last_key {
@@ -626,12 +680,13 @@ impl<'s, 'a> Sim<'s, 'a> {
                     st.cur = None; ecur = None;
                 }
                 Base::Trace => unreachable!("trace runs its own loop"),
-                Base::Greedy => {
+                // (index: a pruned veteran leaves the pool as it was, so the plan, and its pick, are kept)
+                Base::Greedy | Base::Index => {
                     if self.cfg.prune && self.dominated(st, &vet) { pruned += 1; continue; }
-                    self.add_vet(st, vet, !exact, &mut buf);
+                    self.add_vet(st, vet, !exact && base == Base::Greedy, &mut buf);
                     ecur = None;
                     since_check += 1;
-                    if decide.is_some() && self.cfg.check > 0 && since_check >= self.cfg.check { since_check = 0; checks.push(self.check(st, false)); }
+                    if decide.is_some() && base == Base::Greedy && self.cfg.check > 0 && since_check >= self.cfg.check { since_check = 0; checks.push(self.check(st, false)); }
                 }
             }
         }
@@ -647,10 +702,11 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
         "greedy" | "greedy_exact" => Base::Greedy,
         "loop" => Base::Loop,
         "trace" => Base::Trace,
+        "index" => Base::Index,
         p => return json!({"error": format!("simulate: unknown policy {p}")}),
     };
     let members: Vec<usize> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
-    if base != Base::Greedy && (members.len() < 3 || members.len() != cfg.loop_members.len() || members.iter().any(|m| !env.owned.contains(m))) {
+    if matches!(base, Base::Loop | Base::Trace) && (members.len() < 3 || members.len() != cfg.loop_members.len() || members.iter().any(|m| !env.owned.contains(m))) {
         return json!({"error": "loop: loop_members must be at least three owned umas"});
     }
     let full = (1usize << ntar) - 1;
@@ -676,8 +732,11 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
     let init_s = t_init.elapsed().as_secs_f64();
     let mut runs = vec![]; let mut es = vec![];
     let eps = cfg.eps;
+    // index: the kept state before the simulation, put back after it (module notes)
+    let kept0 = if base == Base::Index { Some(kept_swap(Default::default())) } else { None };
     for run in cfg.first..cfg.first + cfg.runs {
         if !cfg.share_cache && run > cfg.first { s.cache = Cache::new(n); }
+        if base == Base::Index { kept_swap(Default::default()); IX.with(|ix| *ix.borrow_mut() = Default::default()); }
         let tm = std::time::Instant::now();
         let n0 = s.n;
         let mut st = st0.clone();
@@ -693,7 +752,10 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
         runs.push(json!({"run": run, "E": e, "careers": careers, "tail": tail, "final_p": fp, "final": finalk, "pool": st.legs.len(), "pruned": pruned,
             "wall_s": wall, "candidates": n1.cands - n0.cands, "ceiling_pass": n1.ceil_pass - n0.ceil_pass, "tables": n1.tables - n0.tables,
             "refreshes": n1.searches - n0.searches, "partial_searches": n1.partial - n0.partial, "segs": segs, "checks": checks, "audits": std::mem::take(&mut s.audits)}));
+        if base == Base::Index { let ix = IX.with(|ix| std::mem::take(&mut *ix.borrow_mut()));
+            runs.last_mut().unwrap()["index"] = json!({"plans": ix.0, "plan_s": ix.1, "roles": ix.2, "best_odds": ix.3}); }
     }
+    if let Some(k) = kept0 { kept_swap(k); }
     json!({"simulate": sim, "policy": cfg.policy, "runs": runs, "E": stats(&es), "init_s": init_s, "decks": s.cache.n_decks(), "deck_tables": s.cache.tables,
            "refreshes": s.n.searches, "schedules": s.sched.len()})
 }

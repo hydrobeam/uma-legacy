@@ -43,6 +43,8 @@ pub(in super::super) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
     }).collect()
 }
 pub(in super::super) fn bests_set(b: Vec<Bests>) { BESTS.with(|c| *c.borrow_mut() = b); }
+/// the kept plans, taken out (the simulator's `index` policy starts each run without them, `sim::kept_swap`)
+pub(in super::super) fn bests_take() -> Vec<Bests> { BESTS.with(|c| std::mem::take(&mut *c.borrow_mut())) }
 fn h64(s: &str) -> u64 { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); s.hash(&mut h); h.finish() }
 /// (setup and places, the first `n` legacies)
 fn bests_key(job: &Value, fix: &[usize], n: usize) -> (u64, u64) {
