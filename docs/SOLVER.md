@@ -363,6 +363,8 @@ raises that candidate's odds and the mean odds raised to.
   efficiency is within `PROXY_EFF` (6%) of a candidate's second best, or her saving within `PROXY_SAVE` (6%) of the
   lowest that the shown rows (`OPT_SHOW` = 8) or the pick's near-tie band take. Recalibrated 2026-10-09 with
   `proxy_check` on val/plan: the proxy reads at most 2.79% / 2.67% low. A row left on its proxy carries `exact: false`.
+  A row whose career search ran out of its work cap (`search_work`; `complete` false: the best career it found, not a
+  proven best) carries `proven: false`, and the page notes it under the table.
 - Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
   every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below
   the proxy's value, so it is her best career's value); with mob or affinity-free parents every classmate has the same
@@ -406,7 +408,8 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   continuations, `[chara, lam, phi, pinf]`).
 - `outcomes`: the pick's careers saved per outcome, V - V with her veteran: `{trainee, parents, uncv, fixed, y}`. `y` is
   indexed by leaf << len(fixed) | fm, leaf = her uncertain targets' stars in base 4 in `uncv` order (0 absent), fm =
-  the scenario's guaranteed golds present; the page's Reroll reads a roll's saving from it. `y_hi` at the same index: at
+  the scenario's guaranteed golds present; the page's Reroll reads a roll's saving from it. `y_hi` at the same index,
+  where y < 0.5 (null elsewhere: the page reads it only below 0.5, and computes nothing else from it): at
   least `y`, the most her veteran's direct lifts could save for that outcome (each candidate's odds with her as a
   parent bounded over every partner y by the least over anchors A of c' E_A rise(q', q_A) (`Env::rise`: no assumed
   cap), E_A at least the best odds at q_A: today's pairs (y, z) at p_now / c_yz, the main search's found careers of the
@@ -416,12 +419,14 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   (C4's, `outfit_fast` at q'); the step at `Cont::cost_lo`). The least over anchors is found per (candidate, partner)
   by an exact branch and bound over the leaves' star-digit prefixes (an anchor's factors are positive, so its prefix's
   product times each remaining digit's least factor bounds its leaves from below; a subtree it can't lower is
-  skipped), and the outcome table is folded as each partner finishes; `provisional`: the chance a roll reads
+  skipped; the leaves of no y < 0.5 outcome count as nothing to lower, so their subtrees are skipped too), and the
+  outcome table is folded as each partner finishes; `provisional`: the chance a roll reads
   y < 0.5 <= y_hi, which the page checks exactly. The replan's other careers with her as a parent are not bounded (its
   candidates and Cont are the plan's).
 - `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
   trios' fresh sides, with every candidate side and the best C).
-- `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `hint`, `sur`, `sur_diff`, `work` (this
+- `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `umas_unproven` (umas whose best or
+  looped career search ran out of its work cap), `hint`, `sur`, `sur_diff`, `work` (this
   plan's deck-search nodes and exact scorings, deterministic: a speed change can be measured at any machine load;
   `work.max_ratio` the largest exact/product ratio scored, `class_max_ratio` / `class_max_deck` per class, `class_caps`,
   `cap` the cap the plan's deck searches hold under), timings. A career deck search whose band would list over

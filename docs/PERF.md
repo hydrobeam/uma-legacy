@@ -96,6 +96,15 @@ after any change to how builders' careers are built.
   13.9 -> about 6 s. The cost had been `outcome_hi`, about 110 s: (candidate x partner x anchor) x 4^nu leaves, untimed,
   and its per-partner leaf store; no planval job had 8 uncertain targets (gm16_nu8 now does) or 8/8s (p16_88). What
   is left there: deck searches about 5 s, `score_career` about 3 s, `outcome_hi` about 1.4 s (`next.work.prof`).
+- Pass 2's per-outcome tables kept only for rows that can still be the pick, `score_career` building them only for
+  pass 2, `outcome_hi` only at the y < 0.5 outcomes, and a builder's proxy scorings reused when her exact search finds
+  the same career (2026-10-20, against cb93545; results unchanged, `y_hi` null where y >= 0.5): peak RSS on the
+  `.perf/p0` jobs 230 -> 188 MB (e2_v24), 229 -> 189 (e2_v48), 94 -> 84 (e1_full), 285 -> 222 (e2_full); scorings
+  234 -> 166 on e2_v24/v48 (68 reused), 332 -> 330 on e2_full; gm16_nu8 34.30G -> 32.58G instructions (-5.0%:
+  `score_career` -1.56G, the anchors' branch and bound -0.9G). y < 0.5 holds at about 90% of the outcomes on the
+  8-target jobs (little to skip) but at 1% on a 10-target one (e2_v24_t10: 10,823 of 1,048,576), where the whole job
+  took 54 s and 490 MB (an older binary: 7.6 min and 2.44 GB, the tables then 8 MB per row over 323 rows); there
+  `outcome_hi` is 0.6 s and 73 of its 75 per-uma searches stop at `search_work` (`umas_unproven`).
 - In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted). Since
   2026-10-20 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job searches nothing
   (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state 31-149 KB).
@@ -109,10 +118,8 @@ after any change to how builders' careers are built.
 
 ### Open
 
-- `outcome_hi`'s anchors: `Env::lineage` is about 60% of their cost (a `Vec<Slot>`, Rc clones, four Vecs per call),
-  about 0.2-0.3 s on the 316-veteran job; `rise_factors` builds every factor before the root test, which about 98% of
-  anchors fail (the 0-star factors alone would decide it). A y_hi computed only where y < 0.5, stopped once >= 0.5,
-  keeps every page decision but changes the other cells' rounded y_hi (planval would differ).
+- `outcome_hi`: y_hi is computed only where y < 0.5 (since 2026-10-20); stopping each cell's bound once it reaches 0.5
+  would keep every page decision but change those cells' rounded y_hi (planval would differ).
 - `score_career`: `legs.to_vec()` + `env.pool` per call (about 165 ms per job on export 1; sim.rs builds its pool
   differently, so it needs its own entry point); the outcome loop's per-candidate branches (about 70 ns per outcome).
 - `joint_eval`'s per-state cluster loop allocates `par`, clusters, alts and cdist; `multi.rs`'s `ents_of` still clones.

@@ -635,7 +635,7 @@ function rollDraft() { const r = shown(); if (!r || searching) return; Object.as
 // A roll's careers saved, read from the plan's table for the career on show (`outcomes`: per outcome, her targets' stars
 // and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. With it
 // `hi`, the most her veteran's direct lifts could save for that outcome (`y_hi`: ceilings over every partner; null on an
-// older plan): a table zero is proven when hi < 0.5, else the exact comparison checks it. null when the plan isn't for
+// older plan, and where y >= 0.5, which never reads it): a table zero is proven when hi < 0.5, else the exact comparison checks it. null when the plan isn't for
 // this career (then Reroll compares exactly).
 function tableSave(d, r) {
   const o = planS.state === 'done' ? planS.r?.outcomes : null;
@@ -904,7 +904,9 @@ function optionsEl() {
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  if (ref && JSON.stringify(ref.places) !== JSON.stringify(plan)) {
+  // a row whose career search hit its work cap (`proven: false`): the best it found, maybe not her best
+  if (P && list.some(o => o.proven === false)) box.appendChild(el('p', 'hint optnote', 'The search ran out of time for some of these umas: a better career may exist for them.'));
+  if (ref &&JSON.stringify(ref.places) !== JSON.stringify(plan)) {
     const back = btn('Back to the planner\'s pick', '', () => { plan.trainee = ref.places.trainee; plan.parents = ref.places.parents.slice(); changed(); });
     back.id = 'opt-back'; back.disabled = searching; const f = el('div', 'optfoot'); f.appendChild(back); box.appendChild(f);
   }
