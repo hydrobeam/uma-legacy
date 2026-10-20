@@ -1365,6 +1365,6 @@ targets; training-pool hints read {{13.other_skills_training_pool_hints|.3f}} [{
 ### Untested here
 
 the step from acquired to landed (spark generation, and that everything hinted is bought); the
-priority policy run by run; correlations inside a run beyond $P(\text{all})$; Grand Masters; hint levels. The runs skew
-to good careers; every comparison is per run on that run's own deck and lineage. Rows with an inspiration are left out
+priority policy run by run; correlations inside a run beyond $P(\text{all})$; Grand Masters; hint levels. The runs are
+completed careers; every comparison is per run on that run's own deck and lineage. Rows with an inspiration are left out
 of the deck test, which is then conditional on no spark, treated as independent of the deck.

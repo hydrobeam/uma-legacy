@@ -28,9 +28,8 @@ Findings: one per claim of section 4 (base under-predicts; pink-adjusted calibra
 beats base; the streak penalty; the table not exact in-sample, the cells not better held out; the excess in goal races from the 4th in a row). The other
 cells, the certain-outcome counts and the fits behind them are printed by detail().
 
-Conditional on selection: IT chose to run every non-goal attempt, presumably when she was likely to win, and the
-runs are probably skewed to good careers; goal races are run regardless (scored separately). Her stats, mood and
-skills are not modelled, by the table or here. A win is the record's flag (first place).
+Conditional on selection: IT chose to run every non-goal attempt, presumably when she was likely to win; goal races are
+run regardless (scored separately). Her stats, mood and skills are not modelled, by the table or here. A win is the record's flag (first place).
 """
 import collections, math
 from collections.abc import Callable, Hashable
