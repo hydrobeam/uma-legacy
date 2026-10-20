@@ -679,7 +679,7 @@ fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
     out.clear(); out.push(1.0);
     for (k, gk) in g.iter().enumerate() {
         let low = (1usize << (2 * k)) - 1;
-        tmp.clear(); tmp.extend((0..4usize << (2 * k)).map(|i| out[i & low] * gk[i >> (2 * k)]));
+        tmp.clear(); for &gd in gk { tmp.extend(out[..=low].iter().map(|&o| o * gd)); }
         std::mem::swap(out, tmp);
     }
 }
@@ -697,6 +697,124 @@ fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa
         for (rv, &pr) in rz.iter_mut().zip(lp.iter()) { if pr > *rv { *rv = pr; } }
     }
     rz
+}
+/// `outcome_hi`'s bound for one (candidate, partner), bd per leaf: the least of the ceiling rfc = rf x the best fast
+/// outfit's product and, over the anchors (f, qa), f x `rise_leaves`(qa); the same f64s as `rfc.min(anc)` with anc
+/// every anchor's value folded in at every leaf (a min may be taken in any order; a NaN rfc counts as +inf there, as
+/// `f64::min` drops it). Found by an exact branch and bound over the leaves' digit prefixes (digit k at bits 2k..2k+1,
+/// the products' order). An anchor's factors are all > 0 and f > 0 (checked; else it goes through `rise_leaves` whole),
+/// so a leaf's product is at least its prefix's product times the least factor of each remaining digit; with slack
+/// BB_SLACK for rounding (far more than the (1 + 2^-53)^(2 nu + 4) the chains can drift) that bounds f x the leaf's
+/// value from below at every leaf under the prefix (correctly rounded products are monotone). Where the bound reaches
+/// the most bd holds under the prefix (`tmax`), the anchor lowers no leaf there: the subtree is skipped.
+struct AncBb { nu: usize, no: usize, tmax: Vec<Vec<f64>>, pp: Vec<f64>, smin: Vec<f64>, nodes: u64, roots: u64 }
+const BB_SLACK: f64 = 1.0 - 1e-12;
+impl AncBb {
+    fn new() -> Self { AncBb { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0 } }
+    /// bd per leaf (level nu of `tmax`)
+    fn bd(&self) -> &[f64] { &self.tmax[self.nu] }
+    /// a fresh (candidate, partner) with `no` outfits for the anchors and the ceiling's fast outfits gc ([outfit][target
+    /// k][her stars], nfo of them): bd = rfc (per leaf rf x, from 0.0, the most of each outfit's product in
+    /// `leaf_products`' order: the old ceiling's f64s), `tmax` built
+    #[allow(clippy::too_many_arguments)]
+    fn reset(&mut self, nu: usize, no: usize, gc: &[f64], nfo: usize, rf: f64, pre: &mut Vec<f64>, tmp: &mut Vec<f64>) {
+        self.nu = nu; self.no = no;
+        self.pp.clear(); self.pp.resize((nu + 1) * no, 1.0);
+        self.smin.clear(); self.smin.resize((nu + 1) * no, 1.0);
+        self.tmax.resize(nu + 1, vec![]);
+        let nan_inf = |b: f64| if b.is_nan() { f64::INFINITY } else { b };
+        let mut bd = std::mem::take(&mut self.tmax[nu]);
+        bd.clear();
+        if nu == 0 {
+            bd.push(nan_inf(rf * if nfo > 0 { 1.0 } else { 0.0 }));
+            self.tmax[0] = bd; return;
+        }
+        let np = 1usize << (2 * (nu - 1));
+        bd.resize(np * 4, 0.0);
+        let mut g: Vec<[f64; 4]> = Vec::with_capacity(nu);
+        for o in 0..nfo {
+            g.clear(); g.extend((0..nu).map(|k| { let b = (o * nu + k) * 4; [gc[b], gc[b + 1], gc[b + 2], gc[b + 3]] }));
+            leaf_products(&g[..nu - 1], pre, tmp);
+            // the last digit's level straight into the running most
+            for (dg, &gl) in g[nu - 1].iter().enumerate() {
+                for (c, &pv) in bd[dg * np..(dg + 1) * np].iter_mut().zip(pre.iter()) { let pr = pv * gl; if pr > *c { *c = pr; } }
+            }
+        }
+        for c in bd.iter_mut() { *c = nan_inf(rf * *c); }
+        self.tmax[nu] = bd;
+        self.levels();
+    }
+    /// per prefix the most bd holds under it (level j: the 4^j prefixes of j digits; prefix p of j digits holds leaves
+    /// p + 4^j r: the most of level j + 1's four quarters; no NaN here)
+    fn levels(&mut self) {
+        for j in (0..self.nu).rev() {
+            let np = 1usize << (2 * j);
+            let mut lv = std::mem::take(&mut self.tmax[j]);
+            let up = &self.tmax[j + 1];
+            lv.clear(); lv.extend((0..np).map(|p| up[p].max(up[np + p]).max(up[2 * np + p]).max(up[3 * np + p])));
+            self.tmax[j] = lv;
+        }
+    }
+    /// an anchor's suffix products of its least factors (`smin`), and whether its bound at the root is below the most bd
+    /// holds (tmax only falls, so a no now is a no later too); f > 0, g its factors as `run`'s
+    fn root_open(&mut self, f: f64, g: &[f64]) -> bool {
+        let (nu, no) = (self.nu, self.no);
+        if nu == 0 { return true; }
+        let mut lb = 0.0f64;
+        for o in 0..no {
+            for j in (0..nu).rev() {
+                let gk = &g[(o * nu + j) * 4..(o * nu + j) * 4 + 4];
+                let mn = gk[0].min(gk[1]).min(gk[2]).min(gk[3]);
+                self.smin[o * (nu + 1) + j] = self.smin[o * (nu + 1) + j + 1] * mn;
+            }
+            let l = self.smin[o * (nu + 1)]; if l > lb { lb = l; }
+        }
+        f * BB_SLACK * lb < self.tmax[0][0]
+    }
+    /// fold one anchor in: f > 0, g its factors [outfit][target k][her stars], all > 0
+    fn run(&mut self, f: f64, g: &[f64]) {
+        let (nu, no) = (self.nu, self.no);
+        if nu == 0 {
+            let v = f * if no > 0 { 1.0 } else { 0.0 }; if v < self.tmax[0][0] { self.tmax[0][0] = v; }
+            return;
+        }
+        if !self.root_open(f, g) { return; }
+        for o in 0..no { self.pp[o] = 1.0; }
+        self.roots += 1;
+        self.dfs(0, 0, f, f * BB_SLACK, g);
+    }
+    fn dfs(&mut self, j: usize, p: usize, f: f64, fs: f64, g: &[f64]) {
+        let (nu, no) = (self.nu, self.no);
+        self.nodes += 1;
+        for dg in 0..4usize {
+            let pc = p | dg << (2 * j);
+            for o in 0..no { self.pp[(j + 1) * no + o] = self.pp[j * no + o] * g[(o * nu + j) * 4 + dg]; }
+            if j + 1 == nu {
+                let mut rv = 0.0f64; for o in 0..no { let pr = self.pp[nu * no + o]; if pr > rv { rv = pr; } }
+                let v = f * rv;
+                let b = &mut self.tmax[nu][pc];
+                if v < *b { *b = v; }
+            } else {
+                let mut lb = 0.0f64;
+                for o in 0..no { let l = self.pp[(j + 1) * no + o] * self.smin[o * (nu + 1) + j + 1]; if l > lb { lb = l; } }
+                if fs * lb >= self.tmax[j + 1][pc] { continue; }
+                self.dfs(j + 1, pc, f, fs, g);
+            }
+        }
+        let up = &self.tmax[j + 1]; let s = 1usize << (2 * j);
+        self.tmax[j][p] = up[p].max(up[p + s]).max(up[p + 2 * s]).max(up[p + 3 * s]);
+    }
+}
+/// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into g
+#[allow(clippy::too_many_arguments)]
+fn rise_factors(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa: &[f64], uncv: &[usize], g: &mut Vec<f64>) {
+    let nu = uncv.len(); g.clear();
+    for (st, ew) in sts.iter().zip(ews) {
+        for k in 0..nu { let i = uncv[k]; for sg in 0..4 {
+            let qn = 1.0 - x0[k] * xms[sg];
+            g.push(if st[k] > 0 || qn <= qa[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - qn)) / (1.0 - (1.0 - ew[k]) * (1.0 - qa[i])) });
+        } }
+    }
 }
 /// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
 /// bound allows (into `up`), then `saving_lo`; `c1` scratch
@@ -775,10 +893,30 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     let pv = s.env.pool(&lv);
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let nleaf = 1usize << (2 * nu); let nm = 1usize << ntar;
-    let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];   // (candidate, bound at scale 1 per leaf, spark scale per m)
+    // (candidate, bound at scale 1 per leaf, spark scale per m): kept only for the exact anchors (`HI_SEARCHES` > 0); else
+    // each outcome reads `tab`, the same maxima folded in as each partner is done
+    let mut hs: Vec<(usize, Vec<f64>, Vec<f64>)> = vec![];
     let mut hq: Vec<(usize, Vec<f64>, Vec<f64>, [f64; 4])> = vec![];   // per partner: (trainee, q0, x0, xms), for the anchors
     let rf = s.env.space.rho_top() * s.fixed;
     let (mut lp, mut lp_tmp): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
+    // the outcomes (her stars `leaf`, the fixed targets landed fm: cell leaf << nf | fm) with their chances and landed sets
+    let nf = fixed_t.len(); let ncell = nleaf << nf;
+    let mut prs: Vec<f64> = vec![0.0; ncell]; let mut ms: Vec<usize> = vec![0; ncell];
+    for leaf in 0..nleaf {
+        let mut mu = 0usize; let mut pr_st = 1.0f64;
+        for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
+        for fm in 0..(1usize << nf) {
+            let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
+            let pr = c.os[m] * pr_st;
+            if pr <= 0.0 { continue; }
+            prs[leaf << nf | fm] = pr; ms[leaf << nf | fm] = m;
+        }
+    }
+    let live: Vec<usize> = (0..ncell).filter(|&i| prs[i] > 0.0).collect();
+    let lm: Vec<u32> = live.iter().map(|&i| ms[i] as u32).collect();
+    // per candidate and outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without `hs`)
+    let mut tab: Vec<f64> = (0..n).flat_map(|ui| std::iter::repeat_n(bs.pnow[ui], ncell)).collect();
+    let mut bb = AncBb::new(); let mut g1: Vec<f64> = vec![]; let mut gc: Vec<f64> = vec![];
     for ui in 0..n {
         let u = bs.cands[ui];
         if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || s.fastc[u].is_empty() { continue; }
@@ -801,52 +939,70 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             let x0: Vec<f64> = uncv.iter().map(|&i| 1.0 - q0[i]).collect();
             // the best outfit's product per leaf: per outfit and target the factor A - B (1 - q') at each of her four star
             // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Sim::fast_ub` takes it)
-            let mut ceil = vec![0.0f64; nleaf];
-            for o in &s.fastc[u] {
-                let g: Vec<[f64; 4]> = (0..nu).map(|k| { let (aa, bb) = o[k]; [0, 1, 2, 3].map(|sg| aa - bb * (x0[k] * xms[sg])) }).collect();
-                leaf_products(&g, &mut lp, &mut lp_tmp);
-                for (cv, &pr) in ceil.iter_mut().zip(&lp) { if pr > *cv { *cv = pr; } }
-            }
+            let t0 = now_ms();
+            gc.clear();
+            for o in &s.fastc[u] { for k in 0..nu { let (aa, bb) = o[k]; for sg in 0..4 { gc.push(aa - bb * (x0[k] * xms[sg])); } } }
             // the anchored rise bound per leaf: the least over today's pairs (y, z) keeping the places of
-            // (pnow / c_yz) rise(q'(leaf), q_yz), q'_k(leaf) = 1 - x0[k] xm[her stars]
-            let mut anc = vec![f64::INFINITY; nleaf];
+            // (pnow / c_yz) rise(q'(leaf), q_yz), q'_k(leaf) = 1 - x0[k] xm[her stars], and over the main search's proven
+            // careers of her deck class (E_best(q_f) = val_f there: val_f rise(q', q_f)); at most the ceiling too (under
+            // EXACT_RHO): bd = min(rf ceil, anc) per leaf, by `AncBb` (anchors in any order: a min)
+            bb.reset(nu, sts.len(), &gc, s.fastc[u].len(), rf, &mut lp, &mut lp_tmp); let t1 = now_ms();
+            // the anchors whose bound at the root is open (f, factors), and whether any went in whole
+            let mut direct = false;
+            let (mut gs, mut fs): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
+            let mut add = |bb: &mut AncBb, f: f64, qa: &[f64], gs: &mut Vec<f64>, fs: &mut Vec<f64>, direct: &mut bool| {
+                rise_factors(&sts, &ews, &x0, &xms, qa, &uncv, &mut g1);
+                if f > 0.0 && g1.iter().all(|&v| v > 0.0) { if bb.root_open(f, &g1) { fs.push(f); gs.extend_from_slice(&g1); } } else {
+                    // outside the bound's premises: every leaf, as before
+                    *direct = true;
+                    let rz = rise_leaves(&sts, &ews, &x0, &xms, qa, &uncv, &mut lp, &mut lp_tmp);
+                    for (av, rv) in bb.tmax[bb.nu].iter_mut().zip(&rz) { let v = f * rv; if v < *av { *av = v; } }
+                }
+            };
             if bs.pnow[ui] > 0.0 {
                 for z in (0..legs.len()).filter(|&z| z != y && legal_pair(d, pool, u, y, z) && fix.iter().all(|&f| f == y || f == z)) {
                     let (qz, _, cz) = s.env.lineage(pool, u, y, z);
                     if cz <= 0.0 { continue; }
-                    let rz = rise_leaves(&sts, &ews, &x0, &xms, &qz, &uncv, &mut lp, &mut lp_tmp); prof("hi_z", 1.0);
-                    let f = bs.pnow[ui] / cz;
-                    for (av, rv) in anc.iter_mut().zip(&rz) { let v = f * rv; if v < *av { *av = v; } }
+                    prof("hi_z", 1.0);
+                    add(&mut bb, bs.pnow[ui] / cz, &qz, &mut gs, &mut fs, &mut direct);
                 }
             }
-            // and over the main search's proven careers of her deck class: E_best(q_f) = val_f there
-            for (fq, fv) in &fr {
-                let rz = rise_leaves(&sts, &ews, &x0, &xms, fq, &uncv, &mut lp, &mut lp_tmp);
-                for (av, rv) in anc.iter_mut().zip(&rz) { let v = fv * rv; if v < *av { *av = v; } }
-            }
-            // at most the ceiling too (under EXACT_RHO)
-            for (cv, av) in ceil.iter_mut().zip(&anc) { *cv = (rf * *cv).min(*av); }
+            for (fq, fv) in &fr { add(&mut bb, *fv, fq, &mut gs, &mut fs, &mut direct); }
+            if direct { bb.levels(); }
+            // the likeliest lowest first (f x the best outfit's product at 2 stars on every target): only speed
+            let ga = sts.len() * nu * 4;
+            let mut ord: Vec<(f64, usize)> = fs.iter().enumerate().map(|(i, &f)| {
+                let gi = &gs[i * ga..(i + 1) * ga];
+                (f * (0..sts.len()).map(|o| (0..nu).map(|k| gi[(o * nu + k) * 4 + 2]).product::<f64>()).fold(0.0f64, f64::max), i) }).collect();
+            ord.sort_by(|p, q| p.0.total_cmp(&q.0).then(p.1.cmp(&q.1)));
+            let t3 = now_ms(); let nodes0 = bb.nodes;
+            for &(_, i) in &ord { bb.run(fs[i], &gs[i * ga..(i + 1) * ga]); }
+            prof("hi_nodes", (bb.nodes - nodes0) as f64); prof("hi_open", fs.len() as f64); prof("hi_roots", bb.roots as f64); bb.roots = 0; let t4 = now_ms();
             let pw: Vec<[f64; 2]> = (0..ntar).map(|k| [1.1f64.powi(nc0[k] - 6), 1.1f64.powi(nc0[k] + 1 - 6)]).collect();
             let sc: Vec<f64> = (0..nm).map(|m| (0..ntar).map(|k| pw[k][(m >> k & 1) as usize]).product()).collect();
-            hs.push((ui, ceil, sc)); hq.push((u, q0, x0, xms));
+            // each outcome's most of the partners' sc[m] bd[leaf] (from pnow; in partner order per candidate, as `hi_at`)
+            let tu = &mut tab[ui * ncell..(ui + 1) * ncell];
+            let bd = bb.bd();
+            if live.len() == ncell && nf == 0 {
+                for ((t, &m), &b) in tu.iter_mut().zip(&lm).zip(bd) { let v = sc[m as usize] * b; if v > *t { *t = v; } }
+            } else {
+                for (&i, &m) in live.iter().zip(&lm) { let v = sc[m as usize] * bd[i >> nf]; if v > tu[i] { tu[i] = v; } }
+            }
+            prof("hi_ceil_ms", t1 - t0); prof("hi_anc_ms", t3 - t1); prof("hi_bb_ms", t4 - t3); prof("hi_fold_ms", now_ms() - t4); prof("hi_pairs", 1.0);
+            if HI_SEARCHES > 0 { hs.push((ui, bb.bd().to_vec(), sc)); }
+            hq.push((u, q0, x0, xms));
         }
     }
     let full_m = nm - 1;
     let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
-    let nf = fixed_t.len();
-    let mut ys: Vec<f64> = vec![0.0; nleaf << nf]; let mut prs: Vec<f64> = vec![0.0; nleaf << nf]; let mut ms: Vec<usize> = vec![0; nleaf << nf];
+    let mut ys: Vec<f64> = vec![0.0; ncell];
     let mut c1 = bs.c1.clone(); let mut up = vec![0.0f64; n];
-    for leaf in 0..nleaf {
-        let mut mu = 0usize; let mut pr_st = 1.0f64;
-        for k in 0..nu { let sg = (leaf >> (2 * k)) & 3; if sg > 0 { mu |= 1 << uncv[k]; pr_st *= w[sg - 1]; } }
-        for fm in 0..(1usize << nf) {
-            let mut m = mu; for (j, &i) in fixed_t.iter().enumerate() { if fm >> j & 1 == 1 { m |= 1 << i; } }
-            let pr = c.os[m] * pr_st;
-            if pr <= 0.0 { continue; }
-            prs[leaf << nf | fm] = pr; ms[leaf << nf | fm] = m;
-            ys[leaf << nf | fm] = hi_at(bs, &hs, leaf, m, full_m, xi, &her, goal, &mut c1, &mut up);
-        }
+    let t5 = now_ms();
+    for &i in &live {
+        for ui in 0..n { up[ui] = tab[ui * ncell + i]; }
+        ys[i] = saving_lo(bs, &up, ms[i], full_m, xi, &her, goal, &mut c1);
     }
+    drop(tab); prof("hi_ys_ms", now_ms() - t5);
     // exact anchors (`HI_SEARCHES`) for the partners that hold the most likely outcomes of the band (y < 0.5 <= y_hi) in
     // it: per band outcome, most likely first, the partners that must all fall for it to leave the band (every partner
     // above p_now of each candidate whose odds move V; none further than HI_RISE above p_now), taken whole while they fit
