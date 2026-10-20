@@ -692,6 +692,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .otags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .otag { font-family: var(--font-data); font-size: 0.68rem; font-weight: 400; border: 1px solid var(--line); color: var(--ink); border-radius: 3px; padding: 0 4px; }
 .otag.pick { border-color: var(--accent); font-weight: 700; }
+.optfoot { margin-top: 8px; }
 .lhead .expc { flex-basis: 100%; }
 .optab .obase, .optab .onext { color: var(--muted); font-size: 0.8rem; }
 .optab td.onext { white-space: normal; text-align: left; min-width: 12em; }

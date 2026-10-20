@@ -118,6 +118,13 @@ const baseKey = (job) => JSON.stringify(baseOf(job));
 // with its comparison (on demand)
 let planS = { state: 'none', r: null };
 const keyOf = (r) => r.trainee.id + ':' + r.parents.join(',');
+// the last plan made ({base, places, P}): while the career on show is one you chose on the same setup and veterans (its
+// job without the places), its table stays, so you can weigh the plan's other careers or go back to its pick
+let refPlan = null;
+const refBase = (job) => planKey({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], top: 0 });
+const refFor = () => refPlan && last && planS.state !== 'done' && refPlan.base === refBase(last.job) ? refPlan : null;
+// the last few answers, by job and places: going back to one draws it again without a run
+const answers = new Map(), ANSWERS = 4;
 // the plan Compare ran for the pool with her: the same job a run sends once she is added (keys sorted, the comparison's
 // flag aside), so Add to veterans takes it as it is instead of planning again (the solver is deterministic for its job)
 let planKept = null;
@@ -148,6 +155,13 @@ async function search() {
   // runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run again
   const key = JSON.stringify([ERA, job]), places = JSON.stringify(plan);
   if (last && last.key === key && last.plan === places && planS.state !== 'error') {
+    searching = false; clearInterval(tick); renderAll(); paint(); return;
+  }
+  const hit = answers.get(key + '\n' + places);
+  if (hit) {
+    answers.delete(key + '\n' + places); answers.set(key + '\n' + places, hit);
+    ({ status, last, planS } = hit); const r = shown();
+    simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
   searching = true; started = true; phase = 'search'; phaseNote = ''; t0 = performance.now(); clearInterval(tick); tick = setInterval(paint, 1000); paint();
@@ -187,6 +201,11 @@ async function search() {
       // the answer: the plan's pick (the best odds when no plan ran or it failed), and the veteran you got, drawn once
       // from it (a comparison on screen was for the old answer)
       status = st; last = { r: m.r, job, key, plan: places }; planS = P;
+      if (P.state === 'done') refPlan = { base: refBase(job), places: JSON.parse(places), P: P.r };
+      if (st.kind === 'done' && P.state !== 'error') {
+        answers.set(key + '\n' + places, { status, last, planS });
+        if (answers.size > ANSWERS) answers.delete(answers.keys().next().value);
+      }
       const r = shown();
       simulation = r ? { state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) } : { state: 'none' };
       if (best && !job.trainees.length && !job.fix.length) baselineCache = { key: baseKey(job), result: best };
@@ -813,17 +832,18 @@ function renderSimulation() {
 }
 // the options the planner weighed (only what it picks: the places left open), with "Use this": per option its odds now
 // and its net saving per run; without a plan (the trainee chosen, or the plan failed), the K best careers by odds
-function pickWhat(r) {
+// (pl: the places the table's careers fill: yours, or the plan's when the table is the last plan's)
+function pickWhat(r, pl = plan) {
   const what = el('div', 'altw');
-  if (!plan.trainee) { what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ' ' + r.trainee.name); }
-  const open = r.parents.filter(i => !plan.parents.includes(vets[i].id));
-  if (open.length) { if (!plan.trainee) what.append(', parents '); else what.append('Parents ');
+  if (!pl.trainee) { what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ' ' + r.trainee.name); }
+  const open = r.parents.filter(i => !pl.parents.includes(vets[i].id));
+  if (open.length) { if (!pl.trainee) what.append(', parents '); else what.append('Parents ');
     open.forEach((i, j) => { if (j) what.append(' + '); what.append(umaAv(vets[i].chara, vets[i].outfit, 24), ` #${i + 1} ${umaName(vets[i].chara)}`); }); }
   return what;
 }
-function useBtn(r) {
+function useBtn(r, pl = plan) {
   const b = btn('Use this', '', () => {
-    plan.trainee = r.trainee.id; const f = plan.parents.slice();
+    plan.trainee = r.trainee.id; const f = pl.parents.slice();
     const fr = r.parents.filter(i => !f.includes(vets[i].id)); for (let j = 0; j < 2; j++) if (!f[j]) f[j] = vets[fr.shift()].id;
     plan.parents = f; changed(); });
   b.disabled = searching;   // (an old answer's option, while a run works on the next)
@@ -833,9 +853,14 @@ const OPT_SHOW = 8;
 function optionsEl() {
   const box = sec('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
-  // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below
-  const P = planS.state === 'done' ? planS.r : null, on = shown();
-  const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen) : last.r.results;
+  // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below; with
+  // every place chosen, the last plan's table on the same setup and veterans, with your career in it (from the search
+  // when the plan didn't list it: no saving), and a way back to the places it ran with
+  const on = shown(), ref = refFor(), mineOnly = !!plan.trainee && plan.parents.every(Boolean);
+  const P = planS.state === 'done' ? planS.r : mineOnly && ref ? ref.P : null, pl = planS.state !== 'done' && mineOnly && ref ? ref.places : plan;
+  const list = P ? P.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen || (on && keyOf(o) === keyOf(on))) : last.r.results.slice();
+  const mine = P && on && !list.some(o => keyOf(o) === keyOf(on)) ? on : null;
+  if (mine) list.unshift(mine);
   const tb = el('table', 'cartab optab');
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // This career explains itself on hover or keyboard focus (gmtip.js); Saves per run needs the (i) popup
@@ -848,8 +873,9 @@ function optionsEl() {
     q.setAttribute('aria-label', 'What these numbers mean'); q.title = 'What these numbers mean'; q.onclick = () => openSaveWhy(P); box.querySelector(':scope > h3').append(q); }
   for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
-    c0.appendChild(pickWhat(r));
+    c0.appendChild(pickWhat(r, pl));
     const tags = el('span', 'otags');
+    if (r === mine) tags.appendChild(el('span', 'otag', 'your choice'));
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
     if (P && r.near) { const a = el('span', 'otag', 'about the same'); a.title = 'Within 5% of the best Saves per run (at least a quarter of a career): too close for the estimate to call, so the planner takes the better odds'; tags.appendChild(a); }
     if (P && r.best_odds) tags.appendChild(el('span', 'otag', 'best odds now'));
@@ -861,11 +887,15 @@ function optionsEl() {
       + (r.two_step != null ? `; ${netText(r.two_step)} counting the next career her best results open up` : '') + (r.near ? '. About the same as the pick' : ''); }
     row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
-    act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r));
+    act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r, pl));
     row.appendChild(act);
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
+  if (ref && JSON.stringify(ref.places) !== JSON.stringify(plan)) {
+    const back = btn('Back to the planner\'s pick', '', () => { plan.trainee = ref.places.trainee; plan.parents = ref.places.parents.slice(); changed(); });
+    back.id = 'opt-back'; back.disabled = searching; const f = el('div', 'optfoot'); f.appendChild(back); box.appendChild(f);
+  }
   const rest = P ? P.options.filter(o => !list.includes(o) && scoreOf(o) != null) : [];
   return box;
 }
@@ -913,8 +943,9 @@ function renderResults() {
   const r = shown(); if (!r) { renderSimulation(); return; }
   const top = el('div'); top.id = 'sim-top';
   box.append(top, targetsEl(r));
+  // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
   const open = !plan.trainee || plan.parents.some(p => !p);
-  if (open && ((planS.state === 'done' ? planS.r.options : last.r.results).length > 1)) box.appendChild(optionsEl());
+  if ((open && ((planS.state === 'done' ? planS.r.options : last.r.results).length > 1)) || refFor()) box.appendChild(optionsEl());
   renderSimulation(); markOwn();
 }
 

@@ -1472,8 +1472,13 @@ const TESTS = {
     check('career: the chosen trainee is set and the picks list only parents', !(await pg.locator('#tree .pn.trainee').getAttribute('class')).includes('ghost')
       && (await pg.$$eval('.alts tbody .altw', ws => ws.every(w => /^Parents /.test(w.textContent.trim())))));
     await pg.locator('.alts tbody tr').filter({ has: pg.getByRole('button', { name: 'Use this' }) }).first().getByRole('button', { name: 'Use this' }).click(); await done();
-    check('career: "Use this" sets the places; with all set the career is just scored', /Scored in/.test(await note()) && !(await pg.locator('.alts').count())
+    check('career: "Use this" sets the places; with all set the career is just scored', /Scored in/.test(await note())
       && await pg.locator('#tree .pn.ghost').count() === 0, await note());
+    // the last plan's table stays (it once went with the plan, so its other careers were out of reach), her row marked
+    const saves = await pg.$$eval('.alts tbody .onum', ns => ns.map(n => n.textContent.trim()));
+    check('career: … the last plan\'s careers stay listed, with their savings, the planner\'s pick and hers marked', await pg.locator('.alts').count() === 1
+      && /shown above/.test(await pg.locator('.alts tbody tr.on').textContent()) && await pg.locator('.alts .otag.pick').count() === 1
+      && saves.some(x => /^[+−]\d/.test(x)), saves.join(' '));
     // the chosen parent's popup shows its actions: the footer (Close, Change parent, Let the planner pick) wraps on narrow
     // popups and once ran past the popup's bottom, hiding the only way to unselect a parent; desktop and phone
     await node('node:p1');
@@ -1484,6 +1489,14 @@ const TESTS = {
       && await inNode('Let the planner pick').count() === 1, `desktop ${footWide}, phone ${footPhone}`);
     await inNode('Let the planner pick').click(); await closeNode(); await done();
     check('career: "Let the planner pick" hands a place back', await pg.locator('#tree .pn.ghost').count() === 1 && /Weighed/.test(await note()));
+    // back to the plan's places, then her again: both answers were drawn before, so neither runs a job
+    const jobsNow = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career').length), jobs0 = await jobsNow();
+    await pg.click('#opt-back'); await done();
+    const backOk = await pg.locator('#tree .pn.ghost').count() === 2 && /Planned in/.test(await note()) && await jobsNow() === jobs0;
+    await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
+    await pg.fill('#pick-filter', 'Agnes Digital'); await pg.locator('#pick-list .upick:visible').first().click(); await done();
+    check('career: "Back to the planner\'s pick" restores the plan\'s places, and an answer seen before is drawn without a run', backOk
+      && await pg.locator('#tree .pn.ghost').count() === 1 && await jobsNow() === jobs0, `${await note()}; jobs ${jobs0} -> ${await jobsNow()}`);
     // a settings change searches again
     await pg.click('#o-umas'); await dialog(pg, 'set-umas');
     const umasNow = () => pg.evaluate(() => { const g = JSON.parse(localStorage.getItem('llp:settings') || '{}').global || {}; return JSON.stringify([g.roster, g.outfits]); });   // (nothing saved before the first settings change)
