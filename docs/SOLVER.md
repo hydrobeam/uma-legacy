@@ -395,7 +395,9 @@ can lose to a fresh one.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
 raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
-(V after 0). Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
+(V after 0). A target whose stars can't move any table value of hers (per scoring, every setup: her x the same
+f64 at 1-3 stars, or every kept table the same with the target landed or not) is folded at 1 star only, its 2 and 3
+stars reading 1 star's y (to rounding: a flat table's fold rounds per star level); `outcomes.y` keeps every leaf. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
 next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
 
 **Output `next`:**

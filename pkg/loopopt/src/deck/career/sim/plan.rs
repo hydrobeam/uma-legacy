@@ -635,7 +635,8 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     let pl = (1usize << nf) * na > ns;
     let nrow = if pl { nleaf * ns } else { (nleaf << nf) * na };
     if sc.u.len() < nrow { sc.u.resize(nrow, 0.0); }
-    if na > 0 { sc_fold(s, bs, &setups, &mut sc, pl, nu, nf, ns, na, nrow, &uncv, &fmm, &scf, &sslot, &p0); }
+    // per uncertain target, collapsed (`sc_fold`; with no setup slot no outcome reads a table: every target)
+    let col: Vec<bool> = if na > 0 { sc_fold(s, bs, &setups, &mut sc, pl, nu, nf, ns, na, nrow, &uncv, &fmm, &scf, &sslot, &p0) } else { vec![true; nu] };
     prof("sc_fold_ms", now_ms() - t_fo);
     // the candidates the loop below can lift, in candidate order: those with setups, and (never, as the odds are not
     // negative) one whose odds now already clear her threshold pnow (1 + 1e-9); every other keeps up = pnow, below it
@@ -649,8 +650,8 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     // per active candidate: (index, her slot or none, her threshold, her odds now)
     let act: Vec<(usize, Option<usize>, f64, f64)> = active.iter().map(|&ui| (ui, aslot[ui], thr[ui], bs.pnow[ui])).collect();
     let (ey, lift, ys, stats, [n_out, n_ch, n_cost, n_same, n_one]) = {
-        let FoldScratch { u, pst, mus, .. } = &mut sc;
-        sc_outcomes(bs, &c.os, w, &uncv, &fmm, &u[..nrow], &scf, &sslot, &p0, &act, &her, xi, goal, pl, want_ys, nu, nf, ns, na, full_m, pst, mus)
+        let FoldScratch { u, pst, mus, yb, .. } = &mut sc;
+        sc_outcomes(bs, &c.os, w, &uncv, &fmm, &u[..nrow], &scf, &sslot, &p0, &act, &her, xi, goal, pl, want_ys, nu, nf, ns, na, full_m, &col, pst, mus, yb)
     };
     let t_end = now_ms();
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = sc);
@@ -660,12 +661,22 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
 }
 
 /// `score_career_`'s fold (with na > 0 setup slots): every setup's tables, the dominated ones dropped, folded (`fold_rec`)
-/// into the outcome rows `sc.u`. Its own function, entered once per scoring, so V8 compiles it optimised after the first
-/// few (`docs/PERF.md`, *In the page*)
+/// into the outcome rows `sc.u`; per uncertain target whether it is collapsed (below). Its own function, entered once per
+/// scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*).
+///
+/// Collapse: target k is collapsed when, for every setup, either her x is the same f64 at 1, 2 and 3 stars (x0 = 0: then
+/// the fold takes the same f64s at those levels, so it gives the same values bit for bit), or every kept table of the
+/// setup has the same value with target k landed and not (`t[i] == t[i | 1 << k]`): the table's interpolation then reads
+/// no x_k, t (1 - x) + t x = t, and the fold's f64s differ by at most rounding (a few units in the last place) between
+/// her star levels. A collapsed target is folded at 0 and 1 star only; the outcome loop reads 1 star's values for her 2
+/// and 3 stars there (`sc_outcomes`). Every value folded is the fold's value at a leaf of the
+/// full fold (the same operations on the same f64s), so the dominated-table drop stays exact at every leaf folded; and
+/// the tables dropped are none that could set a maximum, so deciding the collapse on the kept tables decides it on the
+/// values the outcome loop reads.
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn sc_fold(s: &Sim, bs: &ScoreBase, setups: &[Setup], sc: &mut FoldScratch, pl: bool, nu: usize, nf: usize, ns: usize, na: usize, nrow: usize,
-    uncv: &[usize], fmm: &[usize], scf: &[f64], sslot: &[usize], p0: &[f64]) {
+    uncv: &[usize], fmm: &[usize], scf: &[f64], sslot: &[usize], p0: &[f64]) -> Vec<bool> {
     // per setup, per target and star level: x and 1 - x (the same expressions the fold took per branch)
     let xs: Vec<Vec<[f64; 4]>> = setups.iter().map(|st| (0..nu).map(|k| [0usize, 1, 2, 3].map(|sg| st.x0[k] * st.xm[sg])).collect()).collect();
     let xc: Vec<Vec<[f64; 4]>> = xs.iter().map(|v| v.iter().map(|r| r.map(|x| 1.0 - x)).collect()).collect();
@@ -687,22 +698,43 @@ fn sc_fold(s: &Sim, bs: &ScoreBase, setups: &[Setup], sc: &mut FoldScratch, pl: 
     }
     prof("sc_dom", n_dom as f64);
     let nt = tsi.len();
+    // the collapse (above): per target, every setup's x the same at 1-3 stars, or her tables the same either side of bit k
+    let n0 = 1usize << nu;
+    let mut col = vec![true; nu]; let mut n_tab = 0usize;
+    for (k, ck) in col.iter_mut().enumerate() {
+        let mut by_tab = false;
+        for (si, xsi) in xs.iter().enumerate() {
+            let r = &xsi[k];
+            if r[1].to_bits() == r[2].to_bits() && r[2].to_bits() == r[3].to_bits() { continue; }
+            let flat = (0..nt).filter(|&j| tsi[j] == si).all(|j| { let t = &sc.lv[0][j * n0..(j + 1) * n0]; (0..n0).all(|i| i >> k & 1 == 1 || t[i] == t[i | 1 << k]) });
+            if !flat { *ck = false; break; }
+            by_tab = true;
+        }
+        if *ck && by_tab { n_tab += 1; }
+    }
+    prof("sc_col", col.iter().filter(|&&c| c).count() as f64); prof("sc_col_tab", n_tab as f64);
     for k in 1..=nu { let l = nt << (nu - k); if sc.lv[k].len() < l { sc.lv[k].resize(l, 0.0); } }
     if sc.fv.len() < 16 * ns { sc.fv.resize(16 * ns, 0.0); }
     if sc.acc.len() < 16 * na { sc.acc.resize(16 * na, 0.0); }
-    let cx = FoldCx { pl, nu, nf, ns, na, tsi: &tsi, xs: &xs, xc: &xc, uncv, fmm, scf, sslot, p0 };
+    let cx = FoldCx { pl, nu, nf, ns, na, tsi: &tsi, xs: &xs, xc: &xc, uncv, fmm, scf, sslot, p0, col: &col, two: [0, 1] };
     let FoldScratch { lv, fv, acc, u, .. } = sc;
     fold_rec(&cx, 0, 0, 0, lv, fv, &mut acc[..16 * na], &mut u[..nrow]);
+    col
 }
 /// `score_career_`'s outcome loop: every outcome (her stars per uncertain target, the guaranteed golds present or not),
 /// its chance, V after her and y; (E[y], P(y > 1e-9), y per outcome with `want_ys`, per candidate stats, counters). Its
-/// own function, entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*)
+/// own function, entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*).
+/// On a collapsed target (`col`, `sc_fold`: folded at 0 and 1 star only) a leaf with 2 or 3 stars there reads its
+/// representative's values (`rep_of`: those digits set to 1, so a smaller leaf, met first): y as computed there (`yb`) and
+/// each candidate's odds for the stats; every sum (E[y], the lift, the stats) still takes every outcome in the loop's order
+/// at its own chance, the same sums as without the collapse wherever the representative's values are the leaf's own
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 fn sc_outcomes(bs: &ScoreBase, os: &[f64], w: [f64; 3], uncv: &[usize], fmm: &[usize], u: &[f64], scf: &[f64], sslot: &[usize], p0: &[f64],
     act: &[(usize, Option<usize>, f64, f64)], her: &[(usize, bool, f64)], xi: Option<usize>, goal: bool, pl: bool, want_ys: bool,
-    nu: usize, nf: usize, ns: usize, na: usize, full_m: usize, pst: &mut Vec<f64>, mus: &mut Vec<usize>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, [usize; 5]) {
+    nu: usize, nf: usize, ns: usize, na: usize, full_m: usize, col: &[bool], pst: &mut Vec<f64>, mus: &mut Vec<usize>, yb: &mut Vec<f64>)
+    -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, [usize; 5]) {
     let n = bs.cands.len(); let nleaf = 1usize << (2 * nu);
     let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
         else { trio_v(c1, &bs.combos) };
@@ -731,26 +763,48 @@ fn sc_outcomes(bs: &ScoreBase, os: &[f64], w: [f64; 3], uncv: &[usize], fmm: &[u
         let lo = 1usize << (2 * k);
         for dg in 1..4usize { for i in 0..lo { pst.push(pst[i] * w[dg - 1]); mus.push(mus[i] | 1 << uncv[k]); } }
     }
+    // the collapsed targets' digits (cm) and their low bits: a leaf's representative has each nonzero one at 1
+    let cm: usize = (0..nu).filter(|&k| col[k]).map(|k| 3usize << (2 * k)).sum();
+    let lo_bits = cm & (usize::MAX / 3);
+    let rep_of = |l: usize| { let z = l & cm; (l & !cm) | ((z | z >> 1) & lo_bits) };
+    if cm != 0 { yb.clear(); yb.resize(nleaf << nf, 0.0); }
     for leaf in 0..nleaf {
         let (mu, pr_st) = (mus[leaf], pst[leaf]);
+        let r = rep_of(leaf);
+        // (a representative that other leaves read: y computed wherever her landed set can happen, even at chance 0 itself)
+        let read = r == leaf && leaf & cm != 0;
         for (fm, &mf) in fmm.iter().enumerate() {
             let m = mu | mf;
             let pr = os[m] * pr_st;
-            if pr <= 0.0 { continue; }
-            n_out += 1;
-            // each candidate's odds after her: the best of her setups' and her odds now (`fold_emit`; with pl, here)
+            if pr <= 0.0 && !(read && os[m] > 0.0) { continue; }
+            // each candidate's odds after her: the best of her setups' and her odds now (`fold_emit`; with pl, here), at the
+            // representative's row (the leaf's own where nothing is collapsed)
             let ur: &[f64] = if pl {
                 ubuf.copy_from_slice(p0);
-                let (fr, sr) = (&u[leaf * ns..(leaf + 1) * ns], &scf[m * ns..(m + 1) * ns]);
+                let (fr, sr) = (&u[r * ns..(r + 1) * ns], &scf[m * ns..(m + 1) * ns]);
                 for ((&sc, &f), &sl) in sr.iter().zip(fr).zip(sslot) { let v = sc * f; if v > ubuf[sl] { ubuf[sl] = v; } }
                 &ubuf
-            } else { &u[(leaf << nf | fm) * na..][..na] };
+            } else { &u[(r << nf | fm) * na..][..na] };
+            if r != leaf {
+                // the representative's y, the stats at the representative's odds and this outcome's chance
+                n_out += 1;
+                for &(ui, sl, th, pn) in act {
+                    let upv = match sl { Some(sl) => ur[sl], None => pn };
+                    if upv > th { stats[ui].0 += pr; stats[ui].1 += pr * upv; }
+                }
+                let y = yb[r << nf | fm];
+                ey += pr * y; if y > 1e-9 { lift += pr; }
+                if want_ys { ys[leaf << nf | fm] = y; }
+                continue;
+            }
+            let live = pr > 0.0;
+            if live { n_out += 1; }
             // the candidates whose step moved (if none, c1 is the base's and V after is v_same)
             ch.clear();
             for (ai, &(ui, sl, th, pn)) in act.iter().enumerate() {
                 let upv = match sl { Some(sl) => ur[sl], None => pn };
                 if upv > th {
-                    stats[ui].0 += pr; stats[ui].1 += pr * upv;
+                    if live { stats[ui].0 += pr; stats[ui].1 += pr * upv; }
                     let ub = upv.to_bits(); let ci = ai * CC + (ub.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 56) as usize;
                     let cc = if last[ci].0 == ub { n_same += 1; last[ci].1 } else { n_cost += 1; let cc = bs.cost(ui, upv); last[ci] = (ub, cc); cc };
                     if cc < c1[ui] { c1[ui] = cc; ch.push(ui); } }
@@ -764,6 +818,8 @@ fn sc_outcomes(bs: &ScoreBase, os: &[f64], w: [f64; 3], uncv: &[usize], fmm: &[u
             // c1 back to the base's
             for &i in &ch { c1[i] = bs.c1[i]; }
             let y = if goal && m == full_m { bs.v0 } else { (bs.v0 - va).max(0.0) };
+            if read { yb[leaf << nf | fm] = y; }
+            if !live { continue; }
             ey += pr * y; if y > 1e-9 { lift += pr; }
             if want_ys { ys[leaf << nf | fm] = y; }
         }
@@ -804,13 +860,18 @@ fn one_v(o: &One, x: f64) -> f64 {
 /// `score_career`'s fold buffers, kept between calls (each call writes what it reads): per level the folded tables, the
 /// last two levels' 16 leaves per setup and per candidate slot, the outcome rows, per leaf her stars' chance and set
 #[derive(Default)]
-struct FoldScratch { lv: Vec<Vec<f64>>, fv: Vec<f64>, acc: Vec<f64>, u: Vec<f64>, pst: Vec<f64>, mus: Vec<usize> }
+struct FoldScratch { lv: Vec<Vec<f64>>, fv: Vec<f64>, acc: Vec<f64>, u: Vec<f64>, pst: Vec<f64>, mus: Vec<usize>, yb: Vec<f64> }
 thread_local! { static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell::RefCell::new(FoldScratch::default()); }
 /// What `fold_rec` reads: per table its setup, per setup x and 1 - x per uncertain target and star level; for
 /// `fold_emit`: whether it writes per leaf the setups' table values (pl: fewer rows than per outcome and slot; the outcome
 /// loop then takes the products and maxima itself), else per outcome the slots' odds; the guaranteed golds' sets, the spark scales (m-major), each setup's candidate slot, the slots' odds now
+/// (`col`, `two`: per target whether it is collapsed, and then the star levels folded, 0 and 1: `sc_fold`)
 struct FoldCx<'f> { pl: bool, nu: usize, nf: usize, ns: usize, na: usize, tsi: &'f [usize], xs: &'f [Vec<[f64; 4]>], xc: &'f [Vec<[f64; 4]>],
-    uncv: &'f [usize], fmm: &'f [usize], scf: &'f [f64], sslot: &'f [usize], p0: &'f [f64] }
+    uncv: &'f [usize], fmm: &'f [usize], scf: &'f [f64], sslot: &'f [usize], p0: &'f [f64], col: &'f [bool], two: [usize; 2] }
+impl FoldCx<'_> {
+    /// her star levels folded on target k
+    fn sgs(&self, k: usize) -> &[usize] { if self.col[k] { &self.two } else { &[0, 1, 2, 3] } }
+}
 /// One leaf's rows (each fm; her landed set mu on the uncertain targets): per candidate slot the best of her odds now and
 /// each setup's spark scale at m times its table value f (the products and the strict maxima the outcome loop took, in
 /// any setup order: a maximum)
@@ -825,11 +886,12 @@ fn fold_emit(cx: &FoldCx, leaf: usize, mu: usize, f: &[f64], u: &mut [f64]) {
     }
 }
 /// `fold_emit` for the 16 leaves of the last two levels (f[si * 16 + b], b = digit k | digit k+1 << 2), through a slot-major
-/// block acc[slot * 16 + b]
-fn fold_emit16(cx: &FoldCx, k: usize, leaf: usize, mu: usize, f: &[f64], acc: &mut [f64], u: &mut [f64]) {
+/// block acc[slot * 16 + b]; `bl`: the blocks folded (`fold_rec`)
+#[allow(clippy::too_many_arguments)]
+fn fold_emit16(cx: &FoldCx, k: usize, leaf: usize, mu: usize, f: &[f64], bl: &[usize], acc: &mut [f64], u: &mut [f64]) {
     let (ns, na) = (cx.ns, cx.na);
     if cx.pl {
-        for b in 0..16usize {
+        for &b in bl {
             let li = leaf | (b & 3) << (2 * k) | (b >> 2) << (2 * (k + 1));
             for (si, r) in u[li * ns..(li + 1) * ns].iter_mut().enumerate() { *r = f[si * 16 + b]; }
         }
@@ -842,9 +904,9 @@ fn fold_emit16(cx: &FoldCx, k: usize, leaf: usize, mu: usize, f: &[f64], acc: &m
         for (sl, a) in acc.chunks_exact_mut(16).enumerate() { a.fill(cx.p0[sl]); }
         for (si, &sl) in cx.sslot.iter().enumerate() {
             let (fs, a) = (&f[si * 16..si * 16 + 16], &mut acc[sl * 16..sl * 16 + 16]);
-            for b in 0..16 { let v = cx.scf[mo[b] + si] * fs[b]; if v > a[b] { a[b] = v; } }
+            for &b in bl { let v = cx.scf[mo[b] + si] * fs[b]; if v > a[b] { a[b] = v; } }
         }
-        for b in 0..16usize {
+        for &b in bl {
             let li = leaf | (b & 3) << (2 * k) | (b >> 2) << (2 * (k + 1));
             let row = &mut u[((li << cx.nf) | fm) * na..][..na];
             for (sl, r) in row.iter_mut().enumerate() { *r = acc[sl * 16 + b]; }
@@ -874,16 +936,19 @@ fn fold_rec(cx: &FoldCx, k: usize, leaf: usize, mu: usize, lv: &mut [Vec<f64>], 
             let f0: [f64; 4] = std::array::from_fn(|sg| t0 * ca[sg] + t1 * xa[sg]);
             let f1: [f64; 4] = std::array::from_fn(|sg| t2 * ca[sg] + t3 * xa[sg]);
             let o = &mut f[si * 16..si * 16 + 16];
-            for sg2 in 0..4usize { for sg in 0..4usize {
+            for &sg2 in cx.sgs(k + 1) { for &sg in cx.sgs(k) {
                 let v = f0[sg] * cb[sg2] + f1[sg] * xb[sg2];
                 let oo = &mut o[sg | sg2 << 2]; if v > *oo { *oo = v; }
             } }
         }
-        fold_emit16(cx, k, leaf, mu, f, acc, u);
+        // the 16 leaves' blocks folded (every one but a collapsed target's other star levels)
+        let mut bl = [0usize; 16]; let mut nb = 0;
+        for &sg2 in cx.sgs(k + 1) { for &sg in cx.sgs(k) { bl[nb] = sg | sg2 << 2; nb += 1; } }
+        fold_emit16(cx, k, leaf, mu, f, &bl[..nb], acc, u);
         return;
     }
     let h = 1usize << (nu - k - 1);
-    for sg in 0..4usize {
+    for &sg in cx.sgs(k) {
         {
             let (lo, hi) = lv.split_at_mut(k + 1);
             let (t, f) = (&lo[k], &mut hi[0]);

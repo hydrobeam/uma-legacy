@@ -65,7 +65,10 @@ V8 (Chrome, Edge) runs a wasm function in baseline code (Liftoff) until it has r
 wasm). A long loop in a function entered once therefore runs in baseline code throughout: the main search's candidate
 generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a loop's body is its own `#[inline(never)]`
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0`, as by default it
-inlines every function that has one caller, whatever its size. The optimised code belongs to the compiled module: a
+inlines every function that has one caller, whatever its size. The planner's long loops are split the same way:
+`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s fold and outcome loop (`sc_fold`,
+`sc_outcomes`); on e2_full (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
+the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
 (`--liftoff-only`) takes export 2's plan 39 s against 22 s, so slow tier-up costs at most about 1.8x.
 
@@ -105,6 +108,13 @@ after any change to how builders' careers are built.
   8-target jobs (little to skip) but at 1% on a 10-target one (e2_v24_t10: 10,823 of 1,048,576), where the whole job
   took 54 s and 490 MB (an older binary: 7.6 min and 2.44 GB, the tables then 8 MB per row over 323 rows); there
   `outcome_hi` is 0.6 s and 73 of its 75 per-uma searches stop at `search_work` (`umas_unproven`).
+- Collapsed targets in `score_career` (2026-10-20): an uncertain target none of whose setups' table values can move
+  with her 1-3 stars (`sc_fold`) is folded at 0 and 1 star only, and the outcome loop reads 1 star's y and odds at 2 and
+  3 stars while every sum still takes every outcome at its own chance. On the `.perf/p0` and val/plan jobs every scoring
+  collapses 2 of 6 or 3 of 8 targets, all by flat tables; native `score_ms` e2_v24 1.27 -> 0.46 s, e2_full 2.81 -> 1.26 s,
+  e1_full 0.40 -> 0.33 s, e2_v24_t10 23.2 -> 9.5 s (3 of 10; its job 65 -> 54 s). Not byte-identical (a flat table's fold
+  rounds differently per star level): decisions identical on all twelve jobs; largest relative change 1.2e-13 (a score
+  near 0.06), savings 1.1e-15, every `y` and lift identical.
 - In the page (2026-10-09): p16's first plan 1.9 s cold, 1.4 s after a reload (kept work persisted). Since
   2026-10-20 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job searches nothing
   (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state 31-149 KB).
@@ -166,6 +176,7 @@ after any change to how builders' careers are built.
 | Pass 2 replayed from pass 1's outcomes (`score_replay`) | exact; 2-7% on plans, about 10% on the warm Compare plan | 74 lines and a second scoring path; reconsider inside the outcome-loop consolidation |
 | wasm SIMD (`+simd128`) | p16 -1.7%, boot_mob +3.8% (V8, within noise) | the hot loops are branchy with serial products; recheck if `outfit_fast` becomes branch-free |
 | `outfit_fast` with u8-state `if` selects / f64-state compares | -0.4 to -1.4% / +0.6 to +0.8% | LLVM re-emits branches / no vectorisation (`OutfitPre`'s u64 masks do vectorise) |
+| Collapsed targets at their summed star chance (one outcome for 1-3 stars, weight w1 + w2 + w3) | `score_ms` e2_v24_t10 23.2 -> 6.6 s; decisions identical | the regrouped sums move the fit (lam, phi) by up to 3.9e-12 and savings by 5.3e-12 relative on e2_v24_t10, past the 1e-12 bar; kept: every outcome summed in order (9.5 s) |
 | A/B pre-check at the root bound | its B side is `p0 * sp0`, no outfit call | nothing to save |
 | mimalloc (native) | within noise on p16, p10, boot_mob, gm16, pal_A2 | allocation's RAM misses are at most about 7% of time |
 | talc (wasm) | p16 -4.3%, boot_mob 0% | +7% download (wasm 1.84 -> 1.97 MB) for one pool |
