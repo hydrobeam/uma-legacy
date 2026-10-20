@@ -504,6 +504,54 @@ impl<'a> Env<'a> {
         let c = su.iter().chain(&sf).product::<f64>();
         (q, nc, c)
     }
+    /// `lineage`'s spark scale C, and its inheritance chances for the targets `ks` only (into q[i] for i in ks, the
+    /// other entries of q left as they are), without allocating: `slots`, `inherit` and `scale` operation for operation
+    /// (each slot's affinity summed in `slots`' order, its factors multiplied in slot order, a slot without the spark
+    /// skipped). More than four grandparent slots per parent: through `lineage` itself. `tg`: t's relation points with
+    /// each legacy x of `p` (`pair`, at 5 x + 4) and with x's grandparent slots (`tri`, at 5 x + the slot), then
+    /// `scale`'s factor per carrier count; built here when empty: the caller empties it for another trainee or pool.
+    fn lineage_qc(&self, p: &Pool, t: usize, a: usize, b: usize, ks: &[usize], q: &mut [f64], tg: &mut Vec<f64>) -> f64 {
+        const G: usize = 4;
+        if p.gp[a].len() > G || p.gp[b].len() > G {
+            let (qq, _, c) = self.lineage(p, t, a, b); for &i in ks { q[i] = qq[i]; } return c;
+        }
+        let ti = Some(t);
+        let nl = p.me.len();
+        if tg.is_empty() {
+            tg.resize(nl * (G + 1), 0.0);
+            for x in 0..nl { tg[x * (G + 1) + G] = self.pair(ti, p.me[x].ix); for (gi, g) in p.gp[x].iter().enumerate().take(G) { tg[x * (G + 1) + gi] = self.tri(ti, p.me[x].ix, g.ix); } }
+            // then 1.1^(n - 6) per carrier count n, as `scale` computes it (black_box: the same runtime powi)
+            tg.extend((0..=2 * (G + 1)).map(|n| 1.1f64.powi(std::hint::black_box(n as i32 - 6))));
+        }
+        let sh = 3.0 * shared(&p.me[a], &p.me[b]);
+        // the six slots in `slots`' order: stars, mix, and the affinity term fa = 1 + (rel + race) / 100 (`inherit`'s,
+        // computed once per slot), rel and race summed as `slots` sums them
+        const NS: usize = 2 * (G + 1);
+        let (mut st, mut mx, mut fa): ([&[u8]; NS], [Option<[f64; 3]>; NS], [f64; NS]) = ([&[][..]; NS], [None; NS], [0.0; NS]);
+        let mut ns = 0usize;
+        for (x, y) in [(a, b), (b, a)] {
+            let px = &p.me[x];
+            let mut rel = tg[x * (G + 1) + G] + self.pair(px.ix, p.me[y].ix); let mut race = sh;
+            let i0 = ns; st[ns] = &px.stars[..]; mx[ns] = px.mix; ns += 1;
+            for (gi, g) in p.gp[x].iter().enumerate() {
+                let (gr, gc) = (tg[x * (G + 1) + gi], p.gpc[x][gi]);
+                rel += gr; race += gc;
+                st[ns] = &g.stars[..]; mx[ns] = g.mix; fa[ns] = 1.0 + (gr + gc) / 100.0; ns += 1;
+            }
+            fa[i0] = 1.0 + (rel + race) / 100.0;
+        }
+        let m = |s: f64, fa: f64| 1.0 - (0.03 * s * fa).min(1.0);
+        for &k in ks {
+            let (mut miss, mut mix2) = (1.0f64, 1.0f64);
+            for j in 0..ns {
+                let s = st[j][k]; if s == 0 { continue; }
+                match mx[j] { None => miss *= m(s as f64, fa[j]), Some(w) => mix2 *= (0..3).map(|i| w[i] * m(i as f64 + 1.0, fa[j]).powi(2)).sum::<f64>() }
+            }
+            q[k] = 1.0 - miss * miss * mix2;
+        }
+        let pw = &tg[nl * (G + 1)..];
+        self.uncv.iter().chain(&self.fixed_t).map(|&i| pw[st[..ns].iter().filter(|s| s[i] != 0).count()]).product::<f64>()
+    }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
     fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {

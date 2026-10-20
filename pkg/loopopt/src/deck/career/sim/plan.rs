@@ -502,22 +502,23 @@ impl ScoreBase<'_> {
 /// (the trios' own 8/8s use the rank's mix too), so the trios with her compare like for like with the others; one per
 /// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
 /// (B's candidate index, partner side real, C's step)
-fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, lv: &[Legacy], iv: usize, x: usize, buf: &mut Vec<f64>) -> Vec<(usize, bool, f64)> {
+fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, p8: &mut Pool, iv: usize, x: usize, buf: &mut Vec<f64>) -> Vec<(usize, bool, f64)> {
     let her_id = d.umas[x].id; let mut out = vec![];
-    // the pool of lv, with each side pushed in turn (the same Pool as `Env::pool` of lv and the side)
-    let mut p8 = s.env.pool(lv); let il = lv.len();
+    // the pool with her (`her_pool`: `Env::pool` of the legacies and hers), with each side pushed in turn (the same Pool
+    // as `Env::pool` of those and the side) and popped after
+    let il = p8.me.len();
     for ib in 0..bs.cands.len() {
         let pu = bs.cands[ib]; if d.umas[pu].id == her_id { continue; }
         for (real, leg) in bs.sides.get(ib).map_or(&[][..], |v| &v[..]) {
-            s.env.pool_push(&mut p8, leg);
+            s.env.pool_push(p8, leg);
             let mut cs: Vec<(f64, usize)> = bs.all.iter().copied()
-                .filter(|&cu| d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &p8, cu, iv, il))
-                .filter_map(|cu| { let (q, _, c) = s.env.lineage(&p8, cu, iv, il); s.env.ceiling(cu, &q, c).map(|ub| (ub, cu)) }).collect();
+                .filter(|&cu| d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &*p8, cu, iv, il))
+                .filter_map(|cu| { let (q, _, c) = s.env.lineage(&*p8, cu, iv, il); s.env.ceiling(cu, &q, c).map(|ub| (ub, cu)) }).collect();
             cs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
             let mut best = 0.0f64;
-            for (ub, cu) in cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &p8, cu, iv, il, buf); if v > best { best = v; } }
+            for (ub, cu) in cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &*p8, cu, iv, il, buf); if v > best { best = v; } }
             if best > 0.0 { out.push((ib, *real, 1.0 / best)); }
-            s.env.pool_pop(&mut p8);
+            s.env.pool_pop(p8);
         }
     }
     out
@@ -532,10 +533,28 @@ fn with_her(v: f64, her: &[(usize, bool, f64)], c1: &[f64]) -> f64 {
 /// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
-    let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, x, a, b, sel, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
+/// `Env::pool` of `legs` and her veteran (career x with parents a, b, schedule `c`): with `of_legs` (`pool` is
+/// `Env::pool(legs)`) `pool` with her entry pushed, the same Pool (`Env::pool_push` builds an entry as `Env::pool` does)
+#[allow(clippy::too_many_arguments)]
+fn her_pool(s: &Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, c: &Cur) -> Pool {
+    let v = s.env.veteran(legs, x, a, b, c.wp.to_vec());
+    if of_legs { debug_assert_eq!(pool.me.len(), legs.len()); let mut pv = pool.clone(); s.env.pool_push(&mut pv, &v); pv }
+    else { let mut lv = legs.to_vec(); lv.push(v); s.env.pool(&lv) }
 }
-fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
+/// `pool` must be `Env::pool(legs)` (the planner's callers): the pool with her veteran is then that pool with her entry
+/// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
+pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
+    let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, true, x, a, b, sel, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
+}
+/// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+pub(super) fn score_career_of(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
+    let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, false, x, a, b, sel, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
+}
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
@@ -546,8 +565,7 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     let t_mc = now_ms();
     let c = s.make_cur(pool, x, a, b, sel, false);
     let t_lv = now_ms(); prof("sc_cur_ms", t_lv - t_mc);
-    let mut lv = legs.to_vec(); lv.push(s.env.veteran(legs, x, a, b, c.wp.to_vec())); let iv = lv.len() - 1;
-    let pv = s.env.pool(&lv);
+    let mut pv = her_pool(s, legs, pool, of_legs, x, a, b, &c); let iv = pv.me.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
     let t_su = now_ms(); prof("sc_pool_ms", t_su - t_lv);
     let mut setups: Vec<Setup> = vec![];
@@ -641,7 +659,7 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
     let full_m = (1usize << ntar) - 1;
     let t_h = now_ms();
-    let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
+    let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &mut pv, iv, x, buf) } else { vec![] };
     prof("sc_her_ms", now_ms() - t_h); let t_lo = now_ms();
     let (mut n_out, mut n_ch, mut n_cost, mut n_same, mut n_one) = (0usize, 0usize, 0usize, 0usize, 0usize);
     let u = &sc.u[..nrow]; let mut ubuf = vec![0.0f64; na];
@@ -934,6 +952,25 @@ impl AncBb {
         }
         f * BB_SLACK * lb < self.tmax[0][0]
     }
+    /// `root_open`'s answer for an anchor (f > 0, chances qa) from its 0-star factors alone (`rise_factors`' expressions;
+    /// the same products in the same order; `smin` is not written, `run` writes it). Premises (the caller's): e, qa, x0 in
+    /// [0, 1], xms falling and >= 0, nu > 0. Derived: qn = 1 - x0 xms[s] rises with s (rounding is monotone); a factor is 1
+    /// where qn <= qa, else N(qn) / D, D = N(qa) = 1 - (1 - e)(1 - qa) in [0, 1] and N rising with qn: N >= D, so it is
+    /// >= 1 (+inf where D = 0, as N > 0 there), never NaN, and rises with qn: each digit's least is its 0-star factor
+    #[allow(clippy::too_many_arguments)]
+    fn root_min(&self, f: f64, sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa: &[f64], uncv: &[usize]) -> bool {
+        let nu = self.nu;
+        let mut lb = 0.0f64;
+        for (st, ew) in sts.iter().zip(ews) {
+            let mut l = 1.0f64;
+            for k in (0..nu).rev() {
+                let i = uncv[k]; let qn = 1.0 - x0[k] * xms[0];
+                l *= if st[k] > 0 || qn <= qa[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - qn)) / (1.0 - (1.0 - ew[k]) * (1.0 - qa[i])) };
+            }
+            if l > lb { lb = l; }
+        }
+        f * BB_SLACK * lb < self.tmax[0][0]
+    }
     /// fold one anchor in: f > 0, g its factors [outfit][target k][her stars], all > 0
     fn run(&mut self, f: f64, g: &[f64]) {
         let (nu, no) = (self.nu, self.no);
@@ -1052,8 +1089,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     let xi = bs.cands.iter().position(|&u| u == x);
     let goal = is_full(s.env.sj, &legs[a].sparks) && is_full(s.env.sj, &legs[b].sparks);
     let c = s.make_cur(pool, x, a, b, sel, false);
-    let mut lv = legs.to_vec(); lv.push(s.env.veteran(legs, x, a, b, c.wp.to_vec())); let iv = lv.len() - 1;
-    let pv = s.env.pool(&lv);
+    let mut pv = her_pool(s, legs, pool, true, x, a, b, &c); let iv = pv.me.len() - 1;
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let nleaf = 1usize << (2 * nu); let nm = 1usize << ntar;
     // (candidate, bound at scale 1 per leaf, spark scale per m): kept only for the exact anchors (`HI_SEARCHES` > 0); else
@@ -1080,17 +1116,24 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     // per candidate and outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without `hs`)
     let mut tab: Vec<f64> = (0..n).flat_map(|ui| std::iter::repeat_n(bs.pnow[ui], ncell)).collect();
     let mut bb = AncBb::new(); let mut g1: Vec<f64> = vec![]; let mut gc: Vec<f64> = vec![];
+    // per found career of the main search, (q_f, val_f) when fully checked (a Ref at its own chances): once each
+    let mut fr_of: Vec<Option<Option<(Vec<f64>, f64)>>> = vec![None; msv.found.len()];
+    // an anchor's chances (`Env::lineage_qc`: only the uncertain targets' entries, the ones the factors read)
+    let mut qz = vec![0.0f64; ntar]; let mut tg: Vec<f64> = vec![];
     for ui in 0..n {
         let u = bs.cands[ui];
         if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || s.fastc[u].is_empty() { continue; }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
         let (sts, ews) = (s.env.sts0[u].clone(), s.env.ew0[u].clone());
+        tg.clear();   // (`Env::lineage_qc`'s table: another trainee)
         // the main search's found careers of her deck class that it fully checked (a Ref at the career's own chances):
         // (q_f, val_f), the best value of any deck at q_f for every trainee of the class (`Env::seen`), scale 1
         let ct = s.env.cls[u];
-        let fr: Vec<(Vec<f64>, f64)> = msv.found.iter().filter(|f| s.env.cls[f.t] == ct).filter_map(|f| {
-            let (fq, _, _) = s.env.lineage(pool, f.t, f.a, f.b);
-            msv.refs.get(f.t)?.iter().find(|r| r.q == fq).map(|r| (r.q.clone(), r.val)) }).collect();
+        let fr: Vec<usize> = (0..msv.found.len()).filter(|&i| s.env.cls[msv.found[i].t] == ct).filter(|&i| fr_of[i].get_or_insert_with(|| {
+            let f = &msv.found[i]; let (fq, _, _) = s.env.lineage(pool, f.t, f.a, f.b);
+            msv.refs.get(f.t).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| (r.q.clone(), r.val)) }).is_some()).collect();
+        // `AncBb::root_min`'s premises on her own chances
+        let ew_ok = ews.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
         for y in (0..iv).filter(|&y| legal_pair(d, &pv, u, y, iv)) {
             let sl = s.env.slots(&pv, u, y, iv);
             let Some(pos) = sl.iter().position(|z| z.parent && z.legacy == iv) else { continue };
@@ -1113,7 +1156,17 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
             // the anchors whose bound at the root is open (f, factors), and whether any went in whole
             let mut direct = false;
             let (mut gs, mut fs): (Vec<f64>, Vec<f64>) = (vec![], vec![]);
+            // (`AncBb::root_min`'s premises but the anchor's chances)
+            let safe = ew_ok && nu > 0 && xms[0] >= xms[1] && xms[1] >= xms[2] && xms[2] >= xms[3] && xms[3] >= 0.0 && x0.iter().all(|v| (0.0..=1.0).contains(v));
             let mut add = |bb: &mut AncBb, f: f64, qa: &[f64], gs: &mut Vec<f64>, fs: &mut Vec<f64>, direct: &mut bool| {
+                if f > 0.0 && safe && uncv.iter().all(|&i| (0.0..=1.0).contains(&qa[i])) {
+                    // every factor >= 1, each digit's least its 0-star one: the root test on those alone, the rest only
+                    // for an anchor it keeps (as the test below would: all factors > 0, `root_open` the same answer)
+                    if !bb.root_min(f, &sts, &ews, &x0, &xms, qa, &uncv) { return; }
+                    rise_factors(&sts, &ews, &x0, &xms, qa, &uncv, &mut g1);
+                    debug_assert!(g1.iter().all(|&v| v > 0.0) && bb.root_open(f, &g1));
+                    fs.push(f); gs.extend_from_slice(&g1); return;
+                }
                 rise_factors(&sts, &ews, &x0, &xms, qa, &uncv, &mut g1);
                 if f > 0.0 && g1.iter().all(|&v| v > 0.0) { if bb.root_open(f, &g1) { fs.push(f); gs.extend_from_slice(&g1); } } else {
                     // outside the bound's premises: every leaf, as before
@@ -1123,14 +1176,16 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
                 }
             };
             if bs.pnow[ui] > 0.0 {
+                let mut nz = 0usize;
                 for z in (0..legs.len()).filter(|&z| z != y && legal_pair(d, pool, u, y, z) && fix.iter().all(|&f| f == y || f == z)) {
-                    let (qz, _, cz) = s.env.lineage(pool, u, y, z);
+                    let cz = s.env.lineage_qc(pool, u, y, z, &uncv, &mut qz, &mut tg);
                     if cz <= 0.0 { continue; }
-                    prof("hi_z", 1.0);
+                    nz += 1;
                     add(&mut bb, bs.pnow[ui] / cz, &qz, &mut gs, &mut fs, &mut direct);
                 }
+                if nz > 0 { prof("hi_z", nz as f64); }
             }
-            for (fq, fv) in &fr { add(&mut bb, *fv, fq, &mut gs, &mut fs, &mut direct); }
+            for &i in &fr { let (fq, fv) = fr_of[i].as_ref().unwrap().as_ref().unwrap(); add(&mut bb, *fv, fq, &mut gs, &mut fs, &mut direct); }
             if direct { bb.levels(); }
             // the likeliest lowest first (f x the best outfit's product at 2 stars on every target): only speed
             let ga = sts.len() * nu * 4;
@@ -1157,7 +1212,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
         }
     }
     let full_m = nm - 1;
-    let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &lv, iv, x, buf) } else { vec![] };
+    let her: Vec<(usize, bool, f64)> = if xi.is_none() && !goal && !bs.sides.is_empty() && c.os[full_m] > 0.0 { her_trios(s, d, bs, &mut pv, iv, x, buf) } else { vec![] };
     let mut ys: Vec<f64> = vec![0.0; ncell];
     let mut c1 = bs.c1.clone(); let mut up = vec![0.0f64; n];
     let t5 = now_ms();

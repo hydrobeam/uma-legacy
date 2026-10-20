@@ -51,24 +51,34 @@ pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, q
 }
 /// What `joint_fast` computes of a deck before any chance or model state: the per-target misses of the sources outside
 /// the chains (`bg`, `bh`) and their coupled groups (`bc`), per chain position its factors per links done (`lv`), and the
-/// collapsed chain states in first-seen order with their weights (each summed in state order)
+/// collapsed chain states in first-seen order with their weights (each summed in state order). Coupled groups are
+/// indices into `cg`: per group its targets (`group_gh`'s, ascending) and its outcomes with the rest, as `joint_eval`
+/// enumerates them
 pub(super) struct JointPrep<'g> {
-    bg: Vec<f64>, bh: Vec<f64>, bc: Vec<&'g Group>,
-    lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<&'g Group>)>, Vec<u8>)>,
+    bg: Vec<f64>, bh: Vec<f64>, bc: Vec<usize>,
+    lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<usize>)>, Vec<u8>)>,
     keys: Vec<(Vec<u8>, f64)>,
+    cg: Vec<CGroup<'g>>,
 }
+/// A coupled group's targets and outcomes (chance, rewards), the rest (nothing) last when above 1e-15
+type CGroup<'g> = (Vec<usize>, Vec<(f64, &'g [(usize, u8)])>);
 pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kind)], filler: usize) -> JointPrep<'_> {
-    fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
+    fn take<'g>(g: &'g Group, cg: &mut Vec<CGroup<'g>>, coupled: &mut Vec<usize>, ng: &mut [f64], nh: &mut [f64]) {
         let gh = group_gh(g);
-        if gh.len() >= 2 { coupled.push(g); return; }
+        if gh.len() >= 2 {
+            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
+            let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
+            if rest > 1e-15 { v.push((rest, &[][..])); }
+            cg.push((gh.iter().map(|x| x.0).collect(), v)); coupled.push(cg.len() - 1); return;
+        }
         for (k, pg, ph) in gh { ng[k] *= 1.0 - pg; nh[k] *= 1.0 - ph; }
     }
     let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-    let mut bc: Vec<&Group> = vec![];
+    let mut bc: Vec<usize> = vec![]; let mut cg: Vec<CGroup> = vec![];
     for (src, _) in ents {
         let src: &Src = src.borrow();
         for &(k, p) in &src.train { bh[k] *= 1.0 - p; }
-        for g in &src.fixed { take(g, &mut bc, &mut bg, &mut bh); }
+        for g in &src.fixed { take(g, &mut cg, &mut bc, &mut bg, &mut bh); }
     }
     let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
     for _ in 0..filler { ch.push(((2, 2, 0), None)); }
@@ -76,7 +86,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
     let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
     let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
     // per position with target sources: per links done, (cumulative miss gold, miss any, coupled groups so far)
-    let mut lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>, Vec<u8>)> = vec![];
+    let mut lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<usize>)>, Vec<u8>)> = vec![];
     for (pos, &(kd, e)) in ch.iter().enumerate() {
         let Some(i) = e else { continue };
         let src: &Src = ents[i].0.borrow();
@@ -87,7 +97,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         let mut cls = vec![0u8];
         for l in 1..=kd.1 {
             let mut changed = false;
-            for (cl, grp) in &src.chains { if *cl == l { take(grp, &mut c, &mut g, &mut h); changed = true; } }
+            for (cl, grp) in &src.chains { if *cl == l { take(grp, &mut cg, &mut c, &mut g, &mut h); changed = true; } }
             if changed { out.push((g.clone(), h.clone(), c.clone())); }
             cls.push((out.len() - 1) as u8);
         }
@@ -101,13 +111,13 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         match coll.get_mut(&key) { Some(x) => *x += w, None => { coll.insert(key.clone(), *w); order.push(key); } }
     }
     let keys = order.into_iter().map(|k| { let w = coll[&k]; (k, w) }).collect();
-    JointPrep { bg, bh, bc, lv, keys }
+    JointPrep { bg, bh, bc, lv, keys, cg }
 }
 /// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order
 pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
-    let JointPrep { bg, bh, bc, lv, keys } = pre;
+    let JointPrep { bg, bh, bc, lv, keys, cg } = pre;
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
@@ -120,9 +130,22 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
     let nqo = nq * no;
     let mut fv = vec![[0.0f64; 3]; nqo * nu];
     let (mut ng, mut nh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-    let mut coupled: Vec<&Group> = vec![];
+    let mut coupled: Vec<usize> = vec![];
     let mut cl_of = vec![usize::MAX; nu];
     let mut lvl = vec![0u8; nu];
+    // per chain state's buffers, reused (each written before it is read): the union-find, the clusters (targets, groups;
+    // the first ncl in use), the per-unit products, per cluster its groups' outcomes and the pick of each, and with
+    // `want_sets` its subset distribution per (chance, outfit) (dense: entry j of each holds the mask cm[j]; every combo
+    // writes every subset, in the same order), the subsets of one combo (pa, pb) and the next landed-set rows (nd)
+    let mut par: Vec<usize> = Vec::with_capacity(nu);
+    let (mut cl_ts, mut cl_gs): (Vec<Vec<usize>>, Vec<Vec<usize>>) = (vec![], vec![]);
+    let mut in_cl = vec![false; nu];
+    let (mut ua, mut ub, mut ca, mut cb) = (vec![0.0f64; nqo], vec![0.0f64; nqo], vec![0.0f64; nqo], vec![0.0f64; nqo]);
+    let mut alts: Vec<&[(f64, &[(usize, u8)])]> = vec![];
+    let mut pick: Vec<usize> = vec![];
+    let (mut cd, mut cm): (Vec<f64>, Vec<usize>) = (vec![], vec![]);
+    let (mut pa, mut pb): (Vec<(usize, f64)>, Vec<(usize, f64)>) = (vec![], vec![]);
+    let mut nd: Vec<f64> = vec![];
     for (key, w) in keys {
         let w = *w;
         ng.copy_from_slice(bg); nh.copy_from_slice(bh);
@@ -145,45 +168,42 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
             }
         }
         // clusters of targets joined by coupled groups (union-find over targets)
-        let mut par: Vec<usize> = (0..nu).collect();
+        par.clear(); par.extend(0..nu);
         fn root(p: &mut [usize], mut x: usize) -> usize { while p[x] != x { p[x] = p[p[x]]; x = p[x]; } x }
-        for g in &coupled {
-            let ts = group_gh(g);
-            for w2 in ts.windows(2) { let (a, b) = (root(&mut par, w2[0].0), root(&mut par, w2[1].0)); if a != b { par[a.max(b)] = a.min(b); } }
+        for &g in &coupled {
+            let ts = &cg[g].0;
+            for w2 in ts.windows(2) { let (a, b) = (root(&mut par, w2[0]), root(&mut par, w2[1])); if a != b { par[a.max(b)] = a.min(b); } }
         }
         cl_of.iter_mut().for_each(|x| *x = usize::MAX);
-        let mut clusters: Vec<(Vec<usize>, Vec<&Group>)> = vec![];
-        for g in &coupled {
-            let r = root(&mut par, group_gh(g)[0].0);
-            let ci = match cl_of[r] { usize::MAX => { clusters.push((vec![], vec![])); cl_of[r] = clusters.len() - 1; clusters.len() - 1 } c => c };
-            clusters[ci].1.push(g);
+        let mut ncl = 0usize;
+        for &g in &coupled {
+            let r = root(&mut par, cg[g].0[0]);
+            let ci = match cl_of[r] { usize::MAX => {
+                if ncl == cl_ts.len() { cl_ts.push(vec![]); cl_gs.push(vec![]); }
+                cl_ts[ncl].clear(); cl_gs[ncl].clear(); cl_of[r] = ncl; ncl += 1; ncl - 1 } c => c };
+            cl_gs[ci].push(g);
         }
-        for k in 0..nu { if cl_of[root(&mut par, k)] != usize::MAX { let ci = cl_of[root(&mut par, k)]; clusters[ci].0.push(k); } }
-        let in_cl: Vec<bool> = (0..nu).map(|k| cl_of[root(&mut par, k)] != usize::MAX).collect();
+        for k in 0..nu { if cl_of[root(&mut par, k)] != usize::MAX { let ci = cl_of[root(&mut par, k)]; cl_ts[ci].push(k); } }
+        for k in 0..nu { in_cl[k] = cl_of[root(&mut par, k)] != usize::MAX; }
         // per (q, outfit): (P(all land), P(exactly one misses)) of each independent unit, combined
-        let mut ua = vec![1.0f64; nqo]; let mut ub = vec![0.0f64; nqo];
+        ua.fill(1.0); ub.fill(0.0);
         let push = |ua: &mut [f64], ub: &mut [f64], i: usize, a: f64, b: f64| { ub[i] = ub[i] * a + ua[i] * b; ua[i] *= a; };
         for i in 0..nqo {
             for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f);
                 if let Some(x) = ext.as_deref_mut() { x.marg[i * nu + k] += w * f; } } }
         }
-        // the landed sets: independent targets first, clusters below (their targets join through `cdist`)
+        // the landed sets: independent targets first, clusters below (their targets join through `cd`)
         if want_sets { for i in 0..nqo {
             let d = &mut dist[i]; d.clear(); d.resize(1 << nu, 0.0); d[0] = 1.0;
             for k in 0..nu { if in_cl[k] { continue; } let (f, b) = (fv[i * nu + k][0], 1usize << k);
                 for m in 0..(1usize << nu) { if m & b == 0 && d[m] != 0.0 { let x = d[m]; d[m] = x * (1.0 - f); d[m | b] += x * f; } } }
         } }
-        for (ts, gs) in &clusters {
-            let alts: Vec<Vec<(f64, &[(usize, u8)])>> = gs.iter().map(|g| {
-                let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
-                let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
-                if rest > 1e-15 { v.push((rest, &[][..])); }
-                v
-            }).collect();
-            let mut ca = vec![0.0f64; nqo]; let mut cb = vec![0.0f64; nqo];
+        for (ts, gs) in cl_ts[..ncl].iter().zip(&cl_gs[..ncl]) {
+            alts.clear(); alts.extend(gs.iter().map(|&g| &cg[g].1[..]));
+            ca.fill(0.0); cb.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
-            let mut cdist: Vec<crate::FxMap<usize, f64>> = if want_sets { vec![Default::default(); nqo] } else { vec![] };
-            let mut pick = vec![0usize; alts.len()];
+            if want_sets { let nsub = 1usize << ts.len(); cd.clear(); cd.resize(nqo * nsub, 0.0); cm.clear(); cm.resize(nsub, 0); }
+            pick.clear(); pick.resize(alts.len(), 0);
             loop {
                 let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product();
                 for &k in ts { lvl[k] = 0; }
@@ -194,10 +214,12 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
                     ca[i] += wc * a; cb[i] += wc * b;
                     if let Some(x) = ext.as_deref_mut() { for &k in ts { x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize]; } }
                     if want_sets {
-                        let mut part: Vec<(usize, f64)> = vec![(0, wc)];
+                        pa.clear(); pa.push((0, wc));
                         for &k in ts { let f = fv[i * nu + k][lvl[k] as usize];
-                            part = part.into_iter().flat_map(|(m, p)| [(m, p * (1.0 - f)), (m | 1 << k, p * f)]).collect(); }
-                        for (m, p) in part { *cdist[i].entry(m).or_insert(0.0) += p; }
+                            pb.clear(); for &(m, p) in &pa { pb.push((m, p * (1.0 - f))); pb.push((m | 1 << k, p * f)); }
+                            std::mem::swap(&mut pa, &mut pb); }
+                        let ci = &mut cd[i * pa.len()..(i + 1) * pa.len()];
+                        for (j, &(m, p)) in pa.iter().enumerate() { ci[j] += p; cm[j] = m; }
                     }
                 }
                 let mut i = 0;
@@ -205,10 +227,11 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
                 if i == alts.len() { break; }
             }
             for i in 0..nqo { push(&mut ua, &mut ub, i, ca[i], cb[i]); }
-            if want_sets { for i in 0..nqo {
-                let d = &mut dist[i]; let mut nd = vec![0.0f64; 1 << nu];
-                for (m0, &x) in d.iter().enumerate() { if x == 0.0 { continue; } for (&m, &p) in &cdist[i] { nd[m0 | m] += x * p; } }
-                *d = nd;
+            // (each entry m0 | m of a row is written once, m0 holding no target of this cluster: the order is free)
+            if want_sets { let nsub = cm.len(); for i in 0..nqo {
+                let d = &mut dist[i]; nd.clear(); nd.resize(1 << nu, 0.0);
+                for (m0, &x) in d.iter().enumerate() { if x == 0.0 { continue; } for (&m, &p) in cm.iter().zip(&cd[i * nsub..(i + 1) * nsub]) { nd[m0 | m] += x * p; } }
+                std::mem::swap(d, &mut nd);
             } }
         }
         for i in 0..nqo {
