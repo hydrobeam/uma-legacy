@@ -33,6 +33,8 @@ pub(super) struct DeckSpace<'a> {
     /// per set id the legal entries' miss rows per chain level: functions of the entry set and configuration alone
     pub(super) sbcfg: std::cell::RefCell<crate::FxMap<(usize, u64, usize, usize), std::rc::Rc<SbCfg>>>,
     pub(super) sbrows: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>>>,
+    /// the product search's dominance table (`dom_table`) per (set id, key code, group): functions of those alone
+    pub(super) domc: std::cell::RefCell<crate::FxMap<(usize, u64, usize), std::rc::Rc<Vec<Vec<(u32, u32)>>>>>,
 }
 /// `search`'s per-entry-set tables: the character bit of each entry (`over`: more than 128 characters),
 /// the entries per chain kind and the pal (kind 0) entries, the locked cards each group can hold, the plain pals legal
@@ -121,9 +123,11 @@ impl<'a> DeckSpace<'a> {
         self.red.borrow_mut().insert(us.to_vec(), r.clone());
         r
     }
-    pub(super) fn gm_cached(&self, u: usize, code: u64, groups: &[&Vec<usize>], mw: &[f64], mg: &[f64], nu: usize, size: usize) -> std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> {
+    /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
+    pub(super) fn gm_cached(&self, u: usize, code: u64, groups: &[&Vec<usize>], need: u64, mw: &[f64], mg: &[f64], nu: usize, size: usize) -> std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> {
         if let Some(r) = self.gmc.borrow().get(&(u, code)) { return r.clone(); }
-        let r = std::rc::Rc::new(groups.iter().map(|l| {
+        let r = std::rc::Rc::new(groups.iter().enumerate().map(|(gi, l)| {
+            if need >> gi & 1 == 0 { return vec![]; }
             let mut pre = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
             for t in 0..nu {
                 let mut a: Vec<f64> = l.iter().map(|&j| mw[j * nu + t]).collect(); a.sort_by(|x, y| x.partial_cmp(y).unwrap());
@@ -216,5 +220,5 @@ pub(super) fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRa
         srcs: e.srcs.clone(), ebor: e.rel.iter().map(|&r| !is_owned(e.cards[r].id)).collect(), cvm: e.srcs.iter().map(cv_mask).collect(),
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
         locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default(),
-        legt: Default::default(), counts: Default::default(), lockbits: Default::default(), sbcfg: Default::default(), sbrows: Default::default() }
+        legt: Default::default(), counts: Default::default(), lockbits: Default::default(), sbcfg: Default::default(), sbrows: Default::default(), domc: Default::default() }
 }

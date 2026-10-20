@@ -20,6 +20,7 @@ impl<'a> DeckSpace<'a> {
         let nk = self.kinds_all.len();
         let ki22 = self.kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
         let kpos: Vec<u64> = (0..nk).map(|i| 7u64.pow(i as u32)).collect();
+        assert!(nk < 64);
         let (by_kind, pal_ents) = (&lt.by_kind, &lt.pal_ents);
         let fixed = model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
@@ -40,6 +41,15 @@ impl<'a> DeckSpace<'a> {
         // left: a superset of any completion's, so a cap at least as high)
         let ccap: [f64; 4] = if sbm == 2 { [rho; 4] } else { let c = self.caps(); [c[0].min(rho), c[1].min(rho), c[2].min(rho), c[3].min(rho)] };
         let val = |cl: &(Vec<(usize, f64)>, f64), dw: &[f64], dg: &[f64]| fixed * cl.0.iter().map(|&(k, q)| model.trainee_fast(us[k], q, dw, dg)).sum::<f64>();
+        // every chance and outfit odd in [0, 1] and a fixed factor >= 0: then a deck's value rises with each of its odds
+        // (white < gold) and every quantity in its evaluation is in [0, 1] up to rounding, which the dominance skip
+        // (`dom`), the lazy configurations (`Pend`) and the key bound (`keyskip`) rely on
+        let in01 = |x: f64| (0.0..=1.0).contains(&x);
+        let valid = fixed >= 0.0 && clauses.iter().all(|cl| cl.0.iter().all(|&(k, q)| in01(q) && model.ews[us[k]].iter().flatten().all(|&x| in01(x))));
+        let dom_on = best && valid;
+        // the product search builds its configurations lazily (`Pend`): roots and ratio tables only for those it may
+        // visit
+        let lazy = best && valid;
         let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
         let mut bestv = if best { seed } else { f64::NEG_INFINITY };
@@ -73,9 +83,46 @@ impl<'a> DeckSpace<'a> {
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
         let mut sp0 = vec![1.0f64; oq.len()];
+        // `make_rpk` below for the key with miss rows mw, mg (the same operations: the same values)
+        let rpk_of = |mw: &[f64], mg: &[f64]| -> Vec<Vec<Vec<f64>>> {
+            let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
+            groups_all.iter().map(|l| {
+                let noq = oq.len();
+                rat.clear();
+                for &j in l.iter() {
+                    for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
+                    rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }));
+                }
+                (0..noq).map(|i| {
+                    r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                    let mut pre = vec![1.0f64; size + 1];
+                    for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
+                    pre
+                }).collect()
+            }).collect() };
+        // A configuration passing the per-target bound, its root not yet computed: `u` is an upper bound on its root
+        // (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
+        // the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
+        // `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
+        struct Pend { u: f64, key: usize, code: u64, real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> }
+        let mut pend: Vec<Pend> = vec![];
+        // The key bound (`keyskip`; in the product search only with a bar): a key none of whose configurations (its
+        // variants: real (2, 2) and pal entries 0 ..= their most) can pass the per-target bound is skipped whole, which
+        // leaves out the same configurations. Its per-target products take, for the (2, 2) and pal groups, the lowest
+        // miss products over the counts any variant has (row 0 is 1.0, a group a variant lacks), the others at the key's
+        // counts, multiplied in the variants' order: with factors >= 0 each partial product is at most the variant's, so
+        // its odds are at least every variant's, to the bit. The value rises with every odds coordinate (`valid`), and
+        // each evaluation is within about 4e-14 per (trainee, chance) of exact (every quantity in it within [0, 1] up to
+        // rounding, each operation's error at most 2^-53 of one, about 300 operations), so a variant's value is at most
+        // the bound's plus `key_slack` (1e-11 per pair)
+        let keyskip = valid && (!best || bestv > f64::NEG_INFINITY);
+        let key_slack = |cl: &(Vec<(usize, f64)>, f64)| 1e-11 * cl.0.len() as f64 * fixed.max(1.0);
+        let (mut kdw, mut kdg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+        let mut pkeys: Vec<Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>>> = vec![];
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
             if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) { continue; }
+            let mut pkey_new = true;
             let code: u64 = cnt.iter().zip(&kpos).map(|(&c, &p)| c as u64 * p).sum();
             let km = self.key_miss(code);
             let (mw, mg) = (&km.0, &km.1);
@@ -84,7 +131,30 @@ impl<'a> DeckSpace<'a> {
             // (any r entries of the group miss at least that much)
             // per kind group and target: products of the r lowest miss chances of distinct entries, r = 0..=size
             // (any r entries of the group miss at least that much); cached per trainee and key
-            let gm = self.gm_cached(set_id, code, &groups_all, mw, mg, nu, size);
+            // (the groups a configuration of this key can use: its kinds and, with slots left, the pal entries)
+            let gneed: u64 = (0..nk).filter(|&i| cnt[i] > 0).fold(0u64, |m, i| m | 1 << i) | if csum < size { 1 << nk } else { 0 };
+            let gm = self.gm_cached(set_id, code, &groups_all, gneed, mw, mg, nu, size);
+            // the key's bound: no variant (real (2, 2) and pal entries counted 0 ..= their most) can pass when the value
+            // at odds above every variant's fails with room for rounding (`key_slack`)
+            if keyskip {
+                let (r22, npm) = (cnt[ki22].min(by_kind[ki22].len()), (size - csum).min(pal_ents.len()));
+                let lo = |i: usize, c: usize, t: usize| -> (f64, f64) { (0..=c).fold((f64::INFINITY, f64::INFINITY), |m, x| (m.0.min(gm[i][x].0[t]), m.1.min(gm[i][x].1[t]))) };
+                for t in 0..nu {
+                    let (mut a, mut b) = (1.0f64, 1.0f64);
+                    if npm > 0 { let x = lo(nk, npm, t); a *= x.0; b *= x.1; }
+                    for i in (0..nk).rev() {
+                        let c = if i == ki22 { r22 } else { cnt[i] };
+                        if c == 0 { continue; }
+                        let x = if i == ki22 { lo(i, c, t) } else { (gm[i][c].0[t], gm[i][c].1[t]) };
+                        a *= x.0; b *= x.1;
+                    }
+                    kdw[t] = 1.0 - a; kdg[t] = 1.0 - b;
+                }
+                // (a band's class caps are at most rho)
+                let none = if best { (val(&clauses[0], &kdw, &kdg) + key_slack(&clauses[0])) * (1.0 + 1e-9) < bestv }
+                    else { clauses.iter().all(|cl| rho * (val(cl, &kdw, &kdg) + key_slack(cl)) * (1.0 + 1e-9) < cl.1) };
+                if none { continue; }
+            }
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
             let mut rpk: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = None;
@@ -127,8 +197,14 @@ impl<'a> DeckSpace<'a> {
                     }
                     // the configuration's class cap (every deck of it is in a class at most this one's)
                     let rc = if best { rho } else { ccap[cap_class(gs.iter().fold(0u64, |m, &(i, _)| m | gcvm[i]))] };
-                    let ideal = if best { val(&clauses[0], &dw, &dg) * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
+                    let iv = if best { val(&clauses[0], &dw, &dg) } else { 0.0 };
+                    let ideal = if best { iv * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
                     if !ideal { continue; }
+                    if lazy {
+                        if pkey_new { pkeys.push(None); pkey_new = false; }
+                        pend.push(Pend { u: iv * (1.0 + 1e-12), key: pkeys.len() - 1, code, real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone() });
+                        continue;
+                    }
                     if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
                     let rpk = rpk.as_ref().unwrap();
                     // sp[0] of the suffix table: the same products in the same order (from the last group down)
@@ -214,7 +290,48 @@ impl<'a> DeckSpace<'a> {
         // the per-parent rows need every outfit row to read the nu targets
         let a_rows = orow.iter().all(|o| o.len() == nu);
         let oqq: Vec<f64> = oq.iter().map(|x| x.2).collect();
-        for cf in &cfgs {
+        // (lazy: the pending configurations by bound, highest first; the computed ones not yet visited, best root first
+        // and, among equal roots, first built first, the order of the stable sort above)
+        struct Hp { root: f64, idx: usize, cf: Cfg }
+        impl PartialEq for Hp { fn eq(&self, o: &Self) -> bool { self.cmp(o) == std::cmp::Ordering::Equal } }
+        impl Eq for Hp {}
+        impl PartialOrd for Hp { fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(o)) } }
+        impl Ord for Hp { fn cmp(&self, o: &Self) -> std::cmp::Ordering { self.root.partial_cmp(&o.root).unwrap().then(o.idx.cmp(&self.idx)) } }
+        let mut pord: Vec<usize> = (0..pend.len()).collect();
+        pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
+        let mut heap: std::collections::BinaryHeap<Hp> = Default::default();
+        let mut pp = 0usize;
+        let (mut ldw, mut ldg, mut lsp0, mut lcv) = (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; oq.len()], vec![0.0f64; 1]);
+        let mut eager_i = 0usize;
+        loop {
+            let cf_own: Cfg;
+            let cf: &Cfg = if lazy {
+                // compute the pending configurations until the heap's top comes first in the sorted order: every one
+                // left has a bound, so a root, below it (or cannot reach the bar)
+                while pp < pord.len() {
+                    let pe = &pend[pord[pp]];
+                    if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().map_or(true, |h| pe.u >= h.root)) { break; }
+                    pp += 1;
+                    // the same values as the eager build: the per-target bound, the key's ratio tables, sp0 and the root
+                    let ng = pe.gs.len(); let (gs, gm) = (&pe.gs[..], &pe.gm);
+                    for t in 0..nu {
+                        let (mut a, mut b) = (1.0f64, 1.0f64);
+                        for g in (0..ng).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
+                        ldw[t] = 1.0 - a; ldg[t] = 1.0 - b;
+                    }
+                    if pkeys[pe.key].is_none() { let km = self.key_miss(pe.code); pkeys[pe.key] = Some(std::rc::Rc::new(rpk_of(&km.0, &km.1))); }
+                    let rpk = pkeys[pe.key].as_ref().unwrap();
+                    for i in 0..oq.len() { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } lsp0[i] = x; }
+                    lcv[0] = 0.0;
+                    for &(ci, i, no) in &og {
+                        let q = oq[i].2; let mut m = 0.0f64;
+                        for o in 0..no { m = m.max(orow[i + o].eval(q, &ldw, &ldg).min(p0[i + o] * lsp0[i + o])); }
+                        lcv[ci] += fixed * m;
+                    }
+                    heap.push(Hp { root: lcv[0], idx: pord[pp - 1], cf: Cfg { root: lcv[0], code: pe.code, code_real22: pe.real22, np: pe.np, filler: pe.filler, plain: pe.plain, gs: pe.gs.clone(), gm: pe.gm.clone(), rpk: rpk.clone() } });
+                }
+                match heap.pop() { Some(h) => { cf_own = h.cf; &cf_own } None => break }
+            } else { if eager_i >= cfgs.len() { break; } eager_i += 1; &cfgs[eager_i - 1] };
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
             let km = self.key_miss(cf.code);
@@ -235,6 +352,49 @@ impl<'a> DeckSpace<'a> {
                     for i in 0..noq { spf[g * noq + i] = spf[(g + 1) * noq + i] * rpg[i][cf.gs[g].1]; } }
             }
             let (sufw, sufg, spf) = (&sufw[..], &sufg[..], &spf[..]);
+            // the dominance tables of this configuration's groups (`dom_table`), and per flat index f (the groups' entries
+            // in turn) the characters of the entries from f on
+            let doms: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>> = if dom_on { cf.gs.iter().map(|&(i, _)| self.dom_table(set_id, cf.code, i, groups_all[i], mw, mg, lbit)).collect() } else { vec![] };
+            let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
+            if dom_on {
+                for &(l, _) in &gs { for &j in l.iter() { dsuf.push(ebit[j]); } doff.push(dsuf.len()); }
+                dsuf.push(0);
+                for f in (0..dsuf.len() - 1).rev() { dsuf[f] |= dsuf[f + 1]; }
+            }
+            // the child taking entry B = list[p] of group g, at a node with `start`, `left` slots of g to fill, characters
+            // `chm`, gold misses `ppg`, picks `sel` and characters `need` its decks must take: None when it can be
+            // skipped, else its decks' needed characters. An entry A dominating B (`dom_table`) that is free at the node
+            // and takes B's place in the pick order (a sibling, or no pick of g after A touching B's targets) gives every
+            // deck through B whose picks after B take no card of A's character an equal or better deck before it; when
+            // nothing of A's character can follow, that is every deck through B, else those decks must take one
+            let dom = |g: usize, p: usize, start: usize, left: usize, chm: u128, ppg: &[f64], sel: &[usize], need: u128| -> Option<u128> {
+                if !dom_on { return Some(need); }
+                let l = gs[g].0; let bj = l[p]; let f = doff[g] + p;
+                let mut nd = need;
+                let dl = &doms[g][p];
+                if !dl.is_empty() {
+                    // (the deck's picks in group g so far, all at positions below `start`)
+                    let sg = &sel[sel.len() - (gs[g].1 - left)..];
+                    for &(a, sm) in dl.iter() {
+                        let a = a as usize;
+                        let aj = l[a];
+                        if chm & ebit[aj] != 0 { continue; }
+                        if a < start && sg.iter().any(|&j| j > aj && tmk[j] & tmk[bj] != 0) { continue; }
+                        if sm != 0 {
+                            let mut ok = true; let mut m = sm;
+                            while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1;
+                                let rlo = gmin[g][left - 1].1[t] * sufg[(g + 1) * nu + t];
+                                if !(ppg[t] * rlo * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) { ok = false; break; } }
+                            if !ok { continue; }
+                        }
+                        if ebit[aj] != ebit[bj] && ebit[aj] & dsuf[f + 1] != 0 { nd |= ebit[aj]; continue; }
+                        return None;
+                    }
+                }
+                // a needed character that no later pick can bring
+                if nd & !(chm | ebit[bj]) & !dsuf[f + 1] != 0 { return None; }
+                Some(nd)
+            };
             // the one-borrowed-card tables of this configuration's groups and their suffixes (`own`: no borrowed card
             // left to place; `one`: at most one, in one group)
             let one_b = self.allowed_borrow == 1 && gs.iter().any(|(l, _)| l.iter().any(|&j| self.ebor[j]));
@@ -449,11 +609,12 @@ impl<'a> DeckSpace<'a> {
                     if all_locked & !avail[0][0] != 0 { avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg; continue; }
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, cmk: u64, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
                            mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32, u64, usize) -> bool,
-                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64], u64) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool) -> bool {
+                           leaf: &mut dyn FnMut(&[usize], &[f64], &[f64], u64) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool,
+                           dom: &dyn Fn(usize, usize, usize, usize, u128, &[f64], &[usize], u128) -> Option<u128>, need: u128) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
-                            if g + 1 >= gs.len() { let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk); }
-                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, cmk, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
+                            if g + 1 >= gs.len() { if need & !chm != 0 { return false; } let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk); }
+                            return rec(sp, gs, g + 1, 0, gs[g + 1].1, chm, nb, have, cmk, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx, dom, need);
                         }
                         if all_locked & !have & !avail[g][start] != 0 { return false; }
                         let list = gs[g].0;
@@ -465,6 +626,7 @@ impl<'a> DeckSpace<'a> {
                             if list.len() - p < left { break; }
                             let j = list[p];
                             if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) { continue; }
+                            let Some(nd) = dom(g, p, start, left, chm, &st.pg[b..b + nu], &st.sel, need) else { continue };
                             sp.nodes.set(sp.nodes.get() + 1);
                             // the child's row (depth + 1): the parent's times the card's misses
                             { let (par, ch) = st.pw.split_at_mut(b + nu); let (mj, par, ch) = (&mw[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
@@ -475,7 +637,7 @@ impl<'a> DeckSpace<'a> {
                             if !hopeful(g, left - 1, &st.pw[b + nu..b + 2 * nu], &st.pg[b + nu..b + 2 * nu], bestv(), nb + sp.ebor[j] as usize, &st.pw[b..b + nu], &st.pg[b..b + nu], dep, pid, tmk[j], cj, p) { continue; }
                             st.sel.push(j);
                             if !sbx(&st.sel) { st.sel.pop(); continue; }
-                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], cj, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx);
+                            let stop = rec(sp, gs, g, p + 1, left - 1, chm | ebit[j], nb + sp.ebor[j] as usize, have | lbit[j], cj, lk, st, ebit, mw, mg, tmk, nu, hopeful, leaf, bestv, sbx, dom, nd);
                             st.sel.pop();
                             if stop { return true; }
                         }
@@ -529,7 +691,7 @@ impl<'a> DeckSpace<'a> {
                     };
                     let bget = || bcell.get();
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu], 0) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx) };
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx, &dom, 0) };
                     pid_next = st.pid;
                     avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();
@@ -540,4 +702,48 @@ impl<'a> DeckSpace<'a> {
         SPT.with(|c| { let mut v = c.get(); v.1 += t_dfs.elapsed().as_secs_f64(); c.set(v); });
         (out, over)
     }
+    /// The product search's dominance table of group `gi` (entries `l`) under key `code`: per position p, the earlier
+    /// positions a whose entry A could take B = l[p]'s place in any deck (borrowed only if B is, B's locked card if B
+    /// is one, B's pal status when the job fixes the pals) with every miss chance in [0, 1] and at most B's, white and
+    /// gold, for every target; with the targets where A's gold miss is the lower (bit t).
+    ///
+    /// Why the product search (`best`) may skip a child B of a node (`dom` in `search`): let A be such an entry, free at
+    /// the node (no pick of its character) and taking B's place in the pick order: a sibling (position in [start, p),
+    /// right after the node's picks of group g) or an earlier one no later pick of g touches B's targets with (their
+    /// factors are exactly 1.0 there). Any deck D through B and D' = D - B + A then multiply their miss chances in the
+    /// same order but for that one factor, so with rounding monotone every miss product of D' is at most D's: every
+    /// white odd at least D's, every gold odd equal to D's (equal gold misses) or above it by more than any rounding
+    /// (`DOM_GAP`). The value is monotone in the white odds operation by operation, and a gold odd's factor rises by at
+    /// least (GEN_GOLD - GEN_WHITE) times its gap, far above its rounding; so val(D') >= val(D) as computed. D' is legal
+    /// when no pick of D after B is of A's character (nor of B's: A shares it or is free) and comes before D in the
+    /// enumeration (the same configuration, lexicographically lower). The search returns the first deck of the highest
+    /// value in enumeration order (strictly higher replaces it; a branch is pruned only below the best so far), which is
+    /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
+    /// pick of A's character (`need`). Only which decks are visited (the rest in the same order) and how the bar rises
+    /// change: the deck found, its value and odds do not.
+    pub(super) fn dom_table(&self, set_id: usize, code: u64, gi: usize, l: &[usize], mw: &[f64], mg: &[f64], lbit: &[u8]) -> std::rc::Rc<Vec<Vec<(u32, u32)>>> {
+        if let Some(r) = self.domc.borrow().get(&(set_id, code, gi)) { return r.clone(); }
+        let nu = self.unc.len();
+        let in01 = |x: f64| (0.0..=1.0).contains(&x);
+        let ok = |j: usize| (0..nu).all(|t| in01(mw[j * nu + t]) && in01(mg[j * nu + t]));
+        let pal = |j: usize| self.cards[self.rel[j]].pal;
+        let r = std::rc::Rc::new((0..l.len()).map(|p| {
+            let b = l[p];
+            if !ok(b) { return vec![]; }
+            (0..p).filter_map(|a| {
+                let aj = l[a];
+                if self.ebor[aj] && !self.ebor[b] { return None; }
+                if lbit[b] != 0 && lbit[aj] != lbit[b] { return None; }
+                if self.dj.pals.is_some() && pal(aj) != pal(b) { return None; }
+                if !ok(aj) || !(0..nu).all(|t| mw[aj * nu + t] <= mw[b * nu + t] && mg[aj * nu + t] <= mg[b * nu + t]) { return None; }
+                Some((a as u32, (0..nu).filter(|&t| mg[aj * nu + t] < mg[b * nu + t]).fold(0u32, |m, t| m | 1 << t)))
+            }).collect()
+        }).collect::<Vec<_>>());
+        self.domc.borrow_mut().insert((set_id, code, gi), r.clone());
+        r
+    }
 }
+/// The least exact gap (parent's gold-miss product times the picks left's lowest times the misses' difference) for
+/// which a lower gold miss is sure to give a gold odd and factor above the other deck's after rounding (both are
+/// within about 2^-50 of exact)
+const DOM_GAP: f64 = 1.0 / (1u64 << 28) as f64;
