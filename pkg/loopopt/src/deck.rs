@@ -140,6 +140,7 @@ mod tests;
 use self::{caps::*, chains::*, hints::*, joint::*, kept::*, multi::*, sources::*, space::*};
 pub(crate) use self::caps::JCOUNT;
 pub(crate) use self::joint::{SBCHK, SBN, SB_ON, SB_USED};
+pub(crate) use self::enumerate::RBCHK;
 pub(crate) use self::loops::run_deck;
 pub(crate) use self::sources::apply_events_db;
 

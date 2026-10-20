@@ -375,6 +375,14 @@ impl OutfitPre {
     /// `eval`'s factor of target k (k < len()) at odds w, g for that target
     #[inline]
     pub(crate) fn factor_at(&self, k: usize, q: f64, w: f64, g: f64) -> f64 { Self::factor(self.m1[k], self.m2[k], self.ne[k], 1.0 - q, w, g) }
+    /// the product of `eval`'s factors of the targets in `m` (bit k: target k < min(len(), 32)), in target order
+    #[inline]
+    pub(crate) fn eval_in(&self, q: f64, dw: &[f64], dg: &[f64], m: u32) -> f64 {
+        let omq = 1.0 - q;
+        let (mut m, mut p) = (m, 1.0f64);
+        while m != 0 { let k = m.trailing_zeros() as usize; m &= m - 1; p *= Self::factor(self.m1[k], self.m2[k], self.ne[k], omq, dw[k], dg[k]); }
+        p
+    }
     #[inline(always)]
     fn factor(m1: u64, m2: u64, ne: f64, omq: f64, w: f64, g: f64) -> f64 {
         #[inline(always)]

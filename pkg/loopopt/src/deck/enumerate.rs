@@ -56,7 +56,7 @@ impl<'a> DeckSpace<'a> {
         let mut over = false;
         let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>> }
+        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, rnew: f64, rcv: Vec<f64> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // per group, its entries' `cv_mask`s ORed
         let gcvm: Vec<u64> = groups_all.iter().map(|l| l.iter().fold(0u64, |m, &j| m | self.cvm[j])).collect();
@@ -67,7 +67,7 @@ impl<'a> DeckSpace<'a> {
         let mut dw = vec![0.0f64; nu]; let mut dg = vec![0.0f64; nu];
         // (scratch of the configuration build: a candidate's groups, copied into its Cfg only when kept; the root's
         // clause sums)
-        let mut gsb: Vec<(usize, usize)> = vec![]; let mut cvr = vec![0.0f64; clauses.len()];
+        let mut gsb: Vec<(usize, usize)> = vec![]; let (mut cvr, mut cvro) = (vec![0.0f64; clauses.len()], vec![0.0f64; clauses.len()]);
         // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
         // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
         // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
@@ -80,18 +80,69 @@ impl<'a> DeckSpace<'a> {
         // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
         let orow: Vec<crate::skills::OutfitPre> = oq.iter().map(|&(_, u, _, o)| model.outfit_pre(u, o)).collect();
         let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
+        // The ratio bound split by target (ZSPLIT). An outfit's value is a product of per-target factors; split the
+        // targets into Z and N: over the decks below a node, Z's factors are at most A's (each target's at its lowest
+        // misses) and N's at most N's factors at the partial deck times the best ratios of N's factors alone (the same
+        // per-target log-submodularity as the plain ratio bound, over N), so B = A_Z * P_N(partial) * r_N bounds the
+        // value for any split, and a row's B may be the lowest of several. A row whose empty-deck value is 0 (a target
+        // with no inheritance, event or outfit chance: its factor is 0 without a hint) has every plain ratio
+        // P({card}) / P({}) infinite, which leaves only A: it is split by its zero targets. A row with low-base targets
+        // (empty-deck factor at most LOW_SPLIT of the factor with a certain white hint: their ratios overstate what
+        // several cards add) gets one more split, Z its zero and low targets, kept beside its own (neither is lower
+        // everywhere). The ratio tables have one column per (row, split): columns 0..noq the rows themselves (zm = 0:
+        // the plain ratio bound, or for a zero row nothing to split on (nu > 32, N's empty value 0 by underflow): its
+        // ratios infinite, as before), then the low splits (`alt[row]`, a range). Per column: its row, Z's and N's
+        // target masks, N's empty-deck value
+        let noq = oq.len();
+        let (cix, zm, nm, p0n, alt): (Vec<usize>, Vec<u32>, Vec<u32>, Vec<f64>, Vec<(usize, usize)>) = {
+            let (mut cix, mut zm, mut nm, mut p0n, mut alt) = ((0..noq).collect::<Vec<_>>(), vec![0u32; noq], vec![0u32; noq], vec![1.0f64; noq], vec![(0usize, 0usize); noq]);
+            if nu <= 32 { for i in 0..noq {
+                if orow[i].len() != nu { continue; }
+                let q = oq[i].2;
+                let full = if nu == 32 { u32::MAX } else { (1u32 << nu) - 1 };
+                let mut z = 0u32;
+                for t in 0..nu { if !(orow[i].factor_at(t, q, 0.0, 0.0) > 0.0) { z |= 1 << t; } }
+                if z != 0 && !(p0[i] > 0.0) { let pn = orow[i].eval_in(q, &zero, &zero, full & !z); if pn > 0.0 { zm[i] = z; nm[i] = full & !z; p0n[i] = pn; } }
+                // (an alternative only where it adds targets to the previous split and leaves N something)
+                let (start, mut prev) = (cix.len(), z);
+                for &tau in LOW_SPLIT.iter() {
+                    let mut za = z;
+                    for t in 0..nu { if orow[i].factor_at(t, q, 0.0, 0.0) <= tau * orow[i].factor_at(t, q, 1.0, 0.0) { za |= 1 << t; } }
+                    if za == prev || za == full { continue; }
+                    let pn = orow[i].eval_in(q, &zero, &zero, full & !za);
+                    if pn > 0.0 { cix.push(i); zm.push(za); nm.push(full & !za); p0n.push(pn); prev = za; }
+                }
+                alt[i] = (start, cix.len());
+            } }
+            (cix, zm, nm, p0n, alt)
+        };
+        let nc = cix.len();
+        // (any split column: otherwise the bound is computed as without ZSPLIT)
+        let split = nc > noq || zm.iter().any(|&z| z != 0);
+        // a card's ratio for column c (its single-card odds x, y): N's (a split column), the plain ratio, or infinite
+        let ratio_at = |c: usize, x: &[f64], y: &[f64]| -> f64 {
+            let i = cix[c]; let (_, u, q, o) = oq[i];
+            if zm[c] != 0 { orow[i].eval_in(q, x, y, nm[c]) / p0n[c] } else if p0[i] > 0.0 { model.outfit_fast(u, o, q, x, y) / p0[i] } else { f64::INFINITY }
+        };
+        // (RB_CHECK=s: the node bounds on the current path, per depth its clause sums, the root's at depth 0; nodes pass
+        // at s times their bound, so more leaves are checked, the results unchanged)
+        let rbsl = rb_check();
+        let rbc = rbsl > 0.0;
+        let rbsl = if rbc { rbsl } else { 1.0 };
+        let rbs: std::cell::RefCell<Vec<Vec<f64>>> = std::cell::RefCell::new(vec![]);
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
-        let mut sp0 = vec![1.0f64; oq.len()];
+        let mut sp0 = vec![1.0f64; nc];
         // `make_rpk` below for the key with miss rows mw, mg (the same operations: the same values)
         let rpk_of = |mw: &[f64], mg: &[f64]| -> Vec<Vec<Vec<f64>>> {
             let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
             groups_all.iter().map(|l| {
-                let noq = oq.len();
+                let noq = nc;
                 rat.clear();
                 for &j in l.iter() {
                     for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                    rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }));
+                    if split { rat.extend((0..noq).map(|i| ratio_at(i, &x, &y))); }
+                    else { rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY })); }
                 }
                 (0..noq).map(|i| {
                     r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
@@ -162,11 +213,12 @@ impl<'a> DeckSpace<'a> {
             // same values, sorted the same way)
             let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
             let mut make_rpk = || -> Vec<Vec<Vec<f64>>> { groups_all.iter().map(|l| {
-                let noq = oq.len();
+                let noq = nc;
                 rat.clear();
                 for &j in l.iter() {
                     for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                    rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }));
+                    if split { rat.extend((0..noq).map(|i| ratio_at(i, &x, &y))); }
+                    else { rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY })); }
                 }
                 (0..noq).map(|i| {
                     r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
@@ -208,18 +260,32 @@ impl<'a> DeckSpace<'a> {
                     if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
                     let rpk = rpk.as_ref().unwrap();
                     // sp[0] of the suffix table: the same products in the same order (from the last group down)
-                    for i in 0..oq.len() { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
-                    // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound
+                    for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
+                    // root bound: per (chance, outfit) the lower of the per-target bound and the ratio bound. With
+                    // ZSPLIT rows, `cvo` is the bound without the split, which sets the visiting order (`root`, as
+                    // before: the order decides which of two tied decks is found first) and the stop; the split's
+                    // (`rnew`) skips. Without the split the ratios were all infinite, so B was 0 * inf (NaN, which
+                    // `min` ignores) or, with no card to place, 0 * 1
                     let cv = &mut cvr; cv.iter_mut().for_each(|x| *x = 0.0);
+                    let cvo = &mut cvro; cvo.iter_mut().for_each(|x| *x = 0.0);
                     for &(ci, i, no) in &og {
-                        let q = oq[i].2; let mut m = 0.0f64;
-                        for o in 0..no { m = m.max(orow[i + o].eval(q, &dw, &dg).min(p0[i + o] * sp0[i + o])); }
-                        cv[ci] += fixed * m;
+                        let q = oq[i].2; let (mut m, mut mo) = (0.0f64, 0.0f64);
+                        for o in 0..no { let ix = i + o;
+                            let a = orow[ix].eval(q, &dw, &dg);
+                            let (mut t, to) = if zm[ix] != 0 {
+                                (a.min(orow[ix].eval_in(q, &dw, &dg, zm[ix]) * (p0n[ix] * sp0[ix])), a.min(p0[ix] * if ng > 0 { f64::INFINITY } else { 1.0 }))
+                            } else { let b = a.min(p0[ix] * sp0[ix]); (b, b) };
+                            // (a low split: the lower B, outside the visiting order)
+                            for c in alt[ix].0..alt[ix].1 { t = t.min(orow[ix].eval_in(q, &dw, &dg, zm[c]) * (p0n[c] * sp0[c])); }
+                            m = m.max(t); mo = mo.max(to);
+                        }
+                        cv[ci] += fixed * m; cvo[ci] += fixed * mo;
                     }
-                    let root = if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
+                    let rt = |cv: &[f64]| if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
+                    let (root, rnew) = (rt(cvo), rt(cv));
                     // (the visiting order stays by `root`; a configuration whose root at its class cap fails is left out)
                     if !best && rc < rho && (0..clauses.len()).all(|ci| rc * cv[ci] * (1.0 + 1e-9) < clauses[ci].1) { continue; }
-                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone(), rpk: rpk.clone() });
+                    cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone(), rpk: rpk.clone(), rnew, rcv: if rbc { cv.to_vec() } else { vec![] } });
                 }
             }
         }
@@ -249,12 +315,13 @@ impl<'a> DeckSpace<'a> {
             let (mut x, mut y) = (vec![0.0f64; nu], vec![0.0f64; nu]);
             let mut ratio = |j: usize| -> Vec<f64> {
                 for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }).collect()
+                if split { (0..nc).map(|i| ratio_at(i, &x, &y)).collect() }
+                else { oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY }).collect() }
             };
             let ro: Vec<Vec<f64>> = own.iter().map(|&j| ratio(j)).collect();
             let rb: Vec<Vec<f64>> = bor.iter().map(|&j| ratio(j)).collect();
             let (mut rown, mut rone) = (vec![], vec![]);
-            for i in 0..oq.len() {
+            for i in 0..nc {
                 let mut r: Vec<f64> = ro.iter().map(|v| v[i]).collect(); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
                 let best_b = rb.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
                 let mut pre = vec![1.0f64; size + 1];
@@ -301,7 +368,7 @@ impl<'a> DeckSpace<'a> {
         pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
         let mut heap: std::collections::BinaryHeap<Hp> = Default::default();
         let mut pp = 0usize;
-        let (mut ldw, mut ldg, mut lsp0, mut lcv) = (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; oq.len()], vec![0.0f64; 1]);
+        let (mut ldw, mut ldg, mut lsp0, mut lcv, mut lcvo) = (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; nc], vec![0.0f64; 1], vec![0.0f64; 1]);
         let mut eager_i = 0usize;
         loop {
             let cf_own: Cfg;
@@ -321,19 +388,29 @@ impl<'a> DeckSpace<'a> {
                     }
                     if pkeys[pe.key].is_none() { let km = self.key_miss(pe.code); pkeys[pe.key] = Some(std::rc::Rc::new(rpk_of(&km.0, &km.1))); }
                     let rpk = pkeys[pe.key].as_ref().unwrap();
-                    for i in 0..oq.len() { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } lsp0[i] = x; }
-                    lcv[0] = 0.0;
+                    for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } lsp0[i] = x; }
+                    // (ZSPLIT: as the eager build, `lcvo` without the split sets the order, `lcv` with it skips)
+                    lcv[0] = 0.0; lcvo[0] = 0.0;
                     for &(ci, i, no) in &og {
-                        let q = oq[i].2; let mut m = 0.0f64;
-                        for o in 0..no { m = m.max(orow[i + o].eval(q, &ldw, &ldg).min(p0[i + o] * lsp0[i + o])); }
-                        lcv[ci] += fixed * m;
+                        let q = oq[i].2; let (mut m, mut mo) = (0.0f64, 0.0f64);
+                        for o in 0..no { let ix = i + o;
+                            let a = orow[ix].eval(q, &ldw, &ldg);
+                            let (mut t, to) = if zm[ix] != 0 {
+                                (a.min(orow[ix].eval_in(q, &ldw, &ldg, zm[ix]) * (p0n[ix] * lsp0[ix])), a.min(p0[ix] * if ng > 0 { f64::INFINITY } else { 1.0 }))
+                            } else { let b = a.min(p0[ix] * lsp0[ix]); (b, b) };
+                            for c in alt[ix].0..alt[ix].1 { t = t.min(orow[ix].eval_in(q, &ldw, &ldg, zm[c]) * (p0n[c] * lsp0[c])); }
+                            m = m.max(t); mo = mo.max(to);
+                        }
+                        lcv[ci] += fixed * m; lcvo[ci] += fixed * mo;
                     }
-                    heap.push(Hp { root: lcv[0], idx: pord[pp - 1], cf: Cfg { root: lcv[0], code: pe.code, code_real22: pe.real22, np: pe.np, filler: pe.filler, plain: pe.plain, gs: pe.gs.clone(), gm: pe.gm.clone(), rpk: rpk.clone() } });
+                    heap.push(Hp { root: lcvo[0], idx: pord[pp - 1], cf: Cfg { root: lcvo[0], code: pe.code, code_real22: pe.real22, np: pe.np, filler: pe.filler, plain: pe.plain, gs: pe.gs.clone(), gm: pe.gm.clone(), rpk: rpk.clone(), rnew: lcv[0], rcv: if rbc { lcv.clone() } else { vec![] } } });
                 }
                 match heap.pop() { Some(h) => { cf_own = h.cf; &cf_own } None => break }
             } else { if eager_i >= cfgs.len() { break; } eager_i += 1; &cfgs[eager_i - 1] };
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
             if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
+            // (the split's root bound: skip, the order kept)
+            if (best && cf.rnew * rbsl * (1.0 + 1e-9) < bestv) || (!best && cf.rnew * rbsl * (1.0 + 1e-9) < 1.0) { continue; }
             let km = self.key_miss(cf.code);
             let (mw, mg, tmk) = (&km.0, &km.1, &km.2[..]);
             let (filler, plain) = (cf.filler, cf.plain);
@@ -345,11 +422,11 @@ impl<'a> DeckSpace<'a> {
             {
                 let ng = cf.gs.len();
                 sufw.clear(); sufw.resize((ng + 1) * nu, 1.0); sufg.clear(); sufg.resize((ng + 1) * nu, 1.0);
-                spf.clear(); spf.resize((ng + 1) * noq, 1.0);
+                spf.clear(); spf.resize((ng + 1) * nc, 1.0);
                 for g in (0..ng).rev() { let gmg = &cf.gm[cf.gs[g].0][cf.gs[g].1];
                     for t in 0..nu { sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gmg.0[t]; sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gmg.1[t]; } }
                 for g in (0..ng).rev() { let rpg = &cf.rpk[cf.gs[g].0];
-                    for i in 0..noq { spf[g * noq + i] = spf[(g + 1) * noq + i] * rpg[i][cf.gs[g].1]; } }
+                    for i in 0..nc { spf[g * nc + i] = spf[(g + 1) * nc + i] * rpg[i][cf.gs[g].1]; } }
             }
             let (sufw, sufg, spf) = (&sufw[..], &sufg[..], &spf[..]);
             // the dominance tables of this configuration's groups (`dom_table`), and per flat index f (the groups' entries
@@ -404,14 +481,14 @@ impl<'a> DeckSpace<'a> {
             let nb = if one_b { ngs + 1 } else { 0 };
             // (vec![x; 0] would still build x: none without borrowing)
             let (mut so, mut s1) = if nb > 0 { (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb]) } else { (vec![], vec![]) };
-            let (mut po, mut p1) = if nb > 0 { (vec![vec![1.0f64; oq.len()]; nb], vec![vec![1.0f64; oq.len()]; nb]) } else { (vec![], vec![]) };
+            let (mut po, mut p1) = if nb > 0 { (vec![vec![1.0f64; nc]; nb], vec![vec![1.0f64; nc]; nb]) } else { (vec![], vec![]) };
             if one_b { for g in (0..ngs).rev() { let (gb, c) = (&gbs[g], cf.gs[g].1);
                 for t in 0..nu {
                     so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t]; so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
                     s1[g].0[t] = (gb.one[c].0[t] * so[g + 1].0[t]).min(gb.own[c].0[t] * s1[g + 1].0[t]);
                     s1[g].1[t] = (gb.one[c].1[t] * so[g + 1].1[t]).min(gb.own[c].1[t] * s1[g + 1].1[t]);
                 }
-                for i in 0..oq.len() { po[g][i] = gb.rown[i][c] * po[g + 1][i]; p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]); }
+                for i in 0..nc { po[g][i] = gb.rown[i][c] * po[g + 1][i]; p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]); }
             } }
             cvx.clear(); cvx.resize(clauses.len(), 0.0); pdwx.clear(); pdwx.resize(nu, 0.0); pdgx.clear(); pdgx.resize(nu, 0.0);
             let (cv, pdw, pdg) = (&mut cvx[..], &mut pdwx[..], &mut pdgx[..]);
@@ -497,7 +574,7 @@ impl<'a> DeckSpace<'a> {
                     let ncan = if one_b { 2 } else { 1 };
                     let mut loff = vec![0usize; ng + 1]; for g in 0..ng { loff[g + 1] = loff[g] + gs[g].1 + 1; }
                     let nrow = loff[ng] * ncan;
-                    kab.clear(); kab.resize(nrow * 2 * nu, 0.0); kr.clear(); kr.resize(nrow * noq, 0.0);
+                    kab.clear(); kab.resize(nrow * 2 * nu, 0.0); kr.clear(); kr.resize(nrow * nc, 0.0);
                     kab_have.clear(); kab_have.resize(nrow, false); kr_have.clear(); kr_have.resize(nrow, false);
                     // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
                     // (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
@@ -557,8 +634,9 @@ impl<'a> DeckSpace<'a> {
                                 for t in 0..nu { dw[t] = 1.0 - pw[t] * ka[t]; dg[t] = 1.0 - pg[t] * kb[t]; pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; }
                             }
                         }
-                        let pass = |cv: &[f64]| if best { cv[0] * (1.0 + 1e-9) >= bestv }
-                            else { (0..clauses.len()).any(|ci| rho * cv[ci] * (1.0 + 1e-9) >= clauses[ci].1) };
+                        // (rbsl: 1, or RB_CHECK's s; x * 1.0 is x)
+                        let pass = |cv: &[f64]| if best { cv[0] * rbsl * (1.0 + 1e-9) >= bestv }
+                            else { (0..clauses.len()).any(|ci| rho * cv[ci] * rbsl * (1.0 + 1e-9) >= clauses[ci].1) };
                         // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
                         // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
                         // its inputs being probabilities, and a NaN falls through to the real test)
@@ -572,8 +650,8 @@ impl<'a> DeckSpace<'a> {
                         if !nan && !pass(&cv) { return false; }
                         if row != usize::MAX && !kr_have[row] {
                             kr_have[row] = true;
-                            for ix in 0..noq {
-                                kr[row * noq + ix] = if !one_b { rp[g][ix][left] * spf[(g + 1) * noq + ix] }
+                            for ix in 0..nc {
+                                kr[row * nc + ix] = if !one_b { rp[g][ix][left] * spf[(g + 1) * nc + ix] }
                                     else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
                             }
@@ -582,18 +660,46 @@ impl<'a> DeckSpace<'a> {
                         // the real bound, the same expression in the same order; an outfit whose A is at most the running
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
-                        for &(ci, i, no) in &og {
+                        if !split { for &(ci, i, no) in &og {
                             let q = oq[i].2; let mut m = 0.0f64;
                             for o in 0..no {
                                 let ix = i + o;
                                 let a = av[ix];
                                 if a <= m { continue; }
-                                let r = if row == usize::MAX { 1.0 } else { kr[row * noq + ix] };
+                                let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
                                 m = m.max(a.min(orow[ix].eval(q, &pdw, &pdg) * r));
                             }
                             cv[ci] += fixed * m;
+                        } } else {
+                            // (ZSPLIT) A's product over a split's Z: from the per-parent row with the child's touched
+                            // targets recomputed (A's own factors), or at the node's odds
+                            let hrow = if have_a { dep * 2 + (one_b && can) as usize } else { usize::MAX };
+                            let a_z = |ix: usize, z: u32| -> f64 {
+                                let (o, q) = (&orow[ix], oqq[ix]);
+                                if hrow == usize::MAX { return o.eval_in(q, &dw, &dg, z); }
+                                let fa = &hc[hrow].fa[ix * nu..(ix + 1) * nu];
+                                let (mut z, mut p) = (z, 1.0f64);
+                                while z != 0 { let t = z.trailing_zeros() as usize; z &= z - 1; p *= if tm >> t & 1 != 0 { o.factor_at(t, q, tw[t], tg[t]) } else { fa[t] }; }
+                                p
+                            };
+                            for &(ci, i, no) in &og {
+                                let q = oq[i].2; let mut m = 0.0f64;
+                                for o in 0..no {
+                                    let ix = i + o;
+                                    let a = av[ix];
+                                    if a <= m { continue; }
+                                    let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
+                                    // A's factors of the zero targets times N's ratio bound; a low split's, the lower
+                                    let mut b = if zm[ix] != 0 { a_z(ix, zm[ix]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[ix]) * r) } else { orow[ix].eval(q, &pdw, &pdg) * r };
+                                    for c in alt[ix].0..alt[ix].1 { let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] }; b = b.min(a_z(ix, zm[c]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[c]) * r)); }
+                                    m = m.max(a.min(b));
+                                }
+                                cv[ci] += fixed * m;
+                            }
                         }
-                        pass(&cv)
+                        let ok = pass(&cv);
+                        if rbc && ok { let mut s = rbs.borrow_mut(); if s.len() < dep + 2 { s.resize(dep + 2, vec![]); } s[dep + 1].clear(); s[dep + 1].extend_from_slice(cv); }
+                        ok
                     };
                     // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
                     // later group (a branch that can no longer place every locked card is dropped)
@@ -672,6 +778,20 @@ impl<'a> DeckSpace<'a> {
                         if !self.locked.iter().all(|l| sel.iter().any(|&j| self.rel[j] == *l)) { return false; }
                         for t in 0..nu { dwa[t] = 1.0 - pw[t]; dga[t] = 1.0 - pg[t]; }
                         let (dw, dg) = (&dwa[..nu], &dga[..nu]);
+                        // RB_CHECK: each clause's value against the bounds of the root and of every node above the deck
+                        if rbc {
+                            let s = rbs.borrow();
+                            RBCHK.with(|c| { let mut c = c.borrow_mut(); c.0 += 1;
+                                for (ci, cl) in clauses.iter().enumerate() { if best && ci > 0 { break; }
+                                    let x = val(cl, dw, dg);
+                                    for d in 0..=sel.len() {
+                                        let ub = if d == 0 { cf.rcv[ci] } else { s[d][ci] };
+                                        c.1 += 1;
+                                        if x > ub * (1.0 + 1e-9) { c.2 += 1; }
+                                        if ub > 0.0 { c.3 = c.3.max(x / ub); }
+                                    }
+                                } });
+                        }
                         let mk = |v: f64| { let mut e = sel.to_vec(); e.sort(); (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() }) };
                         if best {
                             let v = val(&clauses[0], dw, dg);
@@ -747,3 +867,14 @@ impl<'a> DeckSpace<'a> {
 /// which a lower gold miss is sure to give a gold odd and factor above the other deck's after rounding (both are
 /// within about 2^-50 of exact)
 const DOM_GAP: f64 = 1.0 / (1u64 << 28) as f64;
+thread_local! {
+    /// RB_CHECK: (leaves checked, (leaf, clause, ancestor) tests, violations: a value above an ancestor's bound by more
+    /// than 1e-9, the highest value / bound)
+    pub(crate) static RBCHK: std::cell::RefCell<(usize, usize, usize, f64)> = const { std::cell::RefCell::new((0, 0, 0, 0.0)) };
+}
+fn rb_check() -> f64 { static C: std::sync::OnceLock<f64> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("RB_CHECK").ok().map_or(0.0, |v| v.parse().unwrap_or(1.0))) }
+
+/// The low-base split's threshold (ZSPLIT): a target whose empty-deck factor is at most this share of its factor with a
+/// certain white hint. Measured on tiny 8-target jobs (instructions): 0.25 and 0.5 the same, 0.75 alone or as a second
+/// split (0.5 and 0.75) fewer nodes but more instructions
+const LOW_SPLIT: [f64; 1] = [0.5];
