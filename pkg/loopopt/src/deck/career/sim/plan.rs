@@ -197,13 +197,19 @@ pub(super) fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bo
 /// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
 fn certified(env: &mut Env, d: &Data, pool: &Pool, fix: &[usize], x: usize, f: &Found) -> bool {
     let nl = pool.me.len(); let ct = env.cls[x];
-    for a in 0..nl { for b in a + 1..nl {
+    let bar = f.val * (1.0 + 1e-9);
+    // per pair: the lowest of the bounds above the bar, as none of them at or below it (each bound is computed alone, so
+    // stopping at the first that proves changes no number); f64::min passes over a NaN, so a NaN bound proves nothing
+    // and the pair fails only when some bound is a number (`num`)
+    for a in 0..nl { 'pairs_b: for b in a + 1..nl {
         if !legal_pair(d, pool, x, a, b) || !fix.iter().all(|&g| g == a || g == b) { continue; }
         let (q, _, c) = env.lineage(pool, x, a, b);
-        let Some(mut ub) = env.ceiling(x, &q, c) else { continue };
-        for r in &env.seen[ct] { ub = ub.min(c * r.val * env.rise(x, &q, &r.q)); }
-        for (rq, sv) in &env.ruled[ct] { ub = ub.min(env.space.rho_top() * c * sv * env.rise(x, &q, rq)); }
-        if ub > f.val * (1.0 + 1e-9) { return false; }
+        let Some(ub) = env.ceiling(x, &q, c) else { continue };
+        if ub <= bar { continue; }
+        let mut num = !ub.is_nan();
+        for r in &env.seen[ct] { let v = c * r.val * env.rise(x, &q, &r.q); if v <= bar { continue 'pairs_b; } num |= !v.is_nan(); }
+        for (rq, sv) in &env.ruled[ct] { let v = env.space.rho_top() * c * sv * env.rise(x, &q, rq); if v <= bar { continue 'pairs_b; } num |= !v.is_nan(); }
+        if num { return false; }
     } }
     true
 }

@@ -13,17 +13,22 @@ use super::*;
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// Training hints stay independent per target, as in the marginal model.
 pub(super) fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
+    joint_b(model, u, qs, ents, filler, n_targets, m1)
+}
+/// `joint` with the sources owned or borrowed (it only reads them)
+pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: &[f64], ents: &[(S, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
     JCOUNT.with(|c| c.set(c.get() + 1));
     let r = joint_fast(model, u, qs, ents, filler, n_targets, m1, None);
     if sb_check() {
-        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (&e.0, e.1)).collect();
+        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
         if let Some(sv) = state_value(model, u, qs, &er, filler) {
             SBCHK.with(|c| { let mut c = c.borrow_mut(); for (v, x) in sv.iter().zip(&r) { if x.0 > 0.0 { let rt = v / x.0; c.0 += 1; c.1 = c.1.max(rt); c.2 = c.2.min(rt); if rt < 1.0 - 1e-9 { c.3 += 1; } } } });
         }
     }
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
-        let x = joint_trainee_ref(model, u, qs, ents, filler, n_targets);
+        let own: Vec<(Src, Kind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
+        let x = joint_trainee_ref(model, u, qs, &own, filler, n_targets);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
             assert!(rel(a.0, b.0) < 1e-11 && (!m1 || rel(a.1, b.1) < 1e-11), "joint mismatch: {:?} vs {:?}", a, b);
@@ -41,9 +46,18 @@ pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f
 /// target, `sf` per guaranteed gold, in job order), and per (chance, outfit, uncertain target) the exact chance it
 /// lands, summed into `marg`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
-pub(super) fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
-    use crate::skills::GEN_WHITE;
-    let nu = model.uncertain.len();
+pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: &[f64], ents: &[(S, Kind)], filler: usize, n_targets: usize, m1: bool, ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
+    joint_eval(model, u, qs, &joint_prep(model.uncertain.len(), ents, filler), n_targets, m1, ext)
+}
+/// What `joint_fast` computes of a deck before any chance or model state: the per-target misses of the sources outside
+/// the chains (`bg`, `bh`) and their coupled groups (`bc`), per chain position its factors per links done (`lv`), and the
+/// collapsed chain states in first-seen order with their weights (each summed in state order)
+pub(super) struct JointPrep<'g> {
+    bg: Vec<f64>, bh: Vec<f64>, bc: Vec<&'g Group>,
+    lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<&'g Group>)>, Vec<u8>)>,
+    keys: Vec<(Vec<u8>, f64)>,
+}
+pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kind)], filler: usize) -> JointPrep<'_> {
     fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
         let gh = group_gh(g);
         if gh.len() >= 2 { coupled.push(g); return; }
@@ -52,6 +66,7 @@ pub(super) fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind
     let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
     let mut bc: Vec<&Group> = vec![];
     for (src, _) in ents {
+        let src: &Src = src.borrow();
         for &(k, p) in &src.train { bh[k] *= 1.0 - p; }
         for g in &src.fixed { take(g, &mut bc, &mut bg, &mut bh); }
     }
@@ -64,7 +79,7 @@ pub(super) fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind
     let mut lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>, Vec<u8>)> = vec![];
     for (pos, &(kd, e)) in ch.iter().enumerate() {
         let Some(i) = e else { continue };
-        let src = &ents[i].0;
+        let src: &Src = ents[i].0.borrow();
         if src.chains.is_empty() { continue; }
         let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
         let mut out = vec![(g.clone(), h.clone(), c.clone())];
@@ -85,6 +100,14 @@ pub(super) fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind
         let key: Vec<u8> = lv.iter().map(|(pos, _, cls)| cls[prog[*pos] as usize]).collect();
         match coll.get_mut(&key) { Some(x) => *x += w, None => { coll.insert(key.clone(), *w); order.push(key); } }
     }
+    let keys = order.into_iter().map(|k| { let w = coll[&k]; (k, w) }).collect();
+    JointPrep { bg, bh, bc, lv, keys }
+}
+/// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order
+pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
+    use crate::skills::GEN_WHITE;
+    let nu = model.uncertain.len();
+    let JointPrep { bg, bh, bc, lv, keys } = pre;
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
@@ -100,9 +123,9 @@ pub(super) fn joint_fast(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind
     let mut coupled: Vec<&Group> = vec![];
     let mut cl_of = vec![usize::MAX; nu];
     let mut lvl = vec![0u8; nu];
-    for key in &order {
-        let w = coll[key];
-        ng.copy_from_slice(&bg); nh.copy_from_slice(&bh);
+    for (key, w) in keys {
+        let w = *w;
+        ng.copy_from_slice(bg); nh.copy_from_slice(bh);
         coupled.clear(); coupled.extend(bc.iter().copied());
         for (j, (_, out, _)) in lv.iter().enumerate() {
             let (g, h, c) = &out[key[j] as usize];

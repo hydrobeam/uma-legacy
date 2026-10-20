@@ -74,8 +74,10 @@ fn d_top() -> usize { 5 }
 /// The work budget of one career search (units as in the per-uma search: 2 per deck node tested, 200 per exact
 /// scoring, 10,000 per deck search). Measured need for a proven result (2026-10-07, synthetic pools of 12-400
 /// veterans, default 8 targets): 10M-85M, the most at 200 veterans (12 s native); the loop planner's 30M
-/// (EXACT_BUDGET) left pools of 12, 100 and 200 veterans unproven with the same picks. 300M leaves 3.5x headroom
-/// and stops a runaway search after about a minute of native work. `EXACT_BUDGET` in the environment overrides it.
+/// (EXACT_BUDGET) left pools of 12, 100 and 200 veterans unproven with the same picks. 300M leaves 3.5x headroom.
+/// It does not stop the search: past it each deck search (`best_deck_run`) stops scoring its band, so every later
+/// candidate gets the exact values of its product deck and start decks only and the search is not `complete`; `solve` itself goes on to its
+/// stop rule (only a `hard` cap, `plan`'s extra searches, ends it early). `EXACT_BUDGET` in the environment overrides it.
 const CAREER_BUDGET: usize = 300_000_000;
 #[derive(Deserialize)]
 struct CareerJob {
@@ -145,6 +147,16 @@ fn dominates(p: &Pool, x: usize, y: usize) -> bool {
     let ge = |a: &Who, b: &Who| a.chara == b.chara && a.mix.is_none() && b.mix.is_none() && a.stars.iter().zip(b.stars.iter()).all(|(s, t)| s >= t)
         && a.wins.iter().chain(&b.wins).all(|w| w.1 == 1.0) && b.wins.iter().all(|w| a.wins.iter().any(|v| v.0 == w.0));
     ge(&p.me[x], &p.me[y]) && p.gp[x].len() == p.gp[y].len() && p.gp[x].iter().zip(&p.gp[y]).all(|(a, b)| ge(a, b))
+}
+/// `Env::set_trainee` on the fields it writes and reads (her model hint chances `cur`, her own `ew0`), for callers that
+/// hold a borrow of the deck space
+fn set_ews(cur: &mut Vec<Vec<f64>>, ew0: &[Vec<f64>], uncv: &[usize], q: &[f64]) {
+    // (in place when the shape is already this one: the same values)
+    if cur.len() == ew0.len() && cur.iter().zip(ew0).all(|(c, o)| c.len() == o.len().min(uncv.len())) {
+        for (c, o) in cur.iter_mut().zip(ew0) { for ((c, e), &i) in c.iter_mut().zip(o).zip(uncv) { *c = 1.0 - (1.0 - e) * (1.0 - q[i]); } }
+    } else {
+        *cur = ew0.iter().map(|o| o.iter().zip(uncv).map(|(e, &i)| 1.0 - (1.0 - e) * (1.0 - q[i])).collect()).collect();
+    }
 }
 /// G1s two legacies both won (expected count when a win is a chance)
 fn shared(a: &Who, b: &Who) -> f64 {
@@ -410,16 +422,9 @@ impl<'a> Env<'a> {
         (self.uncv.iter().map(|&i| 1.1f64.powi(nc[i] - 6)).collect(), self.fixed_t.iter().map(|&i| 1.1f64.powi(nc[i] - 6)).collect())
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
-    fn set_trainee(&mut self, t: usize, q: &[f64]) {
-        let uncv = &self.uncv; let ew0 = &self.ew0[t]; let cur = &mut self.model.ews[t];
-        // (in place when the shape is already this one: the same values)
-        if cur.len() == ew0.len() && cur.iter().zip(ew0).all(|(c, o)| c.len() == o.len().min(uncv.len())) {
-            for (c, o) in cur.iter_mut().zip(ew0) { for ((c, e), &i) in c.iter_mut().zip(o).zip(uncv) { *c = 1.0 - (1.0 - e) * (1.0 - q[i]); } }
-        } else {
-            *cur = ew0.iter().map(|o| o.iter().zip(uncv).map(|(e, &i)| 1.0 - (1.0 - e) * (1.0 - q[i])).collect()).collect();
-        }
-    }
-    fn ents_of(&self, sel: &Sel) -> Vec<(Src, Kind)> { sel.ents.iter().map(|&j| (self.space.srcs[j].clone(), self.space.kind[j])).collect() }
+    fn set_trainee(&mut self, t: usize, q: &[f64]) { set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, q) }
+    /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
+    fn ents_of(&self, sel: &Sel) -> Vec<(&Src, Kind)> { sel.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect() }
     /// exact P(all) of trainee t (her inheritance already folded in) with deck `sel`, scaled per target; `sets`: also the
     /// chance of each set of uncertain targets landing
     fn exact(&self, t: usize, sel: &Sel, nc: &[i32], m1: bool, sets: bool) -> ((f64, f64, usize), JointExt) {
@@ -450,10 +455,129 @@ impl<'a> Env<'a> {
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
     fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
         self.dmax[t].as_ref()?;
+        let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
+        Some(self.ceiling_at(t, q, c, rho, fixed))
+    }
+    /// `ceiling` for a trainee with legal deck odds, EXACT_RHO and the fixed gold factor given (the same values)
+    #[inline]
+    fn ceiling_at(&mut self, t: usize, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
         self.set_trainee(t, q);
         let (dw, dg) = self.dmax[t].as_ref().unwrap();
         let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
-        Some(self.space.rho_top() * c * self.model.fixed_factor() * pv)
+        rho * c * fixed * pv
+    }
+    /// `solve`'s candidates: per trainee of `trainees` with legal deck odds (in order; `tp` her position), per legal pair
+    /// a < b of `p` (all of `fix` among them, at most one borrowed, neither her character), `mk(ceiling, tp, t, a, b)`,
+    /// in that order. The numbers are `lineage` then `ceiling`'s, operation for operation, without the allocations and
+    /// with what does not depend on the trainee computed once per pair (the parents' race parts and relation points
+    /// between them, the carrier counts and so the spark scale c) or once per trainee and legacy (her relation points
+    /// with it, its grandparent slots' miss factors). A slot without a spark of target k multiplies by 1 where
+    /// `inherit` skips it (exact), and every model state `ceiling` leaves (`set_trainee` at each candidate's q in
+    /// turn) is the same.
+    fn gen_cands<C>(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C) -> Vec<C> {
+        let d = self.d; let nl = p.me.len(); let ntar = self.ntar;
+        // (`inherit`'s miss factor, with its affinity term fa = 1 + A / 100 of the slot computed once)
+        let m = |st: f64, fa: f64| 1.0 - (0.03 * st * fa).min(1.0);
+        // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone
+        let fac = |st: u8, mix: Option<[f64; 3]>, fa: f64| -> (f64, f64) {
+            if st == 0 { return (1.0, 1.0); }
+            match mix { None => (m(st as f64, fa), 1.0), Some(w) => (1.0, (0..3).map(|i| w[i] * m(i as f64 + 1.0, fa).powi(2)).sum::<f64>()) }
+        };
+        // 1.1^(n - 6) per carrier count n, as `scale` computes it (black_box: the same runtime powi, never folded)
+        let maxs = (0..nl).map(|x| 1 + p.gp[x].len()).max().unwrap_or(0) * 2;
+        let pw: Vec<f64> = (0..=maxs).map(|n| 1.1f64.powi(std::hint::black_box(n as i32 - 6))).collect();
+        struct Pre { a: usize, b: usize, c: f64, race: [f64; 2], pp: [f64; 2] }
+        let mut pairs: Vec<Pre> = vec![];
+        // per legacy and target, how many of her slots (her own, her parents') carry the spark
+        let cnt: Vec<usize> = (0..nl).flat_map(|x| (0..ntar).map(move |k| std::iter::once(&p.me[x]).chain(&p.gp[x]).filter(|w| w.stars[k] != 0).count())).collect();
+        let mut nc = vec![0usize; ntar];
+        // the pairs a < b in (a, b) order: with a fixed legacy f, only those holding it, (a, f) for a < f then (f, b)
+        let pair_list: Box<dyn Iterator<Item = (usize, usize)>> = match fix.first() {
+            None => Box::new((0..nl).flat_map(move |a| (a + 1..nl).map(move |b| (a, b)))),
+            Some(&f) if f < nl => Box::new((0..f).map(move |a| (a, f)).chain((f + 1..nl).map(move |b| (f, b)))),
+            Some(_) => Box::new(std::iter::empty()),
+        };
+        for (a, b) in pair_list {
+            let (ca, cb) = (p.me[a].chara, p.me[b].chara);
+            if ca == cb || (p.borrowed[a] && p.borrowed[b]) || !fix.iter().all(|&f| f == a || f == b) { continue; }
+            let sh = 3.0 * shared(&p.me[a], &p.me[b]);
+            let race = [a, b].map(|x| { let mut r = sh; for &gc in &p.gpc[x] { r += gc; } r });
+            let pp = [self.pair(p.me[a].ix, p.me[b].ix), self.pair(p.me[b].ix, p.me[a].ix)];
+            for k in 0..ntar { nc[k] = cnt[a * ntar + k] + cnt[b * ntar + k]; }
+            let c = self.uncv.iter().map(|&i| pw[nc[i]]).chain(self.fixed_t.iter().map(|&i| pw[nc[i]])).product::<f64>();
+            pairs.push(Pre { a, b, c, race, pp });
+        }
+        let mut out: Vec<C> = Vec::with_capacity(pairs.len() * trainees.iter().filter(|&&t| self.dmax[t].is_some()).count());
+        let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
+        let mut q = vec![0.0f64; ntar];
+        // per legacy x: her relation points with the trainee, and per grandparent slot its relation points and its
+        // factors per target (flat, from `go[x]`)
+        let mut pt = vec![0.0f64; nl];
+        let go: Vec<usize> = std::iter::once(0).chain((0..nl).scan(0, |s, x| { *s += p.gp[x].len(); Some(*s) })).collect();
+        let mut gr = vec![0.0f64; go[nl]];
+        let mut gf = vec![(1.0f64, 1.0f64); go[nl] * ntar];
+        for (tp, &t) in trainees.iter().enumerate() {
+            if self.dmax[t].is_none() { continue; }
+            let (ti, tid) = (Some(t), d.umas[t].id);
+            for x in 0..nl {
+                let px = &p.me[x];
+                pt[x] = self.pair(ti, px.ix);
+                for (gi, g) in p.gp[x].iter().enumerate() {
+                    let j = go[x] + gi;
+                    gr[j] = self.tri(ti, px.ix, g.ix);
+                    let fa = 1.0 + (gr[j] + p.gpc[x][gi]) / 100.0;
+                    for k in 0..ntar { gf[j * ntar + k] = fac(g.stars[k], g.mix, fa); }
+                }
+            }
+            // per outfit and uncertain target, `outfit_fast`'s factor as Fixed (no chance in it) or Open(1 - e, 1 - dw, dg GOLD,
+            // 1 - dg): the same subexpressions, each computed once for her
+            let (dw, dg) = self.dmax[t].as_ref().unwrap();
+            debug_assert!(self.sts0[t].len() == self.model.n_outfits(t));
+            let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
+            enum Fac { Fixed(f64), Open(f64, f64, f64, f64) }
+            let ft: Vec<Vec<Fac>> = self.sts0[t].iter().zip(&self.ew0[t]).map(|(st, e0)| (0..st.len()).map(|k| match st[k] {
+                2 => Fac::Fixed(gg), 1 => Fac::Fixed(dg[k] * gg + (1.0 - dg[k]) * gw),
+                _ => Fac::Open(1.0 - e0[k], 1.0 - dw[k], dg[k] * gg, 1.0 - dg[k]) }).collect()).collect();
+            let uncv = &self.uncv;
+            let mut nq = vec![0.0f64; ft.iter().map(|f| f.len()).max().unwrap_or(0)];
+            let mut last = false;
+            for pr in &pairs {
+                let (a, b) = (pr.a, pr.b);
+                if p.me[a].chara == tid || p.me[b].chara == tid { continue; }
+                // each parent slot's affinity, summed as `slots` sums it (as fa)
+                let fa = [0, 1].map(|s| {
+                    let x = if s == 0 { a } else { b };
+                    let mut rel = pt[x] + pr.pp[s];
+                    for j in go[x]..go[x + 1] { rel += gr[j]; }
+                    1.0 + (rel + pr.race[s]) / 100.0
+                });
+                for k in 0..ntar {
+                    let (mut miss, mut mix2) = (1.0f64, 1.0f64);
+                    for (s, x) in [a, b].into_iter().enumerate() {
+                        let (fm, fx) = fac(p.me[x].stars[k], p.me[x].mix, fa[s]); miss *= fm; mix2 *= fx;
+                        for j in go[x]..go[x + 1] { let (fm, fx) = gf[j * ntar + k]; miss *= fm; mix2 *= fx; }
+                    }
+                    q[k] = 1.0 - miss * miss * mix2;
+                }
+                // `ceiling_at` without writing the model state: per outfit `outfit_fast` at q = 0 on the hint chances
+                // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
+                // (an open factor: ew = 1 - (1 - e)(1 - q_k), white = GEN_WHITE (1 - (1 - dw)(1 - ew)), dg GOLD + (1 - dg) white)
+                for k in 0..nq.len() { nq[k] = 1.0 - q[uncv[k]]; }
+                let mut pv = 0.0f64;
+                for fo in &ft {
+                    let mut po = 1.0f64;
+                    for (k, f) in fo.iter().enumerate() {
+                        po *= match *f { Fac::Fixed(x) => x, Fac::Open(ne, ndw, a, nd) => { let ew = 1.0 - ne * nq[k]; a + nd * (gw * (1.0 - ndw * (1.0 - ew))) } };
+                    }
+                    pv = f64::max(pv, po);
+                }
+                last = true;
+                out.push(mk(rho * pr.c * fixed * pv, tp, t, a, b));
+            }
+            // the model state the last candidate's `ceiling` left (q still holds its chances)
+            if last { self.set_trainee(t, &q); }
+        }
+        out
     }
     /// Trainee t's best deck at the chances already folded in (`set_trainee`), as the per-uma search finds it: the best
     /// product deck, then every deck whose product value times its class's cap (`cap_class`; at most EXACT_RHO, the top
@@ -524,7 +648,7 @@ impl<'a> Env<'a> {
         let Some((pv, sel)) = r.into_iter().next() else { return if seed > f64::NEG_INFINITY { DeckRes::Bounded } else { DeckRes::NoDeck } };
         // the candidate's own ceiling from its best product deck
         if rho * c * pv * (1.0 + 1e-9) < th { return DeckRes::Bounded; }
-        let score = |env: &Env, sel: &Sel| joint(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
+        let score = |env: &Env, sel: &Sel| joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler, ntar, false)[0].0;
         let mut best = (score(self, &sel), sel); *scored += 1; self.work += 200;
         if pv > 0.0 { let k = self.space.sel_class(&best.1); self.note_ratio(k, best.0 / pv, t, &best.1); }
         for s in starts { let x = score(self, s); *scored += 1; self.work += 200; if x > best.0 { best = (x, (*s).clone()); } }
@@ -574,23 +698,31 @@ impl<'a> Env<'a> {
         let d = self.d;
         self.work = 0;   // each search has its own work budget
         let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
-        struct Cand { ub: f64, t: u16, a: u16, b: u16 }
+        // (`tp`: the trainee's position in `trainees`; generated in (tp, a, b) order)
+        struct Cand { ub: f64, t: u16, tp: u16, a: u16, b: u16 }
         let t_gen = now_ms();
-        let mut cands: Vec<Cand> = vec![];
         let nl = p.me.len();
-        assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize);
-        for &t in trainees {
-            let tid = d.umas[t].id;
-            if self.dmax[t].is_none() { continue; }
-            for a in 0..nl { for b in a + 1..nl {
-                let (ca, cb) = (p.me[a].chara, p.me[b].chara);
-                if ca == cb || ca == tid || cb == tid || (p.borrowed[a] && p.borrowed[b]) || !fix.iter().all(|&f| f == a || f == b) { continue; }
-                let (q, _, c) = self.lineage(p, t, a, b);
-                let ub = self.ceiling(t, &q, c).unwrap();
-                cands.push(Cand { ub, t: t as u16, a: a as u16, b: b as u16 });
-            } }
-        }
-        cands.sort_by(|x, y| y.ub.partial_cmp(&x.ub).unwrap());
+        assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize);
+        let mut cands: Vec<Cand> = self.gen_cands(p, fix, trainees, |ub, tp, t, a, b| Cand { ub, t: t as u16, tp: tp as u16, a: a as u16, b: b as u16 });
+        // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
+        // -0 tie as there), as a total order on (ceiling descending, tp, a, b), unique per candidate. Sorted lazily
+        // (`upto`): the loop below reads a short prefix, so each step selects the next chunk (everything before it is
+        // ordered before everything after it) and sorts only the chunk; the prefix is the full sort's, element for element.
+        let ord = |x: &Cand, y: &Cand| y.ub.partial_cmp(&x.ub).unwrap().then(x.tp.cmp(&y.tp)).then(x.a.cmp(&y.a)).then(x.b.cmp(&y.b));
+        let mut upto = 0usize;
+        // cands[..upto] in final order; makes it reach past i
+        let sort_to = |cands: &mut [Cand], i: usize, upto: &mut usize| {
+            if i < *upto || *upto >= cands.len() { return; }
+            let t0 = now_ms();
+            while i >= *upto && *upto < cands.len() {
+                let rest = &mut cands[*upto..];
+                let m = (*upto).max(1024).min(rest.len());
+                if m < rest.len() { rest.select_nth_unstable_by(m - 1, ord); }
+                rest[..m].sort_unstable_by(ord);
+                *upto += m;
+            }
+            prof("gen_ms", now_ms() - t0);
+        };
         prof("gen_ms", now_ms() - t_gen); prof("gen_cands", cands.len() as f64); prof("solves", 1.0);
         let top = top.max(1);
         let mut complete = true;
@@ -607,7 +739,11 @@ impl<'a> Env<'a> {
         let ruled0: Vec<usize> = self.ruled.iter().map(|r| r.len()).collect();
         // dominated veterans (`dominates`): per legacy y, the legacies x at least as good in every career; and the
         // candidates this search took and did not solve (bounded, no deck)
-        let dom: Vec<Vec<usize>> = (0..nl).map(|y| (0..nl).filter(|&x| x != y && dominates(p, x, y)).collect()).collect();
+        // (only veterans of one character can dominate each other: `dominates` tests the characters first, so the other
+        // pairs are skipped unasked; each list is in ascending x as before)
+        let mut by_chara: crate::FxMap<u32, Vec<usize>> = Default::default();
+        for x in 0..nl { by_chara.entry(p.me[x].chara).or_default().push(x); }
+        let dom: Vec<Vec<usize>> = (0..nl).map(|y| by_chara[&p.me[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect()).collect();
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
         // Identical deck problems, searched once (`Twin`): a candidate whose trainee, chances q and spark scale c are
@@ -634,7 +770,7 @@ impl<'a> Env<'a> {
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
         // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
-        while next < cands.len() && cands[next].ub > 0.0 && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
+        while next < cands.len() && { sort_to(&mut cands, next, &mut upto); cands[next].ub > 0.0 } && cands[next].ub * (1.0 + 1e-9) >= kth(&done) {
             if self.hard > 0 && self.work > self.hard { complete = false; break; }
             let ci = next; next += 1;
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
@@ -655,8 +791,9 @@ impl<'a> Env<'a> {
             }
             let (q, _, c) = self.lineage(p, t, a, b);
             let ct = self.cls[t]; let seen: &[Ref] = if self.use_seen { &self.seen[ct] } else { &[] };
-            let rb = refs[t].iter().chain(seen).map(|r| c * r.val * self.rise(t, &q, &r.q)).fold(f64::INFINITY, f64::min);
-            if rb * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
+            // (the lowest of these bounds below th, as any one of them below it: the minimum is one of the bounds, and
+            // rounding x (1 + 1e-9) is monotone; a NaN bound neither lowers the minimum nor passes the test)
+            if refs[t].iter().chain(seen).any(|r| c * r.val * self.rise(t, &q, &r.q) * (1.0 + 1e-9) < th) { n_bounded += 1; continue; }
             // what her earlier product searches proved (`ruled`). Derived: with her chances folded in, target k's factor
             // in the product value of one outfit and one deck (odds dw, dg) is f(n) = A - B n, n = (1 - e)(1 - q_k),
             // A = dg G + (1 - dg) W, B = (1 - dg) W (1 - dw) <= A (`outfit_fast` at q = 0; a target the outfit has is
@@ -707,7 +844,7 @@ impl<'a> Env<'a> {
             done.insert(pos, (val, ci, sel));
         }
         for (t, rs) in refs.iter().enumerate() { let ct = self.cls[t]; for r in rs { if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) { self.seen[ct].push(r.clone()); } } }
-        let next_bound = if next < cands.len() { cands[next].ub } else { 0.0 };
+        let next_bound = if next < cands.len() { sort_to(&mut cands, next, &mut upto); cands[next].ub } else { 0.0 };
         let proven = complete && !done.is_empty() && (done.len() >= top.min(cands.len()) || next >= cands.len()) && next_bound < done[0].0;
         let n = cands.len();
         let cert = self.cert; self.cert = cert0.min(cert);
@@ -910,11 +1047,17 @@ impl<'a> Env<'a> {
         let (nu, ntar) = (self.nu, self.ntar);
         let no = self.model.n_outfits(t);
         let mut corners = vec![vec![0.0f64; 1 << nu]; no];
+        // per corner `exact(t, sel, [6; ntar], false, false)`: the deck's part of `joint_fast` (`joint_prep`, which reads
+        // no chance and no model state) once, its evaluation per corner (the same sums; the scale is 1 throughout)
+        let (su, sf) = self.scale(&vec![6; ntar]);
+        let ents: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+        let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler);
         for c in 0..(1usize << nu) {
             let mut q = q0.to_vec();
             for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
-            self.set_trainee(t, &q);
-            let (_, ext) = self.exact(t, sel, &vec![6; ntar], false, false);
+            set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, &q);
+            let mut ext = JointExt { su: su.clone(), sf: sf.clone(), marg: vec![], sets: vec![], per_outfit: vec![] };
+            joint_eval(&self.model, t, &[0.0], &pre, ntar, false, Some(&mut ext));
             for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
         }
         corners
