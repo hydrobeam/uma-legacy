@@ -70,10 +70,12 @@ refuses it.
 ## Planner
 
 The career page's plan (`next` job, `sim::plan::index_rule`; `docs/SOLVER.md`, *Next career*). Harness:
-`val/planval.py` runs the seven next-plan jobs in `val/plan/` (p16 = a 16-veteran export, p16_ss and p16_ura = p16 at
-rank SS and on URA, p10, p11, gm16 = p16 on Grand Masters, boot_mob = the page's sample mob veterans) and compares each
-whole output strictly; the plan reports its own work (`next.work`: deck-search nodes, exact scorings), deterministic
-and comparable at any machine load. `val/mono.py` checks that a veteran added never raises V. Rerun `next.proxy_check`
+`val/planval.py` runs the nine next-plan jobs in `val/plan/` (p16 = a 16-veteran export, p16_ss and p16_ura = p16 at
+rank SS and on URA, p10, p11, gm16 = p16 on Grand Masters, gm16_nu8 = gm16 with no target guaranteed (8 uncertain
+targets, as Grand Masters gives none), p16_88 = p16 with two of its veterans completed to 8/8 (looped rows),
+boot_mob = the page's sample mob veterans) and compares each whole output strictly; the plan reports its own work
+(`next.work`: deck-search nodes, exact scorings, and `prof`, its phase timers and counters: `hi_ms` (`outcome_hi`),
+`score_ms`, `gen_ms` (the solves' candidate ceilings), `corner_ms`), deterministic but for the timers. `val/mono.py` checks that a veteran added never raises V. Rerun `next.proxy_check`
 after any change to how builders' careers are built.
 
 ### Where it stands

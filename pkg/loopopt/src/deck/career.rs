@@ -29,6 +29,22 @@ use super::*;
 mod cache;
 mod sim;
 
+/// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
+#[cfg(target_arch = "wasm32")]
+fn now_ms() -> f64 {
+    #[link(wasm_import_module = "env")]
+    unsafe extern "C" { fn clock_ms() -> f64; }
+    unsafe { clock_ms() }
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn now_ms() -> f64 {
+    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
+}
+// phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
+thread_local! { static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = Default::default(); }
+fn prof(k: &'static str, v: f64) { PROF.with(|p| *p.borrow_mut().entry(k).or_insert(0.0) += v); }
+
 #[derive(Deserialize, Clone, Default)]
 pub(crate) struct Ancestor {
     pub chara: u32,
@@ -559,6 +575,7 @@ impl<'a> Env<'a> {
         self.work = 0;   // each search has its own work budget
         let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
         struct Cand { ub: f64, t: u16, a: u16, b: u16 }
+        let t_gen = now_ms();
         let mut cands: Vec<Cand> = vec![];
         let nl = p.me.len();
         assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize);
@@ -574,6 +591,7 @@ impl<'a> Env<'a> {
             } }
         }
         cands.sort_by(|x, y| y.ub.partial_cmp(&x.ub).unwrap());
+        prof("gen_ms", now_ms() - t_gen); prof("gen_cands", cands.len() as f64); prof("solves", 1.0);
         let top = top.max(1);
         let mut complete = true;
         let mut done: Vec<(f64, usize, Sel)> = vec![];
@@ -884,7 +902,7 @@ impl<'a> Env<'a> {
         let key = (self.cls[t], sel.ents.clone(), sel.filler);
         let z = vec![0.0; self.ntar];
         if let Some(r) = self.corner_memo.get(&key) { let r = (**r).clone(); self.set_trainee(t, &z); return r; }
-        let r = self.corners(t, sel, &z);
+        let tc = now_ms(); let r = self.corners(t, sel, &z); prof("corner_ms", now_ms() - tc); prof("corner_builds", 1.0);
         self.corner_memo.insert(key, std::rc::Rc::new(r.clone()));
         r
     }

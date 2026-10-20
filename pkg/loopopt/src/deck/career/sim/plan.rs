@@ -107,18 +107,6 @@ pub(in super::super) struct PlanJob {
     #[serde(default)] proxy_eff: Option<f64>,
 }
 
-/// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
-#[cfg(target_arch = "wasm32")]
-fn now_ms() -> f64 {
-    #[link(wasm_import_module = "env")]
-    unsafe extern "C" { fn clock_ms() -> f64; }
-    unsafe { clock_ms() }
-}
-#[cfg(not(target_arch = "wasm32"))]
-fn now_ms() -> f64 {
-    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
-}
 
 
 /// The loop planner's best loop for the job's settings (a deck + loop search, top 1, per-uma decks): its members as
@@ -539,6 +527,9 @@ fn with_her(v: f64, her: &[(usize, bool, f64)], c1: &[f64]) -> f64 {
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
+    let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, x, a, b, sel, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
+}
+fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, buf: &mut Vec<f64>) -> (f64, f64, Vec<f64>, Vec<(f64, f64)>, Vec<(f64, f64)>) {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let v0_after = |c1: &[f64]| if bs.combos.is_empty() { (0..n).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min) }
@@ -817,7 +808,7 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
                 for z in (0..legs.len()).filter(|&z| z != y && legal_pair(d, pool, u, y, z) && fix.iter().all(|&f| f == y || f == z)) {
                     let (qz, _, cz) = s.env.lineage(pool, u, y, z);
                     if cz <= 0.0 { continue; }
-                    let rz = rise_leaves(&sts, &ews, &x0, &xms, &qz, &uncv, &mut lp, &mut lp_tmp);
+                    let rz = rise_leaves(&sts, &ews, &x0, &xms, &qz, &uncv, &mut lp, &mut lp_tmp); prof("hi_z", 1.0);
                     let f = bs.pnow[ui] / cz;
                     for (av, rv) in anc.iter_mut().zip(&rz) { let v = f * rv; if v < *av { *av = v; } }
                 }
@@ -1354,7 +1345,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         pk = undup[pk];
         let base = ScoreBase { cands: &cands, c1: c1.clone(), m23: &zeros, v0: vnow, pnow: pnow.clone(), cont: cont.clone(), combos: combos3.clone(), sides: &sides, all: &all };
         let (x, f) = (runs[pk].0, runs[pk].1.clone());
-        Some((pk, outcome_hi(&mut s, d, &base, legs, pool, fix, sv, &ytabs[pk], x, f.a, f.b, &f.sel, &mut buf)))
+        let th = now_ms(); let r = outcome_hi(&mut s, d, &base, legs, pool, fix, sv, &ytabs[pk], x, f.a, f.b, &f.sel, &mut buf); prof("hi_ms", now_ms() - th);
+        Some((pk, r))
     } else { None };
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time
@@ -1414,5 +1406,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
            "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[cands[ui]].id, cont[ui].lam, cont[ui].phi, cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": minfo, "loop_note": mwhy, "hint": hint, "umas_scored": exact_n, "umas_searched": exact_run.iter().filter(|&&e| e).count() - n_cert, "umas_certified": n_cert, "work": work,
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "two_ms": two_ms, "total_ms": now_ms() - t_all});
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
+    out["work"]["prof"] = json!(PROF.with(|p| std::mem::take(&mut *p.borrow_mut())));
     out
 }

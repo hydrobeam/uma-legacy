@@ -26,5 +26,13 @@
 [
 "global",
 "boot_mob"
+],
+[
+"jp",
+"gm16_nu8"
+],
+[
+"global",
+"p16_88"
 ]
 ]
