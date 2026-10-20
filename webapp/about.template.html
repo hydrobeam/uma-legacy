@@ -654,13 +654,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <li><math><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs, and <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msup><mi>V</mi><mo>′</mo></msup><mo>(</mo><mi>ω</mi><mo>)</mo><mo>)</mo></math> the careers she saves.</li>
   </ul>
   <math display="block"><mtext>score</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mi>ω</mi></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mo>−</mo><mn>1</mn></math>
-  <p>That is "Saves per run": the route's careers today minus the average after running her, minus her run. For the
-  three highest scores and the best odds, a second step is added. For each of her outcomes exactly one target short of
-  n/n (stars at the rank's mix), her veteran joins the pool; every candidate's odds are lifted by her with any partner
-  and V re-taken; then the umas of the three highest-scoring careers (other characters than hers) each get their best career with
-  her veteran as a parent (her best partner by table value), scored against that pool. With <math><msup><mtext>score</mtext><mo>*</mo></msup></math> today's best score (at least 0):</p>
-  <math display="block"><mtext>second</mtext><mo>(</mo><mi>c</mi><mo>)</mo><mo>=</mo><munder><mo>∑</mo><mrow><mi>ω</mi><mo>:</mo><mtext> n−1 of n</mtext></mrow></munder><mi>P</mi><mo>(</mo><mi>ω</mi><mo>)</mo><mspace width="0.2em"/><mi>max</mi><mrow><mo>(</mo><mn>0</mn><mo>,</mo><munder><mo>max</mo><mi>b</mi></munder><msub><mtext>score</mtext><mi>ω</mi></msub><mo>(</mo><mi>b</mi><mo>)</mo><mo>−</mo><msup><mtext>score</mtext><mo>*</mo></msup><mo>)</mo></mrow></math>
-  <p>The pick is the highest score plus second step; within 0.25 careers (or 5%) of it, the better own odds. With fewer
+  <p>That is "Saves per run": the route's careers today minus the average after running her, minus her run. It is the
+  planner's own estimate going down, a yardstick for comparing careers, not a forecast of careers saved.</p>
+  <p>The pick is the highest score; within 0.25 careers (or 5%) of it, the better own odds. With fewer
   than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
   <p>Each uma is scored on her best career by odds and, when its parents are not both n/n, also on her best career with
   two of your n/n veterans as parents (searched exactly), listed beside it: only there can her own n/n be the goal. The
@@ -747,7 +743,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>C11. What is reported.</strong> The best careers by odds with their decks, targets, aptitudes and
   schedule; the plan: <math><mi>V</mi></math>, its route (each step's odds, builds and careers), the options with each career's role
-  (in the route, its finisher, a candidate, a builder), score, lift chance and second step, and the pick's per-outcome
+  (in the route, its finisher, a candidate, a builder), score and lift chance, whether its search was proven, and the pick's per-outcome
   table with its bound. The planner's numbers depend on the job alone: its cache holds only each search's best decks,
   not whatever a search happened to check, so earlier jobs, the order of work and kept results change how long it
   takes, never what it says. Kept results survive a reload (stored in the browser, keyed by the solver's and data's
