@@ -126,6 +126,8 @@ after any change to how builders' careers are built.
 
 | Item | Result | Why not |
 |---|---|---|
+| A skip-ahead or another memo for `Cont::plan` | memo variants within noise | `Cont::plan` is 1-2% of a plan; on the large exports its scan stops at n <= 1 (at most 19 on val/plan) |
+| Dominance in the deck search's band pass | not invisible | removing decks changes the band's size, the cap ladder and which decks are scored exactly |
 | A Pareto filter on `outcome_hi`'s anchors (about 30% survive) | not needed | the branch and bound's root test drops about 98% of anchors at about 0.3 us each |
 | A fused depth-first ceiling pass in `outcome_hi` | slower | the vectorised `leaf_products` is memory-bound but faster |
 | Partner pruning by ceiling in `score_career`'s setups | not exact | `val` can run a fill-mode deck search that adds to the cache; setups cost 48-80 ms |
