@@ -234,14 +234,16 @@ impl<'a> Sources<'a> {
     /// pool), so the draws that hint one target cannot also hint another. Each target's own chance is unchanged.
     pub(super) fn train_group(&self, c: &Card, tr: &[(usize, f64)]) -> Group {
         let (m, n, h) = (tr.len(), c.nskill as usize, self.draws(c));
-        let miss = |unhit: usize| hint_miss(unhit, n, h, c.hinc);   // P(none of `unhit` given targets hinted)
+        // Only the number of unhinted targets matters. Reuse these probabilities without changing the
+        // inclusion-exclusion summation order (and therefore its floating-point rounding).
+        let miss: Vec<f64> = (0..=m).map(|unhit| hint_miss(unhit, n, h, c.hinc)).collect();
         let mut g: Group = vec![];
         for sm in 1u32..(1 << m) {
             let mut w = 0.0f64; let ssz = sm.count_ones() as i32;
             let mut u = sm;
             loop {                                                    // every subset U of S (including the empty set)
                 let usz = u.count_ones() as i32;
-                w += if (ssz - usz) % 2 == 0 { 1.0 } else { -1.0 } * miss(m - usz as usize);
+                w += if (ssz - usz) % 2 == 0 { 1.0 } else { -1.0 } * miss[m - usz as usize];
                 if u == 0 { break; }
                 u = (u - 1) & sm;
             }
