@@ -675,6 +675,15 @@ pub(super) fn deck_entries<'a>(
     unc: &[u32],
     pool_ids: &[u32],
 ) -> Result<Entries<'a>, Value> {
+    // the packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`; `MAX_KINDS` and the locks below), refused before any table
+    if !(1..=MAX_DECK).contains(&dj.deck_size) {
+        return Err(json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", dj.deck_size)}));
+    }
+    if unc.len() > MAX_UNCERTAIN {
+        return Err(
+            json!({"error": format!("At most {MAX_UNCERTAIN} targets can be left to the deck, not {}.", unc.len())}),
+        );
+    }
     let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
     // a card the scenario bans can't be in the deck, owned, borrowed or locked
     let banned: &[u32] = cr.restrict.get(&dj.scenario).map_or(&[], |v| v.as_slice());
@@ -791,5 +800,16 @@ pub(super) fn deck_entries<'a>(
     let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
     locked.sort();
     locked.dedup();
+    if locked.len() > dj.deck_size {
+        return Err(
+            json!({"error": format!("{} locked cards don't fit in a deck of {}.", locked.len(), dj.deck_size)}),
+        );
+    }
+    let nk = kinds_all(&kind).len();
+    if nk > MAX_KINDS {
+        return Err(
+            json!({"error": format!("The cards' chains come in {nk} kinds (lengths, early ends, stop risks); the search takes at most {MAX_KINDS}.")}),
+        );
+    }
     Ok(Entries { cards, rel, kind, endk, vark, srcs, plain_ids, plain_names, plain_chars, locked })
 }

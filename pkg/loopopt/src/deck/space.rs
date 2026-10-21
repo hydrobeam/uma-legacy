@@ -401,6 +401,28 @@ impl<'a> DeckSpace<'a> {
     }
 }
 
+// ---------- what the packed search can represent (checked once, where a job's entries are built: `deck_entries`) ----------
+/// Most cards in a deck: a key code counts each chain kind's cards as one base-7 digit (`DeckSpace::search`,
+/// `key_miss`), so at most six of a kind. The page's decks hold six.
+pub(super) const MAX_DECK: usize = 6;
+/// Most chain kinds (the fillers' (2, 2) included, `kinds_all`): a key code's largest value, six cards of the last kind,
+/// must fit a u64 (it would up to 22), and the count vectors over the kinds (`counts_all`, C(16 + 6, 6) = 74613 of them
+/// here) stay a few MB. The exports give at most eight.
+pub(super) const MAX_KINDS: usize = 16;
+/// Most uncertain targets: a deck entry's touched targets are the bits of a u32 (`key_miss`, `run_deck`).
+pub(super) const MAX_UNCERTAIN: usize = 32;
+// (locked cards are the bits of a u8, `lock_bits` and `LegalTabs::glk`: no more than MAX_DECK are accepted)
+const _: () = assert!(6 * 7u128.pow(MAX_KINDS as u32 - 1) <= u64::MAX as u128 && MAX_DECK < 7 && MAX_DECK <= 8);
+/// Every chain kind of the entries `kind` (pals, kind (0, 0, 0), have none) plus the fillers' (2, 2), sorted: the digits
+/// of a key code
+pub(super) fn kinds_all(kind: &[Kind]) -> Vec<Kind> {
+    let mut kinds: Vec<Kind> = kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
+    kinds.push((2, 2, 0));
+    kinds.sort();
+    kinds.dedup();
+    kinds
+}
+
 pub(super) fn deck_space<'a>(
     cr: &'a CardsRaw,
     dj: &'a DeckJob,
@@ -410,10 +432,7 @@ pub(super) fn deck_space<'a>(
 ) -> DeckSpace<'a> {
     let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
-    let mut kinds_all: Vec<Kind> = e.kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
-    kinds_all.push((2, 2, 0));
-    kinds_all.sort();
-    kinds_all.dedup();
+    let kinds_all = kinds_all(&e.kind);
     DeckSpace {
         dj,
         unc: unc.to_vec(),

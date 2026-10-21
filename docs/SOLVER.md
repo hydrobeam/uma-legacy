@@ -136,7 +136,8 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 |---|---|---|
 | `owned_cards` | card ids you own (empty = all) | `[]` |
 | `borrow` | allow one card you don't own (friend card); the search uses it only when it makes the deck better (the pages always send `true`) | `false` |
-| `exclude_cards` / `lock_cards` | cards never / always used | `[]` |
+| `exclude_cards` / `lock_cards` | cards never / always used; more locked cards than `deck_size` is refused | `[]` |
+| `deck_size` | cards per deck, 1 to 6 (the search counts each chain kind's cards as a base-7 digit) | 6 |
 | `top_decks` | distinct decks returned, each with its best loop (with `per_uma`: loops returned) | 1 |
 | `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all the lineages she heads (three in a loop, one in a rotation) | `false` |
 | `pals` | only decks with exactly this many pals | any |
