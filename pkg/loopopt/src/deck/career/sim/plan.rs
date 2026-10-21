@@ -3976,7 +3976,9 @@ struct PlanProfile {
 /// Pass 1's rows (`RowOrigin::Base`), and each one's G1 wins, read when fitting a continuation.
 struct BaseRows {
     runs: Vec<PlanRow>,
-    wtab: Vec<Vec<usize>>,
+    /// per uma, the G1 races her latest row's career wins with a chance above 0.5 (`set_plan_wins`): the continuation
+    /// fit's shared-win input
+    wins_by_uma: Vec<Vec<usize>>,
 }
 
 /// Pass 2's completed fit, used by the optional proxy check and output assembly.
@@ -4023,12 +4025,12 @@ pub(in super::super) fn index_rule<'data>(
     let _memo_report = MemoReport;
     // (the phases' scratch for deck values)
     let mut buf = vec![];
-    let (mut s, candidates, mut searches, mut profile, cache0) =
+    let PlanSetup { sim: mut s, candidates, mut searches, mut profile, cache0 } =
         match setup_plan_candidates(env, &input, t_all, gp, &mut buf) {
             Ok(prepared) => prepared,
             Err(error) => return error,
         };
-    let BaseRows { mut runs, mut wtab } =
+    let BaseRows { mut runs, mut wins_by_uma } =
         score_and_admit_proxies(&mut s, &input, &candidates, &mut searches, &mut profile, &mut buf);
     let looped = add_looped_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
     runs.extend(looped);
@@ -4040,12 +4042,22 @@ pub(in super::super) fn index_rule<'data>(
         &candidates,
         &mut searches,
         &mut runs,
-        &mut wtab,
+        &mut wins_by_uma,
         &mut profile,
         &mut buf,
     );
     let proxy_check = check_plan_proxies(&mut s, &input, &candidates, &searches.best, &runs, &scores, cache0, &mut buf);
     assemble_plan_output(s, &input, &candidates, searches, runs, &scores, &profile, proxy_check, &mut buf)
+}
+
+/// What setup hands the phases: the simulator, the fixed candidates, the search history, the profile, and (with
+/// `proxy_check`) the cache as it was before any builder's search, for the proxy check only
+struct PlanSetup<'env, 'data> {
+    sim: Sim<'env, 'data>,
+    candidates: PlanCandidates,
+    searches: PlanSearches,
+    profile: PlanProfile,
+    cache0: Option<super::Cache>,
 }
 
 fn setup_plan_candidates<'env, 'data>(
@@ -4054,7 +4066,7 @@ fn setup_plan_candidates<'env, 'data>(
     t_all: f64,
     gp: Found,
     buf: &mut Vec<f64>,
-) -> Result<(Sim<'env, 'data>, PlanCandidates, PlanSearches, PlanProfile, Option<super::Cache>), Value> {
+) -> Result<PlanSetup<'env, 'data>, Value> {
     let PlanInputs { d, sk, cr, job, legs, pool, sv, fix, trainees, pj, .. } = *input;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
@@ -4213,7 +4225,7 @@ fn setup_plan_candidates<'env, 'data>(
     };
     let searches = PlanSearches { best, urefs, unp, lunp, nunp, lbest: vec![], same, prev, budget0 };
     let profile = PlanProfile { t_all, t3, loop_ms, search_ms, nodes0, joints0, n_cert: 0, exact_n: 0, sur_diff };
-    Ok((s, candidates, searches, profile, cache0))
+    Ok(PlanSetup { sim: s, candidates, searches, profile, cache0 })
 }
 
 fn score_and_admit_proxies(
@@ -4228,7 +4240,7 @@ fn score_and_admit_proxies(
     let n = candidates.trainees.len();
     let nl = legs.len();
     let mut runs: Vec<PlanRow> = vec![];
-    let mut wtab: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
+    let mut wins_by_uma: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
     let wins: Vec<(usize, Sel)> = sv
         .found
         .iter()
@@ -4357,10 +4369,10 @@ fn score_and_admit_proxies(
             profile.search_ms += now_ms() - ts;
         }
         for r in &runs {
-            set_plan_wins(s, input, &mut wtab, r.trainee, &r.career);
+            set_plan_wins(s, input, &mut wins_by_uma, r.trainee, &r.career);
         }
     }
-    BaseRows { runs, wtab }
+    BaseRows { runs, wins_by_uma }
 }
 
 /// The looped rows (below) of `runs`' base rows, in their order.
@@ -4528,7 +4540,7 @@ fn score_and_promote_rows(
     candidates: &PlanCandidates,
     searches: &mut PlanSearches,
     runs: &mut Vec<PlanRow>,
-    wtab: &mut [Vec<usize>],
+    wins_by_uma: &mut [Vec<usize>],
     profile: &mut PlanProfile,
     buf: &mut Vec<f64>,
 ) -> PlanScores {
@@ -4539,7 +4551,7 @@ fn score_and_promote_rows(
     let vis = |f: &Found| input.shown(f);
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
-    let mut cont = plan_continuations(s, input, candidates, runs, wtab, buf);
+    let mut cont = plan_continuations(s, input, candidates, runs, wins_by_uma, buf);
     // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
     let mut c1: Vec<f64> = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
     // the trios: A and B two candidates (unordered), C the best allowed uma with an 8/8 of A and one of B as parents. Each
@@ -4627,7 +4639,7 @@ fn score_and_promote_rows(
                     )
                 };
                 if let Some((f, st)) = r {
-                    set_plan_wins(s, input, wtab, x, &f);
+                    set_plan_wins(s, input, wins_by_uma, x, &f);
                     runs[i].career = f;
                     runs[i].lift_stats = st;
                 }
@@ -4640,7 +4652,7 @@ fn score_and_promote_rows(
                 }
             }
             profile.search_ms += now_ms() - ts;
-            let cont2 = plan_continuations(s, input, candidates, runs, wtab, buf);
+            let cont2 = plan_continuations(s, input, candidates, runs, wins_by_uma, buf);
             let same_fit = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
             if same_fit {
                 for (k, &i) in add.iter().enumerate() {
@@ -5098,11 +5110,11 @@ fn exact_plan_career(
     Some((f, st))
 }
 
-fn set_plan_wins(s: &mut Sim, input: &PlanInputs, wtab: &mut [Vec<usize>], x: usize, f: &Found) {
+fn set_plan_wins(s: &mut Sim, input: &PlanInputs, wins_by_uma: &mut [Vec<usize>], x: usize, f: &Found) {
     let PlanInputs { pool, .. } = *input;
 
     let w = s.wins(pool, x, f.a, f.b);
-    wtab[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect();
+    wins_by_uma[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect();
 }
 
 fn exact_no_borrow_career(
@@ -5134,13 +5146,13 @@ fn plan_continuations(
     input: &PlanInputs,
     candidates: &PlanCandidates,
     runs: &[PlanRow],
-    wtab: &[Vec<usize>],
+    wins_by_uma: &[Vec<usize>],
     buf: &mut Vec<f64>,
 ) -> Vec<Cont> {
     let PlanInputs { d, pool, pj, .. } = *input;
     let n = candidates.trainees.len();
 
-    let wt = |x: usize| wtab[x].clone();
+    let wt = |x: usize| wins_by_uma[x].clone();
     let mut cont = vec![Cont::default(); n];
     for ui in 0..n {
         if candidates.pnow[ui] <= 0.0 || runs.is_empty() {
