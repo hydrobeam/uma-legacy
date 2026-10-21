@@ -1677,10 +1677,10 @@ const TESTS = {
     const pressed = () => pg.$$eval('#bp button', bs => bs.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.v).join());
     const saved = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:settings')).common.borrowPar);
     check('career: Borrowed parent starts at Allowed, its job without borrowed_parent, and the planner\'s careers may borrow (the premise)', await pressed() === 'allow'
-      && !('borrowed_parent' in a.job) && withBor(a) > 0 && /limited per day/.test(await pg.textContent('#bp-hint')), `${await pressed()} ${a.job.borrowed_parent} ${withBor(a)}`);
+      && !('borrowed_parent' in a.job) && withBor(a) > 0, `${await pressed()} ${a.job.borrowed_parent} ${withBor(a)}`);
     await pg.click('#bp button[data-v="later"]'); await done(); await planned();
     const l = await lastPlan();
-    check('career: Not this career sends borrowed_parent "later", is saved, and no career the planner offers has a borrowed parent', l.job.borrowed_parent === 'later'
+    check('career: None left today sends borrowed_parent "later", is saved, and no career the planner offers has a borrowed parent', l.job.borrowed_parent === 'later'
       && await pressed() === 'later' && await saved() === 'later' && withBor(l) === 0 && l.r.next.options.length > 0, `${l.job.borrowed_parent} ${await saved()} ${withBor(l)}`);
     await pg.click('#bp button[data-v="never"]'); await done(); await planned();
     const n = await lastPlan();

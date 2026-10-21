@@ -50,8 +50,8 @@ Picks the next career from the veterans you have, aiming at a *fully looped pare
 
 **Borrowed parent** (in Career setup, saved with the other settings): you can borrow only a few veterans a day.
 *Allowed* (the default) lets a career use one borrowed parent, and the plan counts on borrowing in the careers after it
-too. *Not this career* picks a career on two of your own veterans and still plans the later careers with a borrow,
-since borrows come back each day. *Never* leaves borrowed veterans out, now and in the plan. A borrowed veteran you set
+too. *None left today* (for when today's borrows are used up) picks a career on two of your own veterans and still plans
+the later careers with a borrow, since borrows come back each day. *Never* leaves borrowed veterans out, now and in the plan. A borrowed veteran you set
 as a parent by hand is then refused with a message (choose one of yours, or allow a borrowed parent), and the parent
 picker greys borrowed veterans out.
 

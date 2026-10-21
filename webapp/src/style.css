@@ -1372,9 +1372,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .setlist .glab, .game .setlist .gctl > span:first-child { align-self: stretch; justify-self: stretch; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; background: var(--gm-tile);
   color: var(--gm-tile-ink); font-weight: 700; line-height: 1.2; }
 .game .setlist .scenbtn { min-height: 44px; padding-block: 2px; }
-/* the career page's borrowed-parent choice: its hint a line under the label and the choices, across the tile (sized by
-   the tile, never widening the list); on phones the three choices share the tile's width under the label */
-.game .setlist .bpctl > .hint { grid-column: 1 / -1; justify-self: stretch; padding: 0 6px 2px; line-height: 1.3; contain: inline-size; }
+/* the career page's borrowed-parent choice: on phones the three choices share the tile's width under the label */
 @media (max-width: 520px) {
   .game .setlist .bpctl > .glab { grid-column: 1 / -1; justify-self: start; }
   .game .setlist .bpctl > .seg { grid-column: 1 / -1; justify-self: stretch; display: grid; grid-template-columns: repeat(3, auto); }
@@ -1769,9 +1767,8 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .rbbar.folded { display: flex; align-items: center; gap: 14px; padding-bottom: 0; }
 .rb .rbbar.folded > :not(.sethdr):not(.setsum) { display: none; }
 .rb .setsum { color: var(--gm-ink2); font-weight: 700; font-size: 0.86rem; }
-/* the Enhance block spreads down the panel's height like the settings beside it: Umas and Support cards at the top,
-   Veteran Umamusume at the foot, the gap between them growing with Target skills */
-.rb .setenh { align-self: stretch; align-content: space-between; padding-bottom: 6px; }
+/* the Enhance block keeps its three buttons together at the top, however tall the settings beside it grow */
+.rb .setenh { align-self: start; align-content: start; padding-bottom: 6px; }
 /* the folded summary: each setting's label light and small, its value bold, spaced apart (no boxes) */
 .rb .setsum:not([hidden]) { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 22px; }
 .rb .setsum .sumk { margin-right: 6px; font-size: 0.74rem; font-weight: 500; color: var(--gm-ink2); }

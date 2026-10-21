@@ -108,7 +108,7 @@ const idxOf = (id) => vets.findIndex(v => v.id === id);
 class Blocked extends Error { constructor(kind, text, act) { super(text); this.kind = kind; this.act = act; } }
 // the borrowed-parent choice (Career setup): 'allow' (one per career, now and later), 'later' (none in this career; the
 // plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the job as before)
-const BP = { allow: 'Allowed', later: 'Not this career', never: 'Never' };
+const BP = { allow: 'Allowed', later: 'None left today', never: 'Never' };
 const bpOf = () => (Object.hasOwn(BP, state.borrowPar) ? state.borrowPar : 'allow');
 function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
@@ -811,7 +811,7 @@ function simulationBody() {
   if (busy) { const p = el('p', 'runnote'); p.innerHTML = runnerHTML() + '<span>Comparing…</span>'; result.appendChild(p); }
   else if (simulation.error) result.appendChild(el('p', 'note', simulation.error));
   else if (simulation.r) {
-    if (simulation.stale) result.appendChild(el('p', 'note', 'You changed her since: press Compare again.'));
+    if (simulation.stale) result.appendChild(el('p', 'note', 'These figures are for her result before your last edit. Compare to update them.'));
     const before = simulation.baseline, n = state.targets.length, [v0b, v0a] = simulation.v0 || [null, null];
     const next = simulation.r.results[0];
     const saves = v0b != null && v0a != null ? v0b - v0a : null;
