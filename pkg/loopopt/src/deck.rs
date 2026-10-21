@@ -194,6 +194,7 @@ const fn d_rar() -> u8 {
     2
 } // SR: R cards have no chain events, so this only filters chain cards
 
+mod capfree;
 mod caps;
 mod chains;
 mod enumerate;
@@ -214,6 +215,7 @@ pub(crate) use self::sources::apply_events_db;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use self::sources::{EventLists, apply_event_lists, event_lists};
 use self::{
+    capfree::{CapFreeRatios, StateBound},
     caps::{
         AUDIT_CAP, EXACT_BUDGET, EXACT_CAP, EXACT_CAPS, EXACT_RHO, EXACT_STEPS, cap_class, cv_mask, src_class,
         test_caps,
