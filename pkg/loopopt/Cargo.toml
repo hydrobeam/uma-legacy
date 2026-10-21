@@ -15,3 +15,16 @@ serde_json = "1"
 opt-level = 3
 lto = true
 codegen-units = 1
+
+# Clippy's default groups apply (no pedantic); `./build.sh lint` denies every warning. Allowed here, crate-wide:
+[lints.clippy]
+# the search kernels pass their state explicitly instead of bundling it into structs built per call
+too_many_arguments = "allow"
+# the job and table formats are nested tuples and vectors that mirror the JSON and the maths
+type_complexity = "allow"
+# index loops mirror the maths (several arrays indexed together); iterator rewrites of hot loops are speed work
+needless_range_loop = "allow"
+# `!(x > 0.0)` is deliberate: it also catches NaN, which `x <= 0.0` would let through
+neg_cmp_op_on_partial_ord = "allow"
+# chunks_exact in the hot loops is tuned; moving to as_chunks is speed work (docs/PERF.md), not a lint fix
+chunks_exact_to_as_chunks = "allow"

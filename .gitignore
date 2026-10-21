@@ -1,6 +1,8 @@
 # whitelist: only the project is tracked; scratch experiments, binaries and downloads stay out
 /*
 !/.gitignore
+!/.git-blame-ignore-revs
+!/.githooks/
 !/build.sh
 !/README.md
 !/AGENTS.md
@@ -20,6 +22,7 @@
 !/pkg/loopopt/data/
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
+!/pkg/loopopt/rustfmt.toml
 !/webapp/
 /webapp/*
 !/webapp/build.py

@@ -26,18 +26,15 @@ impl Cache {
     }
 
     pub(super) fn new(trainees: usize) -> Cache {
-        Cache {
-            decks: (0..trainees).map(|_| vec![]).collect(),
-            refs: vec![vec![]; trainees],
-            tables: 0,
-        }
+        Cache { decks: (0..trainees).map(|_| vec![]).collect(), refs: vec![vec![]; trainees], tables: 0 }
     }
 
     /// Cache a trainee's deck and corner tables, unless that selection is already present.
     pub(super) fn add(&mut self, env: &mut Env, trainee: usize, sel: &Sel) {
-        if self.decks[trainee].iter().any(|deck| {
-            deck.sel.ents == sel.ents && deck.sel.plain == sel.plain && deck.sel.filler == sel.filler
-        }) {
+        if self.decks[trainee]
+            .iter()
+            .any(|deck| deck.sel.ents == sel.ents && deck.sel.plain == sel.plain && deck.sel.filler == sel.filler)
+        {
             return;
         }
         let tab = env.corners_kept(trainee, sel);

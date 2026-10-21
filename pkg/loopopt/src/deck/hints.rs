@@ -37,9 +37,15 @@ pub(crate) fn hint_spec(scenario: &str) -> f64 {
 /// uniform over the skills still below Lv 5; a skill leaves the pool after `cap` draws (ceil(5 / hint levels per
 /// draw)), so a +5 card never draws a skill twice. Exact over how many draws each other skill has taken.
 pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
-    if k == 0 { return 1.0; }
-    if k >= n { return if t == 0 { 1.0 } else { 0.0 }; }
-    if t <= cap { return (1.0 - k as f64 / n as f64).powi(t as i32); }   // no skill can leave the pool before the last draw
+    if k == 0 {
+        return 1.0;
+    }
+    if k >= n {
+        return if t == 0 { 1.0 } else { 0.0 };
+    }
+    if t <= cap {
+        return (1.0 - k as f64 / n as f64).powi(t as i32);
+    } // no skill can leave the pool before the last draw
     // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool); a sorted map, so
     // sums run in one order (a std HashMap's order changes from run to run, and so did the last bits of every result)
     let mut states: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
@@ -49,9 +55,11 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
     for _ in 0..t {
         let mut next_states: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
         for (counts, probability) in &states {
-            let available = (n - k - counts[cap] as usize + k) as f64;   // k > 0: never empty
+            let available = (n - k - counts[cap] as usize + k) as f64; // k > 0: never empty
             for draws_taken in 0..cap {
-                if counts[draws_taken] == 0 { continue; }
+                if counts[draws_taken] == 0 {
+                    continue;
+                }
                 let mut next_counts = counts.clone();
                 next_counts[draws_taken] -= 1;
                 next_counts[draws_taken + 1] += 1;
@@ -65,7 +73,7 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
 /// `miss_draws` at a fractional draw count h: IT gives a near-fixed whole number of draws per setup, so h is read as
 /// floor(h) or floor(h) + 1 draws with the fractional part as the weight of the second.
 pub(crate) fn hint_miss(k: usize, n: usize, h: f64, hinc: u32) -> f64 {
-    let cap = (5 + hinc.max(1) as usize - 1) / hinc.max(1) as usize;
+    let cap = 5_usize.div_ceil(hinc.max(1) as usize);
     let whole_draws = h.max(0.0).floor();
     let fraction = h - whole_draws;
     let whole_draws = whole_draws as usize;
