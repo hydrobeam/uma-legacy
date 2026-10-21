@@ -217,9 +217,16 @@ passing the tools does not establish that a reader can understand the code. Keep
   can be appropriate in a hot loop; explain their indexing invariant rather than wrapping them just for appearance.
 - **Functions:** give each function one coherent operation or phase. A long workflow should show its phases in order,
   with inputs and results explicit. Extract around meaningful boundaries, not an arbitrary line limit.
-- **Dependencies:** borrow only the state a helper needs, and make read-only inputs immutable. Group parameters when
-  they describe one concept; avoid a large context object whose unrelated fields obscure what a function can change.
-  Prefer an existing domain record over another overlapping bundle of references.
+- **Dependencies:** values that travel together through several functions are one value: a trainee and her parents
+  are one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one
+  context struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may
+  change separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy`
+  options (as in a parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site,
+  and prefer an existing domain record over another overlapping bundle. More than five or six parameters, or a
+  struct unpacked into a dozen short locals on entry, means the concept has not been named yet.
+- **Files:** one module per concept: a reader should find a phase by its file name. A file past about 1500 lines
+  holds several concepts and splits into a module directory; moving code between files changes no behaviour, so
+  splits land as pure moves, apart from visibility, before anything is renamed.
 - **Control flow:** keep the main path easy to follow; use guards for cases with nothing to do. Use iterators where
   they clarify the operation and index loops where indices, visit order or appending to the traversed vector matter.
   Do not add allocation, copying or repeated work merely to make an expression shorter.
