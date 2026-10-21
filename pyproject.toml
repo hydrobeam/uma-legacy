@@ -18,3 +18,16 @@ research = [
     "numpy>=2.5.3",
     "scipy>=1.18.1",
 ]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["game"]
+
+[tool.ruff.lint]
+# pyflakes, syntax errors, bugbear, simplifications, comprehensions, pyupgrade, ruff's own
+select = ["F", "E9", "B", "SIM", "C4", "UP", "RUF"]
+ignore = [
+  "B905",                        # zip(strict=...) would change behaviour where lengths differ on purpose
+  "SIM115",                      # json.load(open(p)) in a script reads better than a with-block; nothing leaks that matters
+  "RUF001", "RUF002", "RUF003",  # ×, ≤, − and the like are deliberate in strings, docstrings and comments
+]

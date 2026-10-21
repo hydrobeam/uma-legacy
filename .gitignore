@@ -46,6 +46,7 @@
 !/webapp/chibi/
 !/webapp/package.json
 !/webapp/package-lock.json
+!/webapp/biome.json
 !/val/
 /val/*
 !/val/runval.py
