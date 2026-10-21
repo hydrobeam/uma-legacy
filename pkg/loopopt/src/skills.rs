@@ -201,10 +201,14 @@ impl<'a> Model<'a> {
         out
     }
     /// Upper bound on the inheritance chance q of every lineage whose trainee is `t`, with parents and the fourth
-    /// member drawn from `pool` and race overlaps bounded by `pb`. Same arithmetic, in the same order, as
-    /// `lineage_q_arr` with o = pb, except that the grandparent slot the fourth member fills takes its best value
-    /// over every possible fourth member. q rises with every affinity, so this is >= every such q. With `rot` the
-    /// X slot may also be the trainee's own character (a three-member rotation: tri(T, P, T) + 3·o(P, T), the trio 0).
+    /// member drawn from `pool` and race overlaps bounded by `pb`. `lineage_q_arr`'s slots with o = pb, except that the
+    /// fourth member X's terms take their best value over every possible fourth member, xm = max_X (tri(T, P, X) +
+    /// 3 pb(P, X)), in both slots that read them. q rises with every affinity, so this is >= every such q in exact
+    /// arithmetic. Not in the same order: a parent slot's affinity here is S + xm (S the terms before X's), where the
+    /// lineage adds (S + tri) + 3 o, so the two can round apart by an ulp, and this can sit that much below a lineage's
+    /// q. Harmless where it is read (`multi.rs`: the q grid's top and each uma's ceiling cell), as the tests against
+    /// those ceilings carry relative slacks of 1e-12 or more. With `rot` the X slot may also be the trainee's own
+    /// character (a three-member rotation: tri(T, P, T) + 3·o(P, T), the trio 0).
     pub(crate) fn q_ub_trainee(&self, t: usize, pool: &[usize], pb: &[Vec<f64>], rot: bool) -> f64 {
         let d = self.d;
         let others: Vec<usize> = pool.iter().copied().filter(|&u| u != t).collect();

@@ -199,24 +199,20 @@ const IDX_PARTNERS: usize = 2;
 /// legal parents a, b for trainee u (`Pool::pair_ok`)
 fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bool { p.pair_ok(d.umas[u].id, a, b) }
 /// Whether builder x's career f (her deck class's proxy) is provably her best, without a career search: over every legal
-/// pair the bounds `solve` would prune with (the ceiling; each fully checked deck of her class through `rise`, exact for
-/// the class; each product proof of her class through `rise` and the cap) stay at or below f's value, so no deck and pair
+/// pair one of the bounds `solve` prunes with (`Env::ceiling_out`; `refs_out` over the fully checked decks of her class,
+/// exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no deck and pair
 /// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
 /// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
 fn certified(env: &mut Env, pool: &Pool, fix: &[usize], x: usize, f: &Found) -> bool {
     let ct = env.cls[x];
-    let bar = f.val * (1.0 + 1e-9);
-    // per pair: the lowest of the bounds above the bar, as none of them at or below it (each bound is computed alone, so
-    // stopping at the first that proves changes no number, nor does the order the pairs are taken in); f64::min passes
-    // over a NaN, so a NaN bound proves nothing and the pair fails only when some bound is a number (`num`)
+    // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
     let pairs = env.gen_cands(pool, fix, &[x], |_, _| true, |ub, _, _, a, b| (ub, a, b));
-    'pairs: for (ub, a, b) in pairs {
-        if ub <= bar { continue; }
+    for (ub, a, b) in pairs {
+        let bar = Bar::AtMost(f.val);
+        if Env::ceiling_out(ub, bar) { continue; }
         let (q, _, c) = env.lineage(pool, x, a, b);
-        let mut num = !ub.is_nan();
-        for r in &env.seen[ct] { let v = env.ref_bound(x, &q, c, r); if v <= bar { continue 'pairs; } num |= !v.is_nan(); }
-        for (rq, sv) in &env.ruled[ct] { let v = env.ruled_bound(x, &q, c, rq, *sv); if v <= bar { continue 'pairs; } num |= !v.is_nan(); }
-        if num { return false; }
+        if env.refs_out(x, &q, c, env.seen[ct].iter(), bar) || env.ruled_out(x, &q, c, &env.ruled[ct], bar) { continue; }
+        return false;
     }
     true
 }
@@ -1903,6 +1899,9 @@ fn roll_answer(s: &mut Sim, d: &Data, legs: &[Legacy], pool: &Pool, fix: &[usize
     let y = sc_roll(&bs, &k.sd, leaf, fm);
     let hi = (y < 0.5).then(|| outcome_hi(s, d, &bs, legs, pool, fix, &k.anc, &[(leaf << fixed_t.len() | fm, y)], &k.her_hi, k.x, k.a, k.b, &k.sel, &mut ac)[0]);
     drop(bs); k.hi_anc = ac;
+    // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
+    // that drifted under the estimate; the max stays for the page)
+    debug_assert!(hi.map_or(true, |h| h >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
     json!({"y": (y * 100.0).round() / 100.0, "y_hi": hi.map(|h| (h.max(y) * 100.0).ceil() / 100.0)})
 }
 /// the kept roll states for the page to store (`state_out`), every float as its bits
@@ -2010,8 +2009,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let all: Vec<usize> = trainees.iter().copied().filter(|&u| env.dmax[u].is_some()).collect();
     let t1 = now_ms();
     let budget0 = env.budget;
-    // (the cap set here is left set past these searches, until the first `capped` call puts the budget back: the deck
-    // searches in between, the surrogate's and the scorings', run under it too)
+    // (the candidates' career searches below under the cap, as `capped` sets it: the Sim it takes is made after them)
     if pj.search_work > 0 { env.budget = pj.search_work; env.hard = pj.search_work; }
     env.use_seen = true;
     // best careers, searched on demand (stage-1 candidates now, builders when scored exactly)
@@ -2028,6 +2026,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // (and her nb row's, under "later")
     let mut nunp: Vec<bool> = vec![false; d.umas.len()];
     if pj.sur != 1 { for &u in &cands { if best[u].is_none() { let (f, r, ok) = best_of(env, pool, fix, u, same.as_ref(), prev.as_ref(), nl); urefs[u] = r; best[u] = Some(f); unp[u] = !ok; } } }
+    env.hard = 0; env.budget = budget0;
     let mut search_ms = now_ms() - t1;
     let mut s = match sim_for(env, d, sk, cr, job, pj) { Ok(s) => s, Err(e) => return e };
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact

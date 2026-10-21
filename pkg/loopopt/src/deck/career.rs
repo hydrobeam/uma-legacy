@@ -182,6 +182,18 @@ fn pink_p(st: u8, fa: f64) -> f64 { (PINK_RATE[st as usize] * fa).min(1.0) }
 fn rise_factor(st: u8, ew: f64, q: f64, q0: f64) -> f64 {
     if st > 0 || q <= q0 { 1.0 } else { (1.0 - (1.0 - ew) * (1.0 - q)) / (1.0 - (1.0 - ew) * (1.0 - q0)) }
 }
+/// How a bound proves a career out (`Env::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune, the bound
+/// below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves it); or
+/// `AtMost(v)`, `certified`'s, the bound at most v up to rounding, b <= v (1 + 1e-12): the career can't beat v, and a
+/// tie proves value equality, all a certificate claims. The 1e-12 is rounding only: v is a proxy's value through its
+/// deck's corner table and the bound the same deck's exact value, the same number computed two ways (boot_mob: 48
+/// proxies one ulp below their class's proof). Before 2026-10-21 the allowance was 1e-9, looser than any rounding
+#[derive(Clone, Copy)]
+enum Bar { Below(f64), AtMost(f64) }
+impl Bar {
+    #[inline(always)]
+    fn out(self, b: f64, s: f64) -> bool { match self { Bar::Below(th) => b * (1.0 + s) < th, Bar::AtMost(v) => b <= v * (1.0 + 1e-12) } }
+}
 /// A slot's affinity part summed as every copy sums it: x0, then each part in order
 #[inline(always)]
 fn part_sum(x0: f64, parts: impl IntoIterator<Item = f64>) -> f64 { parts.into_iter().fold(x0, |s, v| s + v) }
@@ -573,11 +585,12 @@ impl<'a> Env<'a> {
         p.me.push(me); p.gp.push(gp); p.borrowed.push(l.borrowed);
     }
     fn pool_pop(&self, p: &mut Pool) { p.me.pop(); p.gp.pop(); p.borrowed.pop(); p.gpc.pop(); }
+    /// the solver's pool of `legs`: each one's entry as `pool_push` builds it (the one construction, the simulator's too)
     fn pool(&self, legs: &[Legacy]) -> Pool {
-        let me: Vec<Who> = legs.iter().map(|l| self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix)).collect();
-        let gp: Vec<Vec<Who>> = legs.iter().map(|l| l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect()).collect();
-        let gpc = me.iter().zip(&gp).map(|(m, g)| g.iter().map(|g| 3.0 * shared(m, g)).collect()).collect();
-        Pool { me, gp, borrowed: legs.iter().map(|l| l.borrowed).collect(), gpc, max_bor: self.max_bor }
+        let n = legs.len();
+        let mut p = Pool { me: Vec::with_capacity(n), gp: Vec::with_capacity(n), borrowed: Vec::with_capacity(n), gpc: Vec::with_capacity(n), max_bor: self.max_bor };
+        for l in legs { self.pool_push(&mut p, l); }
+        p
     }
     fn pair(&self, a: Option<usize>, b: Option<usize>) -> f64 { match (a, b) { (Some(a), Some(b)) => self.d.pair[a][b] as f64, _ => 0.0 } }
     fn tri(&self, a: Option<usize>, b: Option<usize>, c: Option<usize>) -> f64 { match (a, b, c) { (Some(a), Some(b), Some(c)) => self.d.tri[a][b][c] as f64, _ => 0.0 } }
@@ -704,14 +717,16 @@ impl<'a> Env<'a> {
     /// rise(t, q, rq) (`solve`'s derivation at its `ruled` test)
     #[inline]
     fn ruled_bound(&self, t: usize, q: &[f64], c: f64, rq: &[f64], s: f64) -> f64 { self.space.rho_top() * c * s * self.rise(t, q, rq) }
-    /// Whether a fully checked deck of `refs` proves career (t, q, c) below the bar th, as `solve` prunes: some
-    /// `ref_bound` (1 + 1e-9) < th
+    /// Whether a career's ceiling `ub` (`gen_cands`) proves it out at `bar` (`Bar`; `solve`: ub (1 + 1e-9) < th)
     #[inline]
-    fn refs_out<'r>(&self, t: usize, q: &[f64], c: f64, mut refs: impl Iterator<Item = &'r Ref>, th: f64) -> bool { refs.any(|r| self.ref_bound(t, q, c, r) * (1.0 + 1e-9) < th) }
-    /// Whether a product proof of `ruled` does, as `solve` prunes: some `ruled_bound` (1 + 2e-9) < th (2e-9: the
-    /// rounding of the product value and of rise)
+    fn ceiling_out(ub: f64, bar: Bar) -> bool { bar.out(ub, 1e-9) }
+    /// Whether a fully checked deck of `refs` proves career (t, q, c) out at `bar` (`solve`: some `ref_bound` (1 + 1e-9) < th)
     #[inline]
-    fn ruled_out(&self, t: usize, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], th: f64) -> bool { ruled.iter().any(|(rq, s)| self.ruled_bound(t, q, c, rq, *s) * (1.0 + 2e-9) < th) }
+    fn refs_out<'r>(&self, t: usize, q: &[f64], c: f64, mut refs: impl Iterator<Item = &'r Ref>, bar: Bar) -> bool { refs.any(|r| bar.out(self.ref_bound(t, q, c, r), 1e-9)) }
+    /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
+    /// product value and of rise)
+    #[inline]
+    fn ruled_out(&self, t: usize, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], bar: Bar) -> bool { ruled.iter().any(|(rq, s)| bar.out(self.ruled_bound(t, q, c, rq, *s), 2e-9)) }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
     /// took). The model state after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
@@ -1164,7 +1179,7 @@ impl<'a> Env<'a> {
             let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
             let th = thr(&done, &cands, t);
             if prune { unsolved.insert((cands[ci].t, cands[ci].a, cands[ci].b)); }
-            if cands[ci].ub * (1.0 + 1e-9) < th { n_bounded += 1; continue; }
+            if Self::ceiling_out(cands[ci].ub, Bar::Below(th)) { n_bounded += 1; continue; }
             // A candidate whose parent has a dominating veteran x, where (t, x, other parent) was taken earlier and not
             // solved, would end unsolved too: that one was ruled out by its ceiling, a Ref's or a product search's bound,
             // a search that found no deck clearing the bar, or (in turn) this test, at a bar no higher than now (the bar
@@ -1185,7 +1200,7 @@ impl<'a> Env<'a> {
             let ct = self.cls[t]; let seen: &[Ref] = if self.use_seen { &self.seen[ct] } else { &[] };
             // (the lowest of these bounds below th, as any one of them below it: the minimum is one of the bounds, and
             // rounding x (1 + 1e-9) is monotone; a NaN bound neither lowers the minimum nor passes the test)
-            if self.refs_out(t, &q, c, refs[t].iter().chain(seen), th) { n_bounded += 1; continue; }
+            if self.refs_out(t, &q, c, refs[t].iter().chain(seen), Bar::Below(th)) { n_bounded += 1; continue; }
             // what her earlier product searches proved (`ruled`). Derived: with her chances folded in, target k's factor
             // in the product value of one outfit and one deck (odds dw, dg) is f(n) = A - B n, n = (1 - e)(1 - q_k),
             // A = dg G + (1 - dg) W, B = (1 - dg) W (1 - dw) <= A (`outfit_fast` at q = 0; a target the outfit has is
@@ -1201,7 +1216,7 @@ impl<'a> Env<'a> {
             // decks seed the simulator's cache (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
             let lo = if self.use_seen { 0 } else { ruled0[ct] };
-            if self.ruled_out(t, &q, c, &self.ruled[ct][lo..], th) { n_bounded += 1; continue; }
+            if self.ruled_out(t, &q, c, &self.ruled[ct][lo..], Bar::Below(th)) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let tk = (cands[ci].t, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
             let res = match twins.get(&tk) {

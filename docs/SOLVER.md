@@ -404,9 +404,11 @@ raises that candidate's odds and the mean odds raised to.
   it scored passed its class's cap: the best career it found, not a proven best) carries `proven: false`, and the page
   notes it under the table.
 - Before a near-top builder is searched, her proxy is certified where her deck class's proofs allow (`certified`: over
-  every legal pair the ceiling, the class's fully checked decks through `rise` and its product proofs stay at or below
-  the proxy's value, so it is her best career's value); with mob or affinity-free parents every classmate has the same
-  chances and one search proves her class. Counted in `umas_certified`.
+  every legal pair one of the bounds `solve` prunes with (the ceiling, the class's fully checked decks through `rise`,
+  its product proofs) is at most the proxy's value up to rounding (`Bar::AtMost`, 1e-12), so it is her best career's
+  value; a tie is the usual case, a classmate at the same chances whose proof is the proxy's deck valued exactly); with
+  mob or affinity-free parents every classmate has the same chances and one search proves her class. Counted in
+  `umas_certified`.
 - Cont's two builders come from the exactly searched careers.
 - **Looped careers.** Each uma whose career above is not on two 8/8 parents also gets her best career on two real 8/8
   veterans (a legal pair, all of `fix` among them; pairs by ceiling, each searched exactly with both fixed and the best

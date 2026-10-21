@@ -145,7 +145,7 @@ struct Cur { t: usize, a: usize, b: usize, p: f64, os: Vec<f64>, wp: Rc<Vec<f64>
 struct Rot { pos: usize, latest: Vec<Option<usize>> }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
-struct St { legs: Vec<Legacy>, pool: Pool, gpc: Vec<Vec<f64>>, fam: crate::FxMap<String, Vec<(Vec<u8>, Vec<usize>)>>, best: Option<Pick>, cur: Option<Rc<Cur>>, rot: Rot,
+struct St { legs: Vec<Legacy>, pool: Pool, fam: crate::FxMap<String, Vec<(Vec<u8>, Vec<usize>)>>, best: Option<Pick>, cur: Option<Rc<Cur>>, rot: Rot,
             /// `next`: each loop member's best career (by member index)
             mb: Vec<Option<Pick>> }
 
@@ -245,7 +245,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     fn deck_for(&mut self, t: usize, q: &[f64], c: f64, ub: f64, th: f64, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
         let mut rb = ub;
         for r in &self.cache.refs[t] { rb = rb.min(self.env.ref_bound(t, q, c, r)); if rb * (1.0 + 1e-9) < th { return None; } }
-        if th > 0.0 && self.env.ruled_out(t, q, c, &self.env.ruled[self.env.cls[t]], th) { return None; }
+        if th > 0.0 && self.env.ruled_out(t, q, c, &self.env.ruled[self.env.cls[t]], Bar::Below(th)) { return None; }
         self.n.tables += 1;
         let (mut tv, mut di) = self.tval(t, q, c, buf);
         if di == usize::MAX || rb > tv * (1.0 + self.cfg.margin) {
@@ -269,7 +269,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// `inherit` and `outfit_fast`; equal up to rounding, so it only filters, with a slack)
     fn fast_ub(&self, st: &St, t: usize, a: usize, b: usize) -> f64 {
         let env = &*self.env; let p = &st.pool; let ntar = env.ntar;
-        // `walk_slots`' slots and affinities (`st.gpc` is `st.pool.gpc`), each slot's misses multiplied in as it
+        // `walk_slots`' slots and affinities, each slot's misses multiplied in as it
         // comes but a parent's after her grandparent slots' (this filter's own order, so its own rounding); a
         // random-star slot counts at its fixed stars here, where `inherit` averages its squared miss over the mix
         struct Ub<'p> { ntar: usize, miss: [f64; 12], nc: [i32; 12], parent: Option<(&'p [u8], f64)> }
@@ -524,13 +524,8 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
     /// a veteran joins the pool; `eval`: the surrogate values every new candidate (she is one of its parents)
     fn add_vet(&mut self, st: &mut St, l: Legacy, eval: bool, buf: &mut Vec<f64>) {
-        let env = &*self.env;
-        st.pool.me.push(env.who(l.chara, &l.sparks, &l.wins, &[], &l.pinks, None));
-        st.pool.gp.push(l.parents.iter().map(|g| env.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect());
-        st.pool.borrowed.push(l.borrowed);
-        let x = st.pool.me.len() - 1;
-        st.gpc.push(st.pool.gp[x].iter().map(|g| 3.0 * shared(&st.pool.me[x], g)).collect());
-        st.pool.gpc.push(st.gpc[x].clone());
+        // (her entry as `Env::pool` builds it, win chances and star mix kept)
+        self.env.pool_push(&mut st.pool, &l);
         if !l.borrowed { let sw = self.stars_wins(&l); st.fam.entry(family(&l)).or_default().push(sw); }
         st.legs.push(l);
         self.n.added += 1;
@@ -549,8 +544,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
     /// the initial state: the job's pool, every candidate valued (best ceiling first)
     fn initial(&mut self, legs: &[Legacy], base: Base) -> St {
-        let pool = self.env.pool(legs);
-        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![], gpc: vec![], max_bor: self.env.max_bor }, gpc: vec![], fam: Default::default(), best: None, cur: None,
+        let mut st = St { legs: vec![], pool: self.env.pool(&[]), fam: Default::default(), best: None, cur: None,
                           rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![None; self.members.len()] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }
@@ -558,7 +552,8 @@ impl<'s, 'a> Sim<'s, 'a> {
             // seed the cache with the career search's fully checked decks
             self.env.use_seen = false;
             let trainees = self.trainees.clone();
-            let sv = self.env.solve(&pool, &[], &trainees, false, 1);
+            // (on the path's pool, `Env::pool(legs)`: `add_vet` builds each entry as it does)
+            let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
             self.env.use_seen = true;
             self.cache.absorb(self.env, &sv.refs);
             // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
