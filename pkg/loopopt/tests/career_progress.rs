@@ -4,18 +4,27 @@ use std::{fs, process::Command};
 fn run(job: &Value) -> Value {
     let path = std::env::temp_dir().join(format!("uma-career-progress-{}-{}.json", std::process::id(), rand_tag(job)));
     fs::write(&path, job.to_string()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_loopopt")).current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global")).args(["data.json", path.to_str().unwrap()]).output().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))
+        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
+        .args(["data.json", path.to_str().unwrap()])
+        .output()
+        .unwrap();
     fs::remove_file(path).unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     serde_json::from_slice(&output.stdout).unwrap()
 }
-fn rand_tag(job: &Value) -> u64 { job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64)) }
+fn rand_tag(job: &Value) -> u64 {
+    job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64))
+}
 
 /// The weak pool (each veteran keeps about half the target sparks): the landed-set distribution agrees with the
 /// career's own odds, and the schedule lists every G1 she can enter.
 #[test]
 fn weak_pool_outcomes_and_schedule() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/jobs/career_U5.json")).unwrap()).unwrap();
+    let mut job: Value = serde_json::from_str(
+        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/jobs/career_U5.json")).unwrap(),
+    )
+    .unwrap();
     job["trainees"] = json!([1034]); // Inari One
     job["fix"] = json!([2, 3]);
     job["per_trainee"] = json!(false);
@@ -33,6 +42,12 @@ fn weak_pool_outcomes_and_schedule() {
     let rows = career["schedule"].as_array().unwrap();
     let ran = rows.iter().filter(|r| r["run"] == true).count();
     assert!(ran > 0 && rows.len() > ran, "every G1 she can enter is listed, not only those she runs");
-    assert!((career["g1_wins"].as_f64().unwrap() - rows.iter().filter_map(|r| r["p"].as_f64()).sum::<f64>()).abs() < ran as f64, "expected wins come from the races she runs");
-    assert!(rows.iter().all(|r| (r["run"] == true) == r["p"].is_number() && (r["run"] == true) == r["instead"].is_null()));
+    assert!(
+        (career["g1_wins"].as_f64().unwrap() - rows.iter().filter_map(|r| r["p"].as_f64()).sum::<f64>()).abs()
+            < ran as f64,
+        "expected wins come from the races she runs"
+    );
+    assert!(
+        rows.iter().all(|r| (r["run"] == true) == r["p"].is_number() && (r["run"] == true) == r["instead"].is_null())
+    );
 }

@@ -14,10 +14,15 @@ fn run(job: &Value, off: bool) -> (Value, String) {
     let path = std::env::temp_dir().join(format!("uma-plan-memo-{}-{}.json", std::process::id(), off as u8));
     fs::write(&path, job.to_string()).unwrap();
     let mut c = Command::new(env!("CARGO_BIN_EXE_loopopt"));
-    c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global")).args(["data.json", path.to_str().unwrap()]).env("PLAN_MEMO", "1");
+    c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))
+        .args(["data.json", path.to_str().unwrap()])
+        .env("PLAN_MEMO", "1");
     // (memos on: no cap in practice, so entries made before the refit are still there to be read after it)
-    if off { c.env("PLAN_MEMO_OFF", "1").env_remove("PLAN_MEMO_CHECK"); }
-    else { c.env_remove("PLAN_MEMO_OFF").env("PLAN_MEMO_CHECK", "1").env("PLAN_MEMO_CAP", "100000000"); }
+    if off {
+        c.env("PLAN_MEMO_OFF", "1").env_remove("PLAN_MEMO_CHECK");
+    } else {
+        c.env_remove("PLAN_MEMO_OFF").env("PLAN_MEMO_CHECK", "1").env("PLAN_MEMO_CAP", "100000000");
+    }
     let output = c.output().unwrap();
     fs::remove_file(path).unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
@@ -26,8 +31,17 @@ fn run(job: &Value, off: bool) -> (Value, String) {
 /// timings out (keys `timing_s` and `*_ms`)
 fn strip(v: &mut Value) {
     match v {
-        Value::Object(m) => { m.retain(|k, _| k != "timing_s" && !k.ends_with("_ms")); for x in m.values_mut() { strip(x); } }
-        Value::Array(a) => for x in a { strip(x); },
+        Value::Object(m) => {
+            m.retain(|k, _| k != "timing_s" && !k.ends_with("_ms"));
+            for x in m.values_mut() {
+                strip(x);
+            }
+        }
+        Value::Array(a) => {
+            for x in a {
+                strip(x);
+            }
+        }
         _ => {}
     }
 }
@@ -40,7 +54,10 @@ fn stat(err: &str, key: &str) -> u64 {
 
 #[test]
 fn memos_exact_through_a_refit() {
-    let mut job: Value = serde_json::from_str(&fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p11.json")).unwrap()).unwrap();
+    let mut job: Value = serde_json::from_str(
+        &fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p11.json")).unwrap(),
+    )
+    .unwrap();
     job["next"] = json!({"proxy_eff": -1.0});
     let (mut on, err_on) = run(&job, false);
     let (mut off, err_off) = run(&job, true);
@@ -49,6 +66,7 @@ fn memos_exact_through_a_refit() {
     assert!(stat(&err_on, "hits") > 0, "{err_on}");
     assert_eq!(stat(&err_off, "lookups"), 0, "{err_off}");
     assert!(on["next"]["v0"].as_f64().is_some());
-    strip(&mut on); strip(&mut off);
+    strip(&mut on);
+    strip(&mut off);
     assert!(on == off, "outputs differ with the memos on and off");
 }

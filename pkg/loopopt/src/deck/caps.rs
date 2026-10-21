@@ -18,8 +18,8 @@ pub(super) fn test_caps() -> Option<[f64; 4]> {
     static CAPS: std::sync::OnceLock<Option<[f64; 4]>> = std::sync::OnceLock::new();
     *CAPS.get_or_init(|| {
         // Preserve the diagnostic parser's permissive behavior: malformed fields are skipped.
-        let values: Vec<f64> = std::env::var("CAPS_TEST").ok()?
-            .split(',').filter_map(|field| field.parse().ok()).collect();
+        let values: Vec<f64> =
+            std::env::var("CAPS_TEST").ok()?.split(',').filter_map(|field| field.parse().ok()).collect();
         (values.len() == 4).then(|| [values[0], values[1], values[2], values[3]])
     })
 }
@@ -46,7 +46,9 @@ pub(crate) fn cap_class(mask: u64) -> usize {
     }
 }
 /// The class of a deck given by its sources.
-pub(super) fn src_class<'s>(it: impl Iterator<Item = &'s Src>) -> usize { cap_class(it.fold(0u64, |m, s| m | cv_mask(s))) }
+pub(super) fn src_class<'s>(it: impl Iterator<Item = &'s Src>) -> usize {
+    cap_class(it.fold(0u64, |m, s| m | cv_mask(s)))
+}
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.
 pub(super) const EXACT_STEPS: [f64; 3] = [EXACT_RHO, 1.12, 1.05];
 /// Most decks one exact deck search may return; beyond it the answer is the best found and `exact.complete` is false.

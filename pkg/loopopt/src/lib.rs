@@ -35,7 +35,14 @@ use std::time::Instant;
 #[derive(Clone, Copy)]
 struct Instant;
 #[cfg(target_arch = "wasm32")]
-impl Instant { fn now() -> Self { Instant } fn elapsed(&self) -> std::time::Duration { std::time::Duration::ZERO } }
+impl Instant {
+    fn now() -> Self {
+        Instant
+    }
+    fn elapsed(&self) -> std::time::Duration {
+        std::time::Duration::ZERO
+    }
+}
 /// Deterministic FxHash-style hasher for solver maps and the persisted `pb_fingerprint`.
 /// Its rotate/xor/multiply algorithm and byte encoding are part of the stored table's compatibility contract;
 /// replacing it with another hasher can invalidate every table (docs/PERF.md). It is not collision-resistant.
@@ -43,21 +50,49 @@ impl Instant { fn now() -> Self { Instant } fn elapsed(&self) -> std::time::Dura
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Fx(u64);
 impl Fx {
-    #[inline(always)] fn add(&mut self, x: u64) { self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x517c_c1b7_2722_0a95); }
+    #[inline(always)]
+    fn add(&mut self, x: u64) {
+        self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
 }
 impl std::hash::Hasher for Fx {
-    #[inline] fn write(&mut self, b: &[u8]) {
+    #[inline]
+    fn write(&mut self, b: &[u8]) {
         let mut c = b.chunks_exact(8);
-        for w in &mut c { self.add(u64::from_le_bytes(w.try_into().unwrap())); }
+        for w in &mut c {
+            self.add(u64::from_le_bytes(w.try_into().unwrap()));
+        }
         let r = c.remainder();
-        if !r.is_empty() { let mut t = [0u8; 8]; t[..r.len()].copy_from_slice(r); self.add(u64::from_le_bytes(t)); }
+        if !r.is_empty() {
+            let mut t = [0u8; 8];
+            t[..r.len()].copy_from_slice(r);
+            self.add(u64::from_le_bytes(t));
+        }
     }
-    #[inline] fn write_u8(&mut self, x: u8) { self.add(x as u64); }
-    #[inline] fn write_u16(&mut self, x: u16) { self.add(x as u64); }
-    #[inline] fn write_u32(&mut self, x: u32) { self.add(x as u64); }
-    #[inline] fn write_u64(&mut self, x: u64) { self.add(x); }
-    #[inline] fn write_usize(&mut self, x: usize) { self.add(x as u64); }
-    #[inline] fn finish(&self) -> u64 { self.0 }
+    #[inline]
+    fn write_u8(&mut self, x: u8) {
+        self.add(x as u64);
+    }
+    #[inline]
+    fn write_u16(&mut self, x: u16) {
+        self.add(x as u64);
+    }
+    #[inline]
+    fn write_u32(&mut self, x: u32) {
+        self.add(x as u64);
+    }
+    #[inline]
+    fn write_u64(&mut self, x: u64) {
+        self.add(x);
+    }
+    #[inline]
+    fn write_usize(&mut self, x: usize) {
+        self.add(x as u64);
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
 }
 pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, std::hash::BuildHasherDefault<Fx>>;
 pub(crate) type FxSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<Fx>>;
@@ -73,8 +108,10 @@ struct OptRaw {
     prog: u32,
     race: i32,
     bp: i32,
-    #[serde(default)] name: String,
-    #[serde(default)] goal: bool,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    goal: bool,
 }
 #[derive(Deserialize)]
 struct UmaRaw {
@@ -83,21 +120,28 @@ struct UmaRaw {
     turns: Vec<Vec<OptRaw>>,
     goals: Vec<Vec<(usize, usize)>>,
     /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
-    #[serde(default)] apt: Vec<u8>,
+    #[serde(default)]
+    apt: Vec<u8>,
 }
 #[derive(Deserialize)]
 struct DataRaw {
     race_names: Vec<String>,
     umas: Vec<UmaRaw>,
     /// relation groups: (points, roster indices); pair / tri are rebuilt from them (older data.json files carry the tables)
-    #[serde(default)] relations: Option<Vec<(i32, Vec<usize>)>>,
-    #[serde(default)] pair: Option<Vec<Vec<i32>>>,
-    #[serde(default)] tri: Option<Vec<Vec<Vec<i32>>>>,
+    #[serde(default)]
+    relations: Option<Vec<(i32, Vec<usize>)>>,
+    #[serde(default)]
+    pair: Option<Vec<Vec<i32>>>,
+    #[serde(default)]
+    tri: Option<Vec<Vec<Vec<i32>>>>,
     pen: Vec<i32>,
-    #[serde(default)] pb: Option<PbRaw>,
+    #[serde(default)]
+    pb: Option<PbRaw>,
     /// per race: distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)
-    #[serde(default)] race_cat: Vec<u8>,
-    #[serde(default)] race_ground: Vec<u8>,
+    #[serde(default)]
+    race_cat: Vec<u8>,
+    #[serde(default)]
+    race_ground: Vec<u8>,
 }
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
 fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<Vec<i32>>>) {
@@ -106,7 +150,9 @@ fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<V
     for (points, members) in rels {
         for &a in members {
             for &b in members {
-                if a == b { continue; }
+                if a == b {
+                    continue;
+                }
                 pair[a][b] += points;
                 for &c in members {
                     if c != a && c != b {
@@ -121,28 +167,39 @@ fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<V
 /// Precomputed pairwise ceilings (`loopopt pbtable`, merged into data.json by `./build.sh pb`): `fp` is
 /// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a as 16-hex-digit f64 bit patterns.
 #[derive(Deserialize, Serialize)]
-struct PbRaw { fp: String, rows: Vec<String> }
+struct PbRaw {
+    fp: String,
+    rows: Vec<String>,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Choice { Rest, Opt(u8) }
+enum Choice {
+    Rest,
+    Opt(u8),
+}
 
 #[derive(Clone)]
 struct Uma {
     id: u32,
     name: String,
-    opts: Vec<Vec<OptRaw>>,          // per turn (0-based index = turn-1)
-    forced: Vec<Option<Vec<u8>>>,    // per turn: must race one of these options
-    bits: Vec<Vec<u32>>,             // per turn per option: multi-turn goal bits set
-    full: u32,                       // all multi-turn goal bits
-    pm: Vec<f64>,                    // best-case P per race
-    ent: Vec<[Ent; 6]>,              // per turn: choice code 0 = rest, code o+1 = option o (precomputed for dp_exact)
-    chl: Vec<([u8; 6], usize)>,      // per turn: allowed choice codes (no force), rest first then options in index order
-    apt: Vec<u8>,                    // aptitude codes (UmaRaw); empty in older data
+    opts: Vec<Vec<OptRaw>>,       // per turn (0-based index = turn-1)
+    forced: Vec<Option<Vec<u8>>>, // per turn: must race one of these options
+    bits: Vec<Vec<u32>>,          // per turn per option: multi-turn goal bits set
+    full: u32,                    // all multi-turn goal bits
+    pm: Vec<f64>,                 // best-case P per race
+    ent: Vec<[Ent; 6]>,           // per turn: choice code 0 = rest, code o+1 = option o (precomputed for dp_exact)
+    chl: Vec<([u8; 6], usize)>,   // per turn: allowed choice codes (no force), rest first then options in index order
+    apt: Vec<u8>,                 // aptitude codes (UmaRaw); empty in older data
 }
 
 /// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as `pk`), goal bits.
 #[derive(Clone, Copy)]
-struct Ent { race: i32, rest: bool, bit: u32, p: [f64; 7] }
+struct Ent {
+    race: i32,
+    rest: bool,
+    bit: u32,
+    p: [f64; 7],
+}
 const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
 struct Data {
@@ -152,8 +209,8 @@ struct Data {
     tri: Vec<Vec<Vec<i32>>>,
     pk: Vec<[f64; 7]>,
     race_names: Vec<String>,
-    pbt: Option<Vec<f64>>,   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
-    pen: Vec<i32>,    // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
+    pbt: Option<Vec<f64>>, // n x n pairwise ceilings from data.json's table, when its fingerprint matches
+    pen: Vec<i32>, // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
     race_cat: Vec<u8>,
     race_ground: Vec<u8>,
 }
@@ -195,10 +252,14 @@ fn pb_fingerprint(raw: &DataRaw) -> String {
 fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
     let stored = raw.pb.as_ref()?;
     let n = raw.umas.len();
-    if stored.fp != pb_fingerprint(raw) || stored.rows.len() != n { return None; }
+    if stored.fp != pb_fingerprint(raw) || stored.rows.len() != n {
+        return None;
+    }
     let mut table = vec![0.0f64; n * n];
     for (a, row) in stored.rows.iter().enumerate() {
-        if row.len() != 16 * (n - 1 - a) { return None; }
+        if row.len() != 16 * (n - 1 - a) {
+            return None;
+        }
         for (offset, b) in (a + 1..n).enumerate() {
             let value = f64::from_bits(u64::from_str_radix(&row[16 * offset..16 * offset + 16], 16).ok()?);
             table[a * n + b] = value;
@@ -209,12 +270,18 @@ fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
 }
 
 // pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
-fn pk(d: &Data, bp: i32, k: usize) -> f64 { d.pk[(bp + 20) as usize][k] }
+fn pk(d: &Data, bp: i32, k: usize) -> f64 {
+    d.pk[(bp + 20) as usize][k]
+}
 
-fn load(path: &str) -> Data { load_str(&std::fs::read_to_string(path).unwrap()) }
+fn load(path: &str) -> Data {
+    load_str(&std::fs::read_to_string(path).unwrap())
+}
 /// Win chance of an attempt = clamp(bp - pen[k], 0, 100)%, where the exporter sets bp = 110 - grade costs
 /// (distance + surface; A 0, B 10, C 20, D 30, E 40, F 60, G 90) and pen = streak penalties from data.json.
-fn load_str(json: &str) -> Data { load_raw(serde_json::from_str(json).unwrap()) }
+fn load_str(json: &str) -> Data {
+    load_raw(serde_json::from_str(json).unwrap())
+}
 
 /// `dp_exact` pairs Classic and Senior turns. A repeated race must occur exactly 24 turns apart,
 /// never in Junior year and never more than twice. This checks that specific DP precondition;
@@ -232,8 +299,11 @@ fn check_repeated_races(umas: &[UmaRaw]) {
         for (race, turns) in turns_by_race {
             assert!(turns.len() <= 2, "{}: race {race} offered {} times", uma.name, turns.len());
             if turns.len() == 2 {
-                assert!(turns[1] == turns[0] + 24 && turns[0] >= 24,
-                    "{}: race {race} offered at turns {turns:?}, not a Classic/Senior pair", uma.name);
+                assert!(
+                    turns[1] == turns[0] + 24 && turns[0] >= 24,
+                    "{}: race {race} offered at turns {turns:?}, not a Classic/Senior pair",
+                    uma.name
+                );
             }
         }
     }
@@ -247,7 +317,9 @@ fn load_raw(raw: DataRaw) -> Data {
     let mut pkt = vec![[0.0f64; 7]; 140];
     for (i, row) in pkt.iter_mut().enumerate() {
         let bp = i as i32 - 20;
-        for k in 1..=6 { row[k] = ((bp - raw.pen[k - 1]).clamp(0, 100)) as f64 / 100.0; }
+        for k in 1..=6 {
+            row[k] = ((bp - raw.pen[k - 1]).clamp(0, 100)) as f64 / 100.0;
+        }
     }
     let mut umas = vec![];
     for u in raw.umas {
@@ -259,16 +331,23 @@ fn load_raw(raw: DataRaw) -> Data {
             if ts.len() == 1 {
                 let t = *ts.iter().next().unwrap() - 1;
                 let v: Vec<u8> = g.iter().map(|x| x.1 as u8).collect();
-                forced[t] = Some(match &forced[t] { None => v, Some(old) => old.iter().cloned().filter(|o| v.contains(o)).collect() });
+                forced[t] = Some(match &forced[t] {
+                    None => v,
+                    Some(old) => old.iter().cloned().filter(|o| v.contains(o)).collect(),
+                });
             } else {
-                for &(t, o) in g { bits[t - 1][o] |= 1 << nb; }
+                for &(t, o) in g {
+                    bits[t - 1][o] |= 1 << nb;
+                }
                 nb += 1;
             }
         }
         let mut miss = vec![1.0f64; nr];
         for l in u.turns.iter() {
             for op in l.iter() {
-                if op.race >= 0 { miss[op.race as usize] *= 1.0 - pkt[(op.bp + 20) as usize][1]; }
+                if op.race >= 0 {
+                    miss[op.race as usize] *= 1.0 - pkt[(op.bp + 20) as usize][1];
+                }
             }
         }
         let mut ent = vec![[ENT_REST; 6]; NT];
@@ -277,32 +356,66 @@ fn load_raw(raw: DataRaw) -> Data {
             assert!(u.turns[t].len() <= 5, "more than 5 options at one turn");
             for (o, op) in u.turns[t].iter().enumerate() {
                 let mut p = [0.0f64; 7];
-                for k in 1..=6 { p[k] = pkt[(op.bp + 20) as usize][k]; }
+                for k in 1..=6 {
+                    p[k] = pkt[(op.bp + 20) as usize][k];
+                }
                 ent[t][o + 1] = Ent { race: op.race, rest: false, bit: bits[t][o], p };
             }
             let (a, n) = &mut chl[t];
-            if forced[t].is_none() { a[*n] = 0; *n += 1; }
+            if forced[t].is_none() {
+                a[*n] = 0;
+                *n += 1;
+            }
             for o in 0..u.turns[t].len() {
-                if forced[t].as_ref().map_or(true, |f| f.contains(&(o as u8))) { a[*n] = o as u8 + 1; *n += 1; }
+                if forced[t].as_ref().map_or(true, |f| f.contains(&(o as u8))) {
+                    a[*n] = o as u8 + 1;
+                    *n += 1;
+                }
             }
         }
-        umas.push(Uma { id: u.id, name: u.name, opts: u.turns, forced, bits, full: (1u32 << nb) - 1,
-            pm: miss.iter().map(|m| 1.0 - m).collect(), ent, chl, apt: u.apt });
+        umas.push(Uma {
+            id: u.id,
+            name: u.name,
+            opts: u.turns,
+            forced,
+            bits,
+            full: (1u32 << nb) - 1,
+            pm: miss.iter().map(|m| 1.0 - m).collect(),
+            ent,
+            chl,
+            apt: u.apt,
+        });
     }
     let (pair, tri) = match (raw.pair, raw.tri, &raw.relations) {
         (Some(p), Some(t), _) => (p, t),
         (_, _, Some(r)) => rel_tables(n_umas, r),
         _ => panic!("data.json has neither relations nor pair/tri tables"),
     };
-    Data { nr, umas, pair, tri, pk: pkt, race_names: raw.race_names, pbt, pen: raw.pen, race_cat: raw.race_cat, race_ground: raw.race_ground }
+    Data {
+        nr,
+        umas,
+        pair,
+        tri,
+        pk: pkt,
+        race_names: raw.race_names,
+        pbt,
+        pen: raw.pen,
+        race_cat: raw.race_cat,
+        race_ground: raw.race_ground,
+    }
 }
 
 type Sched = [Choice; NT];
 
-fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> { let mut v = vec![]; probs_into(d, u, s, &mut v); v }
+fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
+    let mut v = vec![];
+    probs_into(d, u, s, &mut v);
+    v
+}
 /// probs into a reused buffer (same arithmetic as `probs`, so bit-identical)
 fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
-    miss.clear(); miss.resize(d.nr, 1.0);
+    miss.clear();
+    miss.resize(d.nr, 1.0);
     let mut k = 0usize;
     for t in 0..NT {
         match s[t] {
@@ -311,21 +424,35 @@ fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
                 k = (k + 1).min(6);
                 // ent[t][o+1].p[k] == pk(d, op.bp, k) bit for bit (copied from the same table at load)
                 let e = &u.ent[t][o as usize + 1];
-                if e.race >= 0 { miss[e.race as usize] *= 1.0 - e.p[k]; }
+                if e.race >= 0 {
+                    miss[e.race as usize] *= 1.0 - e.p[k];
+                }
             }
         }
     }
-    for m in miss.iter_mut() { *m = 1.0 - *m; }
+    for m in miss.iter_mut() {
+        *m = 1.0 - *m;
+    }
 }
 
 fn feasible(u: &Uma, s: &Sched) -> bool {
     let mut m = 0u32;
     for t in 0..NT {
         match s[t] {
-            Choice::Rest => { if u.forced[t].is_some() { return false; } }
+            Choice::Rest => {
+                if u.forced[t].is_some() {
+                    return false;
+                }
+            }
             Choice::Opt(o) => {
-                if (o as usize) >= u.opts[t].len() { return false; }
-                if let Some(f) = &u.forced[t] { if !f.contains(&o) { return false; } }
+                if (o as usize) >= u.opts[t].len() {
+                    return false;
+                }
+                if let Some(f) = &u.forced[t] {
+                    if !f.contains(&o) {
+                        return false;
+                    }
+                }
                 m |= u.bits[t][o as usize];
             }
         }
@@ -333,7 +460,9 @@ fn feasible(u: &Uma, s: &Sched) -> bool {
     m == u.full
 }
 
-fn wval(w: &[f64], p: &[f64]) -> f64 { w.iter().zip(p).map(|(a, b)| a * b).sum() }
+fn wval(w: &[f64], p: &[f64]) -> f64 {
+    w.iter().zip(p).map(|(a, b)| a * b).sum()
+}
 
 /// EXACT best response: maximize sum_r W[r] * P[r], with P[r] = 1 - prod(1 - p) over attempts.
 /// Junior turns 1..24 run sequentially; then Classic turn t and Senior turn t+24 are decided together,
@@ -366,36 +495,74 @@ fn choice_list(u: &Uma, t: usize, force: Option<(usize, Choice)>) -> ([u8; 6], u
         if ft == t {
             // a force can't override a single-turn goal: forcing rest, or an option outside the goal set, is infeasible
             let code = match fc {
-                Choice::Rest => if u.forced[t].is_none() { Some(0u8) } else { None },
-                Choice::Opt(o) => if (o as usize) < u.opts[t].len() && u.forced[t].as_ref().map_or(true, |f| f.contains(&o)) { Some(o + 1) } else { None },
+                Choice::Rest => {
+                    if u.forced[t].is_none() {
+                        Some(0u8)
+                    } else {
+                        None
+                    }
+                }
+                Choice::Opt(o) => {
+                    if (o as usize) < u.opts[t].len() && u.forced[t].as_ref().map_or(true, |f| f.contains(&o)) {
+                        Some(o + 1)
+                    } else {
+                        None
+                    }
+                }
             };
-            return match code { Some(c) => ([c, 0, 0, 0, 0, 0], 1), None => ([0; 6], 0) };
+            return match code {
+                Some(c) => ([c, 0, 0, 0, 0, 0], 1),
+                None => ([0; 6], 0),
+            };
         }
     }
     u.chl[t]
 }
 
 #[inline]
-fn code_choice(c: u8) -> Choice { if c == 0 { Choice::Rest } else { Choice::Opt(c - 1) } }
+fn code_choice(c: u8) -> Choice {
+    if c == 0 { Choice::Rest } else { Choice::Opt(c - 1) }
+}
 
 fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Scratch) -> Option<(Sched, f64)> {
     let nm = (u.full + 1) as usize;
     let ns0 = if u.opts[HALF].is_empty() { 1 } else { NS };
     let neg = f64::NEG_INFINITY;
-    let kb = ns0 * nm;          // block of (s0, m) states
-    let js = NS * NS * kb;      // stride of one pair index j
+    let kb = ns0 * nm; // block of (s0, m) states
+    let js = NS * NS * kb; // stride of one pair index j
     let full = u.full as usize;
     // streak position after choosing entry e with incoming streak s (also the next streak)
-    #[inline(always)] fn kof(e: &Ent, s: usize) -> usize { if e.rest { 0 } else if s >= 5 { 6 } else { s + 1 } }
-    #[inline(always)] fn pof(e: &Ent, k: usize) -> f64 { if e.race >= 0 { e.p[k] } else { 0.0 } }
+    #[inline(always)]
+    fn kof(e: &Ent, s: usize) -> usize {
+        if e.rest {
+            0
+        } else if s >= 5 {
+            6
+        } else {
+            s + 1
+        }
+    }
+    #[inline(always)]
+    fn pof(e: &Ent, k: usize) -> f64 {
+        if e.race >= 0 { e.p[k] } else { 0.0 }
+    }
     // ---- phase 2: pairs j = 0..24 (classic turn 24+j with senior turn 48+j)
-    let v2 = &mut scr.v2; let a2 = &mut scr.a2;
-    v2.clear(); v2.resize(25 * js, neg);
-    a2.clear(); a2.resize(24 * js, [0, 0]);
-    for sc in 0..NS { for ss in 0..NS { for s0 in 0..ns0 {
-        if ns0 > 1 && sc != s0 { continue; }
-        v2[24 * js + (sc * NS + ss) * kb + s0 * nm + full] = 0.0;
-    } } }
+    let v2 = &mut scr.v2;
+    let a2 = &mut scr.a2;
+    v2.clear();
+    v2.resize(25 * js, neg);
+    a2.clear();
+    a2.resize(24 * js, [0, 0]);
+    for sc in 0..NS {
+        for ss in 0..NS {
+            for s0 in 0..ns0 {
+                if ns0 > 1 && sc != s0 {
+                    continue;
+                }
+                v2[24 * js + (sc * NS + ss) * kb + s0 * nm + full] = 0.0;
+            }
+        }
+    }
     for j in (0..24).rev() {
         let (tc, ts) = (24 + j, 48 + j);
         let (cl, ncl) = choice_list(u, tc, force);
@@ -407,13 +574,27 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
         for &cc in &cl[..ncl] {
             let ec = &u.ent[tc][cc as usize];
             // per classic streak sc: next streak kc and (separate-race) reward term 0.0 + w*p
-            let mut kca = [0usize; NS]; let mut ra = [0.0f64; NS]; let mut pca = [0.0f64; NS];
-            for sc in 0..NS { let k = kof(ec, sc); kca[sc] = k; pca[sc] = pof(ec, k); ra[sc] = if ec.race >= 0 { 0.0 + wr[ec.race as usize] * pca[sc] } else { 0.0 }; }
+            let mut kca = [0usize; NS];
+            let mut ra = [0.0f64; NS];
+            let mut pca = [0.0f64; NS];
+            for sc in 0..NS {
+                let k = kof(ec, sc);
+                kca[sc] = k;
+                pca[sc] = pof(ec, k);
+                ra[sc] = if ec.race >= 0 { 0.0 + wr[ec.race as usize] * pca[sc] } else { 0.0 };
+            }
             for &cs in &sl[..nsl] {
                 let es = &u.ent[ts][cs as usize];
                 let mb = (ec.bit | es.bit) as usize;
-                let mut ksa = [0usize; NS]; let mut rb = [0.0f64; NS]; let mut psa = [0.0f64; NS];
-                for ss in 0..NS { let k = kof(es, ss); ksa[ss] = k; psa[ss] = pof(es, k); rb[ss] = if es.race >= 0 { wr[es.race as usize] * psa[ss] } else { 0.0 }; }
+                let mut ksa = [0usize; NS];
+                let mut rb = [0.0f64; NS];
+                let mut psa = [0.0f64; NS];
+                for ss in 0..NS {
+                    let k = kof(es, ss);
+                    ksa[ss] = k;
+                    psa[ss] = pof(es, k);
+                    rb[ss] = if es.race >= 0 { wr[es.race as usize] * psa[ss] } else { 0.0 };
+                }
                 let same = ec.race >= 0 && ec.race == es.race;
                 let wsame = if same { wr[ec.race as usize] } else { 0.0 };
                 // reward for (sc, ss); bit-identical to the original formula:
@@ -429,20 +610,30 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
                         for ss in 0..NS {
                             // nxt == -inf gives x == -inf, which never passes the strict '>' (same as skipping it)
                             let x = rew(sc, ss) + nrow[ksa[ss]];
-                            if x > crow[ss] { crow[ss] = x; arow[ss] = [cc, cs]; }
+                            if x > crow[ss] {
+                                crow[ss] = x;
+                                arow[ss] = [cc, cs];
+                            }
                         }
                     }
                 } else {
-                    for sc in 0..NS { for ss in 0..NS {
-                        let r = rew(sc, ss);
-                        let nb = (kca[sc] * NS + ksa[ss]) * kb;
-                        let cb = (sc * NS + ss) * kb;
-                        for s0 in 0..ns0 { for m in 0..nm {
-                            let x = r + nxt[nb + s0 * nm + (m | mb)];
-                            let ci = cb + s0 * nm + m;
-                            if x > cur[ci] { cur[ci] = x; arg[ci] = [cc, cs]; }
-                        } }
-                    } }
+                    for sc in 0..NS {
+                        for ss in 0..NS {
+                            let r = rew(sc, ss);
+                            let nb = (kca[sc] * NS + ksa[ss]) * kb;
+                            let cb = (sc * NS + ss) * kb;
+                            for s0 in 0..ns0 {
+                                for m in 0..nm {
+                                    let x = r + nxt[nb + s0 * nm + (m | mb)];
+                                    let ci = cb + s0 * nm + m;
+                                    if x > cur[ci] {
+                                        cur[ci] = x;
+                                        arg[ci] = [cc, cs];
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -450,15 +641,28 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
     // entry value into phase 2 from junior end state (s, m): choose s0 freely; senior streak starts at s0 (or 0)
     let entry = |s: usize, m: usize| -> (f64, usize) {
         let mut b = (neg, 0);
-        for s0 in 0..ns0 { let ss = if ns0 > 1 { s0 } else { 0 }; let x = v2[(s * NS + ss) * kb + s0 * nm + m]; if x > b.0 { b = (x, s0); } }
+        for s0 in 0..ns0 {
+            let ss = if ns0 > 1 { s0 } else { 0 };
+            let x = v2[(s * NS + ss) * kb + s0 * nm + m];
+            if x > b.0 {
+                b = (x, s0);
+            }
+        }
         b
     };
     // ---- phase 1: junior turns 0..24
-    let v1 = &mut scr.v1; let a1 = &mut scr.a1;
+    let v1 = &mut scr.v1;
+    let a1 = &mut scr.a1;
     let ts1 = NS * nm;
-    v1.clear(); v1.resize(25 * ts1, neg);
-    a1.clear(); a1.resize(24 * ts1, 0);
-    for s in 0..NS { for m in 0..nm { v1[24 * ts1 + s * nm + m] = entry(s, m).0; } }
+    v1.clear();
+    v1.resize(25 * ts1, neg);
+    a1.clear();
+    a1.resize(24 * ts1, 0);
+    for s in 0..NS {
+        for m in 0..nm {
+            v1[24 * ts1 + s * nm + m] = entry(s, m).0;
+        }
+    }
     for t in (0..24).rev() {
         let (cl, ncl) = choice_list(u, t, force);
         let (lo, hi) = v1.split_at_mut((t + 1) * ts1);
@@ -474,26 +678,37 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
                 for m in 0..nm {
                     let x = nxt[k * nm + (m | mb)] + rew;
                     let ci = s * nm + m;
-                    if x > cur[ci] { cur[ci] = x; arg[ci] = c; }
+                    if x > cur[ci] {
+                        cur[ci] = x;
+                        arg[ci] = c;
+                    }
                 }
             }
         }
     }
     let total = v1[0];
-    if total == neg { return None; }
+    if total == neg {
+        return None;
+    }
     let mut out = [Choice::Rest; NT];
     let (mut s, mut m) = (0usize, 0usize);
     for t in 0..24 {
-        let c = a1[t * ts1 + s * nm + m]; let e = &u.ent[t][c as usize];
-        out[t] = code_choice(c); s = kof(e, s); m |= e.bit as usize;
+        let c = a1[t * ts1 + s * nm + m];
+        let e = &u.ent[t][c as usize];
+        out[t] = code_choice(c);
+        s = kof(e, s);
+        m |= e.bit as usize;
     }
     let (_, s0) = entry(s, m);
     let (mut sc, mut ss) = (s, if ns0 > 1 { s0 } else { 0 });
     for j in 0..24 {
         let [cc, cs] = a2[j * js + (sc * NS + ss) * kb + s0 * nm + m];
         let (ec, es) = (&u.ent[24 + j][cc as usize], &u.ent[48 + j][cs as usize]);
-        out[24 + j] = code_choice(cc); out[48 + j] = code_choice(cs);
-        sc = kof(ec, sc); ss = kof(es, ss); m |= (ec.bit | es.bit) as usize;
+        out[24 + j] = code_choice(cc);
+        out[48 + j] = code_choice(cs);
+        sc = kof(ec, sc);
+        ss = kof(es, ss);
+        m |= (ec.bit | es.bit) as usize;
     }
     Some((out, total))
 }
@@ -560,7 +775,10 @@ fn best_response_solve(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choi
 
 /// A loop of N members for the schedule optimiser: N = 4 (the 12-lineage loop) or N = 3 (a three-uma rotation, whose
 /// race weights are uniform too: see `skills::lins`).
-struct Loop<const N: usize = 4> { m: [usize; N], base: f64 }
+struct Loop<const N: usize = 4> {
+    m: [usize; N],
+    base: f64,
+}
 /// Race weight C of every pair and the trio coefficient of the base, with grandparent slots at half weight. Per lineage,
 /// parent slots carry pair(T,Pi) + pair(P1,P2)/2 + 3*O(P1,P2)/2 each and a grandparent slot tri(T,Pi,G) + 3*O(Pi,G),
 /// scaled by w; summed over the 12 self-copy-free lineages and normalized to 4 runs: base = 2*sum pair + 4w*sum trio,
@@ -591,16 +809,29 @@ fn score<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
 /// Score from precomputed probs (p[i] must equal probs(s[i]); probs is deterministic, so the result is bit-identical to `score`).
 fn score_ps<const N: usize>(lp: &Loop<N>, p: &[Vec<f64>]) -> f64 {
     let mut tot = lp.base;
-    for i in 0..N { for j in i + 1..N { tot += 3.0 * C_PAIR * wval(&p[i], &p[j]); } }
+    for i in 0..N {
+        for j in i + 1..N {
+            tot += 3.0 * C_PAIR * wval(&p[i], &p[j]);
+        }
+    }
     tot
 }
 
 fn weights(d: &Data, ps: &[Vec<f64>], i: usize) -> Vec<f64> {
-    let mut w = vec![]; weights_into(d, ps, i, &mut w); w
+    let mut w = vec![];
+    weights_into(d, ps, i, &mut w);
+    w
 }
 fn weights_into(d: &Data, ps: &[Vec<f64>], i: usize, w: &mut Vec<f64>) {
-    w.clear(); w.resize(d.nr, 0.0);
-    for j in 0..ps.len() { if j != i { for r in 0..d.nr { w[r] += 3.0 * C_PAIR * ps[j][r]; } } }
+    w.clear();
+    w.resize(d.nr, 0.0);
+    for j in 0..ps.len() {
+        if j != i {
+            for r in 0..d.nr {
+                w[r] += 3.0 * C_PAIR * ps[j][r];
+            }
+        }
+    }
 }
 
 fn ascent<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N]) -> f64 {
@@ -618,19 +849,29 @@ fn ascent_ps<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], ps: &mu
     loop {
         let mut improved = false;
         for i in 0..N {
-            if !stale[i] { continue; }
+            if !stale[i] {
+                continue;
+            }
             stale[i] = false;
             let u = &d.umas[lp.m[i]];
             weights_into(d, ps, i, &mut w);
             let curv = wval(&w, &ps[i]);
             if let Some((ns, nv)) = best_response(d, u, &w, None) {
                 if nv > curv + 1e-9 {
-                    s[i] = ns; probs_into(d, u, &ns, &mut ps[i]); improved = true;
-                    for j in 0..N { if j != i { stale[j] = true; } }
+                    s[i] = ns;
+                    probs_into(d, u, &ns, &mut ps[i]);
+                    improved = true;
+                    for j in 0..N {
+                        if j != i {
+                            stale[j] = true;
+                        }
+                    }
                 }
             }
         }
-        if !improved { break; }
+        if !improved {
+            break;
+        }
     }
     score_ps(lp, ps) // ps[i] == probs(s[i]) is maintained above
 }
@@ -647,7 +888,13 @@ fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margi
         for t in 0..NT {
             // candidate targets: each race offered at t by any member, plus rest
             let mut targets: Vec<Option<i32>> = vec![None];
-            for i in 0..N { for op in &d.umas[lp.m[i]].opts[t] { if op.race >= 0 && !targets.contains(&Some(op.race)) { targets.push(Some(op.race)); } } }
+            for i in 0..N {
+                for op in &d.umas[lp.m[i]].opts[t] {
+                    if op.race >= 0 && !targets.contains(&Some(op.race)) {
+                        targets.push(Some(op.race));
+                    }
+                }
+            }
             for tg in targets {
                 // choice for each member to hit the target at t (None = can't)
                 let mut ch: [Option<Choice>; N] = [None; N];
@@ -655,53 +902,99 @@ fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margi
                 for i in 0..N {
                     let u = &d.umas[lp.m[i]];
                     let c = match tg {
-                        None => if u.forced[t].is_none() { Some(Choice::Rest) } else { None },
-                        Some(r) => u.opts[t].iter().position(|op| op.race == r).map(|o| Choice::Opt(o as u8))
-                            .filter(|c| match (c, &u.forced[t]) { (Choice::Opt(o), Some(f)) => f.contains(o), _ => true }),
+                        None => {
+                            if u.forced[t].is_none() {
+                                Some(Choice::Rest)
+                            } else {
+                                None
+                            }
+                        }
+                        Some(r) => u.opts[t].iter().position(|op| op.race == r).map(|o| Choice::Opt(o as u8)).filter(
+                            |c| match (c, &u.forced[t]) {
+                                (Choice::Opt(o), Some(f)) => f.contains(o),
+                                _ => true,
+                            },
+                        ),
                     };
                     ch[i] = c;
                     on[i] = c.map_or(false, |c| s[i][t] == c);
                 }
                 let movable: Vec<usize> = (0..N).filter(|&i| ch[i].is_some() && !on[i]).collect();
                 let non: usize = on.iter().filter(|x| **x).count();
-                if movable.is_empty() { continue; }
-                if tg.is_none() && non == 0 && movable.len() < 2 { continue; }
+                if movable.is_empty() {
+                    continue;
+                }
+                if tg.is_none() && non == 0 && movable.len() < 2 {
+                    continue;
+                }
                 // subsets of movable with (subset + already-on) >= 2 members and subset >= 1; if nobody is on target, require all movable
                 let nmv = movable.len();
                 for mask in 1u32..(1 << nmv) {
                     let sz = mask.count_ones() as usize;
-                    if sz + non < 2 { continue; }
-                    if sz == 1 { continue; } // single-member switches are covered by best responses
-                    if non == 0 && tg.is_some() && sz != nmv { continue; }
+                    if sz + non < 2 {
+                        continue;
+                    }
+                    if sz == 1 {
+                        continue;
+                    } // single-member switches are covered by best responses
+                    if non == 0 && tg.is_some() && sz != nmv {
+                        continue;
+                    }
                     let mut ns = *s;
                     let mut ok = true;
                     ps.clone_from(&ps_s);
                     for b in 0..nmv {
-                        if mask & (1 << b) == 0 { continue; }
+                        if mask & (1 << b) == 0 {
+                            continue;
+                        }
                         let i = movable[b];
                         let u = &d.umas[lp.m[i]];
                         weights_into(d, &ps, i, &mut w);
                         match best_response(d, u, &w, Some((t, ch[i].unwrap()))) {
-                            Some((x, _)) => { ns[i] = x; probs_into(d, u, &x, &mut ps[i]); }
-                            None => { ok = false; break; }
+                            Some((x, _)) => {
+                                ns[i] = x;
+                                probs_into(d, u, &x, &mut ps[i]);
+                            }
+                            None => {
+                                ok = false;
+                                break;
+                            }
                         }
                     }
-                    if !ok { continue; }
-                    if score_ps(lp, &ps) < cur - margin { continue; } // ps[i] == probs(ns[i]) here
+                    if !ok {
+                        continue;
+                    }
+                    if score_ps(lp, &ps) < cur - margin {
+                        continue;
+                    } // ps[i] == probs(ns[i]) here
                     let v = ascent_ps(d, lp, &mut ns, &mut ps); // ps == probs(ns) before and after
-                    if v > cur + 1e-7 { cur = v; *s = ns; improved = true; ps_s.clone_from(&ps); }
+                    if v > cur + 1e-7 {
+                        cur = v;
+                        *s = ns;
+                        improved = true;
+                        ps_s.clone_from(&ps);
+                    }
                 }
             }
         }
-        if !improved { break; }
+        if !improved {
+            break;
+        }
     }
     cur
 }
 
 struct Rng(u64);
 impl Rng {
-    fn next(&mut self) -> u64 { self.0 ^= self.0 << 13; self.0 ^= self.0 >> 7; self.0 ^= self.0 << 17; self.0 }
-    fn unif(&mut self) -> f64 { (self.next() >> 11) as f64 / (1u64 << 53) as f64 }
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    fn unif(&mut self) -> f64 {
+        (self.next() >> 11) as f64 / (1u64 << 53) as f64
+    }
 }
 
 fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
@@ -716,12 +1009,16 @@ fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
 
 /// Schedules found for a loop, in member order; a three-member structure fills s[0..3] and leaves s[3] all rest.
 #[derive(Clone)]
-struct Res { s: [Sched; 4] }
+struct Res {
+    s: [Sched; 4],
+}
 /// Missing fourth member in the fixed-size representation of a three-uma rotation.
 /// `members` removes this sentinel before callers use the entries as indices into the uma table.
 pub(crate) const NONE: usize = usize::MAX;
 /// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
-pub(crate) fn members(f: &[usize; 4]) -> &[usize] { if f[3] == NONE { &f[..3] } else { &f[..] } }
+pub(crate) fn members(f: &[usize; 4]) -> &[usize] {
+    if f[3] == NONE { &f[..3] } else { &f[..] }
+}
 
 /// Tie-break pass: each member re-solves against her partners with a tiny bonus (EPS per expected G1 win) on every G1,
 /// so races that cost no affinity get added (they can still pass down race sparks). Accepted only if the affinity
@@ -734,9 +1031,13 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
         let ps: Vec<Vec<f64>> = (0..N).map(|k| probs(d, &d.umas[lp.m[k]], &s[k])).collect();
         let w: Vec<f64> = weights(d, &ps, i).iter().map(|x| x + FILL_EPS).collect();
         if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None) {
-            let mut t = *s; t[i] = x;
+            let mut t = *s;
+            t[i] = x;
             let nv = score(d, lp, &t);
-            if nv >= cur - 1e-6 { *s = t; cur = nv; }
+            if nv >= cur - 1e-6 {
+                *s = t;
+                cur = nv;
+            }
         }
     }
     // Then enter every remaining G1 that costs nothing, even at 0% (the table's 0% may really be a few percent):
@@ -744,28 +1045,53 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
     // none of that uma's other attempts (goal races included) loses win chance from the longer streak.
     let attempts = |u: &Uma, sc: &Sched| -> Vec<f64> {
         let mut k = 0usize;
-        (0..NT).map(|t| match sc[t] { Choice::Rest => { k = 0; -1.0 } Choice::Opt(o) => { k = (k + 1).min(6);
-            let op = &u.opts[t][o as usize]; if op.race >= 0 { pk(d, op.bp, k) } else { -1.0 } } }).collect()
+        (0..NT)
+            .map(|t| match sc[t] {
+                Choice::Rest => {
+                    k = 0;
+                    -1.0
+                }
+                Choice::Opt(o) => {
+                    k = (k + 1).min(6);
+                    let op = &u.opts[t][o as usize];
+                    if op.race >= 0 { pk(d, op.bp, k) } else { -1.0 }
+                }
+            })
+            .collect()
     };
     loop {
         let mut changed = false;
         for i in 0..N {
             let u = &d.umas[lp.m[i]];
             for t in 0..NT {
-                if !matches!(s[i][t], Choice::Rest) || u.forced[t].is_some() { continue; }
+                if !matches!(s[i][t], Choice::Rest) || u.forced[t].is_some() {
+                    continue;
+                }
                 let mut opts: Vec<usize> = (0..u.opts[t].len()).filter(|&o| u.opts[t][o].race >= 0).collect();
                 opts.sort_by_key(|&o| std::cmp::Reverse(u.opts[t][o].bp));
                 for o in opts {
-                    let mut tr = *s; tr[i][t] = Choice::Opt(o as u8);
-                    if !feasible(u, &tr[i]) { continue; }
+                    let mut tr = *s;
+                    tr[i][t] = Choice::Opt(o as u8);
+                    if !feasible(u, &tr[i]) {
+                        continue;
+                    }
                     let (a0, a1) = (attempts(u, &s[i]), attempts(u, &tr[i]));
-                    if (0..NT).any(|tt| tt != t && a0[tt] >= 0.0 && a1[tt] < a0[tt]) { continue; }
+                    if (0..NT).any(|tt| tt != t && a0[tt] >= 0.0 && a1[tt] < a0[tt]) {
+                        continue;
+                    }
                     let nv = score(d, lp, &tr);
-                    if nv >= cur - 1e-12 { *s = tr; cur = cur.max(nv); changed = true; break; }
+                    if nv >= cur - 1e-12 {
+                        *s = tr;
+                        cur = cur.max(nv);
+                        changed = true;
+                        break;
+                    }
                 }
             }
         }
-        if !changed { break; }
+        if !changed {
+            break;
+        }
     }
     cur
 }
@@ -780,8 +1106,8 @@ fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, ma
     // iterated local search: perturb 1-2 members against noisy weights, re-ascend, group moves
     for _ in 0..iters {
         let mut candidate_schedules = schedules;
-        let mut candidate_probs: Vec<Vec<f64>> = (0..N)
-            .map(|i| probs(d, &d.umas[lp.m[i]], &candidate_schedules[i])).collect();
+        let mut candidate_probs: Vec<Vec<f64>> =
+            (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &candidate_schedules[i])).collect();
         let moves = 1 + (rng.next() % 2) as usize;
         for _ in 0..moves {
             let i = (rng.next() % N as u64) as usize;
@@ -809,40 +1135,98 @@ fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, ma
 }
 /// `optimize` for a structure of three or four members (`members` of a [usize; 4] with `NONE` last for three).
 pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], iters: usize, seed: u64, margin: f64) -> Res {
-    if f[3] == NONE { optimize(d, [f[0], f[1], f[2]], iters, seed, margin) } else { optimize(d, *f, iters, seed, margin) }
+    if f[3] == NONE {
+        optimize(d, [f[0], f[1], f[2]], iters, seed, margin)
+    } else {
+        optimize(d, *f, iters, seed, margin)
+    }
 }
 
 fn when(t: usize) -> String {
-    let year = if t < 24 { "Jr" } else if t < 48 { "Cl" } else { "Sr" };
+    let year = if t < 24 {
+        "Jr"
+    } else if t < 48 {
+        "Cl"
+    } else {
+        "Sr"
+    };
     let turn_in_year = t % 24;
-    let month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][turn_in_year / 2];
+    let month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][turn_in_year / 2];
     format!("{} {}-{}", year, if turn_in_year % 2 == 0 { "E" } else { "L" }, month)
 }
 /// Short uma label for chart columns.
 fn short_name(name: &str) -> String {
-    let m: &[(&str, &str)] = &[("T.M. Opera O", "Opera O"), ("El Condor Pasa", "Pasa"), ("Agnes Digital", "Digital"), ("Agnes Tachyon", "Tachyon"),
-        ("Biwa Hayahide", "Biwa"), ("Super Creek", "Creek"), ("Gold Ship", "GoldShip"), ("Gold City", "GoldCity"), ("Symboli Rudolf", "Rudolf"),
-        ("Narita Brian", "Brian"), ("Narita Taishin", "Taishin"), ("Narita Top Road", "TopRoad"), ("Sakura Bakushin O", "Bakushin"), ("Sakura Chiyono O", "Chiyono"),
-        ("Special Week", "SpWeek"), ("Silence Suzuka", "Suzuka"), ("Tokai Teio", "Teio"), ("Grass Wonder", "Grass"), ("Hishi Amazon", "Amazon"),
-        ("Hishi Akebono", "Akebono"), ("Mihono Bourbon", "Bourbon"), ("Yamanin Zephyr", "Zephyr"), ("Satono Diamond", "Diamond"), ("Kitasan Black", "Kitasan"),
-        ("Haru Urara", "Urara"), ("Smart Falcon", "Falcon"), ("Curren Chan", "Curren"), ("King Halo", "Halo"), ("Nice Nature", "Nature"),
-        ("Seiun Sky", "Seiun"), ("Taiki Shuttle", "Taiki"), ("Meisho Doto", "Doto"), ("Mayano Top Gun", "Mayano"), ("Air Groove", "Groove"),
-        ("Air Shakur", "Shakur"), ("Matikanefukukitaru", "Fukukitr"), ("Matikanetannhauser", "Tannhaus"), ("Copano Rickey", "Copano"), ("Wonder Acute", "Acute"), ("Nakayama Festa", "Festa"), ("Yamanin Zephyr", "Zephyr"), ("Kawakami Princess", "Kawakami"), ("Fine Motion", "FineMotn")];
-    if let Some((_, a)) = m.iter().find(|(n, _)| *n == name) { return a.to_string(); }
-    if let Some(rest) = name.strip_prefix("Mejiro ") { return rest.chars().take(8).collect(); }
+    let m: &[(&str, &str)] = &[
+        ("T.M. Opera O", "Opera O"),
+        ("El Condor Pasa", "Pasa"),
+        ("Agnes Digital", "Digital"),
+        ("Agnes Tachyon", "Tachyon"),
+        ("Biwa Hayahide", "Biwa"),
+        ("Super Creek", "Creek"),
+        ("Gold Ship", "GoldShip"),
+        ("Gold City", "GoldCity"),
+        ("Symboli Rudolf", "Rudolf"),
+        ("Narita Brian", "Brian"),
+        ("Narita Taishin", "Taishin"),
+        ("Narita Top Road", "TopRoad"),
+        ("Sakura Bakushin O", "Bakushin"),
+        ("Sakura Chiyono O", "Chiyono"),
+        ("Special Week", "SpWeek"),
+        ("Silence Suzuka", "Suzuka"),
+        ("Tokai Teio", "Teio"),
+        ("Grass Wonder", "Grass"),
+        ("Hishi Amazon", "Amazon"),
+        ("Hishi Akebono", "Akebono"),
+        ("Mihono Bourbon", "Bourbon"),
+        ("Yamanin Zephyr", "Zephyr"),
+        ("Satono Diamond", "Diamond"),
+        ("Kitasan Black", "Kitasan"),
+        ("Haru Urara", "Urara"),
+        ("Smart Falcon", "Falcon"),
+        ("Curren Chan", "Curren"),
+        ("King Halo", "Halo"),
+        ("Nice Nature", "Nature"),
+        ("Seiun Sky", "Seiun"),
+        ("Taiki Shuttle", "Taiki"),
+        ("Meisho Doto", "Doto"),
+        ("Mayano Top Gun", "Mayano"),
+        ("Air Groove", "Groove"),
+        ("Air Shakur", "Shakur"),
+        ("Matikanefukukitaru", "Fukukitr"),
+        ("Matikanetannhauser", "Tannhaus"),
+        ("Copano Rickey", "Copano"),
+        ("Wonder Acute", "Acute"),
+        ("Nakayama Festa", "Festa"),
+        ("Yamanin Zephyr", "Zephyr"),
+        ("Kawakami Princess", "Kawakami"),
+        ("Fine Motion", "FineMotn"),
+    ];
+    if let Some((_, a)) = m.iter().find(|(n, _)| *n == name) {
+        return a.to_string();
+    }
+    if let Some(rest) = name.strip_prefix("Mejiro ") {
+        return rest.chars().take(8).collect();
+    }
     name.split_whitespace().next().unwrap_or(name).chars().take(8).collect()
 }
 /// Row label: the race, or "A/B" (alphabetical) when interchangeable alternatives exist at that turn.
 fn row_label(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> String {
     let mut names = vec![chart_race_name(&d.race_names[race as usize])];
-    for a in interchangeable(d, m, s, t, race) { names.push(chart_race_name(&d.race_names[a as usize])); }
+    for a in interchangeable(d, m, s, t, race) {
+        names.push(chart_race_name(&d.race_names[a as usize]));
+    }
     names.sort();
     names.join("/")
 }
 /// Race label for the chart (<= 22 chars).
 fn chart_race_name(name: &str) -> String {
-    let m: &[(&str, &str)] = &[("Tokyo Yushun (Japanese Derby)", "Japanese Derby"), ("Asahi Hai Futurity Stakes", "Asahi Hai FS"),
-        ("Mile Championship Nambu Hai", "MCS Nambu Hai"), ("Hanshin Juvenile Fillies", "Hanshin JF"), ("Zen-Nippon Junior Yushun", "Zen-Nippon Jr Yushun")];
+    let m: &[(&str, &str)] = &[
+        ("Tokyo Yushun (Japanese Derby)", "Japanese Derby"),
+        ("Asahi Hai Futurity Stakes", "Asahi Hai FS"),
+        ("Mile Championship Nambu Hai", "MCS Nambu Hai"),
+        ("Hanshin Juvenile Fillies", "Hanshin JF"),
+        ("Zen-Nippon Junior Yushun", "Zen-Nippon Jr Yushun"),
+    ];
     m.iter().find(|(n, _)| *n == name).map(|(_, a)| a.to_string()).unwrap_or_else(|| name.chars().take(22).collect())
 }
 
@@ -852,23 +1236,52 @@ fn chart_race_name(name: &str) -> String {
 /// preserved when all runners switch together).
 fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> Vec<i32> {
     let n = m.len();
-    let appears = |r: i32, skip_t: Option<usize>| (0..n).any(|i| (0..NT).any(|tt| Some(tt) != skip_t && matches!(s[i][tt], Choice::Opt(o) if d.umas[m[i]].opts[tt][o as usize].race == r)));
-    if appears(race, Some(t)) { return vec![]; }
-    let runners: Vec<usize> = (0..n).filter(|&i| matches!(s[i][t], Choice::Opt(o) if d.umas[m[i]].opts[t][o as usize].race == race)).collect();
-    if runners.iter().any(|&i| match s[i][t] { Choice::Opt(o) => d.umas[m[i]].opts[t][o as usize].goal, _ => false }) { return vec![]; }
+    let appears = |r: i32, skip_t: Option<usize>| {
+        (0..n).any(|i| {
+            (0..NT).any(|tt| {
+                Some(tt) != skip_t && matches!(s[i][tt], Choice::Opt(o) if d.umas[m[i]].opts[tt][o as usize].race == r)
+            })
+        })
+    };
+    if appears(race, Some(t)) {
+        return vec![];
+    }
+    let runners: Vec<usize> = (0..n)
+        .filter(|&i| matches!(s[i][t], Choice::Opt(o) if d.umas[m[i]].opts[t][o as usize].race == race))
+        .collect();
+    if runners.iter().any(|&i| match s[i][t] {
+        Choice::Opt(o) => d.umas[m[i]].opts[t][o as usize].goal,
+        _ => false,
+    }) {
+        return vec![];
+    }
     let mut alts: Vec<i32> = vec![];
-    for i in &runners { for op in &d.umas[m[*i]].opts[t] { if op.race >= 0 && op.race != race && !alts.contains(&op.race) { alts.push(op.race); } } }
-    alts.retain(|&a| !appears(a, None) && runners.iter().all(|&i| {
-        let cur = match s[i][t] { Choice::Opt(o) => &d.umas[m[i]].opts[t][o as usize], _ => unreachable!() };
-        d.umas[m[i]].opts[t].iter().any(|op| op.race == a && op.bp == cur.bp && !op.goal)
-    }));
+    for i in &runners {
+        for op in &d.umas[m[*i]].opts[t] {
+            if op.race >= 0 && op.race != race && !alts.contains(&op.race) {
+                alts.push(op.race);
+            }
+        }
+    }
+    alts.retain(|&a| {
+        !appears(a, None)
+            && runners.iter().all(|&i| {
+                let cur = match s[i][t] {
+                    Choice::Opt(o) => &d.umas[m[i]].opts[t][o as usize],
+                    _ => unreachable!(),
+                };
+                d.umas[m[i]].opts[t].iter().any(|op| op.race == a && op.bp == cur.bp && !op.goal)
+            })
+    });
     alts
 }
 
 /// A job file's mode ("deck" or "career"); the rest of the file is the job itself.
 #[derive(Deserialize)]
-struct Jobs { #[serde(default)] mode: String }
-
+struct Jobs {
+    #[serde(default)]
+    mode: String,
+}
 
 /// Exact pairwise ceilings PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)) for all pairs in `pool`.
 /// Valid because P_b <= PM_b elementwise and P_a >= 0, so <P_a,P_b> <= <P_a,PM_b> <= BR_a(PM_b).
@@ -876,22 +1289,35 @@ fn pair_ceilings(d: &Data, pool: &[usize]) -> Vec<Vec<f64>> {
     let n = d.umas.len();
     let mut pb = vec![vec![0.0f64; n]; n];
     if let Some(t) = &d.pbt {
-        for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { pb[a][b] = t[a * n + b]; pb[b][a] = t[b * n + a]; } }
+        for (x, &a) in pool.iter().enumerate() {
+            for &b in &pool[x + 1..] {
+                pb[a][b] = t[a * n + b];
+                pb[b][a] = t[b * n + a];
+            }
+        }
         return pb;
     }
     let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None).map(|r| r.1).unwrap_or(0.0);
-    for (x, &a) in pool.iter().enumerate() { for &b in &pool[x + 1..] { let v = br(a, b).min(br(b, a)); pb[a][b] = v; pb[b][a] = v; } }
+    for (x, &a) in pool.iter().enumerate() {
+        for &b in &pool[x + 1..] {
+            let v = br(a, b).min(br(b, a));
+            pb[a][b] = v;
+            pb[b][a] = v;
+        }
+    }
     pb
 }
 /// The full pairwise-ceiling table of a data.json, as stored in its "pb" field (computed fresh, ignoring any table).
 fn pb_table_json(json: &str) -> serde_json::Value {
     let raw: DataRaw = serde_json::from_str(json).unwrap();
     let fp = pb_fingerprint(&raw);
-    let mut d = load_str(json); d.pbt = None;
+    let mut d = load_str(json);
+    d.pbt = None;
     let n = d.umas.len();
     let all: Vec<usize> = (0..n).collect();
     let pb = pair_ceilings(&d, &all);
-    let rows: Vec<String> = (0..n).map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[a][b].to_bits())).collect()).collect();
+    let rows: Vec<String> =
+        (0..n).map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[a][b].to_bits())).collect()).collect();
     serde_json::to_value(PbRaw { fp, rows }).unwrap()
 }
 
@@ -904,7 +1330,10 @@ impl Drop for CliBoundReport {
         if std::env::var("SB_CHECK").is_ok() {
             deck::SBCHK.with(|c| {
                 let c = c.borrow();
-                eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5);
+                eprintln!(
+                    "SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}",
+                    c.0, c.1, c.2, c.3, c.4, c.5
+                );
             });
         }
         if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() {
@@ -944,7 +1373,8 @@ fn apply_cli_events(job: &mut serde_json::Value, skills: &skills::SkillsRaw) {
 fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw) {
     if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
         let state: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        let out = deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_in", "state": state["state"]}));
+        let out =
+            deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_in", "state": state["state"]}));
         eprintln!("state_in: {}", out);
     }
 }
@@ -988,13 +1418,13 @@ pub fn cli_main() {
     }
     let data = load(&args[1]);
     let mut job: serde_json::Value = serde_json::from_str(&job_text).unwrap();
-    let skills: skills::SkillsRaw = serde_json::from_str(
-        &std::fs::read_to_string(job["skills_file"].as_str().expect("skills_file")).unwrap(),
-    ).unwrap();
+    let skills: skills::SkillsRaw =
+        serde_json::from_str(&std::fs::read_to_string(job["skills_file"].as_str().expect("skills_file")).unwrap())
+            .unwrap();
     apply_cli_events(&mut job, &skills);
-    let cards: deck::CardsRaw = serde_json::from_str(
-        &std::fs::read_to_string(job["cards_file"].as_str().expect("cards_file")).unwrap(),
-    ).unwrap();
+    let cards: deck::CardsRaw =
+        serde_json::from_str(&std::fs::read_to_string(job["cards_file"].as_str().expect("cards_file")).unwrap())
+            .unwrap();
 
     if jobs.mode == "career" {
         restore_cli_career_state(&data, &skills, &cards);
@@ -1038,11 +1468,22 @@ mod tests {
         let p = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
         serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
     }
-    fn ix(d: &Data, id: u32) -> usize { d.umas.iter().position(|u| u.id == id).unwrap() }
-    fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice { Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8) }
+    fn ix(d: &Data, id: u32) -> usize {
+        d.umas.iter().position(|u| u.id == id).unwrap()
+    }
+    fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice {
+        Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8)
+    }
     struct Lcg(u64);
-    impl Lcg { fn next(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
-               fn f(&mut self) -> f64 { self.next() as f64 / (1u64 << 31) as f64 } }
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 >> 33
+        }
+        fn f(&mut self) -> f64 {
+            self.next() as f64 / (1u64 << 31) as f64
+        }
+    }
 
     /// Streak positions: consecutive race turns raise k; a rest resets it.
     #[test]
@@ -1072,14 +1513,24 @@ mod tests {
             for c in fixture(file).as_array().unwrap() {
                 let u = &d.umas[ix(d, c["uma"].as_u64().unwrap() as u32)];
                 let mut w = vec![0.0; d.nr];
-                for e in c["weights"].as_array().unwrap() { w[e[0].as_u64().unwrap() as usize] = e[1].as_f64().unwrap(); }
-                let force = if rest { Some((c["force_rest"].as_u64().unwrap() as usize - 1, Choice::Rest)) } else {
-                    c["force"].as_array().map(|fa| { let t = fa[0].as_u64().unwrap() as usize; (t - 1, opt_at(u, t, fa[1].as_u64().unwrap() as u32)) }) };
+                for e in c["weights"].as_array().unwrap() {
+                    w[e[0].as_u64().unwrap() as usize] = e[1].as_f64().unwrap();
+                }
+                let force = if rest {
+                    Some((c["force_rest"].as_u64().unwrap() as usize - 1, Choice::Rest))
+                } else {
+                    c["force"].as_array().map(|fa| {
+                        let t = fa[0].as_u64().unwrap() as usize;
+                        (t - 1, opt_at(u, t, fa[1].as_u64().unwrap() as u32))
+                    })
+                };
                 let (s, v) = best_response(d, u, &w, force).expect("infeasible");
                 let want = c["milp_value"].as_f64().unwrap();
                 assert!((v - want).abs() < 1e-6, "{} {} {:?}: dp {v} vs milp {want}", u.name, c["kind"], force);
                 assert!(feasible(u, &s));
-                if let Some((t, ch)) = force { assert_eq!(s[t], ch); }
+                if let Some((t, ch)) = force {
+                    assert_eq!(s[t], ch);
+                }
                 n += 1;
             }
         }
@@ -1108,16 +1559,26 @@ mod tests {
         let (s, _) = best_response(d, u, &w, None).unwrap();
         assert!(feasible(u, &s));
         // drop a goal race
-        let mut t_goal = 0; for t in 0..NT { if u.forced[t].is_some() { t_goal = t; break; } }
-        let mut bad = s; bad[t_goal] = Choice::Rest;
+        let mut t_goal = 0;
+        for t in 0..NT {
+            if u.forced[t].is_some() {
+                t_goal = t;
+                break;
+            }
+        }
+        let mut bad = s;
+        bad[t_goal] = Choice::Rest;
         assert!(!feasible(u, &bad), "missing goal accepted");
         // option index out of range
-        let mut bad2 = s; bad2[5] = Choice::Opt(9);
+        let mut bad2 = s;
+        bad2[5] = Choice::Opt(9);
         assert!(!feasible(u, &bad2), "nonexistent option accepted");
         // multi-turn goal alternative: Fuji Kiseki must run NHK Mile (t33) or the Derby (t34)
         let fk = &d.umas[ix(d, 1005)];
         let (s3, _) = best_response(d, fk, &w, None).unwrap();
-        let mut bad3 = s3; bad3[32] = Choice::Rest; bad3[33] = Choice::Rest;
+        let mut bad3 = s3;
+        bad3[32] = Choice::Rest;
+        bad3[33] = Choice::Rest;
         assert!(!feasible(fk, &bad3), "missing multi-turn goal alternative accepted");
     }
 
@@ -1125,15 +1586,28 @@ mod tests {
     /// stops matching when the data changes. (A stale table is only a warning: the solver ignores it.)
     #[test]
     fn stored_pb_tables_match_fresh() {
-        for path in [concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"), concat!(env!("CARGO_MANIFEST_DIR"), "/data/jp/data.json")] {
+        for path in [
+            concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/data/jp/data.json"),
+        ] {
             let txt = std::fs::read_to_string(path).unwrap();
             let d = load_str(&txt);
-            let Some(t) = d.pbt.as_ref() else { eprintln!("warning: {path} has no current pb table (run ./build.sh pb)"); continue; };
-            let mut fresh = load_str(&txt); fresh.pbt = None;
+            let Some(t) = d.pbt.as_ref() else {
+                eprintln!("warning: {path} has no current pb table (run ./build.sh pb)");
+                continue;
+            };
+            let mut fresh = load_str(&txt);
+            fresh.pbt = None;
             let n = d.umas.len();
             let pool: Vec<usize> = (0..n).collect();
             let pb = pair_ceilings(&fresh, &pool);
-            for a in 0..n { for b in 0..n { if a != b { assert_eq!(t[a * n + b].to_bits(), pb[a][b].to_bits(), "{path} PB({a},{b})"); } } }
+            for a in 0..n {
+                for b in 0..n {
+                    if a != b {
+                        assert_eq!(t[a * n + b].to_bits(), pb[a][b].to_bits(), "{path} PB({a},{b})");
+                    }
+                }
+            }
             let mut v: serde_json::Value = serde_json::from_str(&txt).unwrap();
             v["pen"][2] = serde_json::json!(v["pen"][2].as_i64().unwrap() + 1);
             assert!(load_str(&v.to_string()).pbt.is_none(), "{path}: a table survived a data change");
@@ -1162,13 +1636,23 @@ mod tests {
         let tr = |a: usize, b: usize, c: usize| if a == c || b == c { 0.0 } else { d.tri[a][b][c] as f64 };
         for _ in 0..60 {
             let mut f = [0usize; 4];
-            loop { for x in f.iter_mut() { *x = (rng.next() as usize) % d.umas.len(); }
-                   let mut g = f; g.sort(); if g.windows(2).all(|w| w[0] != w[1]) { break; } }
-            let s: Vec<Sched> = (0..4).map(|i| {
-                let u = &d.umas[f[i]];
-                let w: Vec<f64> = (0..d.nr).map(|_| rng.f() * 3.0).collect();
-                best_response(d, u, &w, None).unwrap().0
-            }).collect();
+            loop {
+                for x in f.iter_mut() {
+                    *x = (rng.next() as usize) % d.umas.len();
+                }
+                let mut g = f;
+                g.sort();
+                if g.windows(2).all(|w| w[0] != w[1]) {
+                    break;
+                }
+            }
+            let s: Vec<Sched> = (0..4)
+                .map(|i| {
+                    let u = &d.umas[f[i]];
+                    let w: Vec<f64> = (0..d.nr).map(|_| rng.f() * 3.0).collect();
+                    best_response(d, u, &w, None).unwrap().0
+                })
+                .collect();
             let p: Vec<Vec<f64>> = (0..4).map(|i| probs(d, &d.umas[f[i]], &s[i])).collect();
             let o = |a: usize, b: usize| wval(&p[a], &p[b]);
             let um = |i: usize| f[i];
@@ -1177,15 +1661,25 @@ mod tests {
             let lin = |t: usize, p1: usize, p2: usize, g1: [usize; 2], g2: [usize; 2]| -> f64 {
                 let par = pr(um(t), um(p1)) + pr(um(t), um(p2)) + pr(um(p1), um(p2)) + 3.0 * o(p1, p2);
                 let mut gp = 0.0;
-                for &g in &g1 { gp += tr(um(t), um(p1), um(g)) + 3.0 * o(p1, g); }
-                for &g in &g2 { gp += tr(um(t), um(p2), um(g)) + 3.0 * o(p2, g); }
+                for &g in &g1 {
+                    gp += tr(um(t), um(p1), um(g)) + 3.0 * o(p1, g);
+                }
+                for &g in &g2 {
+                    gp += tr(um(t), um(p2), um(g)) + 3.0 * o(p2, g);
+                }
                 par + w * gp
             };
             // P1 bred from (P2, X), P2 bred from (P1, X); normalized to 4 runs
             let mut scf = 0.0;
-            for t in 0..4 { for x in 0..4 { if x == t { continue; }
-                let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
-                scf += lin(t, ps[0], ps[1], [ps[1], x], [ps[0], x]); } }
+            for t in 0..4 {
+                for x in 0..4 {
+                    if x == t {
+                        continue;
+                    }
+                    let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
+                    scf += lin(t, ps[0], ps[1], [ps[1], x], [ps[0], x]);
+                }
+            }
             scf /= 3.0;
             let v = score(d, &make_loop(d, f), &[s[0], s[1], s[2], s[3]]);
             assert!((v - scf).abs() < 1e-9, "score {v} vs per-legacy {scf}");
@@ -1197,19 +1691,40 @@ mod tests {
     #[test]
     fn optional_g1s_cost_nothing() {
         let d = data();
-        let cases: [[u32; 4]; 4] = [[1007, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1015, 1017, 1023, 1030], [1006, 1019, 1029, 1034]];
+        let cases: [[u32; 4]; 4] =
+            [[1007, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1015, 1017, 1023, 1030], [1006, 1019, 1029, 1034]];
         for ids in cases {
             let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
             let so = optimize(d, m, 3, 5, 60.0).s;
             let lp = make_loop(d, m);
             let v = score(d, &lp, &so);
             let mut runners = vec![0u8; d.nr];
-            for i in 0..4 { let mut seen = vec![false; d.nr];
-                for t in 0..NT { if let Choice::Opt(o) = so[i][t] { let rr = d.umas[m[i]].opts[t][o as usize].race; if rr >= 0 && !seen[rr as usize] { seen[rr as usize] = true; runners[rr as usize] += 1; } } } }
+            for i in 0..4 {
+                let mut seen = vec![false; d.nr];
+                for t in 0..NT {
+                    if let Choice::Opt(o) = so[i][t] {
+                        let rr = d.umas[m[i]].opts[t][o as usize].race;
+                        if rr >= 0 && !seen[rr as usize] {
+                            seen[rr as usize] = true;
+                            runners[rr as usize] += 1;
+                        }
+                    }
+                }
+            }
             let mut stripped = so;
-            for i in 0..4 { for t in 0..NT { if let Choice::Opt(o) = stripped[i][t] { let op = &d.umas[m[i]].opts[t][o as usize];
-                if op.race >= 0 && runners[op.race as usize] == 1 && !op.goal { stripped[i][t] = Choice::Rest; } } } }
-            for i in 0..4 { assert!(feasible(&d.umas[m[i]], &stripped[i])); }
+            for i in 0..4 {
+                for t in 0..NT {
+                    if let Choice::Opt(o) = stripped[i][t] {
+                        let op = &d.umas[m[i]].opts[t][o as usize];
+                        if op.race >= 0 && runners[op.race as usize] == 1 && !op.goal {
+                            stripped[i][t] = Choice::Rest;
+                        }
+                    }
+                }
+            }
+            for i in 0..4 {
+                assert!(feasible(&d.umas[m[i]], &stripped[i]));
+            }
             let vs = score(d, &lp, &stripped);
             assert!((vs - v).abs() < 1e-5, "{ids:?}: stripped {vs} vs {v}");
         }
@@ -1226,7 +1741,9 @@ mod tests {
             let r = optimize(d, m, 5, 3, 60.0);
             assert!(r.s[3].iter().all(|c| *c == Choice::Rest));
             let s3: [Sched; 3] = [r.s[0], r.s[1], r.s[2]];
-            for i in 0..3 { assert!(feasible(&d.umas[m[i]], &s3[i])); }
+            for i in 0..3 {
+                assert!(feasible(&d.umas[m[i]], &s3[i]));
+            }
             let lp = make_loop(d, m);
             let ps: Vec<Vec<f64>> = (0..3).map(|i| probs(d, &d.umas[m[i]], &s3[i])).collect();
             let direct = lp.base + 3.0 * C_PAIR * (wval(&ps[0], &ps[1]) + wval(&ps[0], &ps[2]) + wval(&ps[1], &ps[2]));
@@ -1244,20 +1761,37 @@ mod tests {
     fn interchangeable_swaps_preserve_score() {
         let d = data();
         let mut checked = 0;
-        for ids in [[1007u32, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1006, 1019, 1029, 1034], [1015, 1017, 1023, 1030]] {
+        for ids in
+            [[1007u32, 1019, 1021, 1049], [1009, 1014, 1019, 1029], [1006, 1019, 1029, 1034], [1015, 1017, 1023, 1030]]
+        {
             let m = [ix(d, ids[0]), ix(d, ids[1]), ix(d, ids[2]), ix(d, ids[3])];
             let r = optimize(d, m, 3, 5, 60.0);
             let lp = make_loop(d, m);
             let v = score(d, &lp, &r.s);
             for t in 0..NT {
                 let mut races: Vec<i32> = vec![];
-                for i in 0..4 { if let Choice::Opt(o) = r.s[i][t] { let rr = d.umas[m[i]].opts[t][o as usize].race; if rr >= 0 && !races.contains(&rr) { races.push(rr); } } }
+                for i in 0..4 {
+                    if let Choice::Opt(o) = r.s[i][t] {
+                        let rr = d.umas[m[i]].opts[t][o as usize].race;
+                        if rr >= 0 && !races.contains(&rr) {
+                            races.push(rr);
+                        }
+                    }
+                }
                 for race in races {
                     for a in interchangeable(d, &m, &r.s, t, race) {
                         let mut s2 = r.s;
-                        for i in 0..4 { if let Choice::Opt(o) = s2[i][t] { if d.umas[m[i]].opts[t][o as usize].race == race {
-                            let k = d.umas[m[i]].opts[t].iter().position(|op| op.race == a).unwrap(); s2[i][t] = Choice::Opt(k as u8); } } }
-                        for i in 0..4 { assert!(feasible(&d.umas[m[i]], &s2[i])); }
+                        for i in 0..4 {
+                            if let Choice::Opt(o) = s2[i][t] {
+                                if d.umas[m[i]].opts[t][o as usize].race == race {
+                                    let k = d.umas[m[i]].opts[t].iter().position(|op| op.race == a).unwrap();
+                                    s2[i][t] = Choice::Opt(k as u8);
+                                }
+                            }
+                        }
+                        for i in 0..4 {
+                            assert!(feasible(&d.umas[m[i]], &s2[i]));
+                        }
                         assert!((score(d, &lp, &s2) - v).abs() < 1e-9, "swap {race}->{a} at {t} changed the score");
                         checked += 1;
                     }
@@ -1272,17 +1806,31 @@ mod tests {
     #[test]
     fn win_table_matches_community_table() {
         let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/data.json"));
-        let table: [(i32, [i32; 6]); 13] = [(0, [110, 110, 105, 90, 80, 60]), (10, [100, 100, 95, 80, 70, 50]), (20, [90, 90, 85, 70, 60, 40]),
-            (30, [80, 80, 75, 60, 50, 30]), (40, [70, 70, 65, 50, 40, 20]), (60, [50, 50, 45, 30, 20, 0]), (90, [20, 20, 15, 0, 0, 0]),
-            (100, [10, 10, 5, 0, 0, 0]), (110, [0; 6]), (120, [0; 6]), (130, [0; 6]), (150, [0; 6]), (180, [0; 6])];
+        let table: [(i32, [i32; 6]); 13] = [
+            (0, [110, 110, 105, 90, 80, 60]),
+            (10, [100, 100, 95, 80, 70, 50]),
+            (20, [90, 90, 85, 70, 60, 40]),
+            (30, [80, 80, 75, 60, 50, 30]),
+            (40, [70, 70, 65, 50, 40, 20]),
+            (60, [50, 50, 45, 30, 20, 0]),
+            (90, [20, 20, 15, 0, 0, 0]),
+            (100, [10, 10, 5, 0, 0, 0]),
+            (110, [0; 6]),
+            (120, [0; 6]),
+            (130, [0; 6]),
+            (150, [0; 6]),
+            (180, [0; 6]),
+        ];
         for (cost, vals) in table {
             let bp = (110 - cost).max(-20);
-            for k in 1..=6 { assert_eq!(pk(&d, bp, k), (vals[k - 1].clamp(0, 100)) as f64 / 100.0, "cost {cost} k {k}"); }
+            for k in 1..=6 {
+                assert_eq!(pk(&d, bp, k), (vals[k - 1].clamp(0, 100)) as f64 / 100.0, "cost {cost} k {k}");
+            }
         }
     }
 }
 
-mod skills;
 mod deck;
+mod skills;
 #[cfg(target_arch = "wasm32")]
 mod web;

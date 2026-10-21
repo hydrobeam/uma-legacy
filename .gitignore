@@ -20,6 +20,7 @@
 !/pkg/loopopt/data/
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
+!/pkg/loopopt/rustfmt.toml
 !/webapp/
 /webapp/*
 !/webapp/build.py

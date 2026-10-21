@@ -4,8 +4,8 @@
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
-use super::{load_raw, Data, DataRaw};
 use super::skills::SkillsRaw;
+use super::{Data, DataRaw, load_raw};
 use std::cell::RefCell;
 
 thread_local! {
@@ -32,11 +32,15 @@ pub extern "C" fn alloc(len: usize) -> *mut u8 {
 /// belongs to the output buffer and must never be passed here.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) {
-    unsafe { drop(Vec::from_raw_parts(p, 0, len)); }
+    unsafe {
+        drop(Vec::from_raw_parts(p, 0, len));
+    }
 }
 /// Length of the latest response, to be read together with the pointer returned by `call`.
 #[unsafe(no_mangle)]
-pub extern "C" fn result_len() -> usize { OUT.with(|o| o.borrow().len()) }
+pub extern "C" fn result_len() -> usize {
+    OUT.with(|o| o.borrow().len())
+}
 
 /// Handle a request without taking ownership of its bytes. The returned response is owned by this module;
 /// copy `result_len()` bytes before the next `call`, which may overwrite or reallocate the output buffer.
@@ -65,15 +69,18 @@ pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
 struct InitReq {
     data: DataRaw,
     skills: SkillsRaw,
-    #[serde(default)] cards: serde_json::Value,
-    #[serde(default)] events: serde_json::Value,
+    #[serde(default)]
+    cards: serde_json::Value,
+    #[serde(default)]
+    events: serde_json::Value,
 }
 
 fn handle(req: &str) -> serde_json::Value {
     // the request parsed once: an init request with the page's prefix straight into `InitReq`, every other one into a
     // `Value` (an init request without the prefix then from it; on an error the text is parsed again for the message)
     let init = |parsed: Result<InitReq, serde_json::Error>| -> Result<InitReq, serde_json::Value> {
-        parsed.or_else(|_| serde_json::from_str::<InitReq>(req))
+        parsed
+            .or_else(|_| serde_json::from_str::<InitReq>(req))
             .map_err(|e| serde_json::json!({"error": format!("bad init request: {e}")}))
     };
     let mut job: Option<serde_json::Value> = None;
@@ -84,12 +91,18 @@ fn handle(req: &str) -> serde_json::Value {
             Ok(value) if value.get("cmd").and_then(|c| c.as_str()) == Some("init") => {
                 Some(init(serde_json::from_value(value)))
             }
-            Ok(value) => { job = Some(value); None }
+            Ok(value) => {
+                job = Some(value);
+                None
+            }
             Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}),
         }
     };
     if let Some(initialization) = initialization {
-        let request = match initialization { Ok(request) => request, Err(error) => return error };
+        let request = match initialization {
+            Ok(request) => request,
+            Err(error) => return error,
+        };
         let data = load_raw(request.data);
         let uma_count = data.umas.len();
         if let Ok(cards) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&request.cards) {
@@ -103,25 +116,33 @@ fn handle(req: &str) -> serde_json::Value {
     let mut job = job.unwrap();
     let cmd = job["cmd"].as_str().unwrap_or("").to_owned();
     match cmd.as_str() {
-        "deck" => STATE.with(|s| DECK.with(|dk| {
-            let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            super::deck::apply_event_lists(&mut job, ev);
-            super::deck::run_deck(d, sk, cr, &job)
-        })),
-        // state_out / state_in read no events
-        "career" | "state_out" | "state_in" => STATE.with(|s| DECK.with(|dk| {
-            let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
-            if cmd == "career" {
+        "deck" => STATE.with(|s| {
+            DECK.with(|dk| {
+                let st = s.borrow();
+                let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
+                let dkb = dk.borrow();
+                let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
                 super::deck::apply_event_lists(&mut job, ev);
-                if job["roll"]["job"].is_object() {
-                    super::deck::apply_event_lists(&mut job["roll"]["job"], ev);
+                super::deck::run_deck(d, sk, cr, &job)
+            })
+        }),
+        // state_out / state_in read no events
+        "career" | "state_out" | "state_in" => STATE.with(|s| {
+            DECK.with(|dk| {
+                let st = s.borrow();
+                let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
+                let dkb = dk.borrow();
+                let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
+                // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
+                if cmd == "career" {
+                    super::deck::apply_event_lists(&mut job, ev);
+                    if job["roll"]["job"].is_object() {
+                        super::deck::apply_event_lists(&mut job["roll"]["job"], ev);
+                    }
                 }
-            }
-            super::deck::run_career(d, sk, cr, &job)
-        })),
+                super::deck::run_career(d, sk, cr, &job)
+            })
+        }),
         c => serde_json::json!({"error": format!("unknown command {c}")}),
     }
 }
