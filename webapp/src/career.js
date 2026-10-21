@@ -56,7 +56,7 @@ function paint() {
   $('rhead').dataset.kind = searching ? 'busy' : status.kind;
   const old = searching && started && !!shown();   // the previous answer, on screen until this run's
   $('results').classList.toggle('stale', old || (!searching && ['error', 'empty'].includes(status.kind)));
-  $('tree').classList.toggle('stale', old); $('pick-sum').classList.toggle('stale', old);
+  $('tree').classList.toggle('stale', old);
   $('results').setAttribute('aria-busy', String(searching));
   if (searching) { const s = Math.floor((performance.now() - t0) / 1000);
     n.textContent = phase === 'plan' && phaseNote ? phaseNote + ' ' : '';
@@ -865,17 +865,14 @@ function renderSimulation() {
 // the options the planner weighed (only what it picks: the places left open), with "Use this": per option its odds now
 // and its net saving per run; without a plan (the trainee chosen, or the plan failed), the K best careers by odds
 // (pl: the places the table's careers fill: yours, or the plan's when the table is the last plan's)
-// (grouped: her group's header names the parents, the row only her)
-function pickWhat(r, pl = plan, grouped = false) {
+function pickWhat(r, pl = plan) {
   const what = el('div', 'altw');
   if (!pl.trainee) { what.append(umaAv(r.trainee.id, r.trainee.outfits[0]?.id, 32), ' ' + r.trainee.name); }
-  const open = grouped ? [] : openParents(r, pl);
-  if (open.length) { what.append(pl.trainee ? 'Parents ' : ', parents '); namePair(what, open); }
+  const open = r.parents.filter(i => !pl.parents.includes(vets[i].id));
+  if (open.length) { if (!pl.trainee) what.append(', parents '); else what.append('Parents ');
+    open.forEach((i, j) => { if (j) what.append(' + '); what.append(umaAv(vets[i].chara, vets[i].outfit, 24), ` #${i + 1} ${umaName(vets[i].chara)}`); }); }
   return what;
 }
-// the parents a career sets in the places left open (her veterans' indices), and their names as "#1 A + #2 B"
-const openParents = (r, pl) => r.parents.filter(i => !pl.parents.includes(vets[i].id));
-const namePair = (box, ix) => ix.forEach((i, j) => { if (j) box.append(' + '); box.append(umaAv(vets[i].chara, vets[i].outfit, 24), ` #${i + 1} ${umaName(vets[i].chara)}`); });
 function useBtn(r, pl = plan) {
   const b = btn('Use this', '', () => {
     plan.trainee = r.trainee.id; const f = pl.parents.slice();
@@ -886,7 +883,7 @@ function useBtn(r, pl = plan) {
 }
 const OPT_SHOW = 8;
 function optionsEl() {
-  const box = sec('alts', 'Career choices'); box.id = 'alts';
+  const box = sec('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
   // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below; with
   // every place chosen, the last plan's table on the same setup and veterans, with your career in it (from the search
@@ -907,19 +904,9 @@ function optionsEl() {
   // (the popup behind a small (i) right after the section's title, in its header bar)
   if (P) { const q = el('button', 'oinfo savewhy', 'i'); q.type = 'button'; q.id = 'save-why'; q.dataset.k = 'save-why'; q.setAttribute('aria-haspopup', 'dialog');
     q.setAttribute('aria-label', 'What these numbers mean'); q.title = 'What these numbers mean'; q.onclick = () => openSaveWhy(P); box.querySelector(':scope > h3').append(q); }
-  // with the trainee and a parent both open, the careers on the same parents under one header (the pair is the choice
-  // that costs veterans; the trainee is free), each pair where its best career ranks, its careers in their order
-  const pairOf = (r) => openParents(r, pl).slice().sort((a, b) => a - b).join(',');
-  const pairs = !pl.trainee && pl.parents.some(p => !p) ? [...new Set(list.map(pairOf))] : null;
-  const grouped = !!pairs && pairs.length < list.length;
-  const groups = grouped ? pairs.map(k => list.filter(r => pairOf(r) === k)) : [list];
-  tb.tBodies[0].remove();
-  for (const g of groups) { const body = tb.createTBody();
-    if (grouped) { const h = el('th'); h.scope = 'rowgroup'; h.colSpan = 4; const w = el('div', 'altw'); w.append('Parents '); namePair(w, openParents(g[0], pl));
-      h.appendChild(w); const hr = el('tr', 'ogrp'); hr.appendChild(h); body.appendChild(hr); }
-  for (const r of g) {
+  for (const r of list) {
     const cur = on && keyOf(r) === keyOf(on), row = el('tr', cur ? 'on' : ''), c0 = el('th'); c0.scope = 'row';
-    c0.appendChild(pickWhat(r, pl, grouped));
+    c0.appendChild(pickWhat(r, pl));
     const tags = el('span', 'otags');
     if (r === mine) tags.appendChild(el('span', 'otag', 'your choice'));
     if (P && r.chosen) tags.appendChild(el('span', 'otag pick', 'planner\'s pick'));
@@ -934,8 +921,8 @@ function optionsEl() {
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r, pl));
     row.appendChild(act);
-    body.appendChild(row);
-  } }
+    tb.tBodies[0].appendChild(row);
+  }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
   // a row whose career search was not complete (`proven: false`: its work cap, a band overflow or a deck past its class's
   // cap): the best it found, maybe not her best
@@ -987,28 +974,15 @@ function openSaveWhy(P) {
   const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
   saveDlg.showModal(); c.focus();
 }
-// the answer in one line under the title: the career on show, its odds and saving, how many others come close, and a
-// link down to Career choices (on a phone the table is four screens down, under the tree and her card)
-function pickSumEl() {
-  // (the plan's, or with every place chosen the last plan's that Career choices shows)
-  const box = $('pick-sum'), r = shown(), P = planS.state === 'done' ? planS.r : refFor()?.P, row = r && P && P.options.find(o => keyOf(o) === keyOf(r));
-  box.textContent = ''; box.hidden = !row || scoreOf(row) == null;
-  if (box.hidden) return;
-  const n = state.targets.length, near = P.options.filter(o => o.near && keyOf(o) !== keyOf(r)).length;
-  const b = (t) => el('b', '', t);
-  box.append(el('span', 'pslab', row.chosen ? 'Planner\'s pick' : 'Your career'), ' ', b(fmtIn(r.p_all)), ` to land all ${n} · saves `, b(netText(scoreOf(row))), ' per run');
-  if (near) box.append(' · ', b(String(near)), ` other career${near === 1 ? '' : 's'} about the same`);
-  if ($('alts')) { const a = el('a', 'psgo', 'See the choices'); a.href = '#alts'; box.append(' ', a); }
-}
 function renderResults() {
   const box = $('results'); box.textContent = '';
-  const r = shown(); if (!r) { pickSumEl(); renderSimulation(); return; }
+  const r = shown(); if (!r) { renderSimulation(); return; }
   const top = el('div'); top.id = 'sim-top';
   box.append(top, targetsEl(r));
   // the table: the plan's careers, or the search's with a place open; with every place chosen, the last plan's (refFor)
   const open = !plan.trainee || plan.parents.some(p => !p);
   if ((open && ((planS.state === 'done' ? planS.r.options : last.r.results).length > 1)) || refFor()) box.appendChild(optionsEl());
-  pickSumEl(); renderSimulation(); markOwn();
+  renderSimulation(); markOwn();
 }
 
 // ---------- the veterans (pool) ----------

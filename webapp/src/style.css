@@ -1961,20 +1961,6 @@ dialog.prview { width: min(600px, calc(100vw - 32px)); }
 .thtip { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .thtip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
-/* the career page's answer in a line under its title (the pick, her odds and saving, careers about the same) with a link
-   down to Career choices */
-.rb .rbtitle .picksum { flex: 1 1 100%; margin: 0; color: var(--gm-ink); font-weight: 600; line-height: 1.5; }
-.rb .picksum b { font-weight: 900; font-variant-numeric: tabular-nums; }
-.rb .picksum .pslab { font-weight: 900; }
-.rb .picksum .pslab::after { content: ':'; }
-.rb .picksum .psgo { font-weight: 800; white-space: nowrap; color: var(--gm-ink); text-underline-offset: 3px; }
-.rb .picksum.stale { opacity: 0.45; }
-#alts { scroll-margin-top: 12px; }
-/* Career choices: the careers on one pair of parents under a header naming the pair */
-.rb .optab tr.ogrp > th { width: auto; padding: 10px 12px 2px; font-size: 0.8rem; color: var(--gm-ink2); background: none; }
-.rb .optab tr.ogrp .altw { font-weight: 700; }
-@media (max-width: 620px) { .rb .alts .optab tbody tr.ogrp { border-bottom: 0; padding: 8px 0 0; } }
-
 /* the tree on a phone: the trainee's portrait beside her name, the two legacy boxes side by side, each with the parent
    over her two parents (stacked, the tree was 760 px of a 812 px screen); the grandparents' "Grandparent" label is left
    to screen readers there (their place under the parent says it) */

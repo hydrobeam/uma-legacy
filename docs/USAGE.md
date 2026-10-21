@@ -64,15 +64,11 @@ changes the job starts one run (one that leaves it as it is, such as renaming a 
 the previous answer stays dimmed until the new one arrives, and the status line says what the plan is at (*scoring 12
 of 83 umas*).
 
-A line under *Next career* sums up the career on show: its odds, its *Saves per run* and how many other careers are
-*about the same*, with a link down to Career choices.
-
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
 odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two 8/8 parents
-(*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. With the trainee and a parent both left to the planner, the careers on the
-same parents sit under one header naming them (the pair, ranked by its best career). A line under
+(*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. A line under
 the table says when the search for a shown uma could not prove its answer (on large pools it usually ran out of time):
 her row is the best it found, and a better career may exist. **What do
 these mean?** explains the numbers on the page. **Use this** sets the career's places; the table stays (the last plan's,
