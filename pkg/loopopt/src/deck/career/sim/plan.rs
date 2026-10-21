@@ -3887,6 +3887,23 @@ struct PlanInputs<'plan, 'data> {
     pick: Option<(&'plan Pool, &'plan Solved)>,
 }
 
+impl<'plan> PlanInputs<'plan, '_> {
+    /// The pool runnable rows use: the pick's, else `pool`.
+    fn pick_pool(&self) -> &'plan Pool {
+        self.pick.map_or(self.pool, |p| p.0)
+    }
+
+    /// The main search runnable rows fall back to: the pick's, else `sv`.
+    fn pick_solved(&self) -> &'plan Solved {
+        self.pick.map_or(self.sv, |p| p.1)
+    }
+
+    /// A career that can be shown or picked: its parents are legal on the pick's pool.
+    fn shown(&self, f: &Found) -> bool {
+        self.pick_pool().bor_ok(f.a, f.b)
+    }
+}
+
 /// Candidate order and the starting odds stay fixed while later searches add decks.
 struct PlanCandidates {
     /// Main searches with borrowing allowed, and with the pick's borrowing rule.
@@ -3936,28 +3953,30 @@ struct PlanSearches {
     same: Option<Bests>,
     prev: Option<Bests>,
     budget0: usize,
-    search_ms: f64,
 }
 
-/// Mutable state carried in phase order. The separate Sim retains its evolving deck cache:
-/// even stats-only scorings can search for decks that subsequent phases read.
-struct PlanState {
-    candidates: PlanCandidates,
-    searches: PlanSearches,
-    runs: Vec<PlanRow>,
-    /// G1 wins of each base career, read when fitting its continuation.
-    wtab: Vec<Vec<usize>>,
-    buf: Vec<f64>,
-    cache0: Option<super::Cache>,
-    sur_diff: Vec<Value>,
+/// The plan's timers and work counters, and the surrogate's differences (`sur` 2): recorded by the phases, reported
+/// with the output.
+struct PlanProfile {
+    /// The plan's start, and pass 1's.
+    t_all: f64,
+    t3: f64,
+    /// Choosing the candidates, and the career searches.
+    loop_ms: f64,
+    search_ms: f64,
+    /// The work counters at the start (deck-search nodes, exact scorings): the plan reports its own.
+    nodes0: usize,
+    joints0: usize,
     /// Admitted proxies certified by their class's proofs, without a search.
     n_cert: usize,
     exact_n: usize,
-    nodes0: usize,
-    joints0: usize,
-    t_all: f64,
-    t3: f64,
-    loop_ms: f64,
+    sur_diff: Vec<Value>,
+}
+
+/// Pass 1's rows (`RowOrigin::Base`), and each one's G1 wins, read when fitting a continuation.
+struct BaseRows {
+    runs: Vec<PlanRow>,
+    wtab: Vec<Vec<usize>>,
 }
 
 /// Pass 2's completed fit, used by the optional proxy check and output assembly.
@@ -3998,21 +4017,35 @@ pub(in super::super) fn index_rule<'data>(
 ) -> Value {
     let t_all = now_ms();
     let input = PlanInputs { d, sk, cr, job, legs, pool, sv, fix, trainees, pj, pick };
-    let (_, psv) = pick.unwrap_or((pool, sv));
-    let gp = psv.found[0].clone();
+    let gp = input.pick_solved().found[0].clone();
     progress(1, 0, 0);
     // First in, dropped last, after every memo belonging to this plan.
     let _memo_report = MemoReport;
-    let (mut s, mut state) = match setup_plan_candidates(env, &input, t_all, gp) {
-        Ok(prepared) => prepared,
-        Err(error) => return error,
-    };
-    score_and_admit_proxies(&mut s, &input, &mut state);
-    add_looped_rows(&mut s, &input, &mut state);
-    add_no_borrow_rows(&mut s, &input, &mut state);
-    let scores = score_and_promote_rows(&mut s, &input, &mut state);
-    let proxy_check = check_plan_proxies(&mut s, &input, &mut state, &scores);
-    assemble_plan_output(s, &input, state, scores, proxy_check)
+    // (the phases' scratch for deck values)
+    let mut buf = vec![];
+    let (mut s, candidates, mut searches, mut profile, cache0) =
+        match setup_plan_candidates(env, &input, t_all, gp, &mut buf) {
+            Ok(prepared) => prepared,
+            Err(error) => return error,
+        };
+    let BaseRows { mut runs, mut wtab } =
+        score_and_admit_proxies(&mut s, &input, &candidates, &mut searches, &mut profile, &mut buf);
+    let looped = add_looped_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
+    runs.extend(looped);
+    let no_borrow = add_no_borrow_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
+    runs.extend(no_borrow);
+    let scores = score_and_promote_rows(
+        &mut s,
+        &input,
+        &candidates,
+        &mut searches,
+        &mut runs,
+        &mut wtab,
+        &mut profile,
+        &mut buf,
+    );
+    let proxy_check = check_plan_proxies(&mut s, &input, &candidates, &searches.best, &runs, &scores, cache0, &mut buf);
+    assemble_plan_output(s, &input, &candidates, searches, runs, &scores, &profile, proxy_check, &mut buf)
 }
 
 fn setup_plan_candidates<'env, 'data>(
@@ -4020,7 +4053,8 @@ fn setup_plan_candidates<'env, 'data>(
     input: &PlanInputs<'_, 'data>,
     t_all: f64,
     gp: Found,
-) -> Result<(Sim<'env, 'data>, PlanState), Value> {
+    buf: &mut Vec<f64>,
+) -> Result<(Sim<'env, 'data>, PlanCandidates, PlanSearches, PlanProfile, Option<super::Cache>), Value> {
     let PlanInputs { d, sk, cr, job, legs, pool, sv, fix, trainees, pj, .. } = *input;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
@@ -4126,7 +4160,6 @@ fn setup_plan_candidates<'env, 'data>(
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
     let cache0 = pj.proxy_check.then(|| s.cache.clone());
-    let mut buf = vec![];
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut sur_diff: Vec<Value> = vec![];
     if pj.sur > 0 {
@@ -4134,7 +4167,7 @@ fn setup_plan_candidates<'env, 'data>(
         capped(&mut s, pj.search_work, budget0, |s| {
             for &u in &cands {
                 if pj.sur == 2 || best[u].is_unsearched() {
-                    plan_surrogate(s, input, &mut best, u, &mut buf, &mut sur_diff);
+                    plan_surrogate(s, input, &mut best, u, buf, &mut sur_diff);
                 }
             }
         });
@@ -4178,36 +4211,29 @@ fn setup_plan_candidates<'env, 'data>(
         ones,
         proxy_on,
     };
-    let searches = PlanSearches { best, urefs, unp, lunp, nunp, lbest: vec![], same, prev, budget0, search_ms };
-    let state = PlanState {
-        candidates,
-        searches,
-        runs: vec![],
-        wtab: vec![vec![]; d.umas.len()],
-        buf,
-        cache0,
-        sur_diff,
-        n_cert: 0,
-        exact_n: 0,
-        nodes0,
-        joints0,
-        t_all,
-        t3,
-        loop_ms,
-    };
-    Ok((s, state))
+    let searches = PlanSearches { best, urefs, unp, lunp, nunp, lbest: vec![], same, prev, budget0 };
+    let profile = PlanProfile { t_all, t3, loop_ms, search_ms, nodes0, joints0, n_cert: 0, exact_n: 0, sur_diff };
+    Ok((s, candidates, searches, profile, cache0))
 }
 
-fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
-    let candidates = &state.candidates;
+fn score_and_admit_proxies(
+    s: &mut Sim,
+    input: &PlanInputs,
+    candidates: &PlanCandidates,
+    searches: &mut PlanSearches,
+    profile: &mut PlanProfile,
+    buf: &mut Vec<f64>,
+) -> BaseRows {
     let PlanInputs { d, legs, pool, sv, fix, pj, .. } = *input;
     let n = candidates.trainees.len();
-    let nl = input.legs.len();
+    let nl = legs.len();
+    let mut runs: Vec<PlanRow> = vec![];
+    let mut wtab: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
     let wins: Vec<(usize, Sel)> = sv
         .found
         .iter()
         .map(|f| (f.t, f.sel.clone()))
-        .chain(candidates.trainees.iter().filter_map(|&u| state.searches.best[u].found().cloned().map(|f| (u, f.sel))))
+        .chain(candidates.trainees.iter().filter_map(|&u| searches.best[u].found().cloned().map(|f| (u, f.sel))))
         .collect();
     // pass 1: every allowed uma's best career; per candidate, the chance her veteran raises that candidate's odds and the
     // mean odds raised to (exact over her outcomes)
@@ -4223,7 +4249,7 @@ fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanStat
         }
         for &x in &order {
             progress(2, order.iter().position(|&y| y == x).unwrap_or(0), order.len()); // pass 1: uma k of n
-            if candidates.proxy_on && state.searches.best[x].is_unsearched() {
+            if candidates.proxy_on && searches.best[x].is_unsearched() {
                 let ts = now_ms();
                 let cx = s.env.cls[x];
                 for (t, sel) in &wins {
@@ -4231,45 +4257,38 @@ fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanStat
                         s.cache.add(s.env, x, sel);
                     }
                 }
-                let pf = best_sur(s, pool, fix, x, 1e9, &mut state.buf);
-                state.searches.search_ms += now_ms() - ts;
+                let pf = best_sur(s, pool, fix, x, 1e9, buf);
+                profile.search_ms += now_ms() - ts;
                 let Some(f) = pf else { continue };
                 let (CareerScore { lift_stats: st, .. }, sv) = stamped(s, Some(&candidates.trainees), |s| {
-                    score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut state.buf)
+                    score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf)
                 });
-                state.runs.push(PlanRow::new(x, f, st, RowOrigin::Base, false, sv));
+                runs.push(PlanRow::new(x, f, st, RowOrigin::Base, false, sv));
                 continue;
             }
-            if state.searches.best[x].is_unsearched() || (pj.sur == 2 && !candidates.trainees.contains(&x)) {
+            if searches.best[x].is_unsearched() || (pj.sur == 2 && !candidates.trainees.contains(&x)) {
                 let ts = now_ms();
-                capped(s, pj.search_work, state.searches.budget0, |s| {
-                    if pj.sur != 1 && state.searches.best[x].is_unsearched() {
-                        let (f, r, ok) = best_of(
-                            s.env,
-                            pool,
-                            fix,
-                            x,
-                            state.searches.same.as_ref(),
-                            state.searches.prev.as_ref(),
-                            nl,
-                        );
+                capped(s, pj.search_work, searches.budget0, |s| {
+                    if pj.sur != 1 && searches.best[x].is_unsearched() {
+                        let (f, r, ok) =
+                            best_of(s.env, pool, fix, x, searches.same.as_ref(), searches.prev.as_ref(), nl);
                         if let Some(f) = &f {
                             s.cache.add(s.env, x, &f.sel);
                         }
-                        state.searches.urefs[x] = r;
-                        state.searches.best[x] = CachedSearch::Known(f);
-                        state.searches.unp[x] = !ok;
+                        searches.urefs[x] = r;
+                        searches.best[x] = CachedSearch::Known(f);
+                        searches.unp[x] = !ok;
                     }
                     if pj.sur > 0 {
-                        plan_surrogate(s, input, &mut state.searches.best, x, &mut state.buf, &mut state.sur_diff);
+                        plan_surrogate(s, input, &mut searches.best, x, buf, &mut profile.sur_diff);
                     }
                 });
-                state.searches.search_ms += now_ms() - ts;
+                profile.search_ms += now_ms() - ts;
             }
-            let Some(f) = state.searches.best[x].found().cloned() else { continue };
+            let Some(f) = searches.best[x].found().cloned() else { continue };
             let CareerScore { lift_stats: st, .. } =
-                score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut state.buf);
-            state.runs.push(PlanRow::new(x, f, st, RowOrigin::Base, true, None));
+                score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
+            runs.push(PlanRow::new(x, f, st, RowOrigin::Base, true, None));
         }
         // the near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
         // candidate's second best (exact and proxy careers together), until none is left
@@ -4281,8 +4300,7 @@ fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanStat
                     continue;
                 }
                 let (u, p) = (candidates.trainees[ui], candidates.pnow[ui]);
-                let mut e: Vec<(f64, usize)> = state
-                    .runs
+                let mut e: Vec<(f64, usize)> = runs
                     .iter()
                     .enumerate()
                     .filter(|(_, r)| d.umas[r.trainee].id != d.umas[u].id && r.lift_stats[ui].0 > 0.0)
@@ -4298,7 +4316,7 @@ fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanStat
                     if v < second * (1.0 - pj.proxy_eff.unwrap_or(PROXY_EFF)) {
                         break;
                     }
-                    if !state.runs[i].exact && !add.contains(&i) {
+                    if !runs[i].exact && !add.contains(&i) {
                         add.push(i);
                     }
                 }
@@ -4309,49 +4327,59 @@ fn score_and_admit_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanStat
             add.sort_unstable();
             let ts = now_ms();
             for i in add {
-                let x = state.runs[i].trainee;
+                let x = runs[i].trainee;
                 // a proxy the class's proofs certify needs no search (it is her best career's value)
-                if certified(s.env, pool, fix, x, &state.runs[i].career) {
-                    state.searches.best[x] = CachedSearch::Known(Some(state.runs[i].career.clone()));
-                    state.runs[i].exact = true;
-                    state.n_cert += 1;
+                if certified(s.env, pool, fix, x, &runs[i].career) {
+                    searches.best[x] = CachedSearch::Known(Some(runs[i].career.clone()));
+                    runs[i].exact = true;
+                    profile.n_cert += 1;
                     continue;
                 }
                 let r = {
-                    let ri = &state.runs[i];
+                    let ri = &runs[i];
                     exact_plan_career(
                         s,
                         input,
                         candidates,
-                        &mut state.searches,
+                        searches,
                         x,
-                        &mut state.buf,
-                        Some((&ri.career, ri.lift_stats.as_slice(), state.runs[i].stats_stamp)),
+                        buf,
+                        Some((&ri.career, ri.lift_stats.as_slice(), runs[i].stats_stamp)),
                     )
                 };
                 if let Some((f, st)) = r {
-                    state.runs[i].career = f;
-                    state.runs[i].lift_stats = st;
+                    runs[i].career = f;
+                    runs[i].lift_stats = st;
                 }
-                state.runs[i].exact = true;
-                state.runs[i].stats_stamp = None;
+                runs[i].exact = true;
+                runs[i].stats_stamp = None;
             }
-            state.searches.search_ms += now_ms() - ts;
+            profile.search_ms += now_ms() - ts;
         }
-        for r in &state.runs {
-            set_plan_wins(s, input, &mut state.wtab, r.trainee, &r.career);
+        for r in &runs {
+            set_plan_wins(s, input, &mut wtab, r.trainee, &r.career);
         }
     }
+    BaseRows { runs, wtab }
 }
 
-fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
-    let candidates = &state.candidates;
+/// The looped rows (below) of `runs`' base rows, in their order.
+fn add_looped_rows(
+    s: &mut Sim,
+    input: &PlanInputs,
+    candidates: &PlanCandidates,
+    runs: &[PlanRow],
+    searches: &mut PlanSearches,
+    profile: &mut PlanProfile,
+    buf: &mut Vec<f64>,
+) -> Vec<PlanRow> {
+    let mut added: Vec<PlanRow> = vec![];
     let base_s = candidates.stats_base();
     let PlanInputs { d, legs, pool, fix, pj, .. } = *input;
-    let (ppool, _) = input.pick.unwrap_or((input.pool, input.sv));
-    let nl = input.legs.len();
+    let ppool = input.pick_pool();
+    let nl = legs.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
+    let vis = |f: &Found| input.shown(f);
     // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
     // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
     // looped parent (the goal), and the trios' last step is such a career: without these rows the career V itself
@@ -4365,7 +4393,7 @@ fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
-    state.searches.lbest = vec![CachedSearch::Unsearched; d.umas.len()];
+    searches.lbest = vec![CachedSearch::Unsearched; d.umas.len()];
     progress(3, 0, 0); // the looped careers
     if fix.len() < 2 {
         let full8: Vec<usize> = (0..nl).filter(|&i| is_full(sj, &legs[i].sparks)).collect();
@@ -4373,13 +4401,13 @@ fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
         let her8 = nl > 0 && full8.contains(&(nl - 1));
         let ts = now_ms();
         let lnodes0 = s.env.space.nodes.get();
-        capped(s, pj.search_work, state.searches.budget0, |s| {
-            for i in 0..state.runs.len() {
-                if state.runs[i].origin != RowOrigin::Base {
+        capped(s, pj.search_work, searches.budget0, |s| {
+            for i in 0..runs.len() {
+                if runs[i].origin != RowOrigin::Base {
                     continue;
                 }
-                let x = state.runs[i].trainee;
-                if looped(&state.runs[i].career) && vis(&state.runs[i].career) {
+                let x = runs[i].trainee;
+                if looped(&runs[i].career) && vis(&runs[i].career) {
                     continue;
                 }
                 let kept = |b: &Option<Bests>| {
@@ -4389,14 +4417,14 @@ fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
                     })
                 };
                 let kept_unp = |b: &Option<Bests>| b.as_ref().is_some_and(|b| b.lunp.get(x).copied().unwrap_or(false));
-                let lf: Option<Found> = if let Some(v) = kept(&state.searches.same) {
-                    state.searches.lunp[x] = kept_unp(&state.searches.same);
+                let lf: Option<Found> = if let Some(v) = kept(&searches.same) {
+                    searches.lunp[x] = kept_unp(&searches.same);
                     v
                 } else {
-                    let start = kept(&state.searches.prev);
+                    let start = kept(&searches.prev);
                     let only_her = start.is_some();
                     if only_her {
-                        state.searches.lunp[x] = kept_unp(&state.searches.prev);
+                        searches.lunp[x] = kept_unp(&searches.prev);
                     }
                     if only_her && !her8 {
                         start.flatten()
@@ -4413,12 +4441,12 @@ fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
                             // (the exact search's bar starts at the best looped career so far: only a career above it can
                             // replace it, as in `best_of`; a tie keeps the earlier pair either way)
                             let f = if pj.sur == 1 {
-                                best_sur(s, ppool, &[a, b], x, pj.sur_margin, &mut state.buf)
+                                best_sur(s, ppool, &[a, b], x, pj.sur_margin, buf)
                             } else {
                                 s.env.floor = lf.as_ref().map_or(f64::NEG_INFINITY, |f| f.val);
                                 let sr = s.env.solve(ppool, &[a, b], &[x], false, 1);
                                 if !sr.complete {
-                                    state.searches.lunp[x] = true;
+                                    searches.lunp[x] = true;
                                 }
                                 s.env.floor = f64::NEG_INFINITY;
                                 sr.found.into_iter().next()
@@ -4432,29 +4460,39 @@ fn add_looped_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
                         lf
                     }
                 };
-                state.searches.lbest[x] = CachedSearch::Known(lf.clone());
+                searches.lbest[x] = CachedSearch::Known(lf.clone());
                 if let Some(f) = lf {
                     // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
                     // searches, under this block's cap, add decks later scorings read)
                     let want = if pj.proxy_check { Want::Stats } else { Want::Touch };
                     let CareerScore { lift_stats: st, .. } =
-                        score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, &mut state.buf);
-                    state.runs.push(PlanRow::new(x, f, st, RowOrigin::Looped, true, None));
+                        score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, buf);
+                    added.push(PlanRow::new(x, f, st, RowOrigin::Looped, true, None));
                 }
             }
         });
-        state.searches.search_ms += now_ms() - ts;
+        profile.search_ms += now_ms() - ts;
         prof("looped_ms", now_ms() - ts);
         prof("looped_nodes", (s.env.space.nodes.get() - lnodes0) as f64);
     }
+    added
 }
 
-fn add_no_borrow_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
-    let candidates = &state.candidates;
+/// The no-borrow rows (below) of `runs`' base rows, in their order.
+fn add_no_borrow_rows(
+    s: &mut Sim,
+    input: &PlanInputs,
+    candidates: &PlanCandidates,
+    runs: &[PlanRow],
+    searches: &mut PlanSearches,
+    profile: &mut PlanProfile,
+    buf: &mut Vec<f64>,
+) -> Vec<PlanRow> {
+    let mut added: Vec<PlanRow> = vec![];
     let PlanInputs { fix, pick, .. } = *input;
-    let (ppool, _) = input.pick.unwrap_or((input.pool, input.sv));
+    let ppool = input.pick_pool();
     let n = candidates.trainees.len();
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
+    let vis = |f: &Found| input.shown(f);
     // nb rows (`pick`): per base row whose career has a borrowed parent, her best career without one, a row of its own:
     // through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once a shown
     // row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the looped rows
@@ -4462,37 +4500,46 @@ fn add_no_borrow_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) {
     // looped rows' are zeros too unless `proxy_check`)
     if pick.is_some() {
         let ts = now_ms();
-        for i in 0..state.runs.len() {
-            if state.runs[i].origin != RowOrigin::Base {
+        for i in 0..runs.len() {
+            if runs[i].origin != RowOrigin::Base {
                 continue;
             }
-            if vis(&state.runs[i].career) {
+            if vis(&runs[i].career) {
                 continue;
             }
-            let x = state.runs[i].trainee;
+            let x = runs[i].trainee;
             let (f, ex) = if candidates.proxy_on {
-                (best_sur(s, ppool, fix, x, 1e9, &mut state.buf), false)
+                (best_sur(s, ppool, fix, x, 1e9, buf), false)
             } else {
-                (exact_no_borrow_career(s, input, &mut state.searches, x, &mut state.buf), true)
+                (exact_no_borrow_career(s, input, searches, x, buf), true)
             };
             if let Some(f) = f {
-                state.runs.push(PlanRow::new(x, f, vec![(0.0, 0.0); n], RowOrigin::NoBorrow, ex, None));
+                added.push(PlanRow::new(x, f, vec![(0.0, 0.0); n], RowOrigin::NoBorrow, ex, None));
             }
         }
-        state.searches.search_ms += now_ms() - ts;
+        profile.search_ms += now_ms() - ts;
     }
+    added
 }
 
-fn score_and_promote_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState) -> PlanScores {
-    let candidates = &state.candidates;
+fn score_and_promote_rows(
+    s: &mut Sim,
+    input: &PlanInputs,
+    candidates: &PlanCandidates,
+    searches: &mut PlanSearches,
+    runs: &mut Vec<PlanRow>,
+    wtab: &mut [Vec<usize>],
+    profile: &mut PlanProfile,
+    buf: &mut Vec<f64>,
+) -> PlanScores {
     let PlanInputs { d, legs, pool, fix, .. } = *input;
-    let (ppool, _) = input.pick.unwrap_or((input.pool, input.sv));
+    let ppool = input.pick_pool();
     let n = candidates.trainees.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
+    let vis = |f: &Found| input.shown(f);
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
-    let mut cont = plan_continuations(s, input, candidates, &state.runs, &state.wtab, &mut state.buf);
+    let mut cont = plan_continuations(s, input, candidates, runs, wtab, buf);
     // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
     let mut c1: Vec<f64> = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
     // the trios: A and B two candidates (unordered), C the best allowed uma with an 8/8 of A and one of B as parents. Each
@@ -4511,21 +4558,21 @@ fn score_and_promote_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState
                 .collect()
         })
         .collect();
-    let mut combos = plan_combinations(s, input, candidates, &real8, &c1, &mut state.buf);
+    let mut combos = plan_combinations(s, input, candidates, &real8, &c1, buf);
     let mut sides = plan_sides(s, input, candidates, &real8, &c1);
     let mut combo_ms = now_ms() - t_c;
     let mut combos3: Vec<Trio> = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
     let mut vnow = trio_v(&c1, &combos3);
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
     // (a row that is never the pick, a builder with a borrowed parent under "later", is not scored: no score, no kept scoring)
-    progress(4, 0, state.runs.len()); // pass 2: every career against V
-    if !state.runs.is_empty() && vnow.is_finite() {
-        for i in 0..state.runs.len() {
+    progress(4, 0, runs.len()); // pass 2: every career against V
+    if !runs.is_empty() && vnow.is_finite() {
+        for i in 0..runs.len() {
             let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                score_plan_row(s, input, candidates, &state.runs[i], &c1, vnow, &cont, &combos3, &sides, &mut state.buf)
+                score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
             });
-            state.runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
-            prune_plan_scorings(input, &mut state.runs);
+            runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
+            prune_plan_scorings(input, runs);
         }
         // the proxies a shown row or the pick's near-tie band can turn on: searched exactly (their
         // saving, score + 1, within PROXY_SAVE of the lowest saving those take), then scored again; when one of them joins a
@@ -4533,173 +4580,125 @@ fn score_and_promote_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState
         #[allow(clippy::while_immutable_condition, reason = "proxy_on is fixed per call; the loop ends at its break")]
         while candidates.proxy_on {
             // (over the rows that can be shown or picked, `vis`)
-            let mut sv: Vec<f64> =
-                state.runs.iter().filter(|r| vis(&r.career)).filter_map(PlanRow::net_saving).collect();
+            let mut sv: Vec<f64> = runs.iter().filter(|r| vis(&r.career)).filter_map(PlanRow::net_saving).collect();
             sv.sort_by(|x, y| y.partial_cmp(x).unwrap());
             if sv.is_empty() {
                 break;
             }
             let (top, k8) = (sv[0], sv[(OPT_SHOW - 1).min(sv.len() - 1)]);
             let t = k8.min(near_floor(top)) + 1.0;
-            let add: Vec<usize> = (0..state.runs.len())
-                .filter(|&i| {
-                    !state.runs[i].exact
-                        && vis(&state.runs[i].career)
-                        && state.runs[i].total() + 1.0 >= t * (1.0 - PROXY_SAVE)
-                })
+            let add: Vec<usize> = (0..runs.len())
+                .filter(|&i| !runs[i].exact && vis(&runs[i].career) && runs[i].total() + 1.0 >= t * (1.0 - PROXY_SAVE))
                 .collect();
             if add.is_empty() {
                 break;
             }
             let ts = now_ms();
             // (the careers scored: a row whose search found the same one, or that was certified, may keep its score)
-            let old: Vec<Found> = add.iter().map(|&i| state.runs[i].career.clone()).collect();
+            let old: Vec<Found> = add.iter().map(|&i| runs[i].career.clone()).collect();
             for (k, &i) in add.iter().enumerate() {
-                let x = state.runs[i].trainee;
+                let x = runs[i].trainee;
                 // an nb row: her best career without a borrowed parent, certified or searched on the pick's pool
-                if state.runs[i].origin == RowOrigin::NoBorrow {
-                    if certified(s.env, ppool, fix, x, &state.runs[i].career) {
-                        state.n_cert += 1;
-                    } else if let Some(f) = exact_no_borrow_career(s, input, &mut state.searches, x, &mut state.buf) {
-                        state.runs[i].career = f;
+                if runs[i].origin == RowOrigin::NoBorrow {
+                    if certified(s.env, ppool, fix, x, &runs[i].career) {
+                        profile.n_cert += 1;
+                    } else if let Some(f) = exact_no_borrow_career(s, input, searches, x, buf) {
+                        runs[i].career = f;
                     }
-                    state.runs[i].exact = true;
+                    runs[i].exact = true;
                     continue;
                 }
-                if certified(s.env, pool, fix, x, &state.runs[i].career) {
-                    state.searches.best[x] = CachedSearch::Known(Some(state.runs[i].career.clone()));
-                    state.runs[i].exact = true;
-                    state.n_cert += 1;
+                if certified(s.env, pool, fix, x, &runs[i].career) {
+                    searches.best[x] = CachedSearch::Known(Some(runs[i].career.clone()));
+                    runs[i].exact = true;
+                    profile.n_cert += 1;
                     continue;
                 }
                 let r = {
-                    let ri = &state.runs[i];
+                    let ri = &runs[i];
                     exact_plan_career(
                         s,
                         input,
                         candidates,
-                        &mut state.searches,
+                        searches,
                         x,
-                        &mut state.buf,
-                        Some((&ri.career, ri.lift_stats.as_slice(), state.runs[i].stats_stamp)),
+                        buf,
+                        Some((&ri.career, ri.lift_stats.as_slice(), runs[i].stats_stamp)),
                     )
                 };
                 if let Some((f, st)) = r {
-                    set_plan_wins(s, input, &mut state.wtab, x, &f);
-                    state.runs[i].career = f;
-                    state.runs[i].lift_stats = st;
+                    set_plan_wins(s, input, wtab, x, &f);
+                    runs[i].career = f;
+                    runs[i].lift_stats = st;
                 }
-                state.runs[i].exact = true;
-                state.runs[i].stats_stamp = None;
+                runs[i].exact = true;
+                runs[i].stats_stamp = None;
                 // ("later") her best career has a borrowed parent: that row is a builder now, and the proxy's career,
                 // without one, her nb row (scored below)
-                if !vis(&state.runs[i].career) {
-                    state.runs.push(PlanRow::new(
-                        x,
-                        old[k].clone(),
-                        vec![(0.0, 0.0); n],
-                        RowOrigin::NoBorrow,
-                        false,
-                        None,
-                    ));
+                if !vis(&runs[i].career) {
+                    runs.push(PlanRow::new(x, old[k].clone(), vec![(0.0, 0.0); n], RowOrigin::NoBorrow, false, None));
                 }
             }
-            state.searches.search_ms += now_ms() - ts;
-            let cont2 = plan_continuations(s, input, candidates, &state.runs, &state.wtab, &mut state.buf);
+            profile.search_ms += now_ms() - ts;
+            let cont2 = plan_continuations(s, input, candidates, runs, wtab, buf);
             let same_fit = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
             if same_fit {
                 for (k, &i) in add.iter().enumerate() {
                     // the same career against the same base (Cont, so c1, V, the trios and sides, as when it was scored),
                     // nothing it reads changed: its score, lift and kept scoring stand (a dropped one stays dropped: its score
                     // is as low as it was, and lo only rises here)
-                    if same_career(&old[k], &state.runs[i].career)
-                        && stamp_ok(s, None, state.runs[i].scoring.as_ref().unwrap().stamp)
+                    if same_career(&old[k], &runs[i].career)
+                        && stamp_ok(s, None, runs[i].scoring.as_ref().unwrap().stamp)
                     {
                         prof("reuse_sc", 1.0);
                         continue;
                     }
                     let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(
-                            s,
-                            input,
-                            candidates,
-                            &state.runs[i],
-                            &c1,
-                            vnow,
-                            &cont,
-                            &combos3,
-                            &sides,
-                            &mut state.buf,
-                        )
+                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
                     });
-                    state.runs[i].scoring =
-                        Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
+                    runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
                 }
                 // (the nb rows added above)
-                for i in 0..state.runs.len() {
-                    if state.runs[i].scoring.is_some() {
+                for i in 0..runs.len() {
+                    if runs[i].scoring.is_some() {
                         continue;
                     }
                     let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(
-                            s,
-                            input,
-                            candidates,
-                            &state.runs[i],
-                            &c1,
-                            vnow,
-                            &cont,
-                            &combos3,
-                            &sides,
-                            &mut state.buf,
-                        )
+                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
                     });
-                    state.runs[i].scoring =
-                        Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
+                    runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
                 }
-                prune_plan_scorings(input, &mut state.runs);
+                prune_plan_scorings(input, runs);
             } else {
                 memo_stat(6);
                 cont = cont2;
                 c1 = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
                 let tc = now_ms();
-                combos = plan_combinations(s, input, candidates, &real8, &c1, &mut state.buf);
+                combos = plan_combinations(s, input, candidates, &real8, &c1, buf);
                 sides = plan_sides(s, input, candidates, &real8, &c1);
                 combo_ms += now_ms() - tc;
                 combos3 = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
                 vnow = trio_v(&c1, &combos3);
                 if !vnow.is_finite() {
-                    for run in &mut state.runs {
+                    for run in &mut *runs {
                         run.scoring = None;
                     }
                     break;
                 }
                 // (every row scored again: the old kept scorings go first, the new ones kept as above)
-                for run in &mut state.runs {
+                for run in &mut *runs {
                     run.scoring = None;
                 }
-                for i in 0..state.runs.len() {
+                for i in 0..runs.len() {
                     let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(
-                            s,
-                            input,
-                            candidates,
-                            &state.runs[i],
-                            &c1,
-                            vnow,
-                            &cont,
-                            &combos3,
-                            &sides,
-                            &mut state.buf,
-                        )
+                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
                     });
-                    state.runs[i].scoring =
-                        Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
-                    prune_plan_scorings(input, &mut state.runs);
+                    runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
+                    prune_plan_scorings(input, runs);
                 }
             }
         }
-        state.exact_n = state.runs.iter().filter(|r| r.scoring.is_some() && vis(&r.career)).count();
+        profile.exact_n = runs.iter().filter(|r| r.scoring.is_some() && vis(&r.career)).count();
     }
     let step = |ui: usize, real: bool| if real { 0.0 } else { c1[ui] };
     let best_combo = combos
@@ -4708,33 +4707,36 @@ fn score_and_promote_rows(s: &mut Sim, input: &PlanInputs, state: &mut PlanState
             (step(x.0, x.4) + step(x.1, x.5) + x.2).partial_cmp(&(step(y.0, y.4) + step(y.1, y.5) + y.2)).unwrap()
         })
         .copied();
-    let index_ms = now_ms() - state.t3;
-    let work = json!({"nodes": s.env.space.nodes.get() - state.nodes0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - state.joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
-    let any_scored = state.runs.iter().any(|r| r.scoring.is_some());
+    let index_ms = now_ms() - profile.t3;
+    let work = json!({"nodes": s.env.space.nodes.get() - profile.nodes0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - profile.joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
+    let any_scored = runs.iter().any(|r| r.scoring.is_some());
     PlanScores { cont, c1, combos3, sides, vnow, best_combo, any_scored, combo_ms, index_ms, work }
 }
 
-fn check_plan_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanState, scores: &PlanScores) -> Value {
-    let candidates = &state.candidates;
+fn check_plan_proxies(
+    s: &mut Sim,
+    input: &PlanInputs,
+    candidates: &PlanCandidates,
+    best: &[CachedSearch],
+    runs: &[PlanRow],
+    scores: &PlanScores,
+    cache0: Option<super::Cache>,
+    buf: &mut Vec<f64>,
+) -> Value {
     let PlanInputs { d, legs, pool, sv, fix, pj, .. } = *input;
     let n = candidates.trainees.len();
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
     // search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact ones. Runs after
     // everything else, on the cache as it was before the builders' searches, so the plan's own numbers are unchanged
-    match (pj.proxy_check, state.cache0.take()) {
-        (true, Some(mut c0)) if !state.runs.is_empty() => {
+    match (pj.proxy_check, cache0) {
+        (true, Some(mut c0)) if !runs.is_empty() => {
             std::mem::swap(&mut s.cache, &mut c0);
             let wins: Vec<(usize, Sel)> = sv
                 .found
                 .iter()
                 .map(|f| (f.t, f.sel.clone()))
-                .chain(
-                    candidates
-                        .trainees
-                        .iter()
-                        .filter_map(|&u| state.searches.best[u].found().cloned().map(|f| (u, f.sel))),
-                )
+                .chain(candidates.trainees.iter().filter_map(|&u| best[u].found().cloned().map(|f| (u, f.sel))))
                 .collect();
             let base_s = candidates.stats_base();
             let base = ScoreBase {
@@ -4762,7 +4764,7 @@ fn check_plan_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanState, sc
                     .collect()
             };
             let mut rows = vec![];
-            for r in &state.runs {
+            for r in runs {
                 let x = r.trainee;
                 let is_c = candidates.trainees.contains(&x);
                 let ee = effs(x, &r.lift_stats);
@@ -4775,25 +4777,14 @@ fn check_plan_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanState, sc
                             s.cache.add(s.env, x, sel);
                         }
                     }
-                    match best_sur(s, pool, fix, x, 1e9, &mut state.buf) {
+                    match best_sur(s, pool, fix, x, 1e9, buf) {
                         None => (None, vec![0.0; n], None),
                         Some(f) => {
-                            let CareerScore { lift_stats: st, .. } = score_career(
-                                s,
-                                d,
-                                &base_s,
-                                legs,
-                                pool,
-                                x,
-                                f.a,
-                                f.b,
-                                &f.sel,
-                                Want::Stats,
-                                &mut state.buf,
-                            );
+                            let CareerScore { lift_stats: st, .. } =
+                                score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
                             let pe = effs(x, &st);
                             let psc = scores.any_scored.then(|| {
-                                score_career(s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, &mut state.buf)
+                                score_career(s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, buf)
                                     .expected_saving
                                     - 1.0
                             });
@@ -4822,38 +4813,33 @@ fn check_plan_proxies(s: &mut Sim, input: &PlanInputs, state: &mut PlanState, sc
 fn assemble_plan_output<'data>(
     mut s: Sim<'_, 'data>,
     input: &PlanInputs<'_, 'data>,
-    mut state: PlanState,
-    scores: PlanScores,
+    candidates: &PlanCandidates,
+    searches: PlanSearches,
+    mut runs: Vec<PlanRow>,
+    scores: &PlanScores,
+    profile: &PlanProfile,
     proxy_check: Value,
+    buf: &mut Vec<f64>,
 ) -> Value {
-    let candidates = &state.candidates;
     let sj = s.env.sj;
     let PlanInputs { d, sk, cr, job, legs, pool, sv, fix, pj, .. } = *input;
-    let (_, psv) = input.pick.unwrap_or((input.pool, input.sv));
+    let psv = input.pick_solved();
     let n = candidates.trainees.len();
-    let nl = input.legs.len();
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
-    let looped = |f: &Found| is_full(sj, &input.legs[f.a].sparks) && is_full(sj, &input.legs[f.b].sparks);
+    let nl = legs.len();
+    let vis = |f: &Found| input.shown(f);
+    let looped = |f: &Found| is_full(sj, &legs[f.a].sparks) && is_full(sj, &legs[f.b].sparks);
     let step = |ui: usize, real: bool| if real { 0.0 } else { scores.c1[ui] };
     // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same 8/8 pair; an
     // nb row on her looped one): left out, the pick moved to the earlier one (the same career, the same score)
     let pair = |f: &Found| (f.a.min(f.b), f.a.max(f.b));
-    let dup: Vec<bool> = (0..state.runs.len())
-        .map(|i| {
-            (0..i).any(|j| {
-                state.runs[j].trainee == state.runs[i].trainee
-                    && pair(&state.runs[j].career) == pair(&state.runs[i].career)
-            })
-        })
+    let dup: Vec<bool> = (0..runs.len())
+        .map(|i| (0..i).any(|j| runs[j].trainee == runs[i].trainee && pair(&runs[j].career) == pair(&runs[i].career)))
         .collect();
-    let undup: Vec<usize> = (0..state.runs.len())
+    let undup: Vec<usize> = (0..runs.len())
         .map(|i| {
             if dup[i] {
                 (0..i)
-                    .find(|&j| {
-                        state.runs[j].trainee == state.runs[i].trainee
-                            && pair(&state.runs[j].career) == pair(&state.runs[i].career)
-                    })
+                    .find(|&j| runs[j].trainee == runs[i].trainee && pair(&runs[j].career) == pair(&runs[i].career))
                     .unwrap()
             } else {
                 i
@@ -4862,9 +4848,9 @@ fn assemble_plan_output<'data>(
         .collect();
     // the pick's roll state (`RollKeep`; the pick as below, with the same scores): its kept scoring and base, and what its
     // bound reads beyond them, as the plan ends (`pick_her`, `found_anchors`)
-    let rk: Option<RollKeep> =
-        (state.runs.iter().any(|r| vis(&r.career)) && scores.any_scored && scores.vnow.is_finite()).then(|| {
-            let (pk, _) = pick_of(&state.runs, vis, &undup);
+    let rk: Option<RollKeep> = (runs.iter().any(|r| vis(&r.career)) && scores.any_scored && scores.vnow.is_finite())
+        .then(|| {
+            let (pk, _) = pick_of(&runs, vis, &undup);
             let base = ScoreBase {
                 cands: &candidates.trainees,
                 c1: &scores.c1,
@@ -4876,10 +4862,10 @@ fn assemble_plan_output<'data>(
                 sides: &scores.sides,
                 all: &candidates.allowed_trainees,
             };
-            let (x, f) = (state.runs[pk].trainee, state.runs[pk].career.clone());
+            let (x, f) = (runs[pk].trainee, runs[pk].career.clone());
             let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } =
-                state.runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
-            let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, &mut state.buf);
+                runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
+            let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, buf);
             RollKeep {
                 key: roll_key(job),
                 sd,
@@ -4900,7 +4886,7 @@ fn assemble_plan_output<'data>(
     };
     {
         let key = bests_key(job, fix, nl);
-        let mut kept_best = state.searches.best.clone();
+        let mut kept_best = searches.best.clone();
         // The main search's best is per job, searched again (cheap) next time.
         kept_best[candidates.main_career.t] = CachedSearch::Unsearched;
         BESTS.with(|cache| {
@@ -4909,12 +4895,12 @@ fn assemble_plan_output<'data>(
             cache.push(Bests {
                 key,
                 best: kept_best,
-                refs: state.searches.urefs,
-                looped: state.searches.lbest,
-                unp: state.searches.unp.clone(),
-                lunp: state.searches.lunp.clone(),
+                refs: searches.urefs,
+                looped: searches.lbest,
+                unp: searches.unp.clone(),
+                lunp: searches.lunp.clone(),
             });
-            if let Some(previous) = state.searches.prev {
+            if let Some(previous) = searches.prev {
                 cache.push(previous);
             }
             while cache.len() > 4 {
@@ -4924,15 +4910,15 @@ fn assemble_plan_output<'data>(
     }
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
     // (no row that can be the pick, `vis`: the same, the pick's main search's)
-    if !state.runs.iter().any(|r| vis(&r.career)) {
+    if !runs.iter().any(|r| vis(&r.career)) {
         for f in &psv.found {
-            state.runs.push(PlanRow::new(f.t, f.clone(), vec![], RowOrigin::Fallback, false, None));
+            runs.push(PlanRow::new(f.t, f.clone(), vec![], RowOrigin::Fallback, false, None));
         }
     }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
-    let total = |i: usize| state.runs[i].total();
-    let (pick, top) = pick_of(&state.runs, vis, &undup);
-    let near = |i: usize| vis(&state.runs[i].career) && total(i) >= near_floor(top);
+    let total = |i: usize| runs[i].total();
+    let (pick, top) = pick_of(&runs, vis, &undup);
+    let near = |i: usize| vis(&runs[i].career) && total(i) >= near_floor(top);
     // per career: the trios' last step (C on A's and B's real 8/8s) only on two 8/8 parents
     let role = |u: usize, f: &Found| match scores.best_combo {
         Some((ia, ib, _, _, _, _)) if u == candidates.trainees[ia] || u == candidates.trainees[ib] => "plan",
@@ -4948,7 +4934,7 @@ fn assemble_plan_output<'data>(
         }
     };
     let mut opts: Vec<Value> = vec![];
-    for (i, row) in state.runs.iter().enumerate() {
+    for (i, row) in runs.iter().enumerate() {
         let (x, f) = (&row.trainee, &row.career);
         // (a builder with a borrowed parent under "later" is no option)
         if dup.get(i).copied().unwrap_or(false) || !vis(f) {
@@ -4967,9 +4953,9 @@ fn assemble_plan_output<'data>(
         // the best it found, not proven her best
         if row.exact
             && match row.origin {
-                RowOrigin::Base => state.searches.unp[*x],
-                RowOrigin::Looped => state.searches.lunp[*x],
-                RowOrigin::NoBorrow => state.searches.nunp[*x],
+                RowOrigin::Base => searches.unp[*x],
+                RowOrigin::Looped => searches.lunp[*x],
+                RowOrigin::NoBorrow => searches.nunp[*x],
                 RowOrigin::Fallback => false,
             }
         {
@@ -4990,7 +4976,7 @@ fn assemble_plan_output<'data>(
             .partial_cmp(&a["score"].as_f64().unwrap_or(f64::NEG_INFINITY))
             .unwrap()
     });
-    let choice = if state.runs.is_empty() { Value::Null } else { env.report(pool, &state.runs[pick].career, true) };
+    let choice = if runs.is_empty() { Value::Null } else { env.report(pool, &runs[pick].career, true) };
     let uname = |u: usize| if u == usize::MAX { Value::Null } else { json!(d.umas[u].name) };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
     let member = |ui: usize, real: bool| {
@@ -5012,22 +4998,22 @@ fn assemble_plan_output<'data>(
     };
     // the career a roll of this plan is of (`next.roll`, `roll_kept`: its saving per outcome, computed on demand from the
     // roll state kept here): the pick, her uncertain targets (`uncv`) and the scenario's guaranteed ones (`fixed`)
-    let outcomes = match state.runs.get(pick) {
+    let outcomes = match runs.get(pick) {
         Some(row) if row.scoring.is_some() => {
             json!({"trainee": d.umas[row.trainee].id, "parents": [row.career.a, row.career.b],
         "uncv": env.uncv, "fixed": env.fixed_t})
         }
         _ => Value::Null,
     };
-    if let Some(r) = rk.filter(|r| {
-        state.runs.get(pick).is_some_and(|row| row.trainee == r.x && row.career.a == r.a && row.career.b == r.b)
-    }) {
+    if let Some(r) = rk
+        .filter(|r| runs.get(pick).is_some_and(|row| row.trainee == r.x && row.career.a == r.a && row.career.b == r.b))
+    {
         keep_roll(r);
     }
     let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": if scores.vnow.is_finite() { json!(scores.vnow) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[candidates.trainees[ui]].id, scores.cont[ui].lam, scores.cont[ui].phi, scores.cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": candidates.minfo, "loop_note": candidates.mwhy, "hint": candidates.hint, "umas_scored": state.exact_n, "umas_searched": state.runs.iter().filter(|r| r.exact).count() - state.n_cert, "umas_certified": state.n_cert, "umas_unproven": (0..d.umas.len()).filter(|&u| state.searches.unp[u] || state.searches.lunp[u] || state.searches.nunp[u]).count(), "work": scores.work,
-           "sur": pj.sur, "sur_diff": state.sur_diff, "loop_ms": state.loop_ms, "search_ms": state.searches.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - state.t_all});
+           "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[candidates.trainees[ui]].id, scores.cont[ui].lam, scores.cont[ui].phi, scores.cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": candidates.minfo, "loop_note": candidates.mwhy, "hint": candidates.hint, "umas_scored": profile.exact_n, "umas_searched": runs.iter().filter(|r| r.exact).count() - profile.n_cert, "umas_certified": profile.n_cert, "umas_unproven": (0..d.umas.len()).filter(|&u| searches.unp[u] || searches.lunp[u] || searches.nunp[u]).count(), "work": scores.work,
+           "sur": pj.sur, "sur_diff": profile.sur_diff, "loop_ms": profile.loop_ms, "search_ms": profile.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - profile.t_all});
     // (the option reports moved in, not copied by `json!`: the object's keys are ordered, so the same text)
     out["options"] = Value::Array(opts);
     if !proxy_check.is_null() {
@@ -5127,7 +5113,7 @@ fn exact_no_borrow_career(
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let PlanInputs { fix, pj, .. } = *input;
-    let (ppool, _) = input.pick.unwrap_or((input.pool, input.sv));
+    let ppool = input.pick_pool();
     let nl = input.legs.len();
 
     capped(s, pj.search_work, searches.budget0, |s| {
@@ -5310,7 +5296,7 @@ fn score_plan_row(
     buf: &mut Vec<f64>,
 ) -> (f64, f64, Option<KeptScoring>) {
     let PlanInputs { d, legs, pool, .. } = *input;
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
+    let vis = |f: &Found| input.shown(f);
 
     if !vis(&r.career) {
         return (f64::NEG_INFINITY, 0.0, None);
@@ -5341,7 +5327,7 @@ fn score_plan_row(
 // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
 // pick's is read (`RollKeep`); lo is over the rows that can be the pick (`vis`).
 fn prune_plan_scorings(input: &PlanInputs, runs: &mut [PlanRow]) {
-    let vis = |f: &Found| input.pick.map_or(input.pool, |p| p.0).bor_ok(f.a, f.b);
+    let vis = |f: &Found| input.shown(f);
 
     let lo = runs
         .iter()
