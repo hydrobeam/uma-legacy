@@ -1,0 +1,69 @@
+# Checks every push to main and every pull request: the solver (formatting, clippy, shellcheck, tests, results
+# byte-identical to the pinned references) and the page (built without game art, the browser suite's fast tier).
+# The same ./build.sh steps a contributor runs (docs/BUILD.md).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+jobs:
+  solver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pkg/loopopt
+      - name: Lint (rustfmt, clippy native and wasm, shellcheck)
+        run: ./build.sh lint
+      - name: Release build and tests
+        run: ./build.sh native
+      - name: Validation, byte-identical to the references (val/same.py)
+        run: |
+          ./build.sh valq ci
+          uv run val/same.py ci
+          uv run val/planval.py pkg/loopopt/target/release/loopopt ci
+          uv run val/same.py ci --plan
+          uv run val/mono.py pkg/loopopt/target/release/loopopt
+
+  page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: webapp/package.json
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pkg/loopopt
+          key: wasm
+      - name: Playwright browsers (cached by the lockfile)
+        uses: actions/cache@v4
+        with:
+          path: webapp/node_modules/playwright-core/.local-browsers
+          key: playwright-${{ hashFiles('webapp/package-lock.json') }}
+      - name: Build the solver's wasm and the page
+        run: ./build.sh wasm page
+      - name: Browsers and their system libraries
+        run: |
+          ./build.sh browsers
+          (cd webapp && sudo npx playwright install-deps chromium)
+      - name: Browser suite, fast tier
+        run: ./build.sh testq

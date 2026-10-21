@@ -170,6 +170,14 @@ IndexedDB.
   which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …` times
   the wasm.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
+- **solver:** `lint`, `native` (release build, clippy, tests), then `valq ci` with `val/same.py ci`, `val/planval.py`
+  with `val/same.py ci --plan` (every output byte-identical to the references, work counters included) and `val/mono.py`.
+- **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium); the checks that need
+  the art skip themselves.
+
 ## Rust style
 
 `./build.sh lint` passes before every Rust commit. It runs, in `pkg/loopopt`:
