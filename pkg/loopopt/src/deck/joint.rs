@@ -44,9 +44,7 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: 
     r
 }
 
-/// `gen`: the chances a bought white and a bought gold become sparks, in place of GEN_WHITE and GEN_GOLD (None: those);
-/// (1, 1) gives P(every target bought), (GEN_WHITE^2, GEN_GOLD^2) at unit scale E[prod g^2] (`Env::reroll_parts`)
-pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64>, pub sets: Vec<f64>, pub per_outfit: Vec<f64>, pub spark: Option<[f64; 2]> }
+pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f64>, pub sets: Vec<f64>, pub per_outfit: Vec<f64> }
 /// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
@@ -148,8 +146,7 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
-    let [gw, gg] = ext.as_ref().and_then(|x| x.spark).unwrap_or([crate::skills::GEN_WHITE, GEN_GOLD]);
-    let fixed = match &ext { Some(x) => x.sf.iter().fold(1.0, |a, s| a * gg * s), None => model.fixed_factor() };
+    let fixed = match &ext { Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s), None => model.fixed_factor() };
     let want_sets = ext.as_ref().map_or(false, |x| !x.sets.is_empty()) && nu <= 16;
     if let Some(x) = ext.as_deref_mut() { if marg { x.marg = vec![0.0; nq * no * nu]; } if want_sets { x.sets = vec![0.0; nq * no << nu]; } }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
@@ -187,7 +184,7 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
                 let base = (qi * no + o) * nu;
                 for k in 0..nu {
                     let lp = LandPre::new(st[k], ew[k], q);
-                    fv[base + k] = [lp.f_gen(ng[k], nh[k], gw, gg), lp.f_gen(ng[k], 0.0, gw, gg), lp.f_gen(0.0, 0.0, gw, gg)];
+                    fv[base + k] = [lp.f(ng[k], nh[k]), lp.f(ng[k], 0.0), lp.f(0.0, 0.0)];
                     if !su1 { if let Some(x) = &ext { for v in fv[base + k].iter_mut() { *v *= x.su[k]; } } }
                 }
             }
@@ -261,7 +258,7 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
         }
         for i in 0..nqo {
             let (mut a, mut b) = (ua[i], ub[i]);
-            if m1 { for j in 0..nfix { let g = match &ext { Some(x) => gg * x.sf[j], None => GEN_GOLD }; b = b * g + a * (1.0 - g); a *= g; } } else { a *= fixed; }
+            if m1 { for j in 0..nfix { let g = match &ext { Some(x) => GEN_GOLD * x.sf[j], None => GEN_GOLD }; b = b * g + a * (1.0 - g); a *= g; } } else { a *= fixed; }
             // P(at least n_targets - 1 land) over nu + nfix targets
             let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
             acc[i].0 += w * a; acc[i].1 += w * if m1 { m } else { 0.0 };
@@ -512,12 +509,10 @@ pub(super) struct LandPre { st: u8, ne: f64, omq: f64 }
 impl LandPre {
     pub(super) fn new(st: u8, ew: f64, q: f64) -> Self { LandPre { st, ne: 1.0 - ew, omq: 1.0 - q } }
     #[inline]
-    pub(super) fn f(&self, ng: f64, nh: f64) -> f64 { self.f_gen(ng, nh, crate::skills::GEN_WHITE, GEN_GOLD) }
-    /// `f` with a bought white and a bought gold becoming sparks at gw and gg (`JointExt::spark`)
-    #[inline]
-    pub(super) fn f_gen(&self, ng: f64, nh: f64, gw: f64, gg: f64) -> f64 {
+    pub(super) fn f(&self, ng: f64, nh: f64) -> f64 {
+        use crate::skills::GEN_WHITE;
         let pg = 1.0 - ng;
-        match self.st { 2 => gg, 1 => gg * pg + gw * (1.0 - pg), _ => gg * pg + gw * (1.0 - pg - nh * self.ne * self.omq) }
+        match self.st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.ne * self.omq) }
     }
 }
 /// The state-conditioned value of one deck (trainee `u`, per chance in `qs`, fixed factor included): over the chain

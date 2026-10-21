@@ -4,8 +4,7 @@ import { PRESET, SCEN_GOLDS } from './data.js';
 export const DEFAULTS = { targets: PRESET.map(group => ({ group })), presets: [{ name: '8/8 example', groups: [...PRESET] }], rank: '0.50,0.45,0.05', auto: true, decksTop: '1', perUma: true,
   rcards: false,   // R cards (not pals) stay out: their hint model is untested; no setting turns them on
   scen: 'unity', rsort: 'rel', rdir: 'desc', csort: 'rel', cdir: 'desc', roster: {}, outfits: {}, cardsOff: {},
-  borrowPar: 'allow',   // the career planner's borrowed parent: 'allow', 'later' (not this career), 'never'
-  reroll: 'never' };    // the game's end-of-career spark reroll the plan assumes: 'never', 'all_bought', 'always'
+  borrowPar: 'allow' };   // the career planner's borrowed parent: 'allow', 'later' (not this career), 'never'
 const saved = (k) => (PER_ERA.includes(k) ? SAVED[ERA] : SAVED.common)[k];
 // roster: uma id -> 'out' (not owned); outfits: id -> false (not owned); cardsOff: id -> false when not owned
 export const state = Object.fromEntries([...COMMON, ...PER_ERA].map(k => [k, saved(k) !== undefined ? saved(k) : DEFAULTS[k]]));

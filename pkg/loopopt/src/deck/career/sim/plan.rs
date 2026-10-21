@@ -145,38 +145,6 @@ pub(in super::super) struct PlanJob {
     /// a roll of the plan's pick (her stars per job target, 0 where it did not land): answered from the plan's kept roll
     /// state (`roll_kept`), the plan run first when the worker keeps none
     #[serde(default)] roll: Option<Vec<u8>>,
-    /// the game's end-of-career reroll (`Reroll`)
-    #[serde(default)] reroll: Reroll,
-}
-/// The game's end-of-career spark reroll: once per career every spark is drawn again and the better roll kept (30 TP, a
-/// career's). "never"; "all_bought" when she bought every target (the only careers whose sparks can be a fully looped
-/// parent's); "always". V counts careers, not TP, so the two reroll settings price the plan alike (a career short of a
-/// target can't be the goal however it is rolled); they differ in the TP the output reports (`tp`)
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum Reroll { #[default] Never, AllBought, Always }
-/// Under the reroll, for trainee u's career on a, b with deck sel: (k, rho). Each bought target's spark is drawn twice
-/// and the better roll kept, so P(all land) = sum over bought states of P(state) (1 - (1 - prod g)^2) = 2 P - E[prod g^2]
-/// = k P, k = 2 - c P2 / P1 (`Env::reroll_parts` at unit scale; c her spark scale, prod over targets: P = c P1,
-/// E[prod (g s)^2] = c^2 P2); rho = P(every target bought) / P1, P(all land) at full spark scale (every ancestor carrying
-/// every target: the lineage a grind and a goal step run on; her lineage now carries fewer, and its ratio would make a
-/// grind career reroll more than once), so a career with odds p rerolls (under "all_bought") with chance min(1, rho p).
-/// (1, 0) where she can't land them all
-fn reroll_k(s: &mut Sim, pool: &Pool, u: usize, a: usize, b: usize, sel: &Sel) -> (f64, f64) {
-    let mut q = std::mem::take(&mut s.qs);
-    let c = s.env.lineage_into(pool, u, a, b, &mut q);
-    let (p1, p2, pb) = s.env.reroll_parts(u, &q, sel);
-    s.qs = q;
-    if !(p1 > 0.0 && c > 0.0) { return (1.0, 0.0); }
-    (2.0 - c * p2 / p1, pb / p1)
-}
-/// `reroll_k` of C's career on x, y through her cached deck (`deck_for`, as `val` values her; (1, 0) where she has none)
-fn c_reroll_k(s: &mut Sim, p: &Pool, u: usize, a: usize, b: usize, buf: &mut Vec<f64>) -> (f64, f64) {
-    let mut q = std::mem::take(&mut s.qs);
-    let c = s.env.lineage_into(p, u, a, b, &mut q);
-    let di = match s.env.ceiling(u, &q, c) { None => None, Some(ub) => s.deck_for(u, &q, c, ub, 0.0, buf).map(|x| x.1) };
-    s.qs = q;
-    match di { Some(i) => { let sel = s.cache.decks[u][i].sel.clone(); reroll_k(s, p, u, a, b, &sel) } None => (1.0, 0.0) }
 }
 
 
@@ -187,9 +155,7 @@ fn sim_for<'s, 'a>(env: &'s mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a
     let cfg: SimJob = serde_json::from_value(json!({"margin": pj.margin})).unwrap();
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.owned.clone();
-    let mut s = Sim::new(env, d, sk, cr, job, cfg, trainees, vec![], vec![], false, true);
-    s.reroll = pj.reroll != Reroll::Never;
-    Ok(s)
+    Ok(Sim::new(env, d, sk, cr, job, cfg, trainees, vec![], vec![], false, true))
 }
 
 /// The rotation for the loop base `ids` (`PlanJob::loop_members`): (members as uma indices, their {id, name}, or why
@@ -460,9 +426,6 @@ impl Drop for MemoReport {
 /// underestimated on 5 and overestimated early on 2; leave-one-pool-out fits ranged 0.6-1.0 and 1-3. lam = 0: none.
 #[derive(Clone)]
 pub(super) struct Cont { lam: f64, phi: f64, pinf: f64,
-    /// the end-of-career reroll's factor on her odds (`Reroll`): each grind career lands her 8/8 with k p_n, k = 2 - G
-    /// (`reroll_k`; 1 without); p and pinf are scaled by it on the way in (`pk` = pinf k), so k = 1 changes no float
-    k: f64, pk: f64,
     /// per n (0..=CONT_N): the careers built through the n-th success (the sum `plan` takes, in its order), and (1 - phi)^n:
     /// `plan` reads them instead of evaluating the powers per call (the same expressions, so the same values)
     tab: std::rc::Rc<Vec<(f64, f64)>>,
@@ -473,7 +436,7 @@ pub(super) struct Cont { lam: f64, phi: f64, pinf: f64,
 pub(super) struct ContMemo { plan: std::cell::RefCell<Memo<u64, (f64, i32, f64)>>, lo: std::cell::RefCell<Memo<u64, f64>> }
 fn cont_memo() -> std::rc::Rc<ContMemo> { std::rc::Rc::new(ContMemo { plan: std::cell::RefCell::new(Memo::new(0)), lo: std::cell::RefCell::new(Memo::new(1)) }) }
 impl Default for Cont {
-    fn default() -> Self { Cont { lam: 0.0, phi: 0.0, pinf: 0.0, k: 1.0, pk: 0.0, tab: Default::default(), memo: cont_memo() } }
+    fn default() -> Self { Cont { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: cont_memo() } }
 }
 /// `plan`'s cap on successes before grinding
 const CONT_N: usize = 500;
@@ -481,59 +444,55 @@ const CONT_N: usize = 500;
 const CEIL_SHARE: f64 = 0.6;
 const LAM_DECAY: f64 = 1.5;
 impl Cont {
-    fn new(lam: f64, phi: f64, pinf: f64, k: f64) -> Cont {
+    fn new(lam: f64, phi: f64, pinf: f64) -> Cont {
         let r = 1.0 - phi;
         let mut tab = Vec::with_capacity(CONT_N + 1); let mut built = 0.0f64;
         for n in 0..=CONT_N as i32 { let b = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY)); tab.push((b, r.powi(n))); built = b; }
-        Cont { lam, phi, pinf, k, pk: pinf * k, tab: std::rc::Rc::new(tab), memo: cont_memo() }
+        Cont { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
     }
     /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
     /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
-    /// (p and the odds returned at the reroll's scale: x k)
     fn plan(&self, p: f64) -> (f64, i32, f64) {
-        let p = p * self.k;
         if p <= 0.0 { return (f64::INFINITY, 0, p); }
-        if self.lam <= 0.0 || self.phi <= 0.0 || self.pk <= p { return (1.0 / p, 0, p); }
+        if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p { return (1.0 / p, 0, p); }
         self.memo.plan.borrow_mut().get_or(|| p.to_bits(), || self.plan_n(p))
     }
     /// `plan` past its early returns (the first stop of the building loop). Past them lam > 0, which only `Cont::new`
     /// makes (with its table; `rolls_in` refuses a stored Cont with lam and phi > 0 but no table)
     fn plan_n(&self, p: f64) -> (f64, i32, f64) {
         debug_assert!(self.tab.len() > CONT_N);
-        let lr = (p / self.pk).ln(); let t = &self.tab;
+        let lr = (p / self.pinf).ln(); let t = &self.tab;
         let (mut n, mut best) = (0usize, 1.0 / p);
         while n < CONT_N {
-            let x = t[n].0 + 1.0 / (self.pk * (lr * t[n + 1].1).exp());
+            let x = t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp());
             if x >= best { break; }
             best = x; n += 1;
         }
-        (best, n as i32, self.pk * (lr * t[n].1).exp())
+        (best, n as i32, self.pinf * (lr * t[n].1).exp())
     }
     fn cost(&self, p: f64) -> f64 { self.plan(p).0 }
     /// a lower bound on `cost` at every odds up to p: the minimum over every n (not the first local one `plan` stops at).
     /// Each n's cost B_n + 1 / p_n falls as p rises (p_n = pinf exp(ln(p / pinf) r^n) rises with p), so this minimum falls
     /// with p, and at any p' <= p it is at most the minimum at p', which is at most `cost(p')`
-    fn cost_lo(&self, p: f64) -> f64 { self.lo_k(p * self.k) }
-    /// `cost_lo` at odds already scaled by k
-    fn lo_k(&self, p: f64) -> f64 {
+    fn cost_lo(&self, p: f64) -> f64 {
         if p <= 0.0 { return f64::INFINITY; }
-        if self.lam <= 0.0 || self.phi <= 0.0 || self.pk <= p { return 1.0 / p; }
+        if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p { return 1.0 / p; }
         self.memo.lo.borrow_mut().get_or(|| p.to_bits(), || self.cost_lo_n(p))
     }
     /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate; the
     /// table as in `plan_n`)
     fn cost_lo_n(&self, p: f64) -> f64 {
         debug_assert!(self.tab.len() > CONT_N);
-        let lr = (p / self.pk).ln(); let mut best = 1.0 / p;
+        let lr = (p / self.pinf).ln(); let mut best = 1.0 / p;
         // every n's cost is its building (rising with n: each term 1/lam_j > 0) plus a positive grind, so once the
         // building alone reaches the best found no later n can be lower: the scan stops there, the same minimum
-        let t = &self.tab; for n in 0..CONT_N { if t[n].0 >= best { break; } best = best.min(t[n].0 + 1.0 / (self.pk * (lr * t[n + 1].1).exp())); }
+        let t = &self.tab; for n in 0..CONT_N { if t[n].0 >= best { break; } best = best.min(t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp())); }
         best
     }
     /// Whether `cost_lb` holds: `plan`'s path past its early returns at every p in (1e-250 pinf, pinf) (lam > 0, 0 < phi <
     /// 1, pinf finite, the table built: t[n].0 nondecreasing, t[n].1 = (1 - phi)^n >= 0)
     fn lb_ok(&self) -> bool {
-        self.lam > 0.0 && self.lam.is_finite() && self.phi > 0.0 && self.phi < 1.0 && self.pk >= 1e-50 && self.pk.is_finite() && self.tab.len() > CONT_N
+        self.lam > 0.0 && self.lam.is_finite() && self.phi > 0.0 && self.phi < 1.0 && self.pinf >= 1e-50 && self.pinf.is_finite() && self.tab.len() > CONT_N
     }
     /// With `lb_ok`, a lower bound on `cost(p)` (None: none derived), the same for every p in p's cell (its bits >>
     /// LB_SHIFT, 128 cells per binade), memoised in `cell` (direct-mapped by cell): cost_lo(g) (1 - 1e-9), g the cell's top
@@ -546,14 +505,12 @@ impl Cont {
     /// musl-derived wasm libm are; |ln(p / pinf)| < 576), and L(g) >= cost_lo(g) / (1 + eps) (the n past cost_lo's stop
     /// are each at least t[n].0 >= its best). So for p < g: cost(p) >= cost_lo(p) >= (1 - eps) L(p) >= (1 - eps) L(g) >=
     /// cost_lo(g) (1 - eps) / (1 + eps) > the bound, rounded once more
-    /// (with the reroll's k: the cells are of k p, and cost(p) = the k = 1 form's at k p, so the same argument)
     fn cost_lb(&self, p: f64, cell: &mut [(u64, f64); LB_CELLS]) -> Option<f64> {
-        let p = p * self.k;
-        if !(p > self.pk * 1e-250) { return None; }
+        if !(p > self.pinf * 1e-250) { return None; }
         let key = p.to_bits() >> LB_SHIFT; let g = f64::from_bits((key + 1) << LB_SHIFT);
-        if !(g < self.pk) { return None; }
+        if !(g < self.pinf) { return None; }
         let e = &mut cell[key as usize & (LB_CELLS - 1)];
-        if e.0 != key { *e = (key, self.lo_k(g) * (1.0 - 1e-9)); }
+        if e.0 != key { *e = (key, self.cost_lo(g) * (1.0 - 1e-9)); }
         Some(e.1)
     }
 }
@@ -590,10 +547,9 @@ fn her_trios(s: &mut Sim, d: &Data, bs: &ScoreBase, p8: &mut Pool, iv: usize, x:
                 .filter(|&cu| d.umas[cu].id != her_id && d.umas[cu].id != d.umas[pu].id && legal_pair(d, &*p8, cu, iv, il))
                 .filter_map(|cu| { let c = s.env.lineage_into(&*p8, cu, iv, il, &mut q); s.env.ceiling(cu, &q, c).map(|ub| (ub, cu)) }));
             cs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            let (mut best, mut bc) = (0.0f64, usize::MAX);
-            for &(ub, cu) in &cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &*p8, cu, iv, il, buf); if v > best { best = v; bc = cu; } }
-            // (under the reroll the best C by odds, her step at k times them: k is within G <= ~1e-3 of 2 for every C)
-            if best > 0.0 { let k = if s.reroll { c_reroll_k(s, &*p8, bc, iv, il, buf).0 } else { 1.0 }; out.push((ib, *real, 1.0 / (best * k))); }
+            let mut best = 0.0f64;
+            for &(ub, cu) in &cs { if ub * (1.0 + 1e-9) <= best { break; } let v = val(s, &*p8, cu, iv, il, buf); if v > best { best = v; } }
+            if best > 0.0 { out.push((ib, *real, 1.0 / best)); }
             s.env.pool_pop(p8);
         }
     }
@@ -650,17 +606,7 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let (xi, goal) = her_ends(s, bs, legs, x, a, b);
     let t_mc = now_ms();
-    let mut c = s.make_cur(pool, x, a, b, sel, false);
-    // under the reroll her every-target outcome has chance k P (`reroll_k`); the added (k - 1) P is taken from the other
-    // landed sets in proportion (the rolls it replaces are partial ones of careers that bought every target, a set
-    // unknown here), which moves E[y] by at most (k - 1) P x the largest |y| of a partial set
-    if s.reroll {
-        let fm = (1usize << ntar) - 1; let pf = c.os[fm];
-        if pf > 0.0 && pf < 1.0 {
-            let k = reroll_k(s, pool, x, a, b, sel).0; let r = (1.0 - k * pf) / (1.0 - pf);
-            for (m, o) in c.os.iter_mut().enumerate() { *o = if m == fm { k * pf } else { *o * r }; }
-        }
-    }
+    let c = s.make_cur(pool, x, a, b, sel, false);
     let t_lv = now_ms(); prof("sc_cur_ms", t_lv - t_mc);
     let mut pv = her_pool(s, legs, pool, of_legs, x, a, b, &c); let iv = pv.me.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
@@ -1997,7 +1943,7 @@ pub(in super::super) fn rolls_out() -> Value {
         "k": ux(r.key), "x": [r.x, r.a, r.b], "sel": sel_out(&r.sel), "her": tri(&r.her_hi),
         "anc": r.anc.iter().map(|a| a.as_ref().map(|(c, q, v)| json!([c, fvec(q), hx(*v)]))).collect::<Vec<_>>(),
         "base": {"cands": b.cands, "c1": fvec(&b.c1), "v0": hx(b.v0), "pnow": fvec(&b.pnow), "m23": fvec(&b.m23),
-                 "cont": b.cont.iter().map(|c| json!([hx(c.lam), hx(c.phi), hx(c.pinf), !c.tab.is_empty(), hx(c.k)])).collect::<Vec<_>>(),
+                 "cont": b.cont.iter().map(|c| json!([hx(c.lam), hx(c.phi), hx(c.pinf), !c.tab.is_empty()])).collect::<Vec<_>>(),
                  "combos": b.combos.iter().map(|&(ia, ib, c3, ra, rb)| json!([ia, ib, hx(c3), ra, rb])).collect::<Vec<_>>()},
         "sd": {"n": [sd.nu, sd.nf, sd.ntar, sd.na], "xi": sd.xi, "goal": sd.goal, "w": fvec(&sd.w), "uncv": sd.uncv, "fmm": sd.fmm,
                "x0": sd.x0.iter().map(|v| fvec(v)).collect::<Vec<_>>(), "xm": sd.xm.iter().map(|v| fvec(v)).collect::<Vec<_>>(),
@@ -2016,10 +1962,8 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
         let (b, s) = (&e["base"], &e["sd"]);
         let n = uv(&s["n"])?; if n.len() != 4 { return None; }
         let cont = b["cont"].as_array()?.iter().map(|c| { let (lam, phi, pinf) = (fx(&c[0])?, fx(&c[1])?, fx(&c[2])?);
-            // (the reroll's k: 1 in a state stored before it)
-            let k = match c.get(4) { Some(v) => fx(v)?, None => 1.0 };
             // (a Cont without its table has no building: `Cont::default`'s lam 0; one that reads as building is refused)
-            Some(if c[3].as_bool()? { Cont::new(lam, phi, pinf, k) } else if lam > 0.0 && phi > 0.0 { return None } else { Cont { lam, phi, pinf, k, pk: pinf * k, ..Cont::default() } }) }).collect::<Option<Vec<Cont>>>()?;
+            Some(if c[3].as_bool()? { Cont::new(lam, phi, pinf) } else if lam > 0.0 && phi > 0.0 { return None } else { Cont { lam, phi, pinf, ..Cont::default() } }) }).collect::<Option<Vec<Cont>>>()?;
         let combos = b["combos"].as_array()?.iter().map(|t| Some((usz(&t[0])?, usz(&t[1])?, fx(&t[2])?, t[3].as_bool()?, t[4].as_bool()?))).collect::<Option<Vec<Trio>>>()?;
         let base = KeptBase { cands: uv(&b["cands"])?, c1: fvec_r(&b["c1"])?, v0: fx(&b["v0"])?, pnow: fvec_r(&b["pnow"])?, cont, combos, m23: fvec_r(&b["m23"])? };
         let w: [f64; 3] = fvec_r(&s["w"])?.try_into().ok()?;
@@ -2147,9 +2091,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let fb: Vec<Option<Found>> = cands.iter().map(|&u| best[u].clone().flatten()).collect();
     let n = cands.len();
     let pnow: Vec<f64> = fb.iter().map(|f| f.as_ref().map_or(0.0, |f| f.val)).collect();
-    // the end-of-career reroll's factor per candidate on her steps (`Reroll`, `reroll_k`): her best career now's; 1 without
-    let mut rr: Vec<(f64, f64)> = vec![(1.0, 0.0); n];
-    if s.reroll { for (ui, f) in fb.iter().enumerate() { if let Some(f) = f { rr[ui] = reroll_k(&mut s, pool, f.t, f.a, f.b, &f.sel); } } }
     let sj = s.env.sj;
     // per candidate whether an 8/8 of hers exists (a free side of the trios)
     let have8: Vec<bool> = cands.iter().map(|&u| legs.iter().any(|l| l.chara == d.umas[u].id && is_full(sj, &l.sparks) && pool.bor_one(l.borrowed))).collect();
@@ -2352,10 +2293,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             let b2 = eff.iter().skip(1).map(|e| e.1).find(|&b| d.umas[b].id != d.umas[b1].id);
             let pinf = match b2 { Some(b2) => (CEIL_SHARE * loop_ceiling(s, d, pool, u, b1, b2, &wt, buf)).max(p1), None => p1 };
             let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
-            cont[ui] = Cont::new(lam, phi, pinf, rr[ui].0);
+            cont[ui] = Cont::new(lam, phi, pinf);
         }
         // a given fit replaces the pool's (`PlanJob::fit`)
-        if let Some(f) = &pj.fit { for ui in 0..n { if let Some(&(_, lam, phi, pinf)) = f.iter().find(|x| d.umas[cands[ui]].id == x.0) { cont[ui] = Cont::new(lam, phi, pinf, rr[ui].0); } } }
+        if let Some(f) = &pj.fit { for ui in 0..n { if let Some(&(_, lam, phi, pinf)) = f.iter().find(|x| d.umas[cands[ui]].id == x.0) { cont[ui] = Cont::new(lam, phi, pinf); } } }
         cont
     };
     let mut cont = cont_of(&mut s, &runs, &cmask(&exact_run), &wtab, &mut buf);
@@ -2367,11 +2308,11 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // cheaper; C's 8/8 is then a fully looped parent
     let t_c = now_ms();
     let real8: Vec<Vec<usize>> = cands.iter().map(|&u| (0..legs.len()).filter(|&i| legs[i].chara == d.umas[u].id && is_full(sj, &legs[i].sparks) && pool.bor_one(legs[i].borrowed)).collect()).collect();
-    // (A, B, C's step, C, A real, B real, C's rerolls in her goal step: 1 / (k v) careers, each min(1, rho v))
-    let combos_of = |s: &mut Sim, c1: &[f64], buf: &mut Vec<f64>| -> Vec<(usize, usize, f64, usize, bool, bool, f64)> {
+    // (A, B, C's step, C, A real, B real)
+    let combos_of = |s: &mut Sim, c1: &[f64], buf: &mut Vec<f64>| -> Vec<(usize, usize, f64, usize, bool, bool)> {
         let hyp8: Vec<Option<Legacy>> = (0..n).map(|ui| if !c1[ui].is_finite() { None } else {
             fb[ui].as_ref().map(|f| { let wp = s.wins(pool, cands[ui], f.a, f.b); s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec()) }) }).collect();
-        let mut combos: Vec<(usize, usize, f64, usize, bool, bool, f64)> = vec![];
+        let mut combos: Vec<(usize, usize, f64, usize, bool, bool)> = vec![];
         for ia in 0..n { for ib in ia + 1..n {
             let (ua, ub) = (cands[ia], cands[ib]);
             if d.umas[ua].id == d.umas[ub].id { continue; }
@@ -2383,15 +2324,12 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 if let Some(h) = &hyp8[ui] { s.env.pool_push(p8, h); v.push((false, p8.me.len() - 1)); } v };
             let (xs, ys) = (side(s, &mut p8, ia), side(s, &mut p8, ib));
             // per side choice (fresh/real for A, fresh/real for B): the best C
-            let mut bc = [(0.0f64, usize::MAX, 0usize, 0usize); 4];
+            let mut bc = [(0.0f64, usize::MAX); 4];
             for &c in &all { if d.umas[c].id == d.umas[ua].id || d.umas[c].id == d.umas[ub].id { continue; }
                 for &(ra, x) in &xs { for &(rb, y) in &ys { if legal_pair(d, &p8, c, x, y) {
                     let k = (ra as usize) * 2 + rb as usize;
-                    let v = val(s, &p8, c, x, y, buf); if v > bc[k].0 { bc[k] = (v, c, x, y); } } } } }
-            // (under the reroll the best C by odds, her step at k times them: as `her_trios`)
-            for (k, &(v, cu, x, y)) in bc.iter().enumerate() { if cu != usize::MAX {
-                let (kc, rho) = if s.reroll { c_reroll_k(s, &p8, cu, x, y, buf) } else { (1.0, 0.0) };
-                combos.push((ia, ib, 1.0 / (v * kc), cu, k >= 2, k % 2 == 1, (rho * v).min(1.0) / (v * kc))); } }
+                    let v = val(s, &p8, c, x, y, buf); if v > bc[k].0 { bc[k] = (v, c); } } } } }
+            for (k, &(v, cu)) in bc.iter().enumerate() { if cu != usize::MAX { combos.push((ia, ib, 1.0 / v, cu, k >= 2, k % 2 == 1)); } }
             while p8.me.len() > pool.me.len() { s.env.pool_pop(&mut p8); }
             s.put_pool(pool, p8);
         } }
@@ -2557,8 +2495,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, &mut buf);
         Some(RollKeep { key: roll_key(job), sd, base: KeptBase::of(&base), x, a: f.a, b: f.b, sel: f.sel, her_hi, anc: found_anchors(s.env, pool, sv), hi_anc: vec![] })
     } else { None };
-    // under the reroll each row's odds with it (`p_reroll`: k P(all), `reroll_k`), what a run of it gives a player who rerolls
-    let kr: Vec<f64> = if s.reroll { runs.iter().map(|(x, f, _)| reroll_k(&mut s, pool, *x, f.a, f.b, &f.sel).0).collect() } else { vec![] };
     drop(s);
     { let key = bests_key(job, fix, nl); let mut kb = best.clone(); kb[g.t] = None;   // the main search's best is per job, searched again (cheap) next time
       BESTS.with(|c| { let mut c = c.borrow_mut(); c.retain(|b| b.key != key); c.push(Bests { key, best: kb, refs: urefs, looped: lbest, unp: unp.clone(), lunp: lunp.clone() }); if let Some(p) = prev { c.push(p); } while c.len() > 4 { c.remove(0); } }); }
@@ -2570,8 +2506,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let (pick, top) = pick_of(&runs, &score, vis, &undup);
     let near = |i: usize| vis(&runs[i].1) && total(i) >= near_floor(top);
     // per career: the trios' last step (C on A's and B's real 8/8s) only on two 8/8 parents
-    let role = |u: usize, f: &Found| match best_combo { Some((ia, ib, _, _, _, _, _)) if u == cands[ia] || u == cands[ib] => "plan",
-        Some((_, _, _, cu, ra, rb, _)) if u == cu && ra && rb && looped(f) => "finish",
+    let role = |u: usize, f: &Found| match best_combo { Some((ia, ib, _, _, _, _)) if u == cands[ia] || u == cands[ib] => "plan",
+        Some((_, _, _, cu, ra, rb)) if u == cu && ra && rb && looped(f) => "finish",
         _ => if members.contains(&u) { "loop" } else if cands.contains(&u) { "candidate" } else { "builder" } };
     let mut opts: Vec<Value> = vec![];
     for (i, (x, f, _)) in runs.iter().enumerate() {
@@ -2579,7 +2515,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         if dup.get(i).copied().unwrap_or(false) || !vis(f) { continue; }
         let mut rp = env.report(pool, f, false);
         let o = rp.as_object_mut().unwrap();
-        if let (Some(&k), Some(p)) = (kr.get(i), o.get("p_all").and_then(|v| v.as_f64())) { o.insert("p_reroll".into(), json!(k * p)); }
         o.insert("role".into(), json!(role(*x, f))); o.insert("best_odds".into(), json!(*x == gp.t && pair(f) == pair(&gp))); o.insert("chosen".into(), json!(i == pick));
         // both parents 8/8s: her 8/8 here is a fully looped parent
         o.insert("looped".into(), json!(looped(f)));
@@ -2601,7 +2536,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let member = |ui: usize, real: bool| { let (_, nb, ps) = cont[ui].plan(pnow[ui]);
         json!({"trainee": uname(cands[ui]), "p": pnow[ui], "have8": have8[ui], "real": real, "p_inf": if cont[ui].lam > 0.0 { Some(cont[ui].pinf) } else { None }, "lam": cont[ui].lam,
                "phi": cont[ui].phi, "builds": nb, "p_switch": ps, "careers": step(ui, real)}) };
-    let (plan_json, members_json) = match best_combo { Some((ia, ib, c3, cu, ra, rb, _)) => {
+    let (plan_json, members_json) = match best_combo { Some((ia, ib, c3, cu, ra, rb)) => {
         // A: the cheaper of the two steps first
         let ((fa, fra), (fb2, frb)) = if step(ia, ra) <= step(ib, rb) { ((ia, ra), (ib, rb)) } else { ((ib, rb), (ia, ra)) };
         (json!({"a": uname(cands[fa]), "b": uname(cands[fb2]), "c": uname(cu), "careers": [step(fa, fra), step(fb2, frb), c3]}), json!([member(fa, fra), member(fb2, frb)])) }
@@ -2617,16 +2552,6 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
            "sur": pj.sur, "sur_diff": sur_diff, "loop_ms": loop_ms, "search_ms": search_ms, "combo_ms": combo_ms, "index_ms": index_ms, "total_ms": now_ms() - t_all});
     // (the option reports moved in, not copied by `json!`: the object's keys are ordered, so the same text)
     out["options"] = Value::Array(opts);
-    // the reroll's TP beside V's careers: rerolls expected over the plan, each 30 TP (a career's). "all_bought": a career
-    // with odds p rerolls with chance min(1, rho p) (`reroll_k`), so a fresh side's grind (1 / (k p_n) careers, p_n her odds
-    // when she stops building) rerolls min(1, rho p_n) / (k p_n) times and C's goal step likewise; builders' careers are
-    // not counted. "always": every career
-    if pj.reroll != Reroll::Never { if let Some((ia, ib, _, _, ra, rb, rc)) = best_combo {
-        let kc = |ui: usize, real: bool| if real || pnow[ui] <= 0.0 { 0.0 } else { let ps = cont[ui].plan(pnow[ui]).2 / rr[ui].0; (rr[ui].1 * ps).min(1.0) / (rr[ui].0 * ps) };
-        let rer = match pj.reroll { Reroll::Always => vnow, _ => kc(ia, ra) + kc(ib, rb) + rc };
-        out["reroll"] = json!({"setting": if pj.reroll == Reroll::Always { "always" } else { "all_bought" }, "careers": vnow, "rerolls": rer, "tp_careers": vnow + rer,
-            "k": (0..n).map(|ui| rr[ui].0).collect::<Vec<_>>()});
-    } }
     if !proxy_check.is_null() { out["proxy_check"] = proxy_check; }
     out["work"]["prof"] = json!(PROF.with(|p| std::mem::take(&mut *p.borrow_mut())));
     // a roll sent with the plan job (`next.roll`) when the worker kept no roll state for it: answered from the state just

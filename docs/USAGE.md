@@ -55,20 +55,6 @@ the later careers with a borrow, since borrows come back each day. *Never* leave
 as a parent by hand is then refused with a message (choose one of yours, or allow a borrowed parent), and the parent
 picker greys borrowed veterans out.
 
-**Spark reroll** (in Career setup, saved): whether you use the game's end-of-career reroll (every spark drawn again once,
-the better roll kept, 30 TP). *Never* (the default) plans as before. *All learned* (reroll only when she learned every
-target skill) and *Always* plan the same: the plan counts careers, and only a career that learned every target can give
-the fully looped parent, so a second draw nearly doubles that chance (the estimate falls by up to half). They differ in
-TP, which the estimate's popup (*What these mean*, *Spark rerolls and TP*) gives beside the careers: a reroll costs as
-much TP as a career, so *Always* pays one per career for nothing more. With either, the table's *This career* gives
-each career's odds with the reroll (about twice the first roll's).
-
-Under the table stands the planner's rough estimate of the careers from your veterans now to a fully looped parent (the
-yardstick *Saves per run* is measured against; with a reroll setting, also the TP). It is the plan's estimate, not a
-forecast: the plan prices one simple road (two n/n's, then a third uma on them) with a fitted model of building. The
-expected careers of actually following the planner could be measured only by simulating it career after career, which
-costs hours of computing per pool at 8 targets and days at 10, so the page doesn't.
-
 The pedigree shows the trainee, her two parents and their parents. Each place is set by hand (*Choose parent*) or left
 to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed, as *Borrowed parent*
 allows). Every edit that

@@ -385,7 +385,6 @@ evidence: `docs/MODEL.md`, *Next career*. Constants are in `src/deck/career/sim/
 | `search_work` | work budget (career-search units) of each candidate search beyond the job's own; 0 = the job's budget | 5,000,000 |
 | `margin` | the surrogate's refresh margin (section *Policy simulator*) | 1e9 |
 | `roll` | a roll of the plan's pick: her stars per job target (0 where it did not land); the output is `next.roll` (below). Answered from the plan's kept roll state with no search when the worker has it for this job, else after the plan, which keeps it | absent |
-| `reroll` | the game's end-of-career spark reroll (once per career, every spark drawn again, the better roll kept; 30 TP, a career's): `"never"`, `"all_bought"` (when she bought every target), `"always"`. V counts careers, so the two reroll settings plan alike (a career short of a target can't be the goal however it is rolled; their partial rolls' gain is not credited); they differ in the TP reported (`reroll` below) | `"never"` |
 
 **Stage candidates** (at most 8): the best career's trainee, the loop members when named, the umas of the best
 career's lineage and of your veterans, the search's other trainees. Below 4 (`HINT_FLOOR`: a loop being started, mob or
@@ -453,17 +452,6 @@ now would leave, `Env::veteran`: its parents, every target at the rank's star mi
 every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real 8/8 with poor parents
 can lose to a fresh one.
 
-**The reroll** (`next.reroll` not "never"). Given what she bought, each target's spark is drawn independently (the model's
-spark generation), so with a second draw and the better kept a bought state with product of spark chances g lands every
-target with 1 - (1 - g)^2: P(all land) = 2 P - E[g^2] = k P, k = 2 - G, G = c P2 / P1 (`reroll_k`: P1 and P2 the joint
-sum at unit spark scale with the chances as they are and squared, `JointExt::spark`; c her spark scale; G about 1e-4 to
-1e-3 on 8-10 targets). Derived, on one assumption: the reroll draws at the same chances. Each candidate's Cont takes her
-best career now's k (`Cont::k`: p and pinf scaled by it on the way in, so k = 1 changes no float), C's goal step is
-1 / (k v) with C's own k (the best C by odds, as without), and a scored career's every-target outcome has chance k P,
-the added mass taken from her other landed sets in proportion (her partial rolls of every-target-bought careers, a set
-the outcome table doesn't hold; E[y] moves by at most (k - 1) P x the largest |y| of a partial set). Builders' rates
-(lam) are fitted and unchanged. On val/plan V falls to 0.50-0.55x with every pick the same (2026-10-21).
-
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
 raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
 (V after 0). A target whose stars can't move any table value (per scoring and for every setup, either her miss factor
@@ -513,11 +501,6 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   so later rolls fold in the same anchors without computing their chances again (e2_full_t10: 18,895 of 531,166). The
   page checks a roll with y < 0.5 <= y_hi exactly. The replan's other careers with her as a parent are not bounded (its
   candidates and Cont are the plan's).
-- `reroll` (with `next.reroll` not "never"): `{setting, careers (V), rerolls, tp_careers (V + rerolls), k (per
-  candidate)}`, rerolls each 30 TP. "always": one per career. "all_bought": a career with odds p bought every target with
-  chance min(1, rho p), rho = P(every target bought) / P1 (`reroll_k`, at full spark scale: the lineage a grind and a goal
-  step run on), so a fresh side's grind of 1 / (k p_n) careers rerolls min(1, rho p_n) / (k p_n) times and C's step
-  likewise; builders' careers are not counted. Each option then also has `p_reroll`, its odds with the reroll (k P(all), its own k).
 - `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
   trios' fresh sides, with every candidate side and the best C).
 - `umas_scored`, `umas_searched` (careers searched exactly), `umas_certified`, `umas_unproven` (umas whose best or

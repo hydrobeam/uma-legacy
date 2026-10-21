@@ -281,19 +281,11 @@ fn career_fold_and_scale() {
             let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
             assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {:?} vs {:?}", x, y);
             let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
-            let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![], per_outfit: vec![], spark: None };
+            let mut ext = JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![], per_outfit: vec![] };
             let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
             let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
             assert!(rel(z.0, c * y.0) < 1e-12 && z.2 == y.2, "scale uma {u}: {} vs {}", z.0, c * y.0);
             assert!(z.1 >= z.0 && z.1 <= 1.0);
-            // the spark chances given (`JointExt::spark`, the reroll's parts): the model's pair is the same sum to the bit;
-            // with both chances x every target's factor is x times its chance of being bought, so the value is x^5 (four
-            // open targets and the guaranteed gold) times P(every target bought), which lies between P(all land) and 1
-            let ev = |sp: Option<[f64; 2]>| { let mut e = JointExt { su: vec![1.0; 4], sf: vec![1.0], marg: vec![], sets: vec![], per_outfit: vec![], spark: sp };
-                joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), false, Some(&mut e))[0].0 };
-            assert_eq!(ev(Some([crate::skills::GEN_WHITE, GEN_GOLD])).to_bits(), ev(None).to_bits());
-            let bought = ev(Some([1.0, 1.0]));
-            assert!(rel(ev(Some([0.3, 0.3])), 0.3f64.powi(5) * bought) < 1e-12 && bought >= ev(None) && bought <= 1.0, "uma {u}: bought {bought}");
         }
     }
     // two targets, coupled sources: marginals against P(all) and P(all but at most one)
@@ -303,7 +295,7 @@ fn career_fold_and_scale() {
     let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
     let ents2 = vec![(p, (2, 2, 0)), (r, (2, 2, 0))];
     for u in [0usize, 5, 20] {
-        let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![], spark: None };
+        let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
         let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
         let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
         assert!(rel(m0 + m1, j.0 + j.1) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.0, j.1);

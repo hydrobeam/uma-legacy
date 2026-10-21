@@ -44,9 +44,7 @@ let inflight = null;   // the run under way: its job and places (`runKey`); null
 let legsKey = [null, ''];
 const jobKey = (job) => { if (legsKey[0] !== job.legacies) legsKey = [job.legacies, JSON.stringify(job.legacies)];
   return JSON.stringify([ERA, { ...job, legacies: 0 }]) + '\n' + legsKey[1]; };
-// a run's key: the search job's, and the plan's reroll (`nextOf`: in the plan job alone, so a change of it runs the plan again)
-const keyOfJob = (job) => jobKey(job) + (rrOf() === 'never' ? '' : '\nreroll ' + rrOf());
-const runKey = (job) => keyOfJob(job) + '\n' + JSON.stringify(plan);
+const runKey = (job) => jobKey(job) + '\n' + JSON.stringify(plan);
 // the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
   : ph === 4 ? `weighing ${n} careers` : '';
@@ -113,10 +111,6 @@ class Blocked extends Error { constructor(kind, text, act) { super(text); this.k
 // plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the job as before)
 const BP = { allow: 'Allowed', later: 'None left today', never: 'Never' };
 const bpOf = () => (Object.hasOwn(BP, state.borrowPar) ? state.borrowPar : 'allow');
-// the end-of-career spark reroll the plan assumes (Career setup): the plan job's `next.reroll`, left out at 'never'
-const RR = { never: 'Never', all_bought: 'All learned', always: 'Always' };
-const rrOf = () => (Object.hasOwn(RR, state.reroll) ? state.reroll : 'never');
-const nextOf = () => (rrOf() === 'never' ? {} : { reroll: rrOf() });
 function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
@@ -188,7 +182,7 @@ async function search() {
   // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
   // answer is on show (era, settings, veterans as the job carries them, and the same places), so it stands and nothing
   // runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run again
-  const key = keyOfJob(job), places = JSON.stringify(plan);
+  const key = jobKey(job), places = JSON.stringify(plan);
   if (last && last.key === key && last.plan === places && planS.state !== 'error') {
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
@@ -225,7 +219,7 @@ async function search() {
         phase = 'plan'; phaseNote = found; prog = ''; t0 = performance.now(); paint();
         const { rollout: _r, p_now: _p, ...plain } = job;
         try {
-          const jp = { ...plain, next: nextOf(), no_reports: true }, kept = planKept && planKept.key === planKey(jp) ? planKept : null;
+          const jp = { ...plain, next: {}, no_reports: true }, kept = planKept && planKept.key === planKey(jp) ? planKept : null;
           const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runN(jp, (p) => { if (id === myId) { prog = progText(p); paint(); } });
           if (id !== myId) return;
           const x = m2.r.next;
@@ -756,7 +750,7 @@ async function runComparison(refine = false) {
     // the planner's expected careers to a fully looped parent once its best next career runs, without and with her:
     // W = V0 - (the best positive score) = 1 + E[V0 after that career] (n/n: goal step 1 done)
     const full = isFull(simulation.draft);
-    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: nextOf(), compare: true, no_reports: true });   // as a run's plan job, once she is added
+    const planOf = (legacies) => ({ ...base, top: ROLL_K, legacies, next: {}, compare: true, no_reports: true });   // as a run's plan job, once she is added
     let pb = planS.state === 'done' && !last.job.fix.length ? planS.r : null;
     if (!pb) { const mb = await runN(planOf(base.legacies)); if (id !== simulationId || source !== myId) return; pb = mb.r.next || null; }
     // with her: the plan a run makes once she is added (her pool, fitted to it, as Add to veterans will show it; kept, so
@@ -903,9 +897,7 @@ function optionsEl() {
   tb.innerHTML = '<thead><tr><th scope="col">Career</th><th scope="col"></th><th scope="col"></th><th scope="col"><span class="sr">Choose</span></th></tr></thead><tbody></tbody>';
   // both columns explain themselves on hover or keyboard focus (gmtip.js); the (i) popup says more about Saves per run
   const n = state.targets.length, ths = tb.tHead.rows[0].cells;
-  // (under Spark reroll the odds with the reroll: the plan's `p_reroll`)
-  const rro = !!(P && P.reroll);
-  const t = el('span', 'thtip', 'This career'); t.title = `Her odds of landing all ${n} targets in this one run${rro ? (P.reroll.setting === 'always' ? ', rerolling her sparks' : ', rerolling her sparks if she learned every target') : ''}: 1 in N means about N runs of this career for one ${n}/${n}.`; t.tabIndex = 0;
+  const t = el('span', 'thtip', 'This career'); t.title = `Her odds of landing all ${n} targets in this one run: 1 in N means about N runs of this career for one ${n}/${n}.`; t.tabIndex = 0;
   const sp = el('span', 'thtip', 'Saves per run'); sp.title = 'How much this career lowers the planner\'s estimate of the careers you still need, minus the run itself. For comparing careers, not a forecast.'; sp.tabIndex = 0;
   ths[1].appendChild(t); ths[2].appendChild(sp);
   // "Saves per run": what it means, and why the best odds aren't the loop's best, with the plan behind the numbers
@@ -925,17 +917,13 @@ function optionsEl() {
     // the number carries the tooltip (its balloon points at the number, not the middle of the cell)
     const sv = el('td', 'orole'), num = el('span', 'onum', P ? (scoreOf(r) == null ? '–' : netText(scoreOf(r))) : '–'); sv.append(num);
     if (P && r.index != null) { num.tabIndex = 0; num.title = `${roleText(r)}` + (r.lift > 0 ? `. ${pct(r.lift)} of her possible results lower the estimate` : '') + (r.near ? '. About the same as the pick' : ''); }
-    row.append(c0, el('td', '', fmtIn(rro && r.p_reroll != null ? r.p_reroll : r.p_all)), sv);
+    row.append(c0, el('td', '', fmtIn(r.p_all)), sv);
     const act = el('td');
     act.appendChild(cur ? el('span', 'hint', 'shown above') : useBtn(r, pl));
     row.appendChild(act);
     tb.tBodies[0].appendChild(row);
   }
   const wrap = el('div', 'optwrap'); wrap.appendChild(tb); box.appendChild(wrap);
-  // the plan's estimate from the veterans now (the yardstick Saves per run is measured against), with the rerolls' TP
-  if (P && P.v0 != null) { const e = el('p', 'hint optnote'); e.id = 'opt-est';
-    e.textContent = `The planner's rough estimate from your veterans now: about ${fmtN(P.v0)} careers to a fully looped parent` + (P.reroll ? `, and ${fmtN(P.reroll.tp_careers)} careers' worth of TP with the rerolls.` : '.');
-    box.appendChild(e); }
   // a row whose career search was not complete (`proven: false`: its work cap, a band overflow or a deck past its class's
   // cap): the best it found, maybe not her best
   if (P && list.some(o => o.proven === false)) box.appendChild(el('p', 'hint optnote', 'The search could not prove the best career for some of these umas: a better one may exist for them.'));
@@ -980,9 +968,6 @@ function openSaveWhy(P) {
     para(`The planner makes a <b>rough estimate</b> of how many careers you still need${V ? ` (<b>about ${V}</b> today)` : ''}. Then, for every way this career could turn out, it adds her veteran to your parents and estimates again. <i>How much the estimate drops</i>, minus the run itself, is the saving.`),
     drop('Today\'s estimate, step by step', el('p', 'oloop', route),
       para(`A <i>yardstick</i>, not advice: it assumes the simplest road (${n}/${n}s of two umas, then a career of a third with them as parents), and only its total is used.`)));
-  // the reroll's TP (Spark reroll): the estimate counts careers; each reroll costs a career's 30 TP
-  const rr = P.reroll;
-  if (rr && rr.careers != null) body.append(drop('Spark rerolls and TP', para(`The estimate counts careers, rerolling ${rr.setting === 'always' ? 'every career\'s sparks' : 'a career\'s sparks when she learned every target'} and keeping the better roll. Each reroll costs 30 TP, as much as a career: about <b>${fmtN(rr.rerolls)} rerolls</b> on top of the ${fmtN(rr.careers)} careers, so about <b>${fmtN(rr.tp_careers)} careers' worth of TP</b> in all${rr.setting === 'always' ? '. Rerolling only when she learned every target gives the same estimate for fewer rerolls' : ''}.`)));
   if (exTxt) body.append(drop('An example', para(exTxt)));
   saveDlg.appendChild(body);
   const f = el('div', 'gmdfoot'), c = el('button', 'btn gmclose', 'Close'); c.type = 'button'; c.onclick = () => saveDlg.close(); f.appendChild(c); saveDlg.appendChild(f);
@@ -1066,7 +1051,7 @@ function initSettings() {
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); persist(); location.reload(); };
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
-  initScenario(); initRoster(); initCards(); initTargets(); initBorrow(); initReroll();
+  initScenario(); initRoster(); initCards(); initTargets(); initBorrow();
   renderRoster(); renderTargets();
   enginePersist();   // the solver's kept work survives a page reload
   initSetup(); initFold();
@@ -1079,11 +1064,6 @@ function initBorrow() {
   $('bp').querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.v === bpOf()) return; state.borrowPar = b.dataset.v; paintBorrow(); save(); });
   paintBorrow();
 }
-function paintReroll() { $('rr').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === rrOf()))); }
-function initReroll() {
-  $('rr').querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.v === rrOf()) return; state.reroll = b.dataset.v; paintReroll(); save(); });
-  paintReroll();
-}
 // the setup panel folds to its ribbon (click it) and a one-line summary; the choice is kept in this browser
 let folded = (() => { try { return localStorage.getItem('llp:setup-folded') === '1'; } catch { return false; } })();
 function paintFold() {
@@ -1093,7 +1073,7 @@ function paintFold() {
   const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+', era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global', sc = scenarioOf(state.scen).name;
   // each setting as its label, light, and its value, bold, as the panel's rows read (the whole line for the screen reader)
   // (the borrowed parent only when it isn't the default)
-  const bp = [...(bpOf() === 'allow' ? [] : [['Borrowed parent', BP[bpOf()]]]), ...(rrOf() === 'never' ? [] : [['Spark reroll', RR[rrOf()]]])];
+  const bp = bpOf() === 'allow' ? [] : [['Borrowed parent', BP[bpOf()]]];
   sum.setAttribute('aria-label', [era, sc, `rank ${rank}`, `${state.targets.length} target skills`, ...bp.map(([k, v]) => `${k}: ${v}`)].join(' · '));
   sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)], ...bp].map(([k, v]) => {
     const p = el('span', 'sumkv'); p.setAttribute('aria-hidden', 'true'); p.append(el('span', 'sumk', k), el('b', '', v)); return p; }));
