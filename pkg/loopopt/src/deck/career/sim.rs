@@ -618,10 +618,10 @@ impl<'env, 'data> Sim<'env, 'data> {
             }
         }
         if let Some(x) = self.sched.get(&(t, k.clone())) {
-            return x.clone();
+            return Rc::clone(x);
         }
         let w = Rc::new(self.env.schedule(pool, t, a, b).1);
-        self.sched.insert((t, k), w.clone());
+        self.sched.insert((t, k), Rc::clone(&w));
         w
     }
     /// career (t, a, b) with deck `sel`: its exact numbers
@@ -635,12 +635,12 @@ impl<'env, 'data> Sim<'env, 'data> {
     }
     fn greedy_cur(&mut self, st: &mut St) -> Rc<Cur> {
         if let Some(c) = &st.cur {
-            return c.clone();
+            return Rc::clone(c);
         }
         let pk = st.best.expect("no legal career");
         let sel = self.cache.decks[pk.t][pk.d].sel.clone();
         let c = Rc::new(self.make_cur(&st.pool, pk.t, pk.a, pk.b, &sel, false));
-        st.cur = Some(c.clone());
+        st.cur = Some(Rc::clone(&c));
         c
     }
     /// `trace`: building for loop_members[0] (A) with the others as builders. Each career: per builder her best career's
@@ -723,7 +723,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// the loop's next career (module notes: rotation and bootstrap)
     fn loop_cur(&mut self, st: &mut St) -> Rc<Cur> {
         if let Some(c) = &st.cur {
-            return c.clone();
+            return Rc::clone(c);
         }
         let nm = self.members.len();
         let pos = st.rot.pos % nm;
@@ -745,7 +745,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             self.make_cur(&st.pool, f.t, f.a, f.b, &f.sel.clone(), true)
         };
         let c = Rc::new(c);
-        st.cur = Some(c.clone());
+        st.cur = Some(Rc::clone(&c));
         c
     }
     /// The loop's rotation after a member's career (her veteran the pool's last): the member keeps the better of her
@@ -1201,10 +1201,10 @@ impl<'env, 'data> Sim<'env, 'data> {
         loop {
             let cur: Rc<Cur> = if exact {
                 if let Some(career) = &kept_decision {
-                    career.clone()
+                    Rc::clone(career)
                 } else {
                     let career = Rc::new(self.exact_cur(st));
-                    kept_decision = Some(career.clone());
+                    kept_decision = Some(Rc::clone(&career));
                     career
                 }
             } else {
@@ -1214,10 +1214,10 @@ impl<'env, 'data> Sim<'env, 'data> {
                     Base::Trace => unreachable!("trace runs its own loop"),
                     Base::Index => {
                         if let Some(career) = &kept_decision {
-                            career.clone()
+                            Rc::clone(career)
                         } else {
                             let career = Rc::new(self.index_cur(st));
-                            kept_decision = Some(career.clone());
+                            kept_decision = Some(Rc::clone(&career));
                             career
                         }
                     }

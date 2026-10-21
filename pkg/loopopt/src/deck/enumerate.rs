@@ -441,7 +441,7 @@ impl DeckSpace<'_> {
                             .map(|j| legal_rc.contains(&j).then(|| src_levels(&self.srcs[j], self.kind[j].1, nu)))
                             .collect::<Vec<_>>(),
                     );
-                    self.sbrows.borrow_mut().insert(set_id, r.clone());
+                    self.sbrows.borrow_mut().insert(set_id, std::rc::Rc::clone(&r));
                     r
                 })
             } else {
@@ -577,7 +577,7 @@ impl DeckSpace<'_> {
             std::cell::RefCell::new(vec![None; if cfm { groups_all.len() } else { 0 }]);
         let cf_rmx_of = |gi: usize| -> std::rc::Rc<Vec<f64>> {
             if let Some(r) = &cf_rmx.borrow()[gi] {
-                return r.clone();
+                return std::rc::Rc::clone(r);
             }
             let stop = if gi < nk { self.kinds_all[gi].1 as usize } else { 0 };
             let mut m = vec![0.0f64; (stop + 1) * cf_no];
@@ -595,14 +595,14 @@ impl DeckSpace<'_> {
                 }
             }
             let r = std::rc::Rc::new(m);
-            cf_rmx.borrow_mut()[gi] = Some(r.clone());
+            cf_rmx.borrow_mut()[gi] = Some(std::rc::Rc::clone(&r));
             r
         };
         // the same ratio of one entry (row l * no + o), built on first use
         let cf_rent: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<f64>>>> = std::cell::RefCell::default();
         let cf_rent_of = |j: usize| -> std::rc::Rc<Vec<f64>> {
             if let Some(r) = cf_rent.borrow().get(&j) {
-                return r.clone();
+                return std::rc::Rc::clone(r);
             }
             let rows = sb_rows[j].as_ref().unwrap();
             let nl = rows.len() / nu;
@@ -614,7 +614,7 @@ impl DeckSpace<'_> {
                 }
             }
             let r = std::rc::Rc::new(m);
-            cf_rent.borrow_mut().insert(j, r.clone());
+            cf_rent.borrow_mut().insert(j, std::rc::Rc::clone(&r));
             r
         };
         // per group, its entries' `cv_mask`s ORed
@@ -1046,7 +1046,7 @@ impl DeckSpace<'_> {
                             plain,
                             gneed,
                             gs: gs.to_vec(),
-                            gm: gm.clone(),
+                            gm: std::rc::Rc::clone(&gm),
                         });
                         continue;
                     }
@@ -1082,8 +1082,8 @@ impl DeckSpace<'_> {
                         filler,
                         plain,
                         gs: gs.to_vec(),
-                        gm: gm.clone(),
-                        rpk: rpk.clone(),
+                        gm: std::rc::Rc::clone(&gm),
+                        rpk: std::rc::Rc::clone(rpk),
                         prune_bound,
                         clause_bounds: if rbc { cv.to_vec() } else { vec![] },
                     });
@@ -1314,8 +1314,8 @@ impl DeckSpace<'_> {
                             filler: pe.filler,
                             plain: pe.plain,
                             gs: pe.gs.clone(),
-                            gm: pe.gm.clone(),
-                            rpk: rpk.clone(),
+                            gm: std::rc::Rc::clone(&pe.gm),
+                            rpk: std::rc::Rc::clone(rpk),
                             prune_bound: lcv[0],
                             clause_bounds: if rbc { lcv.clone() } else { vec![] },
                         },
@@ -1478,7 +1478,9 @@ impl DeckSpace<'_> {
                 cf.gs
                     .iter()
                     .map(|&(i, _)| {
-                        gbc.entry((cf.code, i)).or_insert_with(|| std::rc::Rc::new(gb_of(i, mw, mg))).clone()
+                        std::rc::Rc::clone(
+                            gbc.entry((cf.code, i)).or_insert_with(|| std::rc::Rc::new(gb_of(i, mw, mg))),
+                        )
                     })
                     .collect()
             } else {
@@ -1612,7 +1614,7 @@ impl DeckSpace<'_> {
                     .collect();
                 let r =
                     std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: std::cell::OnceCell::default() });
-                self.sbcfg.borrow_mut().insert(sbkey, r.clone());
+                self.sbcfg.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
                 Some(r)
             };
             // the bound at a partial deck `sel` (entries in pick order, filling the groups in turn)
@@ -3118,7 +3120,7 @@ impl DeckSpace<'_> {
         lbit: &[u8],
     ) -> std::rc::Rc<Vec<Vec<(u32, u32)>>> {
         if let Some(r) = self.domc.borrow().get(&(set_id, code, gi)) {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         let nu = self.unc.len();
         let in01 = |x: f64| (0.0..=1.0).contains(&x);
@@ -3158,7 +3160,7 @@ impl DeckSpace<'_> {
                 })
                 .collect::<Vec<_>>(),
         );
-        self.domc.borrow_mut().insert((set_id, code, gi), r.clone());
+        self.domc.borrow_mut().insert((set_id, code, gi), std::rc::Rc::clone(&r));
         r
     }
 }

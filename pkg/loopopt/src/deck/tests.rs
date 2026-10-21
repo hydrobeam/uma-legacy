@@ -72,6 +72,7 @@ fn chain_marginals_dense_matches_ref() {
         let a = chain_marginals_ref(ks);
         let b = chain_marginals_dense(ks);
         cnt += 1;
+        #[allow(clippy::iter_over_hash_type, reason = "a running max over every entry: the order changes nothing")]
         for (k, v) in &a {
             for (x, y) in v.iter().zip(&b[k]) {
                 worst = worst.max((x - y).abs());

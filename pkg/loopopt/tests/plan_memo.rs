@@ -49,7 +49,7 @@ fn strip(v: &mut Value) {
 fn stat(err: &str, key: &str) -> u64 {
     let l = err.lines().find(|l| l.starts_with("PLAN_MEMO")).expect("no PLAN_MEMO line");
     let i = l.find(&format!("{key} ")).unwrap() + key.len() + 1;
-    l[i..].split_whitespace().next().unwrap().parse().unwrap()
+    l.get(i..).unwrap().split_whitespace().next().unwrap().parse().unwrap()
 }
 
 #[test]

@@ -38,11 +38,14 @@ mod sim;
 
 /// wall clock in ms: the host's `env.clock_ms` in wasm (performance.now()), else the process clock
 #[cfg(target_arch = "wasm32")]
+#[allow(unsafe_code, reason = "calls the host's clock import")]
 fn now_ms() -> f64 {
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
         fn clock_ms() -> f64;
     }
+    // SAFETY: the host provides `env.clock_ms` with this signature (performance.now()); it takes nothing and reads
+    // no memory of ours.
     unsafe { clock_ms() }
 }
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,12 +56,14 @@ fn now_ms() -> f64 {
 /// the plan's progress for the page's status line, at its phase boundaries (`sim::plan::index_rule`): phase, k of n. In
 /// wasm the host's `env.progress` (the worker posts it to the page while the plan runs); elsewhere nothing
 #[cfg(target_arch = "wasm32")]
+#[allow(unsafe_code, reason = "calls the host's progress import")]
 fn progress(phase: u32, k: usize, n: usize) {
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
         #[link_name = "progress"]
         fn host_progress(phase: u32, k: u32, n: u32);
     }
+    // SAFETY: the host provides `env.progress` with this signature; it takes three integers and reads no memory of ours.
     unsafe { host_progress(phase, k as u32, n as u32) }
 }
 #[cfg(not(target_arch = "wasm32"))]
@@ -1230,8 +1235,8 @@ impl Env<'_> {
                     chara: w.chara,
                     rel,
                     race,
-                    stars: w.stars.clone(),
-                    pinks: w.pinks.clone(),
+                    stars: std::rc::Rc::clone(&w.stars),
+                    pinks: std::rc::Rc::clone(&w.pinks),
                     mix: w.mix,
                 });
             }
@@ -3538,7 +3543,7 @@ mod tests {
         let seen_used = |st: &Value| {
             assert_eq!(state_in(st)["ok"], true);
             let used = std::rc::Rc::new(std::cell::Cell::new(false));
-            let u = used.clone();
+            let u = std::rc::Rc::clone(&used);
             ENV_HOOK.with(|c| {
                 *c.borrow_mut() =
                     Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.seen.iter().any(|r| !r.is_empty()))));

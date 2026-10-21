@@ -737,17 +737,18 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                         (Name::from(n), Name::from(lb), None)
                     });
                     names.push(if Some(i) == x.borrowed {
-                        nb.get_or_insert_with(|| Name::from(format!("{n} (borrowed)"))).clone()
+                        std::rc::Rc::clone(nb.get_or_insert_with(|| Name::from(format!("{n} (borrowed)"))))
                     } else {
-                        n.clone()
+                        std::rc::Rc::clone(n)
                     });
-                    choices.push(lb.clone());
+                    choices.push(std::rc::Rc::clone(lb));
                 }
                 names.extend(plain_rc.iter().take(x.plain).cloned());
                 for _ in 0..x.filler {
-                    names.push(filler_rc.clone());
+                    names.push(std::rc::Rc::clone(&filler_rc));
                 }
-                let mut cn = |i: usize| cname.entry(i).or_insert_with(|| Name::from(cards[i].name.as_str())).clone();
+                let mut cn =
+                    |i: usize| std::rc::Rc::clone(cname.entry(i).or_insert_with(|| Name::from(cards[i].name.as_str())));
                 PDeck {
                     names,
                     ids: x.cards.iter().map(|&i| cards[i].id).collect(),

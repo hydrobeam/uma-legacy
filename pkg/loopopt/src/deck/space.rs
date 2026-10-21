@@ -76,7 +76,7 @@ impl<'data> DeckSpace<'data> {
     /// a miss chance other than exactly 1.0)
     pub(super) fn key_miss(&self, code: u64) -> std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)> {
         if let Some(r) = self.keys.borrow().get(&code) {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         let nu = self.unc.len();
         let n = self.rel.len();
@@ -105,7 +105,7 @@ impl<'data> DeckSpace<'data> {
             .map(|j| (0..nu).filter(|&t| mw[j * nu + t] != 1.0 || mg[j * nu + t] != 1.0).fold(0u32, |m, t| m | 1 << t))
             .collect();
         let r = std::rc::Rc::new((mw, mg, tm));
-        self.keys.borrow_mut().insert(code, r.clone());
+        self.keys.borrow_mut().insert(code, std::rc::Rc::clone(&r));
         r
     }
     /// Entries that matter for trainees `us` (one per-uma trainee, or a loop's four with a shared deck): legal ones (no
@@ -221,7 +221,7 @@ impl<'data> DeckSpace<'data> {
         size: usize,
     ) -> std::rc::Rc<GTab> {
         if let Some(r) = self.gmc.borrow().get(&(u, code)) {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         // (each target's `size` lowest, as the first `size` of the stable ascending sort: `top_asc`)
         let (mut a, mut b) = (Vec::with_capacity(size), Vec::with_capacity(size));
@@ -245,7 +245,7 @@ impl<'data> DeckSpace<'data> {
             }
         }
         let r = std::rc::Rc::new(r);
-        self.gmc.borrow_mut().insert((u, code), r.clone());
+        self.gmc.borrow_mut().insert((u, code), std::rc::Rc::clone(&r));
         r
     }
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
@@ -253,7 +253,7 @@ impl<'data> DeckSpace<'data> {
         let nplain = self.legal_plain(ids).len();
         let key = (set_id, nplain);
         if let Some(r) = self.legt.borrow().get(&key) {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         let mut chara_ix: HashMap<u32, usize> = HashMap::new();
         for &j in legal {
@@ -284,31 +284,29 @@ impl<'data> DeckSpace<'data> {
         let glk: Vec<u8> =
             by_kind.iter().chain(std::iter::once(&pal_ents)).map(|l| l.iter().fold(0u8, |m, &j| m | lb(j))).collect();
         let r = std::rc::Rc::new(LegalTabs { over, ebit, by_kind, pal_ents, glk, nplain });
-        self.legt.borrow_mut().insert(key, r.clone());
+        self.legt.borrow_mut().insert(key, std::rc::Rc::clone(&r));
         r
     }
     /// every count vector over `kinds_all` (each entry the number of cards of that kind, summing to at most deck_size)
     pub(super) fn counts_all(&self) -> std::rc::Rc<Vec<Vec<usize>>> {
-        self.counts
-            .get_or_init(|| {
-                let (nk, size) = (self.kinds_all.len(), self.dj.deck_size);
-                let mut counts: Vec<Vec<usize>> = vec![vec![]];
-                for _ in 0..nk {
-                    counts = counts
-                        .into_iter()
-                        .flat_map(|c| {
-                            let used: usize = c.iter().sum();
-                            (0..=size - used).map(move |x| {
-                                let mut d = c.clone();
-                                d.push(x);
-                                d
-                            })
+        std::rc::Rc::clone(self.counts.get_or_init(|| {
+            let (nk, size) = (self.kinds_all.len(), self.dj.deck_size);
+            let mut counts: Vec<Vec<usize>> = vec![vec![]];
+            for _ in 0..nk {
+                counts = counts
+                    .into_iter()
+                    .flat_map(|c| {
+                        let used: usize = c.iter().sum();
+                        (0..=size - used).map(move |x| {
+                            let mut d = c.clone();
+                            d.push(x);
+                            d
                         })
-                        .collect();
-                }
-                std::rc::Rc::new(counts)
-            })
-            .clone()
+                    })
+                    .collect();
+            }
+            std::rc::Rc::new(counts)
+        }))
     }
     /// per entry, its locked card's bit (0 if none); and every locked card's bit
     pub(super) fn lock_bits(&self) -> &(Vec<u8>, u8) {

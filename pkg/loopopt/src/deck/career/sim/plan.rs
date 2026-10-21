@@ -314,7 +314,8 @@ fn sim_for<'env, 'data>(
     if ntar > 12 || env.nu > 10 {
         return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
     }
-    let cfg: SimJob = serde_json::from_value(json!({"margin": pj.margin})).unwrap();
+    let cfg: SimJob = serde_json::from_value(json!({"margin": pj.margin}))
+        .map_err(|e| json!({"error": format!("The plan's margin does not make a simulator setting: {e}")}))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.owned.clone();
     Ok(Sim::new(env, d, sk, cr, job, cfg, trainees, vec![], vec![], false, true))
@@ -2934,7 +2935,7 @@ struct HiScr {
 /// its first roll): (candidate, partner), and per anchor (f, chances) that can lower some leaf, in their order
 type HiAnc = ((usize, usize), Option<Vec<(f64, Vec<f64>)>>);
 #[inline(never)]
-#[allow(clippy::absurd_extreme_comparisons)] // HI_SEARCHES is a tuning constant, now 0 (anchors off)
+#[allow(clippy::absurd_extreme_comparisons, reason = "HI_SEARCHES is a tuning constant, now 0 (anchors off)")]
 fn hi_partner(
     s: &Sim,
     hx: &HiCx,
@@ -4178,7 +4179,7 @@ pub(in super::super) fn index_rule<'data>(
         }
         // the near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
         // candidate's second best (exact and proxy careers together), until none is left
-        #[allow(clippy::while_immutable_condition)] // proxy_on is fixed per call; the loop ends at its break
+        #[allow(clippy::while_immutable_condition, reason = "proxy_on is fixed per call; the loop ends at its break")]
         while proxy_on {
             let mut add: Vec<usize> = vec![];
             for ui in 0..n {
@@ -4599,7 +4600,7 @@ pub(in super::super) fn index_rule<'data>(
         // the proxies a shown row or the pick's near-tie band can turn on: searched exactly (their
         // saving, score + 1, within PROXY_SAVE of the lowest saving those take), then scored again; when one of them joins a
         // candidate's two most efficient builders, Cont, the trios, V and every score are computed again
-        #[allow(clippy::while_immutable_condition)] // proxy_on is fixed per call; the loop ends at its break
+        #[allow(clippy::while_immutable_condition, reason = "proxy_on is fixed per call; the loop ends at its break")]
         while proxy_on {
             // (over the rows that can be shown or picked, `vis`)
             let mut sv: Vec<f64> = runs.iter().filter(|r| vis(&r.career)).filter_map(PlanRow::net_saving).collect();

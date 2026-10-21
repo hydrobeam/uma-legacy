@@ -306,7 +306,7 @@ pub(super) fn run_multi(
             && entry.certified_cap >= lv
             && let Some(result) = &entry.reported_best
         {
-            return result.clone();
+            return std::rc::Rc::clone(result);
         }
         let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExactCacheEntry {
             best: None,
@@ -473,7 +473,7 @@ pub(super) fn run_multi(
             Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per }
         };
         let b = std::rc::Rc::new(b);
-        ent.reported_best = Some(b.clone());
+        ent.reported_best = Some(std::rc::Rc::clone(&b));
         ex_cache.borrow_mut().insert(key, ent);
         b
     };
@@ -576,7 +576,7 @@ pub(super) fn run_multi(
             && *l >= lv
             && *fl <= floor
         {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         let ln = lin_of(&f);
         let fm = members(&f);
@@ -698,7 +698,7 @@ pub(super) fn run_multi(
         list.retain(|x| x.0 >= thr);
         let r: SList = std::rc::Rc::new(list);
         if complete {
-            sh_cache.borrow_mut().insert(key, (lv, floor, r.clone()));
+            sh_cache.borrow_mut().insert(key, (lv, floor, std::rc::Rc::clone(&r)));
         }
         r
     };

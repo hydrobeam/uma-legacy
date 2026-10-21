@@ -183,7 +183,9 @@ cargo clippy --target wasm32-unknown-unknown --lib -- -D warnings
 - **Formatting:** `pkg/loopopt/rustfmt.toml` (stable options: 120 columns, `use_small_heuristics = "Max"`); `cargo fmt`
   in `pkg/loopopt` applies it. `#[rustfmt::skip]` is kept for tables whose layout carries meaning, each with its reason.
 - **Lints:** clippy's default groups, with the few that fight this code deliberately allowed in the `[lints.clippy]`
-  table of `pkg/loopopt/Cargo.toml`, each with its reason. A lint fix that could change floating-point evaluation
+  table of `pkg/loopopt/Cargo.toml`, each with its reason, and a chosen set of pedantic, nursery and restriction lints
+  denied there; an `#[allow]` in the code needs `reason = "..."`. `unsafe_code` is denied crate-wide and allowed only
+  for the wasm exports (`web.rs`) and host imports (`deck/career.rs`), each unsafe block with a `// SAFETY:` note. A lint fix that could change floating-point evaluation
   order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
   `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
   clippy part before its tests.

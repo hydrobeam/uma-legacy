@@ -37,11 +37,11 @@ pub(super) fn event_pmf(n: usize) -> Vec<f64> {
 pub(super) fn event_pmf_job() -> std::rc::Rc<Vec<f64>> {
     thread_local! { static EP: std::cell::RefCell<Option<((u32, u64), std::rc::Rc<Vec<f64>>)>> = const { std::cell::RefCell::new(None) }; }
     let key = pmf_key();
-    if let Some(r) = EP.with(|c| c.borrow().as_ref().filter(|x| x.0 == key).map(|x| x.1.clone())) {
+    if let Some(r) = EP.with(|c| c.borrow().as_ref().filter(|x| x.0 == key).map(|x| std::rc::Rc::clone(&x.1))) {
         return r;
     }
     let r = std::rc::Rc::new(event_pmf(key.0 as usize));
-    EP.with(|c| *c.borrow_mut() = Some((key, r.clone())));
+    EP.with(|c| *c.borrow_mut() = Some((key, std::rc::Rc::clone(&r))));
     r
 }
 pub(super) fn binom_coef(n: u32, k: u32) -> f64 {
@@ -165,8 +165,8 @@ fn chain_walk(
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
 /// Dense, deterministic, memoised version of `chain_marginals_ref`. States are mixed-radix indices over the
 /// entries' progress; every transition raises the index, so one pass in index order is a topological order.
-/// Entries are sorted first so the floating-point summation order is canonical (the HashMap reference sums in
-/// iteration order, which varied from run to run in the last bits).
+/// Entries are sorted first so the floating-point summation order is canonical (the reference sums its states in
+/// another order, so the two agree to float noise).
 pub(super) fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let mut ks: Vec<Kind> = kinds.to_vec();
@@ -258,10 +258,10 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n]; // P(entry i has >= k+1 links done), accumulated over E
-    let mut st: HashMap<Vec<u8>, f64> = HashMap::new();
+    let mut st: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
     st.insert(vec![0; n], 1.0);
     for e in 1..=emax.min(total) {
-        let mut ns: HashMap<Vec<u8>, f64> = HashMap::new();
+        let mut ns: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::new();
         for (s, p) in &st {
             let w: Vec<f64> =
                 (0..n).map(|i| if s[i] < kinds[i].1 { f64::from(kinds[i].0 - s[i]) } else { 0.0 }).collect();
@@ -332,7 +332,7 @@ pub(super) fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
     let mut v: Vec<(Vec<u8>, f64)> = acc.into_iter().collect();
     v.sort_by(|a, b| a.0.cmp(&b.0));
     let r = std::rc::Rc::new(v);
-    CS.with(|c| c.borrow_mut().insert(key, r.clone()));
+    CS.with(|c| c.borrow_mut().insert(key, std::rc::Rc::clone(&r)));
     r
 }
 
@@ -364,10 +364,10 @@ impl KeyLevel {
     /// `pair_marg` at every event count m = 0..=n, kept per pair (a function of the key alone)
     pub(super) fn pair_margs(&self, i: usize, j: usize) -> std::rc::Rc<Vec<Vec<Vec<f64>>>> {
         if let Some(r) = self.pms.borrow().get(&(i, j)) {
-            return r.clone();
+            return std::rc::Rc::clone(r);
         }
         let r = std::rc::Rc::new((0..self.lev.len()).map(|m| self.pair_marg(i, j, m)).collect::<Vec<_>>());
-        self.pms.borrow_mut().insert((i, j), r.clone());
+        self.pms.borrow_mut().insert((i, j), std::rc::Rc::clone(&r));
         r
     }
     /// The orthant check with positions i and j as one block: for every up-set A of the (i, j) grid and every
@@ -441,12 +441,14 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
     thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<Kind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
     let pk = pmf_key();
-    if let Some(r) = KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| x.2.clone())) {
+    if let Some(r) =
+        KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| std::rc::Rc::clone(&x.2)))
+    {
         return r;
     }
     let key = (kinds.to_vec(), pk);
     if let Some(r) = KL.with(|c| c.borrow().get(&key).cloned()) {
-        KL_LAST.with(|c| *c.borrow_mut() = Some((key.0, key.1, r.clone())));
+        KL_LAST.with(|c| *c.borrow_mut() = Some((key.0, key.1, std::rc::Rc::clone(&r))));
         return r;
     }
     let (bn, _) = CHAIN_EVENTS.with(std::cell::Cell::get);
@@ -552,7 +554,7 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
         pairs: std::cell::RefCell::default(),
         pms: std::cell::RefCell::default(),
     });
-    KL_LAST.with(|c| *c.borrow_mut() = Some((key.0.clone(), key.1, r.clone())));
-    KL.with(|c| c.borrow_mut().insert(key, r.clone()));
+    KL_LAST.with(|c| *c.borrow_mut() = Some((key.0.clone(), key.1, std::rc::Rc::clone(&r))));
+    KL.with(|c| c.borrow_mut().insert(key, std::rc::Rc::clone(&r)));
     r
 }

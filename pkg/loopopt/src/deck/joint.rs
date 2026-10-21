@@ -940,6 +940,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
         if mx {
             let (mut g, mut h) = (ng0[k], nh0[k]);
             for &ci in &feeders[k] {
+                #[allow(clippy::unwrap_in_result, reason = "feeders[k] lists only chains with target k (built above)")]
                 let cum = &chains[ci].1.iter().find(|x| x.0 == k).unwrap().1;
                 let last = cum[cum.len() - 1];
                 g *= last.0;

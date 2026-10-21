@@ -4,6 +4,7 @@
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
+#![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc` and `call`")]
 use super::skills::SkillsRaw;
 use super::{Data, DataRaw, load_raw};
 use std::cell::RefCell;
@@ -32,6 +33,8 @@ pub extern "C" fn alloc(len: usize) -> *mut u8 {
 /// belongs to the output buffer and must never be passed here.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) {
+    // SAFETY: the caller guarantees `p` came from `alloc(len)` in this instance and is still live, so it is a
+    // `Vec<u8>` allocation of capacity `len`; length 0 means no element is read or dropped.
     unsafe {
         drop(Vec::from_raw_parts(p, 0, len));
     }
@@ -51,6 +54,8 @@ pub extern "C" fn result_len() -> usize {
 /// reenter `call` while it is running or modify the module-owned response buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
+    // SAFETY: the caller guarantees `p` is valid for reading `len` initialized bytes of UTF-8 that stay unchanged
+    // during the call (`# Safety` above); `req` does not outlive it.
     let req = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p, len)) };
     let out = handle(req);
     // (written into the last call's buffer: `Value`'s `Display` is this compact serializer, the same bytes)

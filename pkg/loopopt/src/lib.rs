@@ -104,7 +104,7 @@ const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
 /// One race option at a turn. `prog` (the race program id) is read only by the tests, whose fixtures name options by it.
 #[derive(Deserialize, Clone)]
 struct OptRaw {
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), allow(dead_code, reason = "read only by the tests, whose fixtures name options by it"))]
     prog: u32,
     race: i32,
     bp: i32,
@@ -261,7 +261,7 @@ fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
             return None;
         }
         for (offset, b) in (a + 1..n).enumerate() {
-            let value = f64::from_bits(u64::from_str_radix(&row[16 * offset..16 * offset + 16], 16).ok()?);
+            let value = f64::from_bits(u64::from_str_radix(row.get(16 * offset..16 * offset + 16)?, 16).ok()?);
             table[a * n + b] = value;
             table[b * n + a] = value;
         }
@@ -288,7 +288,7 @@ fn load_str(json: &str) -> Data {
 /// it is not a general validator for all dimensions and indices in the input.
 fn check_repeated_races(umas: &[UmaRaw]) {
     for uma in umas {
-        let mut turns_by_race: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::default();
+        let mut turns_by_race: std::collections::BTreeMap<i32, Vec<usize>> = std::collections::BTreeMap::default();
         for (turn, options) in uma.turns.iter().enumerate() {
             for option in options {
                 if option.race >= 0 {
