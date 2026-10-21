@@ -787,64 +787,127 @@ fn pb_table_json(json: &str) -> serde_json::Value {
     serde_json::to_value(PbRaw { fp, rows }).unwrap()
 }
 
+/// Emit the enabled bound diagnostics on normal return or panic unwind, including `pbtable`.
+/// `process::exit` deliberately bypasses this guard, as it does all destructors.
+struct CliBoundReport;
+
+impl Drop for CliBoundReport {
+    fn drop(&mut self) {
+        if std::env::var("SB_CHECK").is_ok() {
+            deck::SBCHK.with(|c| {
+                let c = c.borrow();
+                eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5);
+            });
+        }
+        if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() {
+            deck::SBN.with(|c| {
+                let c = c.borrow();
+                eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2);
+            });
+        }
+        if std::env::var("RB_CHECK").is_ok() {
+            deck::RBCHK.with(|c| {
+                let c = c.borrow();
+                eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3);
+            });
+        }
+        if std::env::var("CF_CHECK").is_ok() {
+            deck::CFCHK.with(|c| {
+                let c = c.borrow();
+                eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", c.0, c.1, c.2, c.3, c.4, c.5, c.6, c.7, c.8);
+            });
+        }
+    }
+}
+
+/// Enrich the outer job first, then a carried roll's plan job, using the outer job's event file.
+/// The carried job must match the enriched job that originally populated the worker's kept state.
+fn apply_cli_events(job: &mut serde_json::Value, skills: &skills::SkillsRaw) {
+    if let Some(path) = job["events_file"].as_str() {
+        let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        deck::apply_events_db(job, skills, &db);
+        if job["roll"]["job"].is_object() {
+            deck::apply_events_db(&mut job["roll"]["job"], skills, &db);
+        }
+    }
+}
+
+/// Restore the career worker's kept work before any jobs run, as the page does across reloads.
+fn restore_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw) {
+    if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
+        let state: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let out = deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_in", "state": state["state"]}));
+        eprintln!("state_in: {}", out);
+    }
+}
+
+/// Save the career worker's kept work once, after all job outputs have been printed.
+fn save_cli_career_state(data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw) {
+    if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
+        let out = deck::run_career(data, skills, cards, &serde_json::json!({"cmd": "state_out"}));
+        std::fs::write(&path, out.to_string()).unwrap();
+    }
+}
+
+/// Time solver dispatch only: file loading, event enrichment and output serialization stay outside.
+/// `mode` has already been validated by `cli_main`; a batch always uses its first job's career mode.
+fn print_cli_job(mode: &str, data: &Data, skills: &skills::SkillsRaw, cards: &deck::CardsRaw, job: &serde_json::Value) {
+    let started = Instant::now();
+    let mut out = if mode == "career" {
+        deck::run_career(data, skills, cards, job)
+    } else {
+        deck::run_deck(data, skills, cards, job)
+    };
+    out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
+    println!("{}", out);
+}
+
 pub fn cli_main() {
-    struct SbReport; impl Drop for SbReport { fn drop(&mut self) { if std::env::var("SB_CHECK").is_ok() { deck::SBCHK.with(|c| { let c = c.borrow(); eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5); }); }
-        if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() { deck::SBN.with(|c| { let c = c.borrow(); eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2); }); }
-        if std::env::var("RB_CHECK").is_ok() { deck::RBCHK.with(|c| { let c = c.borrow(); eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3); }); }
-        if std::env::var("CF_CHECK").is_ok() { deck::CFCHK.with(|c| { let c = c.borrow(); eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", c.0, c.1, c.2, c.3, c.4, c.5, c.6, c.7, c.8); }); } } }
-    let _sbr = SbReport;
+    let _report = CliBoundReport;
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 3 && args[1] == "pbtable" {
-        // print the pairwise-ceiling table for a data.json (./build.sh pb merges it in as "pb")
+        // ./build.sh pb merges the printed pairwise-ceiling table into data.json.
         println!("{}", pb_table_json(&std::fs::read_to_string(&args[2]).unwrap()));
         return;
     }
+
+    // Validate the first job's mode before loading data or any auxiliary files.
     let job_text = std::fs::read_to_string(&args[2]).unwrap();
     let jobs: Jobs = serde_json::from_str(&job_text).unwrap();
-    if jobs.mode != "deck" && jobs.mode != "career" { eprintln!("error: \"mode\" must be \"deck\" or \"career\""); std::process::exit(2); }
-    let d = load(&args[1]);
-    // joint deck + loop search (or the career planner); needs "skills_file" and "cards_file" (web_cards.json)
-    let mut v: serde_json::Value = serde_json::from_str(&job_text).unwrap();
-    let sk: skills::SkillsRaw = serde_json::from_str(&std::fs::read_to_string(v["skills_file"].as_str().expect("skills_file")).unwrap()).unwrap();
-    if let Some(path) = v["events_file"].as_str() {
-        let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        deck::apply_events_db(&mut v, &sk, &db);
-        if v["roll"]["job"].is_object() { deck::apply_events_db(&mut v["roll"]["job"], &sk, &db); }
+    if jobs.mode != "deck" && jobs.mode != "career" {
+        eprintln!("error: \"mode\" must be \"deck\" or \"career\"");
+        std::process::exit(2);
     }
-    let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
-    // the worker's kept work across processes, as the page keeps it across reloads (LOOPOPT_STATE_IN: a file
-    // `state_out` wrote, restored before the jobs; LOOPOPT_STATE_OUT: written after them)
-    if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_IN") {
-        let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        eprintln!("state_in: {}", deck::run_career(&d, &sk, &cr, &serde_json::json!({"cmd": "state_in", "state": st["state"]})));
-    } }
-    let state_save = |d: &Data| if jobs.mode == "career" { if let Ok(path) = std::env::var("LOOPOPT_STATE_OUT") {
-        std::fs::write(&path, deck::run_career(d, &sk, &cr, &serde_json::json!({"cmd": "state_out"})).to_string()).unwrap();
-    } };
-    // several career jobs (same skills, cards and events files): run in turn in one process, one output line each,
-    // as the page's solver worker runs them (what one job leaves in the solver's caches the next can use)
+    let data = load(&args[1]);
+    let mut job: serde_json::Value = serde_json::from_str(&job_text).unwrap();
+    let skills: skills::SkillsRaw = serde_json::from_str(
+        &std::fs::read_to_string(job["skills_file"].as_str().expect("skills_file")).unwrap(),
+    ).unwrap();
+    apply_cli_events(&mut job, &skills);
+    let cards: deck::CardsRaw = serde_json::from_str(
+        &std::fs::read_to_string(job["cards_file"].as_str().expect("cards_file")).unwrap(),
+    ).unwrap();
+
+    if jobs.mode == "career" {
+        restore_cli_career_state(&data, &skills, &cards);
+    }
+
+    // Several career jobs share the first job's loaded skills/cards and the worker's caches.
+    // Keep the initial enrichment above, then reread and enrich every job (including the first).
+    // This preserves file-loading order and which errors occur before state restoration.
     if jobs.mode == "career" && args.len() > 3 {
         for path in &args[2..] {
-            let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-            if let Some(ev) = v["events_file"].as_str() {
-                let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ev).unwrap()).unwrap();
-                deck::apply_events_db(&mut v, &sk, &db);
-                // (a carried roll's plan job too, as the page sends it complete: its kept state is found by the job as it ran)
-                if v["roll"]["job"].is_object() { deck::apply_events_db(&mut v["roll"]["job"], &sk, &db); }
-            }
-            let t0 = Instant::now();
-            let mut out = deck::run_career(&d, &sk, &cr, &v);
-            out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
-            println!("{}", out);
+            let mut job: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+            apply_cli_events(&mut job, &skills);
+            print_cli_job("career", &data, &skills, &cards, &job);
         }
-        state_save(&d);
-        return;
+    } else {
+        print_cli_job(&jobs.mode, &data, &skills, &cards, &job);
     }
-    let t0 = Instant::now();
-    let mut out = if jobs.mode == "career" { deck::run_career(&d, &sk, &cr, &v) } else { deck::run_deck(&d, &sk, &cr, &v) };
-    out["timing_s"] = serde_json::json!(t0.elapsed().as_secs_f64());
-    println!("{}", out);
-    state_save(&d);
+
+    if jobs.mode == "career" {
+        save_cli_career_state(&data, &skills, &cards);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
