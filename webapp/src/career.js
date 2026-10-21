@@ -899,7 +899,7 @@ const OPT_SHOW = 8;
 function optionsEl() {
   const box = sec('alts', 'Career choices');
   // (today's best by odds outside the places you chose is in the plan's output, not offered here)
-  // with the plan: the 8 highest savings (every uma is scored), the best odds always, the rest summed up below; with
+  // with the plan: the 8 highest savings (every uma is scored) and the best odds always; with
   // every place chosen, the last plan's table on the same setup and veterans, with your career in it (from the search
   // when the plan didn't list it: no saving), and a way back to the places it ran with
   const on = shown(), ref = refFor(), mineOnly = !!plan.trainee && plan.parents.every(Boolean);
@@ -945,7 +945,6 @@ function optionsEl() {
     const back = btn('Back to the planner\'s pick', '', () => { plan.trainee = ref.places.trainee; plan.parents = ref.places.parents.slice(); changed(); });
     back.id = 'opt-back'; back.disabled = searching; const f = el('div', 'optfoot'); f.appendChild(back); box.appendChild(f);
   }
-  const rest = P ? P.options.filter(o => !list.includes(o) && scoreOf(o) != null) : [];
   return box;
 }
 // "Saves per run" explained, in plain words, with the plan the numbers come from
