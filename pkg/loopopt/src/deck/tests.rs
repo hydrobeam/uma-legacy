@@ -22,7 +22,7 @@ fn fixture_cards() -> CardsRaw {
 #[test]
 fn fast_metric_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":21010},{"group":20165}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let nu = m.uncertain.len();
@@ -84,7 +84,7 @@ fn chain_marginals_dense_matches_ref() {
 /// The character rule: a card blocks its own character and, for a group card, every member.
 #[test]
 fn card_blocks_own_character_and_group_members() {
-    let cr: CardsRaw = fixture_cards();
+    let cr = fixture_cards();
     let sirius = cr.cards.iter().find(|c| c.id == 30081).expect("Team Sirius");
     assert!(sirius.blocks(1001) && sirius.blocks(1002) && !sirius.blocks(1008)); // Special Week, Suzuka; not Vodka
     let halo = cr.cards.iter().find(|c| c.name.contains("Tonight, We Waltz")).unwrap();
@@ -114,7 +114,7 @@ fn chain_model_calibration() {
 /// are hinted together less often than independent chances would say, and the outcomes are a distribution.
 #[test]
 fn training_draws_over_two_targets() {
-    let cr: CardsRaw = fixture_cards();
+    let cr = fixture_cards();
     let c = cr
         .cards
         .iter()
@@ -216,7 +216,7 @@ fn chain_stop_risk_is_a_mixture() {
 /// decks, allowed in URA Finale and Trackblazer.
 #[test]
 fn scenario_bans_exported() {
-    let cr: CardsRaw = fixture_cards();
+    let cr = fixture_cards();
     for sc in ["unity", "gc"] {
         assert!(cr.restrict.get(sc).is_some_and(|v| v.contains(&30081)), "{sc}: {:?}", cr.restrict);
     }
@@ -228,7 +228,7 @@ fn job_with(v: Value) -> DeckJob {
     serde_json::from_value(v).unwrap()
 }
 fn halo() -> Card {
-    let cr: CardsRaw = fixture_cards();
+    let cr = fixture_cards();
     cr.cards.into_iter().find(|c| c.id == 30056).unwrap()
 }
 /// An event offering targets on different choices gives one deck entry per choice, each with one choice's
@@ -341,7 +341,7 @@ fn key_level_matches_states() {
 #[test]
 fn joint_fast_matches_reference() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
@@ -382,7 +382,7 @@ fn joint_fast_matches_reference() {
 #[test]
 fn career_fold_and_scale() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
         "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
@@ -443,7 +443,7 @@ fn career_fold_and_scale() {
 #[test]
 fn upper_bound_covers_exact() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
@@ -516,7 +516,7 @@ fn group_orthant_check_declines_unchecked_groups() {
 #[test]
 fn unchecked_inline_event_disables_orthant_bound() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let unc: Vec<u32> = sk.skills.iter().take(21).map(|s| s.0).collect();
     assert_eq!(unc.len(), 21);
     let targets: Vec<Value> = unc.iter().map(|g| json!({"group": g})).collect();
@@ -556,7 +556,7 @@ fn group_level_orthant_check() {
         (0.03, vec![(0, 1), (2, 1)])
     ]));
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
@@ -596,7 +596,7 @@ fn group_level_orthant_check() {
 #[test]
 fn joint_equals_product_without_correlation() {
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
-    let sk: SkillsRaw = fixture_skills();
+    let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let nu = m.uncertain.len();
@@ -628,7 +628,7 @@ fn top_k_is_stable_sort_prefix() {
     let pool = [0.0f64, -0.0, 0.25, 0.5, 1.0, 0.5, f64::INFINITY, 1e-300, 0.25];
     let mut s = 12345u64;
     for _ in 0..4000 {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         let n = (s >> 60) as usize;
         let k = ((s >> 56) & 7) as usize;
         let v: Vec<f64> = (0..n).map(|i| pool[((s >> (i * 4 % 48)) % pool.len() as u64) as usize]).collect();
@@ -659,7 +659,7 @@ fn land_factor_forms_match() {
             _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)),
         }
     };
-    let mut s = 0x2545f4914f6cdd1du64;
+    let mut s = 0x2545_f491_4f6c_dd1d_u64;
     let mut rnd = || {
         s ^= s << 13;
         s ^= s >> 7;

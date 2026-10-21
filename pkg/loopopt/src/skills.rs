@@ -24,8 +24,8 @@ use serde_json::{Value, json};
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
 /// the six ancestors already carrying that spark (aoneko_pochi's curve; hakuraku.moe/notes/spark_generation fits it to
 /// ~1.2M white/gold observations from CM10-CM12 room data, p >= 0.84). In a running loop all six carry every target.
-pub(crate) const GEN_WHITE: f64 = 0.2 * 1.771561;
-pub(crate) const GEN_GOLD: f64 = 0.4 * 1.771561;
+pub(crate) const GEN_WHITE: f64 = 0.2 * 1.771_561;
+pub(crate) const GEN_GOLD: f64 = 0.4 * 1.771_561;
 /// Grandparents' base rate relative to parents'. 1: they fire less only because their affinity is lower (receipts:
 /// halving predicted half of what fired).
 const GP_RATE: f64 = 1.0;
@@ -144,8 +144,8 @@ pub(crate) fn lins(n: usize) -> &'static [Lin] {
     }
 }
 
-pub(crate) struct Model<'a> {
-    d: &'a Data,
+pub(crate) struct Model<'data> {
+    d: &'data Data,
     pub(crate) uncertain: Vec<usize>, // indices into job.targets that are not guaranteed gold
     pub(crate) n_fixed_gold: i32,
     base: f64,
@@ -153,15 +153,15 @@ pub(crate) struct Model<'a> {
     pub(crate) opts: Vec<Vec<(Vec<u8>, Vec<(u32, String)>)>>,
     /// per uma index: every listed outfit is excluded
     pub(crate) no_outfit: Vec<bool>,
-    job: &'a SkillJob,
+    job: &'data SkillJob,
     /// coverage tuples without labels, for the allocation-free hot path
     sts: Vec<Vec<Vec<u8>>>,
     /// per uma index, per option: chance the trainee's own events hint each uncertain target's white
     pub(crate) ews: Vec<Vec<Vec<f64>>>,
 }
 
-impl<'a> Model<'a> {
-    pub(crate) fn new(d: &'a Data, sk: &SkillsRaw, job: &'a SkillJob) -> Self {
+impl<'data> Model<'data> {
+    pub(crate) fn new(d: &'data Data, sk: &SkillsRaw, job: &'data SkillJob) -> Self {
         let uncertain: Vec<usize> = (0..job.targets.len()).filter(|&i| job.targets[i].guaranteed != 2).collect();
         let n_fixed_gold = (job.targets.len() - uncertain.len()) as i32;
         // (INSP_PER_STAR at 1, 2 and 3 stars)
@@ -373,13 +373,13 @@ impl<'a> Model<'a> {
         self.sts[u].len()
     }
     /// Per-skill landing odds with deck hint odds supplied per uncertain target (white, gold) instead of the job's.
-    pub(crate) fn skill_probs_d(&self, st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
+    pub(crate) fn skill_probs_d(st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
         st.iter().enumerate().map(|(k, &v)| land_dw(v, dw[k], dg[k], ew[k], q)).collect()
     }
     pub(crate) fn trainee_d(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> (f64, usize) {
         let mut best = (-1.0, 0);
         for (k, (st, _)) in self.opts[u].iter().enumerate() {
-            let v: f64 = self.skill_probs_d(st, &self.ews[u][k], q, dw, dg).iter().product();
+            let v: f64 = Self::skill_probs_d(st, &self.ews[u][k], q, dw, dg).iter().product();
             if v > best.0 {
                 best = (v, k);
             }
@@ -433,7 +433,7 @@ impl<'a> Model<'a> {
                 None => self.trainee(f[t], q),
             };
             let probs = match deck.map(|dk| dk[t]) {
-                Some((w, g)) => self.skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g),
+                Some((w, g)) => Self::skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g),
                 None => self.skill_probs(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q),
             };
             let skills: Vec<Value> = self
@@ -663,7 +663,7 @@ mod tests {
             }
             p
         };
-        let mut s = 0x9e3779b97f4a7c15u64;
+        let mut s = 0x9e37_79b9_7f4a_7c15_u64;
         let mut rnd = || {
             s ^= s << 13;
             s ^= s >> 7;
@@ -696,12 +696,13 @@ mod tests {
         let outfits =
             |m: &Model, i: usize| -> Vec<u32> { m.opts[i].iter().flat_map(|o| o.1.iter().map(|c| c.0)).collect() };
         let job: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100102]})).unwrap();
+            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100_102]})).unwrap();
         let m = Model::new(d, &sk, &job);
         let sw = outfits(&m, ix(1001));
-        assert!(!sw.contains(&100102) && !sw.is_empty() && !m.no_outfit[ix(1001)], "{sw:?}");
+        assert!(!sw.contains(&100_102) && !sw.is_empty() && !m.no_outfit[ix(1001)], "{sw:?}");
         let job2: SkillJob =
-            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101901, 101902]})).unwrap();
+            serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [101_901, 101_902]}))
+                .unwrap();
         let m2 = Model::new(d, &sk, &job2);
         assert!(m2.no_outfit[ix(1019)]);
         assert!(!m2.no_outfit[ix(1001)]);

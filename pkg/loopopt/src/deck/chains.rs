@@ -168,7 +168,7 @@ fn chain_walk(
 /// Entries are sorted first so the floating-point summation order is canonical (the HashMap reference sums in
 /// iteration order, which varied from run to run in the last bits).
 pub(super) fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
-    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(Default::default()); }
+    thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let mut ks: Vec<Kind> = kinds.to_vec();
     ks.sort_unstable();
     let key = (ks, pmf_key());
@@ -308,14 +308,14 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
 /// with P(N = L) unless every entry is at its stop, then with P(N >= L); stop-risk entries are the mixture over
 /// where they stop, as in `chain_marginals_risk`.
 pub(super) fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
-    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(Default::default()); }
+    thread_local! { static CS: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<Vec<(Vec<u8>, f64)>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key = (kinds.to_vec(), pmf_key());
     if let Some(r) = CS.with(|c| c.borrow().get(&key).cloned()) {
         return r;
     }
     let n = kinds.len();
     let links: Vec<u8> = kinds.iter().map(|k| k.0).collect();
-    let mut acc: crate::FxMap<Vec<u8>, f64> = Default::default();
+    let mut acc: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
     for_each_realisation(kinds, |w, stops| {
         let total: usize = stops.iter().map(|&x| x as usize).sum();
         let event_weights = event_pmf(total);
@@ -438,7 +438,7 @@ impl KeyLevel {
     }
 }
 pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
-    thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(Default::default()); }
+    thread_local! { static KL: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), std::rc::Rc<KeyLevel>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     thread_local! { static KL_LAST: std::cell::RefCell<Option<(Vec<Kind>, (u32, u64), std::rc::Rc<KeyLevel>)>> = const { std::cell::RefCell::new(None) }; }
     let pk = pmf_key();
     if let Some(r) = KL_LAST.with(|c| c.borrow().as_ref().filter(|x| x.0 == kinds && x.1 == pk).map(|x| x.2.clone())) {
@@ -549,8 +549,8 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
         lev,
         dims,
         gstride,
-        pairs: Default::default(),
-        pms: Default::default(),
+        pairs: std::cell::RefCell::default(),
+        pms: std::cell::RefCell::default(),
     });
     KL_LAST.with(|c| *c.borrow_mut() = Some((key.0.clone(), key.1, r.clone())));
     KL.with(|c| c.borrow_mut().insert(key, r.clone()));

@@ -9,11 +9,11 @@ thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = c
 /// the per-uma search exact: decks are enumerated by chain-kind key, like the skyline search, with an upper bound on
 /// a partial deck's product value (each remaining slot of a kind group at that group's best miss chances per target,
 /// ignoring the one-per-character rule), so only the decks that can reach a threshold are built.
-pub(super) struct DeckSpace<'a> {
-    pub(super) dj: &'a DeckJob,
+pub(super) struct DeckSpace<'data> {
+    pub(super) dj: &'data DeckJob,
     pub(super) unc: Vec<u32>,
-    pub(super) sk: &'a SkillsRaw,
-    pub(super) cards: Vec<&'a Card>,
+    pub(super) sk: &'data SkillsRaw,
+    pub(super) cards: Vec<&'data Card>,
     // Parallel arrays indexed by entry, before card dominance: card index, kind, early end, variant.
     // Entry indices differ from card indices: one card can have several end-link/variant entries.
     pub(super) rel: Vec<usize>,
@@ -25,7 +25,7 @@ pub(super) struct DeckSpace<'a> {
     // per entry, `cv_mask` of its source (the class caps)
     pub(super) cvm: Vec<u64>,
     // pal characters with no relevant card: (id, name, card)
-    pub(super) plain: Vec<(u32, String, &'a Card)>,
+    pub(super) plain: Vec<(u32, String, &'data Card)>,
     pub(super) locked: Vec<usize>,
     pub(super) allowed_borrow: usize,
     // every chain kind of any entry plus fillers (2, 2): key codes are counts in base 7 over this list
@@ -70,7 +70,7 @@ pub(super) struct Sel {
     pub(super) dw: Vec<f64>,
     pub(super) dg: Vec<f64>,
 }
-impl<'a> DeckSpace<'a> {
+impl<'data> DeckSpace<'data> {
     /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
     /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
     /// a miss chance other than exactly 1.0)
@@ -100,7 +100,7 @@ impl<'a> DeckSpace<'a> {
                 &mut mg[j * nu..(j + 1) * nu],
             );
         }
-        assert!(nu <= 32);
+        assert!(nu <= 32, "{nu} uncertain targets: at most 32 (MAX_UNCERTAIN)");
         let tm: Vec<u32> = (0..n)
             .map(|j| (0..nu).filter(|&t| mw[j * nu + t] != 1.0 || mg[j * nu + t] != 1.0).fold(0u32, |m, t| m | 1 << t))
             .collect();
@@ -340,7 +340,7 @@ impl<'a> DeckSpace<'a> {
     pub(crate) fn sel_cap(&self, x: &Sel, rho: f64) -> f64 {
         self.caps()[self.sel_class(x)].min(rho)
     }
-    pub(super) fn legal_plain(&self, ids: &[u32]) -> Vec<&(u32, String, &'a Card)> {
+    pub(super) fn legal_plain(&self, ids: &[u32]) -> Vec<&(u32, String, &'data Card)> {
         self.plain.iter().filter(|x| ids.iter().all(|&id| !x.2.blocks(id))).collect()
     }
     pub(super) fn pdeck(&self, x: &Sel, ids: &[u32]) -> PDeck {
@@ -415,7 +415,10 @@ pub(super) const MAX_KINDS: usize = 16;
 /// Most uncertain targets: a deck entry's touched targets are the bits of a u32 (`key_miss`, `run_deck`).
 pub(super) const MAX_UNCERTAIN: usize = 32;
 // (locked cards are the bits of a u8, `lock_bits` and `LegalTabs::glk`: no more than MAX_DECK are accepted)
-const _: () = assert!(6 * 7u128.pow(MAX_KINDS as u32 - 1) <= u64::MAX as u128 && MAX_DECK < 7 && MAX_DECK <= 8);
+const _: () = assert!(
+    6 * 7u128.pow(MAX_KINDS as u32 - 1) <= u64::MAX as u128 && MAX_DECK < 7 && MAX_DECK <= 8,
+    "kind counts are packed as base-7 digits of a u64 (a deck below 7 cards), locked cards as the bits of a u8"
+);
 /// Every chain kind of the entries `kind` (pals, kind (0, 0, 0), have none) plus the fillers' (2, 2), sorted: the digits
 /// of a key code
 pub(super) fn kinds_all(kind: &[Kind]) -> Vec<Kind> {
@@ -426,13 +429,13 @@ pub(super) fn kinds_all(kind: &[Kind]) -> Vec<Kind> {
     kinds
 }
 
-pub(super) fn deck_space<'a>(
-    cr: &'a CardsRaw,
-    dj: &'a DeckJob,
-    sk: &'a SkillsRaw,
+pub(super) fn deck_space<'data>(
+    cr: &'data CardsRaw,
+    dj: &'data DeckJob,
+    sk: &'data SkillsRaw,
     unc: &[u32],
-    e: &Entries<'a>,
-) -> DeckSpace<'a> {
+    e: &Entries<'data>,
+) -> DeckSpace<'data> {
     let is_owned = |id: u32| dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id);
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let kinds_all = kinds_all(&e.kind);
@@ -452,16 +455,16 @@ pub(super) fn deck_space<'a>(
         locked: e.locked.clone(),
         allowed_borrow: usize::from(dj.borrow),
         kinds_all,
-        keys: Default::default(),
-        red: Default::default(),
-        gmc: Default::default(),
-        nodes: Default::default(),
-        legt: Default::default(),
-        counts: Default::default(),
-        lockbits: Default::default(),
-        sbcfg: Default::default(),
-        sbrows: Default::default(),
-        domc: Default::default(),
+        keys: std::cell::RefCell::default(),
+        red: std::cell::RefCell::default(),
+        gmc: std::cell::RefCell::default(),
+        nodes: std::cell::Cell::default(),
+        legt: std::cell::RefCell::default(),
+        counts: std::cell::OnceCell::default(),
+        lockbits: std::cell::OnceCell::default(),
+        sbcfg: std::cell::RefCell::default(),
+        sbrows: std::cell::RefCell::default(),
+        domc: std::cell::RefCell::default(),
     }
 }
 /// The first k values of a stable ascending sort (`sort_by(|x, y| x.partial_cmp(y).unwrap())`) of the values pushed in

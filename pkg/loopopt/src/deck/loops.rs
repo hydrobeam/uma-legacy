@@ -100,8 +100,11 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         // per card: (miss gold, miss any) per target, at its strongest (lo) and weakest (hi)
         let miss = |j: usize, strongest: bool| -> (Vec<f64>, Vec<f64>) {
             let stop = kind[j].1 as usize;
-            let m: Vec<f64> =
-                if strongest { vec![1.0; stop] } else { min_marg.get(&kind[j]).cloned().unwrap_or(vec![0.0; stop]) };
+            let m: Vec<f64> = if strongest {
+                vec![1.0; stop]
+            } else {
+                min_marg.get(&kind[j]).cloned().unwrap_or_else(|| vec![0.0; stop])
+            };
             let mut mw = vec![1.0f64; nu];
             let mut mg = vec![1.0f64; nu];
             src_miss(&srcs[j], &m, &mut mw, &mut mg);
@@ -359,12 +362,12 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // is not in the deck and belongs to no entry that can still be added (`later[gi][p]`) will never be in the
     // finished deck, so it is a legal swap for j there. `acc` counts such guaranteed swaps along the branch; at
     // top_decks the branch is cut (the swap rule would skip every deck in it).
-    struct Ctx<'a> {
-        gs: &'a [(Vec<usize>, usize)],
-        later: &'a [Vec<u128>],
-        dm: &'a [u128],
-        ebit: &'a [u128],
-        ebor: &'a [bool],
+    struct Ctx<'tab> {
+        gs: &'tab [(Vec<usize>, usize)],
+        later: &'tab [Vec<u128>],
+        dm: &'tab [u128],
+        ebit: &'tab [u128],
+        ebor: &'tab [bool],
         allowed: usize,
         kq: u32,
     }
@@ -415,7 +418,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // One enumeration pass keeping the decks that fewer than `kq` others beat. With `s1` (the kq = 1 result and
     // its deck identities) a deck is dropped at once when kq decks of that set, other than itself, beat it.
     let mut run_enum = |kq: usize, s1: Option<&(Kept, crate::FxSet<Vec<u64>>)>| -> Vec<DeckEval> {
-        let mut groups: crate::FxMap<(usize, usize), Kept> = Default::default();
+        let mut groups: crate::FxMap<(usize, usize), Kept> = crate::FxMap::default();
         let kmax = kq;
         // every chain-kind count vector (fillers included in the (2, 2) count) with at most deck_size chain slots
         let mut counts: Vec<Vec<usize>> = vec![vec![]];
@@ -698,9 +701,9 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     {
         // per (card, end link, variant): its name with the choice and end-link notes, its choice label, and the name
         // marked borrowed (built at first need)
-        let mut shown: crate::FxMap<(usize, u8, u32), (Name, Name, Option<Name>)> = Default::default();
+        let mut shown: crate::FxMap<(usize, u8, u32), (Name, Name, Option<Name>)> = crate::FxMap::default();
         // (and the shared strings of the card names, the plain pals and the filler)
-        let mut cname: crate::FxMap<usize, Name> = Default::default();
+        let mut cname: crate::FxMap<usize, Name> = crate::FxMap::default();
         let plain_rc: Vec<Name> = plain_names.iter().map(|n| Name::from(n.as_str())).collect();
         let filler_rc: Name = Name::from("(any SR without target hints)");
         // the frontier consumed, the skyline's decks (ascending indices, `sky`) in order: each deck's lists move into
@@ -771,7 +774,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         }
         let stats = json!({"decks_built": n_decks, "decks_on_frontier": n_front, "relevant_cards": nrel, "cards_dropped": n_card_dropped,
                            "decks_swapped": n_swapped, "plain_pals": plain_names});
-        run_multi(d, cr, &model, &sj, &dj, pd, stats, space.as_ref().unwrap())
+        run_multi(d, cr, &model, &sj, &dj, &pd, stats, space.as_ref().unwrap())
     }
 }
 

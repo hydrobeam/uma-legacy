@@ -302,14 +302,14 @@ pub(in super::super) struct PlanJob {
     roll: Option<Vec<u8>>,
 }
 
-fn sim_for<'s, 'a>(
-    env: &'s mut Env<'a>,
-    d: &'a Data,
-    sk: &'a SkillsRaw,
-    cr: &'a CardsRaw,
-    job: &'a Value,
+fn sim_for<'env, 'data>(
+    env: &'env mut Env<'data>,
+    d: &'data Data,
+    sk: &'data SkillsRaw,
+    cr: &'data CardsRaw,
+    job: &'data Value,
     pj: &PlanJob,
-) -> Result<Sim<'s, 'a>, Value> {
+) -> Result<Sim<'env, 'data>, Value> {
     let ntar = env.ntar;
     if ntar > 12 || env.nu > 10 {
         return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
@@ -327,7 +327,7 @@ fn rotation(env: &Env, d: &Data, ids: &[u32]) -> (Vec<usize>, Vec<Value>, Option
         .iter()
         .map(|&id| {
             let u = d.umas.iter().find(|u| u.id == id);
-            json!({"id": id, "name": u.map_or(format!("Uma {id}"), |u| u.name.clone())})
+            json!({"id": id, "name": u.map_or_else(|| format!("Uma {id}"), |u| u.name.clone())})
         })
         .collect();
     if info.is_empty() {
@@ -517,7 +517,12 @@ fn lift_eff(pl: f64, sp: f64, p: f64) -> f64 {
 }
 /// `f` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget `budget0`
 /// put back after (and no hard cap)
-fn capped<'s, 'a, R>(s: &mut Sim<'s, 'a>, work: usize, budget0: usize, f: impl FnOnce(&mut Sim<'s, 'a>) -> R) -> R {
+fn capped<'env, 'data, R>(
+    s: &mut Sim<'env, 'data>,
+    work: usize,
+    budget0: usize,
+    f: impl FnOnce(&mut Sim<'env, 'data>) -> R,
+) -> R {
     if work > 0 {
         s.env.budget = work;
         s.env.hard = work;
@@ -571,8 +576,8 @@ fn loop_ceiling(
     s.env.pool_push(&mut p, &mk(b2, b1, u));
     let n = p.me.len();
     let v = if legal_pair(d, &p, u, n - 2, n - 1) { val(s, &p, u, n - 2, n - 1, buf) } else { 0.0 };
-    s.env.pool_pop(&mut p);
-    s.env.pool_pop(&mut p);
+    Env::pool_pop(&mut p);
+    Env::pool_pop(&mut p);
     s.put_pool(pool, p);
     v
 }
@@ -633,8 +638,8 @@ fn hint_umas(env: &mut Env, d: &Data, pool: &Pool, cands: &[usize], trainees: &[
                 out.push((u, v));
             }
         }
-        env.pool_pop(&mut p);
-        env.pool_pop(&mut p);
+        Env::pool_pop(&mut p);
+        Env::pool_pop(&mut p);
     }
     // best first; equal odds in uma order (stable)
     out.sort_by(|x, y| y.1.partial_cmp(&x.1).unwrap());
@@ -643,20 +648,20 @@ fn hint_umas(env: &mut Env, d: &Data, pool: &Pool, cands: &[usize], trainees: &[
 }
 /// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
 /// A, V0, and the stage-1 odds now
-pub(super) struct ScoreBase<'b> {
-    pub(super) cands: &'b [usize],
-    pub(super) c1: &'b [f64],
-    pub(super) m23: &'b [f64],
+pub(super) struct ScoreBase<'base> {
+    pub(super) cands: &'base [usize],
+    pub(super) c1: &'base [f64],
+    pub(super) m23: &'base [f64],
     pub(super) v0: f64,
-    pub(super) pnow: &'b [f64],
-    pub(super) cont: &'b [Cont],
+    pub(super) pnow: &'base [f64],
+    pub(super) cont: &'base [Cont],
     /// the trios (A, B as candidate indices, C's step, A and B from a real 8/8 of hers): V = min over them of A's step +
     /// B's step + C's step, a side from a real 8/8 costing 0, else c1; empty: min over a of c1[a] + m23[a]
-    pub(super) combos: &'b [Trio],
+    pub(super) combos: &'base [Trio],
     /// per candidate, the trios' sides: (a real 8/8 veteran of hers, the legacy): her real 8/8s and the 8/8 her best career
     /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
-    pub(super) sides: &'b [Vec<(bool, Legacy)>],
-    pub(super) all: &'b [usize],
+    pub(super) sides: &'base [Vec<(bool, Legacy)>],
+    pub(super) all: &'base [usize],
 }
 /// Requested scoring outputs. Unrequested numeric results are placeholders, not measured zeroes:
 ///
@@ -843,7 +848,7 @@ fn cont_memo() -> std::rc::Rc<ContMemo> {
 }
 impl Default for Cont {
     fn default() -> Self {
-        Self { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: cont_memo() }
+        Self { lam: 0.0, phi: 0.0, pinf: 0.0, tab: std::rc::Rc::default(), memo: cont_memo() }
     }
 }
 /// `plan`'s cap on successes before grinding
@@ -877,7 +882,7 @@ impl Cont {
     /// `plan` past its early returns (the first stop of the building loop). Past them lam > 0, which only `Cont::new`
     /// makes (with its table; `rolls_in` refuses a stored Cont with lam and phi > 0 but no table)
     fn plan_n(&self, p: f64) -> (f64, i32, f64) {
-        debug_assert!(self.tab.len() > CONT_N);
+        debug_assert!(self.tab.len() > CONT_N, "plan_n needs the continuation's table");
         let lr = (p / self.pinf).ln();
         let t = &self.tab;
         let (mut n, mut best) = (0usize, 1.0 / p);
@@ -909,7 +914,7 @@ impl Cont {
     /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate; the
     /// table as in `plan_n`)
     fn cost_lo_n(&self, p: f64) -> f64 {
-        debug_assert!(self.tab.len() > CONT_N);
+        debug_assert!(self.tab.len() > CONT_N, "cost_lo_n needs the continuation's table");
         let lr = (p / self.pinf).ln();
         let mut best = 1.0 / p;
         // every n's cost is its building (rising with n: each term 1/lam_j > 0) plus a positive grind, so once the
@@ -1050,7 +1055,7 @@ fn her_trios(
             if best > 0.0 {
                 out.push((ib, *real, 1.0 / best));
             }
-            s.env.pool_pop(p8);
+            Env::pool_pop(p8);
         }
     }
     out
@@ -1084,7 +1089,7 @@ fn fm_masks(fixed_t: &[usize]) -> Vec<usize> {
 fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, c: &Cur) -> Pool {
     let veteran = s.env.veteran(legs, x, a, b, c.wp.to_vec());
     if of_legs {
-        debug_assert_eq!(pool.me.len(), legs.len());
+        debug_assert_eq!(pool.me.len(), legs.len(), "one legacy per pool member");
         let mut extended = s.take_pool(pool);
         s.env.pool_push(&mut extended, &veteran);
         extended
@@ -1097,7 +1102,7 @@ fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, 
 /// `her_pool`'s pool done with: with `of_legs`, her entry popped and the working copy kept (`Sim::put_pool`)
 fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
     if of_legs {
-        s.env.pool_pop(&mut pv);
+        Env::pool_pop(&mut pv);
         s.put_pool(pool, pv);
     }
 }
@@ -1204,7 +1209,7 @@ fn score_career_(
         }
         // her best IDX_PARTNERS (2) partners by value, ties in partner order: every legal partner valued in order (each
         // `val` as before), the two kept by strict comparisons, as the stable sort's first two
-        const _: () = assert!(IDX_PARTNERS == 2);
+        const _: () = assert!(IDX_PARTNERS == 2, "the partner pick below keeps exactly two");
         let mut ps: [Option<(f64, usize)>; 2] = [None, None];
         for y in 0..iv {
             if !legal_pair(d, &pv, u, y, iv) {
@@ -1430,7 +1435,7 @@ fn sc_prep(s: &Sim, bs: &ScoreBase, setups: &[Setup], sd: &mut Scored) {
         // (every fold coefficient is >= 0 and rounding is monotone), so the maximum is the same without it
         let nonneg = xs[si].iter().chain(&xc[si]).all(|r| r.iter().all(|&v| v >= 0.0));
         for (j, tab) in tabs.iter().enumerate() {
-            debug_assert_eq!(tab.len(), 1usize << nu);
+            debug_assert_eq!(tab.len(), 1usize << nu, "one table entry per subset of the uncertain targets");
             if nonneg
                 && tabs.iter().enumerate().any(|(k, o)| {
                     k != j
@@ -1555,18 +1560,18 @@ fn sc_outcomes<L: Leaves>(
     for &(ui, sl, th, pn) in &sd.act {
         match sl {
             Some(sl) => {
-                assert_eq!(sl, uis.len());
+                assert_eq!(sl, uis.len(), "slotted candidates come in slot order");
                 uis.push(ui);
                 ths.push(th);
             }
             None => actn.push((ui, th, pn)),
         }
     }
-    assert_eq!(uis.len(), na);
+    assert_eq!(uis.len(), na, "one slotted candidate per slot");
     // per slot its setups: sslot is ascending (setups are made in candidate order), so slot j's are rg[j]..rg[j + 1]
     let mut rg = vec![0usize; na + 1];
     for (si, &sl) in sd.sslot.iter().enumerate() {
-        assert!(si == 0 || sd.sslot[si - 1] <= sl);
+        assert!(si == 0 || sd.sslot[si - 1] <= sl, "setups come in slot order");
         rg[sl + 1] = si + 1;
     }
     // V after her found lazily (`sc_loop`): no step, stage 2-3 cost or C's step NaN, -0.0 or below 0, so no sum of them is
@@ -1616,18 +1621,18 @@ fn sc_outcomes<L: Leaves>(
 /// What `sc_loop` reads (`sc_outcomes`): per slot its setups (rg), candidate and threshold; the candidates without a slot
 /// (index, threshold, odds now); the collapsed digits (cm, lo_bits); per leaf (at its row) her stars' chance and landed
 /// set; whether V after her may be found lazily; the leaves taken (`lv`, of nleaf)
-struct OutCx<'o, 'b, L: Leaves> {
-    bs: &'o ScoreBase<'b>,
-    os: &'o [f64],
-    fmm: &'o [usize],
-    u: &'o [f64],
-    scf: &'o [f64],
-    rg: &'o [usize],
-    p0: &'o [f64],
-    uis: &'o [usize],
-    ths: &'o [f64],
-    actn: &'o [(usize, f64, f64)],
-    her: &'o [(usize, bool, f64)],
+struct OutCx<'out, 'base, L: Leaves> {
+    bs: &'out ScoreBase<'base>,
+    os: &'out [f64],
+    fmm: &'out [usize],
+    u: &'out [f64],
+    scf: &'out [f64],
+    rg: &'out [usize],
+    p0: &'out [f64],
+    uis: &'out [usize],
+    ths: &'out [f64],
+    actn: &'out [(usize, f64, f64)],
+    her: &'out [(usize, bool, f64)],
     xi: Option<usize>,
     goal: bool,
     want_ys: bool,
@@ -1637,23 +1642,23 @@ struct OutCx<'o, 'b, L: Leaves> {
     full_m: usize,
     cm: usize,
     lo_bits: usize,
-    pst: &'o [f64],
-    mus: &'o [usize],
-    one: &'o [One],
+    pst: &'out [f64],
+    mus: &'out [usize],
+    one: &'out [One],
     lazy: bool,
     nleaf: usize,
-    lv: &'o L,
+    lv: &'out L,
 }
 /// Each slot's odds after her at row r (outcome m, fm): with PL the best of her odds now and her setups' spark scale times
 /// table value, per slot over its setups in setup order (the same strict maxima `fold_emit` takes), else the folded row
 #[inline(always)]
-fn sc_row<'a, const PL: bool, L: Leaves>(
-    o: &'a OutCx<L>,
+fn sc_row<'out, const PL: bool, L: Leaves>(
+    o: &'out OutCx<L>,
     r: usize,
     m: usize,
     fm: usize,
-    ubuf: &'a mut [f64],
-) -> &'a [f64] {
+    ubuf: &'out mut [f64],
+) -> &'out [f64] {
     if PL {
         let (fr, sr) = (&o.u[r * o.ns..][..o.ns], &o.scf[m * o.ns..][..o.ns]);
         for ((b, &p), w) in ubuf.iter_mut().zip(o.p0).zip(o.rg.windows(2)) {
@@ -1913,12 +1918,12 @@ impl StepCost for Lo {
 /// takes over every trio, the same f64 (equal minima the same bits: `sc_outcomes`), and V after her. Her own 8/8's
 /// trios (`her`) read every step: then all are costed, and V after her is taken as without the lazy pass
 #[derive(Default)]
-struct Est<'b> {
+struct Est<'base> {
     last: Vec<(u64, f64)>,
-    lbc: Vec<Option<&'b Cont>>,
+    lbc: Vec<Option<&'base Cont>>,
     cell: Vec<(u64, f64)>,
     tord: Vec<usize>,
-    one: &'b [One],
+    one: &'base [One],
     v_same: f64,
     pend: Vec<(usize, usize, f64)>,
     lo: Vec<f64>,
@@ -1935,9 +1940,9 @@ struct EstBufs {
     last: Vec<(u64, f64)>,
     cell: Vec<(u64, f64)>,
 }
-impl<'b> Est<'b> {
+impl<'base> Est<'base> {
     /// for `rows` lift rows; `lazy` (`sc_outcomes`: every step, stage 2-3 cost and C's step a number >= 0, not -0.0)
-    fn new(bs: &'b ScoreBase<'_>, rows: usize, lazy: bool, one: &'b [One], eb: EstBufs) -> Self {
+    fn new(bs: &'base ScoreBase<'_>, rows: usize, lazy: bool, one: &'base [One], eb: EstBufs) -> Self {
         let n = bs.cands.len();
         let lbc: Vec<Option<&Cont>> = (0..n).map(|ui| bs.cont.get(ui).filter(|c| lazy && c.lb_ok())).collect();
         let tord: Vec<usize> = if lazy {
@@ -2269,24 +2274,24 @@ thread_local! { static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell
 /// outcome and slot; the outcome loop then takes the products and maxima itself), else per outcome the slots' odds; the
 /// guaranteed golds' sets, the spark scales (m-major), each setup's candidate slot, the slots' odds now (`col`, `two`:
 /// per target whether it is collapsed, and then the star levels folded, 0 and 1: `sc_prep`); the leaves produced (`lv`)
-struct FoldCx<'f, L: Leaves> {
+struct FoldCx<'fold, L: Leaves> {
     pl: bool,
     nu: usize,
     nf: usize,
     ns: usize,
     na: usize,
-    t0: &'f [f64],
-    tsi: &'f [usize],
-    xs: &'f [Vec<[f64; 4]>],
-    xc: &'f [Vec<[f64; 4]>],
-    uncv: &'f [usize],
-    fmm: &'f [usize],
-    scf: &'f [f64],
-    sslot: &'f [usize],
-    p0: &'f [f64],
-    col: &'f [bool],
+    t0: &'fold [f64],
+    tsi: &'fold [usize],
+    xs: &'fold [Vec<[f64; 4]>],
+    xc: &'fold [Vec<[f64; 4]>],
+    uncv: &'fold [usize],
+    fmm: &'fold [usize],
+    scf: &'fold [f64],
+    sslot: &'fold [usize],
+    p0: &'fold [f64],
+    col: &'fold [bool],
     two: [usize; 2],
-    lv: &'f L,
+    lv: &'fold L,
 }
 impl<L: Leaves> FoldCx<'_, L> {
     /// her star levels folded on target k
@@ -2294,7 +2299,7 @@ impl<L: Leaves> FoldCx<'_, L> {
         if self.col[k] { &self.two } else { &[0, 1, 2, 3] }
     }
     /// level k's tables (level 0 the kept ones)
-    fn level<'a>(&'a self, lv: &'a [Vec<f64>], k: usize) -> &'a [f64] {
+    fn level<'tab>(&'tab self, lv: &'tab [Vec<f64>], k: usize) -> &'tab [f64] {
         if k == 0 { self.t0 } else { &lv[k] }
     }
 }
@@ -2896,16 +2901,16 @@ const HI_RISE: f64 = 1.5;
 /// `outcome_hi` for one (candidate ui, partner y): her slot's miss factors, the bound per leaf (`AncBb`), each marked
 /// outcome's most of the partners' (`tu`: candidate ui's row of the table). Its own function, entered once per partner,
 /// so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*)
-struct HiCx<'h> {
-    bs: &'h ScoreBase<'h>,
-    d: &'h Data,
-    legs: &'h [Legacy],
-    pool: &'h Pool,
-    fix: &'h [usize],
-    uncv: &'h [usize],
-    mk: &'h Marks,
-    mc: &'h [usize],
-    lm: &'h [u32],
+struct HiCx<'base> {
+    bs: &'base ScoreBase<'base>,
+    d: &'base Data,
+    legs: &'base [Legacy],
+    pool: &'base Pool,
+    fix: &'base [usize],
+    uncv: &'base [usize],
+    mk: &'base Marks,
+    mc: &'base [usize],
+    lm: &'base [u32],
     nu: usize,
     ntar: usize,
     nm: usize,
@@ -3025,7 +3030,10 @@ fn hi_partner(
                 return;
             }
             rise_factors(sts, ews, &x0, &xms, qa, uncv, g1);
-            debug_assert!(g1.iter().all(|&v| v > 0.0) && bb.root_open(f, g1, bb.tmax[0][0]));
+            debug_assert!(
+                g1.iter().all(|&v| v > 0.0) && bb.root_open(f, g1, bb.tmax[0][0]),
+                "a candidate kept for a rise has positive factors and an open root"
+            );
             fs.push(f);
             gs.extend_from_slice(g1);
             return;
@@ -3603,12 +3611,12 @@ fn keep_roll(roll: RollKeep) {
 /// y: the careers her veteran saves at that outcome, the pick's kept scoring evaluated at that one outcome (`sc_eval`,
 /// the plan's own arithmetic in its order: the f64 the plan's full table held); where y < 0.5 the bound y_hi
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
-pub(in super::super) fn roll_kept<'a>(
-    env: &mut Env<'a>,
-    d: &'a Data,
-    sk: &'a SkillsRaw,
-    cr: &'a CardsRaw,
-    job: &'a Value,
+pub(in super::super) fn roll_kept<'data>(
+    env: &mut Env<'data>,
+    d: &'data Data,
+    sk: &'data SkillsRaw,
+    cr: &'data CardsRaw,
+    job: &'data Value,
     legs: &[Legacy],
     pool: &Pool,
     fix: &[usize],
@@ -3868,12 +3876,12 @@ pub(in super::super) fn rolls_set(r: Vec<RollKeep>) {
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
-pub(in super::super) fn index_rule<'a>(
-    env: &mut Env<'a>,
-    d: &'a Data,
-    sk: &'a SkillsRaw,
-    cr: &'a CardsRaw,
-    job: &'a Value,
+pub(in super::super) fn index_rule<'data>(
+    env: &mut Env<'data>,
+    d: &'data Data,
+    sk: &'data SkillsRaw,
+    cr: &'data CardsRaw,
+    job: &'data Value,
     legs: &[Legacy],
     pool: &Pool,
     sv: &Solved,
@@ -4492,7 +4500,7 @@ pub(in super::super) fn index_rule<'a>(
                     }
                 }
                 while p8.me.len() > pool.me.len() {
-                    s.env.pool_pop(&mut p8);
+                    Env::pool_pop(&mut p8);
                 }
                 s.put_pool(pool, p8);
             }

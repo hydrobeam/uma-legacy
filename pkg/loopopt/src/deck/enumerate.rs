@@ -6,6 +6,7 @@ use super::{
 };
 
 /// The two enumeration passes have different stopping rules and inputs.
+#[derive(Clone, Copy)]
 pub(super) enum SearchMode {
     /// Keep the first highest-value deck strictly above the initial floor.
     Best { seed: f64 },
@@ -28,14 +29,14 @@ pub(super) struct SearchOutcome {
 }
 
 /// Legal groups and key counts used to enumerate configurations, in their original order.
-struct ConfigurationTables<'b> {
-    counts: &'b [Vec<usize>],
-    by_kind: &'b [Vec<usize>],
-    pal_ents: &'b [usize],
-    kpos: &'b [u64],
-    groups_all: &'b [&'b Vec<usize>],
-    glk: &'b [u8],
-    gcvm: &'b [u64],
+struct ConfigurationTables<'tab> {
+    counts: &'tab [Vec<usize>],
+    by_kind: &'tab [Vec<usize>],
+    pal_ents: &'tab [usize],
+    kpos: &'tab [u64],
+    groups_all: &'tab [&'tab Vec<usize>],
+    glk: &'tab [u8],
+    gcvm: &'tab [u64],
     ki22: usize,
     nplain: usize,
     all_lk: u8,
@@ -43,15 +44,15 @@ struct ConfigurationTables<'b> {
 }
 
 /// Configuration-build buffers stay owned by preparation; white/gold odds are reused by traversal.
-struct ConfigurationScratch<'b> {
-    dw: &'b mut [f64],
-    dg: &'b mut [f64],
-    groups: &'b mut Vec<(usize, usize)>,
-    clause_bounds: &'b mut [f64],
-    order_bounds: &'b mut [f64],
-    ratio_products: &'b mut [f64],
-    key_white: &'b mut [f64],
-    key_gold: &'b mut [f64],
+struct ConfigurationScratch<'scratch> {
+    dw: &'scratch mut [f64],
+    dg: &'scratch mut [f64],
+    groups: &'scratch mut Vec<(usize, usize)>,
+    clause_bounds: &'scratch mut [f64],
+    order_bounds: &'scratch mut [f64],
+    ratio_products: &'scratch mut [f64],
+    key_white: &'scratch mut [f64],
+    key_gold: &'scratch mut [f64],
 }
 
 /// Search-wide legal entries and proof configuration. Own the cached tables so the traversal
@@ -325,20 +326,20 @@ struct SearchControl {
 
 /// Read-only views into preparation's tables. The lazy-bound callbacks borrow those same
 /// tables, so preparation retains their ownership until traversal returns.
-struct TraversalTables<'b> {
-    ebit: &'b [u128],
-    groups_all: &'b [&'b Vec<usize>],
-    sb_rows: &'b [Option<Vec<(f64, f64)>>],
-    lp: &'b [LandPre],
-    cf_z: &'b [u32],
-    lbit: &'b [u8],
+struct TraversalTables<'tab> {
+    ebit: &'tab [u128],
+    groups_all: &'tab [&'tab Vec<usize>],
+    sb_rows: &'tab [Option<Vec<(f64, f64)>>],
+    lp: &'tab [LandPre],
+    cf_z: &'tab [u32],
+    lbit: &'tab [u8],
     all_lk: u8,
-    oq: &'b [(usize, usize, f64, usize)],
-    og: &'b [(usize, usize, usize)],
-    orow: &'b [crate::skills::OutfitPre],
-    zm: &'b [u32],
-    nm: &'b [u32],
-    alt: &'b [(usize, usize)],
+    oq: &'tab [(usize, usize, f64, usize)],
+    og: &'tab [(usize, usize, usize)],
+    orow: &'tab [crate::skills::OutfitPre],
+    zm: &'tab [u32],
+    nm: &'tab [u32],
+    alt: &'tab [(usize, usize)],
 }
 
 /// Eager configurations retain their stable root order; pending configurations retain
@@ -410,7 +411,7 @@ impl DeckSpace<'_> {
         let nk = self.kinds_all.len();
         let ki22 = self.kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
         let kpos: Vec<u64> = (0..nk).map(|i| 7u64.pow(i as u32)).collect();
-        assert!(nk < 64);
+        assert!(nk < 64, "{nk} chain kinds: the packed key holds fewer than 64");
         let fixed = model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
@@ -598,7 +599,7 @@ impl DeckSpace<'_> {
             r
         };
         // the same ratio of one entry (row l * no + o), built on first use
-        let cf_rent: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<f64>>>> = Default::default();
+        let cf_rent: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<f64>>>> = std::cell::RefCell::default();
         let cf_rent_of = |j: usize| -> std::rc::Rc<Vec<f64>> {
             if let Some(r) = cf_rent.borrow().get(&j) {
                 return r.clone();
@@ -750,8 +751,8 @@ impl DeckSpace<'_> {
                 }
                 sp0[i] = x;
             }
-            cv.iter_mut().for_each(|x| *x = 0.0);
-            cvo.iter_mut().for_each(|x| *x = 0.0);
+            cv.fill(0.0);
+            cvo.fill(0.0);
             for &(ci, i, no) in &og {
                 let q = oq[i].2;
                 let (mut m, mut mo) = (0.0f64, 0.0f64);
@@ -1278,7 +1279,7 @@ impl DeckSpace<'_> {
         }
         let mut pord: Vec<usize> = (0..pend.len()).collect();
         pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
-        let mut heap: std::collections::BinaryHeap<QueuedConfig> = Default::default();
+        let mut heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
         let mut pp = 0usize;
         let (mut ldw, mut ldg, mut lsp0, mut lcv, mut lcvo) =
             (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; nc], vec![0.0f64; 1], vec![0.0f64; 1]);
@@ -1572,7 +1573,7 @@ impl DeckSpace<'_> {
                 // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
                 // highest: the same sums, each in the order of `full`, sorted the same way)
                 let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.1 < 16) {
-                    let mut proj: crate::FxMap<u64, f64> = Default::default();
+                    let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
                     for (x, w) in full.iter() {
                         let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
                         *proj.entry(key).or_insert(0.0) += w;
@@ -1584,7 +1585,7 @@ impl DeckSpace<'_> {
                         .map(|(k, w)| ((0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(), w))
                         .collect()
                 } else {
-                    let mut proj: crate::FxMap<Vec<u8>, f64> = Default::default();
+                    let mut proj: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
                     for (x, w) in full.iter() {
                         let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect();
                         *proj.entry(key).or_insert(0.0) += w;
@@ -1609,7 +1610,8 @@ impl DeckSpace<'_> {
                         m
                     })
                     .collect();
-                let r = std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: Default::default() });
+                let r =
+                    std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: std::cell::OnceCell::default() });
                 self.sbcfg.borrow_mut().insert(sbkey, r.clone());
                 Some(r)
             };
@@ -1884,8 +1886,8 @@ impl DeckSpace<'_> {
                         let mp = maps[sel.len() * 2 + usize::from(early)].get_or_insert_with(|| StateClasses {
                             fid: vec![],
                             rep: vec![],
-                            fk: Default::default(),
-                            ck: Default::default(),
+                            fk: HashMap::default(),
+                            ck: HashMap::default(),
                         });
                         if mp.rep.len() <= i {
                             // (the state's keys: its levels at the filled positions, then per group its open positions'
@@ -2026,7 +2028,7 @@ impl DeckSpace<'_> {
             }
             let cc_zall: u32 = cf_z.iter().fold(0u32, |m, &z| m | z);
             // (at most 16 chain slots, as outfits)
-            assert!(cc_chain.len() <= 16);
+            assert!(cc_chain.len() <= 16, "{} chain slots: at most 16", cc_chain.len());
             let cc_cache = std::cell::RefCell::new({
                 let (nsl, cz, nch, nn, on) =
                     (cc_slot.len(), cc_cmax + 1, cc_chain.len(), cf_ns.len(), usize::from(cfm));
@@ -2515,7 +2517,7 @@ impl DeckSpace<'_> {
                         // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
                         // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
                         // its inputs being probabilities, and a NaN falls through to the real test)
-                        cv.iter_mut().for_each(|x| *x = 0.0);
+                        cv.fill(0.0);
                         let mut nan = false;
                         for &(ci, i, no) in og {
                             let q = oq[i].2;
@@ -2609,7 +2611,7 @@ impl DeckSpace<'_> {
                         };
                         // the real bound, the same expression in the same order; an outfit whose A is at most the running
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
-                        cv.iter_mut().for_each(|x| *x = 0.0);
+                        cv.fill(0.0);
                         {
                             // (ZSPLIT; a row without a split, zm 0 and no low split, takes min(A, B r)) A's product over a
                             // split's Z: from the per-parent row with the child's touched targets recomputed (A's own

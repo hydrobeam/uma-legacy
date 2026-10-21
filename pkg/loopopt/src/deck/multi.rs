@@ -20,7 +20,7 @@ pub(super) fn run_multi(
     model: &Model,
     sj: &SkillJob,
     dj: &DeckJob,
-    sky: Vec<PDeck>,
+    sky: &[PDeck],
     stats: Value,
     space: &DeckSpace,
 ) -> Value {
@@ -143,7 +143,7 @@ pub(super) fn run_multi(
     };
     // the full coordinate set needs no thinning: the skyline is already thin on it
     let full: Vec<(usize, bool)> = (0..nu).flat_map(|k| [(k, true), (k, false)]).collect();
-    let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = Default::default();
+    let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = crate::FxMap::default();
     let mut class_sky: Vec<Vec<usize>> = vec![];
     let mut ucls: Vec<usize> = vec![usize::MAX; n];
     for &u in &pool {
@@ -151,7 +151,7 @@ pub(super) fn run_multi(
         let ci = if let Some(&c) = class_ix.get(&co) {
             c
         } else {
-            class_sky.push(if co == full { (0..sky.len()).collect() } else { thin(&sky, &co) });
+            class_sky.push(if co == full { (0..sky.len()).collect() } else { thin(sky, &co) });
             class_ix.insert(co, class_sky.len() - 1);
             class_sky.len() - 1
         };
@@ -170,14 +170,14 @@ pub(super) fn run_multi(
             let mut ix = v.clone();
             let mut out = vec![];
             if nu > 0 && !ix.is_empty() {
-                split(&sky, &mut ix, nu, &mut out);
+                split(sky, &mut ix, nu, &mut out);
             }
             out
         })
         .collect();
     // max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
     // (the clusters' bounds in a reused buffer, popped from a heap in the stable sort's order: `ByBound`)
-    let bb_buf: std::cell::RefCell<Vec<ByBound>> = Default::default();
+    let bb_buf: std::cell::RefCell<Vec<ByBound>> = std::cell::RefCell::default();
     let bb_max = |u: usize, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64| -> f64 {
         let cls = &class_cl[ucls[u]];
         if cls.is_empty() {
@@ -271,7 +271,7 @@ pub(super) fn run_multi(
         certified_cap: f64,
         reported_best: Option<std::rc::Rc<Best>>,
     }
-    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, QKey), ExactCacheEntry>> = Default::default();
+    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, QKey), ExactCacheEntry>> = std::cell::RefCell::default();
     let n_scored = std::cell::Cell::new(0usize);
     let n_band = std::cell::Cell::new(0usize);
     // (per structure class, `cap_class`)
@@ -279,7 +279,7 @@ pub(super) fn run_multi(
     let max_ratio = std::cell::Cell::new([0.0f64; 4]);
     let caps = space.caps();
     let rho_top = caps[3];
-    let max_deck: std::cell::RefCell<[Option<(u32, Vec<Name>)>; 4]> = Default::default();
+    let max_deck: std::cell::RefCell<[Option<(u32, Vec<Name>)>; 4]> = std::cell::RefCell::default();
     let ratio_at = |k: usize, r: f64, u: u32, x: &PDeck| {
         let mut m = max_ratio.get();
         if r > m[k] {
@@ -310,8 +310,8 @@ pub(super) fn run_multi(
         }
         let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExactCacheEntry {
             best: None,
-            scored_decks: Default::default(),
-            checked_selections: Default::default(),
+            scored_decks: std::collections::HashSet::default(),
+            checked_selections: std::collections::HashSet::default(),
             certified_cap: -1.0,
             reported_best: None,
         });
@@ -515,14 +515,14 @@ pub(super) fn run_multi(
         let mut ix: Vec<usize> = (0..sky.len()).collect();
         let mut out = vec![];
         if nu > 0 && !ix.is_empty() {
-            split(&sky, &mut ix, nu, &mut out);
+            split(sky, &mut ix, nu, &mut out);
         } else {
             out.push(Cl { mdw: vec![], mdg: vec![], mem: ix });
         }
         out
     };
     // (as `bb_max`: the clusters in the stable sort's order, equal bounds by index, from a heap over a reused buffer)
-    let st_buf: std::cell::RefCell<Vec<ByBound>> = Default::default();
+    let st_buf: std::cell::RefCell<Vec<ByBound>> = std::cell::RefCell::default();
     let sky_top = |m: usize, val: &dyn Fn(&[f64], &[f64]) -> f64, ok: &dyn Fn(&PDeck) -> bool| -> Vec<(f64, usize)> {
         let mut bs = std::mem::take(&mut *st_buf.borrow_mut());
         bs.clear();
@@ -568,7 +568,8 @@ pub(super) fn run_multi(
     let shared = !dj.per_uma;
     let kloops = dj.top_decks.max(1);
     type SList = std::rc::Rc<Vec<(f64, PDeck)>>;
-    let sh_cache: std::cell::RefCell<crate::FxMap<([usize; 4], QKey), (f64, f64, SList)>> = Default::default();
+    let sh_cache: std::cell::RefCell<crate::FxMap<([usize; 4], QKey), (f64, f64, SList)>> =
+        std::cell::RefCell::default();
     let exact_shared = |f: [usize; 4], qa: &[f64], floor: f64, lv: f64| -> SList {
         let key = (f, qkey(qa));
         if let Some((l, fl, r)) = sh_cache.borrow().get(&key)
@@ -585,7 +586,7 @@ pub(super) fn run_multi(
         let pairs: Vec<(usize, f64)> = (0..ln.len()).map(|l| (ln[l].0, qa[l])).collect();
         let qt: Vec<Vec<f64>> =
             (0..nm).map(|t| (0..ln.len()).filter(|&l| ln[l].0 == t).map(|l| qa[l]).collect()).collect();
-        let mut done: crate::FxSet<DeckId> = Default::default();
+        let mut done: crate::FxSet<DeckId> = crate::FxSet::default();
         let mut list: Vec<(f64, PDeck)> = vec![];
         let mut score = |x: &PDeck, list: &mut Vec<(f64, PDeck)>| {
             if !done.insert(x.id()) {
@@ -654,7 +655,7 @@ pub(super) fn run_multi(
                 complete = false;
             }
             cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            let mut seen: crate::FxSet<(Vec<usize>, usize, usize)> = Default::default();
+            let mut seen: crate::FxSet<(Vec<usize>, usize, usize)> = crate::FxSet::default();
             if complete {
                 for (v, sel) in &cands {
                     let thr = need(&list);
@@ -751,7 +752,7 @@ pub(super) fn run_multi(
         fixed * tot / ln.len() as f64 * (1.0 + 1e-12)
     };
     let mval: Vec<f64> = (0..n).map(|u| if pool.contains(&u) { btab(u, gidx(qmax[u])) } else { 0.0 }).collect();
-    let mut ord: Vec<usize> = pool.clone();
+    let mut ord: Vec<usize> = pool;
     ord.sort_by(|&a, &b| mval[b].partial_cmp(&mval[a]).unwrap());
     let mv: Vec<f64> = ord.iter().map(|&u| mval[u]).collect();
     // A structure's product ceiling is at most the guaranteed golds' factor times the mean of its members' M_u (each
@@ -842,7 +843,7 @@ pub(super) fn run_multi(
         0.0
     });
     // schedules found, per foursome (shared by the passes)
-    let sched_c: std::cell::RefCell<crate::FxMap<[usize; 4], Res>> = Default::default();
+    let sched_c: std::cell::RefCell<crate::FxMap<[usize; 4], Res>> = std::cell::RefCell::default();
     struct Pass {
         solved: Vec<([usize; 4], Res, Vec<f64>, Vec<std::rc::Rc<Best>>, f64)>,
         kth: f64,
@@ -870,7 +871,8 @@ pub(super) fn run_multi(
         let mut kth_val = f64::NEG_INFINITY;
         let mut sched_rejects = 0usize;
         // shared deck: each deck's best value and where (solved index, list index); the per-loop deck lists
-        let mut deck_best: crate::FxMap<(Vec<u32>, Vec<u8>, Vec<u32>, usize), (f64, usize, usize)> = Default::default();
+        let mut deck_best: crate::FxMap<(Vec<u32>, Vec<u8>, Vec<u32>, usize), (f64, usize, usize)> =
+            crate::FxMap::default();
         let mut lists: Vec<SList> = vec![];
         loop {
             if aborted.get() {

@@ -84,7 +84,7 @@ pub(super) fn group_assoc(g: &Group) -> bool {
 /// outcomes hinting several targets together need the explicit check. Results are cached by the group's bits.
 /// More than 20 targets is unproven.
 pub(super) fn group_nuod(g: &Group) -> bool {
-    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(Default::default()); }
+    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let key: Vec<(u64, Vec<(usize, u8)>)> = g.iter().map(|(p, o)| (p.to_bits(), o.clone())).collect();
     if let Some(r) = GN.with(|c| c.borrow().get(&key).copied()) {
         return r;
@@ -381,9 +381,9 @@ pub(crate) fn event_lists(sk: &SkillsRaw, db: &Value) -> EventLists {
 
 /// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact
 /// evaluation of the decks it reports.
-pub(super) struct Sources<'a> {
-    pub(super) dj: &'a DeckJob,
-    pub(super) unc: &'a [u32],
+pub(super) struct Sources<'data> {
+    pub(super) dj: &'data DeckJob,
+    pub(super) unc: &'data [u32],
 }
 impl Sources<'_> {
     pub(super) fn ev_for(&self, id: u32) -> Vec<(usize, u8, u8, f64)> {
@@ -593,7 +593,7 @@ impl Sources<'_> {
         }
         if !c.pal {
             let vl = self.var_links(c, stop);
-            let mut ls = alt_links.clone();
+            let mut ls = alt_links;
             ls.sort_unstable();
             ls.dedup();
             for l in ls {
@@ -629,7 +629,7 @@ impl Sources<'_> {
             sk.skills
                 .iter()
                 .find(|x| x.0 == self.unc[k])
-                .map(|x| if lvl >= 2 { x.2.clone().unwrap_or(x.1.clone()) } else { x.1.clone() })
+                .map(|x| if lvl >= 2 { x.2.clone().unwrap_or_else(|| x.1.clone()) } else { x.1.clone() })
                 .unwrap_or_default()
         };
         self.var_links(c, stop)
@@ -658,8 +658,8 @@ impl Sources<'_> {
 /// early-end link (0 = played normally), choice variant and sources; the plain pals (owned pal characters with no
 /// relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
 /// none of them come first).
-pub(super) struct Entries<'a> {
-    pub(super) cards: Vec<&'a Card>,
+pub(super) struct Entries<'data> {
+    pub(super) cards: Vec<&'data Card>,
     pub(super) rel: Vec<usize>,
     pub(super) kind: Vec<Kind>,
     pub(super) endk: Vec<u8>,
@@ -670,12 +670,12 @@ pub(super) struct Entries<'a> {
     pub(super) plain_chars: Vec<u32>,
     pub(super) locked: Vec<usize>,
 }
-pub(super) fn deck_entries<'a>(
-    cr: &'a CardsRaw,
+pub(super) fn deck_entries<'data>(
+    cr: &'data CardsRaw,
     dj: &DeckJob,
     unc: &[u32],
     pool_ids: &[u32],
-) -> Result<Entries<'a>, Value> {
+) -> Result<Entries<'data>, Value> {
     // the packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`; `MAX_KINDS` and the locks below), refused before any table
     if !(1..=MAX_DECK).contains(&dj.deck_size) {
         return Err(json!({"error": format!("deck_size: a deck holds 1 to {MAX_DECK} cards, not {}.", dj.deck_size)}));

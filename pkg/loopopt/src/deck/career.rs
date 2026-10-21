@@ -64,7 +64,7 @@ fn progress(phase: u32, k: usize, n: usize) {
 #[cfg(not(target_arch = "wasm32"))]
 const fn progress(_phase: u32, _k: usize, _n: usize) {}
 // phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
-thread_local! { static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = Default::default(); }
+thread_local! { static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = std::cell::RefCell::default(); }
 fn prof(k: &'static str, v: f64) {
     PROF.with(|p| *p.borrow_mut().entry(k).or_insert(0.0) += v);
 }
@@ -294,9 +294,9 @@ trait RelPts {
     fn gt(&self, x: usize, gi: usize) -> f64;
 }
 /// trainee t's, from the relation tables (`Env::pair`, `Env::tri`)
-struct RelOf<'e, 'a> {
-    env: &'e Env<'a>,
-    p: &'e Pool,
+struct RelOf<'env, 'data> {
+    env: &'env Env<'data>,
+    p: &'env Pool,
     t: usize,
 }
 impl RelPts for RelOf<'_, '_> {
@@ -312,8 +312,8 @@ impl RelPts for RelOf<'_, '_> {
 /// What a slot walk feeds: each of the six legacy slots in `slots`' order (parent a, her grandparent slots, then parent
 /// b and hers) with its legacy x, its grandparent slot (None: the parent herself), who fills it, and its relation and
 /// race parts (a parent's: the sums over her and her grandparent slots)
-trait SlotSink<'p> {
-    fn slot(&mut self, x: usize, gi: Option<usize>, w: &'p Who, rel: f64, race: f64);
+trait SlotSink<'pool> {
+    fn slot(&mut self, x: usize, gi: Option<usize>, w: &'pool Who, rel: f64, race: f64);
 }
 /// `inherit`'s accumulation, slot by slot (per target the same factors in slot order): the fixed-star slots' miss
 /// product, the random-star slots' mix-term product and the carrier count. `skip`: a legacy whose parent slot is left
@@ -588,10 +588,10 @@ pub(super) fn setup_fp(v: &Value) -> u64 {
 /// `preserve_order`), so the kept keys are written in the same order, by the same serializer (`Value`'s `Display` is
 /// `to_writer`'s compact form), and an object left empty is "{}" either way
 pub(super) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]) -> String {
-    struct Strip<'a> {
-        v: &'a Value,
-        drop: &'a [&'a str],
-        next_drop: &'a [&'a str],
+    struct Strip<'val> {
+        v: &'val Value,
+        drop: &'val [&'val str],
+        next_drop: &'val [&'val str],
     }
     impl serde::Serialize for Strip<'_> {
         fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -905,17 +905,17 @@ struct Solved {
     cert: f64,
 }
 
-struct Env<'a> {
-    d: &'a Data,
-    sj: &'a SkillJob,
-    model: Model<'a>,
+struct Env<'data> {
+    d: &'data Data,
+    sj: &'data SkillJob,
+    model: Model<'data>,
     ew0: Vec<Vec<Vec<f64>>>,
     uncv: Vec<usize>,
     fixed_t: Vec<usize>,
     ntar: usize,
     nu: usize,
     unc: Vec<u32>,
-    space: DeckSpace<'a>,
+    space: DeckSpace<'data>,
     dmax: Vec<Option<(Vec<f64>, Vec<f64>)>>,
     sts0: Vec<Vec<Vec<u8>>>,
     owned: Vec<usize>,
@@ -1165,7 +1165,7 @@ impl Env<'_> {
         p.borrowed.push(l.borrowed);
     }
     /// Undo one `pool_push`, keeping all four per-veteran arrays aligned.
-    fn pool_pop(&self, p: &mut Pool) {
+    fn pool_pop(p: &mut Pool) {
         p.me.pop();
         p.gp.pop();
         p.borrowed.pop();
@@ -1204,7 +1204,7 @@ impl Env<'_> {
     /// parts are its own. The one definition of the slots' affinity every copy reads (`slots`, `lineage`,
     /// `lineage_qc`, `her_slot`, `Sim::fast_ub`; `gen_cands` hoists the same sums)
     #[inline(always)]
-    fn walk_slots<'p, R: RelPts, S: SlotSink<'p>>(&self, p: &'p Pool, a: usize, b: usize, r: &R, s: &mut S) {
+    fn walk_slots<'pool, R: RelPts, S: SlotSink<'pool>>(&self, p: &'pool Pool, a: usize, b: usize, r: &R, s: &mut S) {
         // (the parents' shared wins once: shared(a, b) and shared(b, a) are the same products summed in the same order)
         let sh = 3.0 * shared(&p.me[a], &p.me[b]);
         for (x, y) in [(a, b), (b, a)] {
@@ -1378,7 +1378,7 @@ impl Env<'_> {
             // then `spark_scale` per carrier count n
             tg.extend((0..=2 * (G + 1)).map(|n| spark_scale(n as i32)));
         }
-        struct Tg<'t>(&'t [f64]);
+        struct Tg<'tg>(&'tg [f64]);
         impl RelPts for Tg<'_> {
             #[inline(always)]
             fn pt(&self, x: usize) -> f64 {
@@ -1390,8 +1390,8 @@ impl Env<'_> {
             }
         }
         // `Inherit` for the targets `ks` (and the carriers of every target), in fixed arrays
-        struct Qc<'k> {
-            ks: &'k [usize],
+        struct Qc<'ks> {
+            ks: &'ks [usize],
             ntar: usize,
             miss: [f64; QN],
             mix2: [f64; QN],
@@ -1445,7 +1445,14 @@ impl Env<'_> {
     }
     /// Whether a fully checked deck of `refs` proves career (t, q, c) out at `bar` (`solve`: some `ref_bound` (1 + 1e-9) < th)
     #[inline]
-    fn refs_out<'r>(&self, t: usize, q: &[f64], c: f64, mut refs: impl Iterator<Item = &'r Ref>, bar: Bar) -> bool {
+    fn refs_out<'refs>(
+        &self,
+        t: usize,
+        q: &[f64],
+        c: f64,
+        mut refs: impl Iterator<Item = &'refs Ref>,
+        bar: Bar,
+    ) -> bool {
         refs.any(|r| bar.out(self.ref_bound(t, q, c, r), 1e-9))
     }
     /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
@@ -1568,17 +1575,17 @@ impl Env<'_> {
             Open(f64, f64, f64, f64),
         }
         // what one trainee's pair loop reads
-        struct Cx<'c> {
-            p: &'c Pool,
-            pairs: &'c [Pre],
+        struct Cx<'cx> {
+            p: &'cx Pool,
+            pairs: &'cx [Pre],
             tid: u32,
             ntar: usize,
-            pt: &'c [f64],
-            go: &'c [usize],
-            gr: &'c [f64],
-            gf: &'c [(f64, f64)],
-            ft: &'c [Vec<Fac>],
-            uncv: &'c [usize],
+            pt: &'cx [f64],
+            go: &'cx [usize],
+            gr: &'cx [f64],
+            gf: &'cx [(f64, f64)],
+            ft: &'cx [Vec<Fac>],
+            uncv: &'cx [usize],
             gw: f64,
             rho: f64,
             fixed: f64,
@@ -1665,7 +1672,7 @@ impl Env<'_> {
                 }
             }
             let (dw, dg) = self.dmax[t].as_ref().unwrap();
-            debug_assert!(self.sts0[t].len() == self.model.n_outfits(t));
+            debug_assert!(self.sts0[t].len() == self.model.n_outfits(t), "one skill table per outfit of trainee {t}");
             let (gg, gw) = (crate::skills::GEN_GOLD, crate::skills::GEN_WHITE);
             let ft: Vec<Vec<Fac>> = self.sts0[t]
                 .iter()
@@ -2193,7 +2200,10 @@ impl Env<'_> {
         }
         let t_gen = now_ms();
         let nl = p.me.len();
-        assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize);
+        assert!(
+            nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize,
+            "legacies, umas and trainees are packed as u16"
+        );
         let mut cands: Vec<Cand> = self.gen_cands(
             p,
             fix,
@@ -2243,7 +2253,7 @@ impl Env<'_> {
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
         let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| {
             if per_trainee {
-                done.iter().find(|x| cands[x.1].t as usize == t).map_or(kth(done), |x| x.0.max(kth(done)))
+                done.iter().find(|x| cands[x.1].t as usize == t).map_or_else(|| kth(done), |x| x.0.max(kth(done)))
             } else {
                 kth(done)
             }
@@ -2256,7 +2266,7 @@ impl Env<'_> {
         // candidates this search took and did not solve (bounded, no deck)
         // (only veterans of one character can dominate each other: `dominates` tests the characters first, so the other
         // pairs are skipped unasked; each list is in ascending x as before)
-        let mut by_chara: crate::FxMap<u32, Vec<usize>> = Default::default();
+        let mut by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
         for x in 0..nl {
             by_chara.entry(p.me[x].chara).or_default().push(x);
         }
@@ -2264,7 +2274,7 @@ impl Env<'_> {
             .map(|y| by_chara[&p.me[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
             .collect();
         let prune = dom.iter().any(|v| !v.is_empty());
-        let mut unsolved: crate::FxSet<(u16, u16, u16)> = Default::default();
+        let mut unsolved: crate::FxSet<(u16, u16, u16)> = crate::FxSet::default();
         // Identical deck problems, searched once (`Twin`): a candidate whose trainee, chances q and spark scale c are
         // bit-identical to an earlier candidate's of this search (interchangeable parents: veterans with the same stars
         // and no relation or race points between them, as every sample pool of mob veterans has; 15 pairs of 6 such
@@ -2289,7 +2299,7 @@ impl Env<'_> {
             Bounded(f64),
             NoDeck,
         }
-        let mut twins: crate::FxMap<(u16, Vec<u64>, u64), Twin> = Default::default();
+        let mut twins: crate::FxMap<(u16, Vec<u64>, u64), Twin> = crate::FxMap::default();
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
         // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
@@ -2588,7 +2598,7 @@ impl Env<'_> {
     /// The chance of each pink spark of her veteran (MODEL.md): one, its aptitude uniform over those she ends at A or S
     /// (stars 20/70/10, not here): per aptitude (data.json `apt` order) P(it is the one); exact, the aptitudes'
     /// inspirations independent. The rest: no aptitude at A or S.
-    fn pink_gen(&self, pc: &PinkCareer) -> [f64; 10] {
+    fn pink_gen(pc: &PinkCareer) -> [f64; 10] {
         let q: Vec<f64> = (0..10)
             .map(|k| {
                 let ps: Vec<f64> = pc.fire.iter().filter(|f| f.apt == k).map(|f| f.p).collect();
@@ -2676,7 +2686,7 @@ impl Env<'_> {
         let d = self.d;
         let ntar = self.ntar;
         let nu = self.nu;
-        let name = |id: u32| d.umas.iter().find(|u| u.id == id).map_or(format!("Uma {id}"), |u| u.name.clone());
+        let name = |id: u32| d.umas.iter().find(|u| u.id == id).map_or_else(|| format!("Uma {id}"), |u| u.name.clone());
         let (t, a, b) = (f.t, f.a, f.b);
         let uid = d.umas[t].id;
         let sl = self.slots(p, t, a, b);
@@ -2760,7 +2770,7 @@ impl Env<'_> {
         // her aptitudes and her veteran's pink spark (MODEL.md): base and start grades (data.json `apt` order, codes 1..8 =
         // G..S), each legacy pink's chance to fire at one April inspiration, and the chance of each pink type
         let apt = self.pink_career(p, t, a, b).map(|pc| {
-            let pg8 = self.pink_gen(&pc);
+            let pg8 = Self::pink_gen(&pc);
             json!({"base": pc.base, "start": pc.start,
                    "fire": pc.fire.iter().map(|f| json!({"group": apt_pink(f.apt), "apt": f.apt, "p": f.p, "slot": f.slot, "stars": f.stars})).collect::<Vec<_>>(),
                    "pink_gen": (0..10).map(|k| json!({"group": apt_pink(k), "p": pg8[k]})).collect::<Vec<_>>()})
@@ -2932,7 +2942,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                 next.insert("roll".into(), roll["stars"].clone());
                 let plan_out = run_career(d, sk, cr, &plan_job);
                 if plan_out["next"]["roll"].is_null() {
-                    json!({"error": plan_out["error"].as_str().or(plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
+                    json!({"error": plan_out["error"].as_str().or_else(|| plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
                 } else {
                     plan_out["next"]["roll"].clone()
                 }
@@ -3040,8 +3050,8 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1)
         })
         .unwrap_or_default();
-    let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { Default::default() };
-    let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { Default::default() };
+    let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { HashMap::default() };
+    let corner_memo = if kept.corners.len() < DECK_KEEP_CAP { kept.corners } else { HashMap::default() };
     let mut env = Env {
         d,
         sj: &sj,
@@ -3066,7 +3076,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         hard: 0,
         max_ratio: [0.0; 4],
         cap_breach: 0,
-        cfs: Default::default(),
+        cfs: CfStats::default(),
         max_deck: Default::default(),
         cert: f64::INFINITY,
         overflows: 0,
@@ -3080,7 +3090,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
     {
-        let mut first: crate::FxMap<Vec<u64>, usize> = Default::default();
+        let mut first: crate::FxMap<Vec<u64>, usize> = crate::FxMap::default();
         for u in 0..n {
             let uid = env.d.umas[u].id;
             let mut k: Vec<u64> = vec![];
@@ -3266,7 +3276,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    type Hook = Box<dyn for<'e> FnOnce(&mut Env<'e>, &Pool)>;
+    type Hook = Box<dyn for<'env> FnOnce(&mut Env<'env>, &Pool)>;
     thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
     /// val/plan's p16 plan job with its events, and the Global data it runs on
     fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {

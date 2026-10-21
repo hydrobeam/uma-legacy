@@ -48,12 +48,12 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
     } // no skill can leave the pool before the last draw
     // state: how many of the n - k other skills have taken 0, 1, .., cap draws (cap: left the pool); a sorted map, so
     // sums run in one order (a std HashMap's order changes from run to run, and so did the last bits of every result)
-    let mut states: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
+    let mut states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::default();
     let mut initial_counts = vec![0u8; cap + 1];
     initial_counts[0] = (n - k) as u8;
     states.insert(initial_counts, 1.0);
     for _ in 0..t {
-        let mut next_states: std::collections::BTreeMap<Vec<u8>, f64> = Default::default();
+        let mut next_states: std::collections::BTreeMap<Vec<u8>, f64> = std::collections::BTreeMap::default();
         for (counts, probability) in &states {
             let available = (n - k - counts[cap] as usize + k) as f64; // k > 0: never empty
             for draws_taken in 0..cap {

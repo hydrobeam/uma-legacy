@@ -114,13 +114,13 @@ pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
 }
 /// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
 /// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
-pub(super) struct JointPrep<'g> {
+pub(super) struct JointPrep<'group> {
     /// Miss factors and coupled groups from sources outside the chains.
     base: ChainFactors,
     chains: Vec<ChainProgress>,
     /// One class index per relevant chain position, and that collapsed state's probability.
     states: Vec<(Vec<u8>, f64)>,
-    groups: Vec<CoupledGroup<'g>>,
+    groups: Vec<CoupledGroup<'group>>,
 }
 /// Cumulative factors after a chain prefix, or from all sources outside the chains.
 struct ChainFactors {
@@ -135,14 +135,14 @@ struct ChainProgress {
     class_of_progress: Vec<u8>,
 }
 /// A coupled group's ascending target indices and outcomes. The implicit no-reward outcome is last if above 1e-15.
-struct CoupledGroup<'g> {
+struct CoupledGroup<'group> {
     targets: Vec<usize>,
-    outcomes: Vec<(f64, &'g [(usize, u8)])>,
+    outcomes: Vec<(f64, &'group [(usize, u8)])>,
 }
 pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kind)], filler: usize) -> JointPrep<'_> {
-    fn add_group<'g>(
-        group: &'g Group,
-        groups: &mut Vec<CoupledGroup<'g>>,
+    fn add_group<'group>(
+        group: &'group Group,
+        groups: &mut Vec<CoupledGroup<'group>>,
         coupled: &mut Vec<usize>,
         no_gold: &mut [f64],
         no_hint: &mut [f64],
@@ -221,7 +221,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         }
     }
     // Preserve first-seen order separately from the map: it controls the later floating-point sums.
-    let mut collapsed: crate::FxMap<Vec<u8>, f64> = Default::default();
+    let mut collapsed: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
     let mut order: Vec<Vec<u8>> = vec![];
     for (progress, probability) in states.iter() {
         let key: Vec<u8> =
@@ -433,7 +433,7 @@ pub(super) fn joint_eval_in(
                 }
             }
         }
-        cl_of.iter_mut().for_each(|x| *x = usize::MAX);
+        cl_of.fill(usize::MAX);
         let mut ncl = 0usize;
         for &g in &coupled {
             let r = root(&mut par, groups[g].targets[0]);
@@ -675,7 +675,7 @@ pub(super) fn joint_trainee_ref(
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     // per-target miss factors (no gold, no hint) of the groups that touch one target; the others are "coupled"
-    fn take<'g>(g: &'g Group, coupled: &mut Vec<&'g Group>, ng: &mut [f64], nh: &mut [f64]) {
+    fn take<'group>(g: &'group Group, coupled: &mut Vec<&'group Group>, ng: &mut [f64], nh: &mut [f64]) {
         let gh = group_gh(g);
         if gh.len() >= 2 {
             coupled.push(g);
@@ -1137,7 +1137,7 @@ pub(super) fn state_value(
     if ents.iter().any(|e| e.0.multi) {
         return None;
     }
-    state_value_any(model, u, qs, ents, filler)
+    Some(state_value_any(model, u, qs, ents, filler))
 }
 /// `state_value` for the decks the cap-free search covers (`Src::cf_ok`: every group's levels negatively upper-orthant
 /// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
@@ -1152,9 +1152,9 @@ pub(super) fn state_value_cf(
     if ents.iter().any(|e| !e.0.cf_ok) {
         return None;
     }
-    state_value_any(model, u, qs, ents, filler)
+    Some(state_value_any(model, u, qs, ents, filler))
 }
-fn state_value_any(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
+fn state_value_any(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Vec<f64> {
     let nu = model.uncertain.len();
     let mut ch: Vec<(Kind, Option<usize>)> =
         ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
@@ -1201,7 +1201,7 @@ fn state_value_any(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], f
         }
     }
     let fixed = model.fixed_factor();
-    Some((0..qs.len()).map(|qi| fixed * (0..no).map(|o| acc[qi * no + o]).fold(0.0f64, f64::max)).collect())
+    (0..qs.len()).map(|qi| fixed * (0..no).map(|o| acc[qi * no + o]).fold(0.0f64, f64::max)).collect()
 }
 thread_local! {
     /// SB_CHECK: per exact scoring, the state-conditioned value against the exact value: (decks, max value/exact, min

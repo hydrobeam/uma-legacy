@@ -288,7 +288,7 @@ fn load_str(json: &str) -> Data {
 /// it is not a general validator for all dimensions and indices in the input.
 fn check_repeated_races(umas: &[UmaRaw]) {
     for uma in umas {
-        let mut turns_by_race: std::collections::HashMap<i32, Vec<usize>> = Default::default();
+        let mut turns_by_race: std::collections::HashMap<i32, Vec<usize>> = std::collections::HashMap::default();
         for (turn, options) in uma.turns.iter().enumerate() {
             for option in options {
                 if option.race >= 0 {
@@ -743,7 +743,7 @@ fn best_response(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) 
 struct MemoScope(Option<BrMemo>);
 impl MemoScope {
     fn new() -> Self {
-        Self(BR_MEMO.with(|memo| memo.borrow_mut().replace(Default::default())))
+        Self(BR_MEMO.with(|memo| memo.borrow_mut().replace(BrMemo::default())))
     }
 }
 impl Drop for MemoScope {
@@ -1005,7 +1005,7 @@ pub(crate) fn members(f: &[usize; 4]) -> &[usize] {
 const FILL_EPS: f64 = 1e-7;
 fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: f64) -> f64 {
     let mut cur = score(d, lp, s);
-    debug_assert!((cur - v).abs() < 1e-6);
+    debug_assert!((cur - v).abs() < 1e-6, "fill_optional: the caller's score {v} is not the schedule's {cur}");
     for i in 0..N {
         let ps: Vec<Vec<f64>> = (0..N).map(|k| probs(d, &d.umas[lp.m[k]], &s[k])).collect();
         let w: Vec<f64> = weights(d, &ps, i).iter().map(|x| x + FILL_EPS).collect();
@@ -1078,7 +1078,7 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
 fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, margin: f64) -> Res {
     let _memo = MemoScope::new();
     let lp = make_loop(d, m);
-    let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(1) | 1);
+    let mut rng = Rng(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
     let mut schedules = optimistic_start(d, &lp);
     let mut value = ascent(d, &lp, &mut schedules);
     value = value.max(group_moves(d, &lp, &mut schedules, margin));
@@ -1230,7 +1230,7 @@ fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> V
         .collect();
     if runners.iter().any(|&i| match s[i][t] {
         Choice::Opt(o) => d.umas[m[i]].opts[t][o as usize].goal,
-        _ => false,
+        Choice::Rest => false,
     }) {
         return vec![];
     }
@@ -1247,7 +1247,7 @@ fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> V
             && runners.iter().all(|&i| {
                 let cur = match s[i][t] {
                     Choice::Opt(o) => &d.umas[m[i]].opts[t][o as usize],
-                    _ => unreachable!(),
+                    Choice::Rest => unreachable!("runners all run race {race} at turn {t}"),
                 };
                 d.umas[m[i]].opts[t].iter().any(|op| op.race == a && op.bp == cur.bp && !op.goal)
             })
@@ -1456,7 +1456,7 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u64 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             self.0 >> 33
         }
         fn f(&mut self) -> f64 {

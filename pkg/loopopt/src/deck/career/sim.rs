@@ -188,8 +188,8 @@ enum Keys {
     Main { seed: u32, run: u32 },
 }
 impl Keys {
-    fn u(&self, t: usize, stream: u32, item: usize) -> f64 {
-        match *self {
+    fn u(self, t: usize, stream: u32, item: usize) -> f64 {
+        match self {
             Self::Main { seed, run } => u01(&[seed, run, t as u32, stream, item as u32]),
         }
     }
@@ -250,12 +250,12 @@ struct Count {
     added: usize,
 }
 
-struct Sim<'s, 'a> {
-    env: &'s mut Env<'a>,
-    d: &'a Data,
-    sk: &'a SkillsRaw,
-    cr: &'a CardsRaw,
-    job: &'a Value,
+struct Sim<'env, 'data> {
+    env: &'env mut Env<'data>,
+    d: &'data Data,
+    sk: &'data SkillsRaw,
+    cr: &'data CardsRaw,
+    job: &'data Value,
     cfg: SimJob,
     cache: Cache,
     trainees: Vec<usize>,
@@ -305,7 +305,7 @@ fn leg_json(l: &Legacy) -> Value {
            "parents": l.parents.iter().map(|g| json!({"chara": g.chara, "sparks": g.sparks, "wins": g.wins, "pinks": g.pinks})).collect::<Vec<_>>()})
 }
 fn tq975(df: f64) -> f64 {
-    let z = 1.959964f64;
+    let z = 1.959_964_f64;
     let (z3, z5, z7) = (z.powi(3), z.powi(5), z.powi(7));
     z + (z3 + z) / (4.0 * df)
         + (5.0 * z5 + 16.0 * z3 + 3.0 * z) / (96.0 * df * df)
@@ -348,15 +348,15 @@ fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
         })
         .collect()
 }
-impl<'s, 'a> Sim<'s, 'a> {
+impl<'env, 'data> Sim<'env, 'data> {
     /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::sim_for`): the landed sets in
     /// order of size, each owned trainee's ceiling at q = 1 (`hi`), the rank's star mix, `fastc`, the fixed gold factor
     fn new(
-        env: &'s mut Env<'a>,
-        d: &'a Data,
-        sk: &'a SkillsRaw,
-        cr: &'a CardsRaw,
-        job: &'a Value,
+        env: &'env mut Env<'data>,
+        d: &'data Data,
+        sk: &'data SkillsRaw,
+        cr: &'data CardsRaw,
+        job: &'data Value,
         cfg: SimJob,
         trainees: Vec<usize>,
         members: Vec<usize>,
@@ -388,7 +388,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             hi,
             order,
             star,
-            sched: Default::default(),
+            sched: std::collections::HashMap::default(),
             n: Count::default(),
             members,
             fastc,
@@ -414,7 +414,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
     /// `take_pool`'s copy back, its extra entries popped
     pub(super) fn put_pool(&mut self, pool: &Pool, p: Pool) {
-        debug_assert_eq!(p.me.len(), pool.me.len());
+        debug_assert_eq!(p.me.len(), pool.me.len(), "put_pool takes back the pool take_pool lent");
         self.wpool = Some(((pool as *const Pool as usize, pool.me.len(), pool.max_bor), p));
     }
     fn key(&self, c: &Cur) -> String {
@@ -495,11 +495,11 @@ impl<'s, 'a> Sim<'s, 'a> {
         // `walk_slots`' slots and affinities, each slot's misses multiplied in as it
         // comes but a parent's after her grandparent slots' (this filter's own order, so its own rounding); a
         // random-star slot counts at its fixed stars here, where `inherit` averages its squared miss over the mix
-        struct Ub<'p> {
+        struct Ub<'pool> {
             ntar: usize,
             miss: [f64; 12],
             nc: [i32; 12],
-            parent: Option<(&'p [u8], f64)>,
+            parent: Option<(&'pool [u8], f64)>,
         }
         impl Ub<'_> {
             #[inline(always)]
@@ -519,9 +519,9 @@ impl<'s, 'a> Sim<'s, 'a> {
                 }
             }
         }
-        impl<'p> SlotSink<'p> for Ub<'p> {
+        impl<'pool> SlotSink<'pool> for Ub<'pool> {
             #[inline(always)]
-            fn slot(&mut self, _: usize, gi: Option<usize>, w: &'p Who, rel: f64, race: f64) {
+            fn slot(&mut self, _: usize, gi: Option<usize>, w: &'pool Who, rel: f64, race: f64) {
                 if gi.is_none() {
                     self.flush();
                     self.parent = Some((&w.stars[..], aff_factor(rel, race)));
@@ -703,7 +703,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                 let Some((_, pk, lam, p1)) = bestb else { break };
                 let sel = self.cache.decks[pk.t][pk.d].sel.clone();
                 let cur = self.make_cur(&st.pool, pk.t, pk.a, pk.b, &sel, false);
-                let (vet, _) = self.draw(&cur, &st.legs, &keys, t);
+                let (vet, _) = self.draw(&cur, &st.legs, keys, t);
                 self.add_vet(&mut st, vet, true, &mut buf);
                 let after = st.mb[0].map_or(pa, |p| p.val);
                 rows.push(json!([t, pa, self.d.umas[pk.t].name, lam, p1, after]));
@@ -874,7 +874,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         self.cur_from_solver_pick(&st.pool, &pick)
     }
     /// the veteran a failed career leaves and her landed mask
-    fn draw(&self, c: &Cur, legs: &[Legacy], keys: &Keys, t: usize) -> (Legacy, usize) {
+    fn draw(&self, c: &Cur, legs: &[Legacy], keys: Keys, t: usize) -> (Legacy, usize) {
         let tot: f64 = self.order.iter().map(|&m| c.os[m]).sum();
         let mut u = keys.u(t, STREAM_SET, 0) * tot;
         let (mut mask, mut last) = (usize::MAX, usize::MAX);
@@ -989,7 +989,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         let mut st = St {
             legs: vec![],
             pool: self.env.pool(&[]),
-            fam: Default::default(),
+            fam: std::collections::HashMap::default(),
             best: None,
             cur: None,
             rot: Rot { pos: 0, latest: vec![None; self.members.len()] },
@@ -1063,7 +1063,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// The greedy audit at a pick change: the exact career search's pick against the surrogate's, and audit rows for
     /// the pick and `audit_sample` random candidates with the newest veteran as a parent (ceiling at least 0.3 x B; every
     /// candidate of the pool at the start)
-    fn audit_greedy(&mut self, st: &mut St, keys: &Keys, t_career: usize) -> Value {
+    fn audit_greedy(&mut self, st: &mut St, keys: Keys, t_career: usize) -> Value {
         let cur = self.greedy_cur(st);
         let trainees = self.trainees.clone();
         let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
@@ -1229,7 +1229,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     rec.push(json!({"t": t, "pick": k, "trainee": self.d.umas[cur.t].name, "p": cur.p, "pool": st.legs.len(), "s": s}));
                     last_key = k;
                     if self.cfg.audit && base == Base::Greedy && !exact {
-                        let a = self.audit_greedy(st, &keys, t);
+                        let a = self.audit_greedy(st, keys, t);
                         self.audits.push(a);
                     }
                 }
@@ -1255,7 +1255,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             }
             e += s;
             s *= 1.0 - cur.p;
-            let (vet, _) = self.draw(&cur, &st.legs, &keys, t);
+            let (vet, _) = self.draw(&cur, &st.legs, keys, t);
             t += 1;
             match base {
                 Base::Loop => {
@@ -1286,12 +1286,12 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
 }
 
-pub(super) fn simulate<'a>(
-    env: &mut Env<'a>,
-    d: &'a Data,
-    sk: &'a SkillsRaw,
-    cr: &'a CardsRaw,
-    job: &'a Value,
+pub(super) fn simulate<'data>(
+    env: &mut Env<'data>,
+    d: &'data Data,
+    sk: &'data SkillsRaw,
+    cr: &'data CardsRaw,
+    job: &'data Value,
     legs: &[Legacy],
     trainees: &[usize],
     sim: &Value,
@@ -1337,13 +1337,13 @@ pub(super) fn simulate<'a>(
     let mut es = vec![];
     let eps = cfg.eps;
     // index: the kept state before the simulation, put back after it (module notes)
-    let kept_before_simulation = (base == Base::Index).then(|| kept_swap(Default::default()));
+    let kept_before_simulation = (base == Base::Index).then(|| kept_swap(KeptState::default()));
     for run in cfg.first..cfg.first + cfg.runs {
         if !cfg.share_cache && run > cfg.first {
             s.cache = Cache::new(n);
         }
         if base == Base::Index {
-            kept_swap(Default::default());
+            kept_swap(KeptState::default());
             IX.with(|ix| *ix.borrow_mut() = Default::default());
         }
         let tm = std::time::Instant::now();
@@ -1390,8 +1390,8 @@ mod tests {
     #[test]
     /// the random numbers are pinned: changing them would change every recorded run
     fn u01_values() {
-        assert_eq!(super::u01(&[1, 3, 0, 1, 0]), 0.006101473502044041);
-        assert_eq!(super::u01(&[1, 0, 17, 2, 5]), 0.786756654747679);
-        assert_eq!(super::u01(&[7, 123456, 99999, 3, 33]), 0.9235248915231418);
+        assert_eq!(super::u01(&[1, 3, 0, 1, 0]), 0.006_101_473_502_044_041);
+        assert_eq!(super::u01(&[1, 0, 17, 2, 5]), 0.786_756_654_747_679);
+        assert_eq!(super::u01(&[7, 123_456, 99_999, 3, 33]), 0.923_524_891_523_141_8);
     }
 }
