@@ -80,7 +80,9 @@ it is before it stops; the `art` step instead says what it skipped.
 | `data` | the Global and Grand Masters-era exports from `master.mdb`: `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first. Run by `events` and `page` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
-| `native` | the release binary and `cargo test --release` |
+| `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*) |
+| `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search) |
 | `page` | `webapp/dist/` (see *The page*) |
@@ -146,7 +148,7 @@ IndexedDB.
 
 ## Tests
 
-- **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`).
+- **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
 - **Browser suite:** `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`) in Chromium
   and Firefox, test groups in parallel (`LLP_JOBS` per browser, default 4; `node webapp/nodebrowser.mjs chromium
   roster` runs one group). `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
@@ -170,9 +172,26 @@ IndexedDB.
 
 ## Rust style
 
-`pkg/loopopt/rustfmt.toml` sets the formatting (`cargo fmt` in `pkg/loopopt`). Commits that only reformat are
-listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once per clone:
-`git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+`./build.sh lint` passes before every Rust commit. It runs, in `pkg/loopopt`:
+
+```
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo clippy --target wasm32-unknown-unknown --lib -- -D warnings
+```
+
+- **Formatting:** `pkg/loopopt/rustfmt.toml` (stable options: 120 columns, `use_small_heuristics = "Max"`); `cargo fmt`
+  in `pkg/loopopt` applies it. `#[rustfmt::skip]` is kept for tables whose layout carries meaning, each with its reason.
+- **Lints:** clippy's default groups, with the few that fight this code deliberately allowed in the `[lints.clippy]`
+  table of `pkg/loopopt/Cargo.toml`, each with its reason. A lint fix that could change floating-point evaluation
+  order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
+  `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
+  clippy part before its tests.
+- **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
+  turns on `.githooks/pre-commit`, which runs `cargo fmt --check` when the commit stages a `pkg/loopopt` `.rs` file
+  (about a second; it checks the working tree's files, not only the staged parts). Clippy is left to `lint`.
+- **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
+  per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## Releases
 
@@ -195,6 +214,7 @@ minutes and can serve the previous page until then.
 
 ```
 build.sh             the one entry point for every build step
+.githooks/           the pre-commit formatting check (`./build.sh hooks` turns it on)
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
 pkg/loopopt/         the Rust solver (src/, tests/)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)

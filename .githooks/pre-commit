@@ -1,0 +1,9 @@
+#!/bin/sh
+# Checks the solver's Rust formatting when a commit stages Rust files under pkg/loopopt (about a second; otherwise
+# nothing). Enabled by ./build.sh hooks (git config core.hooksPath .githooks). Clippy runs in ./build.sh lint.
+git diff --cached --quiet --diff-filter=ACMR -- 'pkg/loopopt/*.rs' && exit 0
+cd "$(git rev-parse --show-toplevel)/pkg/loopopt" || exit 1
+if ! out=$(cargo fmt --check --message-format short 2>&1); then
+  printf 'pre-commit: Rust formatting differs (cargo fmt in pkg/loopopt fixes it):\n%s\n' "$out" >&2
+  exit 1
+fi

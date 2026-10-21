@@ -3,7 +3,9 @@
 #   data     Global + GM-era exports (needs game/global/master.mdb, game/jp/master.mdb)
 #   gametora GameTora's data files at the pinned versions (pkg/loopopt/data/gametora.json) into cache/gametora
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
-#   native   release binary + tests
+#   native   release binary, clippy (as in lint), tests
+#   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied
+#   hooks    use the tracked git hooks (.githooks: the pre-commit formatting check); once per clone
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
 #   wasm     wasm + wasm-opt + example.json
@@ -59,7 +61,11 @@ step_events() {
   step_gametora
   (cd "$C/export" && "${PY[@]}" build_card_events.py global && "${PY[@]}" build_card_events.py jp)
 }
-step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && { out=$(cargo test --release 2>&1); rc=$?; printf '%s\n' "$out" | grep -E "^test result|FAILED|panicked|^error"; exit $rc; }); }   # every test binary's result line, any failure, and the tests' exit status
+step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && clippy_all && { out=$(cargo test --release 2>&1); rc=$?; printf '%s\n' "$out" | grep -E "^test result|FAILED|panicked|^error"; exit $rc; }); }   # every test binary's result line, any failure, and the tests' exit status
+# clippy as ./build.sh lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
+clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
+step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check lint; (cd "$C" && cargo fmt --check && clippy_all && echo "lint: clean"); }
+step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"; }
 step_wasm() {
   MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
   step_npm
@@ -108,7 +114,7 @@ while [ $# -gt 0 ]; do
     all) step_data; step_events; step_native; step_pb; step_wasm; step_art; step_page ;;
     val) step_val "${2:-}"; shift ;;
     valq) step_val "${2:-}" --quick; shift ;;
-    gametora|data|events|native|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research) "step_$1" ;;
+    gametora|data|events|native|lint|hooks|pb|wasm|page|art|images|runners|browsers|test|testq|serve|deploy|research) "step_$1" ;;
     *) echo "unknown step $1"; exit 1 ;;
   esac; shift
 done
