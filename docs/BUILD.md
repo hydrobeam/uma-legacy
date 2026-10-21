@@ -222,14 +222,14 @@ passing the tools does not establish that a reader can understand the code. Keep
   context struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may
   change separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy`
   options (as in a parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site,
-  and prefer an existing domain record over another overlapping bundle. More than five or six parameters, or a
-  struct unpacked into a dozen short locals on entry, means the concept has not been named yet.
-- **Calls:** a reader checks a call against the signature without counting arguments. More than five arguments,
-  or adjacent arguments of one type that could be swapped unnoticed (`k.x, k.a, k.b`), mean a record is missing
-  (a trainee and her parents; a scoring context). A function asked for one value returns one value, not a vector
-  read at `[0]`. Pack and unpack bit fields through a named helper or type (an outcome's index from its star
-  levels and fixed-target mask), and parenthesize any expression that mixes shifts with `|`, `&` or arithmetic. A
-  call that spans several lines inside a closure (`(y < 0.5).then(|| …)`) is an `if`.
+  and prefer an existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on
+  entry means the concept has not been named yet.
+- **Calls:** a reader checks a call against the signature without counting arguments. Adjacent arguments of one type
+  that could be swapped unnoticed (`k.x, k.a, k.b`), or a long argument list (past five or so, as a guide, not a limit),
+  usually mean a record is missing (a trainee and her parents; a scoring context). A function asked for one value
+  returns one value, not a vector read at `[0]`. Pack and unpack bit fields through a named helper or type (an outcome's
+  index from its star levels and fixed-target mask), and parenthesize any expression that mixes shifts with `|`, `&` or
+  arithmetic. A call that spans several lines inside a closure (`(y < 0.5).then(|| …)`) is an `if`.
 - **Files:** one module per concept: a reader should find a phase by its file name. A file past about 1500 lines
   holds several concepts and splits into a module directory; moving code between files changes no behaviour, so
   splits land as pure moves, apart from visibility, before anything is renamed.
