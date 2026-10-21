@@ -57,69 +57,102 @@ pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f
 pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: &[f64], ents: &[(S, Kind)], filler: usize, n_targets: usize, m1: bool, ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
     joint_eval(model, u, qs, &joint_prep(model.uncertain.len(), ents, filler), n_targets, m1, true, ext)
 }
-/// What `joint_fast` computes of a deck before any chance or model state: the per-target misses of the sources outside
-/// the chains (`bg`, `bh`) and their coupled groups (`bc`), per chain position its factors per links done (`lv`), and the
-/// collapsed chain states in first-seen order with their weights (each summed in state order). Coupled groups are
-/// indices into `cg`: per group its targets (`group_gh`'s, ascending) and its outcomes with the rest, as `joint_eval`
-/// enumerates them
+/// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
+/// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
 pub(super) struct JointPrep<'g> {
-    bg: Vec<f64>, bh: Vec<f64>, bc: Vec<usize>,
-    lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<usize>)>, Vec<u8>)>,
-    keys: Vec<(Vec<u8>, f64)>,
-    cg: Vec<CGroup<'g>>,
+    /// Miss factors and coupled groups from sources outside the chains.
+    base: ChainFactors,
+    chains: Vec<ChainProgress>,
+    /// One class index per relevant chain position, and that collapsed state's probability.
+    states: Vec<(Vec<u8>, f64)>,
+    groups: Vec<CoupledGroup<'g>>,
 }
-/// A coupled group's targets and outcomes (chance, rewards), the rest (nothing) last when above 1e-15
-type CGroup<'g> = (Vec<usize>, Vec<(f64, &'g [(usize, u8)])>);
+/// Cumulative factors after a chain prefix, or from all sources outside the chains.
+struct ChainFactors {
+    no_gold: Vec<f64>,
+    no_hint: Vec<f64>,
+    coupled: Vec<usize>,
+}
+/// A chain position whose progress can change target factors. Progress before the next source-bearing link shares a class.
+struct ChainProgress {
+    position: usize,
+    levels: Vec<ChainFactors>,
+    class_of_progress: Vec<u8>,
+}
+/// A coupled group's ascending target indices and outcomes. The implicit no-reward outcome is last if above 1e-15.
+struct CoupledGroup<'g> {
+    targets: Vec<usize>,
+    outcomes: Vec<(f64, &'g [(usize, u8)])>,
+}
 pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kind)], filler: usize) -> JointPrep<'_> {
-    fn take<'g>(g: &'g Group, cg: &mut Vec<CGroup<'g>>, coupled: &mut Vec<usize>, ng: &mut [f64], nh: &mut [f64]) {
-        let gh = group_gh(g);
-        if gh.len() >= 2 {
-            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
-            let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
-            if rest > 1e-15 { v.push((rest, &[][..])); }
-            cg.push((gh.iter().map(|x| x.0).collect(), v)); coupled.push(cg.len() - 1); return;
+    fn add_group<'g>(group: &'g Group, groups: &mut Vec<CoupledGroup<'g>>, coupled: &mut Vec<usize>, no_gold: &mut [f64], no_hint: &mut [f64]) {
+        let marginals = group_gh(group);
+        if marginals.len() >= 2 {
+            let mut outcomes: Vec<(f64, &[(usize, u8)])> = group.iter().map(|(p, rewards)| (*p, &rewards[..])).collect();
+            let rest = 1.0 - group.iter().map(|outcome| outcome.0).sum::<f64>();
+            if rest > 1e-15 { outcomes.push((rest, &[][..])); }
+            groups.push(CoupledGroup { targets: marginals.iter().map(|entry| entry.0).collect(), outcomes });
+            coupled.push(groups.len() - 1);
+            return;
         }
-        for (k, pg, ph) in gh { ng[k] *= 1.0 - pg; nh[k] *= 1.0 - ph; }
+        for (k, gold, any_hint) in marginals {
+            no_gold[k] *= 1.0 - gold;
+            no_hint[k] *= 1.0 - any_hint;
+        }
     }
-    let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-    let mut bc: Vec<usize> = vec![]; let mut cg: Vec<CGroup> = vec![];
+    let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut base_coupled: Vec<usize> = vec![];
+    let mut groups: Vec<CoupledGroup> = vec![];
     for (src, _) in ents {
         let src: &Src = src.borrow();
-        for &(k, p) in &src.train { bh[k] *= 1.0 - p; }
-        for g in &src.fixed { take(g, &mut cg, &mut bc, &mut bg, &mut bh); }
+        for &(k, p) in &src.train { base_no_hint[k] *= 1.0 - p; }
+        for group in &src.fixed { add_group(group, &mut groups, &mut base_coupled, &mut base_no_gold, &mut base_no_hint); }
     }
-    let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
-    for _ in 0..filler { ch.push(((2, 2, 0), None)); }
-    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<Kind> = ch.iter().map(|x| x.0).collect();
+    let mut chain_entries: Vec<(Kind, Option<usize>)> = ents.iter().enumerate()
+        .filter(|(_, entry)| entry.1 != (0, 0, 0)).map(|(i, entry)| (entry.1, Some(i))).collect();
+    for _ in 0..filler { chain_entries.push(((2, 2, 0), None)); }
+    chain_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let kinds: Vec<Kind> = chain_entries.iter().map(|entry| entry.0).collect();
     let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
-    // per position with target sources: per links done, (cumulative miss gold, miss any, coupled groups so far)
-    let mut lv: Vec<(usize, Vec<(Vec<f64>, Vec<f64>, Vec<usize>)>, Vec<u8>)> = vec![];
-    for (pos, &(kd, e)) in ch.iter().enumerate() {
-        let Some(i) = e else { continue };
+    let mut chains: Vec<ChainProgress> = vec![];
+    for (position, &(kind, entry)) in chain_entries.iter().enumerate() {
+        let Some(i) = entry else { continue };
         let src: &Src = ents[i].0.borrow();
         if src.chains.is_empty() { continue; }
-        let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
-        let mut out = vec![(g.clone(), h.clone(), c.clone())];
-        // class of each links-done count: the first count with the same factors
-        let mut cls = vec![0u8];
-        for l in 1..=kd.1 {
+        let (mut no_gold, mut no_hint, mut coupled) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
+        let mut levels = vec![ChainFactors { no_gold: no_gold.clone(), no_hint: no_hint.clone(), coupled: coupled.clone() }];
+        let mut class_of_progress = vec![0u8];
+        for link in 1..=kind.1 {
             let mut changed = false;
-            for (cl, grp) in &src.chains { if *cl == l { take(grp, &mut cg, &mut c, &mut g, &mut h); changed = true; } }
-            if changed { out.push((g.clone(), h.clone(), c.clone())); }
-            cls.push((out.len() - 1) as u8);
+            for (group_link, group) in &src.chains {
+                if *group_link == link {
+                    add_group(group, &mut groups, &mut coupled, &mut no_gold, &mut no_hint);
+                    changed = true;
+                }
+            }
+            if changed { levels.push(ChainFactors { no_gold: no_gold.clone(), no_hint: no_hint.clone(), coupled: coupled.clone() }); }
+            class_of_progress.push((levels.len() - 1) as u8);
         }
-        if out.len() > 1 { lv.push((pos, out, cls)); }
+        if levels.len() > 1 { chains.push(ChainProgress { position, levels, class_of_progress }); }
     }
-    // collapsed states: classes of the positions in `lv`, weights summed in state order
-    let mut coll: crate::FxMap<Vec<u8>, f64> = Default::default();
+    // Preserve first-seen order separately from the map: it controls the later floating-point sums.
+    let mut collapsed: crate::FxMap<Vec<u8>, f64> = Default::default();
     let mut order: Vec<Vec<u8>> = vec![];
-    for (prog, w) in states.iter() {
-        let key: Vec<u8> = lv.iter().map(|(pos, _, cls)| cls[prog[*pos] as usize]).collect();
-        match coll.get_mut(&key) { Some(x) => *x += w, None => { coll.insert(key.clone(), *w); order.push(key); } }
+    for (progress, probability) in states.iter() {
+        let key: Vec<u8> = chains.iter().map(|chain| chain.class_of_progress[progress[chain.position] as usize]).collect();
+        match collapsed.get_mut(&key) {
+            Some(weight) => *weight += probability,
+            None => {
+                collapsed.insert(key.clone(), *probability);
+                order.push(key);
+            }
+        }
     }
-    let keys = order.into_iter().map(|k| { let w = coll[&k]; (k, w) }).collect();
-    JointPrep { bg, bh, bc, lv, keys, cg }
+    let states = order.into_iter().map(|key| { let probability = collapsed[&key]; (key, probability) }).collect();
+    JointPrep {
+        base: ChainFactors { no_gold: base_no_gold, no_hint: base_no_hint, coupled: base_coupled },
+        chains, states, groups,
+    }
 }
 /// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order; `marg`: sum `ext`'s `marg` (else
 /// left empty, every other number the same)
@@ -143,7 +176,7 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
     let (mut dist, mut acc, mut fv, mut ng, mut nh, mut coupled, mut cl_of, mut lvl) = (dist, acc, fv, ng, nh, coupled, cl_of, lvl);
     let (mut par, mut cl_ts, mut cl_gs, mut in_cl, mut ua, mut ub, mut ca, mut cb) = (par, cl_ts, cl_gs, in_cl, ua, ub, ca, cb);
     let (mut pick, mut cd, mut cm, mut pa, mut pb, mut nd) = (pick, cd, cm, pa, pb, nd);
-    let JointPrep { bg, bh, bc, lv, keys, cg } = pre;
+    let JointPrep { base, chains, states, groups } = pre;
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
     let nfix = model.n_fixed_gold as usize;
@@ -170,14 +203,14 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
     for v in [&mut ua, &mut ub, &mut ca, &mut cb] { v.clear(); v.resize(nqo, 0.0); }
     let mut alts: Vec<&[(f64, &[(usize, u8)])]> = vec![];
     pick.clear(); cd.clear(); cm.clear(); pa.clear(); pb.clear(); nd.clear();
-    for (key, w) in keys {
+    for (key, w) in states {
         let w = *w;
-        ng.copy_from_slice(bg); nh.copy_from_slice(bh);
-        coupled.clear(); coupled.extend(bc.iter().copied());
-        for (j, (_, out, _)) in lv.iter().enumerate() {
-            let (g, h, c) = &out[key[j] as usize];
-            for k in 0..nu { ng[k] *= g[k]; nh[k] *= h[k]; }
-            coupled.extend(c.iter().copied());
+        ng.copy_from_slice(&base.no_gold); nh.copy_from_slice(&base.no_hint);
+        coupled.clear(); coupled.extend(base.coupled.iter().copied());
+        for (j, chain) in chains.iter().enumerate() {
+            let factors = &chain.levels[key[j] as usize];
+            for k in 0..nu { ng[k] *= factors.no_gold[k]; nh[k] *= factors.no_hint[k]; }
+            coupled.extend(factors.coupled.iter().copied());
         }
         for (qi, &q) in qs.iter().enumerate() {
             for (o, (st, _)) in opts.iter().enumerate() {
@@ -194,13 +227,13 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
         par.clear(); par.extend(0..nu);
         fn root(p: &mut [usize], mut x: usize) -> usize { while p[x] != x { p[x] = p[p[x]]; x = p[x]; } x }
         for &g in &coupled {
-            let ts = &cg[g].0;
+            let ts = &groups[g].targets;
             for w2 in ts.windows(2) { let (a, b) = (root(&mut par, w2[0]), root(&mut par, w2[1])); if a != b { par[a.max(b)] = a.min(b); } }
         }
         cl_of.iter_mut().for_each(|x| *x = usize::MAX);
         let mut ncl = 0usize;
         for &g in &coupled {
-            let r = root(&mut par, cg[g].0[0]);
+            let r = root(&mut par, groups[g].targets[0]);
             let ci = match cl_of[r] { usize::MAX => {
                 if ncl == cl_ts.len() { cl_ts.push(vec![]); cl_gs.push(vec![]); }
                 cl_ts[ncl].clear(); cl_gs[ncl].clear(); cl_of[r] = ncl; ncl += 1; ncl - 1 } c => c };
@@ -222,7 +255,7 @@ pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep
                 for m in 0..(1usize << nu) { if m & b == 0 && d[m] != 0.0 { let x = d[m]; d[m] = x * (1.0 - f); d[m | b] += x * f; } } }
         } }
         for (ts, gs) in cl_ts[..ncl].iter().zip(&cl_gs[..ncl]) {
-            alts.clear(); alts.extend(gs.iter().map(|&g| &cg[g].1[..]));
+            alts.clear(); alts.extend(gs.iter().map(|&g| &groups[g].outcomes[..]));
             ca.fill(0.0); cb.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
             if want_sets { let nsub = 1usize << ts.len(); cd.clear(); cd.resize(nqo * nsub, 0.0); cm.clear(); cm.resize(nsub, 0); }
@@ -375,6 +408,15 @@ pub(super) fn joint_trainee_ref(model: &Model, u: usize, qs: &[f64], ents: &[(Sr
     }).collect()
 }
 
+/// Upper bound on exact P(all), per inheritance chance in `qs`, including the fixed-gold factor.
+/// Each chain card is grouped with the targets it feeds. Given N = n, the checked upper-orthant inequality lets
+/// the expectation of the product be bounded by the product of expectations over those groups. One pair of cards
+/// may form a joint group (`KeyLevel::pair_ok`); targets that would connect more cards are bounded at full progress.
+/// The proof writes each rising group factor as a positive combination of indicators {X_i >= t}; the checked
+/// inequality bounds each term, giving U = sum_n P(N = n) product_groups E[group factor | n], times the factors
+/// of targets outside those groups. Event outcomes and training hints are independent of the chain allocation.
+/// Event groups must pass `group_nuod`, since their per-target marginals replace the full outcome distribution.
+/// Returns None when either dependence check is unproven; callers must then use a different bound or score exactly.
 pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     let nu = model.uncertain.len();
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
@@ -524,7 +566,7 @@ impl LandPre {
 /// (a one-trial multinomial), and so are increasing functions of disjoint sets of them; each target's factor rises
 /// with its own indicators, so the expected product given x is at most the product of the targets' expected factors,
 /// equal without coupled groups. Hence value >= the exact P(all), equal when no group touches two targets.
-/// None when some entry has an outcome hinting two targets at once (`Src::multi`).
+/// None when some entry fails the negative-association certification (`Src::multi`, `group_assoc`).
 pub(super) fn state_value<'s>(model: &Model, u: usize, qs: &[f64], ents: &[(&'s Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     if ents.iter().any(|e| e.0.multi) { return None; }
     state_value_any(model, u, qs, ents, filler)

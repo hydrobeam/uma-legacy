@@ -8,10 +8,9 @@ use super::*;
 /// variance = mean, fits much worse). Decks with two chain cards finish both chains in 83% of such runs, 80% predicted.
 pub(super) const CHAIN_N: u32 = 21;
 pub(super) const CHAIN_P: f64 = 0.35;
-/// Chain kind of a deck entry: (chain length, link the chain stops at). A card played normally stops at its last
-/// link; a card whose chain the player ends early (a choice that ends the chain) stops sooner. While it runs, an
-/// entry is picked with weight = links it has left (length - done); once it reaches its stop it is out.
-/// A deck entry's chain kind: (chain links, link it stops after, stop risk). Stop risk: links where IT's default
+/// A deck entry's chain kind: (chain links, link it stops after, stop risk). A card played normally stops at its last
+/// link; a chosen early end stops sooner. While it runs, an entry is picked with weight = links it has left
+/// (length - done); once it reaches its stop it is out. Stop risk: links where IT's default
 /// choice ends the chain on k of n outcomes, one byte per link 1..=4 ((k << 4) | n; 0 = none), only links before the stop.
 pub(super) type Kind = (u8, u8, u32);
 pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
@@ -40,54 +39,91 @@ pub(super) fn pmf_key() -> (u32, u64) { CHAIN_EVENTS.with(|c| { let (n, p) = c.g
 /// Where an entry of stop risk `risk` (`Kind`) and planned stop `stop` stops: [(realised stop, probability)], the risky
 /// links in order then the planned stop with what is left. The one decoding of `Kind`'s risk bytes
 fn stop_alts(stop: u8, risk: u32) -> Vec<(u8, f64)> {
-    let mut v = vec![]; let mut go = 1.0f64;
-    for l in 1..stop.min(5) {
-        let b = (risk >> (8 * (l as u32 - 1))) & 0xff;
-        if b == 0 { continue; }
-        let q = (b >> 4) as f64 / (b & 15) as f64;
-        v.push((l, go * q)); go *= 1.0 - q;
+    let mut alternatives = vec![];
+    let mut surviving_probability = 1.0f64;
+    for link in 1..stop.min(5) {
+        let risk_byte = (risk >> (8 * (link as u32 - 1))) & 0xff;
+        if risk_byte == 0 { continue; }
+        let stop_probability = (risk_byte >> 4) as f64 / (risk_byte & 15) as f64;
+        alternatives.push((link, surviving_probability * stop_probability));
+        surviving_probability *= 1.0 - stop_probability;
     }
-    v.push((stop, go)); v
+    alternatives.push((stop, surviving_probability));
+    alternatives
 }
 /// The stop-risk mixture: every realisation of where the entries stop (one alternative of `stop_alts` each, the first
-/// entry's choice varying fastest), with its probability w (the product in entry order), `f(w, stops)` where w > 0
-fn for_each_realisation(kinds: &[Kind], mut f: impl FnMut(f64, &[u8])) {
-    let alts: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(_, stop, risk)| stop_alts(stop, risk)).collect();
+/// entry's choice varying fastest), with its probability w (the product in entry order), `visit(w, stops)` where w > 0.
+fn for_each_realisation(kinds: &[Kind], mut visit: impl FnMut(f64, &[u8])) {
+    let alternatives: Vec<Vec<(u8, f64)>> = kinds.iter().map(|&(_, stop, risk)| stop_alts(stop, risk)).collect();
     let n = kinds.len();
-    let mut pick = vec![0usize; n]; let mut stops = vec![0u8; n];
+    let mut choices = vec![0usize; n];
+    let mut stops = vec![0u8; n];
     loop {
-        let w: f64 = (0..n).map(|i| alts[i][pick[i]].1).product();
-        if w > 0.0 { for i in 0..n { stops[i] = alts[i][pick[i]].0; } f(w, &stops); }
+        let probability: f64 = (0..n).map(|i| alternatives[i][choices[i]].1).product();
+        if probability > 0.0 {
+            for i in 0..n { stops[i] = alternatives[i][choices[i]].0; }
+            visit(probability, &stops);
+        }
+        // Advance the mixed-radix choice vector, first entry fastest. With no entries, visit once.
         let mut i = 0;
-        while i < n { pick[i] += 1; if pick[i] < alts[i].len() { break; } pick[i] = 0; i += 1; }
+        while i < n {
+            choices[i] += 1;
+            if choices[i] < alternatives[i].len() { break; }
+            choices[i] = 0;
+            i += 1;
+        }
         if i == n { break; }
     }
 }
-/// The chain process for entries of `links` links stopping at `stops` (no risk left): its states in mixed-radix index
-/// order (entry i's progress the digit of stride prod_{j<i} (stops[j] + 1); every transition raises the index, so one
-/// pass in index order is a topological order), each state s reached with probability pi > 0 at level lvl (its events)
-/// up to `top` handed to `visit(s, lvl, gi, pi)` (gi: the state's index on the grid of strides `gs`), and below `top`
-/// stepped on: entry i takes the next event with weight its links left over their sum among the entries not stopped.
-/// The one transition rule of `chain_marginals_dense`, `chain_states` and `key_level`
+/// The chain process for entries of `links` links stopping at `stops` (no risk left). States are in mixed-radix
+/// index order: entry i's progress is the digit with stride prod_{j<i} (stops[j] + 1). Every transition raises the
+/// index, so this order is topological. `visit(progress, events, grid_index, probability)` receives reachable states
+/// up to `max_events`; `grid_strides` maps their progress to the caller's grid. Below `max_events`, an entry takes
+/// the next event with weight its links left over the sum among entries not stopped.
+/// The one transition rule of `chain_marginals_dense`, `chain_states` and `key_level`.
 #[inline(always)]
-fn chain_walk(links: &[u8], stops: &[u8], top: usize, gs: &[usize], mut visit: impl FnMut(&[u8], usize, usize, f64)) {
+fn chain_walk(links: &[u8], stops: &[u8], max_events: usize, grid_strides: &[usize], mut visit: impl FnMut(&[u8], usize, usize, f64)) {
     let n = links.len();
-    let mut stride = vec![0usize; n]; let mut nst = 1usize;
-    for i in 0..n { stride[i] = nst; nst *= stops[i] as usize + 1; }
-    let mut p = vec![0.0f64; nst]; p[0] = 1.0;
-    // (s, lvl, gi: idx's digits, their sum and its grid index, stepped as an odometer)
-    let mut s = vec![0u8; n]; let (mut lvl, mut gi) = (0usize, 0usize);
-    for idx in 0..nst {
-        let pi = p[idx];
-        if pi != 0.0 && lvl <= top {
-            visit(&s, lvl, gi, pi);
-            if lvl < top {
-                let mut wsum = 0.0f64;
-                for i in 0..n { if s[i] < stops[i] { wsum += (links[i] - s[i]) as f64; } }
-                if wsum > 0.0 { for i in 0..n { if s[i] < stops[i] { p[idx + stride[i]] += pi * (links[i] - s[i]) as f64 / wsum; } } }
+    let mut strides = vec![0usize; n];
+    let mut state_count = 1usize;
+    for i in 0..n {
+        strides[i] = state_count;
+        state_count *= stops[i] as usize + 1;
+    }
+    let mut probabilities = vec![0.0f64; state_count];
+    probabilities[0] = 1.0;
+    // Advance progress, its sum and its caller-grid index together, as an odometer.
+    let mut progress = vec![0u8; n];
+    let (mut events, mut grid_index) = (0usize, 0usize);
+    for state_index in 0..state_count {
+        let probability = probabilities[state_index];
+        if probability != 0.0 && events <= max_events {
+            visit(&progress, events, grid_index, probability);
+            if events < max_events {
+                let mut total_weight = 0.0f64;
+                for i in 0..n {
+                    if progress[i] < stops[i] { total_weight += (links[i] - progress[i]) as f64; }
+                }
+                if total_weight > 0.0 {
+                    for i in 0..n {
+                        if progress[i] < stops[i] {
+                            probabilities[state_index + strides[i]] += probability * (links[i] - progress[i]) as f64 / total_weight;
+                        }
+                    }
+                }
             }
         }
-        for i in 0..n { if s[i] < stops[i] { s[i] += 1; lvl += 1; gi += gs[i]; break; } lvl -= s[i] as usize; gi -= s[i] as usize * gs[i]; s[i] = 0; }
+        for i in 0..n {
+            if progress[i] < stops[i] {
+                progress[i] += 1;
+                events += 1;
+                grid_index += grid_strides[i];
+                break;
+            }
+            events -= progress[i] as usize;
+            grid_index -= progress[i] as usize * grid_strides[i];
+            progress[i] = 0;
+        }
     }
 }
 /// P(link k of an entry fires), k = 1..=stop, for every chain kind present, given the deck's chain kinds.
@@ -125,7 +161,7 @@ pub(super) fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
     let emax = 60usize;
-    let pois = event_pmf(emax);
+    let event_weights = event_pmf(emax);
     let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let last = emax.min(total);
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
@@ -137,7 +173,7 @@ pub(super) fn chain_marginals_dense(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     });
     let mut fired = vec![vec![0.0f64; width]; n];
     for e in 1..=last {
-        let pe = pois[e] + if e == last { 1.0 - pois[..=e].iter().sum::<f64>() } else { 0.0 };
+        let pe = event_weights[e] + if e == last { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
         let b = e * n * width;
         for i in 0..n { for k in 0..width { fired[i][k] += pe * done[b + i * width + k]; } }
     }
@@ -156,7 +192,7 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     let mut out: HashMap<Kind, Vec<f64>> = HashMap::new();
     if n == 0 { return out; }
     let emax = 60usize;
-    let pois = event_pmf(emax);
+    let event_weights = event_pmf(emax);
     let total: usize = kinds.iter().map(|&(_, stop, _)| stop as usize).sum();
     let width = kinds.iter().map(|k| k.1 as usize).max().unwrap_or(0).max(1);
     let mut fired = vec![vec![0.0f64; width]; n];      // P(entry i has >= k+1 links done), accumulated over E
@@ -174,7 +210,7 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
         let mut prev_done = vec![vec![0.0f64; width]; n];
         for (s, p) in &st { for i in 0..n { for k in 0..s[i] as usize { prev_done[i][k] += p; } } }
         // P(link done) = sum_e P(E = e) * P(done after e events); accumulate with P(E = e)
-        let pe = pois[e] + if e == emax.min(total) { 1.0 - pois[..=e].iter().sum::<f64>() } else { 0.0 };
+        let pe = event_weights[e] + if e == emax.min(total) { 1.0 - event_weights[..=e].iter().sum::<f64>() } else { 0.0 };
         for i in 0..n { for k in 0..width { fired[i][k] += pe * prev_done[i][k]; } }
     }
     for i in 0..n {
@@ -197,10 +233,10 @@ pub(super) fn chain_states(kinds: &[Kind]) -> std::rc::Rc<Vec<(Vec<u8>, f64)>> {
     let mut acc: crate::FxMap<Vec<u8>, f64> = Default::default();
     for_each_realisation(kinds, |w, stops| {
         let total: usize = stops.iter().map(|&x| x as usize).sum();
-        let pois = event_pmf(total);
+        let event_weights = event_pmf(total);
         // (a state below the last level has an entry not stopped: final with P(N = L); at it, with P(N >= L))
         chain_walk(&links, stops, total, &vec![0; n], |s, lvl, _, pi| {
-            let fin = if lvl < total { pois[lvl] } else { (1.0 - pois[..lvl].iter().sum::<f64>()).max(0.0) };
+            let fin = if lvl < total { event_weights[lvl] } else { (1.0 - event_weights[..lvl].iter().sum::<f64>()).max(0.0) };
             *acc.entry(s.to_vec()).or_insert(0.0) += w * pi * fin;
         });
     });

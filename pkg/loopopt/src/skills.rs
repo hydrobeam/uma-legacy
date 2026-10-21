@@ -130,32 +130,46 @@ impl<'a> Model<'a> {
         let n_fixed_gold = (job.targets.len() - uncertain.len()) as i32;
         // (INSP_PER_STAR at 1, 2 and 3 stars)
         let base = job.star_dist[0] * 0.03 + job.star_dist[1] * 0.06 + job.star_dist[2] * 0.09;
-        let mut opts = vec![]; let mut no_outfit = vec![]; let mut ews: Vec<Vec<Vec<f64>>> = vec![];
-        for u in &d.umas {
-            let mut cards: Vec<CardRaw> = sk.cards.get(&u.id.to_string()).cloned().unwrap_or_default();
-            let had = !cards.is_empty();
-            cards.retain(|c| !job.exclude_outfits.contains(&c.0));
-            no_outfit.push(had && cards.is_empty());
+        let mut opts = vec![];
+        let mut no_outfit = vec![];
+        let mut ews: Vec<Vec<Vec<f64>>> = vec![];
+        for uma in &d.umas {
+            let mut cards: Vec<CardRaw> = sk.cards.get(&uma.id.to_string()).cloned().unwrap_or_default();
+            let had_outfits = !cards.is_empty();
+            cards.retain(|card| !job.exclude_outfits.contains(&card.0));
+            no_outfit.push(had_outfits && cards.is_empty());
             if cards.is_empty() { cards.push(CardRaw(0, "any outfit".into(), vec![])); }
-            let mut m: Vec<(Vec<u8>, Vec<(u32, String)>)> = vec![];
-            let mut mew: Vec<Vec<f64>> = vec![];
-            for c in &cards {
-                let ew: Vec<f64> = uncertain.iter().map(|&i| {
-                    let g = job.targets[i].group;
-                    1.0 - job.trainee_hints.iter().filter(|h| (h.0 == u.id || (c.0 != 0 && h.0 == c.0)) && h.1 == g).map(|h| 1.0 - h.2).product::<f64>()
+            let mut options: Vec<(Vec<u8>, Vec<(u32, String)>)> = vec![];
+            let mut event_chances: Vec<Vec<f64>> = vec![];
+            for card in &cards {
+                let hint_chances: Vec<f64> = uncertain.iter().map(|&i| {
+                    let group = job.targets[i].group;
+                    1.0 - job.trainee_hints.iter()
+                        .filter(|hint| (hint.0 == uma.id || (card.0 != 0 && hint.0 == card.0)) && hint.1 == group)
+                        .map(|hint| 1.0 - hint.2).product::<f64>()
                 }).collect();
-                let st: Vec<u8> = uncertain.iter().map(|&i| {
-                    let g = job.targets[i].group;
-                    let mut lv = c.2.iter().filter(|(gg, _)| *gg == g).map(|(_, l)| *l).max().unwrap_or(0);
-                    for (ch, gg, l) in &job.extra { if *ch == u.id && *gg == g { lv = lv.max(*l); } }
-                    if job.targets[i].guaranteed == 1 { lv = lv.max(1); }
-                    lv
+                let coverage: Vec<u8> = uncertain.iter().map(|&i| {
+                    let group = job.targets[i].group;
+                    let mut level = card.2.iter().filter(|(candidate_group, _)| *candidate_group == group).map(|(_, hint_level)| *hint_level).max().unwrap_or(0);
+                    for (character, candidate_group, hint_level) in &job.extra {
+                        if *character == uma.id && *candidate_group == group { level = level.max(*hint_level); }
+                    }
+                    if job.targets[i].guaranteed == 1 { level = level.max(1); }
+                    level
                 }).collect();
-                if let Some(i) = (0..m.len()).find(|&i| m[i].0 == st && mew[i] == ew) { m[i].1.push((c.0, c.1.clone())); } else { m.push((st, vec![(c.0, c.1.clone())])); mew.push(ew); }
+                // Outfits are interchangeable only when both guaranteed coverage and own-event chances match.
+                // Keep their first-seen option order, which decides ties in the outfit scorers.
+                if let Some(i) = (0..options.len()).find(|&i| options[i].0 == coverage && event_chances[i] == hint_chances) {
+                    options[i].1.push((card.0, card.1.clone()));
+                } else {
+                    options.push((coverage, vec![(card.0, card.1.clone())]));
+                    event_chances.push(hint_chances);
+                }
             }
-            opts.push(m); ews.push(mew);
+            opts.push(options);
+            ews.push(event_chances);
         }
-        let sts = opts.iter().map(|m| m.iter().map(|(st, _)| st.clone()).collect()).collect();
+        let sts = opts.iter().map(|options| options.iter().map(|(coverage, _)| coverage.clone()).collect()).collect();
         Model { d, uncertain, n_fixed_gold, base, opts, no_outfit, job, sts, ews }
     }
 
@@ -371,27 +385,60 @@ impl OutfitPre {
     }
 }
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
-pub(crate) fn chart_rows(d: &Data, m: &[usize], s: &[Sched]) -> Value {
-    let n = m.len();
-    let ks: Vec<Vec<usize>> = (0..n).map(|i| { let mut k = 0; (0..NT).map(|t| { match s[i][t] { Choice::Rest => k = 0, Choice::Opt(_) => k = (k + 1).min(6) }; k }).collect() }).collect();
+pub(crate) fn chart_rows(d: &Data, members: &[usize], schedules: &[Sched]) -> Value {
+    let n = members.len();
+    let streaks: Vec<Vec<usize>> = (0..n).map(|i| {
+        let mut streak = 0;
+        (0..NT).map(|turn| {
+            match schedules[i][turn] {
+                Choice::Rest => streak = 0,
+                Choice::Opt(_) => streak = (streak + 1).min(6),
+            };
+            streak
+        }).collect()
+    }).collect();
     let mut runners: Vec<Vec<bool>> = vec![vec![false; n]; d.nr];
-    for i in 0..n { for t in 0..NT { if let Choice::Opt(o) = s[i][t] { let op = &d.umas[m[i]].opts[t][o as usize]; if op.race >= 0 { runners[op.race as usize][i] = true; } } } }
+    for i in 0..n {
+        for turn in 0..NT {
+            if let Choice::Opt(option) = schedules[i][turn] {
+                let chosen = &d.umas[members[i]].opts[turn][option as usize];
+                if chosen.race >= 0 { runners[chosen.race as usize][i] = true; }
+            }
+        }
+    }
     let mut rows: Vec<(usize, i32)> = vec![];
-    for t in 0..NT { for i in 0..n { if let Choice::Opt(o) = s[i][t] { let op = &d.umas[m[i]].opts[t][o as usize];
-        if op.race >= 0 && !rows.contains(&(t, op.race)) { rows.push((t, op.race)); } } } }
+    for turn in 0..NT {
+        for i in 0..n {
+            if let Choice::Opt(option) = schedules[i][turn] {
+                let chosen = &d.umas[members[i]].opts[turn][option as usize];
+                if chosen.race >= 0 && !rows.contains(&(turn, chosen.race)) { rows.push((turn, chosen.race)); }
+            }
+        }
+    }
     rows.sort();
-    let out: Vec<Value> = rows.iter().map(|&(t, race)| {
-        let mut cnt = 0;
-        let cells: Vec<Value> = (0..n).map(|i| match s[i][t] {
-            Choice::Opt(o) => { let op = &d.umas[m[i]].opts[t][o as usize];
-                if op.race == race { cnt += 1; let k = ks[i][t];
-                    // what costs win chance: the aptitude grades (distance + surface, out of 110) and the k-th race in a row
-                    json!({"p": (pk(d, op.bp, k) * 100.0).round(), "goal": op.goal, "apt": 110 - op.bp, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)}) } else { Value::Null } }
+    let out: Vec<Value> = rows.iter().map(|&(turn, race)| {
+        let mut runner_count = 0;
+        let cells: Vec<Value> = (0..n).map(|i| match schedules[i][turn] {
+            Choice::Opt(option) => {
+                let chosen = &d.umas[members[i]].opts[turn][option as usize];
+                if chosen.race == race {
+                    runner_count += 1;
+                    let streak = streaks[i][turn];
+                    // Win chance accounts for aptitude grades (distance + surface, out of 110) and consecutive races.
+                    json!({"p": (pk(d, chosen.bp, streak) * 100.0).round(), "goal": chosen.goal,
+                           "apt": 110 - chosen.bp, "row": streak,
+                           "pen": d.pen.get(streak.max(1) - 1).copied().unwrap_or(0)})
+                } else {
+                    Value::Null
+                }
+            }
             Choice::Rest => Value::Null,
         }).collect();
         let shared = runners[race as usize].iter().filter(|x| **x).count() >= 2;
-        let alts: Vec<String> = interchangeable(d, m, s, t, race).iter().map(|&a| chart_race_name(&d.race_names[a as usize])).collect();
-        json!({"race": row_label(d, m, s, t, race), "when": when(t), "year": t / 24, "shared": shared, "cells": cells, "runners": cnt, "alts": alts})
+        let alts: Vec<String> = interchangeable(d, members, schedules, turn, race).iter()
+            .map(|&alternative| chart_race_name(&d.race_names[alternative as usize])).collect();
+        json!({"race": row_label(d, members, schedules, turn, race), "when": when(turn), "year": turn / 24,
+               "shared": shared, "cells": cells, "runners": runner_count, "alts": alts})
     }).collect();
     Value::Array(out)
 }
