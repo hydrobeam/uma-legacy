@@ -484,6 +484,32 @@ impl<'s, 'a> Sim<'s, 'a> {
         }
         if sn > so { st.rot.latest[m] = Some(vi); }
     }
+    /// Builds a runnable career from a selected internal solver result.
+    /// The caller checks that `pick` is an object. Its required fields supply the
+    /// exact probabilities; resolving the win chances also fills the schedule cache.
+    fn cur_from_solver_pick(&mut self, pool: &Pool, pick: &Value) -> Cur {
+        let trainee = self.env.uix(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
+        let (parent_a, parent_b) = (
+            pick["parents"][0].as_u64().unwrap() as usize,
+            pick["parents"][1].as_u64().unwrap() as usize,
+        );
+        let outcome_sets: Vec<f64> = pick["outcome_sets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap())
+            .collect();
+        let win_probs = self.wins(pool, trainee, parent_a, parent_b);
+        Cur {
+            t: trainee,
+            a: parent_a,
+            b: parent_b,
+            p: pick["p_all"].as_f64().unwrap(),
+            os: outcome_sets,
+            wp: win_probs,
+            rot: false,
+        }
+    }
     /// the in-process career search's pick (greedy_exact: the best career by P(all))
     fn exact_cur(&mut self, st: &St) -> Cur {
         let mut job = self.job.clone();
@@ -494,11 +520,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         let out = run_career(self.d, self.sk, self.cr, &job);
         let pick = out["results"][0].clone();
         assert!(pick.is_object(), "solver gave no pick: {}", out.to_string().chars().take(300).collect::<String>());
-        let t = self.env.uix(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
-        let (a, b) = (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
-        let os: Vec<f64> = pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
-        let wp = self.wins(&st.pool, t, a, b);
-        Cur { t, a, b, p: pick["p_all"].as_f64().unwrap(), os, wp, rot: false }
+        self.cur_from_solver_pick(&st.pool, &pick)
     }
     /// `index`: the page's plan for this pool (the career job with the pool as legacies, no places, the page's `top`,
     /// `next`, `no_reports`: the plan job the page sends, docs/SOLVER.md "Next career"), in process; its `choice` runs.
@@ -520,11 +542,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                 *ix.2.entry(c["role"].as_str().unwrap_or("?").to_string()).or_default() += 1;
                 if c["best_odds"].as_bool() == Some(true) { ix.3 += 1; }
             } });
-        let t = self.env.uix(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
-        let (a, b) = (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
-        let os: Vec<f64> = pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
-        let wp = self.wins(&st.pool, t, a, b);
-        Cur { t, a, b, p: pick["p_all"].as_f64().unwrap(), os, wp, rot: false }
+        self.cur_from_solver_pick(&st.pool, &pick)
     }
     /// the veteran a failed career leaves and her landed mask
     fn draw(&self, c: &Cur, legs: &[Legacy], keys: &Keys, t: usize) -> (Legacy, usize) {
