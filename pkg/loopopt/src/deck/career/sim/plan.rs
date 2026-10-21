@@ -9,6 +9,8 @@ use super::*;
 /// and Reroll: your veterans and her). Every career of the larger pool is one of this pool's or has her as a parent, so
 /// the best is the better of the kept one and the best with her as a parent (a search with her fixed): exact, the same
 /// value; on an exact tie the kept career stands.
+/// Each `best`/`looped` entry has three states: None = not searched; Some(None) = the search returned no career;
+/// Some(Some(found)) = a career was found. Search completeness is separate, in `unp`/`lunp`.
 pub(in super::super) struct Bests { key: (u64, u64), best: Vec<Option<Option<Found>>>, refs: Vec<Vec<Vec<Ref>>>,
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
     /// only when she is an 8/8)
@@ -345,10 +347,16 @@ pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: 
     /// per candidate, the trios' sides: (a real 8/8 veteran of hers, the legacy): her real 8/8s and the 8/8 her best career
     /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
     pub(super) sides: &'b [Vec<(bool, Legacy)>], pub(super) all: &'b [usize] }
-/// What a `score_career` caller reads: the stats alone (E[y] and the lift returned as 0.0, no y), E[y] and the lift (no
-/// stats), those and the scoring kept for a roll (`Keep`: `Scored`), or (`sc_eval`, a roll's) those and y per outcome.
-/// `Touch`: nothing; the scoring's state effects only (her schedule, the partners' `val` searches, `sc_prep`'s counters),
-/// its evaluation skipped, zeros returned (the looped rows, whose stats only `proxy_check` reads)
+/// Requested scoring outputs. Unrequested numeric results are placeholders, not measured zeroes:
+///
+/// - Stats: per-candidate lift statistics; expected saving and improvement chance are returned as 0.0.
+/// - Score: expected saving and improvement chance; no per-candidate statistics.
+/// - Keep: Score plus the prepared scoring needed to evaluate later rolls (`score_career`).
+/// - Ys: Score plus a saving for each evaluated outcome (`sc_eval`).
+/// - Touch: nothing; the preparation's side effects only (her schedule, the partners' `val` searches, `sc_prep`'s
+///   counters), its evaluation skipped, zeros returned (the looped rows, whose stats only `proxy_check` reads).
+///
+/// This selects outputs, not side effects: even Stats can search and populate the deck cache during preparation.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Want { Stats, Score, Keep, Ys, Touch }
 /// (A, B, C's step, A from a real 8/8, B from a real 8/8)

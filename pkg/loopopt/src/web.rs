@@ -15,15 +15,31 @@ thread_local! {
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Allocate an uninitialized request buffer. The host writes its bytes and later releases it with `dealloc`.
+/// Neither `call` nor `result_len` transfers ownership of this allocation.
 #[unsafe(no_mangle)]
 pub extern "C" fn alloc(len: usize) -> *mut u8 {
     let mut v = Vec::<u8>::with_capacity(len); let p = v.as_mut_ptr(); std::mem::forget(v); p
 }
+/// Release a request buffer allocated by this module.
+///
+/// # Safety
+/// `p` must be a live allocation returned by `alloc(len)` in this instance, with the same `len`.
+/// It must not have been freed, and no caller may access it after this call. A pointer returned by `call`
+/// belongs to the output buffer and must never be passed here.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) { unsafe { drop(Vec::from_raw_parts(p, 0, len)); } }
+/// Length of the latest response, to be read together with the pointer returned by `call`.
 #[unsafe(no_mangle)]
 pub extern "C" fn result_len() -> usize { OUT.with(|o| o.borrow().len()) }
 
+/// Handle a request without taking ownership of its bytes. The returned response is owned by this module;
+/// copy `result_len()` bytes before the next `call`, which may overwrite or reallocate the output buffer.
+///
+/// # Safety
+/// `p` must be non-null and valid for reading `len` initialized bytes in a single allocation, even for an empty
+/// request. The bytes must be valid UTF-8 and remain unchanged for the duration of the call. The host must not
+/// reenter `call` while it is running or modify the module-owned response buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
     let req = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p, len)) };

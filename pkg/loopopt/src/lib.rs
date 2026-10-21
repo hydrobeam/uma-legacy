@@ -36,8 +36,10 @@ use std::time::Instant;
 struct Instant;
 #[cfg(target_arch = "wasm32")]
 impl Instant { fn now() -> Self { Instant } fn elapsed(&self) -> std::time::Duration { std::time::Duration::ZERO } }
-/// FxHash (rustc's hasher): one rotate-xor-multiply per word. Only for in-process maps keyed by our own data
-/// (no untrusted keys), where SipHash's DoS resistance buys nothing. Results never depend on map iteration order.
+/// Deterministic FxHash-style hasher for solver maps and the persisted `pb_fingerprint`.
+/// Its rotate/xor/multiply algorithm and byte encoding are part of the stored table's compatibility contract;
+/// replacing it with another hasher can invalidate every table (docs/PERF.md). It is not collision-resistant.
+/// Numerical reductions must retain their explicit order rather than depend on hash-map iteration order.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Fx(u64);
 impl Fx {
@@ -617,6 +619,8 @@ fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
 #[derive(Clone)]
 struct Res { s: [Sched; 4] }
 /// The empty fourth slot of a three-member structure (members arrays are [usize; 4] with this last).
+/// Missing fourth member in the fixed-size representation of a three-uma rotation.
+/// `members` removes this sentinel before callers use the entries as indices into the uma table.
 pub(crate) const NONE: usize = usize::MAX;
 /// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
 pub(crate) fn members(f: &[usize; 4]) -> &[usize] { if f[3] == NONE { &f[..3] } else { &f[..] } }

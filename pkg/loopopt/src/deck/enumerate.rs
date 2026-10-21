@@ -8,7 +8,9 @@ impl<'a> DeckSpace<'a> {
     /// with the highest value of the single clause above `seed` (none if no deck beats it; ties: the first found).
     /// Otherwise return every deck
     /// for which some clause has c * value >= threshold, c the deck's class cap (`cap_class`, `caps`) at most rho; at
-    /// most `cap` decks (the flag says the cap was hit).
+    /// most `cap` decks. The returned flag means enumeration could not finish: the output cap was reached,
+    /// the legal-character representation overflowed, or cap-free search lacked a supported proof or exceeded
+    /// its node limit. It does not identify which condition occurred.
     pub(super) fn search(&self, model: &Model, us: &[usize], ids: &[u32], clauses: &[(Vec<(usize, f64)>, f64)], best: bool, seed: f64, rho: f64, cap: usize) -> (Vec<(f64, Sel)>, bool) {
         let nu = self.unc.len(); let size = self.dj.deck_size;
         if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) { return (vec![], false); }

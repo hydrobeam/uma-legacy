@@ -272,8 +272,8 @@ impl<'a> Model<'a> {
     /// Everything behind the metric for one loop, for the "how this loop works" view: pairwise relation points and
     /// expected shared G1 wins, then per lineage the six legacy slots (relation part, race part, affinity, proc),
     /// the per-career inheritance chance q, each target's landing chance and P(all land).
-    /// `deck` = per-uncertain-target (white, gold) deck odds; None uses the job's own deck fields.
-    /// `deck`: per member (dw, dg) deck odds, or None for the job's own deck fields.
+    /// `deck`: one (white odds, gold odds) pair of slices per member in `f` order. Each slice is indexed by
+    /// `self.uncertain`, not by every job target. None uses the job's own deck fields.
     /// `f`: the members (3 or 4); lineages as in `lins(f.len())`, a rotation's X being the trainee.
     pub(crate) fn detail(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64, deck: Option<&[(&[f64], &[f64])]>) -> Value {
         let d = self.d;
