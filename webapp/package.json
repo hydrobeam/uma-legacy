@@ -4,6 +4,9 @@
   "private": true,
   "description": "The Legacy Loop Planner web page: build scripts and dev tools",
   "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "binaryen": "^132.0.0"
   },

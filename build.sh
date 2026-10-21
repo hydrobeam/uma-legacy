@@ -4,7 +4,7 @@
 #   gametora GameTora's data files at the pinned versions (pkg/loopopt/data/gametora.json) into cache/gametora
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary, clippy (as in lint), tests
-#   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied
+#   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied; shellcheck on the scripts
 #   hooks    use the tracked git hooks (.githooks: the pre-commit formatting check); once per clone
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -64,7 +64,8 @@ step_events() {
 step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && clippy_all && { out=$(cargo test --release 2>&1); rc=$?; printf '%s\n' "$out" | grep -E "^test result|FAILED|panicked|^error"; exit $rc; }); }   # every test binary's result line, any failure, and the tests' exit status
 # clippy as ./build.sh lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
-step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check lint; (cd "$C" && cargo fmt --check && clippy_all && echo "lint: clean"); }
+step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; check lint
+  (cd "$C" && cargo fmt --check && clippy_all) && uvx --quiet --from shellcheck-py shellcheck "$R/build.sh" "$R/.githooks/pre-commit" && echo "lint: clean"; }
 step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"; }
 step_wasm() {
   MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
@@ -72,8 +73,17 @@ step_wasm() {
   (cd "$C" && RUSTC_BOOTSTRAP=1 RUSTFLAGS="-C panic=abort" cargo build --release --lib --target wasm32-unknown-unknown -Z build-std=std,panic_abort 2>&1 | tail -1)
   # -ocimfs=0: wasm-opt inlines no function for having one caller (by default it inlines any such function, whatever its
   # size, undoing #[inline(never)]): a loop split into its own function stays one, so V8 tiers it up (docs/PERF.md)
-  (cd "$W" && npx wasm-opt -ocimfs=0 -O3 $WFLAGS "$C/target/wasm32-unknown-unknown/release/loopopt.wasm" -o loopopt.opt.wasm \
-           && node example.mjs | tail -1)
+  # wasm-opt is nearly all of an unchanged rebuild (about a minute): skipped when the compiled wasm, the flags and
+  # wasm-opt's version are those of the last optimised build (webapp/.loopopt.wasm.key, untracked); the example (1.5 s,
+  # it reads the data and today's date) always runs
+  local raw="$C/target/wasm32-unknown-unknown/release/loopopt.wasm" key
+  key=$({ cat "$raw"; printf '%s|%s' "$WFLAGS" "$(node -p "require('$W/node_modules/binaryen/package.json').version")"; } | sha256sum | cut -d' ' -f1)
+  if [ -f "$W/loopopt.opt.wasm" ] && [ "$(cat "$W/.loopopt.wasm.key" 2>/dev/null)" = "$key" ]; then echo "wasm-opt: the wasm is unchanged, skipped"
+  else
+    # shellcheck disable=SC2086  # WFLAGS holds several flags: split on purpose
+    (cd "$W" && npx wasm-opt -ocimfs=0 -O3 $WFLAGS "$raw" -o loopopt.opt.wasm) && echo "$key" > "$W/.loopopt.wasm.key"
+  fi
+  (cd "$W" && node example.mjs | tail -1)
 }
 step_browsers() { step_npm; local B="$W/node_modules/playwright-core/.local-browsers"
   ls -d "$B"/chromium-* "$B"/firefox-* >/dev/null 2>&1 || (cd "$W" && npx playwright install chromium firefox); }
@@ -86,7 +96,7 @@ step_deploy() {
   if [ -n "$dirty" ] && [ -z "${DEPLOY_DIRTY:-}" ]; then echo "uncommitted changes under webapp/ pkg/; commit first (or DEPLOY_DIRTY=1)"; echo "$dirty"; exit 1; fi
   step_page
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
-     --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty=$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false))
+     --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false)")
 }
 step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check npm; [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
 step_page() { MISSING=(); need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; need "webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"; check page; step_npm; step_gametora; (cd "$W" && "${PY[@]}" build.py); }

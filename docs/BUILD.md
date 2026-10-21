@@ -26,7 +26,7 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 
 **Tools you install**
 - Rust, via rustup: `rust-toolchain.toml` pins 1.98.1 with `rust-src` and the `wasm32-unknown-unknown` target.
-- Node with npm.
+- Node 22 or newer, with npm (`engines` in `webapp/package.json`; CI reads it from there).
 - [uv](https://docs.astral.sh/uv/) (it provides Python 3.14).
 - bash, git; tar with zstd for `runners` only.
 
@@ -81,10 +81,10 @@ it is before it stops; the `art` step instead says what it skipped.
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first. Run by `events` and `page` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
-| `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search) |
+| `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
 | `page` | `webapp/dist/` (see *The page*) |
 | `images` | game art into `webapp/img/` (see *Art*); only new ids unless `IMAGES_FORCE=1` |
 | `runners` | each uma's running mini model as a sprite strip in `webapp/img/run/` (see *Art*) |
@@ -178,6 +178,7 @@ IndexedDB.
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo clippy --target wasm32-unknown-unknown --lib -- -D warnings
+uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the repo root)
 ```
 
 - **Formatting:** `pkg/loopopt/rustfmt.toml` (stable options: 120 columns, `use_small_heuristics = "Max"`); `cargo fmt`
