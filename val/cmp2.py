@@ -39,3 +39,4 @@ for rf in sorted(glob.glob(V+sys.argv[2]+'__*.out')):
     else:
         print(name,'neither a deck nor a career output'); bad+=1
 print(f'{n} compared, {bad} value mismatches')
+sys.exit(1 if bad or not n else 0)

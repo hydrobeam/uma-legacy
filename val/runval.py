@@ -28,8 +28,10 @@ for era, j in json.load(open(os.path.join(V, 'jobs.json'))):
 times = {'': {}, 'pu': {}}
 def run(t):
     mode, name, era, jf = t; t0 = time.time()
-    out = subprocess.run([b, 'data.json', jf], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', era), capture_output=True, text=True).stdout
-    open(os.path.join(V, f'{tag}{mode}__{name}.out'), 'w').write(out)
+    result = subprocess.run([b, 'data.json', jf], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', era), capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f'{mode or "shared"} {name}: solver exited {result.returncode}\n{result.stderr}')
+    open(os.path.join(V, f'{tag}{mode}__{name}.out'), 'w').write(result.stdout)
     times[mode][name] = round(time.time() - t0, 1)
     if mode == 'pu': os.remove(jf)
 t0 = time.time()

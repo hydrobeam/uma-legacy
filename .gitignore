@@ -45,6 +45,7 @@
 !/val/
 /val/*
 !/val/runval.py
+!/val/test_validation.py
 !/val/slow.json
 !/val/cmp2.py
 !/val/jobs.json

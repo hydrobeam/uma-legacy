@@ -18,6 +18,8 @@ times = {}
 def run(dj):
     era, n = dj; t0 = time.time()
     r = subprocess.run([b, 'data.json', os.path.join(P, n + '.json')], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', era), capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f'{n}: solver exited {r.returncode}\n{r.stderr}')
     open(os.path.join(P, f'{tag}__{n}.out'), 'w').write(r.stdout)
     times[n] = round(time.time() - t0, 2)
 with ThreadPoolExecutor(par) as ex: list(ex.map(run, jobs))
@@ -46,7 +48,7 @@ def near_cap(r, c):
 bad = 0
 for d, n in jobs:
     rf, nf = os.path.join(P, f'{ref}__{n}.out'), os.path.join(P, f'{tag}__{n}.out')
-    if not os.path.exists(rf): print(f'{n}: no reference ({ref})'); continue
+    if not os.path.exists(rf): print(f'{n}: no reference ({ref})'); bad += 1; continue
     try: a, x = json.load(open(rf)), json.load(open(nf))
     except Exception as e: print(f'{n}: PARSE FAIL {e}'); bad += 1; continue
     out = []; walk(a, x, '', out)
@@ -66,3 +68,4 @@ for d, n in jobs:
     for o in out: print('   ', o)
     bad += bool(out) or bool(near)
 print(f'{len(jobs)} plan jobs, {bad} differ')
+sys.exit(1 if bad or not jobs else 0)

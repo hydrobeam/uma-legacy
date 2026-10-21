@@ -155,6 +155,8 @@ IndexedDB.
   decks, and 4 career jobs) and compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the
   three slow jobs in `val/slow.json`. When results move on purpose, check the diff and copy the new outputs over the
   references in the same commit; when every value should scale by one factor, compare with `val/cmp_ratio.py`.
+  Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
+  paths with synthetic outputs and a stub solver, without running any searches.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the nine plan jobs in
   `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py` checks that adding a veteran
   never raises the planner's estimate; `val/capaudit.py` checks the exact caps.
