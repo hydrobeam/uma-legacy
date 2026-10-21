@@ -89,6 +89,31 @@ them, timings aside, on valq, the full val and the nine plan jobs):
 - The career page saves the veterans once after the next frame instead of on every edit, and at once when the page is
   hidden or left; the job's legacies and their JSON in the run key are rebuilt only after an edit.
 
+Memory-handling fixes from three allocation audits (2026-10-21, on eaaff48; outputs byte-identical, work and prof
+counters included, timings aside, on the full val, the nine plan jobs, p16 cap-free, p16 under the `greedy` and `index`
+simulator, e2_v24_t10 and pal_UF). Native, the two binaries alternating, two runs each, the machine otherwise idle:
+
+| job | user CPU | peak RSS |
+|---|---|---|
+| e2_v24_t10 | 8.65 -> 8.15 s | 308 -> 270 MB |
+| pal_UF (2.41M decks enumerated, 89k inserted, 52,759 on the skyline) | 8.53 -> 8.06 s | 230 -> 153 MB |
+
+On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s. pal_UF's peak fell in two steps: 230 -> 175 MB with the frontier consumed into
+the skyline (its `DeckEval`s freed before `run_multi`), the per-key tables dropped after their count vector (`key_cache`
+never hit: each count vector has its own code) and no `dv` copy per kept deck; 175 -> 153 MB with the skyline's names as
+shared strings (`Name` = `Rc<str>`, serde's `rc`: written as the same strings). The rest: `dom`'s 256-byte fill per
+check and `hopeful`'s per-parent odds arrays hoisted into reused buffers; `lineage` on fixed accumulators, its chances
+into a reused buffer where the caller drops the carriers; `ranked_pairs` sorted lazily by chunks (`Ranked`, the stable
+sort's order); `score_career`'s per-leaf star chances kept until w or the targets change, `yb` and `lb` grown, never
+refilled (every entry read is written first in the same call: the reading leaf's representative is met first, has the
+same landed set and writes both), `Est`'s caches, the partners' top two by selection, `ScoreBase` borrowing; one
+working pool with entries pushed and popped (`Sim::take_pool`) for her veteran, `combos_of`, `loop_ceiling` and
+`hint_umas`; `joint_eval`'s buffers kept by `corners`; the ratio and lowest-miss tables flat (`GTab`); the job keys
+written from the job without the dropped keys (`json_without`, tested against the clone's text); one parse per page
+request and the output written into the kept buffer; the loop solver's cluster scans popped from a heap (`ByBound`, the
+stable sort's order), seeds valued before the blocks lookups, sources borrowed from the deck space, fixed memo and deck
+identity keys; `best_loop` (unreachable) removed.
+
 ## Open in the deck search (estimates)
 
 - Pruning without the assumed caps (in progress): the class caps (`EXACT_CAPS`) are assumed, and a 10-target export
@@ -238,7 +263,6 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - The page's planner against simpler policies: the simulator's `index` policy (468c861) runs it on the same draws as
   `greedy`; no comparison of useful size has been run (about 0.2-0.5 s per plan step on 10-16-veteran pools, minutes
   per run of a few hundred careers).
-- `multi.rs`'s `ents_of` still clones.
 - Cooperative cancel (a superseded plan keeps its worker and caches): a SharedArrayBuffer flag polled at the progress
   points and in `best_deck`, with no partial work stored; it needs COOP/COEP headers on the site (a deploy decision),
   terminate-and-restart kept as the fallback.

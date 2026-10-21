@@ -167,6 +167,11 @@ struct Sim<'s, 'a> {
     /// the plan only (false for every policy here): a trainee without a cached deck gets her best deck searched without
     /// a bar (so she has one from then on), instead of a search at the bar that caches nothing when it ends Bounded
     fill: bool,
+    /// a lineage's chances, reused (`lineage_into`)
+    qs: Vec<f64>,
+    /// the planner's working copy of its pool (`take_pool`), with the address, length and borrowing rule of the pool it
+    /// copies
+    wpool: Option<((usize, usize, u8), Pool)>,
 }
 /// index, this run: plan jobs run, each one's seconds, the picks' roles (`next.options[].role`), picks that were the best
 /// odds career (`best_odds`)
@@ -228,15 +233,33 @@ impl<'s, 'a> Sim<'s, 'a> {
         let star = env.sj.star_dist;
         let fastc = fastc(env);
         let fixed = env.model.fixed_factor();
-        Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main, audits: vec![], fill, mi }
+        Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main, audits: vec![], fill, mi, qs: vec![], wpool: None }
+    }
+    /// A working copy of `pool` (the planner's `Env::pool(legs)`), equal to it: the one kept by `put_pool` when it was
+    /// made from this pool (the same address, length and borrowing rule: the pool a caller passes is borrowed, so
+    /// unchanged, or, as the simulator's, only grown), else a clone. A user pushes its extra entries (`Env::pool_push`
+    /// builds an entry as `Env::pool` does, so the pool of legs and those) and pops them before `put_pool`
+    pub(super) fn take_pool(&mut self, pool: &Pool) -> Pool {
+        let id = (pool as *const Pool as usize, pool.me.len(), pool.max_bor);
+        match self.wpool.take() { Some((k, p)) if k == id => p, _ => pool.clone() }
+    }
+    /// `take_pool`'s copy back, its extra entries popped
+    pub(super) fn put_pool(&mut self, pool: &Pool, p: Pool) {
+        debug_assert_eq!(p.me.len(), pool.me.len());
+        self.wpool = Some(((pool as *const Pool as usize, pool.me.len(), pool.max_bor), p));
     }
     fn key(&self, c: &Cur) -> String { format!("{}:{},{}", self.d.umas[c.t].id, c.a, c.b) }
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
     fn tval(&self, t: usize, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
-        let x: Vec<f64> = self.env.uncv.iter().map(|&i| 1.0 - q[i]).collect();
+        // (1 - q per uncertain target, on the stack up to 32 of them)
+        let nu = self.env.uncv.len();
+        let (mut xa, xv): ([f64; 32], Vec<f64>);
+        let x: &[f64] = if nu <= 32 {
+            xa = [0.0; 32]; for (k, &i) in self.env.uncv.iter().enumerate() { xa[k] = 1.0 - q[i]; } &xa[..nu]
+        } else { xv = self.env.uncv.iter().map(|&i| 1.0 - q[i]).collect(); &xv };
         let (mut best, mut bd) = (0.0f64, usize::MAX);
         for (di, dk) in self.cache.decks[t].iter().enumerate() {
-            for tab in &dk.tab { let v = interp_in(tab, &x, buf); if bd == usize::MAX || v > best { best = v; bd = di; } }
+            for tab in &dk.tab { let v = interp_in(tab, x, buf); if bd == usize::MAX || v > best { best = v; bd = di; } }
         }
         (c * best, bd)
     }
@@ -250,8 +273,8 @@ impl<'s, 'a> Sim<'s, 'a> {
         let (mut tv, mut di) = self.tval(t, q, c, buf);
         if di == usize::MAX || rb > tv * (1.0 + self.cfg.margin) {
             self.env.set_trainee(t, q);
-            let starts: Vec<Sel> = self.cache.decks[t].iter().map(|x| x.sel.clone()).collect();
-            let sr: Vec<&Sel> = starts.iter().collect();
+            // (her cached decks borrowed: the cache and the Env are separate fields)
+            let sr: Vec<&Sel> = self.cache.decks[t].iter().map(|x| &x.sel).collect();
             self.env.work = 0;
             let mut sc = 0;
             let r = self.env.best_deck(t, c, if self.fill && di == usize::MAX { 0.0 } else { th }, &sr, &mut sc);
@@ -307,13 +330,20 @@ impl<'s, 'a> Sim<'s, 'a> {
     fn consider(&mut self, st: &mut St, t: usize, a: usize, b: usize, buf: &mut Vec<f64>) {
         let bv = self.bar(st, t);
         self.n.cands += 1;
-        let (q, _, c) = self.env.lineage(&st.pool, t, a, b);
-        let Some(ub) = self.env.ceiling(t, &q, c) else { return };
+        let mut q = std::mem::take(&mut self.qs);
+        let c = self.env.lineage_into(&st.pool, t, a, b, &mut q);
+        self.consider_at(st, t, a, b, &q, c, bv, buf);
+        self.qs = q;
+    }
+    /// `consider` at the candidate's chances q and spark scale c
+    #[allow(clippy::too_many_arguments)]
+    fn consider_at(&mut self, st: &mut St, t: usize, a: usize, b: usize, q: &[f64], c: f64, bv: f64, buf: &mut Vec<f64>) {
+        let Some(ub) = self.env.ceiling(t, q, c) else { return };
         static CHECK_UB: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *CHECK_UB.get_or_init(|| std::env::var("SIM_CHECK_UB").is_ok()) { let f = self.fast_ub(st, t, a, b); assert!((f - ub).abs() <= 1e-12 * ub, "fast_ub {f} vs ceiling {ub}"); }
         if ub * (1.0 + 1e-9) < bv { return; }
         self.n.ceil_pass += 1;
-        let Some((tv, di)) = self.deck_for(t, &q, c, ub, bv, buf) else { return };
+        let Some((tv, di)) = self.deck_for(t, q, c, ub, bv, buf) else { return };
         let pk = Pick { val: tv, t, a: a.min(b), b: a.max(b), d: di };
         if let Some(k) = self.mi.get(t).copied().flatten() { if tv > bv { st.mb[k] = Some(pk); st.cur = None; } }
         if tv > st.best.map_or(0.0, |p| p.val) { st.best = Some(pk); st.cur = None; }
@@ -366,7 +396,8 @@ impl<'s, 'a> Sim<'s, 'a> {
                 for k in 1..nb {
                     let Some(pk) = st.mb[k] else { continue };
                     let sel = self.cache.decks[pk.t][pk.d].sel.clone();
-                    let base = plan::ScoreBase { cands: &one, c1: vec![1.0], m23: &[0.0], v0: 0.0, pnow: vec![pa], cont: vec![], combos: vec![], sides: &[], all: &[] };
+                    let pw = [pa];
+                    let base = plan::ScoreBase { cands: &one, c1: &[1.0], m23: &[0.0], v0: 0.0, pnow: &pw, cont: &[], combos: &[], sides: &[], all: &[] };
                     let (_, _, _, stt) = plan::score_career_of(self, self.d, &base, &st.legs, &st.pool, pk.t, pk.a, pk.b, &sel, plan::Want::Stats, &mut buf);
                     let (pl, sp) = stt[0];
                     let (e, p1) = if pl > 0.0 { let p1 = sp / pl; (pl * (1.0 / pa - 1.0 / p1), p1) } else { (0.0, pa) };
@@ -394,7 +425,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         let prev: Vec<usize> = [1, 2].iter().filter_map(|&k| st.rot.latest[(pos + nm - k) % nm]).collect();
         let c = if prev.len() == 2 {
             let (a, b) = (prev[0].min(prev[1]), prev[0].max(prev[1]));
-            let (q, _, c) = self.env.lineage(&st.pool, t, a, b);
+            let (q, c) = self.env.lineage_q(&st.pool, t, a, b);
             let ub = self.env.ceiling(t, &q, c).unwrap_or(f64::INFINITY);
             let mut buf = vec![];
             let (_, di) = self.deck_for(t, &q, c, ub, 0.0, &mut buf).expect("loop career without a deck");
@@ -427,7 +458,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                 let other = if k == 1 { st.rot.latest[(m + nm - 1) % nm] } else { st.rot.latest[(m + 1) % nm] };
                 let Some(o) = other else { continue };
                 if o == v || st.pool.me[o].chara == st.pool.me[v].chara { continue; }
-                let (q, _, c) = s.env.lineage(&st.pool, t, v.min(o), v.max(o));
+                let (q, c) = s.env.lineage_q(&st.pool, t, v.min(o), v.max(o));
                 let ub = s.env.ceiling(t, &q, c).unwrap_or(f64::INFINITY);
                 tot += s.deck_for(t, &q, c, ub, 0.0, &mut buf).map_or(0.0, |x| x.0);
             }
@@ -443,7 +474,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     let other = if k == 1 { st.rot.latest[(m + nm - 1) % nm] } else { st.rot.latest[(m + 1) % nm] };
                     let Some(o) = other else { continue };
                     if o == v || st.pool.me[o].chara == st.pool.me[v].chara { continue; }
-                    let (q, _, c) = s.env.lineage(&st.pool, t, v.min(o), v.max(o));
+                    let (q, c) = s.env.lineage_q(&st.pool, t, v.min(o), v.max(o));
                     tot += s.exact_best(t, &q, c).0;
                 }
                 tot
@@ -639,7 +670,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                 .into_iter().filter(|x| x.0 >= self.cfg.check_frac * bv).collect();
             cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             cs.truncate(self.cfg.check_lineages);
-            if let Some(p) = st.best { if !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b)) { let (q, _, c) = self.env.lineage(&st.pool, p.t, p.a, p.b); cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b)); } }
+            if let Some(p) = st.best { if !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b)) { let (q, c) = self.env.lineage_q(&st.pool, p.t, p.a, p.b); cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b)); } }
             let mut buf = vec![];
             for (ub, t, a, b) in cs {
                 let (q, nc, c) = self.env.lineage(&st.pool, t, a, b);

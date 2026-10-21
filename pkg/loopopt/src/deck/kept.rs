@@ -167,7 +167,9 @@ impl Kept {
     /// put the dominators the last count found on `recent`
     pub(super) fn remember_found(&mut self) {
         let nd = self.nd;
-        for (bi, i) in std::mem::take(&mut self.found) {
+        // (the buffer put back after, its capacity kept for the next `count`)
+        let mut found = std::mem::take(&mut self.found);
+        for &(bi, i) in &found {
             let id = self.buckets[bi].uid[i];
             if self.ruid[..self.rlen].contains(&id) { continue; }
             let r = self.rpos;
@@ -176,15 +178,24 @@ impl Kept {
             self.ruid[r] = id;
             self.rpos = (r + 1) % RECENT; self.rlen = (self.rlen + 1).min(RECENT);
         }
+        found.clear(); self.found = found;
     }
-    pub(super) fn insert(&mut self, x: DeckEval) {
+    pub(super) fn insert(&mut self, x: DeckEval) { self.insert_at(x, None) }
+    /// `insert` with the deck's coordinates given apart (`x.dv` then left as it is: the enumeration's single-result
+    /// path, where nothing reads a kept deck's `dv` again, leaves it empty)
+    pub(super) fn insert_dv(&mut self, x: DeckEval, dv: &[f64]) { self.insert_at(x, Some(dv)) }
+    fn insert_at(&mut self, x: DeckEval, dv: Option<&[f64]>) {
         let bi = self.bucket_of(x.s);
-        let (e, q) = (sig_of(&x.dv, false), sig_of(&x.dv, true));
         let id = self.next_uid; self.next_uid += 1;
         let bk = &mut self.buckets[bi];
         let i = bk.list.len();
-        bk.index_set(i, e, q);
-        bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(&x.dv); bk.uid.push(id); bk.list.push(x);
+        {
+            let dv = dv.unwrap_or(&x.dv);
+            let (e, q) = (sig_of(dv, false), sig_of(dv, true));
+            bk.index_set(i, e, q);
+            bk.esig.push(e); bk.qsig.push(q); bk.flat.extend_from_slice(dv);
+        }
+        bk.uid.push(id); bk.list.push(x);
         self.n += 1;
     }
     /// drop kept decks that x dominates (only decks with sum <= s + slack can be), in place, keeping the order of
@@ -285,19 +296,35 @@ pub(super) fn split<D: Odds>(sky: &[D], ix: &mut [usize], nu: usize, out: &mut V
     split(sky, l, nu, out); split(sky, r, nu, out);
 }
 
-/// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode.
+/// A deck detached from the search that built it (names and ids instead of indices), for per-uma mode. Its names are
+/// shared strings (`Name`: a skyline of 50k decks repeats about a hundred distinct ones), written as plain strings
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct PDeck { pub(super) names: Vec<String>, pub(super) ids: Vec<u32>, pub(super) ends: Vec<u8>, #[serde(default)] pub(super) vars: Vec<u32>, #[serde(default)] pub(super) choices: Vec<String>, pub(super) plain_ids: Vec<u32>, pub(super) pal_names: Vec<String>, pub(super) pals: usize, pub(super) borrowed: Option<String>, pub(super) dw: Vec<f64>, pub(super) dg: Vec<f64> }
+pub(super) struct PDeck { pub(super) names: Vec<Name>, pub(super) ids: Vec<u32>, pub(super) ends: Vec<u8>, #[serde(default)] pub(super) vars: Vec<u32>, #[serde(default)] pub(super) choices: Vec<Name>, pub(super) plain_ids: Vec<u32>, pub(super) pal_names: Vec<Name>, pub(super) pals: usize, pub(super) borrowed: Option<Name>, pub(super) dw: Vec<f64>, pub(super) dg: Vec<f64> }
+/// A card or deck name shared between decks (serde's `rc`: serialised as the string)
+pub(super) type Name = std::rc::Rc<str>;
 impl PDeck {
     pub(super) fn out(&self, unc: &[u32]) -> Value {
         let odds: Vec<Value> = (0..unc.len()).map(|k| json!({"group": unc[k], "white": self.dw[k], "gold": self.dg[k]})).collect();
         json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,
                "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
     }
-    pub(super) fn blocks(&self, uma: u32, card_of: &HashMap<u32, &Card>) -> bool {
+    pub(super) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>) -> bool {
         self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).map_or(false, |c| c.blocks(uma)))
     }
+    /// the deck's identity (cards, end links, variants, plain pals) as a fixed key: at most `DECK_ID_N` cards (a deck
+    /// holds at most 6: the key codes count kinds in base 7), the unused places 0
+    pub(super) fn id(&self) -> DeckId {
+        let n = self.ids.len();
+        assert!(n <= DECK_ID_N && self.ends.len() <= DECK_ID_N && self.vars.len() <= DECK_ID_N, "a deck of more than {DECK_ID_N} cards");
+        let mut k = DeckId { n: n as u8, ne: self.ends.len() as u8, nv: self.vars.len() as u8, ids: [0; DECK_ID_N], ends: [0; DECK_ID_N], vars: [0; DECK_ID_N], plain: self.plain_ids.len() };
+        k.ids[..n].copy_from_slice(&self.ids); k.ends[..self.ends.len()].copy_from_slice(&self.ends); k.vars[..self.vars.len()].copy_from_slice(&self.vars);
+        k
+    }
 }
+/// `PDeck::id`'s key: equal exactly when the (ids, ends, vars, plain pal count) are (the lengths kept)
+pub(super) const DECK_ID_N: usize = 8;
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct DeckId { n: u8, ne: u8, nv: u8, ids: [u32; DECK_ID_N], ends: [u8; DECK_ID_N], vars: [u32; DECK_ID_N], plain: usize }
 
 /// Order for exact ties between deck entries: card order, except that one character's entries take her positions in
 /// order of rarity (highest first; stable), so an SSR wins an exact tie with her own R card ([Planned Perfection] over

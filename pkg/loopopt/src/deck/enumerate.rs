@@ -65,7 +65,7 @@ impl<'a> DeckSpace<'a> {
         let mut over = false;
         let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, rnew: f64, rcv: Vec<f64> }
+        struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<GTab>, rpk: std::rc::Rc<GTab>, rnew: f64, rcv: Vec<f64> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // (the cap-free band's ratio bound, `cf_ub`) per outfit of the trainee, its zero-base targets (factor 0 with no
         // hint: their ratios would be infinite, so they take the per-target bound), and per group of `groups_all`, level
@@ -195,11 +195,14 @@ impl<'a> DeckSpace<'a> {
             let mut v = vec![1.0f64; nu + 1]; for t in 0..nu { v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * nu + t] } else { v[t] }; } v }).collect();
         // per kind group in `gneed` (the others are never read: empty) and column, the products of its entries' r best
         // ratios (the first `size` of their stable descending sort, `top_desc`), r = 0..=size
-        let rpk_of = |mw: &[f64], mg: &[f64], tmk: &[u32], gneed: u64| -> Vec<Vec<Vec<f64>>> {
+        // (a `GTab`: per group, column c's products at c (size + 1); `top`, the columns' best ratios, reused)
+        let rtop: std::cell::RefCell<Vec<Vec<f64>>> = std::cell::RefCell::new((0..nc).map(|_| Vec::with_capacity(size)).collect());
+        let rpk_of = |mw: &[f64], mg: &[f64], tmk: &[u32], gneed: u64| -> GTab {
             let (mut x, mut y) = ([0.0f64; 32], [0.0f64; 32]);
-            let mut top: Vec<Vec<f64>> = (0..nc).map(|_| Vec::with_capacity(size)).collect();
-            groups_all.iter().enumerate().map(|(gi, l)| {
-                if gneed >> gi & 1 == 0 { return vec![]; }
+            let mut top = rtop.borrow_mut();
+            let mut tab = GTab::new(groups_all.len(), gneed, nc * (size + 1));
+            for (gi, l) in groups_all.iter().enumerate() {
+                if gneed >> gi & 1 == 0 { continue; }
                 top.iter_mut().for_each(|b| b.clear());
                 for &j in l.iter() {
                     let tm = tmk[j];
@@ -218,19 +221,19 @@ impl<'a> DeckSpace<'a> {
                         top_desc(&mut top[c], size, r);
                     }
                 }
-                top.iter().map(|r| {
-                    let mut pre = vec![1.0f64; size + 1];
+                let blk = tab.grp_mut(gi);
+                for (r, pre) in top.iter().zip(blk.chunks_exact_mut(size + 1)) {
                     for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
-                    pre
-                }).collect()
-            }).collect() };
+                }
+            }
+            tab };
         // A configuration's per-target bound (groups `gs`, the key's tables `gm`): each target's odds at the product of
         // its groups' lowest misses, from the last group down (row 0 of the suffix table the DFS builds, the same products
         // in the same order). The eager and the lazy build both take it
-        let cfg_odds = |gs: &[(usize, usize)], gm: &[Vec<(Vec<f64>, Vec<f64>)>], dw: &mut [f64], dg: &mut [f64]| {
+        let cfg_odds = |gs: &[(usize, usize)], gm: &GTab, dw: &mut [f64], dg: &mut [f64]| {
             for t in 0..nu {
                 let (mut a, mut b) = (1.0f64, 1.0f64);
-                for g in (0..gs.len()).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
+                for g in (0..gs.len()).rev() { let gb = gm.grp(gs[g].0); a *= gm_w(gb, nu, gs[g].1)[t]; b *= gm_g(gb, nu, gs[g].1)[t]; }
                 dw[t] = 1.0 - a; dg[t] = 1.0 - b;
             }
         };
@@ -240,9 +243,9 @@ impl<'a> DeckSpace<'a> {
         // order (`root`, as before: the order decides which of two tied decks is found first) and the stop; the split's
         // (`rnew`) skips. Without the split the ratios were all infinite, so B was 0 * inf (NaN, which `min` ignores)
         // or, with no card to place, 0 * 1
-        let cfg_root = |gs: &[(usize, usize)], rpk: &[Vec<Vec<f64>>], dw: &[f64], dg: &[f64], sp0: &mut [f64], cv: &mut [f64], cvo: &mut [f64]| {
+        let cfg_root = |gs: &[(usize, usize)], rpk: &GTab, dw: &[f64], dg: &[f64], sp0: &mut [f64], cv: &mut [f64], cvo: &mut [f64]| {
             let ng = gs.len();
-            for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
+            for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk.grp(gs[g].0)[i * (size + 1) + gs[g].1]; } sp0[i] = x; }
             cv.iter_mut().for_each(|x| *x = 0.0); cvo.iter_mut().for_each(|x| *x = 0.0);
             for &(ci, i, no) in &og {
                 let q = oq[i].2; let (mut m, mut mo) = (0.0f64, 0.0f64);
@@ -262,7 +265,7 @@ impl<'a> DeckSpace<'a> {
         // (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
         // the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
         // `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
-        struct Pend { u: f64, key: usize, code: u64, real22: usize, np: usize, filler: usize, plain: usize, gneed: u64, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> }
+        struct Pend { u: f64, key: usize, code: u64, real22: usize, np: usize, filler: usize, plain: usize, gneed: u64, gs: Vec<(usize, usize)>, gm: std::rc::Rc<GTab> }
         let mut pend: Vec<Pend> = vec![];
         // The key bound (`keyskip`; in the product search only with a bar): a key none of whose configurations (its
         // variants: real (2, 2) and pal entries 0 ..= their most) can pass the per-target bound is skipped whole, which
@@ -276,7 +279,7 @@ impl<'a> DeckSpace<'a> {
         let keyskip = valid && !cfm && (!best || bestv > f64::NEG_INFINITY);
         let key_slack = |cl: &(Vec<(usize, f64)>, f64)| 1e-11 * cl.0.len() as f64 * fixed.max(1.0);
         let (mut kdw, mut kdg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
-        let mut pkeys: Vec<Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>>> = vec![];
+        let mut pkeys: Vec<Option<std::rc::Rc<GTab>>> = vec![];
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
             if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) { continue; }
@@ -296,14 +299,14 @@ impl<'a> DeckSpace<'a> {
             // at odds above every variant's fails with room for rounding (`key_slack`)
             if keyskip {
                 let (r22, npm) = (cnt[ki22].min(by_kind[ki22].len()), (size - csum).min(pal_ents.len()));
-                let lo = |i: usize, c: usize, t: usize| -> (f64, f64) { (0..=c).fold((f64::INFINITY, f64::INFINITY), |m, x| (m.0.min(gm[i][x].0[t]), m.1.min(gm[i][x].1[t]))) };
+                let lo = |i: usize, c: usize, t: usize| -> (f64, f64) { let gb = gm.grp(i); (0..=c).fold((f64::INFINITY, f64::INFINITY), |m, x| (m.0.min(gm_w(gb, nu, x)[t]), m.1.min(gm_g(gb, nu, x)[t]))) };
                 for t in 0..nu {
                     let (mut a, mut b) = (1.0f64, 1.0f64);
                     if npm > 0 { let x = lo(nk, npm, t); a *= x.0; b *= x.1; }
                     for i in (0..nk).rev() {
                         let c = if i == ki22 { r22 } else { cnt[i] };
                         if c == 0 { continue; }
-                        let x = if i == ki22 { lo(i, c, t) } else { (gm[i][c].0[t], gm[i][c].1[t]) };
+                        let x = if i == ki22 { lo(i, c, t) } else { let gb = gm.grp(i); (gm_w(gb, nu, c)[t], gm_g(gb, nu, c)[t]) };
                         a *= x.0; b *= x.1;
                     }
                     kdw[t] = 1.0 - a; kdg[t] = 1.0 - b;
@@ -315,7 +318,7 @@ impl<'a> DeckSpace<'a> {
             }
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
-            let mut rpk: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = None;
+            let mut rpk: Option<std::rc::Rc<GTab>> = None;
             for real22 in 0..=cnt[ki22].min(by_kind[ki22].len()) {
                 let filler = cnt[ki22] - real22;
                 let rem = size - csum;
@@ -424,6 +427,8 @@ impl<'a> DeckSpace<'a> {
         let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
         // (and for B: their odds 1 - pw, 1 - pg, and one row's factors with the touched ones in place)
         let (mut bdw, mut bdg, mut brow) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
+        // (a parent's odds for its A factors, the first nu slots written before each use)
+        let (mut bw, mut bg) = ([0.0f64; 32], [0.0f64; 32]);
         // the per-parent rows need every outfit row to read the nu targets
         let a_rows = orow.iter().all(|o| o.len() == nu);
         let oqq: Vec<f64> = oq.iter().map(|x| x.2).collect();
@@ -467,17 +472,18 @@ impl<'a> DeckSpace<'a> {
             let (filler, plain) = (cf.filler, cf.plain);
             let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| (&groups_all[i][..], c)).collect();
             // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
-            let gmin: Vec<&Vec<(Vec<f64>, Vec<f64>)>> = cf.gs.iter().map(|&(i, _)| &cf.gm[i]).collect();
-            let rp: Vec<&Vec<Vec<f64>>> = cf.gs.iter().map(|&(i, _)| &cf.rpk[i]).collect();
+            // (blocks: gmin[g]'s row r by `gm_w`, `gm_g`; rp[g]'s column ix at ix (size + 1))
+            let gmin: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.gm.grp(i)).collect();
+            let rp: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.rpk.grp(i)).collect();
             // the same products in the same order as the per-configuration tables they replace
             {
                 let ng = cf.gs.len();
                 sufw.clear(); sufw.resize((ng + 1) * nu, 1.0); sufg.clear(); sufg.resize((ng + 1) * nu, 1.0);
                 spf.clear(); spf.resize((ng + 1) * nc, 1.0);
-                for g in (0..ng).rev() { let gmg = &cf.gm[cf.gs[g].0][cf.gs[g].1];
-                    for t in 0..nu { sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gmg.0[t]; sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gmg.1[t]; } }
-                for g in (0..ng).rev() { let rpg = &cf.rpk[cf.gs[g].0];
-                    for i in 0..nc { spf[g * nc + i] = spf[(g + 1) * nc + i] * rpg[i][cf.gs[g].1]; } }
+                for g in (0..ng).rev() { let (gw, gg) = (gm_w(gmin[g], nu, cf.gs[g].1), gm_g(gmin[g], nu, cf.gs[g].1));
+                    for t in 0..nu { sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gw[t]; sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gg[t]; } }
+                for g in (0..ng).rev() { let rpg = rp[g];
+                    for i in 0..nc { spf[g * nc + i] = spf[(g + 1) * nc + i] * rpg[i * (size + 1) + cf.gs[g].1]; } }
             }
             let (sufw, sufg, spf) = (&sufw[..], &sufg[..], &spf[..]);
             // the dominance tables of this configuration's groups (`dom_table`), and per flat index f (the groups' entries
@@ -495,7 +501,10 @@ impl<'a> DeckSpace<'a> {
             // and takes B's place in the pick order (a sibling, or no pick of g after A touching B's targets) gives every
             // deck through B whose picks after B take no card of A's character an equal or better deck before it; when
             // nothing of A's character can follow, that is every deck through B, else those decks must take one
-            let dom = |g: usize, p: usize, start: usize, left: usize, chm: u128, ppg: &[f64], sel: &[usize], need: u128| -> Option<u128> {
+            // (per target, ppg * rlo, the same for every dominator: computed at its first use in a call, `prm`'s bit t
+            // set; the slots are reused across calls, never read unset)
+            let mut dpr = [0.0f64; 32];
+            let mut dom = |g: usize, p: usize, start: usize, left: usize, chm: u128, ppg: &[f64], sel: &[usize], need: u128| -> Option<u128> {
                 if !dom_on { return Some(need); }
                 let l = gs[g].0; let bj = l[p]; let f = doff[g] + p;
                 let mut nd = need;
@@ -503,8 +512,7 @@ impl<'a> DeckSpace<'a> {
                 if !dl.is_empty() {
                     // (the deck's picks in group g so far, all at positions below `start`)
                     let sg = &sel[sel.len() - (gs[g].1 - left)..];
-                    // (per target, ppg * rlo, the same for every dominator: computed at its first use)
-                    let (mut pr, mut prm) = ([0.0f64; 32], 0u32);
+                    let (pr, mut prm) = (&mut dpr, 0u32);
                     for &(a, sm) in dl.iter() {
                         let a = a as usize;
                         let aj = l[a];
@@ -513,7 +521,7 @@ impl<'a> DeckSpace<'a> {
                         if sm != 0 {
                             let mut ok = true; let mut m = sm;
                             while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1;
-                                if prm >> t & 1 == 0 { let rlo = gmin[g][left - 1].1[t] * sufg[(g + 1) * nu + t]; pr[t] = ppg[t] * rlo; prm |= 1 << t; }
+                                if prm >> t & 1 == 0 { let rlo = gm_g(gmin[g], nu, left - 1)[t] * sufg[(g + 1) * nu + t]; pr[t] = ppg[t] * rlo; prm |= 1 << t; }
                                 if !(pr[t] * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) { ok = false; break; } }
                             if !ok { continue; }
                         }
@@ -991,7 +999,7 @@ impl<'a> DeckSpace<'a> {
                             if !kab_have[row] {
                                 kab_have[row] = true;
                                 for t in 0..nu {
-                                    let (a, b) = if !one_b { (gmin[g][left].0[t] * sufw[(g + 1) * nu + t], gmin[g][left].1[t] * sufg[(g + 1) * nu + t]) }
+                                    let (a, b) = if !one_b { (gm_w(gmin[g], nu, left)[t] * sufw[(g + 1) * nu + t], gm_g(gmin[g], nu, left)[t] * sufg[(g + 1) * nu + t]) }
                                         else if can { let gb = &gbs[g];
                                             ((gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]), (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t])) }
                                         else { (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t]) };
@@ -1012,7 +1020,6 @@ impl<'a> DeckSpace<'a> {
                                 let c = &mut hc[dep * 2 + (one_b && can) as usize];
                                 if c.pid != pid {
                                     c.pid = pid;
-                                    let (mut bw, mut bg) = ([0.0f64; 32], [0.0f64; 32]);
                                     for t in 0..nu { bw[t] = 1.0 - ppw[t] * ka[t]; bg[t] = 1.0 - ppg[t] * kb[t]; }
                                     for ix in 0..noq { orow[ix].factors(oqq[ix], &bw[..nu], &bg[..nu], &mut c.fa[ix * nu..(ix + 1) * nu]); }
                                     for (row, pr) in c.fa.chunks_exact(nu).zip(c.pp.chunks_exact_mut(nu + 1)) { for t in 0..nu { pr[t + 1] = pr[t] * row[t]; } }
@@ -1053,7 +1060,7 @@ impl<'a> DeckSpace<'a> {
                         if row != usize::MAX && !kr_have[row] {
                             kr_have[row] = true;
                             for ix in 0..nc {
-                                kr[row * nc + ix] = if !one_b { rp[g][ix][left] * spf[(g + 1) * nc + ix] }
+                                kr[row * nc + ix] = if !one_b { rp[g][ix * (size + 1) + left] * spf[(g + 1) * nc + ix] }
                                     else if can { (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix]) }
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
                             }
@@ -1142,7 +1149,7 @@ impl<'a> DeckSpace<'a> {
                     fn rec(sp: &DeckSpace, gs: &[(&[usize], usize)], g: usize, start: usize, left: usize, chm: u128, nb: usize, have: u8, cmk: u64, lk: (&[u8], u8, &[Vec<u8>]), st: &mut St, ebit: &[u128],
                            mw: &[f64], mg: &[f64], tmk: &[u32], nu: usize, hopeful: &mut dyn FnMut(usize, usize, &[f64], &[f64], f64, usize, &[f64], &[f64], usize, usize, u32, u64, usize) -> bool,
                            leaf: &mut dyn FnMut(&[usize], &[f64], &[f64], u64) -> bool, bestv: &dyn Fn() -> f64, sbx: &mut dyn FnMut(&[usize]) -> bool,
-                           dom: &dyn Fn(usize, usize, usize, usize, u128, &[f64], &[usize], u128) -> Option<u128>, need: u128) -> bool {
+                           dom: &mut dyn FnMut(usize, usize, usize, usize, u128, &[f64], &[usize], u128) -> Option<u128>, need: u128) -> bool {
                         let (lbit, all_locked, avail) = lk;
                         if left == 0 {
                             if g + 1 >= gs.len() { if need & !chm != 0 { return false; } let b = st.sel.len() * nu; return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk); }
@@ -1264,7 +1271,7 @@ impl<'a> DeckSpace<'a> {
                     };
                     let bget = || bcell.get();
                     let stop = if gs.is_empty() { leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu], 0) }
-                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx, &dom, 0) };
+                        else { rec(self, &gs, 0, 0, gs[0].1, 0, 0, 0, 0, (lbit, all_locked, &avail), &mut st, ebit, mw, mg, tmk, nu, &mut hopeful, &mut leaf, &bget, &mut sbx, &mut dom, 0) };
                     pid_next = st.pid;
                     avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();

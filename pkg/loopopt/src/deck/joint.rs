@@ -122,8 +122,26 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
 }
 /// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order; `marg`: sum `ext`'s `marg` (else
 /// left empty, every other number the same)
-pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, marg: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
+pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, marg: bool, ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
+    joint_eval_in(model, u, qs, pre, n_targets, m1, marg, ext, &mut JointScratch::default())
+}
+/// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`Env::corners`): each call sets every
+/// one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets' inner
+/// buffers are cleared where first used, as fresh ones are), so only their capacity carries over
+#[derive(Default)]
+pub(super) struct JointScratch {
+    dist: Vec<Vec<f64>>, acc: Vec<(f64, f64)>, fv: Vec<[f64; 3]>, ng: Vec<f64>, nh: Vec<f64>, coupled: Vec<usize>, cl_of: Vec<usize>, lvl: Vec<u8>,
+    par: Vec<usize>, cl_ts: Vec<Vec<usize>>, cl_gs: Vec<Vec<usize>>, in_cl: Vec<bool>, ua: Vec<f64>, ub: Vec<f64>, ca: Vec<f64>, cb: Vec<f64>,
+    pick: Vec<usize>, cd: Vec<f64>, cm: Vec<usize>, pa: Vec<(usize, f64)>, pb: Vec<(usize, f64)>, nd: Vec<f64>,
+}
+/// `joint_eval` with its buffers from `sx`
+#[allow(clippy::too_many_arguments)]
+pub(super) fn joint_eval_in(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, marg: bool, mut ext: Option<&mut JointExt>, sx: &mut JointScratch) -> Vec<(f64, f64, usize)> {
     let nu = model.uncertain.len();
+    let JointScratch { dist, acc, fv, ng, nh, coupled, cl_of, lvl, par, cl_ts, cl_gs, in_cl, ua, ub, ca, cb, pick, cd, cm, pa, pb, nd } = std::mem::take(sx);
+    let (mut dist, mut acc, mut fv, mut ng, mut nh, mut coupled, mut cl_of, mut lvl) = (dist, acc, fv, ng, nh, coupled, cl_of, lvl);
+    let (mut par, mut cl_ts, mut cl_gs, mut in_cl, mut ua, mut ub, mut ca, mut cb) = (par, cl_ts, cl_gs, in_cl, ua, ub, ca, cb);
+    let (mut pick, mut cd, mut cm, mut pa, mut pb, mut nd) = (pick, cd, cm, pa, pb, nd);
     let JointPrep { bg, bh, bc, lv, keys, cg } = pre;
     let opts = &model.opts[u];
     let no = opts.len(); let nq = qs.len();
@@ -133,28 +151,24 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
     if let Some(x) = ext.as_deref_mut() { if marg { x.marg = vec![0.0; nq * no * nu]; } if want_sets { x.sets = vec![0.0; nq * no << nu]; } }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
     let su1 = ext.as_ref().map_or(true, |x| x.su.iter().all(|&s| s == 1.0));
-    let mut dist: Vec<Vec<f64>> = if want_sets { vec![vec![]; nq * no] } else { vec![] };
-    let mut acc = vec![(0.0f64, 0.0f64); nq * no];
+    dist.resize(if want_sets { nq * no } else { 0 }, vec![]);
+    acc.clear(); acc.resize(nq * no, (0.0f64, 0.0f64));
     // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
     let nqo = nq * no;
-    let mut fv = vec![[0.0f64; 3]; nqo * nu];
-    let (mut ng, mut nh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-    let mut coupled: Vec<usize> = vec![];
-    let mut cl_of = vec![usize::MAX; nu];
-    let mut lvl = vec![0u8; nu];
+    fv.clear(); fv.resize(nqo * nu, [0.0f64; 3]);
+    ng.clear(); ng.resize(nu, 1.0); nh.clear(); nh.resize(nu, 1.0);
+    coupled.clear();
+    cl_of.clear(); cl_of.resize(nu, usize::MAX);
+    lvl.clear(); lvl.resize(nu, 0);
     // per chain state's buffers, reused (each written before it is read): the union-find, the clusters (targets, groups;
     // the first ncl in use), the per-unit products, per cluster its groups' outcomes and the pick of each, and with
     // `want_sets` its subset distribution per (chance, outfit) (dense: entry j of each holds the mask cm[j]; every combo
     // writes every subset, in the same order), the subsets of one combo (pa, pb) and the next landed-set rows (nd)
-    let mut par: Vec<usize> = Vec::with_capacity(nu);
-    let (mut cl_ts, mut cl_gs): (Vec<Vec<usize>>, Vec<Vec<usize>>) = (vec![], vec![]);
-    let mut in_cl = vec![false; nu];
-    let (mut ua, mut ub, mut ca, mut cb) = (vec![0.0f64; nqo], vec![0.0f64; nqo], vec![0.0f64; nqo], vec![0.0f64; nqo]);
+    par.clear();
+    in_cl.clear(); in_cl.resize(nu, false);
+    for v in [&mut ua, &mut ub, &mut ca, &mut cb] { v.clear(); v.resize(nqo, 0.0); }
     let mut alts: Vec<&[(f64, &[(usize, u8)])]> = vec![];
-    let mut pick: Vec<usize> = vec![];
-    let (mut cd, mut cm): (Vec<f64>, Vec<usize>) = (vec![], vec![]);
-    let (mut pa, mut pb): (Vec<(usize, f64)>, Vec<(usize, f64)>) = (vec![], vec![]);
-    let mut nd: Vec<f64> = vec![];
+    pick.clear(); cd.clear(); cm.clear(); pa.clear(); pb.clear(); nd.clear();
     for (key, w) in keys {
         let w = *w;
         ng.copy_from_slice(bg); nh.copy_from_slice(bh);
@@ -251,12 +265,14 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
             if want_sets { if let Some(x) = ext.as_deref_mut() { for (m, &p) in dist[i].iter().enumerate() { x.sets[(i << nu) + m] += w * p; } } }
         }
     }
-    if let Some(x) = ext.as_deref_mut() { x.per_outfit = acc.iter().map(|a| a.0).collect(); }
-    (0..nq).map(|qi| {
+    if let Some(x) = ext.as_deref_mut() { x.per_outfit.clear(); x.per_outfit.extend(acc.iter().map(|a| a.0)); }
+    let r = (0..nq).map(|qi| {
         let mut b = 0;
         for o in 1..no { if acc[qi * no + o].0 > acc[qi * no + b].0 { b = o; } }
         (acc[qi * no + b].0, acc[qi * no + b].1, b)
-    }).collect()
+    }).collect();
+    *sx = JointScratch { dist, acc, fv, ng, nh, coupled, cl_of, lvl, par, cl_ts, cl_gs, in_cl, ua, ub, ca, cb, pick, cd, cm, pa, pb, nd };
+    r
 }
 
 /// Reference form of `joint_trainee`: every chain state, every combination of coupled outcomes. `JOINT_CHECK=1` runs

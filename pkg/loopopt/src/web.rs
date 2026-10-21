@@ -27,20 +27,32 @@ pub extern "C" fn result_len() -> usize { OUT.with(|o| o.borrow().len()) }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
     let req = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p, len)) };
-    let out = handle(req).to_string();
-    OUT.with(|o| { *o.borrow_mut() = out.into_bytes(); o.borrow().as_ptr() })
+    let out = handle(req);
+    // (written into the last call's buffer: `Value`'s `Display` is this compact serializer, the same bytes)
+    OUT.with(|o| { let mut b = o.borrow_mut(); b.clear(); serde_json::to_writer(&mut *b, &out).unwrap(); b.as_ptr() })
 }
 
 /// The init request, parsed straight into the solver's input types (no intermediate `Value` tree for the large
 /// data table). `cards` stays a `Value` so a card table that does not parse only disables the deck search.
 #[derive(serde::Deserialize)]
 struct InitReq { data: DataRaw, skills: SkillsRaw, #[serde(default)] cards: serde_json::Value, #[serde(default)] events: serde_json::Value }
-#[derive(serde::Deserialize)]
-struct Head { #[serde(default)] cmd: String }
 
 fn handle(req: &str) -> serde_json::Value {
-    if req.starts_with("{\"cmd\":\"init\"") || matches!(serde_json::from_str::<Head>(req), Ok(h) if h.cmd == "init") {
-        let r: InitReq = match serde_json::from_str(req) { Ok(r) => r, Err(e) => return serde_json::json!({"error": format!("bad init request: {e}")}) };
+    // the request parsed once: an init request with the page's prefix straight into `InitReq`, every other one into a
+    // `Value` (an init request without the prefix then from it; on an error the text is parsed again for the message)
+    let init = |r: Result<InitReq, serde_json::Error>| -> Result<InitReq, serde_json::Value> {
+        r.or_else(|_| serde_json::from_str::<InitReq>(req)).map_err(|e| serde_json::json!({"error": format!("bad init request: {e}")}))
+    };
+    let mut v: Option<serde_json::Value> = None;
+    let ir = if req.starts_with("{\"cmd\":\"init\"") { Some(init(serde_json::from_str(req))) } else {
+        match serde_json::from_str::<serde_json::Value>(req) {
+            Ok(x) if x.get("cmd").and_then(|c| c.as_str()) == Some("init") => Some(init(serde_json::from_value(x))),
+            Ok(x) => { v = Some(x); None }
+            Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}),
+        }
+    };
+    if let Some(r) = ir {
+        let r = match r { Ok(r) => r, Err(e) => return e };
         let d = load_raw(r.data);
         let n = d.umas.len();
         if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { let ev = super::deck::event_lists(&r.skills, &r.events); DECK.with(|x| *x.borrow_mut() = Some((cr, ev))); }
@@ -48,7 +60,7 @@ fn handle(req: &str) -> serde_json::Value {
         super::deck::forget_kept_decks();
         return serde_json::json!({"ok": true, "umas": n});
     }
-    let mut v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
+    let mut v = v.unwrap();
     let cmd = v["cmd"].as_str().unwrap_or("").to_owned();
     match cmd.as_str() {
         "deck" => STATE.with(|s| DECK.with(|dk| {

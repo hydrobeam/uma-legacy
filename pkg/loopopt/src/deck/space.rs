@@ -20,7 +20,7 @@ pub(super) struct DeckSpace<'a> {
     pub(super) kinds_all: Vec<Kind>,
     pub(super) keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)>>>,
     pub(super) red: std::cell::RefCell<crate::FxMap<Vec<usize>, (std::rc::Rc<Vec<usize>>, usize)>>,
-    pub(super) gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>>>,
+    pub(super) gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<GTab>>>,
     /// partial decks tested, over every search (the search's cost)
     pub(super) nodes: std::cell::Cell<usize>,
     /// what `search` derives from a legal entry set alone, per (set id, plain pals allowed): built once, not per call
@@ -124,19 +124,25 @@ impl<'a> DeckSpace<'a> {
         r
     }
     /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
-    pub(super) fn gm_cached(&self, u: usize, code: u64, groups: &[&Vec<usize>], need: u64, mw: &[f64], mg: &[f64], nu: usize, size: usize) -> std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> {
+    /// (a `GTab` of rows r = 0..=size, each the white then the gold products per target: `gm_w`, `gm_g`)
+    pub(super) fn gm_cached(&self, u: usize, code: u64, groups: &[&Vec<usize>], need: u64, mw: &[f64], mg: &[f64], nu: usize, size: usize) -> std::rc::Rc<GTab> {
         if let Some(r) = self.gmc.borrow().get(&(u, code)) { return r.clone(); }
         // (each target's `size` lowest, as the first `size` of the stable ascending sort: `top_asc`)
         let (mut a, mut b) = (Vec::with_capacity(size), Vec::with_capacity(size));
-        let r = std::rc::Rc::new(groups.iter().enumerate().map(|(gi, l)| {
-            if need >> gi & 1 == 0 { return vec![]; }
-            let mut pre = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
+        let mut r = GTab::new(groups.len(), need, (size + 1) * 2 * nu);
+        for (gi, l) in groups.iter().enumerate() {
+            if need >> gi & 1 == 0 { continue; }
+            let pre = r.grp_mut(gi);
             for t in 0..nu {
                 a.clear(); b.clear();
                 for &j in l.iter() { top_asc(&mut a, size, mw[j * nu + t]); top_asc(&mut b, size, mg[j * nu + t]); }
-                for r in 1..=size { pre[r].0[t] = pre[r - 1].0[t] * a.get(r - 1).copied().unwrap_or(1.0); pre[r].1[t] = pre[r - 1].1[t] * b.get(r - 1).copied().unwrap_or(1.0); }
+                for r in 1..=size {
+                    pre[r * 2 * nu + t] = pre[(r - 1) * 2 * nu + t] * a.get(r - 1).copied().unwrap_or(1.0);
+                    pre[(r * 2 + 1) * nu + t] = pre[((r - 1) * 2 + 1) * nu + t] * b.get(r - 1).copied().unwrap_or(1.0);
+                }
             }
-            pre }).collect::<Vec<_>>());
+        }
+        let r = std::rc::Rc::new(r);
         self.gmc.borrow_mut().insert((u, code), r.clone());
         r
     }
@@ -203,13 +209,13 @@ impl<'a> DeckSpace<'a> {
         }).collect();
         names.extend(lp.iter().take(x.plain).map(|p| p.1.clone()));
         for _ in 0..x.filler { names.push("(any SR without target hints)".into()); }
-        PDeck { names, ids: ci.iter().map(|&i| self.cards[i].id).collect(), ends: x.ents.iter().map(|&j| self.endk[j]).collect(),
+        PDeck { names: names.into_iter().map(Name::from).collect(), ids: ci.iter().map(|&i| self.cards[i].id).collect(), ends: x.ents.iter().map(|&j| self.endk[j]).collect(),
                 vars: x.ents.iter().map(|&j| self.vark[j]).collect(),
-                choices: x.ents.iter().map(|&j| srcb.label(self.cards[self.rel[j]], (self.endk[j] > 0).then_some(self.endk[j]), self.vark[j], self.sk)).collect(),
+                choices: x.ents.iter().map(|&j| Name::from(srcb.label(self.cards[self.rel[j]], (self.endk[j] > 0).then_some(self.endk[j]), self.vark[j], self.sk))).collect(),
                 plain_ids: lp.iter().take(x.plain).map(|p| p.0).collect(),
-                pal_names: ci.iter().filter(|&&i| self.cards[i].pal).map(|&i| self.cards[i].name.clone()).chain(lp.iter().take(x.plain).map(|p| p.1.clone())).collect(),
+                pal_names: ci.iter().filter(|&&i| self.cards[i].pal).map(|&i| Name::from(self.cards[i].name.as_str())).chain(lp.iter().take(x.plain).map(|p| Name::from(p.1.as_str()))).collect(),
                 pals: x.ents.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + x.plain,
-                borrowed: borrowed.map(|i| self.cards[i].name.clone()), dw: x.dw.clone(), dg: x.dg.clone() }
+                borrowed: borrowed.map(|i| Name::from(self.cards[i].name.as_str())), dw: x.dw.clone(), dg: x.dg.clone() }
     }
 }
 
@@ -233,6 +239,27 @@ pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, v: f64) {
     let p = buf.iter().position(|&x| x > v).unwrap_or(buf.len());
     buf.insert(p, v);
 }
+/// Per-group tables of one key in one flat buffer (`gm_cached`'s and the ratio tables of `search`): the groups in `need`
+/// each own a block of `blk` f64s (built from 1.0), in group order; a group outside it has none (reading it panics, as
+/// an empty table's read did)
+pub(super) struct GTab { slot: Vec<u32>, blk: usize, data: Vec<f64> }
+impl GTab {
+    pub(super) fn new(ngroups: usize, need: u64, blk: usize) -> GTab {
+        let mut n = 0u32;
+        let slot: Vec<u32> = (0..ngroups).map(|gi| if need >> gi & 1 == 1 { n += 1; n - 1 } else { u32::MAX }).collect();
+        GTab { slot, blk, data: vec![1.0; n as usize * blk] }
+    }
+    /// group gi's block
+    #[inline(always)]
+    pub(super) fn grp(&self, gi: usize) -> &[f64] { let s = self.slot[gi] as usize; &self.data[s * self.blk..(s + 1) * self.blk] }
+    #[inline(always)]
+    pub(super) fn grp_mut(&mut self, gi: usize) -> &mut [f64] { let s = self.slot[gi] as usize; &mut self.data[s * self.blk..(s + 1) * self.blk] }
+}
+/// `gm_cached`'s row r of a group's block: the white products per target, then the gold ones
+#[inline(always)]
+pub(super) fn gm_w(b: &[f64], nu: usize, r: usize) -> &[f64] { &b[r * 2 * nu..(r * 2 + 1) * nu] }
+#[inline(always)]
+pub(super) fn gm_g(b: &[f64], nu: usize, r: usize) -> &[f64] { &b[(r * 2 + 1) * nu..(r + 1) * 2 * nu] }
 /// `top_asc` for the stable descending sort (`sort_by(|a, b| b.partial_cmp(a).unwrap())`)
 #[inline]
 pub(super) fn top_desc(buf: &mut Vec<f64>, k: usize, v: f64) {

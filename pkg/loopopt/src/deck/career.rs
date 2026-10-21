@@ -224,6 +224,18 @@ impl Inherit {
     /// (q per target, carriers per target)
     fn finish(self) -> (Vec<f64>, Vec<i32>) { (self.miss.iter().zip(&self.mix2).map(|(&m, &x)| inherit_q(m, x)).collect(), self.nc) }
 }
+/// `Inherit` without a skipped slot, in fixed arrays (at most `LQN` job targets; `Env::lineage`'s): the same
+/// factors multiplied in the same slot order
+const LQN: usize = 16;
+struct InheritA { n: usize, miss: [f64; LQN], mix2: [f64; LQN], nc: [i32; LQN] }
+impl SlotSink<'_> for InheritA {
+    #[inline(always)]
+    fn slot(&mut self, _: usize, _: Option<usize>, w: &Who, rel: f64, race: f64) {
+        let fa = aff_factor(rel, race);
+        for k in 0..self.n { let st = w.stars[k]; if st == 0 { continue; } self.nc[k] += 1;
+            match w.mix { None => self.miss[k] *= insp_miss(st as f64, fa), Some(m) => self.mix2[k] *= mix_term(m, fa) } }
+    }
+}
 impl SlotSink<'_> for Inherit {
     #[inline(always)]
     fn slot(&mut self, x: usize, gi: Option<usize>, w: &Who, rel: f64, race: f64) {
@@ -293,6 +305,29 @@ fn shared(a: &Who, b: &Who) -> f64 {
     }
     s
 }
+/// `Env::ranked_pairs`' pairs, sorted lazily as `solve`'s candidates are: `gen_cands` emits one trainee's pairs in
+/// (a, b) order, so the stable sort by ceiling (descending, `partial_cmp`: 0 and -0 tie) is the total order (ceiling
+/// descending, a, b), unique per pair; each step past the ordered prefix `v[..upto]` selects the next chunk (everything
+/// before it orders before everything after it) and sorts only the chunk, so the sequence is the full sort's, element
+/// for element, and a caller that stops early sorts little
+pub(super) struct Ranked { v: Vec<(f64, usize, usize)>, upto: usize, i: usize }
+impl Iterator for Ranked {
+    type Item = (f64, usize, usize);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i >= self.v.len() { return None; }
+        if self.i >= self.upto {
+            let ord = |x: &(f64, usize, usize), y: &(f64, usize, usize)| y.0.partial_cmp(&x.0).unwrap().then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2));
+            let rest = &mut self.v[self.upto..];
+            // (chunks of 256, then 4x what is sorted: each selection scans the whole remainder)
+            let m = (4 * self.upto).max(256).min(rest.len());
+            if m < rest.len() { rest.select_nth_unstable_by(m - 1, ord); }
+            rest[..m].sort_unstable_by(ord);
+            self.upto += m;
+        }
+        let r = self.v[self.i]; self.i += 1;
+        Some(r)
+    }
+}
 /// Per job target: the inheritance chance and how many of the six carry the spark. A slot with random stars (`mix`)
 /// enters as the average of its squared miss factor (its stars are independent of everything else).
 fn inherit(sl: &[Slot], ntar: usize) -> (Vec<f64>, Vec<i32>) {
@@ -303,16 +338,26 @@ fn inherit(sl: &[Slot], ntar: usize) -> (Vec<f64>, Vec<i32>) {
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
 pub(super) fn setup_fp(v: &Value) -> u64 {
-    let mut key = v.clone();
-    if let Some(o) = key.as_object_mut() {
-        // (also the page's flags that change no deck value: `compare`, the plan's own fields, so the plan and compare
-        // jobs share what the search jobs proved, and `borrowed_parent`, a rule on the pairs as `fix` is)
-        for k in ["legacies", "trainees", "fix", "top", "per_trainee", "cmd", "mode", "compare", "next", "no_reports", "borrowed_parent"] { o.remove(k); }
+    // (also the page's flags that change no deck value: `compare`, the plan's own fields, so the plan and compare
+    // jobs share what the search jobs proved, and `borrowed_parent`, a rule on the pairs as `fix` is)
+    setup_hash(&json_without(v, &["legacies", "trainees", "fix", "top", "per_trainee", "cmd", "mode", "compare", "next", "no_reports", "borrowed_parent"], &[]))
+}
+/// The JSON text of `v` with its top-level keys `drop` left out, and of its `next` object's keys `next_drop`: the text of a
+/// clone with those keys removed, byte for byte, without the clone. serde_json's `Map` is a `BTreeMap` here (no
+/// `preserve_order`), so the kept keys are written in the same order, by the same serializer (`Value`'s `Display` is
+/// `to_writer`'s compact form), and an object left empty is "{}" either way
+pub(super) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]) -> String {
+    struct Strip<'a> { v: &'a Value, drop: &'a [&'a str], next_drop: &'a [&'a str] }
+    impl serde::Serialize for Strip<'_> {
+        fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            match self.v {
+                Value::Object(m) => s.collect_map(m.iter().filter(|(k, _)| !self.drop.contains(&k.as_str())).map(|(k, x)| {
+                    (k, Strip { v: x, drop: if k == "next" { self.next_drop } else { &[] }, next_drop: &[] }) })),
+                x => x.serialize(s),
+            }
+        }
     }
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    key.to_string().hash(&mut h);
-    h.finish()
+    serde_json::to_string(&Strip { v, drop, next_drop }).unwrap()
 }
 fn setup_hash(s: &str) -> u64 { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); s.hash(&mut h); h.finish() }
 thread_local! {
@@ -660,13 +705,40 @@ impl<'a> Env<'a> {
     }
     /// The inheritance chances, carriers and spark scale C of trainee t with parents a and b.
     fn lineage(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, Vec<i32>, f64) {
-        let mut acc = Inherit::new(self.ntar, None);
-        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
-        let (q, nc) = acc.finish();
-        let (su, sf) = self.scale(&nc);
-        let c = su.iter().chain(&sf).product::<f64>();
-        (q, nc, c)
+        if self.ntar > LQN {
+            let mut acc = Inherit::new(self.ntar, None);
+            self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
+            let (q, nc) = acc.finish();
+            let c = self.c_of(&nc);
+            return (q, nc, c);
+        }
+        let acc = self.lineage_acc(p, t, a, b);
+        ((0..acc.n).map(|k| inherit_q(acc.miss[k], acc.mix2[k])).collect(), acc.nc[..acc.n].to_vec(), self.c_of(&acc.nc))
     }
+    /// `lineage`'s chances and spark scale C (the same numbers), without the carriers
+    fn lineage_q(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, f64) {
+        let mut q = Vec::with_capacity(self.ntar);
+        let c = self.lineage_into(p, t, a, b, &mut q);
+        (q, c)
+    }
+    /// `lineage`'s chances into `q` (cleared first) and its spark scale C, the same numbers
+    fn lineage_into(&self, p: &Pool, t: usize, a: usize, b: usize, q: &mut Vec<f64>) -> f64 {
+        q.clear();
+        if self.ntar > LQN { let (qq, _, c) = self.lineage(p, t, a, b); q.extend_from_slice(&qq); return c; }
+        let acc = self.lineage_acc(p, t, a, b);
+        q.extend((0..acc.n).map(|k| inherit_q(acc.miss[k], acc.mix2[k])));
+        self.c_of(&acc.nc)
+    }
+    /// `inherit`'s accumulation over the six slots of trainee t with parents a and b (ntar <= LQN)
+    #[inline(always)]
+    fn lineage_acc(&self, p: &Pool, t: usize, a: usize, b: usize) -> InheritA {
+        let mut acc = InheritA { n: self.ntar, miss: [1.0; LQN], mix2: [1.0; LQN], nc: [0; LQN] };
+        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
+        acc
+    }
+    /// the spark scale C of carrier counts nc: `scale`'s factors multiplied from 1.0, uncertain targets then fixed ones
+    #[inline(always)]
+    fn c_of(&self, nc: &[i32]) -> f64 { self.uncv.iter().chain(&self.fixed_t).map(|&i| spark_scale(nc[i])).product::<f64>() }
     /// `lineage`'s spark scale C, and its inheritance chances for the targets `ks` only (into q[i] for i in ks, the
     /// other entries of q left as they are), without allocating: the same slot walk (`walk_slots`) into `inherit`'s
     /// accumulation for those targets (each slot's factors multiplied in slot order, a slot without the spark skipped)
@@ -731,10 +803,8 @@ impl<'a> Env<'a> {
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
     /// took). The model state after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
     /// it (every reader of the model state sets it first)
-    fn ranked_pairs(&mut self, p: &Pool, fix: &[usize], t: usize, keep: impl Fn(usize, usize) -> bool) -> Vec<(f64, usize, usize)> {
-        let mut v = self.gen_cands(p, fix, &[t], keep, |ub, _, _, a, b| (ub, a, b));
-        v.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-        v
+    fn ranked_pairs(&mut self, p: &Pool, fix: &[usize], t: usize, keep: impl Fn(usize, usize) -> bool) -> Ranked {
+        Ranked { v: self.gen_cands(p, fix, &[t], keep, |ub, _, _, a, b| (ub, a, b)), upto: 0, i: 0 }
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
@@ -1192,7 +1262,7 @@ impl<'a> Env<'a> {
                 let key = |x: usize, y: usize| (t as u16, x.min(y) as u16, x.max(y) as u16);
                 if [(a, b), (b, a)].iter().any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y)))) { n_bounded += 1; continue; }
             }
-            let (q, _, c) = self.lineage(p, t, a, b);
+            let (q, c) = self.lineage_q(p, t, a, b);
             // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
             // `gen_cands`' claim, checked with the model state put back)
             debug_assert!({ let ew = self.model.ews[t].clone(); let ub = self.ceiling(t, &q, c); self.model.ews[t] = ew;
@@ -1464,10 +1534,12 @@ impl<'a> Env<'a> {
         // so not summed)
         let mut q = q0.to_vec();
         let mut ext = JointExt { su, sf, marg: vec![], sets: vec![], per_outfit: vec![] };
+        // (and one set of joint_eval's buffers)
+        let mut sx = JointScratch::default();
         for c in 0..(1usize << nu) {
             for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
             set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, &q);
-            joint_eval(&self.model, t, &[0.0], &pre, ntar, false, false, Some(&mut ext));
+            joint_eval_in(&self.model, t, &[0.0], &pre, ntar, false, false, Some(&mut ext), &mut sx);
             for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
         }
         corners
@@ -1577,7 +1649,8 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     let rho_top = space.rho_top();
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
-    let memo_fp = { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); setup_fp(v).hash(&mut h); pool_ids.hash(&mut h); h.finish() };
+    let fp = setup_fp(v);
+    let memo_fp = { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); fp.hash(&mut h); pool_ids.hash(&mut h); h.finish() };
     let job = JOB_NO.with(|c| { c.set(c.get() + 1); c.get() });
     let kept = DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.iter().position(|e| e.0 == memo_fp).map(|i| c.remove(i).1) }).unwrap_or_default();
     let deck_memo = if kept.decks.len() < DECK_KEEP_CAP { kept.decks } else { Default::default() };
@@ -1601,8 +1674,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             env.cls[u] = *first.entry(k).or_insert(u);
         }
     }
-    // what earlier jobs on this setup proved (the page's worker keeps it between jobs)
-    let fp = setup_fp(v);
+    // what earlier jobs on this setup proved (the page's worker keeps it between jobs; `fp` above)
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) { if s.len() == n { env.seen = s; } }
     let keep = |env: &Env| SEEN.with(|c| {
         let mut c = c.borrow_mut(); c.retain(|e| e.0 != fp);
@@ -1625,11 +1697,12 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     env.use_seen = true;
     // the page sends a career job, then the same job with `next`: the plan job reuses that job's main search (the solver
     // worker keeps the last one; a search is deterministic for its job, so the result is the one it would compute)
-    let key_of = |v: &Value| { let mut k = v.clone(); if let Some(o) = k.as_object_mut() { o.remove("next"); o.remove("no_reports"); } setup_hash(&k.to_string()) };
+    // (the hash of the job's text without those keys; `json_without`: no clone)
+    let key_of = |drop: &[&str]| setup_hash(&json_without(v, drop, &[]));
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
     // search was kept from the job before
     let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
-    let sv = solve_kept(&mut env, key_of(v), ppool.as_ref().unwrap_or(&pool), &cj.fix, &trainees, cj.per_trainee, cj.top);
+    let sv = solve_kept(&mut env, key_of(&["next", "no_reports"]), ppool.as_ref().unwrap_or(&pool), &cj.fix, &trainees, cj.per_trainee, cj.top);
     let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - sj0});
     env.use_seen = true;
     if std::env::var("CAREER_WORK").is_ok() { eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven); }
@@ -1650,8 +1723,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
                 // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
                 // key (so a plan after an "allow" run takes it as it is)
                 Some(pp) => {
-                    let mut va = v.clone(); if let Some(o) = va.as_object_mut() { o.remove("borrowed_parent"); }
-                    let sva = solve_kept(&mut env, key_of(&va), &pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
+                    let sva = solve_kept(&mut env, key_of(&["next", "no_reports", "borrowed_parent"]), &pool, &cj.fix, &trainees, cj.per_trainee, cj.top);
                     sim::plan::index_rule(&mut env, d, sk, cr, v, legs, &pool, &sva, &cj.fix, &trainees, &nj, Some((pp, &sv)))
                 }
             },
@@ -1697,6 +1769,21 @@ mod tests {
         ENV_HOOK.with(|c| *c.borrow_mut() = Some(h));
         run_career(&d, &sk, &cr, &v);
         assert!(ENV_HOOK.with(|c| c.borrow().is_none()), "the hook did not run");
+    }
+    /// `json_without` writes the text of a clone with those keys removed, byte for byte (the keys `setup_fp`, the plan's
+    /// `roll_key` and the main search's key hash: stored in the page's state)
+    #[test]
+    fn json_without_matches_clone() {
+        let p16: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap()).unwrap();
+        let mut rolled = p16.clone(); rolled["roll"] = json!({"stars": [1, 2]}); rolled["next"]["roll"] = json!([0, 3]); rolled["compare"] = json!(true);
+        let cases = [p16, rolled, json!({}), json!({"a": 1}), json!({"next": {"roll": 1}}), json!([1, {"b": 2.5e-300}]), json!(-0.0), json!({"x": {"y": {}}, "z": []})];
+        let drops: [(&[&str], &[&str]); 4] = [(&["legacies", "trainees", "fix", "top", "per_trainee", "cmd", "mode", "compare", "next", "no_reports", "borrowed_parent"], &[]),
+            (&["next", "no_reports"], &[]), (&["no_reports", "compare", "roll"], &["roll"]), (&["a", "x"], &["roll"])];
+        for v in &cases { for (d, nd) in drops {
+            let mut k = v.clone();
+            if let Some(o) = k.as_object_mut() { for x in d { o.remove(*x); } if let Some(n) = o.get_mut("next").and_then(|n| n.as_object_mut()) { for x in nd { n.remove(*x); } } }
+            assert_eq!(json_without(v, d, nd), k.to_string());
+        } }
     }
     /// The copies of the inheritance chance agree to the bit with `lineage` (slots, `inherit`, `scale`): `lineage_qc`,
     /// `gen_cands`' ceilings (against `ceiling` at `lineage`'s chances, as `solve` takes them) and `her_slot` (against

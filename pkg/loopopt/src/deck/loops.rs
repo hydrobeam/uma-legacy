@@ -172,7 +172,6 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // owned / borrowed character masks.
     struct KeyData { mw: Vec<f64>, mg: Vec<f64>, d_own: Vec<u128>, d_bor: Vec<u128> }
     let tr2 = tie_rank(&rel, &cards);
-    let mut key_cache: crate::FxMap<u64, KeyData> = Default::default();
     let make_key = |code: u64| -> KeyData {
         let mut ks: Vec<Kind> = vec![]; let mut c = code;
         for &kd in &kinds_all { for _ in 0..(c % 7) { ks.push(kd); } c /= 7; }
@@ -268,8 +267,8 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         // a key needs real entries of each non-filler kind
         if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) { continue; }
         let code: u64 = cnt.iter().zip(&kpos).map(|(&c, &p)| c as u64 * p).sum();
-        let kd = key_cache.entry(code).or_insert_with_key(|&c| make_key(c));
-        let kd: &KeyData = kd;
+        // (built per count vector and dropped after it: each one has its own code, so no key repeats)
+        let kd: &KeyData = &make_key(code);
         let dmask = |b: usize, nb: usize| -> u128 { kd.d_own[b] | if nb - ebor[b] as usize + 1 <= allowed_borrow { kd.d_bor[b] } else { 0 } };
         let alive = |j: usize| is_locked[j] || (kd.d_own[j] | if ebor[j] { kd.d_bor[j] } else { 0 }).count_ones() < (size - 1 + kmax) as u32;
         let alive_k: Vec<Vec<usize>> = (0..nk).map(|i| by_kind[i].iter().copied().filter(|&j| alive(j)).collect()).collect();
@@ -340,10 +339,12 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                     st_full += 1;
                     if n > 0 && (kmax > 1 || n >= kmax) && nd > 0 { g.remember_found(); }
                     if n >= kmax { st_dom += 1; return; }
-                    let mut so: Vec<usize> = sel.to_vec(); so.sort();       // entry order, for display
-                    let x = DeckEval { pals, borrowed, cards: so.iter().map(|&j| rel[j]).collect(), ends: so.iter().map(|&j| endk[j]).collect(), vars: so.iter().map(|&j| vark[j]).collect(), plain, filler, dw: mw[..nu].to_vec(), dg: mg[..nu].to_vec(), dv: dv.clone(), s };
+                    // entry order, for display (distinct entries: the unstable sort is the sort), on the stack
+                    let mut sa = [0usize; 32]; let so = &mut sa[..sel.len()]; so.copy_from_slice(sel); so.sort_unstable();
+                    // (`dv` kept on the deck only where the compaction below re-reads it, kmax > 1)
+                    let x = DeckEval { pals, borrowed, cards: so.iter().map(|&j| rel[j]).collect(), ends: so.iter().map(|&j| endk[j]).collect(), vars: so.iter().map(|&j| vark[j]).collect(), plain, filler, dw: mw[..nu].to_vec(), dg: mg[..nu].to_vec(), dv: if kmax > 1 { dv.clone() } else { vec![] }, s };
                     if kmax == 1 { g.remove_dominated_by(&dv, sig_of(&dv, false), s); }
-                    g.insert(x);
+                    g.insert_dv(x, &dv);
                     if kmax > 1 && g.len() > g.cap {
                         // compaction drops decks, so the remembered dominators are forgotten (Kept::new clears them)
                         let list = std::mem::replace(g, Kept::new(nd)).into_list();
@@ -405,29 +406,39 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("skyline {} of {}", sky.len(), front.len()); }
     {
-        // per (card, end link, variant): its name with the choice and end-link notes, and its choice label
-        let mut shown: HashMap<(usize, u8, u32), (String, String)> = HashMap::new();
-        let pd: Vec<PDeck> = sky.iter().map(|&i| { let x = &front[i];
-            let mut names: Vec<String> = Vec::with_capacity(x.cards.len() + x.plain + x.filler);
-            let mut choices: Vec<String> = Vec::with_capacity(x.cards.len());
+        // per (card, end link, variant): its name with the choice and end-link notes, its choice label, and the name
+        // marked borrowed (built at first need)
+        let mut shown: crate::FxMap<(usize, u8, u32), (Name, Name, Option<Name>)> = Default::default();
+        // (and the shared strings of the card names, the plain pals and the filler)
+        let mut cname: crate::FxMap<usize, Name> = Default::default();
+        let plain_rc: Vec<Name> = plain_names.iter().map(|n| Name::from(n.as_str())).collect();
+        let filler_rc: Name = Name::from("(any SR without target hints)");
+        // the frontier consumed, the skyline's decks (ascending indices, `sky`) in order: each deck's lists move into
+        // its PDeck and the rest is freed before `run_multi`
+        let n_front = front.len();
+        let mut skx = sky.iter().copied().peekable();
+        let pd: Vec<PDeck> = front.into_iter().enumerate().filter(|&(i, _)| if skx.peek() == Some(&i) { skx.next(); true } else { false }).map(|(_, x)| {
+            let mut names: Vec<Name> = Vec::with_capacity(x.cards.len() + x.plain + x.filler);
+            let mut choices: Vec<Name> = Vec::with_capacity(x.cards.len());
             for ((&i, &e), &v) in x.cards.iter().zip(&x.ends).zip(&x.vars) {
-                let (n, lb) = shown.entry((i, e, v)).or_insert_with(|| {
+                let (n, lb, nb) = shown.entry((i, e, v)).or_insert_with(|| {
                     let mut n = cards[i].name.clone();
                     let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
                     if !lb.is_empty() { n = format!("{} ({})", n, lb); }
                     if e > 0 { n = format!("{} (end chain at link {})", n, e); }
-                    (n, lb)
+                    (Name::from(n), Name::from(lb), None)
                 });
-                names.push(if Some(i) == x.borrowed { format!("{} (borrowed)", n) } else { n.clone() });
+                names.push(if Some(i) == x.borrowed { nb.get_or_insert_with(|| Name::from(format!("{} (borrowed)", n))).clone() } else { n.clone() });
                 choices.push(lb.clone());
             }
-            names.extend(plain_names.iter().take(x.plain).cloned());
-            for _ in 0..x.filler { names.push("(any SR without target hints)".into()); }
-            PDeck { names, ids: x.cards.iter().map(|&i| cards[i].id).collect(), ends: x.ends.clone(), vars: x.vars.clone(), choices, plain_ids: plain_ids.iter().take(x.plain).copied().collect(),
-                    pal_names: x.cards.iter().filter(|&&i| cards[i].pal).map(|&i| cards[i].name.clone()).chain(plain_names.iter().take(x.plain).cloned()).collect(),
-                    pals: x.pals, borrowed: x.borrowed.map(|i| cards[i].name.clone()), dw: x.dw.clone(), dg: x.dg.clone() } }).collect();
+            names.extend(plain_rc.iter().take(x.plain).cloned());
+            for _ in 0..x.filler { names.push(filler_rc.clone()); }
+            let mut cn = |i: usize| cname.entry(i).or_insert_with(|| Name::from(cards[i].name.as_str())).clone();
+            PDeck { names, ids: x.cards.iter().map(|&i| cards[i].id).collect(), choices, plain_ids: plain_ids.iter().take(x.plain).copied().collect(),
+                    pal_names: x.cards.iter().filter(|&&i| cards[i].pal).map(|&i| cn(i)).chain(plain_rc.iter().take(x.plain).cloned()).collect(),
+                    pals: x.pals, borrowed: x.borrowed.map(&mut cn), ends: x.ends, vars: x.vars, dw: x.dw, dg: x.dg } }).collect();
         if dj.deck_only { return json!({"sky": pd}); }
-        let stats = json!({"decks_built": n_decks, "decks_on_frontier": front.len(), "relevant_cards": nrel, "cards_dropped": n_card_dropped,
+        let stats = json!({"decks_built": n_decks, "decks_on_frontier": n_front, "relevant_cards": nrel, "cards_dropped": n_card_dropped,
                            "decks_swapped": n_swapped, "plain_pals": plain_names});
         return run_multi(d, cr, &model, &sj, &dj, pd, stats, space.as_ref().unwrap());
     }

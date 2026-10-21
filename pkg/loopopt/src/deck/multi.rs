@@ -11,7 +11,8 @@ use super::*;
 pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, dj: &DeckJob, sky: Vec<PDeck>, stats: Value, space: &DeckSpace) -> Value {
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let nu = unc.len();
-    let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
+    // (looked up only, never iterated: the hasher changes no order)
+    let card_of: crate::FxMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let n = d.umas.len();
     let id_ok = |id: u32| (sj.owned.is_empty() || sj.owned.contains(&id) || sj.require.contains(&id)) && !sj.exclude.contains(&id);
     // a locked card goes in every deck, so a uma it blocks cannot train at all
@@ -94,16 +95,20 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // result is the same value bit for bit.
     let class_cl: Vec<Vec<Cl>> = class_sky.iter().map(|v| { let mut ix = v.clone(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&sky, &mut ix, nu, &mut out); } out }).collect();
     // max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
+    // (the clusters' bounds in a reused buffer, popped from a heap in the stable sort's order: `ByBound`)
+    let bb_buf: std::cell::RefCell<Vec<ByBound>> = Default::default();
     let bb_max = |u: usize, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64| -> f64 {
         let cls = &class_cl[ucls[u]];
         if cls.is_empty() { return uview(u).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max); }
-        let mut bs: Vec<(f64, usize)> = cls.iter().enumerate().map(|(i, c)| (val(&c.mdw, &c.mdg), i)).collect();
-        bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        let mut bs = std::mem::take(&mut *bb_buf.borrow_mut()); bs.clear();
+        bs.extend(cls.iter().enumerate().map(|(i, c)| ByBound(val(&c.mdw, &c.mdg), i)));
+        let mut h = std::collections::BinaryHeap::from(bs);
         let mut best = init;
-        for (b, i) in bs {
+        while let Some(ByBound(b, i)) = h.pop() {
             if b * (1.0 + 1e-9) < best { break; }
             for &j in &cls[i].mem { best = best.max(val(&sky[j].dw, &sky[j].dg)); }
         }
+        *bb_buf.borrow_mut() = h.into_vec();
         best
     };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("classes {} sizes {:?} ({:.2}s)", class_sky.len(), class_sky.iter().map(|c| c.len()).collect::<Vec<_>>(), tq.elapsed().as_secs_f64()); }
@@ -125,21 +130,27 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // exactly. That is exact under one assumption: no deck's exact odds exceed EXACT_RHO times its product odds.
     let srcb = Sources { dj, unc: &unc };
     let ntar = sj.targets.len();
-    let ents_of = |x: &PDeck| -> (Vec<(Src, Kind)>, usize) {
-        let e: Vec<(Src, Kind)> = x.ids.iter().enumerate().filter_map(|(i, id)| card_of.get(id).map(|c| {
+    // A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card (built by
+    // the same `Sources::src` and `kind` on the same job and targets, so the same values), borrowed; else built
+    let ent_ix: crate::FxMap<(u32, u8, u32), usize> = (0..space.rel.len()).map(|j| ((space.cards[space.rel[j]].id, space.endk[j], space.vark[j]), j)).collect();
+    let ents_of = |x: &PDeck| -> (Vec<(std::borrow::Cow<Src>, Kind)>, usize) {
+        let e: Vec<(std::borrow::Cow<Src>, Kind)> = x.ids.iter().enumerate().filter_map(|(i, id)| card_of.get(id).map(|c| {
             let st = x.ends.get(i).copied().filter(|&e| e > 0); let v = x.vars.get(i).copied().unwrap_or(0);
-            (srcb.src(c, st, v), srcb.kind(c, st)) })).collect();
+            match ent_ix.get(&(*id, st.unwrap_or(0), v)) {
+                Some(&j) if std::ptr::eq(space.cards[space.rel[j]], *c) => (std::borrow::Cow::Borrowed(&space.srcs[j]), space.kind[j]),
+                _ => (std::borrow::Cow::Owned(srcb.src(c, st, v)), srcb.kind(c, st)),
+            } })).collect();
         (e, dj.deck_size.saturating_sub(x.ids.len() + x.plain_ids.len()))
     };
     struct Best { sum: f64, deck: Option<PDeck>, per: Vec<(f64, f64, usize)> }
     // per (uma, chances): the best found, decks already scored or bounded, and the cap it is exact under
-    struct ExEntry { best: Option<(f64, PDeck)>, done: crate::FxSet<(Vec<u32>, Vec<u8>, Vec<u32>, usize)>, seen: crate::FxSet<(Vec<usize>, usize, usize)>, level: f64, result: Option<std::rc::Rc<Best>> }
-    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, Vec<u64>), ExEntry>> = Default::default();
+    struct ExEntry { best: Option<(f64, PDeck)>, done: crate::FxSet<DeckId>, seen: crate::FxSet<(Vec<usize>, usize, usize)>, level: f64, result: Option<std::rc::Rc<Best>> }
+    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, QKey), ExEntry>> = Default::default();
     let n_scored = std::cell::Cell::new(0usize); let n_band = std::cell::Cell::new(0usize);
     // (per structure class, `cap_class`)
     let cap_hit = std::cell::Cell::new(false); let max_ratio = std::cell::Cell::new([0.0f64; 4]);
     let caps = space.caps(); let rho_top = caps[3];
-    let max_deck: std::cell::RefCell<[Option<(u32, Vec<String>)>; 4]> = Default::default();
+    let max_deck: std::cell::RefCell<[Option<(u32, Vec<Name>)>; 4]> = Default::default();
     let ratio_at = |k: usize, r: f64, u: u32, x: &PDeck| { let mut m = max_ratio.get(); if r > m[k] { m[k] = r; max_ratio.set(m); max_deck.borrow_mut()[k] = Some((u, x.names.clone())); } };
     let (t_band, t_score, t_seed) = (std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64), std::cell::Cell::new(0.0f64));
     let work = std::cell::Cell::new(0usize); let n_ufilt = std::cell::Cell::new(0usize); let t_ub = std::cell::Cell::new(0.0f64);
@@ -151,19 +162,19 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
     // and every legal deck whose product value times lv reaches it (each first through the proven bound).
     let exact_best = |u: usize, qs: &[f64], lv: f64| -> std::rc::Rc<Best> {
-        let key = (u, qs.iter().map(|q| q.to_bits()).collect::<Vec<u64>>());
+        let key = (u, qkey(qs));
         if let Some(e) = ex_cache.borrow().get(&key) { if e.level >= lv { if let Some(r) = &e.result { return r.clone(); } } }
         let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExEntry { best: None, done: Default::default(), seen: Default::default(), level: -1.0, result: None });
         let uid = d.umas[u].id;
         let tsum = |x: &PDeck| fixed * qs.iter().map(|&q| model.trainee_fast(u, q, &x.dw, &x.dg)).sum::<f64>();
         let score = |x: &PDeck, ent: &mut ExEntry| {
-            if !ent.done.insert((x.ids.clone(), x.ends.clone(), x.vars.clone(), x.plain_ids.len())) { return; }
+            if !ent.done.insert(x.id()) { return; }
             let t0 = Instant::now();
             let (e, fl) = ents_of(x);
-            let j = joint(model, u, qs, &e, fl, ntar, false);
+            let j = joint_b(model, u, qs, &e, fl, ntar, false);
             t_score.set(t_score.get() + t0.elapsed().as_secs_f64());
             if std::env::var("UPPER_CHECK").is_ok() {
-                let er: Vec<(&Src, Kind)> = e.iter().map(|(s, k)| (s, *k)).collect();
+                let er: Vec<(&Src, Kind)> = e.iter().map(|(s, k)| (&**s, *k)).collect();
                 if let Some(ub) = upper_na(model, u, qs, &er, fl) {
                     for (i, y) in j.iter().enumerate() {
                         assert!(ub[i] >= y.0 * (1.0 - 1e-12), "upper bound below exact: {} < {} for {:?}", ub[i], y.0, x.names);
@@ -172,7 +183,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
                 } else { UCHK.with(|c| { let mut v = c.get(); v.2 += 1; c.set(v); }); }
             }
             n_scored.set(n_scored.get() + 1); spend(200);
-            let k = src_class(e.iter().map(|y| &y.0));
+            let k = src_class(e.iter().map(|y| &*y.0));
             for (i, &q) in qs.iter().enumerate() {
                 let p = fixed * model.trainee_fast(u, q, &x.dw, &x.dg);
                 if p > 0.0 { ratio_at(k, j[i].0 / p, uid, x); }
@@ -185,10 +196,12 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             let t0 = Instant::now();
             // the first 3 of a stable sort by value, highest first: each deck goes after every kept one at least as high
             let mut seeds: Vec<(f64, &PDeck)> = Vec::with_capacity(4);
-            for x in uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(uid, &card_of)) {
+            // (the value first, the blocks lookups only for a deck that would enter: one that can't is passed over blocked
+            // or not, so the seeds are the same)
+            for x in uview(u).iter().map(|&j| &sky[j]) {
                 let t = tsum(x);
                 let at = seeds.iter().position(|s| s.0.partial_cmp(&t).unwrap() == std::cmp::Ordering::Less).unwrap_or(seeds.len());
-                if at < 3 { seeds.insert(at, (t, x)); seeds.truncate(3); }
+                if at < 3 && !x.blocks(uid, &card_of) { seeds.insert(at, (t, x)); seeds.truncate(3); }
             }
             t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
             for (_, x) in seeds.iter().take(3) { score(x, &mut ent); }
@@ -200,7 +213,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         }
         // every legal deck that might beat it under the cap lv
         let mut complete = true;
-        if lv > ent.level { if let Some((thr, _)) = ent.best.clone() {
+        if lv > ent.level { if let Some(thr) = ent.best.as_ref().map(|b| b.0) {
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
@@ -230,7 +243,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             if complete { ent.level = lv; } else { aborted.set(true); }
         } else { ent.level = lv; } }
         let b = match &ent.best {
-            Some((sum, x)) => { let (e, fl) = ents_of(x); let per = joint(model, u, qs, &e, fl, ntar, true); Best { sum: *sum, deck: Some(x.clone()), per } }
+            Some((sum, x)) => { let (e, fl) = ents_of(x); let per = joint_b(model, u, qs, &e, fl, ntar, true); Best { sum: *sum, deck: Some(x.clone()), per } }
             None => { let per = joint(model, u, qs, &[], 0, ntar, true); Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per } }
         };
         let b = std::rc::Rc::new(b);
@@ -261,11 +274,14 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // Clusters of the whole skyline, and the best m skyline decks by `val` among those passing `ok` (cluster maxima
     // bound their members, best bound first; `val` must rise with every odds coordinate)
     let full_cl: Vec<Cl> = if dj.per_uma { vec![] } else { let mut ix: Vec<usize> = (0..sky.len()).collect(); let mut out = vec![]; if nu > 0 && !ix.is_empty() { split(&sky, &mut ix, nu, &mut out); } else { out.push(Cl { mdw: vec![], mdg: vec![], mem: ix }); } out };
+    // (as `bb_max`: the clusters in the stable sort's order, equal bounds by index, from a heap over a reused buffer)
+    let st_buf: std::cell::RefCell<Vec<ByBound>> = Default::default();
     let sky_top = |m: usize, val: &dyn Fn(&[f64], &[f64]) -> f64, ok: &dyn Fn(&PDeck) -> bool| -> Vec<(f64, usize)> {
-        let mut bs: Vec<(f64, usize)> = full_cl.iter().enumerate().map(|(i, c)| (if nu > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY }, i)).collect();
-        bs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        let mut bs = std::mem::take(&mut *st_buf.borrow_mut()); bs.clear();
+        bs.extend(full_cl.iter().enumerate().map(|(i, c)| ByBound(if nu > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY }, i)));
+        let mut h = std::collections::BinaryHeap::from(bs);
         let mut top: Vec<(f64, usize)> = vec![];
-        for (b, ci) in bs {
+        while let Some(ByBound(b, ci)) = h.pop() {
             if top.len() >= m && b * (1.0 + 1e-9) < top[m - 1].0 { break; }
             for &j in &full_cl[ci].mem {
                 if !ok(&sky[j]) { continue; }
@@ -276,6 +292,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
                 }
             }
         }
+        *st_buf.borrow_mut() = h.into_vec();
         top
     };
     // shared-deck ceiling: the best single skyline deck (legal or not) over the loop's twelve lineages, product odds
@@ -292,24 +309,24 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     let shared = !dj.per_uma;
     let kloops = dj.top_decks.max(1);
     type SList = std::rc::Rc<Vec<(f64, PDeck)>>;
-    let sh_cache: std::cell::RefCell<crate::FxMap<([usize; 4], Vec<u64>), (f64, f64, SList)>> = Default::default();
+    let sh_cache: std::cell::RefCell<crate::FxMap<([usize; 4], QKey), (f64, f64, SList)>> = Default::default();
     let exact_shared = |f: [usize; 4], qa: &[f64], floor: f64, lv: f64| -> SList {
-        let key = (f, qa.iter().map(|q| q.to_bits()).collect::<Vec<u64>>());
+        let key = (f, qkey(qa));
         if let Some((l, fl, r)) = sh_cache.borrow().get(&key) { if *l >= lv && *fl <= floor { return r.clone(); } }
         let ln = lin_of(&f); let fm = members(&f); let nm = fm.len();
-        let us: Vec<usize> = fm.to_vec(); let ids: Vec<u32> = fm.iter().map(|&u| d.umas[u].id).collect();
+        let us: &[usize] = fm; let ids: Vec<u32> = fm.iter().map(|&u| d.umas[u].id).collect();
         let pairs: Vec<(usize, f64)> = (0..ln.len()).map(|l| (ln[l].0, qa[l])).collect();
         let qt: Vec<Vec<f64>> = (0..nm).map(|t| (0..ln.len()).filter(|&l| ln[l].0 == t).map(|l| qa[l]).collect()).collect();
-        let mut done: crate::FxSet<(Vec<u32>, Vec<u8>, Vec<u32>, usize)> = Default::default();
+        let mut done: crate::FxSet<DeckId> = Default::default();
         let mut list: Vec<(f64, PDeck)> = vec![];
         let mut score = |x: &PDeck, list: &mut Vec<(f64, PDeck)>| {
-            if !done.insert((x.ids.clone(), x.ends.clone(), x.vars.clone(), x.plain_ids.len())) { return; }
+            if !done.insert(x.id()) { return; }
             let t0 = Instant::now();
             let (e, fl) = ents_of(x);
-            let k = src_class(e.iter().map(|y| &y.0));
+            let k = src_class(e.iter().map(|y| &*y.0));
             let mut sv = 0.0;
             for t in 0..nm {
-                let j = joint(model, f[t], &qt[t], &e, fl, ntar, false);
+                let j = joint_b(model, f[t], &qt[t], &e, fl, ntar, false);
                 for (i, &q) in qt[t].iter().enumerate() {
                     let p = fixed * model.trainee_fast(f[t], q, &x.dw, &x.dg);
                     if p > 0.0 { ratio_at(k, j[i].0 / p, d.umas[f[t]].id, x); }
@@ -576,7 +593,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         let mut db: Vec<(&(Vec<u32>, Vec<u8>, Vec<u32>, usize), &(f64, usize, usize))> = deck_best.iter().collect();
         db.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap().then(a.0.cmp(b.0)));
         db.iter().take(kloops).map(|&(id, &(v, si, li))| {
-            let x = &lists[li].iter().find(|y| (y.1.ids.clone(), y.1.ends.clone(), y.1.vars.clone(), y.1.plain_ids.len()) == *id).unwrap().1;
+            let x = &lists[li].iter().find(|y| y.1.ids == id.0 && y.1.ends == id.1 && y.1.vars == id.2 && y.1.plain_ids.len() == id.3).unwrap().1;
             let (f, _, qs, _, _) = &solved[si];
             let (e, fl) = ents_of(x);
             let ln = lin_of(f); let nm = members(f).len();
@@ -584,7 +601,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             for t in 0..nm {
                 let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].0 == t).collect();
                 let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
-                let j = joint(model, f[t], &qt, &e, fl, ntar, true);
+                let j = joint_b(model, f[t], &qt, &e, fl, ntar, true);
                 for (i, &l) in ls.iter().enumerate() { per_l[l] = j[i]; }
             }
             (si, vec![x; nm], per_l, v)
@@ -607,10 +624,12 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         // the chance of exactly k targets, k = 0 ..= n (exact over each lineage's landed sets, as `p_all`), averaged over
         // the lineages: the uncertain targets' sets from the joint model, each guaranteed gold on its own (GEN_GOLD)
         let mut landed = vec![0.0f64; ntar + 1];
+        // (each member's deck's sources once, read by each of her lineages)
+        let dke: Vec<_> = (0..nm).map(|t| ents_of(dk[t])).collect();
         for l in 0..nl {
-            let t = ln[l].0; let (e, fl) = ents_of(dk[t]); let nu = unc.len();
+            let t = ln[l].0; let (e, fl) = (&dke[t].0, dke[t].1); let nu = unc.len();
             let mut ext = JointExt { su: vec![1.0; nu], sf: vec![1.0; ntar - nu], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
-            joint_fast(model, f[t], &[qs[l]], &e, fl, ntar, false, Some(&mut ext));
+            joint_fast(model, f[t], &[qs[l]], e, fl, ntar, false, Some(&mut ext));
             let o = per_l[l].2;
             let mut g = vec![1.0f64];
             for _ in nu..ntar { let mut nn = vec![0.0; g.len() + 1]; for (i, x) in g.iter().enumerate() { nn[i] += x * (1.0 - GEN_GOLD); nn[i + 1] += x * GEN_GOLD; } g = nn; }
@@ -656,4 +675,20 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         out[key] = val;
     }
     out
+}
+/// (bound, cluster) ordered as the stable sort by bound, highest first, visits them: a heap's pops give the higher bound
+/// first and equal bounds (`partial_cmp`: 0 and -0 tie) in index order, the same sequence (a NaN bound panics in
+/// either)
+struct ByBound(f64, usize);
+impl PartialEq for ByBound { fn eq(&self, o: &Self) -> bool { self.cmp(o) == std::cmp::Ordering::Equal } }
+impl Eq for ByBound {}
+impl PartialOrd for ByBound { fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(o)) } }
+impl Ord for ByBound { fn cmp(&self, o: &Self) -> std::cmp::Ordering { self.0.partial_cmp(&o.0).unwrap().then(o.1.cmp(&self.1)) } }
+/// A memo key of up to 12 chances (a loop's lineages): their bits and count, a fixed array (equal exactly when the
+/// chance lists are bit for bit)
+type QKey = ([u64; 12], u8);
+fn qkey(qs: &[f64]) -> QKey {
+    assert!(qs.len() <= 12, "more than 12 chances in a memo key");
+    let mut k = [0u64; 12]; for (x, q) in k.iter_mut().zip(qs) { *x = q.to_bits(); }
+    (k, qs.len() as u8)
 }
