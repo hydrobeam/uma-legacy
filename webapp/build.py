@@ -219,7 +219,8 @@ LOGO = LOGO.replace('<svg ', '<svg class="logo" aria-hidden="true" focusable="fa
 html = html.replace('__LOGO__', LOGO, 1)
 assert not re.search(r'__(?!PURE__)[A-Z]+__', html), re.findall(r'__(?!PURE__)[A-Z]+__', html)   # every placeholder filled (esbuild's @__PURE__ marks aside)
 open(os.path.join(DIST, 'index.html'), 'w').write(html)
-# "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts, no script
+# "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts; its one inline script opens
+# the "Show …" box a link lands on
 about = open(os.path.join(H, 'about.template.html')).read()
 for k, v in [('__THEMEJS__', THEMEJS), ('__NAV__', NAV('about')), ('__VERSION__', VERSION), ('__SITE__', SITE), ('__SITE__', SITE), ('__CSS__', CSS_LINK + '\n<style>\n' + MATHFACE + '\n</style>'), ('__FONTPRELOAD__', '\n'.join(preloads)), ('__LOGO__', LOGO)]: about = about.replace(k, v, 1)
 assert not re.search(r'__[A-Z]+__', about), re.findall(r'__[A-Z]+__', about)

@@ -224,6 +224,9 @@ const still = (pg) => until(pg, () => document.getAnimations().every(a => a.play
 async function careerPage(b) {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => {
+    // the setup chosen open, as these tests work its controls after reloads with veterans (unchosen, it would open folded
+    // then: careerphone checks that)
+    try { if (localStorage.getItem('llp:setup-folded') === null) localStorage.setItem('llp:setup-folded', '0'); } catch {}
     const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
     window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
       // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
@@ -874,6 +877,8 @@ const TESTS = {
       const loc = text ? pg.locator(sel, { hasText: text }).first() : pg.locator(sel); await loc.scrollIntoViewIfNeeded(); await loc.click(); await dialog(pg, id);
       side.push(...(await pg.evaluate(SIDEWAYS)).map(x => id + ': ' + x)); await pg.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close())); }
     check('phone: nothing scrolls sideways with Umas, Support cards, Affinity or Odds open', !side.length, side.slice(0, 4).join(' | '));
+    const swTouch = await pg.evaluate(() => [...document.querySelectorAll('.rhead .sw')].map(l => Math.round(l.getBoundingClientRect().height - 2 * parseFloat(getComputedStyle(l, '::before').top))));
+    check('phone: the Auto-search and Deck per uma switches have a 44 px tall touch area', swTouch.length === 2 && swTouch.every(h => h >= 44), swTouch.join());
     await pg.setViewportSize({ width: 1280, height: 800 });   // the page reorders on its resize handler
     check('widened to desktop, the results go back beside (after) the settings', await until(pg, () => !!(document.querySelector('.lpside').compareDocumentPosition(document.getElementById('rcol')) & Node.DOCUMENT_POSITION_FOLLOWING)));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
@@ -910,6 +915,18 @@ const TESTS = {
       if (label === 'veterans') side.push(...(await pg.evaluate(PILLS)).map(x => label + ': ' + x));
       await shut(); }
     check('career phone: nothing scrolls sideways in your veterans (their Yours / Borrowed pills flush), Umas, Support cards, the node popup or the odds', !side.length, side.slice(0, 4).join(' | '));
+    const tree = await pg.evaluate(() => { const f = [...document.querySelectorAll('#tree .pf')].map(e => e.getBoundingClientRect());
+      return { h: Math.round(document.getElementById('tree').getBoundingClientRect().height), side: f.length === 2 && Math.abs(f[0].top - f[1].top) < 1 && f[1].left >= f[0].right - 1 }; });
+    check('career phone: the tree is compact, the two legacy boxes side by side', tree.side && tree.h < 560, JSON.stringify(tree));
+    // a return visit with veterans and no fold chosen: the setup opens folded, the pick's line on the first screen; a
+    // fold chosen (here: opened) is kept
+    const back = async () => { await pg.reload(); await pg.waitForFunction(() => !document.getElementById('pick-sum').hidden, null, { timeout: 300000 }); };
+    await back();
+    const ret = await pg.evaluate(() => ({ folded: document.querySelector('.rbbar').classList.contains('folded'), sum: !document.getElementById('set-sum').hidden,
+      top: Math.round(document.getElementById('pick-sum').getBoundingClientRect().bottom + scrollY) }));
+    await pg.click('#set-fold'); await back();
+    check('career phone: back with veterans, the setup opens folded and the pick\'s line is on the first screen; opened, it stays open', ret.folded && ret.sum && ret.top < 812
+      && !(await pg.locator('.rbbar.folded').count()), JSON.stringify(ret));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },
@@ -1033,6 +1050,14 @@ const TESTS = {
     check('/about: the career planner in detail starts folded and opens to its steps', (await cspec.getAttribute('open')) === null
       && await (async () => { await cspec.locator('summary').click(); const t = await cspec.innerText(); return /C1\. Legal careers/.test(t) && /C8b\. Which careers are searched exactly/.test(t) && /The Comparison panel/.test(t); })());
     if (b.browserType().name() === 'chromium') { const f = artless(await pg.evaluate(AUDIT)); check('/about: every text run meets WCAG AAA', !f.length, f.slice(0, 5).join(' | ')); }
+    const toc = await pg.evaluate(() => { const a = [...document.querySelectorAll('main.about nav.toc a')];
+      return { n: a.length, h: document.querySelectorAll('main.about h3[id]').length, all: document.querySelectorAll('main.about h3').length, ok: a.every(x => document.getElementById(x.getAttribute('href').slice(1))?.tagName === 'H3') }; });
+    check('/about: a contents list links every section heading', toc.n === toc.h && toc.h === toc.all && toc.n >= 10 && toc.ok, JSON.stringify(toc));
+    // a link to an "in detail" section opens its Show box (from another page, or the contents)
+    await pg.goto(URL.replace(/\/?$/, '/')); await pg.goto(URL.replace(/\/?$/, '/') + 'about#career-planner'); await pg.waitForLoadState('load');
+    const cOpen = (await cspec.getAttribute('open')) !== null, mShut = (await spec.getAttribute('open')) === null;
+    await pg.locator('main.about nav.toc a[href="#model"]').click();
+    check('/about: a link to an "in detail" section opens its Show box', cOpen && mShut && await until(pg, () => document.querySelector('main.about details.spec').open));
     await pg.locator('header.top .tnav a', { hasText: 'Loop planner' }).click(); await pg.waitForSelector('#targets');
     check('/about links back to the planner', new globalThis.URL(pg.url()).pathname === '/');
     await pg.context().close();
@@ -1220,13 +1245,27 @@ const TESTS = {
       && await pg.evaluate(() => { const d = document.querySelector('#sched-dlg .dlg'); return d.scrollHeight <= d.clientHeight + 1; }), `runs ${nRun}`);
     await pg.keyboard.press('Escape');
     // the options: per option this career's odds and its expected careers to land, the pick marked; no after-this-career section
-    const opts = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => [...l.children].map(c => c.textContent)));
+    const opts = await pg.$$eval('.alts .optab tbody tr:not(.ogrp)', ls => ls.map(l => [...l.children].map(c => c.textContent)));
     check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
       && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) && await pg.locator('#save-why').count() === 1 && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
       && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
+    const sum = await pg.evaluate(() => { const s = document.getElementById('pick-sum'); return s && !s.hidden ? { t: s.textContent, link: s.querySelector('a.psgo')?.getAttribute('href'), alts: !!document.getElementById('alts') } : null; });
+    check('career: the line under Next career gives the pick, its odds and saving per run, and links down to Career choices', !!sum
+      && /^Planner's pick 1 in [\d,.]+ to land all 8 · saves [+−]\d+\.\d per run/.test(sum.t) && sum.link === '#alts' && sum.alts, JSON.stringify(sum));
+    // careers on the same parents under one header naming them (the rows then name only the trainee); ungrouped, no two
+    // rows share their parents
+    const grp = await pg.evaluate(() => { const t = (e) => e.textContent.replace(/\s+/g, ' ').trim();
+      return [...document.querySelectorAll('.alts .optab tbody')].map(b => ({ head: b.querySelector('tr.ogrp') ? t(b.querySelector('tr.ogrp')) : null,
+        rows: [...b.querySelectorAll('tr:not(.ogrp) .altw')].map(t) })); });
+    const flat = grp.flatMap(g => g.rows);
+    check('career: Career choices groups the careers on the same parents under one header', grp.some(g => g.head)
+      ? grp.every(g => g.head && /^Parents #\d+ .+ \+ #\d+ /.test(g.head) && g.rows.length && g.rows.every(r => !/parents/i.test(r)))
+      : flat.every(r => !r.includes(', parents')) || new Set(flat.map(r => r.split(', parents')[1])).size === flat.length, JSON.stringify(grp).slice(0, 400));
     // the trio: each step's line (her odds now and the lifts building pays for, or your 8/8 at no cost)
     await pg.click('#save-why'); await dialog(pg, 'save-dlg');
-    const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => ''); await pg.keyboard.press('Escape');
+    const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => ''), aboutLink = await pg.locator('#save-dlg a[href="about#career-planner"]').count();
+    await pg.keyboard.press('Escape');
+    check('career: What these mean links to the career planner in detail on /about', aboutLink === 1);
     check('career: the plan names its route and, per step, the odds now and what building pays for', !lastRes.next.members?.length
       || /(your \d+\/\d+ of .+ \(no careers\)|1 in [\d,]+)/.test(memTxt), memTxt || 'no trio');
     check('career: beside the tree, the veteran analysis with the odds in its header, then the target skills (no goal-step note, no prose; the deck is under the trainee)', await pg.evaluate(() => {
@@ -1692,7 +1731,7 @@ const TESTS = {
     await vetsOpen(); await pg.click('#v-paste'); await dialog(pg, 'paste-dlg'); await pg.fill('#paste-text', JSON.stringify(trioEx)); await pg.click('#paste-load'); await vetsShut();
     await done(); await pg.waitForFunction(() => /Planned in/.test(document.getElementById('run-note').textContent), null, { timeout: 300000 });
     const trioRes = await pg.evaluate(() => window.__careerResults.filter(r => r.next).at(-1));
-    const trioCells = await pg.$$eval('.alts .optab tbody tr', ls => ls.map(l => l.children[2].textContent));
+    const trioCells = await pg.$$eval('.alts .optab tbody tr:not(.ogrp)', ls => ls.map(l => l.children[2].textContent));
     // the plan behind the numbers sits in the "What do these mean?" popup: saves per run defined first, then the route and its formula
     await pg.click('#save-why'); await dialog(pg, 'save-dlg');
     const trioLoop = await pg.textContent('#save-dlg .oloop'), saveTxt = await pg.textContent('#save-dlg');

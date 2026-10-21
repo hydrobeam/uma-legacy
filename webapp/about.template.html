@@ -35,7 +35,21 @@ ranks them by the chance that one career ends with every target skill as a spark
 takes your actual veterans and picks the next career: the best odds now, and the run that takes you furthest toward a
 fully looped parent (see The career planner, in detail). <strong>Independent Training only.</strong></p>
 
-<h3>How the trainee acquires a skill</h3>
+<nav class="toc" aria-label="On this page"><ol>
+<li><a href="#acquire">Acquiring a skill</a></li>
+<li><a href="#assumptions">Assumptions</a></li>
+<li><a href="#limitations">Limitations</a></li>
+<li><a href="#loop">The loop</a></li>
+<li><a href="#affinity">Affinity and races</a></li>
+<li><a href="#deck">The deck</a></li>
+<li><a href="#reading">Reading a result</a></li>
+<li><a href="#inheritance">Spark inheritance odds</a></li>
+<li><a href="#model">The model, in detail</a></li>
+<li><a href="#career-planner">The career planner, in detail</a></li>
+<li><a href="#sources">Sources</a></li>
+</ol></nav>
+
+<h3 id="acquire">How the trainee acquires a skill</h3>
 <ul>
 <li><strong>Scenario.</strong> E.g. Unity Cup gives every trainee the No Stopping Me! and It's On! golds.</li>
 <li><strong>Outfit.</strong> Skills on the trainee's own skill list, e.g. Agnes Digital [Full-Color Fangirling] has
@@ -44,7 +58,7 @@ Superstan.</li>
 <li><strong>Inheritance.</strong> Two inspirations per career from the parents and grandparents.</li>
 </ul>
 
-<h3>Assumptions</h3>
+<h3 id="assumptions">Assumptions</h3>
 <ol>
 <li><strong>8/8 legacies</strong> (loop planner): both parents are 8/8, and so are all four grandparents: each carries
 every target spark, as in a running loop. A loop still being built has fewer carriers and lower odds. The career planner
@@ -59,7 +73,7 @@ and priorities are set to reach the hints counted.</li>
 <li><strong>Pal events:</strong> pal finales always fire; pal first-year date events don't fire in IT.</li>
 </ol>
 
-<h3>Limitations</h3>
+<h3 id="limitations">Limitations</h3>
 <ol>
 <li>Only skills are scored: the planner doesn't calculate a career's rank, score or skill points.</li>
 <li>The loop planner's race scheduler does not account for pink (aptitude) sparks from legacies, so optimal loops may vary
@@ -85,7 +99,7 @@ start.</li>
 <li>Every measured rate comes from uma-it uploads.</li>
 </ol>
 
-<h3>The loop</h3>
+<h3 id="loop">The loop</h3>
 <p>Four umas take turns as the trainee. Her parents are two of the other three; her grandparents are their parents
 from their own last careers. No uma is her own ancestor. In a running loop all six ancestors carry every target spark.
 The odds shown are the average over the 12 trainee and parent arrangements.</p>
@@ -96,7 +110,7 @@ the chance per career when every member trains in turn. A rotation usually wins:
 loop's best ones (a fourth uma as grandparent adds relation points), but a loop must also train its fourth uma, usually
 the weakest trainee.</p>
 
-<h3>Affinity and races</h3>
+<h3 id="affinity">Affinity and races</h3>
 <p>Affinity raises how often a legacy passes its sparks (see Spark inheritance odds). It is the umas' fixed relation
 points (pairs and trios) plus 3 for each G1 both won. The race schedules are chosen to maximise the loop's shared G1
 wins; the Affinity button shows the totals.</p>
@@ -108,7 +122,7 @@ resets the streak). A G1 run in both Classic and Senior counts once, won if eith
 <p>In a schedule, "A or B" means either race at the same odds; every uma of the loop must run the same one. Optional G1s add race
 sparks, not affinity.</p>
 
-<h3>The deck</h3>
+<h3 id="deck">The deck</h3>
 <ul>
 <li><strong>Training hints:</strong> the game doesn't publish how often a card hints. These rates are inferred from what
 real shared IT runs show, not read from the game's data, so they are estimates. The rate scales
@@ -131,14 +145,14 @@ each uma's swaps.</li>
 Concert.</li>
 </ul>
 
-<h3>Reading a result</h3>
+<h3 id="reading">Reading a result</h3>
 <ul>
 <li><strong>1 in 107 runs to land all 8</strong>: one career in 107 on average. <strong>Odds</strong> under the
 result shows the chance of landing exactly each count, 8 of 8 down to none.</li>
 <li><strong>As trainee</strong>: the odds when that uma is the trainee; they differ by outfit.</li>
 </ul>
 
-<h3>Spark inheritance odds</h3>
+<h3 id="inheritance">Spark inheritance odds</h3>
 <p>A career has two inspirations, in April of the second and third years. At each one, every legacy (two parents and four
 grandparents) rolls each of its sparks separately:</p>
 <math display="block"><mrow><mi>P</mi><mrow><mo>(</mo><mtext>pass</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mfrac><mtext>affinity</mtext><mn>100</mn></mfrac><mo>)</mo></mrow></math>
@@ -153,7 +167,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 <p>Example: a parent at affinity 286 passes a given skill spark about 18% of the time per inspiration, a grandparent at
 87 about 9%. A skill all six legacies carry is inherited in about 78% of careers.</p>
 
-<h3>The model, in detail</h3>
+<h3 id="model">The model, in detail</h3>
   <p class="hint">Very technical: the full model and search, written so another person or program could reimplement the
   planner. Nothing here is needed to use it.</p>
   <details class="spec"><summary>Show the model</summary>
@@ -512,7 +526,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   </details>
 
-<h3>The career planner, in detail</h3>
+<h3 id="career-planner">The career planner, in detail</h3>
   <p class="hint">Very technical: how the career planner chooses your next career and what its numbers mean, written so
   another person or program could reimplement it. It builds on the model above (steps 4–8 and 19 score a career; steps
   10–15 search decks). Nothing here is needed to use it.</p>
@@ -754,7 +768,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   fingerprints).</p>
   </details>
 
-<h3>Sources</h3>
+<h3 id="sources">Sources</h3>
 <ul class="srclist">
 <li><strong>Game data:</strong> the game's own data, Global; JP for the Grand Masters era.</li>
 <li><strong>Card events:</strong> <a href="https://gametora.com/umamusume">GameTora</a>.</li>
@@ -767,3 +781,10 @@ room-match data.</li>
 </ul>
 <p class="hint">Version __VERSION__</p>
 </main>
+<script>
+// a link to "in detail" (the contents, or another page's #model / #career-planner) opens its "Show …" box
+(function () { function open() { var h = location.hash && document.getElementById(location.hash.slice(1)), d = h && h.nextElementSibling;
+  while (d && d.tagName !== 'DETAILS' && d.tagName !== 'H3') d = d.nextElementSibling;
+  if (d && d.tagName === 'DETAILS') d.open = true; }
+  open(); addEventListener('hashchange', open); })();
+</script>
