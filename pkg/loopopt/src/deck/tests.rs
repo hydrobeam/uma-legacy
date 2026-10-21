@@ -680,3 +680,53 @@ fn land_factor_forms_match() {
         }
     }
 }
+
+/// The packed search's limits (`MAX_DECK`, `MAX_UNCERTAIN`, `MAX_KINDS`, locks within the deck) refuse a job in
+/// `deck_entries` with an error, before any table is built from it; the page's six-card job passes.
+#[test]
+fn deck_limits_refuse_with_an_error() {
+    let cr = fixture_cards();
+    let banned = cr.restrict.get("unity").cloned().unwrap_or_default();
+    let chain: Vec<&Card> =
+        cr.cards.iter().filter(|c| !c.pal && c.links >= 2 && c.rarity >= 2 && !banned.contains(&c.id)).collect();
+    assert!(chain.len() >= 20, "{} chain cards", chain.len());
+    let unc = [20159u32];
+    let err = |dj: &DeckJob, unc: &[u32]| match deck_entries(&cr, dj, unc, &[]) {
+        Ok(_) => None,
+        Err(e) => Some(e["error"].as_str().expect("an error message").to_string()),
+    };
+    assert_eq!(err(&job_with(json!({})), &unc), None);
+    for size in [0, 7, 8, usize::MAX] {
+        assert!(err(&job_with(json!({ "deck_size": size })), &unc).is_some(), "deck_size {size}");
+    }
+    let many: Vec<u32> = (0..33).map(|i| 20000 + i).collect();
+    assert!(err(&job_with(json!({})), &many).is_some(), "33 uncertain targets");
+    assert_eq!(err(&job_with(json!({})), &many[..32]), None);
+    // locks: as many as the deck holds, not one more (duplicates and unknown ids count nothing, as before)
+    let ids: Vec<u32> = chain.iter().map(|c| c.id).collect();
+    assert_eq!(err(&job_with(json!({"lock_cards": ids[..6], "deck_size": 6})), &unc), None);
+    assert_eq!(err(&job_with(json!({"lock_cards": [ids[0], ids[0], 1, 2, 3, 4, 5, 6, 7]})), &unc), None);
+    assert!(err(&job_with(json!({"lock_cards": ids[..7]})), &unc).is_some(), "7 locks");
+    assert!(err(&job_with(json!({"lock_cards": ids[..3], "deck_size": 2})), &unc).is_some(), "3 locks, deck of 2");
+    // chain kinds: each card its own stop-risk code, so at least its own kind; a job passes exactly when its entries'
+    // kinds with the fillers' (2, 2) are at most MAX_KINDS
+    let (mut passed, mut refused) = (0, 0);
+    for n in 1..=20 {
+        let cs = &chain[..n];
+        let dj = job_with(json!({
+            "events": cs.iter().map(|c| json!([c.id, unc[0], 1, 1])).collect::<Vec<_>>(),
+            "stop_risk": cs.iter().enumerate().map(|(i, c)| json!([c.id, 1, i / 15, 1 + i % 15])).collect::<Vec<_>>(),
+        }));
+        match deck_entries(&cr, &dj, &unc, &[]) {
+            Ok(e) => {
+                assert!(kinds_all(&e.kind).len() <= MAX_KINDS, "{n} cards");
+                passed += 1;
+            }
+            Err(e) => {
+                assert!(e["error"].as_str().unwrap().contains("kinds"), "{n} cards: {e}");
+                refused += 1;
+            }
+        }
+    }
+    assert!(passed > 0 && refused > 0, "{passed} passed, {refused} refused");
+}
