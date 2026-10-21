@@ -3898,8 +3898,9 @@ impl<'plan> PlanInputs<'plan, '_> {
         self.pick.map_or(self.sv, |p| p.1)
     }
 
-    /// A career that can be shown or picked: its parents are legal on the pick's pool.
-    fn shown(&self, f: &Found) -> bool {
+    /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
+    /// row's career are dropped later, at output.
+    fn is_runnable(&self, f: &Found) -> bool {
         self.pick_pool().bor_ok(f.a, f.b)
     }
 }
@@ -3976,9 +3977,9 @@ struct PlanProfile {
 /// Pass 1's rows (`RowOrigin::Base`), and each one's G1 wins, read when fitting a continuation.
 struct BaseRows {
     runs: Vec<PlanRow>,
-    /// per uma, the G1 races her latest row's career wins with a chance above 0.5 (`set_plan_wins`): the continuation
-    /// fit's shared-win input
-    wins_by_uma: Vec<Vec<usize>>,
+    /// indexed by uma (her index in `d.umas`), filled for each row's trainee: the G1 races her latest row's career
+    /// wins with a chance above 0.5 (`set_plan_wins`), the continuation fit's shared-win input; empty for other umas
+    wins_by_trainee: Vec<Vec<usize>>,
 }
 
 /// Pass 2's completed fit, used by the optional proxy check and output assembly.
@@ -4030,7 +4031,7 @@ pub(in super::super) fn index_rule<'data>(
             Ok(prepared) => prepared,
             Err(error) => return error,
         };
-    let BaseRows { mut runs, mut wins_by_uma } =
+    let BaseRows { mut runs, mut wins_by_trainee } =
         score_and_admit_proxies(&mut s, &input, &candidates, &mut searches, &mut profile, &mut buf);
     let looped = add_looped_rows(&mut s, &input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
     runs.extend(looped);
@@ -4042,7 +4043,7 @@ pub(in super::super) fn index_rule<'data>(
         &candidates,
         &mut searches,
         &mut runs,
-        &mut wins_by_uma,
+        &mut wins_by_trainee,
         &mut profile,
         &mut buf,
     );
@@ -4240,7 +4241,7 @@ fn score_and_admit_proxies(
     let n = candidates.trainees.len();
     let nl = legs.len();
     let mut runs: Vec<PlanRow> = vec![];
-    let mut wins_by_uma: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
+    let mut wins_by_trainee: Vec<Vec<usize>> = vec![vec![]; d.umas.len()];
     let wins: Vec<(usize, Sel)> = sv
         .found
         .iter()
@@ -4369,10 +4370,10 @@ fn score_and_admit_proxies(
             profile.search_ms += now_ms() - ts;
         }
         for r in &runs {
-            set_plan_wins(s, input, &mut wins_by_uma, r.trainee, &r.career);
+            set_plan_wins(s, input, &mut wins_by_trainee, r.trainee, &r.career);
         }
     }
-    BaseRows { runs, wins_by_uma }
+    BaseRows { runs, wins_by_trainee }
 }
 
 /// The looped rows (below) of `runs`' base rows, in their order.
@@ -4391,7 +4392,7 @@ fn add_looped_rows(
     let ppool = input.pick_pool();
     let nl = legs.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
     // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
     // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
     // looped parent (the goal), and the trios' last step is such a career: without these rows the career V itself
@@ -4414,12 +4415,12 @@ fn add_looped_rows(
         let ts = now_ms();
         let lnodes0 = s.env.space.nodes.get();
         capped(s, pj.search_work, searches.budget0, |s| {
-            for i in 0..runs.len() {
-                if runs[i].origin != RowOrigin::Base {
+            for row in runs {
+                if row.origin != RowOrigin::Base {
                     continue;
                 }
-                let x = runs[i].trainee;
-                if looped(&runs[i].career) && vis(&runs[i].career) {
+                let x = row.trainee;
+                if looped(&row.career) && vis(&row.career) {
                     continue;
                 }
                 let kept = |b: &Option<Bests>| {
@@ -4504,7 +4505,7 @@ fn add_no_borrow_rows(
     let PlanInputs { fix, pick, .. } = *input;
     let ppool = input.pick_pool();
     let n = candidates.trainees.len();
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
     // nb rows (`pick`): per base row whose career has a borrowed parent, her best career without one, a row of its own:
     // through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once a shown
     // row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the looped rows
@@ -4512,14 +4513,14 @@ fn add_no_borrow_rows(
     // looped rows' are zeros too unless `proxy_check`)
     if pick.is_some() {
         let ts = now_ms();
-        for i in 0..runs.len() {
-            if runs[i].origin != RowOrigin::Base {
+        for row in runs {
+            if row.origin != RowOrigin::Base {
                 continue;
             }
-            if vis(&runs[i].career) {
+            if vis(&row.career) {
                 continue;
             }
-            let x = runs[i].trainee;
+            let x = row.trainee;
             let (f, ex) = if candidates.proxy_on {
                 (best_sur(s, ppool, fix, x, 1e9, buf), false)
             } else {
@@ -4540,7 +4541,7 @@ fn score_and_promote_rows(
     candidates: &PlanCandidates,
     searches: &mut PlanSearches,
     runs: &mut Vec<PlanRow>,
-    wins_by_uma: &mut [Vec<usize>],
+    wins_by_trainee: &mut [Vec<usize>],
     profile: &mut PlanProfile,
     buf: &mut Vec<f64>,
 ) -> PlanScores {
@@ -4548,10 +4549,10 @@ fn score_and_promote_rows(
     let ppool = input.pick_pool();
     let n = candidates.trainees.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
-    let mut cont = plan_continuations(s, input, candidates, runs, wins_by_uma, buf);
+    let mut cont = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
     // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
     let mut c1: Vec<f64> = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
     // the trios: A and B two candidates (unordered), C the best allowed uma with an 8/8 of A and one of B as parents. Each
@@ -4639,7 +4640,7 @@ fn score_and_promote_rows(
                     )
                 };
                 if let Some((f, st)) = r {
-                    set_plan_wins(s, input, wins_by_uma, x, &f);
+                    set_plan_wins(s, input, wins_by_trainee, x, &f);
                     runs[i].career = f;
                     runs[i].lift_stats = st;
                 }
@@ -4652,7 +4653,7 @@ fn score_and_promote_rows(
                 }
             }
             profile.search_ms += now_ms() - ts;
-            let cont2 = plan_continuations(s, input, candidates, runs, wins_by_uma, buf);
+            let cont2 = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
             let same_fit = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
             if same_fit {
                 for (k, &i) in add.iter().enumerate() {
@@ -4838,7 +4839,7 @@ fn assemble_plan_output<'data>(
     let psv = input.pick_solved();
     let n = candidates.trainees.len();
     let nl = legs.len();
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
     let looped = |f: &Found| is_full(sj, &legs[f.a].sparks) && is_full(sj, &legs[f.b].sparks);
     let step = |ui: usize, real: bool| if real { 0.0 } else { scores.c1[ui] };
     // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same 8/8 pair; an
@@ -5110,11 +5111,11 @@ fn exact_plan_career(
     Some((f, st))
 }
 
-fn set_plan_wins(s: &mut Sim, input: &PlanInputs, wins_by_uma: &mut [Vec<usize>], x: usize, f: &Found) {
+fn set_plan_wins(s: &mut Sim, input: &PlanInputs, wins_by_trainee: &mut [Vec<usize>], x: usize, f: &Found) {
     let PlanInputs { pool, .. } = *input;
 
     let w = s.wins(pool, x, f.a, f.b);
-    wins_by_uma[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect();
+    wins_by_trainee[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect();
 }
 
 fn exact_no_borrow_career(
@@ -5146,13 +5147,13 @@ fn plan_continuations(
     input: &PlanInputs,
     candidates: &PlanCandidates,
     runs: &[PlanRow],
-    wins_by_uma: &[Vec<usize>],
+    wins_by_trainee: &[Vec<usize>],
     buf: &mut Vec<f64>,
 ) -> Vec<Cont> {
     let PlanInputs { d, pool, pj, .. } = *input;
     let n = candidates.trainees.len();
 
-    let wt = |x: usize| wins_by_uma[x].clone();
+    let wt = |x: usize| wins_by_trainee[x].clone();
     let mut cont = vec![Cont::default(); n];
     for ui in 0..n {
         if candidates.pnow[ui] <= 0.0 || runs.is_empty() {
@@ -5308,7 +5309,7 @@ fn score_plan_row(
     buf: &mut Vec<f64>,
 ) -> (f64, f64, Option<KeptScoring>) {
     let PlanInputs { d, legs, pool, .. } = *input;
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
 
     if !vis(&r.career) {
         return (f64::NEG_INFINITY, 0.0, None);
@@ -5339,7 +5340,7 @@ fn score_plan_row(
 // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
 // pick's is read (`RollKeep`); lo is over the rows that can be the pick (`vis`).
 fn prune_plan_scorings(input: &PlanInputs, runs: &mut [PlanRow]) {
-    let vis = |f: &Found| input.shown(f);
+    let vis = |f: &Found| input.is_runnable(f);
 
     let lo = runs
         .iter()
