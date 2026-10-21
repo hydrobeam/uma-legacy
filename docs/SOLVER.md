@@ -141,7 +141,7 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 | `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all the lineages she heads (three in a loop, one in a rotation) | `false` |
 | `pals` | only decks with exactly this many pals | any |
 | `schedule` | experiment: `"solo"` (each uma maximises her own race wins), `"goals"` (career objectives only) or `"none"` (shared wins ignored) instead of loop-optimised schedules | optimised |
-| `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base (Grand Masters, with no runs to fit, uses a 2.30 placeholder) | `unity` |
+| `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base and specialty weight (Grand Masters, with no runs to fit, uses the pooled 1.86 / 0.26 placeholders) | `unity` |
 | `chain_events` | `[n, p]`: chain events per run ~ Binomial(n, p) (experiments) | `[21, 0.35]` |
 | `cap_audit` | audit: every exact cap at 2.0 instead of `EXACT_CAPS`, and ten times the band limit `EXACT_CAP` (deck and career jobs; `val/capaudit.py`) | `false` |
 | `cap_free` | career jobs: every deck search cap-free (the search a cap breach reruns, *Cap-free rerun* below) instead of only those that saw a breach; no product-search proofs are kept (`ruled` bounds through the cap). For checks: slower | `false` |
@@ -150,7 +150,8 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 | `alts` | events naming two or more skills, in full: `[card, link, [choice][outcome] -> [[group, 1 \| 2], ...]]` (from card_events.json `alts`); at these links they replace `events` / `events_p` | `[]` |
 
 Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
-- **Training hints**: h = base(scenario) x (1 + hint_frequency/100) draws per card per run (`hint_base`; hint
+- **Training hints**: h = base(scenario) x (1 + hint_frequency/100) x (1 + d(scenario) x specialty_priority/100)
+  draws per card per run (`hint_base`, `hint_spec`; hint
   frequency at max limit break, unique effect included; the floor or ceiling of h, weighted by the fraction), each
   uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is never drawn; a skill leaves the
   pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a

@@ -1191,9 +1191,14 @@ $$p_k = d^{g}_k\, G_k + (1 - d^{g}_k)\, W_k \left[1 - (1 - d^{w}_k)(1 - e_k)(1 -
 A skill on the trainee's outfit replaces the bracket by 1 (white) or gives $p_k = G_k$ (gold); a scenario-guaranteed
 gold gives $G_k$. Inheritance only ever supplies the white.
 
-Given $c$, sources are independent except one card's training draws, which are joint over its targets (section 7):
+Given chain state $c$, let $H$ describe the joint training and event outcomes. Once both $c$ and $H$ are fixed,
+the remaining per-target landing factors multiply:
 
-$$P(\text{all}) = \sum_{c} P(c) \prod_{k} p_k(c) \qquad (\text{exact, **derived**}).$$
+$$P(\text{all}) = \sum_{c} P(c)\, E_{H\mid c}\!\left[\prod_{k} p_k(c,H)\right] \qquad (\text{exact, **derived**}).$$
+
+The expectation includes each card's joint training draws (section 7) and shared event outcomes (section 9).
+Multiplying the targets' marginal chances given $c$ alone would discard those dependencies. The implementation
+enumerates connected target groups and multiplies independent groups (`joint_eval_in`).
 
 *Real legacies.* The same model with each veteran's real stars, real G1 wins and recorded parents (an unknown parent
 brings no relation points; her sparks count); $n_k$ = the legacies actually carrying $k$. Since $q_k$ and $e_k$ enter

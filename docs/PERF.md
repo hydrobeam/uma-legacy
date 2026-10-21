@@ -116,10 +116,10 @@ identity keys; `best_loop` (unreachable) removed.
 
 ## Open in the deck search (estimates)
 
-- Pruning without the assumed caps (in progress): the class caps (`EXACT_CAPS`) are assumed, and a 10-target export
-  scored a deck past one (1.297 against 1.25). Such a search is reported not complete (`cap_exceeded`) but not redone;
-  the work under way reruns it under a proven bound (the per-event-count mixture bound, `upper_na`'s form) in place of
-  the cap.
+- Pruning without the assumed caps: career searches now rerun detected breaches with proven bounds
+  (`best_deck_cf`, below). The loop search still relies on assumed class caps; a scored breach does not clear its
+  `complete` flag (SOLVER.md, *Exact odds*). Even career reruns trigger only on a breach actually scored, so an
+  unobserved breach in a pruned branch is not ruled out.
 - Lazy k-best for shared `top_decks` > 1: pal_I shared k3 spends 68 of 75 s in the second enumeration pass. A k-best
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.

@@ -11,7 +11,8 @@ use super::*;
 /// chain events (a run with many completes several chains, a short one starves them all), and one event's
 /// outcomes can give one target or another. Here: the distribution of chain progress (`chain_states`); given it,
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
-/// Training hints stay independent per target, as in the marginal model.
+/// A card's training hints across several targets are one outcome group (`Sources::train_group`), so their
+/// dependence is included in the same enumeration.
 pub(super) fn joint(model: &Model, u: usize, qs: &[f64], ents: &[(Src, Kind)], filler: usize, n_targets: usize, m1: bool) -> Vec<(f64, f64, usize)> {
     joint_b(model, u, qs, ents, filler, n_targets, m1)
 }

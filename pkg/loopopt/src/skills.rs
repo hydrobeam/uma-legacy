@@ -34,15 +34,15 @@ const INSPIRATIONS: i32 = 2;
 /// One inspiration's base chance per spark star (the career planner's `insp_miss`; the loop planner's `Model::base`
 /// writes it as the literals 0.03, 0.06 and 0.09, since 3 x fl(0.03) is not fl(0.09))
 pub(crate) const INSP_PER_STAR: f64 = 0.03;
-/// A target's landing chance with deck odds dw (white hint) and dg (gold), the trainee's own event hint chance e and the
-/// inheritance chance q, by its coverage v in her outfit (2: the gold skill, 1: the white one, 0: neither). The one
-/// definition behind `skill_probs`, `skill_probs_d` and `outfit_fast`; `OutfitPre` is its branchless form, tested to the
-/// bit
 /// One legacy slot's chance to pass a spark on at one inspiration in the loop planner's model: its base rate (`Model::base`,
 /// x GP_RATE for a grandparent) x (1 + affinity / 100), at most 1. The one per-slot term of `lineage_q_arr`,
 /// `q_ub_trainee` and `detail`
 #[inline(always)]
 fn slot_proc(rate: f64, aff: f64) -> f64 { (rate * (1.0 + aff / 100.0)).min(1.0) }
+/// A target's landing chance with deck odds dw (white hint) and dg (gold), the trainee's own event hint chance e and the
+/// inheritance chance q, by its coverage v in her outfit (2: the gold skill, 1: the white one, 0: neither). The one
+/// definition behind `skill_probs`, `skill_probs_d` and `outfit_fast`; `OutfitPre` is its branchless form, tested to the
+/// bit.
 #[inline(always)]
 pub(crate) fn land_dw(v: u8, dw: f64, dg: f64, e: f64, q: f64) -> f64 {
     if v == 2 { return GEN_GOLD; }

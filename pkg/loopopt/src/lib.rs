@@ -8,7 +8,10 @@
 //!     E = base + 3 * C * sum_{i<j} <P_i, P_j>
 //! where P_i[r] = P(member i wins G1 race r at least once) = 1 - prod(1 - p) over her attempts at r,
 //! and p = clamp(110 - cost(distance grade) - cost(surface grade) - PEN[streak position], 0, 100) / 100.
-//! Self-copy-free breeding, grandparent slots at half weight: C = 2, base = 2*sum pair + 2*sum trio (`make_loop`).
+//! This scheduling objective retains the older half-grandparent normalization: C = 2,
+//! base = 2*sum pair + 2*sum trio (`make_loop`). The skill model uses full grandparent rates.
+//! Both weight every pair's shared wins uniformly, so the normalization preserves schedule rankings within a
+//! structure; `skills::lins` derives the current model's weights for loops and rotations.
 //!
 //! Layers:
 //! * `dp_exact`: exact best response for one uma against fixed partners. Junior turns run in sequence;
