@@ -38,6 +38,11 @@ pub(crate) const INSP_PER_STAR: f64 = 0.03;
 /// inheritance chance q, by its coverage v in her outfit (2: the gold skill, 1: the white one, 0: neither). The one
 /// definition behind `skill_probs`, `skill_probs_d` and `outfit_fast`; `OutfitPre` is its branchless form, tested to the
 /// bit
+/// One legacy slot's chance to pass a spark on at one inspiration in the loop planner's model: its base rate (`Model::base`,
+/// x GP_RATE for a grandparent) x (1 + affinity / 100), at most 1. The one per-slot term of `lineage_q_arr`,
+/// `q_ub_trainee` and `detail`
+#[inline(always)]
+fn slot_proc(rate: f64, aff: f64) -> f64 { (rate * (1.0 + aff / 100.0)).min(1.0) }
 #[inline(always)]
 pub(crate) fn land_dw(v: u8, dw: f64, dg: f64, e: f64, q: f64) -> f64 {
     if v == 2 { return GEN_GOLD; }
@@ -172,24 +177,9 @@ impl<'a> Model<'a> {
     /// lineages of `lins(f.len())`. In a rotation X = T: tri(T, P, T) = 0 (`rel_tables` counts a group only for distinct
     /// characters; fitted on 101,536 inspiration trials) and o(P, T) is the overlap with the trainee's own schedule.
     pub(crate) fn lineage_q(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
-        let d = self.d;
-        let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
-        let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
-        lins(f.len()).iter().map(|&(t, p1, p2, x)| {
-            let mut miss = 1.0f64;
-            for (par, other) in [(p1, p2), (p2, p1)] {
-                let ap = pr(t, par) + pr(p1, p2) + 3.0 * o(par, other)
-                    + tr(t, par, other) + 3.0 * o(par, other) + tr(t, par, x) + 3.0 * o(par, x);
-                miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
-                for g in [other, x] {
-                    let ag = tr(t, par, g) + 3.0 * o(par, g);
-                    miss *= 1.0 - (GP_RATE * self.base * (1.0 + ag / 100.0)).min(1.0);
-                }
-            }
-            1.0 - miss.powi(INSPIRATIONS)
-        }).collect()
+        self.lineage_q_arr(f, o)[..lins(f.len()).len()].to_vec()
     }
-    /// `lineage_q` into a fixed array (no allocation); same numbers.
+    /// `lineage_q` into a fixed array (no allocation; `lineage_q` is its prefix).
     /// (Lineages of `lins(f.len())`; a rotation fills the first 3 entries.)
     pub(crate) fn lineage_q_arr(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
         let d = self.d;
@@ -200,10 +190,10 @@ impl<'a> Model<'a> {
                 let ap = d.pair[f[t]][f[par]] as f64 + d.pair[f[p1]][f[p2]] as f64 + 3.0 * o(par, other)
                     + d.tri[f[t]][f[par]][f[other]] as f64 + 3.0 * o(par, other)
                     + d.tri[f[t]][f[par]][f[x]] as f64 + 3.0 * o(par, x);
-                miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
+                miss *= 1.0 - slot_proc(self.base, ap);
                 for g in [other, x] {
                     let ag = d.tri[f[t]][f[par]][f[g]] as f64 + 3.0 * o(par, g);
-                    miss *= 1.0 - (GP_RATE * self.base * (1.0 + ag / 100.0)).min(1.0);
+                    miss *= 1.0 - slot_proc(GP_RATE * self.base, ag);
                 }
             }
             out[l] = 1.0 - miss.powi(INSPIRATIONS);
@@ -229,10 +219,10 @@ impl<'a> Model<'a> {
                 // the fourth member's terms take their best value over every fourth member, in both slots
                 let ap = d.pair[t][par] as f64 + d.pair[p1][p2] as f64 + 3.0 * pb[par][other]
                     + d.tri[t][par][other] as f64 + 3.0 * pb[par][other] + xm;
-                miss *= 1.0 - (self.base * (1.0 + ap / 100.0)).min(1.0);
+                miss *= 1.0 - slot_proc(self.base, ap);
                 let ag = d.tri[t][par][other] as f64 + 3.0 * pb[par][other];
-                miss *= 1.0 - (GP_RATE * self.base * (1.0 + ag / 100.0)).min(1.0);
-                miss *= 1.0 - (GP_RATE * self.base * (1.0 + xm / 100.0)).min(1.0);
+                miss *= 1.0 - slot_proc(GP_RATE * self.base, ag);
+                miss *= 1.0 - slot_proc(GP_RATE * self.base, xm);
             }
             best = best.max(1.0 - miss.powi(INSPIRATIONS));
         } }
@@ -293,11 +283,11 @@ impl<'a> Model<'a> {
             for (par, other) in [(p1, p2), (p2, p1)] {
                 let rel = pr(t, par) + pr(p1, p2) + tr(t, par, other) + tr(t, par, x);
                 let race = 3.0 * o(par, other) + 3.0 * o(par, other) + 3.0 * o(par, x); let aff = rel + race;
-                let proc = (self.base * (1.0 + aff / 100.0)).min(1.0); miss *= 1.0 - proc;
+                let proc = slot_proc(self.base, aff); miss *= 1.0 - proc;
                 slots.push(json!({"kind": "parent", "who": [par], "rel": rel, "race": race, "aff": aff, "proc": proc}));
                 for g in [other, x] {
                     let rel = tr(t, par, g); let race = 3.0 * o(par, g); let aff = rel + race;
-                    let proc = (GP_RATE * self.base * (1.0 + aff / 100.0)).min(1.0); miss *= 1.0 - proc;
+                    let proc = slot_proc(GP_RATE * self.base, aff); miss *= 1.0 - proc;
                     slots.push(json!({"kind": "grandparent", "who": [par, g], "rel": rel, "race": race, "aff": aff, "proc": proc}));
                 }
             }

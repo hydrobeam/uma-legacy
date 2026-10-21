@@ -243,7 +243,8 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   points and in `best_deck`, with no partial work stored; it needs COOP/COEP headers on the site (a deploy decision),
   terminate-and-restart kept as the fallback.
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
-  pass-2 replay (Tried) may fold in there.
+  pass-2 replay (Tried) may fold in there. They already share her slot (`Env::her_slot`), the cells (`leaf_set`,
+  `fm_masks`) and V after her (`v_after`, monomorphised over `Est` and `Lo`); what is left is the loops themselves.
 - Not tried, estimates only: a node-marginal ratio bound at depth <= 2; reusing pass 1's setups in pass 2 (about
   90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf jump when
   near-tied builders swap).
@@ -266,6 +267,7 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 | A 4096-entry step-cost cache per candidate (against 256) | `bs.cost` calls 35.3M -> 26.5M on e2_v24_t10, `sc_loop_ms` -1% | `Cont::plan`'s memo already caught those repeats |
 | Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
 | An index on `ruled` | scans about 1 ms per job | nothing to gain |
+| `her_trios`' C ranking through `gen_cands` (one pair, every trainee) | exact; p16 instructions +4.5% | `gen_cands`' per-trainee tables cover every legacy of the pool, for one pair |
 | Carrying `ruled` across pools (per setup, like SEEN) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
 | Seed each builder's floor with the previous builder's career | -7% / -4% / +5% | noise |
 | Pass 2 against the bar the candidate must beat (not its own best) | -6% | worse with class sharing (fewer proofs to share) |

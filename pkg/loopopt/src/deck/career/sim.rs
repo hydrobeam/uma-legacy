@@ -244,8 +244,8 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// it can reach the bar th: (value, deck index); None when it provably cannot
     fn deck_for(&mut self, t: usize, q: &[f64], c: f64, ub: f64, th: f64, buf: &mut Vec<f64>) -> Option<(f64, usize)> {
         let mut rb = ub;
-        for r in &self.cache.refs[t] { rb = rb.min(c * r.val * self.env.rise(t, q, &r.q)); if rb * (1.0 + 1e-9) < th { return None; } }
-        if th > 0.0 && self.env.ruled[self.env.cls[t]].iter().any(|(rq, s)| self.env.space.rho_top() * c * s * self.env.rise(t, q, rq) * (1.0 + 2e-9) < th) { return None; }
+        for r in &self.cache.refs[t] { rb = rb.min(self.env.ref_bound(t, q, c, r)); if rb * (1.0 + 1e-9) < th { return None; } }
+        if th > 0.0 && self.env.ruled_out(t, q, c, &self.env.ruled[self.env.cls[t]], th) { return None; }
         self.n.tables += 1;
         let (mut tv, mut di) = self.tval(t, q, c, buf);
         if di == usize::MAX || rb > tv * (1.0 + self.cfg.margin) {
@@ -269,21 +269,26 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// `inherit` and `outfit_fast`; equal up to rounding, so it only filters, with a slack)
     fn fast_ub(&self, st: &St, t: usize, a: usize, b: usize) -> f64 {
         let env = &*self.env; let p = &st.pool; let ntar = env.ntar;
-        let ti = Some(t);
-        let mut miss = [1.0f64; 12]; let mut nc = [0i32; 12];
-        let sh = 3.0 * shared(&p.me[a], &p.me[b]);
-        // (a random-star slot counts at its fixed stars here: `inherit` averages its squared miss over the mix)
-        let mut slot = |stars: &[u8], fa: f64| { for k in 0..ntar { let s = stars[k]; if s > 0 { nc[k] += 1; miss[k] *= insp_miss(s as f64, fa); } } };
-        for (x, y) in [(a, b), (b, a)] {
-            let px = &p.me[x];
-            let (mut rel, mut race) = (env.pair(ti, px.ix) + env.pair(px.ix, p.me[y].ix), sh);
-            for (gi, g) in p.gp[x].iter().enumerate() {
-                let (gr, gc) = (env.tri(ti, px.ix, g.ix), st.gpc[x][gi]);
-                rel += gr; race += gc;
-                slot(&g.stars, aff_factor(gr, gc));
-            }
-            slot(&px.stars, aff_factor(rel, race));
+        // `walk_slots`' slots and affinities (`st.gpc` is `st.pool.gpc`), each slot's misses multiplied in as it
+        // comes but a parent's after her grandparent slots' (this filter's own order, so its own rounding); a
+        // random-star slot counts at its fixed stars here, where `inherit` averages its squared miss over the mix
+        struct Ub<'p> { ntar: usize, miss: [f64; 12], nc: [i32; 12], parent: Option<(&'p [u8], f64)> }
+        impl Ub<'_> {
+            #[inline(always)]
+            fn add(&mut self, stars: &[u8], fa: f64) { for k in 0..self.ntar { let s = stars[k]; if s > 0 { self.nc[k] += 1; self.miss[k] *= insp_miss(s as f64, fa); } } }
+            #[inline(always)]
+            fn flush(&mut self) { if let Some((s, fa)) = self.parent.take() { self.add(s, fa); } }
         }
+        impl<'p> SlotSink<'p> for Ub<'p> {
+            #[inline(always)]
+            fn slot(&mut self, _: usize, gi: Option<usize>, w: &'p Who, rel: f64, race: f64) {
+                if gi.is_none() { self.flush(); self.parent = Some((&w.stars[..], aff_factor(rel, race))); } else { self.add(&w.stars, aff_factor(rel, race)); }
+            }
+        }
+        let mut ub = Ub { ntar, miss: [1.0f64; 12], nc: [0i32; 12], parent: None };
+        env.walk_slots(p, a, b, &RelOf { env, p, t }, &mut ub);
+        ub.flush();
+        let (miss, nc) = (ub.miss, ub.nc);
         let mut c = 1.0f64;
         for k in 0..ntar { c *= spark_scale(nc[k]); }
         let mut best = 0.0f64;
@@ -556,12 +561,9 @@ impl<'s, 'a> Sim<'s, 'a> {
             let sv = self.env.solve(&pool, &[], &trainees, false, 1);
             self.env.use_seen = true;
             self.cache.absorb(self.env, &sv.refs);
-            let mut cs = vec![];
-            let n = st.legs.len();
-            for &t in &trainees { for a in 0..n { for b in a + 1..n { if self.legal(&st, t, a, b) {
-                let (q, _, c) = self.env.lineage(&st.pool, t, a, b);
-                if let Some(ub) = self.env.ceiling(t, &q, c) { cs.push((ub, t, a, b)); }
-            } } } }
+            // (every legal career's ceiling, `gen_cands`: `ceiling` at `lineage`'s chances, to the bit; in (trainee,
+            // pair) order, then best first)
+            let mut cs = self.env.gen_cands(&st.pool, &[], &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
             cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             for (ub, t, a, b) in cs {
                 let floor = st.mb.iter().fold(st.best.map_or(0.0, |p| p.val), |m, p| m.min(p.map_or(0.0, |p| p.val)));
@@ -637,20 +639,16 @@ impl<'s, 'a> Sim<'s, 'a> {
         if self.cfg.check_lineages > 0 {
             let bv = st.best.map_or(0.0, |p| p.val);
             let n = st.legs.len(); let vi = n - 1;
-            let mut cs = vec![];
-            for &t in &trainees { for a in 0..n { for b in a + 1..n {
-                if !all && b != vi { continue; }
-                if !self.legal(st, t, a, b) { continue; }
-                let (q, _, c) = self.env.lineage(&st.pool, t, a, b);
-                if let Some(ub) = self.env.ceiling(t, &q, c) { if ub >= self.cfg.check_frac * bv { cs.push((ub, t, a, b)); } }
-            } } }
+            // (the legal careers with her, or every one, `gen_cands`' ceilings, at least check_frac x the best)
+            let mut cs: Vec<(f64, usize, usize, usize)> = self.env.gen_cands(&st.pool, &[], &trainees, |_, b| all || b == vi, |ub, _, t, a, b| (ub, t, a, b))
+                .into_iter().filter(|x| x.0 >= self.cfg.check_frac * bv).collect();
             cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             cs.truncate(self.cfg.check_lineages);
             if let Some(p) = st.best { if !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b)) { let (q, _, c) = self.env.lineage(&st.pool, p.t, p.a, p.b); cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b)); } }
             let mut buf = vec![];
             for (ub, t, a, b) in cs {
                 let (q, nc, c) = self.env.lineage(&st.pool, t, a, b);
-                let rb = self.cache.refs[t].iter().map(|r| c * r.val * self.env.rise(t, &q, &r.q)).fold(ub, f64::min);
+                let rb = self.cache.refs[t].iter().map(|r| self.env.ref_bound(t, &q, c, r)).fold(ub, f64::min);
                 let (tv, di) = self.tval(t, &q, c, &mut buf);
                 self.env.set_trainee(t, &q);
                 self.env.work = 0;

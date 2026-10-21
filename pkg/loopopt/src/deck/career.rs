@@ -182,6 +182,47 @@ fn pink_p(st: u8, fa: f64) -> f64 { (PINK_RATE[st as usize] * fa).min(1.0) }
 fn rise_factor(st: u8, ew: f64, q: f64, q0: f64) -> f64 {
     if st > 0 || q <= q0 { 1.0 } else { (1.0 - (1.0 - ew) * (1.0 - q)) / (1.0 - (1.0 - ew) * (1.0 - q0)) }
 }
+/// A slot's affinity part summed as every copy sums it: x0, then each part in order
+#[inline(always)]
+fn part_sum(x0: f64, parts: impl IntoIterator<Item = f64>) -> f64 { parts.into_iter().fold(x0, |s, v| s + v) }
+/// The trainee's relation points a slot walk (`Env::walk_slots`) reads: with legacy x of the pool (`pt`) and with x's
+/// grandparent slot gi (`gt`)
+trait RelPts { fn pt(&self, x: usize) -> f64; fn gt(&self, x: usize, gi: usize) -> f64; }
+/// trainee t's, from the relation tables (`Env::pair`, `Env::tri`)
+struct RelOf<'e, 'a> { env: &'e Env<'a>, p: &'e Pool, t: usize }
+impl RelPts for RelOf<'_, '_> {
+    #[inline(always)] fn pt(&self, x: usize) -> f64 { self.env.pair(Some(self.t), self.p.me[x].ix) }
+    #[inline(always)] fn gt(&self, x: usize, gi: usize) -> f64 { self.env.tri(Some(self.t), self.p.me[x].ix, self.p.gp[x][gi].ix) }
+}
+/// What a slot walk feeds: each of the six legacy slots in `slots`' order (parent a, her grandparent slots, then parent
+/// b and hers) with its legacy x, its grandparent slot (None: the parent herself), who fills it, and its relation and
+/// race parts (a parent's: the sums over her and her grandparent slots)
+trait SlotSink<'p> { fn slot(&mut self, x: usize, gi: Option<usize>, w: &'p Who, rel: f64, race: f64); }
+/// `inherit`'s accumulation, slot by slot (per target the same factors in slot order): the fixed-star slots' miss
+/// product, the random-star slots' mix-term product and the carrier count. `skip`: a legacy whose parent slot is left
+/// out (as if she carried nothing), its affinity factor kept in `her`
+struct Inherit { miss: Vec<f64>, mix2: Vec<f64>, nc: Vec<i32>, skip: Option<usize>, her: Option<f64> }
+impl Inherit {
+    fn new(ntar: usize, skip: Option<usize>) -> Self { Inherit { miss: vec![1.0; ntar], mix2: vec![1.0; ntar], nc: vec![0; ntar], skip, her: None } }
+    #[inline(always)]
+    fn add(&mut self, stars: &[u8], mix: Option<[f64; 3]>, fa: f64) {
+        for k in 0..self.nc.len() { let st = stars[k]; if st == 0 { continue; } self.nc[k] += 1;
+            match mix { None => self.miss[k] *= insp_miss(st as f64, fa), Some(w) => self.mix2[k] *= mix_term(w, fa) } }
+    }
+    /// (q per target, carriers per target)
+    fn finish(self) -> (Vec<f64>, Vec<i32>) { (self.miss.iter().zip(&self.mix2).map(|(&m, &x)| inherit_q(m, x)).collect(), self.nc) }
+}
+impl SlotSink<'_> for Inherit {
+    #[inline(always)]
+    fn slot(&mut self, x: usize, gi: Option<usize>, w: &Who, rel: f64, race: f64) {
+        if gi.is_none() && self.skip == Some(x) { self.her = Some(aff_factor(rel, race)); return; }
+        self.add(&w.stars, w.mix, aff_factor(rel, race));
+    }
+}
+/// A legacy slot of the planner's veteran-to-be (`Env::her_slot`): the trainee's inheritance chances and carriers with
+/// her slot left out (q0, nc0), per uncertain target 1 - q0 (x0), her miss factor squared per star count (xms; 1 at 0
+/// stars) and per job target the spark scale without and with her spark (pw)
+pub(super) struct HerSlot { pub(super) q0: Vec<f64>, pub(super) x0: Vec<f64>, pub(super) xms: [f64; 4], pub(super) pw: Vec<[f64; 2]> }
 /// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
 /// inspiration, the legacy slot, stars
 #[derive(Clone)]
@@ -243,15 +284,9 @@ fn shared(a: &Who, b: &Who) -> f64 {
 /// Per job target: the inheritance chance and how many of the six carry the spark. A slot with random stars (`mix`)
 /// enters as the average of its squared miss factor (its stars are independent of everything else).
 fn inherit(sl: &[Slot], ntar: usize) -> (Vec<f64>, Vec<i32>) {
-    let mut q = vec![0.0f64; ntar]; let mut nc = vec![0i32; ntar];
-    for k in 0..ntar {
-        let (mut miss, mut mix2) = (1.0f64, 1.0f64);
-        for s in sl { let st = s.stars[k]; if st == 0 { continue; } nc[k] += 1;
-            let fa = aff_factor(s.rel, s.race);
-            match s.mix { None => miss *= insp_miss(st as f64, fa), Some(w) => mix2 *= mix_term(w, fa) } }
-        q[k] = inherit_q(miss, mix2);
-    }
-    (q, nc)
+    let mut acc = Inherit::new(ntar, None);
+    for s in sl { acc.add(&s.stars, s.mix, aff_factor(s.rel, s.race)); }
+    acc.finish()
 }
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
@@ -546,24 +581,45 @@ impl<'a> Env<'a> {
     }
     fn pair(&self, a: Option<usize>, b: Option<usize>) -> f64 { match (a, b) { (Some(a), Some(b)) => self.d.pair[a][b] as f64, _ => 0.0 } }
     fn tri(&self, a: Option<usize>, b: Option<usize>, c: Option<usize>) -> f64 { match (a, b, c) { (Some(a), Some(b), Some(c)) => self.d.tri[a][b][c] as f64, _ => 0.0 } }
-    /// the six legacy slots of trainee t with parents a and b
-    fn slots(&self, p: &Pool, t: usize, a: usize, b: usize) -> Vec<Slot> {
-        let ti = Some(t); let mut v = Vec::with_capacity(2 + p.gp[a].len() + p.gp[b].len());
+    /// The six legacy slots with parents a and b, in order, into `s` (`SlotSink`), the trainee's relation points from
+    /// `r`: per parent x (partner y) her relation part, pt(x) + pair(x, y) then her grandparent slots' gt(x, gi) in
+    /// order, and her race part, 3 x shared(a, b) then theirs (`Pool::gpc`) in order (`part_sum`); a grandparent slot's
+    /// parts are its own. The one definition of the slots' affinity every copy reads (`slots`, `lineage`,
+    /// `lineage_qc`, `her_slot`, `Sim::fast_ub`; `gen_cands` hoists the same sums)
+    #[inline(always)]
+    fn walk_slots<'p, R: RelPts, S: SlotSink<'p>>(&self, p: &'p Pool, a: usize, b: usize, r: &R, s: &mut S) {
         // (the parents' shared wins once: shared(a, b) and shared(b, a) are the same products summed in the same order)
         let sh = 3.0 * shared(&p.me[a], &p.me[b]);
         for (x, y) in [(a, b), (b, a)] {
-            let px = &p.me[x];
-            let mut rel = self.pair(ti, px.ix) + self.pair(px.ix, p.me[y].ix); let mut race = sh;
-            let i0 = v.len();
-            v.push(Slot { parent: true, legacy: x, gp: None, chara: px.chara, rel: 0.0, race: 0.0, stars: px.stars.clone(), pinks: px.pinks.clone(), mix: px.mix });
-            for (gi, g) in p.gp[x].iter().enumerate() {
-                let (gr, gc) = (self.tri(ti, px.ix, g.ix), p.gpc[x][gi]);
-                rel += gr; race += gc;
-                v.push(Slot { parent: false, legacy: x, gp: Some(gi), chara: g.chara, rel: gr, race: gc, stars: g.stars.clone(), pinks: g.pinks.clone(), mix: g.mix });
-            }
-            v[i0].rel = rel; v[i0].race = race;
+            let px = &p.me[x]; let ng = p.gp[x].len();
+            let rel = part_sum(r.pt(x) + self.pair(px.ix, p.me[y].ix), (0..ng).map(|gi| r.gt(x, gi)));
+            let race = part_sum(sh, p.gpc[x].iter().copied());
+            s.slot(x, None, px, rel, race);
+            for (gi, g) in p.gp[x].iter().enumerate() { s.slot(x, Some(gi), g, r.gt(x, gi), p.gpc[x][gi]); }
         }
-        v
+    }
+    /// the six legacy slots of trainee t with parents a and b
+    fn slots(&self, p: &Pool, t: usize, a: usize, b: usize) -> Vec<Slot> {
+        struct V(Vec<Slot>);
+        impl SlotSink<'_> for V {
+            fn slot(&mut self, x: usize, gi: Option<usize>, w: &Who, rel: f64, race: f64) {
+                self.0.push(Slot { parent: gi.is_none(), legacy: x, gp: gi, chara: w.chara, rel, race, stars: w.stars.clone(), pinks: w.pinks.clone(), mix: w.mix });
+            }
+        }
+        let mut v = V(Vec::with_capacity(2 + p.gp[a].len() + p.gp[b].len()));
+        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut v);
+        v.0
+    }
+    /// Legacy `iv`'s slot as a parent of trainee t beside partner y (`HerSlot`; None when she is not one of the two);
+    /// what `score_career`'s setups and `outcome_hi`'s partners take
+    pub(super) fn her_slot(&self, p: &Pool, t: usize, y: usize, iv: usize) -> Option<HerSlot> {
+        let mut acc = Inherit::new(self.ntar, Some(iv));
+        self.walk_slots(p, y, iv, &RelOf { env: self, p, t }, &mut acc);
+        let fa = acc.her?;
+        let (q0, nc0) = acc.finish();
+        let xm = |st: u8| insp_miss2(st as f64, fa);
+        Some(HerSlot { x0: self.uncv.iter().map(|&i| 1.0 - q0[i]).collect(), xms: [1.0, xm(1), xm(2), xm(3)],
+                       pw: nc0.iter().map(|&n| [spark_scale(n), spark_scale(n + 1)]).collect(), q0 })
     }
     fn scale(&self, nc: &[i32]) -> (Vec<f64>, Vec<f64>) {
         (self.uncv.iter().map(|&i| spark_scale(nc[i])).collect(), self.fixed_t.iter().map(|&i| spark_scale(nc[i])).collect())
@@ -591,20 +647,23 @@ impl<'a> Env<'a> {
     }
     /// The inheritance chances, carriers and spark scale C of trainee t with parents a and b.
     fn lineage(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, Vec<i32>, f64) {
-        let (q, nc) = inherit(&self.slots(p, t, a, b), self.ntar);
+        let mut acc = Inherit::new(self.ntar, None);
+        self.walk_slots(p, a, b, &RelOf { env: self, p, t }, &mut acc);
+        let (q, nc) = acc.finish();
         let (su, sf) = self.scale(&nc);
         let c = su.iter().chain(&sf).product::<f64>();
         (q, nc, c)
     }
     /// `lineage`'s spark scale C, and its inheritance chances for the targets `ks` only (into q[i] for i in ks, the
-    /// other entries of q left as they are), without allocating: `slots`, `inherit` and `scale` operation for operation
-    /// (each slot's affinity summed in `slots`' order, its factors multiplied in slot order, a slot without the spark
-    /// skipped). More than four grandparent slots per parent: through `lineage` itself. `tg`: t's relation points with
-    /// each legacy x of `p` (`pair`, at 5 x + 4) and with x's grandparent slots (`tri`, at 5 x + the slot), then
-    /// `scale`'s factor per carrier count; built here when empty: the caller empties it for another trainee or pool.
+    /// other entries of q left as they are), without allocating: the same slot walk (`walk_slots`) into `inherit`'s
+    /// accumulation for those targets (each slot's factors multiplied in slot order, a slot without the spark skipped)
+    /// and the carriers of every target, then `scale`'s product. More than four grandparent slots per parent, or more
+    /// than QN targets: through `lineage` itself. `tg`: t's relation points with each legacy x of `p` (`pair`, at 5 x +
+    /// 4) and with x's grandparent slots (`tri`, at 5 x + the slot), then `scale`'s factor per carrier count; built here
+    /// when empty: the caller empties it for another trainee or pool.
     fn lineage_qc(&self, p: &Pool, t: usize, a: usize, b: usize, ks: &[usize], q: &mut [f64], tg: &mut Vec<f64>) -> f64 {
-        const G: usize = 4;
-        if p.gp[a].len() > G || p.gp[b].len() > G {
+        const G: usize = 4; const QN: usize = 16;
+        if p.gp[a].len() > G || p.gp[b].len() > G || self.ntar > QN {
             let (qq, _, c) = self.lineage(p, t, a, b); for &i in ks { q[i] = qq[i]; } return c;
         }
         let ti = Some(t);
@@ -615,33 +674,52 @@ impl<'a> Env<'a> {
             // then `spark_scale` per carrier count n
             tg.extend((0..=2 * (G + 1)).map(|n| spark_scale(n as i32)));
         }
-        let sh = 3.0 * shared(&p.me[a], &p.me[b]);
-        // the six slots in `slots`' order: stars, mix, and the affinity term fa = 1 + (rel + race) / 100 (`inherit`'s,
-        // computed once per slot), rel and race summed as `slots` sums them
-        const NS: usize = 2 * (G + 1);
-        let (mut st, mut mx, mut fa): ([&[u8]; NS], [Option<[f64; 3]>; NS], [f64; NS]) = ([&[][..]; NS], [None; NS], [0.0; NS]);
-        let mut ns = 0usize;
-        for (x, y) in [(a, b), (b, a)] {
-            let px = &p.me[x];
-            let mut rel = tg[x * (G + 1) + G] + self.pair(px.ix, p.me[y].ix); let mut race = sh;
-            let i0 = ns; st[ns] = &px.stars[..]; mx[ns] = px.mix; ns += 1;
-            for (gi, g) in p.gp[x].iter().enumerate() {
-                let (gr, gc) = (tg[x * (G + 1) + gi], p.gpc[x][gi]);
-                rel += gr; race += gc;
-                st[ns] = &g.stars[..]; mx[ns] = g.mix; fa[ns] = aff_factor(gr, gc); ns += 1;
-            }
-            fa[i0] = aff_factor(rel, race);
+        struct Tg<'t>(&'t [f64]);
+        impl RelPts for Tg<'_> {
+            #[inline(always)] fn pt(&self, x: usize) -> f64 { self.0[x * (G + 1) + G] }
+            #[inline(always)] fn gt(&self, x: usize, gi: usize) -> f64 { self.0[x * (G + 1) + gi] }
         }
-        for &k in ks {
-            let (mut miss, mut mix2) = (1.0f64, 1.0f64);
-            for j in 0..ns {
-                let s = st[j][k]; if s == 0 { continue; }
-                match mx[j] { None => miss *= insp_miss(s as f64, fa[j]), Some(w) => mix2 *= mix_term(w, fa[j]) }
+        // `Inherit` for the targets `ks` (and the carriers of every target), in fixed arrays
+        struct Qc<'k> { ks: &'k [usize], ntar: usize, miss: [f64; QN], mix2: [f64; QN], nc: [usize; QN] }
+        impl SlotSink<'_> for Qc<'_> {
+            #[inline(always)]
+            fn slot(&mut self, _: usize, _: Option<usize>, w: &Who, rel: f64, race: f64) {
+                let fa = aff_factor(rel, race);
+                for &k in self.ks { let s = w.stars[k]; if s == 0 { continue; }
+                    match w.mix { None => self.miss[k] *= insp_miss(s as f64, fa), Some(m) => self.mix2[k] *= mix_term(m, fa) } }
+                for k in 0..self.ntar { if w.stars[k] != 0 { self.nc[k] += 1; } }
             }
-            q[k] = inherit_q(miss, mix2);
         }
+        let mut acc = Qc { ks, ntar: self.ntar, miss: [1.0; QN], mix2: [1.0; QN], nc: [0; QN] };
+        self.walk_slots(p, a, b, &Tg(&tg[..nl * (G + 1)]), &mut acc);
+        for &k in ks { q[k] = inherit_q(acc.miss[k], acc.mix2[k]); }
         let pw = &tg[nl * (G + 1)..];
-        self.uncv.iter().chain(&self.fixed_t).map(|&i| pw[st[..ns].iter().filter(|s| s[i] != 0).count()]).product::<f64>()
+        self.uncv.iter().chain(&self.fixed_t).map(|&i| pw[acc.nc[i]]).product::<f64>()
+    }
+    /// The bound a fully checked deck search `r` (a `Ref`: chances r.q, best value r.val before the spark scale) puts on
+    /// every career of trainee t's deck class at chances q with spark scale c: c r.val rise(t, q, r.q) (`Env::rise`)
+    #[inline]
+    fn ref_bound(&self, t: usize, q: &[f64], c: f64, r: &Ref) -> f64 { c * r.val * self.rise(t, q, &r.q) }
+    /// The bound a product search's proof (`ruled`: chances rq, best product value s) puts on it there: EXACT_RHO c s
+    /// rise(t, q, rq) (`solve`'s derivation at its `ruled` test)
+    #[inline]
+    fn ruled_bound(&self, t: usize, q: &[f64], c: f64, rq: &[f64], s: f64) -> f64 { self.space.rho_top() * c * s * self.rise(t, q, rq) }
+    /// Whether a fully checked deck of `refs` proves career (t, q, c) below the bar th, as `solve` prunes: some
+    /// `ref_bound` (1 + 1e-9) < th
+    #[inline]
+    fn refs_out<'r>(&self, t: usize, q: &[f64], c: f64, mut refs: impl Iterator<Item = &'r Ref>, th: f64) -> bool { refs.any(|r| self.ref_bound(t, q, c, r) * (1.0 + 1e-9) < th) }
+    /// Whether a product proof of `ruled` does, as `solve` prunes: some `ruled_bound` (1 + 2e-9) < th (2e-9: the
+    /// rounding of the product value and of rise)
+    #[inline]
+    fn ruled_out(&self, t: usize, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], th: f64) -> bool { ruled.iter().any(|(rq, s)| self.ruled_bound(t, q, c, rq, *s) * (1.0 + 2e-9) < th) }
+    /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
+    /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
+    /// took). The model state after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
+    /// it (every reader of the model state sets it first)
+    fn ranked_pairs(&mut self, p: &Pool, fix: &[usize], t: usize, keep: impl Fn(usize, usize) -> bool) -> Vec<(f64, usize, usize)> {
+        let mut v = self.gen_cands(p, fix, &[t], keep, |ub, _, _, a, b| (ub, a, b));
+        v.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
+        v
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
@@ -666,7 +744,8 @@ impl<'a> Env<'a> {
     /// with it, its grandparent slots' miss factors). A slot without a spark of target k multiplies by 1 where
     /// `inherit` skips it (exact), and every model state `ceiling` leaves (`set_trainee` at each candidate's q in
     /// turn) is the same.
-    fn gen_cands<C>(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C) -> Vec<C> {
+    /// `keep`: a filter on the pairs (a, b) beside the rules (`solve`: every pair).
+    fn gen_cands<C>(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], keep: impl Fn(usize, usize) -> bool, mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C) -> Vec<C> {
         let d = self.d; let nl = p.me.len(); let ntar = self.ntar;
         // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone (its affinity factor fa
         // computed once per slot)
@@ -690,9 +769,9 @@ impl<'a> Env<'a> {
             Some(_) => Box::new(std::iter::empty()),
         };
         for (a, b) in pair_list {
-            if !p.parents_ok(a, b) || !holds_fix(fix, a, b) { continue; }
+            if !p.parents_ok(a, b) || !holds_fix(fix, a, b) || !keep(a, b) { continue; }
             let sh = 3.0 * shared(&p.me[a], &p.me[b]);
-            let race = [a, b].map(|x| { let mut r = sh; for &gc in &p.gpc[x] { r += gc; } r });
+            let race = [a, b].map(|x| part_sum(sh, p.gpc[x].iter().copied()));
             let pp = [self.pair(p.me[a].ix, p.me[b].ix), self.pair(p.me[b].ix, p.me[a].ix)];
             for k in 0..ntar { nc[k] = cnt[a * ntar + k] + cnt[b * ntar + k]; }
             let c = self.uncv.iter().map(|&i| pw[nc[i]]).chain(self.fixed_t.iter().map(|&i| pw[nc[i]])).product::<f64>();
@@ -726,9 +805,7 @@ impl<'a> Env<'a> {
                 // each parent slot's affinity, summed as `slots` sums it (as fa)
                 let fa = [0, 1].map(|s| {
                     let x = if s == 0 { a } else { b };
-                    let mut rel = cx.pt[x] + pr.pp[s];
-                    for j in go[x]..go[x + 1] { rel += cx.gr[j]; }
-                    aff_factor(rel, pr.race[s])
+                    aff_factor(part_sum(cx.pt[x] + pr.pp[s], cx.gr[go[x]..go[x + 1]].iter().copied()), pr.race[s])
                 });
                 for k in 0..ntar {
                     let (mut miss, mut mix2) = (1.0f64, 1.0f64);
@@ -1010,7 +1087,7 @@ impl<'a> Env<'a> {
         let t_gen = now_ms();
         let nl = p.me.len();
         assert!(nl <= u16::MAX as usize && d.umas.len() <= u16::MAX as usize && trainees.len() <= u16::MAX as usize);
-        let mut cands: Vec<Cand> = self.gen_cands(p, fix, trainees, |ub, tp, t, a, b| Cand { ub, t: t as u16, tp: tp as u16, a: a as u16, b: b as u16 });
+        let mut cands: Vec<Cand> = self.gen_cands(p, fix, trainees, |_, _| true, |ub, tp, t, a, b| Cand { ub, t: t as u16, tp: tp as u16, a: a as u16, b: b as u16 });
         // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
         // -0 tie as there), as a total order on (ceiling descending, tp, a, b), unique per candidate. Sorted lazily
         // (`upto`): the loop below reads a short prefix, so each step selects the next chunk (everything before it is
@@ -1101,10 +1178,14 @@ impl<'a> Env<'a> {
                 if [(a, b), (b, a)].iter().any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y)))) { n_bounded += 1; continue; }
             }
             let (q, _, c) = self.lineage(p, t, a, b);
+            // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
+            // `gen_cands`' claim, checked with the model state put back)
+            debug_assert!({ let ew = self.model.ews[t].clone(); let ub = self.ceiling(t, &q, c); self.model.ews[t] = ew;
+                            ub.map(f64::to_bits) == Some(cands[ci].ub.to_bits()) }, "gen_cands' ceiling of ({t}, {a}, {b}) is not ceiling(lineage)");
             let ct = self.cls[t]; let seen: &[Ref] = if self.use_seen { &self.seen[ct] } else { &[] };
             // (the lowest of these bounds below th, as any one of them below it: the minimum is one of the bounds, and
             // rounding x (1 + 1e-9) is monotone; a NaN bound neither lowers the minimum nor passes the test)
-            if refs[t].iter().chain(seen).any(|r| c * r.val * self.rise(t, &q, &r.q) * (1.0 + 1e-9) < th) { n_bounded += 1; continue; }
+            if self.refs_out(t, &q, c, refs[t].iter().chain(seen), th) { n_bounded += 1; continue; }
             // what her earlier product searches proved (`ruled`). Derived: with her chances folded in, target k's factor
             // in the product value of one outfit and one deck (odds dw, dg) is f(n) = A - B n, n = (1 - e)(1 - q_k),
             // A = dg G + (1 - dg) W, B = (1 - dg) W (1 - dw) <= A (`outfit_fast` at q = 0; a target the outfit has is
@@ -1120,7 +1201,7 @@ impl<'a> Env<'a> {
             // decks seed the simulator's cache (`use_seen` off) takes only the proofs of its own candidates, so its work does not
             // depend on what earlier searches did either.
             let lo = if self.use_seen { 0 } else { ruled0[ct] };
-            if self.ruled[ct][lo..].iter().any(|(rq, s)| self.space.rho_top() * c * s * self.rise(t, &q, rq) * (1.0 + 2e-9) < th) { n_bounded += 1; continue; }
+            if self.ruled_out(t, &q, c, &self.ruled[ct][lo..], th) { n_bounded += 1; continue; }
             self.set_trainee(t, &q);
             let tk = (cands[ci].t, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
             let res = match twins.get(&tk) {
@@ -1515,6 +1596,9 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     });
     if let Some(sm) = &cj.simulate { return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm); }
     let pool = env.pool(legs);
+    // (tests: the job's Env and pool handed to a check instead of the search)
+    #[cfg(test)]
+    if let Some(h) = tests::ENV_HOOK.with(|c| c.borrow_mut().take()) { h(&mut env, &pool); return json!({}); }
     // a roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`sim::plan::roll_kept`);
     // else the job runs as below, its plan answering the roll
     if let Some(nj) = cj.next.as_ref().filter(|x| x.get("roll").is_some_and(|r| !r.is_null())).and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok()) {
@@ -1573,5 +1657,74 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }
     out["timing_s"] = json!(t_all.elapsed().as_secs_f64());
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    type Hook = Box<dyn for<'e> FnOnce(&mut Env<'e>, &Pool)>;
+    thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
+    /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `h` given its Env and pool
+    fn with_env(h: Hook) {
+        let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
+        let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
+        let d = crate::load_str(&rd("data.json"));
+        let sk: SkillsRaw = serde_json::from_str(&rd("web_skills.json")).unwrap();
+        let cr: CardsRaw = serde_json::from_str(&rd("web_cards.json")).unwrap();
+        let mut v: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("next");
+        let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
+        crate::deck::apply_events_db(&mut v, &sk, &db);
+        for (i, l) in v["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
+            l["wins"] = json!([(i % 5) as u64, 7 + (i % 3) as u64, 20]);
+            for (j, g) in l["parents"].as_array_mut().unwrap().iter_mut().enumerate() { g["wins"] = json!([(i + j) % 5]); }
+        }
+        ENV_HOOK.with(|c| *c.borrow_mut() = Some(h));
+        run_career(&d, &sk, &cr, &v);
+        assert!(ENV_HOOK.with(|c| c.borrow().is_none()), "the hook did not run");
+    }
+    /// The copies of the inheritance chance agree to the bit with `lineage` (slots, `inherit`, `scale`): `lineage_qc`,
+    /// `gen_cands`' ceilings (against `ceiling` at `lineage`'s chances, as `solve` takes them) and `her_slot` (against
+    /// `inherit` on the slots with hers emptied), on a pool with random-star slots (parents and grandparents) beside
+    /// fixed ones
+    #[test]
+    fn inheritance_copies_match_lineage() {
+        with_env(Box::new(|env: &mut Env, pool: &Pool| {
+            let mut p = pool.clone();
+            for x in 0..p.me.len() {
+                if x % 3 == 0 { p.me[x].mix = Some([0.5, 0.4, 0.1]); }
+                if x % 4 == 1 { if let Some(g) = p.gp[x].first_mut() { g.stars = std::rc::Rc::new(p.me[x].stars.iter().map(|&s| s.max(1)).collect()); g.mix = Some([0.2, 0.3, 0.5]); } }
+            }
+            let ks: Vec<usize> = (0..env.ntar).collect();
+            let trainees: Vec<usize> = env.owned.clone();
+            let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
+            let (mut n, mut tg, mut tg_t) = (0usize, vec![], usize::MAX);
+            for fix in [vec![], vec![2usize]] {
+                let cands = env.gen_cands(&p, &fix, &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
+                assert!(!cands.is_empty());
+                for (ub, t, a, b) in cands {
+                    let (q, _, c) = env.lineage(&p, t, a, b);
+                    assert_eq!(ub.to_bits(), env.ceiling(t, &q, c).unwrap().to_bits(), "gen_cands ceiling t {t} pair {a} {b}");
+                    if t != tg_t { tg.clear(); tg_t = t; }
+                    let mut qq = vec![0.0f64; env.ntar];
+                    let cq = env.lineage_qc(&p, t, a, b, &ks, &mut qq, &mut tg);
+                    assert_eq!((bits(&qq), cq.to_bits()), (bits(&q), c.to_bits()), "lineage_qc t {t} pair {a} {b}");
+                    for (y, iv) in [(a, b), (b, a)] {
+                        let sl = env.slots(&p, t, y, iv);
+                        let pos = sl.iter().position(|z| z.parent && z.legacy == iv).unwrap();
+                        let mut sl0 = sl.clone(); sl0[pos].stars = std::rc::Rc::new(vec![0; env.ntar]); sl0[pos].mix = None;
+                        let (q0, nc0) = inherit(&sl0, env.ntar);
+                        let hs = env.her_slot(&p, t, y, iv).unwrap();
+                        let fa = aff_factor(sl[pos].rel, sl[pos].race);
+                        assert_eq!(bits(&hs.q0), bits(&q0));
+                        assert_eq!(bits(&hs.xms), bits(&[1.0, insp_miss2(1.0, fa), insp_miss2(2.0, fa), insp_miss2(3.0, fa)]));
+                        assert!(hs.pw.iter().zip(&nc0).all(|(w, &m)| w[0].to_bits() == spark_scale(m).to_bits() && w[1].to_bits() == spark_scale(m + 1).to_bits()));
+                    }
+                    n += 1;
+                }
+            }
+            assert!(n > 1000, "{n} candidates");
+        }));
+    }
 }
 

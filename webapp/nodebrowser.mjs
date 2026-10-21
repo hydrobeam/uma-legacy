@@ -12,6 +12,7 @@ import { serveDist } from './serve.mjs';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { drawPink } from './src/pink.mjs';
 
 const local = process.env.LLP_URL ? null : await serveDist();
 const URL = process.env.LLP_URL || local.url;
@@ -24,6 +25,28 @@ function hintRates() {
   const v = Object.fromEntries([...body.matchAll(/"(\w+)" => ([\d.]+)/g)].map(m => [m[1], +m[2]])), dflt = +/_ => ([\d.]+)/.exec(body)[1];
   const of = s => v[s] ?? dflt;
   return Object.fromEntries(['unity', 'gc', 'ura', 'trackblazer', 'grandmasters'].map(s => [s, `Hint rate ×${(of(s) / of('ura')).toFixed(2)}`]));
+}
+// The page's pink draw (`drawPink`) against the solver's pink model (MODEL.md; `Env::pink_gen`): on every reference
+// career with legacy pinks (val/ref__global__career_*.out, the solver's outputs that validation pins), 40,000 seeded draws
+// per career, each aptitude drawn as often as its `pink_gen` chance, to 5 sigma (at least 1e-3). [ok, detail]
+function pinkPin() {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'val');
+  let s = 0x9e3779b9;   // (mulberry32)
+  const rnd = () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const N = 40000; let n = 0, worst = 0, bad = '';
+  for (const f of fs.readdirSync(dir).filter(f => /^ref__global__career_.*\.out$/.test(f)).sort()) {
+    for (const r of JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).results || []) {
+      const ap = r.aptitudes; if (!ap || !ap.fire.length) continue;
+      const cnt = new Map();
+      for (let i = 0; i < N; i++) { const g = Object.keys(drawPink(ap, rnd).pinks)[0]; if (g !== undefined) cnt.set(+g, (cnt.get(+g) || 0) + 1); }
+      for (const { group, p } of ap.pink_gen) {
+        const fr = (cnt.get(group) || 0) / N, sd = Math.sqrt(p * (1 - p) / N); n++;
+        if (Math.abs(fr - p) > Math.max(5 * sd, 1e-3)) bad ||= `${f} group ${group}: drawn ${fr} vs ${p}`;
+        if (sd > 0) worst = Math.max(worst, Math.abs(fr - p) / sd);
+      }
+    }
+  }
+  return [n > 0 && !bad, bad || `${n} aptitudes, worst ${worst.toFixed(2)} sigma`];
 }
 try { pw = createRequire(import.meta.url)('playwright'); }
 catch { console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)'); process.exit(1); }
@@ -1057,6 +1080,7 @@ const TESTS = {
     // the career planner (/career): the lineage tree, the parent picker, the skills prompt, the settings dialogs,
     // umadump import, the veteran editor, the search and its results
     const { ctx, pg, note, done, planned, oneAnswer, showsNow, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump } = await careerPage(b);
+    if (b.browserType().name() === 'chromium') check('career: a roll\'s pink spark (`drawPink`) is drawn from the solver\'s pink model: each aptitude as often as its `pink_gen` chance on the reference careers', ...pinkPin());
     check('career: with no veterans it asks for parents or an import, and offers sample veterans', /Choose both parents, or import/.test(await note()) && /Try sample veterans/.test(await pg.textContent('#run-act')), await note());
     check('career: the setup panel shows the shared settings, the Enhance buttons, and Target skills in the open (the planner\'s editor)', await pg.locator('.rbbar #o-umas.enh .enhimg, .rbbar #o-cards.enh .enhimg').count() === 2
       && await pg.locator('.rbbar .lptgt #targets .tgt').count() === 8 && !(await pg.locator('#o-skills, #set-skills').count()));

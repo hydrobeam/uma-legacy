@@ -24,6 +24,7 @@ import { vets, plan, onVetsChange, changed, persist, vetById, umaName, skillName
   newVet, importVets, addVets, removeVet, clearVets, legaciesJob, openUmaPicker, drawUmas, filterUmas, openWins } from './vets.js';
 import { parseExport, parseTree } from './umadump.js';
 import { detailsEl, inspView, fitSparks } from './details.js';
+import { drawPink } from './pink.mjs';
 
 const tName = (g) => { const s = SK.get(g) || { w: 'Skill ' + g, gd: null }; return goldGiven(g) && s.gd ? s.gd : s.w; };
 const owned = (u) => state.roster[u.id] !== 'out' && !noOutfit(u);
@@ -615,16 +616,8 @@ function rolledBought(r, sparks) {
     else if (L < 1 && Math.random() < Math.max(0, B - L) / (1 - L)) bought[t.group] = Math.random() < (B - L > 0 ? Math.max(0, b.gold - b.land_gold) / (B - L) : 0) ? 'gold' : 'white'; }
   return bought;
 }
-// her pink spark drawn (MODEL.md): her start grades, each legacy pink firing at each April inspiration (+1 grade, at most S),
-// then one aptitude uniform over those at A or S, stars 20/70/10
-function rolledPink(r) {
-  const ap = r.aptitudes; if (!ap) return { pinks: {}, apt: null };
-  const g = ap.start.slice();
-  for (let e = 0; e < 2; e++) for (const f of ap.fire) if (Math.random() < f.p) g[f.apt] = Math.min(8, g[f.apt] + 1);
-  const as = g.map((x, k) => x >= 7 ? k : -1).filter(k => k >= 0); if (!as.length) return { pinks: {}, apt: g };
-  const k = as[Math.floor(Math.random() * as.length)], u = Math.random();
-  return { pinks: { [ap.pink_gen[k].group]: u < 0.2 ? 1 : u < 0.9 ? 2 : 3 }, apt: g };
-}
+// her pink spark drawn (`drawPink`)
+const rolledPink = (r) => drawPink(r.aptitudes);
 // a random result of this career: the set of landed targets drawn from its exact odds, each spark's stars from the rank,
 // each G1 she runs won with its chance (it differs every time; the career's first showing is one of these too)
 function rolledOutcome(r) {

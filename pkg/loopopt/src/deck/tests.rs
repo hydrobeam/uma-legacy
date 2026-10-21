@@ -12,7 +12,7 @@ fn fast_metric_matches_reference() {
         let qa = m.lineage_q_arr(f, &|_, _| 3.0);
         let qv = m.lineage_q(f, &|_, _| 3.0);
         assert_eq!(qv.len(), if f.len() == 4 { 12 } else { 3 });
-        assert!(qa.iter().zip(&qv).all(|(a, b)| (a - b).abs() < 1e-15));
+        assert!(qa.iter().zip(&qv).all(|(a, b)| a.to_bits() == b.to_bits()));
         let dw: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
         let dg: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
         // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`): one
@@ -205,6 +205,26 @@ fn chain_states_match_marginals() {
                 assert!((p - m[kd][l as usize - 1]).abs() < 1e-12, "{ks:?} entry {i} link {l}: {p} vs {}", m[kd][l as usize - 1]);
             }
         }
+    }
+}
+/// `key_level`'s per-count progress grids project the same process as `chain_states`: each final state's chance is
+/// the grids' value at its grid index summed over the event count's distribution (a stop risk and early ends included)
+#[test]
+fn key_level_matches_states() {
+    let r = stop_risk_code(&[(2, 1, 2)], 3);
+    let pmf = event_pmf(CHAIN_EVENTS.with(|c| c.get()).0 as usize);
+    for ks in [vec![(3, 3, 0)], vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)], vec![(3, 2, 0), (3, 3, r), (4, 4, 0)], vec![(2, 2, 0); 6]] {
+        let mut ks: Vec<Kind> = ks; ks.sort();
+        let (st, kl) = (chain_states(&ks), key_level(&ks));
+        let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
+        let mut seen = 0.0f64;
+        for (s, p) in st.iter() {
+            let gi: usize = s.iter().zip(&kl.gstride).map(|(&x, &g)| x as usize * g).sum();
+            let q = at(gi); seen += q;
+            assert!((q - p).abs() < 1e-12, "{ks:?} state {s:?}: key_level {q} vs chain_states {p}");
+        }
+        // (and no grid mass outside the final states)
+        assert!((seen - (0..kl.lev[0].len()).map(at).sum::<f64>()).abs() < 1e-12, "{ks:?}");
     }
 }
 /// The collapsed-state form equals the full enumeration (chains, coupled outcomes, a stop risk, fillers).
