@@ -690,9 +690,30 @@ impl<'a> Env<'a> {
     /// chance of each set of uncertain targets landing
     fn exact(&self, t: usize, sel: &Sel, nc: &[i32], m1: bool, sets: bool) -> ((f64, f64, usize), JointExt) {
         let (su, sf) = self.scale(nc);
-        let mut ext = JointExt { su, sf, marg: vec![], sets: if sets { vec![0.0] } else { vec![] }, per_outfit: vec![] };
+        let mut ext = JointExt { su, sf, marg: vec![], sets: if sets { vec![0.0] } else { vec![] }, per_outfit: vec![], spark: None };
         let j = joint_fast(&self.model, t, &[0.0], &self.ents_of(sel), sel.filler, self.ntar, m1, Some(&mut ext))[0];
         (j, ext)
+    }
+
+    /// Trainee t with deck `sel` at inheritance chances q, unit spark scale, her outfit with the highest P(all): (P(all
+    /// land), E[prod g^2] over the targets' spark chances g, P(every target bought)), the same joint sum with the spark
+    /// chances (GEN_WHITE, GEN_GOLD) squared, then 1 (`JointExt::spark`; given the chain state the targets are independent,
+    /// so each product is per target). Her chances are left as they were
+    pub(super) fn reroll_parts(&mut self, t: usize, q: &[f64], sel: &Sel) -> (f64, f64, f64) {
+        let keep = self.model.ews[t].clone();
+        self.set_trainee(t, q);
+        let ents: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
+        let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler);
+        let (gw, gg) = (crate::skills::GEN_WHITE, GEN_GOLD);
+        let mut po: [Vec<f64>; 3] = Default::default();
+        for (i, spark) in [None, Some([gw * gw, gg * gg]), Some([1.0, 1.0])].into_iter().enumerate() {
+            let mut ext = JointExt { su: vec![1.0; self.nu], sf: vec![1.0; self.fixed_t.len()], marg: vec![], sets: vec![], per_outfit: vec![], spark };
+            joint_eval(&self.model, t, &[0.0], &pre, self.ntar, false, false, Some(&mut ext));
+            po[i] = ext.per_outfit;
+        }
+        self.model.ews[t] = keep;
+        let mut b = 0; for o in 1..po[0].len() { if po[0][o] > po[0][b] { b = o; } }
+        (po[0][b], po[1][b], po[2][b])
     }
 
     /// How far trainee t's best exact value (before the spark scale) can rise from chances q0 to q. A target the
@@ -1533,7 +1554,7 @@ impl<'a> Env<'a> {
         // (one chance vector and one `JointExt` for every corner: joint_eval only reads su, sf; `marg` is not read here,
         // so not summed)
         let mut q = q0.to_vec();
-        let mut ext = JointExt { su, sf, marg: vec![], sets: vec![], per_outfit: vec![] };
+        let mut ext = JointExt { su, sf, marg: vec![], sets: vec![], per_outfit: vec![], spark: None };
         // (and one set of joint_eval's buffers)
         let mut sx = JointScratch::default();
         for c in 0..(1usize << nu) {

@@ -1751,6 +1751,45 @@ const TESTS = {
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },
+  // Spark reroll (Career setup) on the 12 test veterans: Never sends no next.reroll; All learned and Always send it, are
+  // saved, and lower the plan's estimate alike (by at most half); their TP is in the estimate's popup
+  async careerreroll(b) {
+    const { ctx, pg, done, planned, importDump } = await careerPage(b);
+    await importDump(); await done(); await planned();
+    const lastPlan = () => pg.evaluate(() => ({ job: window.__careerJobs.filter(j => j.cmd === 'career' && j.next && !j.compare).at(-1), r: window.__careerResults.filter(r => r.next).at(-1) }));
+    const saved = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:settings')).common.reroll);
+    const pressed = () => pg.$$eval('#rr button', bs => bs.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.v).join());
+    const a = await lastPlan(), v0 = a.r.next.v0;
+    check('career: Spark reroll starts at Never, its plan job without next.reroll', await pressed() === 'never' && !('reroll' in a.job.next) && !a.r.next.reroll, JSON.stringify(a.job.next));
+    check('career: at Never the estimate stands under the table, without TP', /^The planner's rough estimate from your veterans now: about [\d,]+ careers to a fully looped parent\.$/.test(await pg.textContent('#opt-est')), await pg.textContent('#opt-est'));
+    await pg.click('#rr button[data-v="all_bought"]'); await done(); await planned();
+    const l = await lastPlan(), rl = l.r.next.reroll;
+    check('career: All learned sends next.reroll "all_bought", is saved, and lowers the estimate by at most half, with fewer rerolls than careers', l.job.next.reroll === 'all_bought'
+      && await saved() === 'all_bought' && l.r.next.v0 < v0 && l.r.next.v0 >= v0 / 2 && rl && rl.rerolls > 0 && rl.rerolls <= l.r.next.v0, `${v0} -> ${l.r.next.v0} ${JSON.stringify(rl)}`);
+    // the table's odds are the rerolled ones, and the estimate stands under it with the TP
+    const in1 = (p) => '1 in ' + (1 / p >= 100 ? Math.round(1 / p).toLocaleString() : (1 / p).toFixed(1));
+    const cells = await pg.$$eval('.alts tbody tr', rs => rs.map(r => r.cells[1].textContent));
+    const want = l.r.next.options.slice(0, 3).map(o => in1(o.p_reroll)), est = await pg.textContent('#opt-est');
+    check('career: under All learned the table shows each career\'s odds with the reroll, and the estimate with its TP under it', cells.slice(0, 3).join() === want.join()
+      && l.r.next.options.every(o => o.p_reroll > o.p_all && o.p_reroll <= 2 * o.p_all)
+      && /^The planner's rough estimate from your veterans now: about [\d,]+ careers to a fully looped parent, and [\d,]+ careers' worth of TP with the rerolls\.$/.test(est), `${cells.slice(0, 3)} | ${want} | ${est}`);
+    await pg.click('#save-why'); await dialog(pg, 'save-dlg');
+    await pg.locator('#save-dlg summary', { hasText: 'Spark rerolls and TP' }).click();
+    const tp = await pg.textContent('#save-dlg');
+    await pg.locator('#save-dlg .gmclose').click();
+    check('career: the estimate\'s popup gives the rerolls and their TP', /about [\d,]+ rerolls on top of the [\d,]+ careers, so about [\d,]+ careers' worth of TP in all/.test(tp), tp.slice(-300));
+    await pg.click('#rr button[data-v="always"]'); await done(); await planned();
+    const w = await lastPlan();
+    check('career: Always plans as All learned, rerolling every career', w.job.next.reroll === 'always' && w.r.next.v0 === l.r.next.v0 && w.r.next.reroll.rerolls === w.r.next.v0,
+      `${w.r.next.v0} ${JSON.stringify(w.r.next.reroll)}`);
+    // back at Never the job is the first run's, whose answer the page kept: shown again, nothing run
+    const plans = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && j.next && !j.compare).length), nPlan = await plans();
+    await pg.click('#rr button[data-v="never"]'); await done();
+    check('career: back at Never the first answer is shown again without a plan run', await saved() === 'never' && await pressed() === 'never'
+      && await plans() === nPlan && /about [\d,]+ careers to a fully looped parent\.$/.test(await pg.textContent('#opt-est')), `${nPlan} -> ${await plans()}`);
+    check('no page errors', !pg.errors.length, pg.errors.join(' | '));
+    await ctx.close();
+  },
   // the career planner's run (the 12 test veterans): an edit that leaves the job as it is lets the plan under way go on,
   // the status line says how far the plan has got, and after a reload the stored main search is taken (no search again)
   async careerrun(b) {

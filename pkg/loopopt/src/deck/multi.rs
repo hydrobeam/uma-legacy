@@ -628,7 +628,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         let dke: Vec<_> = (0..nm).map(|t| ents_of(dk[t])).collect();
         for l in 0..nl {
             let t = ln[l].0; let (e, fl) = (&dke[t].0, dke[t].1); let nu = unc.len();
-            let mut ext = JointExt { su: vec![1.0; nu], sf: vec![1.0; ntar - nu], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
+            let mut ext = JointExt { su: vec![1.0; nu], sf: vec![1.0; ntar - nu], marg: vec![], sets: vec![0.0], per_outfit: vec![], spark: None };
             joint_fast(model, f[t], &[qs[l]], e, fl, ntar, false, Some(&mut ext));
             let o = per_l[l].2;
             let mut g = vec![1.0f64];

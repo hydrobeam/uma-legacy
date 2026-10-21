@@ -172,6 +172,8 @@ struct Sim<'s, 'a> {
     /// the planner's working copy of its pool (`take_pool`), with the address, length and borrowing rule of the pool it
     /// copies
     wpool: Option<((usize, usize, u8), Pool)>,
+    /// the plan's end-of-career reroll is on (`plan::Reroll`): a fully looped parent's step is costed at k p (`plan::reroll_k`)
+    reroll: bool,
 }
 /// index, this run: plan jobs run, each one's seconds, the picks' roles (`next.options[].role`), picks that were the best
 /// odds career (`best_odds`)
@@ -233,7 +235,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         let star = env.sj.star_dist;
         let fastc = fastc(env);
         let fixed = env.model.fixed_factor();
-        Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main, audits: vec![], fill, mi, qs: vec![], wpool: None }
+        Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main, audits: vec![], fill, mi, qs: vec![], wpool: None, reroll: false }
     }
     /// A working copy of `pool` (the planner's `Env::pool(legs)`), equal to it: the one kept by `put_pool` when it was
     /// made from this pool (the same address, length and borrowing rule: the pool a caller passes is borrowed, so

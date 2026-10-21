@@ -5,7 +5,7 @@
 // reloads the page with the other data set.
 const SKEY = 'llp:settings', SV = 2;
 export const PER_ERA = ['roster', 'outfits', 'cardsOff'];
-export const COMMON = ['targets', 'presets', 'rank', 'auto', 'decksTop', 'perUma', 'scen', 'rsort', 'rdir', 'csort', 'cdir', 'borrowPar'];
+export const COMMON = ['targets', 'presets', 'rank', 'auto', 'decksTop', 'perUma', 'scen', 'rsort', 'rdir', 'csort', 'cdir', 'borrowPar', 'reroll'];
 export const SETTINGS = [...COMMON, ...PER_ERA];   // exported and imported (older exports may carry more keys; those are ignored)
 // anything else saved under the key (an older format) starts from the defaults
 function loadSaved() { try { const o = JSON.parse(localStorage.getItem(SKEY)); if (o && o.v === SV) return o; } catch {} return { v: SV, era: 'global' }; }
