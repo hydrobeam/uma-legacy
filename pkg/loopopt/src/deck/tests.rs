@@ -351,6 +351,42 @@ fn group_orthant_check() {
     assert!(group_nuod(&vec![(0.2, vec![(0, 1), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])]));   // 0.2 <= 0.5 * 0.5
 }
 
+/// Exceeding the exhaustive-check budget must not certify a positively correlated group, or shift past u32.
+#[test]
+fn group_orthant_check_declines_unchecked_groups() {
+    for n in [20, 21, 32, 33] {
+        // Any pair has joint probability 0.5, above the product of its marginals (0.25).
+        let g = vec![(0.5, (0..n).map(|k| (k, 1)).collect())];
+        assert!(!group_nuod(&g), "{n} targets");
+        for src in [Src { fixed: vec![g.clone()], ..Default::default() },
+                    Src { chains: vec![(1, g)], ..Default::default() }] {
+            assert!(src.finish().not_nuod, "{n} targets");
+        }
+    }
+}
+
+/// Inline event alternatives can reach the unchecked-group case without exponential training-hint setup.
+#[test]
+fn unchecked_inline_event_disables_orthant_bound() {
+    let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
+    let unc: Vec<u32> = sk.skills.iter().take(21).map(|s| s.0).collect();
+    assert_eq!(unc.len(), 21);
+    let targets: Vec<Value> = unc.iter().map(|g| json!({"group": g})).collect();
+    let sj: SkillJob = serde_json::from_value(json!({"targets": targets})).unwrap();
+    let model = Model::new(&d, &sk, &sj);
+    let mut card = halo(); card.nskill = 0; card.whites.clear();
+    let rewards: Vec<(u32, u8)> = unc.iter().map(|&g| (g, 1)).collect();
+    let dj = job_with(json!({"alts": [[card.id, 1, [[rewards, []]]]]}));
+    let sb = Sources { dj: &dj, unc: &unc };
+    let src = sb.src(&card, None, 0);
+    assert_eq!(src.chains.len(), 1);
+    assert_eq!(src.chains[0].1[0].0, 0.5);
+    assert_eq!(src.chains[0].1[0].1.len(), 21);
+    assert!(src.not_nuod);
+    assert!(upper_na(&model, 0, &[0.0], &[(&src, sb.kind(&card, None))], 0).is_none());
+}
+
 /// The level check behind the cap-free bound (`group_nuod_lvl`): single-target outcomes pass, an outcome hinting two
 /// targets together fails; gold on one target with white on another in one outcome fails where the any-hint check
 /// (`group_nuod`) passes (P(gold 0, 1) = 0.2 > 0.2 x 0.5); and for decks of covered groups the state value is at

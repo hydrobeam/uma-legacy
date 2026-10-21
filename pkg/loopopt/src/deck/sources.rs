@@ -53,15 +53,19 @@ pub(super) fn group_assoc(g: &Group) -> bool {
     } }
     true
 }
+/// Certify the any-hint orthant inequality by checking every target subset. More than 20 targets is unproven.
 pub(super) fn group_nuod(g: &Group) -> bool {
     thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<(usize, u8)>)>, bool>> = std::cell::RefCell::new(Default::default()); }
     let key: Vec<(u64, Vec<(usize, u8)>)> = g.iter().map(|(p, o)| (p.to_bits(), o.clone())).collect();
     if let Some(r) = GN.with(|c| c.borrow().get(&key).copied()) { return r; }
     let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect(); ts.sort(); ts.dedup();
+    // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
+    // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
+    if ts.len() > 20 { return false; }
     // per outcome, the targets it hints as a bit set
     let outs: Vec<(f64, u32)> = g.iter().map(|(p, o)| (*p, o.iter().fold(0u32, |m, x| m | 1 << ts.iter().position(|&t| t == x.0).unwrap()))).collect();
     let marg: Vec<f64> = (0..ts.len()).map(|i| outs.iter().filter(|o| o.1 >> i & 1 == 1).map(|o| o.0).sum()).collect();
-    let ok = ts.len() > 20 || (1u32..1 << ts.len()).filter(|s| s.count_ones() >= 2).all(|s| {
+    let ok = (1u32..1 << ts.len()).filter(|s| s.count_ones() >= 2).all(|s| {
         let joint: f64 = outs.iter().filter(|o| o.1 & s == s).map(|o| o.0).sum();
         joint <= (0..ts.len()).filter(|i| s >> i & 1 == 1).map(|i| marg[i]).product::<f64>() * (1.0 + 1e-12) + 1e-15
     });
@@ -101,7 +105,7 @@ pub(super) fn group_nuod_lvl(g: &Group) -> bool {
 #[derive(Clone, Default)]
 pub(super) struct Src { pub(super) train: Vec<(usize, f64)>, pub(super) fixed: Vec<Group>, pub(super) chains: Vec<(u8, Group)>,
              pub(super) fm: Vec<(usize, f64, f64)>, pub(super) cm: Vec<(usize, Vec<(u8, f64, f64)>)>,
-             /// a group of it touching two or more targets is not negatively upper-orthant dependent (`group_nuod`):
+             /// a group of it touching two or more targets has not been proved negatively upper-orthant dependent:
              /// `upper_na` does not cover a deck with it
              pub(super) not_nuod: bool,
              /// an outcome of one of its groups hints two or more targets at once (the state-conditioned bound, which
