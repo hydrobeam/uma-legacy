@@ -23,6 +23,338 @@ pub(super) struct SearchOutcome {
     pub(super) incomplete: Option<SearchStop>,
 }
 
+/// Legal groups and key counts used to enumerate configurations, in their original order.
+struct ConfigurationTables<'b> {
+    counts: &'b [Vec<usize>],
+    by_kind: &'b [Vec<usize>],
+    pal_ents: &'b [usize],
+    kpos: &'b [u64],
+    groups_all: &'b [&'b Vec<usize>],
+    glk: &'b [u8],
+    gcvm: &'b [u64],
+    ki22: usize,
+    nplain: usize,
+    all_lk: u8,
+    keyskip: bool,
+}
+
+/// Configuration-build buffers stay owned by preparation; white/gold odds are reused by traversal.
+struct ConfigurationScratch<'b> {
+    dw: &'b mut [f64],
+    dg: &'b mut [f64],
+    groups: &'b mut Vec<(usize, usize)>,
+    clause_bounds: &'b mut [f64],
+    order_bounds: &'b mut [f64],
+    ratio_products: &'b mut [f64],
+    key_white: &'b mut [f64],
+    key_gold: &'b mut [f64],
+}
+
+/// Search-wide legal entries and proof configuration. Own the cached tables so the traversal
+/// can borrow their group/character slices without a self-referential context.
+struct SearchSetup {
+    best: bool,
+    seed: f64,
+    rho: f64,
+    cap: usize,
+    nu: usize,
+    size: usize,
+    nplain: usize,
+    nk: usize,
+    ki22: usize,
+    kpos: Vec<u64>,
+    set_id: usize,
+    lt: std::rc::Rc<LegalTabs>,
+    // Keep the cached-entry handle alive through traversal, as before extraction.
+    legal_entries: std::rc::Rc<Vec<usize>>,
+    fixed: f64,
+    cfm: bool,
+    cf_lim: usize,
+    cfs: f64,
+    sbm: u8,
+    sb_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>,
+    sb_bar: f64,
+    sb_u: usize,
+    sb_q: f64,
+    lp: Vec<LandPre>,
+    ccap: [f64; 4],
+}
+
+/// Outfit rows and their zero/low-target split columns, in clause/chance/outfit order.
+/// Bound calculations borrow the tables; traversal takes the `av` scratch buffer.
+struct OutfitBounds {
+    oq: Vec<(usize, usize, f64, usize)>,
+    og: Vec<(usize, usize, usize)>,
+    // Retain the preparation buffer until traversal ends, preserving its allocation lifetime.
+    zero: Vec<f64>,
+    av: Vec<f64>,
+    orow: Vec<crate::skills::OutfitPre>,
+    p0: Vec<f64>,
+    cix: Vec<usize>,
+    zm: Vec<u32>,
+    nm: Vec<u32>,
+    p0n: Vec<f64>,
+    alt: Vec<(usize, usize)>,
+    nc: usize,
+}
+
+/// Empty-card factors, ratio-column masks/divisors, and ordered factor prefixes.
+struct RatioPrefixes {
+    f0: Vec<f64>,
+    cmk: Vec<Option<(u32, f64)>>,
+    cpre: Vec<f64>,
+}
+
+fn prepare_outfit_bounds(model: &Model, us: &[usize], clauses: &[(Vec<(usize, f64)>, f64)], nu: usize) -> OutfitBounds {
+    // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
+    // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
+    // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
+    // (clause, trainee, chance, outfit), each (clause, trainee, chance) a run of its trainee's outfits: og
+    let oq: Vec<(usize, usize, f64, usize)> = clauses
+        .iter()
+        .enumerate()
+        .flat_map(|(ci, cl)| {
+            cl.0.iter().flat_map(move |&(k, q)| (0..model.n_outfits(us[k])).map(move |o| (ci, us[k], q, o)))
+        })
+        .collect();
+    let og: Vec<(usize, usize, usize)> = {
+        let mut v = vec![];
+        let mut i = 0;
+        while i < oq.len() {
+            let no = model.n_outfits(oq[i].1);
+            v.push((oq[i].0, i, no));
+            i += no;
+        }
+        v
+    };
+    let zero = vec![0.0f64; nu];
+    // the node bound's per-target values, one per (clause, chance, outfit)
+    let av = vec![0.0f64; oq.len()];
+    // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
+    let orow: Vec<crate::skills::OutfitPre> = oq.iter().map(|&(_, u, _, o)| model.outfit_pre(u, o)).collect();
+    let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
+    // The ratio bound split by target (ZSPLIT). An outfit's value is a product of per-target factors; split the
+    // targets into Z and N: over the decks below a node, Z's factors are at most A's (each target's at its lowest
+    // misses) and N's at most N's factors at the partial deck times the best ratios of N's factors alone (the same
+    // per-target log-submodularity as the plain ratio bound, over N), so B = A_Z * P_N(partial) * r_N bounds the
+    // value for any split, and a row's B may be the lowest of several. A row whose empty-deck value is 0 (a target
+    // with no inheritance, event or outfit chance: its factor is 0 without a hint) has every plain ratio
+    // P({card}) / P({}) infinite, which leaves only A: it is split by its zero targets. A row with low-base targets
+    // (empty-deck factor at most LOW_SPLIT of the factor with a certain white hint: their ratios overstate what
+    // several cards add) gets one more split, Z its zero and low targets, kept beside its own (neither is lower
+    // everywhere). The ratio tables have one column per (row, split): columns 0..noq the rows themselves (zm = 0:
+    // the plain ratio bound, or for a zero row nothing to split on (nu > 32, N's empty value 0 by underflow): its
+    // ratios infinite, as before), then the low splits (`alt[row]`, a range). Per column: its row, Z's and N's
+    // target masks, N's empty-deck value
+    let noq = oq.len();
+    let (cix, zm, nm, p0n, alt): (Vec<usize>, Vec<u32>, Vec<u32>, Vec<f64>, Vec<(usize, usize)>) = {
+        let (mut cix, mut zm, mut nm, mut p0n, mut alt) = (
+            (0..noq).collect::<Vec<_>>(),
+            vec![0u32; noq],
+            vec![0u32; noq],
+            vec![1.0f64; noq],
+            vec![(0usize, 0usize); noq],
+        );
+        if nu <= 32 {
+            for i in 0..noq {
+                if orow[i].len() != nu {
+                    continue;
+                }
+                let q = oq[i].2;
+                let full = if nu == 32 { u32::MAX } else { (1u32 << nu) - 1 };
+                let mut z = 0u32;
+                for t in 0..nu {
+                    if !(orow[i].factor_at(t, q, 0.0, 0.0) > 0.0) {
+                        z |= 1 << t;
+                    }
+                }
+                if z != 0 && !(p0[i] > 0.0) {
+                    let pn = orow[i].eval_in(q, &zero, &zero, full & !z);
+                    if pn > 0.0 {
+                        zm[i] = z;
+                        nm[i] = full & !z;
+                        p0n[i] = pn;
+                    }
+                }
+                // (an alternative only where it adds targets to the previous split and leaves N something)
+                let (start, mut prev) = (cix.len(), z);
+                for &tau in LOW_SPLIT.iter() {
+                    let mut za = z;
+                    for t in 0..nu {
+                        if orow[i].factor_at(t, q, 0.0, 0.0) <= tau * orow[i].factor_at(t, q, 1.0, 0.0) {
+                            za |= 1 << t;
+                        }
+                    }
+                    if za == prev || za == full {
+                        continue;
+                    }
+                    let pn = orow[i].eval_in(q, &zero, &zero, full & !za);
+                    if pn > 0.0 {
+                        cix.push(i);
+                        zm.push(za);
+                        nm.push(full & !za);
+                        p0n.push(pn);
+                        prev = za;
+                    }
+                }
+                alt[i] = (start, cix.len());
+            }
+        }
+        (cix, zm, nm, p0n, alt)
+    };
+    let nc = cix.len();
+    OutfitBounds { oq, og, zero, av, orow, p0, cix, zm, nm, p0n, alt, nc }
+}
+
+fn prepare_ratio_prefixes(
+    nu: usize,
+    oq: &[(usize, usize, f64, usize)],
+    orow: &[crate::skills::OutfitPre],
+    p0: &[f64],
+    cix: &[usize],
+    zm: &[u32],
+    nm: &[u32],
+    p0n: &[f64],
+) -> RatioPrefixes {
+    let noq = oq.len();
+    let nc = cix.len();
+    // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every zm 0) is
+    // the product of its row's factors over a target mask (nm[c] for a split column, else all the row's targets, as
+    // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (p0n[c], p0[i]), or infinite (no
+    // split and p0[i] not > 0: `cmk` None). At a target the card does not touch (miss chances exactly 1.0, the key's
+    // mask `km.2`) its odds are 1 - 1 = 0, the factor `f0` at (0, 0): so per column the products of `f0` over the
+    // mask's targets below each t (`cpre`, the same multiplications in the same order), and a card's ratio starts
+    // from the prefix at its first touched target: the same f64s
+    let f0: Vec<f64> = (0..noq)
+        .flat_map(|i| {
+            let (o, q) = (&orow[i], oq[i].2);
+            (0..nu).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
+        })
+        .collect();
+    let cmk: Vec<Option<(u32, f64)>> = (0..nc)
+        .map(|c| {
+            let i = cix[c];
+            let n = orow[i].len();
+            if zm[c] != 0 {
+                Some((nm[c], p0n[c]))
+            } else if p0[i] > 0.0 {
+                Some((if n >= 32 { u32::MAX } else { (1u32 << n) - 1 }, p0[i]))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let cpre: Vec<f64> = (0..nc)
+        .flat_map(|c| {
+            let i = cix[c];
+            let m = cmk[c].map_or(0, |x| x.0);
+            let mut v = vec![1.0f64; nu + 1];
+            for t in 0..nu {
+                v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * nu + t] } else { v[t] };
+            }
+            v
+        })
+        .collect();
+    RatioPrefixes { f0, cmk, cpre }
+}
+
+// every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
+struct SearchConfig {
+    root: f64,
+    code: u64,
+    code_real22: usize,
+    np: usize,
+    filler: usize,
+    plain: usize,
+    gs: Vec<(usize, usize)>,
+    gm: std::rc::Rc<GTab>,
+    rpk: std::rc::Rc<GTab>,
+    // A tighter bound may prune without changing the root-bound visit order.
+    prune_bound: f64,
+    // Root clause values retained only for RB_CHECK.
+    clause_bounds: Vec<f64>,
+}
+
+// A configuration passing the per-target bound, its root not yet computed: `u` is an upper bound on its root
+// (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
+// the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
+// `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
+struct PendingConfig {
+    u: f64,
+    key: usize,
+    code: u64,
+    real22: usize,
+    np: usize,
+    filler: usize,
+    plain: usize,
+    gneed: u64,
+    gs: Vec<(usize, usize)>,
+    gm: std::rc::Rc<GTab>,
+}
+
+/// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
+#[derive(Clone, Copy)]
+struct SearchControl {
+    best: bool,
+    rho: f64,
+    cap: usize,
+    nu: usize,
+    size: usize,
+    nk: usize,
+    set_id: usize,
+    fixed: f64,
+    cfm: bool,
+    cf_lim: usize,
+    cfs: f64,
+    sbm: u8,
+    sb_bar: f64,
+    sb_u: usize,
+    sb_q: f64,
+    ccap: [f64; 4],
+    dom_on: bool,
+    lazy: bool,
+    cf_no: usize,
+    nc: usize,
+    rbsl: f64,
+    rbc: bool,
+}
+
+/// Read-only views into preparation's tables. The lazy-bound callbacks borrow those same
+/// tables, so preparation retains their ownership until traversal returns.
+struct TraversalTables<'b> {
+    ebit: &'b [u128],
+    groups_all: &'b [&'b Vec<usize>],
+    sb_rows: &'b [Option<Vec<(f64, f64)>>],
+    lp: &'b [LandPre],
+    cf_z: &'b [u32],
+    lbit: &'b [u8],
+    all_lk: u8,
+    oq: &'b [(usize, usize, f64, usize)],
+    og: &'b [(usize, usize, usize)],
+    orow: &'b [crate::skills::OutfitPre],
+    zm: &'b [u32],
+    nm: &'b [u32],
+    alt: &'b [(usize, usize)],
+}
+
+/// Eager configurations retain their stable root order; pending configurations retain
+/// insertion order until traversal builds its stable upper-bound ordering.
+struct ConfigurationQueue {
+    cfgs: Vec<SearchConfig>,
+    pend: Vec<PendingConfig>,
+    pkeys: Vec<Option<std::rc::Rc<GTab>>>,
+}
+
+/// Reuse preparation's odds buffers and retain diagnostic rows across configurations.
+struct TraversalScratch {
+    out: Vec<(f64, Sel)>,
+    bestv: f64,
+    dw: Vec<f64>,
+    dg: Vec<f64>,
+    av: Vec<f64>,
+    rbs: std::cell::RefCell<Vec<Vec<f64>>>,
+}
+
 impl<'a> DeckSpace<'a> {
     /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
     /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
@@ -38,6 +370,22 @@ impl<'a> DeckSpace<'a> {
         clauses: &[(Vec<(usize, f64)>, f64)],
         mode: SearchMode,
     ) -> SearchOutcome {
+        let setup = match self.configure_search(model, us, ids, clauses, mode) {
+            Ok(setup) => setup,
+            Err(outcome) => return outcome,
+        };
+        self.search_with_bounds(model, us, clauses, setup)
+    }
+
+    /// Resolve legality and proof modes before preparing configuration bounds or visiting a deck.
+    fn configure_search(
+        &self,
+        model: &Model,
+        us: &[usize],
+        ids: &[u32],
+        clauses: &[(Vec<(usize, f64)>, f64)],
+        mode: SearchMode,
+    ) -> Result<SearchSetup, SearchOutcome> {
         // Keep the numerical kernel's existing inputs and branch order. These unused-mode defaults were
         // previously repeated at every call site.
         let (best, seed, rho, cap) = match mode {
@@ -47,20 +395,18 @@ impl<'a> DeckSpace<'a> {
         let nu = self.unc.len();
         let size = self.dj.deck_size;
         if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) {
-            return SearchOutcome { decks: vec![], incomplete: None };
+            return Err(SearchOutcome { decks: vec![], incomplete: None });
         }
         let (legal_rc, set_id) = self.reduced_cached(model, us, ids);
         let lt = self.legal_tabs(&legal_rc, set_id, ids);
         if lt.over {
-            return SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit) };
+            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit) });
         }
         let nplain = lt.nplain;
-        let ebit: &[u128] = &lt.ebit;
         let nk = self.kinds_all.len();
         let ki22 = self.kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
         let kpos: Vec<u64> = (0..nk).map(|i| 7u64.pow(i as u32)).collect();
         assert!(nk < 64);
-        let (by_kind, pal_ents) = (&lt.by_kind, &lt.pal_ents);
         let fixed = model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
@@ -70,7 +416,7 @@ impl<'a> DeckSpace<'a> {
         // (CapFreeNodeLimit).
         let cfm = !best && clauses.len() == 1 && clauses[0].0.len() == 1 && CF_ON.with(|c| c.get());
         if cfm && !legal_rc.iter().all(|&j| self.srcs[j].cf_ok) {
-            return SearchOutcome { decks: vec![], incomplete: Some(SearchStop::UnsupportedCapFreeProof) };
+            return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::UnsupportedCapFreeProof) });
         }
         let cf_lim = if cfm { CF_LIM.with(|c| c.get()) } else { usize::MAX };
         let cfs = if cfm { cf_check() } else { 0.0 };
@@ -126,6 +472,71 @@ impl<'a> DeckSpace<'a> {
             let c = self.caps();
             [c[0].min(rho), c[1].min(rho), c[2].min(rho), c[3].min(rho)]
         };
+        Ok(SearchSetup {
+            best,
+            seed,
+            rho,
+            cap,
+            nu,
+            size,
+            nplain,
+            nk,
+            ki22,
+            kpos,
+            set_id,
+            lt,
+            fixed,
+            cfm,
+            cf_lim,
+            cfs,
+            sbm,
+            sb_rows,
+            sb_bar,
+            sb_u,
+            sb_q,
+            lp,
+            ccap,
+            legal_entries: legal_rc,
+        })
+    }
+
+    /// Prepare shared bounds, then build and traverse configurations. The callbacks borrow
+    /// these tables and their lazy caches for both phases; none need copying or dynamic dispatch.
+    fn search_with_bounds(
+        &self,
+        model: &Model,
+        us: &[usize],
+        clauses: &[(Vec<(usize, f64)>, f64)],
+        setup: SearchSetup,
+    ) -> SearchOutcome {
+        let SearchSetup {
+            best,
+            seed,
+            rho,
+            cap,
+            nu,
+            size,
+            nplain,
+            nk,
+            ki22,
+            kpos,
+            set_id,
+            lt,
+            fixed,
+            cfm,
+            cf_lim,
+            cfs,
+            sbm,
+            sb_rows,
+            sb_bar,
+            sb_u,
+            sb_q,
+            lp,
+            ccap,
+            legal_entries: _legal_entries,
+        } = setup;
+        let ebit: &[u128] = &lt.ebit;
+        let (by_kind, pal_ents) = (&lt.by_kind, &lt.pal_ents);
         let val = |cl: &(Vec<(usize, f64)>, f64), dw: &[f64], dg: &[f64]| {
             fixed * cl.0.iter().map(|&(k, q)| model.trainee_fast(us[k], q, dw, dg)).sum::<f64>()
         };
@@ -142,25 +553,9 @@ impl<'a> DeckSpace<'a> {
         // visit
         let lazy = best && valid;
         let t_cfg = Instant::now();
-        let mut out: Vec<(f64, Sel)> = vec![];
-        let mut bestv = if best { seed } else { f64::NEG_INFINITY };
+        let out: Vec<(f64, Sel)> = vec![];
+        let bestv = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
-        // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-        struct SearchConfig {
-            root: f64,
-            code: u64,
-            code_real22: usize,
-            np: usize,
-            filler: usize,
-            plain: usize,
-            gs: Vec<(usize, usize)>,
-            gm: std::rc::Rc<GTab>,
-            rpk: std::rc::Rc<GTab>,
-            // A tighter bound may prune without changing the root-bound visit order.
-            prune_bound: f64,
-            // Root clause values retained only for RB_CHECK.
-            clause_bounds: Vec<f64>,
-        }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
         // (the cap-free band's ratio bound, `cf_ub`) per outfit of the trainee, its zero-base targets (factor 0 with no
         // hint: their ratios would be infinite, so they take the per-target bound), and per group of `groups_all`, level
@@ -231,110 +626,14 @@ impl<'a> DeckSpace<'a> {
             (&x.0[..], x.1)
         };
         let glk: &[u8] = &lt.glk;
-        let mut cfgs: Vec<SearchConfig> = vec![];
         let mut dw = vec![0.0f64; nu];
         let mut dg = vec![0.0f64; nu];
         // (scratch of the configuration build: a candidate's groups, copied into its SearchConfig only when kept; the root's
         // clause sums)
         let mut gsb: Vec<(usize, usize)> = vec![];
         let (mut cvr, mut cvro) = (vec![0.0f64; clauses.len()], vec![0.0f64; clauses.len()]);
-        // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
-        // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
-        // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
-        // (clause, trainee, chance, outfit), each (clause, trainee, chance) a run of its trainee's outfits: og
-        let oq: Vec<(usize, usize, f64, usize)> = clauses
-            .iter()
-            .enumerate()
-            .flat_map(|(ci, cl)| {
-                cl.0.iter().flat_map(move |&(k, q)| (0..model.n_outfits(us[k])).map(move |o| (ci, us[k], q, o)))
-            })
-            .collect();
-        let og: Vec<(usize, usize, usize)> = {
-            let mut v = vec![];
-            let mut i = 0;
-            while i < oq.len() {
-                let no = model.n_outfits(oq[i].1);
-                v.push((oq[i].0, i, no));
-                i += no;
-            }
-            v
-        };
-        let zero = vec![0.0f64; nu];
-        // the node bound's per-target values, one per (clause, chance, outfit)
-        let mut av = vec![0.0f64; oq.len()];
-        // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
-        let orow: Vec<crate::skills::OutfitPre> = oq.iter().map(|&(_, u, _, o)| model.outfit_pre(u, o)).collect();
-        let p0: Vec<f64> = oq.iter().map(|&(_, u, q, o)| model.outfit_fast(u, o, q, &zero, &zero)).collect();
-        // The ratio bound split by target (ZSPLIT). An outfit's value is a product of per-target factors; split the
-        // targets into Z and N: over the decks below a node, Z's factors are at most A's (each target's at its lowest
-        // misses) and N's at most N's factors at the partial deck times the best ratios of N's factors alone (the same
-        // per-target log-submodularity as the plain ratio bound, over N), so B = A_Z * P_N(partial) * r_N bounds the
-        // value for any split, and a row's B may be the lowest of several. A row whose empty-deck value is 0 (a target
-        // with no inheritance, event or outfit chance: its factor is 0 without a hint) has every plain ratio
-        // P({card}) / P({}) infinite, which leaves only A: it is split by its zero targets. A row with low-base targets
-        // (empty-deck factor at most LOW_SPLIT of the factor with a certain white hint: their ratios overstate what
-        // several cards add) gets one more split, Z its zero and low targets, kept beside its own (neither is lower
-        // everywhere). The ratio tables have one column per (row, split): columns 0..noq the rows themselves (zm = 0:
-        // the plain ratio bound, or for a zero row nothing to split on (nu > 32, N's empty value 0 by underflow): its
-        // ratios infinite, as before), then the low splits (`alt[row]`, a range). Per column: its row, Z's and N's
-        // target masks, N's empty-deck value
-        let noq = oq.len();
-        let (cix, zm, nm, p0n, alt): (Vec<usize>, Vec<u32>, Vec<u32>, Vec<f64>, Vec<(usize, usize)>) = {
-            let (mut cix, mut zm, mut nm, mut p0n, mut alt) = (
-                (0..noq).collect::<Vec<_>>(),
-                vec![0u32; noq],
-                vec![0u32; noq],
-                vec![1.0f64; noq],
-                vec![(0usize, 0usize); noq],
-            );
-            if nu <= 32 {
-                for i in 0..noq {
-                    if orow[i].len() != nu {
-                        continue;
-                    }
-                    let q = oq[i].2;
-                    let full = if nu == 32 { u32::MAX } else { (1u32 << nu) - 1 };
-                    let mut z = 0u32;
-                    for t in 0..nu {
-                        if !(orow[i].factor_at(t, q, 0.0, 0.0) > 0.0) {
-                            z |= 1 << t;
-                        }
-                    }
-                    if z != 0 && !(p0[i] > 0.0) {
-                        let pn = orow[i].eval_in(q, &zero, &zero, full & !z);
-                        if pn > 0.0 {
-                            zm[i] = z;
-                            nm[i] = full & !z;
-                            p0n[i] = pn;
-                        }
-                    }
-                    // (an alternative only where it adds targets to the previous split and leaves N something)
-                    let (start, mut prev) = (cix.len(), z);
-                    for &tau in LOW_SPLIT.iter() {
-                        let mut za = z;
-                        for t in 0..nu {
-                            if orow[i].factor_at(t, q, 0.0, 0.0) <= tau * orow[i].factor_at(t, q, 1.0, 0.0) {
-                                za |= 1 << t;
-                            }
-                        }
-                        if za == prev || za == full {
-                            continue;
-                        }
-                        let pn = orow[i].eval_in(q, &zero, &zero, full & !za);
-                        if pn > 0.0 {
-                            cix.push(i);
-                            zm.push(za);
-                            nm.push(full & !za);
-                            p0n.push(pn);
-                            prev = za;
-                        }
-                    }
-                    alt[i] = (start, cix.len());
-                }
-            }
-            (cix, zm, nm, p0n, alt)
-        };
-        let nc = cix.len();
+        let OutfitBounds { oq, og, zero: _zero, av, orow, p0, cix, zm, nm, p0n, alt, nc } =
+            prepare_outfit_bounds(model, us, clauses, nu);
         // a card's ratio for column c (its single-card odds x, y): N's (a split column), the plain ratio, or infinite
         let ratio_at = |c: usize, x: &[f64], y: &[f64]| -> f64 {
             let i = cix[c];
@@ -356,43 +655,7 @@ impl<'a> DeckSpace<'a> {
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
         let mut sp0 = vec![1.0f64; nc];
-        // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every zm 0) is
-        // the product of its row's factors over a target mask (nm[c] for a split column, else all the row's targets, as
-        // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (p0n[c], p0[i]), or infinite (no
-        // split and p0[i] not > 0: `cmk` None). At a target the card does not touch (miss chances exactly 1.0, the key's
-        // mask `km.2`) its odds are 1 - 1 = 0, the factor `f0` at (0, 0): so per column the products of `f0` over the
-        // mask's targets below each t (`cpre`, the same multiplications in the same order), and a card's ratio starts
-        // from the prefix at its first touched target: the same f64s
-        let f0: Vec<f64> = (0..noq)
-            .flat_map(|i| {
-                let (o, q) = (&orow[i], oq[i].2);
-                (0..nu).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
-            })
-            .collect();
-        let cmk: Vec<Option<(u32, f64)>> = (0..nc)
-            .map(|c| {
-                let i = cix[c];
-                let n = orow[i].len();
-                if zm[c] != 0 {
-                    Some((nm[c], p0n[c]))
-                } else if p0[i] > 0.0 {
-                    Some((if n >= 32 { u32::MAX } else { (1u32 << n) - 1 }, p0[i]))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let cpre: Vec<f64> = (0..nc)
-            .flat_map(|c| {
-                let i = cix[c];
-                let m = cmk[c].map_or(0, |x| x.0);
-                let mut v = vec![1.0f64; nu + 1];
-                for t in 0..nu {
-                    v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * nu + t] } else { v[t] };
-                }
-                v
-            })
-            .collect();
+        let RatioPrefixes { f0, cmk, cpre } = prepare_ratio_prefixes(nu, &oq, &orow, &p0, &cix, &zm, &nm, &p0n);
         // per kind group in `gneed` (the others are never read: empty) and column, the products of its entries' r best
         // ratios (the first `size` of their stable descending sort, `top_desc`), r = 0..=size
         // (a `GTab`: per group, column c's products at c (size + 1); `top`, the columns' best ratios, reused)
@@ -517,23 +780,6 @@ impl<'a> DeckSpace<'a> {
                 cvo[ci] += fixed * mo;
             }
         };
-        // A configuration passing the per-target bound, its root not yet computed: `u` is an upper bound on its root
-        // (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
-        // the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
-        // `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
-        struct PendingConfig {
-            u: f64,
-            key: usize,
-            code: u64,
-            real22: usize,
-            np: usize,
-            filler: usize,
-            plain: usize,
-            gneed: u64,
-            gs: Vec<(usize, usize)>,
-            gm: std::rc::Rc<GTab>,
-        }
-        let mut pend: Vec<PendingConfig> = vec![];
         // The key bound (`keyskip`; in the product search only with a bar): a key none of whose configurations (its
         // variants: real (2, 2) and pal entries 0 ..= their most) can pass the per-target bound is skipped whole, which
         // leaves out the same configurations. Its per-target products take, for the (2, 2) and pal groups, the lowest
@@ -544,8 +790,142 @@ impl<'a> DeckSpace<'a> {
         // rounding, each operation's error at most 2^-53 of one, about 300 operations), so a variant's value is at most
         // the bound's plus `key_slack` (1e-11 per pair)
         let keyskip = valid && !cfm && (!best || bestv > f64::NEG_INFINITY);
-        let key_slack = |cl: &(Vec<(usize, f64)>, f64)| 1e-11 * cl.0.len() as f64 * fixed.max(1.0);
         let (mut kdw, mut kdg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+        let controls = SearchControl {
+            best,
+            rho,
+            cap,
+            nu,
+            size,
+            nk,
+            set_id,
+            fixed,
+            cfm,
+            cf_lim,
+            cfs,
+            sbm,
+            sb_bar,
+            sb_u,
+            sb_q,
+            ccap,
+            dom_on,
+            lazy,
+            cf_no,
+            nc,
+            rbsl,
+            rbc,
+        };
+        let configurations = self.build_configurations(
+            clauses,
+            controls,
+            ConfigurationTables {
+                counts: &counts,
+                by_kind,
+                pal_ents,
+                kpos: &kpos,
+                groups_all: &groups_all,
+                glk,
+                gcvm: &gcvm,
+                ki22,
+                nplain,
+                all_lk,
+                keyskip,
+            },
+            ConfigurationScratch {
+                dw: &mut dw,
+                dg: &mut dg,
+                groups: &mut gsb,
+                clause_bounds: &mut cvr,
+                order_bounds: &mut cvro,
+                ratio_products: &mut sp0,
+                key_white: &mut kdw,
+                key_gold: &mut kdg,
+            },
+            bestv,
+            val,
+            rpk_of,
+            cfg_odds,
+            cfg_root,
+        );
+        SPT.with(|c| {
+            let mut v = c.get();
+            v.0 += t_cfg.elapsed().as_secs_f64();
+            v.2 += configurations.cfgs.len();
+            v.3 += counts.len();
+            c.set(v);
+        });
+        self.traverse_configurations(
+            model,
+            clauses,
+            controls,
+            TraversalTables {
+                ebit,
+                groups_all: &groups_all,
+                sb_rows: &sb_rows,
+                lp: &lp,
+                cf_z: &cf_z,
+                lbit,
+                all_lk,
+                oq: &oq,
+                og: &og,
+                orow: &orow,
+                zm: &zm,
+                nm: &nm,
+                alt: &alt,
+            },
+            configurations,
+            TraversalScratch { out, bestv, dw, dg, av, rbs },
+            val,
+            ratio_at,
+            rpk_of,
+            cfg_odds,
+            cfg_root,
+            cf_rmx_of,
+            cf_rent_of,
+        )
+    }
+
+    /// Enumerate legal card-count configurations, preserving stable root-bound order and
+    /// deferring ratio tables for the product search until traversal actually needs them.
+    fn build_configurations(
+        &self,
+        clauses: &[(Vec<(usize, f64)>, f64)],
+        controls: SearchControl,
+        tables: ConfigurationTables<'_>,
+        scratch: ConfigurationScratch<'_>,
+        bestv: f64,
+        val: impl Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64,
+        rpk_of: impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
+        cfg_odds: impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
+        cfg_root: impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+    ) -> ConfigurationQueue {
+        let SearchControl { best, rho, nu, size, nk, set_id, fixed, cfm, ccap, lazy, rbc, .. } = controls;
+        let ConfigurationTables {
+            counts,
+            by_kind,
+            pal_ents,
+            kpos,
+            groups_all,
+            glk,
+            gcvm,
+            ki22,
+            nplain,
+            all_lk,
+            keyskip,
+        } = tables;
+        let ConfigurationScratch {
+            dw,
+            dg,
+            groups: gsb,
+            clause_bounds: cvr,
+            order_bounds: cvro,
+            ratio_products: sp0,
+            key_white: kdw,
+            key_gold: kdg,
+        } = scratch;
+        let key_slack = |cl: &(Vec<(usize, f64)>, f64)| 1e-11 * cl.0.len() as f64 * fixed.max(1.0);
+        let mut cfgs: Vec<SearchConfig> = vec![];
+        let mut pend: Vec<PendingConfig> = vec![];
         let mut pkeys: Vec<Option<std::rc::Rc<GTab>>> = vec![];
         for cnt in counts.iter() {
             let csum: usize = cnt.iter().sum();
@@ -553,7 +933,7 @@ impl<'a> DeckSpace<'a> {
                 continue;
             }
             let mut pkey_new = true;
-            let code: u64 = cnt.iter().zip(&kpos).map(|(&c, &p)| c as u64 * p).sum();
+            let code: u64 = cnt.iter().zip(kpos).map(|(&c, &p)| c as u64 * p).sum();
             let km = self.key_miss(code);
             let (mw, mg) = (&km.0, &km.1);
             // per kind group and target: products of the r lowest miss chances of distinct entries, r = 0..=size
@@ -561,7 +941,7 @@ impl<'a> DeckSpace<'a> {
             // (the groups a configuration of this key can use: its kinds and, with slots left, the pal entries)
             let gneed: u64 =
                 (0..nk).filter(|&i| cnt[i] > 0).fold(0u64, |m, i| m | 1 << i) | if csum < size { 1 << nk } else { 0 };
-            let gm = self.gm_cached(set_id, code, &groups_all, gneed, mw, mg, nu, size);
+            let gm = self.gm_cached(set_id, code, groups_all, gneed, mw, mg, nu, size);
             // the key's bound: no variant (real (2, 2) and pal entries counted 0 ..= their most) can pass when the value
             // at odds above every variant's fails with room for rounding (`key_slack`)
             if keyskip {
@@ -598,9 +978,9 @@ impl<'a> DeckSpace<'a> {
                 }
                 // (a band's class caps are at most rho)
                 let none = if best {
-                    (val(&clauses[0], &kdw, &kdg) + key_slack(&clauses[0])) * (1.0 + 1e-9) < bestv
+                    (val(&clauses[0], kdw, kdg) + key_slack(&clauses[0])) * (1.0 + 1e-9) < bestv
                 } else {
-                    clauses.iter().all(|cl| rho * (val(cl, &kdw, &kdg) + key_slack(cl)) * (1.0 + 1e-9) < cl.1)
+                    clauses.iter().all(|cl| rho * (val(cl, kdw, kdg) + key_slack(cl)) * (1.0 + 1e-9) < cl.1)
                 };
                 if none {
                     continue;
@@ -622,7 +1002,7 @@ impl<'a> DeckSpace<'a> {
                     {
                         continue;
                     }
-                    let gs = &mut gsb;
+                    let gs = &mut *gsb;
                     gs.clear();
                     for i in 0..nk {
                         let c = if i == ki22 { real22 } else { cnt[i] };
@@ -638,16 +1018,16 @@ impl<'a> DeckSpace<'a> {
                         continue;
                     }
                     // the per-target bound first, the ratio products only for configurations it lets through
-                    cfg_odds(gs, &gm, &mut dw, &mut dg);
+                    cfg_odds(gs, &gm, dw, dg);
                     // the configuration's class cap (every deck of it is in a class at most this one's)
                     let rc = if best { rho } else { ccap[cap_class(gs.iter().fold(0u64, |m, &(i, _)| m | gcvm[i]))] };
-                    let iv = if best { val(&clauses[0], &dw, &dg) } else { 0.0 };
+                    let iv = if best { val(&clauses[0], dw, dg) } else { 0.0 };
                     let ideal = if cfm {
                         true
                     } else if best {
                         iv * (1.0 + 1e-9) >= bestv
                     } else {
-                        clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1)
+                        clauses.iter().any(|cl| rc * val(cl, dw, dg) * (1.0 + 1e-9) >= cl.1)
                     };
                     if !ideal {
                         continue;
@@ -675,8 +1055,8 @@ impl<'a> DeckSpace<'a> {
                         rpk = Some(std::rc::Rc::new(rpk_of(mw, mg, &km.2, gneed)));
                     }
                     let rpk = rpk.as_ref().unwrap();
-                    let (cv, cvo) = (&mut cvr, &mut cvro);
-                    cfg_root(gs, rpk, &dw, &dg, &mut sp0, cv, cvo);
+                    let (cv, cvo) = (&mut *cvr, &mut *cvro);
+                    cfg_root(gs, rpk, dw, dg, sp0, cv, cvo);
                     let rt = |cv: &[f64]| {
                         if best {
                             cv[0]
@@ -713,13 +1093,54 @@ impl<'a> DeckSpace<'a> {
         }
         // stable: equal bounds keep enumeration order
         cfgs.sort_by(|a, b| b.root.partial_cmp(&a.root).unwrap());
-        SPT.with(|c| {
-            let mut v = c.get();
-            v.0 += t_cfg.elapsed().as_secs_f64();
-            v.2 += cfgs.len();
-            v.3 += counts.len();
-            c.set(v);
-        });
+        ConfigurationQueue { cfgs, pend, pkeys }
+    }
+
+    /// Traverse the prepared configuration queue. Shared bound callbacks remain statically
+    /// dispatched and fill their original caches only when a visited configuration needs them.
+    fn traverse_configurations(
+        &self,
+        model: &Model,
+        clauses: &[(Vec<(usize, f64)>, f64)],
+        controls: SearchControl,
+        tables: TraversalTables<'_>,
+        queue: ConfigurationQueue,
+        scratch: TraversalScratch,
+        val: impl Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64,
+        ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
+        rpk_of: impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
+        cfg_odds: impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
+        cfg_root: impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+        cf_rmx_of: impl Fn(usize) -> std::rc::Rc<Vec<f64>>,
+        cf_rent_of: impl Fn(usize) -> std::rc::Rc<Vec<f64>>,
+    ) -> SearchOutcome {
+        let SearchControl {
+            best,
+            rho,
+            cap,
+            nu,
+            size,
+            nk,
+            set_id,
+            fixed,
+            cfm,
+            cf_lim,
+            cfs,
+            sbm,
+            sb_bar,
+            sb_u,
+            sb_q,
+            ccap,
+            dom_on,
+            lazy,
+            cf_no,
+            nc,
+            rbsl,
+            rbc,
+        } = controls;
+        let TraversalTables { ebit, groups_all, sb_rows, lp, cf_z, lbit, all_lk, oq, og, orow, zm, nm, alt } = tables;
+        let ConfigurationQueue { cfgs, pend, mut pkeys } = queue;
+        let TraversalScratch { mut out, mut bestv, mut dw, mut dg, mut av, rbs } = scratch;
         let t_dfs = Instant::now();
         // A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
         // whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
@@ -2096,7 +2517,7 @@ impl<'a> DeckSpace<'a> {
                         // its inputs being probabilities, and a NaN falls through to the real test)
                         cv.iter_mut().for_each(|x| *x = 0.0);
                         let mut nan = false;
-                        for &(ci, i, no) in &og {
+                        for &(ci, i, no) in og {
                             let q = oq[i].2;
                             let mut m = 0.0f64;
                             for o in 0..no {
@@ -2208,7 +2629,7 @@ impl<'a> DeckSpace<'a> {
                                 }
                                 p
                             };
-                            for &(ci, i, no) in &og {
+                            for &(ci, i, no) in og {
                                 let q = oq[i].2;
                                 let mut m = 0.0f64;
                                 for o in 0..no {
