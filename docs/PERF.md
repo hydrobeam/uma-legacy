@@ -283,6 +283,10 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   deck searches under it about 58%, the outcome loop (`score_career`'s own cost, the table folds, `Cont::plan`'s
   lookups) about 25%.
 
+- The looped careers' scoring (`Want::Touch`, 2026-10-21): their statistics feed only `proxy_check`, so without it
+  the scoring keeps its state effects (her schedule, every partner's `val` search under the looped block's cap,
+  `sc_prep` and its counters) and skips the evaluation. p16_88's plan 922 -> 886 ms, export 2's 3,171 -> 3,097 ms (best
+  of 3, back to back); every output identical but `sc_out` (p16_88's reference updated; owner's sign-off).
 ### Open
 
 - `outcome_hi`: y_hi is computed only where y < 0.5; stopping each cell's bound once it reaches 0.5 would keep every
@@ -307,25 +311,15 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
-- Looped careers' `Want::Stats` (`sim/plan.rs`, the looped block): its statistics are read only by `proxy_check`
-  (their options' scores come from a separate `Want::Keep` call), but the call also searches, fills caches and adds
-  proofs, so it cannot simply go: `score_career_` needs splitting into ordered stateful preparation and pure
-  evaluation, skipping the statistics when `proxy_check` is off (a `Want` that runs `make_cur`, the pool, every `val`
-  and `sc_prep`, then returns zeros). Removing the call instead would change results: its `val` calls run under the
-  looped block's work cap, for more candidates than Keep's, and the decks they add feed later `tval` maxima. Estimated
-  2026-10-21 from the phase timers: about 31 ms of p16_88's 964 (67 of 272 scorings; `sc_fold_ms` + `sc_loop_ms`
-  124.9 ms over all), about 100 ms of export 2's 2.9 s; `sc_out` drops (67 x 16,384 on p16_88), every other field
-  identical. About 3%; needs the owner's sign-off for the counter.
 - The page's Reroll: measured 2026-10-21 in Chromium on the sample veterans, each reroll 730-820 ms in the solver, of
   which the roll itself (`roll_kept`, `next.roll`) is 0.1-1.8 ms; the rest is the quick comparison search sent in the
   same call (`fix: [her]`, `compare`, top 1: "the best career with her"). Answering the roll in its own call first
   would show Careers to loop at once and the search's verdict and best career when it lands; the worker already queues
   a reroll behind a running quick search without restarting. Building the search setup after `roll_kept` (the audit's
   idea) would save nothing: the roll is already cheap.
-- `sc_prep`'s dominance and flat checks per (trainee, deck prefix): at most `sc_fold_ms` (21.8 of p16_88's 964 ms,
-  which also holds `fold_rec`); a memo in `Cache` keyed by (u, nd) with `sc_dom` replayed would keep every output.
-  Under 2%; measure `sc_prep` alone before building it. `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
-  copies a job, negligible.
+- Not worth doing (measured 2026-10-21): a memo of `sc_prep`'s dominance and flat checks per (trainee, deck prefix):
+  `sc_prep` is 1.1M of p10's 19.7G instructions; `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB copies
+  a job.
 - Where the time is (callgrind, 2026-10-21): p10 spends 88.6% of its instructions in the deck search
   (`DeckSpace::search`, 260 runs from 211 `best_deck` calls: the main search 29.6%, `best_of` 47.9%, `deck_for` 15%)
   and 6.3% in `score_career`; `rec`'s cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):

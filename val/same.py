@@ -1,11 +1,14 @@
-"""Whole-output identity (docs/PERF.md, *What "byte-identical" covers*): uv run val/same.py TAG [REF]
-Compares val/TAG__*.out with val/REF__*.out (default ref) and val/TAGpu__*.out with val/REFpu__*.out, every field but
+"""Whole-output identity (docs/PERF.md, *What "byte-identical" covers*): uv run val/same.py TAG [REF] [--plan]
+Compares val/TAG__*.out with val/REF__*.out (default ref) and val/TAGpu__*.out with val/REFpu__*.out (with --plan:
+val/plan/TAG__*.out with val/plan/REF__*.out, planval's outputs), every field but
 the timings (`timing_s`, `*_ms`); prints each differing output with the paths that differ. Exit 1 on any difference or
 when nothing was compared. Stricter than cmp2.py, which checks rounded P(all)."""
 import glob, json, os, sys
 
 V = os.path.dirname(os.path.abspath(__file__))
-tag = sys.argv[1]; ref = sys.argv[2] if len(sys.argv) > 2 else 'ref'
+args = [a for a in sys.argv[1:] if a != '--plan']
+if '--plan' in sys.argv: V = os.path.join(V, 'plan')
+tag = args[0]; ref = args[1] if len(args) > 1 else 'ref'
 
 def load(p):
     t = open(p).read()
@@ -20,7 +23,7 @@ def paths(a, b, at=''):   # the paths where a and b differ, timings left out
     return [] if a == b else [at or '.']
 
 n = bad = 0
-for t, r in ((tag, ref), (tag + 'pu', ref + 'pu')):
+for t, r in ((tag, ref),) + (() if '--plan' in sys.argv else ((tag + 'pu', ref + 'pu'),)):
     for nf in sorted(glob.glob(os.path.join(V, f'{t}__*.out'))):
         rf = os.path.join(V, f'{r}__' + nf.split(f'{t}__', 1)[1])
         if not os.path.exists(rf): continue

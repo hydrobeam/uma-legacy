@@ -76,6 +76,12 @@ class ValidationExitTests(unittest.TestCase):
         (self.val / 'trial__tiny.out').unlink()
         self.assertNotEqual(self.run_script('same.py', 'trial').returncode, 0)   # nothing compared
 
+    def test_whole_output_plan_directory(self):
+        self.write(self.plan / 'trial__tiny.out', self.output)
+        self.assertEqual(self.run_script('same.py', 'trial', '--plan').returncode, 0)
+        self.write(self.plan / 'trial__tiny.out', {**self.output, 'next': 1})
+        self.assertNotEqual(self.run_script('same.py', 'trial', '--plan').returncode, 0)
+
     def test_plan_passes_matching_output(self):
         self.assertEqual(self.plan_run().returncode, 0)
 

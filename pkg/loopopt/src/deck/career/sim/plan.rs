@@ -346,9 +346,11 @@ pub(super) struct ScoreBase<'b> { pub(super) cands: &'b [usize], pub(super) c1: 
     /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
     pub(super) sides: &'b [Vec<(bool, Legacy)>], pub(super) all: &'b [usize] }
 /// What a `score_career` caller reads: the stats alone (E[y] and the lift returned as 0.0, no y), E[y] and the lift (no
-/// stats), those and the scoring kept for a roll (`Keep`: `Scored`), or (`sc_eval`, a roll's) those and y per outcome
+/// stats), those and the scoring kept for a roll (`Keep`: `Scored`), or (`sc_eval`, a roll's) those and y per outcome.
+/// `Touch`: nothing; the scoring's state effects only (her schedule, the partners' `val` searches, `sc_prep`'s counters),
+/// its evaluation skipped, zeros returned (the looped rows, whose stats only `proxy_check` reads)
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Want { Stats, Score, Keep, Ys }
+pub(super) enum Want { Stats, Score, Keep, Ys, Touch }
 /// (A, B, C's step, A from a real 8/8, B from a real 8/8)
 pub(super) type Trio = (usize, usize, f64, bool, bool);
 /// V over the trios at step costs c1
@@ -669,6 +671,7 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     // per active candidate: (index, her slot or none, her threshold, her odds now)
     sd.act = active.iter().map(|&ui| (ui, aslot[ui], thr[ui], bs.pnow[ui])).collect();
     her_pool_done(s, pool, of_legs, pv);
+    if want == Want::Touch { return (0.0, 0.0, None, vec![(0.0, 0.0); n]); }
     let mut sc = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
     let (ey, lift, _, stats, full_lo, [n_out, n_ch, n_cost, n_same, n_one]) = sc_eval(bs, &sd, &All, if want == Want::Keep { Want::Score } else { want }, &mut sc);
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = sc);
@@ -2251,7 +2254,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
             };
             lbest[x] = Some(lf.clone());
             if let Some(f) = lf {
-                let (_, _, _, st) = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf);
+                // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
+                // searches, under this block's cap, add decks later scorings read)
+                let want = if pj.proxy_check { Want::Stats } else { Want::Touch };
+                let (_, _, _, st) = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, &mut buf);
                 runs.push((x, f, st)); exact_run.push(true); st_ver.push(None);
             }
         });
@@ -2260,7 +2266,8 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // nb rows (`pick`): per base row whose career has a borrowed parent, her best career without one, a row of its own:
     // through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once a shown
     // row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the looped rows
-    // neither Cont's builders nor added to the cache; no lifts (zeros: only Cont and `proxy_check` read a row's lifts)
+    // neither Cont's builders nor added to the cache; no lifts (zeros: only Cont and `proxy_check` read a row's lifts; the
+    // looped rows' are zeros too unless `proxy_check`)
     let nloop = runs.len();
     let nb_exact = |s: &mut Sim, x: usize, nunp: &mut Vec<bool>, buf: &mut Vec<f64>| -> Option<Found> {
         capped(s, pj.search_work, budget0, |s| if pj.sur == 1 { best_sur(s, ppool, fix, x, pj.sur_margin, buf) } else {
