@@ -69,17 +69,18 @@ pub(in super::super) fn bests_out() -> Value {
         "u": (0..b.unp.len()).filter(|&u| b.unp[u]).collect::<Vec<_>>(), "lu": (0..b.lunp.len()).filter(|&u| b.lunp[u]).collect::<Vec<_>>()})).collect()))
 }
 pub(in super::super) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
-    use super::super::{found_in, uxr};
+    use super::super::{found_in, len_in, usz, uxr};
     v.as_array()?
         .iter()
         .map(|e| {
             let k = e["k"].as_array()?;
-            let n = e["n"].as_u64()? as usize;
+            // (checked conversions: on wasm32 usize is 32 bits, and a stored count or index must not wrap into range)
+            let n = len_in(&e["n"])?;
             let per_uma = |key: &str| -> Option<Vec<CachedSearch>> {
                 let mut v = vec![CachedSearch::Unsearched; n];
                 for x in e[key].as_array()? {
                     let a = x.as_array()?;
-                    let u = a.first()?.as_u64()? as usize;
+                    let u = usz(a.first()?)?;
                     if u >= n {
                         return None;
                     }
@@ -91,10 +92,10 @@ pub(in super::super) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
             let flags = |key: &str| -> Vec<bool> {
                 let mut flags = vec![false; n];
                 for entry in e[key].as_array().into_iter().flatten() {
-                    if let Some(trainee) = entry.as_u64()
-                        && (trainee as usize) < n
+                    if let Some(trainee) = usz(entry)
+                        && trainee < n
                     {
-                        flags[trainee as usize] = true;
+                        flags[trainee] = true;
                     }
                 }
                 flags
@@ -5068,5 +5069,15 @@ mod cached_search_tests {
         assert_eq!(json!(cached_searches_out(&cached.looped)), stored[0]["l"]);
         assert_eq!(cached.unp, [false, false, true]);
         assert_eq!(cached.lunp, [false, true, false]);
+
+        // counts and indices are converted checked (usize is 32 bits on wasm32): an oversized count is refused, an
+        // index past u32::MAX is out of range (not wrapped into it), an unusable flag is skipped
+        let wide = u64::from(u32::MAX) + 2;
+        let refused =
+            |n: Value, b: Value| bests_in(&json!([{"k": stored[0]["k"], "n": n, "b": b, "l": [], "u": [], "lu": []}]));
+        assert!(refused(json!(u64::MAX), json!([])).is_none(), "a count beyond STATE_MAX_N is refused");
+        assert!(refused(json!(3), json!([[wide, null]])).is_none(), "an index past u32::MAX is refused");
+        let flagged = json!([{"k": stored[0]["k"], "n": 3, "b": [], "l": [], "u": [wide, 1], "lu": []}]);
+        assert_eq!(bests_in(&flagged).unwrap()[0].unp, [false, true, false]);
     }
 }
