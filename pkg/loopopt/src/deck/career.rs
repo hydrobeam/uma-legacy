@@ -127,7 +127,13 @@ struct Who { ix: Option<usize>, chara: u32, wins: Vec<(usize, f64)>, stars: std:
 /// `max_bor`: how many borrowed veterans a pair of parents may hold (1; 0 under `borrowed_parent` "never", and for the
 /// pick's pool under "later")
 #[derive(Clone)]
-struct Pool { me: Vec<Who>, gp: Vec<Vec<Who>>, borrowed: Vec<bool>, gpc: Vec<Vec<f64>>, max_bor: u8 }
+struct Pool {
+    me: Vec<Who>,
+    gp: Vec<Vec<Who>>,
+    borrowed: Vec<bool>,
+    gpc: Vec<Vec<f64>>,
+    max_bor: u8,
+}
 impl Pool {
     /// whether veterans a and b hold at most `max_bor` borrowed ones between them
     #[inline]
@@ -466,13 +472,20 @@ fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "best
 /// store that does not parse is refused)
 fn state_in(v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) { return json!({"error": "state: another version"}); }
-    let (Some(b), Some(sn), Some(so), Some(ro)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"]), solve_in(&v["solve"]), sim::plan::rolls_in(&v["rolls"]))
-        else { return json!({"error": "state: does not parse"}) };
-    let (nb, ns, nm, nr) = (b.len(), sn.len(), so.len(), ro.len());
-    sim::plan::bests_set(b);
-    SEEN.with(|c| *c.borrow_mut() = sn);
-    LAST_SOLVE.with(|c| *c.borrow_mut() = so);
-    sim::plan::rolls_set(ro);
+    // Decode every store before replacing any live state.
+    let (Some(bests), Some(seen), Some(searches), Some(rolls)) = (
+        sim::plan::bests_in(&v["bests"]),
+        seen_in(&v["seen"]),
+        solve_in(&v["solve"]),
+        sim::plan::rolls_in(&v["rolls"]),
+    ) else {
+        return json!({"error": "state: does not parse"});
+    };
+    let (nb, ns, nm, nr) = (bests.len(), seen.len(), searches.len(), rolls.len());
+    sim::plan::bests_set(bests);
+    SEEN.with(|cache| *cache.borrow_mut() = seen);
+    LAST_SOLVE.with(|cache| *cache.borrow_mut() = searches);
+    sim::plan::rolls_set(rolls);
     json!({"ok": true, "bests": nb, "seen": ns, "solve": nm, "rolls": nr})
 }
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
@@ -490,17 +503,41 @@ fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
 }
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 #[derive(Clone)]
-struct Found { t: usize, a: usize, b: usize, val: f64, ub: f64, sel: Sel }
+struct Found {
+    t: usize,
+    a: usize,
+    b: usize,
+    val: f64,
+    ub: f64,
+    sel: Sel,
+}
 /// A trainee's fully checked deck: the chances it was found at (job-target order), its exact value there before the
 /// spark scale (the best of every legal deck, under the EXACT_RHO certificate, or cap-free after a rerun), the deck. Its
 /// value bounds every deck at other chances through `rise`.
 #[derive(Clone)]
-struct Ref { q: Vec<f64>, val: f64, sel: Sel }
+struct Ref {
+    q: Vec<f64>,
+    val: f64,
+    sel: Sel,
+}
 #[derive(Clone)]
 enum DeckRes { NoDeck, Bounded, Done(f64, Sel, bool) }
 #[derive(Clone)]
 /// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see `Env::cert`)
-struct Solved { found: Vec<Found>, refs: Vec<Vec<Ref>>, work: usize, cands: usize, solved: usize, bounded: usize, scored: usize, skipped: usize, next_bound: f64, complete: bool, proven: bool, cert: f64 }
+struct Solved {
+    found: Vec<Found>,
+    refs: Vec<Vec<Ref>>,
+    work: usize,
+    cands: usize,
+    solved: usize,
+    bounded: usize,
+    scored: usize,
+    skipped: usize,
+    next_bound: f64,
+    complete: bool,
+    proven: bool,
+    cert: f64,
+}
 
 struct Env<'a> {
     d: &'a Data, sj: &'a SkillJob, model: Model<'a>, ew0: Vec<Vec<Vec<f64>>>, uncv: Vec<usize>, fixed_t: Vec<usize>, ntar: usize, nu: usize,
@@ -602,8 +639,19 @@ const DECK_KEEP_CAP: usize = 8192;
 pub(crate) fn forget_kept_decks() { DECK_KEEP.with(|c| c.borrow_mut().clear()); }
 impl Drop for Env<'_> {
     fn drop(&mut self) {
-        let m = Kept { decks: std::mem::take(&mut self.deck_memo), corners: std::mem::take(&mut self.corner_memo) }; let fp = self.memo_fp;
-        DECK_KEEP.with(|c| { let mut c = c.borrow_mut(); c.retain(|e| e.0 != fp); c.push((fp, m)); while c.len() > DECK_KEEP_SETUPS { c.remove(0); } });
+        let kept = Kept {
+            decks: std::mem::take(&mut self.deck_memo),
+            corners: std::mem::take(&mut self.corner_memo),
+        };
+        let fingerprint = self.memo_fp;
+        DECK_KEEP.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            cache.retain(|entry| entry.0 != fingerprint);
+            cache.push((fingerprint, kept));
+            while cache.len() > DECK_KEEP_SETUPS {
+                cache.remove(0);
+            }
+        });
     }
 }
 impl<'a> Env<'a> {
@@ -628,9 +676,17 @@ impl<'a> Env<'a> {
         let me = self.who(l.chara, &l.sparks, &l.wins, &l.win_p, &l.pinks, l.mix);
         let gp: Vec<Who> = l.parents.iter().map(|g| self.who(g.chara, &g.sparks, &g.wins, &[], &g.pinks, None)).collect();
         p.gpc.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
-        p.me.push(me); p.gp.push(gp); p.borrowed.push(l.borrowed);
+        p.me.push(me);
+        p.gp.push(gp);
+        p.borrowed.push(l.borrowed);
     }
-    fn pool_pop(&self, p: &mut Pool) { p.me.pop(); p.gp.pop(); p.borrowed.pop(); p.gpc.pop(); }
+    /// Undo one `pool_push`, keeping all four per-veteran arrays aligned.
+    fn pool_pop(&self, p: &mut Pool) {
+        p.me.pop();
+        p.gp.pop();
+        p.borrowed.pop();
+        p.gpc.pop();
+    }
     /// the solver's pool of `legs`: each one's entry as `pool_push` builds it (the one construction, the simulator's too)
     fn pool(&self, legs: &[Legacy]) -> Pool {
         let n = legs.len();
@@ -1007,13 +1063,19 @@ impl<'a> Env<'a> {
     /// `complete` (as before the rerun existed).
     fn best_deck_run(&mut self, t: usize, c: f64, th: f64, starts: &[&Sel], scored: &mut usize) -> DeckRes {
         if self.space.dj.cap_free { return self.best_deck_cf(t, c, th, starts, scored, None, None); }
-        let (b0, cert0, ov0) = (self.cap_breach, self.cert, self.overflows);
+        let (breaches_before, cert_before, overflows_before) = (self.cap_breach, self.cert, self.overflows);
         let (res, prod) = self.best_deck_capped(t, c, th, starts, scored);
         if crate::deck::cf_check() > 0.0 { self.cf_beside(t, c, th, starts, &res, &prod); }
-        if self.cap_breach == b0 { return res; }
+        if self.cap_breach == breaches_before { return res; }
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *OFF.get_or_init(|| std::env::var("CAP_RERUN").map_or(false, |v| v == "0")) { self.cfs.unhandled += 1; return res; }
-        self.cert = cert0; self.overflows = ov0; self.cfs.reruns += 1;
+        if *OFF.get_or_init(|| std::env::var("CAP_RERUN").map_or(false, |v| v == "0")) {
+            self.cfs.unhandled += 1;
+            return res;
+        }
+        // The cap-free answer supersedes this call's certificate and overflow count.
+        self.cert = cert_before;
+        self.overflows = overflows_before;
+        self.cfs.reruns += 1;
         let capped = match &res { DeckRes::Done(v, s, _) => Some((*v, s.clone())), _ => None };
         self.best_deck_cf(t, c, th, starts, scored, prod, capped)
     }
@@ -1335,11 +1397,6 @@ impl<'a> Env<'a> {
                  refs, cands: n, solved: n_solved, bounded: n_bounded, scored: n_scored, skipped: n - next, next_bound, complete, proven, work: self.work, cert }
     }
 
-    /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
-    /// later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to each of
-    /// them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the shared one.
-    /// Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does that turn.
-    /// Also her win chance per race index.
     /// Trainee t's aptitudes over the career with parents a, b (MODEL.md, aptitude sparks): at the start, per aptitude
     /// the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to A; at each
     /// April inspiration (Classic, Senior) every legacy's pink spark fires with base 1/3/5% by stars x (1 + that legacy's
@@ -1410,6 +1467,11 @@ impl<'a> Env<'a> {
         }
         out
     }
+    /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
+    /// later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to each of
+    /// them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the shared one.
+    /// Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does that turn.
+    /// Also her win chance per race index.
     fn schedule(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Value, Vec<f64>) {
         let d = self.d;
         let pu = self.pink_career(p, t, a, b).and_then(|pc| self.pink_uma(&pc, t));
@@ -1579,26 +1641,57 @@ impl<'a> Env<'a> {
 #[allow(clippy::too_many_arguments)]
 fn solve_kept(env: &mut Env, key: u64, p: &Pool, fix: &[usize], trainees: &[usize], per_trainee: bool, top: usize) -> Solved {
     let n = env.d.umas.len();
-    let kept = LAST_SOLVE.with(|c| { let mut c = c.borrow_mut(); let i = c.iter().position(|x| x.0 == key)?; let e = c.remove(i); c.push(e); c.last().map(|e| (e.1.clone(), e.2.clone())) });
+    let kept = LAST_SOLVE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let index = cache.iter().position(|entry| entry.0 == key)?;
+        let entry = cache.remove(index);
+        cache.push(entry);
+        cache.last().map(|entry| (entry.1.clone(), entry.2.clone()))
+    });
     match kept {
-        Some((s, r)) if r.len() == n => { env.ruled = r; s }
-        _ => { let s = env.solve(p, fix, trainees, per_trainee, top);
-               LAST_SOLVE.with(|c| { let mut c = c.borrow_mut(); c.retain(|x| x.0 != key); c.push((key, s.clone(), env.ruled.clone())); while c.len() > SOLVE_KEEP { c.remove(0); } }); s }
+        Some((solved, ruled)) if ruled.len() == n => {
+            env.ruled = ruled;
+            solved
+        }
+        _ => {
+            let solved = env.solve(p, fix, trainees, per_trainee, top);
+            LAST_SOLVE.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                cache.retain(|entry| entry.0 != key);
+                cache.push((key, solved.clone(), env.ruled.clone()));
+                while cache.len() > SOLVE_KEEP {
+                    cache.remove(0);
+                }
+            });
+            solved
+        }
     }
 }
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
-    match v["cmd"].as_str() { Some("state_out") => return state_out(), Some("state_in") => return state_in(&v["state"]), _ => {} }
+    match v["cmd"].as_str() {
+        Some("state_out") => return state_out(),
+        Some("state_in") => return state_in(&v["state"]),
+        _ => {}
+    }
     // a roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
     // plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then the plan job with
     // `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as `roll`
-    if let Some(r) = v.get("roll").filter(|r| !r.is_null()) {
-        let mut j = v.clone(); if let Some(o) = j.as_object_mut() { o.remove("roll"); }
-        let mut out = run_career(d, sk, cr, &j);
-        let mut pj = r["job"].clone();
-        out["roll"] = match pj.get_mut("next").and_then(|n| n.as_object_mut()) {
-            Some(n) => { n.insert("roll".into(), r["stars"].clone()); let o = run_career(d, sk, cr, &pj);
-                if o["next"]["roll"].is_null() { json!({"error": o["error"].as_str().or(o["next"]["error"].as_str()).unwrap_or("the plan has no roll")}) } else { o["next"]["roll"].clone() } }
+    if let Some(roll) = v.get("roll").filter(|roll| !roll.is_null()) {
+        let mut search_job = v.clone();
+        if let Some(object) = search_job.as_object_mut() { object.remove("roll"); }
+        let mut out = run_career(d, sk, cr, &search_job);
+        let mut plan_job = roll["job"].clone();
+        out["roll"] = match plan_job.get_mut("next").and_then(|next| next.as_object_mut()) {
+            Some(next) => {
+                next.insert("roll".into(), roll["stars"].clone());
+                let plan_out = run_career(d, sk, cr, &plan_job);
+                if plan_out["next"]["roll"].is_null() {
+                    json!({"error": plan_out["error"].as_str().or(plan_out["next"]["error"].as_str()).unwrap_or("the plan has no roll")})
+                } else {
+                    plan_out["next"]["roll"].clone()
+                }
+            }
             None => json!({"error": "roll: the job is not a plan job (no `next`)"}),
         };
         return out;

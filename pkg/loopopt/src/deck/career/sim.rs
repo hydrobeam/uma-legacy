@@ -51,7 +51,8 @@
 //! runs with them; otherwise her parents are the best pair for her by exact P(all) from the pool (the career search
 //! with her as the only trainee) with every existing one of those rotation veterans fixed as a parent. A loop career
 //! keeps her own schedule (the career model's); the loop planner coordinates schedules across members, this does not.
-//! The loop adds every veteran (no pruning): it never scans the pool, and the latest veteran is the one it breeds from.
+//! The loop adds every veteran without dominance pruning. Its rotation keeps the better of the previous veteran and
+//! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
 use super::*;
 use super::cache::Cache;
 use std::rc::Rc;
@@ -103,14 +104,21 @@ fn d_next() -> Value { json!({}) }
 /// index: the page's `top` for its plan job (`ROLL_K` in webapp/src/career.js)
 const PAGE_TOP: usize = 6;
 /// The worker's kept state across jobs: the kept plans, proofs, main searches and deck memos
-type KeptState = (Vec<plan::Bests>, Vec<(u64, Vec<Vec<Ref>>)>, Vec<(u64, Solved, super::Ruled)>, Vec<(u64, super::Kept)>);
-/// replaces the worker's kept state with `k`, returning what it was (`index`: module notes)
-fn kept_swap(k: KeptState) -> KeptState {
-    let b = plan::bests_take(); plan::bests_set(k.0);
-    let s = super::SEEN.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.1));
-    let l = super::LAST_SOLVE.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.2));
-    let d = super::DECK_KEEP.with(|c| std::mem::replace(&mut *c.borrow_mut(), k.3));
-    (b, s, l, d)
+#[derive(Default)]
+struct KeptState {
+    bests: Vec<plan::Bests>,
+    seen: Vec<(u64, Vec<Vec<Ref>>)>,
+    searches: Vec<(u64, Solved, super::Ruled)>,
+    decks: Vec<(u64, super::Kept)>,
+}
+/// Replace the worker's kept state, returning the previous state (`index`: module notes).
+fn kept_swap(replacement: KeptState) -> KeptState {
+    let bests = plan::bests_take();
+    plan::bests_set(replacement.bests);
+    let seen = super::SEEN.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.seen));
+    let searches = super::LAST_SOLVE.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.searches));
+    let decks = super::DECK_KEEP.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.decks));
+    KeptState { bests, seen, searches, decks }
 }
 
 // ---- random numbers ----
@@ -145,9 +153,16 @@ struct Cur { t: usize, a: usize, b: usize, p: f64, os: Vec<f64>, wp: Rc<Vec<f64>
 struct Rot { pos: usize, latest: Vec<Option<usize>> }
 /// One path's state: veterans, the solver's pool, owned veterans per family (dominance), the surrogate's best
 #[derive(Clone)]
-struct St { legs: Vec<Legacy>, pool: Pool, fam: crate::FxMap<String, Vec<(Vec<u8>, Vec<usize>)>>, best: Option<Pick>, cur: Option<Rc<Cur>>, rot: Rot,
-            /// `next`: each loop member's best career (by member index)
-            mb: Vec<Option<Pick>> }
+struct St {
+    legs: Vec<Legacy>,
+    pool: Pool,
+    fam: crate::FxMap<String, Vec<(Vec<u8>, Vec<usize>)>>,
+    best: Option<Pick>,
+    cur: Option<Rc<Cur>>,
+    rot: Rot,
+    /// `next`: each loop member's best career (by member index)
+    mb: Vec<Option<Pick>>,
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Base { Greedy, Loop, Trace, Index }
@@ -713,19 +728,44 @@ impl<'s, 'a> Sim<'s, 'a> {
         json!({"argmax": argmax, "lineages": rows})
     }
 
-    /// Follow `base` (from state st at career t with survival s) until s < eps or tmax careers; with `run` given (the
-    /// run index), record pick changes, checks and audits. Returns (sum of S including the tail, careers, tail, final p).
+    /// Follow `base` (from state st at career t with survival s) until s < eps or max_careers; with `decide` given (the
+    /// run index), record pick changes, checks and audits. Returns (sum of S including the tail, careers, tail,
+    /// final p, pruned-veteran count).
     fn play(&mut self, st: &mut St, base: Base, keys: Keys, mut s: f64, mut t: usize, eps: f64, decide: Option<u32>, rec: &mut Vec<Value>, checks: &mut Vec<Value>) -> (f64, usize, f64, f64, usize) {
-        let mut e = 0.0f64; let mut pruned = 0usize; let mut buf = vec![];
+        let mut e = 0.0f64;
+        let mut pruned = 0usize;
+        let mut buf = vec![];
         let mut last_key = String::new();
         let exact = self.cfg.policy == "greedy_exact";
-        let mut ecur: Option<Rc<Cur>> = None;
+        // Exact and index policies keep their decision until the pool changes.
+        let mut kept_decision: Option<Rc<Cur>> = None;
         let mut since_check = 0usize;
         if decide.is_some() && self.cfg.check > 0 && base == Base::Greedy { checks.push(self.check(st, true)); }
         loop {
-            let cur: Rc<Cur> = if exact { match &ecur { Some(c) => c.clone(), None => { let c = Rc::new(self.exact_cur(st)); ecur = Some(c.clone()); c } } }
-                else { match base { Base::Greedy => self.greedy_cur(st), Base::Loop => self.loop_cur(st), Base::Trace => unreachable!("trace runs its own loop"),
-                    Base::Index => match &ecur { Some(c) => c.clone(), None => { let c = Rc::new(self.index_cur(st)); ecur = Some(c.clone()); c } } } };
+            let cur: Rc<Cur> = if exact {
+                match &kept_decision {
+                    Some(career) => career.clone(),
+                    None => {
+                        let career = Rc::new(self.exact_cur(st));
+                        kept_decision = Some(career.clone());
+                        career
+                    }
+                }
+            } else {
+                match base {
+                    Base::Greedy => self.greedy_cur(st),
+                    Base::Loop => self.loop_cur(st),
+                    Base::Trace => unreachable!("trace runs its own loop"),
+                    Base::Index => match &kept_decision {
+                        Some(career) => career.clone(),
+                        None => {
+                            let career = Rc::new(self.index_cur(st));
+                            kept_decision = Some(career.clone());
+                            career
+                        }
+                    },
+                }
+            };
             if decide.is_some() {
                 let k = self.key(&cur);
                 if k != last_key {
@@ -745,14 +785,15 @@ impl<'s, 'a> Sim<'s, 'a> {
                 Base::Loop => {
                     self.add_vet(st, vet, false, &mut buf);
                     if cur.rot { self.rot_update(st); }
-                    st.cur = None; ecur = None;
+                    st.cur = None;
+                    kept_decision = None;
                 }
                 Base::Trace => unreachable!("trace runs its own loop"),
                 // (index: a pruned veteran leaves the pool as it was, so the plan, and its pick, are kept)
                 Base::Greedy | Base::Index => {
                     if self.cfg.prune && self.dominated(st, &vet) { pruned += 1; continue; }
                     self.add_vet(st, vet, !exact && base == Base::Greedy, &mut buf);
-                    ecur = None;
+                    kept_decision = None;
                     since_check += 1;
                     if decide.is_some() && base == Base::Greedy && self.cfg.check > 0 && since_check >= self.cfg.check { since_check = 0; checks.push(self.check(st, false)); }
                 }
@@ -788,10 +829,13 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
     let mut runs = vec![]; let mut es = vec![];
     let eps = cfg.eps;
     // index: the kept state before the simulation, put back after it (module notes)
-    let kept0 = if base == Base::Index { Some(kept_swap(Default::default())) } else { None };
+    let kept_before_simulation = if base == Base::Index { Some(kept_swap(Default::default())) } else { None };
     for run in cfg.first..cfg.first + cfg.runs {
         if !cfg.share_cache && run > cfg.first { s.cache = Cache::new(n); }
-        if base == Base::Index { kept_swap(Default::default()); IX.with(|ix| *ix.borrow_mut() = Default::default()); }
+        if base == Base::Index {
+            kept_swap(Default::default());
+            IX.with(|ix| *ix.borrow_mut() = Default::default());
+        }
         let tm = std::time::Instant::now();
         let n0 = s.n;
         let mut st = st0.clone();
@@ -810,7 +854,7 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
         if base == Base::Index { let ix = IX.with(|ix| std::mem::take(&mut *ix.borrow_mut()));
             runs.last_mut().unwrap()["index"] = json!({"plans": ix.0, "plan_s": ix.1, "roles": ix.2, "best_odds": ix.3}); }
     }
-    if let Some(k) = kept0 { kept_swap(k); }
+    if let Some(kept) = kept_before_simulation { kept_swap(kept); }
     json!({"simulate": sim, "policy": cfg.policy, "runs": runs, "E": stats(&es), "init_s": init_s, "decks": s.cache.n_decks(), "deck_tables": s.cache.tables,
            "refreshes": s.n.searches, "schedules": s.sched.len()})
 }
