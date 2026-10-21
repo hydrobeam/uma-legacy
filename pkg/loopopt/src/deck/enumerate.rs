@@ -25,8 +25,15 @@ impl<'a> DeckSpace<'a> {
         let fixed = model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // per chain level; off when an entry has an outcome hinting two targets (`state_value`)
-        let sbm = if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(|c| c.get()) { sb_mode() } else { 0 };
-        let sb_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>> = if sbm > 0 && !legal_rc.iter().any(|&j| self.srcs[j].multi) {
+        // The cap-free band (`CF_ON`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds at every node and
+        // leaf (`cf_cheap`, then `cf_ub`, on the state-conditioned tables of mode 2) are its only prunes, no cap in any
+        // test; it needs every legal entry `cf_ok` (else it proves nothing: `over`) and stops past CF_LIM nodes (`over`)
+        let cfm = !best && clauses.len() == 1 && clauses[0].0.len() == 1 && CF_ON.with(|c| c.get());
+        if cfm && !legal_rc.iter().all(|&j| self.srcs[j].cf_ok) { return (vec![], true); }
+        let cf_lim = if cfm { CF_LIM.with(|c| c.get()) } else { usize::MAX };
+        let cfs = if cfm { cf_check() } else { 0.0 };
+        let sbm = if cfm { 2 } else if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(|c| c.get()) { sb_mode() } else { 0 };
+        let sb_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>> = if sbm > 0 && (cfm || !legal_rc.iter().any(|&j| self.srcs[j].multi)) {
             let hit = self.sbrows.borrow().get(&set_id).cloned();
             hit.unwrap_or_else(|| { let r = std::rc::Rc::new((0..self.rel.len()).map(|j| if legal_rc.contains(&j) { Some(src_levels(&self.srcs[j], self.kind[j].1, nu)) } else { None }).collect::<Vec<_>>());
                 self.sbrows.borrow_mut().insert(set_id, r.clone()); r })
@@ -58,6 +65,46 @@ impl<'a> DeckSpace<'a> {
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
         struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>>, rpk: std::rc::Rc<Vec<Vec<Vec<f64>>>>, rnew: f64, rcv: Vec<f64> }
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_ents)).collect();
+        // (the cap-free band's ratio bound, `cf_ub`) per outfit of the trainee, its zero-base targets (factor 0 with no
+        // hint: their ratios would be infinite, so they take the per-target bound), and per group of `groups_all`, level
+        // and outfit (row l * no + o) the best ratio over its entries: R(e, l) = prod over the other targets of the factor
+        // at e's misses at level l over the factor with no card. Built on first use
+        let cf_no = if cfm { model.opts[sb_u].len() } else { 0 };
+        let cf_z: Vec<u32> = (0..cf_no).map(|o| { let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
+            (0..nu).filter(|&k| !(land_factor(st[k], ew[k], sb_q, 1.0, 1.0) > 0.0)).fold(0u32, |m, k| m | 1 << k) }).collect();
+        let cf_rmx: std::cell::RefCell<Vec<Option<std::rc::Rc<Vec<f64>>>>> = std::cell::RefCell::new(vec![None; if cfm { groups_all.len() } else { 0 }]);
+        let cf_rmx_of = |gi: usize| -> std::rc::Rc<Vec<f64>> {
+            if let Some(r) = &cf_rmx.borrow()[gi] { return r.clone(); }
+            let stop = if gi < nk { self.kinds_all[gi].1 as usize } else { 0 };
+            let mut m = vec![0.0f64; (stop + 1) * cf_no];
+            for o in 0..cf_no {
+                let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
+                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, 1.0, 1.0)).product();
+                for &j in groups_all[gi].iter() { if let Some(rows) = &sb_rows[j] { for l in 0..=stop.min(rows.len() / nu - 1) {
+                    let num: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, rows[l * nu + k].0, rows[l * nu + k].1)).product();
+                    let r = num / den; if !(r <= m[l * cf_no + o]) { m[l * cf_no + o] = r; }
+                } } }
+            }
+            let r = std::rc::Rc::new(m);
+            cf_rmx.borrow_mut()[gi] = Some(r.clone());
+            r
+        };
+        // the same ratio of one entry (row l * no + o), built on first use
+        let cf_rent: std::cell::RefCell<crate::FxMap<usize, std::rc::Rc<Vec<f64>>>> = Default::default();
+        let cf_rent_of = |j: usize| -> std::rc::Rc<Vec<f64>> {
+            if let Some(r) = cf_rent.borrow().get(&j) { return r.clone(); }
+            let rows = sb_rows[j].as_ref().unwrap();
+            let nl = rows.len() / nu;
+            let mut m = vec![0.0f64; nl * cf_no];
+            for o in 0..cf_no {
+                let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
+                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, 1.0, 1.0)).product();
+                for l in 0..nl { m[l * cf_no + o] = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, rows[l * nu + k].0, rows[l * nu + k].1)).product::<f64>() / den; }
+            }
+            let r = std::rc::Rc::new(m);
+            cf_rent.borrow_mut().insert(j, r.clone());
+            r
+        };
         // per group, its entries' `cv_mask`s ORed
         let gcvm: Vec<u64> = groups_all.iter().map(|l| l.iter().fold(0u64, |m, &j| m | self.cvm[j])).collect();
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
@@ -126,7 +173,7 @@ impl<'a> DeckSpace<'a> {
         };
         // (RB_CHECK=s: the node bounds on the current path, per depth its clause sums, the root's at depth 0; nodes pass
         // at s times their bound, so more leaves are checked, the results unchanged)
-        let rbsl = rb_check();
+        let rbsl = if cfm { 0.0 } else { rb_check() };
         let rbc = rbsl > 0.0;
         let rbsl = if rbc { rbsl } else { 1.0 };
         let rbs: std::cell::RefCell<Vec<Vec<f64>>> = std::cell::RefCell::new(vec![]);
@@ -166,7 +213,7 @@ impl<'a> DeckSpace<'a> {
         // each evaluation is within about 4e-14 per (trainee, chance) of exact (every quantity in it within [0, 1] up to
         // rounding, each operation's error at most 2^-53 of one, about 300 operations), so a variant's value is at most
         // the bound's plus `key_slack` (1e-11 per pair)
-        let keyskip = valid && (!best || bestv > f64::NEG_INFINITY);
+        let keyskip = valid && !cfm && (!best || bestv > f64::NEG_INFINITY);
         let key_slack = |cl: &(Vec<(usize, f64)>, f64)| 1e-11 * cl.0.len() as f64 * fixed.max(1.0);
         let (mut kdw, mut kdg) = (vec![0.0f64; nu], vec![0.0f64; nu]);
         let mut pkeys: Vec<Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>>> = vec![];
@@ -250,7 +297,7 @@ impl<'a> DeckSpace<'a> {
                     // the configuration's class cap (every deck of it is in a class at most this one's)
                     let rc = if best { rho } else { ccap[cap_class(gs.iter().fold(0u64, |m, &(i, _)| m | gcvm[i]))] };
                     let iv = if best { val(&clauses[0], &dw, &dg) } else { 0.0 };
-                    let ideal = if best { iv * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
+                    let ideal = if cfm { true } else if best { iv * (1.0 + 1e-9) >= bestv } else { clauses.iter().any(|cl| rc * val(cl, &dw, &dg) * (1.0 + 1e-9) >= cl.1) };
                     if !ideal { continue; }
                     if lazy {
                         if pkey_new { pkeys.push(None); pkey_new = false; }
@@ -284,7 +331,7 @@ impl<'a> DeckSpace<'a> {
                     let rt = |cv: &[f64]| if best { cv[0] } else { (0..clauses.len()).map(|ci| rho * cv[ci] / clauses[ci].1.max(1e-300)).fold(f64::NEG_INFINITY, f64::max) };
                     let (root, rnew) = (rt(cvo), rt(cv));
                     // (the visiting order stays by `root`; a configuration whose root at its class cap fails is left out)
-                    if !best && rc < rho && (0..clauses.len()).all(|ci| rc * cv[ci] * (1.0 + 1e-9) < clauses[ci].1) { continue; }
+                    if !best && !cfm && rc < rho && (0..clauses.len()).all(|ci| rc * cv[ci] * (1.0 + 1e-9) < clauses[ci].1) { continue; }
                     cfgs.push(Cfg { root, code, code_real22: real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone(), rpk: rpk.clone(), rnew, rcv: if rbc { cv.to_vec() } else { vec![] } });
                 }
             }
@@ -408,9 +455,9 @@ impl<'a> DeckSpace<'a> {
                 match heap.pop() { Some(h) => { cf_own = h.cf; &cf_own } None => break }
             } else { if eager_i >= cfgs.len() { break; } eager_i += 1; &cfgs[eager_i - 1] };
             if best && cf.root * (1.0 + 1e-9) < bestv { break; }
-            if !best && cf.root * (1.0 + 1e-9) < 1.0 { break; }
+            if !best && !cfm && cf.root * (1.0 + 1e-9) < 1.0 { break; }
             // (the split's root bound: skip, the order kept)
-            if (best && cf.rnew * rbsl * (1.0 + 1e-9) < bestv) || (!best && cf.rnew * rbsl * (1.0 + 1e-9) < 1.0) { continue; }
+            if (best && cf.rnew * rbsl * (1.0 + 1e-9) < bestv) || (!best && !cfm && cf.rnew * rbsl * (1.0 + 1e-9) < 1.0) { continue; }
             let km = self.key_miss(cf.code);
             let (mw, mg, tmk) = (&km.0, &km.1, &km.2[..]);
             let (filler, plain) = (cf.filler, cf.plain);
@@ -524,7 +571,7 @@ impl<'a> DeckSpace<'a> {
                     let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * nu];
                     for &j in gs[g].0 { if let Some(r) = &sb_rows[j] { for (x, y) in m.iter_mut().zip(r.iter()) { x.0 = x.0.min(y.0); x.1 = x.1.min(y.1); } } }
                     m }).collect();
-                let r = std::rc::Rc::new(SbCfg { states, slots, gmin });
+                let r = std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: Default::default() });
                 self.sbcfg.borrow_mut().insert(sbkey, r.clone());
                 Some(r)
             };
@@ -554,9 +601,199 @@ impl<'a> DeckSpace<'a> {
                 }
                 fixed * acc[..opts.len()].iter().cloned().fold(0.0f64, f64::max)
             };
+            // The cap-free band's bound (`cfm`): per chain state x the lower of `sb_ub`'s per-target bound A_x and a ratio
+            // bound B_x, summed over states, the best outfit. Derived: given x the deck's state value is a product over
+            // targets of phi_k at its misses given x (phi_k = G - (G - W) ng - W a nh, a = (1 - e)(1 - q)); its log gains
+            // less from a card the lower the misses already are (phi(ng y, nh y') / phi(ng, nh) rises with ng and with
+            // nh for y' <= y <= 1), so over the targets N with phi_k(1, 1) > 0 the completion's product is at most the
+            // partial deck's times each open slot's card's ratio from no card, at most the best ratio of its group at the
+            // slot's level (`cf_rmx_of`); the zero-base targets Z take A's factors. Every completion's state value is at
+            // most both, so their minimum bounds it state by state, and the sum over states (`state_value`'s argument,
+            // `Src::cf_ok`) bounds its exact value.
+            // `cut` (> 0: the value a node must reach to pass): the states are taken heaviest first and the sum stops once
+            // it decides the test, returning its partial sum plus the weight left times every state's most (A with every
+            // slot at its most links done, at least any state's term): an upper bound either way, below `cut` exactly
+            // when the full sum's test would fail to the slack. 0: the full sum, in state order.
+            let cf_ub = |sel: &[usize], cut: f64| -> f64 {
+                let c = sbc.as_ref().unwrap();
+                // filled slots without a level (pg, ph), open ones (ag, ah: their groups' lowest misses; rn: their best
+                // ratios); filled chain slots (position, rows), open ones (position, lowest rows, ratio table); every
+                // slot at its most links done (ug, uh)
+                let (mut pg, mut ph, mut ag, mut ah) = ([1.0f64; 32], [1.0f64; 32], [1.0f64; 32], [1.0f64; 32]);
+                let (mut ug, mut uh) = ([1.0f64; 32], [1.0f64; 32]);
+                let mut rn = [1.0f64; 16];
+                let mut fch: Vec<(usize, &[(f64, f64)])> = vec![];
+                let mut och: Vec<(usize, &[(f64, f64)], std::rc::Rc<Vec<f64>>)> = vec![];
+                let mut open = false;
+                let mut idx = 0usize;
+                for g in 0..ng { for t in 0..gs[g].1 {
+                    let filled = idx < sel.len();
+                    let rows: &[(f64, f64)] = if filled { sb_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
+                    idx += 1;
+                    let top = &rows[(rows.len() / nu - 1) * nu..];
+                    for k in 0..nu { ug[k] *= top[k].0; uh[k] *= top[k].1; }
+                    let p = c.slots[g][t];
+                    if filled {
+                        if p == usize::MAX { for k in 0..nu { pg[k] *= rows[k].0; ph[k] *= rows[k].1; } } else { fch.push((p, rows)); }
+                    } else {
+                        open = true;
+                        let rm = cf_rmx_of(cf.gs[g].0);
+                        if p == usize::MAX { for k in 0..nu { ag[k] *= rows[k].0; ah[k] *= rows[k].1; } for o in 0..cf_no { rn[o] *= rm[o]; } } else { och.push((p, rows, rm)); }
+                    }
+                } }
+                let opts = &model.opts[sb_u];
+                let early = cut > 0.0;
+                let mut umax = [0.0f64; 16];
+                if early { for (o, (st, _)) in opts.iter().enumerate() { let ew = &model.ews[sb_u][o]; let mut a = 1.0f64; for k in 0..nu { a *= land_factor(st[k], ew[k], sb_q, ug[k], uh[k]); } umax[o] = a; } }
+                let ns = c.states.len();
+                let (ord, tail) = if early { let x = c.order.get_or_init(|| {
+                    let mut o: Vec<u32> = (0..ns as u32).collect();
+                    o.sort_by(|&a, &b| c.states[b as usize].1.partial_cmp(&c.states[a as usize].1).unwrap().then(a.cmp(&b)));
+                    let mut t = vec![0.0f64; ns + 1]; for i in (0..ns).rev() { t[i] = t[i + 1] + c.states[o[i] as usize].1; }
+                    (o, t) }); (&x.0[..], &x.1[..]) } else { (&[][..], &[][..]) };
+                let mut acc = [0.0f64; 16];
+                let mut chk = true;
+                let (mut xg, mut xh, mut yg, mut yh) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
+                for i in 0..ns {
+                    let (x, w) = if early { &c.states[ord[i] as usize] } else { &c.states[i] };
+                    // x*: the partial deck's misses given x; y*: with every open slot at its group's lowest
+                    xg[..nu].copy_from_slice(&pg[..nu]); xh[..nu].copy_from_slice(&ph[..nu]);
+                    for &(p, rows) in &fch { let b = x[p] as usize * nu; for k in 0..nu { xg[k] *= rows[b + k].0; xh[k] *= rows[b + k].1; } }
+                    for k in 0..nu { yg[k] = xg[k] * ag[k]; yh[k] = xh[k] * ah[k]; }
+                    for &(p, rows, _) in &och { let b = x[p] as usize * nu; for k in 0..nu { yg[k] *= rows[b + k].0; yh[k] *= rows[b + k].1; } }
+                    for (o, (st, _)) in opts.iter().enumerate() {
+                        let ew = &model.ews[sb_u][o];
+                        let (mut a, mut bz, mut bn) = (1.0f64, 1.0f64, 1.0f64);
+                        for k in 0..nu {
+                            let fa = land_factor(st[k], ew[k], sb_q, yg[k], yh[k]); a *= fa;
+                            if open { if cf_z[o] >> k & 1 != 0 { bz *= fa; } else { bn *= land_factor(st[k], ew[k], sb_q, xg[k], xh[k]); } }
+                        }
+                        let f = if open {
+                            let mut r = rn[o]; for (p, _, rm) in &och { r *= rm[x[*p] as usize * cf_no + o]; }
+                            a.min(bz * bn * r)
+                        } else { a };
+                        acc[o] += w * f;
+                    }
+                    if early && chk && (i & 15 == 15 || i + 1 == ns) {
+                        // (the weight left with a hair of slack for its rounding)
+                        let rem = tail[i + 1] * (1.0 + 1e-12);
+                        let (mut hi, mut lo) = (0.0f64, 0.0f64);
+                        for o in 0..opts.len() { hi = hi.max(acc[o] + rem * umax[o]); lo = lo.max(acc[o]); }
+                        // (an infinite or NaN term: no early stop, the full sum)
+                        if !hi.is_finite() { chk = false; continue; }
+                        if fixed * hi * (1.0 + 1e-9) < cut || fixed * lo * (1.0 + 1e-9) >= cut { return fixed * hi; }
+                    }
+                }
+                fixed * acc[..opts.len()].iter().cloned().fold(0.0f64, f64::max)
+            };
+            let sb_ub = |sel: &[usize]| -> f64 { if cfm { cf_ub(sel, 0.0) } else { sb_ub(sel) } };
+            // The cap-free band's cheap bound, tried before `cf_ub` (a node either fails is pruned): given N = n events
+            // only. Derived: per state the completion's value is at most prod_Z phi_k at its lowest misses (every slot
+            // at its most links done; the zero-base targets) times prod_N phi_k at the filled level-free slots' misses
+            // times, per chain slot, its card's ratio at its level over that base (a filled slot's own, an open slot's
+            // group's best from no card, `cf_rmx_of`) and each open level-free slot's best ratio: the log-submodularity
+            // of `cf_ub`, card by card. Each chain slot's ratio rises with its level (its misses only fall), so given
+            // N = n, where the configuration's progress vector is negatively upper-orthant dependent (`key_level`,
+            // checked exactly, the projection on these positions included), the expected product is at most the product
+            // of the slots' expected ratios at P(level | n); summed over P(n). Infinite (no prune) when the key fails
+            // the orthant check.
+            let cf_kl: Option<std::rc::Rc<KeyLevel>> = if cfm { sbc.as_ref().and_then(|c| (!c.kl.is_empty()).then(|| key_level(&c.kl))) } else { None };
+            let cf_pmf = if cfm { event_pmf_job() } else { std::rc::Rc::new(vec![]) };
+            // (the event counts summed term by term, those of P(n) >= 1e-12; the rest's mass, each such term at most A
+            // at every slot's most links done)
+            let cf_ns: Vec<usize> = (0..cf_pmf.len()).filter(|&n| cf_pmf[n] >= 1e-12).collect();
+            let cf_rest: f64 = (0..cf_pmf.len()).filter(|&n| cf_pmf[n] < 1e-12).map(|n| cf_pmf[n]).sum::<f64>() * (1.0 + 1e-9) + 1e-300;
+            let cf_cheap = |sel: &[usize]| -> f64 {
+                let c = sbc.as_ref().unwrap();
+                if cf_kl.as_ref().map_or(false, |k| !k.nuod) { return f64::INFINITY; }
+                // filled level-free slots' misses (pg, ph); per level cap c (every slot at most c links done, at most its
+                // stop) each slot at its lowest misses (zg, zh at c); open level-free slots' best ratios (rn); chain
+                // slots: (position, rows (an open slot's: its group's lowest), filled, ratio table (a filled slot's own
+                // from no card, an open slot's group's best), levels)
+                let (mut pg, mut ph) = ([1.0f64; 32], [1.0f64; 32]);
+                let cmax = c.kl.iter().map(|k| k.1 as usize).max().unwrap_or(0);
+                let (mut zg, mut zh) = (vec![[1.0f64; 32]; cmax + 1], vec![[1.0f64; 32]; cmax + 1]);
+                let mut rn = [1.0f64; 16];
+                let mut chs: Vec<(usize, &[(f64, f64)], bool, std::rc::Rc<Vec<f64>>, usize)> = vec![];
+                // every level-free slot's lowest misses (lg, lh: the zero-base targets' level-free part)
+                let (mut lg, mut lh) = ([1.0f64; 32], [1.0f64; 32]);
+                let mut idx = 0usize;
+                for g in 0..ng { for t in 0..gs[g].1 {
+                    let filled = idx < sel.len();
+                    let rows: &[(f64, f64)] = if filled { sb_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
+                    idx += 1;
+                    let nl = rows.len() / nu;
+                    for cc in 0..=cmax { let r = &rows[cc.min(nl - 1) * nu..]; for k in 0..nu { zg[cc][k] *= r[k].0; zh[cc][k] *= r[k].1; } }
+                    let p = c.slots[g][t];
+                    if p == usize::MAX {
+                        for k in 0..nu { lg[k] *= rows[k].0; lh[k] *= rows[k].1; }
+                        if filled { for k in 0..nu { pg[k] *= rows[k].0; ph[k] *= rows[k].1; } }
+                        else { let rm = cf_rmx_of(cf.gs[g].0); for o in 0..cf_no { rn[o] *= rm[o]; } }
+                    } else if filled { chs.push((p, rows, true, cf_rent_of(sel[idx - 1]), nl)); }
+                    else { chs.push((p, rows, false, cf_rmx_of(cf.gs[g].0), nl)); }
+                } }
+                // (no filled level-free slot: the filled chain slots' ratios over that base are their tabled ratios from
+                // no card)
+                let base_empty = pg[..nu].iter().all(|&x| x == 1.0) && ph[..nu].iter().all(|&x| x == 1.0);
+                // each zero-base target's factor as a function of one chain slot's level: the slot whose own misses fall
+                // the most from no links to all (its `zs`), every other slot at its lowest (a factor at least the
+                // target's on every state, rising with that slot's level); None: no chain slot's misses of it fall with its level
+                let zs: Vec<Option<usize>> = (0..nu).map(|k| {
+                    let mut b: Option<(usize, f64)> = None;
+                    for (si, (_, rows, _, _, nl)) in chs.iter().enumerate() { let (r0, rt) = (rows[k].1, rows[(nl - 1) * nu + k].1);
+                        let drop = if r0 > 0.0 { rt / r0 } else { 1.0 };
+                        if drop < 1.0 && b.map_or(true, |x| drop < x.1) { b = Some((si, drop)); } }
+                    b.map(|x| x.0) }).collect();
+                // per zero-base target: its misses with every slot at its lowest but its `zs` slot (every slot when None)
+                let zrest: Vec<(f64, f64)> = (0..nu).map(|k| { let (mut a, mut b) = (lg[k], lh[k]);
+                    for (si, (_, rows, _, _, nl)) in chs.iter().enumerate() { if zs[k] != Some(si) { a *= rows[(nl - 1) * nu + k].0; b *= rows[(nl - 1) * nu + k].1; } }
+                    (a, b) }).collect();
+                let opts = &model.opts[sb_u];
+                let mut best = 0.0f64;
+                let mut rs: Vec<f64> = vec![];
+                let mut ac = vec![0.0f64; cmax + 1];
+                for (o, (st, _)) in opts.iter().enumerate() {
+                    let ew = &model.ews[sb_u][o];
+                    // per cap: every target at its lowest misses (A)
+                    for cc in 0..=cmax { let mut a = 1.0f64; for k in 0..nu { a *= land_factor(st[k], ew[k], sb_q, zg[cc][k], zh[cc][k]); } ac[cc] = a; }
+                    let mut pb = 1.0f64;
+                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { pb *= land_factor(st[k], ew[k], sb_q, pg[k], ph[k]); } }
+                    // per chain slot and level its ratio (rs, slot after slot), times the zero-base targets it carries
+                    rs.clear();
+                    for (_, rows, filled, rm, nl) in &chs { for l in 0..*nl { rs.push(if !*filled || base_empty { rm[l * cf_no + o] } else {
+                        let mut x = 1.0f64; for k in 0..nu { if cf_z[o] >> k & 1 == 0 { x *= land_factor(st[k], ew[k], sb_q, pg[k] * rows[l * nu + k].0, ph[k] * rows[l * nu + k].1); } } x / pb }); } }
+                    let mut zconst = 1.0f64;
+                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { continue; }
+                        match zs[k] {
+                            None => { zconst *= land_factor(st[k], ew[k], sb_q, zrest[k].0, zrest[k].1); }
+                            Some(s0) => { let off: usize = chs[..s0].iter().map(|x| x.4).sum(); let rows = chs[s0].1;
+                                for l in 0..chs[s0].4 { rs[off + l] *= land_factor(st[k], ew[k], sb_q, zrest[k].0 * rows[l * nu + k].0, zrest[k].1 * rows[l * nu + k].1); } }
+                        } }
+                    let base = pb * rn[o] * zconst;
+                    // per n: the lower of A at the cap min(n, cmax) and the ratio bound
+                    let tot = match &cf_kl { None => ac[0].min(base), Some(kl) => {
+                        let mut tot = cf_rest * ac[cmax];
+                        for &n in &cf_ns {
+                            let pn = cf_pmf[n];
+                            let (mut prod, mut off) = (1.0f64, 0usize);
+                            for (ri, _, _, _, nl) in &chs { let m = &kl.marg[c.rel_pos[*ri]][n]; let mut e = 0.0f64; for l in 0..*nl { e += m[l] * rs[off + l]; } prod *= e; off += nl; }
+                            tot += pn * ac[n.min(cmax)].min(base * prod);
+                        }
+                        tot } };
+                    if tot > best || tot.is_nan() { best = if tot.is_nan() { f64::INFINITY } else { tot }; }
+                }
+                fixed * best
+            };
             // the configuration's root: no deck of it can reach the bar
-            let sb_root = if sbm > 0 { sb_ub(&[]) } else { 0.0 };
-            if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
+            let sb_root = if cfm { let x = cf_cheap(&[]); if cfs == 0.0 && x * (1.0 + 1e-9) < sb_bar { x } else { x.min(cf_ub(&[], if cfs == 0.0 { sb_bar } else { 0.0 })) } } else if sbm > 0 { sb_ub(&[]) } else { 0.0 };
+            if cfm {
+                // (the cap-free band: past its node limit it stops, `over`; CF_CHECK passes the root at cfs times its bound)
+                if self.nodes.get() > cf_lim { return (out, true); }
+                if sb_root * cfs.max(1.0) * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
+            } else if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
+            // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
+            let cf_path: std::cell::RefCell<Vec<f64>> = std::cell::RefCell::new(if cfs > 0.0 { vec![sb_root] } else { vec![] });
+            let cf_over = std::cell::Cell::new(false);
             {
                 {
                     // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
@@ -580,6 +817,8 @@ impl<'a> DeckSpace<'a> {
                     // (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
                     // touches; cm, p: the child's class mask (`cv_mask`s ORed) and its card's position in group g)
                     let mut hopeful = |g: usize, left: usize, pw: &[f64], pg: &[f64], bestv: f64, nb: usize, ppw: &[f64], ppg: &[f64], dep: usize, pid: usize, tm: u32, cm: u64, p: usize| -> bool {
+                        // (the cap-free band prunes by the state-conditioned bound alone, `sbx`)
+                        if cfm { return true; }
                         // the cap of every deck the child can still reach: its cards' classes and every entry left
                         let rho = if best { rho } else { ccap[cap_class(cm | if left > 0 { csuf[goff[g] + p + 1] } else { csuf[goff[g + 1]] })] };
                         // borrowed cards still allowed (only with the one-borrowed tables)
@@ -754,6 +993,33 @@ impl<'a> DeckSpace<'a> {
                     let total_slots: usize = gs.iter().map(|x| x.1).sum();
                     let mut sb_d1 = f64::INFINITY;
                     let mut sbx = |sel: &[usize]| -> bool {
+                        if cfm {
+                            // the cap-free band: the bound at every node and leaf, nothing else prunes; past the node
+                            // limit every child fails and the search ends `over`
+                            if cf_over.get() { return false; }
+                            if self.nodes.get() > cf_lim { cf_over.set(true); return false; }
+                            let d = sel.len();
+                            let leafd = d == total_slots;
+                            let s = if leafd { 1.0 } else { cfs.max(1.0) };
+                            // the cheap bound first, the state-conditioned one only where it passes
+                            let ubc = cf_cheap(sel);
+                            // (CF_CHECK: both always, so the check below tests each: an exact value above either is above their minimum)
+                            let ub = if cfs == 0.0 && ubc * s * (1.0 + 1e-9) < sb_bar { ubc } else { ubc.min(cf_ub(sel, if cfs == 0.0 { sb_bar / s } else { 0.0 })) };
+                            SBN.with(|c| c.borrow_mut().1 += 1);
+                            if cfs > 0.0 {
+                                // CF_CHECK: a leaf's exact value against its own bound and every node's above it
+                                let mut path = cf_path.borrow_mut(); path.truncate(d); path.push(ub);
+                                if leafd {
+                                    let ents: Vec<(&Src, Kind)> = sel.iter().map(|&j| (&self.srcs[j], self.kind[j])).collect();
+                                    let x = joint_fast(model, sb_u, &[sb_q], &ents, filler, nu + model.n_fixed_gold as usize, false, None)[0].0;
+                                    CFCHK.with(|c| { let mut c = c.borrow_mut(); c.4 += 1;
+                                        for &b in path.iter() { if x > b * (1.0 + 1e-9) { c.5 += 1; } if b > 0.0 { c.8 = c.8.max(x / b); } } });
+                                }
+                            }
+                            let pass = ub * s * (1.0 + 1e-9) >= sb_bar;
+                            if !pass { SBN.with(|c| c.borrow_mut().2 += 1); }
+                            return pass;
+                        }
                         if sbm == 0 || (sbm == 3 && !sb_check()) { return true; }
                         let d = sel.len();
                         let chk = sb_check();
@@ -801,7 +1067,7 @@ impl<'a> DeckSpace<'a> {
                             // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
                             let (mut v, mut pass) = (f64::NEG_INFINITY, false);
                             let rho = ccap[cap_class(cmk)];
-                            for cl in clauses { let x = val(cl, dw, dg); v = v.max(x); pass = pass || rho * x * (1.0 + 1e-9) >= cl.1; }
+                            for cl in clauses { let x = val(cl, dw, dg); v = v.max(x); pass = pass || cfm || rho * x * (1.0 + 1e-9) >= cl.1; }
                             if pass {
                                 out.push(mk(v));
                                 if out.len() >= cap { return true; }
@@ -816,6 +1082,7 @@ impl<'a> DeckSpace<'a> {
                     avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();
                     if stop { over = true; return (out, over); }
+                    if cf_over.get() { return (out, true); }
                 }
             }
         }

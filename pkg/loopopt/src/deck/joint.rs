@@ -25,6 +25,13 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: 
             SBCHK.with(|c| { let mut c = c.borrow_mut(); for (v, x) in sv.iter().zip(&r) { if x.0 > 0.0 { let rt = v / x.0; c.0 += 1; c.1 = c.1.max(rt); c.2 = c.2.min(rt); if rt < 1.0 - 1e-9 { c.3 += 1; } } } });
         }
     }
+    // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
+    if cf_check() > 0.0 {
+        let er: Vec<(&Src, Kind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
+        if let Some(sv) = state_value_cf(model, u, qs, &er, filler) {
+            CFCHK.with(|c| { let mut c = c.borrow_mut(); for (v, x) in sv.iter().zip(&r) { c.6 += 1; if x.0 > v * (1.0 + 1e-9) { c.7 += 1; } if *v > 0.0 { c.8 = c.8.max(x.0 / v); } } });
+        }
+    }
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
         let own: Vec<(Src, Kind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
@@ -496,6 +503,16 @@ pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
 /// None when some entry has an outcome hinting two targets at once (`Src::multi`).
 pub(super) fn state_value<'s>(model: &Model, u: usize, qs: &[f64], ents: &[(&'s Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     if ents.iter().any(|e| e.0.multi) { return None; }
+    state_value_any(model, u, qs, ents, filler)
+}
+/// `state_value` for the decks the cap-free search covers (`Src::cf_ok`: every group's levels negatively upper-orthant
+/// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
+/// apply.
+pub(super) fn state_value_cf<'s>(model: &Model, u: usize, qs: &[f64], ents: &[(&'s Src, Kind)], filler: usize) -> Option<Vec<f64>> {
+    if ents.iter().any(|e| !e.0.cf_ok) { return None; }
+    state_value_any(model, u, qs, ents, filler)
+}
+fn state_value_any<'s>(model: &Model, u: usize, qs: &[f64], ents: &[(&'s Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     let nu = model.uncertain.len();
     let mut ch: Vec<(Kind, Option<usize>)> = ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();
     for _ in 0..filler { ch.push(((2, 2, 0), None)); }
@@ -530,7 +547,11 @@ thread_local! { pub(crate) static SBN: std::cell::RefCell<(usize, usize, usize)>
 /// A configuration's state-conditioned bound tables: the chain state distribution projected on the positions whose
 /// group has chain targets, per group its slots' positions (usize::MAX: level-independent), per group and chain level
 /// each target's lowest misses over the group's entries
-pub(super) struct SbCfg { pub(super) states: Vec<(Vec<u8>, f64)>, pub(super) slots: Vec<Vec<usize>>, pub(super) gmin: Vec<Vec<(f64, f64)>> }
+pub(super) struct SbCfg { pub(super) states: Vec<(Vec<u8>, f64)>, pub(super) slots: Vec<Vec<usize>>, pub(super) gmin: Vec<Vec<(f64, f64)>>,
+    /// the configuration's chain kinds in position order (fillers included) and each projected position's place among them
+    pub(super) kl: Vec<Kind>, pub(super) rel_pos: Vec<usize>,
+    /// (the cap-free bound's early stop) the states by weight, highest first, and the weight from each on (built on first use)
+    pub(super) order: std::cell::OnceCell<(Vec<u32>, Vec<f64>)> }
 pub(super) fn sb_check() -> bool { static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("SB_CHECK").is_ok()) }
 /// The state-conditioned bound in the career searches' band pass (`best_deck` pass 2), `SBOUND` to change it: 3 (the
 /// default) at each configuration's root, an extra prune beside the rho one (exact: it only drops configurations no deck
@@ -540,3 +561,19 @@ pub(super) fn sb_check() -> bool { static C: std::sync::OnceLock<bool> = std::sy
 pub(crate) fn sb_mode() -> u8 { static C: std::sync::OnceLock<u8> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("SBOUND").ok().and_then(|v| v.parse().ok()).unwrap_or(3)) }
 thread_local! { pub(crate) static SB_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 thread_local! { pub(crate) static SB_USED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) }; }
+thread_local! {
+    /// the next band search is cap-free (`Env::best_deck_cf`): pruned by its two proven bounds alone (`cf_cheap`, `cf_ub`), at every
+    /// node and leaf, no cap anywhere; it stops (`over`) past CF_LIM partial decks tested (the space's node count)
+    pub(crate) static CF_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static CF_LIM: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
+    /// CF_CHECK: (cap-free searches run beside a capped one, capped answers below the cap-free one (a deck the caps
+    /// pruned), cap-free answers below the capped one (a bug), unproven cap-free runs; leaves checked against their
+    /// ancestors' bounds, violations (an exact value above a bound), exact scorings checked against the state value,
+    /// violations, the largest exact / bound)
+    pub(crate) static CFCHK: std::cell::RefCell<(usize, usize, usize, usize, usize, usize, usize, usize, f64)> = const { std::cell::RefCell::new((0, 0, 0, 0, 0, 0, 0, 0, 0.0)) };
+}
+/// CF_CHECK=s (checks only): every capped deck search also runs the cap-free one (state restored after it) and compares
+/// answers; inside a cap-free search every node passes at s times its bound (s >= 1: more leaves reached; a leaf keeps
+/// the real test, so the band is the same) and every leaf reached is scored exactly against the bounds of every node
+/// above it (an exact value above one would mean the bound could prune a deck that beats the bar). 0 = off.
+pub(crate) fn cf_check() -> f64 { static C: std::sync::OnceLock<f64> = std::sync::OnceLock::new(); *C.get_or_init(|| std::env::var("CF_CHECK").ok().map_or(0.0, |v| v.parse().unwrap_or(1.0))) }

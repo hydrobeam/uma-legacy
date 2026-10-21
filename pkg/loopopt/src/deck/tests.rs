@@ -330,6 +330,41 @@ fn group_orthant_check() {
     assert!(group_nuod(&vec![(0.2, vec![(0, 1), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])]));   // 0.2 <= 0.5 * 0.5
 }
 
+/// The level check behind the cap-free bound (`group_nuod_lvl`): single-target outcomes pass, an outcome hinting two
+/// targets together fails; gold on one target with white on another in one outcome fails where the any-hint check
+/// (`group_nuod`) passes (P(gold 0, 1) = 0.2 > 0.2 x 0.5); and for decks of covered groups the state value is at
+/// least the exact value.
+#[test]
+fn group_level_orthant_check() {
+    assert!(group_nuod_lvl(&vec![(0.5, vec![(0, 2)]), (0.3, vec![(1, 1)])]));
+    assert!(!group_nuod_lvl(&vec![(0.5, vec![(0, 1), (1, 1)]), (0.3, vec![(1, 1)])]));
+    let g = vec![(0.2, vec![(0, 2), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])];
+    assert!(group_nuod(&g) && !group_nuod_lvl(&g));
+    // three targets, white only, joint terms below the products (a card's training draws)
+    assert!(group_nuod_lvl(&vec![(0.2, vec![(0, 1)]), (0.2, vec![(1, 1)]), (0.2, vec![(2, 1)]), (0.03, vec![(0, 1), (1, 1)]), (0.03, vec![(1, 1), (2, 1)]), (0.03, vec![(0, 1), (2, 1)])]));
+    let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
+    let sk: SkillsRaw = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json")).unwrap()).unwrap();
+    let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
+    let m = Model::new(&d, &sk, &sj);
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
+    let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
+    // (an outcome hinting two targets at once, at most independent at every level: covered, though not `group_assoc`)
+    let three: Group = vec![(0.3, vec![(0, 1)]), (0.3, vec![(2, 1)]), (0.3, vec![(3, 1)]), (0.02, vec![(0, 1), (2, 1)])];
+    let a = Src { train: vec![(0, 0.3)], chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))], ..Default::default() }.finish();
+    let b = Src { fixed: vec![two(3, 0), three], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
+    let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
+    assert!(a.cf_ok && b.cf_ok && c.cf_ok && b.multi);
+    for ents in [vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))], vec![(a.clone(), (3, 3, 0)), (c.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))]] {
+        for fill in [0usize, 2] { for u in [0usize, 5, 20] {
+            let qs = [0.1, 0.5, 0.9];
+            let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
+            let er: Vec<(&Src, Kind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
+            let sv = state_value_cf(&m, u, &qs, &er, fill).unwrap();
+            for (i, y) in x.iter().enumerate() { assert!(sv[i] >= y.0 * (1.0 - 1e-12), "fill {fill} uma {u}: state value {} exact {}", sv[i], y.0); }
+        } }
+    }
+}
+
 /// With no chain cards and no event touching two targets, every source is independent: the exact value equals
 /// the product of per-target odds the search ranks by.
 #[test]

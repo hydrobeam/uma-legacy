@@ -12,6 +12,12 @@ use super::*;
 pub(crate) const EXACT_CAPS: [f64; 4] = [1.05, 1.05, 1.25, 1.25];
 /// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
 pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
+/// `CAPS_TEST=a,b,c,d` (checks only): these caps in place of `EXACT_CAPS` (lowered, they force breaches, so the
+/// cap-free rerun can be checked against `cap_audit`)
+pub(super) fn test_caps() -> Option<[f64; 4]> {
+    static C: std::sync::OnceLock<Option<[f64; 4]>> = std::sync::OnceLock::new();
+    *C.get_or_init(|| { let v: Vec<f64> = std::env::var("CAPS_TEST").ok()?.split(',').filter_map(|x| x.parse().ok()).collect(); (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]]) })
+}
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
 pub(super) const AUDIT_CAP: f64 = 2.0;
 /// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links) and bit 63 when one

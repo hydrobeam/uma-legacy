@@ -101,6 +101,9 @@ pub(crate) struct DeckJob {
     /// audit: every class cap (`EXACT_CAPS`) at 2.0, so a deck whose exact / product exceeds its class's cap is still
     /// found and reported (`val/capaudit.py`; slow)
     #[serde(default)] pub cap_audit: bool,
+    /// career jobs: every deck search cap-free (`best_deck_cf`: pruned by proven bounds only, no assumed cap), not only
+    /// those that saw a deck past its class's cap (checks and comparisons; slower)
+    #[serde(default)] pub cap_free: bool,
 }
 
 /// Fixed schedule for one uma (see DeckJob::schedule).
@@ -139,7 +142,7 @@ mod multi;
 mod tests;
 use self::{caps::*, chains::*, hints::*, joint::*, kept::*, multi::*, sources::*, space::*};
 pub(crate) use self::caps::JCOUNT;
-pub(crate) use self::joint::{SBCHK, SBN, SB_ON, SB_USED};
+pub(crate) use self::joint::{CFCHK, CF_LIM, CF_ON, SBCHK, SBN, SB_ON, SB_USED};
 pub(crate) use self::enumerate::RBCHK;
 pub(crate) use self::loops::run_deck;
 pub(crate) use self::sources::apply_events_db;

@@ -144,6 +144,7 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 | `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base (Grand Masters, with no runs to fit, uses a 2.30 placeholder) | `unity` |
 | `chain_events` | `[n, p]`: chain events per run ~ Binomial(n, p) (experiments) | `[21, 0.35]` |
 | `cap_audit` | audit: every exact cap at 2.0 instead of `EXACT_CAPS`, and ten times the band limit `EXACT_CAP` (deck and career jobs; `val/capaudit.py`) | `false` |
+| `cap_free` | career jobs: every deck search cap-free (the search a cap breach reruns, *Cap-free rerun* below) instead of only those that saw a breach; no product-search proofs are kept (`ruled` bounds through the cap). For checks: slower | `false` |
 | `min_rarity` | lowest rarity for cards with chain events (2 = SR); cards without chain events (R cards) are always considered, drop them with `exclude_cards` | 2 |
 | `events`, `events_p`, `odds_events` | inline event rewards (merged with `events_file`) | `[]` |
 | `alts` | events naming two or more skills, in full: `[card, link, [choice][outcome] -> [[group, 1 \| 2], ...]]` (from card_events.json `alts`); at these links they replace `events` / `events_p` | `[]` |
@@ -194,6 +195,37 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   examined. Guards: the output's `class_caps` and per class `class_max_ratio` / `class_max_deck`; `val/cmp2.py` and
   `val/planval.py` fail when a scored deck's ratio passes 1 + 0.75 (cap − 1); job field `cap_audit: true` (every cap
   at 2.0, ten times the band limit) with `val/capaudit.py` checks the decks the caps pruned.
+- **Cap-free rerun** (career searches, `best_deck_run`). A deck search that scores a deck whose ratio passes its
+  class's cap (a breach: the cap is wrong for that deck space, so a deck it pruned may beat its answer) is answered by
+  a cap-free search instead (`best_deck_cf`), started from the capped search's best product deck and its start decks;
+  without a breach the capped answer stands, so outputs are unchanged wherever no cap is breached. Its band holds
+  every deck whose bound reaches the bar (the incumbent, or the career's bar th / c if higher), built with two proven
+  bounds and nothing else (no cap in any test), then scored through `upper_na`. Per partial deck: (1) given N = n only,
+  per chain slot its card's ratio (its value with the card at a given links done over the filled level-free slots'
+  value; an open slot: the best of its group from no card), a rising function of that slot's level, so where the
+  configuration's progress vector given n is negatively upper-orthant dependent (`key_level`, exact) the expected
+  product is at most the product of the slots' expected ratios; the zero-base targets ride on the slot that feeds them
+  most, the others at their lowest misses; each n's term at most A with every slot at most min(n, stop) links done;
+  (2) where (1) passes, per chain state x (`SbCfg`'s projected states) the lower of the per-target bound A_x and the
+  ratio bound B_x (log-submodularity of each target's factor, card by card, given x), summed over states, heaviest
+  first with an early stop once the sum decides the test. Both rest on `state_value`'s argument, which needs every
+  group's per-target levels negatively upper-orthant dependent at every white/gold threshold (`group_nuod_lvl`,
+  `Src::cf_ok`); a deck space with an entry not covered proves nothing. Proven when the band finishes within its own
+  budget (`CF_BUDGET`, default 60M work units, 15 per cap-free node, about 6 s; apart from the career's budget):
+  then a best below th / c is `Bounded`, else the deck is a fully checked one (`Ref`, `full`); unproven, the better of
+  its best and the capped answer, not full (the search is not `complete`). The output's `cap_rerun` counts the reruns
+  (`searches`), those that proved nothing (`unproven`) and their `work`; `cap_exceeded` still lists the classes past
+  their caps. Not covered: the career search's own ceilings and `ruled` proofs still use EXACT_RHO, and a search
+  that never scores a breaching deck has nothing to trigger it, so "proven" stays relative to the caps where no
+  breach was seen. Checks: `CF_CHECK=s` runs the cap-free search beside every capped one (state put back) and
+  compares answers, passes its nodes at s times their bound and scores every leaf reached exactly against every
+  bound above it, and checks the state value against each exact scoring (`CFCHK` on stderr); `CAPS_TEST=a,b,c,d`
+  lowers the caps to force breaches; `CAP_RERUN=0` leaves a breach unanswered (the search not `complete`, as before
+  the rerun). Measured (2026-10-20): on the 15 tiny Grand Masters slices (`.perf/ana2`, 8-10 targets) with every cap
+  at 1.0, each job's breaching search reruns and every answer equals `cap_audit`'s, proven (job field `cap_free` the
+  same); on export 2 at 10 targets (24 veterans, main search) with caps 1.15 (1.0) 7 (15) searches rerun, all proven,
+  the `cap_audit` answer, 13 s (16 s) against 0.7 s capped; without the rerun the same answer, not `complete`. A
+  cap-free node costs about 1.5 us (0.2 us capped).
 - **State-conditioned bound** (career searches' band pass, at each configuration's root): over the configuration's
   chain progress states x, P(x) times the product over targets of each target's factor at its lowest possible misses
   given x (per open slot the best entry of its group at that slot's level); proven >= the exact value of every deck of
@@ -320,7 +352,7 @@ do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: 
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
 veteran's pink is that one; her schedule's win chances count them; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
-when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's cap (`EXACT_CAPS`, an assumption) makes every search that saw it not `complete` (it may have pruned a better deck), and the output lists the classes in `cap_exceeded` ([class, highest ratio, cap]); none passes on val/plan, a 10-target export reached 1.297 in class 3 (four or more chain-fed targets or a multi-target group; cap 1.25). The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
+when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above; `complete` stays true when every rerun proves its answer), the output lists the classes in `cap_exceeded` ([class, highest ratio, cap]) and the reruns in `cap_rerun`; none passes on val/plan, a 10-target export reached 1.297 in class 3 (four or more chain-fed targets or a multi-target group; cap 1.25). The best career also carries `schedule`, `g1_wins` and `outcome_sets`:
 
 - `schedule`: every G1 she could enter, in turn order, as the loop planner's chart rows for one member (`race` the
   chart name, `when`, `year`, `cells` = [win %, goal, aptitude and streak terms] or [null], `shared` = a parent won it)

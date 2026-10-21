@@ -68,6 +68,31 @@ pub(super) fn group_nuod(g: &Group) -> bool {
     GN.with(|c| c.borrow_mut().insert(key, ok));
     ok
 }
+/// Whether a group's per-target hint levels (Y_k: 0 none, 1 white, 2 gold, the best level its outcome gives k) are
+/// negatively upper-orthant dependent at every level: for every set S of two or more of its targets and every s in
+/// {1, 2}^S, P(Y_k >= s_k for all k in S) <= prod_S P(Y_k >= s_k). What the cap-free bound (`cf_ok`) needs: a nonnegative
+/// rising function of one Y_k is a nonnegative combination of 1, 1{Y_k >= 1} and 1{Y_k >= 2}, so the expected product
+/// of such functions of distinct targets is at most the product of their expectations. Implied by `group_assoc` (two
+/// targets: the same test; single-target outcomes: every joint term is 0). Over 6 targets: not checked (false).
+pub(super) fn group_nuod_lvl(g: &Group) -> bool {
+    let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect(); ts.sort(); ts.dedup();
+    if ts.len() < 2 { return true; }
+    if ts.len() > 6 { return false; }
+    let m = ts.len();
+    // per outcome: its chance and each target's level
+    let outs: Vec<(f64, Vec<u8>)> = g.iter().map(|(p, o)| (*p, ts.iter().map(|&t| o.iter().filter(|x| x.0 == t).map(|x| if x.1 >= 2 { 2u8 } else { 1u8 }).max().unwrap_or(0)).collect())).collect();
+    let marg = |i: usize, s: u8| -> f64 { outs.iter().filter(|o| o.1[i] >= s).map(|o| o.0).sum() };
+    // every assignment of a level 0 (not in S), 1 or 2 to each target, base 3
+    let mut a = vec![0u8; m];
+    loop {
+        let mut i = 0; while i < m { a[i] += 1; if a[i] < 3 { break; } a[i] = 0; i += 1; }
+        if i == m { return true; }
+        if a.iter().filter(|&&x| x > 0).count() < 2 { continue; }
+        let joint: f64 = outs.iter().filter(|o| (0..m).all(|i| o.1[i] >= a[i])).map(|o| o.0).sum();
+        let prod: f64 = (0..m).filter(|&i| a[i] > 0).map(|i| marg(i, a[i])).product();
+        if joint > prod * (1.0 + 1e-12) + 1e-15 { return false; }
+    }
+}
 
 /// Target sources of one deck entry (a card, a card whose chain the player ends early, or a card taking a given
 /// choice where an event offers targets on different choices): training hints (target, chance), outcome groups that
@@ -81,7 +106,10 @@ pub(super) struct Src { pub(super) train: Vec<(usize, f64)>, pub(super) fixed: V
              pub(super) not_nuod: bool,
              /// an outcome of one of its groups hints two or more targets at once (the state-conditioned bound, which
              /// takes each target's outcomes at their marginal chances, does not cover a deck with it)
-             pub(super) multi: bool }
+             pub(super) multi: bool,
+             /// every group of it passes `group_nuod_lvl`: the state-conditioned bound holds for it without any cap (the
+             /// cap-free deck search, `Env::best_deck_cf`, covers only decks of such entries)
+             pub(super) cf_ok: bool }
 impl Src {
     pub(super) fn finish(mut self) -> Self {
         self.chains.sort_by_key(|x| x.0);
@@ -97,6 +125,7 @@ impl Src {
         self.cm = cm;
         self.not_nuod = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
         self.multi = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| !group_assoc(g));
+        self.cf_ok = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).all(|g| group_nuod_lvl(g));
         self
     }
     pub(super) fn is_empty(&self) -> bool { self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty() }

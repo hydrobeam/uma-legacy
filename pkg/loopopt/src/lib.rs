@@ -783,7 +783,8 @@ fn pb_table_json(json: &str) -> serde_json::Value {
 pub fn cli_main() {
     struct SbReport; impl Drop for SbReport { fn drop(&mut self) { if std::env::var("SB_CHECK").is_ok() { deck::SBCHK.with(|c| { let c = c.borrow(); eprintln!("SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}", c.0, c.1, c.2, c.3, c.4, c.5); }); }
         if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() { deck::SBN.with(|c| { let c = c.borrow(); eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2); }); }
-        if std::env::var("RB_CHECK").is_ok() { deck::RBCHK.with(|c| { let c = c.borrow(); eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3); }); } } }
+        if std::env::var("RB_CHECK").is_ok() { deck::RBCHK.with(|c| { let c = c.borrow(); eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3); }); }
+        if std::env::var("CF_CHECK").is_ok() { deck::CFCHK.with(|c| { let c = c.borrow(); eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", c.0, c.1, c.2, c.3, c.4, c.5, c.6, c.7, c.8); }); } } }
     let _sbr = SbReport;
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 3 && args[1] == "pbtable" {

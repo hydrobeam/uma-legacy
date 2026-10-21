@@ -175,7 +175,7 @@ impl<'a> DeckSpace<'a> {
         })
     }
     /// the class caps (`EXACT_CAPS`, or all at AUDIT_CAP under `cap_audit`)
-    pub(crate) fn caps(&self) -> [f64; 4] { if self.dj.cap_audit { [AUDIT_CAP; 4] } else { EXACT_CAPS } }
+    pub(crate) fn caps(&self) -> [f64; 4] { if self.dj.cap_audit { [AUDIT_CAP; 4] } else { test_caps().unwrap_or(EXACT_CAPS) } }
     /// most decks one band search may return: EXACT_CAP, ten times that under `cap_audit` (its bands are far larger)
     pub(crate) fn band_cap(&self) -> usize { if self.dj.cap_audit { 10 * EXACT_CAP } else { EXACT_CAP } }
     /// the highest class cap (EXACT_RHO unless `cap_audit`)

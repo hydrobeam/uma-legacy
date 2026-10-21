@@ -86,6 +86,15 @@ tier-up cost at most about 1.8x then.
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.
 - Native threads: no browser gain; splitting the enumeration changes tie order.
+- The cap-free rerun (`best_deck_cf`, SOLVER.md *Cap-free rerun*; it runs only after a cap breach) costs about 1.5 us
+  per node against 0.2 us capped: on the forced-breach slices (`CAPS_TEST`) 0.3-2.6 s per rerun where the capped
+  search takes 0.03-0.2 s; on export 2 at 10 targets (main search, caps 1.15) 7 reruns, about 1.8 s each. Where its time goes (callgrind, j_a_g1): the per-state bound about 60%, the per-n bound
+  about 30%. Measured and dropped: the state-conditioned bound alone at every node (`SBOUND=2`'s; 1M nodes, 3 s on
+  j_t8_1 against 40k nodes, 0.2 s with the ratio bound beside it); the per-state bound only within 1-4 open slots of a
+  leaf (time unchanged: the extra nodes cost what the skipped evaluations did); `upper_na` in place of the state value
+  at leaves (no faster, bands larger). Open: merging the chain states that differ only by the levels of one group's
+  open slots (exchangeable: up to k! fewer states with k open slots of one group); computing the per-n bound from the
+  parent's per-n products (a child changes one slot).
 
 ## Planner
 
