@@ -1358,9 +1358,16 @@ const TESTS = {
     // and the exact comparison starts once the roll has stood 0.8 s
     await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });   // (the last roll's check done)
     const refines = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare && j.next).length), rf0 = await refines();
-    await pg.evaluate(() => { window.__rollPatch = { y: 0, y_hi: 0.9 }; });
+    // (what shows, and whether the exact comparison has started, read the moment "Checking…" renders: a DOM observer runs
+    // before the 0.8 s timer can, where reading it after `roll` returned raced that timer under load)
+    await pg.evaluate(() => { window.__rollPatch = { y: 0, y_hi: 0.9 }; window.__provSeen = null;
+      const o = new MutationObserver(() => { const r = document.getElementById('sim-result');
+        if (window.__provSeen || !r || !/Checking…/.test(r.textContent)) return;
+        window.__provSeen = { verdict: document.getElementById('sim-verdict')?.textContent || '', n: window.__careerJobs.filter(j => j.compare && j.next).length }; o.disconnect(); });
+      o.observe(document.body, { subtree: true, childList: true, characterData: true }); });
     await roll(0);   // (nothing lands: not n/n, so the verdict is the saving's)
-    const prov = { shown: /^No careers saved/.test(await pg.textContent('#sim-verdict')) && /Checking…/.test(await pg.textContent('#sim-result')), early: await refines() === rf0 };
+    const provAt = await (await pg.waitForFunction(() => window.__provSeen, null, { timeout: 30000 })).jsonValue();
+    const prov = { shown: /^No careers saved/.test(provAt.verdict), early: provAt.n === rf0 };
     prov.started = await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare && j.next).length > n, rf0, { timeout: 30000 }).then(() => true, () => false);
     await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });
     await pg.evaluate(() => { delete window.__rollPatch; });
