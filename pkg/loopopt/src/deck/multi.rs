@@ -102,10 +102,10 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         let cls = &class_cl[ucls[u]];
         if cls.is_empty() { return uview(u).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max); }
         let mut bs = std::mem::take(&mut *bb_buf.borrow_mut()); bs.clear();
-        bs.extend(cls.iter().enumerate().map(|(i, c)| ByBound(val(&c.mdw, &c.mdg), i)));
+        bs.extend(cls.iter().enumerate().map(|(i, c)| ByBound { bound: val(&c.mdw, &c.mdg), cluster: i }));
         let mut h = std::collections::BinaryHeap::from(bs);
         let mut best = init;
-        while let Some(ByBound(b, i)) = h.pop() {
+        while let Some(ByBound { bound: b, cluster: i }) = h.pop() {
             if b * (1.0 + 1e-9) < best { break; }
             for &j in &cls[i].mem { best = best.max(val(&sky[j].dw, &sky[j].dg)); }
         }
@@ -145,8 +145,17 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     };
     struct Best { sum: f64, deck: Option<PDeck>, per: Vec<(f64, f64, usize)> }
     // per (uma, chances): the best found, decks already scored or bounded, and the cap it is exact under
-    struct ExEntry { best: Option<(f64, PDeck)>, done: crate::FxSet<DeckId>, seen: crate::FxSet<(Vec<usize>, usize, usize)>, level: f64, result: Option<std::rc::Rc<Best>> }
-    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, QKey), ExEntry>> = Default::default();
+    struct ExactCacheEntry {
+        best: Option<(f64, PDeck)>,
+        /// Detached decks already scored exactly (including skyline seeds).
+        scored_decks: crate::FxSet<DeckId>,
+        /// Band selections already scored or rejected by the proven bound.
+        checked_selections: crate::FxSet<(Vec<usize>, usize, usize)>,
+        /// Highest completed cap; -1 means unseeded, 1 means seeded only.
+        certified_cap: f64,
+        reported_best: Option<std::rc::Rc<Best>>,
+    }
+    let ex_cache: std::cell::RefCell<crate::FxMap<(usize, QKey), ExactCacheEntry>> = Default::default();
     let n_scored = std::cell::Cell::new(0usize); let n_band = std::cell::Cell::new(0usize);
     // (per structure class, `cap_class`)
     let cap_hit = std::cell::Cell::new(false); let max_ratio = std::cell::Cell::new([0.0f64; 4]);
@@ -164,12 +173,22 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // and every legal deck whose product value times lv reaches it (each first through the proven bound).
     let exact_best = |u: usize, qs: &[f64], lv: f64| -> std::rc::Rc<Best> {
         let key = (u, qkey(qs));
-        if let Some(e) = ex_cache.borrow().get(&key) { if e.level >= lv { if let Some(r) = &e.result { return r.clone(); } } }
-        let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExEntry { best: None, done: Default::default(), seen: Default::default(), level: -1.0, result: None });
+        if let Some(entry) = ex_cache.borrow().get(&key) {
+            if entry.certified_cap >= lv {
+                if let Some(result) = &entry.reported_best { return result.clone(); }
+            }
+        }
+        let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExactCacheEntry {
+            best: None,
+            scored_decks: Default::default(),
+            checked_selections: Default::default(),
+            certified_cap: -1.0,
+            reported_best: None,
+        });
         let uid = d.umas[u].id;
         let tsum = |x: &PDeck| fixed * qs.iter().map(|&q| model.trainee_fast(u, q, &x.dw, &x.dg)).sum::<f64>();
-        let score = |x: &PDeck, ent: &mut ExEntry| {
-            if !ent.done.insert(x.id()) { return; }
+        let score = |x: &PDeck, ent: &mut ExactCacheEntry| {
+            if !ent.scored_decks.insert(x.id()) { return; }
             let t0 = Instant::now();
             let (e, fl) = ents_of(x);
             let j = joint_b(model, u, qs, &e, fl, ntar, false);
@@ -192,7 +211,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             let sv: f64 = j.iter().map(|y| y.0).sum();
             if ent.best.as_ref().map_or(true, |b| sv > b.0) { ent.best = Some((sv, x.clone())); }
         };
-        if ent.level < 0.0 {
+        if ent.certified_cap < 0.0 {
             // seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
             let t0 = Instant::now();
             // the first 3 of a stable sort by value, highest first: each deck goes after every kept one at least as high
@@ -211,11 +230,11 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
                     SearchMode::Best { seed: f64::NEG_INFINITY });
                 if let Some((_, sel)) = r.first() { let x = space.pdeck(sel, &[uid]); score(&x, &mut ent); }
             }
-            ent.level = 1.0;
+            ent.certified_cap = 1.0;
         }
         // every legal deck that might beat it under the cap lv
         let mut complete = true;
-        if lv > ent.level { if let Some(thr) = ent.best.as_ref().map(|b| b.0) {
+        if lv > ent.certified_cap { if let Some(thr) = ent.best.as_ref().map(|b| b.0) {
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
@@ -230,7 +249,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
                 if work.get() > budget_c.get() { complete = false; break; }
                 // below the best at its own class's cap (the best rose since the band was built)
                 if space.sel_cap(sel, lv) * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { continue; }
-                if !ent.seen.insert((sel.ents.clone(), sel.plain, sel.filler)) { continue; }
+                if !ent.checked_selections.insert((sel.ents.clone(), sel.plain, sel.filler)) { continue; }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
                 let e: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
@@ -243,14 +262,14 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
                 let x = space.pdeck(sel, &[uid]);
                 score(&x, &mut ent);
             } }
-            if complete { ent.level = lv; } else { aborted.set(true); }
-        } else { ent.level = lv; } }
+            if complete { ent.certified_cap = lv; } else { aborted.set(true); }
+        } else { ent.certified_cap = lv; } }
         let b = match &ent.best {
             Some((sum, x)) => { let (e, fl) = ents_of(x); let per = joint_b(model, u, qs, &e, fl, ntar, true); Best { sum: *sum, deck: Some(x.clone()), per } }
             None => { let per = joint(model, u, qs, &[], 0, ntar, true); Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per } }
         };
         let b = std::rc::Rc::new(b);
-        ent.result = Some(b.clone());
+        ent.reported_best = Some(b.clone());
         ex_cache.borrow_mut().insert(key, ent);
         b
     };
@@ -281,10 +300,10 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     let st_buf: std::cell::RefCell<Vec<ByBound>> = Default::default();
     let sky_top = |m: usize, val: &dyn Fn(&[f64], &[f64]) -> f64, ok: &dyn Fn(&PDeck) -> bool| -> Vec<(f64, usize)> {
         let mut bs = std::mem::take(&mut *st_buf.borrow_mut()); bs.clear();
-        bs.extend(full_cl.iter().enumerate().map(|(i, c)| ByBound(if nu > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY }, i)));
+        bs.extend(full_cl.iter().enumerate().map(|(i, c)| ByBound { bound: if nu > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY }, cluster: i }));
         let mut h = std::collections::BinaryHeap::from(bs);
         let mut top: Vec<(f64, usize)> = vec![];
-        while let Some(ByBound(b, ci)) = h.pop() {
+        while let Some(ByBound { bound: b, cluster: ci }) = h.pop() {
             if top.len() >= m && b * (1.0 + 1e-9) < top[m - 1].0 { break; }
             for &j in &full_cl[ci].mem {
                 if !ok(&sky[j]) { continue; }
@@ -581,7 +600,18 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     let mut allow = budget;
     for &lv in &steps {
         budget_c.set(allow);
-        match run_pass(lv) { Some(p) => { last = Some(p); cert = lv; break } None => { aborted.set(false); allow = work.get() + budget / 4; } }
+        match run_pass(lv) {
+            Some(pass) => {
+                last = Some(pass);
+                cert = lv;
+                break;
+            }
+            None => {
+                // Retain scored decks, but grant fresh work before trying a lower cap.
+                aborted.set(false);
+                allow = work.get() + budget / 4;
+            }
+        }
     }
     let p = match last { Some(p) => p, None => { budget_c.set(usize::MAX); run_pass(1.0).expect("a pass without deck searches") } };
     let Pass { solved, kth: kth_val, next_bound, scanned, generated, sched_rejects, deck_best, lists } = p;
@@ -684,11 +714,20 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
 /// (bound, cluster) ordered as the stable sort by bound, highest first, visits them: a heap's pops give the higher bound
 /// first and equal bounds (`partial_cmp`: 0 and -0 tie) in index order, the same sequence (a NaN bound panics in
 /// either)
-struct ByBound(f64, usize);
+struct ByBound {
+    bound: f64,
+    cluster: usize,
+}
 impl PartialEq for ByBound { fn eq(&self, o: &Self) -> bool { self.cmp(o) == std::cmp::Ordering::Equal } }
 impl Eq for ByBound {}
 impl PartialOrd for ByBound { fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(o)) } }
-impl Ord for ByBound { fn cmp(&self, o: &Self) -> std::cmp::Ordering { self.0.partial_cmp(&o.0).unwrap().then(o.1.cmp(&self.1)) } }
+impl Ord for ByBound {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.bound.partial_cmp(&other.bound).unwrap()
+            // BinaryHeap pops the greatest item: reverse indices so earlier clusters win ties.
+            .then(other.cluster.cmp(&self.cluster))
+    }
+}
 /// A memo key of up to 12 chances (a loop's lineages): their bits and count, a fixed array (equal exactly when the
 /// chance lists are bit for bit)
 type QKey = ([u64; 12], u8);

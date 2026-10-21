@@ -9,7 +9,8 @@ thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = s
 pub(super) struct DeckSpace<'a> {
     pub(super) dj: &'a DeckJob, pub(super) unc: Vec<u32>, pub(super) sk: &'a SkillsRaw,
     pub(super) cards: Vec<&'a Card>,
-    // entries (as in run_deck_relaxed, before card dominance drops any): card index, chain kind, early end, variant
+    // Parallel arrays indexed by entry, before card dominance: card index, kind, early end, variant.
+    // Entry indices differ from card indices: one card can have several end-link/variant entries.
     pub(super) rel: Vec<usize>, pub(super) kind: Vec<Kind>, pub(super) endk: Vec<u8>, pub(super) vark: Vec<u32>, pub(super) srcs: Vec<Src>, pub(super) ebor: Vec<bool>,
     // per entry, `cv_mask` of its source (the class caps)
     pub(super) cvm: Vec<u64>,
@@ -18,6 +19,7 @@ pub(super) struct DeckSpace<'a> {
     pub(super) locked: Vec<usize>, pub(super) allowed_borrow: usize,
     // every chain kind of any entry plus fillers (2, 2): key codes are counts in base 7 over this list
     pub(super) kinds_all: Vec<Kind>,
+    // All caches belong to this fixed job and target set. Their abbreviated keys omit only those fixed inputs.
     pub(super) keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)>>>,
     pub(super) red: std::cell::RefCell<crate::FxMap<Vec<usize>, (std::rc::Rc<Vec<usize>>, usize)>>,
     pub(super) gmc: std::cell::RefCell<crate::FxMap<(usize, u64), std::rc::Rc<GTab>>>,
@@ -38,9 +40,25 @@ pub(super) struct DeckSpace<'a> {
 }
 /// `search`'s per-entry-set tables: the character bit of each entry (`over`: more than 128 characters),
 /// the entries per chain kind and the pal (kind 0) entries, the locked cards each group can hold, the plain pals legal
-pub(super) struct LegalTabs { pub(super) over: bool, pub(super) ebit: Vec<u128>, pub(super) by_kind: Vec<Vec<usize>>, pub(super) pal_ents: Vec<usize>, pub(super) glk: Vec<u8>, pub(super) nplain: usize }
+pub(super) struct LegalTabs {
+    /// More than 128 characters cannot be represented by `ebit`.
+    pub(super) over: bool,
+    pub(super) ebit: Vec<u128>,
+    pub(super) by_kind: Vec<Vec<usize>>,
+    pub(super) pal_ents: Vec<usize>,
+    /// Locked-card bits per group: `by_kind` followed by `pal_ents`.
+    pub(super) glk: Vec<u8>,
+    pub(super) nplain: usize,
+}
 #[derive(Clone)]
-pub(super) struct Sel { pub(super) ents: Vec<usize>, pub(super) plain: usize, pub(super) filler: usize, pub(super) dw: Vec<f64>, pub(super) dg: Vec<f64> }
+pub(super) struct Sel {
+    /// Indices into this DeckSpace's parallel entry arrays, sorted before returning a search result.
+    pub(super) ents: Vec<usize>,
+    pub(super) plain: usize,
+    pub(super) filler: usize,
+    pub(super) dw: Vec<f64>,
+    pub(super) dg: Vec<f64>,
+}
 impl<'a> DeckSpace<'a> {
     /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
     /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
@@ -232,28 +250,52 @@ pub(super) fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRa
 }
 /// The first k values of a stable ascending sort (`sort_by(|x, y| x.partial_cmp(y).unwrap())`) of the values pushed in
 /// turn, kept in `buf` (at most k, in that order): a value equal to some already kept goes after them, where the stable
-/// sort puts it, so the kept values are the sorted prefix's, value for value (0 and -0 included)
+/// sort puts it, so the kept values are the sorted prefix's, value for value (0 and -0 included).
+/// This equivalence assumes non-NaN inputs, as the reference sort panics on an unordered comparison.
 #[inline]
-pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, v: f64) {
-    if buf.len() == k { if k == 0 || !(v < buf[k - 1]) { return; } buf.pop(); }
-    let p = buf.iter().position(|&x| x > v).unwrap_or(buf.len());
-    buf.insert(p, v);
+pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, value: f64) {
+    if buf.len() == k {
+        // Keep the existing comparison: negating it also rejects an unordered value (NaN).
+        if k == 0 || !(value < buf[k - 1]) { return; }
+        buf.pop();
+    }
+    // Strict comparison places a tie after the existing values, including signed-zero ties.
+    let position = buf.iter().position(|&kept| kept > value).unwrap_or(buf.len());
+    buf.insert(position, value);
 }
 /// Per-group tables of one key in one flat buffer (`gm_cached`'s and the ratio tables of `search`): the groups in `need`
-/// each own a block of `blk` f64s (built from 1.0), in group order; a group outside it has none (reading it panics, as
+/// each own a block of `block_len` f64s (built from 1.0), in group order; a group outside it has none (reading it panics, as
 /// an empty table's read did)
-pub(super) struct GTab { slot: Vec<u32>, blk: usize, data: Vec<f64> }
+pub(super) struct GTab {
+    /// Packed block index per group; u32::MAX marks a group omitted by `need`.
+    slot: Vec<u32>,
+    block_len: usize,
+    data: Vec<f64>,
+}
 impl GTab {
-    pub(super) fn new(ngroups: usize, need: u64, blk: usize) -> GTab {
-        let mut n = 0u32;
-        let slot: Vec<u32> = (0..ngroups).map(|gi| if need >> gi & 1 == 1 { n += 1; n - 1 } else { u32::MAX }).collect();
-        GTab { slot, blk, data: vec![1.0; n as usize * blk] }
+    pub(super) fn new(ngroups: usize, need: u64, block_len: usize) -> GTab {
+        let mut stored_groups = 0u32;
+        let slot: Vec<u32> = (0..ngroups).map(|group| {
+            if need >> group & 1 == 1 {
+                stored_groups += 1;
+                stored_groups - 1
+            } else {
+                u32::MAX
+            }
+        }).collect();
+        GTab { slot, block_len, data: vec![1.0; stored_groups as usize * block_len] }
     }
-    /// group gi's block
+    /// Group's packed block; the caller must have included the group in `need`.
     #[inline(always)]
-    pub(super) fn grp(&self, gi: usize) -> &[f64] { let s = self.slot[gi] as usize; &self.data[s * self.blk..(s + 1) * self.blk] }
+    pub(super) fn grp(&self, group: usize) -> &[f64] {
+        let slot = self.slot[group] as usize;
+        &self.data[slot * self.block_len..(slot + 1) * self.block_len]
+    }
     #[inline(always)]
-    pub(super) fn grp_mut(&mut self, gi: usize) -> &mut [f64] { let s = self.slot[gi] as usize; &mut self.data[s * self.blk..(s + 1) * self.blk] }
+    pub(super) fn grp_mut(&mut self, group: usize) -> &mut [f64] {
+        let slot = self.slot[group] as usize;
+        &mut self.data[slot * self.block_len..(slot + 1) * self.block_len]
+    }
 }
 /// `gm_cached`'s row r of a group's block: the white products per target, then the gold ones
 #[inline(always)]
@@ -262,8 +304,13 @@ pub(super) fn gm_w(b: &[f64], nu: usize, r: usize) -> &[f64] { &b[r * 2 * nu..(r
 pub(super) fn gm_g(b: &[f64], nu: usize, r: usize) -> &[f64] { &b[(r * 2 + 1) * nu..(r + 1) * 2 * nu] }
 /// `top_asc` for the stable descending sort (`sort_by(|a, b| b.partial_cmp(a).unwrap())`)
 #[inline]
-pub(super) fn top_desc(buf: &mut Vec<f64>, k: usize, v: f64) {
-    if buf.len() == k { if k == 0 || !(v > buf[k - 1]) { return; } buf.pop(); }
-    let p = buf.iter().position(|&x| x < v).unwrap_or(buf.len());
-    buf.insert(p, v);
+pub(super) fn top_desc(buf: &mut Vec<f64>, k: usize, value: f64) {
+    if buf.len() == k {
+        // Keep the existing comparison: negating it also rejects an unordered value (NaN).
+        if k == 0 || !(value > buf[k - 1]) { return; }
+        buf.pop();
+    }
+    // Strict comparison places a tie after the existing values, including signed-zero ties.
+    let position = buf.iter().position(|&kept| kept < value).unwrap_or(buf.len());
+    buf.insert(position, value);
 }

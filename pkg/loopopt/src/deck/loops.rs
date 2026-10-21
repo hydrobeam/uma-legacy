@@ -37,7 +37,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // pals and R cards both take no chain slot, so they can stand in for each other unless the job fixes the pal
     // count
     let pal_fixed = dj.pals.is_some();
-    // per kept card, the kept cards that beat it whatever the deck (same test as above), for subtree pruning
+    // Per kept card, robust dominators reported by DECK_DEBUG_PAIRS (same test as above).
     let mut robust: Vec<Vec<usize>> = vec![];
     {
         let nrel0 = rel.len();
@@ -118,16 +118,12 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                 if !names.is_empty() { eprintln!("ROBUST {} <= {:?}", cards[rel[b]].name, names); }
             }
         }
-        let mut j = 0;
-        rel.retain(|_| { let k = keep[j]; j += 1; k });
-        let mut j = 0;
-        srcs.retain(|_| { let k = keep[j]; j += 1; k });
-        let mut j = 0;
-        kind.retain(|_| { let k = keep[j]; j += 1; k });
-        let mut j = 0;
-        endk.retain(|_| { let k = keep[j]; j += 1; k });
-        let mut j = 0;
-        vark.retain(|_| { let k = keep[j]; j += 1; k });
+        // All entry columns use the same original-index mask and keep their relative order.
+        retain_entries(&mut rel, &keep);
+        retain_entries(&mut srcs, &keep);
+        retain_entries(&mut kind, &keep);
+        retain_entries(&mut endk, &keep);
+        retain_entries(&mut vark, &keep);
     }
 
     // ---- dominance coordinates ----
@@ -161,7 +157,6 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     if chara_ix.len() > 128 { return json!({"error": "too many distinct characters among relevant cards"}); }
     let ebit: Vec<u128> = rel.iter().map(|&r| 1u128 << chara_ix[&cards[r].chara]).collect();
     let ebor: Vec<bool> = rel.iter().map(|&r| !is_owned(cards[r].id)).collect();
-    // masks of the deck-independent dominators (`robust`), split by whether the dominator is owned
     // Chain-kind key of a deck = multiset of its chain entries' kinds plus fillers (2, 2), coded as counts in base 7.
     let mut kinds_all: Vec<Kind> = (0..nrel).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
     kinds_all.push((2, 2, 0)); kinds_all.sort(); kinds_all.dedup();
@@ -320,8 +315,8 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                         dv[c] = if is_g { mg[k] } else { 1.0 - (1.0 - mw[k]) * (1.0 - mg[k]) };
                         s += dv[c];
                     }
-                    // One group for every pal count: the result is the top decks overall, and a deck that top_decks
-                    // others match or beat on every coordinate is at or below each of them for every loop.
+                    // One global frontier: pals have already passed the job's count constraint. A deck
+                    // matched or beaten on every coordinate is no better for any loop.
                     let nd = coords.len();
                     let g = groups.entry((0, 0)).or_insert_with(|| Kept::new(nd));
                     if kmax == 1 && g.has_last && dominates(&g.lastrow, &dv) { return; }
@@ -390,13 +385,10 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("rel {} decks {} enum {:.2}s", nrel, n_decks, t0.elapsed().as_secs_f64()); }
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("front {} pareto {:.2}s", front.len(), t0.elapsed().as_secs_f64()); }
     if front.is_empty() { return json!({"error": "No deck can be built from the allowed cards."}); }
-    // Ceiling hierarchy over the frontier: super-clusters (pal count + which odds are >= 50%) contain clusters
-    // (pal count + odds in quarter buckets) contain decks. A group's componentwise max odds give a valid ceiling
-    // for every deck in it, because P(all land) only increases with each deck odd.
     // Decks that no other frontier deck (of any pal count) dominates. The metric rises with every dominance
     // coordinate, so for any loop the best value over the frontier is reached on this skyline; the ceilings
-    // below (which only bound that best value) are built from it. Every frontier deck is still scored when a
-    // loop is solved.
+    // in run_multi (which only bound that best value) are built from it. Exact scoring obtains
+    // any other needed legal decks from DeckSpace.
     // (with top_decks = 1 the frontier is already an antichain, so it is its own skyline)
     let sky: Vec<usize> = if kmax_top(&dj) == 1 { (0..front.len()).collect() } else {
         let tagged: Vec<DeckEval> = front.iter().enumerate().map(|(i, x)| { let mut y = x.clone(); y.cards = vec![i]; y }).collect();
@@ -442,4 +434,15 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                            "decks_swapped": n_swapped, "plain_pals": plain_names});
         return run_multi(d, cr, &model, &sj, &dj, pd, stats, space.as_ref().unwrap());
     }
+}
+
+/// Apply an original-entry mask to one column of the parallel entry arrays.
+/// Each column starts with the mask's length; Vec::retain preserves its surviving entries' order.
+fn retain_entries<T>(entries: &mut Vec<T>, keep: &[bool]) {
+    let mut original_index = 0;
+    entries.retain(|_| {
+        let retain = keep[original_index];
+        original_index += 1;
+        retain
+    });
 }

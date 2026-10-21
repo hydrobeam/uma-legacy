@@ -15,18 +15,36 @@ pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
 /// `CAPS_TEST=a,b,c,d` (checks only): these caps in place of `EXACT_CAPS` (lowered, they force breaches, so the
 /// cap-free rerun can be checked against `cap_audit`)
 pub(super) fn test_caps() -> Option<[f64; 4]> {
-    static C: std::sync::OnceLock<Option<[f64; 4]>> = std::sync::OnceLock::new();
-    *C.get_or_init(|| { let v: Vec<f64> = std::env::var("CAPS_TEST").ok()?.split(',').filter_map(|x| x.parse().ok()).collect(); (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]]) })
+    static CAPS: std::sync::OnceLock<Option<[f64; 4]>> = std::sync::OnceLock::new();
+    *CAPS.get_or_init(|| {
+        // Preserve the diagnostic parser's permissive behavior: malformed fields are skipped.
+        let values: Vec<f64> = std::env::var("CAPS_TEST").ok()?
+            .split(',').filter_map(|field| field.parse().ok()).collect();
+        (values.len() == 4).then(|| [values[0], values[1], values[2], values[3]])
+    })
 }
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
 pub(super) const AUDIT_CAP: f64 = 2.0;
 /// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links) and bit 63 when one
 /// of its groups is not negatively associated (`Src::multi`).
-pub(super) fn cv_mask(s: &Src) -> u64 { s.cm.iter().fold(0u64, |m, (k, _)| m | 1u64 << *k) | if s.multi { 1u64 << 63 } else { 0 } }
+pub(super) fn cv_mask(source: &Src) -> u64 {
+    let chain_targets = source.cm.iter().fold(0u64, |mask, (target, _)| mask | 1u64 << *target);
+    chain_targets | if source.multi { 1u64 << 63 } else { 0 }
+}
 /// The structure class of a deck from its entries' `cv_mask`s ORed (or of every deck a search node can still reach,
 /// from the masks of its cards and of every candidate left): 0 at most one chain-varying target, 1 two, 2 three, 3 four
 /// or more or a multi-target group.
-pub(crate) fn cap_class(m: u64) -> usize { if m >> 63 != 0 { 3 } else { match m.count_ones() { 0 | 1 => 0, 2 => 1, 3 => 2, _ => 3 } } }
+pub(crate) fn cap_class(mask: u64) -> usize {
+    if mask >> 63 != 0 {
+        return 3;
+    }
+    match mask.count_ones() {
+        0 | 1 => 0,
+        2 => 1,
+        3 => 2,
+        _ => 3,
+    }
+}
 /// The class of a deck given by its sources.
 pub(super) fn src_class<'s>(it: impl Iterator<Item = &'s Src>) -> usize { cap_class(it.fold(0u64, |m, s| m | cv_mask(s))) }
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.

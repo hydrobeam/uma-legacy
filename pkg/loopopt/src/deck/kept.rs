@@ -45,7 +45,16 @@ pub(super) const NBUCKET: usize = 128;
 #[derive(Default)]
 /// `lq` is the mirror index of the query signatures (bit set when field f is at most l, l < LEVELS - 1), for the
 /// removal test "x's entry signature over the deck's query one".
-pub(super) struct Bucket { pub(super) list: Vec<DeckEval>, pub(super) esig: Vec<Sig>, pub(super) qsig: Vec<Sig>, pub(super) flat: Vec<f64>, pub(super) uid: Vec<u64>, pub(super) lv: Vec<u64>, pub(super) lq: Vec<u64> }
+pub(super) struct Bucket {
+    // These columns share deck indices. Compaction must move every column together.
+    pub(super) list: Vec<DeckEval>,
+    pub(super) esig: Vec<Sig>,
+    pub(super) qsig: Vec<Sig>,
+    pub(super) flat: Vec<f64>,
+    pub(super) uid: Vec<u64>,
+    pub(super) lv: Vec<u64>,
+    pub(super) lq: Vec<u64>,
+}
 pub(super) const LVW: usize = SIG_FIELDS * (LEVELS as usize - 1);   // index words per 64 decks
 impl Bucket {
     #[inline]
@@ -64,24 +73,34 @@ impl Bucket {
     }
     /// rebuild the level index from deck `from` on (after the arrays were compacted)
     pub(super) fn reindex_from(&mut self, from: usize) {
-        let w0 = from / 64;
-        self.lv.truncate((w0 + 1) * LVW); self.lq.truncate((w0 + 1) * LVW);
-        if self.lv.len() == (w0 + 1) * LVW {
-            let keep = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
-            for x in &mut self.lv[w0 * LVW..] { *x &= keep; }
-            for x in &mut self.lq[w0 * LVW..] { *x &= keep; }
+        let first_word = from / 64;
+        self.lv.truncate((first_word + 1) * LVW);
+        self.lq.truncate((first_word + 1) * LVW);
+        if self.lv.len() == (first_word + 1) * LVW {
+            let keep_bits = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
+            for word in &mut self.lv[first_word * LVW..] { *word &= keep_bits; }
+            for word in &mut self.lq[first_word * LVW..] { *word &= keep_bits; }
         }
-        if self.esig.len() <= w0 * 64 { self.lv.truncate(w0 * LVW); self.lq.truncate(w0 * LVW); }
-        for i in from..self.esig.len() { let (e, q) = (self.esig[i], self.qsig[i]); self.index_set(i, e, q); }
+        if self.esig.len() <= first_word * 64 {
+            self.lv.truncate(first_word * LVW);
+            self.lq.truncate(first_word * LVW);
+        }
+        for deck in from..self.esig.len() {
+            let (entry_sig, query_sig) = (self.esig[deck], self.qsig[deck]);
+            self.index_set(deck, entry_sig, query_sig);
+        }
     }
-    /// decks of word w that pass the signature test for the query whose level-index offsets are `qo`
+    /// Deck bits in `word` that pass all of the query's level-index tests.
     #[inline]
-    pub(super) fn cand_word(&self, w: usize, qo: &[usize]) -> u64 {
-        let n = self.esig.len() - w * 64;
-        let mut m = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
-        let base = w * LVW;
-        for &o in qo { m &= self.lv[base + o]; if m == 0 { break; } }
-        m
+    pub(super) fn cand_word(&self, word: usize, query_offsets: &[usize]) -> u64 {
+        let remaining = self.esig.len() - word * 64;
+        let mut candidates = if remaining >= 64 { u64::MAX } else { (1u64 << remaining) - 1 };
+        let base = word * LVW;
+        for &offset in query_offsets {
+            candidates &= self.lv[base + offset];
+            if candidates == 0 { break; }
+        }
+        candidates
     }
 }
 /// Level-index offsets of a query signature: one per field whose level is at least 1.
@@ -224,19 +243,26 @@ impl Kept {
                     if dominates(x, &bk.flat[i * nd..(i + 1) * nd]) { first = Some(i); break 'scan; }
                 }
             }
-            let Some(f) = first else { continue };
-            // compact [f, len): kept decks move down in order, dropped ones end up past `w` and are truncated
-            let mut w = f;
-            for r in f + 1..len {
-                if sig_ge(xe, bk.qsig[r]) && dominates(x, &bk.flat[r * nd..(r + 1) * nd]) { continue; }
-                bk.list.swap(w, r);
-                bk.esig[w] = bk.esig[r]; bk.qsig[w] = bk.qsig[r]; bk.uid[w] = bk.uid[r];
-                bk.flat.copy_within(r * nd..(r + 1) * nd, w * nd);
-                w += 1;
+            let Some(first_removed) = first else { continue };
+            // Compact from the first removed deck, preserving survivor order. Dropped decks
+            // end up at or beyond write_index and are truncated after all columns move.
+            let mut write_index = first_removed;
+            for read_index in first_removed + 1..len {
+                if sig_ge(xe, bk.qsig[read_index]) && dominates(x, &bk.flat[read_index * nd..(read_index + 1) * nd]) { continue; }
+                bk.list.swap(write_index, read_index);
+                bk.esig[write_index] = bk.esig[read_index];
+                bk.qsig[write_index] = bk.qsig[read_index];
+                bk.uid[write_index] = bk.uid[read_index];
+                bk.flat.copy_within(read_index * nd..(read_index + 1) * nd, write_index * nd);
+                write_index += 1;
             }
-            self.n -= len - w;
-            bk.list.truncate(w); bk.esig.truncate(w); bk.qsig.truncate(w); bk.uid.truncate(w); bk.flat.truncate(w * nd);
-            bk.reindex_from(f);
+            self.n -= len - write_index;
+            bk.list.truncate(write_index);
+            bk.esig.truncate(write_index);
+            bk.qsig.truncate(write_index);
+            bk.uid.truncate(write_index);
+            bk.flat.truncate(write_index * nd);
+            bk.reindex_from(first_removed);
         }
     }
     pub(super) fn into_list(self) -> Vec<DeckEval> { self.buckets.into_iter().flat_map(|b| b.list).collect() }
