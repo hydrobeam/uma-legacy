@@ -7,7 +7,6 @@
 !/build.sh
 !/README.md
 !/AGENTS.md
-!/CLAUDE.md
 !/LICENSE
 !/rust-toolchain.toml
 !/pyproject.toml
