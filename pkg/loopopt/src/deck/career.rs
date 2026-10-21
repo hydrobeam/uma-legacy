@@ -637,6 +637,12 @@ const SEEN_KEEP: usize = 256;
 // 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`); 4: the plans' roll states
 // (`sim::plan::ROLLS`)
 const STATE_VERSION: u64 = 4;
+/// What a stored state may hold, checked as it is decoded (`state_in`, before anything is installed): a stored count (the
+/// umas or deck classes a list covers: 69 umas in the Global data, 83 in JP) at most STATE_MAX_N, so nothing is allocated
+/// from a count past it; every index within the list it indexes; no float NaN (the bounds compare them); chances,
+/// odds and deck hint chances within [0, 1]; a deck at most `MAX_DECK` cards. What a store says of a setup (deck
+/// entries, chances per target) is checked where it meets that setup (`Env::seen_fits`, `solve_kept`).
+const STATE_MAX_N: usize = 1 << 10;
 fn hx(x: f64) -> Value {
     Value::String(format!("{:016x}", x.to_bits()))
 }
@@ -644,7 +650,11 @@ fn ux(x: u64) -> Value {
     Value::String(format!("{:016x}", x))
 }
 fn fx(v: &Value) -> Option<f64> {
-    Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?))
+    Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)).filter(|x| !x.is_nan())
+}
+/// a stored chance: in [0, 1]
+fn px(v: &Value) -> Option<f64> {
+    fx(v).filter(|x| (0.0..=1.0).contains(x))
 }
 fn uxr(v: &Value) -> Option<u64> {
     u64::from_str_radix(v.as_str()?, 16).ok()
@@ -655,28 +665,35 @@ fn fvec(v: &[f64]) -> Value {
 fn fvec_r(v: &Value) -> Option<Vec<f64>> {
     v.as_array()?.iter().map(fx).collect()
 }
+/// a stored vector of chances (`px`)
+fn pvec_r(v: &Value) -> Option<Vec<f64>> {
+    v.as_array()?.iter().map(px).collect()
+}
 fn usz(v: &Value) -> Option<usize> {
-    v.as_u64().map(|x| x as usize)
+    usize::try_from(v.as_u64()?).ok()
+}
+/// a stored count (`STATE_MAX_N`)
+fn len_in(v: &Value) -> Option<usize> {
+    usz(v).filter(|&n| n <= STATE_MAX_N)
 }
 fn sel_out(s: &Sel) -> Value {
     json!([s.ents, s.plain, s.filler, fvec(&s.dw), fvec(&s.dg)])
 }
 fn sel_in(v: &Value) -> Option<Sel> {
     let a = v.as_array()?;
-    Some(Sel {
-        ents: a.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?,
-        plain: usz(a.get(1)?)?,
-        filler: usz(a.get(2)?)?,
-        dw: fvec_r(a.get(3)?)?,
-        dg: fvec_r(a.get(4)?)?,
-    })
+    let ents: Vec<usize> = a.first()?.as_array()?.iter().map(usz).collect::<Option<_>>()?;
+    let (plain, filler) = (usz(a.get(1)?)?, usz(a.get(2)?)?);
+    let (dw, dg) = (pvec_r(a.get(3)?)?, pvec_r(a.get(4)?)?);
+    // (a deck: at most MAX_DECK cards, a white and a gold chance per target)
+    let cards = ents.len().checked_add(plain)?.checked_add(filler)?;
+    (cards <= MAX_DECK && dw.len() == dg.len()).then_some(Sel { ents, plain, filler, dw, dg })
 }
 fn ref_out(r: &Ref) -> Value {
     json!([fvec(&r.q), hx(r.val), sel_out(&r.sel)])
 }
 fn ref_in(v: &Value) -> Option<Ref> {
     let a = v.as_array()?;
-    Some(Ref { q: fvec_r(a.first()?)?, val: fx(a.get(1)?)?, sel: sel_in(a.get(2)?)? })
+    Some(Ref { q: pvec_r(a.first()?)?, val: fx(a.get(1)?)?, sel: sel_in(a.get(2)?)? })
 }
 fn found_out(f: &Found) -> Value {
     json!([f.t, f.a, f.b, hx(f.val), hx(f.ub), sel_out(&f.sel)])
@@ -718,7 +735,7 @@ fn seen_in(v: &Value) -> Option<Vec<(u64, Vec<Vec<Ref>>)>> {
         .iter()
         .map(|e| {
             let a = e.as_array()?;
-            let (fp, n) = (uxr(a.first()?)?, usz(a.get(1)?)?);
+            let (fp, n) = (uxr(a.first()?)?, len_in(a.get(1)?)?);
             let mut vv: Vec<Vec<Ref>> = vec![vec![]; n];
             for c in a.get(2)?.as_array()? {
                 let ca = c.as_array()?;
@@ -745,7 +762,7 @@ fn lists_out<T>(vv: &[Vec<T>], f: impl Fn(&T) -> Value) -> Value {
 }
 fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<Vec<Vec<T>>> {
     let a = v.as_array()?;
-    let n = usz(a.first()?)?;
+    let n = len_in(a.first()?)?;
     let mut vv: Vec<Vec<T>> = vec![vec![]; n];
     for c in a.get(1)?.as_array()? {
         let ca = c.as_array()?;
@@ -790,7 +807,7 @@ fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
             };
             let ruled = lists_in(a.get(2)?, |x| {
                 let p = x.as_array()?;
-                Some((fvec_r(p.first()?)?, fx(p.get(1)?)?))
+                Some((pvec_r(p.first()?)?, fx(p.get(1)?)?))
             })?;
             Some((uxr(a.first()?)?, sv, ruled))
         })
@@ -805,7 +822,11 @@ fn state_in(v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) {
         return json!({"error": "state: another version"});
     }
-    // Decode every store before replacing any live state.
+    // Decode every store before replacing any live state. (The kept plans' per-uma count is checked here, before
+    // `bests_in` allocates from it.)
+    if !v["bests"].as_array().is_none_or(|a| a.iter().all(|e| len_in(&e["n"]).is_some())) {
+        return json!({"error": "state: does not parse"});
+    }
     let (Some(bests), Some(seen), Some(searches), Some(rolls)) = (
         sim::plan::bests_in(&v["bests"]),
         seen_in(&v["seen"]),
@@ -1048,6 +1069,31 @@ impl Drop for Env<'_> {
     }
 }
 impl<'a> Env<'a> {
+    // ---- what a stored state (`state_in`) says of a setup, checked where it meets this one ----
+    /// a stored deck: entries of this job's deck space, within its deck size, a chance per uncertain target
+    fn sel_fits(&self, s: &Sel) -> bool {
+        s.ents.iter().all(|&j| j < self.space.rel.len())
+            && s.ents.len() + s.plain + s.filler <= self.space.dj.deck_size
+            && s.dw.len() == self.nu
+    }
+    /// a stored fully checked deck: a chance per job target, and its deck
+    fn ref_fits(&self, r: &Ref) -> bool {
+        r.q.len() == self.ntar && self.sel_fits(&r.sel)
+    }
+    /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
+    fn seen_fits(&self, seen: &[Vec<Ref>]) -> bool {
+        seen.len() == self.d.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
+    }
+    /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
+    /// veterans
+    fn solved_fits(&self, sv: &Solved, ruled: &Ruled, p: &Pool) -> bool {
+        let n = self.d.umas.len();
+        ruled.len() == n
+            && ruled.iter().flatten().all(|(q, _)| q.len() == self.ntar)
+            && sv.refs.len() == n
+            && sv.refs.iter().flatten().all(|r| self.ref_fits(r))
+            && sv.found.iter().all(|f| f.t < n && f.a < p.me.len() && f.b < p.me.len() && self.sel_fits(&f.sel))
+    }
     /// a scored deck's exact / product ratio r, class k, trainee t (`max_ratio`, `max_deck`)
     fn note_ratio(&mut self, k: usize, r: f64, t: usize, sel: &Sel) {
         self.note_breach(k, r);
@@ -2837,7 +2883,6 @@ fn solve_kept(
     per_trainee: bool,
     top: usize,
 ) -> Solved {
-    let n = env.d.umas.len();
     let kept = LAST_SOLVE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|entry| entry.0 == key)?;
@@ -2846,7 +2891,7 @@ fn solve_kept(
         cache.last().map(|entry| (entry.1.clone(), entry.2.clone()))
     });
     match kept {
-        Some((solved, ruled)) if ruled.len() == n => {
+        Some((solved, ruled)) if env.solved_fits(&solved, &ruled, p) => {
             env.ruled = ruled;
             solved
         }
@@ -3066,7 +3111,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     }
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs; `fp` above)
     if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone()))
-        && s.len() == n
+        && env.seen_fits(&s)
     {
         env.seen = s;
     }
@@ -3222,8 +3267,8 @@ mod tests {
     use super::*;
     type Hook = Box<dyn for<'e> FnOnce(&mut Env<'e>, &Pool)>;
     thread_local! { pub(super) static ENV_HOOK: std::cell::RefCell<Option<Hook>> = const { std::cell::RefCell::new(None) }; }
-    /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `h` given its Env and pool
-    fn with_env(h: Hook) {
+    /// val/plan's p16 plan job with its events, and the Global data it runs on
+    fn p16() -> (Data, SkillsRaw, CardsRaw, Value) {
         let r = concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/");
         let rd = |f: &str| std::fs::read_to_string(format!("{r}{f}")).unwrap();
         let d = crate::load_str(&rd("data.json"));
@@ -3233,9 +3278,14 @@ mod tests {
             &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../val/plan/p16.json")).unwrap(),
         )
         .unwrap();
-        v.as_object_mut().unwrap().remove("next");
         let db: Value = serde_json::from_str(&rd("card_events.json")).unwrap();
         crate::deck::apply_events_db(&mut v, &sk, &db);
+        (d, sk, cr, v)
+    }
+    /// `run_career` on val/plan's p16 pool (G1 wins added, so the race parts are not 0), with `h` given its Env and pool
+    fn with_env(h: Hook) {
+        let (d, sk, cr, mut v) = p16();
+        v.as_object_mut().unwrap().remove("next");
         for (i, l) in v["legacies"].as_array_mut().unwrap().iter_mut().enumerate() {
             l["wins"] = json!([(i % 5) as u64, 7 + (i % 3) as u64, 20]);
             for (j, g) in l["parents"].as_array_mut().unwrap().iter_mut().enumerate() {
@@ -3368,5 +3418,142 @@ mod tests {
             }
             assert!(n > 1000, "{n} candidates");
         }));
+    }
+    /// The worker's kept work leaves (`state_out`) and comes back (`state_in`) bit for bit after a plan, and a roll after
+    /// the round trip answers as before it. A malformed store (a count past `STATE_MAX_N`, an index past its list, a NaN,
+    /// a chance outside [0, 1], a deck past six cards, a truncated vector, a roll state that does not fit together) is
+    /// refused whole with an error, nothing installed; one whose decks or careers do not fit the setup it meets
+    /// (`Env::seen_fits`, `solved_fits`) is not used there.
+    #[test]
+    fn state_round_trips_and_refuses_malformed() {
+        let (d, sk, cr, v) = p16();
+        let run = |job: &Value| run_career(&d, &sk, &cr, job);
+        let state_out = || run(&json!({"cmd": "state_out"}));
+        let state_in = |st: &Value| run(&json!({"cmd": "state_in", "state": st}));
+        let plan = run(&v);
+        assert!(plan.get("error").is_none(), "{}", plan["error"]);
+        let out = state_out();
+        let st = out["state"].clone();
+        for k in ["bests", "seen", "solve", "rolls"] {
+            assert!(st[k].as_array().is_some_and(|a| !a.is_empty()), "{k}: nothing kept");
+        }
+        let mut rolled = v.clone();
+        rolled["next"]["roll"] = json!(vec![1u8; v["targets"].as_array().unwrap().len()]);
+        let roll = || {
+            let mut r = run(&rolled);
+            assert!(r["next"]["roll"].get("error").is_none() && r["next"]["roll"]["y"].is_number(), "{r}");
+            for k in ["ms", "prof"] {
+                r["next"]["roll"].as_object_mut().unwrap().remove(k);
+            }
+            r
+        };
+        let roll0 = roll();
+        let empty = json!({"v": STATE_VERSION, "bests": [], "seen": [], "solve": [], "rolls": []});
+        assert_eq!(state_in(&empty)["ok"], true);
+        assert_eq!(state_in(&st)["ok"], true);
+        assert_eq!(state_out(), out, "the state did not round-trip");
+        assert_eq!(roll(), roll0, "a roll after the round trip");
+
+        // ---- malformed stores: refused whole, the kept work as it was ----
+        let kept = state_out();
+        let hex = |x: f64| Value::String(format!("{:016x}", x.to_bits()));
+        let refused = |what: &str, f: &dyn Fn(&mut Value)| {
+            let mut bad = st.clone();
+            f(&mut bad);
+            let r = state_in(&bad);
+            assert!(r["error"].is_string(), "{what}: {r}");
+            assert_eq!(state_out(), kept, "{what}: something was installed");
+        };
+        let big = json!(1u64 << 40);
+        refused("seen: a class count past STATE_MAX_N", &|s| s["seen"][0][1] = big.clone());
+        refused("seen: a class index past its count", &|s| {
+            let n = s["seen"][0][1].clone();
+            s["seen"][0][2][0][0] = n;
+        });
+        refused("seen: a NaN value", &|s| s["seen"][0][2][0][1][0][1] = hex(f64::NAN));
+        refused("seen: a chance above 1", &|s| s["seen"][0][2][0][1][0][0][0] = hex(1.5));
+        refused("seen: a deck hint chance below 0", &|s| s["seen"][0][2][0][1][0][2][3][0] = hex(-0.25));
+        refused("seen: seven cards", &|s| s["seen"][0][2][0][1][0][2][0] = json!([0, 1, 2, 3, 4, 5, 6]));
+        refused("seen: a deck truncated", &|s| {
+            s["seen"][0][2][0][1][0][2].as_array_mut().unwrap().pop();
+        });
+        refused("seen: white and gold chances of different lengths", &|s| {
+            s["seen"][0][2][0][1][0][2][4].as_array_mut().unwrap().pop();
+        });
+        refused("bests: a uma count past STATE_MAX_N", &|s| s["bests"][0]["n"] = big.clone());
+        refused("solve: a list count past STATE_MAX_N", &|s| s["solve"][0][1]["refs"][0] = big.clone());
+        refused("solve: a NaN bound", &|s| s["solve"][0][1]["next_bound"] = hex(f64::NAN));
+        refused("rolls: 64 targets", &|s| s["rolls"][0]["sd"]["n"][2] = json!(64));
+        refused("rolls: 11 uncertain targets", &|s| s["rolls"][0]["sd"]["n"][0] = json!(11));
+        refused("rolls: a guaranteed count that wraps the sum", &|s| s["rolls"][0]["sd"]["n"][1] = json!(u64::MAX));
+        refused("rolls: uncertain and guaranteed not the targets", &|s| {
+            let nf = s["rolls"][0]["sd"]["n"][1].as_u64().unwrap();
+            s["rolls"][0]["sd"]["n"][1] = json!(nf + 1);
+        });
+        refused("rolls: an uncertain target past the targets", &|s| {
+            let ntar = s["rolls"][0]["sd"]["n"][2].clone();
+            let u = s["rolls"][0]["sd"]["uncv"].as_array_mut().unwrap();
+            *u.last_mut().expect("an uncertain target") = ntar;
+        });
+        refused("rolls: guaranteed masks that are not the targets'", &|s| s["rolls"][0]["sd"]["fmm"][0] = json!(12345));
+        refused("rolls: landed-set chances truncated", &|s| {
+            s["rolls"][0]["sd"]["os"].as_array_mut().unwrap().pop();
+        });
+        refused("rolls: a NaN star share", &|s| s["rolls"][0]["sd"]["w"][0] = hex(f64::NAN));
+        refused("rolls: a candidate's step costs not one per candidate", &|s| {
+            s["rolls"][0]["base"]["c1"].as_array_mut().unwrap().push(hex(1.0));
+        });
+        refused("rolls: her trio side past the candidates", &|s| {
+            s["rolls"][0]["her"].as_array_mut().unwrap().push(json!([1_000_000, false, hex(1.0)]));
+        });
+        refused("rolls: a lifted candidate past the candidates", &|s| {
+            let act = s["rolls"][0]["sd"]["act"].as_array_mut().unwrap();
+            act.push(json!([1_000_000, null, hex(0.5), hex(0.5)]));
+        });
+        refused("rolls: a slot out of order", &|s| {
+            let act = s["rolls"][0]["sd"]["act"].as_array_mut().unwrap();
+            act.push(json!([0, 1_000_000, hex(0.5), hex(0.5)]));
+        });
+        refused("rolls: a trio past the candidates", &|s| {
+            s["rolls"][0]["base"]["combos"].as_array_mut().unwrap().push(json!([1_000_000, 0, hex(1.0), false, false]));
+        });
+        refused("rolls: an anchor's chances truncated", &|s| {
+            let anc = s["rolls"][0]["anc"].as_array_mut().unwrap();
+            let a = anc.iter_mut().find(|a| !a.is_null()).expect("an anchor");
+            a[1].as_array_mut().unwrap().pop();
+        });
+
+        // ---- stores that parse but do not fit the setup they meet: not used there ----
+        let seen_used = |st: &Value| {
+            assert_eq!(state_in(st)["ok"], true);
+            let used = std::rc::Rc::new(std::cell::Cell::new(false));
+            let u = used.clone();
+            ENV_HOOK.with(|c| {
+                *c.borrow_mut() =
+                    Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.seen.iter().any(|r| !r.is_empty()))))
+            });
+            let mut job = v.clone();
+            job.as_object_mut().unwrap().remove("next");
+            run(&job);
+            used.get()
+        };
+        assert!(seen_used(&st), "the stored proofs were not used");
+        let mut bad = st.clone();
+        bad["seen"][0][2][0][1][0][2][0][0] = json!(1_000_000);
+        assert!(!seen_used(&bad), "a deck entry past the deck space was used");
+        let mut bad = st.clone();
+        bad["seen"][0][2][0][1][0][0].as_array_mut().unwrap().pop();
+        assert!(!seen_used(&bad), "chances for fewer targets were used");
+        // a kept main search whose career names a trainee past the umas: searched again, the same plan
+        let mut bad = st.clone();
+        bad["solve"].as_array_mut().unwrap().iter_mut().for_each(|e| {
+            if let Some(f) = e[1]["found"].as_array_mut().and_then(|f| f.first_mut()) {
+                f[0] = json!(1_000_000);
+            }
+        });
+        assert_eq!(state_in(&bad)["ok"], true);
+        let again = run(&v);
+        assert!(again.get("error").is_none(), "{}", again["error"]);
+        assert_eq!((&again["next"]["choice"], &again["results"]), (&plan["next"]["choice"], &plan["results"]));
     }
 }

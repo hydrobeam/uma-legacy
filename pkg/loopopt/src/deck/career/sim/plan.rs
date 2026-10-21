@@ -3644,7 +3644,7 @@ pub(in super::super) fn rolls_out() -> Value {
                "act": sd.act.iter().map(|&(ui, sl, th, pn)| json!([ui, sl, hx(th), hx(pn)])).collect::<Vec<_>>(), "her": tri(&sd.her)}}) }).collect()))
 }
 pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
-    use super::super::{fvec_r, fx, sel_in, usz, uxr};
+    use super::super::{STATE_MAX_N, fvec_r, fx, pvec_r, sel_in, usz, uxr};
     // (absent in a state stored before them: none)
     let Some(a) = v.as_array() else { return v.is_null().then(Vec::new) };
     let uv = |v: &Value| -> Option<Vec<usize>> { v.as_array()?.iter().map(usz).collect() };
@@ -3659,7 +3659,9 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
         .map(|e| {
             let (b, s) = (&e["base"], &e["sd"]);
             let n = uv(&s["n"])?;
-            if n.len() != 4 {
+            // (the plan's limits, `sim_for`: at most 12 targets, 10 of them uncertain, the rest guaranteed; checked before
+            // any table is sized by them)
+            if n.len() != 4 || n[2] > 12 || n[0] > 10 || n[1] > 12 || n[0] + n[1] != n[2] {
                 return None;
             }
             let cont = b["cont"]
@@ -3691,7 +3693,7 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 combos,
                 m23: fvec_r(&b["m23"])?,
             };
-            let w: [f64; 3] = fvec_r(&s["w"])?.try_into().ok()?;
+            let w: [f64; 3] = pvec_r(&s["w"])?.try_into().ok()?;
             let pw = s["pw"]
                 .as_array()?
                 .iter()
@@ -3725,16 +3727,37 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 col: s["col"].as_array()?.iter().map(|c| c.as_bool()).collect::<Option<_>>()?,
                 sslot: uv(&s["sslot"])?,
                 p0: fvec_r(&s["p0"])?,
-                os: fvec_r(&s["os"])?,
+                os: pvec_r(&s["os"])?,
                 act,
                 her: tri(&s["her"])?,
                 xs: vec![],
                 xc: vec![],
                 scf: vec![],
             };
-            // (a store that does not fit together is refused whole, as any other)
-            let ns = sd.x0.len();
-            if sd.uncv.len() != sd.nu
+            // (a store that does not fit together is refused whole, as any other: the vectors' lengths and every index
+            // within what it indexes, as `score_career_` builds them, before `derive` sizes its tables)
+            let (ns, nc) = (sd.x0.len(), base.cands.len());
+            let fixed: Vec<usize> = (0..sd.ntar).filter(|i| !sd.uncv.contains(i)).collect();
+            let fits_base = nc <= STATE_MAX_N
+                && base.c1.len() == nc
+                && base.pnow.len() == nc
+                && base.m23.len() == nc
+                && base.cont.len() <= nc
+                && base.combos.iter().all(|t| t.0 < nc && t.1 < nc);
+            // her setups (at most IDX_PARTNERS per candidate), the candidates the loop lifts (those with a slot in slot
+            // order, one per slot), her own candidate index and trio sides: candidate indices
+            let fits_cands = ns <= IDX_PARTNERS * nc
+                && sd.act.iter().filter_map(|a| a.1).eq(0..sd.na)
+                && sd.act.iter().all(|a| a.0 < nc)
+                && sd.xi.is_none_or(|x| x < nc)
+                && sd.her.iter().all(|h| h.0 < nc);
+            if !fits_base
+                || !fits_cands
+                || !sd.uncv.windows(2).all(|p| p[0] < p[1])
+                || sd.uncv.last().is_some_and(|&i| i >= sd.ntar)
+                || sd.fmm != fm_masks(&fixed)
+                || sd.sslot.windows(2).any(|p| p[0] > p[1])
+                || sd.uncv.len() != sd.nu
                 || sd.col.len() != sd.nu
                 || sd.xm.len() != ns
                 || sd.pw.len() != ns
@@ -3757,8 +3780,13 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
             let anc = e["anc"]
                 .as_array()?
                 .iter()
-                .map(|a| if a.is_null() { Some(None) } else { Some(Some((usz(&a[0])?, fvec_r(&a[1])?, fx(&a[2])?))) })
+                .map(|a| if a.is_null() { Some(None) } else { Some(Some((usz(&a[0])?, pvec_r(&a[1])?, fx(&a[2])?))) })
                 .collect::<Option<Vec<_>>>()?;
+            // (the anchors' chances: one per job target; her trio sides at the plan's end: candidate indices)
+            let her_hi = tri(&e["her"])?;
+            if anc.iter().flatten().any(|a| a.1.len() != sd.ntar) || her_hi.iter().any(|h| h.0 >= nc) {
+                return None;
+            }
             Some(RollKeep {
                 key: uxr(&e["k"])?,
                 sd,
@@ -3767,7 +3795,7 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 a: x[1],
                 b: x[2],
                 sel: sel_in(&e["sel"])?,
-                her_hi: tri(&e["her"])?,
+                her_hi,
                 anc,
                 hi_anc: vec![],
             })
