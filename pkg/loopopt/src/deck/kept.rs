@@ -1,5 +1,5 @@
 //! Deck dominance: signatures, buckets and the beaten-deck bookkeeping (`Kept`), and the decks a search returns.
-use super::*;
+use super::{Card, Deserialize, Serialize, Value, json};
 
 /// Slack for float noise in dominance tests: per coordinate, and summed over all coordinates.
 pub(super) const DOM_EPS: f64 = 1e-12;
@@ -32,14 +32,14 @@ pub(super) fn sig_of(v: &[f64], query: bool) -> Sig {
     let mut s: Sig = 0;
     for (c, &x) in v.iter().take(SIG_FIELDS).enumerate() {
         let y = if query { x - DOM_EPS } else { x };
-        let l = (((y * LEVELS as f64).floor().max(0.0) as u32) as Sig).min(LEVELS - 1); // via u32: wasm2js lacks the 64-bit float conversion
+        let l = Sig::from((y * LEVELS as f64).floor().max(0.0) as u32).min(LEVELS - 1); // via u32: wasm2js lacks the 64-bit float conversion
         s |= l << (FB * c);
     }
     s
 }
 /// every field of `e` >= the matching field of `q` (SWAR: guard bits survive the subtraction)
 #[inline]
-pub(super) fn sig_ge(e: Sig, q: Sig) -> bool {
+pub(super) const fn sig_ge(e: Sig, q: Sig) -> bool {
     ((e | SIG_GUARD) - q) & SIG_GUARD == SIG_GUARD
 }
 
@@ -162,7 +162,7 @@ pub(super) struct Kept {
 pub(super) const RECENT: usize = 32;
 impl Kept {
     pub(super) fn new(nd: usize) -> Self {
-        Kept {
+        Self {
             nd,
             bw: (nd.max(1) as f64) / NBUCKET as f64,
             buckets: (0..NBUCKET).map(|_| Bucket::default()).collect(),
@@ -178,7 +178,7 @@ impl Kept {
             found: vec![],
         }
     }
-    pub(super) fn len(&self) -> usize {
+    pub(super) const fn len(&self) -> usize {
         self.n
     }
     #[inline]
@@ -266,12 +266,12 @@ impl Kept {
         self.found = found;
     }
     pub(super) fn insert(&mut self, x: DeckEval) {
-        self.insert_at(x, None)
+        self.insert_at(x, None);
     }
     /// `insert` with the deck's coordinates given apart (`x.dv` then left as it is: the enumeration's single-result
     /// path, where nothing reads a kept deck's `dv` again, leaves it empty)
     pub(super) fn insert_dv(&mut self, x: DeckEval, dv: &[f64]) {
-        self.insert_at(x, Some(dv))
+        self.insert_at(x, Some(dv));
     }
     fn insert_at(&mut self, x: DeckEval, dv: Option<&[f64]>) {
         let bi = self.bucket_of(x.s);

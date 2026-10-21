@@ -1,6 +1,6 @@
 //! Joint landing odds of a deck: exact over chain progress and outcome groups, the negative-association bound, and the
 //! state-conditioned bound.
-use super::*;
+use super::{GEN_GOLD, Group, JCOUNT, Kind, Model, Src, chain_states, event_pmf_job, group_gh, group_nuod, key_level};
 
 /// Exact chances that all targets land, and all but one, for trainee `u` with one deck, at each inheritance chance in
 /// `qs`: (P(all), P(all but one), outfit option index in `model.opts[u]`) per q, with the outfit that gives the
@@ -79,7 +79,7 @@ pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
         let x = joint_trainee_ref(model, u, qs, &own, filler, n_targets);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
-            assert!(rel(a.0, b.0) < 1e-11 && (!m1 || rel(a.1, b.1) < 1e-11), "joint mismatch: {:?} vs {:?}", a, b);
+            assert!(rel(a.0, b.0) < 1e-11 && (!m1 || rel(a.1, b.1) < 1e-11), "joint mismatch: {a:?} vs {b:?}");
         }
     }
     r
@@ -150,7 +150,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
         let marginals = group_gh(group);
         if marginals.len() >= 2 {
             let mut outcomes: Vec<(f64, &[(usize, u8)])> =
-                group.iter().map(|(p, rewards)| (*p, &rewards[..])).collect();
+                group.iter().map(|(p, rewards)| (*p, (&**rewards))).collect();
             let rest = 1.0 - group.iter().map(|outcome| outcome.0).sum::<f64>();
             if rest > 1e-15 {
                 outcomes.push((rest, &[][..]));
@@ -226,12 +226,11 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
     for (progress, probability) in states.iter() {
         let key: Vec<u8> =
             chains.iter().map(|chain| chain.class_of_progress[progress[chain.position] as usize]).collect();
-        match collapsed.get_mut(&key) {
-            Some(weight) => *weight += probability,
-            None => {
-                collapsed.insert(key.clone(), *probability);
-                order.push(key);
-            }
+        if let Some(weight) = collapsed.get_mut(&key) {
+            *weight += probability;
+        } else {
+            collapsed.insert(key.clone(), *probability);
+            order.push(key);
         }
     }
     let states = order
@@ -408,7 +407,7 @@ pub(super) fn joint_eval_in(
                     let lp = LandPre::new(st[k], ew[k], q);
                     fv[base + k] = [lp.f(ng[k], nh[k]), lp.f(ng[k], 0.0), lp.f(0.0, 0.0)];
                     if !su1 && let Some(x) = &ext {
-                        for v in fv[base + k].iter_mut() {
+                        for v in &mut fv[base + k] {
                             *v *= x.su[k];
                         }
                     }
@@ -418,7 +417,7 @@ pub(super) fn joint_eval_in(
         // clusters of targets joined by coupled groups (union-find over targets)
         par.clear();
         par.extend(0..nu);
-        fn root(p: &mut [usize], mut x: usize) -> usize {
+        const fn root(p: &mut [usize], mut x: usize) -> usize {
             while p[x] != x {
                 p[x] = p[p[x]];
                 x = p[x];
@@ -505,7 +504,7 @@ pub(super) fn joint_eval_in(
         }
         for (ts, gs) in cl_ts[..ncl].iter().zip(&cl_gs[..ncl]) {
             alts.clear();
-            alts.extend(gs.iter().map(|&g| &groups[g].outcomes[..]));
+            alts.extend(gs.iter().map(|&g| &*groups[g].outcomes));
             ca.fill(0.0);
             cb.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
@@ -755,7 +754,7 @@ pub(super) fn joint_trainee_ref(
         // outcomes of the coupled groups: each group's outcomes plus "nothing" (the rest of its weight)
         alts.clear();
         for g in &coupled {
-            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, &o[..])).collect();
+            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, (&**o))).collect();
             let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
             if rest > 1e-15 {
                 v.push((rest, &[][..]));
@@ -861,7 +860,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
                     .chain(src.chains.iter().map(|x| &x.1))
                     .find(|g| group_gh(g).len() >= 2 && !group_nuod(g))
             {
-                eprintln!("why: group {:?}", g);
+                eprintln!("why: group {g:?}");
             }
             return None;
         }
@@ -949,8 +948,8 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
             maxed[k] = Some((g, h));
         }
     }
-    if maxed.iter().any(|m| m.is_some()) {
-        for c in chains.iter_mut() {
+    if maxed.iter().any(std::option::Option::is_some) {
+        for c in &mut chains {
             c.1.retain(|(k, _)| maxed[*k].is_none());
         }
         for k in 0..nu {
@@ -1106,7 +1105,7 @@ pub(super) struct LandPre {
 }
 impl LandPre {
     pub(super) fn new(st: u8, ew: f64, q: f64) -> Self {
-        LandPre { st, ne: 1.0 - ew, omq: 1.0 - q }
+        Self { st, ne: 1.0 - ew, omq: 1.0 - q }
     }
     #[inline]
     pub(super) fn f(&self, ng: f64, nh: f64) -> f64 {

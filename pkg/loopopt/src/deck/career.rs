@@ -27,7 +27,12 @@
 //!
 //! The next career the page picks (`next`) is `sim::plan::index_rule`; the simulator (`simulate`) is `sim`.
 use super::enumerate::{SearchMode, SearchOutcome};
-use super::*;
+use super::{
+    CHAIN_EVENTS, CHAIN_N, CHAIN_P, Card, CardsRaw, Choice, Data, DeckJob, DeckSpace, Deserialize, EXACT_BUDGET,
+    EXACT_STEPS, FxMap, GEN_GOLD, HashMap, Instant, JointExt, JointScratch, Kind, MAX_DECK, Model, NT, Sel, SkillJob,
+    SkillsRaw, Src, Uma, Value, best_response, chart_race_name, d_true, deck_entries, deck_space, joint_b,
+    joint_eval_in, joint_fast, joint_prep, json, pk, probs, src_miss, upper_na, when,
+};
 mod cache;
 mod sim;
 
@@ -57,7 +62,7 @@ fn progress(phase: u32, k: usize, n: usize) {
     unsafe { host_progress(phase, k as u32, n as u32) }
 }
 #[cfg(not(target_arch = "wasm32"))]
-fn progress(_phase: u32, _k: usize, _n: usize) {}
+const fn progress(_phase: u32, _k: usize, _n: usize) {}
 // phase timers and counters for speed work, per plan (`next.work.prof`; planval and the val compares skip `work`)
 thread_local! { static PROF: std::cell::RefCell<std::collections::BTreeMap<&'static str, f64>> = Default::default(); }
 fn prof(k: &'static str, v: f64) {
@@ -99,7 +104,7 @@ pub(crate) struct Legacy {
     #[serde(skip)]
     mix: Option<[f64; 3]>,
 }
-fn d_top() -> usize {
+const fn d_top() -> usize {
     5
 }
 /// The work budget of one career search (units as in the per-uma search: 2 per deck node tested, 200 per exact
@@ -179,12 +184,12 @@ impl Pool {
     /// whether veterans a and b hold at most `max_bor` borrowed ones between them
     #[inline]
     fn bor_ok(&self, a: usize, b: usize) -> bool {
-        self.borrowed[a] as u8 + self.borrowed[b] as u8 <= self.max_bor
+        u8::from(self.borrowed[a]) + u8::from(self.borrowed[b]) <= self.max_bor
     }
     /// whether a veteran borrowed or not (`borrowed`) can be a parent at all: her share of `bor_ok`
     #[inline]
     fn bor_one(&self, borrowed: bool) -> bool {
-        borrowed as u8 <= self.max_bor
+        u8::from(borrowed) <= self.max_bor
     }
     /// The pair rules that hold for every trainee: two veterans, of different characters, at most `max_bor` borrowed
     #[inline]
@@ -272,8 +277,8 @@ impl Bar {
     #[inline(always)]
     fn out(self, b: f64, s: f64) -> bool {
         match self {
-            Bar::Below(th) => b * (1.0 + s) < th,
-            Bar::AtMost(v) => b <= v * (1.0 + 1e-12),
+            Self::Below(th) => b * (1.0 + s) < th,
+            Self::AtMost(v) => b <= v * (1.0 + 1e-12),
         }
     }
 }
@@ -322,7 +327,7 @@ struct Inherit {
 }
 impl Inherit {
     fn new(ntar: usize, skip: Option<usize>) -> Self {
-        Inherit { miss: vec![1.0; ntar], mix2: vec![1.0; ntar], nc: vec![0; ntar], skip, her: None }
+        Self { miss: vec![1.0; ntar], mix2: vec![1.0; ntar], nc: vec![0; ntar], skip, her: None }
     }
     #[inline(always)]
     fn add(&mut self, stars: &[u8], mix: Option<[f64; 3]>, fa: f64) {
@@ -333,7 +338,7 @@ impl Inherit {
             }
             self.nc[k] += 1;
             match mix {
-                None => self.miss[k] *= insp_miss(st as f64, fa),
+                None => self.miss[k] *= insp_miss(f64::from(st), fa),
                 Some(w) => self.mix2[k] *= mix_term(w, fa),
             }
         }
@@ -363,7 +368,7 @@ impl SlotSink<'_> for InheritA {
             }
             self.nc[k] += 1;
             match w.mix {
-                None => self.miss[k] *= insp_miss(st as f64, fa),
+                None => self.miss[k] *= insp_miss(f64::from(st), fa),
                 Some(m) => self.mix2[k] *= mix_term(m, fa),
             }
         }
@@ -407,7 +412,7 @@ struct PinkCareer {
 const INSP_TURNS: [usize; 2] = [30, 54];
 /// aptitude index (data.json `apt` order) of a pink factor group: 31-34 short..long, 11 turf, 12 dirt, 21-24 front
 /// runner..end closer
-fn pink_apt(g: u32) -> Option<usize> {
+const fn pink_apt(g: u32) -> Option<usize> {
     match g {
         31..=34 => Some((g - 31) as usize),
         11 => Some(4),
@@ -417,7 +422,7 @@ fn pink_apt(g: u32) -> Option<usize> {
     }
 }
 /// the pink factor group of aptitude k (inverse of `pink_apt`)
-fn apt_pink(k: usize) -> u32 {
+const fn apt_pink(k: usize) -> u32 {
     match k {
         0..=3 => 31 + k as u32,
         4 => 11,
@@ -647,7 +652,7 @@ fn hx(x: f64) -> Value {
     Value::String(format!("{:016x}", x.to_bits()))
 }
 fn ux(x: u64) -> Value {
-    Value::String(format!("{:016x}", x))
+    Value::String(format!("{x:016x}"))
 }
 fn fx(v: &Value) -> Option<f64> {
     Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)).filter(|x| !x.is_nan())
@@ -987,14 +992,14 @@ pub(crate) struct CfStats {
     pub(crate) work: usize,
 }
 impl CfStats {
-    fn add(&mut self, o: &CfStats) {
+    const fn add(&mut self, o: &Self) {
         self.reruns += o.reruns;
         self.open += o.open;
         self.unhandled += o.unhandled;
         self.work += o.work;
     }
-    fn since(&self, o: &CfStats) -> CfStats {
-        CfStats {
+    const fn since(&self, o: &Self) -> Self {
+        Self {
             reruns: self.reruns - o.reruns,
             open: self.open - o.open,
             unhandled: self.unhandled - o.unhandled,
@@ -1068,7 +1073,7 @@ impl Drop for Env<'_> {
         });
     }
 }
-impl<'a> Env<'a> {
+impl Env<'_> {
     // ---- what a stored state (`state_in`) says of a setup, checked where it meets this one ----
     /// a stored deck: entries of this job's deck space, within its deck size, a chance per uncertain target
     fn sel_fits(&self, s: &Sel) -> bool {
@@ -1133,7 +1138,7 @@ impl<'a> Env<'a> {
     ) -> Who {
         let mut w: Vec<(usize, f64)> = if win_p.is_empty() {
             let mut v = wins.to_vec();
-            v.sort();
+            v.sort_unstable();
             v.dedup();
             v.into_iter().map(|r| (r, 1.0)).collect()
         } else {
@@ -1183,13 +1188,13 @@ impl<'a> Env<'a> {
     }
     fn pair(&self, a: Option<usize>, b: Option<usize>) -> f64 {
         match (a, b) {
-            (Some(a), Some(b)) => self.d.pair[a][b] as f64,
+            (Some(a), Some(b)) => f64::from(self.d.pair[a][b]),
             _ => 0.0,
         }
     }
     fn tri(&self, a: Option<usize>, b: Option<usize>, c: Option<usize>) -> f64 {
         match (a, b, c) {
-            (Some(a), Some(b), Some(c)) => self.d.tri[a][b][c] as f64,
+            (Some(a), Some(b), Some(c)) => f64::from(self.d.tri[a][b][c]),
             _ => 0.0,
         }
     }
@@ -1242,7 +1247,7 @@ impl<'a> Env<'a> {
         self.walk_slots(p, y, iv, &RelOf { env: self, p, t }, &mut acc);
         let fa = acc.her?;
         let (q0, nc0) = acc.finish();
-        let xm = |st: u8| insp_miss2(st as f64, fa);
+        let xm = |st: u8| insp_miss2(f64::from(st), fa);
         Some(HerSlot {
             x0: self.uncv.iter().map(|&i| 1.0 - q0[i]).collect(),
             xms: [1.0, xm(1), xm(2), xm(3)],
@@ -1258,7 +1263,7 @@ impl<'a> Env<'a> {
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
     fn set_trainee(&mut self, t: usize, q: &[f64]) {
-        set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, q)
+        set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
     fn ents_of(&self, sel: &Sel) -> Vec<(&Src, Kind)> {
@@ -1402,7 +1407,7 @@ impl<'a> Env<'a> {
                         continue;
                     }
                     match w.mix {
-                        None => self.miss[k] *= insp_miss(s as f64, fa),
+                        None => self.miss[k] *= insp_miss(f64::from(s), fa),
                         Some(m) => self.mix2[k] *= mix_term(m, fa),
                     }
                 }
@@ -1499,7 +1504,7 @@ impl<'a> Env<'a> {
                 return (1.0, 1.0);
             }
             match mix {
-                None => (insp_miss(st as f64, fa), 1.0),
+                None => (insp_miss(f64::from(st), fa), 1.0),
                 Some(w) => (1.0, mix_term(w, fa)),
             }
         }
@@ -1675,7 +1680,7 @@ impl<'a> Env<'a> {
                         .collect()
                 })
                 .collect();
-            let mut nq = vec![0.0f64; ft.iter().map(|f| f.len()).max().unwrap_or(0)];
+            let mut nq = vec![0.0f64; ft.iter().map(std::vec::Vec::len).max().unwrap_or(0)];
             let cx = Cx {
                 p,
                 pairs: &pairs,
@@ -1774,7 +1779,7 @@ impl<'a> Env<'a> {
             std::mem::replace(&mut self.cert, f64::INFINITY),
             self.overflows,
             self.space.nodes.get(),
-            crate::deck::JCOUNT.with(|c| c.get()),
+            crate::deck::JCOUNT.with(std::cell::Cell::get),
             self.cfs,
         );
         // (the call's own per-class maxima, from nothing, then merged into the job's: see the hit above)
@@ -1806,7 +1811,7 @@ impl<'a> Env<'a> {
                     overflows: self.overflows - o0,
                     cf: self.cfs.since(&f0),
                     nodes: self.space.nodes.get() - n0,
-                    joints: crate::deck::JCOUNT.with(|c| c.get()) - j0,
+                    joints: crate::deck::JCOUNT.with(std::cell::Cell::get) - j0,
                     ratio,
                     job: self.job,
                 },
@@ -1860,7 +1865,7 @@ impl<'a> Env<'a> {
             self.cert,
             self.overflows,
             self.space.nodes.get(),
-            crate::deck::JCOUNT.with(|c| c.get()),
+            crate::deck::JCOUNT.with(std::cell::Cell::get),
         );
         let mut sc = 0usize;
         let r = self.best_deck_cf(t, c, th, starts, &mut sc, prod.clone(), None);
@@ -1933,28 +1938,25 @@ impl<'a> Env<'a> {
         let uid = self.d.umas[t].id;
         let budget = cf_budget();
         let mut work = 0usize;
-        let (pv, sel) = match prod {
-            Some(x) => x,
-            None => {
-                let n0 = self.space.nodes.get();
-                let SearchOutcome { decks: r, incomplete } = self.space.search(
-                    &self.model,
-                    &[t],
-                    &[uid],
-                    &[(vec![(0, 0.0)], 0.0)],
-                    SearchMode::Best { seed: f64::NEG_INFINITY },
-                );
-                work += 2 * (self.space.nodes.get() - n0) + 10_000;
-                // (a `cap_free` job records no product proof: `solve` and the plan bound with those through EXACT_RHO)
-                self.last_pv =
-                    if incomplete.is_some() || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
-                match r.into_iter().next() {
-                    Some(x) => x,
-                    None => {
-                        self.cfs.work += work;
-                        return DeckRes::NoDeck;
-                    }
-                }
+        let (pv, sel) = if let Some(x) = prod {
+            x
+        } else {
+            let n0 = self.space.nodes.get();
+            let SearchOutcome { decks: r, incomplete } = self.space.search(
+                &self.model,
+                &[t],
+                &[uid],
+                &[(vec![(0, 0.0)], 0.0)],
+                SearchMode::Best { seed: f64::NEG_INFINITY },
+            );
+            work += 2 * (self.space.nodes.get() - n0) + 10_000;
+            // (a `cap_free` job records no product proof: `solve` and the plan bound with those through EXACT_RHO)
+            self.last_pv = if incomplete.is_some() || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
+            if let Some(x) = r.into_iter().next() {
+                x
+            } else {
+                self.cfs.work += work;
+                return DeckRes::NoDeck;
             }
         };
         let score =
@@ -2111,7 +2113,7 @@ impl<'a> Env<'a> {
             );
             crate::deck::SB_ON.with(|c| c.set(false));
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
-            let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;
+            let nocap = crate::deck::SB_USED.with(std::cell::Cell::get) == 2;
             self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
             if incomplete.is_some() {
                 self.overflows += 1;
@@ -2240,16 +2242,16 @@ impl<'a> Env<'a> {
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
         let thr = |done: &[(f64, usize, Sel)], cands: &[Cand], t: usize| {
-            if !per_trainee {
-                kth(done)
-            } else {
+            if per_trainee {
                 done.iter().find(|x| cands[x.1].t as usize == t).map_or(kth(done), |x| x.0.max(kth(done)))
+            } else {
+                kth(done)
             }
         };
         // per trainee, her fully checked candidates (`Ref`: chances, exact best value before the spark scale, deck)
         let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
         // per trainee, where this search's own entries in `ruled` start
-        let ruled0: Vec<usize> = self.ruled.iter().map(|r| r.len()).collect();
+        let ruled0: Vec<usize> = self.ruled.iter().map(std::vec::Vec::len).collect();
         // dominated veterans (`dominates`): per legacy y, the legacies x at least as good in every career; and the
         // candidates this search took and did not solve (bounded, no deck)
         // (only veterans of one character can dominate each other: `dominates` tests the characters first, so the other
@@ -2500,7 +2502,7 @@ impl<'a> Env<'a> {
                 if st == 0 {
                     continue;
                 }
-                sum[k] += st as u32;
+                sum[k] += u32::from(st);
                 fire.push(PinkFire { apt: k, p: pink_p(st, aff_factor(sl.rel, sl.race)), slot: si, stars: st });
             }
         }
@@ -2572,7 +2574,7 @@ impl<'a> Env<'a> {
                 for &(gd, wd) in &dist[kd][ph] {
                     for &(gs, ws) in &dist[ks][ph] {
                         let bp = (110 - cost(gd) - cost(gs)).max(-20);
-                        ebp[tt][o] += wd * ws * bp as f64;
+                        ebp[tt][o] += wd * ws * f64::from(bp);
                         for k in 1..=6 {
                             pr[k] += wd * ws * pk(d, bp, k);
                         }
@@ -2655,7 +2657,7 @@ impl<'a> Env<'a> {
                 let par = [won(a, r) > 0.0, won(b, r) > 0.0];
                 // win chance and aptitude cost (distance + surface grade costs, as 110 - bp; expected) with her pinks
                 let pw = u.ent[tt][o + 1].p;
-                let apt = pu.as_ref().map_or((110 - op.bp) as f64, |x| 110.0 - x.1[tt][o]).round() as i64;
+                let apt = pu.as_ref().map_or(f64::from(110 - op.bp), |x| 110.0 - x.1[tt][o]).round() as i64;
                 let cell = if run {
                     json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": d.pen.get(k.max(1) - 1).copied().unwrap_or(0)})
                 } else {
@@ -2663,7 +2665,7 @@ impl<'a> Env<'a> {
                 };
                 rows.push(json!({"turn": tt, "when": when(tt), "year": tt / 24, "race": chart_race_name(&d.race_names[r]), "name": d.race_names[r],
                                  "run": run, "skipped": !run, "instead": instead, "p": if run { json!(pw[k]) } else { Value::Null }, "goal": op.goal,
-                                 "parents": par, "shared": par[0] || par[1], "cells": [cell], "runners": run as u8, "alts": []}));
+                                 "parents": par, "shared": par[0] || par[1], "cells": [cell], "runners": u8::from(run), "alts": []}));
             }
         }
         (Value::Array(rows), wp)
@@ -2697,8 +2699,7 @@ impl<'a> Env<'a> {
             .filter(|(lv, i)| **lv > 0 && !(**lv == 1 && sj.targets[**i].guaranteed == 1))
             .map(|(lv, i)| json!({"group": sj.targets[*i].group, "level": lv}))
             .collect();
-        let default_st: Vec<u8> =
-            self.uncv.iter().map(|&i| if sj.targets[i].guaranteed == 1 { 1 } else { 0 }).collect();
+        let default_st: Vec<u8> = self.uncv.iter().map(|&i| u8::from(sj.targets[i].guaranteed == 1)).collect();
         let outfits = if *st == default_st {
             vec![]
         } else {
@@ -2739,7 +2740,7 @@ impl<'a> Env<'a> {
         let pd = self.space.pdeck(&f.sel, &[uid]);
         // pink sparks: per aptitude the chance at least one of the two inheritance rolls passes it on (1/3/5% per star)
         let mut pg: Vec<u32> = sl.iter().flat_map(|s| s.pinks.iter().map(|x| x.0)).collect();
-        pg.sort();
+        pg.sort_unstable();
         pg.dedup();
         let pinks: Vec<Value> = pg
             .iter()
@@ -3074,7 +3075,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         memo_fp,
         job,
         cls: (0..n).collect(),
-        max_bor: if cj.borrowed_parent == BorrowedParent::Never { 0 } else { 1 },
+        max_bor: u8::from(cj.borrowed_parent != BorrowedParent::Never),
     };
     // deck classes: the key holds everything of a trainee the deck search reads (outfit coverage, own-skill chances to
     // the bit, `dmax`, the relevant cards she may not take, how many plain pals she may)
@@ -3085,7 +3086,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             let mut k: Vec<u64> = vec![];
             for o in &env.sts0[u] {
                 k.push(o.len() as u64);
-                k.extend(o.iter().map(|&x| x as u64));
+                k.extend(o.iter().map(|&x| u64::from(x)));
             }
             k.push(u64::MAX);
             for o in &env.ew0[u] {
@@ -3123,7 +3124,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
             if c.len() > 4 {
                 c.remove(0);
             }
-        })
+        });
     };
     if let Some(sm) = &cj.simulate {
         return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm);
@@ -3156,7 +3157,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let key_of = |drop: &[&str]| setup_hash(&json_without(v, drop, &[]));
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
     // search was kept from the job before
-    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
+    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
     let sv = solve_kept(
         &mut env,
         key_of(&["next", "no_reports"]),
@@ -3167,7 +3168,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         cj.top,
     );
     let search_work =
-        json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - sj0});
+        json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - sj0});
     env.use_seen = true;
     if std::env::var("CAREER_WORK").is_ok() {
         eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
@@ -3530,7 +3531,7 @@ mod tests {
             let u = used.clone();
             ENV_HOOK.with(|c| {
                 *c.borrow_mut() =
-                    Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.seen.iter().any(|r| !r.is_empty()))))
+                    Some(Box::new(move |env: &mut Env, _: &Pool| u.set(env.seen.iter().any(|r| !r.is_empty()))));
             });
             let mut job = v.clone();
             job.as_object_mut().unwrap().remove("next");

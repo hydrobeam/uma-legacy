@@ -1,5 +1,8 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use super::*;
+use super::{
+    AUDIT_CAP, Card, CardsRaw, DeckJob, EXACT_CAP, EXACT_CAPS, Entries, Group, HashMap, Kind, Model, Name, PDeck,
+    SbCfg, SkillsRaw, Sources, Src, cap_class, chain_marginals, cv_mask, src_miss, test_caps,
+};
 
 thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = const { std::cell::Cell::new((0, 0.0, 0)) }; pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = const { std::cell::Cell::new((0.0, 0.0, 0, 0)) }; }
 /// Every legal deck of one trainee, without the skyline's pruning (which compares product odds only). Used to make
@@ -186,7 +189,7 @@ impl<'a> DeckSpace<'a> {
             }
             keep.extend(pick);
         }
-        keep.sort();
+        keep.sort_unstable();
         keep
     }
     /// (reduced entries, an id per distinct list for other caches): trainees whose lists are equal (a deck class) share
@@ -231,7 +234,7 @@ impl<'a> DeckSpace<'a> {
             for t in 0..nu {
                 a.clear();
                 b.clear();
-                for &j in l.iter() {
+                for &j in *l {
                     top_asc(&mut a, size, mw[j * nu + t]);
                     top_asc(&mut b, size, mg[j * nu + t]);
                 }
@@ -322,7 +325,7 @@ impl<'a> DeckSpace<'a> {
         if self.dj.cap_audit { [AUDIT_CAP; 4] } else { test_caps().unwrap_or(EXACT_CAPS) }
     }
     /// most decks one band search may return: EXACT_CAP, ten times that under `cap_audit` (its bands are far larger)
-    pub(crate) fn band_cap(&self) -> usize {
+    pub(crate) const fn band_cap(&self) -> usize {
         if self.dj.cap_audit { 10 * EXACT_CAP } else { EXACT_CAP }
     }
     /// the highest class cap (EXACT_RHO unless `cap_audit`)
@@ -354,13 +357,13 @@ impl<'a> DeckSpace<'a> {
                 let mut n = c.name.clone();
                 let lb = srcb.label(c, (e > 0).then_some(e), self.vark[j], self.sk);
                 if !lb.is_empty() {
-                    n = format!("{} ({})", n, lb);
+                    n = format!("{n} ({lb})");
                 }
                 if e > 0 {
-                    n = format!("{} (end chain at link {})", n, e);
+                    n = format!("{n} (end chain at link {e})");
                 }
                 if Some(self.rel[j]) == borrowed {
-                    n = format!("{} (borrowed)", n);
+                    n = format!("{n} (borrowed)");
                 }
                 n
             })
@@ -418,7 +421,7 @@ const _: () = assert!(6 * 7u128.pow(MAX_KINDS as u32 - 1) <= u64::MAX as u128 &&
 pub(super) fn kinds_all(kind: &[Kind]) -> Vec<Kind> {
     let mut kinds: Vec<Kind> = kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
     kinds.push((2, 2, 0));
-    kinds.sort();
+    kinds.sort_unstable();
     kinds.dedup();
     kinds
 }
@@ -447,7 +450,7 @@ pub(super) fn deck_space<'a>(
         cvm: e.srcs.iter().map(cv_mask).collect(),
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
         locked: e.locked.clone(),
-        allowed_borrow: if dj.borrow { 1 } else { 0 },
+        allowed_borrow: usize::from(dj.borrow),
         kinds_all,
         keys: Default::default(),
         red: Default::default(),
@@ -488,7 +491,7 @@ pub(super) struct GTab {
     data: Vec<f64>,
 }
 impl GTab {
-    pub(super) fn new(ngroups: usize, need: u64, block_len: usize) -> GTab {
+    pub(super) fn new(ngroups: usize, need: u64, block_len: usize) -> Self {
         let mut stored_groups = 0u32;
         let slot: Vec<u32> = (0..ngroups)
             .map(|group| {
@@ -500,7 +503,7 @@ impl GTab {
                 }
             })
             .collect();
-        GTab { slot, block_len, data: vec![1.0; stored_groups as usize * block_len] }
+        Self { slot, block_len, data: vec![1.0; stored_groups as usize * block_len] }
     }
     /// Group's packed block; the caller must have included the group in `need`.
     #[inline(always)]

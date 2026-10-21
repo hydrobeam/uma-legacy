@@ -1,6 +1,9 @@
 //! Target sources of a deck entry: outcome groups, training hints and chain links per card, the event data merged into
 //! a job, and the deck entries of a job.
-use super::*;
+use super::{
+    Card, CardsRaw, DeckJob, Kind, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SkillsRaw, Value, hint_base, hint_miss,
+    hint_spec, json, kinds_all, scenario_name, stop_risk_code,
+};
 
 /// One random event outcome per firing: (chance, target rewards (target, 1 white | 2 gold)) per outcome. The chances
 /// sum to at most 1 (the rest gives nothing); a reward with chance p on its own is [(p, [(k, lvl)])].
@@ -18,12 +21,11 @@ pub(super) fn group_gh(group: &Group) -> Vec<(usize, f64, f64)> {
             }
         }
         for (target, level) in best_levels {
-            let marginal = match marginals.iter().position(|entry| entry.0 == target) {
-                Some(i) => &mut marginals[i],
-                None => {
-                    marginals.push((target, 0.0, 0.0));
-                    marginals.last_mut().unwrap()
-                }
+            let marginal = if let Some(i) = marginals.iter().position(|entry| entry.0 == target) {
+                &mut marginals[i]
+            } else {
+                marginals.push((target, 0.0, 0.0));
+                marginals.last_mut().unwrap()
             };
             if level >= 2 {
                 marginal.1 += probability;
@@ -56,7 +58,7 @@ pub(super) fn group_assoc(g: &Group) -> bool {
         return true;
     }
     let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
-    ts.sort();
+    ts.sort_unstable();
     ts.dedup();
     if ts.len() != 2 {
         return false;
@@ -88,7 +90,7 @@ pub(super) fn group_nuod(g: &Group) -> bool {
         return r;
     }
     let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
-    ts.sort();
+    ts.sort_unstable();
     ts.dedup();
     // Exhaustive checking is exponential. An unchecked group is not a proof of negative dependence;
     // decline the bound before constructing masks, which also avoids shifts beyond the mask width.
@@ -116,7 +118,7 @@ pub(super) fn group_nuod(g: &Group) -> bool {
 /// targets: the same test; single-target outcomes: every joint term is 0). Over 6 targets: not checked (false).
 pub(super) fn group_nuod_lvl(g: &Group) -> bool {
     let mut ts: Vec<usize> = g.iter().flat_map(|(_, o)| o.iter().map(|x| x.0)).collect();
-    ts.sort();
+    ts.sort_unstable();
     ts.dedup();
     if ts.len() < 2 {
         return true;
@@ -184,12 +186,11 @@ impl Src {
         let mut cm: Vec<(usize, Vec<(u8, f64, f64)>)> = vec![];
         for (l, g) in &self.chains {
             for (k, pg, ph) in group_gh(g) {
-                let e = match cm.iter().position(|x| x.0 == k) {
-                    Some(i) => &mut cm[i].1,
-                    None => {
-                        cm.push((k, vec![]));
-                        &mut cm.last_mut().unwrap().1
-                    }
+                let e = if let Some(i) = cm.iter().position(|x| x.0 == k) {
+                    &mut cm[i].1
+                } else {
+                    cm.push((k, vec![]));
+                    &mut cm.last_mut().unwrap().1
                 };
                 match e.last_mut() {
                     Some(x) if x.0 == *l => {
@@ -208,7 +209,7 @@ impl Src {
         self.cf_ok = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).all(group_nuod_lvl);
         self
     }
-    pub(super) fn is_empty(&self) -> bool {
+    pub(super) const fn is_empty(&self) -> bool {
         self.train.is_empty() && self.fixed.is_empty() && self.chains.is_empty()
     }
 }
@@ -384,7 +385,7 @@ pub(super) struct Sources<'a> {
     pub(super) dj: &'a DeckJob,
     pub(super) unc: &'a [u32],
 }
-impl<'a> Sources<'a> {
+impl Sources<'_> {
     pub(super) fn ev_for(&self, id: u32) -> Vec<(usize, u8, u8, f64)> {
         let unc = self.unc;
         let mut v: Vec<(usize, u8, u8, f64)> = self
@@ -453,7 +454,7 @@ impl<'a> Sources<'a> {
     /// early-end options: links where a card has a choice that ends its chain, and the target rewards of that choice
     pub(super) fn end_links(&self, id: u32) -> Vec<u8> {
         let mut v: Vec<u8> = self.dj.end_links.iter().filter(|e| e.0 == id).map(|e| e.1).collect();
-        v.sort();
+        v.sort_unstable();
         v.dedup();
         v
     }
@@ -489,7 +490,7 @@ impl<'a> Sources<'a> {
                                 self.unc.iter().position(|&target| target == group).map(|k| (k, level))
                             })
                             .collect();
-                        rewards.sort();
+                        rewards.sort_unstable();
                         rewards.dedup();
                         let probability = weights
                             .and_then(|weights| weights.get(choice_index))
@@ -529,7 +530,7 @@ impl<'a> Sources<'a> {
                 .collect(),
         )
     }
-    pub(super) fn in_range(link: u8, stop: Option<u8>) -> bool {
+    pub(super) const fn in_range(link: u8, stop: Option<u8>) -> bool {
         match stop {
             Some(st) => link < st,
             None => true,
@@ -550,7 +551,7 @@ impl<'a> Sources<'a> {
                 (n >= 2).then_some((a.1, n))
             })
             .collect();
-        v.sort();
+        v.sort_unstable();
         v.dedup();
         v
     }
@@ -593,7 +594,7 @@ impl<'a> Sources<'a> {
         if !c.pal {
             let vl = self.var_links(c, stop);
             let mut ls = alt_links.clone();
-            ls.sort();
+            ls.sort_unstable();
             ls.dedup();
             for l in ls {
                 if !Self::in_range(l, stop) {
@@ -773,7 +774,7 @@ pub(super) fn deck_entries<'a>(
     }
     if dj.borrow {
         let mut seen: Vec<u32> = vec![];
-        for c in cards.iter() {
+        for c in &cards {
             if !c.pal
                 || is_owned(c.id)
                 || plain_chars.contains(&c.chara)
@@ -798,7 +799,7 @@ pub(super) fn deck_entries<'a>(
         }
     }
     let mut locked: Vec<usize> = rel.iter().copied().filter(|&r| dj.lock_cards.contains(&cards[r].id)).collect();
-    locked.sort();
+    locked.sort_unstable();
     locked.dedup();
     if locked.len() > dj.deck_size {
         return Err(

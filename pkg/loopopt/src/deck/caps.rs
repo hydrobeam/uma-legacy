@@ -1,5 +1,5 @@
 //! The assumed caps on exact over product odds, per deck structure class, and the exact search's budgets.
-use super::*;
+use super::Src;
 
 /// Assumed caps on a deck's exact odds over its product odds, by the deck's structure class (`cap_class`): decks and
 /// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Chain
@@ -34,7 +34,7 @@ pub(super) fn cv_mask(source: &Src) -> u64 {
 /// The structure class of a deck from its entries' `cv_mask`s ORed (or of every deck a search node can still reach,
 /// from the masks of its cards and of every candidate left): 0 at most one chain-varying target, 1 two, 2 three, 3 four
 /// or more or a multi-target group.
-pub(crate) fn cap_class(mask: u64) -> usize {
+pub(crate) const fn cap_class(mask: u64) -> usize {
     if mask >> 63 != 0 {
         return 3;
     }

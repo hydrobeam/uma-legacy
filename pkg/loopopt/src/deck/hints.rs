@@ -63,7 +63,8 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
                 let mut next_counts = counts.clone();
                 next_counts[draws_taken] -= 1;
                 next_counts[draws_taken + 1] += 1;
-                *next_states.entry(next_counts).or_insert(0.0) += probability * counts[draws_taken] as f64 / available;
+                *next_states.entry(next_counts).or_insert(0.0) +=
+                    probability * f64::from(counts[draws_taken]) / available;
             }
         }
         states = next_states;

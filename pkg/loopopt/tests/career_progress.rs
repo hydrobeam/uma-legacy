@@ -14,7 +14,7 @@ fn run(job: &Value) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 fn rand_tag(job: &Value) -> u64 {
-    job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64))
+    job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)))
 }
 
 /// The weak pool (each veteran keeps about half the target sparks): the landed-set distribution agrees with the

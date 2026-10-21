@@ -3,7 +3,7 @@
 //! (derived; `corners`), so 2^nu exact evaluations per (trainee, deck) give it at any chances. Decks come from the
 //! searches' fully checked decks (`Ref`, also kept for `rise`) and from deck searches where a bound says the cached
 //! decks may fall short.
-use super::*;
+use super::{Env, Ref, Sel};
 
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
@@ -22,11 +22,11 @@ pub(super) struct Cache {
 
 impl Cache {
     pub(super) fn n_decks(&self) -> usize {
-        self.decks.iter().map(|decks| decks.len()).sum()
+        self.decks.iter().map(std::vec::Vec::len).sum()
     }
 
-    pub(super) fn new(trainees: usize) -> Cache {
-        Cache { decks: (0..trainees).map(|_| vec![]).collect(), refs: vec![vec![]; trainees], tables: 0 }
+    pub(super) fn new(trainees: usize) -> Self {
+        Self { decks: (0..trainees).map(|_| vec![]).collect(), refs: vec![vec![]; trainees], tables: 0 }
     }
 
     /// Cache a trainee's deck and corner tables, unless that selection is already present.

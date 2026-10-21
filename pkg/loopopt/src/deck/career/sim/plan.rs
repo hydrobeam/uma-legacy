@@ -1,7 +1,10 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
-use super::*;
+use super::{
+    Ancestor, Bar, CardsRaw, Cur, Data, DeckRes, Deserialize, Env, Found, FxMap, HerSlot, Legacy, PROF, Pool, Ref, Sel,
+    Sim, SimJob, SkillJob, SkillsRaw, Solved, Value, holds_fix, json, now_ms, prof, progress, rise_factor,
+};
 
 /// A cached result may be available from searching, certification or reuse. A known empty result is
 /// reusable too; an unsearched entry still needs work. Completeness is tracked separately.
@@ -12,12 +15,12 @@ enum CachedSearch {
 }
 
 impl CachedSearch {
-    fn is_unsearched(&self) -> bool {
+    const fn is_unsearched(&self) -> bool {
         matches!(self, Self::Unsearched)
     }
 
     /// The found career, if any. Callers deciding whether to search must use `is_unsearched` instead.
-    fn found(&self) -> Option<&Found> {
+    const fn found(&self) -> Option<&Found> {
         match self {
             Self::Unsearched => None,
             Self::Known(found) => found.as_ref(),
@@ -220,7 +223,7 @@ fn sver(s: &Sim, us: Option<&[usize]>) -> (usize, usize, usize) {
         Some(trainees) => trainees.iter().fold((0, 0), |(decks, proofs), &trainee| {
             (decks + s.cache.decks[trainee].len(), proofs + s.cache.refs[trainee].len())
         }),
-        None => (s.cache.n_decks(), s.cache.refs.iter().map(|refs| refs.len()).sum()),
+        None => (s.cache.n_decks(), s.cache.refs.iter().map(std::vec::Vec::len).sum()),
     };
     (decks, proofs, s.n.searches)
 }
@@ -252,10 +255,10 @@ fn same_career(f: &Found, g: &Found) -> bool {
         && bits(&f.sel.dw, &g.sel.dw)
         && bits(&f.sel.dg, &g.sel.dg)
 }
-fn p_margin() -> f64 {
+const fn p_margin() -> f64 {
     1e9
 }
-fn p_swork() -> usize {
+const fn p_swork() -> usize {
     5_000_000
 }
 
@@ -464,7 +467,7 @@ struct RowScoring {
 }
 
 impl PlanRow {
-    fn new(
+    const fn new(
         trainee: usize,
         career: Found,
         lift_stats: Vec<(f64, f64)>,
@@ -567,7 +570,7 @@ fn loop_ceiling(
     s.env.pool_push(&mut p, &mk(b1, b2, u));
     s.env.pool_push(&mut p, &mk(b2, b1, u));
     let n = p.me.len();
-    let v = if !legal_pair(d, &p, u, n - 2, n - 1) { 0.0 } else { val(s, &p, u, n - 2, n - 1, buf) };
+    let v = if legal_pair(d, &p, u, n - 2, n - 1) { val(s, &p, u, n - 2, n - 1, buf) } else { 0.0 };
     s.env.pool_pop(&mut p);
     s.env.pool_pop(&mut p);
     s.put_pool(pool, p);
@@ -723,7 +726,7 @@ impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
     // (`PLAN_MEMO_CAP`: another cap, for the test: entries kept long enough to be read after a refit)
     fn new(kind: usize) -> Self {
         let e = memo_env();
-        Memo { map: FxMap::default(), look: 0, hit: 0, off: e.0, kind, cap: e.2 }
+        Self { map: FxMap::default(), look: 0, hit: 0, off: e.0, kind, cap: e.2 }
     }
     #[inline]
     fn get_or(&mut self, k: impl FnOnce() -> K, f: impl FnOnce() -> V) -> V {
@@ -764,7 +767,7 @@ impl<K, V> Drop for Memo<K, V> {
             let mut s = c.get();
             s[3 * self.kind] += self.look;
             s[3 * self.kind + 1] += self.hit;
-            s[3 * self.kind + 2] += self.off as u64;
+            s[3 * self.kind + 2] += u64::from(self.off);
             c.set(s);
         });
     }
@@ -840,7 +843,7 @@ fn cont_memo() -> std::rc::Rc<ContMemo> {
 }
 impl Default for Cont {
     fn default() -> Self {
-        Cont { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: cont_memo() }
+        Self { lam: 0.0, phi: 0.0, pinf: 0.0, tab: Default::default(), memo: cont_memo() }
     }
 }
 /// `plan`'s cap on successes before grinding
@@ -849,7 +852,7 @@ const CONT_N: usize = 500;
 const CEIL_SHARE: f64 = 0.6;
 const LAM_DECAY: f64 = 1.5;
 impl Cont {
-    fn new(lam: f64, phi: f64, pinf: f64) -> Cont {
+    fn new(lam: f64, phi: f64, pinf: f64) -> Self {
         let r = 1.0 - phi;
         let mut tab = Vec::with_capacity(CONT_N + 1);
         let mut built = 0.0f64;
@@ -858,7 +861,7 @@ impl Cont {
             tab.push((b, r.powi(n)));
             built = b;
         }
-        Cont { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
+        Self { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
     }
     /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
     /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
@@ -1016,7 +1019,7 @@ fn her_trios(
         if d.umas[pu].id == her_id {
             continue;
         }
-        for (real, leg) in bs.sides.get(ib).map_or(&[][..], |v| &v[..]) {
+        for (real, leg) in bs.sides.get(ib).map_or(&[][..], |v| &**v) {
             s.env.pool_push(p8, leg);
             // (C ranges over the trainees on one pair: `lineage` and `ceiling` per trainee, not `gen_cands`, whose
             // per-trainee tables cover every legacy of the pool: on p16 +4.5% instructions in all)
@@ -1748,12 +1751,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 let rx = rr << nf | fm;
                 if S {
                     let s0 = lb[rx];
-                    if s0 != u32::MAX {
-                        for &(ui, upv) in lf[s0 as usize..].iter().take_while(|e| e.0 != usize::MAX) {
-                            stats[ui].0 += pr;
-                            stats[ui].1 += pr * upv;
-                        }
-                    } else {
+                    if s0 == u32::MAX {
                         let ur = sc_row::<PL, L>(o, rr, m, fm, &mut ubuf);
                         for ((&upv, &th), &ui) in ur.iter().zip(ths).zip(uis) {
                             if upv > th {
@@ -1766,6 +1764,11 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                                 stats[ui].0 += pr;
                                 stats[ui].1 += pr * pn;
                             }
+                        }
+                    } else {
+                        for &(ui, upv) in lf[s0 as usize..].iter().take_while(|e| e.0 != usize::MAX) {
+                            stats[ui].0 += pr;
+                            stats[ui].1 += pr * upv;
                         }
                     }
                 }
@@ -2223,8 +2226,8 @@ pub(super) struct OneLeaf {
     n: usize,
 }
 impl OneLeaf {
-    fn new(leaf: usize, rep: usize) -> OneLeaf {
-        if rep == leaf { OneLeaf { ls: [leaf, leaf], n: 1 } } else { OneLeaf { ls: [rep, leaf], n: 2 } }
+    const fn new(leaf: usize, rep: usize) -> Self {
+        if rep == leaf { Self { ls: [leaf, leaf], n: 1 } } else { Self { ls: [rep, leaf], n: 2 } }
     }
 }
 impl Leaves for OneLeaf {
@@ -2236,7 +2239,7 @@ impl Leaves for OneLeaf {
         &self.ls[..self.n]
     }
     fn row(&self, l: usize) -> usize {
-        if l == self.ls[0] { 0 } else { 1 }
+        usize::from(l != self.ls[0])
     }
     fn nrows(&self, _: usize) -> usize {
         self.n
@@ -2287,7 +2290,7 @@ struct FoldCx<'f, L: Leaves> {
 }
 impl<L: Leaves> FoldCx<'_, L> {
     /// her star levels folded on target k
-    fn sgs(&self, k: usize) -> &[usize] {
+    const fn sgs(&self, k: usize) -> &[usize] {
         if self.col[k] { &self.two } else { &[0, 1, 2, 3] }
     }
     /// level k's tables (level 0 the kept ones)
@@ -2437,7 +2440,7 @@ fn fold_rec<L: Leaves>(
         }
         {
             let (lo, hi) = lv.split_at_mut(k + 1);
-            let (t, f) = (if k == 0 { cx.t0 } else { &lo[k][..] }, &mut hi[0]);
+            let (t, f) = (if k == 0 { cx.t0 } else { &*lo[k] }, &mut hi[0]);
             for (j, &si) in cx.tsi.iter().enumerate() {
                 let (x, c) = (cx.xs[si][k][sg], cx.xc[si][k][sg]);
                 let (tj, fj) = (&t[2 * h * j..2 * h * (j + 1)], &mut f[h * j..h * (j + 1)]);
@@ -2533,8 +2536,8 @@ struct AncBb {
 }
 const BB_SLACK: f64 = 1.0 - 1e-12;
 impl AncBb {
-    fn new() -> Self {
-        AncBb { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0, sparse: false, acc: vec![] }
+    const fn new() -> Self {
+        Self { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0, sparse: false, acc: vec![] }
     }
     /// bd per leaf (level nu of `tmax`)
     fn bd(&self) -> &[f64] {
@@ -2612,7 +2615,7 @@ impl AncBb {
                 }
             }
         }
-        for c in bd.iter_mut() {
+        for c in &mut bd {
             *c = nan_inf(rf * *c);
         }
         for &l in &mk.unm {
@@ -3506,15 +3509,15 @@ impl Scored {
             self.scf.extend(self.pw.iter().map(|pw| (0..ntar).map(|k| pw[k][(m >> k) & 1]).product::<f64>()));
         }
     }
-    fn ns(&self) -> usize {
+    const fn ns(&self) -> usize {
         self.x0.len()
     }
     /// the fold writes per leaf the setups' table values (fewer rows than per outcome and slot), else per outcome the
     /// slots' odds (`fold_emit`)
-    fn pl(&self) -> bool {
+    const fn pl(&self) -> bool {
         (1usize << self.nf) * self.na > self.ns()
     }
-    fn full_m(&self) -> usize {
+    const fn full_m(&self) -> usize {
         (1usize << self.ntar) - 1
     }
     /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`sc_outcomes`)
@@ -3536,8 +3539,8 @@ struct KeptBase {
     m23: Vec<f64>,
 }
 impl KeptBase {
-    fn of(bs: &ScoreBase) -> KeptBase {
-        KeptBase {
+    fn of(bs: &ScoreBase) -> Self {
+        Self {
             cands: bs.cands.to_vec(),
             c1: bs.c1.to_vec(),
             v0: bs.v0,
@@ -3775,7 +3778,7 @@ pub(in super::super) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 pw,
                 tsi: uv(&s["tsi"])?,
                 t0: fvec_r(&s["t0"])?,
-                col: s["col"].as_array()?.iter().map(|c| c.as_bool()).collect::<Option<_>>()?,
+                col: s["col"].as_array()?.iter().map(serde_json::Value::as_bool).collect::<Option<_>>()?,
                 sslot: uv(&s["sslot"])?,
                 p0: fvec_r(&s["p0"])?,
                 os: pvec_r(&s["os"])?,
@@ -3892,7 +3895,7 @@ pub(in super::super) fn index_rule<'a>(
     // (first in, dropped last: after every memo of this plan)
     let _memo_report = MemoReport;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
-    let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(|c| c.get()));
+    let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
     // the loop planner's members only when the job names them (`loop_members`, an override; the plan no longer runs the
     // loop planner's search itself: on the val/plan pools its members always entered the candidates by the routes below)
     let (members, minfo, mwhy) = match &pj.loop_members {
@@ -3905,7 +3908,7 @@ pub(in super::super) fn index_rule<'a>(
     let mut cands: Vec<usize> = vec![g.t];
     let push = |u: usize, c: &mut Vec<usize>| {
         if !c.contains(&u) && trainees.contains(&u) {
-            c.push(u)
+            c.push(u);
         }
     };
     for &m in &members {
@@ -3997,7 +4000,7 @@ pub(in super::super) fn index_rule<'a>(
         }
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
-    let cache0 = if pj.proxy_check { Some(s.cache.clone()) } else { None };
+    let cache0 = pj.proxy_check.then(|| s.cache.clone());
     let mut buf = vec![];
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut sur_diff: Vec<Value> = vec![];
@@ -4199,7 +4202,7 @@ pub(in super::super) fn index_rule<'a>(
             if add.is_empty() {
                 break;
             }
-            add.sort();
+            add.sort_unstable();
             let ts = now_ms();
             for i in add {
                 let x = runs[i].trainee;
@@ -4219,7 +4222,7 @@ pub(in super::super) fn index_rule<'a>(
                         &mut unp,
                         x,
                         &mut buf,
-                        Some((&ri.career, &ri.lift_stats[..], runs[i].stats_stamp)),
+                        Some((&ri.career, (&*ri.lift_stats), runs[i].stats_stamp)),
                     )
                 };
                 if let Some((f, st)) = r {
@@ -4435,13 +4438,13 @@ pub(in super::super) fn index_rule<'a>(
     let combos_of = |s: &mut Sim, c1: &[f64], buf: &mut Vec<f64>| -> Vec<(usize, usize, f64, usize, bool, bool)> {
         let hyp8: Vec<Option<Legacy>> = (0..n)
             .map(|ui| {
-                if !c1[ui].is_finite() {
-                    None
-                } else {
+                if c1[ui].is_finite() {
                     fb[ui].as_ref().map(|f| {
                         let wp = s.wins(pool, cands[ui], f.a, f.b);
                         s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec())
                     })
+                } else {
+                    None
                 }
             })
             .collect();
@@ -4474,7 +4477,7 @@ pub(in super::super) fn index_rule<'a>(
                     for &(ra, x) in &xs {
                         for &(rb, y) in &ys {
                             if legal_pair(d, &p8, c, x, y) {
-                                let k = (ra as usize) * 2 + rb as usize;
+                                let k = usize::from(ra) * 2 + usize::from(rb);
                                 let v = val(s, &p8, c, x, y, buf);
                                 if v > bc[k].0 {
                                     bc[k] = (v, c);
@@ -4634,7 +4637,7 @@ pub(in super::super) fn index_rule<'a>(
                         &mut unp,
                         x,
                         &mut buf,
-                        Some((&ri.career, &ri.lift_stats[..], runs[i].stats_stamp)),
+                        Some((&ri.career, (&*ri.lift_stats), runs[i].stats_stamp)),
                     )
                 };
                 if let Some((f, st)) = r {
@@ -4717,7 +4720,7 @@ pub(in super::super) fn index_rule<'a>(
         })
         .copied();
     let index_ms = now_ms() - t3;
-    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(|c| c.get()) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
+    let work = json!({"nodes": s.env.space.nodes.get() - nodes0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
     // measurement (`proxy_check`): each builder's career from her deck class's winning decks (the main search's and the
     // candidates' best careers of her class, legal for her and valued at her own chances) through the surrogate, no career
     // search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact ones. Runs after
@@ -4797,27 +4800,11 @@ pub(in super::super) fn index_rule<'a>(
                                 &mut buf,
                             );
                             let pe = effs(x, &st);
-                            let psc = if !any_scored {
-                                None
-                            } else {
-                                Some(
-                                    score_career(
-                                        &mut s,
-                                        d,
-                                        &base,
-                                        legs,
-                                        pool,
-                                        x,
-                                        f.a,
-                                        f.b,
-                                        &f.sel,
-                                        Want::Score,
-                                        &mut buf,
-                                    )
+                            let psc = any_scored.then(|| {
+                                score_career(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, &mut buf)
                                     .expected_saving
-                                        - 1.0,
-                                )
-                            };
+                                    - 1.0
+                            });
                             (Some(f), pe, psc)
                         }
                     }
@@ -4857,7 +4844,7 @@ pub(in super::super) fn index_rule<'a>(
         .collect();
     // the pick's roll state (`RollKeep`; the pick as below, with the same scores): its kept scoring and base, and what its
     // bound reads beyond them, as the plan ends (`pick_her`, `found_anchors`)
-    let rk: Option<RollKeep> = if runs.iter().any(|r| vis(&r.career)) && any_scored && vnow.is_finite() {
+    let rk: Option<RollKeep> = (runs.iter().any(|r| vis(&r.career)) && any_scored && vnow.is_finite()).then(|| {
         let (pk, _) = pick_of(&runs, vis, &undup);
         let base = ScoreBase {
             cands: &cands,
@@ -4874,7 +4861,7 @@ pub(in super::super) fn index_rule<'a>(
         let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } =
             runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
         let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, &mut buf);
-        Some(RollKeep {
+        RollKeep {
             key: roll_key(job),
             sd,
             base: KeptBase::of(&base),
@@ -4885,10 +4872,8 @@ pub(in super::super) fn index_rule<'a>(
             her_hi,
             anc: found_anchors(s.env, pool, sv),
             hi_anc: vec![],
-        })
-    } else {
-        None
-    };
+        }
+    });
     drop(s);
     {
         let key = bests_key(job, fix, nl);
@@ -4972,7 +4957,7 @@ pub(in super::super) fn index_rule<'a>(
         o.insert("saving".into(), json!(row.net_saving().map(|v| v + 1.0)));
         o.insert("lift".into(), json!(row.scoring.as_ref().map(|scoring| scoring.improvement_chance)));
         o.insert("near".into(), json!(near(i) && i != pick));
-        o.insert("score".into(), json!(if !any_scored { None } else { Some(total(i)) }));
+        o.insert("score".into(), json!(any_scored.then(|| total(i))));
         opts.push(rp);
     }
     opts.sort_by(|a, b| {
@@ -4987,7 +4972,7 @@ pub(in super::super) fn index_rule<'a>(
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
     let member = |ui: usize, real: bool| {
         let (_, nb, ps) = cont[ui].plan(pnow[ui]);
-        json!({"trainee": uname(cands[ui]), "p": pnow[ui], "have8": have8[ui], "real": real, "p_inf": if cont[ui].lam > 0.0 { Some(cont[ui].pinf) } else { None }, "lam": cont[ui].lam,
+        json!({"trainee": uname(cands[ui]), "p": pnow[ui], "have8": have8[ui], "real": real, "p_inf": (cont[ui].lam > 0.0).then(|| cont[ui].pinf), "lam": cont[ui].lam,
                "phi": cont[ui].phi, "builds": nb, "p_switch": ps, "careers": step(ui, real)})
     };
     let (plan_json, members_json) = match best_combo {

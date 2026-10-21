@@ -1,3 +1,3 @@
 fn main() {
-    loopopt::cli_main()
+    loopopt::cli_main();
 }

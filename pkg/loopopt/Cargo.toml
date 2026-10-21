@@ -16,7 +16,7 @@ opt-level = 3
 lto = true
 codegen-units = 1
 
-# Clippy's default groups apply (no pedantic); `./build.sh lint` denies every warning. Allowed here, crate-wide:
+# Clippy's default groups apply (no pedantic group); `./build.sh lint` denies every warning. Allowed here, crate-wide:
 [lints.clippy]
 # the search kernels pass their state explicitly instead of bundling it into structs built per call
 too_many_arguments = "allow"
@@ -28,3 +28,24 @@ needless_range_loop = "allow"
 neg_cmp_op_on_partial_ord = "allow"
 # chunks_exact in the hot loops is tuned; moving to as_chunks is speed work (docs/PERF.md), not a lint fix
 chunks_exact_to_as_chunks = "allow"
+# chosen beyond the default groups (pedantic, nursery and restriction lints, each named), denied:
+# idioms
+cast_lossless = "deny"
+cloned_instead_of_copied = "deny"
+deref_by_slicing = "deny"
+elidable_lifetime_names = "deny"
+explicit_iter_loop = "deny"
+if_not_else = "deny"
+if_then_some_else_none = "deny"
+implicit_clone = "deny"
+map_unwrap_or = "deny"
+missing_const_for_fn = "deny"
+redundant_closure_for_method_calls = "deny"
+semicolon_if_nothing_returned = "deny"
+single_match_else = "deny"
+bool_to_int_with_if = "deny"
+uninlined_format_args = "deny"
+use_self = "deny"
+wildcard_imports = "deny"
+# sorting primitives: equal elements are indistinguishable, so the unstable sort gives the same order
+stable_sort_primitive = "deny"

@@ -54,7 +54,11 @@
 //! The loop adds every veteran without dominance pruning. Its rotation keeps the better of the previous veteran and
 //! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
 use super::cache::Cache;
-use super::*;
+use super::{
+    Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool, Ref,
+    RelOf, Sel, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true, holds_fix, inherit, insp_miss,
+    interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
+};
 use std::rc::Rc;
 /// the page's next career (`next` on a career job)
 pub(super) mod plan;
@@ -62,25 +66,25 @@ pub(super) mod plan;
 fn d_policy() -> String {
     "greedy".into()
 }
-fn d_runs() -> usize {
+const fn d_runs() -> usize {
     16
 }
-fn d_seed() -> u32 {
+const fn d_seed() -> u32 {
     1
 }
-fn d_eps() -> f64 {
+const fn d_eps() -> f64 {
     1e-3
 }
-fn d_maxc() -> usize {
+const fn d_maxc() -> usize {
     100_000
 }
-fn d_frac() -> f64 {
+const fn d_frac() -> f64 {
     0.3
 }
-fn d_asample() -> usize {
+const fn d_asample() -> usize {
     3
 }
-fn d_aevery() -> usize {
+const fn d_aevery() -> usize {
     50
 }
 
@@ -158,7 +162,7 @@ fn kept_swap(replacement: KeptState) -> KeptState {
 }
 
 // ---- random numbers ----
-fn fmix(mut h: u32) -> u32 {
+const fn fmix(mut h: u32) -> u32 {
     h ^= h >> 16;
     h = h.wrapping_mul(0x85eb_ca6b);
     h ^= h >> 13;
@@ -173,7 +177,7 @@ pub(super) fn u01(keys: &[u32]) -> f64 {
         a = fmix((a ^ k).wrapping_add(0x632b_e5ab));
         b = fmix(b.wrapping_add(k.wrapping_mul(0x27d4_eb2f)) ^ a);
     }
-    (a as f64 * 2f64.powi(21) + (b >> 11) as f64) / 2f64.powi(53)
+    (f64::from(a) * 2f64.powi(21) + f64::from(b >> 11)) / 2f64.powi(53)
 }
 const STREAM_SET: u32 = 1;
 const STREAM_STAR: u32 = 2;
@@ -186,7 +190,7 @@ enum Keys {
 impl Keys {
     fn u(&self, t: usize, stream: u32, item: usize) -> f64 {
         match *self {
-            Keys::Main { seed, run } => u01(&[seed, run, t as u32, stream, item as u32]),
+            Self::Main { seed, run } => u01(&[seed, run, t as u32, stream, item as u32]),
         }
     }
 }
@@ -285,9 +289,9 @@ thread_local! { static IX: std::cell::RefCell<IxCount> = std::cell::RefCell::new
 
 fn canon(chara: u32, sparks: &[(u32, u8)], pinks: &[(u32, u8)], wins: &[usize]) -> String {
     let (mut s, mut p, mut w) = (sparks.to_vec(), pinks.to_vec(), wins.to_vec());
-    s.sort();
-    p.sort();
-    w.sort();
+    s.sort_unstable();
+    p.sort_unstable();
+    w.sort_unstable();
     format!("{chara}|{s:?}|{p:?}|{w:?}")
 }
 /// a veteran's family: the character and her two parents as recorded
@@ -315,7 +319,7 @@ fn stats(xs: &[f64]) -> Value {
     let mean = xs.iter().sum::<f64>() / n;
     let sd = if xs.len() > 1 { (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt() } else { 0.0 };
     let half = if xs.len() > 1 { tq975(n - 1.0) * sd / n.sqrt() } else { 0.0 };
-    json!({"n": xs.len(), "mean": mean, "sd": sd, "ci95": [mean - half, mean + half], "min": xs.iter().cloned().fold(f64::INFINITY, f64::min), "max": xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max)})
+    json!({"n": xs.len(), "mean": mean, "sd": sd, "ci95": [mean - half, mean + half], "min": xs.iter().copied().fold(f64::INFINITY, f64::min), "max": xs.iter().copied().fold(f64::NEG_INFINITY, f64::max)})
 }
 
 /// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`Sim::fastc`; none
@@ -504,7 +508,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     let s = stars[k];
                     if s > 0 {
                         self.nc[k] += 1;
-                        self.miss[k] *= insp_miss(s as f64, fa);
+                        self.miss[k] *= insp_miss(f64::from(s), fa);
                     }
                 }
             }
@@ -603,7 +607,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, t: usize, a: usize, b: usize) -> Rc<Vec<f64>> {
         let mut k: Vec<usize> = pool.me[a].wins.iter().chain(&pool.me[b].wins).map(|w| w.0).collect();
-        k.sort();
+        k.sort_unstable();
         // her pink sparks change her win chances: their inputs join the key (start grades, each spark's aptitude and chance)
         if let Some(pc) = self.env.pink_career(pool, t, a, b) {
             k.push(usize::MAX);
@@ -937,7 +941,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             .map(|t| l.sparks.iter().filter(|s| s.0 == t.group).map(|s| s.1).max().unwrap_or(0))
             .collect();
         let mut w = l.wins.clone();
-        w.sort();
+        w.sort_unstable();
         w.dedup();
         (st, w)
     }
@@ -1196,27 +1200,27 @@ impl<'s, 'a> Sim<'s, 'a> {
         }
         loop {
             let cur: Rc<Cur> = if exact {
-                match &kept_decision {
-                    Some(career) => career.clone(),
-                    None => {
-                        let career = Rc::new(self.exact_cur(st));
-                        kept_decision = Some(career.clone());
-                        career
-                    }
+                if let Some(career) = &kept_decision {
+                    career.clone()
+                } else {
+                    let career = Rc::new(self.exact_cur(st));
+                    kept_decision = Some(career.clone());
+                    career
                 }
             } else {
                 match base {
                     Base::Greedy => self.greedy_cur(st),
                     Base::Loop => self.loop_cur(st),
                     Base::Trace => unreachable!("trace runs its own loop"),
-                    Base::Index => match &kept_decision {
-                        Some(career) => career.clone(),
-                        None => {
+                    Base::Index => {
+                        if let Some(career) = &kept_decision {
+                            career.clone()
+                        } else {
                             let career = Rc::new(self.index_cur(st));
                             kept_decision = Some(career.clone());
                             career
                         }
-                    },
+                    }
                 }
             };
             if let Some(run) = decide {
@@ -1333,7 +1337,7 @@ pub(super) fn simulate<'a>(
     let mut es = vec![];
     let eps = cfg.eps;
     // index: the kept state before the simulation, put back after it (module notes)
-    let kept_before_simulation = if base == Base::Index { Some(kept_swap(Default::default())) } else { None };
+    let kept_before_simulation = (base == Base::Index).then(|| kept_swap(Default::default()));
     for run in cfg.first..cfg.first + cfg.runs {
         if !cfg.share_cache && run > cfg.first {
             s.cache = Cache::new(n);
@@ -1352,7 +1356,7 @@ pub(super) fn simulate<'a>(
         let n1 = s.n;
         es.push(e);
         let segs = rec;
-        let finalk = segs.last().map(|x| x["pick"].clone()).unwrap_or(Value::Null);
+        let finalk = segs.last().map_or(Value::Null, |x| x["pick"].clone());
         let wall = tm.elapsed().as_secs_f64();
         eprintln!(
             "{} run {}: E {:.1}, {} careers, tail {:.2}, final p {:.3e}, pool {}, {:.1} s",

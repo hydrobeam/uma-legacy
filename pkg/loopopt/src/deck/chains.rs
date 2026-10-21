@@ -1,6 +1,6 @@
 //! Chain events: the event count per run, the per-link marginals and the final-state distribution of a deck's chains,
 //! and the per-key level tables.
-use super::*;
+use super::HashMap;
 
 /// Chain events per run ~ Binomial(CHAIN_N, CHAIN_P): fitted on 1,299 uma-it Independent Training runs whose chain
 /// progress is readable from event hints (an earlier fit on 879 runs and a refit on 1,792, with markers read from IT's
@@ -16,13 +16,13 @@ pub(super) type Kind = (u8, u8, u32);
 pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
     risk.iter()
         .filter(|r| r.0 >= 1 && r.0 < stop && r.0 <= 4 && r.2 > 0)
-        .fold(0u32, |c, r| c | ((((r.1 as u32) << 4) | r.2 as u32) << (8 * (r.0 as u32 - 1))))
+        .fold(0u32, |c, r| c | (((u32::from(r.1) << 4) | u32::from(r.2)) << (8 * (u32::from(r.0) - 1))))
 }
 
 thread_local! { pub(super) static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = const { std::cell::Cell::new((CHAIN_N, CHAIN_P)) }; }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial of the job in progress (default CHAIN_N, CHAIN_P).
 pub(super) fn event_pmf(n: usize) -> Vec<f64> {
-    let (bn, bp) = CHAIN_EVENTS.with(|c| c.get());
+    let (bn, bp) = CHAIN_EVENTS.with(std::cell::Cell::get);
     (0..=n)
         .map(|e| {
             if e as u32 <= bn {
@@ -45,7 +45,7 @@ pub(super) fn event_pmf_job() -> std::rc::Rc<Vec<f64>> {
     r
 }
 pub(super) fn binom_coef(n: u32, k: u32) -> f64 {
-    (0..k).fold(1.0f64, |a, i| a * (n - i) as f64 / (i + 1) as f64)
+    (0..k).fold(1.0f64, |a, i| a * f64::from(n - i) / f64::from(i + 1))
 }
 /// Cache key of the event-count distribution in use: (n, bits of p). (An XOR of the two collided: (21, 0.35) and
 /// (22, 0.7) gave one key.)
@@ -61,11 +61,11 @@ fn stop_alts(stop: u8, risk: u32) -> Vec<(u8, f64)> {
     let mut alternatives = vec![];
     let mut surviving_probability = 1.0f64;
     for link in 1..stop.min(5) {
-        let risk_byte = (risk >> (8 * (link as u32 - 1))) & 0xff;
+        let risk_byte = (risk >> (8 * (u32::from(link) - 1))) & 0xff;
         if risk_byte == 0 {
             continue;
         }
-        let stop_probability = (risk_byte >> 4) as f64 / (risk_byte & 15) as f64;
+        let stop_probability = f64::from(risk_byte >> 4) / f64::from(risk_byte & 15);
         alternatives.push((link, surviving_probability * stop_probability));
         surviving_probability *= 1.0 - stop_probability;
     }
@@ -136,14 +136,14 @@ fn chain_walk(
                 let mut total_weight = 0.0f64;
                 for i in 0..n {
                     if progress[i] < stops[i] {
-                        total_weight += (links[i] - progress[i]) as f64;
+                        total_weight += f64::from(links[i] - progress[i]);
                     }
                 }
                 if total_weight > 0.0 {
                     for i in 0..n {
                         if progress[i] < stops[i] {
                             probabilities[state_index + strides[i]] +=
-                                probability * (links[i] - progress[i]) as f64 / total_weight;
+                                probability * f64::from(links[i] - progress[i]) / total_weight;
                         }
                     }
                 }
@@ -170,7 +170,7 @@ fn chain_walk(
 pub(super) fn chain_marginals(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
     thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<Kind>, (u32, u64)), HashMap<Kind, Vec<f64>>>> = std::cell::RefCell::new(Default::default()); }
     let mut ks: Vec<Kind> = kinds.to_vec();
-    ks.sort();
+    ks.sort_unstable();
     let key = (ks, pmf_key());
     if let Some(r) = CM.with(|c| c.borrow().get(&key).cloned()) {
         return r;
@@ -264,7 +264,7 @@ pub(super) fn chain_marginals_ref(kinds: &[Kind]) -> HashMap<Kind, Vec<f64>> {
         let mut ns: HashMap<Vec<u8>, f64> = HashMap::new();
         for (s, p) in &st {
             let w: Vec<f64> =
-                (0..n).map(|i| if s[i] < kinds[i].1 { (kinds[i].0 - s[i]) as f64 } else { 0.0 }).collect();
+                (0..n).map(|i| if s[i] < kinds[i].1 { f64::from(kinds[i].0 - s[i]) } else { 0.0 }).collect();
             let wsum: f64 = w.iter().sum();
             if wsum == 0.0 {
                 *ns.entry(s.clone()).or_insert(0.0) += p;
@@ -449,7 +449,7 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
         KL_LAST.with(|c| *c.borrow_mut() = Some((key.0, key.1, r.clone())));
         return r;
     }
-    let (bn, _) = CHAIN_EVENTS.with(|c| c.get());
+    let (bn, _) = CHAIN_EVENTS.with(std::cell::Cell::get);
     let nmax = bn as usize;
     let n = kinds.len();
     let dims: Vec<usize> = kinds.iter().map(|k| k.1 as usize + 1).collect();

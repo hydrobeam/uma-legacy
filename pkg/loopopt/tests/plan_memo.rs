@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use std::{fs, process::Command};
 
 fn run(job: &Value, off: bool) -> (Value, String) {
-    let path = std::env::temp_dir().join(format!("uma-plan-memo-{}-{}.json", std::process::id(), off as u8));
+    let path = std::env::temp_dir().join(format!("uma-plan-memo-{}-{}.json", std::process::id(), u8::from(off)));
     fs::write(&path, job.to_string()).unwrap();
     let mut c = Command::new(env!("CARGO_BIN_EXE_loopopt"));
     c.current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global"))

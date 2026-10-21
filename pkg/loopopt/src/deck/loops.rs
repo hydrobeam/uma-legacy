@@ -1,5 +1,9 @@
 //! The joint deck and loop search (`run_deck`): structures in bands, schedules, ceilings and the shared-deck path.
-use super::*;
+use super::{
+    CHAIN_EVENTS, CHAIN_N, CHAIN_P, CardsRaw, Data, DeckEval, DeckJob, Deserialize, Entries, HashMap, Instant, Kept,
+    Kind, Model, Name, PDeck, SkillJob, SkillsRaw, Sources, Value, chain_marginals, deck_entries, deck_space,
+    dominates, json, k_filter, kfilter_order, kmax_top, run_multi, sig_of, src_miss, tie_rank,
+};
 
 /// Deck + loop search. The character rule (a trainee cannot run a card of her own character, nor a group card she is
 /// a member of, `Card::blocks`) is part of which decks are legal in the exact search (`DeckSpace`): per trainee with
@@ -35,7 +39,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         Err(e) => return e,
     };
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
-    let space = if !dj.deck_only { Some(deck_space(cr, &dj, sk, &unc, &ent)) } else { None };
+    let space = (!dj.deck_only).then(|| deck_space(cr, &dj, sk, &unc, &ent));
     let Entries { cards, mut rel, mut kind, mut endk, mut vark, mut srcs, plain_ids, plain_names, plain_chars, locked } =
         ent;
     let srcb = Sources { dj: &dj, unc: &unc };
@@ -60,7 +64,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         let nrel0 = rel.len();
         let mut kindset: Vec<Kind> = (0..nrel0).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
         kindset.push((2, 2, 0));
-        kindset.sort();
+        kindset.sort_unstable();
         kindset.dedup();
         let others = dj.deck_size.saturating_sub(1);
         fn multisets(vals: &[Kind], start: usize, left: usize, cur: &mut Vec<Kind>, out: &mut dyn FnMut(&[Kind])) {
@@ -231,7 +235,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         .collect();
 
     // ---- enumerate decks ----
-    let allowed_borrow = if dj.borrow { 1usize } else { 0 };
+    let allowed_borrow = usize::from(dj.borrow);
     let mut n_swapped = 0usize;
     let nrel = rel.len();
     // characters as bits (one deck holds one entry per character)
@@ -248,7 +252,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // Chain-kind key of a deck = multiset of its chain entries' kinds plus fillers (2, 2), coded as counts in base 7.
     let mut kinds_all: Vec<Kind> = (0..nrel).filter(|&j| kind[j] != (0, 0, 0)).map(|j| kind[j]).collect();
     kinds_all.push((2, 2, 0));
-    kinds_all.sort();
+    kinds_all.sort_unstable();
     kinds_all.dedup();
     let kpos: Vec<u64> = (0..kinds_all.len()).map(|i| 7u64.pow(i as u32)).collect();
     // Per key: each entry's miss chances (white, gold) under the key's chain odds, and for each entry B the
@@ -313,12 +317,12 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     };
     let mut n_decks = 0usize;
     let size = dj.deck_size;
-    let ident_of = |c: usize, e: u8, x: u32| ((c as u64 + 3) << 40) | ((x as u64) << 8) | e as u64;
+    let ident_of = |c: usize, e: u8, x: u32| ((c as u64 + 3) << 40) | (u64::from(x) << 8) | u64::from(e);
     // a deck's identity from a selection of entries
     let ident_sel = |sel: &[usize], plain: usize, filler: usize| -> Vec<u64> {
         let mut v: Vec<u64> = Vec::with_capacity(sel.len() + 2);
         v.extend(sel.iter().map(|&j| ident_of(rel[j], endk[j], vark[j])));
-        v.sort();
+        v.sort_unstable();
         v.push((1 << 40) + plain as u64);
         v.push((2 << 40) + filler as u64);
         v
@@ -394,7 +398,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
             if chm & cx.ebit[j] != 0 || (cx.ebor[j] && nb >= cx.allowed) {
                 continue;
             }
-            let (c2, n2) = (chm | cx.ebit[j], nb + cx.ebor[j] as usize);
+            let (c2, n2) = (chm | cx.ebit[j], nb + usize::from(cx.ebor[j]));
             let acc2 = acc + (cx.dm[j] & !c2 & !cx.later[gi][p]).count_ones();
             if acc2 >= cx.kq {
                 *cut += 1;
@@ -438,7 +442,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
             // (built per count vector and dropped after it: each one has its own code, so no key repeats)
             let kd: &KeyData = &make_key(code);
             let dmask = |b: usize, nb: usize| -> u128 {
-                kd.d_own[b] | if nb - (ebor[b] as usize) < allowed_borrow { kd.d_bor[b] } else { 0 }
+                kd.d_own[b] | if nb - usize::from(ebor[b]) < allowed_borrow { kd.d_bor[b] } else { 0 }
             };
             let alive = |j: usize| {
                 is_locked[j]
@@ -635,7 +639,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         }
         let mut front: Vec<DeckEval> = vec![];
         let mut gkeys: Vec<(usize, usize)> = groups.keys().copied().collect();
-        gkeys.sort();
+        gkeys.sort_unstable();
         for pc in &gkeys {
             let list = groups.remove(pc).unwrap().into_list();
             // with kmax = 1 the online set is already an antichain (every insert drops what it dominates and is
@@ -685,7 +689,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
             })
             .collect();
         let mut v: Vec<usize> = k_filter(tagged, 1, coords.len()).into_list().into_iter().map(|y| y.cards[0]).collect();
-        v.sort();
+        v.sort_unstable();
         v
     };
     if std::env::var("DECK_DEBUG").is_ok() {
@@ -722,15 +726,15 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                         let mut n = cards[i].name.clone();
                         let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
                         if !lb.is_empty() {
-                            n = format!("{} ({})", n, lb);
+                            n = format!("{n} ({lb})");
                         }
                         if e > 0 {
-                            n = format!("{} (end chain at link {})", n, e);
+                            n = format!("{n} (end chain at link {e})");
                         }
                         (Name::from(n), Name::from(lb), None)
                     });
                     names.push(if Some(i) == x.borrowed {
-                        nb.get_or_insert_with(|| Name::from(format!("{} (borrowed)", n))).clone()
+                        nb.get_or_insert_with(|| Name::from(format!("{n} (borrowed)"))).clone()
                     } else {
                         n.clone()
                     });

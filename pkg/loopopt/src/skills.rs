@@ -18,7 +18,7 @@
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
-use super::*;
+use super::{Choice, Data, Deserialize, NT, Sched, chart_race_name, interchangeable, pk, row_label, short_name, when};
 use serde_json::{Value, json};
 
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
@@ -106,13 +106,13 @@ pub(crate) struct SkillJob {
     #[serde(default = "dsizes")]
     pub sizes: Vec<usize>,
 }
-fn dstar() -> [f64; 3] {
+const fn dstar() -> [f64; 3] {
     [0.50, 0.45, 0.05]
 }
-fn diters() -> usize {
+const fn diters() -> usize {
     30
 }
-fn dseed() -> u64 {
+const fn dseed() -> u64 {
     3
 }
 fn dsizes() -> Vec<usize> {
@@ -271,16 +271,16 @@ impl<'a> Model<'a> {
         for (l, &(t, p1, p2, x)) in lins(f.len()).iter().enumerate() {
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
-                let ap = d.pair[f[t]][f[par]] as f64
-                    + d.pair[f[p1]][f[p2]] as f64
+                let ap = f64::from(d.pair[f[t]][f[par]])
+                    + f64::from(d.pair[f[p1]][f[p2]])
                     + 3.0 * o(par, other)
-                    + d.tri[f[t]][f[par]][f[other]] as f64
+                    + f64::from(d.tri[f[t]][f[par]][f[other]])
                     + 3.0 * o(par, other)
-                    + d.tri[f[t]][f[par]][f[x]] as f64
+                    + f64::from(d.tri[f[t]][f[par]][f[x]])
                     + 3.0 * o(par, x);
                 miss *= 1.0 - slot_proc(self.base, ap);
                 for g in [other, x] {
-                    let ag = d.tri[f[t]][f[par]][f[g]] as f64 + 3.0 * o(par, g);
+                    let ag = f64::from(d.tri[f[t]][f[par]][f[g]]) + 3.0 * o(par, g);
                     miss *= 1.0 - slot_proc(GP_RATE * self.base, ag);
                 }
             }
@@ -306,9 +306,9 @@ impl<'a> Model<'a> {
                 let m = others
                     .iter()
                     .filter(|&&x| x != par)
-                    .map(|&x| d.tri[t][par][x] as f64 + 3.0 * pb[par][x])
+                    .map(|&x| f64::from(d.tri[t][par][x]) + 3.0 * pb[par][x])
                     .fold(f64::NEG_INFINITY, f64::max);
-                if rot { m.max(d.tri[t][par][t] as f64 + 3.0 * pb[par][t]) } else { m }
+                if rot { m.max(f64::from(d.tri[t][par][t]) + 3.0 * pb[par][t]) } else { m }
             })
             .collect();
         let mut best = 0.0f64;
@@ -318,14 +318,14 @@ impl<'a> Model<'a> {
                 let mut miss = 1.0f64;
                 for (par, other, xm) in [(p1, p2, xmax[i]), (p2, p1, xmax[j])] {
                     // the fourth member's terms take their best value over every fourth member, in both slots
-                    let ap = d.pair[t][par] as f64
-                        + d.pair[p1][p2] as f64
+                    let ap = f64::from(d.pair[t][par])
+                        + f64::from(d.pair[p1][p2])
                         + 3.0 * pb[par][other]
-                        + d.tri[t][par][other] as f64
+                        + f64::from(d.tri[t][par][other])
                         + 3.0 * pb[par][other]
                         + xm;
                     miss *= 1.0 - slot_proc(self.base, ap);
-                    let ag = d.tri[t][par][other] as f64 + 3.0 * pb[par][other];
+                    let ag = f64::from(d.tri[t][par][other]) + 3.0 * pb[par][other];
                     miss *= 1.0 - slot_proc(GP_RATE * self.base, ag);
                     miss *= 1.0 - slot_proc(GP_RATE * self.base, xm);
                 }
@@ -399,8 +399,8 @@ impl<'a> Model<'a> {
         deck: Option<&[(&[f64], &[f64])]>,
     ) -> Value {
         let d = self.d;
-        let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
-        let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
+        let pr = |a: usize, b: usize| f64::from(d.pair[f[a]][f[b]]);
+        let tr = |a: usize, b: usize, c: usize| f64::from(d.tri[f[a]][f[b]][f[c]]);
         let mut pairs = vec![];
         for a in 0..f.len() {
             for b in a + 1..f.len() {
@@ -463,7 +463,7 @@ pub(crate) struct OutfitPre {
 impl OutfitPre {
     pub(crate) fn new(st: &[u8], ew: &[f64]) -> Self {
         let mask = |b: bool| if b { u64::MAX } else { 0 };
-        OutfitPre {
+        Self {
             m1: st.iter().map(|&v| mask(v == 1)).collect(),
             m2: st.iter().map(|&v| mask(v == 2)).collect(),
             ne: ew[..st.len()].iter().map(|&e| 1.0 - e).collect(),
@@ -496,7 +496,7 @@ impl OutfitPre {
     }
     /// how many targets `eval` reads
     #[inline]
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.ne.len()
     }
     /// `eval`'s factors one by one: out[k] for k < len(), the same f64s as `eval` multiplies (in target order) for these
@@ -531,7 +531,7 @@ impl OutfitPre {
     #[inline(always)]
     fn factor(m1: u64, m2: u64, ne: f64, omq: f64, w: f64, g: f64) -> f64 {
         #[inline(always)]
-        fn sel(a: f64, b: f64, m: u64) -> f64 {
+        const fn sel(a: f64, b: f64, m: u64) -> f64 {
             f64::from_bits((a.to_bits() & !m) | (b.to_bits() & m))
         }
         let hinted = GEN_WHITE * (1.0 - (1.0 - w) * ne * omq);
@@ -578,7 +578,7 @@ pub(crate) fn chart_rows(d: &Data, members: &[usize], schedules: &[Sched]) -> Va
             }
         }
     }
-    rows.sort();
+    rows.sort_unstable();
     let out: Vec<Value> = rows
         .iter()
         .map(|&(turn, race)| {
@@ -638,6 +638,7 @@ pub(crate) fn check_sizes(sizes: &[usize], pool: usize, req: usize) -> Result<us
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{load, rel_tables};
     use std::sync::OnceLock;
     fn data() -> &'static Data {
         static D: OnceLock<Data> = OnceLock::new();
@@ -762,8 +763,8 @@ mod tests {
             }
         };
         let det = m.detail(&f, &ov, None);
-        let pr = |a: usize, b: usize| d.pair[f[a]][f[b]] as f64;
-        let tr = |a: usize, b: usize, c: usize| d.tri[f[a]][f[b]][f[c]] as f64;
+        let pr = |a: usize, b: usize| f64::from(d.pair[f[a]][f[b]]);
+        let tr = |a: usize, b: usize, c: usize| f64::from(d.tri[f[a]][f[b]][f[c]]);
         let ls = det["lineages"].as_array().unwrap();
         assert_eq!(ls.len(), 3);
         for (l, &(t, b, c, _)) in [(0usize, 1usize, 2usize, 0usize), (1, 0, 2, 1), (2, 0, 1, 2)].iter().enumerate() {

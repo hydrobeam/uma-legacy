@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{fs, process::Command};
 
 fn run(job: &Value) -> Value {
-    let tag = job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
+    let tag = job.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)));
     let path = std::env::temp_dir().join(format!("uma-rotations-{}-{tag}.json", std::process::id()));
     fs::write(&path, job.to_string()).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_loopopt"))

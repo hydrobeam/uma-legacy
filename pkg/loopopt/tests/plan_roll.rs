@@ -85,7 +85,7 @@ fn rolls_equal_the_full_tables() {
             jobs.push(with_roll(&plan, &r[0]));
         }
         let ps = write(name, &jobs);
-        let out = run(era, &ps.iter().map(|p| p.as_path()).collect::<Vec<_>>(), None, None);
+        let out = run(era, &ps.iter().map(std::path::PathBuf::as_path).collect::<Vec<_>>(), None, None);
         clean(&ps);
         assert!(
             out[0]["next"]["outcomes"].is_object() && out[0]["next"]["outcomes"].get("y").is_none(),
@@ -125,7 +125,7 @@ fn rolls_carried_cold_and_after_a_reload() {
     let st = tmp("state", 0);
     // cold: no plan kept, so the carried roll's plan runs first (`planned`), then a roll of it is answered from its state
     let ps = write("cold", &[carried(w0), with_roll(&plan, &w1[0])]);
-    let out = run("global", &ps.iter().map(|p| p.as_path()).collect::<Vec<_>>(), None, Some(&st));
+    let out = run("global", &ps.iter().map(std::path::PathBuf::as_path).collect::<Vec<_>>(), None, Some(&st));
     clean(&ps);
     assert!(
         out[0]["results"].is_array() && out[0]["roll"]["planned"] == json!(true),
@@ -141,7 +141,7 @@ fn rolls_carried_cold_and_after_a_reload() {
     same(&out[1]["next"]["roll"], w1, "kept");
     // a new process with the stored state: answered from the stored roll state, no plan
     let ps = write("reload", &[carried(w1), with_roll(&plan, &w0[0])]);
-    let out = run("global", &ps.iter().map(|p| p.as_path()).collect::<Vec<_>>(), Some(&st), None);
+    let out = run("global", &ps.iter().map(std::path::PathBuf::as_path).collect::<Vec<_>>(), Some(&st), None);
     clean(&ps);
     fs::remove_file(&st).unwrap();
     assert!(

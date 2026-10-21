@@ -1,5 +1,9 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
-use super::*;
+use super::{
+    CF_LIM, CF_ON, CFCHK, DeckSpace, GTab, HashMap, Instant, KeyLevel, Kind, LandPre, LegalTabs, Model, SB_ON, SB_USED,
+    SBCHK, SBN, SPT, SbCfg, Sel, Src, cap_class, cf_check, chain_states, event_pmf_job, gm_g, gm_w, joint_fast,
+    key_level, sb_check, sb_mode, src_levels, top_desc,
+};
 
 /// The two enumeration passes have different stopping rules and inputs.
 pub(super) enum SearchMode {
@@ -178,7 +182,7 @@ fn prepare_outfit_bounds(model: &Model, us: &[usize], clauses: &[(Vec<(usize, f6
                 }
                 // (an alternative only where it adds targets to the previous split and leaves N something)
                 let (start, mut prev) = (cix.len(), z);
-                for &tau in LOW_SPLIT.iter() {
+                for &tau in &LOW_SPLIT {
                     let mut za = z;
                     for t in 0..nu {
                         if orow[i].factor_at(t, q, 0.0, 0.0) <= tau * orow[i].factor_at(t, q, 1.0, 0.0) {
@@ -355,7 +359,7 @@ struct TraversalScratch {
     rbs: std::cell::RefCell<Vec<Vec<f64>>>,
 }
 
-impl<'a> DeckSpace<'a> {
+impl DeckSpace<'_> {
     /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
     /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
     /// included) over those pairs. Best mode requires one clause and keeps its highest-value deck above `seed`
@@ -414,15 +418,15 @@ impl<'a> DeckSpace<'a> {
         // leaf (`cf_cheap`, then `cf_ub`, on the state-conditioned tables of mode 2) are its only prunes, no cap in any
         // test; it needs every legal entry `cf_ok` (else UnsupportedCapFreeProof) and stops past CF_LIM nodes
         // (CapFreeNodeLimit).
-        let cfm = !best && clauses.len() == 1 && clauses[0].0.len() == 1 && CF_ON.with(|c| c.get());
+        let cfm = !best && clauses.len() == 1 && clauses[0].0.len() == 1 && CF_ON.with(std::cell::Cell::get);
         if cfm && !legal_rc.iter().all(|&j| self.srcs[j].cf_ok) {
             return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::UnsupportedCapFreeProof) });
         }
-        let cf_lim = if cfm { CF_LIM.with(|c| c.get()) } else { usize::MAX };
+        let cf_lim = if cfm { CF_LIM.with(std::cell::Cell::get) } else { usize::MAX };
         let cfs = if cfm { cf_check() } else { 0.0 };
         let sbm = if cfm {
             2
-        } else if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(|c| c.get()) {
+        } else if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(std::cell::Cell::get) {
             sb_mode()
         } else {
             0
@@ -433,13 +437,7 @@ impl<'a> DeckSpace<'a> {
                 hit.unwrap_or_else(|| {
                     let r = std::rc::Rc::new(
                         (0..self.rel.len())
-                            .map(|j| {
-                                if legal_rc.contains(&j) {
-                                    Some(src_levels(&self.srcs[j], self.kind[j].1, nu))
-                                } else {
-                                    None
-                                }
-                            })
+                            .map(|j| legal_rc.contains(&j).then(|| src_levels(&self.srcs[j], self.kind[j].1, nu)))
                             .collect::<Vec<_>>(),
                     );
                     self.sbrows.borrow_mut().insert(set_id, r.clone());
@@ -584,7 +582,7 @@ impl<'a> DeckSpace<'a> {
             let mut m = vec![0.0f64; (stop + 1) * cf_no];
             for o in 0..cf_no {
                 let den = cf_den(o);
-                for &j in groups_all[gi].iter() {
+                for &j in groups_all[gi] {
                     if let Some(rows) = &sb_rows[j] {
                         for l in 0..=stop.min(rows.len() / nu - 1) {
                             let r = cf_ratio(o, &rows[l * nu..(l + 1) * nu], den);
@@ -623,7 +621,7 @@ impl<'a> DeckSpace<'a> {
         // locked cards each group can hold (a configuration whose groups cannot hold them all is skipped)
         let (lbit, all_lk) = {
             let x = self.lock_bits();
-            (&x.0[..], x.1)
+            ((&*x.0), x.1)
         };
         let glk: &[u8] = &lt.glk;
         let mut dw = vec![0.0f64; nu];
@@ -669,8 +667,8 @@ impl<'a> DeckSpace<'a> {
                 if gneed >> gi & 1 == 0 {
                     continue;
                 }
-                top.iter_mut().for_each(|b| b.clear());
-                for &j in l.iter() {
+                top.iter_mut().for_each(std::vec::Vec::clear);
+                for &j in *l {
                     let tm = tmk[j];
                     let mut m = tm;
                     while m != 0 {
@@ -927,7 +925,7 @@ impl<'a> DeckSpace<'a> {
         let mut cfgs: Vec<SearchConfig> = vec![];
         let mut pend: Vec<PendingConfig> = vec![];
         let mut pkeys: Vec<Option<std::rc::Rc<GTab>>> = vec![];
-        for cnt in counts.iter() {
+        for cnt in counts {
             let csum: usize = cnt.iter().sum();
             if (0..nk).any(|i| i != ki22 && cnt[i] > by_kind[i].len()) {
                 continue;
@@ -1013,7 +1011,7 @@ impl<'a> DeckSpace<'a> {
                     if np > 0 {
                         gs.push((nk, np));
                     }
-                    let gs = &gsb[..];
+                    let gs = &**gsb;
                     if all_lk & !gs.iter().fold(0u8, |m, &(i, _)| m | glk[i]) != 0 {
                         continue;
                     }
@@ -1349,9 +1347,9 @@ impl<'a> DeckSpace<'a> {
                 continue;
             }
             let km = self.key_miss(cf.code);
-            let (mw, mg, tmk) = (&km.0, &km.1, &km.2[..]);
+            let (mw, mg, tmk) = (&km.0, &km.1, (&*km.2));
             let (filler, plain) = (cf.filler, cf.plain);
-            let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| (&groups_all[i][..], c)).collect();
+            let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| ((&**groups_all[i]), c)).collect();
             // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
             // (blocks: gmin[g]'s row r by `gm_w`, `gm_g`; rp[g]'s column ix at ix (size + 1))
             let gmin: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.gm.grp(i)).collect();
@@ -1379,7 +1377,7 @@ impl<'a> DeckSpace<'a> {
                     }
                 }
             }
-            let (sufw, sufg, spf) = (&sufw[..], &sufg[..], &spf[..]);
+            let (sufw, sufg, spf) = ((&*sufw), (&*sufg), (&*spf));
             // the dominance tables of this configuration's groups (`dom_table`), and per flat index f (the groups' entries
             // in turn) the characters of the entries from f on
             let doms: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>> = if dom_on {
@@ -1390,7 +1388,7 @@ impl<'a> DeckSpace<'a> {
             let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
             if dom_on {
                 for &(l, _) in &gs {
-                    for &j in l.iter() {
+                    for &j in l {
                         dsuf.push(ebit[j]);
                     }
                     doff.push(dsuf.len());
@@ -1430,7 +1428,7 @@ impl<'a> DeckSpace<'a> {
                     // (the deck's picks in group g so far, all at positions below `start`)
                     let sg = &sel[sel.len() - (gs[g].1 - left)..];
                     let (pr, mut prm) = (&mut dpr, 0u32);
-                    for &(a, sm) in dl.iter() {
+                    for &(a, sm) in dl {
                         let a = a as usize;
                         let aj = l[a];
                         if chm & ebit[aj] != 0 {
@@ -1517,7 +1515,7 @@ impl<'a> DeckSpace<'a> {
             pdwx.resize(nu, 0.0);
             pdgx.clear();
             pdgx.resize(nu, 0.0);
-            let (cv, pdw, pdg) = (&mut cvx[..], &mut pdwx[..], &mut pdgx[..]);
+            let (cv, pdw, pdg) = ((&mut *cvx), (&mut *pdwx), (&mut *pdgx));
             let ng = gs.len();
             if !best {
                 goff.clear();
@@ -1533,7 +1531,7 @@ impl<'a> DeckSpace<'a> {
                     }
                 }
             }
-            let (csuf, goff) = (&csuf[..], &goff[..]);
+            let (csuf, goff) = ((&*csuf), (&*goff));
             // the state-conditioned bound of this configuration: chain positions (sorted kinds, the key's state
             // distribution projected on the positions whose group has chain targets), per group its slots' positions
             // and, per chain level, each target's lowest misses over the group's entries (a slot may take any of them,
@@ -1576,7 +1574,7 @@ impl<'a> DeckSpace<'a> {
                 let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.1 < 16) {
                     let mut proj: crate::FxMap<u64, f64> = Default::default();
                     for (x, w) in full.iter() {
-                        let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | x[p] as u64);
+                        let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
                         *proj.entry(key).or_insert(0.0) += w;
                     }
                     let mut v: Vec<(u64, f64)> = proj.into_iter().collect();
@@ -1658,7 +1656,7 @@ impl<'a> DeckSpace<'a> {
                         acc[o] += w * f;
                     }
                 }
-                fixed * acc[..opts.len()].iter().cloned().fold(0.0f64, f64::max)
+                fixed * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
             };
             // (each slot's group and chain position in pick order, the chain slots, each group's best ratios)
             let mut cc_slot: Vec<(usize, usize)> = vec![];
@@ -1791,7 +1789,7 @@ impl<'a> DeckSpace<'a> {
                         }
                         (o, t)
                     });
-                    (&x.0[..], &x.1[..])
+                    ((&*x.0), (&*x.1))
                 } else {
                     (&[][..], &[][..])
                 };
@@ -1869,7 +1867,7 @@ impl<'a> DeckSpace<'a> {
                 let memo = !och.is_empty() && cc_cmax < 16;
                 if memo {
                     let uc = &mut *ucache;
-                    let mi = sel.len() * 2 + early as usize;
+                    let mi = sel.len() * 2 + usize::from(early);
                     if uc.maps.len() <= mi {
                         uc.maps.resize_with(mi + 1, || None);
                     }
@@ -1883,7 +1881,7 @@ impl<'a> DeckSpace<'a> {
                     let (x, w) = if early { &c.states[ord[i] as usize] } else { &c.states[i] };
                     if memo {
                         let StateBoundCache { maps, fst, fx, term, stamp } = &mut *ucache;
-                        let mp = maps[sel.len() * 2 + early as usize].get_or_insert_with(|| StateClasses {
+                        let mp = maps[sel.len() * 2 + usize::from(early)].get_or_insert_with(|| StateClasses {
                             fid: vec![],
                             rep: vec![],
                             fk: Default::default(),
@@ -1894,7 +1892,7 @@ impl<'a> DeckSpace<'a> {
                             // levels sorted; 4 bits each, at most 16 positions)
                             let mut fkey = 0u64;
                             for &(p, _) in fch {
-                                fkey = fkey << 4 | x[p] as u64;
+                                fkey = fkey << 4 | u64::from(x[p]);
                             }
                             let mut ckey = fkey;
                             let mut s0 = 0usize;
@@ -1909,7 +1907,7 @@ impl<'a> DeckSpace<'a> {
                                 }
                                 lv[..s1 - s0].sort_unstable();
                                 for &l in &lv[..s1 - s0] {
-                                    ckey = ckey << 4 | l as u64;
+                                    ckey = ckey << 4 | u64::from(l);
                                 }
                                 s0 = s1;
                             }
@@ -1923,11 +1921,7 @@ impl<'a> DeckSpace<'a> {
                         if term.len() < (i + 1) * no {
                             term.resize((i + 1) * no, 0.0);
                         }
-                        if r != i {
-                            for o in 0..no {
-                                acc[o] += w * term[r * no + o];
-                            }
-                        } else {
+                        if r == i {
                             let f = mp.fid[i] as usize;
                             let fw = 2 * nu + no;
                             if fst.len() <= f {
@@ -1949,6 +1943,10 @@ impl<'a> DeckSpace<'a> {
                             for o in 0..no {
                                 term[i * no + o] = fv[o];
                                 acc[o] += w * fv[o];
+                            }
+                        } else {
+                            for o in 0..no {
+                                acc[o] += w * term[r * no + o];
                             }
                         }
                     } else {
@@ -1983,7 +1981,7 @@ impl<'a> DeckSpace<'a> {
                         }
                     }
                 }
-                fixed * acc[..opts.len()].iter().cloned().fold(0.0f64, f64::max)
+                fixed * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
             };
             let sb_ub = |sel: &[usize]| -> f64 { if cfm { cf_ub(sel, 0.0) } else { sb_ub(sel) } };
             // The cap-free band's cheap bound, tried before `cf_ub` (a node either fails is pruned): given N = n events
@@ -2030,7 +2028,8 @@ impl<'a> DeckSpace<'a> {
             // (at most 16 chain slots, as outfits)
             assert!(cc_chain.len() <= 16);
             let cc_cache = std::cell::RefCell::new({
-                let (nsl, cz, nch, nn, on) = (cc_slot.len(), cc_cmax + 1, cc_chain.len(), cf_ns.len(), cfm as usize);
+                let (nsl, cz, nch, nn, on) =
+                    (cc_slot.len(), cc_cmax + 1, cc_chain.len(), cf_ns.len(), usize::from(cfm));
                 EventBoundCache {
                     sel: vec![],
                     tab: vec![None; on * nsl],
@@ -2132,7 +2131,7 @@ impl<'a> DeckSpace<'a> {
                     let (rows, filled, rm): (&[(f64, f64)], bool, &[f64]) = if i < d {
                         (sb_rows[sel[i]].as_deref().unwrap(), true, &tab[i].as_ref().unwrap()[..])
                     } else {
-                        (&c.gmin[g][..], false, &cc_grm[g][..])
+                        ((&*c.gmin[g]), false, &cc_grm[g][..])
                     };
                     chv[s] = (pos, rows, filled, rm, rows.len() / nu);
                 }
@@ -2396,7 +2395,8 @@ impl<'a> DeckSpace<'a> {
                         // borrowed cards still allowed (only with the one-borrowed tables)
                         let can = nb < 1;
                         let mut have_a = false;
-                        let row = if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + (one_b && can) as usize };
+                        let row =
+                            if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + usize::from(one_b && can) };
                         let (pw, pg) = (&pw[..nu], &pg[..nu]);
                         if row == usize::MAX {
                             for t in 0..nu {
@@ -2440,7 +2440,7 @@ impl<'a> DeckSpace<'a> {
                                 // order (`OutfitPre::eval`'s). The factors before the first touched target t0 are the
                                 // parent's, and so is their product from 1.0 (`pp`, kept per parent): a child's product
                                 // starts there and multiplies on from t0, the same multiplications in the same order
-                                let c = &mut hc[dep * 2 + (one_b && can) as usize];
+                                let c = &mut hc[dep * 2 + usize::from(one_b && can)];
                                 if c.pid != pid {
                                     c.pid = pid;
                                     for t in 0..nu {
@@ -2481,7 +2481,7 @@ impl<'a> DeckSpace<'a> {
                                         row[t] = o.factor_at(t, q, tw[t], tg[t]);
                                     }
                                     let mut p = pr[t0];
-                                    for &x in row[t0..].iter() {
+                                    for &x in &row[t0..] {
                                         p *= x;
                                     }
                                     let mut m = tm;
@@ -2592,7 +2592,7 @@ impl<'a> DeckSpace<'a> {
                                 return 0.0;
                             }
                             let mut p = pr[t0];
-                            for &x in brow[t0..nu].iter() {
+                            for &x in &brow[t0..nu] {
                                 p *= x;
                             }
                             p
@@ -2614,7 +2614,7 @@ impl<'a> DeckSpace<'a> {
                             // (ZSPLIT; a row without a split, zm 0 and no low split, takes min(A, B r)) A's product over a
                             // split's Z: from the per-parent row with the child's touched targets recomputed (A's own
                             // factors), or at the node's odds
-                            let hrow = if have_a { dep * 2 + (one_b && can) as usize } else { usize::MAX };
+                            let hrow = if have_a { dep * 2 + usize::from(one_b && can) } else { usize::MAX };
                             let a_z = |ix: usize, z: u32| -> f64 {
                                 let (o, q) = (&orow[ix], oqq[ix]);
                                 if hrow == usize::MAX {
@@ -2814,7 +2814,7 @@ impl<'a> DeckSpace<'a> {
                                 &st.pw[b + nu..b + 2 * nu],
                                 &st.pg[b + nu..b + 2 * nu],
                                 bestv(),
-                                nb + sp.ebor[j] as usize,
+                                nb + usize::from(sp.ebor[j]),
                                 &st.pw[b..b + nu],
                                 &st.pg[b..b + nu],
                                 dep,
@@ -2837,7 +2837,7 @@ impl<'a> DeckSpace<'a> {
                                 p + 1,
                                 left - 1,
                                 chm | ebit[j],
-                                nb + sp.ebor[j] as usize,
+                                nb + usize::from(sp.ebor[j]),
                                 have | lbit[j],
                                 cj,
                                 lk,
@@ -3006,7 +3006,7 @@ impl<'a> DeckSpace<'a> {
                         }
                         let mk = |v: f64| {
                             let mut e = sel.to_vec();
-                            e.sort();
+                            e.sort_unstable();
                             (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() })
                         };
                         if best {

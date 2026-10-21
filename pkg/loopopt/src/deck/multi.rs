@@ -1,6 +1,11 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
 use super::enumerate::{SearchMode, SearchOutcome};
-use super::*;
+use super::{
+    Card, CardsRaw, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO, EXACT_STEPS,
+    GEN_GOLD, Instant, JointExt, Kind, Model, NONE, NT, Name, PDeck, Res, SPT, Sched, SkillJob, Sources, Src, UCHK,
+    Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter, lins, member_json, members,
+    optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
+};
 
 /// Per-uma decks: each trainee runs her own best legal deck, the same one in all the lineages she heads (three in a
 /// four-uma loop, one in a three-uma rotation).
@@ -40,9 +45,10 @@ pub(super) fn run_multi(
     }
     let (with3, with4) = (sj.sizes.contains(&3), sj.sizes.contains(&4));
     let tq = Instant::now();
-    let fixed_s: Option<Vec<Option<Sched>>> = dj.schedule.as_deref().map(|mode| {
-        (0..n).map(|i| if pool.contains(&i) { Some(prebuilt(d, &d.umas[i], mode)) } else { None }).collect()
-    });
+    let fixed_s: Option<Vec<Option<Sched>>> = dj
+        .schedule
+        .as_deref()
+        .map(|mode| (0..n).map(|i| pool.contains(&i).then(|| prebuilt(d, &d.umas[i], mode))).collect());
     let no_race = dj.schedule.as_deref() == Some("none");
     let pb = match &fixed_s {
         Some(fs) => {
@@ -132,7 +138,7 @@ pub(super) fn run_multi(
             })
             .collect();
         let mut v: Vec<usize> = k_filter(tagged, 1, co.len()).into_list().into_iter().map(|y| y.cards[0]).collect();
-        v.sort();
+        v.sort_unstable();
         v
     };
     // the full coordinate set needs no thinning: the skyline is already thin on it
@@ -142,13 +148,12 @@ pub(super) fn run_multi(
     let mut ucls: Vec<usize> = vec![usize::MAX; n];
     for &u in &pool {
         let co = ucoords(u);
-        let ci = match class_ix.get(&co) {
-            Some(&c) => c,
-            None => {
-                class_sky.push(if co == full { (0..sky.len()).collect() } else { thin(&sky, &co) });
-                class_ix.insert(co, class_sky.len() - 1);
-                class_sky.len() - 1
-            }
+        let ci = if let Some(&c) = class_ix.get(&co) {
+            c
+        } else {
+            class_sky.push(if co == full { (0..sky.len()).collect() } else { thin(&sky, &co) });
+            class_ix.insert(co, class_sky.len() - 1);
+            class_sky.len() - 1
         };
         ucls[u] = ci;
     }
@@ -198,7 +203,7 @@ pub(super) fn run_multi(
         eprintln!(
             "classes {} sizes {:?} ({:.2}s)",
             class_sky.len(),
-            class_sky.iter().map(|c| c.len()).collect::<Vec<_>>(),
+            class_sky.iter().map(std::vec::Vec::len).collect::<Vec<_>>(),
             tq.elapsed().as_secs_f64()
         );
     }
@@ -459,16 +464,13 @@ pub(super) fn run_multi(
                 ent.certified_cap = lv;
             }
         }
-        let b = match &ent.best {
-            Some((sum, x)) => {
-                let (e, fl) = ents_of(x);
-                let per = joint_b(model, u, qs, &e, fl, ntar, true);
-                Best { sum: *sum, deck: Some(x.clone()), per }
-            }
-            None => {
-                let per = joint(model, u, qs, &[], 0, ntar, true);
-                Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per }
-            }
+        let b = if let Some((sum, x)) = &ent.best {
+            let (e, fl) = ents_of(x);
+            let per = joint_b(model, u, qs, &e, fl, ntar, true);
+            Best { sum: *sum, deck: Some(x.clone()), per }
+        } else {
+            let per = joint(model, u, qs, &[], 0, ntar, true);
+            Best { sum: per.iter().map(|y| y.0).sum(), deck: None, per }
         };
         let b = std::rc::Rc::new(b);
         ent.reported_best = Some(b.clone());
@@ -787,7 +789,7 @@ pub(super) fn run_multi(
                                 continue;
                             }
                             let mut f = [ord[a], ord[b], ord[c], ord[e]];
-                            f.sort();
+                            f.sort_unstable();
                             if !req.iter().all(|r| f.contains(r)) {
                                 continue;
                             }
@@ -819,7 +821,7 @@ pub(super) fn run_multi(
                             continue;
                         }
                         let mut t = [ord[a], ord[b], ord[c]];
-                        t.sort();
+                        t.sort_unstable();
                         let f = [t[0], t[1], t[2], NONE];
                         if !req.iter().all(|r| f.contains(r)) {
                             continue;
@@ -1005,36 +1007,32 @@ pub(super) fn run_multi(
     let mut allow = budget;
     for &lv in &steps {
         budget_c.set(allow);
-        match run_pass(lv) {
-            Some(pass) => {
-                last = Some(pass);
-                cert = lv;
-                break;
-            }
-            None => {
-                // Retain scored decks, but grant fresh work before trying a lower cap.
-                aborted.set(false);
-                allow = work.get() + budget / 4;
-            }
+        if let Some(pass) = run_pass(lv) {
+            last = Some(pass);
+            cert = lv;
+            break;
+        } else {
+            // Retain scored decks, but grant fresh work before trying a lower cap.
+            aborted.set(false);
+            allow = work.get() + budget / 4;
         }
     }
-    let p = match last {
-        Some(p) => p,
-        None => {
-            budget_c.set(usize::MAX);
-            run_pass(1.0).expect("a pass without deck searches")
-        }
+    let p = if let Some(p) = last {
+        p
+    } else {
+        budget_c.set(usize::MAX);
+        run_pass(1.0).expect("a pass without deck searches")
     };
     let Pass { solved, kth: kth_val, next_bound, scanned, generated, sched_rejects, deck_best, lists } = p;
     if solved.is_empty() {
         return json!({"error": "No loop contains all the required umas."});
     }
     if std::env::var("UPPER_CHECK").is_ok() {
-        let v = UCHK.with(|c| c.get());
+        let v = UCHK.with(std::cell::Cell::get);
         eprintln!("UPPER_CHECK: {} checked, max bound/exact {:.4}, {} decks not covered", v.0, v.1, v.2);
     }
     if std::env::var("DECK_DEBUG").is_ok() {
-        let v = SPT.with(|c| c.get());
+        let v = SPT.with(std::cell::Cell::get);
         eprintln!("deck searches: setup {:.2}s tree {:.2}s configs {} count vectors {}", v.0, v.1, v.2, v.3);
     }
     if std::env::var("DECK_DEBUG").is_ok() {
@@ -1149,7 +1147,7 @@ pub(super) fn run_multi(
             json!({"outfits": if covers.is_empty() { vec![] } else { cs.iter().map(|c| json!({"id": c.0, "label": c.1})).collect::<Vec<_>>() }, "covers": covers})
         }).collect();
         let pss: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let dks: Vec<(&[f64], &[f64])> = (0..nm).map(|t| (&dk[t].dw[..], &dk[t].dg[..])).collect();
+        let dks: Vec<(&[f64], &[f64])> = (0..nm).map(|t| ((&*dk[t].dw), (&*dk[t].dg))).collect();
         let mut detail = model.detail(f, &|a, b| if no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(&dks));
         if let Some(ls) = detail["lineages"].as_array_mut() { for (l, x) in ls.iter_mut().enumerate() { x["rank_value"] = x["p_all"].clone(); x["p_all"] = json!(per_l[l].0); } }
         let lp = json!({"members": member_json(d, f), "p_all": pj, "p_minus1": minus1, "landed": landed, "rank_value": rank_v, "outfits": outfits,

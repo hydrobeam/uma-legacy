@@ -1,4 +1,10 @@
+use super::chains::{chain_marginals_dense, chain_marginals_ref, event_pmf};
+use super::hints::miss_draws;
+use super::joint::{joint_trainee_ref, land_factor, state_value_cf};
+use super::sources::group_nuod_lvl;
+use super::space::top_asc;
 use super::*;
+use crate::{load, skills};
 
 fn fixture_skills() -> SkillsRaw {
     let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/data/global/web_skills.json"))
@@ -89,10 +95,10 @@ fn card_blocks_own_character_and_group_members() {
 #[test]
 fn chain_model_calibration() {
     let m = chain_marginals(&[(3, 3, 0), (3, 3, 0)]);
-    assert!((m[&(3, 3, 0)][2] - 0.866).abs() < 0.01, "{:?}", m);
+    assert!((m[&(3, 3, 0)][2] - 0.866).abs() < 0.01, "{m:?}");
     assert!(m[&(3, 3, 0)][0] > 0.99);
     let m9 = chain_marginals(&[(3, 3, 0), (3, 3, 0), (3, 3, 0)]);
-    assert!(m9[&(3, 3, 0)][2] > 0.45 && m9[&(3, 3, 0)][2] < 0.62, "{:?}", m9);
+    assert!(m9[&(3, 3, 0)][2] > 0.45 && m9[&(3, 3, 0)][2] < 0.62, "{m9:?}");
     let one = chain_marginals(&[(3, 3, 0)]);
     assert!(one[&(3, 3, 0)][2] > 0.99);
     // ending a chain early frees its slot: the other card's links fire more often
@@ -288,7 +294,7 @@ fn chain_states_match_marginals() {
         vec![(2, 2, 0); 6],
     ] {
         let mut ks: Vec<Kind> = ks;
-        ks.sort();
+        ks.sort_unstable();
         let st = chain_states(&ks);
         assert!((st.iter().map(|x| x.1).sum::<f64>() - 1.0).abs() < 1e-12);
         let m = chain_marginals(&ks);
@@ -309,7 +315,7 @@ fn chain_states_match_marginals() {
 #[test]
 fn key_level_matches_states() {
     let r = stop_risk_code(&[(2, 1, 2)], 3);
-    let pmf = event_pmf(CHAIN_EVENTS.with(|c| c.get()).0 as usize);
+    let pmf = event_pmf(CHAIN_EVENTS.with(std::cell::Cell::get).0 as usize);
     for ks in [
         vec![(3, 3, 0)],
         vec![(2, 2, 0), (3, 3, 0), (3, 3, 0)],
@@ -317,7 +323,7 @@ fn key_level_matches_states() {
         vec![(2, 2, 0); 6],
     ] {
         let mut ks: Vec<Kind> = ks;
-        ks.sort();
+        ks.sort_unstable();
         let (st, kl) = (chain_states(&ks), key_level(&ks));
         let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
         let mut seen = 0.0f64;
@@ -359,9 +365,7 @@ fn joint_fast_matches_reference() {
             for (p, r) in x.iter().zip(&y) {
                 assert!(
                     (p.0 - r.0).abs() < 1e-13 && (p.1 - r.1).abs() < 1e-13 && p.2 == r.2,
-                    "fill {fill} uma {u}: {:?} vs {:?}",
-                    p,
-                    r
+                    "fill {fill} uma {u}: {p:?} vs {r:?}"
                 );
             }
             let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false, None);
@@ -400,12 +404,7 @@ fn career_fold_and_scale() {
             let mut f = Model::new(&d, &sk, &sj);
             f.ews[u] = m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
             let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
-            assert!(
-                rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2,
-                "fold uma {u} q {q}: {:?} vs {:?}",
-                x,
-                y
-            );
+            assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {x:?} vs {y:?}");
             let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
             let mut ext =
                 JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![], per_outfit: vec![] };
@@ -434,8 +433,7 @@ fn career_fold_and_scale() {
                 && rel(st[3], j.0) < 1e-12
                 && rel(st[1] + st[3], m0) < 1e-12
                 && rel(st[2] + st[3], m1) < 1e-12,
-            "sets {:?}",
-            st
+            "sets {st:?}"
         );
     }
 }

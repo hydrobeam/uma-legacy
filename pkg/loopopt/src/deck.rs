@@ -22,7 +22,10 @@
 //! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
 //! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (the default, `run_multi`) give each trainee
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
-use super::*;
+use super::{
+    Choice, Data, Deserialize, FxMap, Instant, NONE, NT, Res, Sched, Serialize, Uma, best_response, chart_race_name,
+    feasible, members, optimize_fam, pair_ceilings, pk, probs, when, wval,
+};
 use crate::skills::{GEN_GOLD, Model, SkillJob, SkillsRaw, chart_rows, check_sizes, lins, member_json};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -168,26 +171,26 @@ fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
     }
     if feasible(u, &schedule) { schedule } else { solo }
 }
-fn d_one() -> usize {
+const fn d_one() -> usize {
     1
 }
-fn d_true() -> bool {
+const fn d_true() -> bool {
     true
 }
 /// Skyline depth of the deck enumeration: 1 (the exact search scores every deck it needs from `DeckSpace`)
-fn kmax_top(_dj: &DeckJob) -> usize {
+const fn kmax_top(_dj: &DeckJob) -> usize {
     1
 }
 fn d_scenario() -> String {
     "unity".into()
 }
-fn d_hinc() -> u32 {
+const fn d_hinc() -> u32 {
     1
 }
-fn d_size() -> usize {
+const fn d_size() -> usize {
     6
 }
-fn d_rar() -> u8 {
+const fn d_rar() -> u8 {
     2
 } // SR: R cards have no chain events, so this only filters chain cards
 
@@ -210,7 +213,28 @@ pub(crate) use self::loops::run_deck;
 pub(crate) use self::sources::apply_events_db;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use self::sources::{EventLists, apply_event_lists, event_lists};
-use self::{caps::*, chains::*, hints::*, joint::*, kept::*, multi::*, sources::*, space::*};
+use self::{
+    caps::{
+        AUDIT_CAP, EXACT_BUDGET, EXACT_CAP, EXACT_CAPS, EXACT_RHO, EXACT_STEPS, cap_class, cv_mask, src_class,
+        test_caps,
+    },
+    chains::{
+        CHAIN_EVENTS, CHAIN_N, CHAIN_P, KeyLevel, Kind, chain_marginals, chain_states, event_pmf_job, key_level,
+        stop_risk_code,
+    },
+    hints::{hint_base, hint_miss, hint_spec, scenario_name},
+    joint::{
+        JointExt, JointScratch, LandPre, SbCfg, cf_check, joint, joint_b, joint_eval_in, joint_fast, joint_prep,
+        sb_check, sb_mode, src_levels, upper_na,
+    },
+    kept::{Cl, DeckEval, DeckId, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, split, tie_rank},
+    multi::run_multi,
+    sources::{Entries, Group, Sources, Src, deck_entries, group_gh, group_nuod, src_miss},
+    space::{
+        DeckSpace, GTab, LegalTabs, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, Sel, UCHK, deck_space, gm_g, gm_w,
+        kinds_all, top_desc,
+    },
+};
 
 mod career;
 #[cfg(target_arch = "wasm32")]
