@@ -134,8 +134,9 @@ identity keys; `best_loop` (unreachable) removed.
   Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and
   the product of event outcomes on every call, though they depend only on the ordered active groups (`Env::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
-  (equal rewards' weights are not merged: that regroups sums). Not timed; profile `joint_prep` against `joint_eval`
-  first.
+  (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
+  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive), the
+  loop search (`run_deck_relaxed::pick`) and the deck search's `rec` the rest. Not worth doing.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
   per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has
   the same symmetry. Today's jobs reach at most three targets on one card, so this matters only for wide custom
@@ -309,13 +310,27 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - Looped careers' `Want::Stats` (`sim/plan.rs`, the looped block): its statistics are read only by `proxy_check`
   (their options' scores come from a separate `Want::Keep` call), but the call also searches, fills caches and adds
   proofs, so it cannot simply go: `score_career_` needs splitting into ordered stateful preparation and pure
-  evaluation, skipping the statistics when `proxy_check` is off. At most 178 ms of p16_88's 964 ms is in
-  `score_career` at all (the looped block's 464 ms is mostly search); work counters change (sign-off).
-- A kept roll (`next.roll`) is answered after `run_career` builds the model, the deck space and the trainee ceilings,
-  though `roll_answer` needs them only when y < 0.5. Answering first would cut the page's Reroll latency; keep
-  `Env::drop`'s restoring of `DECK_KEEP` on every return. Not timed.
-- Corner tables: `Env::corners_kept` returns a deep copy of an `Rc`-held table on every hit (2^nu doubles per outfit);
-  sharing the `Rc` saves the copies. A prototype exists outside the repo, never compiled clean or tested.
+  evaluation, skipping the statistics when `proxy_check` is off (a `Want` that runs `make_cur`, the pool, every `val`
+  and `sc_prep`, then returns zeros). Removing the call instead would change results: its `val` calls run under the
+  looped block's work cap, for more candidates than Keep's, and the decks they add feed later `tval` maxima. Estimated
+  2026-10-21 from the phase timers: about 31 ms of p16_88's 964 (67 of 272 scorings; `sc_fold_ms` + `sc_loop_ms`
+  124.9 ms over all), about 100 ms of export 2's 2.9 s; `sc_out` drops (67 x 16,384 on p16_88), every other field
+  identical. About 3%; needs the owner's sign-off for the counter.
+- The page's Reroll: measured 2026-10-21 in Chromium on the sample veterans, each reroll 730-820 ms in the solver, of
+  which the roll itself (`roll_kept`, `next.roll`) is 0.1-1.8 ms; the rest is the quick comparison search sent in the
+  same call (`fix: [her]`, `compare`, top 1: "the best career with her"). Answering the roll in its own call first
+  would show Careers to loop at once and the search's verdict and best career when it lands; the worker already queues
+  a reroll behind a running quick search without restarting. Building the search setup after `roll_kept` (the audit's
+  idea) would save nothing: the roll is already cheap.
+- `sc_prep`'s dominance and flat checks per (trainee, deck prefix): at most `sc_fold_ms` (21.8 of p16_88's 964 ms,
+  which also holds `fold_rec`); a memo in `Cache` keyed by (u, nd) with `sc_dom` replayed would keep every output.
+  Under 2%; measure `sc_prep` alone before building it. `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
+  copies a job, negligible.
+- Where the time is (callgrind, 2026-10-21): p10 spends 88.6% of its instructions in the deck search
+  (`DeckSpace::search`, 260 runs from 211 `best_deck` calls: the main search 29.6%, `best_of` 47.9%, `deck_for` 15%)
+  and 6.3% in `score_career`; `rec`'s cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):
+  2.27 s and 2.90 s, deck search 2.10 and 2.17 s of it. Gains now come from fewer or smaller deck searches, not the
+  scoring.
 - Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
   deterministic only with the winners-only cache and exact, unbudgeted searches.
 
