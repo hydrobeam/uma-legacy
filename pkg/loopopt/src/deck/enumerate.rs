@@ -326,6 +326,7 @@ struct SearchControl {
 
 /// Read-only views into preparation's tables. The lazy-bound callbacks borrow those same
 /// tables, so preparation retains their ownership until traversal returns.
+#[derive(Clone, Copy)]
 struct TraversalTables<'tab> {
     ebit: &'tab [u128],
     groups_all: &'tab [&'tab Vec<usize>],
@@ -356,7 +357,7 @@ struct TraversalScratch {
     dw: Vec<f64>,
     dg: Vec<f64>,
     av: Vec<f64>,
-    rbs: std::cell::RefCell<Vec<Vec<f64>>>,
+    rbs: Vec<Vec<f64>>,
 }
 
 impl DeckSpace<'_> {
@@ -591,7 +592,7 @@ impl DeckSpace<'_> {
         let rbsl = if cfm { 0.0 } else { rb_check() };
         let rbc = rbsl > 0.0;
         let rbsl = if rbc { rbsl } else { 1.0 };
-        let rbs: std::cell::RefCell<Vec<Vec<f64>>> = std::cell::RefCell::new(vec![]);
+        let rbs: Vec<Vec<f64>> = vec![];
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
         let mut sp0 = vec![1.0f64; nc];
@@ -1034,8 +1035,8 @@ impl DeckSpace<'_> {
         ConfigurationQueue { cfgs, pend, pkeys }
     }
 
-    /// Traverse the prepared configuration queue. Shared bound callbacks remain statically
-    /// dispatched and fill their original caches only when a visited configuration needs them.
+    /// Traverse the prepared configurations in their visiting order (`ConfigOrder`): each one's root tests, then its
+    /// tables and the depth-first walk of its decks (`Traversal::visit`), until one ends the search.
     fn traverse_configurations(
         &self,
         model: &Model,
@@ -1051,1302 +1052,15 @@ impl DeckSpace<'_> {
         cfg_root: impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
         cf_ratios: &CapFreeRatios<'_>,
     ) -> SearchOutcome {
-        let SearchControl {
-            best,
-            rho,
-            cap,
-            nu,
-            size,
-            nk,
-            set_id,
-            fixed,
-            cfm,
-            cf_lim,
-            cfs,
-            sbm,
-            sb_bar,
-            sb_u,
-            sb_q,
-            ccap,
-            dom_on,
-            lazy,
-            cf_no,
-            nc,
-            rbsl,
-            rbc,
-        } = controls;
-        let TraversalTables { ebit, groups_all, sb_rows, lp, lbit, all_lk, oq, og, orow, zm, nm, alt } = tables;
-        let ConfigurationQueue { cfgs, pend, mut pkeys } = queue;
-        let TraversalScratch { mut out, mut bestv, mut dw, mut dg, mut av, rbs } = scratch;
         let t_dfs = Instant::now();
-        // A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
-        // whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
-        // is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
-        // r - 1 owned with its best borrowed one, for the miss chances (lowest first) and the ratios (highest first).
-        struct BorrowBounds {
-            own: Vec<(Vec<f64>, Vec<f64>)>,
-            one: Vec<(Vec<f64>, Vec<f64>)>,
-            rown: Vec<Vec<f64>>,
-            rone: Vec<Vec<f64>>,
-        }
-        let mut gbc: HashMap<(u64, usize), std::rc::Rc<BorrowBounds>> = HashMap::new();
-        let gb_of = |gi: usize, mw: &[f64], mg: &[f64]| -> BorrowBounds {
-            let l = groups_all[gi];
-            let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.ebor[j]);
-            let mut om = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
-            let mut bm = (vec![1.0f64; nu], vec![1.0f64; nu]);
-            for t in 0..nu {
-                let mut a: Vec<f64> = own.iter().map(|&j| mw[j * nu + t]).collect();
-                a.sort_by(|x, y| x.partial_cmp(y).unwrap());
-                let mut b: Vec<f64> = own.iter().map(|&j| mg[j * nu + t]).collect();
-                b.sort_by(|x, y| x.partial_cmp(y).unwrap());
-                for r in 1..=size {
-                    om[r].0[t] = om[r - 1].0[t] * a.get(r - 1).copied().unwrap_or(1.0);
-                    om[r].1[t] = om[r - 1].1[t] * b.get(r - 1).copied().unwrap_or(1.0);
-                }
-                for &j in &bor {
-                    bm.0[t] = bm.0[t].min(mw[j * nu + t]);
-                    bm.1[t] = bm.1[t].min(mg[j * nu + t]);
-                }
-            }
-            let mut one = om.clone();
-            for r in 1..=size {
-                for t in 0..nu {
-                    one[r].0[t] = om[r].0[t].min(om[r - 1].0[t] * bm.0[t]);
-                    one[r].1[t] = om[r].1[t].min(om[r - 1].1[t] * bm.1[t]);
-                }
-            }
-            let (mut x, mut y) = (vec![0.0f64; nu], vec![0.0f64; nu]);
-            // (`ratio_at`: without a split column, every zm 0 and cix the identity, the plain ratio)
-            let mut ratio = |j: usize| -> Vec<f64> {
-                for t in 0..nu {
-                    x[t] = 1.0 - mw[j * nu + t];
-                    y[t] = 1.0 - mg[j * nu + t];
-                }
-                (0..nc).map(|i| ratio_at(i, &x, &y)).collect()
-            };
-            let ro: Vec<Vec<f64>> = own.iter().map(|&j| ratio(j)).collect();
-            let rb: Vec<Vec<f64>> = bor.iter().map(|&j| ratio(j)).collect();
-            let (mut rown, mut rone) = (vec![], vec![]);
-            for i in 0..nc {
-                let mut r: Vec<f64> = ro.iter().map(|v| v[i]).collect();
-                r.sort_by(|a, b| b.partial_cmp(a).unwrap());
-                let best_b = rb.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
-                let mut pre = vec![1.0f64; size + 1];
-                for k in 1..=size {
-                    pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0);
-                }
-                let mut p1 = pre.clone();
-                if best_b > f64::NEG_INFINITY {
-                    for k in 1..=size {
-                        p1[k] = pre[k].max(pre[k - 1] * best_b);
-                    }
-                }
-                rown.push(pre);
-                rone.push(p1);
-            }
-            BorrowBounds { own: om, one, rown, rone }
-        };
-        // the expanded configuration's suffix tables, flat and reused: per target (g * nu + t) the products of the
-        // groups' lowest misses from group g on (white, gold), per (clause, chance, outfit) (g * noq + i) those of the
-        // best ratios
-        let noq = oq.len();
-        let (mut sufw, mut sufg, mut spf): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
-        // the node bound's per-configuration constants, flat and reused (see `hopeful`)
-        let (mut kab, mut kr, mut kab_have, mut kr_have): (Vec<f64>, Vec<f64>, Vec<bool>, Vec<bool>) =
-            (vec![], vec![], vec![], vec![]);
-        // the node bound's per-parent rows (see `hopeful`), per (depth, borrowing variant); parent ids never repeat
-        // within a search
-        // (`fa`: A's factors, row ix * nu; `pp`: their products from 1.0 over the first t, row ix * (nu + 1))
-        struct ParentTargetBounds {
-            pid: usize,
-            fa: Vec<f64>,
-            pp: Vec<f64>,
-        }
-        let mut hc: Vec<ParentTargetBounds> = vec![];
-        // the same for B, per depth (B has no borrowing variant): the parent's odds 1 - ppw, 1 - ppg, and per row, built
-        // at the first child that evaluates its B (`st`: the parent id it was built for), its factors and their products
-        struct ParentRatioBounds {
-            pid: usize,
-            pdw: [f64; 32],
-            pdg: [f64; 32],
-            st: Vec<usize>,
-            fb: Vec<f64>,
-            pb: Vec<f64>,
-        }
-        let mut hb: Vec<ParentRatioBounds> = vec![];
-        let mut pid_next = 0usize;
-        // (buffers of the expanded configuration, reused: clause sums, B's odds, the DFS rows, the locked-card table)
-        let (mut cvx, mut pdwx, mut pdgx): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
-        let (mut st_sel, mut st_pw, mut st_pg): (Vec<usize>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
-        let mut avail_buf: Vec<Vec<u8>> = vec![];
-        // (the class masks of the expanded configuration: csuf[goff[g] + p] = the `cv_mask`s ORed of group g's entries
-        // from position p on and of every later group's)
-        let (mut csuf, mut goff): (Vec<u64>, Vec<usize>) = (vec![], vec![]);
-        // (a child's touched targets: their odds and the parent's factors they replace)
-        let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
-        // (and for B: their odds 1 - pw, 1 - pg, and one row's factors with the touched ones in place)
-        let (mut bdw, mut bdg, mut brow) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
-        // (a parent's odds for its A factors, the first nu slots written before each use)
-        let (mut bw, mut bg) = ([0.0f64; 32], [0.0f64; 32]);
-        // the per-parent rows need every outfit row to read the nu targets
-        let a_rows = orow.iter().all(|o| o.len() == nu);
-        let oqq: Vec<f64> = oq.iter().map(|x| x.2).collect();
-        // (lazy: the pending configurations by bound, highest first; the computed ones not yet visited, best root first
-        // and, among equal roots, first built first, the order of the stable sort above)
-        struct QueuedConfig {
-            root: f64,
-            idx: usize,
-            cf: SearchConfig,
-        }
-        impl PartialEq for QueuedConfig {
-            fn eq(&self, o: &Self) -> bool {
-                self.cmp(o) == std::cmp::Ordering::Equal
-            }
-        }
-        impl Eq for QueuedConfig {}
-        impl PartialOrd for QueuedConfig {
-            fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
-                Some(self.cmp(o))
-            }
-        }
-        impl Ord for QueuedConfig {
-            fn cmp(&self, o: &Self) -> std::cmp::Ordering {
-                self.root.partial_cmp(&o.root).unwrap().then(o.idx.cmp(&self.idx))
-            }
-        }
-        let mut pord: Vec<usize> = (0..pend.len()).collect();
-        pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
-        let mut heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
-        let mut pp = 0usize;
-        let (mut ldw, mut ldg, mut lsp0, mut lcv, mut lcvo) =
-            (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; nc], vec![0.0f64; 1], vec![0.0f64; 1]);
-        let mut eager_i = 0usize;
-        loop {
-            let cf_own: SearchConfig;
-            let cf: &SearchConfig = if lazy {
-                // compute the pending configurations until the heap's top comes first in the sorted order: every one
-                // left has a bound, so a root, below it (or cannot reach the bar)
-                while pp < pord.len() {
-                    let pe = &pend[pord[pp]];
-                    if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().is_none_or(|h| pe.u >= h.root)) {
-                        break;
-                    }
-                    pp += 1;
-                    // the eager build's values: the per-target bound, the key's ratio tables, sp0 and the root
-                    cfg_odds(&pe.gs, &pe.gm, &mut ldw, &mut ldg);
-                    if pkeys[pe.key].is_none() {
-                        let km = self.key_miss(pe.code);
-                        pkeys[pe.key] = Some(std::rc::Rc::new(rpk_of(&km.0, &km.1, &km.2, pe.gneed)));
-                    }
-                    let rpk = pkeys[pe.key].as_ref().unwrap();
-                    cfg_root(&pe.gs, rpk, &ldw, &ldg, &mut lsp0, &mut lcv, &mut lcvo);
-                    heap.push(QueuedConfig {
-                        root: lcvo[0],
-                        idx: pord[pp - 1],
-                        cf: SearchConfig {
-                            root: lcvo[0],
-                            code: pe.code,
-                            code_real22: pe.real22,
-                            np: pe.np,
-                            filler: pe.filler,
-                            plain: pe.plain,
-                            gs: pe.gs.clone(),
-                            gm: std::rc::Rc::clone(&pe.gm),
-                            rpk: std::rc::Rc::clone(rpk),
-                            prune_bound: lcv[0],
-                            clause_bounds: if rbc { lcv.clone() } else { vec![] },
-                        },
-                    });
-                }
-                match heap.pop() {
-                    Some(h) => {
-                        cf_own = h.cf;
-                        &cf_own
-                    }
-                    None => break,
-                }
-            } else {
-                if eager_i >= cfgs.len() {
-                    break;
-                }
-                eager_i += 1;
-                &cfgs[eager_i - 1]
-            };
-            if best && cf.root * (1.0 + 1e-9) < bestv {
+        let mut tr = Traversal::new(self, model, clauses, controls, tables, scratch, val);
+        let mut order = ConfigOrder::new(queue, controls);
+        while let Some(cf) = order.next(self, tr.bestv, &rpk_of, &cfg_odds, &cfg_root) {
+            if tr.past_bar(&cf) {
                 break;
             }
-            if !best && !cfm && cf.root * (1.0 + 1e-9) < 1.0 {
-                break;
-            }
-            // (the split's root bound: skip, the order kept)
-            if (best && cf.prune_bound * rbsl * (1.0 + 1e-9) < bestv)
-                || (!best && !cfm && cf.prune_bound * rbsl * (1.0 + 1e-9) < 1.0)
-            {
-                continue;
-            }
-            let km = self.key_miss(cf.code);
-            let (mw, mg, tmk) = (&km.0, &km.1, (&*km.2));
-            let (filler, plain) = (cf.filler, cf.plain);
-            let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| ((&**groups_all[i]), c)).collect();
-            // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
-            // (blocks: gmin[g]'s row r by `gm_w`, `gm_g`; rp[g]'s column ix at ix (size + 1))
-            let gmin: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.gm.grp(i)).collect();
-            let rp: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.rpk.grp(i)).collect();
-            // the same products in the same order as the per-configuration tables they replace
-            {
-                let ng = cf.gs.len();
-                sufw.clear();
-                sufw.resize((ng + 1) * nu, 1.0);
-                sufg.clear();
-                sufg.resize((ng + 1) * nu, 1.0);
-                spf.clear();
-                spf.resize((ng + 1) * nc, 1.0);
-                for g in (0..ng).rev() {
-                    let (gw, gg) = (gm_w(gmin[g], nu, cf.gs[g].1), gm_g(gmin[g], nu, cf.gs[g].1));
-                    for t in 0..nu {
-                        sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gw[t];
-                        sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gg[t];
-                    }
-                }
-                for g in (0..ng).rev() {
-                    let rpg = rp[g];
-                    for i in 0..nc {
-                        spf[g * nc + i] = spf[(g + 1) * nc + i] * rpg[i * (size + 1) + cf.gs[g].1];
-                    }
-                }
-            }
-            let (sufw, sufg, spf) = ((&*sufw), (&*sufg), (&*spf));
-            // the dominance tables of this configuration's groups (`dom_table`), and per flat index f (the groups' entries
-            // in turn) the characters of the entries from f on
-            let doms: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>> = if dom_on {
-                cf.gs.iter().map(|&(i, _)| self.dom_table(set_id, cf.code, i, groups_all[i], mw, mg, lbit)).collect()
-            } else {
-                vec![]
-            };
-            let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
-            if dom_on {
-                for &(l, _) in &gs {
-                    for &j in l {
-                        dsuf.push(ebit[j]);
-                    }
-                    doff.push(dsuf.len());
-                }
-                dsuf.push(0);
-                for f in (0..dsuf.len() - 1).rev() {
-                    dsuf[f] |= dsuf[f + 1];
-                }
-            }
-            // the child taking entry B = list[p] of group g, at a node with `start`, `left` slots of g to fill, characters
-            // `chm`, gold misses `ppg`, picks `sel` and characters `need` its decks must take: None when it can be
-            // skipped, else its decks' needed characters. An entry A dominating B (`dom_table`) that is free at the node
-            // and takes B's place in the pick order (a sibling, or no pick of g after A touching B's targets) gives every
-            // deck through B whose picks after B take no card of A's character an equal or better deck before it; when
-            // nothing of A's character can follow, that is every deck through B, else those decks must take one
-            // (per target, ppg * rlo, the same for every dominator: computed at its first use in a call, `prm`'s bit t
-            // set; the slots are reused across calls, never read unset)
-            let mut dpr = [0.0f64; 32];
-            let mut dom = |g: usize,
-                           p: usize,
-                           start: usize,
-                           left: usize,
-                           chm: u128,
-                           ppg: &[f64],
-                           sel: &[usize],
-                           need: u128|
-             -> Option<u128> {
-                if !dom_on {
-                    return Some(need);
-                }
-                let l = gs[g].0;
-                let bj = l[p];
-                let f = doff[g] + p;
-                let mut nd = need;
-                let dl = &doms[g][p];
-                if !dl.is_empty() {
-                    // (the deck's picks in group g so far, all at positions below `start`)
-                    let sg = &sel[sel.len() - (gs[g].1 - left)..];
-                    let (pr, mut prm) = (&mut dpr, 0u32);
-                    for &(a, sm) in dl {
-                        let a = a as usize;
-                        let aj = l[a];
-                        if chm & ebit[aj] != 0 {
-                            continue;
-                        }
-                        if a < start && sg.iter().any(|&j| j > aj && tmk[j] & tmk[bj] != 0) {
-                            continue;
-                        }
-                        if sm != 0 {
-                            let mut ok = true;
-                            let mut m = sm;
-                            while m != 0 {
-                                let t = m.trailing_zeros() as usize;
-                                m &= m - 1;
-                                if prm >> t & 1 == 0 {
-                                    let rlo = gm_g(gmin[g], nu, left - 1)[t] * sufg[(g + 1) * nu + t];
-                                    pr[t] = ppg[t] * rlo;
-                                    prm |= 1 << t;
-                                }
-                                if !(pr[t] * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) {
-                                    ok = false;
-                                    break;
-                                }
-                            }
-                            if !ok {
-                                continue;
-                            }
-                        }
-                        if ebit[aj] != ebit[bj] && ebit[aj] & dsuf[f + 1] != 0 {
-                            nd |= ebit[aj];
-                            continue;
-                        }
-                        return None;
-                    }
-                }
-                // a needed character that no later pick can bring
-                if nd & !(chm | ebit[bj]) & !dsuf[f + 1] != 0 {
-                    return None;
-                }
-                Some(nd)
-            };
-            // the one-borrowed-card tables of this configuration's groups and their suffixes (`own`: no borrowed card
-            // left to place; `one`: at most one, in one group)
-            let one_b = self.allowed_borrow == 1 && gs.iter().any(|(l, _)| l.iter().any(|&j| self.ebor[j]));
-            let gbs: Vec<std::rc::Rc<BorrowBounds>> = if one_b {
-                cf.gs
-                    .iter()
-                    .map(|&(i, _)| {
-                        std::rc::Rc::clone(
-                            gbc.entry((cf.code, i)).or_insert_with(|| std::rc::Rc::new(gb_of(i, mw, mg))),
-                        )
-                    })
-                    .collect()
-            } else {
-                vec![]
-            };
-            let ngs = cf.gs.len();
-            // (allocated only when used)
-            let nb = if one_b { ngs + 1 } else { 0 };
-            // (vec![x; 0] would still build x: none without borrowing)
-            let (mut so, mut s1) = if nb > 0 {
-                (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb])
-            } else {
-                (vec![], vec![])
-            };
-            let (mut po, mut p1) =
-                if nb > 0 { (vec![vec![1.0f64; nc]; nb], vec![vec![1.0f64; nc]; nb]) } else { (vec![], vec![]) };
-            if one_b {
-                for g in (0..ngs).rev() {
-                    let (gb, c) = (&gbs[g], cf.gs[g].1);
-                    for t in 0..nu {
-                        so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t];
-                        so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
-                        s1[g].0[t] = (gb.one[c].0[t] * so[g + 1].0[t]).min(gb.own[c].0[t] * s1[g + 1].0[t]);
-                        s1[g].1[t] = (gb.one[c].1[t] * so[g + 1].1[t]).min(gb.own[c].1[t] * s1[g + 1].1[t]);
-                    }
-                    for i in 0..nc {
-                        po[g][i] = gb.rown[i][c] * po[g + 1][i];
-                        p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]);
-                    }
-                }
-            }
-            cvx.clear();
-            cvx.resize(clauses.len(), 0.0);
-            pdwx.clear();
-            pdwx.resize(nu, 0.0);
-            pdgx.clear();
-            pdgx.resize(nu, 0.0);
-            let (cv, pdw, pdg) = ((&mut *cvx), (&mut *pdwx), (&mut *pdgx));
-            let ng = gs.len();
-            if !best {
-                goff.clear();
-                goff.push(0);
-                for g in 0..ng {
-                    goff.push(goff[g] + gs[g].0.len());
-                }
-                csuf.clear();
-                csuf.resize(goff[ng] + 1, 0);
-                for g in (0..ng).rev() {
-                    for (p, &j) in gs[g].0.iter().enumerate().rev() {
-                        csuf[goff[g] + p] = csuf[goff[g] + p + 1] | self.cvm[j];
-                    }
-                }
-            }
-            let (csuf, goff) = ((&*csuf), (&*goff));
-            // the state-conditioned bound of this configuration: chain positions (sorted kinds, the key's state
-            // distribution projected on the positions whose group has chain targets), per group its slots' positions
-            // and, per chain level, each target's lowest misses over the group's entries (a slot may take any of them,
-            // the same one twice: a relaxation)
-            let sbkey = (set_id, cf.code, cf.code_real22, cf.np);
-            let sbc: Option<std::rc::Rc<SbCfg>> = if sbm == 0 {
-                None
-            } else if let Some(r) = self.sbcfg.borrow().get(&sbkey).cloned() {
-                Some(r)
-            } else {
-                let mut kinds: Vec<(Kind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
-                for (g, &(i, c)) in cf.gs.iter().enumerate() {
-                    if i < nk {
-                        for _ in 0..c {
-                            kinds.push((self.kinds_all[i], g));
-                        }
-                    }
-                }
-                for _ in 0..filler {
-                    kinds.push(((2, 2, 0), usize::MAX));
-                }
-                kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-                let kl: Vec<Kind> = kinds.iter().map(|x| x.0).collect();
-                let full = if kl.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kl) };
-                let has_chain: Vec<bool> =
-                    gs.iter().map(|(l, _)| l.iter().any(|&j| !self.srcs[j].cm.is_empty())).collect();
-                let rel_pos: Vec<usize> =
-                    (0..kinds.len()).filter(|&p| kinds[p].1 != usize::MAX && has_chain[kinds[p].1]).collect();
-                let mut slots: Vec<Vec<usize>> = vec![vec![]; ng];
-                for (ri, &p) in rel_pos.iter().enumerate() {
-                    slots[kinds[p].1].push(ri);
-                }
-                for g in 0..ng {
-                    while slots[g].len() < gs[g].1 {
-                        slots[g].push(usize::MAX);
-                    }
-                }
-                // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
-                // highest: the same sums, each in the order of `full`, sorted the same way)
-                let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.1 < 16) {
-                    let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
-                    for (x, w) in full.iter() {
-                        let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
-                        *proj.entry(key).or_insert(0.0) += w;
-                    }
-                    let mut v: Vec<(u64, f64)> = proj.into_iter().collect();
-                    v.sort_unstable_by_key(|a| a.0);
-                    let np = rel_pos.len();
-                    v.into_iter()
-                        .map(|(k, w)| ((0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(), w))
-                        .collect()
-                } else {
-                    let mut proj: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
-                    for (x, w) in full.iter() {
-                        let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect();
-                        *proj.entry(key).or_insert(0.0) += w;
-                    }
-                    let mut states: Vec<(Vec<u8>, f64)> = proj.into_iter().collect();
-                    states.sort_by(|a, b| a.0.cmp(&b.0));
-                    states
-                };
-                let stops: Vec<usize> =
-                    cf.gs.iter().map(|&(i, _)| if i < nk { self.kinds_all[i].1 as usize } else { 0 }).collect();
-                let gmin: Vec<Vec<(f64, f64)>> = (0..ng)
-                    .map(|g| {
-                        let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * nu];
-                        for &j in gs[g].0 {
-                            if let Some(r) = &sb_rows[j] {
-                                for (x, y) in m.iter_mut().zip(r.iter()) {
-                                    x.0 = x.0.min(y.0);
-                                    x.1 = x.1.min(y.1);
-                                }
-                            }
-                        }
-                        m
-                    })
-                    .collect();
-                let r =
-                    std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: std::cell::OnceCell::default() });
-                self.sbcfg.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
-                Some(r)
-            };
-            // the configuration's state-conditioned bounds (`StateBound`) and its root: no deck of it can reach the bar
-            let mut sbb = StateBound::new(sbc, &gs, &cf.gs, model, sb_u, sb_rows, lp, cf_ratios, nu, cf_no, fixed, cfm);
-            let sb_root = sbb.root(cfs, sb_bar, sbm);
-            if cfm {
-                // (the cap-free band: past its node limit it stops; CF_CHECK passes the root at cfs times its bound)
-                if self.nodes.get() > cf_lim {
-                    return SearchOutcome { decks: out, incomplete: Some(SearchStop::CapFreeNodeLimit) };
-                }
-                if sb_root * cfs.max(1.0) * (1.0 + 1e-9) < sb_bar {
-                    SBN.with(|c| c.borrow_mut().0 += 1);
-                    continue;
-                }
-            } else if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar {
-                SBN.with(|c| c.borrow_mut().0 += 1);
-                continue;
-            }
-            // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
-            let cf_path: std::cell::RefCell<Vec<f64>> =
-                std::cell::RefCell::new(if cfs > 0.0 { vec![sb_root] } else { vec![] });
-            let cf_over = std::cell::Cell::new(false);
-            {
-                {
-                    // the partial decks' miss products, one row of `nu` per depth (the last row: the deck so far)
-                    struct DeckPath {
-                        sel: Vec<usize>,
-                        pw: Vec<f64>,
-                        pg: Vec<f64>,
-                        pid: usize,
-                    }
-                    // (pw, pg: one row of nu per depth 0 ..= the deck's slots, row d at d * nu: the partial deck with d cards)
-                    let nrows = gs.iter().map(|x| x.1).sum::<usize>() + 1;
-                    let mut st = DeckPath {
-                        sel: std::mem::take(&mut st_sel),
-                        pw: std::mem::take(&mut st_pw),
-                        pg: std::mem::take(&mut st_pg),
-                        pid: pid_next,
-                    };
-                    st.sel.clear();
-                    st.pw.clear();
-                    st.pw.resize(nrows * nu, 1.0);
-                    st.pg.clear();
-                    st.pg.resize(nrows * nu, 1.0);
-                    let nhc = 2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1);
-                    while hc.len() < nhc {
-                        hc.push(ParentTargetBounds {
-                            pid: usize::MAX,
-                            fa: vec![0.0; noq * nu],
-                            pp: vec![1.0; noq * (nu + 1)],
-                        });
-                    }
-                    if a_rows {
-                        while hb.len() < nrows {
-                            hb.push(ParentRatioBounds {
-                                pid: usize::MAX,
-                                pdw: [0.0; 32],
-                                pdg: [0.0; 32],
-                                st: vec![usize::MAX; noq],
-                                fb: vec![0.0; noq * nu],
-                                pb: vec![1.0; noq * (nu + 1)],
-                            });
-                        }
-                    }
-                    // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
-                    // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
-                    // first use of their row (the same expressions, so the same f64s as computing them per node); row
-                    // (loff[g] + left) * ncan + can, a row of 2 nu factors (a then b) and one of noq ratios
-                    let ncan = if one_b { 2 } else { 1 };
-                    let mut loff = vec![0usize; ng + 1];
-                    for g in 0..ng {
-                        loff[g + 1] = loff[g] + gs[g].1 + 1;
-                    }
-                    let nrow = loff[ng] * ncan;
-                    kab.clear();
-                    kab.resize(nrow * 2 * nu, 0.0);
-                    kr.clear();
-                    kr.resize(nrow * nc, 0.0);
-                    kab_have.clear();
-                    kab_have.resize(nrow, false);
-                    kr_have.clear();
-                    kr_have.resize(nrow, false);
-                    // can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
-                    // (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
-                    // touches; cm, p: the child's class mask (`cv_mask`s ORed) and its card's position in group g)
-                    let mut hopeful = |g: usize,
-                                       left: usize,
-                                       pw: &[f64],
-                                       pg: &[f64],
-                                       bestv: f64,
-                                       nb: usize,
-                                       ppw: &[f64],
-                                       ppg: &[f64],
-                                       dep: usize,
-                                       pid: usize,
-                                       tm: u32,
-                                       cm: u64,
-                                       p: usize|
-                     -> bool {
-                        // (the cap-free band prunes by the state-conditioned bound alone, `sbx`)
-                        if cfm {
-                            return true;
-                        }
-                        // the cap of every deck the child can still reach: its cards' classes and every entry left
-                        let rho = if best {
-                            rho
-                        } else {
-                            ccap[cap_class(cm | if left > 0 { csuf[goff[g] + p + 1] } else { csuf[goff[g + 1]] })]
-                        };
-                        // borrowed cards still allowed (only with the one-borrowed tables)
-                        let can = nb < 1;
-                        let mut have_a = false;
-                        let row =
-                            if g >= ng { usize::MAX } else { (loff[g] + left) * ncan + usize::from(one_b && can) };
-                        let (pw, pg) = (&pw[..nu], &pg[..nu]);
-                        if row == usize::MAX {
-                            for t in 0..nu {
-                                dw[t] = 1.0 - pw[t] * 1.0;
-                                dg[t] = 1.0 - pg[t] * 1.0;
-                                pdw[t] = 1.0 - pw[t];
-                                pdg[t] = 1.0 - pg[t];
-                            }
-                        } else {
-                            if !kab_have[row] {
-                                kab_have[row] = true;
-                                for t in 0..nu {
-                                    let (a, b) = if !one_b {
-                                        (
-                                            gm_w(gmin[g], nu, left)[t] * sufw[(g + 1) * nu + t],
-                                            gm_g(gmin[g], nu, left)[t] * sufg[(g + 1) * nu + t],
-                                        )
-                                    } else if can {
-                                        let gb = &gbs[g];
-                                        (
-                                            (gb.one[left].0[t] * so[g + 1].0[t])
-                                                .min(gb.own[left].0[t] * s1[g + 1].0[t]),
-                                            (gb.one[left].1[t] * so[g + 1].1[t])
-                                                .min(gb.own[left].1[t] * s1[g + 1].1[t]),
-                                        )
-                                    } else {
-                                        (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t])
-                                    };
-                                    kab[row * 2 * nu + t] = a;
-                                    kab[row * 2 * nu + nu + t] = b;
-                                }
-                            }
-                            let (ka, kb) = kab[row * 2 * nu..(row + 1) * 2 * nu].split_at(nu);
-                            if a_rows {
-                                // A child is its parent plus one card: for a target the card does not touch (its miss
-                                // chances exactly 1.0) the child's pw[t] = parent's pw[t] * 1.0 is the parent's, bit for
-                                // bit, and so are dw[t], dg[t] and every outfit's A factor of t (the same expressions on
-                                // the same f64s; ka, kb depend only on the row, the same for all children of one parent
-                                // and borrowing variant). So the factors are computed once per parent (here, at its first
-                                // child), a child recomputes only its touched targets', and A is the product in target
-                                // order (`OutfitPre::eval`'s). The factors before the first touched target t0 are the
-                                // parent's, and so is their product from 1.0 (`pp`, kept per parent): a child's product
-                                // starts there and multiplies on from t0, the same multiplications in the same order
-                                let c = &mut hc[dep * 2 + usize::from(one_b && can)];
-                                if c.pid != pid {
-                                    c.pid = pid;
-                                    for t in 0..nu {
-                                        bw[t] = 1.0 - ppw[t] * ka[t];
-                                        bg[t] = 1.0 - ppg[t] * kb[t];
-                                    }
-                                    for ix in 0..noq {
-                                        orow[ix].factors(
-                                            oqq[ix],
-                                            &bw[..nu],
-                                            &bg[..nu],
-                                            &mut c.fa[ix * nu..(ix + 1) * nu],
-                                        );
-                                    }
-                                    for (row, pr) in c.fa.chunks_exact(nu).zip(c.pp.chunks_exact_mut(nu + 1)) {
-                                        for t in 0..nu {
-                                            pr[t + 1] = pr[t] * row[t];
-                                        }
-                                    }
-                                }
-                                let mut m = tm;
-                                while m != 0 {
-                                    let t = m.trailing_zeros() as usize;
-                                    m &= m - 1;
-                                    tw[t] = 1.0 - pw[t] * ka[t];
-                                    tg[t] = 1.0 - pg[t] * kb[t];
-                                }
-                                let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
-                                for (ix, (row, pr)) in
-                                    c.fa.chunks_exact_mut(nu).zip(c.pp.chunks_exact(nu + 1)).enumerate()
-                                {
-                                    let (o, q) = (&orow[ix], oqq[ix]);
-                                    let mut m = tm;
-                                    while m != 0 {
-                                        let t = m.trailing_zeros() as usize;
-                                        m &= m - 1;
-                                        told[t] = row[t];
-                                        row[t] = o.factor_at(t, q, tw[t], tg[t]);
-                                    }
-                                    let mut p = pr[t0];
-                                    for &x in &row[t0..] {
-                                        p *= x;
-                                    }
-                                    let mut m = tm;
-                                    while m != 0 {
-                                        let t = m.trailing_zeros() as usize;
-                                        m &= m - 1;
-                                        row[t] = told[t];
-                                    }
-                                    av[ix] = p;
-                                }
-                                // (B's inputs pdw, pdg: below, only when B is evaluated)
-                                have_a = true;
-                            } else {
-                                let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
-                                for t in 0..nu {
-                                    dw[t] = 1.0 - pw[t] * ka[t];
-                                    dg[t] = 1.0 - pg[t] * kb[t];
-                                    pdw[t] = 1.0 - pw[t];
-                                    pdg[t] = 1.0 - pg[t];
-                                }
-                            }
-                        }
-                        // (rbsl: 1, or RB_CHECK's s; x * 1.0 is x)
-                        let pass = |cv: &[f64]| {
-                            if best {
-                                cv[0] * rbsl * (1.0 + 1e-9) >= bestv
-                            } else {
-                                (0..clauses.len()).any(|ci| rho * cv[ci] * rbsl * (1.0 + 1e-9) >= clauses[ci].1)
-                            }
-                        };
-                        // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
-                        // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
-                        // its inputs being probabilities, and a NaN falls through to the real test)
-                        cv.fill(0.0);
-                        let mut nan = false;
-                        for &(ci, i, no) in og {
-                            let q = oq[i].2;
-                            let mut m = 0.0f64;
-                            for o in 0..no {
-                                let a = if have_a { av[i + o] } else { orow[i + o].eval(q, &dw, &dg) };
-                                av[i + o] = a;
-                                nan |= a.is_nan();
-                                m = m.max(a);
-                            }
-                            cv[ci] += fixed * m;
-                        }
-                        if !nan && !pass(cv) {
-                            return false;
-                        }
-                        if row != usize::MAX && !kr_have[row] {
-                            kr_have[row] = true;
-                            for ix in 0..nc {
-                                kr[row * nc + ix] = if !one_b {
-                                    rp[g][ix * (size + 1) + left] * spf[(g + 1) * nc + ix]
-                                } else if can {
-                                    (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix])
-                                } else {
-                                    gbs[g].rown[ix][left] * po[g + 1][ix]
-                                };
-                            }
-                        }
-                        // B's factors are at the child's odds 1 - pw, 1 - pg. With the per-parent rows (have_a) they are
-                        // the parent's at its targets the card does not touch (pw[t] is the parent's, bit for bit, as
-                        // for A): per row, the parent's factors (`ParentRatioBounds`, built at the first child that evaluates the row)
-                        // with the touched targets' recomputed, and B the product over its targets in target
-                        // order from 1.0 (`eval`'s and `eval_in`'s), the full one from the parent's prefix at t0.
-                        // Otherwise at pdw, pdg (filled above)
-                        let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
-                        if have_a {
-                            let h = &mut hb[dep];
-                            if h.pid != pid {
-                                h.pid = pid;
-                                for t in 0..nu {
-                                    h.pdw[t] = 1.0 - ppw[t];
-                                    h.pdg[t] = 1.0 - ppg[t];
-                                }
-                            }
-                            let mut m = tm;
-                            while m != 0 {
-                                let t = m.trailing_zeros() as usize;
-                                m &= m - 1;
-                                bdw[t] = 1.0 - pw[t];
-                                bdg[t] = 1.0 - pg[t];
-                            }
-                        }
-                        // (have_a: row ix's B factors into `brow`, the parent's row with the touched ones recomputed;
-                        // with `full`, their product, else 0)
-                        let mut bfill = |ix: usize, full: bool, brow: &mut [f64; 32]| -> f64 {
-                            let (o, q) = (&orow[ix], oqq[ix]);
-                            let ParentRatioBounds { st, pdw: hw, pdg: hg, fb, pb, .. } = &mut hb[dep];
-                            let (fr, pr) =
-                                (&mut fb[ix * nu..(ix + 1) * nu], &mut pb[ix * (nu + 1)..(ix + 1) * (nu + 1)]);
-                            if st[ix] != pid {
-                                st[ix] = pid;
-                                o.factors(q, &hw[..nu], &hg[..nu], fr);
-                                for t in 0..nu {
-                                    pr[t + 1] = pr[t] * fr[t];
-                                }
-                            }
-                            brow[..nu].copy_from_slice(fr);
-                            let mut m = tm;
-                            while m != 0 {
-                                let t = m.trailing_zeros() as usize;
-                                m &= m - 1;
-                                brow[t] = o.factor_at(t, q, bdw[t], bdg[t]);
-                            }
-                            if !full {
-                                return 0.0;
-                            }
-                            let mut p = pr[t0];
-                            for &x in &brow[t0..nu] {
-                                p *= x;
-                            }
-                            p
-                        };
-                        // (the product of `brow` over the targets in z, in target order: `eval_in`'s)
-                        let bin = |brow: &[f64; 32], z: u32| -> f64 {
-                            let (mut z, mut p) = (z, 1.0f64);
-                            while z != 0 {
-                                let t = z.trailing_zeros() as usize;
-                                z &= z - 1;
-                                p *= brow[t];
-                            }
-                            p
-                        };
-                        // the real bound, the same expression in the same order; an outfit whose A is at most the running
-                        // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
-                        cv.fill(0.0);
-                        {
-                            // (ZSPLIT; a row without a split, zm 0 and no low split, takes min(A, B r)) A's product over a
-                            // split's Z: from the per-parent row with the child's touched targets recomputed (A's own
-                            // factors), or at the node's odds
-                            let hrow = if have_a { dep * 2 + usize::from(one_b && can) } else { usize::MAX };
-                            let a_z = |ix: usize, z: u32| -> f64 {
-                                let (o, q) = (&orow[ix], oqq[ix]);
-                                if hrow == usize::MAX {
-                                    return o.eval_in(q, &dw, &dg, z);
-                                }
-                                let fa = &hc[hrow].fa[ix * nu..(ix + 1) * nu];
-                                let (mut z, mut p) = (z, 1.0f64);
-                                while z != 0 {
-                                    let t = z.trailing_zeros() as usize;
-                                    z &= z - 1;
-                                    p *= if tm >> t & 1 != 0 { o.factor_at(t, q, tw[t], tg[t]) } else { fa[t] };
-                                }
-                                p
-                            };
-                            for &(ci, i, no) in og {
-                                let q = oq[i].2;
-                                let mut m = 0.0f64;
-                                for o in 0..no {
-                                    let ix = i + o;
-                                    let a = av[ix];
-                                    if a <= m {
-                                        continue;
-                                    }
-                                    let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
-                                    // A's factors of the zero targets times N's ratio bound; a low split's, the lower
-                                    let mut b = if have_a {
-                                        let full = bfill(ix, zm[ix] == 0, &mut brow);
-                                        if zm[ix] != 0 { a_z(ix, zm[ix]) * (bin(&brow, nm[ix]) * r) } else { full * r }
-                                    } else if zm[ix] != 0 {
-                                        a_z(ix, zm[ix]) * (orow[ix].eval_in(q, pdw, pdg, nm[ix]) * r)
-                                    } else {
-                                        orow[ix].eval(q, pdw, pdg) * r
-                                    };
-                                    for c in alt[ix].0..alt[ix].1 {
-                                        let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] };
-                                        let bn = if have_a {
-                                            bin(&brow, nm[c])
-                                        } else {
-                                            orow[ix].eval_in(q, pdw, pdg, nm[c])
-                                        };
-                                        b = b.min(a_z(ix, zm[c]) * (bn * r));
-                                    }
-                                    m = m.max(a.min(b));
-                                }
-                                cv[ci] += fixed * m;
-                            }
-                        }
-                        let ok = pass(cv);
-                        if rbc && ok {
-                            let mut s = rbs.borrow_mut();
-                            if s.len() < dep + 2 {
-                                s.resize(dep + 2, vec![]);
-                            }
-                            s[dep + 1].clear();
-                            s[dep + 1].extend_from_slice(cv);
-                        }
-                        ok
-                    };
-                    // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a
-                    // later group (a branch that can no longer place every locked card is dropped)
-                    let all_locked = all_lk;
-                    let mut avail = std::mem::take(&mut avail_buf);
-                    avail.truncate(ng + 1);
-                    avail.resize_with(ng + 1, Vec::new);
-                    avail[ng].clear();
-                    avail[ng].push(0);
-                    for g in (0..ng).rev() {
-                        let l = gs[g].0;
-                        let next = avail[g + 1][0];
-                        let v = &mut avail[g];
-                        v.clear();
-                        v.resize(l.len() + 1, 0u8);
-                        v[l.len()] = next;
-                        for p in (0..l.len()).rev() {
-                            v[p] = v[p + 1] | lbit[l[p]];
-                        }
-                    }
-                    if all_locked & !avail[0][0] != 0 {
-                        avail_buf = avail;
-                        st_sel = st.sel;
-                        st_pw = st.pw;
-                        st_pg = st.pg;
-                        continue;
-                    }
-                    fn rec(
-                        sp: &DeckSpace,
-                        gs: &[(&[usize], usize)],
-                        g: usize,
-                        start: usize,
-                        left: usize,
-                        chm: u128,
-                        nb: usize,
-                        have: u8,
-                        cmk: u64,
-                        lk: (&[u8], u8, &[Vec<u8>]),
-                        st: &mut DeckPath,
-                        ebit: &[u128],
-                        mw: &[f64],
-                        mg: &[f64],
-                        tmk: &[u32],
-                        nu: usize,
-                        hopeful: &mut dyn FnMut(
-                            usize,
-                            usize,
-                            &[f64],
-                            &[f64],
-                            f64,
-                            usize,
-                            &[f64],
-                            &[f64],
-                            usize,
-                            usize,
-                            u32,
-                            u64,
-                            usize,
-                        ) -> bool,
-                        leaf: &mut dyn FnMut(&[usize], &[f64], &[f64], u64) -> bool,
-                        bestv: &dyn Fn() -> f64,
-                        sbx: &mut dyn FnMut(&[usize]) -> bool,
-                        dom: &mut dyn FnMut(usize, usize, usize, usize, u128, &[f64], &[usize], u128) -> Option<u128>,
-                        need: u128,
-                    ) -> bool {
-                        let (lbit, all_locked, avail) = lk;
-                        if left == 0 {
-                            if g + 1 >= gs.len() {
-                                if need & !chm != 0 {
-                                    return false;
-                                }
-                                let b = st.sel.len() * nu;
-                                return leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk);
-                            }
-                            return rec(
-                                sp,
-                                gs,
-                                g + 1,
-                                0,
-                                gs[g + 1].1,
-                                chm,
-                                nb,
-                                have,
-                                cmk,
-                                lk,
-                                st,
-                                ebit,
-                                mw,
-                                mg,
-                                tmk,
-                                nu,
-                                hopeful,
-                                leaf,
-                                bestv,
-                                sbx,
-                                dom,
-                                need,
-                            );
-                        }
-                        if all_locked & !have & !avail[g][start] != 0 {
-                            return false;
-                        }
-                        let list = gs[g].0;
-                        // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
-                        let b = st.sel.len() * nu;
-                        // this parent's id and depth (the per-parent rows of `hopeful`)
-                        st.pid += 1;
-                        let (pid, dep) = (st.pid, st.sel.len());
-                        for p in start..list.len() {
-                            if list.len() - p < left {
-                                break;
-                            }
-                            let j = list[p];
-                            if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) {
-                                continue;
-                            }
-                            let Some(nd) = dom(g, p, start, left, chm, &st.pg[b..b + nu], &st.sel, need) else {
-                                continue;
-                            };
-                            sp.nodes.set(sp.nodes.get() + 1);
-                            // the child's row (depth + 1): the parent's times the card's misses
-                            {
-                                let (par, ch) = st.pw.split_at_mut(b + nu);
-                                let (mj, par, ch) = (&mw[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
-                                for t in 0..nu {
-                                    ch[t] = par[t] * mj[t];
-                                }
-                            }
-                            {
-                                let (par, ch) = st.pg.split_at_mut(b + nu);
-                                let (mj, par, ch) = (&mg[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
-                                for t in 0..nu {
-                                    ch[t] = par[t] * mj[t];
-                                }
-                            }
-                            let cj = cmk | sp.cvm[j];
-                            if !hopeful(
-                                g,
-                                left - 1,
-                                &st.pw[b + nu..b + 2 * nu],
-                                &st.pg[b + nu..b + 2 * nu],
-                                bestv(),
-                                nb + usize::from(sp.ebor[j]),
-                                &st.pw[b..b + nu],
-                                &st.pg[b..b + nu],
-                                dep,
-                                pid,
-                                tmk[j],
-                                cj,
-                                p,
-                            ) {
-                                continue;
-                            }
-                            st.sel.push(j);
-                            if !sbx(&st.sel) {
-                                st.sel.pop();
-                                continue;
-                            }
-                            let stop = rec(
-                                sp,
-                                gs,
-                                g,
-                                p + 1,
-                                left - 1,
-                                chm | ebit[j],
-                                nb + usize::from(sp.ebor[j]),
-                                have | lbit[j],
-                                cj,
-                                lk,
-                                st,
-                                ebit,
-                                mw,
-                                mg,
-                                tmk,
-                                nu,
-                                hopeful,
-                                leaf,
-                                bestv,
-                                sbx,
-                                dom,
-                                nd,
-                            );
-                            st.sel.pop();
-                            if stop {
-                                return true;
-                            }
-                        }
-                        false
-                    }
-                    // the state-conditioned bound at depth <= 1 (mode 1) or at every depth, the leaf included (mode 2); with
-                    // SB_CHECK, every leaf's value against its root's and depth-1 node's bounds
-                    let total_slots: usize = gs.iter().map(|x| x.1).sum();
-                    let mut sb_d1 = f64::INFINITY;
-                    let mut sbx = |sel: &[usize]| -> bool {
-                        if cfm {
-                            // the cap-free band: the bound at every node and leaf, nothing else prunes; past the node
-                            // limit every child fails and the search ends with CapFreeNodeLimit
-                            if cf_over.get() {
-                                return false;
-                            }
-                            if self.nodes.get() > cf_lim {
-                                cf_over.set(true);
-                                return false;
-                            }
-                            let d = sel.len();
-                            let leafd = d == total_slots;
-                            let s = if leafd { 1.0 } else { cfs.max(1.0) };
-                            // the cheap bound first, the state-conditioned one only where it passes
-                            let ubc = sbb.cheap(sel);
-                            // (CF_CHECK: both always, so the check below tests each: an exact value above either is above their minimum)
-                            let ub = if cfs == 0.0 && ubc * s * (1.0 + 1e-9) < sb_bar {
-                                ubc
-                            } else {
-                                ubc.min(sbb.full(sel, if cfs == 0.0 { sb_bar / s } else { 0.0 }))
-                            };
-                            SBN.with(|c| c.borrow_mut().1 += 1);
-                            if cfs > 0.0 {
-                                // CF_CHECK: a leaf's exact value against its own bound and every node's above it
-                                let mut path = cf_path.borrow_mut();
-                                path.truncate(d);
-                                path.push(ub);
-                                if leafd {
-                                    let ents: Vec<(&Src, Kind)> =
-                                        sel.iter().map(|&j| (&self.srcs[j], self.kind[j])).collect();
-                                    let x = joint_fast(
-                                        model,
-                                        sb_u,
-                                        &[sb_q],
-                                        &ents,
-                                        filler,
-                                        nu + model.n_fixed_gold as usize,
-                                        false,
-                                        None,
-                                    )[0]
-                                    .0;
-                                    CFCHK.with(|c| {
-                                        let mut c = c.borrow_mut();
-                                        c.4 += 1;
-                                        for &b in path.iter() {
-                                            if x > b * (1.0 + 1e-9) {
-                                                c.5 += 1;
-                                            }
-                                            if b > 0.0 {
-                                                c.8 = c.8.max(x / b);
-                                            }
-                                        }
-                                    });
-                                }
-                            }
-                            let pass = ub * s * (1.0 + 1e-9) >= sb_bar;
-                            if !pass {
-                                SBN.with(|c| c.borrow_mut().2 += 1);
-                            }
-                            return pass;
-                        }
-                        if sbm == 0 || (sbm == 3 && !sb_check()) {
-                            return true;
-                        }
-                        let d = sel.len();
-                        let chk = sb_check();
-                        let leafd = d == total_slots;
-                        if (sbm == 1 || sbm == 3) && d > 1 && !(chk && leafd) {
-                            return true;
-                        }
-                        if sbm == 3 && d == 1 && !chk {
-                            return true;
-                        }
-                        let ub = sbb.bound(sel);
-                        SBN.with(|c| c.borrow_mut().1 += 1);
-                        if d == 1 {
-                            sb_d1 = ub;
-                        }
-                        if chk && leafd {
-                            SBCHK.with(|c| {
-                                let mut c = c.borrow_mut();
-                                c.4 += 1;
-                                if ub > sb_root * (1.0 + 1e-9) || (d > 1 && ub > sb_d1 * (1.0 + 1e-9)) {
-                                    c.5 += 1;
-                                }
-                            });
-                        }
-                        if (sbm == 1 && d > 1) || sbm == 3 {
-                            return true;
-                        }
-                        let pass = ub * (1.0 + 1e-9) >= sb_bar;
-                        if !pass {
-                            SBN.with(|c| c.borrow_mut().2 += 1);
-                        }
-                        pass
-                    };
-                    let bcell = std::cell::Cell::new(bestv);
-                    // the deck's odds, written per leaf (no allocation unless the deck is kept)
-                    let (mut dwa, mut dga) = ([0.0f64; 32], [0.0f64; 32]);
-                    let mut leaf = |sel: &[usize], pw: &[f64], pg: &[f64], cmk: u64| -> bool {
-                        let pals = sel.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + plain;
-                        if let Some(p) = self.dj.pals
-                            && p != pals
-                        {
-                            return false;
-                        }
-                        if !self.locked.iter().all(|l| sel.iter().any(|&j| self.rel[j] == *l)) {
-                            return false;
-                        }
-                        for t in 0..nu {
-                            dwa[t] = 1.0 - pw[t];
-                            dga[t] = 1.0 - pg[t];
-                        }
-                        let (dw, dg) = (&dwa[..nu], &dga[..nu]);
-                        // RB_CHECK: each clause's value against the bounds of the root and of every node above the deck
-                        if rbc {
-                            let s = rbs.borrow();
-                            RBCHK.with(|c| {
-                                let mut c = c.borrow_mut();
-                                c.0 += 1;
-                                for (ci, cl) in clauses.iter().enumerate() {
-                                    if best && ci > 0 {
-                                        break;
-                                    }
-                                    let x = val(cl, dw, dg);
-                                    for d in 0..=sel.len() {
-                                        let ub = if d == 0 { cf.clause_bounds[ci] } else { s[d][ci] };
-                                        c.1 += 1;
-                                        if x > ub * (1.0 + 1e-9) {
-                                            c.2 += 1;
-                                        }
-                                        if ub > 0.0 {
-                                            c.3 = c.3.max(x / ub);
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                        let mk = |v: f64| {
-                            let mut e = sel.to_vec();
-                            e.sort_unstable();
-                            (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() })
-                        };
-                        if best {
-                            let v = val(&clauses[0], dw, dg);
-                            if v > bcell.get() {
-                                bcell.set(v);
-                                out.clear();
-                                out.push(mk(v));
-                            }
-                            false
-                        } else {
-                            // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
-                            let (mut v, mut pass) = (f64::NEG_INFINITY, false);
-                            let rho = ccap[cap_class(cmk)];
-                            for cl in clauses {
-                                let x = val(cl, dw, dg);
-                                v = v.max(x);
-                                pass = pass || cfm || rho * x * (1.0 + 1e-9) >= cl.1;
-                            }
-                            if pass {
-                                out.push(mk(v));
-                                if out.len() >= cap {
-                                    return true;
-                                }
-                            }
-                            false
-                        }
-                    };
-                    let bget = || bcell.get();
-                    let stop = if gs.is_empty() {
-                        leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu], 0)
-                    } else {
-                        rec(
-                            self,
-                            &gs,
-                            0,
-                            0,
-                            gs[0].1,
-                            0,
-                            0,
-                            0,
-                            0,
-                            (lbit, all_locked, &avail),
-                            &mut st,
-                            ebit,
-                            mw,
-                            mg,
-                            tmk,
-                            nu,
-                            &mut hopeful,
-                            &mut leaf,
-                            &bget,
-                            &mut sbx,
-                            &mut dom,
-                            0,
-                        )
-                    };
-                    pid_next = st.pid;
-                    avail_buf = avail;
-                    st_sel = st.sel;
-                    st_pw = st.pw;
-                    st_pg = st.pg;
-                    bestv = bcell.get();
-                    if stop {
-                        return SearchOutcome { decks: out, incomplete: Some(SearchStop::OutputLimit) };
-                    }
-                    if cf_over.get() {
-                        return SearchOutcome { decks: out, incomplete: Some(SearchStop::CapFreeNodeLimit) };
-                    }
-                }
+            if let Some(stop) = tr.visit(&cf, &ratio_at, cf_ratios) {
+                return SearchOutcome { decks: tr.out, incomplete: Some(stop) };
             }
         }
         SPT.with(|c| {
@@ -2354,7 +1068,7 @@ impl DeckSpace<'_> {
             v.1 += t_dfs.elapsed().as_secs_f64();
             c.set(v);
         });
-        SearchOutcome { decks: out, incomplete: None }
+        SearchOutcome { decks: tr.out, incomplete: None }
     }
     /// The product search's dominance table of group `gi` (entries `l`) under key `code`: per position p, the earlier
     /// positions a whose entry A could take B = l[p]'s place in any deck (borrowed only if B is, B's locked card if B
@@ -2448,3 +1162,1527 @@ fn rb_check() -> f64 {
 /// certain white hint. Measured on tiny 8-target jobs (instructions): 0.25 and 0.5 the same, 0.75 alone or as a second
 /// split (0.5 and 0.75) fewer nodes but more instructions
 const LOW_SPLIT: [f64; 1] = [0.5];
+
+/// A deck holds at most `allowed_borrow` (0 or 1) borrowed cards; the tables above take each group's best entries
+/// whatever they are, so with borrowing they count several borrowed cards at once (every card the player lacks
+/// is one), which leaves the bound loose. Per (key, group): the products of its r best owned entries, and of
+/// r - 1 owned with its best borrowed one, for the miss chances (lowest first) and the ratios (highest first).
+struct BorrowBounds {
+    own: Vec<(Vec<f64>, Vec<f64>)>,
+    one: Vec<(Vec<f64>, Vec<f64>)>,
+    rown: Vec<Vec<f64>>,
+    rone: Vec<Vec<f64>>,
+}
+
+/// The one-borrowed-card tables of one configuration's groups and their suffixes (`own`: no borrowed card left to
+/// place; `one`: at most one, in one group); empty without borrowing (`one_b` false)
+struct BorrowTables {
+    one_b: bool,
+    gbs: Vec<std::rc::Rc<BorrowBounds>>,
+    so: Vec<(Vec<f64>, Vec<f64>)>,
+    s1: Vec<(Vec<f64>, Vec<f64>)>,
+    po: Vec<Vec<f64>>,
+    p1: Vec<Vec<f64>>,
+}
+
+/// The node bound's per-parent rows (see `Walk::hopeful`), per (depth, borrowing variant); parent ids never repeat
+/// within a search
+/// (`fa`: A's factors, row ix * nu; `pp`: their products from 1.0 over the first t, row ix * (nu + 1))
+struct ParentTargetBounds {
+    pid: usize,
+    fa: Vec<f64>,
+    pp: Vec<f64>,
+}
+
+/// The same for B, per depth (B has no borrowing variant): the parent's odds 1 - ppw, 1 - ppg, and per row, built
+/// at the first child that evaluates its B (`st`: the parent id it was built for), its factors and their products
+struct ParentRatioBounds {
+    pid: usize,
+    pdw: [f64; 32],
+    pdg: [f64; 32],
+    st: Vec<usize>,
+    fb: Vec<f64>,
+    pb: Vec<f64>,
+}
+
+/// (lazy: the pending configurations by bound, highest first; the computed ones not yet visited, best root first
+/// and, among equal roots, first built first, the order of the stable sort above)
+struct QueuedConfig {
+    root: f64,
+    idx: usize,
+    cf: SearchConfig,
+}
+impl PartialEq for QueuedConfig {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for QueuedConfig {}
+impl PartialOrd for QueuedConfig {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for QueuedConfig {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        self.root.partial_cmp(&o.root).unwrap().then(o.idx.cmp(&self.idx))
+    }
+}
+
+/// The partial decks' miss products, one row of `nu` per depth (the last row: the deck so far): `pw`, `pg` hold one
+/// row of nu per depth 0 ..= the deck's slots, row d at d * nu (the partial deck with d cards); `pid` the last parent
+/// id given out (kept across configurations)
+struct DeckPath {
+    sel: Vec<usize>,
+    pw: Vec<f64>,
+    pg: Vec<f64>,
+    pid: usize,
+}
+
+/// The configuration to visit next: computed from a pending one (lazy) or the eager list's
+enum ConfigRef<'queue> {
+    Computed(SearchConfig),
+    Listed(&'queue SearchConfig),
+}
+impl std::ops::Deref for ConfigRef<'_> {
+    type Target = SearchConfig;
+    fn deref(&self) -> &SearchConfig {
+        match self {
+            ConfigRef::Computed(c) => c,
+            ConfigRef::Listed(c) => c,
+        }
+    }
+}
+
+/// The configurations in visiting order: the eager list in its stable root order; or (lazy) the pending ones by
+/// bound, each computed (its root and the key's ratio tables) once it may come next, and popped best root first
+struct ConfigOrder {
+    lazy: bool,
+    rbc: bool,
+    cfgs: Vec<SearchConfig>,
+    pend: Vec<PendingConfig>,
+    pkeys: Vec<Option<std::rc::Rc<GTab>>>,
+    pord: Vec<usize>,
+    heap: std::collections::BinaryHeap<QueuedConfig>,
+    pp: usize,
+    ldw: Vec<f64>,
+    ldg: Vec<f64>,
+    lsp0: Vec<f64>,
+    lcv: Vec<f64>,
+    lcvo: Vec<f64>,
+    eager_i: usize,
+}
+
+impl ConfigOrder {
+    fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
+        let SearchControl { lazy, rbc, nu, nc, .. } = controls;
+        let ConfigurationQueue { cfgs, pend, pkeys } = queue;
+        let mut pord: Vec<usize> = (0..pend.len()).collect();
+        pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
+        let heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
+        let (ldw, ldg, lsp0, lcv, lcvo) =
+            (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; nc], vec![0.0f64; 1], vec![0.0f64; 1]);
+        Self { lazy, rbc, cfgs, pend, pkeys, pord, heap, pp: 0, ldw, ldg, lsp0, lcv, lcvo, eager_i: 0 }
+    }
+
+    /// The next configuration to visit at the bar `bestv`, None when none is left
+    fn next(
+        &mut self,
+        sp: &DeckSpace<'_>,
+        bestv: f64,
+        rpk_of: &impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
+        cfg_odds: &impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
+        cfg_root: &impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+    ) -> Option<ConfigRef<'_>> {
+        let Self { lazy, rbc, cfgs, pend, pkeys, pord, heap, pp, ldw, ldg, lsp0, lcv, lcvo, eager_i } = self;
+        if *lazy {
+            // compute the pending configurations until the heap's top comes first in the sorted order: every one
+            // left has a bound, so a root, below it (or cannot reach the bar)
+            while *pp < pord.len() {
+                let pe = &pend[pord[*pp]];
+                if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().is_none_or(|h| pe.u >= h.root)) {
+                    break;
+                }
+                *pp += 1;
+                // the eager build's values: the per-target bound, the key's ratio tables, sp0 and the root
+                cfg_odds(&pe.gs, &pe.gm, ldw, ldg);
+                let rpk: &std::rc::Rc<GTab> = pkeys[pe.key].get_or_insert_with(|| {
+                    let km = sp.key_miss(pe.code);
+                    std::rc::Rc::new(rpk_of(&km.0, &km.1, &km.2, pe.gneed))
+                });
+                cfg_root(&pe.gs, rpk, ldw, ldg, lsp0, lcv, lcvo);
+                heap.push(QueuedConfig {
+                    root: lcvo[0],
+                    idx: pord[*pp - 1],
+                    cf: SearchConfig {
+                        root: lcvo[0],
+                        code: pe.code,
+                        code_real22: pe.real22,
+                        np: pe.np,
+                        filler: pe.filler,
+                        plain: pe.plain,
+                        gs: pe.gs.clone(),
+                        gm: std::rc::Rc::clone(&pe.gm),
+                        rpk: std::rc::Rc::clone(rpk),
+                        prune_bound: lcv[0],
+                        clause_bounds: if *rbc { lcv.clone() } else { vec![] },
+                    },
+                });
+            }
+            heap.pop().map(|h| ConfigRef::Computed(h.cf))
+        } else {
+            if *eager_i >= cfgs.len() {
+                return None;
+            }
+            *eager_i += 1;
+            Some(ConfigRef::Listed(&cfgs[*eager_i - 1]))
+        }
+    }
+}
+
+/// What every configuration of one traversal reads: the search, its controls and tables, the clause value (`val`)
+struct TraversalInputs<'run, 'space, V> {
+    sp: &'run DeckSpace<'space>,
+    model: &'run Model<'run>,
+    clauses: &'run [(Vec<(usize, f64)>, f64)],
+    ctl: SearchControl,
+    tb: TraversalTables<'run>,
+    val: V,
+    noq: usize,
+    // the per-parent rows need every outfit row to read the nu targets
+    a_rows: bool,
+    oqq: Vec<f64>,
+}
+
+/// The node bound's buffers and per-parent rows (`Walk::hopeful`), and the dominance skip's, reused across
+/// configurations
+struct NodeScratch {
+    dw: Vec<f64>,
+    dg: Vec<f64>,
+    av: Vec<f64>,
+    // (the expanded configuration's clause sums and B's odds)
+    cvx: Vec<f64>,
+    pdwx: Vec<f64>,
+    pdgx: Vec<f64>,
+    // the node bound's per-configuration constants, flat and reused (see `hopeful`)
+    kab: Vec<f64>,
+    kr: Vec<f64>,
+    kab_have: Vec<bool>,
+    kr_have: Vec<bool>,
+    hc: Vec<ParentTargetBounds>,
+    hb: Vec<ParentRatioBounds>,
+    // (a child's touched targets: their odds and the parent's factors they replace)
+    tw: [f64; 32],
+    tg: [f64; 32],
+    told: [f64; 32],
+    // (and for B: their odds 1 - pw, 1 - pg, and one row's factors with the touched ones in place)
+    bdw: [f64; 32],
+    bdg: [f64; 32],
+    brow: [f64; 32],
+    // (a parent's odds for its A factors, the first nu slots written before each use)
+    bw: [f64; 32],
+    bg: [f64; 32],
+    // (`Walk::dom`'s per-target ppg * rlo: written before read in each call)
+    dpr: [f64; 32],
+    // (RB_CHECK: the node bounds on the current path, per depth its clause sums, the root's at depth 0)
+    rbs: Vec<Vec<f64>>,
+}
+
+impl NodeScratch {
+    /// Grow the per-parent rows to `nhc` (A) and, with `a_rows`, `nrows` (B)
+    fn grow_parent_rows(&mut self, nhc: usize, nrows: usize, noq: usize, nu: usize, a_rows: bool) {
+        while self.hc.len() < nhc {
+            self.hc.push(ParentTargetBounds {
+                pid: usize::MAX,
+                fa: vec![0.0; noq * nu],
+                pp: vec![1.0; noq * (nu + 1)],
+            });
+        }
+        if a_rows {
+            while self.hb.len() < nrows {
+                self.hb.push(ParentRatioBounds {
+                    pid: usize::MAX,
+                    pdw: [0.0; 32],
+                    pdg: [0.0; 32],
+                    st: vec![usize::MAX; noq],
+                    fb: vec![0.0; noq * nu],
+                    pb: vec![1.0; noq * (nu + 1)],
+                });
+            }
+        }
+    }
+
+    /// Clear the node bound's per-configuration constants for `nrow` rows (see `Walk::hopeful`)
+    fn reset_constants(&mut self, nrow: usize, nu: usize, nc: usize) {
+        self.kab.clear();
+        self.kab.resize(nrow * 2 * nu, 0.0);
+        self.kr.clear();
+        self.kr.resize(nrow * nc, 0.0);
+        self.kab_have.clear();
+        self.kab_have.resize(nrow, false);
+        self.kr_have.clear();
+        self.kr_have.resize(nrow, false);
+    }
+}
+
+/// The expanded configuration's tables, flat and reused across configurations
+struct ConfigScratch {
+    // the suffix tables: per target (g * nu + t) the products of the groups' lowest misses from group g on (white,
+    // gold), per (clause, chance, outfit) (g * noq + i) those of the best ratios
+    sufw: Vec<f64>,
+    sufg: Vec<f64>,
+    spf: Vec<f64>,
+    // (the class masks: csuf[goff[g] + p] = the `cv_mask`s ORed of group g's entries from position p on and of every
+    // later group's)
+    csuf: Vec<u64>,
+    goff: Vec<usize>,
+    // locked cards as bits; avail[g][p]: locked cards with an entry at position >= p of group g or in a later group
+    avail: Vec<Vec<u8>>,
+    path: DeckPath,
+}
+
+impl ConfigScratch {
+    /// The suffix tables of `cf` (its groups' key tables `gmin`, `rp`): the same products in the same order as the
+    /// per-configuration tables they replace
+    fn fill_suffixes(&mut self, cf: &SearchConfig, gmin: &[&[f64]], rp: &[&[f64]], nu: usize, nc: usize, size: usize) {
+        let Self { sufw, sufg, spf, .. } = self;
+        let ng = cf.gs.len();
+        sufw.clear();
+        sufw.resize((ng + 1) * nu, 1.0);
+        sufg.clear();
+        sufg.resize((ng + 1) * nu, 1.0);
+        spf.clear();
+        spf.resize((ng + 1) * nc, 1.0);
+        for g in (0..ng).rev() {
+            let (gw, gg) = (gm_w(gmin[g], nu, cf.gs[g].1), gm_g(gmin[g], nu, cf.gs[g].1));
+            for t in 0..nu {
+                sufw[g * nu + t] = sufw[(g + 1) * nu + t] * gw[t];
+                sufg[g * nu + t] = sufg[(g + 1) * nu + t] * gg[t];
+            }
+        }
+        for g in (0..ng).rev() {
+            let rpg = rp[g];
+            for i in 0..nc {
+                spf[g * nc + i] = spf[(g + 1) * nc + i] * rpg[i * (size + 1) + cf.gs[g].1];
+            }
+        }
+    }
+
+    /// The class masks of groups `gs` (entries' `cv_mask`s `cvm`)
+    fn fill_class_suffixes(&mut self, gs: &[(&[usize], usize)], cvm: &[u64]) {
+        let Self { csuf, goff, .. } = self;
+        let ng = gs.len();
+        goff.clear();
+        goff.push(0);
+        for g in 0..ng {
+            goff.push(goff[g] + gs[g].0.len());
+        }
+        csuf.clear();
+        csuf.resize(goff[ng] + 1, 0);
+        for g in (0..ng).rev() {
+            for (p, &j) in gs[g].0.iter().enumerate().rev() {
+                csuf[goff[g] + p] = csuf[goff[g] + p + 1] | cvm[j];
+            }
+        }
+    }
+
+    /// The locked-card table of groups `gs`; false when they cannot place every locked card (`all_locked`)
+    fn fill_avail(&mut self, gs: &[(&[usize], usize)], lbit: &[u8], all_locked: u8) -> bool {
+        let avail = &mut self.avail;
+        let ng = gs.len();
+        avail.truncate(ng + 1);
+        avail.resize_with(ng + 1, Vec::new);
+        avail[ng].clear();
+        avail[ng].push(0);
+        for g in (0..ng).rev() {
+            let l = gs[g].0;
+            let next = avail[g + 1][0];
+            let v = &mut avail[g];
+            v.clear();
+            v.resize(l.len() + 1, 0u8);
+            v[l.len()] = next;
+            for p in (0..l.len()).rev() {
+                v[p] = v[p + 1] | lbit[l[p]];
+            }
+        }
+        all_locked & !avail[0][0] == 0
+    }
+}
+
+/// One traversal: its inputs, the buffers and caches its configurations share, the decks kept and the bar
+struct Traversal<'run, 'space, V> {
+    inp: TraversalInputs<'run, 'space, V>,
+    ns: NodeScratch,
+    cs: ConfigScratch,
+    gbc: HashMap<(u64, usize), std::rc::Rc<BorrowBounds>>,
+    out: Vec<(f64, Sel)>,
+    bestv: f64,
+}
+
+impl<'run, 'space, V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Traversal<'run, 'space, V> {
+    fn new(
+        sp: &'run DeckSpace<'space>,
+        model: &'run Model<'run>,
+        clauses: &'run [(Vec<(usize, f64)>, f64)],
+        ctl: SearchControl,
+        tb: TraversalTables<'run>,
+        scratch: TraversalScratch,
+        val: V,
+    ) -> Self {
+        let TraversalScratch { out, bestv, dw, dg, av, rbs } = scratch;
+        let noq = tb.oq.len();
+        let a_rows = tb.orow.iter().all(|o| o.len() == ctl.nu);
+        let oqq: Vec<f64> = tb.oq.iter().map(|x| x.2).collect();
+        let z = [0.0f64; 32];
+        Self {
+            inp: TraversalInputs { sp, model, clauses, ctl, tb, val, noq, a_rows, oqq },
+            ns: NodeScratch {
+                dw,
+                dg,
+                av,
+                cvx: vec![],
+                pdwx: vec![],
+                pdgx: vec![],
+                kab: vec![],
+                kr: vec![],
+                kab_have: vec![],
+                kr_have: vec![],
+                hc: vec![],
+                hb: vec![],
+                tw: z,
+                tg: z,
+                told: z,
+                bdw: z,
+                bdg: z,
+                brow: z,
+                bw: z,
+                bg: z,
+                dpr: z,
+                rbs,
+            },
+            cs: ConfigScratch {
+                sufw: vec![],
+                sufg: vec![],
+                spf: vec![],
+                csuf: vec![],
+                goff: vec![],
+                avail: vec![],
+                path: DeckPath { sel: vec![], pw: vec![], pg: vec![], pid: 0 },
+            },
+            gbc: HashMap::new(),
+            out,
+            bestv,
+        }
+    }
+
+    /// No configuration from `cf` on can reach the bar (they come in root order)
+    fn past_bar(&self, cf: &SearchConfig) -> bool {
+        let SearchControl { best, cfm, .. } = self.inp.ctl;
+        (best && cf.root * (1.0 + 1e-9) < self.bestv) || (!best && !cfm && cf.root * (1.0 + 1e-9) < 1.0)
+    }
+
+    /// Visit one configuration: its split root bound, its tables, its state-conditioned root bound, then the walk of
+    /// its decks. Some: the search stops there
+    fn visit(
+        &mut self,
+        cf: &SearchConfig,
+        ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
+        cf_ratios: &CapFreeRatios<'_>,
+    ) -> Option<SearchStop> {
+        let Self { inp, ns, cs, gbc, out, bestv } = self;
+        let SearchControl { best, nu, size, fixed, cfm, cf_lim, cfs, sbm, sb_bar, sb_u, cf_no, nc, rbsl, .. } = inp.ctl;
+        let TraversalTables { groups_all, sb_rows, lp, lbit, all_lk, .. } = inp.tb;
+        let sp = inp.sp;
+        // (the split's root bound: skip, the order kept)
+        if (best && cf.prune_bound * rbsl * (1.0 + 1e-9) < *bestv)
+            || (!best && !cfm && cf.prune_bound * rbsl * (1.0 + 1e-9) < 1.0)
+        {
+            return None;
+        }
+        let km = sp.key_miss(cf.code);
+        let (mw, mg, tmk) = (&km.0, &km.1, (&*km.2));
+        let gs: Vec<(&[usize], usize)> = cf.gs.iter().map(|&(i, c)| ((&**groups_all[i]), c)).collect();
+        // per group of this configuration: its key's tables (gmin[g] = gm[group], rp[g] = rpk[group])
+        // (blocks: gmin[g]'s row r by `gm_w`, `gm_g`; rp[g]'s column ix at ix (size + 1))
+        let gmin: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.gm.grp(i)).collect();
+        let rp: Vec<&[f64]> = cf.gs.iter().map(|&(i, _)| cf.rpk.grp(i)).collect();
+        cs.fill_suffixes(cf, &gmin, &rp, nu, nc, size);
+        let (doms, doff, dsuf) = inp.dominance(cf, &gs, mw, mg);
+        let bt = inp.borrow_tables(gbc, cf, &gs, mw, mg, ratio_at);
+        ns.cvx.clear();
+        ns.cvx.resize(inp.clauses.len(), 0.0);
+        ns.pdwx.clear();
+        ns.pdwx.resize(nu, 0.0);
+        ns.pdgx.clear();
+        ns.pdgx.resize(nu, 0.0);
+        let ng = gs.len();
+        if !best {
+            cs.fill_class_suffixes(&gs, &sp.cvm);
+        }
+        // the configuration's state-conditioned bounds (`StateBound`) and its root: no deck of it can reach the bar
+        let sbc = inp.state_cfg(cf, &gs);
+        let mut sbb = StateBound::new(sbc, &gs, &cf.gs, inp.model, sb_u, sb_rows, lp, cf_ratios, nu, cf_no, fixed, cfm);
+        let sb_root = sbb.root(cfs, sb_bar, sbm);
+        if cfm {
+            // (the cap-free band: past its node limit it stops; CF_CHECK passes the root at cfs times its bound)
+            if sp.nodes.get() > cf_lim {
+                return Some(SearchStop::CapFreeNodeLimit);
+            }
+            if sb_root * cfs.max(1.0) * (1.0 + 1e-9) < sb_bar {
+                SBN.with(|c| c.borrow_mut().0 += 1);
+                return None;
+            }
+        } else if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar {
+            SBN.with(|c| c.borrow_mut().0 += 1);
+            return None;
+        }
+        // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
+        let cf_path = if cfs > 0.0 { vec![sb_root] } else { vec![] };
+        let nrows = gs.iter().map(|x| x.1).sum::<usize>() + 1;
+        let st = &mut cs.path;
+        st.sel.clear();
+        st.pw.clear();
+        st.pw.resize(nrows * nu, 1.0);
+        st.pg.clear();
+        st.pg.resize(nrows * nu, 1.0);
+        ns.grow_parent_rows(2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1), nrows, inp.noq, nu, inp.a_rows);
+        // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
+        // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
+        // first use of their row (the same expressions, so the same f64s as computing them per node); row
+        // (loff[g] + left) * ncan + can, a row of 2 nu factors (a then b) and one of noq ratios
+        let ncan = if bt.one_b { 2 } else { 1 };
+        let mut loff = vec![0usize; ng + 1];
+        for g in 0..ng {
+            loff[g + 1] = loff[g] + gs[g].1 + 1;
+        }
+        ns.reset_constants(loff[ng] * ncan, nu, nc);
+        // (a branch that can no longer place every locked card is dropped)
+        if !cs.fill_avail(&gs, lbit, all_lk) {
+            return None;
+        }
+        let ConfigScratch { sufw, sufg, spf, csuf, goff, avail, path } = cs;
+        let mut walk = Walk {
+            inp,
+            ns,
+            out,
+            bestv: *bestv,
+            cf,
+            filler: cf.filler,
+            plain: cf.plain,
+            gs: &gs,
+            gmin: &gmin,
+            rp: &rp,
+            mw,
+            mg,
+            tmk,
+            sufw,
+            sufg,
+            spf,
+            doms: &doms,
+            doff: &doff,
+            dsuf: &dsuf,
+            bt: &bt,
+            csuf,
+            goff,
+            avail,
+            loff: &loff,
+            ncan,
+            ng,
+            total_slots: gs.iter().map(|x| x.1).sum(),
+            sbb,
+            sb_root,
+            sb_d1: f64::INFINITY,
+            cf_path,
+            cf_over: false,
+            dwa: [0.0f64; 32],
+            dga: [0.0f64; 32],
+        };
+        let stop = if gs.is_empty() {
+            walk.leaf(&[], &[1.0; 32][..nu], &[1.0; 32][..nu], 0)
+        } else {
+            walk.rec(path, 0, 0, gs[0].1, 0, 0, 0, 0, 0)
+        };
+        *bestv = walk.bestv;
+        if stop {
+            return Some(SearchStop::OutputLimit);
+        }
+        if walk.cf_over {
+            return Some(SearchStop::CapFreeNodeLimit);
+        }
+        None
+    }
+}
+
+impl<V> TraversalInputs<'_, '_, V> {
+    /// The dominance tables of `cf`'s groups (`dom_table`), and per flat index f (the groups' entries in turn) the
+    /// characters of the entries from f on (`dsuf`, group g's from `doff[g]`); empty without the dominance skip
+    fn dominance(
+        &self,
+        cf: &SearchConfig,
+        gs: &[(&[usize], usize)],
+        mw: &[f64],
+        mg: &[f64],
+    ) -> (Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>>, Vec<usize>, Vec<u128>) {
+        let SearchControl { dom_on, set_id, .. } = self.ctl;
+        let TraversalTables { ebit, groups_all, lbit, .. } = self.tb;
+        let doms: Vec<std::rc::Rc<Vec<Vec<(u32, u32)>>>> = if dom_on {
+            cf.gs.iter().map(|&(i, _)| self.sp.dom_table(set_id, cf.code, i, groups_all[i], mw, mg, lbit)).collect()
+        } else {
+            vec![]
+        };
+        let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
+        if dom_on {
+            for &(l, _) in gs {
+                for &j in l {
+                    dsuf.push(ebit[j]);
+                }
+                doff.push(dsuf.len());
+            }
+            dsuf.push(0);
+            for f in (0..dsuf.len() - 1).rev() {
+                dsuf[f] |= dsuf[f + 1];
+            }
+        }
+        (doms, doff, dsuf)
+    }
+
+    /// Group gi's `BorrowBounds` under the key's miss chances `mw`, `mg` (`ratio_at`: a card's ratio per column)
+    fn borrow_bounds(
+        &self,
+        gi: usize,
+        mw: &[f64],
+        mg: &[f64],
+        ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
+    ) -> BorrowBounds {
+        let SearchControl { nu, size, nc, .. } = self.ctl;
+        let l = self.tb.groups_all[gi];
+        let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.sp.ebor[j]);
+        let mut om = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
+        let mut bm = (vec![1.0f64; nu], vec![1.0f64; nu]);
+        for t in 0..nu {
+            let mut a: Vec<f64> = own.iter().map(|&j| mw[j * nu + t]).collect();
+            a.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            let mut b: Vec<f64> = own.iter().map(|&j| mg[j * nu + t]).collect();
+            b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            for r in 1..=size {
+                om[r].0[t] = om[r - 1].0[t] * a.get(r - 1).copied().unwrap_or(1.0);
+                om[r].1[t] = om[r - 1].1[t] * b.get(r - 1).copied().unwrap_or(1.0);
+            }
+            for &j in &bor {
+                bm.0[t] = bm.0[t].min(mw[j * nu + t]);
+                bm.1[t] = bm.1[t].min(mg[j * nu + t]);
+            }
+        }
+        let mut one = om.clone();
+        for r in 1..=size {
+            for t in 0..nu {
+                one[r].0[t] = om[r].0[t].min(om[r - 1].0[t] * bm.0[t]);
+                one[r].1[t] = om[r].1[t].min(om[r - 1].1[t] * bm.1[t]);
+            }
+        }
+        let (mut x, mut y) = (vec![0.0f64; nu], vec![0.0f64; nu]);
+        // (`ratio_at`: without a split column, every zm 0 and cix the identity, the plain ratio)
+        let mut ratio = |j: usize| -> Vec<f64> {
+            for t in 0..nu {
+                x[t] = 1.0 - mw[j * nu + t];
+                y[t] = 1.0 - mg[j * nu + t];
+            }
+            (0..nc).map(|i| ratio_at(i, &x, &y)).collect()
+        };
+        let ro: Vec<Vec<f64>> = own.iter().map(|&j| ratio(j)).collect();
+        let rb: Vec<Vec<f64>> = bor.iter().map(|&j| ratio(j)).collect();
+        let (mut rown, mut rone) = (vec![], vec![]);
+        for i in 0..nc {
+            let mut r: Vec<f64> = ro.iter().map(|v| v[i]).collect();
+            r.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            let best_b = rb.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
+            let mut pre = vec![1.0f64; size + 1];
+            for k in 1..=size {
+                pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0);
+            }
+            let mut p1 = pre.clone();
+            if best_b > f64::NEG_INFINITY {
+                for k in 1..=size {
+                    p1[k] = pre[k].max(pre[k - 1] * best_b);
+                }
+            }
+            rown.push(pre);
+            rone.push(p1);
+        }
+        BorrowBounds { own: om, one, rown, rone }
+    }
+
+    /// `cf`'s one-borrowed-card tables (each group's `BorrowBounds` cached per (key, group) in `gbc`)
+    fn borrow_tables(
+        &self,
+        gbc: &mut HashMap<(u64, usize), std::rc::Rc<BorrowBounds>>,
+        cf: &SearchConfig,
+        gs: &[(&[usize], usize)],
+        mw: &[f64],
+        mg: &[f64],
+        ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
+    ) -> BorrowTables {
+        let SearchControl { nu, nc, .. } = self.ctl;
+        let sp = self.sp;
+        let one_b = sp.allowed_borrow == 1 && gs.iter().any(|(l, _)| l.iter().any(|&j| sp.ebor[j]));
+        let gbs: Vec<std::rc::Rc<BorrowBounds>> = if one_b {
+            cf.gs
+                .iter()
+                .map(|&(i, _)| {
+                    std::rc::Rc::clone(
+                        gbc.entry((cf.code, i))
+                            .or_insert_with(|| std::rc::Rc::new(self.borrow_bounds(i, mw, mg, ratio_at))),
+                    )
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        let ngs = cf.gs.len();
+        // (allocated only when used)
+        let nb = if one_b { ngs + 1 } else { 0 };
+        // (vec![x; 0] would still build x: none without borrowing)
+        let (mut so, mut s1) = if nb > 0 {
+            (vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb], vec![(vec![1.0f64; nu], vec![1.0f64; nu]); nb])
+        } else {
+            (vec![], vec![])
+        };
+        let (mut po, mut p1) =
+            if nb > 0 { (vec![vec![1.0f64; nc]; nb], vec![vec![1.0f64; nc]; nb]) } else { (vec![], vec![]) };
+        if one_b {
+            for g in (0..ngs).rev() {
+                let (gb, c) = (&gbs[g], cf.gs[g].1);
+                for t in 0..nu {
+                    so[g].0[t] = gb.own[c].0[t] * so[g + 1].0[t];
+                    so[g].1[t] = gb.own[c].1[t] * so[g + 1].1[t];
+                    s1[g].0[t] = (gb.one[c].0[t] * so[g + 1].0[t]).min(gb.own[c].0[t] * s1[g + 1].0[t]);
+                    s1[g].1[t] = (gb.one[c].1[t] * so[g + 1].1[t]).min(gb.own[c].1[t] * s1[g + 1].1[t]);
+                }
+                for i in 0..nc {
+                    po[g][i] = gb.rown[i][c] * po[g + 1][i];
+                    p1[g][i] = (gb.rone[i][c] * po[g + 1][i]).max(gb.rown[i][c] * p1[g + 1][i]);
+                }
+            }
+        }
+        BorrowTables { one_b, gbs, so, s1, po, p1 }
+    }
+
+    /// The state-conditioned bound's tables of `cf` (groups `gs`), cached per (set, key, real (2, 2), pal entries):
+    /// chain positions (sorted kinds, the key's state distribution projected on the positions whose group has chain
+    /// targets), per group its slots' positions and, per chain level, each target's lowest misses over the group's
+    /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`sbm` 0)
+    fn state_cfg(&self, cf: &SearchConfig, gs: &[(&[usize], usize)]) -> Option<std::rc::Rc<SbCfg>> {
+        let SearchControl { nu, nk, set_id, sbm, .. } = self.ctl;
+        let (sp, sb_rows, filler, ng) = (self.sp, self.tb.sb_rows, cf.filler, gs.len());
+        let sbkey = (set_id, cf.code, cf.code_real22, cf.np);
+        if sbm == 0 {
+            None
+        } else if let Some(r) = sp.sbcfg.borrow().get(&sbkey).cloned() {
+            Some(r)
+        } else {
+            let mut kinds: Vec<(Kind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
+            for (g, &(i, c)) in cf.gs.iter().enumerate() {
+                if i < nk {
+                    for _ in 0..c {
+                        kinds.push((sp.kinds_all[i], g));
+                    }
+                }
+            }
+            for _ in 0..filler {
+                kinds.push(((2, 2, 0), usize::MAX));
+            }
+            kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            let kl: Vec<Kind> = kinds.iter().map(|x| x.0).collect();
+            let full = if kl.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kl) };
+            let has_chain: Vec<bool> = gs.iter().map(|(l, _)| l.iter().any(|&j| !sp.srcs[j].cm.is_empty())).collect();
+            let rel_pos: Vec<usize> =
+                (0..kinds.len()).filter(|&p| kinds[p].1 != usize::MAX && has_chain[kinds[p].1]).collect();
+            let mut slots: Vec<Vec<usize>> = vec![vec![]; ng];
+            for (ri, &p) in rel_pos.iter().enumerate() {
+                slots[kinds[p].1].push(ri);
+            }
+            for g in 0..ng {
+                while slots[g].len() < gs[g].1 {
+                    slots[g].push(usize::MAX);
+                }
+            }
+            // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
+            // highest: the same sums, each in the order of `full`, sorted the same way)
+            let states: Vec<(Vec<u8>, f64)> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.1 < 16) {
+                let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
+                for (x, w) in full.iter() {
+                    let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
+                    *proj.entry(key).or_insert(0.0) += w;
+                }
+                let mut v: Vec<(u64, f64)> = proj.into_iter().collect();
+                v.sort_unstable_by_key(|a| a.0);
+                let np = rel_pos.len();
+                v.into_iter()
+                    .map(|(k, w)| ((0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(), w))
+                    .collect()
+            } else {
+                let mut proj: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
+                for (x, w) in full.iter() {
+                    let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect();
+                    *proj.entry(key).or_insert(0.0) += w;
+                }
+                let mut states: Vec<(Vec<u8>, f64)> = proj.into_iter().collect();
+                states.sort_by(|a, b| a.0.cmp(&b.0));
+                states
+            };
+            let stops: Vec<usize> =
+                cf.gs.iter().map(|&(i, _)| if i < nk { sp.kinds_all[i].1 as usize } else { 0 }).collect();
+            let gmin: Vec<Vec<(f64, f64)>> = (0..ng)
+                .map(|g| {
+                    let mut m = vec![(1.0f64, 1.0f64); (stops[g] + 1) * nu];
+                    for &j in gs[g].0 {
+                        if let Some(r) = &sb_rows[j] {
+                            for (x, y) in m.iter_mut().zip(r.iter()) {
+                                x.0 = x.0.min(y.0);
+                                x.1 = x.1.min(y.1);
+                            }
+                        }
+                    }
+                    m
+                })
+                .collect();
+            let r = std::rc::Rc::new(SbCfg { states, slots, gmin, kl, rel_pos, order: std::cell::OnceCell::default() });
+            sp.sbcfg.borrow_mut().insert(sbkey, std::rc::Rc::clone(&r));
+            Some(r)
+        }
+    }
+}
+
+/// The depth-first walk of one configuration's decks: its tables (borrowed from `Traversal::visit`), the node bound's
+/// scratch, the state-conditioned bounds, the decks kept and the bar
+struct Walk<'walk, 'run, 'space, V> {
+    inp: &'walk TraversalInputs<'run, 'space, V>,
+    ns: &'walk mut NodeScratch,
+    out: &'walk mut Vec<(f64, Sel)>,
+    bestv: f64,
+    cf: &'walk SearchConfig,
+    filler: usize,
+    plain: usize,
+    gs: &'walk [(&'run [usize], usize)],
+    gmin: &'walk [&'walk [f64]],
+    rp: &'walk [&'walk [f64]],
+    mw: &'walk [f64],
+    mg: &'walk [f64],
+    tmk: &'walk [u32],
+    sufw: &'walk [f64],
+    sufg: &'walk [f64],
+    spf: &'walk [f64],
+    doms: &'walk [std::rc::Rc<Vec<Vec<(u32, u32)>>>],
+    doff: &'walk [usize],
+    dsuf: &'walk [u128],
+    bt: &'walk BorrowTables,
+    csuf: &'walk [u64],
+    goff: &'walk [usize],
+    avail: &'walk [Vec<u8>],
+    loff: &'walk [usize],
+    ncan: usize,
+    ng: usize,
+    total_slots: usize,
+    sbb: StateBound<'walk>,
+    sb_root: f64,
+    // (SB_CHECK: the depth-1 node's bound)
+    sb_d1: f64,
+    cf_path: Vec<f64>,
+    // (the cap-free band past its node limit)
+    cf_over: bool,
+    // the deck's odds, written per leaf (no allocation unless the deck is kept)
+    dwa: [f64; 32],
+    dga: [f64; 32],
+}
+
+impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> Walk<'_, '_, '_, V> {
+    /// The decks below a node: group g from position `start` with `left` slots of it to fill, characters `chm`,
+    /// borrowed cards `nb`, locked cards `have`, class mask `cmk`, characters `need` its decks must take; the path
+    /// `st` holds the picks so far. True: the search stops (the output is full)
+    fn rec(
+        &mut self,
+        st: &mut DeckPath,
+        g: usize,
+        start: usize,
+        left: usize,
+        chm: u128,
+        nb: usize,
+        have: u8,
+        cmk: u64,
+        need: u128,
+    ) -> bool {
+        let (sp, nu, gs) = (self.inp.sp, self.inp.ctl.nu, self.gs);
+        let TraversalTables { ebit, lbit, all_lk: all_locked, .. } = self.inp.tb;
+        let (avail, mw, mg, tmk) = (self.avail, self.mw, self.mg, self.tmk);
+        if left == 0 {
+            if g + 1 >= gs.len() {
+                if need & !chm != 0 {
+                    return false;
+                }
+                let b = st.sel.len() * nu;
+                return self.leaf(&st.sel, &st.pw[b..b + nu], &st.pg[b..b + nu], cmk);
+            }
+            return self.rec(st, g + 1, 0, gs[g + 1].1, chm, nb, have, cmk, need);
+        }
+        if all_locked & !have & !avail[g][start] != 0 {
+            return false;
+        }
+        let list = gs[g].0;
+        // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
+        let b = st.sel.len() * nu;
+        // this parent's id and depth (the per-parent rows of `hopeful`)
+        st.pid += 1;
+        let (pid, dep) = (st.pid, st.sel.len());
+        for p in start..list.len() {
+            if list.len() - p < left {
+                break;
+            }
+            let j = list[p];
+            if chm & ebit[j] != 0 || (sp.ebor[j] && nb >= sp.allowed_borrow) {
+                continue;
+            }
+            let Some(nd) = self.dom(g, p, start, left, chm, &st.pg[b..b + nu], &st.sel, need) else {
+                continue;
+            };
+            sp.nodes.set(sp.nodes.get() + 1);
+            // the child's row (depth + 1): the parent's times the card's misses
+            {
+                let (par, ch) = st.pw.split_at_mut(b + nu);
+                let (mj, par, ch) = (&mw[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
+                for t in 0..nu {
+                    ch[t] = par[t] * mj[t];
+                }
+            }
+            {
+                let (par, ch) = st.pg.split_at_mut(b + nu);
+                let (mj, par, ch) = (&mg[j * nu..(j + 1) * nu], &par[b..], &mut ch[..nu]);
+                for t in 0..nu {
+                    ch[t] = par[t] * mj[t];
+                }
+            }
+            let cj = cmk | sp.cvm[j];
+            if !self.hopeful(
+                g,
+                left - 1,
+                &st.pw[b + nu..b + 2 * nu],
+                &st.pg[b + nu..b + 2 * nu],
+                nb + usize::from(sp.ebor[j]),
+                &st.pw[b..b + nu],
+                &st.pg[b..b + nu],
+                dep,
+                pid,
+                tmk[j],
+                cj,
+                p,
+            ) {
+                continue;
+            }
+            st.sel.push(j);
+            if !self.sbx(&st.sel) {
+                st.sel.pop();
+                continue;
+            }
+            let stop =
+                self.rec(st, g, p + 1, left - 1, chm | ebit[j], nb + usize::from(sp.ebor[j]), have | lbit[j], cj, nd);
+            st.sel.pop();
+            if stop {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The child taking entry B = list[p] of group g, at a node with `start`, `left` slots of g to fill, characters
+    /// `chm`, gold misses `ppg`, picks `sel` and characters `need` its decks must take: None when it can be
+    /// skipped, else its decks' needed characters. An entry A dominating B (`dom_table`) that is free at the node
+    /// and takes B's place in the pick order (a sibling, or no pick of g after A touching B's targets) gives every
+    /// deck through B whose picks after B take no card of A's character an equal or better deck before it; when
+    /// nothing of A's character can follow, that is every deck through B, else those decks must take one
+    /// (per target, ppg * rlo, the same for every dominator: computed at its first use in a call, `prm`'s bit t
+    /// set; the slots are reused across calls, never read unset)
+    fn dom(
+        &mut self,
+        g: usize,
+        p: usize,
+        start: usize,
+        left: usize,
+        chm: u128,
+        ppg: &[f64],
+        sel: &[usize],
+        need: u128,
+    ) -> Option<u128> {
+        let SearchControl { dom_on, nu, .. } = self.inp.ctl;
+        if !dom_on {
+            return Some(need);
+        }
+        let (gs, doff, doms, dsuf) = (self.gs, self.doff, self.doms, self.dsuf);
+        let (ebit, tmk, mg) = (self.inp.tb.ebit, self.tmk, self.mg);
+        let l = gs[g].0;
+        let bj = l[p];
+        let f = doff[g] + p;
+        let mut nd = need;
+        let dl = &doms[g][p];
+        if !dl.is_empty() {
+            // (the deck's picks in group g so far, all at positions below `start`)
+            let sg = &sel[sel.len() - (gs[g].1 - left)..];
+            let (pr, mut prm) = (&mut self.ns.dpr, 0u32);
+            for &(a, sm) in dl {
+                let a = a as usize;
+                let aj = l[a];
+                if chm & ebit[aj] != 0 {
+                    continue;
+                }
+                if a < start && sg.iter().any(|&j| j > aj && tmk[j] & tmk[bj] != 0) {
+                    continue;
+                }
+                if sm != 0 {
+                    let mut ok = true;
+                    let mut m = sm;
+                    while m != 0 {
+                        let t = m.trailing_zeros() as usize;
+                        m &= m - 1;
+                        if prm >> t & 1 == 0 {
+                            let rlo = gm_g(self.gmin[g], nu, left - 1)[t] * self.sufg[(g + 1) * nu + t];
+                            pr[t] = ppg[t] * rlo;
+                            prm |= 1 << t;
+                        }
+                        if !(pr[t] * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if !ok {
+                        continue;
+                    }
+                }
+                if ebit[aj] != ebit[bj] && ebit[aj] & dsuf[f + 1] != 0 {
+                    nd |= ebit[aj];
+                    continue;
+                }
+                return None;
+            }
+        }
+        // a needed character that no later pick can bring
+        if nd & !(chm | ebit[bj]) & !dsuf[f + 1] != 0 {
+            return None;
+        }
+        Some(nd)
+    }
+
+    /// Can a deck from here (group g with `left` still to pick, `pw`/`pg` the partial miss) pass?
+    /// (ppw, ppg: the parent's row; dep, pid: the parent's depth and id; tm: the targets the child's card
+    /// touches; cm, p: the child's class mask (`cv_mask`s ORed) and its card's position in group g)
+    fn hopeful(
+        &mut self,
+        g: usize,
+        left: usize,
+        pw: &[f64],
+        pg: &[f64],
+        nb: usize,
+        ppw: &[f64],
+        ppg: &[f64],
+        dep: usize,
+        pid: usize,
+        tm: u32,
+        cm: u64,
+        p: usize,
+    ) -> bool {
+        // (the cap-free band prunes by the state-conditioned bound alone, `sbx`)
+        if self.inp.ctl.cfm {
+            return true;
+        }
+        // (each table is read where it is first needed: a read through `inp` or `bt` written before the node's stores
+        // stays there, as the compiler cannot tell those stores leave it unchanged, and the early return then pays it)
+        let inp = self.inp;
+        let nu = inp.ctl.nu;
+        let NodeScratch {
+            dw,
+            dg,
+            av,
+            cvx,
+            pdwx,
+            pdgx,
+            kab,
+            kr,
+            kab_have,
+            kr_have,
+            hc,
+            hb,
+            tw,
+            tg,
+            told,
+            bdw,
+            bdg,
+            brow,
+            bw,
+            bg,
+            rbs,
+            ..
+        } = &mut *self.ns;
+        let (cv, pdw, pdg) = (cvx.as_mut_slice(), pdwx.as_mut_slice(), pdgx.as_mut_slice());
+        // the cap of every deck the child can still reach: its cards' classes and every entry left
+        let rho = if inp.ctl.best {
+            inp.ctl.rho
+        } else {
+            let (csuf, goff) = (self.csuf, self.goff);
+            inp.ctl.ccap[cap_class(cm | if left > 0 { csuf[goff[g] + p + 1] } else { csuf[goff[g + 1]] })]
+        };
+        // borrowed cards still allowed (only with the one-borrowed tables)
+        let can = nb < 1;
+        let mut have_a = false;
+        let one_b = self.bt.one_b;
+        let row = if g >= self.ng { usize::MAX } else { (self.loff[g] + left) * self.ncan + usize::from(one_b && can) };
+        let (pw, pg) = (&pw[..nu], &pg[..nu]);
+        if row == usize::MAX {
+            for t in 0..nu {
+                dw[t] = 1.0 - pw[t] * 1.0;
+                dg[t] = 1.0 - pg[t] * 1.0;
+                pdw[t] = 1.0 - pw[t];
+                pdg[t] = 1.0 - pg[t];
+            }
+        } else {
+            if !kab_have[row] {
+                kab_have[row] = true;
+                let (gmin, sufw, sufg) = (self.gmin, self.sufw, self.sufg);
+                let BorrowTables { gbs, so, s1, .. } = self.bt;
+                for t in 0..nu {
+                    let (a, b) = if !one_b {
+                        (
+                            gm_w(gmin[g], nu, left)[t] * sufw[(g + 1) * nu + t],
+                            gm_g(gmin[g], nu, left)[t] * sufg[(g + 1) * nu + t],
+                        )
+                    } else if can {
+                        let gb = &gbs[g];
+                        (
+                            (gb.one[left].0[t] * so[g + 1].0[t]).min(gb.own[left].0[t] * s1[g + 1].0[t]),
+                            (gb.one[left].1[t] * so[g + 1].1[t]).min(gb.own[left].1[t] * s1[g + 1].1[t]),
+                        )
+                    } else {
+                        (gbs[g].own[left].0[t] * so[g + 1].0[t], gbs[g].own[left].1[t] * so[g + 1].1[t])
+                    };
+                    kab[row * 2 * nu + t] = a;
+                    kab[row * 2 * nu + nu + t] = b;
+                }
+            }
+            let (ka, kb) = kab[row * 2 * nu..(row + 1) * 2 * nu].split_at(nu);
+            if inp.a_rows {
+                let (noq, orow, oqq) = (inp.noq, inp.tb.orow, &*inp.oqq);
+                // A child is its parent plus one card: for a target the card does not touch (its miss
+                // chances exactly 1.0) the child's pw[t] = parent's pw[t] * 1.0 is the parent's, bit for
+                // bit, and so are dw[t], dg[t] and every outfit's A factor of t (the same expressions on
+                // the same f64s; ka, kb depend only on the row, the same for all children of one parent
+                // and borrowing variant). So the factors are computed once per parent (here, at its first
+                // child), a child recomputes only its touched targets', and A is the product in target
+                // order (`OutfitPre::eval`'s). The factors before the first touched target t0 are the
+                // parent's, and so is their product from 1.0 (`pp`, kept per parent): a child's product
+                // starts there and multiplies on from t0, the same multiplications in the same order
+                let c = &mut hc[dep * 2 + usize::from(one_b && can)];
+                if c.pid != pid {
+                    c.pid = pid;
+                    for t in 0..nu {
+                        bw[t] = 1.0 - ppw[t] * ka[t];
+                        bg[t] = 1.0 - ppg[t] * kb[t];
+                    }
+                    for ix in 0..noq {
+                        orow[ix].factors(oqq[ix], &bw[..nu], &bg[..nu], &mut c.fa[ix * nu..(ix + 1) * nu]);
+                    }
+                    for (row, pr) in c.fa.chunks_exact(nu).zip(c.pp.chunks_exact_mut(nu + 1)) {
+                        for t in 0..nu {
+                            pr[t + 1] = pr[t] * row[t];
+                        }
+                    }
+                }
+                let mut m = tm;
+                while m != 0 {
+                    let t = m.trailing_zeros() as usize;
+                    m &= m - 1;
+                    tw[t] = 1.0 - pw[t] * ka[t];
+                    tg[t] = 1.0 - pg[t] * kb[t];
+                }
+                let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
+                for (ix, (row, pr)) in c.fa.chunks_exact_mut(nu).zip(c.pp.chunks_exact(nu + 1)).enumerate() {
+                    let (o, q) = (&orow[ix], oqq[ix]);
+                    let mut m = tm;
+                    while m != 0 {
+                        let t = m.trailing_zeros() as usize;
+                        m &= m - 1;
+                        told[t] = row[t];
+                        row[t] = o.factor_at(t, q, tw[t], tg[t]);
+                    }
+                    let mut p = pr[t0];
+                    for &x in &row[t0..] {
+                        p *= x;
+                    }
+                    let mut m = tm;
+                    while m != 0 {
+                        let t = m.trailing_zeros() as usize;
+                        m &= m - 1;
+                        row[t] = told[t];
+                    }
+                    av[ix] = p;
+                }
+                // (B's inputs pdw, pdg: below, only when B is evaluated)
+                have_a = true;
+            } else {
+                let (dw, dg, pdw, pdg) = (&mut dw[..nu], &mut dg[..nu], &mut pdw[..nu], &mut pdg[..nu]);
+                for t in 0..nu {
+                    dw[t] = 1.0 - pw[t] * ka[t];
+                    dg[t] = 1.0 - pg[t] * kb[t];
+                    pdw[t] = 1.0 - pw[t];
+                    pdg[t] = 1.0 - pg[t];
+                }
+            }
+        }
+        // (rbsl: 1, or RB_CHECK's s; x * 1.0 is x)
+        let (best, bestv, clauses, rbsl) = (inp.ctl.best, self.bestv, inp.clauses, inp.ctl.rbsl);
+        let pass = |cv: &[f64]| {
+            if best {
+                cv[0] * rbsl * (1.0 + 1e-9) >= bestv
+            } else {
+                (0..clauses.len()).any(|ci| rho * cv[ci] * rbsl * (1.0 + 1e-9) >= clauses[ci].1)
+            }
+        };
+        // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
+        // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
+        // its inputs being probabilities, and a NaN falls through to the real test)
+        cv.fill(0.0);
+        let TraversalTables { oq, og, orow, .. } = inp.tb;
+        let fixed = inp.ctl.fixed;
+        let mut nan = false;
+        for &(ci, i, no) in og {
+            let q = oq[i].2;
+            let mut m = 0.0f64;
+            for o in 0..no {
+                let a = if have_a { av[i + o] } else { orow[i + o].eval(q, dw, dg) };
+                av[i + o] = a;
+                nan |= a.is_nan();
+                m = m.max(a);
+            }
+            cv[ci] += fixed * m;
+        }
+        if !nan && !pass(cv) {
+            return false;
+        }
+        let nc = inp.ctl.nc;
+        if row != usize::MAX && !kr_have[row] {
+            kr_have[row] = true;
+            let (size, rp, spf) = (inp.ctl.size, self.rp, self.spf);
+            let BorrowTables { gbs, po, p1, .. } = self.bt;
+            for ix in 0..nc {
+                kr[row * nc + ix] = if !one_b {
+                    rp[g][ix * (size + 1) + left] * spf[(g + 1) * nc + ix]
+                } else if can {
+                    (gbs[g].rone[ix][left] * po[g + 1][ix]).max(gbs[g].rown[ix][left] * p1[g + 1][ix])
+                } else {
+                    gbs[g].rown[ix][left] * po[g + 1][ix]
+                };
+            }
+        }
+        // B's factors are at the child's odds 1 - pw, 1 - pg. With the per-parent rows (have_a) they are
+        // the parent's at its targets the card does not touch (pw[t] is the parent's, bit for bit, as
+        // for A): per row, the parent's factors (`ParentRatioBounds`, built at the first child that evaluates the row)
+        // with the touched targets' recomputed, and B the product over its targets in target
+        // order from 1.0 (`eval`'s and `eval_in`'s), the full one from the parent's prefix at t0.
+        // Otherwise at pdw, pdg (filled above)
+        let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
+        if have_a {
+            let h = &mut hb[dep];
+            if h.pid != pid {
+                h.pid = pid;
+                for t in 0..nu {
+                    h.pdw[t] = 1.0 - ppw[t];
+                    h.pdg[t] = 1.0 - ppg[t];
+                }
+            }
+            let mut m = tm;
+            while m != 0 {
+                let t = m.trailing_zeros() as usize;
+                m &= m - 1;
+                bdw[t] = 1.0 - pw[t];
+                bdg[t] = 1.0 - pg[t];
+            }
+        }
+        // (have_a: row ix's B factors into `brow`, the parent's row with the touched ones recomputed;
+        // with `full`, their product, else 0)
+        let oqq = &*inp.oqq;
+        let mut bfill = |ix: usize, full: bool, brow: &mut [f64; 32]| -> f64 {
+            let (o, q) = (&orow[ix], oqq[ix]);
+            let ParentRatioBounds { st, pdw: hw, pdg: hg, fb, pb, .. } = &mut hb[dep];
+            let (fr, pr) = (&mut fb[ix * nu..(ix + 1) * nu], &mut pb[ix * (nu + 1)..(ix + 1) * (nu + 1)]);
+            if st[ix] != pid {
+                st[ix] = pid;
+                o.factors(q, &hw[..nu], &hg[..nu], fr);
+                for t in 0..nu {
+                    pr[t + 1] = pr[t] * fr[t];
+                }
+            }
+            brow[..nu].copy_from_slice(fr);
+            let mut m = tm;
+            while m != 0 {
+                let t = m.trailing_zeros() as usize;
+                m &= m - 1;
+                brow[t] = o.factor_at(t, q, bdw[t], bdg[t]);
+            }
+            if !full {
+                return 0.0;
+            }
+            let mut p = pr[t0];
+            for &x in &brow[t0..nu] {
+                p *= x;
+            }
+            p
+        };
+        // (the product of `brow` over the targets in z, in target order: `eval_in`'s)
+        let bin = |brow: &[f64; 32], z: u32| -> f64 {
+            let (mut z, mut p) = (z, 1.0f64);
+            while z != 0 {
+                let t = z.trailing_zeros() as usize;
+                z &= z - 1;
+                p *= brow[t];
+            }
+            p
+        };
+        // the real bound, the same expression in the same order; an outfit whose A is at most the running
+        // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
+        cv.fill(0.0);
+        {
+            let TraversalTables { zm, nm, alt, .. } = inp.tb;
+            // (ZSPLIT; a row without a split, zm 0 and no low split, takes min(A, B r)) A's product over a
+            // split's Z: from the per-parent row with the child's touched targets recomputed (A's own
+            // factors), or at the node's odds
+            let hrow = if have_a { dep * 2 + usize::from(one_b && can) } else { usize::MAX };
+            let a_z = |ix: usize, z: u32| -> f64 {
+                let (o, q) = (&orow[ix], oqq[ix]);
+                if hrow == usize::MAX {
+                    return o.eval_in(q, dw, dg, z);
+                }
+                let fa = &hc[hrow].fa[ix * nu..(ix + 1) * nu];
+                let (mut z, mut p) = (z, 1.0f64);
+                while z != 0 {
+                    let t = z.trailing_zeros() as usize;
+                    z &= z - 1;
+                    p *= if tm >> t & 1 != 0 { o.factor_at(t, q, tw[t], tg[t]) } else { fa[t] };
+                }
+                p
+            };
+            for &(ci, i, no) in og {
+                let q = oq[i].2;
+                let mut m = 0.0f64;
+                for o in 0..no {
+                    let ix = i + o;
+                    let a = av[ix];
+                    if a <= m {
+                        continue;
+                    }
+                    let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
+                    // A's factors of the zero targets times N's ratio bound; a low split's, the lower
+                    let mut b = if have_a {
+                        let full = bfill(ix, zm[ix] == 0, brow);
+                        if zm[ix] != 0 { a_z(ix, zm[ix]) * (bin(brow, nm[ix]) * r) } else { full * r }
+                    } else if zm[ix] != 0 {
+                        a_z(ix, zm[ix]) * (orow[ix].eval_in(q, pdw, pdg, nm[ix]) * r)
+                    } else {
+                        orow[ix].eval(q, pdw, pdg) * r
+                    };
+                    for c in alt[ix].0..alt[ix].1 {
+                        let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] };
+                        let bn = if have_a { bin(brow, nm[c]) } else { orow[ix].eval_in(q, pdw, pdg, nm[c]) };
+                        b = b.min(a_z(ix, zm[c]) * (bn * r));
+                    }
+                    m = m.max(a.min(b));
+                }
+                cv[ci] += fixed * m;
+            }
+        }
+        let ok = pass(cv);
+        if inp.ctl.rbc && ok {
+            let s = rbs;
+            if s.len() < dep + 2 {
+                s.resize(dep + 2, vec![]);
+            }
+            s[dep + 1].clear();
+            s[dep + 1].extend_from_slice(cv);
+        }
+        ok
+    }
+
+    /// The state-conditioned bound at depth <= 1 (mode 1) or at every depth, the leaf included (mode 2); with
+    /// SB_CHECK, every leaf's value against its root's and depth-1 node's bounds. False: the node is pruned
+    fn sbx(&mut self, sel: &[usize]) -> bool {
+        let inp = self.inp;
+        if inp.ctl.cfm {
+            let SearchControl { nu, cf_lim, cfs, sb_bar, sb_u, sb_q, .. } = inp.ctl;
+            let (sp, model, total_slots) = (inp.sp, inp.model, self.total_slots);
+            // the cap-free band: the bound at every node and leaf, nothing else prunes; past the node
+            // limit every child fails and the search ends with CapFreeNodeLimit
+            if self.cf_over {
+                return false;
+            }
+            if sp.nodes.get() > cf_lim {
+                self.cf_over = true;
+                return false;
+            }
+            let d = sel.len();
+            let leafd = d == total_slots;
+            let s = if leafd { 1.0 } else { cfs.max(1.0) };
+            // the cheap bound first, the state-conditioned one only where it passes
+            let ubc = self.sbb.cheap(sel);
+            // (CF_CHECK: both always, so the check below tests each: an exact value above either is above their minimum)
+            let ub = if cfs == 0.0 && ubc * s * (1.0 + 1e-9) < sb_bar {
+                ubc
+            } else {
+                ubc.min(self.sbb.full(sel, if cfs == 0.0 { sb_bar / s } else { 0.0 }))
+            };
+            SBN.with(|c| c.borrow_mut().1 += 1);
+            if cfs > 0.0 {
+                // CF_CHECK: a leaf's exact value against its own bound and every node's above it
+                let path = &mut self.cf_path;
+                path.truncate(d);
+                path.push(ub);
+                if leafd {
+                    let ents: Vec<(&Src, Kind)> = sel.iter().map(|&j| (&sp.srcs[j], sp.kind[j])).collect();
+                    let x = joint_fast(
+                        model,
+                        sb_u,
+                        &[sb_q],
+                        &ents,
+                        self.filler,
+                        nu + model.n_fixed_gold as usize,
+                        false,
+                        None,
+                    )[0]
+                    .0;
+                    CFCHK.with(|c| {
+                        let mut c = c.borrow_mut();
+                        c.4 += 1;
+                        for &b in path.iter() {
+                            if x > b * (1.0 + 1e-9) {
+                                c.5 += 1;
+                            }
+                            if b > 0.0 {
+                                c.8 = c.8.max(x / b);
+                            }
+                        }
+                    });
+                }
+            }
+            let pass = ub * s * (1.0 + 1e-9) >= sb_bar;
+            if !pass {
+                SBN.with(|c| c.borrow_mut().2 += 1);
+            }
+            return pass;
+        }
+        let sbm = inp.ctl.sbm;
+        if sbm == 0 || (sbm == 3 && !sb_check()) {
+            return true;
+        }
+        let d = sel.len();
+        let chk = sb_check();
+        let leafd = d == self.total_slots;
+        if (sbm == 1 || sbm == 3) && d > 1 && !(chk && leafd) {
+            return true;
+        }
+        if sbm == 3 && d == 1 && !chk {
+            return true;
+        }
+        let ub = self.sbb.bound(sel);
+        SBN.with(|c| c.borrow_mut().1 += 1);
+        if d == 1 {
+            self.sb_d1 = ub;
+        }
+        if chk && leafd {
+            let (sb_root, sb_d1) = (self.sb_root, self.sb_d1);
+            SBCHK.with(|c| {
+                let mut c = c.borrow_mut();
+                c.4 += 1;
+                if ub > sb_root * (1.0 + 1e-9) || (d > 1 && ub > sb_d1 * (1.0 + 1e-9)) {
+                    c.5 += 1;
+                }
+            });
+        }
+        if (sbm == 1 && d > 1) || sbm == 3 {
+            return true;
+        }
+        let pass = ub * (1.0 + 1e-9) >= inp.ctl.sb_bar;
+        if !pass {
+            SBN.with(|c| c.borrow_mut().2 += 1);
+        }
+        pass
+    }
+
+    /// A complete deck `sel` (its miss products `pw`, `pg`, class mask `cmk`): kept when it beats the bar (product
+    /// search) or passes a clause at its class cap (band). True: the output is full, the search stops
+    fn leaf(&mut self, sel: &[usize], pw: &[f64], pg: &[f64], cmk: u64) -> bool {
+        let SearchControl { best, cap, nu, cfm, ccap, rbc, .. } = self.inp.ctl;
+        let (sp, clauses, val) = (self.inp.sp, self.inp.clauses, &self.inp.val);
+        let (plain, filler) = (self.plain, self.filler);
+        let pals = sel.iter().filter(|&&j| sp.cards[sp.rel[j]].pal).count() + plain;
+        if let Some(p) = sp.dj.pals
+            && p != pals
+        {
+            return false;
+        }
+        if !sp.locked.iter().all(|l| sel.iter().any(|&j| sp.rel[j] == *l)) {
+            return false;
+        }
+        for t in 0..nu {
+            self.dwa[t] = 1.0 - pw[t];
+            self.dga[t] = 1.0 - pg[t];
+        }
+        let (dw, dg) = (&self.dwa[..nu], &self.dga[..nu]);
+        // RB_CHECK: each clause's value against the bounds of the root and of every node above the deck
+        if rbc {
+            let (s, cf) = (&self.ns.rbs, self.cf);
+            RBCHK.with(|c| {
+                let mut c = c.borrow_mut();
+                c.0 += 1;
+                for (ci, cl) in clauses.iter().enumerate() {
+                    if best && ci > 0 {
+                        break;
+                    }
+                    let x = val(cl, dw, dg);
+                    for d in 0..=sel.len() {
+                        let ub = if d == 0 { cf.clause_bounds[ci] } else { s[d][ci] };
+                        c.1 += 1;
+                        if x > ub * (1.0 + 1e-9) {
+                            c.2 += 1;
+                        }
+                        if ub > 0.0 {
+                            c.3 = c.3.max(x / ub);
+                        }
+                    }
+                }
+            });
+        }
+        let mk = |v: f64| {
+            let mut e = sel.to_vec();
+            e.sort_unstable();
+            (v, Sel { ents: e, plain, filler, dw: dw.to_vec(), dg: dg.to_vec() })
+        };
+        if best {
+            let v = val(&clauses[0], dw, dg);
+            if v > self.bestv {
+                self.bestv = v;
+                self.out.clear();
+                self.out.push(mk(v));
+            }
+            false
+        } else {
+            // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
+            let (mut v, mut pass) = (f64::NEG_INFINITY, false);
+            let rho = ccap[cap_class(cmk)];
+            for cl in clauses {
+                let x = val(cl, dw, dg);
+                v = v.max(x);
+                pass = pass || cfm || rho * x * (1.0 + 1e-9) >= cl.1;
+            }
+            if pass {
+                self.out.push(mk(v));
+                if self.out.len() >= cap {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
