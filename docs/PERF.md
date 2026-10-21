@@ -69,7 +69,7 @@ wasm). A long loop in a function entered once therefore runs in baseline code th
 generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a loop's body is its own `#[inline(never)]`
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0`, as by default it
 inlines every function that has one caller, whatever its size. The planner's long loops are split the same way:
-`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s fold and outcome loop (`sc_fold`,
+`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s tables, fold and outcome loop (`sc_prep`, `sc_eval`,
 `sc_outcomes`, whose loop is `sc_loop`, one copy per specialisation); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
 the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
@@ -205,11 +205,21 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   putting them back was 0.5% worse (7.195G; with that form, the B rows off against on: 7.290G against 7.224G). e2_v24_t10, native, alternating runs: user 12.62 / 12.92 -> 12.35 / 12.67 s, `search_ms` 3.28 /
   3.32 -> 3.13 / 3.15 s, `corner_ms` 275 -> 240 ms. The leaves are 3k of 39M nodes there (`.perf/audit`), so the
   per-leaf `dw`/`dg` allocations and the band test's second evaluation have nothing to gain.
+- Reroll's saving on demand (2026-10-21, on 7d83383; every other plan output byte-identical): the plan no longer
+  computes the pick's outcome table (`outcomes.y`, 4^nu 2^nf values) nor its bound (`outcome_hi` over every y < 0.5
+  outcome, `y_hi`, `provisional`); it keeps the pick's scoring (`RollKeep`, 35 KB in `state_out` on p16, 89 KB on
+  gm16_nu8) and a roll evaluates that one outcome (`next.roll`, `sc_eval` at `OneLeaf`, `outcome_hi` at one cell).
+  The rows near the pick keep their scorings instead of their tables. e2_full_t10 native, one run each, the machine
+  idle: user 16.7 -> 13.4 s (`hi_ms` 3.33 s gone), peak RSS 498 -> 318 MB, output 12.9 MB -> 0.63 MB. A roll there
+  (the plan job with `next.roll`, after the plan): y >= 0.5 0.1 ms of solver (7 ms the whole job), y < 0.5 208 ms the
+  first (`hi_anc_ms` 199: every pair's anchors' chances, 531,166 `lineage_qc`) and 7-9 ms after (the anchors kept per
+  pair, `RollKeep::hi_anc`: 18,895). The page sends the roll inside its quick search job (`roll`), so it adds no
+  round trip; the carried plan job costs one more job set-up (about 7 ms native).
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
   work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job
   searches nothing (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
   31-149 KB).
-- Reroll (2026-10-10): about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run
+- Reroll (2026-10-10, from the plan's table then): about 30 ms of solver per roll. A saving roll's exact check, and Compare, are one planner run
   with her added (warm, native about 0.7-0.9 s then). Chance a roll runs that plan: p16 37% (6.1% saving + 30.7%
   provisional), gm16 37%, p10, p11 and boot_mob 100% (`provisional` is unchanged by 8c657b7).
 - Small pools (callgrind, 2026-10-09, before the 2026-10-20 work): boot_mob 17.05G instructions, `best_sur` and the
@@ -220,7 +230,7 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 
 - `outcome_hi`: y_hi is computed only where y < 0.5; stopping each cell's bound once it reaches 0.5 would keep every
   page decision but change those cells' rounded y_hi (planval would differ).
-- More than 8 uncertain targets: the planner's tables grow as 2^nu (corner tables), 4^nu (outcome tables) and 2^T
+- More than 8 uncertain targets: the planner's tables grow as 2^nu (corner tables), 4^nu (the outcomes each scoring sums) and 2^T
   (`outcome_sets`, up to 12 targets). A design for 10-20 targets, not built: a factored exact form of the corner tables
   per chain state, outcomes as count-indexed brackets refined only where the pick is undecided, decks by local search
   with the exact search as verifier, and a second tier whose decisions match the exact one's within a stated

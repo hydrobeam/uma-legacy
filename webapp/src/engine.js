@@ -104,9 +104,11 @@ export function engineSaveState() {
   }, 1500);
 }
 // what has not started yet (data.js LATER) is left out of every search
-const gate = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
+// (a roll's plan job too, `roll.job`: the solver finds the plan's kept state by the job as it ran)
+const gate1 = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
   exclude: [...(job.exclude || []), ...LATER.umas], exclude_outfits: [...(job.exclude_outfits || []), ...LATER.outfits],
   exclude_cards: [...(job.exclude_cards || []), ...LATER.cards] };
+const gate = (job) => { const g = gate1(job); return g.roll?.job ? { ...g, roll: { ...g.roll, job: gate1(g.roll.job) } } : g; };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: sim/plan.rs `index_rule`) while it runs
 export function run(job, interim, progress) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim, progress }); worker.postMessage({ type: 'run', id, job: gate(job) }); })); }

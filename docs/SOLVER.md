@@ -311,7 +311,8 @@ proofs from other pools could change an output.
 | `simulate` | runs the policy simulator instead of the search (section *Policy simulator*) | none |
 | `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
-| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class) and the kept main searches (`LAST_SOLVE` with their product proofs, so a reload's first run searches nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
+| `roll` | `{job, stars}`: a roll of a plan, answered beside this job's own answer as `roll` (the plan job `job` run after this one with `next.roll` = `stars`, its `next.roll`; below). The page's Reroll sends it with its one search job, so a roll costs no solver call of its own | none |
+| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`LAST_SOLVE` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`ROLLS`, *Next career*: a reload's first roll plans nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
 
@@ -384,6 +385,7 @@ evidence: `docs/MODEL.md`, *Next career*. Constants are in `src/deck/career/sim/
 | `loop_members` | loop members to add as stage candidates; absent: none (the plan runs no loop search) | absent |
 | `search_work` | work budget (career-search units) of each candidate search beyond the job's own; 0 = the job's budget | 5,000,000 |
 | `margin` | the surrogate's refresh margin (section *Policy simulator*) | 1e9 |
+| `roll` | a roll of the plan's pick: her stars per job target (0 where it did not land); the output is `next.roll` (below). Answered from the plan's kept roll state with no search when the worker has it for this job, else after the plan, which keeps it | absent |
 
 **Stage candidates** (at most 8): the best career's trainee, the loop members when named, the umas of the best
 career's lineage and of your veterans, the search's other trainees. Below 4 (`HINT_FLOOR`: a loop being started, mob or
@@ -455,8 +457,8 @@ raises any candidate's odds, her own 8/8 makes her fresh side free, and with two
 for it is the same f64 at 1, 2 and 3 stars, or every kept table reads the same with the target landed or not) is folded
 at 0 and 1 star only: an outcome with 2 or 3 stars there reads the 1-star outcome's y and lifted odds, and every
 outcome is still summed at its own chance, in order. Exact in reals; a flat table's fold rounds differently per star
-level, so scores move by at most about 1e-13 relative (decisions identical on val/plan). `outcomes.y` keeps every
-leaf. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
+level, so scores move by at most about 1e-13 relative (decisions identical on val/plan); a roll (`next.roll`) reads
+the same representative. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
 next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
 
 **Output `next`:**
@@ -467,10 +469,21 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
 - `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds,
   p_switch, careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their
   continuations, `[chara, lam, phi, pinf]`).
-- `outcomes`: the pick's careers saved per outcome, V - V with her veteran: `{trainee, parents, uncv, fixed, y}`. `y` is
-  indexed by leaf << len(fixed) | fm, leaf = her uncertain targets' stars in base 4 in `uncv` order (0 absent), fm =
-  the scenario's guaranteed golds present; the page's Reroll reads a roll's saving from it. `y_hi` at the same index,
-  where y < 0.5 (null elsewhere: the page reads it only below 0.5, and computes nothing else from it): at
+- `outcomes`: the career a roll is of, `{trainee, parents, uncv, fixed}`: the pick, her uncertain targets and the
+  scenario's guaranteed ones (job-target indices). The page checks a roll's career against it.
+- `roll` (a job with `next.roll`; a carried `roll` returns it as the job's `roll`): `{y, y_hi}` at her outcome (her
+  stars per uncertain target, at most 3, and the guaranteed targets landed or not), with `ms` and `prof`, and
+  `planned: true` when the plan had to run for it. The plan keeps its pick's roll state (`RollKeep`, the last 4 plans,
+  `ROLL_KEEP`, keyed by the plan job without `next.roll`, `no_reports` and `compare`; in `state_out`): the pick's last
+  scoring as its fold and outcome loop read it (`Scored`: the kept tables, her miss factors and spark scales per
+  setup, the collapsed targets, her landed sets' chances, her own 8/8's trio sides), the base it was scored against,
+  her own 8/8's trio sides as the bound reads them at the plan's end (`pick_her`) and the main search's found-career
+  anchors (`found_anchors`). `y`, the pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
+  outcome loop (`sc_eval`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
+  only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the
+  plan's full table held, which the plan no longer computes (`tests/plan_roll.rs` checks rolls against the tables the
+  plan exported before 2026-10-21, bit for bit). `y_hi` (rounded up to 0.01) where y < 0.5 (null elsewhere: the page
+  reads it only below 0.5, and computes nothing else from it): at
   least `y`, the most her veteran's direct lifts could save for that outcome (each candidate's odds with her as a
   parent bounded over every partner y by the least over anchors A of c' E_A rise(q', q_A) (`Env::rise`: no assumed
   cap), E_A at least the best odds at q_A: today's pairs (y, z) at p_now / c_yz, the main search's found careers of the
@@ -480,9 +493,12 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   (C4's, `outfit_fast` at q'); the step at `Cont::cost_lo`). The least over anchors is found per (candidate, partner)
   by an exact branch and bound over the leaves' star-digit prefixes (an anchor's factors are positive, so its prefix's
   product times each remaining digit's least factor bounds its leaves from below; a subtree it can't lower is
-  skipped; the leaves of no y < 0.5 outcome count as nothing to lower, so their subtrees are skipped too), and the
-  outcome table is folded as each partner finishes; `provisional`: the chance a roll reads
-  y < 0.5 <= y_hi, which the page checks exactly. The replan's other careers with her as a parent are not bounded (its
+  skipped; the leaves of no wanted outcome count as nothing to lower, so their subtrees are skipped too: a roll wants
+  one, so each anchor's walk is one path), and each wanted outcome's bound is folded in as each partner finishes. A
+  roll's first bound keeps, per (candidate, partner), the anchors whose root test passes against the most the ceiling
+  holds at any leaf (`RollKeep::hi_anc`, not stored by `state_out`): every other anchor fails the test at every outcome,
+  so later rolls fold in the same anchors without computing their chances again (e2_full_t10: 18,895 of 531,166). The
+  page checks a roll with y < 0.5 <= y_hi exactly. The replan's other careers with her as a parent are not bounded (its
   candidates and Cont are the plan's).
 - `her_trios`: her own 8/8 as a free trio side when her uma is not a stage candidate (at the rank's star mix, as the
   trios' fresh sides, with every candidate side and the best C).
@@ -500,7 +516,7 @@ pool is a kept one plus one veteran at the end (Compare, then Add) takes the bet
 her fixed, whose bar starts at the kept value (`Env::floor`). Exact (on val/plan p16 identical to the
 plan run cold), about 3 ms (2026-10-10). `best_deck`'s results (with their certificates, band overflows, work counts
 and per-class ratios) and the corner tables are also kept between jobs of one setup (`DECK_KEEP`), so a reroll's plan
-repeats none of the base plan's proxy searches. The kept plans, proofs and main searches survive a page reload through `cmd: "state_out"` /
+repeats none of the base plan's proxy searches. The kept plans, proofs, main searches and roll states survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
 
 #### Work budget

@@ -26,8 +26,8 @@ def run(d, job, name, env=None):
     return json.loads(t[t.index('{'):]), time.time() - t0
 
 # what the answer is: everything but timings, search-work counters, the cap fields and the ceilings that scale with the
-# top cap (`bound`: a career's ceiling; the reroll table's `y_hi` and `provisional`; the plan's certification counts)
-SKIP = {'bound', 'y_hi', 'provisional', 'umas_searched', 'umas_certified', 'umas_scored', 'timing_s', 'work', 'bounded', 'solved', 'scored', 'skipped', 'next_bound', 'searches', 'deck_searches', 'decks_scored',
+# top cap (`bound`: a career's ceiling; the plan's certification counts)
+SKIP = {'bound', 'umas_searched', 'umas_certified', 'umas_scored', 'timing_s', 'work', 'bounded', 'solved', 'scored', 'skipped', 'next_bound', 'searches', 'deck_searches', 'decks_scored',
         'tables', 'nodes', 'exact', 'cap', 'class_caps', 'complete', 'proven', 'proven_top', 'foursomes_ranked', 'foursomes_scanned'}
 def walk(a, c, p, out):
     if len(out) >= 6: return

@@ -203,7 +203,8 @@ async function careerPage(b) {
   await ctx.addInitScript(() => {
     const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
     window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
-      w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__careerResults.push(e.data.r); });
+      // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
+      w.addEventListener('message', (e) => { if (e.data?.type === 'result') { if (window.__rollPatch && e.data.r?.roll) Object.assign(e.data.r.roll, window.__rollPatch); window.__careerResults.push(e.data.r); } });
       w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
     // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
     // got (her sparks), whether the old answer is dimmed
@@ -1285,6 +1286,27 @@ const TESTS = {
     const rolledAll = await pg.$$eval('#simulation .simskills .vsk:not(.pink) .vskb', l => l.map(b => b.getAttribute('aria-label')));
     check('career: "Reroll" draws from the career\'s odds and compares at once', rolledAll.length === 8 && rolledAll.every(x => /3 stars/.test(x))
       && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
+    // the roll's saving comes from the solver within the roll's one job (`roll`: the plan job on show and her stars per
+    // target), from the plan's kept state: no plan runs again
+    const lastRoll = () => pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.compare && j.roll).at(-1), r = window.__careerResults.filter(r => r.compare && r.roll).at(-1);
+      const ps = window.__careerJobs.filter(j => j.next && !j.compare).map(p => JSON.stringify(p));
+      return { same: !!j && ps.includes(JSON.stringify(j.roll.job)), stars: j?.roll.stars, dist: j?.roll.job.star_dist.join(), roll: r?.roll,
+        verdict: document.getElementById('sim-verdict')?.textContent || '' }; });
+    const lr = await lastRoll();
+    check('career: … its saving is worked out by the solver for that one roll, from the plan on show (kept, not planned again), within the roll\'s one job',
+      lr.same && lr.stars.length === 8 && lr.stars.every(s => s === 3) && typeof lr.roll?.y === 'number' && !lr.roll.planned
+      && (lr.roll.y >= 0.5 || /^No careers saved/.test(lr.verdict)), JSON.stringify(lr));
+    // a zero the bound can't rule out (the solver's answer replaced: y 0, y_hi 0.9) shows no saving while it is checked,
+    // and the exact comparison starts once the roll has stood 0.8 s
+    await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });   // (the last roll's check done)
+    const refines = () => pg.evaluate(() => window.__careerJobs.filter(j => j.compare && j.next).length), rf0 = await refines();
+    await pg.evaluate(() => { window.__rollPatch = { y: 0, y_hi: 0.9 }; });
+    await roll(0);   // (nothing lands: not n/n, so the verdict is the saving's)
+    const prov = { shown: /^No careers saved/.test(await pg.textContent('#sim-verdict')) && /Checking…/.test(await pg.textContent('#sim-result')), early: await refines() === rf0 };
+    prov.started = await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare && j.next).length > n, rf0, { timeout: 30000 }).then(() => true, () => false);
+    await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });
+    await pg.evaluate(() => { delete window.__rollPatch; });
+    check('career: … a provisional zero (y < 0.5 <= y_hi) shows "No careers saved", checking, and runs the exact comparison after a moment', prov.shown && prov.early && prov.started, JSON.stringify(prov));
     await roll(0);
     check('career: … a low roll lands nothing', await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0);
     // … and draws her pink: every legacy pink fires at both inspirations (+1 grade each), the first aptitude at A or S, 1 star
@@ -1311,7 +1333,7 @@ const TESTS = {
     await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .spin, #sim-result .runner'), null, { timeout: 180000 });
     await pg.waitForTimeout(1500);   // time for a stray comparison to answer, were one still running
     const [rj, rr, rm] = [await policyJobs() - rj0, await policyResults() - rr0, await mainJobs() - rm0];
-    // an exact comparison in flight is killed (one runs); a quick one (the roll read from the plan's table) runs out with its
+    // an exact comparison in flight is killed (one runs); a quick one (the roll's search, its saving from the plan's kept state) runs out with its
     // answer ignored, so the worker keeps its caches (one per roll): either way only the last roll's shows
     check('career: rolling again while a comparison runs supersedes it: only the last roll\'s comparison shows', usable && (rm === 1 || rm === 3) && rr === rj
       && await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0 && await pg.evaluate(() => window.__careerJobs.filter(j => j.compare && !j.next).at(-1).legacies.at(-1).sparks.length === 0),
@@ -1333,7 +1355,7 @@ const TESTS = {
     await pg.click('#sim-compare'); await pg.waitForSelector('#sim-verdict', { timeout: 180000 });
     const nPolicy = await policyJobs();
     await simStars(1);
-    check('career: an edit after Compare marks the comparison out of date without running another', /changed her since/.test(await pg.textContent('#sim-result')) && await policyJobs() === nPolicy);
+    check('career: an edit after Compare marks the comparison out of date without running another', /before your last edit/.test(await pg.textContent('#sim-result')) && await policyJobs() === nPolicy);
     const baselineRuns = () => pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'career' && !j.trainees.length && !j.fix.length && j.top === 1 && !j.next).length);
     const cachedRuns = await baselineRuns();
     await node('node:t'); await inNode(/^(Choose|Change) trainee$/).click(); await dialog(pg, 'pick-dlg');
@@ -1389,7 +1411,7 @@ const TESTS = {
     await pg.locator('#wins-dlg .wpick', { hasText: wname }).click();
     check('career: … the empty slot\'s menu lists the G1s held then (her schedule\'s first, with its odds); a pick puts the win back in that slot', picks[0]?.startsWith(wname) && /her schedule · \d+% win/.test(picks[0])
       && await winsN() === w0 && await pg.evaluate(n => document.activeElement.getAttribute('aria-label') === n + ', won: remove', wname), picks.join(' | '));
-    check('career: … which marks the comparison out of date without running another, and saves nothing to your veterans', /changed her since/.test(await pg.textContent('#sim-result'))
+    check('career: … which marks the comparison out of date without running another, and saves nothing to your veterans', /before your last edit/.test(await pg.textContent('#sim-result'))
       && await policyJobs() === pj0 && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
     await pg.keyboard.press('Escape');
     check('career: … closing it puts the focus back on the wins button', await pg.waitForFunction(() => document.activeElement?.id === 'sim-wins', null, { timeout: 2000 }).then(() => true, () => false));
@@ -1731,7 +1753,7 @@ const TESTS = {
     // the worker's kept work, stored once the worker is idle after the plan; then a reload: the main search is the stored one
     // (an evaluate awaits the promise; a waitForFunction would take the promise itself as true)
     const stored = () => pg.evaluate(() => new Promise(res => { const rq = indexedDB.open('llp-solver');
-      rq.onsuccess = () => { try { const g = rq.result.transaction('state').objectStore('state').getAll(); g.onsuccess = () => res(g.result.some(s => s.v === 3 && s.solve?.length > 0)); g.onerror = () => res(false); } catch { res(false); } };
+      rq.onsuccess = () => { try { const g = rq.result.transaction('state').objectStore('state').getAll(); g.onsuccess = () => res(g.result.some(s => s.v === 4 && s.solve?.length > 0 && s.rolls?.length > 0)); g.onerror = () => res(false); } catch { res(false); } };
       rq.onerror = () => res(false); }));
     let saved = false; for (let i = 0; i < 80 && !(saved = await stored()); i++) await pg.waitForTimeout(250);
     const before = await note();
@@ -1739,6 +1761,27 @@ const TESTS = {
     const re = await pg.evaluate(() => ({ restored: window.__careerResults.find(r => r.solve !== undefined), search: window.__careerResults.find(r => r.results) }));
     check('career: after a reload the stored main search is taken: the search job searches no deck', saved && re.restored?.solve > 0 && re.search?.work?.nodes === 0 && /Planned in/.test(await note()),
       `stored ${saved} | state_in ${JSON.stringify(re.restored)} | nodes ${re.search?.work?.nodes} | before: ${before} | after: ${await note()}`);
+    // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
+    await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
+    await pg.evaluate(() => { const r = Math.random; Math.random = () => 0.999999999; document.getElementById('sim-roll').click(); Math.random = r; });
+    await pg.waitForFunction(() => window.__careerResults.some(r => r.compare && r.roll), null, { timeout: 180000 });
+    const ro = await pg.evaluate(() => window.__careerResults.find(r => r.compare && r.roll).roll);
+    check('career: after a reload a roll is answered from the stored roll state (no plan runs again)', re.restored?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned, JSON.stringify({ rolls: re.restored?.rolls, ro }));
+    // a new plan (another rank): a roll asks that plan; back on the first answer (no run), a roll asks the first plan
+    // again, which the worker still keeps
+    const rollNow = async () => { const n = await pg.evaluate(() => window.__careerResults.filter(r => r.compare && r.roll).length);
+      await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
+      await pg.evaluate(() => { const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
+      await pg.waitForFunction(n => window.__careerResults.filter(r => r.compare && r.roll).length > n, n, { timeout: 180000 });
+      return pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.compare && j.roll).at(-1), p = window.__careerJobs.filter(j => j.next && !j.compare).at(-1);
+        return { same: JSON.stringify(j.roll.job) === JSON.stringify(p), dist: j.roll.job.star_dist.join(), roll: window.__careerResults.filter(r => r.compare && r.roll).at(-1).roll }; }); };
+    await pg.click('#rank button[data-v="0.20,0.70,0.10"]'); await done();
+    const lrNew = await rollNow();
+    await pg.click('#rank button[data-v="0.50,0.45,0.05"]'); await done();
+    const lrBack = await rollNow();
+    check('career: … a roll after a new plan asks the new plan; back on the first answer it asks the first plan, still kept',
+      lrNew.same && lrNew.dist === '0.2,0.7,0.1' && typeof lrNew.roll?.y === 'number' && !lrNew.roll.planned
+      && lrBack.dist === '0.5,0.45,0.05' && typeof lrBack.roll?.y === 'number' && !lrBack.roll.planned, JSON.stringify({ lrNew, lrBack }));
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await ctx.close();
   },

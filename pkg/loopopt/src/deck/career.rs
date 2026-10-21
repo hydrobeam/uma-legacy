@@ -244,7 +244,9 @@ const SEEN_KEEP: usize = 256;
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
 // `bests_key`, hash with std's DefaultHasher, fixed within a build). A store that does not parse is refused whole.
-const STATE_VERSION: u64 = 3;   // 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`)
+// 2: the kept plans carry each uma's looped career; 3: the kept main searches (`LAST_SOLVE`); 4: the plans' roll states
+// (`sim::plan::ROLLS`)
+const STATE_VERSION: u64 = 4;
 fn hx(x: f64) -> Value { Value::String(format!("{:016x}", x.to_bits())) }
 fn ux(x: u64) -> Value { Value::String(format!("{:016x}", x)) }
 fn fx(v: &Value) -> Option<f64> { Some(f64::from_bits(u64::from_str_radix(v.as_str()?, 16).ok()?)) }
@@ -316,17 +318,19 @@ fn solve_in(v: &Value) -> Option<Vec<(u64, Solved, Ruled)>> {
         Some((uxr(a.first()?)?, sv, ruled))
     }).collect()
 }
-fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out(), "solve": solve_out()}}) }
-/// replaces the kept plans, proofs and main searches with the page's stored ones (all or nothing: a store that does not
-/// parse is refused)
+fn state_out() -> Value { json!({"ok": true, "state": {"v": STATE_VERSION, "bests": sim::plan::bests_out(), "seen": seen_out(), "solve": solve_out(), "rolls": sim::plan::rolls_out()}}) }
+/// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones (all or nothing: a
+/// store that does not parse is refused)
 fn state_in(v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) { return json!({"error": "state: another version"}); }
-    let (Some(b), Some(sn), Some(so)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"]), solve_in(&v["solve"])) else { return json!({"error": "state: does not parse"}) };
-    let (nb, ns, nm) = (b.len(), sn.len(), so.len());
+    let (Some(b), Some(sn), Some(so), Some(ro)) = (sim::plan::bests_in(&v["bests"]), seen_in(&v["seen"]), solve_in(&v["solve"]), sim::plan::rolls_in(&v["rolls"]))
+        else { return json!({"error": "state: does not parse"}) };
+    let (nb, ns, nm, nr) = (b.len(), sn.len(), so.len(), ro.len());
     sim::plan::bests_set(b);
     SEEN.with(|c| *c.borrow_mut() = sn);
     LAST_SOLVE.with(|c| *c.borrow_mut() = so);
-    json!({"ok": true, "bests": nb, "seen": ns, "solve": nm})
+    sim::plan::rolls_set(ro);
+    json!({"ok": true, "bests": nb, "seen": ns, "solve": nm, "rolls": nr})
 }
 /// Multilinear interpolation of corner values v (index bit k = coordinate k at 1) at the point x, with a buffer the
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
@@ -1368,6 +1372,20 @@ fn solve_kept(env: &mut Env, key: u64, p: &Pool, fix: &[usize], trainees: &[usiz
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
     match v["cmd"].as_str() { Some("state_out") => return state_out(), Some("state_in") => return state_in(&v["state"]), _ => {} }
+    // a roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll sends it with
+    // its search, so the roll costs no round trip of its own): the job runs without it, then the plan job with
+    // `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as `roll`
+    if let Some(r) = v.get("roll").filter(|r| !r.is_null()) {
+        let mut j = v.clone(); if let Some(o) = j.as_object_mut() { o.remove("roll"); }
+        let mut out = run_career(d, sk, cr, &j);
+        let mut pj = r["job"].clone();
+        out["roll"] = match pj.get_mut("next").and_then(|n| n.as_object_mut()) {
+            Some(n) => { n.insert("roll".into(), r["stars"].clone()); let o = run_career(d, sk, cr, &pj);
+                if o["next"]["roll"].is_null() { json!({"error": o["error"].as_str().or(o["next"]["error"].as_str()).unwrap_or("the plan has no roll")}) } else { o["next"]["roll"].clone() } }
+            None => json!({"error": "roll: the job is not a plan job (no `next`)"}),
+        };
+        return out;
+    }
     let sj: SkillJob = match SkillJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let dj: DeckJob = match DeckJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     let cj: CareerJob = match CareerJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
@@ -1453,6 +1471,11 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     });
     if let Some(sm) = &cj.simulate { return sim::simulate(&mut env, d, sk, cr, v, legs, &trainees, sm); }
     let pool = env.pool(legs);
+    // a roll of a plan this worker keeps (`next.roll`): answered from its roll state, no search (`sim::plan::roll_kept`);
+    // else the job runs as below, its plan answering the roll
+    if let Some(nj) = cj.next.as_ref().filter(|x| x.get("roll").is_some_and(|r| !r.is_null())).and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok()) {
+        if let Some(r) = sim::plan::roll_kept(&mut env, d, sk, cr, v, legs, &pool, &cj.fix, &nj) { return json!({"next": {"roll": r}}); }
+    }
     // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
     // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
     let ppool = (cj.borrowed_parent == BorrowedParent::Later).then(|| Pool { max_bor: 0, ..pool.clone() });

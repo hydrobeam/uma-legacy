@@ -61,7 +61,8 @@ fn handle(req: &str) -> serde_json::Value {
         "career" | "state_out" | "state_in" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            if cmd == "career" { super::deck::apply_event_lists(&mut v, ev); }
+            // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
+            if cmd == "career" { super::deck::apply_event_lists(&mut v, ev); if v["roll"]["job"].is_object() { super::deck::apply_event_lists(&mut v["roll"]["job"], ev); } }
             super::deck::run_career(d, sk, cr, &v)
         })),
         c => serde_json::json!({"error": format!("unknown command {c}")}),

@@ -528,7 +528,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   her veteran shortens that route, averaged over everything she could roll (steps C5–C8). The page runs the search and
   then the plan as two phases of one run, naming the phase at work, and draws one answer when both end: the pick (the
   best odds when you chose the trainee, so nothing is left to pick, or when the plan fails).</li>
-  <li>Reroll, Compare and Add reuse the plan: a roll's saving is read from the plan's table of outcomes, and Compare is
+  <li>Reroll, Compare and Add reuse the plan: a roll's saving is the plan's own scoring of its pick at that one outcome, worked out from what the solver kept of the plan, and Compare is
   the plan run again with her in your pool (steps C9–C10).</li>
   </ol>
   <p>Symbols: <math><mi>T</mi></math> the trainee, <math><mi>a</mi></math>, <math><mi>b</mi></math> her parents (legacies), <math><mi>k</mi></math> a target, <math><mi>n</mi></math> the number of targets,
@@ -661,7 +661,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p>That is "Saves per run": the route's careers today minus the average after running her, minus her run. It is the
   planner's own estimate going down, a yardstick for comparing careers, not a forecast of careers saved.</p>
   <p>The pick is the highest score; within 0.25 careers (or 5%) of it, the better own odds. With fewer
-  than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. The pick's per-outcome savings <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> are kept for Reroll (C9).</p>
+  than two stage candidates of different umas there is no route: nothing is scored and the pick is the best odds. What the pick's score sums is kept, so Reroll can work out its saving <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> at any one outcome (C9).</p>
   <p>Each uma is scored on her best career by odds and, when its parents are not both n/n, also on her best career with
   two of your n/n veterans as parents (searched exactly), listed beside it: only there can her own n/n be the goal. The
   route's last step, C on two n/n veterans you have, is such a career, saving at least one career per run in
@@ -698,7 +698,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   also draws the skills bought (a landed target is bought, as a gold with the report's chance; one that didn't land is
   bought anyway with its remaining buying chance), her pink spark (C2b), one blue spark (a stat, near uniform, stars at
   the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
-  pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan's table, with no solver call, plus one search for the best career with
+  pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> worked out for that one outcome from what the solver kept of the plan (the same sums in the same order, so the same number a full table would hold), in the same solver call as one search for the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
   found (its continuations are the plan's, C10). So each outcome with <math><mi>y</mi><mo>&lt;</mo><mn>0.5</mn></math> (the only ones where a bound can decide anything, below) also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
   effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
@@ -714,8 +714,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msub><mi>V</mi><mtext>lo</mtext></msub><mo>)</mo><mo>≥</mo><mi>y</mi></math>. It bounds the replan's direct effect only; what a replan's refits do (Cont fitted again,
   other careers re-searched with her) is outside it. "No
   careers saved" is shown as proven when <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>&lt;</mo><mn>0.5</mn></math>; otherwise it is provisional and the exact comparison (C10)
-  runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Checking…" with the table's figures held, then the exact
-  count; the table never gives a verdict of its own, so the verdict can't change once shown.</p>
+  runs once the roll has stood for 0.8 s. A roll with <math><mi>y</mi><mo>≥</mo><mn>0.5</mn></math> shows "Checking…" with the plan's figures held, then the exact
+  count; the plan's saving never gives a verdict of its own, so the verdict can't change once shown.</p>
 
   <p><strong>C10. Compare and Add.</strong> Compare runs the plan exactly as a run will once she is added (her in your pool,
   everything fitted to it), and one search for the best career with her as a parent. Its saving is <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>, clamped at 0:
@@ -730,7 +730,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <ol>
   <li><strong>Fully looped parent:</strong> she is n/n and both her parents are n/n (the goal itself).</li>
   <li><strong>n/n: step 1 done:</strong> she is n/n.</li>
-  <li><strong>Improves your loop:</strong> while the exact count runs for a roll the table said saves careers.</li>
+  <li><strong>Improves your loop:</strong> while the exact count runs for a roll the plan said saves careers.</li>
   <li><strong>Saves N careers:</strong> <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub><mo>≥</mo><mn>0.5</mn></math>. A line under it says where the saving lands: the next career when
     she is one of its parents, else a later career, named by the route step (A, B or C of V's plan) whose careers fell
     most (unnamed when the route itself changed), with the next career beside it.</li>
@@ -740,15 +740,15 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <li><strong>No careers saved</strong> (with "Checking…" while a provisional zero is checked, C9).</li>
   </ol>
   <p>Under the verdict, "now → with her", green when better: <strong>Careers to loop</strong>, <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>→</mo><msub><mi>V</mi><mtext>with</mtext></msub></math>
-  (for a roll, <math><msub><mi>V</mi><mtext>with</mtext></msub><mo>=</mo><mi>V</mi><mo>−</mo><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the table until the exact count replaces it). Then <strong>All n odds</strong>: today's best career over every
+  (for a roll, <math><msub><mi>V</mi><mtext>with</mtext></msub><mo>=</mo><mi>V</mi><mo>−</mo><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> from the plan until the exact count replaces it). Then <strong>All n odds</strong>: today's best career over every
   trainee and pair (no places fixed) → the best career with her fixed as a parent, whose portraits and deck are folded
   under <strong>Best career with her</strong>. A Reroll that lands while an exact count runs cancels it; a
   provisional check starts only after a roll has stood for 0.8 s, so rerolling quickly never queues work.</p>
 
   <p><strong>C11. What is reported.</strong> The best careers by odds with their decks, targets, aptitudes and
   schedule; the plan: <math><mi>V</mi></math>, its route (each step's odds, builds and careers), the options with each career's role
-  (in the route, its finisher, a candidate, a builder), score and lift chance, whether its search was proven, and the pick's per-outcome
-  table with its bound. The planner's numbers depend on the job alone: its cache holds only each search's best decks,
+  (in the route, its finisher, a candidate, a builder), score and lift chance, whether its search was proven, and, for a roll, the pick's
+  saving at that outcome with its bound. The planner's numbers depend on the job alone: its cache holds only each search's best decks,
   not whatever a search happened to check, so earlier jobs, the order of work and kept results change how long it
   takes, never what it says. Kept results survive a reload (stored in the browser, keyed by the solver's and data's
   fingerprints).</p>

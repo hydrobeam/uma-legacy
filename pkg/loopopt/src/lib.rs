@@ -802,6 +802,7 @@ pub fn cli_main() {
     if let Some(path) = v["events_file"].as_str() {
         let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         deck::apply_events_db(&mut v, &sk, &db);
+        if v["roll"]["job"].is_object() { deck::apply_events_db(&mut v["roll"]["job"], &sk, &db); }
     }
     let cr: deck::CardsRaw = serde_json::from_str(&std::fs::read_to_string(v["cards_file"].as_str().expect("cards_file")).unwrap()).unwrap();
     // the worker's kept work across processes, as the page keeps it across reloads (LOOPOPT_STATE_IN: a file
@@ -821,6 +822,8 @@ pub fn cli_main() {
             if let Some(ev) = v["events_file"].as_str() {
                 let db: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ev).unwrap()).unwrap();
                 deck::apply_events_db(&mut v, &sk, &db);
+                // (a carried roll's plan job too, as the page sends it complete: its kept state is found by the job as it ran)
+                if v["roll"]["job"].is_object() { deck::apply_events_db(&mut v["roll"]["job"], &sk, &db); }
             }
             let t0 = Instant::now();
             let mut out = deck::run_career(&d, &sk, &cr, &v);

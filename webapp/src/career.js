@@ -46,7 +46,7 @@ const jobKey = (job) => { if (legsKey[0] !== job.legacies) legsKey = [job.legaci
 const runKey = (job) => jobKey(job) + '\n' + JSON.stringify(plan);
 // the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
-  : ph === 4 ? `weighing ${n} careers` : ph === 6 ? 'checking the pick' : '';
+  : ph === 4 ? `weighing ${n} careers` : '';
 let status = { kind: 'loading', text: 'Loading…' };
 let last = null;   // the answer on show: {r, job, key, plan} (the search's result; the plan's is planS)
 function paint() {
@@ -218,7 +218,7 @@ async function search() {
           const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runN(jp, (p) => { if (id === myId) { prog = progText(p); paint(); } });
           if (id !== myId) return;
           const x = m2.r.next;
-          P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
+          P = x && !x.error && x.options?.length ? { state: 'done', r: x, ms: m2.ms, job: jp } : { state: 'error', text: m2.r.error || x?.error || 'no option found.' };
         } catch (e) { if (id !== myId) return; P = { state: 'error', text: e.message }; }
         if (P.state === 'done') engineSaveState();   // the worker's kept work, for the next page load
       }
@@ -640,43 +640,45 @@ function rolledBlueGreen(r) {
   return { blues, greens };
 }
 function rollDraft() { const r = shown(); if (!r || searching) return; Object.assign(simulation.draft, rolledOutcome(r), { winAt: {} }); simulation.r = null; simulation.stale = false;
-  const ts = tableSave(simulation.draft, r), y = ts ? ts.y : null;
-  if (ts == null) { compare(); return; }
+  const rq = rollReq(simulation.draft, r);
+  if (rq == null) { compare(); return; }
   cancelCompare();
-  quickCompare(y, ts.hi); }
-// A roll's careers saved, read from the plan's table for the career on show (`outcomes`: per outcome, her targets' stars
-// and the scenario's golds, what she saves; exact for her sparks, her G1 wins at their chances): no solver call. With it
-// `hi`, the most her veteran's direct lifts could save for that outcome (`y_hi`: ceilings over every partner; null on an
-// older plan, and where y >= 0.5, which never reads it): a table zero is proven when hi < 0.5, else the exact comparison checks it. null when the plan isn't for
-// this career (then Reroll compares exactly).
-function tableSave(d, r) {
+  quickCompare(rq); }
+// A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
+// solver evaluates the plan's pick at that one outcome from what it kept of the plan, sim/plan.rs `roll_kept`, so no plan
+// runs again): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
+// direct lifts could save there (ceilings over every partner): a zero is proven when y_hi < 0.5, else the exact
+// comparison checks it. null when the plan isn't for this career (then Reroll compares exactly).
+function rollReq(d, r) {
   const o = planS.state === 'done' ? planS.r?.outcomes : null;
-  if (!o || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',') || !Array.isArray(o.y)) return null;
-  const tg = state.targets, sp = d.sparks || {}; let leaf = 0, fm = 0;
-  o.uncv.forEach((k, j) => { leaf |= Math.min(3, sp[tg[k]?.group] || 0) << (2 * j); });
-  o.fixed.forEach((k, j) => { if (sp[tg[k]?.group]) fm |= 1 << j; });
-  const i = (leaf << o.fixed.length) | fm, y = o.y[i], hi = Array.isArray(o.y_hi) ? o.y_hi[i] : null;
-  return typeof y === 'number' ? { y, hi: typeof hi === 'number' ? hi : null } : null;
+  if (!o || !planS.job || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',')) return null;
+  const sp = d.sparks || {};
+  return { job: planS.job, stars: state.targets.map(t => sp[t.group] || 0) };
 }
-// the reroll's comparison: careers to loop from the table, and the best career with her as a parent (one quick search)
-async function quickCompare(y, hi = null) {
+// the reroll's comparison: careers to loop from the plan's saving for the roll, and the best career with her as a parent
+// (one quick search, the roll's saving worked out in the same solver call)
+async function quickCompare(rq) {
   const id = ++simulationId, source = myId;
   simulation.state = 'busy'; simulation.kind = 'quick'; simulation.error = null; simulation.stale = false; simulation.provisional = false; renderSimulation();
+  let y = null, hi = null;
   try {
     const base = comparisonJob();
     if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
     const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
-    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
+    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true, roll: rq });
     if (id !== simulationId || source !== myId) return;
     if (m.r.error || !m.r.results?.length || !simulation.baseline) throw new Error(m.r.error || 'No next career found.');
+    // (no saving from the plan: the exact comparison answers instead)
+    if (typeof m.r.roll?.y !== 'number') { simulation.kind = null; runComparison(); return; }
+    y = m.r.roll.y; hi = typeof m.r.roll.y_hi === 'number' ? m.r.roll.y_hi : null;
     const v0 = planS.r.v0;
     simulation.r = m.r; simulation.full = isFull(simulation.draft); simulation.v0 = [v0, v0 != null ? Math.max(0, v0 - y) : null];
     simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.where = ''; simulation.quick = true; simulation.state = 'done';
   } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
-  // a roll that saves careers: the table can undercount how many (it tries her with a few partners at cached decks), so
-  // the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant). A table zero whose
-  // bound allows a saving (`hi`) is checked the same way, shown meanwhile as no saving, checking
+  // a roll that saves careers: the plan's saving can undercount how many (it tries her with a few partners at cached
+  // decks), so the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant). A zero
+  // whose bound allows a saving (`hi`) is checked the same way, shown meanwhile as no saving, checking
   if (simulation.state === 'done' && id === simulationId && source === myId) {
     if (y >= 0.5) runComparison(true);
     // after the roll has stood a moment: rolling on starts none (a running check would be stopped, the worker with it)
