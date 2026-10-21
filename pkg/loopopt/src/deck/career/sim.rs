@@ -286,7 +286,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
     fn legal(&self, st: &St, t: usize, a: usize, b: usize) -> bool {
         let tid = self.d.umas[t].id; let (ca, cb) = (st.pool.me[a].chara, st.pool.me[b].chara);
-        a != b && ca != cb && ca != tid && cb != tid && !(st.pool.borrowed[a] && st.pool.borrowed[b])
+        a != b && ca != cb && ca != tid && cb != tid && st.pool.bor_ok(a, b)
     }
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, t: usize, a: usize, b: usize) -> Rc<Vec<f64>> {
@@ -519,7 +519,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     /// the initial state: the job's pool, every candidate valued (best ceiling first)
     fn initial(&mut self, legs: &[Legacy], base: Base) -> St {
         let pool = self.env.pool(legs);
-        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![], gpc: vec![] }, gpc: vec![], fam: Default::default(), best: None, cur: None,
+        let mut st = St { legs: vec![], pool: Pool { me: vec![], gp: vec![], borrowed: vec![], gpc: vec![], max_bor: self.env.max_bor }, gpc: vec![], fam: Default::default(), best: None, cur: None,
                           rot: Rot { pos: 0, latest: vec![None; self.members.len()] }, mb: vec![None; self.members.len()] };
         let mut buf = vec![];
         for l in legs { self.add_vet(&mut st, l.clone(), false, &mut buf); }

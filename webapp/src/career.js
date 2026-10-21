@@ -7,7 +7,7 @@ import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
 import { run, killEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
-import { onSave } from './save.js';
+import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
 import { initScenario, eraScenario, scenarioOf } from './scenario.js';
@@ -102,12 +102,18 @@ function schedule() {
 // ---------- the job ----------
 const idxOf = (id) => vets.findIndex(v => v.id === id);
 class Blocked extends Error { constructor(kind, text, act) { super(text); this.kind = kind; this.act = act; } }
+// the borrowed-parent choice (Career setup): 'allow' (one per career, now and later), 'later' (none in this career; the
+// plan's later careers still borrow), 'never'; the job's `borrowed_parent`, left out at 'allow' (the job as before)
+const BP = { allow: 'Allowed', later: 'Not this career', never: 'Never' };
+const bpOf = () => (Object.hasOwn(BP, state.borrowPar) ? state.borrowPar : 'allow');
 function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
   if (vets.length < 2) throw new Blocked('empty', 'Choose both parents, or import your veterans and let the planner pick.', !vets.length ? { label: 'Try sample veterans', run: () => addVets(sampleVets()) } : null);
   if (fixed.length === 2 && fixed[0].chara === fixed[1].chara) throw new Blocked('error', `Both parents are ${umaName(fixed[0].chara)}: a career takes two different umas.`);
   if (fixed.length === 2 && fixed[0].borrowed && fixed[1].borrowed) throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
+  const fb = bpOf() !== 'allow' && fixed.find(v => v.borrowed);
+  if (fb) throw new Blocked('error', `${umaName(fb.chara)} is borrowed, and Borrowed parent is set to ${BP[bpOf()]}: choose one of your veterans, or allow a borrowed parent.`);
   if (plan.trainee && fixed.some(v => v.chara === plan.trainee)) throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
   const exclude = UMAS.filter(u => !owned(u) && u.id !== plan.trainee).map(u => u.id);
   if (!plan.trainee && exclude.length >= UMAS.length) throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
@@ -117,6 +123,7 @@ function buildJob() {
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: true,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: all ? 1 : ROLL_K };
+  if (bpOf() !== 'allow') job.borrowed_parent = bpOf();
   return job;
 }
 // an 8/8 veteran: a spark of every target (with 8/8 parents: a fully looped parent)
@@ -444,6 +451,7 @@ function blockedFor(v, k) {
   if (plan.trainee && v.chara === plan.trainee) return 'the trainee herself';
   if (o && o.chara === v.chara) return 'same uma as the other parent';
   if (o && o.borrowed && v.borrowed) return 'the other parent is borrowed';
+  if (v.borrowed && bpOf() !== 'allow') return `borrowed (Borrowed parent: ${BP[bpOf()]})`;
   return '';
 }
 function openParentPicker(k) {
@@ -1032,12 +1040,18 @@ function initSettings() {
   $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
   const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); persist(); location.reload(); };
   $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
-  initScenario(); initRoster(); initCards(); initTargets();
+  initScenario(); initRoster(); initCards(); initTargets(); initBorrow();
   renderRoster(); renderTargets();
   enginePersist();   // the solver's kept work survives a page reload
   initSetup(); initFold();
   // a settings change (targets, umas, cards, scenario): the tree shows the new targets, and the search runs again
   onSave(() => { schedule(); renderAll(); paintFold(); });
+}
+// Borrowed parent: three choices, saved with the other settings (a change runs the planner again, `onSave`)
+function paintBorrow() { $('bp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === bpOf()))); }
+function initBorrow() {
+  $('bp').querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.v === bpOf()) return; state.borrowPar = b.dataset.v; paintBorrow(); save(); });
+  paintBorrow();
 }
 // the setup panel folds to its ribbon (click it) and a one-line summary; the choice is kept in this browser
 let folded = (() => { try { return localStorage.getItem('llp:setup-folded') === '1'; } catch { return false; } })();
@@ -1047,8 +1061,10 @@ function paintFold() {
   b.title = folded ? 'Show the career setup' : 'Fold the career setup';
   const rank = state.rank === '0.20,0.70,0.10' ? 'SS' : 'B–S+', era = ERA === 'gm' ? 'JP, Grand Masters' : 'Global', sc = scenarioOf(state.scen).name;
   // each setting as its label, light, and its value, bold, as the panel's rows read (the whole line for the screen reader)
-  sum.setAttribute('aria-label', [era, sc, `rank ${rank}`, `${state.targets.length} target skills`].join(' · '));
-  sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)]].map(([k, v]) => {
+  // (the borrowed parent only when it isn't the default)
+  const bp = bpOf() === 'allow' ? [] : [['Borrowed parent', BP[bpOf()]]];
+  sum.setAttribute('aria-label', [era, sc, `rank ${rank}`, `${state.targets.length} target skills`, ...bp.map(([k, v]) => `${k}: ${v}`)].join(' · '));
+  sum.replaceChildren(...[['Game data', era], ['Scenario', sc], ['Rank', rank], ['Targets', String(state.targets.length)], ...bp].map(([k, v]) => {
     const p = el('span', 'sumkv'); p.setAttribute('aria-hidden', 'true'); p.append(el('span', 'sumk', k), el('b', '', v)); return p; }));
 }
 // the pink ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included)

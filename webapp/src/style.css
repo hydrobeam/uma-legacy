@@ -1372,6 +1372,14 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .game .setlist .glab, .game .setlist .gctl > span:first-child { align-self: stretch; justify-self: stretch; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; background: var(--gm-tile);
   color: var(--gm-tile-ink); font-weight: 700; line-height: 1.2; }
 .game .setlist .scenbtn { min-height: 44px; padding-block: 2px; }
+/* the career page's borrowed-parent choice: its hint a line under the label and the choices, across the tile (sized by
+   the tile, never widening the list); on phones the three choices share the tile's width under the label */
+.game .setlist .bpctl > .hint { grid-column: 1 / -1; justify-self: stretch; padding: 0 6px 2px; line-height: 1.3; contain: inline-size; }
+@media (max-width: 520px) {
+  .game .setlist .bpctl > .glab { grid-column: 1 / -1; justify-self: start; }
+  .game .setlist .bpctl > .seg { grid-column: 1 / -1; justify-self: stretch; display: grid; grid-template-columns: repeat(3, auto); }
+  .game .setlist .bpctl > .seg button { padding-inline: 8px; }
+}
 .game .setlist .scenbtn .slogo { height: 36px; }
 .game .setenh { grid-area: enh; align-self: center; padding-top: 18px; display: grid; grid-template-columns: auto auto; gap: 8px 12px; justify-content: start; }
 .game .setenh .btn.enh.wide { grid-column: 1 / -1; }

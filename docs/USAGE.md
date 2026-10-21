@@ -48,8 +48,16 @@ Picks the next career from the veterans you have, aiming at a *fully looped pare
   gives, the minimum to start a loop.
 - Each veteran's sparks, parents and G1 wins can be edited; *Yours / Borrowed* marks a friend's.
 
+**Borrowed parent** (in Career setup, saved with the other settings): you can borrow only a few veterans a day.
+*Allowed* (the default) lets a career use one borrowed parent, and the plan counts on borrowing in the careers after it
+too. *Not this career* picks a career on two of your own veterans and still plans the later careers with a borrow,
+since borrows come back each day. *Never* leaves borrowed veterans out, now and in the plan. A borrowed veteran you set
+as a parent by hand is then refused with a message (choose one of yours, or allow a borrowed parent), and the parent
+picker greys borrowed veterans out.
+
 The pedigree shows the trainee, her two parents and their parents. Each place is set by hand (*Choose parent*) or left
-to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed). Every edit that
+to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed, as *Borrowed parent*
+allows). Every edit that
 changes the job starts one run (one that leaves it as it is, such as renaming a preset, lets the run under way go on);
 the previous answer stays dimmed until the new one arrives, and the status line says what the plan is at (*scoring 12
 of 83 umas*).

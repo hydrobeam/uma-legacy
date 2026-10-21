@@ -40,7 +40,7 @@ const VALID = {
   presets: (v) => Array.isArray(v) && v.every(p => obj(p) && typeof p.name === 'string' && p.name.trim() !== '' && Array.isArray(p.groups) && p.groups.every(Number.isInteger)),
   rank: (v) => Object.values(RANKS).includes(v),
   auto: (v) => typeof v === 'boolean', perUma: (v) => typeof v === 'boolean',
-  decksTop: (v) => v === '1' || v === '3',
+  decksTop: (v) => v === '1' || v === '3', borrowPar: (v) => ['allow', 'later', 'never'].includes(v),
   scen: (v, era) => SCENARIOS.some(s => s.v === v && (!s.era || s.era === era)),
   rsort: (v) => v === 'rel' || v === 'name', csort: (v) => v === 'rel' || v === 'name',
   rdir: (v) => v === 'asc' || v === 'desc', cdir: (v) => v === 'asc' || v === 'desc',

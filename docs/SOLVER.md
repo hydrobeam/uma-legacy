@@ -282,7 +282,8 @@ also train its fourth member, usually a weak trainee (Oguri Cap at 1 in 216 in `
 
 ### Career planner (`"mode":"career"`, page `/career`)
 
-The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed), deck.
+The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed, or none:
+`borrowed_parent`), deck.
 Same files as deck mode, plus `legacies`; the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
 choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh 8/8s, the simulator's draws; other loop fields are unused).
 `val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
@@ -303,6 +304,7 @@ proofs from other pools could change an output.
 | `legacies` | veterans: `{chara, borrowed, sparks: [[skill group, stars], ...], pinks: [[aptitude group, stars], ...], wins: [race index], parents: [{chara, sparks, pinks, wins}, ...]}`; race index = position in data.json `races`; aptitude groups 11 turf, 12 dirt, 21-24 front runner to end closer, 31-34 sprint to long; a parent with `chara` 0 is unknown (no relation points, its sparks still count) | required |
 | `trainees` | chara ids to consider (empty: every owned uma) | `[]` |
 | `fix` | legacy indices that must be among the two parents (0, 1 or 2) | `[]` |
+| `borrowed_parent` | `"allow"`: at most one borrowed parent per career, now and in the plan's look-ahead. `"later"`: the career picked has none (the search's `results` and the plan's rows, *Next career* below), while the plan's V and V' still assume later careers borrow (borrows refill daily); a `next` job then runs the main search twice, without and with borrowing. `"never"`: no pair holds a borrowed veteran anywhere (`Pool::max_bor` 0 in every pool the job builds), which answers as the job without its borrowed veterans (`tests/plan_borrowed.rs`). A rule on the pairs as `fix` is: out of `setup_fp`, so the kept proofs and decks are shared across settings; in the kept main search's key and the kept plans' (`bests_key`). The simulator (`simulate`) takes "later" as "allow" | `"allow"` |
 | `per_trainee` | one result per trainee (each with her best parents and deck); false: the best careers whoever trains (with one trainee: her best parent pairs) | `true` |
 | `top` | careers returned | 5 |
 | `next` | the page's next-career plan, section *Next career (`next`)* below | none |
@@ -417,6 +419,20 @@ raises that candidate's odds and the mean odds raised to.
   val/plan or the large exports). On a 315-veteran pool with six 8/8s (one owned) they added 37 rows and, when added
   (2026-10-17, before the bar), took the plan from 11 s to 16 s natively; the bar cut their deck-search nodes there
   from 21.7M to 7.5M. On pools without two 8/8s they cost nothing.
+- **Without a borrowed parent now** (`borrowed_parent` "later"). The rows are the careers the player may run now, while
+  everything V and V' read is the job with borrowing: the main search with borrowing (the "allow" job's, kept under its
+  key, so a plan after an "allow" run takes it as it is), each candidate's best career and odds, Cont's builders, the
+  trios and every scoring's partners and anchors (`outcome_hi`). A base row whose career has a borrowed parent stays a
+  builder (its lifts) and is neither scored against V, shown nor picked; her best career without one becomes a row of
+  its own after the looped rows (an *nb row*: her cached decks through the surrogate while proxies are on, searched or
+  certified exactly on the pool without borrowed parents once a shown row or the pick's band can turn on it; exact from
+  the start whenever proxies are off, as under `exact_all`). A proxy row whose exact search turns out a borrowed career
+  leaves its proxy career as her nb row. The looped rows are searched on that pool too, also for an uma whose best
+  career is looped on a borrowed 8/8. Nb rows
+  are not among Cont's builders and not added to the deck cache. The pass-2 band and the outcome tables' pruning read
+  the rows that can be picked only, so which proxies are searched exactly can differ from the "allow" plan's, and V with
+  it in principle; on p16 with #14 borrowed V, the fit and the trios are the "allow" job's to the bit
+  (`tests/plan_borrowed.rs`).
 
 **Continuation and V.** Per candidate a continuation (`Cont`, assumed form; its shape constants 0.6 and 1.5 are tuning
 choices, set against simulated builder traces on four veteran pools, a comparison not reproduced in the repository): builder careers lift her odds with chance
