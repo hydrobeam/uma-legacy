@@ -208,24 +208,26 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   most, the others at their lowest misses; each n's term at most A with every slot at most min(n, stop) links done;
   (2) where (1) passes, per chain state x (`SbCfg`'s projected states) the lower of the per-target bound A_x and the
   ratio bound B_x (log-submodularity of each target's factor, card by card, given x), summed over states, heaviest
-  first with an early stop once the sum decides the test. Both rest on `state_value`'s argument, which needs every
-  group's per-target levels negatively upper-orthant dependent at every white/gold threshold (`group_nuod_lvl`,
-  `Src::cf_ok`); a deck space with an entry not covered proves nothing. Proven when the band finishes within its own
-  budget (`CF_BUDGET`, default 60M work units, 15 per cap-free node, about 6 s; apart from the career's budget):
-  then a best below th / c is `Bounded`, else the deck is a fully checked one (`Ref`, `full`); unproven, the better of
-  its best and the capped answer, not full (the search is not `complete`). The output's `cap_rerun` counts the reruns
-  (`searches`), those that proved nothing (`unproven`) and their `work`; `cap_exceeded` still lists the classes past
-  their caps. Not covered: the career search's own ceilings and `ruled` proofs still use EXACT_RHO, and a search
-  that never scores a breaching deck has nothing to trigger it, so "proven" stays relative to the caps where no
-  breach was seen. Checks: `CF_CHECK=s` runs the cap-free search beside every capped one (state put back) and
-  compares answers, passes its nodes at s times their bound and scores every leaf reached exactly against every
-  bound above it, and checks the state value against each exact scoring (`CFCHK` on stderr); `CAPS_TEST=a,b,c,d`
-  lowers the caps to force breaches; `CAP_RERUN=0` leaves a breach unanswered (the search not `complete`, as before
-  the rerun). Measured (2026-10-20): on the 15 tiny Grand Masters slices (`.perf/ana2`, 8-10 targets) with every cap
-  at 1.0, each job's breaching search reruns and every answer equals `cap_audit`'s, proven (job field `cap_free` the
-  same); on export 2 at 10 targets (24 veterans, main search) with caps 1.15 (1.0) 7 (15) searches rerun, all proven,
-  the `cap_audit` answer, 13 s (16 s) against 0.7 s capped; without the rerun the same answer, not `complete`. A
-  cap-free node costs about 1.5 us (0.2 us capped).
+  first with an early stop once the sum decides the test; the open slots of one group share its lowest misses and best
+  ratios, so states that differ only by the order of that group's open-slot levels have one term, computed once. Both
+  rest on `state_value`'s argument, which needs every group's per-target levels negatively upper-orthant dependent at
+  every white/gold threshold (`group_nuod_lvl`, `Src::cf_ok`); a deck space with an entry not covered proves nothing.
+  Proven when the band finishes within its own budget (`CF_BUDGET`, default 60M work units, 15 per cap-free node,
+  about 3 s; apart from the career's budget): then a best below th / c is `Bounded`, else the deck is a fully checked
+  one (`Ref`, `full`); unproven, the better of its best and the capped answer, not full (the search is not
+  `complete`). The output's `cap_rerun` counts the reruns (`searches`), those that proved nothing (`unproven`) and
+  their `work`; `cap_exceeded` still lists the classes past their caps. Not covered: the career search's own ceilings
+  and `ruled` proofs still use EXACT_RHO, and a search that never scores a breaching deck has nothing to trigger it,
+  so "proven" stays relative to the caps where no breach was seen. Checks: `CF_CHECK=s` runs the cap-free search
+  beside every capped one (state put back) and compares answers, passes its nodes at s times their bound and scores
+  every leaf reached exactly against every bound above it, and checks the state value against each exact scoring
+  (`CFCHK` on stderr); `CAPS_TEST=a,b,c,d` lowers the caps to force breaches; `CAP_RERUN=0` leaves a breach unanswered
+  (the search not `complete`, as before the rerun). Measured (2026-10-20): on the 15 tiny Grand Masters slices
+  (`.perf/ana2`, 8-10 targets) with every cap at 1.0, each job's breaching search reruns and every answer equals
+  `cap_audit`'s, proven (job field `cap_free` the same); on export 2 at 10 targets (24 veterans, main search) with
+  caps 1.15 (1.0) 7 (15) searches rerun, all proven, the `cap_audit` answer, 13 s (16 s) against 0.7 s capped, about 7
+  s (9 s) since the bounds' speedups of the same day (`docs/PERF.md`); without the rerun the same answer, not
+  `complete`. A cap-free node costs about 0.8 us (0.2 us capped).
 - **State-conditioned bound** (career searches' band pass, at each configuration's root): over the configuration's
   chain progress states x, P(x) times the product over targets of each target's factor at its lowest possible misses
   given x (per open slot the best entry of its group at that slot's level); proven >= the exact value of every deck of

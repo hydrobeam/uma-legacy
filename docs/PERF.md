@@ -86,15 +86,26 @@ tier-up cost at most about 1.8x then.
   search would run the first pass three times, banning each deck found. Estimated 75 -> 15-20 s, several days, high
   risk of changing which tied deck is reported.
 - Native threads: no browser gain; splitting the enumeration changes tie order.
-- The cap-free rerun (`best_deck_cf`, SOLVER.md *Cap-free rerun*; it runs only after a cap breach) costs about 1.5 us
-  per node against 0.2 us capped: on the forced-breach slices (`CAPS_TEST`) 0.3-2.6 s per rerun where the capped
-  search takes 0.03-0.2 s; on export 2 at 10 targets (main search, caps 1.15) 7 reruns, about 1.8 s each. Where its time goes (callgrind, j_a_g1): the per-state bound about 60%, the per-n bound
-  about 30%. Measured and dropped: the state-conditioned bound alone at every node (`SBOUND=2`'s; 1M nodes, 3 s on
-  j_t8_1 against 40k nodes, 0.2 s with the ratio bound beside it); the per-state bound only within 1-4 open slots of a
-  leaf (time unchanged: the extra nodes cost what the skipped evaluations did); `upper_na` in place of the state value
-  at leaves (no faster, bands larger). Open: merging the chain states that differ only by the levels of one group's
-  open slots (exchangeable: up to k! fewer states with k open slots of one group); computing the per-n bound from the
-  parent's per-n products (a child changes one slot).
+- The cap-free rerun (`best_deck_cf`, SOLVER.md *Cap-free rerun*; it runs only after a cap breach) costs about 0.8 us
+  per node against 0.2 us capped (1.5 us before the work below, at the clock of the figures in SOLVER.md): on export 2
+  at 10 targets (main search, caps 1.15) 7 reruns, about 1 s each. Measured 2026-10-20 on one throttled clock, before
+  and after the work below, outputs byte-identical (work counters included) on the 15 forced-breach slices
+  (`CAPS_TEST=1,1,1,1`) and on that job: the job 20.9 -> 11.4 s (its reruns 3.3 -> 1.7 us per node; at caps 1.0, 15
+  reruns, 25.0 -> 14.0 s), j_a_g1 at caps 1.0 4.6 -> 2.5 s. The work: the per-n bound keeps, per configuration, the
+  products of the first slots' rows for the deck it last bounded (a child extends its parent's) and, per outfit and
+  chain slot, the slot's ratios with their per-n expectations and running products, redone from the first slot whose
+  ratios changed; the per-state bound computes a state's filled part once per class of its filled levels, gives states
+  that differ only by the order of one group's open-slot levels the term of the first of them visited (equal in real
+  arithmetic; only the sum's rounding can move, and no output did) and tries its early stop every 4 states instead of
+  16 (a test a partial sum decides is the full sum's: same outcomes, 3-19% fewer states summed); `key_level` and the
+  states' projection lost their per-element divisions and `Vec` keys (the same sums in the same order). Where its time
+  goes now (callgrind, j_t8_lo20159 at caps 1.0): the per-state bound about 30% (mostly `land_factor` at each state's
+  lowest misses), the per-n bound about 14%, `key_level` about 11%, the rest the configurations' setup and the walk.
+  Measured and dropped: a one-entry cache per (outfit, target) in front of `land_factor` in both bounds (9% slower:
+  too few repeats); the state-conditioned bound alone at every node (`SBOUND=2`'s; 1M nodes, 3 s on j_t8_1 against 40k
+  nodes, 0.2 s with the ratio bound beside it); the per-state bound only within 1-4 open slots of a leaf (time
+  unchanged: the extra nodes cost what the skipped evaluations did); `upper_na` in place of the state value at leaves
+  (no faster, bands larger).
 
 ## Planner
 

@@ -313,17 +313,22 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
             let mut stride = vec![0usize; n]; let mut nst = 1usize;
             for i in 0..n { stride[i] = nst; nst *= stops[i] as usize + 1; }
             let mut p = vec![0.0f64; nst]; p[0] = 1.0;
+            // (st, lvl, gi: idx's digits, their sum and its grid index, stepped as an odometer)
             let mut st = vec![0u8; n];
+            let (mut lvl, mut gi) = (0usize, 0usize);
             for idx in 0..nst {
-                let mut r = idx; let mut lvl = 0usize; let mut gi = 0usize;
-                for i in 0..n { st[i] = (r % (stops[i] as usize + 1)) as u8; r /= stops[i] as usize + 1; lvl += st[i] as usize; gi += st[i] as usize * gstride[i]; }
                 let pi = p[idx];
-                if pi == 0.0 { continue; }
-                let mut wsum = 0.0f64;
-                for i in 0..n { if st[i] < stops[i] { wsum += (kinds[i].0 - st[i]) as f64; } }
-                if wsum > 0.0 { for i in 0..n { if st[i] < stops[i] { p[idx + stride[i]] += pi * (kinds[i].0 - st[i]) as f64 / wsum; } } }
-                if lvl <= nmax { lev[lvl][gi] += w * pi; }
-                if lvl == total { for m in total + 1..=nmax { lev[m][gi] += w * pi; } }
+                if pi != 0.0 {
+                    let mut wsum = 0.0f64;
+                    for i in 0..n { if st[i] < stops[i] { wsum += (kinds[i].0 - st[i]) as f64; } }
+                    if wsum > 0.0 { for i in 0..n { if st[i] < stops[i] { p[idx + stride[i]] += pi * (kinds[i].0 - st[i]) as f64 / wsum; } } }
+                    if lvl <= nmax { lev[lvl][gi] += w * pi; }
+                    if lvl == total { for m in total + 1..=nmax { lev[m][gi] += w * pi; } }
+                }
+                for i in 0..n {
+                    if st[i] < stops[i] { st[i] += 1; lvl += 1; gi += gstride[i]; break; }
+                    lvl -= st[i] as usize; gi -= st[i] as usize * gstride[i]; st[i] = 0;
+                }
             }
         }
         let mut i = 0;
@@ -332,22 +337,38 @@ pub(super) fn key_level(kinds: &[Kind]) -> std::rc::Rc<KeyLevel> {
     }
     let mut marg = vec![vec![vec![0.0f64; 0]; nmax + 1]; n];
     let mut nuod = true;
+    // each grid index's digits, dig[gi * n + i] = (gi / gstride[i]) % dims[i] (the same sums below, in the same order)
+    let mut dig = vec![0u8; gsize * n];
+    { let mut st = vec![0u8; n];
+      for gi in 0..gsize {
+          dig[gi * n..(gi + 1) * n].copy_from_slice(&st);
+          for i in 0..n { if (st[i] as usize) + 1 < dims[i] { st[i] += 1; break; } st[i] = 0; }
+      } }
     for m in 0..=nmax {
         let d = &lev[m];
+        // (grid index gi = b + c * gstride[i] + lo: by blocks b of gstride[i] * dims[i], then digit c, then lo, the
+        // indices in increasing order, so each sum takes its terms in the same order)
         for i in 0..n {
-            let mut v = vec![0.0f64; dims[i]];
-            for gi in 0..gsize { v[(gi / gstride[i]) % dims[i]] += d[gi]; }
+            let (sd, dm) = (gstride[i], dims[i]);
+            let mut v = vec![0.0f64; dm];
+            for blk in d.chunks_exact(sd * dm) { for (c, row) in blk.chunks_exact(sd).enumerate() { for &x in row { v[c] += x; } } }
             marg[i][m] = v;
         }
         if !nuod { continue; }
-        // upper-orthant sums by suffix sums along every axis
+        // upper-orthant sums by suffix sums along every axis (digit c from the top down: each entry adds the one a
+        // digit above it, already summed; the entries of one digit are independent)
         let mut up = d.clone();
         for i in 0..n {
-            for gi in (0..gsize).rev() { let c = (gi / gstride[i]) % dims[i]; if c + 1 < dims[i] { up[gi] += up[gi + gstride[i]]; } }
+            let (sd, dm) = (gstride[i], dims[i]);
+            for blk in up.chunks_exact_mut(sd * dm) { for c in (0..dm - 1).rev() {
+                let (lo, hi) = blk[c * sd..(c + 2) * sd].split_at_mut(sd);
+                for (x, &y) in lo.iter_mut().zip(hi.iter()) { *x += y; }
+            } }
         }
         let tail: Vec<Vec<f64>> = (0..n).map(|i| { let mut t = marg[i][m].clone(); for c in (0..dims[i] - 1).rev() { t[c] += t[c + 1]; } t }).collect();
         for gi in 0..gsize {
-            let prod: f64 = (0..n).map(|i| tail[i][(gi / gstride[i]) % dims[i]]).product();
+            let dg = &dig[gi * n..(gi + 1) * n];
+            let prod: f64 = (0..n).map(|i| tail[i][dg[i] as usize]).product();
             if up[gi] > prod * (1.0 + 1e-12) + 1e-15 { nuod = false; break; }
         }
     }
