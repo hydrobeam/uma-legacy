@@ -123,7 +123,6 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
 /// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order; `marg`: sum `ext`'s `marg` (else
 /// left empty, every other number the same)
 pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, marg: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
-    use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     let JointPrep { bg, bh, bc, lv, keys, cg } = pre;
     let opts = &model.opts[u];
@@ -170,9 +169,8 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
                 let ew = &model.ews[u][o];
                 let base = (qi * no + o) * nu;
                 for k in 0..nu {
-                    let f = |pg: f64, pnh: f64| match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
-                        _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - pnh * (1.0 - ew[k]) * (1.0 - q)) };
-                    fv[base + k] = [f(1.0 - ng[k], nh[k]), f(1.0 - ng[k], 0.0), f(1.0, 0.0)];
+                    let lp = LandPre::new(st[k], ew[k], q);
+                    fv[base + k] = [lp.f(ng[k], nh[k]), lp.f(ng[k], 0.0), lp.f(0.0, 0.0)];
                     if !su1 { if let Some(x) = &ext { for v in fv[base + k].iter_mut() { *v *= x.su[k]; } } }
                 }
             }
@@ -361,7 +359,6 @@ pub(super) fn joint_trainee_ref(model: &Model, u: usize, qs: &[f64], ents: &[(Sr
 }
 
 pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
-    use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
     // marginals below could understate a group whose outcomes hint targets together
@@ -429,11 +426,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
     let pmf = event_pmf_job();
     let opts = &model.opts[u];
     let fixed = model.fixed_factor();
-    let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 {
-        let (st, ew) = (&opts[o].0, &model.ews[u][o]);
-        let pg = 1.0 - ng;
-        match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew[k]) * (1.0 - q)) }
-    };
+    let phi = |o: usize, q: f64, k: usize, ng: f64, nh: f64| -> f64 { land_factor(opts[o].0[k], model.ews[u][o][k], q, ng, nh) };
     let pm: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = match (pair, &kl) { (Some((a, b)), Some(k)) => Some(k.pair_margs(a, b)), _ => None };
     Some(qs.iter().map(|&q| {
         let mut best = 0.0f64;
@@ -488,13 +481,11 @@ pub(super) fn src_levels(s: &Src, stop: u8, nu: usize) -> Vec<(f64, f64)> {
     }
     out
 }
-/// Target k's landing factor at its misses (no gold `ng`, no hint `nh`): as `joint_fast` (falls with ng and with nh).
+/// Target k's landing factor at its misses (no gold `ng`, no hint `nh`), the one definition `joint_eval`, `upper_na`
+/// and the state bounds take (falls with ng and with nh). `skills::land_dw` writes the same model in one deck's
+/// per-target odds; its floats are its own.
 #[inline]
-pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
-    use crate::skills::GEN_WHITE;
-    let pg = 1.0 - ng;
-    match st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)) }
-}
+pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 { LandPre::new(st, ew, q).f(ng, nh) }
 /// `land_factor` of one (outfit, target) at one chance, its constants taken once: 1 - ew and 1 - q kept apart, so
 /// nh * (1 - ew) * (1 - q) is multiplied in the same order (the same f64 for every ng, nh)
 #[derive(Clone, Copy)]

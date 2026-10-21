@@ -201,7 +201,35 @@ fn stats(xs: &[f64]) -> Value {
     json!({"n": xs.len(), "mean": mean, "sd": sd, "ci95": [mean - half, mean + half], "min": xs.iter().cloned().fold(f64::INFINITY, f64::min), "max": xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max)})
 }
 
+/// Per trainee and outfit, per uncertain target (A, B): her ceiling factor is A - B (1 - q) (`Sim::fastc`; none
+/// without legal deck odds). `outfit_fast` at q = 0 on the hint chances `set_trainee` would write, split: A = dg GOLD +
+/// (1 - dg) WHITE and B = (1 - dg) WHITE (1 - dw)(1 - e) where she lacks the skill, B = 0 where she has it
+fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
+    (0..env.d.umas.len()).map(|t| match &env.dmax[t] { None => vec![], Some((dw, dg)) =>
+        env.sts0[t].iter().zip(&env.ew0[t]).map(|(sv, ew)| (0..env.nu).map(|k| match sv[k] {
+            2 => (GEN_GOLD, 0.0),
+            1 => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, 0.0),
+            _ => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, (1.0 - dg[k]) * crate::skills::GEN_WHITE * (1.0 - dw[k]) * (1.0 - ew[k])),
+        }).collect()).collect() }).collect()
+}
 impl<'s, 'a> Sim<'s, 'a> {
+    /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::sim_for`): the landed sets in
+    /// order of size, each owned trainee's ceiling at q = 1 (`hi`), the rank's star mix, `fastc`, the fixed gold factor
+    #[allow(clippy::too_many_arguments)]
+    fn new(env: &'s mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr: &'a CardsRaw, job: &'a Value, cfg: SimJob, trainees: Vec<usize>, members: Vec<usize>,
+           mi: Vec<Option<usize>>, main: bool, fill: bool) -> Self {
+        let ntar = env.ntar;
+        let full = (1usize << ntar) - 1;
+        let mut order: Vec<usize> = (0..full).collect();
+        order.sort_by_key(|&m| (m.count_ones(), m));
+        let n = d.umas.len();
+        let one = vec![1.0f64; ntar];
+        let hi: Vec<f64> = (0..n).map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 }).collect();
+        let star = env.sj.star_dist;
+        let fastc = fastc(env);
+        let fixed = env.model.fixed_factor();
+        Sim { env, d, sk, cr, job, cfg, cache: Cache::new(n), trainees, hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main, audits: vec![], fill, mi }
+    }
     fn key(&self, c: &Cur) -> String { format!("{}:{},{}", self.d.umas[c.t].id, c.a, c.b) }
     /// P(all) at chances q with spark scale c through trainee t's cached decks: (value, deck index; usize::MAX: none)
     fn tval(&self, t: usize, q: &[f64], c: f64, buf: &mut Vec<f64>) -> (f64, usize) {
@@ -244,19 +272,20 @@ impl<'s, 'a> Sim<'s, 'a> {
         let ti = Some(t);
         let mut miss = [1.0f64; 12]; let mut nc = [0i32; 12];
         let sh = 3.0 * shared(&p.me[a], &p.me[b]);
-        let mut slot = |stars: &[u8], aff: f64| { for k in 0..ntar { let s = stars[k]; if s > 0 { nc[k] += 1; miss[k] *= 1.0 - (0.03 * s as f64 * (1.0 + aff / 100.0)).min(1.0); } } };
+        // (a random-star slot counts at its fixed stars here: `inherit` averages its squared miss over the mix)
+        let mut slot = |stars: &[u8], fa: f64| { for k in 0..ntar { let s = stars[k]; if s > 0 { nc[k] += 1; miss[k] *= insp_miss(s as f64, fa); } } };
         for (x, y) in [(a, b), (b, a)] {
             let px = &p.me[x];
             let (mut rel, mut race) = (env.pair(ti, px.ix) + env.pair(px.ix, p.me[y].ix), sh);
             for (gi, g) in p.gp[x].iter().enumerate() {
                 let (gr, gc) = (env.tri(ti, px.ix, g.ix), st.gpc[x][gi]);
                 rel += gr; race += gc;
-                slot(&g.stars, gr + gc);
+                slot(&g.stars, aff_factor(gr, gc));
             }
-            slot(&px.stars, rel + race);
+            slot(&px.stars, aff_factor(rel, race));
         }
         let mut c = 1.0f64;
-        for k in 0..ntar { c *= 1.1f64.powi(nc[k] - 6); }
+        for k in 0..ntar { c *= spark_scale(nc[k]); }
         let mut best = 0.0f64;
         for ab in &self.fastc[t] {
             let mut v = 1.0f64;
@@ -284,10 +313,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         if let Some(k) = self.mi.get(t).copied().flatten() { if tv > bv { st.mb[k] = Some(pk); st.cur = None; } }
         if tv > st.best.map_or(0.0, |p| p.val) { st.best = Some(pk); st.cur = None; }
     }
-    fn legal(&self, st: &St, t: usize, a: usize, b: usize) -> bool {
-        let tid = self.d.umas[t].id; let (ca, cb) = (st.pool.me[a].chara, st.pool.me[b].chara);
-        a != b && ca != cb && ca != tid && cb != tid && st.pool.bor_ok(a, b)
-    }
+    fn legal(&self, st: &St, t: usize, a: usize, b: usize) -> bool { st.pool.pair_ok(self.d.umas[t].id, a, b) }
     /// her chance per race of at least one win, cached per (trainee, the parents' wins)
     pub(super) fn wins(&mut self, pool: &Pool, t: usize, a: usize, b: usize) -> Rc<Vec<f64>> {
         let mut k: Vec<usize> = pool.me[a].wins.iter().chain(&pool.me[b].wins).map(|w| w.0).collect(); k.sort();
@@ -709,23 +735,10 @@ pub(super) fn simulate<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a SkillsRaw, cr
     if matches!(base, Base::Loop | Base::Trace) && (members.len() < 3 || members.len() != cfg.loop_members.len() || members.iter().any(|m| !env.owned.contains(m))) {
         return json!({"error": "loop: loop_members must be at least three owned umas"});
     }
-    let full = (1usize << ntar) - 1;
-    let mut order: Vec<usize> = (0..full).collect();
-    order.sort_by_key(|&m| (m.count_ones(), m));
     let n = d.umas.len();
-    let one = vec![1.0f64; ntar];
-    let hi: Vec<f64> = (0..n).map(|t| if env.owned.contains(&t) { env.ceiling(t, &one, 1.0).unwrap_or(0.0) } else { 0.0 }).collect();
-    let star = env.sj.star_dist;
-    let fastc: Vec<Vec<Vec<(f64, f64)>>> = (0..n).map(|t| match &env.dmax[t] { None => vec![], Some((dw, dg)) =>
-        env.sts0[t].iter().zip(&env.ew0[t]).map(|(sv, ew)| (0..env.nu).map(|k| match sv[k] {
-            2 => (GEN_GOLD, 0.0),
-            1 => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, 0.0),
-            _ => (dg[k] * GEN_GOLD + (1.0 - dg[k]) * crate::skills::GEN_WHITE, (1.0 - dg[k]) * crate::skills::GEN_WHITE * (1.0 - dw[k]) * (1.0 - ew[k])),
-        }).collect()).collect() }).collect();
-    let fixed = env.model.fixed_factor();
     let mut mi = vec![None; if base == Base::Trace { n } else { 0 }];
     if base == Base::Trace { for (k, &m) in members.iter().enumerate() { mi[m] = Some(k); } }
-    let mut s = Sim { env, d, sk, cr, job, cfg: cfg.clone(), cache: Cache::new(n), trainees: trainees.to_vec(), hi, order, star, sched: Default::default(), n: Count::default(), members, fastc, fixed, main: true, audits: vec![], fill: false, mi };
+    let mut s = Sim::new(env, d, sk, cr, job, cfg.clone(), trainees.to_vec(), members, mi, true, false);
     let t_init = std::time::Instant::now();
     let st0 = s.initial(legs, base);
     if base == Base::Trace { return s.trace(&st0); }

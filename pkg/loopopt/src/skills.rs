@@ -28,7 +28,22 @@ pub(crate) const GEN_GOLD: f64 = 0.4 * 1.771561;
 /// Grandparents' base rate relative to parents'. 1: they fire less only because their affinity is lower (receipts:
 /// halving predicted half of what fired).
 const GP_RATE: f64 = 1.0;
+/// Inspirations per career (both inheritance models: a spark lands when either inspiration fires it, so a miss is one
+/// inspiration's miss squared)
 const INSPIRATIONS: i32 = 2;
+/// One inspiration's base chance per spark star (the career planner's `insp_miss`; the loop planner's `Model::base`
+/// writes it as the literals 0.03, 0.06 and 0.09, since 3 x fl(0.03) is not fl(0.09))
+pub(crate) const INSP_PER_STAR: f64 = 0.03;
+/// A target's landing chance with deck odds dw (white hint) and dg (gold), the trainee's own event hint chance e and the
+/// inheritance chance q, by its coverage v in her outfit (2: the gold skill, 1: the white one, 0: neither). The one
+/// definition behind `skill_probs`, `skill_probs_d` and `outfit_fast`; `OutfitPre` is its branchless form, tested to the
+/// bit
+#[inline(always)]
+pub(crate) fn land_dw(v: u8, dw: f64, dg: f64, e: f64, q: f64) -> f64 {
+    if v == 2 { return GEN_GOLD; }
+    let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw) * (1.0 - e) * (1.0 - q)) };
+    dg * GEN_GOLD + (1.0 - dg) * white
+}
 
 #[derive(Deserialize, Clone)]
 pub(crate) struct CardRaw(pub u32, pub String, pub Vec<(u32, u8)>);
@@ -108,6 +123,7 @@ impl<'a> Model<'a> {
     pub(crate) fn new(d: &'a Data, sk: &SkillsRaw, job: &'a SkillJob) -> Self {
         let uncertain: Vec<usize> = (0..job.targets.len()).filter(|&i| job.targets[i].guaranteed != 2).collect();
         let n_fixed_gold = (job.targets.len() - uncertain.len()) as i32;
+        // (INSP_PER_STAR at 1, 2 and 3 stars)
         let base = job.star_dist[0] * 0.03 + job.star_dist[1] * 0.06 + job.star_dist[2] * 0.09;
         let mut opts = vec![]; let mut no_outfit = vec![]; let mut ews: Vec<Vec<Vec<f64>>> = vec![];
         for u in &d.umas {
@@ -139,12 +155,7 @@ impl<'a> Model<'a> {
     }
 
     pub(crate) fn skill_probs(&self, st: &[u8], ew: &[f64], q: f64) -> Vec<f64> {
-        st.iter().zip(&self.uncertain).enumerate().map(|(k, (&v, &i))| {
-            let t = &self.job.targets[i];
-            if v == 2 { return GEN_GOLD; }
-            let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - t.deck_white) * (1.0 - ew[k]) * (1.0 - q)) };
-            t.deck_gold * GEN_GOLD + (1.0 - t.deck_gold) * white
-        }).collect()
+        st.iter().zip(&self.uncertain).enumerate().map(|(k, (&v, &i))| { let t = &self.job.targets[i]; land_dw(v, t.deck_white, t.deck_gold, ew[k], q) }).collect()
     }
     /// best outfit for trainee `u` given per-career proc q: (product over uncertain skills, option index)
     fn trainee(&self, u: usize, q: f64) -> (f64, usize) {
@@ -237,17 +248,7 @@ impl<'a> Model<'a> {
     #[inline]
     pub(crate) fn trainee_fast(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
         let mut best = 0.0f64;
-        for (st, ew) in self.sts[u].iter().zip(&self.ews[u]) {
-            let mut p = 1.0f64;
-            for k in 0..st.len() {
-                let v = st[k];
-                p *= if v == 2 { GEN_GOLD } else {
-                    let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
-                    dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
-                };
-            }
-            if p > best { best = p; }
-        }
+        for o in 0..self.sts[u].len() { let p = self.outfit_fast(u, o, q, dw, dg); if p > best { best = p; } }
         best
     }
     pub(crate) fn fixed_factor(&self) -> f64 { self.fixed() }
@@ -256,13 +257,7 @@ impl<'a> Model<'a> {
     pub(crate) fn outfit_fast(&self, u: usize, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
         let (st, ew) = (&self.sts[u][o], &self.ews[u][o]);
         let mut p = 1.0f64;
-        for k in 0..st.len() {
-            let v = st[k];
-            p *= if v == 2 { GEN_GOLD } else {
-                let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
-                dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
-            };
-        }
+        for k in 0..st.len() { p *= land_dw(st[k], dw[k], dg[k], ew[k], q); }
         p
     }
     /// `outfit_fast` for many calls on one outfit: its inputs resolved and prepared once (`OutfitPre`)
@@ -270,11 +265,7 @@ impl<'a> Model<'a> {
     pub(crate) fn n_outfits(&self, u: usize) -> usize { self.sts[u].len() }
     /// Per-skill landing odds with deck hint odds supplied per uncertain target (white, gold) instead of the job's.
     pub(crate) fn skill_probs_d(&self, st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
-        st.iter().enumerate().map(|(k, &v)| {
-            if v == 2 { return GEN_GOLD; }
-            let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
-            dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
-        }).collect()
+        st.iter().enumerate().map(|(k, &v)| land_dw(v, dw[k], dg[k], ew[k], q)).collect()
     }
     pub(crate) fn trainee_d(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> (f64, usize) {
         let mut best = (-1.0, 0);
@@ -338,14 +329,7 @@ impl OutfitPre {
     /// target: the same f64), the factors into an array, then multiplied one by one in target order
     #[inline]
     pub(crate) fn eval(&self, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
-        #[inline(always)]
-        fn sel(a: f64, b: f64, m: u64) -> f64 { f64::from_bits((a.to_bits() & !m) | (b.to_bits() & m)) }
-        #[inline(always)]
-        fn factor(m1: u64, m2: u64, ne: f64, omq: f64, w: f64, g: f64) -> f64 {
-            let hinted = GEN_WHITE * (1.0 - (1.0 - w) * ne * omq);
-            let white = sel(hinted, GEN_WHITE, m1);
-            sel(g * GEN_GOLD + (1.0 - g) * white, GEN_GOLD, m2)
-        }
+        let factor = Self::factor;
         const C: usize = 32;
         let n = self.ne.len();
         let (m1, m2, ne, dw, dg) = (&self.m1[..n], &self.m2[..n], &self.ne[..n], &dw[..n], &dg[..n]);
@@ -445,15 +429,10 @@ mod tests {
     /// too), plus non-finite and signed-zero inputs, which the branchy loop ignores on gold targets
     #[test]
     fn outfit_pre_matches_outfit_fast() {
+        // (`outfit_fast`'s loop)
         let reference = |st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]| -> f64 {
             let mut p = 1.0f64;
-            for k in 0..st.len() {
-                let v = st[k];
-                p *= if v == 2 { GEN_GOLD } else {
-                    let white = if v == 1 { GEN_WHITE } else { GEN_WHITE * (1.0 - (1.0 - dw[k]) * (1.0 - ew[k]) * (1.0 - q)) };
-                    dg[k] * GEN_GOLD + (1.0 - dg[k]) * white
-                };
-            }
+            for k in 0..st.len() { p *= land_dw(st[k], dw[k], dg[k], ew[k], q); }
             p
         };
         let mut s = 0x9e3779b97f4a7c15u64;

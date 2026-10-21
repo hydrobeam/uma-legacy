@@ -15,10 +15,11 @@ fn fast_metric_matches_reference() {
         assert!(qa.iter().zip(&qv).all(|(a, b)| (a - b).abs() < 1e-15));
         let dw: Vec<f64> = (0..nu).map(|k| ((k + fi) as f64 * 0.17) % 1.0).collect();
         let dg: Vec<f64> = (0..nu).map(|k| ((k * 3 + fi) as f64 * 0.11) % 1.0).collect();
-        // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`)
+        // the search's per-trainee term (best outfit, no allocation) against the detail view's (`trainee_d`): one
+        // landing form (`land_dw`) multiplied in target order, so the same f64
         for (&(t, ..), &q) in skills::lins(f.len()).iter().zip(&qv) {
             let (a, b) = (m.trainee_fast(f[t], q, &dw, &dg), m.trainee_d(f[t], q, &dw, &dg).0);
-            assert!((a - b).abs() < 1e-15 * b.max(1.0), "{a} vs {b}");
+            assert_eq!(a.to_bits(), b.to_bits(), "{a} vs {b}");
         }
     }
 }
@@ -405,5 +406,26 @@ fn top_k_is_stable_sort_prefix() {
         let bits = |x: &[f64]| x.iter().map(|y| y.to_bits()).collect::<Vec<_>>();
         assert_eq!(bits(&a), bits(&sa[..k.min(n)]), "{v:?} k {k}");
         assert_eq!(bits(&d), bits(&sd[..k.min(n)]), "{v:?} k {k}");
+    }
+}
+/// The ng/nh landing factor's forms agree to the bit: `land_factor`, `LandPre::f` (its constants taken once) and the
+/// expression `joint_eval` and `upper_na` wrote out before they called it, on random and non-finite inputs
+#[test]
+fn land_factor_forms_match() {
+    use crate::skills::GEN_WHITE;
+    let reference = |st: u8, ew: f64, q: f64, ng: f64, nh: f64| { let pg = 1.0 - ng;
+        match st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)) } };
+    let mut s = 0x2545f4914f6cdd1du64;
+    let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; (s >> 11) as f64 / (1u64 << 53) as f64 };
+    let odd = [f64::NAN, f64::INFINITY, -0.0, 0.0, 1.0, 1e-300];
+    for it in 0..20000usize {
+        let st = (rnd() * 3.0) as u8;
+        let mut f = |i: usize| if it % 5 == 0 && rnd() < 0.3 { odd[(it + i) % odd.len()] } else { rnd() };
+        let (ew, q, ng, nh) = (f(0), f(1), f(2), f(3));
+        for (g, h) in [(ng, nh), (ng, 0.0), (0.0, 0.0)] {
+            let r = reference(st, ew, q, g, h).to_bits();
+            assert_eq!(land_factor(st, ew, q, g, h).to_bits(), r, "{st} {ew} {q} {g} {h}");
+            assert_eq!(LandPre::new(st, ew, q).f(g, h).to_bits(), r, "{st} {ew} {q} {g} {h}");
+        }
     }
 }

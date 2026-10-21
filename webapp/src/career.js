@@ -114,11 +114,15 @@ function buildJob() {
   if (!state.targets.length) throw new Blocked('empty', 'No target skills: add them with Target skills above.');
   const fixed = plan.parents.filter(Boolean).map(vetById);
   if (vets.length < 2) throw new Blocked('empty', 'Choose both parents, or import your veterans and let the planner pick.', !vets.length ? { label: 'Try sample veterans', run: () => addVets(sampleVets()) } : null);
-  if (fixed.length === 2 && fixed[0].chara === fixed[1].chara) throw new Blocked('error', `Both parents are ${umaName(fixed[0].chara)}: a career takes two different umas.`);
-  if (fixed.length === 2 && fixed[0].borrowed && fixed[1].borrowed) throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
-  const fb = bpOf() !== 'allow' && fixed.find(v => v.borrowed);
-  if (fb) throw new Blocked('error', `${umaName(fb.chara)} is borrowed, and Borrowed parent is set to ${BP[bpOf()]}: choose one of your veterans, or allow a borrowed parent.`);
-  if (plan.trainee && fixed.some(v => v.chara === plan.trainee)) throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
+  // the parent places' rules (`pairBlock`): the pair's first, each parent in turn, then the trainee's
+  const [f0, f1] = fixed;
+  for (const [t, v, o] of [[0, f0, f1], [0, f1, f0], [plan.trainee, f0], [plan.trainee, f1]]) {
+    const k = v ? pairBlock(t, v, o) : '';
+    if (k === 'same') throw new Blocked('error', `Both parents are ${umaName(v.chara)}: a career takes two different umas.`);
+    if (k === 'both') throw new Blocked('error', 'Both parents are borrowed: a career can borrow one.');
+    if (k === 'setting') throw new Blocked('error', `${umaName(v.chara)} is borrowed, and Borrowed parent is set to ${BP[bpOf()]}: choose one of your veterans, or allow a borrowed parent.`);
+    if (k === 'trainee') throw new Blocked('error', `${umaName(plan.trainee)} can't be her own parent: choose another trainee or parent.`);
+  }
   const exclude = UMAS.filter(u => !owned(u) && u.id !== plan.trainee).map(u => u.id);
   if (!plan.trainee && exclude.length >= UMAS.length) throw new Blocked('empty', 'No uma is owned: mark yours with Umas above.');
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
@@ -449,14 +453,22 @@ const drawNew = () => drawUmas($('vp-umas'), $('vp-filter').value, (id) => {
   $('vpick-dlg').close();
   askSkills(umaName(id), false, (sp) => { const v = newVet(id, sp || {}); plan.parents[pickK] = v.id; changed(); }, true);
 });
-// why veteran v can't go in place k (or '')
-function blockedFor(v, k) {
-  const o = plan.parents[1 - k] && vetById(plan.parents[1 - k]);
-  if (plan.trainee && v.chara === plan.trainee) return 'the trainee herself';
-  if (o && o.chara === v.chara) return 'same uma as the other parent';
-  if (o && o.borrowed && v.borrowed) return 'the other parent is borrowed';
-  if (v.borrowed && bpOf() !== 'allow') return `borrowed (Borrowed parent: ${BP[bpOf()]})`;
+// The parent rules for veteran v beside the other parent o (none: no other) with trainee t (0: none), the page's form
+// of the solver's `Pool::pair_ok` and the Borrowed parent setting: the first rule v breaks ('trainee': she is the
+// trainee's uma; 'same': the other parent's; 'both': both borrowed; 'setting': borrowed while the setting allows none),
+// or ''. The one place the parent picker (`blockedFor`) and the job (`buildJob`) read them
+function pairBlock(t, v, o) {
+  if (t && v.chara === t) return 'trainee';
+  if (o && o.chara === v.chara) return 'same';
+  if (o && o.borrowed && v.borrowed) return 'both';
+  if (v.borrowed && bpOf() !== 'allow') return 'setting';
   return '';
+}
+// why veteran v can't go in place k (or '')
+const BLOCKED = { trainee: 'the trainee herself', same: 'same uma as the other parent', both: 'the other parent is borrowed' };
+function blockedFor(v, k) {
+  const why = pairBlock(plan.trainee, v, plan.parents[1 - k] && vetById(plan.parents[1 - k]));
+  return why === 'setting' ? `borrowed (Borrowed parent: ${BP[bpOf()]})` : (BLOCKED[why] || '');
 }
 function openParentPicker(k) {
   pickK = k; $('vpick-title').textContent = `Choose parent ${k + 1}`;

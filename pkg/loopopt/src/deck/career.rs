@@ -131,6 +131,56 @@ impl Pool {
     /// whether veterans a and b hold at most `max_bor` borrowed ones between them
     #[inline]
     fn bor_ok(&self, a: usize, b: usize) -> bool { self.borrowed[a] as u8 + self.borrowed[b] as u8 <= self.max_bor }
+    /// whether a veteran borrowed or not (`borrowed`) can be a parent at all: her share of `bor_ok`
+    #[inline]
+    fn bor_one(&self, borrowed: bool) -> bool { borrowed as u8 <= self.max_bor }
+    /// The pair rules that hold for every trainee: two veterans, of different characters, at most `max_bor` borrowed
+    #[inline]
+    fn parents_ok(&self, a: usize, b: usize) -> bool { a != b && self.me[a].chara != self.me[b].chara && self.bor_ok(a, b) }
+    /// The trainee's rule (character `tid`): neither parent is her character
+    #[inline]
+    fn trainee_ok(&self, tid: u32, a: usize, b: usize) -> bool { self.me[a].chara != tid && self.me[b].chara != tid }
+    /// Legal parents a, b for a trainee of character `tid`: `parents_ok` and `trainee_ok`. The one rule every pair loop
+    /// takes (`solve`'s candidates, the planner's and the simulator's scans), so a proof over its pairs covers `solve`'s
+    #[inline]
+    fn pair_ok(&self, tid: u32, a: usize, b: usize) -> bool { self.parents_ok(a, b) && self.trainee_ok(tid, a, b) }
+}
+/// Whether parents a and b hold every fixed legacy of `fix` (a job's parent places)
+#[inline]
+fn holds_fix(fix: &[usize], a: usize, b: usize) -> bool { fix.iter().all(|&f| f == a || f == b) }
+/// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
+/// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Sim::fast_ub`, the planner's her-slot setups).
+/// A slot's affinity factor 1 + A / 100, A its relation part plus its race part
+#[inline(always)]
+fn aff_factor(rel: f64, race: f64) -> f64 { 1.0 + (rel + race) / 100.0 }
+/// one inspiration's miss of a spark at `st` stars from a slot of affinity factor `fa`
+#[inline(always)]
+fn insp_miss(st: f64, fa: f64) -> f64 { 1.0 - (crate::skills::INSP_PER_STAR * st * fa).min(1.0) }
+/// both inspirations' miss of that spark
+#[inline(always)]
+fn insp_miss2(st: f64, fa: f64) -> f64 { let m = insp_miss(st, fa); m * m }
+/// a random-star slot's average squared miss over its star mix w (1, 2, 3 stars)
+#[inline(always)]
+fn mix_term(w: [f64; 3], fa: f64) -> f64 { (0..3).map(|i| w[i] * insp_miss2(i as f64 + 1.0, fa)).sum::<f64>() }
+/// the inheritance chance from the product of the fixed-star slots' misses and of the random-star slots' mix terms
+#[inline(always)]
+fn inherit_q(miss: f64, mix2: f64) -> f64 { 1.0 - miss * miss * mix2 }
+/// The spark-generation scale of a target n of the six legacy slots carry: 1.1^(n - 6) (black_box: the runtime powi
+/// every caller computes, never constant-folded)
+#[inline(always)]
+fn spark_scale(n: i32) -> f64 { 1.1f64.powi(std::hint::black_box(n - 6)) }
+/// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
+const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
+/// that chance from a slot of affinity factor `fa`
+#[inline(always)]
+fn pink_p(st: u8, fa: f64) -> f64 { (PINK_RATE[st as usize] * fa).min(1.0) }
+/// `Env::rise`'s factor for one outfit and uncertain target: how far the landing chance can grow from inheritance
+/// chance q0 to q, with her own event hint chance `ew` and her outfit's coverage `st` of it (1 where it cannot grow).
+/// The one form behind `solve`'s Ref and ruled prunes and `outcome_hi`'s anchors (`rise_leaves`, `rise_factors`,
+/// `AncBb::root_min`)
+#[inline(always)]
+fn rise_factor(st: u8, ew: f64, q: f64, q0: f64) -> f64 {
+    if st > 0 || q <= q0 { 1.0 } else { (1.0 - (1.0 - ew) * (1.0 - q)) / (1.0 - (1.0 - ew) * (1.0 - q0)) }
 }
 /// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
 /// inspiration, the legacy slot, stars
@@ -197,9 +247,9 @@ fn inherit(sl: &[Slot], ntar: usize) -> (Vec<f64>, Vec<i32>) {
     for k in 0..ntar {
         let (mut miss, mut mix2) = (1.0f64, 1.0f64);
         for s in sl { let st = s.stars[k]; if st == 0 { continue; } nc[k] += 1;
-            let m = |st: f64| 1.0 - (0.03 * st * (1.0 + (s.rel + s.race) / 100.0)).min(1.0);
-            match s.mix { None => miss *= m(st as f64), Some(w) => mix2 *= (0..3).map(|i| w[i] * m(i as f64 + 1.0).powi(2)).sum::<f64>() } }
-        q[k] = 1.0 - miss * miss * mix2;
+            let fa = aff_factor(s.rel, s.race);
+            match s.mix { None => miss *= insp_miss(st as f64, fa), Some(w) => mix2 *= mix_term(w, fa) } }
+        q[k] = inherit_q(miss, mix2);
     }
     (q, nc)
 }
@@ -516,7 +566,7 @@ impl<'a> Env<'a> {
         v
     }
     fn scale(&self, nc: &[i32]) -> (Vec<f64>, Vec<f64>) {
-        (self.uncv.iter().map(|&i| 1.1f64.powi(nc[i] - 6)).collect(), self.fixed_t.iter().map(|&i| 1.1f64.powi(nc[i] - 6)).collect())
+        (self.uncv.iter().map(|&i| spark_scale(nc[i])).collect(), self.fixed_t.iter().map(|&i| spark_scale(nc[i])).collect())
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
     fn set_trainee(&mut self, t: usize, q: &[f64]) { set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, q) }
@@ -537,9 +587,7 @@ impl<'a> Env<'a> {
     /// (n = 1, g = 0), and not at all when q_k <= q0_k or the outfit has the skill. P(all) is a sum of products of
     /// these factors, so it grows at most by the product, for every deck: E(q) <= E(q0) x max over outfits of it.
     fn rise(&self, t: usize, q: &[f64], q0: &[f64]) -> f64 {
-        self.sts0[t].iter().zip(&self.ew0[t]).map(|(st, ew)| self.uncv.iter().enumerate().map(|(k, &i)| {
-            if st[k] > 0 || q[i] <= q0[i] { 1.0 } else { (1.0 - (1.0 - ew[k]) * (1.0 - q[i])) / (1.0 - (1.0 - ew[k]) * (1.0 - q0[i])) }
-        }).product::<f64>()).fold(0.0f64, f64::max)
+        self.sts0[t].iter().zip(&self.ew0[t]).map(|(st, ew)| self.uncv.iter().enumerate().map(|(k, &i)| rise_factor(st[k], ew[k], q[i], q0[i])).product::<f64>()).fold(0.0f64, f64::max)
     }
     /// The inheritance chances, carriers and spark scale C of trainee t with parents a and b.
     fn lineage(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Vec<f64>, Vec<i32>, f64) {
@@ -564,8 +612,8 @@ impl<'a> Env<'a> {
         if tg.is_empty() {
             tg.resize(nl * (G + 1), 0.0);
             for x in 0..nl { tg[x * (G + 1) + G] = self.pair(ti, p.me[x].ix); for (gi, g) in p.gp[x].iter().enumerate().take(G) { tg[x * (G + 1) + gi] = self.tri(ti, p.me[x].ix, g.ix); } }
-            // then 1.1^(n - 6) per carrier count n, as `scale` computes it (black_box: the same runtime powi)
-            tg.extend((0..=2 * (G + 1)).map(|n| 1.1f64.powi(std::hint::black_box(n as i32 - 6))));
+            // then `spark_scale` per carrier count n
+            tg.extend((0..=2 * (G + 1)).map(|n| spark_scale(n as i32)));
         }
         let sh = 3.0 * shared(&p.me[a], &p.me[b]);
         // the six slots in `slots`' order: stars, mix, and the affinity term fa = 1 + (rel + race) / 100 (`inherit`'s,
@@ -580,18 +628,17 @@ impl<'a> Env<'a> {
             for (gi, g) in p.gp[x].iter().enumerate() {
                 let (gr, gc) = (tg[x * (G + 1) + gi], p.gpc[x][gi]);
                 rel += gr; race += gc;
-                st[ns] = &g.stars[..]; mx[ns] = g.mix; fa[ns] = 1.0 + (gr + gc) / 100.0; ns += 1;
+                st[ns] = &g.stars[..]; mx[ns] = g.mix; fa[ns] = aff_factor(gr, gc); ns += 1;
             }
-            fa[i0] = 1.0 + (rel + race) / 100.0;
+            fa[i0] = aff_factor(rel, race);
         }
-        let m = |s: f64, fa: f64| 1.0 - (0.03 * s * fa).min(1.0);
         for &k in ks {
             let (mut miss, mut mix2) = (1.0f64, 1.0f64);
             for j in 0..ns {
                 let s = st[j][k]; if s == 0 { continue; }
-                match mx[j] { None => miss *= m(s as f64, fa[j]), Some(w) => mix2 *= (0..3).map(|i| w[i] * m(i as f64 + 1.0, fa[j]).powi(2)).sum::<f64>() }
+                match mx[j] { None => miss *= insp_miss(s as f64, fa[j]), Some(w) => mix2 *= mix_term(w, fa[j]) }
             }
-            q[k] = 1.0 - miss * miss * mix2;
+            q[k] = inherit_q(miss, mix2);
         }
         let pw = &tg[nl * (G + 1)..];
         self.uncv.iter().chain(&self.fixed_t).map(|&i| pw[st[..ns].iter().filter(|s| s[i] != 0).count()]).product::<f64>()
@@ -621,18 +668,16 @@ impl<'a> Env<'a> {
     /// turn) is the same.
     fn gen_cands<C>(&mut self, p: &Pool, fix: &[usize], trainees: &[usize], mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C) -> Vec<C> {
         let d = self.d; let nl = p.me.len(); let ntar = self.ntar;
-        // (`inherit`'s miss factor, with its affinity term fa = 1 + A / 100 of the slot computed once)
-        #[inline(always)]
-        fn m(st: f64, fa: f64) -> f64 { 1.0 - (0.03 * st * fa).min(1.0) }
-        // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone
+        // a slot's (miss, mix) factors of target k: `inherit`'s, 1 for the one it leaves alone (its affinity factor fa
+        // computed once per slot)
         #[inline(always)]
         fn fac(st: u8, mix: Option<[f64; 3]>, fa: f64) -> (f64, f64) {
             if st == 0 { return (1.0, 1.0); }
-            match mix { None => (m(st as f64, fa), 1.0), Some(w) => (1.0, (0..3).map(|i| w[i] * m(i as f64 + 1.0, fa).powi(2)).sum::<f64>()) }
+            match mix { None => (insp_miss(st as f64, fa), 1.0), Some(w) => (1.0, mix_term(w, fa)) }
         }
-        // 1.1^(n - 6) per carrier count n, as `scale` computes it (black_box: the same runtime powi, never folded)
+        // `spark_scale` per carrier count n
         let maxs = (0..nl).map(|x| 1 + p.gp[x].len()).max().unwrap_or(0) * 2;
-        let pw: Vec<f64> = (0..=maxs).map(|n| 1.1f64.powi(std::hint::black_box(n as i32 - 6))).collect();
+        let pw: Vec<f64> = (0..=maxs).map(|n| spark_scale(n as i32)).collect();
         struct Pre { a: usize, b: usize, c: f64, race: [f64; 2], pp: [f64; 2] }
         let mut pairs: Vec<Pre> = vec![];
         // per legacy and target, how many of her slots (her own, her parents') carry the spark
@@ -645,8 +690,7 @@ impl<'a> Env<'a> {
             Some(_) => Box::new(std::iter::empty()),
         };
         for (a, b) in pair_list {
-            let (ca, cb) = (p.me[a].chara, p.me[b].chara);
-            if ca == cb || !p.bor_ok(a, b) || !fix.iter().all(|&f| f == a || f == b) { continue; }
+            if !p.parents_ok(a, b) || !holds_fix(fix, a, b) { continue; }
             let sh = 3.0 * shared(&p.me[a], &p.me[b]);
             let race = [a, b].map(|x| { let mut r = sh; for &gc in &p.gpc[x] { r += gc; } r });
             let pp = [self.pair(p.me[a].ix, p.me[b].ix), self.pair(p.me[b].ix, p.me[a].ix)];
@@ -678,13 +722,13 @@ impl<'a> Env<'a> {
             let mut last = false;
             for pr in cx.pairs {
                 let (a, b) = (pr.a, pr.b);
-                if p.me[a].chara == cx.tid || p.me[b].chara == cx.tid { continue; }
+                if !p.trainee_ok(cx.tid, a, b) { continue; }
                 // each parent slot's affinity, summed as `slots` sums it (as fa)
                 let fa = [0, 1].map(|s| {
                     let x = if s == 0 { a } else { b };
                     let mut rel = cx.pt[x] + pr.pp[s];
                     for j in go[x]..go[x + 1] { rel += cx.gr[j]; }
-                    1.0 + (rel + pr.race[s]) / 100.0
+                    aff_factor(rel, pr.race[s])
                 });
                 for k in 0..ntar {
                     let (mut miss, mut mix2) = (1.0f64, 1.0f64);
@@ -692,7 +736,7 @@ impl<'a> Env<'a> {
                         let (fm, fx) = fac(p.me[x].stars[k], p.me[x].mix, fa[s]); miss *= fm; mix2 *= fx;
                         for j in go[x]..go[x + 1] { let (fm, fx) = cx.gf[j * ntar + k]; miss *= fm; mix2 *= fx; }
                     }
-                    q[k] = 1.0 - miss * miss * mix2;
+                    q[k] = inherit_q(miss, mix2);
                 }
                 // `ceiling_at` without writing the model state: per outfit `outfit_fast` at q = 0 on the hint chances
                 // `set_trainee` would write (each factor (1 - q) = 1 dropped: x 1 is exact), the best outfit as its fold
@@ -720,7 +764,7 @@ impl<'a> Env<'a> {
                 for (gi, g) in p.gp[x].iter().enumerate() {
                     let j = go[x] + gi;
                     gr[j] = self.tri(ti, px.ix, g.ix);
-                    let fa = 1.0 + (gr[j] + p.gpc[x][gi]) / 100.0;
+                    let fa = aff_factor(gr[j], p.gpc[x][gi]);
                     for k in 0..ntar { gf[j * ntar + k] = fac(g.stars[k], g.mix, fa); }
                 }
             }
@@ -1137,7 +1181,7 @@ impl<'a> Env<'a> {
             for &(g, st) in sl.pinks.iter() {
                 let (Some(k), st) = (pink_apt(g), st.min(3)) else { continue }; if st == 0 { continue; }
                 sum[k] += st as u32;
-                fire.push(PinkFire { apt: k, p: ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (sl.rel + sl.race) / 100.0)).min(1.0), slot: si, stars: st });
+                fire.push(PinkFire { apt: k, p: pink_p(st, aff_factor(sl.rel, sl.race)), slot: si, stars: st });
             }
         }
         let mut start = base;
@@ -1276,7 +1320,7 @@ impl<'a> Env<'a> {
         let pinks: Vec<Value> = pg.iter().map(|&g| {
             let (mut miss, mut n) = (1.0f64, 0);
             for s in &sl { if let Some(st) = s.pinks.iter().filter(|x| x.0 == g).map(|x| x.1.min(3)).max() { if st > 0 { n += 1;
-                miss *= 1.0 - ([0.0, 0.01, 0.03, 0.05][st as usize] * (1.0 + (s.rel + s.race) / 100.0)).min(1.0); } } }
+                miss *= 1.0 - pink_p(st, aff_factor(s.rel, s.race)); } } }
             json!({"group": g, "q": 1.0 - miss * miss, "carriers": n})
         }).collect();
         // her aptitudes and her veteran's pink spark (MODEL.md): base and start grades (data.json `apt` order, codes 1..8 =
