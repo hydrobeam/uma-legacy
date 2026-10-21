@@ -204,6 +204,32 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
 - **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
+## Code clarity
+
+These rules apply to new and changed code in every language. Review readability as well as formatting and lints;
+passing the tools does not establish that a reader can understand the code. Keep cleanup within the task's scope.
+
+- **Names:** name values by their meaning, especially fields, parameters and return values. Prefer `pick_pool`,
+  `is_runnable` and `incomplete` to unexplained abbreviations. Short loop indices and mathematical names are useful
+  where their meaning is clear locally or defined in the model; do not expand them mechanically throughout a kernel.
+- **Records:** use named fields for values that belong together, especially results with several indices, flags or
+  different units. A tuple should be understandable without looking up its positional convention. Parallel buffers
+  can be appropriate in a hot loop; explain their indexing invariant rather than wrapping them just for appearance.
+- **Functions:** give each function one coherent operation or phase. A long workflow should show its phases in order,
+  with inputs and results explicit. Extract around meaningful boundaries, not an arbitrary line limit.
+- **Dependencies:** borrow only the state a helper needs, and make read-only inputs immutable. Group parameters when
+  they describe one concept; avoid a large context object whose unrelated fields obscure what a function can change.
+  Prefer an existing domain record over another overlapping bundle of references.
+- **Control flow:** keep the main path easy to follow; use guards for cases with nothing to do. Use iterators where
+  they clarify the operation and index loops where indices, visit order or appending to the traversed vector matter.
+  Do not add allocation, copying or repeated work merely to make an expression shorter.
+- **Comments:** explain invariants, units, assumptions and reasons a reader cannot infer from the statements. Identify
+  state effects that look like reads: a planner scoring can search for decks that later scorings use. Keep comments
+  with the code they explain; do not leave session history or a restatement of the code as documentation.
+- **Refactors:** preserve arithmetic and evaluation order, ties, cache/proof effects and resource lifetimes unless a
+  behavior change is explicitly intended. Apply the output and work-counter contract in `docs/PERF.md`, and run the
+  checks in *Tests*. A smaller function or a clean lint run is not evidence of equivalent behavior or better speed.
+
 ## Releases
 
 `./build.sh native wasm page` (plus `data` / `events` when inputs changed), tests pass, full `val` on anything that
