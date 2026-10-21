@@ -3911,8 +3911,8 @@ struct PlanCandidates {
     main_career: Found,
     pick_career: Found,
     members: Vec<usize>,
-    minfo: Vec<Value>,
-    mwhy: Option<String>,
+    loop_member_info: Vec<Value>,
+    loop_member_note: Option<String>,
     hint: Vec<Value>,
     trainees: Vec<usize>,
     allowed_trainees: Vec<usize>,
@@ -3945,15 +3945,15 @@ impl PlanCandidates {
 /// Searches and their completeness, including the kept plans used to extend this pool.
 struct PlanSearches {
     best: Vec<CachedSearch>,
-    urefs: Vec<Vec<Vec<Ref>>>,
+    proof_refs: Vec<Vec<Vec<Ref>>>,
     /// Per-trainee incomplete searches: base, looped and no-borrow careers.
-    unp: Vec<bool>,
-    lunp: Vec<bool>,
-    nunp: Vec<bool>,
-    lbest: Vec<CachedSearch>,
-    same: Option<Bests>,
-    prev: Option<Bests>,
-    budget0: usize,
+    base_incomplete: Vec<bool>,
+    looped_incomplete: Vec<bool>,
+    no_borrow_incomplete: Vec<bool>,
+    looped_careers: Vec<CachedSearch>,
+    kept_same_pool: Option<Bests>,
+    kept_previous_pool: Option<Bests>,
+    original_budget: usize,
 }
 
 /// The plan's timers and work counters, and the surrogate's differences (`sur` 2): recorded by the phases, reported
@@ -3982,14 +3982,61 @@ struct BaseRows {
     wins_by_trainee: Vec<Vec<usize>>,
 }
 
-/// Pass 2's completed fit, used by the optional proxy check and output assembly.
-struct PlanScores {
-    cont: Vec<Cont>,
-    c1: Vec<f64>,
-    combos3: Vec<Trio>,
+/// A and B index `PlanCandidates::trainees`; the finisher indexes `Data::umas` directly.
+/// Each side uses either an existing full veteran (a free step) or a newly built one.
+#[derive(Clone, Copy)]
+struct PlanCombination {
+    candidate_a_index: usize,
+    candidate_b_index: usize,
+    /// Expected careers for the finisher, after A and B are full veterans.
+    finisher_cost: f64,
+    finisher_trainee: usize,
+    a_uses_existing: bool,
+    b_uses_existing: bool,
+}
+
+impl PlanCombination {
+    fn total_cost(&self, stage_costs: &[f64]) -> f64 {
+        let a_cost = if self.a_uses_existing { 0.0 } else { stage_costs[self.candidate_a_index] };
+        let b_cost = if self.b_uses_existing { 0.0 } else { stage_costs[self.candidate_b_index] };
+        a_cost + b_cost + self.finisher_cost
+    }
+
+    const fn as_trio(&self) -> Trio {
+        (self.candidate_a_index, self.candidate_b_index, self.finisher_cost, self.a_uses_existing, self.b_uses_existing)
+    }
+}
+
+/// Continuation and trio values fitted together for scoring the plan's rows.
+/// Per-candidate buffers use the fixed order in `PlanCandidates::trainees`.
+struct PlanFit {
+    continuations: Vec<Cont>,
+    step_costs: Vec<f64>,
+    trios: Vec<Trio>,
     sides: Vec<Vec<(bool, Legacy)>>,
-    vnow: f64,
-    best_combo: Option<(usize, usize, f64, usize, bool, bool)>,
+    current_value: f64,
+}
+
+impl PlanFit {
+    fn score_base<'fit>(&'fit self, candidates: &'fit PlanCandidates) -> ScoreBase<'fit> {
+        ScoreBase {
+            cands: &candidates.trainees,
+            c1: &self.step_costs,
+            m23: &candidates.zeros,
+            v0: self.current_value,
+            pnow: &candidates.pnow,
+            cont: &self.continuations,
+            combos: &self.trios,
+            sides: &self.sides,
+            all: &candidates.allowed_trainees,
+        }
+    }
+}
+
+/// Pass 2's completed fit and reporting results, used by the proxy check and output assembly.
+struct PlanScores {
+    fit: PlanFit,
+    best_combo: Option<PlanCombination>,
     any_scored: bool,
     combo_ms: f64,
     index_ms: f64,
@@ -4073,7 +4120,7 @@ fn setup_plan_candidates<'env, 'data>(
     let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
     // the loop planner's members only when the job names them (`loop_members`, an override; the plan no longer runs the
     // loop planner's search itself: on the val/plan pools its members always entered the candidates by the routes below)
-    let (members, minfo, mwhy) = match &pj.loop_members {
+    let (members, loop_member_info, loop_member_note) = match &pj.loop_members {
         Some(ids) => rotation(env, d, ids),
         None => (vec![], vec![], None),
     };
@@ -4123,7 +4170,7 @@ fn setup_plan_candidates<'env, 'data>(
     let loop_ms = now_ms() - t_all;
     let all: Vec<usize> = trainees.iter().copied().filter(|&u| env.dmax[u].is_some()).collect();
     let t1 = now_ms();
-    let budget0 = env.budget;
+    let original_budget = env.budget;
     // (the candidates' career searches below under the cap, as `capped` sets it: the Sim it takes is made after them)
     if pj.search_work > 0 {
         env.budget = pj.search_work;
@@ -4136,26 +4183,27 @@ fn setup_plan_candidates<'env, 'data>(
     // a kept plan of this pool less its last veteran (`Bests`), and this plan's own, kept at the end
     let nl = legs.len();
     // (taken out while this plan runs and put back after it: every reroll of a career reuses the same one)
-    let same = take_kept_plan(bests_key(job, fix, nl));
-    let prev = if nl > 1 { take_kept_plan(bests_key(job, fix, nl - 1)) } else { None };
-    let mut urefs: Vec<Vec<Vec<Ref>>> = vec![vec![]; d.umas.len()];
+    let kept_same_pool = take_kept_plan(bests_key(job, fix, nl));
+    let kept_previous_pool = if nl > 1 { take_kept_plan(bests_key(job, fix, nl - 1)) } else { None };
+    let mut proof_refs: Vec<Vec<Vec<Ref>>> = vec![vec![]; d.umas.len()];
     // per uma: her best career's search was not complete (`best_of`), and her looped one's
-    let mut unp: Vec<bool> = vec![false; d.umas.len()];
-    let lunp: Vec<bool> = vec![false; d.umas.len()];
+    let mut base_incomplete: Vec<bool> = vec![false; d.umas.len()];
+    let looped_incomplete: Vec<bool> = vec![false; d.umas.len()];
     // (and her nb row's, under "later")
-    let nunp: Vec<bool> = vec![false; d.umas.len()];
+    let no_borrow_incomplete: Vec<bool> = vec![false; d.umas.len()];
     if pj.sur != 1 {
         for &u in &cands {
             if best[u].is_unsearched() {
-                let (found, refs, complete) = best_of(env, pool, fix, u, same.as_ref(), prev.as_ref(), nl);
-                urefs[u] = refs;
+                let (found, refs, complete) =
+                    best_of(env, pool, fix, u, kept_same_pool.as_ref(), kept_previous_pool.as_ref(), nl);
+                proof_refs[u] = refs;
                 best[u] = CachedSearch::Known(found);
-                unp[u] = !complete;
+                base_incomplete[u] = !complete;
             }
         }
     }
     env.hard = 0;
-    env.budget = budget0;
+    env.budget = original_budget;
     let mut search_ms = now_ms() - t1;
     let mut s = sim_for(env, d, sk, cr, job, pj)?;
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
@@ -4177,7 +4225,7 @@ fn setup_plan_candidates<'env, 'data>(
     let mut sur_diff: Vec<Value> = vec![];
     if pj.sur > 0 {
         let ts = now_ms();
-        capped(&mut s, pj.search_work, budget0, |s| {
+        capped(&mut s, pj.search_work, original_budget, |s| {
             for &u in &cands {
                 if pj.sur == 2 || best[u].is_unsearched() {
                     plan_surrogate(s, input, &mut best, u, buf, &mut sur_diff);
@@ -4212,8 +4260,8 @@ fn setup_plan_candidates<'env, 'data>(
         main_career: g,
         pick_career: gp,
         members,
-        minfo,
-        mwhy,
+        loop_member_info,
+        loop_member_note,
         hint,
         trainees: cands,
         allowed_trainees: all,
@@ -4224,7 +4272,17 @@ fn setup_plan_candidates<'env, 'data>(
         ones,
         proxy_on,
     };
-    let searches = PlanSearches { best, urefs, unp, lunp, nunp, lbest: vec![], same, prev, budget0 };
+    let searches = PlanSearches {
+        best,
+        proof_refs,
+        base_incomplete,
+        looped_incomplete,
+        no_borrow_incomplete,
+        looped_careers: vec![],
+        kept_same_pool,
+        kept_previous_pool,
+        original_budget,
+    };
     let profile = PlanProfile { t_all, t3, loop_ms, search_ms, nodes0, joints0, n_cert: 0, exact_n: 0, sur_diff };
     Ok(PlanSetup { sim: s, candidates, searches, profile, cache0 })
 }
@@ -4281,16 +4339,23 @@ fn score_and_admit_proxies(
             }
             if searches.best[x].is_unsearched() || (pj.sur == 2 && !candidates.trainees.contains(&x)) {
                 let ts = now_ms();
-                capped(s, pj.search_work, searches.budget0, |s| {
+                capped(s, pj.search_work, searches.original_budget, |s| {
                     if pj.sur != 1 && searches.best[x].is_unsearched() {
-                        let (f, r, ok) =
-                            best_of(s.env, pool, fix, x, searches.same.as_ref(), searches.prev.as_ref(), nl);
+                        let (f, r, ok) = best_of(
+                            s.env,
+                            pool,
+                            fix,
+                            x,
+                            searches.kept_same_pool.as_ref(),
+                            searches.kept_previous_pool.as_ref(),
+                            nl,
+                        );
                         if let Some(f) = &f {
                             s.cache.add(s.env, x, &f.sel);
                         }
-                        searches.urefs[x] = r;
+                        searches.proof_refs[x] = r;
                         searches.best[x] = CachedSearch::Known(f);
-                        searches.unp[x] = !ok;
+                        searches.base_incomplete[x] = !ok;
                     }
                     if pj.sur > 0 {
                         plan_surrogate(s, input, &mut searches.best, x, buf, &mut profile.sur_diff);
@@ -4389,10 +4454,10 @@ fn add_looped_rows(
     let mut added: Vec<PlanRow> = vec![];
     let base_s = candidates.stats_base();
     let PlanInputs { d, legs, pool, fix, pj, .. } = *input;
-    let ppool = input.pick_pool();
+    let pick_pool = input.pick_pool();
     let nl = legs.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |f: &Found| input.is_runnable(f);
     // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
     // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
     // looped parent (the goal), and the trios' last step is such a career: without these rows the career V itself
@@ -4406,7 +4471,7 @@ fn add_looped_rows(
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
-    searches.lbest = vec![CachedSearch::Unsearched; d.umas.len()];
+    searches.looped_careers = vec![CachedSearch::Unsearched; d.umas.len()];
     progress(3, 0, 0); // the looped careers
     if fix.len() < 2 {
         let full8: Vec<usize> = (0..nl).filter(|&i| is_full(sj, &legs[i].sparks)).collect();
@@ -4414,13 +4479,13 @@ fn add_looped_rows(
         let her8 = nl > 0 && full8.contains(&(nl - 1));
         let ts = now_ms();
         let lnodes0 = s.env.space.nodes.get();
-        capped(s, pj.search_work, searches.budget0, |s| {
+        capped(s, pj.search_work, searches.original_budget, |s| {
             for row in runs {
                 if row.origin != RowOrigin::Base {
                     continue;
                 }
                 let x = row.trainee;
-                if looped(&row.career) && vis(&row.career) {
+                if looped(&row.career) && is_runnable(&row.career) {
                     continue;
                 }
                 let kept = |b: &Option<Bests>| {
@@ -4429,23 +4494,25 @@ fn add_looped_rows(
                         _ => None,
                     })
                 };
-                let kept_unp = |b: &Option<Bests>| b.as_ref().is_some_and(|b| b.lunp.get(x).copied().unwrap_or(false));
-                let lf: Option<Found> = if let Some(v) = kept(&searches.same) {
-                    searches.lunp[x] = kept_unp(&searches.same);
+                let kept_incomplete =
+                    |b: &Option<Bests>| b.as_ref().is_some_and(|b| b.lunp.get(x).copied().unwrap_or(false));
+                let lf: Option<Found> = if let Some(v) = kept(&searches.kept_same_pool) {
+                    searches.looped_incomplete[x] = kept_incomplete(&searches.kept_same_pool);
                     v
                 } else {
-                    let start = kept(&searches.prev);
+                    let start = kept(&searches.kept_previous_pool);
                     let only_her = start.is_some();
                     if only_her {
-                        searches.lunp[x] = kept_unp(&searches.prev);
+                        searches.looped_incomplete[x] = kept_incomplete(&searches.kept_previous_pool);
                     }
                     if only_her && !her8 {
                         start.flatten()
                     } else {
-                        // (the legal pairs of two 8/8s, only those with her when the kept plan had the rest; `ppool` and
+                        // (the legal pairs of two 8/8s, only those with her when the kept plan had the rest; `pick_pool` and
                         // `pool` differ in `max_bor` alone, which the ceilings do not read)
-                        let cs =
-                            s.env.ranked_pairs(ppool, fix, x, |a, b| is8[a] && is8[b] && (!only_her || b == nl - 1));
+                        let cs = s
+                            .env
+                            .ranked_pairs(pick_pool, fix, x, |a, b| is8[a] && is8[b] && (!only_her || b == nl - 1));
                         let mut lf: Option<Found> = start.flatten();
                         for (ub, a, b) in cs {
                             if ub <= lf.as_ref().map_or(0.0, |f| f.val) {
@@ -4454,12 +4521,12 @@ fn add_looped_rows(
                             // (the exact search's bar starts at the best looped career so far: only a career above it can
                             // replace it, as in `best_of`; a tie keeps the earlier pair either way)
                             let f = if pj.sur == 1 {
-                                best_sur(s, ppool, &[a, b], x, pj.sur_margin, buf)
+                                best_sur(s, pick_pool, &[a, b], x, pj.sur_margin, buf)
                             } else {
                                 s.env.floor = lf.as_ref().map_or(f64::NEG_INFINITY, |f| f.val);
-                                let sr = s.env.solve(ppool, &[a, b], &[x], false, 1);
+                                let sr = s.env.solve(pick_pool, &[a, b], &[x], false, 1);
                                 if !sr.complete {
-                                    searches.lunp[x] = true;
+                                    searches.looped_incomplete[x] = true;
                                 }
                                 s.env.floor = f64::NEG_INFINITY;
                                 sr.found.into_iter().next()
@@ -4473,7 +4540,7 @@ fn add_looped_rows(
                         lf
                     }
                 };
-                searches.lbest[x] = CachedSearch::Known(lf.clone());
+                searches.looped_careers[x] = CachedSearch::Known(lf.clone());
                 if let Some(f) = lf {
                     // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
                     // searches, under this block's cap, add decks later scorings read)
@@ -4503,9 +4570,9 @@ fn add_no_borrow_rows(
 ) -> Vec<PlanRow> {
     let mut added: Vec<PlanRow> = vec![];
     let PlanInputs { fix, pick, .. } = *input;
-    let ppool = input.pick_pool();
+    let pick_pool = input.pick_pool();
     let n = candidates.trainees.len();
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |career: &Found| input.is_runnable(career);
     // nb rows (`pick`): per base row whose career has a borrowed parent, her best career without one, a row of its own:
     // through her cached decks (`best_sur`, as a builder's proxy) while proxies are on, searched exactly once a shown
     // row or the pick's band can turn on it (pass 2); exact from the start when proxies are off. Like the looped rows
@@ -4517,17 +4584,17 @@ fn add_no_borrow_rows(
             if row.origin != RowOrigin::Base {
                 continue;
             }
-            if vis(&row.career) {
+            if is_runnable(&row.career) {
                 continue;
             }
-            let x = row.trainee;
-            let (f, ex) = if candidates.proxy_on {
-                (best_sur(s, ppool, fix, x, 1e9, buf), false)
+            let trainee = row.trainee;
+            let (career, is_exact) = if candidates.proxy_on {
+                (best_sur(s, pick_pool, fix, trainee, 1e9, buf), false)
             } else {
-                (exact_no_borrow_career(s, input, searches, x, buf), true)
+                (exact_no_borrow_career(s, input, searches, trainee, buf), true)
             };
-            if let Some(f) = f {
-                added.push(PlanRow::new(x, f, vec![(0.0, 0.0); n], RowOrigin::NoBorrow, ex, None));
+            if let Some(career) = career {
+                added.push(PlanRow::new(trainee, career, vec![(0.0, 0.0); n], RowOrigin::NoBorrow, is_exact, None));
             }
         }
         profile.search_ms += now_ms() - ts;
@@ -4546,15 +4613,15 @@ fn score_and_promote_rows(
     buf: &mut Vec<f64>,
 ) -> PlanScores {
     let PlanInputs { d, legs, pool, fix, .. } = *input;
-    let ppool = input.pick_pool();
+    let pick_pool = input.pick_pool();
     let n = candidates.trainees.len();
     let sj = s.env.sj;
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |f: &Found| input.is_runnable(f);
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
-    let mut cont = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
+    let continuations = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
     // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
-    let mut c1: Vec<f64> = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
+    let step_costs: Vec<f64> = (0..n).map(|ui| continuations[ui].cost(candidates.pnow[ui])).collect();
     // the trios: A and B two candidates (unordered), C the best allowed uma with an 8/8 of A and one of B as parents. Each
     // side: a real 8/8 veteran of hers (free), or a fresh one, her step, the 8/8 her best career now would leave
     // (`Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), whichever trio is
@@ -4571,19 +4638,19 @@ fn score_and_promote_rows(
                 .collect()
         })
         .collect();
-    let mut combos = plan_combinations(s, input, candidates, &real8, &c1, buf);
-    let mut sides = plan_sides(s, input, candidates, &real8, &c1);
+    let mut combos = plan_combinations(s, input, candidates, &real8, &step_costs, buf);
+    let sides = plan_sides(s, input, candidates, &real8, &step_costs);
     let mut combo_ms = now_ms() - t_c;
-    let mut combos3: Vec<Trio> = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
-    let mut vnow = trio_v(&c1, &combos3);
+    let trios: Vec<Trio> = combos.iter().map(PlanCombination::as_trio).collect();
+    let current_value = trio_v(&step_costs, &trios);
+    let mut fit = PlanFit { continuations, step_costs, trios, sides, current_value };
     // pass 2: every career scored against V (exact over her outcomes): E[V - V with her veteran] - 1
     // (a row that is never the pick, a builder with a borrowed parent under "later", is not scored: no score, no kept scoring)
     progress(4, 0, runs.len()); // pass 2: every career against V
-    if !runs.is_empty() && vnow.is_finite() {
+    if !runs.is_empty() && fit.current_value.is_finite() {
         for i in 0..runs.len() {
-            let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
-            });
+            let ((net_score, lift, kept), stamp) =
+                stamped(s, None, |s| score_plan_row(s, input, candidates, &fit, &runs[i], buf));
             runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
             prune_plan_scorings(input, runs);
         }
@@ -4592,8 +4659,9 @@ fn score_and_promote_rows(
         // candidate's two most efficient builders, Cont, the trios, V and every score are computed again
         #[allow(clippy::while_immutable_condition, reason = "proxy_on is fixed per call; the loop ends at its break")]
         while candidates.proxy_on {
-            // (over the rows that can be shown or picked, `vis`)
-            let mut sv: Vec<f64> = runs.iter().filter(|r| vis(&r.career)).filter_map(PlanRow::net_saving).collect();
+            // (over the rows that can be shown or picked, `is_runnable`)
+            let mut sv: Vec<f64> =
+                runs.iter().filter(|r| is_runnable(&r.career)).filter_map(PlanRow::net_saving).collect();
             sv.sort_by(|x, y| y.partial_cmp(x).unwrap());
             if sv.is_empty() {
                 break;
@@ -4601,7 +4669,9 @@ fn score_and_promote_rows(
             let (top, k8) = (sv[0], sv[(OPT_SHOW - 1).min(sv.len() - 1)]);
             let t = k8.min(near_floor(top)) + 1.0;
             let add: Vec<usize> = (0..runs.len())
-                .filter(|&i| !runs[i].exact && vis(&runs[i].career) && runs[i].total() + 1.0 >= t * (1.0 - PROXY_SAVE))
+                .filter(|&i| {
+                    !runs[i].exact && is_runnable(&runs[i].career) && runs[i].total() + 1.0 >= t * (1.0 - PROXY_SAVE)
+                })
                 .collect();
             if add.is_empty() {
                 break;
@@ -4613,7 +4683,7 @@ fn score_and_promote_rows(
                 let x = runs[i].trainee;
                 // an nb row: her best career without a borrowed parent, certified or searched on the pick's pool
                 if runs[i].origin == RowOrigin::NoBorrow {
-                    if certified(s.env, ppool, fix, x, &runs[i].career) {
+                    if certified(s.env, pick_pool, fix, x, &runs[i].career) {
                         profile.n_cert += 1;
                     } else if let Some(f) = exact_no_borrow_career(s, input, searches, x, buf) {
                         runs[i].career = f;
@@ -4648,16 +4718,19 @@ fn score_and_promote_rows(
                 runs[i].stats_stamp = None;
                 // ("later") her best career has a borrowed parent: that row is a builder now, and the proxy's career,
                 // without one, her nb row (scored below)
-                if !vis(&runs[i].career) {
+                if !is_runnable(&runs[i].career) {
                     runs.push(PlanRow::new(x, old[k].clone(), vec![(0.0, 0.0); n], RowOrigin::NoBorrow, false, None));
                 }
             }
             profile.search_ms += now_ms() - ts;
-            let cont2 = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
-            let same_fit = cont2.iter().zip(&cont).all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
+            let next_continuations = plan_continuations(s, input, candidates, runs, wins_by_trainee, buf);
+            let same_fit = next_continuations
+                .iter()
+                .zip(&fit.continuations)
+                .all(|(a, b)| a.lam == b.lam && a.phi == b.phi && a.pinf == b.pinf);
             if same_fit {
                 for (k, &i) in add.iter().enumerate() {
-                    // the same career against the same base (Cont, so c1, V, the trios and sides, as when it was scored),
+                    // the same career against the same base (Cont, so step_costs, V, the trios and sides, as when it was scored),
                     // nothing it reads changed: its score, lift and kept scoring stand (a dropped one stays dropped: its score
                     // is as low as it was, and lo only rises here)
                     if same_career(&old[k], &runs[i].career)
@@ -4666,9 +4739,8 @@ fn score_and_promote_rows(
                         prof("reuse_sc", 1.0);
                         continue;
                     }
-                    let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
-                    });
+                    let ((net_score, lift, kept), stamp) =
+                        stamped(s, None, |s| score_plan_row(s, input, candidates, &fit, &runs[i], buf));
                     runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
                 }
                 // (the nb rows added above)
@@ -4676,23 +4748,22 @@ fn score_and_promote_rows(
                     if runs[i].scoring.is_some() {
                         continue;
                     }
-                    let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
-                    });
+                    let ((net_score, lift, kept), stamp) =
+                        stamped(s, None, |s| score_plan_row(s, input, candidates, &fit, &runs[i], buf));
                     runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
                 }
                 prune_plan_scorings(input, runs);
             } else {
                 memo_stat(6);
-                cont = cont2;
-                c1 = (0..n).map(|ui| cont[ui].cost(candidates.pnow[ui])).collect();
+                fit.continuations = next_continuations;
+                fit.step_costs = (0..n).map(|ui| fit.continuations[ui].cost(candidates.pnow[ui])).collect();
                 let tc = now_ms();
-                combos = plan_combinations(s, input, candidates, &real8, &c1, buf);
-                sides = plan_sides(s, input, candidates, &real8, &c1);
+                combos = plan_combinations(s, input, candidates, &real8, &fit.step_costs, buf);
+                fit.sides = plan_sides(s, input, candidates, &real8, &fit.step_costs);
                 combo_ms += now_ms() - tc;
-                combos3 = combos.iter().map(|c| (c.0, c.1, c.2, c.4, c.5)).collect();
-                vnow = trio_v(&c1, &combos3);
-                if !vnow.is_finite() {
+                fit.trios = combos.iter().map(PlanCombination::as_trio).collect();
+                fit.current_value = trio_v(&fit.step_costs, &fit.trios);
+                if !fit.current_value.is_finite() {
                     for run in &mut *runs {
                         run.scoring = None;
                     }
@@ -4703,27 +4774,23 @@ fn score_and_promote_rows(
                     run.scoring = None;
                 }
                 for i in 0..runs.len() {
-                    let ((net_score, lift, kept), stamp) = stamped(s, None, |s| {
-                        score_plan_row(s, input, candidates, &runs[i], &c1, vnow, &cont, &combos3, &sides, buf)
-                    });
+                    let ((net_score, lift, kept), stamp) =
+                        stamped(s, None, |s| score_plan_row(s, input, candidates, &fit, &runs[i], buf));
                     runs[i].scoring = Some(RowScoring { net_saving: net_score, improvement_chance: lift, kept, stamp });
                     prune_plan_scorings(input, runs);
                 }
             }
         }
-        profile.exact_n = runs.iter().filter(|r| r.scoring.is_some() && vis(&r.career)).count();
+        profile.exact_n = runs.iter().filter(|r| r.scoring.is_some() && is_runnable(&r.career)).count();
     }
-    let step = |ui: usize, real: bool| if real { 0.0 } else { c1[ui] };
     let best_combo = combos
         .iter()
-        .min_by(|x, y| {
-            (step(x.0, x.4) + step(x.1, x.5) + x.2).partial_cmp(&(step(y.0, y.4) + step(y.1, y.5) + y.2)).unwrap()
-        })
+        .min_by(|x, y| x.total_cost(&fit.step_costs).partial_cmp(&y.total_cost(&fit.step_costs)).unwrap())
         .copied();
     let index_ms = now_ms() - profile.t3;
     let work = json!({"nodes": s.env.space.nodes.get() - profile.nodes0, "exact": crate::deck::JCOUNT.with(std::cell::Cell::get) - profile.joints0, "max_ratio": s.env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": s.env.max_ratio, "class_max_deck": s.env.max_decks(), "cap": s.env.space.rho_top().min(s.env.cert), "class_caps": s.env.space.caps()});
     let any_scored = runs.iter().any(|r| r.scoring.is_some());
-    PlanScores { cont, c1, combos3, sides, vnow, best_combo, any_scored, combo_ms, index_ms, work }
+    PlanScores { fit, best_combo, any_scored, combo_ms, index_ms, work }
 }
 
 fn check_plan_proxies(
@@ -4752,17 +4819,7 @@ fn check_plan_proxies(
                 .chain(candidates.trainees.iter().filter_map(|&u| best[u].found().cloned().map(|f| (u, f.sel))))
                 .collect();
             let base_s = candidates.stats_base();
-            let base = ScoreBase {
-                cands: &candidates.trainees,
-                c1: &scores.c1,
-                m23: &candidates.zeros,
-                v0: scores.vnow,
-                pnow: &candidates.pnow,
-                cont: &scores.cont,
-                combos: &scores.combos3,
-                sides: &scores.sides,
-                all: &candidates.allowed_trainees,
-            };
+            let base = scores.fit.score_base(candidates);
             let effs = |x: usize, st: &[(f64, f64)]| -> Vec<f64> {
                 (0..n)
                     .map(|ui| {
@@ -4839,9 +4896,9 @@ fn assemble_plan_output<'data>(
     let psv = input.pick_solved();
     let n = candidates.trainees.len();
     let nl = legs.len();
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |f: &Found| input.is_runnable(f);
     let looped = |f: &Found| is_full(sj, &legs[f.a].sparks) && is_full(sj, &legs[f.b].sparks);
-    let step = |ui: usize, real: bool| if real { 0.0 } else { scores.c1[ui] };
+    let step = |ui: usize, real: bool| if real { 0.0 } else { scores.fit.step_costs[ui] };
     // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same 8/8 pair; an
     // nb row on her looped one): left out, the pick moved to the earlier one (the same career, the same score)
     let pair = |f: &Found| (f.a.min(f.b), f.a.max(f.b));
@@ -4861,37 +4918,28 @@ fn assemble_plan_output<'data>(
         .collect();
     // the pick's roll state (`RollKeep`; the pick as below, with the same scores): its kept scoring and base, and what its
     // bound reads beyond them, as the plan ends (`pick_her`, `found_anchors`)
-    let rk: Option<RollKeep> = (runs.iter().any(|r| vis(&r.career)) && scores.any_scored && scores.vnow.is_finite())
-        .then(|| {
-            let (pk, _) = pick_of(&runs, vis, &undup);
-            let base = ScoreBase {
-                cands: &candidates.trainees,
-                c1: &scores.c1,
-                m23: &candidates.zeros,
-                v0: scores.vnow,
-                pnow: &candidates.pnow,
-                cont: &scores.cont,
-                combos: &scores.combos3,
-                sides: &scores.sides,
-                all: &candidates.allowed_trainees,
-            };
-            let (x, f) = (runs[pk].trainee, runs[pk].career.clone());
-            let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } =
-                runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
-            let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, buf);
-            RollKeep {
-                key: roll_key(job),
-                sd,
-                base: KeptBase::of(&base),
-                x,
-                a: f.a,
-                b: f.b,
-                sel: f.sel,
-                her_hi,
-                anc: found_anchors(s.env, pool, sv),
-                hi_anc: vec![],
-            }
-        });
+    let rk: Option<RollKeep> =
+        (runs.iter().any(|r| is_runnable(&r.career)) && scores.any_scored && scores.fit.current_value.is_finite())
+            .then(|| {
+                let (pk, _) = pick_of(&runs, is_runnable, &undup);
+                let base = scores.fit.score_base(candidates);
+                let (x, f) = (runs[pk].trainee, runs[pk].career.clone());
+                let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } =
+                    runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
+                let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, buf);
+                RollKeep {
+                    key: roll_key(job),
+                    sd,
+                    base: KeptBase::of(&base),
+                    x,
+                    a: f.a,
+                    b: f.b,
+                    sel: f.sel,
+                    her_hi,
+                    anc: found_anchors(s.env, pool, sv),
+                    hi_anc: vec![],
+                }
+            });
     // Release the simulator's caches before publishing kept searches and reporting options.
     let env = {
         let finished = s;
@@ -4908,12 +4956,12 @@ fn assemble_plan_output<'data>(
             cache.push(Bests {
                 key,
                 best: kept_best,
-                refs: searches.urefs,
-                looped: searches.lbest,
-                unp: searches.unp.clone(),
-                lunp: searches.lunp.clone(),
+                refs: searches.proof_refs,
+                looped: searches.looped_careers,
+                unp: searches.base_incomplete.clone(),
+                lunp: searches.looped_incomplete.clone(),
             });
-            if let Some(previous) = searches.prev {
+            if let Some(previous) = searches.kept_previous_pool {
                 cache.push(previous);
             }
             while cache.len() > 4 {
@@ -4922,20 +4970,32 @@ fn assemble_plan_output<'data>(
         });
     }
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
-    // (no row that can be the pick, `vis`: the same, the pick's main search's)
-    if !runs.iter().any(|r| vis(&r.career)) {
+    // (no row that can be the pick, `is_runnable`: the same, the pick's main search's)
+    if !runs.iter().any(|r| is_runnable(&r.career)) {
         for f in &psv.found {
             runs.push(PlanRow::new(f.t, f.clone(), vec![], RowOrigin::Fallback, false, None));
         }
     }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
     let total = |i: usize| runs[i].total();
-    let (pick, top) = pick_of(&runs, vis, &undup);
-    let near = |i: usize| vis(&runs[i].career) && total(i) >= near_floor(top);
+    let (pick, top) = pick_of(&runs, is_runnable, &undup);
+    let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
     // per career: the trios' last step (C on A's and B's real 8/8s) only on two 8/8 parents
     let role = |u: usize, f: &Found| match scores.best_combo {
-        Some((ia, ib, _, _, _, _)) if u == candidates.trainees[ia] || u == candidates.trainees[ib] => "plan",
-        Some((_, _, _, cu, ra, rb)) if u == cu && ra && rb && looped(f) => "finish",
+        Some(combination)
+            if u == candidates.trainees[combination.candidate_a_index]
+                || u == candidates.trainees[combination.candidate_b_index] =>
+        {
+            "plan"
+        }
+        Some(combination)
+            if u == combination.finisher_trainee
+                && combination.a_uses_existing
+                && combination.b_uses_existing
+                && looped(f) =>
+        {
+            "finish"
+        }
         _ => {
             if candidates.members.contains(&u) {
                 "loop"
@@ -4950,7 +5010,7 @@ fn assemble_plan_output<'data>(
     for (i, row) in runs.iter().enumerate() {
         let (x, f) = (&row.trainee, &row.career);
         // (a builder with a borrowed parent under "later" is no option)
-        if dup.get(i).copied().unwrap_or(false) || !vis(f) {
+        if dup.get(i).copied().unwrap_or(false) || !is_runnable(f) {
             continue;
         }
         let mut rp = env.report(pool, f, false);
@@ -4966,15 +5026,18 @@ fn assemble_plan_output<'data>(
         // the best it found, not proven her best
         if row.exact
             && match row.origin {
-                RowOrigin::Base => searches.unp[*x],
-                RowOrigin::Looped => searches.lunp[*x],
-                RowOrigin::NoBorrow => searches.nunp[*x],
+                RowOrigin::Base => searches.base_incomplete[*x],
+                RowOrigin::Looped => searches.looped_incomplete[*x],
+                RowOrigin::NoBorrow => searches.no_borrow_incomplete[*x],
                 RowOrigin::Fallback => false,
             }
         {
             o.insert("proven".into(), json!(false));
         }
-        o.insert("stage_cost".into(), json!(candidates.trainees.iter().position(|&c| c == *x).map(|ui| scores.c1[ui])));
+        o.insert(
+            "stage_cost".into(),
+            json!(candidates.trainees.iter().position(|&c| c == *x).map(|ui| scores.fit.step_costs[ui])),
+        );
         o.insert("index".into(), json!(row.net_saving()));
         o.insert("saving".into(), json!(row.net_saving().map(|v| v + 1.0)));
         o.insert("lift".into(), json!(row.scoring.as_ref().map(|scoring| scoring.improvement_chance)));
@@ -4993,18 +5056,31 @@ fn assemble_plan_output<'data>(
     let uname = |u: usize| if u == usize::MAX { Value::Null } else { json!(d.umas[u].name) };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
     let member = |ui: usize, real: bool| {
-        let (_, nb, ps) = scores.cont[ui].plan(candidates.pnow[ui]);
-        json!({"trainee": uname(candidates.trainees[ui]), "p": candidates.pnow[ui], "have8": candidates.have8[ui], "real": real, "p_inf": (scores.cont[ui].lam > 0.0).then(|| scores.cont[ui].pinf), "lam": scores.cont[ui].lam,
-               "phi": scores.cont[ui].phi, "builds": nb, "p_switch": ps, "careers": step(ui, real)})
+        let continuation = &scores.fit.continuations[ui];
+        let (_, builds, switch_chance) = continuation.plan(candidates.pnow[ui]);
+        json!({
+            "trainee": uname(candidates.trainees[ui]),
+            "p": candidates.pnow[ui],
+            "have8": candidates.have8[ui],
+            "real": real,
+            "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
+            "lam": continuation.lam,
+            "phi": continuation.phi,
+            "builds": builds,
+            "p_switch": switch_chance,
+            "careers": step(ui, real)
+        })
     };
     let (plan_json, members_json) = match scores.best_combo {
-        Some((ia, ib, c3, cu, ra, rb)) => {
+        Some(combination) => {
             // A: the cheaper of the two steps first
-            let ((fa, fra), (fb2, frb)) =
-                if step(ia, ra) <= step(ib, rb) { ((ia, ra), (ib, rb)) } else { ((ib, rb), (ia, ra)) };
+            let a = (combination.candidate_a_index, combination.a_uses_existing);
+            let b = (combination.candidate_b_index, combination.b_uses_existing);
+            let ((first_index, first_uses_existing), (second_index, second_uses_existing)) =
+                if step(a.0, a.1) <= step(b.0, b.1) { (a, b) } else { (b, a) };
             (
-                json!({"a": uname(candidates.trainees[fa]), "b": uname(candidates.trainees[fb2]), "c": uname(cu), "careers": [step(fa, fra), step(fb2, frb), c3]}),
-                json!([member(fa, fra), member(fb2, frb)]),
+                json!({"a": uname(candidates.trainees[first_index]), "b": uname(candidates.trainees[second_index]), "c": uname(combination.finisher_trainee), "careers": [step(first_index, first_uses_existing), step(second_index, second_uses_existing), combination.finisher_cost]}),
+                json!([member(first_index, first_uses_existing), member(second_index, second_uses_existing)]),
             )
         }
         None => (Value::Null, json!([])),
@@ -5023,9 +5099,9 @@ fn assemble_plan_output<'data>(
     {
         keep_roll(r);
     }
-    let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": if scores.vnow.is_finite() { json!(scores.vnow) } else { Value::Null }, "outcomes": outcomes,
+    let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": if scores.fit.current_value.is_finite() { json!(scores.fit.current_value) } else { Value::Null }, "outcomes": outcomes,
            "members": members_json,
-           "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[candidates.trainees[ui]].id, scores.cont[ui].lam, scores.cont[ui].phi, scores.cont[ui].pinf])).collect::<Vec<_>>(), "loop_members": candidates.minfo, "loop_note": candidates.mwhy, "hint": candidates.hint, "umas_scored": profile.exact_n, "umas_searched": runs.iter().filter(|r| r.exact).count() - profile.n_cert, "umas_certified": profile.n_cert, "umas_unproven": (0..d.umas.len()).filter(|&u| searches.unp[u] || searches.lunp[u] || searches.nunp[u]).count(), "work": scores.work,
+           "v0_plan": plan_json, "fit": (0..n).map(|ui| json!([d.umas[candidates.trainees[ui]].id, scores.fit.continuations[ui].lam, scores.fit.continuations[ui].phi, scores.fit.continuations[ui].pinf])).collect::<Vec<_>>(), "loop_members": candidates.loop_member_info, "loop_note": candidates.loop_member_note, "hint": candidates.hint, "umas_scored": profile.exact_n, "umas_searched": runs.iter().filter(|r| r.exact).count() - profile.n_cert, "umas_certified": profile.n_cert, "umas_unproven": (0..d.umas.len()).filter(|&u| searches.base_incomplete[u] || searches.looped_incomplete[u] || searches.no_borrow_incomplete[u]).count(), "work": scores.work,
            "sur": pj.sur, "sur_diff": profile.sur_diff, "loop_ms": profile.loop_ms, "search_ms": profile.search_ms, "combo_ms": scores.combo_ms, "index_ms": scores.index_ms, "total_ms": now_ms() - profile.t_all});
     // (the option reports moved in, not copied by `json!`: the object's keys are ordered, so the same text)
     out["options"] = Value::Array(opts);
@@ -5087,15 +5163,22 @@ fn exact_plan_career(
     let base_s = candidates.stats_base();
 
     if searches.best[x].is_unsearched() {
-        capped(s, pj.search_work, searches.budget0, |s| {
-            let (found, refs, complete) =
-                best_of(s.env, pool, fix, x, searches.same.as_ref(), searches.prev.as_ref(), nl);
+        capped(s, pj.search_work, searches.original_budget, |s| {
+            let (found, refs, complete) = best_of(
+                s.env,
+                pool,
+                fix,
+                x,
+                searches.kept_same_pool.as_ref(),
+                searches.kept_previous_pool.as_ref(),
+                nl,
+            );
             if let Some(found) = &found {
                 s.cache.add(s.env, x, &found.sel);
             }
-            searches.urefs[x] = refs;
+            searches.proof_refs[x] = refs;
             searches.best[x] = CachedSearch::Known(found);
-            searches.unp[x] = !complete;
+            searches.base_incomplete[x] = !complete;
         });
     }
     let f = searches.best[x].found().cloned()?;
@@ -5126,16 +5209,16 @@ fn exact_no_borrow_career(
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let PlanInputs { fix, pj, .. } = *input;
-    let ppool = input.pick_pool();
+    let pick_pool = input.pick_pool();
     let nl = input.legs.len();
 
-    capped(s, pj.search_work, searches.budget0, |s| {
+    capped(s, pj.search_work, searches.original_budget, |s| {
         if pj.sur == 1 {
-            best_sur(s, ppool, fix, x, pj.sur_margin, buf)
+            best_sur(s, pick_pool, fix, x, pj.sur_margin, buf)
         } else {
-            let (f, _, ok) = best_of(s.env, ppool, fix, x, None, None, nl);
+            let (f, _, ok) = best_of(s.env, pick_pool, fix, x, None, None, nl);
             if !ok {
-                searches.nunp[x] = true;
+                searches.no_borrow_incomplete[x] = true;
             }
             f
         }
@@ -5195,7 +5278,7 @@ fn plan_continuations(
     cont
 }
 
-/// (A, B, C's step, C, A real, B real), in the original candidate and side order.
+/// Combinations in candidate-pair order, then fresh/existing side order.
 fn plan_combinations(
     s: &mut Sim,
     input: &PlanInputs,
@@ -5203,7 +5286,7 @@ fn plan_combinations(
     real8: &[Vec<usize>],
     c1: &[f64],
     buf: &mut Vec<f64>,
-) -> Vec<(usize, usize, f64, usize, bool, bool)> {
+) -> Vec<PlanCombination> {
     let PlanInputs { d, legs, pool, .. } = *input;
     let n = candidates.trainees.len();
 
@@ -5219,7 +5302,7 @@ fn plan_combinations(
             }
         })
         .collect();
-    let mut combos: Vec<(usize, usize, f64, usize, bool, bool)> = vec![];
+    let mut combos: Vec<PlanCombination> = vec![];
     for ia in 0..n {
         for ib in ia + 1..n {
             let (ua, ub) = (candidates.trainees[ia], candidates.trainees[ib]);
@@ -5259,7 +5342,14 @@ fn plan_combinations(
             }
             for (k, &(v, cu)) in bc.iter().enumerate() {
                 if cu != usize::MAX {
-                    combos.push((ia, ib, 1.0 / v, cu, k >= 2, k % 2 == 1));
+                    combos.push(PlanCombination {
+                        candidate_a_index: ia,
+                        candidate_b_index: ib,
+                        finisher_cost: 1.0 / v,
+                        finisher_trainee: cu,
+                        a_uses_existing: k >= 2,
+                        b_uses_existing: k % 2 == 1,
+                    });
                 }
             }
             while p8.me.len() > pool.me.len() {
@@ -5300,31 +5390,17 @@ fn score_plan_row(
     s: &mut Sim,
     input: &PlanInputs,
     candidates: &PlanCandidates,
+    fit: &PlanFit,
     r: &PlanRow,
-    c1: &[f64],
-    vnow: f64,
-    cont: &[Cont],
-    combos3: &[Trio],
-    sides: &[Vec<(bool, Legacy)>],
     buf: &mut Vec<f64>,
 ) -> (f64, f64, Option<KeptScoring>) {
     let PlanInputs { d, legs, pool, .. } = *input;
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |f: &Found| input.is_runnable(f);
 
-    if !vis(&r.career) {
+    if !is_runnable(&r.career) {
         return (f64::NEG_INFINITY, 0.0, None);
     }
-    let base = ScoreBase {
-        cands: &candidates.trainees,
-        c1,
-        m23: &candidates.zeros,
-        v0: vnow,
-        pnow: &candidates.pnow,
-        cont,
-        combos: combos3,
-        sides,
-        all: &candidates.allowed_trainees,
-    };
+    let base = fit.score_base(candidates);
     let CareerScore { expected_saving, improvement_chance, kept, .. } =
         score_career(s, d, &base, legs, pool, r.trainee, r.career.a, r.career.b, &r.career.sel, Want::Keep, buf);
     (expected_saving - 1.0, improvement_chance, kept)
@@ -5338,13 +5414,13 @@ fn score_plan_row(
 // was, is at most the final top; thr(t) = t - NEAR.max(0.05 |t|) rises with t; a row below thr(lo) (less a slack far
 // above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
 // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
-// pick's is read (`RollKeep`); lo is over the rows that can be the pick (`vis`).
+// pick's is read (`RollKeep`); lo is over the rows that can be the pick (`is_runnable`).
 fn prune_plan_scorings(input: &PlanInputs, runs: &mut [PlanRow]) {
-    let vis = |f: &Found| input.is_runnable(f);
+    let is_runnable = |f: &Found| input.is_runnable(f);
 
     let lo = runs
         .iter()
-        .filter(|r| r.exact && vis(&r.career))
+        .filter(|r| r.exact && is_runnable(&r.career))
         .filter_map(PlanRow::net_saving)
         .fold(f64::NEG_INFINITY, f64::max);
     if !lo.is_finite() {
