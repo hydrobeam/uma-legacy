@@ -1584,8 +1584,8 @@ fn solve_kept(env: &mut Env, key: u64, p: &Pool, fix: &[usize], trainees: &[usiz
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
     match v["cmd"].as_str() { Some("state_out") => return state_out(), Some("state_in") => return state_in(&v["state"]), _ => {} }
-    // a roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll sends it with
-    // its search, so the roll costs no round trip of its own): the job runs without it, then the plan job with
+    // a roll of a kept plan carried by another job (`roll`: {job: the plan job, stars}; the page's Reroll now sends the
+    // plan job with `next.roll` on its own first, so its saving shows before the search): the job runs without it, then the plan job with
     // `next.roll` (its kept roll state, or the plan run again when the worker has none), its answer as `roll`
     if let Some(r) = v.get("roll").filter(|r| !r.is_null()) {
         let mut j = v.clone(); if let Some(o) = j.as_object_mut() { o.remove("roll"); }

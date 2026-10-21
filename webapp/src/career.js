@@ -660,34 +660,45 @@ function rollReq(d, r) {
   const sp = d.sparks || {};
   return { job: planS.job, stars: state.targets.map(t => sp[t.group] || 0) };
 }
-// the reroll's comparison: careers to loop from the plan's saving for the roll, and the best career with her as a parent
-// (one quick search, the roll's saving worked out in the same solver call)
+// the reroll's comparison, in two solver calls: the roll's saving from the plan the worker keeps (`next.roll`, about a
+// millisecond), shown at once as Careers to loop; then the best career with her as a parent (one quick search, most of
+// a second), which fills in her odds and the verdict's "Better odds". A reroll meanwhile waits behind that search (the
+// worker keeps it and its caches; its answer is ignored)
 async function quickCompare(rq) {
-  const id = ++simulationId, source = myId;
+  const id = ++simulationId, source = myId, gone = () => id !== simulationId || source !== myId;
   simulation.state = 'busy'; simulation.kind = 'quick'; simulation.error = null; simulation.stale = false; simulation.provisional = false; renderSimulation();
   let y = null, hi = null;
+  const base = comparisonJob(), legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
   try {
-    const base = comparisonJob();
     if (!simulation.baseline) simulation.baseline = (last.r.results || [])[0] || null;
-    const legs = [...base.legacies, draftJob(simulation.draft)], her = base.legacies.length;
-    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true, roll: rq });
-    if (id !== simulationId || source !== myId) return;
-    if (m.r.error || !m.r.results?.length || !simulation.baseline) throw new Error(m.r.error || 'No next career found.');
+    if (!simulation.baseline) throw new Error('No next career found.');
+    const m = await runN({ ...rq.job, next: { ...rq.job.next, roll: rq.stars } });
+    if (gone()) return;
     // (no saving from the plan: the exact comparison answers instead)
-    if (typeof m.r.roll?.y !== 'number') { simulation.kind = null; runComparison(); return; }
-    y = m.r.roll.y; hi = typeof m.r.roll.y_hi === 'number' ? m.r.roll.y_hi : null;
+    const roll = m.r.next?.roll;
+    if (m.r.error || typeof roll?.y !== 'number') { simulation.kind = null; runComparison(); return; }
+    y = roll.y; hi = typeof roll.y_hi === 'number' ? roll.y_hi : null;
     const v0 = planS.r.v0;
-    simulation.r = m.r; simulation.full = isFull(simulation.draft); simulation.v0 = [v0, v0 != null ? Math.max(0, v0 - y) : null];
+    simulation.r = { results: [], pending: true }; simulation.full = isFull(simulation.draft); simulation.v0 = [v0, v0 != null ? Math.max(0, v0 - y) : null];
     simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.where = ''; simulation.quick = true; simulation.state = 'done';
-  } catch (e) { if (id !== simulationId || source !== myId) return; simulation.error = e.message; simulation.state = 'error'; }
+  } catch (e) { if (gone()) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
+  if (simulation.state !== 'done' || gone()) return;
+  // a roll that saves careers goes straight to the exact comparison (which finds the best career with her too)
+  if (y >= 0.5) { runComparison(true); return; }
+  try {
+    const m = await runN({ ...base, fix: [her], legacies: legs, top: 1, compare: true });
+    if (gone()) return;
+    if (m.r.error || !m.r.results?.length) throw new Error(m.r.error || 'No next career found.');
+    simulation.r = m.r;
+  } catch (e) { if (gone()) return; simulation.error = e.message; simulation.state = 'error'; }
+  renderSimulation();
   // a roll that saves careers: the plan's saving can undercount how many (it tries her with a few partners at cached
   // decks), so the exact comparison runs at once and replaces it (about 1 roll in 20; the others stay instant). A zero
   // whose bound allows a saving (`hi`) is checked the same way, shown meanwhile as no saving, checking
-  if (simulation.state === 'done' && id === simulationId && source === myId) {
-    if (y >= 0.5) runComparison(true);
+  if (simulation.state === 'done' && !gone()) {
     // after the roll has stood a moment: rolling on starts none (a running check would be stopped, the worker with it)
-    else if (hi != null && hi >= 0.5) { simulation.provisional = true; renderSimulation();
+    if (hi != null && hi >= 0.5) { simulation.provisional = true; renderSimulation();
       setTimeout(() => { if (id === simulationId && source === myId && simulation.provisional && !simulation.refining) runComparison(true); }, 800); }
   }
 }
@@ -820,7 +831,7 @@ function simulationBody() {
   else if (simulation.r) {
     if (simulation.stale) result.appendChild(el('p', 'note', 'These figures are for her result before your last edit. Compare to update them.'));
     const before = simulation.baseline, n = state.targets.length, [v0b, v0a] = simulation.v0 || [null, null];
-    const next = simulation.r.results[0];
+    const next = simulation.r.results[0];   // (none yet while the quick search for the best career with her runs)
     const saves = v0b != null && v0a != null ? v0b - v0a : null;
     // the verdict in one line, then the two figures it rests on (now -> with her), then the best career with her
     const verdict = el('p', 'simverdict'); verdict.id = 'sim-verdict';
@@ -831,7 +842,7 @@ function simulationBody() {
       : simulation.refining && !simulation.provisional ? 'Checking…'
       : saves != null && saves >= 0.5 ? `Saves ${fmtN(saves)} careers`
       : simulation.herParent ? 'Parent of the next career'
-      : next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
+      : next && next.p_all > before.p_all * (1 + 1e-9) ? 'Better odds, no careers saved'
       : 'No careers saved';
     verdict.append(el('strong', '', head));
     if (/^Saves /.test(head) && simulation.where) verdict.append(simulation.where);
@@ -847,12 +858,15 @@ function simulationBody() {
       'Expected careers to a fully looped parent: with your veterans now → with her too' + (simulation.pickA ? `. With her the planner's next career is ${simulation.pickA.trainee.name} (${simulation.pickA.parents.map(i => '#' + (i + 1)).join(' + ')}).` : '.')
       + (simulation.quick ? ' From the planner\'s table for this career (her sparks exact, her G1 wins at their chances); Compare checks this exact roll.' : ''));
     // the best career with her as a parent: its odds against today's best, then folded its portraits and deck
+    if (!next) { result.appendChild(figs); const p = el('p', 'runnote simbest'); p.innerHTML = runnerHTML() + '<span>Finding the best career with her…</span>'; result.appendChild(p); }
+    else {
     const dd = el('details', 'nextdeck'); dd.appendChild(el('summary', '', 'Best career with her'));
     const nx = el('div', 'nextc'); nx.append(facesEl(next.trainee.id, next.trainee.outfits[0]?.id, next.parents.map(i => parentFace(i, d)), next.trainee.outfits[0]?.label || ''));
     fig(figs, `All ${n} odds`, fmtIn(before.p_all), fmtIn(next.p_all), way(before.p_all, next.p_all, false), `All ${n}: today's best career → the best career with her as a parent (${pct(before.p_all)} → ${pct(next.p_all)}; ${n - 1} or more: ${fmtIn(before.p_minus1)} → ${fmtIn(next.p_minus1)})`);
     result.appendChild(figs);
     dd.append(nx, deckEl(next, 'Deck'));
     result.appendChild(dd);
+    }
   }
   side.appendChild(result); box.appendChild(side);
   return box;

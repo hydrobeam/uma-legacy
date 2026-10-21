@@ -287,6 +287,12 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   the scoring keeps its state effects (her schedule, every partner's `val` search under the looped block's cap,
   `sc_prep` and its counters) and skips the evaluation. p16_88's plan 922 -> 886 ms, export 2's 3,171 -> 3,097 ms (best
   of 3, back to back); every output identical but `sc_out` (p16_88's reference updated; owner's sign-off).
+- The page's Reroll (2026-10-21): 680-820 ms a roll after the first, every one `planned: true`. A roll after an exact
+  comparison had started (at once when y >= 0.5, 0.8 s later when y < 0.5 <= y_hi) killed the worker, and the stored
+  state the next worker restores was written only after 1.5 s of idleness, so it held no roll state for this plan and
+  the plan ran again. Stored 100 ms after a plan instead (`engineSaveState`; `state_out` about 10 ms, `state_in` 3 ms),
+  such a roll takes 1-2 ms. The roll now also goes in a call of its own before the quick search for the best career
+  with her (23-40 ms on the sample veterans, not timed on large pools), so Careers to loop shows first.
 
 ### Open
 
@@ -312,12 +318,6 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
-- The page's Reroll: measured 2026-10-21 in Chromium on the sample veterans, each reroll 730-820 ms in the solver, of
-  which the roll itself (`roll_kept`, `next.roll`) is 0.1-1.8 ms; the rest is the quick comparison search sent in the
-  same call (`fix: [her]`, `compare`, top 1: "the best career with her"). Answering the roll in its own call first
-  would show Careers to loop at once and the search's verdict and best career when it lands; the worker already queues
-  a reroll behind a running quick search without restarting. Building the search setup after `roll_kept` (the audit's
-  idea) would save nothing: the roll is already cheap.
 - Not worth doing (measured 2026-10-21): a memo of `sc_prep`'s dominance and flat checks per (trainee, deck prefix):
   `sc_prep` is 1.1M of p10's 19.7G instructions; `Env::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB copies
   a job.

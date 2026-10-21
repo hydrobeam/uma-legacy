@@ -94,21 +94,22 @@ async function restore() {
   const m = await post({ cmd: 'state_in', state: st });
   if (!m.r || m.r.error) stateDrop(key);
 }
-// after a plan: store what the worker holds, once it is idle (a job in flight comes first; a killed worker saves nothing)
+// after a plan: store what the worker holds as soon as it is idle (a job in flight comes first; a killed worker saves
+// nothing). Promptly: a Reroll during an exact comparison kills the worker, and the next one restores this (a few ms)
+// where it would otherwise plan again (most of a second); state_out takes about 10 ms
 export function engineSaveState() {
   if (!persistOn) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     if (!worker || !ready || pending.size) { engineSaveState(); return; }
     try { await ready; const m = await post({ cmd: 'state_out' }); if (m.r && m.r.state) stateSave(stateKey(), m.r.state); } catch { /* the worker went: nothing to save */ }
-  }, 1500);
+  }, 100);
 }
-// what has not started yet (data.js LATER) is left out of every search
-// (a roll's plan job too, `roll.job`: the solver finds the plan's kept state by the job as it ran)
-const gate1 = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
+// what has not started yet (data.js LATER) is left out of every search (a roll's plan job, `next.roll`, alike: the
+// solver finds the plan's kept state by the job as it ran)
+const gate = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
   exclude: [...(job.exclude || []), ...LATER.umas], exclude_outfits: [...(job.exclude_outfits || []), ...LATER.outfits],
   exclude_cards: [...(job.exclude_cards || []), ...LATER.cards] };
-const gate = (job) => { const g = gate1(job); return g.roll?.job ? { ...g, roll: { ...g.roll, job: gate1(g.roll.job) } } : g; };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: sim/plan.rs `index_rule`) while it runs
 export function run(job, interim, progress) { return startEngine().then(() => new Promise(res => { const id = ++seq; pending.set(id, { done: res, interim, progress }); worker.postMessage({ type: 'run', id, job: gate(job) }); })); }

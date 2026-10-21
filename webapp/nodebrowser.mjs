@@ -230,7 +230,7 @@ async function careerPage(b) {
     const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
     window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
       // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
-      w.addEventListener('message', (e) => { if (e.data?.type === 'result') { if (window.__rollPatch && e.data.r?.roll) Object.assign(e.data.r.roll, window.__rollPatch); window.__careerResults.push(e.data.r); } });
+      w.addEventListener('message', (e) => { if (e.data?.type === 'result') { if (window.__rollPatch && e.data.r?.next?.roll) Object.assign(e.data.r.next.roll, window.__rollPatch); window.__careerResults.push(e.data.r); } });
       w.postMessage = (m, ...rest) => { if (m?.type === 'run') window.__careerJobs.push(m.job); return post(m, ...rest); }; return w; };
     // what the page shows, each time it changes: busy or not, the phase named, the trainee on show, the veteran you
     // got (her sparks), whether the old answer is dimmed
@@ -1332,20 +1332,22 @@ const TESTS = {
     }
     // a roll: a random result of this career, compared at once (stubbed random numbers: nothing lands, then everything at 3 stars)
     const roll = async (u) => { const before = await policyJobs(); await pg.evaluate(u => { const r = Math.random; Math.random = () => u; document.getElementById('sim-roll').click(); Math.random = r; }, u);
-      await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare).length > n && document.querySelector('#sim-verdict'), before, { timeout: 180000 }); };
+      await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare).length > n && document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .simbest'), before, { timeout: 180000 }); };
     await roll(0.999999999);
     const rolledAll = await pg.$$eval('#simulation .simskills .vsk:not(.pink) .vskb', l => l.map(b => b.getAttribute('aria-label')));
     check('career: "Reroll" draws from the career\'s odds and compares at once', rolledAll.length === 8 && rolledAll.every(x => /3 stars/.test(x))
       && await pg.evaluate(old => JSON.stringify(JSON.parse(localStorage.getItem('llp:career')).global.vets) === JSON.stringify(old), original));
-    // the roll's saving comes from the solver within the roll's one job (`roll`: the plan job on show and her stars per
-    // target), from the plan's kept state: no plan runs again
-    const lastRoll = () => pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.compare && j.roll).at(-1), r = window.__careerResults.filter(r => r.compare && r.roll).at(-1);
-      const ps = window.__careerJobs.filter(j => j.next && !j.compare).map(p => JSON.stringify(p));
-      return { same: !!j && ps.includes(JSON.stringify(j.roll.job)), stars: j?.roll.stars, dist: j?.roll.job.star_dist.join(), roll: r?.roll,
+    // the roll's saving comes from the solver in a call of its own, before the search for the best career with her (the
+    // plan job on show with `next.roll`, her stars per target), from the plan's kept state: no plan runs again
+    const lastRoll = () => pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.next?.roll).at(-1), r = window.__careerResults.filter(r => r.next?.roll).at(-1);
+      const ps = window.__careerJobs.filter(j => j.next && !j.next.roll && !j.compare).map(p => JSON.stringify(p));
+      const plan = j && JSON.parse(JSON.stringify(j)); if (plan) delete plan.next.roll;
+      const all = window.__careerJobs, ir = all.lastIndexOf(j), ic = all.findLastIndex(x => x.compare && !x.next);
+      return { same: !!j && ps.includes(JSON.stringify(plan)), stars: j?.next.roll, dist: j?.star_dist.join(), roll: r?.next.roll, first: ir >= 0 && (ic > ir || r.next.roll.y >= 0.5),
         verdict: document.getElementById('sim-verdict')?.textContent || '' }; });
     const lr = await lastRoll();
-    check('career: … its saving is worked out by the solver for that one roll, from the plan on show (kept, not planned again), within the roll\'s one job',
-      lr.same && lr.stars.length === 8 && lr.stars.every(s => s === 3) && typeof lr.roll?.y === 'number' && !lr.roll.planned
+    check('career: … its saving is worked out by the solver for that one roll, from the plan on show (kept, not planned again), in its own call',
+      lr.same && lr.first && lr.stars.length === 8 && lr.stars.every(s => s === 3) && typeof lr.roll?.y === 'number' && !lr.roll.planned
       && (lr.roll.y >= 0.5 || /^No careers saved/.test(lr.verdict)), JSON.stringify(lr));
     // a zero the bound can't rule out (the solver's answer replaced: y 0, y_hi 0.9) shows no saving while it is checked,
     // and the exact comparison starts once the roll has stood 0.8 s
@@ -1358,6 +1360,19 @@ const TESTS = {
     await pg.waitForFunction(() => !document.querySelector('#sim-result .simrefine'), null, { timeout: 180000 });
     await pg.evaluate(() => { delete window.__rollPatch; });
     check('career: … a provisional zero (y < 0.5 <= y_hi) shows "No careers saved", checking, and runs the exact comparison after a moment', prov.shown && prov.early && prov.started, JSON.stringify(prov));
+    // a roll during an exact comparison: its worker goes, and the next one takes the state stored promptly after the plan,
+    // so the roll is answered from the kept roll state, not planned again (planning took most of a second)
+    const ins0 = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'state_in').length), ex0 = await refines();
+    await pg.evaluate(() => { window.__rollPatch = { y: 0.9, y_hi: null }; const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
+    const exStarted = await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare && j.next).length > n, ex0, { timeout: 30000 }).then(() => true, () => false);
+    await pg.evaluate(() => { delete window.__rollPatch; });
+    const nr = await pg.evaluate(() => window.__careerResults.filter(r => r.next?.roll).length);
+    await pg.evaluate(() => { const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
+    await pg.waitForFunction(n => window.__careerResults.filter(r => r.next?.roll).length > n, nr, { timeout: 180000 });
+    const after = await pg.evaluate(n => ({ ins: window.__careerJobs.filter(j => j.cmd === 'state_in').length, roll: window.__careerResults.filter(r => r.next?.roll).at(-1).next.roll }), nr);
+    check('career: … a roll that stops an exact comparison (its worker goes) is answered from the restored state, not planned again',
+      exStarted && after.ins > ins0 && typeof after.roll.y === 'number' && !after.roll.planned, JSON.stringify({ exStarted, ins0, after }));
+    await pg.waitForFunction(() => document.querySelector('#sim-verdict') && !document.querySelector('#sim-result .simbest, #sim-result .simrefine'), null, { timeout: 180000 });
     await roll(0);
     check('career: … a low roll lands nothing', await pg.locator('#simulation .simskills .vsk:not(.pink)').count() === 0);
     // … and draws her pink: every legacy pink fires at both inspirations (+1 grade each), the first aptitude at A or S, 1 star
@@ -1790,11 +1805,11 @@ const TESTS = {
     await pg.waitForFunction(() => window.__careerJobs.some(j => j.next));   // the plan job is in the worker
     // a preset saved (a settings save that leaves the job as it is), all at once while the plan runs
     const edit = await pg.evaluate(() => { const plan = () => /Planning your next career/.test(document.getElementById('run-note').textContent), was = plan();
-      const jobs = window.__careerJobs.length, workers = window.__workers;
+      const jobs = window.__careerJobs.filter(j => j.cmd !== 'state_out').length, workers = window.__workers;   // (a state save, `engineSaveState`, is no job of the plan's)
       document.getElementById('t-preset').click(); document.getElementById('pr-save').click(); document.getElementById('prn-save').click(); document.getElementById('preset-dlg').close();
       return { was, now: plan(), jobs, workers, presets: JSON.parse(localStorage.getItem('llp:settings') || '{}').common?.presets?.length }; });
     await planned();
-    const after = await pg.evaluate(() => ({ jobs: window.__careerJobs.filter(j => j.cmd === 'career').length, posted: window.__careerJobs.length, workers: window.__workers,
+    const after = await pg.evaluate(() => ({ jobs: window.__careerJobs.filter(j => j.cmd === 'career').length, posted: window.__careerJobs.filter(j => j.cmd !== 'state_out').length, workers: window.__workers,
       plans: window.__careerResults.filter(r => r.next).length }));
     check('career: a preset saved during the plan (the job as it was) lets the plan go on: no new job, no new worker, one plan answered',
       edit.was && edit.now && after.posted === edit.jobs && after.workers === edit.workers && after.plans === 1 && edit.presets > 1, JSON.stringify({ edit, after }));
@@ -1815,18 +1830,22 @@ const TESTS = {
     // a roll in a new worker (the stored roll state taken in): answered from it, the plan not run again
     await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
     await pg.evaluate(() => { const r = Math.random; Math.random = () => 0.999999999; document.getElementById('sim-roll').click(); Math.random = r; });
-    await pg.waitForFunction(() => window.__careerResults.some(r => r.compare && r.roll), null, { timeout: 180000 });
-    const ro = await pg.evaluate(() => window.__careerResults.find(r => r.compare && r.roll).roll);
+    await pg.waitForFunction(() => window.__careerResults.some(r => r.next?.roll), null, { timeout: 180000 });
+    const ro = await pg.evaluate(() => window.__careerResults.find(r => r.next?.roll).next.roll);
     check('career: after a reload a roll is answered from the stored roll state (no plan runs again)', re.restored?.rolls > 0 && typeof ro?.y === 'number' && !ro.planned, JSON.stringify({ rolls: re.restored?.rolls, ro }));
     // a new plan (another rank): a roll asks that plan; back on the first answer (no run), a roll asks the first plan
     // again, which the worker still keeps
-    const rollNow = async () => { const n = await pg.evaluate(() => window.__careerResults.filter(r => r.compare && r.roll).length);
+    const rollNow = async () => { const n = await pg.evaluate(() => window.__careerResults.filter(r => r.next?.roll).length);
       await pg.waitForSelector('#sim-roll:not([disabled])', { timeout: 180000 });
       await pg.evaluate(() => { const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
-      await pg.waitForFunction(n => window.__careerResults.filter(r => r.compare && r.roll).length > n, n, { timeout: 180000 });
-      return pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.compare && j.roll).at(-1), p = window.__careerJobs.filter(j => j.next && !j.compare).at(-1);
-        return { same: JSON.stringify(j.roll.job) === JSON.stringify(p), dist: j.roll.job.star_dist.join(), roll: window.__careerResults.filter(r => r.compare && r.roll).at(-1).roll }; }); };
+      await pg.waitForFunction(n => window.__careerResults.filter(r => r.next?.roll).length > n, n, { timeout: 180000 });
+      return pg.evaluate(() => { const j = window.__careerJobs.filter(j => j.next?.roll).at(-1), p = window.__careerJobs.filter(j => j.next && !j.next.roll && !j.compare).at(-1);
+        const plan = JSON.parse(JSON.stringify(j)); delete plan.next.roll;
+        return { same: JSON.stringify(plan) === JSON.stringify(p), dist: j.star_dist.join(), roll: window.__careerResults.filter(r => r.next?.roll).at(-1).next.roll }; }); };
+    const so0 = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'state_out').length);
     await pg.click('#rank button[data-v="0.20,0.70,0.10"]'); await done();
+    // the plan's kept work is stored as soon as the worker is idle (a reroll that kills it soon after loses nothing)
+    check('career: after a plan the worker\'s state is stored within 1.3 s (it waited for 1.5 s of idleness)', await until(pg, n => window.__careerJobs.filter(j => j.cmd === 'state_out').length > n, so0, 1300));
     const lrNew = await rollNow();
     await pg.click('#rank button[data-v="0.50,0.45,0.05"]'); await done();
     const lrBack = await rollNow();

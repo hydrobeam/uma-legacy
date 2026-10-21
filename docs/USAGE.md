@@ -78,7 +78,8 @@ back to one draws it again without a run.
 
 **Veteran analysis** shows the career's result as the game's *Umamusume Details* card (skills, inspiration, career
 record). It starts as a random result of the career:
-- **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once (worked out by the solver for that roll, beside its one search).
+- **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once
+  (worked out by the solver for that roll); the best career with her as a parent follows from one quick search.
 - Set it to what she actually landed and press **Compare** for the exact plan with her added: careers to a fully
   looped parent now and with her, and the best career with her as a parent.
 - **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career.
