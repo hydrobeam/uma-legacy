@@ -27,15 +27,24 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Clone)]
-pub(crate) struct Card { pub id: u32, pub name: String, pub chara: u32, pub rarity: u8, pub pal: bool, pub links: u8, pub hf: f64,
+pub(crate) struct Card {
+    pub id: u32,
+    pub name: String,
+    pub chara: u32,
+    pub rarity: u8,
+    pub pal: bool,
+    pub links: u8,
+    pub hf: f64,
     /// specialty priority at max limit break (unique effect included): more training hints (`hint_spec`)
     #[serde(default)] pub spec: f64,
     /// training-hint options that are skills (the stat option is never drawn in Independent Training)
-    #[serde(default)] pub nskill: u32, pub whites: Vec<u32>,
+    #[serde(default)] pub nskill: u32,
+    pub whites: Vec<u32>,
     /// hint levels per training-hint draw at max limit break (1 + hint-level effect); a skill at Lv 5 leaves the pool
     #[serde(default = "d_hinc")] pub hinc: u32,
     /// characters who cannot train with this card: its own character and, for a group card, every member
-    #[serde(default)] pub charas: Vec<u32> }
+    #[serde(default)] pub charas: Vec<u32>,
+}
 impl Card {
     /// The character rule. `RULE_OFF=1` (brute-force checks only, val/permcheck.py and owncheck.py) switches it off.
     pub(crate) fn blocks(&self, uma: u32) -> bool {
@@ -44,10 +53,12 @@ impl Card {
     }
 }
 #[derive(Deserialize)]
-pub(crate) struct CardsRaw { pub cards: Vec<Card>,
+pub(crate) struct CardsRaw {
+    pub cards: Vec<Card>,
     /// cards the game bans from a scenario's deck, by scenario name (master.mdb single_mode_restrict_support via
     /// export_cards.py: Team Sirius in "unity" and "gc")
-    #[serde(default)] pub restrict: HashMap<String, Vec<u32>> }
+    #[serde(default)] pub restrict: HashMap<String, Vec<u32>>,
+}
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
@@ -109,15 +120,23 @@ pub(crate) struct DeckJob {
 /// Fixed schedule for one uma (see DeckJob::schedule).
 fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
     let solo = best_response(d, u, &vec![1.0; d.nr], None).expect("infeasible goals").0;
-    if mode != "goals" { return solo; }
-    let mut s = solo; let mut mask = 0u32;
-    for t in 0..NT {
-        if let Choice::Opt(o) = s[t] {
-            let b = u.bits[t][o as usize];
-            if u.forced[t].is_some() || b & !mask != 0 { mask |= b; } else { s[t] = Choice::Rest; }
+    if mode != "goals" {
+        return solo;
+    }
+
+    let mut schedule = solo;
+    let mut covered_goals = 0u32;
+    for turn in 0..NT {
+        if let Choice::Opt(option) = schedule[turn] {
+            let goal_bits = u.bits[turn][option as usize];
+            if u.forced[turn].is_some() || goal_bits & !covered_goals != 0 {
+                covered_goals |= goal_bits;
+            } else {
+                schedule[turn] = Choice::Rest;
+            }
         }
     }
-    if feasible(u, &s) { s } else { solo }
+    if feasible(u, &schedule) { schedule } else { solo }
 }
 fn d_one() -> usize { 1 }
 fn d_true() -> bool { true }
@@ -153,4 +172,3 @@ mod career;
 pub(crate) use career::run_career;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use career::forget_kept_decks;
-

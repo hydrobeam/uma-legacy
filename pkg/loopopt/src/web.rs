@@ -4,8 +4,8 @@
 //!   {"cmd":"deck", ...SkillJob + DeckJob}  (needs "cards" and "events" in init)
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
-use super::*;
-use super::skills::*;
+use super::{load_raw, Data, DataRaw};
+use super::skills::SkillsRaw;
 use std::cell::RefCell;
 
 thread_local! {
@@ -19,7 +19,10 @@ thread_local! {
 /// Neither `call` nor `result_len` transfers ownership of this allocation.
 #[unsafe(no_mangle)]
 pub extern "C" fn alloc(len: usize) -> *mut u8 {
-    let mut v = Vec::<u8>::with_capacity(len); let p = v.as_mut_ptr(); std::mem::forget(v); p
+    let mut buffer = Vec::<u8>::with_capacity(len);
+    let pointer = buffer.as_mut_ptr();
+    std::mem::forget(buffer);
+    pointer
 }
 /// Release a request buffer allocated by this module.
 ///
@@ -28,7 +31,9 @@ pub extern "C" fn alloc(len: usize) -> *mut u8 {
 /// It must not have been freed, and no caller may access it after this call. A pointer returned by `call`
 /// belongs to the output buffer and must never be passed here.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) { unsafe { drop(Vec::from_raw_parts(p, 0, len)); } }
+pub unsafe extern "C" fn dealloc(p: *mut u8, len: usize) {
+    unsafe { drop(Vec::from_raw_parts(p, 0, len)); }
+}
 /// Length of the latest response, to be read together with the pointer returned by `call`.
 #[unsafe(no_mangle)]
 pub extern "C" fn result_len() -> usize { OUT.with(|o| o.borrow().len()) }
@@ -45,53 +50,77 @@ pub unsafe extern "C" fn call(p: *const u8, len: usize) -> *const u8 {
     let req = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p, len)) };
     let out = handle(req);
     // (written into the last call's buffer: `Value`'s `Display` is this compact serializer, the same bytes)
-    OUT.with(|o| { let mut b = o.borrow_mut(); b.clear(); serde_json::to_writer(&mut *b, &out).unwrap(); b.as_ptr() })
+    OUT.with(|output| {
+        let mut buffer = output.borrow_mut();
+        buffer.clear();
+        serde_json::to_writer(&mut *buffer, &out).unwrap();
+        buffer.as_ptr()
+    })
 }
 
 /// The init request, parsed straight into the solver's input types (no intermediate `Value` tree for the large
-/// data table). `cards` stays a `Value` so a card table that does not parse only disables the deck search.
+/// data table). `cards` stays a `Value`: a card table that does not parse leaves `DECK` unchanged,
+/// so an initial request can still load the schedule data without card data.
 #[derive(serde::Deserialize)]
-struct InitReq { data: DataRaw, skills: SkillsRaw, #[serde(default)] cards: serde_json::Value, #[serde(default)] events: serde_json::Value }
+struct InitReq {
+    data: DataRaw,
+    skills: SkillsRaw,
+    #[serde(default)] cards: serde_json::Value,
+    #[serde(default)] events: serde_json::Value,
+}
 
 fn handle(req: &str) -> serde_json::Value {
     // the request parsed once: an init request with the page's prefix straight into `InitReq`, every other one into a
     // `Value` (an init request without the prefix then from it; on an error the text is parsed again for the message)
-    let init = |r: Result<InitReq, serde_json::Error>| -> Result<InitReq, serde_json::Value> {
-        r.or_else(|_| serde_json::from_str::<InitReq>(req)).map_err(|e| serde_json::json!({"error": format!("bad init request: {e}")}))
+    let init = |parsed: Result<InitReq, serde_json::Error>| -> Result<InitReq, serde_json::Value> {
+        parsed.or_else(|_| serde_json::from_str::<InitReq>(req))
+            .map_err(|e| serde_json::json!({"error": format!("bad init request: {e}")}))
     };
-    let mut v: Option<serde_json::Value> = None;
-    let ir = if req.starts_with("{\"cmd\":\"init\"") { Some(init(serde_json::from_str(req))) } else {
+    let mut job: Option<serde_json::Value> = None;
+    let initialization = if req.starts_with("{\"cmd\":\"init\"") {
+        Some(init(serde_json::from_str(req)))
+    } else {
         match serde_json::from_str::<serde_json::Value>(req) {
-            Ok(x) if x.get("cmd").and_then(|c| c.as_str()) == Some("init") => Some(init(serde_json::from_value(x))),
-            Ok(x) => { v = Some(x); None }
+            Ok(value) if value.get("cmd").and_then(|c| c.as_str()) == Some("init") => {
+                Some(init(serde_json::from_value(value)))
+            }
+            Ok(value) => { job = Some(value); None }
             Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}),
         }
     };
-    if let Some(r) = ir {
-        let r = match r { Ok(r) => r, Err(e) => return e };
-        let d = load_raw(r.data);
-        let n = d.umas.len();
-        if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { let ev = super::deck::event_lists(&r.skills, &r.events); DECK.with(|x| *x.borrow_mut() = Some((cr, ev))); }
-        STATE.with(|s| *s.borrow_mut() = Some((d, r.skills)));
+    if let Some(initialization) = initialization {
+        let request = match initialization { Ok(request) => request, Err(error) => return error };
+        let data = load_raw(request.data);
+        let uma_count = data.umas.len();
+        if let Ok(cards) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&request.cards) {
+            let events = super::deck::event_lists(&request.skills, &request.events);
+            DECK.with(|deck| *deck.borrow_mut() = Some((cards, events)));
+        }
+        STATE.with(|state| *state.borrow_mut() = Some((data, request.skills)));
         super::deck::forget_kept_decks();
-        return serde_json::json!({"ok": true, "umas": n});
+        return serde_json::json!({"ok": true, "umas": uma_count});
     }
-    let mut v = v.unwrap();
-    let cmd = v["cmd"].as_str().unwrap_or("").to_owned();
+    let mut job = job.unwrap();
+    let cmd = job["cmd"].as_str().unwrap_or("").to_owned();
     match cmd.as_str() {
         "deck" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            super::deck::apply_event_lists(&mut v, ev);
-            super::deck::run_deck(d, sk, cr, &v)
+            super::deck::apply_event_lists(&mut job, ev);
+            super::deck::run_deck(d, sk, cr, &job)
         })),
         // state_out / state_in read no events
         "career" | "state_out" | "state_in" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
             let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
             // (a carried roll's plan job too: its kept roll state is found by the plan job as it ran, events applied)
-            if cmd == "career" { super::deck::apply_event_lists(&mut v, ev); if v["roll"]["job"].is_object() { super::deck::apply_event_lists(&mut v["roll"]["job"], ev); } }
-            super::deck::run_career(d, sk, cr, &v)
+            if cmd == "career" {
+                super::deck::apply_event_lists(&mut job, ev);
+                if job["roll"]["job"].is_object() {
+                    super::deck::apply_event_lists(&mut job["roll"]["job"], ev);
+                }
+            }
+            super::deck::run_career(d, sk, cr, &job)
         })),
         c => serde_json::json!({"error": format!("unknown command {c}")}),
     }

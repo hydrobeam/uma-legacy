@@ -68,31 +68,55 @@ const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
 
 /// One race option at a turn. `prog` (the race program id) is read only by the tests, whose fixtures name options by it.
 #[derive(Deserialize, Clone)]
-struct OptRaw { #[cfg_attr(not(test), allow(dead_code))] prog: u32, race: i32, bp: i32, #[serde(default)] name: String, #[serde(default)] goal: bool }
+struct OptRaw {
+    #[cfg_attr(not(test), allow(dead_code))]
+    prog: u32,
+    race: i32,
+    bp: i32,
+    #[serde(default)] name: String,
+    #[serde(default)] goal: bool,
+}
 #[derive(Deserialize)]
-struct UmaRaw { id: u32, name: String, turns: Vec<Vec<OptRaw>>, goals: Vec<Vec<(usize, usize)>>,
+struct UmaRaw {
+    id: u32,
+    name: String,
+    turns: Vec<Vec<OptRaw>>,
+    goals: Vec<Vec<(usize, usize)>>,
     /// aptitude codes 1..8 = G..S: short, mile, middle, long, turf, dirt, front runner, pace chaser, late surger, end closer
-    #[serde(default)] apt: Vec<u8> }
+    #[serde(default)] apt: Vec<u8>,
+}
 #[derive(Deserialize)]
-struct DataRaw { race_names: Vec<String>, umas: Vec<UmaRaw>,
+struct DataRaw {
+    race_names: Vec<String>,
+    umas: Vec<UmaRaw>,
     /// relation groups: (points, roster indices); pair / tri are rebuilt from them (older data.json files carry the tables)
     #[serde(default)] relations: Option<Vec<(i32, Vec<usize>)>>,
-    #[serde(default)] pair: Option<Vec<Vec<i32>>>, #[serde(default)] tri: Option<Vec<Vec<Vec<i32>>>>,
-    pen: Vec<i32>, #[serde(default)] pb: Option<PbRaw>,
+    #[serde(default)] pair: Option<Vec<Vec<i32>>>,
+    #[serde(default)] tri: Option<Vec<Vec<Vec<i32>>>>,
+    pen: Vec<i32>,
+    #[serde(default)] pb: Option<PbRaw>,
     /// per race: distance class (0 short .. 3 long) and surface (1 turf, 2 dirt)
-    #[serde(default)] race_cat: Vec<u8>, #[serde(default)] race_ground: Vec<u8> }
+    #[serde(default)] race_cat: Vec<u8>,
+    #[serde(default)] race_ground: Vec<u8>,
+}
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
 fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<Vec<i32>>>) {
-    let mut p = vec![vec![0i32; n]; n];
-    let mut t = vec![vec![vec![0i32; n]; n]; n];
-    for (pts, m) in rels {
-        for &a in m { for &b in m {
-            if a == b { continue; }
-            p[a][b] += pts;
-            for &c in m { if c != a && c != b { t[a][b][c] += pts; } }
-        } }
+    let mut pair = vec![vec![0i32; n]; n];
+    let mut tri = vec![vec![vec![0i32; n]; n]; n];
+    for (points, members) in rels {
+        for &a in members {
+            for &b in members {
+                if a == b { continue; }
+                pair[a][b] += points;
+                for &c in members {
+                    if c != a && c != b {
+                        tri[a][b][c] += points;
+                    }
+                }
+            }
+        }
     }
-    (p, t)
+    (pair, tri)
 }
 /// Precomputed pairwise ceilings (`loopopt pbtable`, merged into data.json by `./build.sh pb`): `fp` is
 /// `pb_fingerprint` of the data it was computed from; row a holds PB(a, b) for b > a as 16-hex-digit f64 bit patterns.
@@ -121,10 +145,18 @@ struct Uma {
 struct Ent { race: i32, rest: bool, bit: u32, p: [f64; 7] }
 const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
-struct Data { nr: usize, umas: Vec<Uma>, pair: Vec<Vec<i32>>, tri: Vec<Vec<Vec<i32>>>, pk: Vec<[f64; 7]>, race_names: Vec<String>,
+struct Data {
+    nr: usize,
+    umas: Vec<Uma>,
+    pair: Vec<Vec<i32>>,
+    tri: Vec<Vec<Vec<i32>>>,
+    pk: Vec<[f64; 7]>,
+    race_names: Vec<String>,
     pbt: Option<Vec<f64>>,   // n x n pairwise ceilings from data.json's table, when its fingerprint matches
     pen: Vec<i32>,    // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
-    race_cat: Vec<u8>, race_ground: Vec<u8> }
+    race_cat: Vec<u8>,
+    race_ground: Vec<u8>,
+}
 
 /// Bump when best_response / pair_ceilings change in a way that could move a ceiling's bits: stored tables then
 /// stop matching and are recomputed.
@@ -133,30 +165,47 @@ const PB_VERSION: u64 = 1;
 /// the streak penalties and the race count. Fx over fixed-width words, so native and wasm agree.
 fn pb_fingerprint(raw: &DataRaw) -> String {
     use std::hash::Hasher;
-    let mut h = Fx::default();
-    h.write_u64(PB_VERSION); h.write_u64(raw.race_names.len() as u64);
-    for &p in &raw.pen { h.write_u64(p as i64 as u64); }
-    for u in &raw.umas {
-        h.write_u64(u.id as u64); h.write_u64(u.turns.len() as u64);
-        for l in &u.turns { h.write_u64(l.len() as u64); for op in l { h.write_u64(op.race as i64 as u64); h.write_u64(op.bp as i64 as u64); } }
-        h.write_u64(u.goals.len() as u64);
-        for g in &u.goals { h.write_u64(g.len() as u64); for &(t, o) in g { h.write_u64(t as u64); h.write_u64(o as u64); } }
+    let mut hash = Fx::default();
+    hash.write_u64(PB_VERSION);
+    hash.write_u64(raw.race_names.len() as u64);
+    for &penalty in &raw.pen {
+        hash.write_u64(penalty as i64 as u64);
     }
-    format!("{:016x}", h.finish())
-}
-fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
-    let pr = raw.pb.as_ref()?;
-    let n = raw.umas.len();
-    if pr.fp != pb_fingerprint(raw) || pr.rows.len() != n { return None; }
-    let mut t = vec![0.0f64; n * n];
-    for (a, row) in pr.rows.iter().enumerate() {
-        if row.len() != 16 * (n - 1 - a) { return None; }
-        for (k, b) in (a + 1..n).enumerate() {
-            let v = f64::from_bits(u64::from_str_radix(&row[16 * k..16 * k + 16], 16).ok()?);
-            t[a * n + b] = v; t[b * n + a] = v;
+    for uma in &raw.umas {
+        hash.write_u64(uma.id as u64);
+        hash.write_u64(uma.turns.len() as u64);
+        for options in &uma.turns {
+            hash.write_u64(options.len() as u64);
+            for option in options {
+                hash.write_u64(option.race as i64 as u64);
+                hash.write_u64(option.bp as i64 as u64);
+            }
+        }
+        hash.write_u64(uma.goals.len() as u64);
+        for goal in &uma.goals {
+            hash.write_u64(goal.len() as u64);
+            for &(turn, option) in goal {
+                hash.write_u64(turn as u64);
+                hash.write_u64(option as u64);
+            }
         }
     }
-    Some(t)
+    format!("{:016x}", hash.finish())
+}
+fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
+    let stored = raw.pb.as_ref()?;
+    let n = raw.umas.len();
+    if stored.fp != pb_fingerprint(raw) || stored.rows.len() != n { return None; }
+    let mut table = vec![0.0f64; n * n];
+    for (a, row) in stored.rows.iter().enumerate() {
+        if row.len() != 16 * (n - 1 - a) { return None; }
+        for (offset, b) in (a + 1..n).enumerate() {
+            let value = f64::from_bits(u64::from_str_radix(&row[16 * offset..16 * offset + 16], 16).ok()?);
+            table[a * n + b] = value;
+            table[b * n + a] = value;
+        }
+    }
+    Some(table)
 }
 
 // pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
@@ -166,19 +215,34 @@ fn load(path: &str) -> Data { load_str(&std::fs::read_to_string(path).unwrap()) 
 /// Win chance of an attempt = clamp(bp - pen[k], 0, 100)%, where the exporter sets bp = 110 - grade costs
 /// (distance + surface; A 0, B 10, C 20, D 30, E 40, F 60, G 90) and pen = streak penalties from data.json.
 fn load_str(json: &str) -> Data { load_raw(serde_json::from_str(json).unwrap()) }
+
+/// `dp_exact` pairs Classic and Senior turns. A repeated race must occur exactly 24 turns apart,
+/// never in Junior year and never more than twice. This checks that specific DP precondition;
+/// it is not a general validator for all dimensions and indices in the input.
+fn check_repeated_races(umas: &[UmaRaw]) {
+    for uma in umas {
+        let mut turns_by_race: std::collections::HashMap<i32, Vec<usize>> = Default::default();
+        for (turn, options) in uma.turns.iter().enumerate() {
+            for option in options {
+                if option.race >= 0 {
+                    turns_by_race.entry(option.race).or_default().push(turn);
+                }
+            }
+        }
+        for (race, turns) in turns_by_race {
+            assert!(turns.len() <= 2, "{}: race {race} offered {} times", uma.name, turns.len());
+            if turns.len() == 2 {
+                assert!(turns[1] == turns[0] + 24 && turns[0] >= 24,
+                    "{}: race {race} offered at turns {turns:?}, not a Classic/Senior pair", uma.name);
+            }
+        }
+    }
+}
+
 fn load_raw(raw: DataRaw) -> Data {
     let pbt = pb_table_from(&raw);
     let n_umas = raw.umas.len();
-    // dp_exact relies on: every race offered twice to an uma is offered exactly 24 turns apart (Classic/Senior),
-    // never twice in the Junior year, and never more than twice.
-    for u in &raw.umas {
-        let mut at: std::collections::HashMap<i32, Vec<usize>> = Default::default();
-        for (t, l) in u.turns.iter().enumerate() { for op in l { if op.race >= 0 { at.entry(op.race).or_default().push(t); } } }
-        for (r, ts) in at {
-            assert!(ts.len() <= 2, "{}: race {r} offered {} times", u.name, ts.len());
-            if ts.len() == 2 { assert!(ts[1] == ts[0] + 24 && ts[0] >= 24, "{}: race {r} offered at turns {ts:?}, not a Classic/Senior pair", u.name); }
-        }
-    }
+    check_repeated_races(&raw.umas);
     let nr = raw.race_names.len();
     let mut pkt = vec![[0.0f64; 7]; 140];
     for (i, row) in pkt.iter_mut().enumerate() {
@@ -285,7 +349,14 @@ fn dp_exact(_d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> O
 }
 
 #[derive(Default)]
-struct Scratch { v2: Vec<f64>, a2: Vec<[u8; 2]>, v1: Vec<f64>, a1: Vec<u8> }
+struct Scratch {
+    // Phase 2: paired Classic/Senior turns. Values include a terminal layer; choices do not.
+    v2: Vec<f64>,
+    a2: Vec<[u8; 2]>,
+    // Phase 1: Junior turns, with phase 2's entry values as the terminal layer.
+    v1: Vec<f64>,
+    a1: Vec<u8>,
+}
 thread_local! { static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::new(Scratch::default()); }
 
 /// Allowed choice codes at turn t. A force replaces the list at its turn, but only with a choice the goals allow there.
@@ -432,32 +503,52 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
 /// would. Within one optimize() call ~99% of best-response calls repeat an earlier one.
 /// Key: [uma id << 16 | force code, weight bits...], built in `key` (reused) so a hit allocates nothing.
 #[derive(Default)]
-struct BrMemo { map: FxMap<Box<[u64]>, Option<(Sched, f64)>>, key: Vec<u64> }
+struct BrMemo {
+    map: FxMap<Box<[u64]>, Option<(Sched, f64)>>,
+    key: Vec<u64>,
+}
 thread_local! { static BR_MEMO: std::cell::RefCell<Option<BrMemo>> = const { std::cell::RefCell::new(None) }; }
 
 /// Best response (exact): wraps dp_exact and cross-checks its value against direct evaluation.
 fn best_response(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
-    BR_MEMO.with(|mm| {
-        let mut g = mm.borrow_mut();
-        let Some(m) = g.as_mut() else { drop(g); return best_response_solve(d, u, wr, force); };
-        let fk: u16 = match force { None => u16::MAX, Some((t, Choice::Rest)) => (t * 256 + 255) as u16, Some((t, Choice::Opt(o))) => (t * 256 + o as usize) as u16 };
-        m.key.clear();
-        m.key.push((u.id as u64) << 16 | fk as u64);
-        m.key.extend(wr.iter().map(|x| x.to_bits()));
-        if let Some(r) = m.map.get(&m.key[..]) { return *r; }
-        let r = best_response_solve(d, u, wr, force);
-        let k: Box<[u64]> = m.key.as_slice().into();
-        m.map.insert(k, r);
-        r
+    BR_MEMO.with(|cell| {
+        let mut borrowed = cell.borrow_mut();
+        let Some(memo) = borrowed.as_mut() else {
+            drop(borrowed);
+            return best_response_solve(d, u, wr, force);
+        };
+        // One byte each for turn and option; 255 denotes rest. All-ones denotes no force.
+        let force_code: u16 = match force {
+            None => u16::MAX,
+            Some((turn, Choice::Rest)) => (turn * 256 + 255) as u16,
+            Some((turn, Choice::Opt(option))) => (turn * 256 + option as usize) as u16,
+        };
+        memo.key.clear();
+        memo.key.push((u.id as u64) << 16 | force_code as u64);
+        memo.key.extend(wr.iter().map(|weight| weight.to_bits()));
+        if let Some(result) = memo.map.get(&memo.key[..]) {
+            return *result;
+        }
+        let result = best_response_solve(d, u, wr, force);
+        let key: Box<[u64]> = memo.key.as_slice().into();
+        memo.map.insert(key, result);
+        result
     })
 }
 
 /// Enables the best-response memo for the current thread until dropped (restores the previous state).
 struct MemoScope(Option<BrMemo>);
 impl MemoScope {
-    fn new() -> Self { MemoScope(BR_MEMO.with(|m| m.borrow_mut().replace(Default::default()))) }
+    fn new() -> Self {
+        MemoScope(BR_MEMO.with(|memo| memo.borrow_mut().replace(Default::default())))
+    }
 }
-impl Drop for MemoScope { fn drop(&mut self) { let prev = self.0.take(); BR_MEMO.with(|m| *m.borrow_mut() = prev); } }
+impl Drop for MemoScope {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        BR_MEMO.with(|memo| *memo.borrow_mut() = previous);
+    }
+}
 
 fn best_response_solve(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
     let (s, v) = dp_exact(d, u, wr, force)?;
@@ -480,9 +571,17 @@ const K_TRIO: f64 = 2.0;
 fn make_loop<const N: usize>(d: &Data, m: [usize; N]) -> Loop<N> {
     let pr = |a: usize, b: usize| d.pair[a][b] as f64;
     let tr = |a: usize, b: usize, x: usize| d.tri[a][b][x] as f64;
-    let mut psum = 0.0; let mut tsum = 0.0;
-    for i in 0..N { for j in i + 1..N { psum += pr(m[i], m[j]); for k in j + 1..N { tsum += tr(m[i], m[j], m[k]); } } }
-    Loop { m, base: 2.0 * psum + K_TRIO * tsum }
+    let mut pair_sum = 0.0;
+    let mut trio_sum = 0.0;
+    for i in 0..N {
+        for j in i + 1..N {
+            pair_sum += pr(m[i], m[j]);
+            for k in j + 1..N {
+                trio_sum += tr(m[i], m[j], m[k]);
+            }
+        }
+    }
+    Loop { m, base: 2.0 * pair_sum + K_TRIO * trio_sum }
 }
 
 fn score<const N: usize>(d: &Data, lp: &Loop<N>, s: &[Sched; N]) -> f64 {
@@ -618,7 +717,6 @@ fn optimistic_start<const N: usize>(d: &Data, lp: &Loop<N>) -> [Sched; N] {
 /// Schedules found for a loop, in member order; a three-member structure fills s[0..3] and leaves s[3] all rest.
 #[derive(Clone)]
 struct Res { s: [Sched; 4] }
-/// The empty fourth slot of a three-member structure (members arrays are [usize; 4] with this last).
 /// Missing fourth member in the fixed-size representation of a three-uma rotation.
 /// `members` removes this sentinel before callers use the entries as indices into the uma table.
 pub(crate) const NONE: usize = usize::MAX;
@@ -676,29 +774,38 @@ fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, ma
     let _memo = MemoScope::new();
     let lp = make_loop(d, m);
     let mut rng = Rng(seed.wrapping_mul(2654435761).wrapping_add(1) | 1);
-    let mut s = optimistic_start(d, &lp);
-    let mut v = ascent(d, &lp, &mut s);
-    v = v.max(group_moves(d, &lp, &mut s, margin));
+    let mut schedules = optimistic_start(d, &lp);
+    let mut value = ascent(d, &lp, &mut schedules);
+    value = value.max(group_moves(d, &lp, &mut schedules, margin));
     // iterated local search: perturb 1-2 members against noisy weights, re-ascend, group moves
     for _ in 0..iters {
-        let mut ns = s;
-        let mut ps: Vec<Vec<f64>> = (0..N).map(|i| probs(d, &d.umas[lp.m[i]], &ns[i])).collect();
-        let nmove = 1 + (rng.next() % 2) as usize;
-        for _ in 0..nmove {
+        let mut candidate_schedules = schedules;
+        let mut candidate_probs: Vec<Vec<f64>> = (0..N)
+            .map(|i| probs(d, &d.umas[lp.m[i]], &candidate_schedules[i])).collect();
+        let moves = 1 + (rng.next() % 2) as usize;
+        for _ in 0..moves {
             let i = (rng.next() % N as u64) as usize;
-            let mut w = weights(d, &ps, i);
-            for x in w.iter_mut() { *x *= 0.2 + 1.6 * rng.unif(); }
-            if let Some((x, _)) = best_response(d, &d.umas[lp.m[i]], &w, None) { ns[i] = x; ps[i] = probs(d, &d.umas[lp.m[i]], &x); }
+            let mut noisy_weights = weights(d, &candidate_probs, i);
+            for weight in noisy_weights.iter_mut() {
+                *weight *= 0.2 + 1.6 * rng.unif();
+            }
+            if let Some((response, _)) = best_response(d, &d.umas[lp.m[i]], &noisy_weights, None) {
+                candidate_schedules[i] = response;
+                candidate_probs[i] = probs(d, &d.umas[lp.m[i]], &response);
+            }
         }
-        ascent_ps(d, &lp, &mut ns, &mut ps);
-        let nv = group_moves(d, &lp, &mut ns, margin);
-        if nv > v + 1e-7 { v = nv; s = ns; }
+        ascent_ps(d, &lp, &mut candidate_schedules, &mut candidate_probs);
+        let candidate_value = group_moves(d, &lp, &mut candidate_schedules, margin);
+        if candidate_value > value + 1e-7 {
+            value = candidate_value;
+            schedules = candidate_schedules;
+        }
     }
     // add optional G1s that cost no affinity (race sparks)
-    fill_optional(d, &lp, &mut s, v);
-    let mut sc = [[Choice::Rest; NT]; 4];
-    sc[..N].copy_from_slice(&s);
-    Res { s: sc }
+    fill_optional(d, &lp, &mut schedules, value);
+    let mut result_schedules = [[Choice::Rest; NT]; 4];
+    result_schedules[..N].copy_from_slice(&schedules);
+    Res { s: result_schedules }
 }
 /// `optimize` for a structure of three or four members (`members` of a [usize; 4] with `NONE` last for three).
 pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], iters: usize, seed: u64, margin: f64) -> Res {
@@ -706,9 +813,10 @@ pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], iters: usize, seed: u64, ma
 }
 
 fn when(t: usize) -> String {
-    let tt = t; let y = if tt < 24 { "Jr" } else if tt < 48 { "Cl" } else { "Sr" };
-    let w = tt % 24; let mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][w / 2];
-    format!("{} {}-{}", y, if w % 2 == 0 { "E" } else { "L" }, mon)
+    let year = if t < 24 { "Jr" } else if t < 48 { "Cl" } else { "Sr" };
+    let turn_in_year = t % 24;
+    let month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][turn_in_year / 2];
+    format!("{} {}-{}", year, if turn_in_year % 2 == 0 { "E" } else { "L" }, month)
 }
 /// Short uma label for chart columns.
 fn short_name(name: &str) -> String {
