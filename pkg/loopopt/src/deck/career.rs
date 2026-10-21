@@ -26,6 +26,7 @@
 //!
 //! The next career the page picks (`next`) is `sim::plan::index_rule`; the simulator (`simulate`) is `sim`.
 use super::*;
+use super::enumerate::{SearchMode, SearchOutcome};
 mod cache;
 mod sim;
 
@@ -1055,10 +1056,11 @@ impl<'a> Env<'a> {
             Some(x) => x,
             None => {
                 let n0 = self.space.nodes.get();
-                let (r, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+                let SearchOutcome { decks: r, incomplete } = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)],
+                    SearchMode::Best { seed: f64::NEG_INFINITY });
                 work += 2 * (self.space.nodes.get() - n0) + 10_000;
                 // (a `cap_free` job records no product proof: `solve` and the plan bound with those through EXACT_RHO)
-                self.last_pv = if over || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
+                self.last_pv = if incomplete.is_some() || self.space.dj.cap_free { None } else { r.first().map(|x| x.0) };
                 match r.into_iter().next() { Some(x) => x, None => { self.cfs.work += work; return DeckRes::NoDeck; } }
             }
         };
@@ -1070,10 +1072,11 @@ impl<'a> Env<'a> {
         let the = if th.is_finite() && th > 0.0 { th / (c * (1.0 + 1e-9)) } else { f64::NEG_INFINITY };
         let n0 = self.space.nodes.get();
         crate::deck::CF_ON.with(|x| x.set(true)); crate::deck::CF_LIM.with(|x| x.set(n0.saturating_add(budget.saturating_sub(work) / CF_NODE_WORK)));
-        let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0.max(the))], false, f64::NEG_INFINITY, 1.0, self.space.band_cap());
+        let SearchOutcome { decks: mut more, incomplete } = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0.max(the))],
+            SearchMode::Band { ratio_cap: 1.0, max_decks: self.space.band_cap() });
         crate::deck::CF_ON.with(|x| x.set(false)); crate::deck::CF_LIM.with(|x| x.set(usize::MAX));
         work += CF_NODE_WORK * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
-        let mut full = !over;
+        let mut full = incomplete.is_none();
         more.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
         for (v, s) in more {
             if work > budget { full = false; break; }
@@ -1105,12 +1108,13 @@ impl<'a> Env<'a> {
         // unseeded search finds (the seed is below the maximum, so the first deck reaching it is never pruned)
         let rho = self.space.rho_top();
         let seed = if th.is_finite() && th > 0.0 { th / (rho * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
-        let (r, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)], true, seed, 1.0, 1);
+        let SearchOutcome { decks: r, incomplete } = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], 0.0)],
+            SearchMode::Best { seed });
         self.work += 2 * (self.space.nodes.get() - n0) + 10_000;
         // what it proves (`ruled`): the deck found is the best (the first deck above the seed the search keeps is only
         // ever replaced by a better one, and a branch is pruned only below the best so far); none found, every deck is
-        // at most the seed. Nothing when the search gave up (`over`, more than 128 card characters).
-        self.last_pv = if over { None } else if let Some(x) = r.first() { Some(x.0) } else if seed > f64::NEG_INFINITY { Some(seed) } else { None };
+        // at most the seed. Nothing when enumeration was incomplete (more than 128 card characters).
+        self.last_pv = if incomplete.is_some() { None } else if let Some(x) = r.first() { Some(x.0) } else if seed > f64::NEG_INFINITY { Some(seed) } else { None };
         let Some((pv, sel)) = r.into_iter().next() else { return (if seed > f64::NEG_INFINITY { DeckRes::Bounded } else { DeckRes::NoDeck }, None) };
         // the candidate's own ceiling from its best product deck
         if rho * c * pv * (1.0 + 1e-9) < th { return (DeckRes::Bounded, Some((pv, sel))); }
@@ -1126,12 +1130,13 @@ impl<'a> Env<'a> {
         while self.work <= self.budget {
             let n0 = self.space.nodes.get();
             crate::deck::SB_ON.with(|c| c.set(true)); crate::deck::SB_USED.with(|c| c.set(0));
-            let (mut more, over) = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)], false, f64::NEG_INFINITY, rho, self.space.band_cap());
+            let SearchOutcome { decks: mut more, incomplete } = self.space.search(&self.model, &[t], &[uid], &[(vec![(0, 0.0)], best.0)],
+                SearchMode::Band { ratio_cap: rho, max_decks: self.space.band_cap() });
             crate::deck::SB_ON.with(|c| c.set(false));
             // the band built without the cap (SBOUND=2): every deck in it may beat the bar, none is cut by rho
             let nocap = crate::deck::SB_USED.with(|c| c.get()) == 2;
             self.work += 2 * (self.space.nodes.get() - n0) + 5 * more.len() + 10_000;
-            if over {
+            if incomplete.is_some() {
                 self.overflows += 1;
                 match ladder.next() { Some(x) if !nocap => { rho = x; continue; } _ => { self.cert = 0.0; break; } }
             }
@@ -1829,4 +1834,3 @@ mod tests {
         }));
     }
 }
-

@@ -1,22 +1,47 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
 use super::*;
 
+/// The two enumeration passes have different stopping rules and inputs.
+pub(super) enum SearchMode {
+    /// Keep the first highest-value deck strictly above the initial floor.
+    Best { seed: f64 },
+    /// Collect decks that can reach a clause's threshold under its structure-class cap.
+    Band { ratio_cap: f64, max_decks: usize },
+}
+
+/// Why enumeration stopped before checking all relevant decks. This is not an exact-scoring certificate.
+pub(super) enum SearchStop {
+    CharacterLimit,
+    UnsupportedCapFreeProof,
+    CapFreeNodeLimit,
+    OutputLimit,
+}
+
+pub(super) struct SearchOutcome {
+    pub(super) decks: Vec<(f64, Sel)>,
+    /// None means enumeration finished under the requested bounds; exact scoring may still be needed.
+    pub(super) incomplete: Option<SearchStop>,
+}
+
 impl<'a> DeckSpace<'a> {
     /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
     /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
-    /// included) over those pairs. `best`: return the one deck
-    /// with the highest value of the single clause above `seed` (none if no deck beats it; ties: the first found).
-    /// Otherwise return every deck
-    /// for which some clause has c * value >= threshold, c the deck's class cap (`cap_class`, `caps`) at most rho; at
-    /// most `cap` decks. The returned flag means enumeration could not finish: the output cap was reached,
-    /// the legal-character representation overflowed, or cap-free search lacked a supported proof or exceeded
-    /// its node limit. It does not identify which condition occurred.
-    pub(super) fn search(&self, model: &Model, us: &[usize], ids: &[u32], clauses: &[(Vec<(usize, f64)>, f64)], best: bool, seed: f64, rho: f64, cap: usize) -> (Vec<(f64, Sel)>, bool) {
+    /// included) over those pairs. Best mode requires one clause and keeps its highest-value deck above `seed`
+    /// (none if no deck beats it; ties: the first found). Band mode collects decks for which some clause has
+    /// c * value >= threshold, c the deck's class cap (`cap_class`, `caps`) at most `ratio_cap`.
+    /// Reaching `max_decks` ends the band immediately and reports `OutputLimit`, even if that was the last deck.
+    pub(super) fn search(&self, model: &Model, us: &[usize], ids: &[u32], clauses: &[(Vec<(usize, f64)>, f64)], mode: SearchMode) -> SearchOutcome {
+        // Keep the numerical kernel's existing inputs and branch order. These unused-mode defaults were
+        // previously repeated at every call site.
+        let (best, seed, rho, cap) = match mode {
+            SearchMode::Best { seed } => (true, seed, 1.0, 1),
+            SearchMode::Band { ratio_cap, max_decks } => (false, f64::NEG_INFINITY, ratio_cap, max_decks),
+        };
         let nu = self.unc.len(); let size = self.dj.deck_size;
-        if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) { return (vec![], false); }
+        if self.locked.iter().any(|&l| ids.iter().any(|&id| self.cards[l].blocks(id))) { return SearchOutcome { decks: vec![], incomplete: None }; }
         let (legal_rc, set_id) = self.reduced_cached(model, us, ids);
         let lt = self.legal_tabs(&legal_rc, set_id, ids);
-        if lt.over { return (vec![], true); }
+        if lt.over { return SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit) }; }
         let nplain = lt.nplain;
         let ebit: &[u128] = &lt.ebit;
         let nk = self.kinds_all.len();
@@ -29,9 +54,10 @@ impl<'a> DeckSpace<'a> {
         // per chain level; off when an entry has an outcome hinting two targets (`state_value`)
         // The cap-free band (`CF_ON`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds at every node and
         // leaf (`cf_cheap`, then `cf_ub`, on the state-conditioned tables of mode 2) are its only prunes, no cap in any
-        // test; it needs every legal entry `cf_ok` (else it proves nothing: `over`) and stops past CF_LIM nodes (`over`)
+        // test; it needs every legal entry `cf_ok` (else UnsupportedCapFreeProof) and stops past CF_LIM nodes
+        // (CapFreeNodeLimit).
         let cfm = !best && clauses.len() == 1 && clauses[0].0.len() == 1 && CF_ON.with(|c| c.get());
-        if cfm && !legal_rc.iter().all(|&j| self.srcs[j].cf_ok) { return (vec![], true); }
+        if cfm && !legal_rc.iter().all(|&j| self.srcs[j].cf_ok) { return SearchOutcome { decks: vec![], incomplete: Some(SearchStop::UnsupportedCapFreeProof) }; }
         let cf_lim = if cfm { CF_LIM.with(|c| c.get()) } else { usize::MAX };
         let cfs = if cfm { cf_check() } else { 0.0 };
         let sbm = if cfm { 2 } else if !best && clauses.len() == 1 && clauses[0].0.len() == 1 && SB_ON.with(|c| c.get()) { sb_mode() } else { 0 };
@@ -64,7 +90,6 @@ impl<'a> DeckSpace<'a> {
         let t_cfg = Instant::now();
         let mut out: Vec<(f64, Sel)> = vec![];
         let mut bestv = if best { seed } else { f64::NEG_INFINITY };
-        let mut over = false;
         let counts = self.counts_all();
         // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
         struct Cfg { root: f64, code: u64, code_real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<GTab>, rpk: std::rc::Rc<GTab>, rnew: f64, rcv: Vec<f64> }
@@ -955,8 +980,8 @@ impl<'a> DeckSpace<'a> {
             // the configuration's root: no deck of it can reach the bar
             let sb_root = if cfm { let x = cf_cheap(&[]); if cfs == 0.0 && x * (1.0 + 1e-9) < sb_bar { x } else { x.min(cf_ub(&[], if cfs == 0.0 { sb_bar } else { 0.0 })) } } else if sbm > 0 { sb_ub(&[]) } else { 0.0 };
             if cfm {
-                // (the cap-free band: past its node limit it stops, `over`; CF_CHECK passes the root at cfs times its bound)
-                if self.nodes.get() > cf_lim { return (out, true); }
+                // (the cap-free band: past its node limit it stops; CF_CHECK passes the root at cfs times its bound)
+                if self.nodes.get() > cf_lim { return SearchOutcome { decks: out, incomplete: Some(SearchStop::CapFreeNodeLimit) }; }
                 if sb_root * cfs.max(1.0) * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
             } else if sbm > 0 && sb_root * (1.0 + 1e-9) < sb_bar { SBN.with(|c| c.borrow_mut().0 += 1); continue; }
             // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
@@ -1191,7 +1216,7 @@ impl<'a> DeckSpace<'a> {
                     let mut sbx = |sel: &[usize]| -> bool {
                         if cfm {
                             // the cap-free band: the bound at every node and leaf, nothing else prunes; past the node
-                            // limit every child fails and the search ends `over`
+                            // limit every child fails and the search ends with CapFreeNodeLimit
                             if cf_over.get() { return false; }
                             if self.nodes.get() > cf_lim { cf_over.set(true); return false; }
                             let d = sel.len();
@@ -1277,13 +1302,13 @@ impl<'a> DeckSpace<'a> {
                     pid_next = st.pid;
                     avail_buf = avail; st_sel = st.sel; st_pw = st.pw; st_pg = st.pg;
                     bestv = bcell.get();
-                    if stop { over = true; return (out, over); }
-                    if cf_over.get() { return (out, true); }
+                    if stop { return SearchOutcome { decks: out, incomplete: Some(SearchStop::OutputLimit) }; }
+                    if cf_over.get() { return SearchOutcome { decks: out, incomplete: Some(SearchStop::CapFreeNodeLimit) }; }
                 }
             }
         }
         SPT.with(|c| { let mut v = c.get(); v.1 += t_dfs.elapsed().as_secs_f64(); c.set(v); });
-        (out, over)
+        SearchOutcome { decks: out, incomplete: None }
     }
     /// The product search's dominance table of group `gi` (entries `l`) under key `code`: per position p, the earlier
     /// positions a whose entry A could take B = l[p]'s place in any deck (borrowed only if B is, B's locked card if B

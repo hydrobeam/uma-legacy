@@ -1,5 +1,6 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
 use super::*;
+use super::enumerate::{SearchMode, SearchOutcome};
 
 /// Per-uma decks: each trainee runs her own best legal deck, the same one in all the lineages she heads (three in a
 /// four-uma loop, one in a three-uma rotation).
@@ -206,7 +207,8 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
             for (_, x) in seeds.iter().take(3) { score(x, &mut ent); }
             if ent.best.is_none() {
-                let (r, _) = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+                let SearchOutcome { decks: r, .. } = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), 0.0)],
+                    SearchMode::Best { seed: f64::NEG_INFINITY });
                 if let Some((_, sel)) = r.first() { let x = space.pdeck(sel, &[uid]); score(&x, &mut ent); }
             }
             ent.level = 1.0;
@@ -217,10 +219,11 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
-            let (mut cands, over) = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), thr)], false, f64::NEG_INFINITY, lv, space.band_cap());
+            let SearchOutcome { decks: mut cands, incomplete } = space.search(model, &[u], &[uid], &[(qs.iter().map(|&q| (0, q)).collect(), thr)],
+                SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() });
             spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
             t_band.set(t_band.get() + t0.elapsed().as_secs_f64());
-            if over { cap_hit.set(true); complete = false; }
+            if incomplete.is_some() { cap_hit.set(true); complete = false; }
             cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
             if complete { for (v, sel) in &cands {
                 if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().0 { break; }
@@ -350,7 +353,8 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
         for &(_, j) in &seeds { score(&sky[j], &mut list); }
         if list.is_empty() {
-            let (r, _) = space.search(model, &us, &ids, &[(pairs.clone(), 0.0)], true, f64::NEG_INFINITY, 1.0, 1);
+            let SearchOutcome { decks: r, .. } = space.search(model, &us, &ids, &[(pairs.clone(), 0.0)],
+                SearchMode::Best { seed: f64::NEG_INFINITY });
             if let Some((_, sel)) = r.first() { let x = space.pdeck(sel, &ids); score(&x, &mut list); }
         }
         let mut complete = true;
@@ -358,10 +362,11 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             n_band.set(n_band.get() + 1);
             let t0 = Instant::now();
             let n0 = space.nodes.get();
-            let (mut cands, over) = space.search(model, &us, &ids, &[(pairs.clone(), need(&list))], false, f64::NEG_INFINITY, lv, space.band_cap());
+            let SearchOutcome { decks: mut cands, incomplete } = space.search(model, &us, &ids, &[(pairs.clone(), need(&list))],
+                SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() });
             spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
             t_band.set(t_band.get() + t0.elapsed().as_secs_f64());
-            if over { cap_hit.set(true); complete = false; }
+            if incomplete.is_some() { cap_hit.set(true); complete = false; }
             cands.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
             let mut seen: crate::FxSet<(Vec<usize>, usize, usize)> = Default::default();
             if complete { for (v, sel) in &cands {
