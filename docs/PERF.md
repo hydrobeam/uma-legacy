@@ -8,7 +8,7 @@ speed record: where it stands, what is open, what was tried and rejected.
 1. **Setup.** Build the starting binary twice and diff its outputs on every job before trusting it as a reference:
    anything that sums in `HashMap` order changes its last bits from run to run.
 2. **Reference.** A deterministic build, committed as WIP. Every later item must be byte-identical to the previous
-   accepted state (ignoring `timing_s`), which is stricter than `val/cmp2.py`.
+   accepted state (ignoring the timings: `val/same.py`), which is stricter than `val/cmp2.py`.
 3. **Measure.**
    - Phase timers or callgrind on the fast jobs (pal_U, pal_A2 per-uma) to pick targets; total instruction counts
      are a noise-free A/B signal. Line-level `callgrind_annotate` shows whether a phase's cost is the work or the scan
@@ -20,6 +20,19 @@ speed record: where it stands, what is open, what was tried and rejected.
 5. **Commit.** One item per commit, the measured gain in the message. Revert anything under about 3% unless it is
    trivially small.
 6. **Final.** Strip timers, rebuild, full validation, wasm timings on Node, `./build.sh page test`.
+
+**What "byte-identical" covers.** An output holds four kinds of field, and each has its own rule:
+- *Results* (picks, decks, probabilities, the plan's estimates and options, the `complete` / `proven` flags): byte for
+  byte, always, for speed work. Only a model change moves them, with new references in the same commit.
+- *Work counters* (`work.nodes`, `work.prof`, `sc_*`, `score_calls`, the per-phase node counts): byte for byte too; a
+  change that removes work changes them, so it needs the owner's sign-off, and its commit names the counters that moved.
+- *Timings* (`timing_s`, `*_ms`): ignored.
+- *The worker's saved state* (IndexedDB): its format can change only with `STATE_VERSION` (`career.rs`) bumped, so
+  an older state is refused whole and not misread.
+
+`val/cmp2.py` checks less than this (rounded P(all) per result; changed decks print "differ(ties?)" and pass) and
+`val/planval.py` skips the work counters: passing them is necessary, not sufficient. `uv run val/same.py TAG` checks
+byte identity: every val output against its reference, all fields but the timings.
 
 ## Rules of thumb
 
@@ -115,6 +128,24 @@ stable sort's order), seeds valued before the blocks lookups, sources borrowed f
 identity keys; `best_loop` (unreachable) removed.
 
 ## Open in the deck search (estimates)
+
+- One shared deck, three or four trainees: the loop search's scoring (`multi.rs`, `score` and the report's results)
+  calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
+  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and
+  the product of event outcomes on every call, though they depend only on the ordered active groups (`Env::corners`
+  repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
+  (equal rewards' weights are not merged: that regroups sums). Not timed; profile `joint_prep` against `joint_eval`
+  first.
+- Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
+  per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has
+  the same symmetry. Today's jobs reach at most three targets on one card, so this matters only for wide custom
+  target sets.
+- Input limits: `DeckSpace::search` builds `7u64.pow(i)` before checking its kind count (`7^23` overflows `u64`), base
+  seven assumes at most six of a kind while `deck_size` accepts any `usize`, and `lock_bits` is an eight-bit mask.
+  The page sends six-card decks and at most eight kinds; direct JSON can reach the overflows. Check the dimensions once,
+  before allocating or shifting.
+- Retained-memory caps count entries, not bytes (`DECK_KEEP_CAP`, the corner and scoring caches), though an entry grows
+  as 2^nu with the outfit count; wasm memory grows and never shrinks. Measure peak memory on a large job before acting.
 
 - Pruning without the assumed caps: career searches now rerun detected breaches with proven bounds
   (`best_deck_cf`, below). The loop search still relies on assumed class caps; a scored breach does not clear its
@@ -275,6 +306,16 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
+- Looped careers' `Want::Stats` (`sim/plan.rs`, the looped block): its statistics are read only by `proxy_check`
+  (their options' scores come from a separate `Want::Keep` call), but the call also searches, fills caches and adds
+  proofs, so it cannot simply go: `score_career_` needs splitting into ordered stateful preparation and pure
+  evaluation, skipping the statistics when `proxy_check` is off. At most 178 ms of p16_88's 964 ms is in
+  `score_career` at all (the looped block's 464 ms is mostly search); work counters change (sign-off).
+- A kept roll (`next.roll`) is answered after `run_career` builds the model, the deck space and the trainee ceilings,
+  though `roll_answer` needs them only when y < 0.5. Answering first would cut the page's Reroll latency; keep
+  `Env::drop`'s restoring of `DECK_KEEP` on every return. Not timed.
+- Corner tables: `Env::corners_kept` returns a deep copy of an `Rc`-held table on every hit (2^nu doubles per outfit);
+  sharing the `Rc` saves the copies. A prototype exists outside the repo, never compiled clean or tested.
 - Parallel helper workers are a last resort: they hide work rather than remove it, and a parallel plan is
   deterministic only with the winners-only cache and exact, unbudgeted searches.
 

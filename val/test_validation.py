@@ -17,7 +17,7 @@ class ValidationExitTests(unittest.TestCase):
         self.plan = self.val / 'plan'
         self.plan.mkdir(parents=True)
         (self.root / 'pkg/loopopt/data/global').mkdir(parents=True)
-        for name in ('cmp2.py', 'runval.py', 'planval.py'):
+        for name in ('cmp2.py', 'runval.py', 'planval.py', 'same.py'):
             shutil.copyfile(Path(__file__).with_name(name), self.val / name)
         self.solver = self.root / 'solver'
         self.output = {'results': [{'p_all': 0.5, 'p_minus1': 0.75,
@@ -63,6 +63,18 @@ class ValidationExitTests(unittest.TestCase):
 
     def test_comparison_fails_without_comparisons(self):
         self.assertNotEqual(self.run_script('cmp2.py', 'trial', 'ref').returncode, 0)
+
+    def test_whole_output_ignores_timings_only(self):
+        self.write(self.val / 'ref__tiny.out', {**self.output, 'timing_s': 1.0, 'work': {'nodes': 5, 'x_ms': 2}})
+        same = {**self.output, 'timing_s': 9.0, 'work': {'nodes': 5, 'x_ms': 7}}
+        self.write(self.val / 'trial__tiny.out', same)
+        self.assertEqual(self.run_script('same.py', 'trial').returncode, 0)
+        self.write(self.val / 'trial__tiny.out', {**same, 'work': {'nodes': 6, 'x_ms': 7}})
+        result = self.run_script('same.py', 'trial')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('.work.nodes', result.stdout)
+        (self.val / 'trial__tiny.out').unlink()
+        self.assertNotEqual(self.run_script('same.py', 'trial').returncode, 0)   # nothing compared
 
     def test_plan_passes_matching_output(self):
         self.assertEqual(self.plan_run().returncode, 0)
