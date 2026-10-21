@@ -442,7 +442,8 @@ builders, bred from each other and from her), at least her odds now. Her step (a
 min over n of sum_{j<n} 1/lam_j + 1/p_n (n up to `CONT_N` = 500; `cost_lo` stops once the building alone reaches the
 best cost, so the cap decides nothing). `Cont::plan` and `Cont::cost_lo` are memoised per Cont by the bits of p
 (`PLAN_MEMO=1` prints lookups and hits, `PLAN_MEMO_CHECK` recomputes every hit and panics unless bit-identical,
-`PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap). V = min over trios of side(A) + side(B) + 1/p_C: A and B
+`PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap); `score_career` costs a lifted candidate's step only where it
+could still set V's minimum against a lower bound per cell of her odds (`Cont::cost_lb`), the same V to the bit. V = min over trios of side(A) + side(B) + 1/p_C: A and B
 candidates, each side either a real 8/8 veteran of hers (cost 0) or a fresh 8/8 (her step; the veteran her best career
 now would leave, `Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), C
 every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real 8/8 with poor parents

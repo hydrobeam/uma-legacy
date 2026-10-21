@@ -70,7 +70,7 @@ generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a l
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0`, as by default it
 inlines every function that has one caller, whatever its size. The planner's long loops are split the same way:
 `outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s fold and outcome loop (`sc_fold`,
-`sc_outcomes`); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
+`sc_outcomes`, whose loop is `sc_loop`, one copy per specialisation); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
 the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
 (`--liftoff-only`) took export 2's plan 39 s against 22 s (at be6bb44, before the planner's loops were split), so slow
@@ -177,6 +177,20 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   12.80 -> 2.29 s, `hi_ms` 16.96 -> 6.85 s, user 45.5 -> 35.9 s; e2_v24_t10 `hi_ceil_ms` 825 -> 47 ms, `hi_ms` 891 ->
   105 ms (user 22.5 -> 23.4 s: `sc_loop_ms` moved 12.0 -> 13.4 s between the runs, which is noise). Dense marks
   (most 8-target jobs) take the old path.
+- `score_career`'s outcome loop, specialised per scoring (2026-10-21, on 64aa10e; outputs byte-identical, the `sc_*`
+  step counters aside). Each call says what its caller reads (`Want`): the stats-only scorings (`base_s`, half the
+  calls) take no step cost, trio or y, and the scorings for E[y] keep no stats. The loop (`sc_loop`) is one copy per
+  (products taken per outcome, a target collapsed, y wanted, stats wanted); candidates with a slot are slot-ordered,
+  so a slot's setups are a range and the per-outcome `Option` match goes. A collapsed target's representative records
+  the candidates it lifts, so the leaves reading it add those stats without retaking its row. V after her is found
+  lazily: a lifted candidate's step is costed only where a trio valued at her odds' cell bound (`Cont::cost_lb`:
+  cost_lo at the cell's top, 128 cells per binade, less 1e-9 for libm rounding; derived in the code) could still set
+  the minimum. e2_v24_t10 (166 scorings, 174M outcomes): `bs.cost` calls 70.5M -> 5.1M; on the laptop throttled to
+  400 MHz, `sc_loop_ms` 12.3 -> 4.2 s, `score_ms` 14.9 -> 6.2 s, user CPU 22.9 -> 11.8 s (run alone); a paired rerun
+  while another job ran, slower throughout: `score_ms` 77.5 -> 45.1 s, user 118.6 -> 86.7 s. The val/plan jobs, run
+  one at a time back to back: `sc_loop_ms` about halved (p10 268 -> 133 ms, gm16_nu8 480 -> 280, p16_88 313 -> 141).
+  What remains is the stats-only scorings' per-outcome sums and the fold (`sc_fold_ms`, now about a third of
+  `score_ms` at 10 targets).
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
   work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job
   searches nothing (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
@@ -200,8 +214,7 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 - The page's planner against simpler policies: the simulator's `index` policy (468c861) runs it on the same draws as
   `greedy`; no comparison of useful size has been run (about 0.2-0.5 s per plan step on 10-16-veteran pools, minutes
   per run of a few hundred careers).
-- `score_career`'s outcome loop: its per-candidate branches (about 70 ns per outcome, estimated before 4ad4491 reworked
-  the loop). `multi.rs`'s `ents_of` still clones.
+- `multi.rs`'s `ents_of` still clones.
 - Cooperative cancel (a superseded plan keeps its worker and caches): a SharedArrayBuffer flag polled at the progress
   points and in `best_deck`, with no partial work stored; it needs COOP/COEP headers on the site (a deploy decision),
   terminate-and-restart kept as the fallback.
@@ -226,7 +239,8 @@ marked, each from the commit named; nothing after that commit has re-timed it.
 | A Pareto filter on `outcome_hi`'s anchors (about 30% survive) | not needed | the branch and bound's root test drops about 98% of anchors at about 0.3 us each |
 | A fused depth-first ceiling pass in `outcome_hi` | slower | the vectorised `leaf_products` is memory-bound but faster |
 | Partner pruning by ceiling in `score_career`'s setups | not exact | `val` can run a fill-mode deck search that adds to the cache; setups cost 48-80 ms |
-| Skipping cost lookups for candidates whose step can't move (`cost_lo` bound) | exact; lookups -62% | about 6% of the outcome loop |
+| Skipping cost lookups for candidates whose step can't move (`cost_lo` bound) | exact; lookups -62% | about 6% of the outcome loop (superseded: the lazy V pass, *Where it stands*, skips the steps that can't set the minimum) |
+| A 4096-entry step-cost cache per candidate (against 256) | `bs.cost` calls 35.3M -> 26.5M on e2_v24_t10, `sc_loop_ms` -1% | `Cont::plan`'s memo already caught those repeats |
 | Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
 | An index on `ruled` | scans about 1 ms per job | nothing to gain |
 | Carrying `ruled` across pools (per setup, like SEEN) | changes outputs | `certified` takes a proxy career a foreign proof certifies, possibly another pair or deck of equal value |
