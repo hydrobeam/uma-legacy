@@ -73,7 +73,7 @@ pub(super) fn miss_draws(k: usize, n: usize, t: usize, cap: usize) -> f64 {
 /// `miss_draws` at a fractional draw count h: IT gives a near-fixed whole number of draws per setup, so h is read as
 /// floor(h) or floor(h) + 1 draws with the fractional part as the weight of the second.
 pub(crate) fn hint_miss(k: usize, n: usize, h: f64, hinc: u32) -> f64 {
-    let cap = (5 + hinc.max(1) as usize - 1) / hinc.max(1) as usize;
+    let cap = 5_usize.div_ceil(hinc.max(1) as usize);
     let whole_draws = h.max(0.0).floor();
     let fraction = h - whole_draws;
     let whole_draws = whole_draws as usize;

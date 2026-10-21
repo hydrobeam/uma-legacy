@@ -438,7 +438,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
             // (built per count vector and dropped after it: each one has its own code, so no key repeats)
             let kd: &KeyData = &make_key(code);
             let dmask = |b: usize, nb: usize| -> u128 {
-                kd.d_own[b] | if nb - ebor[b] as usize + 1 <= allowed_borrow { kd.d_bor[b] } else { 0 }
+                kd.d_own[b] | if nb - (ebor[b] as usize) < allowed_borrow { kd.d_bor[b] } else { 0 }
             };
             let alive = |j: usize| {
                 is_locked[j]
@@ -487,10 +487,10 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
                     };
                     let mut out = |sel: &[usize], chm: u128, nb: usize| {
                         let pals = sel.iter().filter(|&&j| cards[rel[j]].pal).count() + plain;
-                        if let Some(p) = dj.pals {
-                            if p != pals {
-                                return;
-                            }
+                        if let Some(p) = dj.pals
+                            && p != pals
+                        {
+                            return;
                         }
                         if !locked.iter().all(|l| sel.iter().any(|&j| rel[j] == *l)) {
                             return;
@@ -767,7 +767,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         }
         let stats = json!({"decks_built": n_decks, "decks_on_frontier": n_front, "relevant_cards": nrel, "cards_dropped": n_card_dropped,
                            "decks_swapped": n_swapped, "plain_pals": plain_names});
-        return run_multi(d, cr, &model, &sj, &dj, pd, stats, space.as_ref().unwrap());
+        run_multi(d, cr, &model, &sj, &dj, pd, stats, space.as_ref().unwrap())
     }
 }
 

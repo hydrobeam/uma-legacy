@@ -92,7 +92,7 @@ impl Bucket {
         self.lv.truncate((first_word + 1) * LVW);
         self.lq.truncate((first_word + 1) * LVW);
         if self.lv.len() == (first_word + 1) * LVW {
-            let keep_bits = if from % 64 == 0 { 0 } else { u64::MAX >> (64 - from % 64) };
+            let keep_bits = if from.is_multiple_of(64) { 0 } else { u64::MAX >> (64 - from % 64) };
             for word in &mut self.lv[first_word * LVW..] {
                 *word &= keep_bits;
             }
@@ -488,7 +488,7 @@ impl PDeck {
                "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
     }
     pub(super) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>) -> bool {
-        self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).map_or(false, |c| c.blocks(uma)))
+        self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|c| c.blocks(uma)))
     }
     /// the deck's identity (cards, end links, variants, plain pals) as a fixed key: at most `DECK_ID_N` cards (a deck
     /// holds at most 6: the key codes count kinds in base 7), the unused places 0

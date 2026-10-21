@@ -291,7 +291,6 @@ pub(super) struct JointScratch {
     nd: Vec<f64>,
 }
 /// `joint_eval` with its buffers from `sx`
-#[allow(clippy::too_many_arguments)]
 pub(super) fn joint_eval_in(
     model: &Model,
     u: usize,
@@ -342,17 +341,17 @@ pub(super) fn joint_eval_in(
         Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
         None => model.fixed_factor(),
     };
-    let want_sets = ext.as_ref().map_or(false, |x| !x.sets.is_empty()) && nu <= 16;
+    let want_sets = ext.as_ref().is_some_and(|x| !x.sets.is_empty()) && nu <= 16;
     if let Some(x) = ext.as_deref_mut() {
         if marg {
             x.marg = vec![0.0; nq * no * nu];
         }
         if want_sets {
-            x.sets = vec![0.0; nq * no << nu];
+            x.sets = vec![0.0; (nq * no) << nu];
         }
     }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
-    let su1 = ext.as_ref().map_or(true, |x| x.su.iter().all(|&s| s == 1.0));
+    let su1 = ext.as_ref().is_none_or(|x| x.su.iter().all(|&s| s == 1.0));
     dist.resize(if want_sets { nq * no } else { 0 }, vec![]);
     acc.clear();
     acc.resize(nq * no, (0.0f64, 0.0f64));
@@ -408,11 +407,9 @@ pub(super) fn joint_eval_in(
                 for k in 0..nu {
                     let lp = LandPre::new(st[k], ew[k], q);
                     fv[base + k] = [lp.f(ng[k], nh[k]), lp.f(ng[k], 0.0), lp.f(0.0, 0.0)];
-                    if !su1 {
-                        if let Some(x) = &ext {
-                            for v in fv[base + k].iter_mut() {
-                                *v *= x.su[k];
-                            }
+                    if !su1 && let Some(x) = &ext {
+                        for v in fv[base + k].iter_mut() {
+                            *v *= x.su[k];
                         }
                     }
                 }
@@ -478,10 +475,8 @@ pub(super) fn joint_eval_in(
                 if !in_cl[k] {
                     let f = fv[i * nu + k][0];
                     push(&mut ua, &mut ub, i, f, 1.0 - f);
-                    if marg {
-                        if let Some(x) = ext.as_deref_mut() {
-                            x.marg[i * nu + k] += w * f;
-                        }
+                    if marg && let Some(x) = ext.as_deref_mut() {
+                        x.marg[i * nu + k] += w * f;
                     }
                 }
             }
@@ -542,11 +537,9 @@ pub(super) fn joint_eval_in(
                     }
                     ca[i] += wc * a;
                     cb[i] += wc * b;
-                    if marg {
-                        if let Some(x) = ext.as_deref_mut() {
-                            for &k in ts {
-                                x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize];
-                            }
+                    if marg && let Some(x) = ext.as_deref_mut() {
+                        for &k in ts {
+                            x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize];
                         }
                     }
                     if want_sets {
@@ -621,16 +614,14 @@ pub(super) fn joint_eval_in(
             let m = if n_targets <= nu + nfix { if n_targets == 0 { 1.0 } else { a + b } } else { 0.0 };
             acc[i].0 += w * a;
             acc[i].1 += w * if m1 { m } else { 0.0 };
-            if want_sets {
-                if let Some(x) = ext.as_deref_mut() {
-                    for (m, &p) in dist[i].iter().enumerate() {
-                        x.sets[(i << nu) + m] += w * p;
-                    }
+            if want_sets && let Some(x) = ext.as_deref_mut() {
+                for (m, &p) in dist[i].iter().enumerate() {
+                    x.sets[(i << nu) + m] += w * p;
                 }
             }
         }
     }
-    if let Some(x) = ext.as_deref_mut() {
+    if let Some(x) = ext {
         x.per_outfit.clear();
         x.per_outfit.extend(acc.iter().map(|a| a.0));
     }
@@ -863,15 +854,14 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
     // (checked once per source, when it is built: `Src::not_nuod`)
     for (src, _) in ents {
         if src.not_nuod {
-            if std::env::var("UPPER_WHY").is_ok() {
-                if let Some(g) = src
+            if std::env::var("UPPER_WHY").is_ok()
+                && let Some(g) = src
                     .fixed
                     .iter()
                     .chain(src.chains.iter().map(|x| &x.1))
                     .find(|g| group_gh(g).len() >= 2 && !group_nuod(g))
-                {
-                    eprintln!("why: group {:?}", g);
-                }
+            {
+                eprintln!("why: group {:?}", g);
             }
             return None;
         }
@@ -917,7 +907,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
     for _ in 0..filler {
         chains.push(((2, 2, 0), vec![]));
     }
-    chains.sort_by(|a, b| a.0.cmp(&b.0));
+    chains.sort_by_key(|a| a.0);
     let kinds: Vec<Kind> = chains.iter().map(|c| c.0).collect();
     // groups: cards joined by a target their chains both feed; at most one group of two cards, none larger. A target
     // that would join a larger group (three or more feeders, or two feeders other than the one pair) is "maxed": its
@@ -939,7 +929,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
             0 | 1 => false,
             2 => {
                 let p = (feeders[k][0], feeders[k][1]);
-                if pair.map_or(false, |x| x != p) {
+                if pair.is_some_and(|x| x != p) {
                     true
                 } else {
                     pair = Some(p);
@@ -1048,7 +1038,7 @@ pub(super) fn upper_na(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)
                         let mut prod = other;
                         if let Some(k) = &kl {
                             for ci in 0..chains.len() {
-                                if chains[ci].1.is_empty() || pair.map_or(false, |(a, b)| ci == a || ci == b) {
+                                if chains[ci].1.is_empty() || pair.is_some_and(|(a, b)| ci == a || ci == b) {
                                     continue;
                                 }
                                 prod *= k.marg[ci][m].iter().zip(&comp[ci]).map(|(p, c)| p * c).sum::<f64>();
@@ -1138,11 +1128,11 @@ impl LandPre {
 /// with its own indicators, so the expected product given x is at most the product of the targets' expected factors,
 /// equal without coupled groups. Hence value >= the exact P(all), equal when no group touches two targets.
 /// None when some entry fails the negative-association certification (`Src::multi`, `group_assoc`).
-pub(super) fn state_value<'s>(
+pub(super) fn state_value(
     model: &Model,
     u: usize,
     qs: &[f64],
-    ents: &[(&'s Src, Kind)],
+    ents: &[(&Src, Kind)],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if ents.iter().any(|e| e.0.multi) {
@@ -1153,11 +1143,11 @@ pub(super) fn state_value<'s>(
 /// `state_value` for the decks the cap-free search covers (`Src::cf_ok`: every group's levels negatively upper-orthant
 /// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
 /// apply.
-pub(super) fn state_value_cf<'s>(
+pub(super) fn state_value_cf(
     model: &Model,
     u: usize,
     qs: &[f64],
-    ents: &[(&'s Src, Kind)],
+    ents: &[(&Src, Kind)],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if ents.iter().any(|e| !e.0.cf_ok) {
@@ -1165,13 +1155,7 @@ pub(super) fn state_value_cf<'s>(
     }
     state_value_any(model, u, qs, ents, filler)
 }
-fn state_value_any<'s>(
-    model: &Model,
-    u: usize,
-    qs: &[f64],
-    ents: &[(&'s Src, Kind)],
-    filler: usize,
-) -> Option<Vec<f64>> {
+fn state_value_any(model: &Model, u: usize, qs: &[f64], ents: &[(&Src, Kind)], filler: usize) -> Option<Vec<f64>> {
     let nu = model.uncertain.len();
     let mut ch: Vec<(Kind, Option<usize>)> =
         ents.iter().enumerate().filter(|(_, e)| e.1 != (0, 0, 0)).map(|(i, e)| (e.1, Some(i))).collect();

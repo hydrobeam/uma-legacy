@@ -212,10 +212,10 @@ fn chain_stop_risk_is_a_mixture() {
 fn scenario_bans_exported() {
     let cr: CardsRaw = fixture_cards();
     for sc in ["unity", "gc"] {
-        assert!(cr.restrict.get(sc).map_or(false, |v| v.contains(&30081)), "{sc}: {:?}", cr.restrict);
+        assert!(cr.restrict.get(sc).is_some_and(|v| v.contains(&30081)), "{sc}: {:?}", cr.restrict);
     }
     for sc in ["ura", "trackblazer"] {
-        assert!(!cr.restrict.get(sc).map_or(false, |v| v.contains(&30081)));
+        assert!(!cr.restrict.get(sc).is_some_and(|v| v.contains(&30081)));
     }
 }
 fn job_with(v: Value) -> DeckJob {

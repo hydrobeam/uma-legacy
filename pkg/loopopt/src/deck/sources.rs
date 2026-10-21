@@ -180,7 +180,7 @@ pub(super) struct Src {
 impl Src {
     pub(super) fn finish(mut self) -> Self {
         self.chains.sort_by_key(|x| x.0);
-        self.fm = self.fixed.iter().flat_map(|g| group_gh(g)).map(|(k, g, h)| (k, 1.0 - g, 1.0 - h)).collect();
+        self.fm = self.fixed.iter().flat_map(group_gh).map(|(k, g, h)| (k, 1.0 - g, 1.0 - h)).collect();
         let mut cm: Vec<(usize, Vec<(u8, f64, f64)>)> = vec![];
         for (l, g) in &self.chains {
             for (k, pg, ph) in group_gh(g) {
@@ -205,7 +205,7 @@ impl Src {
         self.not_nuod =
             self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| group_gh(g).len() >= 2 && !group_nuod(g));
         self.multi = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).any(|g| !group_assoc(g));
-        self.cf_ok = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).all(|g| group_nuod_lvl(g));
+        self.cf_ok = self.fixed.iter().chain(self.chains.iter().map(|x| &x.1)).all(group_nuod_lvl);
         self
     }
     pub(super) fn is_empty(&self) -> bool {
@@ -563,14 +563,16 @@ impl<'a> Sources<'a> {
         out
     }
     pub(super) fn has_alts(&self, id: u32) -> bool {
-        self.dj.alts.iter().any(|a| a.0 == id && self.choices(id, a.1).map_or(false, |x| !x.is_empty()))
+        self.dj.alts.iter().any(|a| a.0 == id && self.choices(id, a.1).is_some_and(|x| !x.is_empty()))
     }
     /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
     /// then the ending choice's rewards at that link), taking choice variant `var`.
     pub(super) fn src(&self, c: &Card, stop: Option<u8>, var: u32) -> Src {
         let one = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-        let mut s = Src::default();
-        s.fixed = self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect();
+        let mut s = Src {
+            fixed: self.odds_for(c.id).into_iter().map(|(k, lvl, p)| one(k, lvl, p)).collect(),
+            ..Src::default()
+        };
         let tr = self.train(c);
         if tr.len() >= 2 {
             s.fixed.push(self.train_group(c, &tr));

@@ -617,10 +617,10 @@ impl<'a> DeckSpace<'a> {
                     if plain > nplain {
                         continue;
                     }
-                    if let Some(p) = self.dj.pals {
-                        if np + plain < p || plain > p {
-                            continue;
-                        }
+                    if let Some(p) = self.dj.pals
+                        && (np + plain < p || plain > p)
+                    {
+                        continue;
                     }
                     let gs = &mut gsb;
                     gs.clear();
@@ -871,7 +871,7 @@ impl<'a> DeckSpace<'a> {
                 // left has a bound, so a root, below it (or cannot reach the bar)
                 while pp < pord.len() {
                     let pe = &pend[pord[pp]];
-                    if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().map_or(true, |h| pe.u >= h.root)) {
+                    if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().is_none_or(|h| pe.u >= h.root)) {
                         break;
                     }
                     pp += 1;
@@ -1242,15 +1242,13 @@ impl<'a> DeckSpace<'a> {
             // (each slot's group and chain position in pick order, the chain slots, each group's best ratios)
             let mut cc_slot: Vec<(usize, usize)> = vec![];
             let mut cc_grm: Vec<std::rc::Rc<Vec<f64>>> = vec![];
-            if cfm {
-                if let Some(c) = &sbc {
-                    for g in 0..ng {
-                        for t in 0..gs[g].1 {
-                            cc_slot.push((g, c.slots[g][t]));
-                        }
+            if cfm && let Some(c) = &sbc {
+                for g in 0..ng {
+                    for t in 0..gs[g].1 {
+                        cc_slot.push((g, c.slots[g][t]));
                     }
-                    cc_grm = (0..ng).map(|g| cf_rmx_of(cf.gs[g].0)).collect();
                 }
+                cc_grm = (0..ng).map(|g| cf_rmx_of(cf.gs[g].0)).collect();
             }
             let cc_chain: Vec<usize> = (0..cc_slot.len()).filter(|&i| cc_slot[i].1 != usize::MAX).collect();
             let cc_cmax = sbc.as_ref().map_or(0, |c| c.kl.iter().map(|k| k.1 as usize).max().unwrap_or(0));
@@ -1628,7 +1626,7 @@ impl<'a> DeckSpace<'a> {
             });
             let cf_cheap = |sel: &[usize]| -> f64 {
                 let c = sbc.as_ref().unwrap();
-                if cf_kl.as_ref().map_or(false, |k| !k.nuod) {
+                if cf_kl.as_ref().is_some_and(|k| !k.nuod) {
                     return f64::INFINITY;
                 }
                 let mut cache = cc_cache.borrow_mut();
@@ -1737,7 +1735,7 @@ impl<'a> DeckSpace<'a> {
                             let (_, rows, _, _, nl) = chs(si);
                             let (r0, rt) = (rows[k].1, rows[(nl - 1) * nu + k].1);
                             let drop = if r0 > 0.0 { rt / r0 } else { 1.0 };
-                            if drop < 1.0 && b.map_or(true, |x| drop < x.1) {
+                            if drop < 1.0 && b.is_none_or(|x| drop < x.1) {
                                 b = Some((si, drop));
                             }
                         }
@@ -2109,7 +2107,7 @@ impl<'a> DeckSpace<'a> {
                             }
                             cv[ci] += fixed * m;
                         }
-                        if !nan && !pass(&cv) {
+                        if !nan && !pass(cv) {
                             return false;
                         }
                         if row != usize::MAX && !kr_have[row] {
@@ -2225,16 +2223,16 @@ impl<'a> DeckSpace<'a> {
                                         let full = bfill(ix, zm[ix] == 0, &mut brow);
                                         if zm[ix] != 0 { a_z(ix, zm[ix]) * (bin(&brow, nm[ix]) * r) } else { full * r }
                                     } else if zm[ix] != 0 {
-                                        a_z(ix, zm[ix]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[ix]) * r)
+                                        a_z(ix, zm[ix]) * (orow[ix].eval_in(q, pdw, pdg, nm[ix]) * r)
                                     } else {
-                                        orow[ix].eval(q, &pdw, &pdg) * r
+                                        orow[ix].eval(q, pdw, pdg) * r
                                     };
                                     for c in alt[ix].0..alt[ix].1 {
                                         let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] };
                                         let bn = if have_a {
                                             bin(&brow, nm[c])
                                         } else {
-                                            orow[ix].eval_in(q, &pdw, &pdg, nm[c])
+                                            orow[ix].eval_in(q, pdw, pdg, nm[c])
                                         };
                                         b = b.min(a_z(ix, zm[c]) * (bn * r));
                                     }
@@ -2243,7 +2241,7 @@ impl<'a> DeckSpace<'a> {
                                 cv[ci] += fixed * m;
                             }
                         }
-                        let ok = pass(&cv);
+                        let ok = pass(cv);
                         if rbc && ok {
                             let mut s = rbs.borrow_mut();
                             if s.len() < dep + 2 {
@@ -2548,10 +2546,10 @@ impl<'a> DeckSpace<'a> {
                     let (mut dwa, mut dga) = ([0.0f64; 32], [0.0f64; 32]);
                     let mut leaf = |sel: &[usize], pw: &[f64], pg: &[f64], cmk: u64| -> bool {
                         let pals = sel.iter().filter(|&&j| self.cards[self.rel[j]].pal).count() + plain;
-                        if let Some(p) = self.dj.pals {
-                            if p != pals {
-                                return false;
-                            }
+                        if let Some(p) = self.dj.pals
+                            && p != pals
+                        {
+                            return false;
                         }
                         if !self.locked.iter().all(|l| sel.iter().any(|&j| self.rel[j] == *l)) {
                             return false;

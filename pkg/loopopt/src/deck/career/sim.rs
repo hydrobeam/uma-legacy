@@ -347,7 +347,6 @@ fn fastc(env: &Env) -> Vec<Vec<Vec<(f64, f64)>>> {
 impl<'s, 'a> Sim<'s, 'a> {
     /// The simulator's machinery for a job (`simulate`'s, and the plan's through `plan::sim_for`): the landed sets in
     /// order of size, each owned trainee's ceiling at q = 1 (`hi`), the rank's star mix, `fastc`, the fixed gold factor
-    #[allow(clippy::too_many_arguments)]
     fn new(
         env: &'s mut Env<'a>,
         d: &'a Data,
@@ -564,7 +563,6 @@ impl<'s, 'a> Sim<'s, 'a> {
         self.qs = q;
     }
     /// `consider` at the candidate's chances q and spark scale c
-    #[allow(clippy::too_many_arguments)]
     fn consider_at(
         &mut self,
         st: &mut St,
@@ -588,11 +586,11 @@ impl<'s, 'a> Sim<'s, 'a> {
         self.n.ceil_pass += 1;
         let Some((tv, di)) = self.deck_for(t, q, c, ub, bv, buf) else { return };
         let pk = Pick { val: tv, t, a: a.min(b), b: a.max(b), d: di };
-        if let Some(k) = self.mi.get(t).copied().flatten() {
-            if tv > bv {
-                st.mb[k] = Some(pk);
-                st.cur = None;
-            }
+        if let Some(k) = self.mi.get(t).copied().flatten()
+            && tv > bv
+        {
+            st.mb[k] = Some(pk);
+            st.cur = None;
         }
         if tv > st.best.map_or(0.0, |p| p.val) {
             st.best = Some(pk);
@@ -694,7 +692,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     } else {
                         (0.0, pa)
                     };
-                    if bestb.map_or(true, |b| e > b.0) {
+                    if bestb.is_none_or(|b| e > b.0) {
                         bestb = Some((e, pk, pl, p1));
                     }
                 }
@@ -778,7 +776,7 @@ impl<'s, 'a> Sim<'s, 'a> {
             tot
         };
         let (so, sn) = (score(self, old), score(self, vi));
-        if self.cfg.audit && self.main && st.rot.pos % self.cfg.audit_every == 0 {
+        if self.cfg.audit && self.main && st.rot.pos.is_multiple_of(self.cfg.audit_every) {
             // the keep-or-replace decision under exact values (a full deck search per term)
             let ex = |s: &mut Self, v: usize| -> f64 {
                 let mut tot = 0.0;
@@ -945,7 +943,7 @@ impl<'s, 'a> Sim<'s, 'a> {
     }
     fn dominated(&self, st: &St, l: &Legacy) -> bool {
         let (s, w) = self.stars_wins(l);
-        st.fam.get(&family(l)).map_or(false, |v| {
+        st.fam.get(&family(l)).is_some_and(|v| {
             v.iter()
                 .any(|(s2, w2)| s2.iter().zip(&s).all(|(x, y)| x >= y) && w.iter().all(|r| w2.binary_search(r).is_ok()))
         })
@@ -1068,7 +1066,7 @@ impl<'s, 'a> Sim<'s, 'a> {
         let ex =
             sv.found.first().map(|f| (f.val, format!("{}:{},{}", self.d.umas[f.t].id, f.a.min(f.b), f.a.max(f.b))));
         let sk = self.key(&cur);
-        let differs = ex.as_ref().map_or(true, |x| x.1 != sk);
+        let differs = ex.as_ref().is_none_or(|x| x.1 != sk);
         let mut rows = vec![self.audit_row(&st.pool.clone(), cur.t, cur.a, cur.b, 0)];
         let bv = st.best.map_or(0.0, |p| p.val);
         let n = st.legs.len();
@@ -1122,11 +1120,11 @@ impl<'s, 'a> Sim<'s, 'a> {
                 .collect();
             cs.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
             cs.truncate(self.cfg.check_lineages);
-            if let Some(p) = st.best {
-                if !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b)) {
-                    let (q, c) = self.env.lineage_q(&st.pool, p.t, p.a, p.b);
-                    cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b));
-                }
+            if let Some(p) = st.best
+                && !cs.iter().any(|x| (x.1, x.2, x.3) == (p.t, p.a, p.b))
+            {
+                let (q, c) = self.env.lineage_q(&st.pool, p.t, p.a, p.b);
+                cs.push((self.env.ceiling(p.t, &q, c).unwrap(), p.t, p.a, p.b));
             }
             let mut buf = vec![];
             for (ub, t, a, b) in cs {
@@ -1153,7 +1151,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     let s2 = sets(self.env, &sel);
                     0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
                 };
-                let pick = st.best.map_or(false, |p| (p.t, p.a, p.b) == (t, a, b));
+                let pick = st.best.is_some_and(|p| (p.t, p.a, p.b) == (t, a, b));
                 rows.push(json!([
                     ub,
                     rb,
@@ -1221,7 +1219,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     },
                 }
             };
-            if decide.is_some() {
+            if let Some(run) = decide {
                 let k = self.key(&cur);
                 if k != last_key {
                     rec.push(json!({"t": t, "pick": k, "trainee": self.d.umas[cur.t].name, "p": cur.p, "pool": st.legs.len(), "s": s}));
@@ -1231,15 +1229,15 @@ impl<'s, 'a> Sim<'s, 'a> {
                         self.audits.push(a);
                     }
                 }
-                if self.cfg.audit && base == Base::Loop && t % self.cfg.audit_every == 0 {
+                if self.cfg.audit && base == Base::Loop && t.is_multiple_of(self.cfg.audit_every) {
                     let r = self.audit_row(&st.pool.clone(), cur.t, cur.a, cur.b, 3);
                     self.audits.push(json!({"t": t, "pool": st.legs.len(), "rows": [r]}));
                 }
-                if self.cfg.progress > 0 && t % self.cfg.progress == 0 && t > 0 {
+                if self.cfg.progress > 0 && t.is_multiple_of(self.cfg.progress) && t > 0 {
                     eprintln!(
                         "  {} run {}: {} careers, pool {}, S {:.4}, p {:.3e}",
                         self.cfg.policy,
-                        decide.unwrap(),
+                        run,
                         t,
                         st.legs.len(),
                         s,

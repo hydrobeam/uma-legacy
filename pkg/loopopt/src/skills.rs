@@ -14,6 +14,7 @@
 //!     own parents are the other parent and the fourth member, so the parents' shared G1s count twice for each;
 //!   - it then lands as a spark with GEN_GOLD if the gold version is bought, else GEN_WHITE (20% / 40% x 1.1^6: all six
 //!     ancestors carry the spark in a running loop).
+//!
 //! Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages, the trainee her own grandparent twice;
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
@@ -673,7 +674,7 @@ mod tests {
             let n = (rnd() * 40.0) as usize;
             let st: Vec<u8> = (0..n).map(|_| (rnd() * 3.0) as u8).collect();
             let mut f = |i: usize| if it % 7 == 0 && rnd() < 0.2 { odd[i % odd.len()] } else { rnd() };
-            let ew: Vec<f64> = (0..n).map(|i| f(i)).collect();
+            let ew: Vec<f64> = (0..n).map(&mut f).collect();
             let dw: Vec<f64> = (0..n).map(|i| f(i + 1)).collect();
             let dg: Vec<f64> = (0..n).map(|i| f(i + 2)).collect();
             let q = if it % 11 == 0 { odd[it % odd.len()] } else { rnd() };

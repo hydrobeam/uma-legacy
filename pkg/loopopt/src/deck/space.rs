@@ -1,7 +1,7 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
 use super::*;
 
-thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = std::cell::Cell::new((0, 0.0, 0)); pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = std::cell::Cell::new((0.0, 0.0, 0, 0)); }
+thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = const { std::cell::Cell::new((0, 0.0, 0)) }; pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = const { std::cell::Cell::new((0.0, 0.0, 0, 0)) }; }
 /// Every legal deck of one trainee, without the skyline's pruning (which compares product odds only). Used to make
 /// the per-uma search exact: decks are enumerated by chain-kind key, like the skyline search, with an upper bound on
 /// a partial deck's product value (each remaining slot of a kind group at that group's best miss chances per target,
@@ -120,7 +120,7 @@ impl<'a> DeckSpace<'a> {
         };
         let proj = |x: &Src| -> String {
             let tr: Vec<(usize, u64)> = x.train.iter().filter(|t| relt[t.0]).map(|t| (t.0, t.1.to_bits())).collect();
-            let fx: Vec<Group> = x.fixed.iter().map(|g| pg(g)).filter(|g| g.iter().any(|o| !o.1.is_empty())).collect();
+            let fx: Vec<Group> = x.fixed.iter().map(&pg).filter(|g| g.iter().any(|o| !o.1.is_empty())).collect();
             let ch: Vec<(u8, Group)> =
                 x.chains.iter().map(|(l, g)| (*l, pg(g))).filter(|(_, g)| g.iter().any(|o| !o.1.is_empty())).collect();
             let bits = |g: &Group| -> Vec<(u64, Vec<(usize, u8)>)> {

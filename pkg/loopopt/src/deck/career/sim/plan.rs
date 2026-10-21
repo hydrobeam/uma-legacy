@@ -88,10 +88,10 @@ pub(in super::super) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
             let flags = |key: &str| -> Vec<bool> {
                 let mut flags = vec![false; n];
                 for entry in e[key].as_array().into_iter().flatten() {
-                    if let Some(trainee) = entry.as_u64() {
-                        if (trainee as usize) < n {
-                            flags[trainee as usize] = true;
-                        }
+                    if let Some(trainee) = entry.as_u64()
+                        && (trainee as usize) < n
+                    {
+                        flags[trainee as usize] = true;
                     }
                 }
                 flags
@@ -156,57 +156,57 @@ fn best_of(
     nl: usize,
 ) -> (Option<Found>, Vec<Vec<Ref>>, bool) {
     // a kept plan of this very pool (the same job planned again: a reload, a setting changed and back): her best, as kept
-    if let Some(same) = same {
-        if let Some(CachedSearch::Known(found)) = same.best.get(u) {
-            return (found.clone(), vec![], !same.unp.get(u).copied().unwrap_or(false));
-        }
+    if let Some(same) = same
+        && let Some(CachedSearch::Known(found)) = same.best.get(u)
+    {
+        return (found.clone(), vec![], !same.unp.get(u).copied().unwrap_or(false));
     }
-    if let Some(previous) = prev {
-        if let Some(CachedSearch::Known(old)) = previous.best.get(u) {
-            let mut refs = previous.refs.get(u).cloned().unwrap_or_default();
-            let kept_ok = !previous.unp.get(u).copied().unwrap_or(false);
-            if fix.len() >= 2 {
-                return (old.clone(), refs, kept_ok);
-            } // both parents fixed: she can't be one
-            let mut fixed_with_new_veteran = fix.to_vec();
-            fixed_with_new_veteran.push(nl - 1);
-            // no career with her can beat the kept one (each one's ceiling, as `solve` takes them, is below it): kept, exact
-            if let Some(o) = old {
-                let her = nl - 1;
-                // (her legal pairs, `gen_cands`' ceilings: `ceiling` at `lineage`'s chances)
-                // (their maximum folded from 0 in generation order, as a fold over the collected ceilings; no Vec: `()` items)
-                let mut ub = 0.0f64;
-                env.gen_cands(
-                    pool,
-                    fix,
-                    &[u],
-                    |_, b| b == her,
-                    |x, _, _, _, _| {
-                        ub = f64::max(ub, x);
-                    },
-                );
-                if ub * (1.0 + 1e-9) < o.val {
-                    return (Some(o.clone()), refs, kept_ok);
-                }
+    if let Some(previous) = prev
+        && let Some(CachedSearch::Known(old)) = previous.best.get(u)
+    {
+        let mut refs = previous.refs.get(u).cloned().unwrap_or_default();
+        let kept_ok = !previous.unp.get(u).copied().unwrap_or(false);
+        if fix.len() >= 2 {
+            return (old.clone(), refs, kept_ok);
+        } // both parents fixed: she can't be one
+        let mut fixed_with_new_veteran = fix.to_vec();
+        fixed_with_new_veteran.push(nl - 1);
+        // no career with her can beat the kept one (each one's ceiling, as `solve` takes them, is below it): kept, exact
+        if let Some(o) = old {
+            let her = nl - 1;
+            // (her legal pairs, `gen_cands`' ceilings: `ceiling` at `lineage`'s chances)
+            // (their maximum folded from 0 in generation order, as a fold over the collected ceilings; no Vec: `()` items)
+            let mut ub = 0.0f64;
+            env.gen_cands(
+                pool,
+                fix,
+                &[u],
+                |_, b| b == her,
+                |x, _, _, _, _| {
+                    ub = f64::max(ub, x);
+                },
+            );
+            if ub * (1.0 + 1e-9) < o.val {
+                return (Some(o.clone()), refs, kept_ok);
             }
-            // only a career above the kept one matters: the search's bar starts there (exact; a tie keeps the kept one)
-            env.floor = old.as_ref().map_or(f64::NEG_INFINITY, |o| o.val);
-            let searched = env.solve(pool, &fixed_with_new_veteran, &[u], false, 1);
-            env.floor = f64::NEG_INFINITY;
-            if refs.len() < searched.refs.len() {
-                refs.resize(searched.refs.len(), vec![]);
-            }
-            for (trainee, checked) in searched.refs.into_iter().enumerate() {
-                refs[trainee].extend(checked);
-            }
-            let ok = kept_ok && searched.complete;
-            let new = searched.found.into_iter().next();
-            let best = match (old, new) {
-                (Some(old), Some(new)) => Some(if new.val > old.val { new } else { old.clone() }),
-                (old, new) => old.clone().or(new),
-            };
-            return (best, refs, ok);
         }
+        // only a career above the kept one matters: the search's bar starts there (exact; a tie keeps the kept one)
+        env.floor = old.as_ref().map_or(f64::NEG_INFINITY, |o| o.val);
+        let searched = env.solve(pool, &fixed_with_new_veteran, &[u], false, 1);
+        env.floor = f64::NEG_INFINITY;
+        if refs.len() < searched.refs.len() {
+            refs.resize(searched.refs.len(), vec![]);
+        }
+        for (trainee, checked) in searched.refs.into_iter().enumerate() {
+            refs[trainee].extend(checked);
+        }
+        let ok = kept_ok && searched.complete;
+        let new = searched.found.into_iter().next();
+        let best = match (old, new) {
+            (Some(old), Some(new)) => Some(if new.val > old.val { new } else { old.clone() }),
+            (old, new) => old.clone().or(new),
+        };
+        return (best, refs, ok);
     }
     let sr = env.solve(pool, fix, &[u], false, 1);
     let ok = sr.complete;
@@ -331,7 +331,7 @@ fn rotation(env: &Env, d: &Data, ids: &[u32]) -> (Vec<usize>, Vec<Value>, Option
         return (vec![], vec![], Some("no loop base (loop_members empty)".into()));
     }
     let idx: Vec<Option<usize>> = info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uix(id as u32))).collect();
-    if idx.len() < 3 || idx.iter().any(|x| x.map_or(true, |t| !env.owned.contains(&t) || env.dmax[t].is_none())) {
+    if idx.len() < 3 || idx.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.dmax[t].is_none())) {
         return (vec![], info, Some("the loop's members must be at least three owned umas with a legal deck".into()));
     }
     (idx.into_iter().map(|x| x.unwrap()).collect(), info, None)
@@ -398,10 +398,10 @@ fn best_sur(s: &mut Sim, pool: &Pool, fix: &[usize], u: usize, margin: f64, buf:
         let c = s.env.lineage_into(pool, u, a, b, &mut q);
         let r = s.deck_for(u, &q, c, ub, bar, buf);
         s.qs = q;
-        if let Some((v, di)) = r {
-            if v > bar {
-                best = Some((a, b, v, ub, di));
-            }
+        if let Some((v, di)) = r
+            && v > bar
+        {
+            best = Some((a, b, v, ub, di));
         }
     }
     s.cfg.margin = m0;
@@ -487,7 +487,6 @@ const PROXY_SAVE: f64 = 0.06;
 const OPT_SHOW: usize = 8;
 /// Trainee u's odds with a full loop lineage: parents hypothetical veterans of b1 and b2 (every target, stars at the
 /// rank's mix, G1 wins `w1` / `w2`), each bred from the other and from u (grandparents every target at 2 stars)
-#[allow(clippy::too_many_arguments)]
 fn loop_ceiling(
     s: &mut Sim,
     d: &Data,
@@ -574,10 +573,10 @@ fn hint_umas(env: &mut Env, d: &Data, pool: &Pool, cands: &[usize], trainees: &[
         let n = p.me.len();
         if legal_pair(d, &p, u, n - 2, n - 1) {
             let (q, c) = env.lineage_q(&p, u, n - 2, n - 1);
-            if let Some(v) = env.ceiling(u, &q, c) {
-                if v > 0.0 {
-                    out.push((u, v));
-                }
+            if let Some(v) = env.ceiling(u, &q, c)
+                && v > 0.0
+            {
+                out.push((u, v));
             }
         }
         env.pool_pop(&mut p);
@@ -1026,11 +1025,8 @@ fn fm_masks(fixed_t: &[usize]) -> Vec<usize> {
         })
         .collect()
 }
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
 /// `Env::pool` of `legs` and her veteran (career x with parents a, b, schedule `c`): with `of_legs` (`pool` is
 /// `Env::pool(legs)`) `pool` with her entry pushed, the same Pool (`Env::pool_push` builds an entry as `Env::pool` does)
-#[allow(clippy::too_many_arguments)]
 fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, c: &Cur) -> Pool {
     let veteran = s.env.veteran(legs, x, a, b, c.wp.to_vec());
     if of_legs {
@@ -1097,8 +1093,6 @@ pub(super) fn score_career(
     score
 }
 /// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
 pub(super) fn score_career_of(
     s: &mut Sim,
     d: &Data,
@@ -1118,8 +1112,6 @@ pub(super) fn score_career_of(
     prof("score_calls", 1.0);
     score
 }
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
 fn score_career_(
     s: &mut Sim,
     d: &Data,
@@ -1283,7 +1275,6 @@ fn score_career_(
 /// that lands every target reads y < 0.5 (with y). The plan's scorings take `All`; a roll `OneLeaf` (`sc_roll`), the same
 /// arithmetic in the same order at the leaves it produces
 #[inline(never)]
-#[allow(clippy::type_complexity)]
 fn sc_eval<L: Leaves>(
     bs: &ScoreBase,
     sd: &Scored,
@@ -1445,8 +1436,6 @@ fn sc_prep(s: &Sim, bs: &ScoreBase, setups: &[Setup], sd: &mut Scored) {
 /// split into those with a slot (slot j is the j-th of them: slots are given in candidate order) and those without one
 /// (odds fixed at their odds now)
 #[inline(never)]
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
 fn sc_outcomes<L: Leaves>(
     bs: &ScoreBase,
     sd: &Scored,
@@ -1466,7 +1455,7 @@ fn sc_outcomes<L: Leaves>(
     let one: Vec<One> = if bs.combos.is_empty() || want == Want::Stats {
         vec![]
     } else {
-        (0..n).map(|i| one_of(&bs.combos, &bs.c1, i)).collect()
+        (0..n).map(|i| one_of(bs.combos, bs.c1, i)).collect()
     };
     // per leaf (at its row) her landed set on the uncertain targets and her stars' chance: the product over k of w[her
     // stars on target k - 1] where she has any, in k order from 1.0 (every leaf: the leaves with digit k > 0 extend those
@@ -1635,7 +1624,6 @@ fn sc_row<'a, const PL: bool, L: Leaves>(
 /// u32::MAX: not recorded, past the cap), which the leaves reading it add to their stats (each candidate's sums still in
 /// outcome order: the same f64s); unrecorded, they take its row again
 #[inline(never)]
-#[allow(clippy::type_complexity)]
 fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Leaves>(
     o: &OutCx<L>,
     yb: &mut Vec<f64>,
@@ -1825,7 +1813,7 @@ fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
     if bs.combos.is_empty() {
         (0..bs.cands.len()).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min)
     } else {
-        trio_v(c1, &bs.combos)
+        trio_v(c1, bs.combos)
     }
 }
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`Est`, `Cont::cost`,
@@ -1899,7 +1887,7 @@ impl<'b> Est<'b> {
         let n = bs.cands.len();
         let lbc: Vec<Option<&Cont>> = (0..n).map(|ui| bs.cont.get(ui).filter(|c| lazy && c.lb_ok())).collect();
         let tord: Vec<usize> = if lazy {
-            let tv: Vec<f64> = bs.combos.iter().map(|t| trio_v(&bs.c1, std::slice::from_ref(t))).collect();
+            let tv: Vec<f64> = bs.combos.iter().map(|t| trio_v(bs.c1, std::slice::from_ref(t))).collect();
             let mut t: Vec<usize> = (0..bs.combos.len()).collect();
             t.sort_by(|&a, &b| tv[a].total_cmp(&tv[b]));
             t
@@ -1921,7 +1909,7 @@ impl<'b> Est<'b> {
             cell,
             tord,
             one,
-            v_same: v0_after(bs, &bs.c1),
+            v_same: v0_after(bs, bs.c1),
             pend: vec![],
             lo: vec![0.0f64; n],
             pf: vec![false; n],
@@ -2060,7 +2048,6 @@ impl StepCost for Est<'_> {
 /// own step 0 on the full set (`xi`), V after her (`StepCost::va`), her own 8/8's trios (`her`) on the full set, and y =
 /// V0 - V after (at least 0; the goal's V0 on the full set). c1 must hold the base's steps; it is put back. The one rule
 /// of the estimate y (`sc_loop`, `Est`) and the bound y_hi (`saving_lo`, `Lo`)
-#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn v_after<C: StepCost>(
     bs: &ScoreBase,
@@ -2079,12 +2066,12 @@ fn v_after<C: StepCost>(
     for &(ci, ui, p) in lifted {
         cost.take(bs, c1, ch, ci, ui, p);
     }
-    if m == full_m {
-        if let Some(xi) = xi {
-            c1[xi] = 0.0;
-            ch.push(xi);
-            cost.zeroed(xi);
-        }
+    if m == full_m
+        && let Some(xi) = xi
+    {
+        c1[xi] = 0.0;
+        ch.push(xi);
+        cost.zeroed(xi);
     }
     let her_all = m == full_m && !her.is_empty();
     let mut va = cost.va(bs, c1, ch, her_all);
@@ -2281,7 +2268,6 @@ fn fold_emit<L: Leaves>(cx: &FoldCx<L>, leaf: usize, mu: usize, f: &[f64], u: &m
 }
 /// `fold_emit` for the 16 leaves of the last two levels (f[si * 16 + b], b = digit k | digit k+1 << 2), through a slot-major
 /// block acc[slot * 16 + b]; `bl`: the blocks folded (`fold_rec`)
-#[allow(clippy::too_many_arguments)]
 fn fold_emit16<L: Leaves>(
     cx: &FoldCx<L>,
     k: usize,
@@ -2332,7 +2318,6 @@ fn fold_emit16<L: Leaves>(
 /// uncertain target k that `cx.lv` wants, with the arithmetic of the one-table fold (`t[2i] c + t[2i+1] x`, the last two
 /// levels unrolled); per leaf and setup the best of 0 and her tables' values (a maximum: any order), then `fold_emit`.
 /// mu: her landed set on the targets so far
-#[allow(clippy::too_many_arguments)]
 fn fold_rec<L: Leaves>(
     cx: &FoldCx<L>,
     k: usize,
@@ -2447,7 +2432,6 @@ fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
 /// Per leaf (as `leaf_products`) the best outfit's `Env::rise` of trainee (sts, ews: her outfits' coverage and own
 /// chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain target k]:
 /// per outfit and target the factor at each of her four star levels (1 where it can't rise), their product per leaf
-#[allow(clippy::too_many_arguments)]
 fn rise_leaves(
     sts: &[Vec<u8>],
     ews: &[Vec<f64>],
@@ -2510,7 +2494,6 @@ impl AncBb {
     /// `leaf_products`' order: the old ceiling's f64s) at the marked leaves (`Marks`), -inf at the others (so no anchor
     /// is folded in where nothing reads the bound: every test below compares with a most that holds marked leaves only),
     /// `tmax` built
-    #[allow(clippy::too_many_arguments)]
     fn reset(
         &mut self,
         nu: usize,
@@ -2591,7 +2574,6 @@ impl AncBb {
     /// products level by level down `Marks::ix` (each prefix's its parent's times its last digit's factor, from 1.0:
     /// `leaf_products`' f64s at those leaves), the running most per marked leaf over the outfits in order from 0.0, rf x it
     /// (NaN as +inf) into bd, then each marked prefix's most of its four quarters as `levels` takes it
-    #[allow(clippy::too_many_arguments)]
     #[inline(never)]
     fn reset_marked(
         &mut self,
@@ -2689,7 +2671,6 @@ impl AncBb {
     /// [0, 1], xms falling and >= 0, nu > 0. Derived: qn = 1 - x0 xms[s] rises with s (rounding is monotone); a factor is 1
     /// where qn <= qa, else N(qn) / D, D = N(qa) = 1 - (1 - e)(1 - qa) in [0, 1] and N rising with qn: N >= D, so it is
     /// >= 1 (+inf where D = 0, as N > 0 there), never NaN, and rises with qn: each digit's least is its 0-star factor
-    #[allow(clippy::too_many_arguments)]
     fn root_min(
         &self,
         f: f64,
@@ -2785,7 +2766,6 @@ struct Marks {
     par: Vec<Vec<u32>>,
 }
 /// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into g
-#[allow(clippy::too_many_arguments)]
 fn rise_factors(
     sts: &[Vec<u8>],
     ews: &[Vec<f64>],
@@ -2807,7 +2787,6 @@ fn rise_factors(
 }
 /// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
 /// bound allows (into `up`), then `saving_lo`; `c1` scratch
-#[allow(clippy::too_many_arguments)]
 fn hi_at(
     bs: &ScoreBase,
     hs: &[(usize, Vec<f64>, Vec<f64>)],
@@ -2820,7 +2799,7 @@ fn hi_at(
     c1: &mut [f64],
     up: &mut [f64],
 ) -> f64 {
-    up.copy_from_slice(&bs.pnow);
+    up.copy_from_slice(bs.pnow);
     for (ui, bd, sc) in hs {
         let v = sc[m] * bd[leaf];
         if v > up[*ui] {
@@ -2831,7 +2810,6 @@ fn hi_at(
 }
 /// V - V_lo at candidate odds `up`: each step that rose at `Cont::cost_lo`, her own 8/8 (`xi`, `her_trios`) on the full
 /// set, the goal's V; `c1` scratch
-#[allow(clippy::too_many_arguments)]
 fn saving_lo(
     bs: &ScoreBase,
     up: &[f64],
@@ -2845,7 +2823,7 @@ fn saving_lo(
     // (the candidates above their threshold, `score_career`'s pnow (1 + 1e-9), in candidate order)
     let lifted: Vec<(usize, usize, f64)> =
         (0..bs.cands.len()).filter(|&ui| up[ui] > bs.pnow[ui] * (1.0 + 1e-9)).map(|ui| (ui, ui, up[ui])).collect();
-    c1.copy_from_slice(&bs.c1);
+    c1.copy_from_slice(bs.c1);
     v_after(bs, &mut Lo, c1, &mut vec![], &lifted, m, full_m, xi, her, goal)
 }
 /// The pick's bound's exact anchors (`outcome_hi`): her best deck searched with her at each of these stars on every
@@ -2897,8 +2875,7 @@ struct HiScr {
 /// its first roll): (candidate, partner), and per anchor (f, chances) that can lower some leaf, in their order
 type HiAnc = ((usize, usize), Option<Vec<(f64, Vec<f64>)>>);
 #[inline(never)]
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::absurd_extreme_comparisons)] // HI_SEARCHES is a tuning constant, now 0 (anchors off)
 fn hi_partner(
     s: &Sim,
     hx: &HiCx,
@@ -3083,7 +3060,7 @@ fn hi_partner(
     let t4 = now_ms();
     // the spark scale per landed set m: every m's when the marked cells are as many (or the exact anchors keep them), else each
     // marked cell's own (the same product)
-    let scm = |m: usize| -> f64 { (0..ntar).map(|k| pw[k][(m >> k & 1) as usize]).product() };
+    let scm = |m: usize| -> f64 { (0..ntar).map(|k| pw[k][(m >> k) & 1]).product() };
     let sc: Vec<f64> = if HI_SEARCHES > 0 || nmc >= nm { (0..nm).map(&scm).collect() } else { vec![] };
     // each outcome's most of the partners' sc[m] bd[leaf] (from pnow; in partner order per candidate, as `hi_at`)
     let bd = bb.bd();
@@ -3146,7 +3123,6 @@ fn hi_partner(
 ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
 ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
-#[allow(clippy::too_many_arguments)]
 fn outcome_hi(
     s: &mut Sim,
     d: &Data,
@@ -3278,7 +3254,7 @@ fn outcome_hi(
                 ews,
                 ew_ok,
                 &fr,
-                &fr_of,
+                fr_of,
                 &mut tab[ui * nmc..(ui + 1) * nmc],
                 &mut hp,
                 &mut hs,
@@ -3387,7 +3363,6 @@ fn outcome_hi(
 /// The pick's own 8/8 as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
 /// `her_trios` reads C's cached decks), where an outcome that lands every target reads y < 0.5 (`full_lo`: only there
 /// does `saving_lo` read it; else none)
-#[allow(clippy::too_many_arguments)]
 fn pick_her(
     s: &mut Sim,
     d: &Data,
@@ -3477,7 +3452,7 @@ impl Scored {
         let (nm, ntar) = (1usize << self.ntar, self.ntar);
         self.scf = Vec::with_capacity(nm * self.ns());
         for m in 0..nm {
-            self.scf.extend(self.pw.iter().map(|pw| (0..ntar).map(|k| pw[k][(m >> k & 1) as usize]).product::<f64>()));
+            self.scf.extend(self.pw.iter().map(|pw| (0..ntar).map(|k| pw[k][(m >> k) & 1]).product::<f64>()));
         }
     }
     fn ns(&self) -> usize {
@@ -3574,7 +3549,6 @@ fn keep_roll(roll: RollKeep) {
 /// y: the careers her veteran saves at that outcome, the pick's kept scoring evaluated at that one outcome (`sc_eval`,
 /// the plan's own arithmetic in its order: the f64 the plan's full table held); where y < 0.5 the bound y_hi
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
-#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn roll_kept<'a>(
     env: &mut Env<'a>,
     d: &'a Data,
@@ -3647,11 +3621,10 @@ fn roll_answer(
             &mut ac,
         )[0]
     });
-    drop(bs);
     k.hi_anc = ac;
     // (y_hi >= y is derived, `outcome_hi` (1)-(3): checked here, within rounding, where the max below would hide a bound
     // that drifted under the estimate; the max stays for the page)
-    debug_assert!(hi.map_or(true, |h| h >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
+    debug_assert!(hi.is_none_or(|h| h >= y - 1e-9 * y.abs().max(1.0)), "roll: y_hi {hi:?} below y {y}");
     json!({"y": (y * 100.0).round() / 100.0, "y_hi": hi.map(|h| (h.max(y) * 100.0).ceil() / 100.0)})
 }
 /// the kept roll states for the page to store (`state_out`), every float as its bits
@@ -3813,7 +3786,6 @@ pub(in super::super) fn rolls_set(r: Vec<RollKeep>) {
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
-#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn index_rule<'a>(
     env: &mut Env<'a>,
     d: &'a Data,
@@ -3868,10 +3840,10 @@ pub(in super::super) fn index_rule<'a>(
         }
     }
     for l in legs.iter().rev() {
-        if !l.borrowed {
-            if let Some(u) = env.uix(l.chara) {
-                push(u, &mut cands);
-            }
+        if !l.borrowed
+            && let Some(u) = env.uix(l.chara)
+        {
+            push(u, &mut cands);
         }
     }
     for f in &sv.found {
@@ -4055,11 +4027,12 @@ pub(in super::super) fn index_rule<'a>(
             });
         }
         let f = best[x].found().cloned()?;
-        if let Some((proxy, proxy_stats, stamp)) = reuse {
-            if same_career(proxy, &f) && stamp_ok(s, Some(&cands), stamp) {
-                prof("reuse_st", 1.0);
-                return Some((f, proxy_stats.to_vec()));
-            }
+        if let Some((proxy, proxy_stats, stamp)) = reuse
+            && same_career(proxy, &f)
+            && stamp_ok(s, Some(&cands), stamp)
+        {
+            prof("reuse_st", 1.0);
+            return Some((f, proxy_stats.to_vec()));
         }
         let CareerScore { lift_stats: st, .. } =
             score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
@@ -4124,6 +4097,7 @@ pub(in super::super) fn index_rule<'a>(
         }
         // the near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
         // candidate's second best (exact and proxy careers together), until none is left
+        #[allow(clippy::while_immutable_condition)] // proxy_on is fixed per call; the loop ends at its break
         while proxy_on {
             let mut add: Vec<usize> = vec![];
             for ui in 0..n {
@@ -4251,10 +4225,10 @@ pub(in super::super) fn index_rule<'a>(
                                 s.env.floor = f64::NEG_INFINITY;
                                 sr.found.into_iter().next()
                             };
-                            if let Some(f) = f {
-                                if f.val > lf.as_ref().map_or(0.0, |g| g.val) {
-                                    lf = Some(f);
-                                }
+                            if let Some(f) = f
+                                && f.val > lf.as_ref().map_or(0.0, |g| g.val)
+                            {
+                                lf = Some(f);
                             }
                         }
                         lf
@@ -4446,11 +4420,11 @@ pub(in super::super) fn index_rule<'a>(
         (0..n)
             .map(|ui| {
                 let mut v: Vec<(bool, Legacy)> = real8[ui].iter().map(|&i| (true, legs[i].clone())).collect();
-                if c1[ui].is_finite() {
-                    if let Some(f) = fb[ui].as_ref() {
-                        let wp = s.wins(pool, cands[ui], f.a, f.b);
-                        v.push((false, s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec())));
-                    }
+                if c1[ui].is_finite()
+                    && let Some(f) = fb[ui].as_ref()
+                {
+                    let wp = s.wins(pool, cands[ui], f.a, f.b);
+                    v.push((false, s.env.veteran(legs, cands[ui], f.a, f.b, wp.to_vec())));
                 }
                 v
             })
@@ -4538,6 +4512,7 @@ pub(in super::super) fn index_rule<'a>(
         // the proxies a shown row or the pick's near-tie band can turn on: searched exactly (their
         // saving, score + 1, within PROXY_SAVE of the lowest saving those take), then scored again; when one of them joins a
         // candidate's two most efficient builders, Cont, the trios, V and every score are computed again
+        #[allow(clippy::while_immutable_condition)] // proxy_on is fixed per call; the loop ends at its break
         while proxy_on {
             // (over the rows that can be shown or picked, `vis`)
             let mut sv: Vec<f64> = (0..score.len()).filter(|&i| vis(&runs[i].1)).map(|i| score[i]).collect();
@@ -4769,8 +4744,8 @@ pub(in super::super) fn index_rule<'a>(
                     }
                 };
                 let same_pair =
-                    pf.as_ref().map_or(false, |f| (f.a.min(f.b), f.a.max(f.b)) == (r.1.a.min(r.1.b), r.1.a.max(r.1.b)));
-                let same_deck = pf.as_ref().map_or(false, |f| {
+                    pf.as_ref().is_some_and(|f| (f.a.min(f.b), f.a.max(f.b)) == (r.1.a.min(r.1.b), r.1.a.max(r.1.b)));
+                let same_deck = pf.as_ref().is_some_and(|f| {
                     f.sel.ents == r.1.sel.ents && f.sel.plain == r.1.sel.plain && f.sel.filler == r.1.sel.filler
                 });
                 rows.push(json!({"trainee": d.umas[x].name, "cand": is_c, "class": s.env.cls[x], "exact_val": r.1.val, "proxy_val": pf.as_ref().map(|f| f.val),

@@ -29,7 +29,7 @@ pub(super) fn run_multi(
     };
     // a locked card goes in every deck, so a uma it blocks cannot train at all
     let lock_blocked =
-        |u: usize| dj.lock_cards.iter().any(|id| card_of.get(id).map_or(false, |c| c.blocks(d.umas[u].id)));
+        |u: usize| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id)));
     let pool: Vec<usize> = (0..n).filter(|&i| id_ok(d.umas[i].id) && !model.no_outfit[i] && !lock_blocked(i)).collect();
     let req: Vec<usize> = sj.require.iter().filter_map(|&id| d.umas.iter().position(|u| u.id == id)).collect();
     if req.iter().any(|r| !pool.contains(r)) {
@@ -297,12 +297,11 @@ pub(super) fn run_multi(
     // and every legal deck whose product value times lv reaches it (each first through the proven bound).
     let exact_best = |u: usize, qs: &[f64], lv: f64| -> std::rc::Rc<Best> {
         let key = (u, qkey(qs));
-        if let Some(entry) = ex_cache.borrow().get(&key) {
-            if entry.certified_cap >= lv {
-                if let Some(result) = &entry.reported_best {
-                    return result.clone();
-                }
-            }
+        if let Some(entry) = ex_cache.borrow().get(&key)
+            && entry.certified_cap >= lv
+            && let Some(result) = &entry.reported_best
+        {
+            return result.clone();
         }
         let mut ent = ex_cache.borrow_mut().remove(&key).unwrap_or(ExactCacheEntry {
             best: None,
@@ -357,7 +356,7 @@ pub(super) fn run_multi(
                 }
             }
             let sv: f64 = j.iter().map(|y| y.0).sum();
-            if ent.best.as_ref().map_or(true, |b| sv > b.0) {
+            if ent.best.as_ref().is_none_or(|b| sv > b.0) {
                 ent.best = Some((sv, x.clone()));
             }
         };
@@ -570,10 +569,11 @@ pub(super) fn run_multi(
     let sh_cache: std::cell::RefCell<crate::FxMap<([usize; 4], QKey), (f64, f64, SList)>> = Default::default();
     let exact_shared = |f: [usize; 4], qa: &[f64], floor: f64, lv: f64| -> SList {
         let key = (f, qkey(qa));
-        if let Some((l, fl, r)) = sh_cache.borrow().get(&key) {
-            if *l >= lv && *fl <= floor {
-                return r.clone();
-            }
+        if let Some((l, fl, r)) = sh_cache.borrow().get(&key)
+            && *l >= lv
+            && *fl <= floor
+        {
+            return r.clone();
         }
         let ln = lin_of(&f);
         let fm = members(&f);
@@ -627,7 +627,7 @@ pub(super) fn run_multi(
         }
         if list.is_empty() {
             let SearchOutcome { decks: r, .. } =
-                space.search(model, &us, &ids, &[(pairs.clone(), 0.0)], SearchMode::Best { seed: f64::NEG_INFINITY });
+                space.search(model, us, &ids, &[(pairs.clone(), 0.0)], SearchMode::Best { seed: f64::NEG_INFINITY });
             if let Some((_, sel)) = r.first() {
                 let x = space.pdeck(sel, &ids);
                 score(&x, &mut list);
@@ -640,7 +640,7 @@ pub(super) fn run_multi(
             let n0 = space.nodes.get();
             let SearchOutcome { decks: mut cands, incomplete } = space.search(
                 model,
-                &us,
+                us,
                 &ids,
                 &[(pairs.clone(), need(&list))],
                 SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() },
@@ -711,7 +711,7 @@ pub(super) fn run_multi(
                 let (u, i) = (f[ln[l].0], gidx(qa[l]));
                 let (b, ex) = cell(u, i, lv);
                 tot += b;
-                if !ex && worst.map_or(true, |w| b > w.0) {
+                if !ex && worst.is_none_or(|w| b > w.0) {
                     worst = Some((b, u, i));
                 }
             }

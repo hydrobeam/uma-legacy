@@ -59,4 +59,4 @@ pub(super) const EXACT_CAP: usize = 50_000;
 /// the cap of each other (high inheritance chances, few open targets, borrowing) can exhaust it.
 pub(super) const EXACT_BUDGET: usize = 30_000_000;
 // exact scorings made on this thread (the planner reports its own as a load-free measure of its work)
-thread_local! { pub(crate) static JCOUNT: std::cell::Cell<usize> = std::cell::Cell::new(0); }
+thread_local! { pub(crate) static JCOUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }

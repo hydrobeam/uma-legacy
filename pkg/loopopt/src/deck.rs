@@ -10,6 +10,7 @@
 //!     order). Pals and R cards have no chain slots. Both fitted on uma-it Independent Training runs (docs/MODEL.md);
 //!   - event rewards come from the job (`events`): (card, skill group, 1 white | 2 gold, link; 0 = whenever the
 //!     card is in the deck, e.g. pal golds).
+//!
 //! Deck hint odds per target: 1 - prod(1 - p) over sources, separately for white and gold.
 //!
 //! Search (exact for the model under the assumed caps `EXACT_CAPS`): race schedules maximise affinity and do not

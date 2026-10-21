@@ -356,9 +356,7 @@ fn load_raw(raw: DataRaw) -> Data {
             assert!(u.turns[t].len() <= 5, "more than 5 options at one turn");
             for (o, op) in u.turns[t].iter().enumerate() {
                 let mut p = [0.0f64; 7];
-                for k in 1..=6 {
-                    p[k] = pkt[(op.bp + 20) as usize][k];
-                }
+                p[1..=6].copy_from_slice(&pkt[(op.bp + 20) as usize][1..=6]);
                 ent[t][o + 1] = Ent { race: op.race, rest: false, bit: bits[t][o], p };
             }
             let (a, n) = &mut chl[t];
@@ -367,7 +365,7 @@ fn load_raw(raw: DataRaw) -> Data {
                 *n += 1;
             }
             for o in 0..u.turns[t].len() {
-                if forced[t].as_ref().map_or(true, |f| f.contains(&(o as u8))) {
+                if forced[t].as_ref().is_none_or(|f| f.contains(&(o as u8))) {
                     a[*n] = o as u8 + 1;
                     *n += 1;
                 }
@@ -448,10 +446,10 @@ fn feasible(u: &Uma, s: &Sched) -> bool {
                 if (o as usize) >= u.opts[t].len() {
                     return false;
                 }
-                if let Some(f) = &u.forced[t] {
-                    if !f.contains(&o) {
-                        return false;
-                    }
+                if let Some(f) = &u.forced[t]
+                    && !f.contains(&o)
+                {
+                    return false;
                 }
                 m |= u.bits[t][o as usize];
             }
@@ -491,30 +489,30 @@ thread_local! { static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell
 /// Allowed choice codes at turn t. A force replaces the list at its turn, but only with a choice the goals allow there.
 #[inline]
 fn choice_list(u: &Uma, t: usize, force: Option<(usize, Choice)>) -> ([u8; 6], usize) {
-    if let Some((ft, fc)) = force {
-        if ft == t {
-            // a force can't override a single-turn goal: forcing rest, or an option outside the goal set, is infeasible
-            let code = match fc {
-                Choice::Rest => {
-                    if u.forced[t].is_none() {
-                        Some(0u8)
-                    } else {
-                        None
-                    }
+    if let Some((ft, fc)) = force
+        && ft == t
+    {
+        // a force can't override a single-turn goal: forcing rest, or an option outside the goal set, is infeasible
+        let code = match fc {
+            Choice::Rest => {
+                if u.forced[t].is_none() {
+                    Some(0u8)
+                } else {
+                    None
                 }
-                Choice::Opt(o) => {
-                    if (o as usize) < u.opts[t].len() && u.forced[t].as_ref().map_or(true, |f| f.contains(&o)) {
-                        Some(o + 1)
-                    } else {
-                        None
-                    }
+            }
+            Choice::Opt(o) => {
+                if (o as usize) < u.opts[t].len() && u.forced[t].as_ref().is_none_or(|f| f.contains(&o)) {
+                    Some(o + 1)
+                } else {
+                    None
                 }
-            };
-            return match code {
-                Some(c) => ([c, 0, 0, 0, 0, 0], 1),
-                None => ([0; 6], 0),
-            };
-        }
+            }
+        };
+        return match code {
+            Some(c) => ([c, 0, 0, 0, 0, 0], 1),
+            None => ([0; 6], 0),
+        };
     }
     u.chl[t]
 }
@@ -856,15 +854,15 @@ fn ascent_ps<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], ps: &mu
             let u = &d.umas[lp.m[i]];
             weights_into(d, ps, i, &mut w);
             let curv = wval(&w, &ps[i]);
-            if let Some((ns, nv)) = best_response(d, u, &w, None) {
-                if nv > curv + 1e-9 {
-                    s[i] = ns;
-                    probs_into(d, u, &ns, &mut ps[i]);
-                    improved = true;
-                    for j in 0..N {
-                        if j != i {
-                            stale[j] = true;
-                        }
+            if let Some((ns, nv)) = best_response(d, u, &w, None)
+                && nv > curv + 1e-9
+            {
+                s[i] = ns;
+                probs_into(d, u, &ns, &mut ps[i]);
+                improved = true;
+                for j in 0..N {
+                    if j != i {
+                        stale[j] = true;
                     }
                 }
             }
@@ -917,7 +915,7 @@ fn group_moves<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], margi
                         ),
                     };
                     ch[i] = c;
-                    on[i] = c.map_or(false, |c| s[i][t] == c);
+                    on[i] = c.is_some_and(|c| s[i][t] == c);
                 }
                 let movable: Vec<usize> = (0..N).filter(|&i| ch[i].is_some() && !on[i]).collect();
                 let non: usize = on.iter().filter(|x| **x).count();
@@ -1152,7 +1150,7 @@ fn when(t: usize) -> String {
     };
     let turn_in_year = t % 24;
     let month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][turn_in_year / 2];
-    format!("{} {}-{}", year, if turn_in_year % 2 == 0 { "E" } else { "L" }, month)
+    format!("{} {}-{}", year, if turn_in_year.is_multiple_of(2) { "E" } else { "L" }, month)
 }
 /// Short uma label for chart columns.
 fn short_name(name: &str) -> String {
@@ -1782,11 +1780,11 @@ mod tests {
                     for a in interchangeable(d, &m, &r.s, t, race) {
                         let mut s2 = r.s;
                         for i in 0..4 {
-                            if let Choice::Opt(o) = s2[i][t] {
-                                if d.umas[m[i]].opts[t][o as usize].race == race {
-                                    let k = d.umas[m[i]].opts[t].iter().position(|op| op.race == a).unwrap();
-                                    s2[i][t] = Choice::Opt(k as u8);
-                                }
+                            if let Choice::Opt(o) = s2[i][t]
+                                && d.umas[m[i]].opts[t][o as usize].race == race
+                            {
+                                let k = d.umas[m[i]].opts[t].iter().position(|op| op.race == a).unwrap();
+                                s2[i][t] = Choice::Opt(k as u8);
                             }
                         }
                         for i in 0..4 {

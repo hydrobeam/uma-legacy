@@ -19,7 +19,7 @@ pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
         .fold(0u32, |c, r| c | ((((r.1 as u32) << 4) | r.2 as u32) << (8 * (r.0 as u32 - 1))))
 }
 
-thread_local! { pub(super) static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = std::cell::Cell::new((CHAIN_N, CHAIN_P)); }
+thread_local! { pub(super) static CHAIN_EVENTS: std::cell::Cell<(u32, f64)> = const { std::cell::Cell::new((CHAIN_N, CHAIN_P)) }; }
 /// P(N = e) chain events per run for e = 0..=n, N ~ Binomial of the job in progress (default CHAIN_N, CHAIN_P).
 pub(super) fn event_pmf(n: usize) -> Vec<f64> {
     let (bn, bp) = CHAIN_EVENTS.with(|c| c.get());
@@ -381,18 +381,18 @@ impl KeyLevel {
         let (di, dj) = (self.dims[i], self.dims[j]);
         // up-sets of the di x dj grid: for each row a, the first column c_a in the set, non-increasing in a
         let mut ups: Vec<Vec<usize>> = vec![];
-        fn upsets(a: usize, di: usize, dj: usize, hi: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+        fn upsets(a: usize, di: usize, hi: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
             if a == di {
                 out.push(cur.clone());
                 return;
             }
             for c in 0..=hi {
                 cur.push(c);
-                upsets(a + 1, di, dj, c, cur, out);
+                upsets(a + 1, di, c, cur, out);
                 cur.pop();
             }
         }
-        upsets(0, di, dj, dj, &mut vec![], &mut ups);
+        upsets(0, di, dj, &mut vec![], &mut ups);
         let n = self.dims.len();
         let others: Vec<usize> = (0..n).filter(|&k| k != i && k != j).collect();
         let mut ok = true;
@@ -419,7 +419,7 @@ impl KeyLevel {
                     }
                 }
                 for gi in 0..arr.len() {
-                    if (gi / self.gstride[i]) % di != 0 || (gi / self.gstride[j]) % dj != 0 {
+                    if !(gi / self.gstride[i]).is_multiple_of(di) || !(gi / self.gstride[j]).is_multiple_of(dj) {
                         continue;
                     }
                     let prod: f64 = others

@@ -10,6 +10,7 @@
 //!   - per target k, the inheritance chance q_k = 1 - prod over the six legacies (1 - min(1, 0.03 s (1 + A/100)))^2,
 //!     s = the stars of that legacy's spark of k (0 if it has none);
 //!   - spark generation 0.2 / 0.4 x 1.1^n_k for a white / gold, n_k = how many of the six carry a spark of k.
+//!
 //! Everything else is the loop planner's model. q_k and the trainee's own event hint chance ew enter every formula
 //! only as (1 - ew)(1 - q_k), so T's event hint chances are replaced by 1 - (1 - ew)(1 - q_k) and the deck search
 //! runs at q = 0: its products, bounds and exact odds are then the career's, apart from the factor 1.1^(n_k - 6) per
@@ -1685,41 +1686,41 @@ impl<'a> Env<'a> {
             th: if th <= 0.0 { 0 } else { th.to_bits() },
             work: self.work,
         };
-        if let Some(m) = self.deck_memo.get_mut(&key) {
-            if key.work + m.work <= self.budget {
-                self.work += m.work;
-                *scored += m.scored;
-                self.last_pv = m.pv;
-                self.cert = self.cert.min(m.cert);
-                self.overflows += m.overflows;
-                self.cfs.add(&m.cf);
-                // first use in this job of an outcome an earlier job stored (`DECK_KEEP`): this job's own search would have
-                // run here, so its node and exact-scoring counters and its per-class ratios count as if it had (a later use
-                // in the same job leaves them, as the memo always has). A class's ratio and deck change only when the call's
-                // own maximum is above the job's: `note_ratio` keeps the first deck strictly above, so the same as the run
-                if m.job != self.job {
-                    m.job = self.job;
-                    self.space.nodes.set(self.space.nodes.get() + m.nodes);
-                    crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
-                    for k in 0..4 {
-                        if let Some((r, t2, sel)) = &m.ratio[k] {
-                            if *r > self.max_ratio[k] {
-                                self.max_ratio[k] = *r;
-                                self.max_deck[k] = Some((*t2, sel.clone()));
-                            }
-                        }
-                    }
-                }
-                let caps = self.space.caps();
+        if let Some(m) = self.deck_memo.get_mut(&key)
+            && key.work + m.work <= self.budget
+        {
+            self.work += m.work;
+            *scored += m.scored;
+            self.last_pv = m.pv;
+            self.cert = self.cert.min(m.cert);
+            self.overflows += m.overflows;
+            self.cfs.add(&m.cf);
+            // first use in this job of an outcome an earlier job stored (`DECK_KEEP`): this job's own search would have
+            // run here, so its node and exact-scoring counters and its per-class ratios count as if it had (a later use
+            // in the same job leaves them, as the memo always has). A class's ratio and deck change only when the call's
+            // own maximum is above the job's: `note_ratio` keeps the first deck strictly above, so the same as the run
+            if m.job != self.job {
+                m.job = self.job;
+                self.space.nodes.set(self.space.nodes.get() + m.nodes);
+                crate::deck::JCOUNT.with(|c| c.set(c.get() + m.joints));
                 for k in 0..4 {
-                    if let Some((r, _, _)) = &m.ratio[k] {
-                        if *r > caps[k] * (1.0 + 1e-9) {
-                            self.cap_breach += 1;
-                        }
+                    if let Some((r, t2, sel)) = &m.ratio[k]
+                        && *r > self.max_ratio[k]
+                    {
+                        self.max_ratio[k] = *r;
+                        self.max_deck[k] = Some((*t2, sel.clone()));
                     }
                 }
-                return m.res.clone();
             }
+            let caps = self.space.caps();
+            for k in 0..4 {
+                if let Some((r, _, _)) = &m.ratio[k]
+                    && *r > caps[k] * (1.0 + 1e-9)
+                {
+                    self.cap_breach += 1;
+                }
+            }
+            return m.res.clone();
         }
         let (w0, s0, c0, o0, n0, j0, f0) = (
             self.work,
@@ -1740,11 +1741,11 @@ impl<'a> Env<'a> {
         let ratio: [Option<(f64, usize, Sel)>; 4] =
             std::array::from_fn(|k| d1[k].as_ref().map(|(t2, sel)| (r1[k], *t2, sel.clone())));
         for k in 0..4 {
-            if let Some((r, t2, sel)) = &ratio[k] {
-                if *r > self.max_ratio[k] {
-                    self.max_ratio[k] = *r;
-                    self.max_deck[k] = Some((*t2, sel.clone()));
-                }
+            if let Some((r, t2, sel)) = &ratio[k]
+                && *r > self.max_ratio[k]
+            {
+                self.max_ratio[k] = *r;
+                self.max_deck[k] = Some((*t2, sel.clone()));
             }
         }
         if self.work <= self.budget {
@@ -1786,7 +1787,7 @@ impl<'a> Env<'a> {
             return res;
         }
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *OFF.get_or_init(|| std::env::var("CAP_RERUN").map_or(false, |v| v == "0")) {
+        if *OFF.get_or_init(|| std::env::var("CAP_RERUN").is_ok_and(|v| v == "0")) {
             self.cfs.unhandled += 1;
             return res;
         }
@@ -1976,10 +1977,10 @@ impl<'a> Env<'a> {
         self.cfs.work += work;
         if !full {
             self.cfs.open += 1;
-            if let Some((v, s)) = capped {
-                if v > best.0 {
-                    best = (v, s);
-                }
+            if let Some((v, s)) = capped
+                && v > best.0
+            {
+                best = (v, s);
             }
             return DeckRes::Done(best.0, best.1, false);
         }
@@ -2374,13 +2375,11 @@ impl<'a> Env<'a> {
                 complete = false;
             }
             let val = c * val;
-            if per_trainee {
-                if let Some(i) = done.iter().position(|x| cands[x.1].t as usize == t) {
-                    if done[i].0 >= val {
-                        continue;
-                    }
-                    done.remove(i);
+            if per_trainee && let Some(i) = done.iter().position(|x| cands[x.1].t as usize == t) {
+                if done[i].0 >= val {
+                    continue;
                 }
+                done.remove(i);
             }
             let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
             done.insert(pos, (val, ci, sel));
@@ -2701,11 +2700,11 @@ impl<'a> Env<'a> {
             .map(|&g| {
                 let (mut miss, mut n) = (1.0f64, 0);
                 for s in &sl {
-                    if let Some(st) = s.pinks.iter().filter(|x| x.0 == g).map(|x| x.1.min(3)).max() {
-                        if st > 0 {
-                            n += 1;
-                            miss *= 1.0 - pink_p(st, aff_factor(s.rel, s.race));
-                        }
+                    if let Some(st) = s.pinks.iter().filter(|x| x.0 == g).map(|x| x.1.min(3)).max()
+                        && st > 0
+                    {
+                        n += 1;
+                        miss *= 1.0 - pink_p(st, aff_factor(s.rel, s.race));
                     }
                 }
                 json!({"group": g, "q": 1.0 - miss * miss, "carriers": n})
@@ -2829,7 +2828,6 @@ impl<'a> Env<'a> {
 
 /// The main search of the job keyed `key` (`LAST_SOLVE`): the kept one, with what its product searches proved
 /// (`env.ruled` as a combined job's plan finds it), else searched now and kept
-#[allow(clippy::too_many_arguments)]
 fn solve_kept(
     env: &mut Env,
     key: u64,
@@ -2921,7 +2919,7 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     let n = d.umas.len();
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let lock_blocked =
-        |u: usize| dj.lock_cards.iter().any(|id| card_of.get(id).map_or(false, |c| c.blocks(d.umas[u].id)));
+        |u: usize| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id)));
     let id_ok = |id: u32| (sj.owned.is_empty() || sj.owned.contains(&id)) && !sj.exclude.contains(&id);
     // every uma that can train (the plan's next career takes any of them); the job's trainees are among these
     let owned: Vec<usize> =
@@ -3067,10 +3065,10 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         }
     }
     // what earlier jobs on this setup proved (the page's worker keeps it between jobs; `fp` above)
-    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone())) {
-        if s.len() == n {
-            env.seen = s;
-        }
+    if let Some(s) = SEEN.with(|c| c.borrow().iter().find(|e| e.0 == fp).map(|e| e.1.clone()))
+        && s.len() == n
+    {
+        env.seen = s;
     }
     let keep = |env: &Env| {
         SEEN.with(|c| {
@@ -3099,10 +3097,9 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         .as_ref()
         .filter(|x| x.get("roll").is_some_and(|r| !r.is_null()))
         .and_then(|x| serde_json::from_value::<sim::plan::PlanJob>(x.clone()).ok())
+        && let Some(r) = sim::plan::roll_kept(&mut env, d, sk, cr, v, legs, &pool, &cj.fix, &nj)
     {
-        if let Some(r) = sim::plan::roll_kept(&mut env, d, sk, cr, v, legs, &pool, &cj.fix, &nj) {
-            return json!({"next": {"roll": r}});
-        }
+        return json!({"next": {"roll": r}});
     }
     // `borrowed_parent` "later": the career picked (the search's results, the plan's rows) comes from the pool without
     // borrowed parents; the plan's look-ahead keeps `pool` (under "never" `pool` itself allows none)
@@ -3151,44 +3148,42 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     if cj.compare {
         out["compare"] = json!(true);
     }
-    if let Some(x) = &cj.next {
-        if !sv.found.is_empty() {
-            out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
-                Ok(nj) => match &ppool {
-                    None => {
-                        sim::plan::index_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj, None)
-                    }
-                    // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
-                    // key (so a plan after an "allow" run takes it as it is)
-                    Some(pp) => {
-                        let sva = solve_kept(
-                            &mut env,
-                            key_of(&["next", "no_reports", "borrowed_parent"]),
-                            &pool,
-                            &cj.fix,
-                            &trainees,
-                            cj.per_trainee,
-                            cj.top,
-                        );
-                        sim::plan::index_rule(
-                            &mut env,
-                            d,
-                            sk,
-                            cr,
-                            v,
-                            legs,
-                            &pool,
-                            &sva,
-                            &cj.fix,
-                            &trainees,
-                            &nj,
-                            Some((pp, &sv)),
-                        )
-                    }
-                },
-                Err(e) => json!({"error": format!("next: {e}")}),
-            };
-        }
+    if let Some(x) = &cj.next
+        && !sv.found.is_empty()
+    {
+        out["next"] = match serde_json::from_value::<sim::plan::PlanJob>(x.clone()) {
+            Ok(nj) => match &ppool {
+                None => sim::plan::index_rule(&mut env, d, sk, cr, v, legs, &pool, &sv, &cj.fix, &trainees, &nj, None),
+                // "later": the look-ahead's main search is the one that borrows: the same job's as "allow", kept under its
+                // key (so a plan after an "allow" run takes it as it is)
+                Some(pp) => {
+                    let sva = solve_kept(
+                        &mut env,
+                        key_of(&["next", "no_reports", "borrowed_parent"]),
+                        &pool,
+                        &cj.fix,
+                        &trainees,
+                        cj.per_trainee,
+                        cj.top,
+                    );
+                    sim::plan::index_rule(
+                        &mut env,
+                        d,
+                        sk,
+                        cr,
+                        v,
+                        legs,
+                        &pool,
+                        &sva,
+                        &cj.fix,
+                        &trainees,
+                        &nj,
+                        Some((pp, &sv)),
+                    )
+                }
+            },
+            Err(e) => json!({"error": format!("next: {e}")}),
+        };
     }
     keep(&env);
     if env.overflows > 0 {
@@ -3323,11 +3318,11 @@ mod tests {
                 if x % 3 == 0 {
                     p.me[x].mix = Some([0.5, 0.4, 0.1]);
                 }
-                if x % 4 == 1 {
-                    if let Some(g) = p.gp[x].first_mut() {
-                        g.stars = std::rc::Rc::new(p.me[x].stars.iter().map(|&s| s.max(1)).collect());
-                        g.mix = Some([0.2, 0.3, 0.5]);
-                    }
+                if x % 4 == 1
+                    && let Some(g) = p.gp[x].first_mut()
+                {
+                    g.stars = std::rc::Rc::new(p.me[x].stars.iter().map(|&s| s.max(1)).collect());
+                    g.mix = Some([0.2, 0.3, 0.5]);
                 }
             }
             let ks: Vec<usize> = (0..env.ntar).collect();
