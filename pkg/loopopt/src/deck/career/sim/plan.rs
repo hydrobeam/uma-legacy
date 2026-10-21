@@ -593,6 +593,25 @@ fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, 
 fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
     if of_legs { s.env.pool_pop(&mut pv); s.put_pool(pool, pv); }
 }
+/// Prepared scoring retained for the chosen career's later rolls.
+struct KeptScoring {
+    scored: Scored,
+    /// At least one all-targets-landed outcome has a saving below 0.5; used when preparing the roll bound.
+    full_landing_below_threshold: bool,
+}
+
+/// Named outputs of career scoring. `Want` determines which fields are computed; Stats leaves the two
+/// scalar fields at zero, Score leaves `lift_stats` empty, Touch returns zeros everywhere (no evaluation), and only Keep
+/// retains the scoring tables.
+pub(super) struct CareerScore {
+    /// Expected reduction in remaining careers, before subtracting the current career's cost.
+    expected_saving: f64,
+    improvement_chance: f64,
+    kept: Option<KeptScoring>,
+    /// Per candidate: probability of improvement and probability-weighted improved odds.
+    pub(super) lift_stats: Vec<(f64, f64)>,
+}
+
 /// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
 /// above 0, the scoring kept for a roll (`Want::Keep`: `Scored`, with whether an outcome landing every target reads y < 0.5), and per candidate (P(her veteran lifts her), the summed lifted odds): what `want` asks for (`Want`). Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
@@ -600,18 +619,18 @@ fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
 ///
 /// `pool` must be `Env::pool(legs)` (the planner's callers): the pool with her veteran is then that pool with her entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
-pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> (f64, f64, Option<(Scored, bool)>, Vec<(f64, f64)>) {
+pub(super) fn score_career(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> CareerScore {
     let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, true, x, a, b, sel, want, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
 }
 /// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-pub(super) fn score_career_of(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> (f64, f64, Option<(Scored, bool)>, Vec<(f64, f64)>) {
+pub(super) fn score_career_of(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> CareerScore {
     let t_sc = now_ms(); let r = score_career_(s, d, bs, legs, pool, false, x, a, b, sel, want, buf); prof("score_ms", now_ms() - t_sc); prof("score_calls", 1.0); r
 }
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> (f64, f64, Option<(Scored, bool)>, Vec<(f64, f64)>) {
+fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Pool, of_legs: bool, x: usize, a: usize, b: usize, sel: &Sel, want: Want, buf: &mut Vec<f64>) -> CareerScore {
     let n = bs.cands.len(); let ntar = s.env.ntar; let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone(); let fixed_t = s.env.fixed_t.clone(); let w = s.env.sj.star_dist;
     let (xi, goal) = her_ends(s, bs, legs, x, a, b);
@@ -679,13 +698,23 @@ fn score_career_(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &
     // per active candidate: (index, her slot or none, her threshold, her odds now)
     sd.act = active.iter().map(|&ui| (ui, aslot[ui], thr[ui], bs.pnow[ui])).collect();
     her_pool_done(s, pool, of_legs, pv);
-    if want == Want::Touch { return (0.0, 0.0, None, vec![(0.0, 0.0); n]); }
+    if want == Want::Touch {
+        return CareerScore { expected_saving: 0.0, improvement_chance: 0.0, kept: None, lift_stats: vec![(0.0, 0.0); n] };
+    }
     let mut sc = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
     let (ey, lift, _, stats, full_lo, [n_out, n_ch, n_cost, n_same, n_one]) = sc_eval(bs, &sd, &All, if want == Want::Keep { Want::Score } else { want }, &mut sc);
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = sc);
     prof("sc_out", n_out as f64); prof("sc_trio", n_ch as f64); prof("sc_cost", n_cost as f64);
     prof("sc_same", n_same as f64); prof("sc_one", n_one as f64);
-    (ey, lift, (want == Want::Keep).then_some((sd, full_lo)), stats)
+    CareerScore {
+        expected_saving: ey,
+        improvement_chance: lift,
+        kept: (want == Want::Keep).then_some(KeptScoring {
+            scored: sd,
+            full_landing_below_threshold: full_lo,
+        }),
+        lift_stats: stats,
+    }
 }
 /// A scoring's evaluation (`Scored`) at the leaves `lv` produces: the fold of its tables into the outcome rows (with na >
 /// 0 setup slots: `fold_rec`), then the outcome loop (`sc_outcomes`): what `sc_outcomes` returns, with whether an outcome
@@ -2146,7 +2175,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         }); }
         let f = best[x].clone().flatten()?;
         if let Some((pf, pst, stamp)) = reuse { if same_career(pf, &f) && stamp_ok(s, Some(&cands), stamp) { prof("reuse_st", 1.0); return Some((f, pst.to_vec())); } }
-        let (_, _, _, st) = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
+        let CareerScore { lift_stats: st, .. } = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
         Some((f, st))
     };
     let set_wins = |s: &mut Sim, wtab: &mut Vec<Vec<usize>>, x: usize, f: &Found| { let w = s.wins(pool, x, f.a, f.b); wtab[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect(); };
@@ -2161,7 +2190,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 let pf = best_sur(&mut s, pool, fix, x, 1e9, &mut buf);
                 search_ms += now_ms() - ts;
                 let Some(f) = pf else { continue };
-                let ((_, _, _, st), sv) = stamped(&mut s, Some(&cands), |s| score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf));
+                let (CareerScore { lift_stats: st, .. }, sv) = stamped(&mut s, Some(&cands), |s| score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf));
                 runs.push((x, f, st)); exact_run.push(false); st_ver.push(sv);
                 continue;
             }
@@ -2178,7 +2207,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 search_ms += now_ms() - ts;
             }
             let Some(Some(f)) = best[x].clone() else { continue };
-            let (_, _, _, st) = score_career(&mut s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf);
+            let CareerScore { lift_stats: st, .. } = score_career(&mut s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf);
             runs.push((x, f, st)); exact_run.push(true); st_ver.push(None);
         }
         // the near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
@@ -2265,7 +2294,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 // (its stats feed only `proxy_check`; without it the scoring runs for its state effects alone: its `val`
                 // searches, under this block's cap, add decks later scorings read)
                 let want = if pj.proxy_check { Want::Stats } else { Want::Touch };
-                let (_, _, _, st) = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, &mut buf);
+                let CareerScore { lift_stats: st, .. } = score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, want, &mut buf);
                 runs.push((x, f, st)); exact_run.push(true); st_ver.push(None);
             }
         });
@@ -2365,10 +2394,10 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     let score_one = |s: &mut Sim, r: &(usize, Found, Vec<(f64, f64)>), c1: &[f64], vnow: f64, cont: &[Cont], combos3: &[Trio], sides: &[Vec<(bool, Legacy)>], buf: &mut Vec<f64>| {
         if !vis(&r.1) { return (f64::NEG_INFINITY, 0.0, None); }
         let base = ScoreBase { cands: &cands, c1, m23: &zeros, v0: vnow, pnow: &pnow, cont, combos: combos3, sides, all: &all };
-        let (ey, lift, ys, _) = score_career(s, d, &base, legs, pool, r.0, r.1.a, r.1.b, &r.1.sel, Want::Keep, buf);
-        (ey - 1.0, lift, ys)
+        let CareerScore { expected_saving, improvement_chance, kept, .. } = score_career(s, d, &base, legs, pool, r.0, r.1.a, r.1.b, &r.1.sel, Want::Keep, buf);
+        (expected_saving - 1.0, improvement_chance, kept)
     };
-    let mut score: Vec<f64> = vec![]; let mut lifts: Vec<f64> = vec![]; let mut snaps: Vec<Option<(Scored, bool)>> = vec![];
+    let mut score: Vec<f64> = vec![]; let mut lifts: Vec<f64> = vec![]; let mut snaps: Vec<Option<KeptScoring>> = vec![];
     // Each row's kept scoring (`Scored`: what a roll of the pick reads, its tables and outcome chances) is kept only
     // while the row can still be the pick. The pick (below) is a row within NEAR.max(0.05 |top|) of top, top at least the
     // highest score less 1e-9 (the argmax's tolerance), or the base row a looped pick repeats (`undup`). A row's score
@@ -2378,7 +2407,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // above its rounding) is not near the final top unless it is scored again. Kept also: every row a later row repeats
     // (same uma and pair: a looped or nb row the pick moves from; a row whose career changes is scored again). Only the
     // pick's is read (`RollKeep`); lo is over the rows that can be the pick (`vis`).
-    let prune = |score: &[f64], exact: &[bool], runs: &[(usize, Found, Vec<(f64, f64)>)], snaps: &mut [Option<(Scored, bool)>]| {
+    let prune = |score: &[f64], exact: &[bool], runs: &[(usize, Found, Vec<(f64, f64)>)], snaps: &mut [Option<KeptScoring>]| {
         let lo = (0..score.len()).filter(|&i| exact[i] && vis(&runs[i].1)).map(|i| score[i]).fold(f64::NEG_INFINITY, f64::max);
         if !lo.is_finite() { return; }
         let thr = near_floor(lo) - 1e-6 * (1.0 + lo.abs());
@@ -2480,9 +2509,9 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
                 match best_sur(&mut s, pool, fix, x, 1e9, &mut buf) {
                     None => (None, vec![0.0; n], None),
                     Some(f) => {
-                        let (_, _, _, st) = score_career(&mut s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf);
+                        let CareerScore { lift_stats: st, .. } = score_career(&mut s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, &mut buf);
                         let pe = effs(x, &st);
-                        let psc = if score.is_empty() { None } else { Some(score_career(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, &mut buf).0 - 1.0) };
+                        let psc = if score.is_empty() { None } else { Some(score_career(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, Want::Score, &mut buf).expected_saving - 1.0) };
                         (Some(f), pe, psc)
                     }
                 }
@@ -2506,7 +2535,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         let (pk, _) = pick_of(&runs, &score, vis, &undup);
         let base = ScoreBase { cands: &cands, c1: &c1, m23: &zeros, v0: vnow, pnow: &pnow, cont: &cont, combos: &combos3, sides: &sides, all: &all };
         let (x, f) = (runs[pk].0, runs[pk].1.clone());
-        let (sd, full_lo) = snaps[pk].take().expect("the pick's kept scoring was dropped");
+        let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } = snaps[pk].take().expect("the pick's kept scoring was dropped");
         let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, &mut buf);
         Some(RollKeep { key: roll_key(job), sd, base: KeptBase::of(&base), x, a: f.a, b: f.b, sel: f.sel, her_hi, anc: found_anchors(s.env, pool, sv), hi_anc: vec![] })
     } else { None };

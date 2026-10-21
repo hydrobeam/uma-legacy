@@ -398,7 +398,7 @@ impl<'s, 'a> Sim<'s, 'a> {
                     let sel = self.cache.decks[pk.t][pk.d].sel.clone();
                     let pw = [pa];
                     let base = plan::ScoreBase { cands: &one, c1: &[1.0], m23: &[0.0], v0: 0.0, pnow: &pw, cont: &[], combos: &[], sides: &[], all: &[] };
-                    let (_, _, _, stt) = plan::score_career_of(self, self.d, &base, &st.legs, &st.pool, pk.t, pk.a, pk.b, &sel, plan::Want::Stats, &mut buf);
+                    let plan::CareerScore { lift_stats: stt, .. } = plan::score_career_of(self, self.d, &base, &st.legs, &st.pool, pk.t, pk.a, pk.b, &sel, plan::Want::Stats, &mut buf);
                     let (pl, sp) = stt[0];
                     let (e, p1) = if pl > 0.0 { let p1 = sp / pl; (pl * (1.0 / pa - 1.0 / p1), p1) } else { (0.0, pa) };
                     if bestb.map_or(true, |b| e > b.0) { bestb = Some((e, pk, pl, p1)); }
