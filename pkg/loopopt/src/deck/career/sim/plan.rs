@@ -1000,10 +1000,10 @@ fn rise_leaves(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa
 /// BB_SLACK for rounding (far more than the (1 + 2^-53)^(2 nu + 4) the chains can drift) that bounds f x the leaf's
 /// value from below at every leaf under the prefix (correctly rounded products are monotone). Where the bound reaches
 /// the most bd holds under the prefix (`tmax`), the anchor lowers no leaf there: the subtree is skipped.
-struct AncBb { nu: usize, no: usize, tmax: Vec<Vec<f64>>, pp: Vec<f64>, smin: Vec<f64>, nodes: u64, roots: u64 }
+struct AncBb { nu: usize, no: usize, tmax: Vec<Vec<f64>>, pp: Vec<f64>, smin: Vec<f64>, nodes: u64, roots: u64, sparse: bool, acc: Vec<f64> }
 const BB_SLACK: f64 = 1.0 - 1e-12;
 impl AncBb {
-    fn new() -> Self { AncBb { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0 } }
+    fn new() -> Self { AncBb { nu: 0, no: 0, tmax: vec![], pp: vec![], smin: vec![], nodes: 0, roots: 0, sparse: false, acc: vec![] } }
     /// bd per leaf (level nu of `tmax`)
     fn bd(&self) -> &[f64] { &self.tmax[self.nu] }
     /// a fresh (candidate, partner) with `no` outfits for the anchors and the ceiling's fast outfits gc ([outfit][target
@@ -1019,35 +1019,74 @@ impl AncBb {
         self.tmax.resize(nu + 1, vec![]);
         let nan_inf = |b: f64| if b.is_nan() { f64::INFINITY } else { b };
         let mut bd = std::mem::take(&mut self.tmax[nu]);
-        bd.clear();
         if nu == 0 {
+            bd.clear();
             bd.push(if mk.lv[0][0] { nan_inf(rf * if nfo > 0 { 1.0 } else { 0.0 }) } else { f64::NEG_INFINITY });
             self.tmax[0] = bd; return;
         }
         let np = 1usize << (2 * (nu - 1));
-        bd.resize(np * 4, 0.0);
-        let mut g: Vec<[f64; 4]> = Vec::with_capacity(nu);
-        if mk.dense {
-            for o in 0..nfo {
-                g.clear(); g.extend((0..nu).map(|k| { let b = (o * nu + k) * 4; [gc[b], gc[b + 1], gc[b + 2], gc[b + 3]] }));
-                leaf_products(&g[..nu - 1], pre, tmp);
-                // the last digit's level straight into the running most
-                for (dg, &gl) in g[nu - 1].iter().enumerate() {
-                    for (c, &pv) in bd[dg * np..(dg + 1) * np].iter_mut().zip(pre.iter()) { let pr = pv * gl; if pr > *c { *c = pr; } }
-                }
+        if !mk.dense {
+            // few marked leaves: only the marked prefixes are built (`reset_marked`). Every other entry of every level is
+            // -inf, as the full build leaves it (an unmarked leaf's -inf, a prefix the most of its quarters): set here
+            // once per AncBb (it serves one `Marks`), and nothing raises it after (`run` and the direct anchors only
+            // lower a leaf; a prefix is again the most of its quarters)
+            if !self.sparse || bd.len() != np * 4 {
+                bd.clear(); bd.resize(np * 4, f64::NEG_INFINITY);
+                for j in 0..nu { let t = &mut self.tmax[j]; t.clear(); t.resize(1usize << (2 * j), f64::NEG_INFINITY); }
+                self.sparse = true;
             }
-        } else {
-            // few marked leaves: each outfit's products down the marked prefixes only, the same products in the same
-            // order (1.0 times digit 0's factor, times digit 1's, ...: `leaf_products`' f64s), the same most
-            for o in 0..nfo {
-                pre.clear(); pre.resize(nu + 1, 1.0);
-                ceil_dfs(&mk.lv, &gc[o * nu * 4..(o + 1) * nu * 4], nu, 0, 0, pre, &mut bd);
+            self.tmax[nu] = bd;
+            self.reset_marked(nu, gc, nfo, rf, mk, pre, tmp);
+            return;
+        }
+        self.sparse = false;
+        bd.clear(); bd.resize(np * 4, 0.0);
+        let mut g: Vec<[f64; 4]> = Vec::with_capacity(nu);
+        for o in 0..nfo {
+            g.clear(); g.extend((0..nu).map(|k| { let b = (o * nu + k) * 4; [gc[b], gc[b + 1], gc[b + 2], gc[b + 3]] }));
+            leaf_products(&g[..nu - 1], pre, tmp);
+            // the last digit's level straight into the running most
+            for (dg, &gl) in g[nu - 1].iter().enumerate() {
+                for (c, &pv) in bd[dg * np..(dg + 1) * np].iter_mut().zip(pre.iter()) { let pr = pv * gl; if pr > *c { *c = pr; } }
             }
         }
         for c in bd.iter_mut() { *c = nan_inf(rf * *c); }
         for &l in &mk.unm { bd[l] = f64::NEG_INFINITY; }
         self.tmax[nu] = bd;
         self.levels();
+    }
+    /// `reset`'s rebuild at the marked prefixes only (sparse marks, every other entry -inf already): per outfit the
+    /// products level by level down `Marks::ix` (each prefix's its parent's times its last digit's factor, from 1.0:
+    /// `leaf_products`' f64s at those leaves), the running most per marked leaf over the outfits in order from 0.0, rf x it
+    /// (NaN as +inf) into bd, then each marked prefix's most of its four quarters as `levels` takes it
+    #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
+    fn reset_marked(&mut self, nu: usize, gc: &[f64], nfo: usize, rf: f64, mk: &Marks, cur: &mut Vec<f64>, nxt: &mut Vec<f64>) {
+        let nml = mk.ix[nu].len();
+        let mut acc = std::mem::take(&mut self.acc);
+        acc.clear(); acc.resize(nml, 0.0);
+        for o in 0..nfo {
+            let g = &gc[o * nu * 4..(o + 1) * nu * 4];
+            cur.clear(); cur.push(1.0);
+            for j in 1..=nu {
+                let gk = &g[(j - 1) * 4..j * 4]; let sh = 2 * (j - 1);
+                if j == nu {
+                    for ((a, &pc), &pa) in acc.iter_mut().zip(&mk.ix[j]).zip(&mk.par[j]) {
+                        let v = cur[pa as usize] * gk[(pc >> sh) as usize & 3]; if v > *a { *a = v; }
+                    }
+                } else {
+                    nxt.clear(); nxt.extend(mk.ix[j].iter().zip(&mk.par[j]).map(|(&pc, &pa)| cur[pa as usize] * gk[(pc >> sh) as usize & 3]));
+                    std::mem::swap(cur, nxt);
+                }
+            }
+        }
+        { let bd = &mut self.tmax[nu]; for (&l, &a) in mk.ix[nu].iter().zip(&acc) { let b = rf * a; bd[l as usize] = if b.is_nan() { f64::INFINITY } else { b }; } }
+        self.acc = acc;
+        for j in (0..nu).rev() {
+            let np = 1usize << (2 * j);
+            let (lo, hi) = self.tmax.split_at_mut(j + 1); let (lv, up) = (&mut lo[j], &hi[0]);
+            for &p in &mk.ix[j] { let p = p as usize; lv[p] = up[p].max(up[np + p]).max(up[2 * np + p]).max(up[3 * np + p]); }
+        }
     }
     /// per prefix the most bd holds under it (level j: the 4^j prefixes of j digits; prefix p of j digits holds leaves
     /// p + 4^j r: the most of level j + 1's four quarters; no NaN here)
@@ -1130,18 +1169,10 @@ impl AncBb {
     }
 }
 /// The leaves (and outcomes) whose bound something reads: `lv[j][p]`, prefix p of j digits holds a marked leaf (level nu:
-/// the leaves); `dense` when most leaves are marked (the ceiling is then computed at every leaf, vectorised)
-struct Marks { lv: Vec<Vec<bool>>, dense: bool, unm: Vec<usize> }
-/// `AncBb::reset`'s ceiling for one outfit (g [target k][her stars]) down the marked prefixes: pp[j] the product of the
-/// first j digits' factors from 1.0, into the running most at each marked leaf
-fn ceil_dfs(mk: &[Vec<bool>], g: &[f64], nu: usize, j: usize, p: usize, pp: &mut [f64], bd: &mut [f64]) {
-    for dg in 0..4usize {
-        let pc = p | dg << (2 * j);
-        if !mk[j + 1][pc] { continue; }
-        let v = pp[j] * g[j * 4 + dg];
-        if j + 1 == nu { if v > bd[pc] { bd[pc] = v; } } else { pp[j + 1] = v; ceil_dfs(mk, g, nu, j + 1, pc, pp, bd); }
-    }
-}
+/// the leaves); `dense` when most leaves are marked (the ceiling is then computed at every leaf, vectorised; `unm` the
+/// unmarked leaves); else `ix[j]` the marked prefixes of j digits ascending and `par[j]` each one's parent's place in
+/// `ix[j - 1]` (level 0 none)
+struct Marks { lv: Vec<Vec<bool>>, dense: bool, unm: Vec<usize>, ix: Vec<Vec<u32>>, par: Vec<Vec<u32>> }
 /// `rise_leaves`'s factors for chances qa, [outfit][target k][her stars] (the same expressions), into g
 #[allow(clippy::too_many_arguments)]
 fn rise_factors(sts: &[Vec<u8>], ews: &[Vec<f64>], x0: &[f64], xms: &[f64; 4], qa: &[f64], uncv: &[usize], g: &mut Vec<f64>) {
@@ -1343,11 +1374,20 @@ fn outcome_hi(s: &mut Sim, d: &Data, bs: &ScoreBase, legs: &[Legacy], pool: &Poo
     let mc: Vec<usize> = (0..ncell).filter(|&i| marked(i)).collect();
     // (her own 8/8 counts only on the full set: needed only when a marked outcome lands it)
     let her_need = mc.iter().any(|&i| ms[i] == nm - 1);
-    let mut mk = Marks { lv: vec![vec![]; nu + 1], dense: false, unm: vec![] };
+    let mut mk = Marks { lv: vec![vec![]; nu + 1], dense: false, unm: vec![], ix: vec![vec![]; nu + 1], par: vec![vec![]; nu + 1] };
     mk.lv[nu] = vec![false; nleaf]; for &i in &mc { mk.lv[nu][i >> nf] = true; }
     for j in (0..nu).rev() { let np = 1usize << (2 * j); let up = &mk.lv[j + 1]; mk.lv[j] = (0..np).map(|p| up[p] || up[np + p] || up[2 * np + p] || up[3 * np + p]).collect(); }
-    mk.unm = (0..nleaf).filter(|&l| !mk.lv[nu][l]).collect();
-    let nml = nleaf - mk.unm.len(); mk.dense = 4 * nml >= nleaf;
+    let nml = mk.lv[nu].iter().filter(|&&b| b).count(); mk.dense = 4 * nml >= nleaf;
+    if mk.dense { mk.unm = (0..nleaf).filter(|&l| !mk.lv[nu][l]).collect(); } else {
+        for j in 0..=nu {
+            mk.ix[j] = (0..mk.lv[j].len()).filter(|&p| mk.lv[j][p]).map(|p| p as u32).collect();
+            if j > 0 {
+                // prefix p of j digits: parent p mod 4^(j-1), found in the ascending `ix[j - 1]`
+                let (lo, cu) = (&mk.ix[j - 1], &mk.ix[j]); let m = (1u32 << (2 * (j - 1))) - 1;
+                mk.par[j] = cu.iter().map(|&p| lo.binary_search(&(p & m)).unwrap() as u32).collect();
+            }
+        }
+    }
     prof("hi_cells", mc.len() as f64); prof("hi_mleaves", nml as f64);
     if mc.is_empty() { return (vec![0.0; ncell], prs); }
     // the cells the table holds: the marked ones, or with most leaves marked every possible one, folded as before

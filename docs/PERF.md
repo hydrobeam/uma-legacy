@@ -154,6 +154,16 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   `search_work` (`umas_unproven`). The zero- and low-base bound split (e8fced4) has since cut the deck-search nodes of
   such targets (a 10-target job 7.6M -> 0.34M, gm16_nu8 5.7M -> 2.3M) and the collapse its `score_ms`; the combined
   code is not timed at 10 targets.
+- `outcome_hi`'s ceiling at sparse marks (after 64aa10e; byte-identical, every `y_hi` bit-equal, `hi_nodes` unchanged).
+  At 10 targets few leaves are marked (e2_v24_t10 10,823 and e2_full_t10 75,832 of 4^10 = 1,048,576, below the dense
+  switch at 1/4), but each (candidate, partner) still paid full-size passes: zeroing bd, rf x per leaf, -inf scattered
+  over the ~1M unmarked leaves and every level's maxima, about 4.5M entries a pair over 2059 pairs. Now `Marks` keeps
+  each level's marked prefixes with their parents; the unmarked entries are set to -inf once per call (nothing raises
+  them later), and each pair rebuilds the marked prefixes only, the products level by level (`leaf_products`' f64s in
+  its order) and the maxima in `levels`' order. On the throttled 400 MHz clock, one run each: e2_full_t10 `hi_ceil_ms`
+  12.80 -> 2.29 s, `hi_ms` 16.96 -> 6.85 s, user 45.5 -> 35.9 s; e2_v24_t10 `hi_ceil_ms` 825 -> 47 ms, `hi_ms` 891 ->
+  105 ms (user 22.5 -> 23.4 s: `sc_loop_ms` moved 12.0 -> 13.4 s between the runs, which is noise). Dense marks
+  (most 8-target jobs) take the old path.
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
   work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job
   searches nothing (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
