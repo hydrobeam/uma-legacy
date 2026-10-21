@@ -154,16 +154,23 @@ pub(super) fn src_miss(s: &Src, m: &[f64], mw: &mut [f64], mg: &mut [f64]) {
 }
 
 /// Merge a card-event cache (card_events.json) into a deck job: skill names -> (group, level) via the skills table.
-pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
+pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) { apply_event_lists(v, &event_lists(sk, db)); }
+
+/// The job lists a card-event cache adds, in `EVENT_KEYS` order: the same for every job (the page's worker builds
+/// them once, at init).
+pub(crate) struct EventLists([Vec<Value>; 8]);
+const EVENT_KEYS: [&str; 8] = ["events", "events_p", "odds_events", "end_links", "ends", "stop_risk", "alts", "alt_w"];
+/// Each list after the job's own entries of it, in their order.
+pub(crate) fn apply_event_lists(v: &mut Value, l: &EventLists) {
+    for (k, add) in EVENT_KEYS.iter().zip(&l.0) {
+        let mut a: Vec<Value> = match v[*k].take() { Value::Array(a) => a, _ => vec![] };
+        a.extend(add.iter().cloned());
+        v[*k] = Value::Array(a);
+    }
+}
+pub(crate) fn event_lists(sk: &SkillsRaw, db: &Value) -> EventLists {
     let look = |name: &str| sk.skills.iter().find_map(|(g, w, gd)| if w == name { Some((*g, 1u8)) } else if gd.as_deref() == Some(name) { Some((*g, 2u8)) } else { None });
-    let mut ev: Vec<Value> = v["events"].as_array().cloned().unwrap_or_default();
-    let mut evp: Vec<Value> = v["events_p"].as_array().cloned().unwrap_or_default();
-    let mut od: Vec<Value> = v["odds_events"].as_array().cloned().unwrap_or_default();
-    let mut el: Vec<Value> = v["end_links"].as_array().cloned().unwrap_or_default();
-    let mut en: Vec<Value> = v["ends"].as_array().cloned().unwrap_or_default();
-    let mut sr: Vec<Value> = v["stop_risk"].as_array().cloned().unwrap_or_default();
-    let mut al: Vec<Value> = v["alts"].as_array().cloned().unwrap_or_default();
-    let mut aw: Vec<Value> = v["alt_w"].as_array().cloned().unwrap_or_default();
+    let [mut ev, mut evp, mut od, mut el, mut en, mut sr, mut al, mut aw]: [Vec<Value>; 8] = Default::default();
     if let Some(cards) = db["cards"].as_object() {
         for (id, c) in cards {
             let Ok(id) = id.parse::<u32>() else { continue };
@@ -193,8 +200,7 @@ pub(crate) fn apply_events_db(v: &mut Value, sk: &SkillsRaw, db: &Value) {
             for e in c["chance"].as_array().into_iter().flatten() { if let Some((g, lv)) = look(e[0].as_str().unwrap_or("")) { od.push(json!([id, g, lv, e[1].as_f64().unwrap_or(0.0)])); } }
         }
     }
-    v["events"] = Value::Array(ev); v["events_p"] = Value::Array(evp); v["odds_events"] = Value::Array(od);
-    v["end_links"] = Value::Array(el); v["ends"] = Value::Array(en); v["stop_risk"] = Value::Array(sr); v["alts"] = Value::Array(al); v["alt_w"] = Value::Array(aw);
+    EventLists([ev, evp, od, el, en, sr, al, aw])
 }
 
 /// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact

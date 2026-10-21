@@ -43,6 +43,8 @@ export const engineBusy = () => pending.size > 0;
 export function killEngine() { engineGen++; if (worker) worker.terminate(); worker = null; ready = null; pending.clear(); }
 // the worker compiled and loaded without a job (a reload that shows a saved result still wants the next search quick)
 export const warmEngine = () => startEngine().catch(() => {});
+// a superseded or stopped job's worker goes and the next one starts loading at once, during the pause before the next search
+export function restartEngine() { killEngine(); warmEngine(); }
 function startEngine() {
   if (ready) return ready;
   const gen = engineGen;

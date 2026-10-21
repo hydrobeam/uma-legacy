@@ -146,6 +146,8 @@ pub(crate) use self::joint::{CFCHK, CF_LIM, CF_ON, SBCHK, SBN, SB_ON, SB_USED};
 pub(crate) use self::enumerate::RBCHK;
 pub(crate) use self::loops::run_deck;
 pub(crate) use self::sources::apply_events_db;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use self::sources::{apply_event_lists, event_lists, EventLists};
 
 mod career;
 pub(crate) use career::run_career;

@@ -76,6 +76,19 @@ restarted worker given the same `WebAssembly.Module` starts with what the last o
 (`--liftoff-only`) took export 2's plan 39 s against 22 s (at be6bb44, before the planner's loops were split), so slow
 tier-up cost at most about 1.8x then.
 
+Small fixes from the loop and page audit (2026-10-21; not timed, native outputs byte-identical to the build before
+them, timings aside, on valq, the full val and the nine plan jobs):
+- A worker killed for a newer edit, or by Stop, is replaced at once (`restartEngine`), so its boot overlaps the
+  550/600 ms pause instead of following it.
+- The worker builds the job lists the card-event cache adds once, at init (`event_lists`), and appends clones to each
+  job in the same order; `state_out` / `state_in` skip them. Jobs are deserialised from the request `Value` by
+  reference, with no deep clones of it.
+- The deck search: `exact_best` takes its 3 seeds by a linear pass equal to the stable sort's first 3; the skyline's
+  deck names and choice labels are built once per (card, end link, variant); the exact-ceiling cells read their xtab row
+  by reference instead of copying 1 KB.
+- The career page saves the veterans once after the next frame instead of on every edit, and at once when the page is
+  hidden or left; the job's legacies and their JSON in the run key are rebuilt only after an edit.
+
 ## Open in the deck search (estimates)
 
 - Pruning without the assumed caps (in progress): the class caps (`EXACT_CAPS`) are assumed, and a 10-target export

@@ -9,8 +9,8 @@ pub(crate) fn run_deck(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Va
 }
 
 pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
-    let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
-    let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let sj: SkillJob = match SkillJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let dj: DeckJob = match DeckJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let model = Model::new(d, sk, &sj);
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
@@ -405,18 +405,24 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     };
     if std::env::var("DECK_DEBUG").is_ok() { eprintln!("skyline {} of {}", sky.len(), front.len()); }
     {
+        // per (card, end link, variant): its name with the choice and end-link notes, and its choice label
+        let mut shown: HashMap<(usize, u8, u32), (String, String)> = HashMap::new();
         let pd: Vec<PDeck> = sky.iter().map(|&i| { let x = &front[i];
-            let mut names: Vec<String> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| {
-                let mut n = cards[i].name.clone();
-                let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
-                if !lb.is_empty() { n = format!("{} ({})", n, lb); }
-                if e > 0 { n = format!("{} (end chain at link {})", n, e); }
-                if Some(i) == x.borrowed { n = format!("{} (borrowed)", n); }
-                n
-            }).collect();
+            let mut names: Vec<String> = Vec::with_capacity(x.cards.len() + x.plain + x.filler);
+            let mut choices: Vec<String> = Vec::with_capacity(x.cards.len());
+            for ((&i, &e), &v) in x.cards.iter().zip(&x.ends).zip(&x.vars) {
+                let (n, lb) = shown.entry((i, e, v)).or_insert_with(|| {
+                    let mut n = cards[i].name.clone();
+                    let lb = srcb.label(cards[i], (e > 0).then_some(e), v, sk);
+                    if !lb.is_empty() { n = format!("{} ({})", n, lb); }
+                    if e > 0 { n = format!("{} (end chain at link {})", n, e); }
+                    (n, lb)
+                });
+                names.push(if Some(i) == x.borrowed { format!("{} (borrowed)", n) } else { n.clone() });
+                choices.push(lb.clone());
+            }
             names.extend(plain_names.iter().take(x.plain).cloned());
             for _ in 0..x.filler { names.push("(any SR without target hints)".into()); }
-            let choices: Vec<String> = x.cards.iter().zip(&x.ends).zip(&x.vars).map(|((&i, &e), &v)| srcb.label(cards[i], (e > 0).then_some(e), v, sk)).collect();
             PDeck { names, ids: x.cards.iter().map(|&i| cards[i].id).collect(), ends: x.ends.clone(), vars: x.vars.clone(), choices, plain_ids: plain_ids.iter().take(x.plain).copied().collect(),
                     pal_names: x.cards.iter().filter(|&&i| cards[i].pal).map(|&i| cards[i].name.clone()).chain(plain_names.iter().take(x.plain).cloned()).collect(),
                     pals: x.pals, borrowed: x.borrowed.map(|i| cards[i].name.clone()), dw: x.dw.clone(), dg: x.dg.clone() } }).collect();

@@ -24,12 +24,25 @@ function loadAll() {
 const ALL = loadAll(), MINE = ALL[ERA] || {};
 export const vets = (MINE.vets || []).map(v => ({ pinks: {}, ...v, parents: v.parents.map(p => ({ pinks: {}, ...p })) }));
 export const plan = MINE.plan || { trainee: null, parents: [null, null] };
-export function persist() { ALL[ERA] = { vets, plan }; try { localStorage.setItem(CKEY, JSON.stringify(ALL)); } catch {} }
+// Saving: `persist` writes now; an edit's `persistSoon` writes once after the next frame (edits in between share it), and
+// a write still due goes out when the page is hidden or left (a reload or close loses nothing). `rev` counts the edits
+// (each `persistSoon`, and a change of uma before its skills prompt answers): `legaciesJob` is rebuilt only after one.
+let persistDue = false, rev = 0;
+export function persist() { persistDue = false; ALL[ERA] = { vets, plan }; try { localStorage.setItem(CKEY, JSON.stringify(ALL)); } catch {} }
+export function persistSoon() {
+  rev++;
+  if (document.visibilityState === 'hidden') { persist(); return; }
+  if (persistDue) return;
+  persistDue = true; requestAnimationFrame(() => setTimeout(() => { if (persistDue) persist(); }));
+}
+const flushPersist = () => { if (persistDue) persist(); };
+addEventListener('pagehide', flushPersist);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPersist(); });
 
 let onChange = () => {};
 export function onVetsChange(fn) { onChange = fn; }
 // every edit: saved, then the page redraws and searches again
-export function changed() { persist(); onChange(); }
+export function changed() { persistSoon(); onChange(); }
 
 export const umaName = (id) => id ? (NAME.get(id) || 'Uma ' + id) : 'Unknown';
 const targetGroups = () => state.targets.map(t => t.group);
@@ -98,7 +111,7 @@ export function openWins(nd, who, opts = {}) {
   $('wins-title').textContent = 'G1 wins: ' + who;
   const count = () => { $('wins-count').textContent = winsText(nd); };
   $('wins-list').replaceChildren(winsAgenda({ races: allRaces(), get: () => nd.wins, set: (w) => { nd.wins = w; }, at: () => (nd.winAt ||= {}),
-    offer: opts.offer, info: opts.info, onEdit: () => { count(); (opts.onEdit || persist)(); } }));
+    offer: opts.offer, info: opts.info, onEdit: () => { count(); (opts.onEdit || persistSoon)(); } }));
   count();
   // closing: the pool searches again; the focus goes back to the button that opened it (redrawn by then: found by its key)
   winsClose = opts.onClose || (() => { const k = opener?.dataset?.k; changed(); const b = k && document.querySelector(`[data-k="${CSS.escape(k)}"]`); (b || (opener?.isConnected ? opener : null))?.focus(); });
@@ -257,7 +270,7 @@ export function winsBtn(nd, who, key = '') {
 // change who a node is: pick the uma, then whether to add the target skills
 export function changeUma(nd, label) {
   openUmaPicker(`${label}: which uma?`, (id) => {
-    nd.chara = id; delete nd.outfit;
+    nd.chara = id; delete nd.outfit; rev++;
     askSkills(umaName(id), Object.keys(nd.sparks).length > 0, (sp) => { if (sp) nd.sparks = sp; changed(); });
   });
 }
@@ -311,8 +324,11 @@ export function removeVet(i) { vets.splice(i, 1); dropMissing(); changed(); }
 export function clearVets(drop = () => true) { for (let i = vets.length - 1; i >= 0; i--) if (drop(vets[i])) vets.splice(i, 1); dropMissing(); changed(); }
 function dropMissing() { plan.parents = plan.parents.map(id => (id && vetById(id) ? id : null)); }
 // the job's legacies (skill groups and stars as pairs; an unknown parent counts with character 0: no relation points)
+// (the same array until the next edit, `rev`: callers don't change it)
+let legs = null, legsRev = -1;
 export function legaciesJob() {
+  if (legs && legsRev === rev) return legs;
   const pairs = (o) => Object.entries(o || {}).map(([g, s]) => [+g, s]);
   const nd = (n) => ({ chara: n.chara || 0, sparks: pairs(n.sparks), pinks: pairs(n.pinks), wins: n.wins });
-  return vets.map(v => ({ ...nd(v), borrowed: !!v.borrowed, parents: v.parents.map(nd) }));
+  legsRev = rev; return (legs = vets.map(v => ({ ...nd(v), borrowed: !!v.borrowed, parents: v.parents.map(nd) })));
 }

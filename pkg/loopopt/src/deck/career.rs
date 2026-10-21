@@ -1365,9 +1365,9 @@ fn solve_kept(env: &mut Env, key: u64, p: &Pool, fix: &[usize], trainees: &[usiz
 pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> Value {
     // the worker's kept work, out to the page and back in after a reload (`state_out` / `state_in`)
     match v["cmd"].as_str() { Some("state_out") => return state_out(), Some("state_in") => return state_in(&v["state"]), _ => {} }
-    let sj: SkillJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
-    let dj: DeckJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
-    let cj: CareerJob = match serde_json::from_value(v.clone()) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let sj: SkillJob = match SkillJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let dj: DeckJob = match DeckJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
+    let cj: CareerJob = match CareerJob::deserialize(v) { Ok(x) => x, Err(e) => return json!({"error": e.to_string()}) };
     CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let t_all = Instant::now();
     let model = Model::new(d, sk, &sj);

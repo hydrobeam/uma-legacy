@@ -5,7 +5,7 @@ import { $ } from './dom.js';
 import { runnerHTML } from './images.js';
 import { ERA } from './settings.js';
 import { UMAS, ASSETS, EXAMPLE, LATER } from './data.js';
-import { run, killEngine } from './engine.js';
+import { run, restartEngine } from './engine.js';
 import { save, onSave } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { state, ui, DEFAULTS } from './state.js';
@@ -75,7 +75,7 @@ onSave(scheduleSearch);
 export { save };
 
 let busy = false;   // a search is running in the engine
-function stopEngine() { killEngine(); busy = false; }
+function stopEngine() { restartEngine(); busy = false; }
 
 // Settings the search cannot start from: an empty state (nothing to search yet, with the button that fixes it) or an
 // error (contradictory settings), said in the status line.

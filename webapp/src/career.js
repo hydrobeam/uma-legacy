@@ -6,7 +6,7 @@ import { $, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, CARDS, CARD_BY_ID, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
-import { run, killEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
+import { run, restartEngine, engineBusy, enginePersist, engineSaveState } from './engine.js';
 import { onSave, save } from './save.js';
 import { EXTRA, jobTargets, ownedCards, rcardsOff } from './job.js';
 import { umaAv, skillIcon, cardAv, runnerHTML, setRunner } from './images.js';
@@ -39,7 +39,11 @@ let started = false;   // a job of this run is under way (the pause before it di
 let phaseNote = '';   // the plan phase's lead: what the search found ("Weighed N careers in X s.")
 let prog = '';   // the plan's progress, as the solver reports it from inside the plan (`progText`)
 let inflight = null;   // the run under way: its job and places (`runKey`); null when none is
-const runKey = (job) => JSON.stringify([ERA, job]) + '\n' + JSON.stringify(plan);
+// a job's key: its JSON with the legacies' apart, kept with the array `legaciesJob` returns (the same until an edit)
+let legsKey = [null, ''];
+const jobKey = (job) => { if (legsKey[0] !== job.legacies) legsKey = [job.legacies, JSON.stringify(job.legacies)];
+  return JSON.stringify([ERA, { ...job, legacies: 0 }]) + '\n' + legsKey[1]; };
+const runKey = (job) => jobKey(job) + '\n' + JSON.stringify(plan);
 // the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
   : ph === 4 ? `weighing ${n} careers` : ph === 6 ? 'checking the pick' : '';
@@ -89,7 +93,7 @@ function schedule() {
   clearTimeout(timer); myId++; inflight = null;
   // only a job in flight is cut short: an idle worker keeps what it holds for the next jobs (the last search, every
   // uma's best career, the proofs); during the pause before a search nothing runs, so a second edit kills nothing
-  if (engineBusy()) killEngine();
+  if (engineBusy()) restartEngine();
   // a comparison in flight is stopped with it: its panel goes back to idle, or a roll's quick figures stand unchecked
   // (an answer that stands keeps her)
   simulationId++;
@@ -173,7 +177,7 @@ async function search() {
   // edits that end where they started (a setting changed and back, a star clicked twice): the job is the one whose
   // answer is on show (era, settings, veterans as the job carries them, and the same places), so it stands and nothing
   // runs (her comparison, if the edits cut one short, is hers to start again); a failed plan makes it run again
-  const key = JSON.stringify([ERA, job]), places = JSON.stringify(plan);
+  const key = jobKey(job), places = JSON.stringify(plan);
   if (last && last.key === key && last.plan === places && planS.state !== 'error') {
     searching = false; clearInterval(tick); renderAll(); paint(); return;
   }
@@ -681,13 +685,13 @@ async function quickCompare(y, hi = null) {
   }
 }
 // A comparison in flight is for a veteran that is going (a roll, a reset, Compare pressed again): stop it. A wasm call
-// can't be interrupted, so the worker goes (run() starts a new one). (No run is in flight: they wait for the answer.)
+// can't be interrupted, so the worker goes (a fresh one starts loading at once). (No run is in flight: they wait for the answer.)
 function cancelCompare() {
-  if (simulation.refining) { simulationId++; simulation.refining = false; simulation.provisional = false; killEngine(); return; }
+  if (simulation.refining) { simulationId++; simulation.refining = false; simulation.provisional = false; restartEngine(); return; }
   if (simulation.state !== 'busy') return;
   simulationId++; simulation.state = 'ready';
   if (simulation.kind === 'quick') return;   // one quick search: it finishes, its answer ignored (the worker and its caches stay)
-  killEngine();
+  restartEngine();
 }
 // where a comparison's saving lands: the next career when she is one of its parents, else the route step (V's A, B, C)
 // whose careers fell most; unnamed when the route itself changed

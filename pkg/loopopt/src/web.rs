@@ -10,7 +10,8 @@ use std::cell::RefCell;
 
 thread_local! {
     static STATE: RefCell<Option<(Data, SkillsRaw)>> = const { RefCell::new(None) };
-    static DECK: RefCell<Option<(super::deck::CardsRaw, serde_json::Value)>> = const { RefCell::new(None) };
+    // the card table and the job lists its event cache adds (`events` at init)
+    static DECK: RefCell<Option<(super::deck::CardsRaw, super::deck::EventLists)>> = const { RefCell::new(None) };
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -42,26 +43,26 @@ fn handle(req: &str) -> serde_json::Value {
         let r: InitReq = match serde_json::from_str(req) { Ok(r) => r, Err(e) => return serde_json::json!({"error": format!("bad init request: {e}")}) };
         let d = load_raw(r.data);
         let n = d.umas.len();
-        if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { DECK.with(|x| *x.borrow_mut() = Some((cr, r.events))); }
+        if let Ok(cr) = <super::deck::CardsRaw as serde::Deserialize>::deserialize(&r.cards) { let ev = super::deck::event_lists(&r.skills, &r.events); DECK.with(|x| *x.borrow_mut() = Some((cr, ev))); }
         STATE.with(|s| *s.borrow_mut() = Some((d, r.skills)));
         super::deck::forget_kept_decks();
         return serde_json::json!({"ok": true, "umas": n});
     }
-    let v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
-    match v["cmd"].as_str().unwrap_or("") {
+    let mut v: serde_json::Value = match serde_json::from_str(req) { Ok(v) => v, Err(e) => return serde_json::json!({"error": format!("bad request: {e}")}) };
+    let cmd = v["cmd"].as_str().unwrap_or("").to_owned();
+    match cmd.as_str() {
         "deck" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            let dkb = dk.borrow(); let Some((cr, db)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            let mut job = v.clone();
-            super::deck::apply_events_db(&mut job, sk, db);
-            super::deck::run_deck(d, sk, cr, &job)
+            let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
+            super::deck::apply_event_lists(&mut v, ev);
+            super::deck::run_deck(d, sk, cr, &v)
         })),
+        // state_out / state_in read no events
         "career" | "state_out" | "state_in" => STATE.with(|s| DECK.with(|dk| {
             let st = s.borrow(); let Some((d, sk)) = st.as_ref() else { return serde_json::json!({"error": "not initialised"}) };
-            let dkb = dk.borrow(); let Some((cr, db)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
-            let mut job = v.clone();
-            super::deck::apply_events_db(&mut job, sk, db);
-            super::deck::run_career(d, sk, cr, &job)
+            let dkb = dk.borrow(); let Some((cr, ev)) = dkb.as_ref() else { return serde_json::json!({"error": "no card data"}) };
+            if cmd == "career" { super::deck::apply_event_lists(&mut v, ev); }
+            super::deck::run_career(d, sk, cr, &v)
         })),
         c => serde_json::json!({"error": format!("unknown command {c}")}),
     }

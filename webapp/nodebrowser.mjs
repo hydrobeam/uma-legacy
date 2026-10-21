@@ -251,10 +251,12 @@ async function careerPage(b) {
     for (let i = 0; i < 3; i++) { if (+(await loc.getAttribute('aria-label')).match(/(\d) star/)[1] === n) return; await loc.click(); }
   };
   // the umadump test file's 12 veterans
+  // an edit's save lands after the next frame (vets.js persistSoon): what a check reads from storage straight after one
+  const saved = () => pg.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r))));
   const importDump = async () => { await pg.locator('#v-file').setInputFiles(new globalThis.URL('../val/umadump/U_trained_chara_data.json', import.meta.url).pathname);
     await pg.waitForFunction(() => document.getElementById('v-msg').textContent); };   // the file is read asynchronously
   await pg.goto(URL.replace(/\/?$/, '/') + 'career'); await done();
-  return { ctx, pg, note, done, planned, ask, oneAnswer, showsNow, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump };
+  return { ctx, pg, note, done, planned, ask, oneAnswer, showsNow, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, simStars, importDump, saved };
 }
 
 // ---------- tests: each gets a fresh page (fresh storage) unless noted
@@ -1398,7 +1400,7 @@ const TESTS = {
   // the career planner's veteran pool, edited: a veteran's sparks and G1 wins, new parents and grandparents, the trainee,
   // Use this, the settings, reloads, the uma.moe tree, generations saved, removals (from the 12 test veterans)
   async careervets(b) {
-    const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, importDump } = await careerPage(b);
+    const { ctx, pg, note, done, ask, vetsOpen, vetsShut, vetsSeen, node, inNode, closeNode, importDump, saved } = await careerPage(b);
     await importDump(); await done();
     // a pool veteran: her card opens her popup, her sparks and her parents' as bars, editable in place; editing keeps the
     // result on screen while the search runs again
@@ -1428,7 +1430,7 @@ const TESTS = {
     await done();
     // a pool veteran's G1 wins: the same editor, from her popup; Arima Kinen (Classic and Senior) is one race, moved from one turn to the other
     await pg.locator('#node-dlg .twho .vwins').first().click(); await dialog(pg, 'wins-dlg');
-    const savedWins = () => pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins);
+    const savedWins = async () => { await saved(); return pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets[0].wins); };
     const arima = pg.locator('#wins-dlg .wbtn[data-ix="22"]'), had = (await savedWins()).includes(22), n0w = (await savedWins()).length;
     if (had) { await arima.click(); }
     const gone = !(await arima.count()) && (await savedWins()).length === n0w - (had ? 1 : 0);
@@ -1517,8 +1519,8 @@ const TESTS = {
   // the career planner's pool grows: an uma.moe tree added, generations saved from the veteran you got (her parents the
   // next one's grandparents), removals (from the 12 test veterans, parent 1 fixed so that saving has places to clear)
   async careergen(b) {
-    const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, importDump } = await careerPage(b);
-    await importDump();   // (its run is cut short by the reload)
+    const { ctx, pg, note, done, vetsOpen, vetsShut, vetsSeen, node, inNode, simStars, importDump, saved } = await careerPage(b);
+    await importDump(); await saved();   // (its run is cut short by the reload)
     await pg.evaluate(() => { const o = JSON.parse(localStorage.getItem('llp:career')); o.global.plan = { trainee: null, parents: [o.global.vets[0].id, null] }; localStorage.setItem('llp:career', JSON.stringify(o)); });
     await pg.reload(); await done();
     const nVets = await pg.evaluate(() => JSON.parse(localStorage.getItem('llp:career')).global.vets.length);
@@ -1571,13 +1573,21 @@ const TESTS = {
       return { id: c.plan.parents.find(Boolean), count: c.vets.length };
     });
     const removalIndex = await pg.evaluate(id => JSON.parse(localStorage.getItem('llp:career')).global.vets.findIndex(v => v.id === id), removal.id);
-    await vetsOpen(); await pg.locator(`#vet-${removalIndex} .vdel`).click();
+    await vetsOpen(); await pg.locator(`#vet-${removalIndex} .vdel`).click(); await saved();
     check('career: removing a selected veteran immediately redraws and clears the fixed parent', await pg.locator('#vets .vet').count() === removal.count - 1
       && await pg.evaluate(({ id, count }) => { const c = JSON.parse(localStorage.getItem('llp:career')).global;
         return c.vets.length === count - 1 && !c.vets.some(v => v.id === id) && !c.plan.parents.includes(id); }, removal));
     await done();
     await pg.reload(); await done();
     check('career: removed veterans stay removed after reload', await pg.evaluate(id => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some(v => v.id === id), removal.id));
+    // an edit and a reload before its save is due (it lands after the next frame): the page saves it as it goes
+    await vetsOpen();
+    const quick = await pg.evaluate(() => { const card = [...document.querySelectorAll('#vets .vet')].at(-1), stored = () => JSON.parse(localStorage.getItem('llp:career')).global.vets;
+      const id = stored()[+card.id.slice(4)].id; card.querySelector('.vdel').click();
+      const due = stored().some(v => v.id === id); dispatchEvent(new PageTransitionEvent('pagehide')); return { id, due, flushed: !stored().some(v => v.id === id) }; });
+    await Promise.all([pg.waitForEvent('load'), pg.evaluate(() => location.reload()).catch(() => {})]); await done();
+    check('career: an edit followed at once by a reload is kept (written as the page goes)', quick.flushed && await pg.evaluate(id => !JSON.parse(localStorage.getItem('llp:career')).global.vets.some(v => v.id === id), quick.id),
+      `written before the page went: ${!quick.due}`);
     await vetsOpen(); while (await pg.locator('#vets .vet').count() > 1) await pg.locator('#vets .vdel').last().click();
     await done();
     check('career: removing down to one veteran clears obsolete indexed results without a page error', await pg.locator('#vets .vet').count() === 1

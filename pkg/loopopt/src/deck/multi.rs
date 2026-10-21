@@ -183,8 +183,13 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
         if ent.level < 0.0 {
             // seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
             let t0 = Instant::now();
-            let mut seeds: Vec<(f64, &PDeck)> = uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(uid, &card_of)).map(|x| (tsum(x), x)).collect();
-            seeds.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            // the first 3 of a stable sort by value, highest first: each deck goes after every kept one at least as high
+            let mut seeds: Vec<(f64, &PDeck)> = Vec::with_capacity(4);
+            for x in uview(u).iter().map(|&j| &sky[j]).filter(|x| !x.blocks(uid, &card_of)) {
+                let t = tsum(x);
+                let at = seeds.iter().position(|s| s.0.partial_cmp(&t).unwrap() == std::cmp::Ordering::Less).unwrap_or(seeds.len());
+                if at < 3 { seeds.insert(at, (t, x)); seeds.truncate(3); }
+            }
             t_seed.set(t_seed.get() + t0.elapsed().as_secs_f64());
             for (_, x) in seeds.iter().take(3) { score(x, &mut ent); }
             if ent.best.is_none() {
@@ -248,8 +253,8 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
     // Ceiling of a cell (uma, grid point) under cap lv: the exact value if computed under lv or more, else the lowest
     // such value at a higher grid point, else the product-odds bound times lv; (bound, exact?)
     let cell = |u: usize, i: usize, lv: f64| -> (f64, bool) {
-        let row = xtab_c.borrow()[u];
         let mut b = lv * fixed * btab(u, i) * (1.0 + 1e-12);
+        let xb = xtab_c.borrow(); let row = &xb[u];
         for j in i..NG { if !row[j].0.is_nan() && row[j].1 >= lv { b = b.min(row[j].0 * (1.0 + 1e-12)); return (b, j == i); } }
         (b, false)
     };
@@ -380,8 +385,7 @@ pub(super) fn run_multi(d: &Data, cr: &CardsRaw, model: &Model, sj: &SkillJob, d
             let ce = tot / ln.len() as f64;
             let Some((_, u, i)) = worst else { return ce };
             if ce <= kth * (1.0 + 4e-12) || aborted.get() { return ce; }
-            let row = xtab_c.borrow()[u];
-            let j = (i..NG).find(|&j| !row[j].0.is_nan() && row[j].1 >= lv);
+            let j = { let xb = xtab_c.borrow(); let row = &xb[u]; (i..NG).find(|&j| !row[j].0.is_nan() && row[j].1 >= lv) };
             let tgt = match j { None => i.max(gidx(qmax[u])), Some(j) => i + (j - i) / 2 };
             xtab(u, tgt, lv);
         }
