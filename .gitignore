@@ -3,6 +3,7 @@
 !/.gitignore
 !/.git-blame-ignore-revs
 !/.githooks/
+!/.github/
 !/build.sh
 !/README.md
 !/AGENTS.md

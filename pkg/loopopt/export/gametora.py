@@ -4,8 +4,11 @@
   uv run gametora.py --latest   pin the newest versions from GameTora's manifest first, then download them
 
 Files are saved as <key with / as _, static/ dropped>.<hash>.json (dict/evrew -> dict_evrew.8bda1ecc.json); a cached
-file of the same key under another hash is removed, so each key has one file and readers can glob it. GameTora keeps
-older versions online, so a pinned set rebuilds the same events.
+file of the same key under another hash is removed, so each key has one file and readers can glob it. GameTora does
+not keep older versions online (2026-10-21: 6 of the 13 pinned files answered 404), so a pinned set rebuilds the same
+events only from a cache that already holds it; elsewhere `--latest` is the way in, and the events may then change.
+Each run also writes ../data/gametora_slugs.json (tracked): the page's links to GameTora, so the page build needs no
+download.
 
 Imported, it is the one reader of those files (no other code decodes them). The format, as decoded here:
   - load(key) reads cache/gametora/<key>.<hash>.json (key as cached: 'dict_evrew', 'training_events_ssr', ...).
@@ -60,6 +63,24 @@ def main(argv):
         with open(dst + '.part', 'wb') as f: f.write(data)
         os.replace(dst + '.part', dst); got += 1
     print(f'gametora: {got} downloaded, {len(pins["files"]) - got} cached in {os.path.relpath(CACHE, R)}')
+    write_slugs()
+
+
+SLUGS = os.path.join(H, '..', 'data', 'gametora_slugs.json')
+
+
+def write_slugs():
+    """GameTora's page names, for the page's links (webapp/build.py reads them): per support card its url_name (e.g.
+    30067-the-thrones-assemblage, /supports/<url_name>), per character the slug of her character pages
+    (/characters/<outfit id>-<slug>), taken from her support cards' url_name"""
+    cards = load('support-cards')
+    out = {'about': 'GameTora page names for the page\'s links, from its support-card list (pkg/loopopt/export/gametora.py '
+                    'writes it with every download). Data (c) GameTora.',
+           'cards': {str(c['support_id']): c['url_name'] for c in sorted(cards, key=lambda c: c['support_id'])},
+           'chars': {}}
+    for c in sorted(cards, key=lambda c: c['support_id']):
+        if c.get('char_id') and '-' in c.get('url_name', ''): out['chars'][str(c['char_id'])] = c['url_name'].split('-', 1)[1]
+    with open(SLUGS, 'w') as f: json.dump(out, f, indent=1, ensure_ascii=False); f.write('\n')
 
 
 # ---- reading and decoding the cached files ----

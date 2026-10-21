@@ -48,12 +48,11 @@ for dd in (P, J):
     dj = json.load(open(os.path.join(dd, 'data.json')))
     for nm, rid in zip(dj['race_names'], dj['races']): race_ids[nm] = rid; race_ids[CHART_ALIAS.get(nm, nm[:22])] = rid
 def js(o): return json.dumps(o, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-# GameTora's card page names (url_name, e.g. 30067-the-thrones-assemblage), from its support-card list (gametora.py)
-sys.path.insert(0, os.path.join(H, '..', 'pkg', 'loopopt', 'export')); import gametora
-_gtc = gametora.load('support-cards')
-GT_URL = {c['support_id']: c['url_name'] for c in _gtc}
-# GameTora's character slug (its character pages are /characters/<outfit id>-<slug>), from her support cards' url_name
-GT_CHAR = {c['char_id']: c['url_name'].split('-', 1)[1] for c in _gtc if c.get('char_id') and '-' in c.get('url_name', '')}
+# GameTora's page names for the links (support cards: url_name, e.g. 30067-the-thrones-assemblage; characters: the slug
+# of /characters/<outfit id>-<slug>), tracked (pkg/loopopt/data/gametora_slugs.json, written by gametora.py): no download
+_gts = json.load(open(os.path.join(H, '..', 'pkg', 'loopopt', 'data', 'gametora_slugs.json')))
+GT_URL = {int(k): v for k, v in _gts['cards'].items()}
+GT_CHAR = {int(k): v for k, v in _gts['chars'].items()}
 def era(dirp, events_file):
     data = json.load(open(os.path.join(dirp, 'data.json'))); skills = json.load(open(os.path.join(dirp, 'web_skills.json')))
     cards = json.load(open(os.path.join(dirp, 'web_cards.json'))); events = json.load(open(os.path.join(dirp, events_file)))
