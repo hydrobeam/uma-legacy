@@ -128,8 +128,6 @@ pub(in super::super) struct PlanJob {
     #[serde(default = "p_swork")] search_work: usize,
     /// the rotation (chara ids, in order); absent: the loop planner's best loop for the job's settings; empty: no loop base
     #[serde(default)] loop_members: Option<Vec<u32>>,
-    /// `index_rule`: only the frozen value V0 (no index per candidate)
-    #[serde(default)] value_only: bool,
     /// `index_rule`: each uma's best career through the surrogate (`best_sur`) instead of the career search (1), or
     /// both, reporting where they differ (2); the surrogate's refresh margin there
     #[serde(default)] sur: u8,
@@ -2053,7 +2051,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // career she can run); its efficiency on contenders for a candidate's top two at most 2.8% low (p11; it can also
     // read high, which only searches more), its saving at most 2.7% low; exact on the other five jobs.
     // `exact_all` restores a search for every uma.
-    let proxy_on = pj.sur == 0 && !pj.exact_all && !pj.proxy_check && !pj.value_only;
+    let proxy_on = pj.sur == 0 && !pj.exact_all && !pj.proxy_check;
     let wins: Vec<(usize, Sel)> = sv.found.iter().map(|f| (f.t, f.sel.clone()))
         .chain(cands.iter().filter_map(|&u| best[u].clone().flatten().map(|f| (u, f.sel)))).collect();
     // pass 1: every allowed uma's best career; per candidate, the chance her veteran raises that candidate's odds and the
@@ -2087,7 +2085,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         Some((f, st))
     };
     let set_wins = |s: &mut Sim, wtab: &mut Vec<Vec<usize>>, x: usize, f: &Found| { let w = s.wins(pool, x, f.a, f.b); wtab[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect(); };
-    if !pj.value_only {
+    {
         let mut order: Vec<usize> = vec![g.t]; for &x in &all { if x != g.t { order.push(x); } }
         for &x in &order {
             progress(2, order.iter().position(|&y| y == x).unwrap_or(0), order.len());   // pass 1: uma k of n
@@ -2162,7 +2160,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
     // keeping the kept one)
     let mut lbest: Vec<Option<Option<Found>>> = vec![None; d.umas.len()];
     progress(3, 0, 0);   // the looped careers
-    if !pj.value_only && fix.len() < 2 {
+    if fix.len() < 2 {
         let full8: Vec<usize> = (0..nl).filter(|&i| is_full(sj, &legs[i].sparks)).collect();
         let her8 = nl > 0 && full8.contains(&(nl - 1));
         let ts = now_ms(); let lnodes0 = s.env.space.nodes.get();
@@ -2223,7 +2221,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         s.env.hard = 0; s.env.budget = budget0;
         f
     };
-    if pick.is_some() && !pj.value_only {
+    if pick.is_some() {
         let ts = now_ms();
         for i in 0..nbase {
             if vis(&runs[i].1) { continue; }
@@ -2458,7 +2456,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
       BESTS.with(|c| { let mut c = c.borrow_mut(); c.retain(|b| b.key != key); c.push(Bests { key, best: kb, refs: urefs, looped: lbest, unp: unp.clone(), lunp: lunp.clone() }); if let Some(p) = prev { c.push(p); } while c.len() > 4 { c.remove(0); } }); }
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
     // (no row that can be the pick, `vis`: the same, the pick's main search's)
-    if !runs.iter().any(|r| vis(&r.1)) && !pj.value_only { for f in &psv.found { runs.push((f.t, f.clone(), vec![])); } }
+    if !runs.iter().any(|r| vis(&r.1)) { for f in &psv.found { runs.push((f.t, f.clone(), vec![])); } }
     // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
     let total = |i: usize| score.get(i).copied().unwrap_or(f64::NEG_INFINITY);
     let mut pick = (0..runs.len()).find(|&i| vis(&runs[i].1)).unwrap_or(0);
@@ -2492,7 +2490,7 @@ pub(in super::super) fn index_rule<'a>(env: &mut Env<'a>, d: &'a Data, sk: &'a S
         opts.push(rp);
     }
     opts.sort_by(|a, b| b["score"].as_f64().unwrap_or(f64::NEG_INFINITY).partial_cmp(&a["score"].as_f64().unwrap_or(f64::NEG_INFINITY)).unwrap());
-    let choice = if pj.value_only || runs.is_empty() { Value::Null } else { env.report(pool, &runs[pick].1, true) };
+    let choice = if runs.is_empty() { Value::Null } else { env.report(pool, &runs[pick].1, true) };
     let uname = |u: usize| if u == usize::MAX { Value::Null } else { json!(d.umas[u].name) };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
     let member = |ui: usize, real: bool| { let (_, nb, ps) = cont[ui].plan(pnow[ui]);

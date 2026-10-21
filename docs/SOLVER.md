@@ -377,7 +377,6 @@ evidence: `docs/MODEL.md`, *Next career*. Constants are in `src/deck/career/sim/
 | Field of `next` (all optional) | Meaning | Default |
 |---|---|---|
 | `sur`, `sur_margin` | 1: each uma's best career from the simulator's surrogate (`best_sur`: every legal pair by ceiling, her cached decks, an exact deck search where the bound beats the table by more than `sur_margin`) in place of the career search; 2: both, the differences listed in `sur_diff` (on val/plan p16: none over its 68 umas, the same time) | 0, 0 |
-| `value_only` | V alone, no score per candidate | `false` |
 | `exact_all` | every uma's best career searched exactly (no proxies: the rule before builders went through their deck class) | `false` |
 | `proxy_check` | each builder's proxy reported beside her exact career (`proxy_check` in the output); changes nothing else | `false` |
 | `proxy_eff` | test knob replacing `PROXY_EFF`; `tests/plan_memo.rs` sets -1 (pass 1's builders left to their proxies, so the pass-2 searches refit Cont) | 0.06 |
