@@ -191,6 +191,20 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   one at a time back to back: `sc_loop_ms` about halved (p10 268 -> 133 ms, gm16_nu8 480 -> 280, p16_88 313 -> 141).
   What remains is the stats-only scorings' per-outcome sums and the fold (`sc_fold_ms`, now about a third of
   `score_ms` at 10 targets).
+- Deck-search and corner quick wins (after 7b6da09; byte-identical, work counters included, on val, val/plan and
+  e2_v24_t10). The node bound's B factors come from a per-parent row as A's do (528abdc): per (depth, outfit row),
+  built at the first child that evaluates it, the touched targets recomputed, the product in target order. A's and
+  B's full products start from the parent's prefix product at the first touched target. The ratio tables are built
+  only for the groups a key uses, keep each column's `size` best by a stable top-k (`top_desc`, the stable sort's
+  prefix with its ties) and take an untouched target's factor at (0, 0) from a per-row table; `gm_cached` takes the
+  stable top-k too. The cap-free and state bounds read `land_factor`'s constants from `LandPre` (1 - ew and 1 - q
+  apart, the same products). The dominance check computes ppg x rlo once per target and call. `corners` keeps one
+  `JointExt` and chance vector, skips `marg` and the unit scale (x * 1.0 = x). `solve` sorts its candidates in chunks
+  growing 4x (3 selections over the 3.55M of e2_full_t10, not 4). p16 callgrind 7.351G -> 7.157G (-2.6%). The B rows
+  copy the parent's row and recompute the touched factors in the copy: writing them into the parent's row and
+  putting them back was 0.5% worse (7.195G; with that form, the B rows off against on: 7.290G against 7.224G). e2_v24_t10, native, alternating runs: user 12.62 / 12.92 -> 12.35 / 12.67 s, `search_ms` 3.28 /
+  3.32 -> 3.13 / 3.15 s, `corner_ms` 275 -> 240 ms. The leaves are 3k of 39M nodes there (`.perf/audit`), so the
+  per-leaf `dw`/`dg` allocations and the band test's second evaluation have nothing to gain.
 - In the page (wasm, 2026-10-09, before all of the above): p16's first plan 1.9 s cold, 1.4 s after a reload (kept
   work persisted). Since 4689795 the stored work includes the main search (`LAST_SOLVE`), so a reload's search job
   searches nothing (native, after a reload: p16 0.09 s -> 0, p10 0.35 s -> 0, gm16_nu8 0.61 s -> 0; stored state
@@ -220,10 +234,9 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   terminate-and-restart kept as the fallback.
 - Consolidate `score_career`'s and `outcome_hi`'s outcome loops (one loop, estimate and bound; y byte-identical); the
   pass-2 replay (Tried) may fold in there.
-- Not tried, estimates only: a node-marginal ratio bound at depth <= 2; the deck search's per-leaf `dw`/`dg`
-  allocations and the band test's second evaluation of the same clause value (3-15%); reusing pass 1's setups in
-  pass 2 (about 90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf
-  jump when near-tied builders swap).
+- Not tried, estimates only: a node-marginal ratio bound at depth <= 2; reusing pass 1's setups in pass 2 (about
+  90 ms to gain, 31 MB to hold on p10); smoothing p_inf over the top 3 builders (the argmax makes p_inf jump when
+  near-tied builders swap).
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).

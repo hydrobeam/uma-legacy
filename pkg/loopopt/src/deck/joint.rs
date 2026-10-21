@@ -54,7 +54,7 @@ pub(crate) struct JointExt { pub su: Vec<f64>, pub sf: Vec<f64>, pub marg: Vec<f
 /// lands, summed into `marg`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
 pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(model: &Model, u: usize, qs: &[f64], ents: &[(S, Kind)], filler: usize, n_targets: usize, m1: bool, ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
-    joint_eval(model, u, qs, &joint_prep(model.uncertain.len(), ents, filler), n_targets, m1, ext)
+    joint_eval(model, u, qs, &joint_prep(model.uncertain.len(), ents, filler), n_targets, m1, true, ext)
 }
 /// What `joint_fast` computes of a deck before any chance or model state: the per-target misses of the sources outside
 /// the chains (`bg`, `bh`) and their coupled groups (`bc`), per chain position its factors per links done (`lv`), and the
@@ -120,8 +120,9 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(nu: usize, ents: &[(S, Kin
     let keys = order.into_iter().map(|k| { let w = coll[&k]; (k, w) }).collect();
     JointPrep { bg, bh, bc, lv, keys, cg }
 }
-/// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order
-pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
+/// `joint_fast` on a prepared deck (`joint_prep`): the same sums in the same order; `marg`: sum `ext`'s `marg` (else
+/// left empty, every other number the same)
+pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n_targets: usize, m1: bool, marg: bool, mut ext: Option<&mut JointExt>) -> Vec<(f64, f64, usize)> {
     use crate::skills::GEN_WHITE;
     let nu = model.uncertain.len();
     let JointPrep { bg, bh, bc, lv, keys, cg } = pre;
@@ -130,7 +131,9 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
     let nfix = model.n_fixed_gold as usize;
     let fixed = match &ext { Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s), None => model.fixed_factor() };
     let want_sets = ext.as_ref().map_or(false, |x| !x.sets.is_empty()) && nu <= 16;
-    if let Some(x) = ext.as_deref_mut() { x.marg = vec![0.0; nq * no * nu]; if want_sets { x.sets = vec![0.0; nq * no << nu]; } }
+    if let Some(x) = ext.as_deref_mut() { if marg { x.marg = vec![0.0; nq * no * nu]; } if want_sets { x.sets = vec![0.0; nq * no << nu]; } }
+    // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
+    let su1 = ext.as_ref().map_or(true, |x| x.su.iter().all(|&s| s == 1.0));
     let mut dist: Vec<Vec<f64>> = if want_sets { vec![vec![]; nq * no] } else { vec![] };
     let mut acc = vec![(0.0f64, 0.0f64); nq * no];
     // per (q, outfit, target): factor with no coupled outcome, with a coupled white (any hint), with a coupled gold
@@ -170,7 +173,7 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
                     let f = |pg: f64, pnh: f64| match st[k] { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
                         _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - pnh * (1.0 - ew[k]) * (1.0 - q)) };
                     fv[base + k] = [f(1.0 - ng[k], nh[k]), f(1.0 - ng[k], 0.0), f(1.0, 0.0)];
-                    if let Some(x) = &ext { for v in fv[base + k].iter_mut() { *v *= x.su[k]; } }
+                    if !su1 { if let Some(x) = &ext { for v in fv[base + k].iter_mut() { *v *= x.su[k]; } } }
                 }
             }
         }
@@ -197,7 +200,7 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
         let push = |ua: &mut [f64], ub: &mut [f64], i: usize, a: f64, b: f64| { ub[i] = ub[i] * a + ua[i] * b; ua[i] *= a; };
         for i in 0..nqo {
             for k in 0..nu { if !in_cl[k] { let f = fv[i * nu + k][0]; push(&mut ua, &mut ub, i, f, 1.0 - f);
-                if let Some(x) = ext.as_deref_mut() { x.marg[i * nu + k] += w * f; } } }
+                if marg { if let Some(x) = ext.as_deref_mut() { x.marg[i * nu + k] += w * f; } } } }
         }
         // the landed sets: independent targets first, clusters below (their targets join through `cd`)
         if want_sets { for i in 0..nqo {
@@ -219,7 +222,7 @@ pub(super) fn joint_eval(model: &Model, u: usize, qs: &[f64], pre: &JointPrep, n
                     let (mut a, mut b) = (1.0f64, 0.0f64);
                     for &k in ts { let f = fv[i * nu + k][lvl[k] as usize]; b = b * f + a * (1.0 - f); a *= f; }
                     ca[i] += wc * a; cb[i] += wc * b;
-                    if let Some(x) = ext.as_deref_mut() { for &k in ts { x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize]; } }
+                    if marg { if let Some(x) = ext.as_deref_mut() { for &k in ts { x.marg[i * nu + k] += w * wc * fv[i * nu + k][lvl[k] as usize]; } } }
                     if want_sets {
                         pa.clear(); pa.push((0, wc));
                         for &k in ts { let f = fv[i * nu + k][lvl[k] as usize];
@@ -491,6 +494,19 @@ pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
     use crate::skills::GEN_WHITE;
     let pg = 1.0 - ng;
     match st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * (1.0 - ew) * (1.0 - q)) }
+}
+/// `land_factor` of one (outfit, target) at one chance, its constants taken once: 1 - ew and 1 - q kept apart, so
+/// nh * (1 - ew) * (1 - q) is multiplied in the same order (the same f64 for every ng, nh)
+#[derive(Clone, Copy)]
+pub(super) struct LandPre { st: u8, ne: f64, omq: f64 }
+impl LandPre {
+    pub(super) fn new(st: u8, ew: f64, q: f64) -> Self { LandPre { st, ne: 1.0 - ew, omq: 1.0 - q } }
+    #[inline]
+    pub(super) fn f(&self, ng: f64, nh: f64) -> f64 {
+        use crate::skills::GEN_WHITE;
+        let pg = 1.0 - ng;
+        match self.st { 2 => GEN_GOLD, 1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg), _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.ne * self.omq) }
+    }
 }
 /// The state-conditioned value of one deck (trainee `u`, per chance in `qs`, fixed factor included): over the chain
 /// progress states x (`chain_states`, early ends and stop risk folded in), P(x) times the product over targets of each

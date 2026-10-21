@@ -41,6 +41,8 @@ impl<'a> DeckSpace<'a> {
         let sbm = if sb_rows.is_empty() { 0 } else { sbm };
         let sb_bar = if sbm > 0 { clauses[0].1 } else { 0.0 };
         let (sb_u, sb_q) = if sbm > 0 { (us[clauses[0].0[0].0], clauses[0].0[0].1) } else { (0, 0.0) };
+        // the trainee's `land_factor` per (outfit, target), row o * nu + k (`LandPre`: the same values)
+        let lp: Vec<LandPre> = if sbm > 0 { (0..model.opts[sb_u].len()).flat_map(|o| (0..nu).map(move |k| LandPre::new(model.opts[sb_u][o].0[k], model.ews[sb_u][o][k], sb_q))).collect() } else { vec![] };
         let rho = if sbm == 2 { 1e9 } else { rho };
         if sbm > 0 { SB_USED.with(|c| c.set(sbm)); }
         // the cap per structure class (`cap_class`), at most rho (uncapped with SBOUND=2); a deck passes at its own
@@ -70,18 +72,17 @@ impl<'a> DeckSpace<'a> {
         // and outfit (row l * no + o) the best ratio over its entries: R(e, l) = prod over the other targets of the factor
         // at e's misses at level l over the factor with no card. Built on first use
         let cf_no = if cfm { model.opts[sb_u].len() } else { 0 };
-        let cf_z: Vec<u32> = (0..cf_no).map(|o| { let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
-            (0..nu).filter(|&k| !(land_factor(st[k], ew[k], sb_q, 1.0, 1.0) > 0.0)).fold(0u32, |m, k| m | 1 << k) }).collect();
+        let cf_z: Vec<u32> = (0..cf_no).map(|o| {
+            (0..nu).filter(|&k| !(lp[o * nu + k].f(1.0, 1.0) > 0.0)).fold(0u32, |m, k| m | 1 << k) }).collect();
         let cf_rmx: std::cell::RefCell<Vec<Option<std::rc::Rc<Vec<f64>>>>> = std::cell::RefCell::new(vec![None; if cfm { groups_all.len() } else { 0 }]);
         let cf_rmx_of = |gi: usize| -> std::rc::Rc<Vec<f64>> {
             if let Some(r) = &cf_rmx.borrow()[gi] { return r.clone(); }
             let stop = if gi < nk { self.kinds_all[gi].1 as usize } else { 0 };
             let mut m = vec![0.0f64; (stop + 1) * cf_no];
             for o in 0..cf_no {
-                let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
-                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, 1.0, 1.0)).product();
+                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(1.0, 1.0)).product();
                 for &j in groups_all[gi].iter() { if let Some(rows) = &sb_rows[j] { for l in 0..=stop.min(rows.len() / nu - 1) {
-                    let num: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, rows[l * nu + k].0, rows[l * nu + k].1)).product();
+                    let num: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(rows[l * nu + k].0, rows[l * nu + k].1)).product();
                     let r = num / den; if !(r <= m[l * cf_no + o]) { m[l * cf_no + o] = r; }
                 } } }
             }
@@ -97,9 +98,8 @@ impl<'a> DeckSpace<'a> {
             let nl = rows.len() / nu;
             let mut m = vec![0.0f64; nl * cf_no];
             for o in 0..cf_no {
-                let (st, ew) = (&model.opts[sb_u][o].0, &model.ews[sb_u][o]);
-                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, 1.0, 1.0)).product();
-                for l in 0..nl { m[l * cf_no + o] = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| land_factor(st[k], ew[k], sb_q, rows[l * nu + k].0, rows[l * nu + k].1)).product::<f64>() / den; }
+                let den: f64 = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(1.0, 1.0)).product();
+                for l in 0..nl { m[l * cf_no + o] = (0..nu).filter(|&k| cf_z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(rows[l * nu + k].0, rows[l * nu + k].1)).product::<f64>() / den; }
             }
             let r = std::rc::Rc::new(m);
             cf_rent.borrow_mut().insert(j, r.clone());
@@ -180,19 +180,44 @@ impl<'a> DeckSpace<'a> {
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
         let mut sp0 = vec![1.0f64; nc];
-        // `make_rpk` below for the key with miss rows mw, mg (the same operations: the same values)
-        let rpk_of = |mw: &[f64], mg: &[f64]| -> Vec<Vec<Vec<f64>>> {
-            let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
-            groups_all.iter().map(|l| {
-                let noq = nc;
-                rat.clear();
+        // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every zm 0) is
+        // the product of its row's factors over a target mask (nm[c] for a split column, else all the row's targets, as
+        // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (p0n[c], p0[i]), or infinite (no
+        // split and p0[i] not > 0: `cmk` None). At a target the card does not touch (miss chances exactly 1.0, the key's
+        // mask `km.2`) its odds are 1 - 1 = 0, the factor `f0` at (0, 0): so per column the products of `f0` over the
+        // mask's targets below each t (`cpre`, the same multiplications in the same order), and a card's ratio starts
+        // from the prefix at its first touched target: the same f64s
+        let f0: Vec<f64> = (0..noq).flat_map(|i| { let (o, q) = (&orow[i], oq[i].2); (0..nu).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 }) }).collect();
+        let cmk: Vec<Option<(u32, f64)>> = (0..nc).map(|c| { let i = cix[c]; let n = orow[i].len();
+            if zm[c] != 0 { Some((nm[c], p0n[c])) } else if p0[i] > 0.0 { Some((if n >= 32 { u32::MAX } else { (1u32 << n) - 1 }, p0[i])) } else { None } }).collect();
+        let cpre: Vec<f64> = (0..nc).flat_map(|c| { let i = cix[c]; let m = cmk[c].map_or(0, |x| x.0);
+            let mut v = vec![1.0f64; nu + 1]; for t in 0..nu { v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * nu + t] } else { v[t] }; } v }).collect();
+        // per kind group in `gneed` (the others are never read: empty) and column, the products of its entries' r best
+        // ratios (the first `size` of their stable descending sort, `top_desc`), r = 0..=size
+        let rpk_of = |mw: &[f64], mg: &[f64], tmk: &[u32], gneed: u64| -> Vec<Vec<Vec<f64>>> {
+            let (mut x, mut y) = ([0.0f64; 32], [0.0f64; 32]);
+            let mut top: Vec<Vec<f64>> = (0..nc).map(|_| Vec::with_capacity(size)).collect();
+            groups_all.iter().enumerate().map(|(gi, l)| {
+                if gneed >> gi & 1 == 0 { return vec![]; }
+                top.iter_mut().for_each(|b| b.clear());
                 for &j in l.iter() {
-                    for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                    if split { rat.extend((0..noq).map(|i| ratio_at(i, &x, &y))); }
-                    else { rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY })); }
+                    let tm = tmk[j];
+                    let mut m = tm; while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
+                    for c in 0..nc {
+                        let r = match cmk[c] { None => f64::INFINITY, Some((cm, den)) => {
+                            let (i, s) = (cix[c], tm & cm);
+                            let p = if s == 0 { cpre[c * (nu + 1) + nu] } else {
+                                let (o, q, t0) = (&orow[i], oq[i].2, s.trailing_zeros() as usize);
+                                let mut p = cpre[c * (nu + 1) + t0];
+                                let mut m = cm >> t0 << t0;
+                                while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; p *= if s >> t & 1 != 0 { o.factor_at(t, q, x[t], y[t]) } else { f0[i * nu + t] }; }
+                                p
+                            };
+                            p / den } };
+                        top_desc(&mut top[c], size, r);
+                    }
                 }
-                (0..noq).map(|i| {
-                    r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                top.iter().map(|r| {
                     let mut pre = vec![1.0f64; size + 1];
                     for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
                     pre
@@ -202,7 +227,7 @@ impl<'a> DeckSpace<'a> {
         // (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
         // the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
         // `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
-        struct Pend { u: f64, key: usize, code: u64, real22: usize, np: usize, filler: usize, plain: usize, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> }
+        struct Pend { u: f64, key: usize, code: u64, real22: usize, np: usize, filler: usize, plain: usize, gneed: u64, gs: Vec<(usize, usize)>, gm: std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> }
         let mut pend: Vec<Pend> = vec![];
         // The key bound (`keyskip`; in the product search only with a bar): a key none of whose configurations (its
         // variants: real (2, 2) and pal entries 0 ..= their most) can pass the per-target bound is skipped whole, which
@@ -256,24 +281,6 @@ impl<'a> DeckSpace<'a> {
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
             let mut rpk: Option<std::rc::Rc<Vec<Vec<Vec<f64>>>>> = None;
-            // (the entries' ratios in one flat scratch, rat[e * noq + i], and one scratch for each sorted column: the
-            // same values, sorted the same way)
-            let (mut x, mut y, mut rat, mut r) = (vec![0.0f64; nu], vec![0.0f64; nu], Vec::<f64>::new(), Vec::<f64>::new());
-            let mut make_rpk = || -> Vec<Vec<Vec<f64>>> { groups_all.iter().map(|l| {
-                let noq = nc;
-                rat.clear();
-                for &j in l.iter() {
-                    for t in 0..nu { x[t] = 1.0 - mw[j * nu + t]; y[t] = 1.0 - mg[j * nu + t]; }
-                    if split { rat.extend((0..noq).map(|i| ratio_at(i, &x, &y))); }
-                    else { rat.extend(oq.iter().enumerate().map(|(i, &(_, u, q, o))| if p0[i] > 0.0 { model.outfit_fast(u, o, q, &x, &y) / p0[i] } else { f64::INFINITY })); }
-                }
-                (0..noq).map(|i| {
-                    r.clear(); r.extend((0..l.len()).map(|e| rat[e * noq + i])); r.sort_by(|a, b| b.partial_cmp(a).unwrap());
-                    let mut pre = vec![1.0f64; size + 1];
-                    for k in 1..=size { pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0); }
-                    pre
-                }).collect()
-            }).collect() };
             for real22 in 0..=cnt[ki22].min(by_kind[ki22].len()) {
                 let filler = cnt[ki22] - real22;
                 let rem = size - csum;
@@ -301,10 +308,10 @@ impl<'a> DeckSpace<'a> {
                     if !ideal { continue; }
                     if lazy {
                         if pkey_new { pkeys.push(None); pkey_new = false; }
-                        pend.push(Pend { u: iv * (1.0 + 1e-12), key: pkeys.len() - 1, code, real22, np, filler, plain, gs: gs.to_vec(), gm: gm.clone() });
+                        pend.push(Pend { u: iv * (1.0 + 1e-12), key: pkeys.len() - 1, code, real22, np, filler, plain, gneed, gs: gs.to_vec(), gm: gm.clone() });
                         continue;
                     }
-                    if rpk.is_none() { rpk = Some(std::rc::Rc::new(make_rpk())); }
+                    if rpk.is_none() { rpk = Some(std::rc::Rc::new(rpk_of(mw, mg, &km.2, gneed))); }
                     let rpk = rpk.as_ref().unwrap();
                     // sp[0] of the suffix table: the same products in the same order (from the last group down)
                     for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } sp0[i] = x; }
@@ -389,8 +396,13 @@ impl<'a> DeckSpace<'a> {
         let (mut kab, mut kr, mut kab_have, mut kr_have): (Vec<f64>, Vec<f64>, Vec<bool>, Vec<bool>) = (vec![], vec![], vec![], vec![]);
         // the node bound's per-parent rows (see `hopeful`), per (depth, borrowing variant); parent ids never repeat
         // within a search
-        struct Hc { pid: usize, fa: Vec<f64> }
+        // (`fa`: A's factors, row ix * nu; `pp`: their products from 1.0 over the first t, row ix * (nu + 1))
+        struct Hc { pid: usize, fa: Vec<f64>, pp: Vec<f64> }
         let mut hc: Vec<Hc> = vec![];
+        // the same for B, per depth (B has no borrowing variant): the parent's odds 1 - ppw, 1 - ppg, and per row, built
+        // at the first child that evaluates its B (`st`: the parent id it was built for), its factors and their products
+        struct Hb { pid: usize, pdw: [f64; 32], pdg: [f64; 32], st: Vec<usize>, fb: Vec<f64>, pb: Vec<f64> }
+        let mut hb: Vec<Hb> = vec![];
         let mut pid_next = 0usize;
         // (buffers of the expanded configuration, reused: clause sums, B's odds, the DFS rows, the locked-card table)
         let (mut cvx, mut pdwx, mut pdgx): (Vec<f64>, Vec<f64>, Vec<f64>) = (vec![], vec![], vec![]);
@@ -401,6 +413,8 @@ impl<'a> DeckSpace<'a> {
         let (mut csuf, mut goff): (Vec<u64>, Vec<usize>) = (vec![], vec![]);
         // (a child's touched targets: their odds and the parent's factors they replace)
         let (mut tw, mut tg, mut told) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
+        // (and for B: their odds 1 - pw, 1 - pg, and one row's factors with the touched ones in place)
+        let (mut bdw, mut bdg, mut brow) = ([0.0f64; 32], [0.0f64; 32], [0.0f64; 32]);
         // the per-parent rows need every outfit row to read the nu targets
         let a_rows = orow.iter().all(|o| o.len() == nu);
         let oqq: Vec<f64> = oq.iter().map(|x| x.2).collect();
@@ -433,7 +447,7 @@ impl<'a> DeckSpace<'a> {
                         for g in (0..ng).rev() { a *= gm[gs[g].0][gs[g].1].0[t]; b *= gm[gs[g].0][gs[g].1].1[t]; }
                         ldw[t] = 1.0 - a; ldg[t] = 1.0 - b;
                     }
-                    if pkeys[pe.key].is_none() { let km = self.key_miss(pe.code); pkeys[pe.key] = Some(std::rc::Rc::new(rpk_of(&km.0, &km.1))); }
+                    if pkeys[pe.key].is_none() { let km = self.key_miss(pe.code); pkeys[pe.key] = Some(std::rc::Rc::new(rpk_of(&km.0, &km.1, &km.2, pe.gneed))); }
                     let rpk = pkeys[pe.key].as_ref().unwrap();
                     for i in 0..nc { let mut x = 1.0f64; for g in (0..ng).rev() { x *= rpk[gs[g].0][i][gs[g].1]; } lsp0[i] = x; }
                     // (ZSPLIT: as the eager build, `lcvo` without the split sets the order, `lcv` with it skips)
@@ -499,6 +513,8 @@ impl<'a> DeckSpace<'a> {
                 if !dl.is_empty() {
                     // (the deck's picks in group g so far, all at positions below `start`)
                     let sg = &sel[sel.len() - (gs[g].1 - left)..];
+                    // (per target, ppg * rlo, the same for every dominator: computed at its first use)
+                    let (mut pr, mut prm) = ([0.0f64; 32], 0u32);
                     for &(a, sm) in dl.iter() {
                         let a = a as usize;
                         let aj = l[a];
@@ -507,8 +523,8 @@ impl<'a> DeckSpace<'a> {
                         if sm != 0 {
                             let mut ok = true; let mut m = sm;
                             while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1;
-                                let rlo = gmin[g][left - 1].1[t] * sufg[(g + 1) * nu + t];
-                                if !(ppg[t] * rlo * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) { ok = false; break; } }
+                                if prm >> t & 1 == 0 { let rlo = gmin[g][left - 1].1[t] * sufg[(g + 1) * nu + t]; pr[t] = ppg[t] * rlo; prm |= 1 << t; }
+                                if !(pr[t] * (mg[bj * nu + t] - mg[aj * nu + t]) >= DOM_GAP) { ok = false; break; } }
                             if !ok { continue; }
                         }
                         if ebit[aj] != ebit[bj] && ebit[aj] & dsuf[f + 1] != 0 { nd |= ebit[aj]; continue; }
@@ -603,9 +619,8 @@ impl<'a> DeckSpace<'a> {
                 for (x, w) in &c.states {
                     xg[..nu].copy_from_slice(&kg[..nu]); xh[..nu].copy_from_slice(&kh[..nu]);
                     for &(p, rows) in &chain { let b = x[p] as usize * nu; for k in 0..nu { xg[k] *= rows[b + k].0; xh[k] *= rows[b + k].1; } }
-                    for (o, (st, _)) in opts.iter().enumerate() {
-                        let ew = &model.ews[sb_u][o];
-                        let mut f = 1.0f64; for k in 0..nu { f *= land_factor(st[k], ew[k], sb_q, xg[k], xh[k]); }
+                    for o in 0..opts.len() {
+                        let mut f = 1.0f64; for k in 0..nu { f *= lp[o * nu + k].f(xg[k], xh[k]); }
                         acc[o] += w * f;
                     }
                 }
@@ -670,7 +685,7 @@ impl<'a> DeckSpace<'a> {
                 let no = opts.len();
                 let early = cut > 0.0;
                 let mut umax = [0.0f64; 16];
-                if early { for (o, (st, _)) in opts.iter().enumerate() { let ew = &model.ews[sb_u][o]; let mut a = 1.0f64; for k in 0..nu { a *= land_factor(st[k], ew[k], sb_q, ug[k], uh[k]); } umax[o] = a; } }
+                if early { for o in 0..opts.len() { let mut a = 1.0f64; for k in 0..nu { a *= lp[o * nu + k].f(ug[k], uh[k]); } umax[o] = a; } }
                 let ns = c.states.len();
                 let (ord, tail) = if early { let x = c.order.get_or_init(|| {
                     let mut o: Vec<u32> = (0..ns as u32).collect();
@@ -734,21 +749,19 @@ impl<'a> DeckSpace<'a> {
                                 xg[..nu].copy_from_slice(&pg[..nu]); xh[..nu].copy_from_slice(&ph[..nu]);
                                 for &(p, rows) in fch { let r = &rows[x[p] as usize * nu..][..nu]; for ((y, z), rk) in xg[..nu].iter_mut().zip(xh[..nu].iter_mut()).zip(r) { *y *= rk.0; *z *= rk.1; } }
                                 fxr[..nu].copy_from_slice(&xg[..nu]); fxr[nu..2 * nu].copy_from_slice(&xh[..nu]);
-                                for (o, (st, _)) in opts.iter().enumerate() {
-                                    let ew = &model.ews[sb_u][o];
+                                for o in 0..opts.len() {
                                     let mut bn = 1.0f64;
-                                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { bn *= land_factor(st[k], ew[k], sb_q, xg[k], xh[k]); } }
+                                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { bn *= lp[o * nu + k].f(xg[k], xh[k]); } }
                                     fxr[2 * nu + o] = bn;
                                 }
                             }
                             // y*: with every open slot at its group's lowest
                             for k in 0..nu { yg[k] = fxr[k] * ag[k]; yh[k] = fxr[nu + k] * ah[k]; }
                             for &(p, rows, _, _) in och { let r = &rows[x[p] as usize * nu..][..nu]; for ((y, z), rk) in yg[..nu].iter_mut().zip(yh[..nu].iter_mut()).zip(r) { *y *= rk.0; *z *= rk.1; } }
-                            for (o, (st, _)) in opts.iter().enumerate() {
-                                let ew = &model.ews[sb_u][o];
+                            for o in 0..opts.len() {
                                 let (mut a, mut bz) = (1.0f64, 1.0f64);
                                 for k in 0..nu {
-                                    let fa = land_factor(st[k], ew[k], sb_q, yg[k], yh[k]); a *= fa;
+                                    let fa = lp[o * nu + k].f(yg[k], yh[k]); a *= fa;
                                     if cf_z[o] >> k & 1 != 0 { bz *= fa; }
                                 }
                                 let mut r = rn[o]; for &(p, _, rm, _) in och { r *= rm[x[p] as usize * cf_no + o]; }
@@ -763,12 +776,11 @@ impl<'a> DeckSpace<'a> {
                         for &(p, rows) in fch { let r = &rows[x[p] as usize * nu..][..nu]; for ((y, z), rk) in xg[..nu].iter_mut().zip(xh[..nu].iter_mut()).zip(r) { *y *= rk.0; *z *= rk.1; } }
                         for k in 0..nu { yg[k] = xg[k] * ag[k]; yh[k] = xh[k] * ah[k]; }
                         for &(p, rows, _, _) in och { let r = &rows[x[p] as usize * nu..][..nu]; for ((y, z), rk) in yg[..nu].iter_mut().zip(yh[..nu].iter_mut()).zip(r) { *y *= rk.0; *z *= rk.1; } }
-                        for (o, (st, _)) in opts.iter().enumerate() {
-                            let ew = &model.ews[sb_u][o];
+                        for o in 0..opts.len() {
                             let (mut a, mut bz, mut bn) = (1.0f64, 1.0f64, 1.0f64);
                             for k in 0..nu {
-                                let fa = land_factor(st[k], ew[k], sb_q, yg[k], yh[k]); a *= fa;
-                                if open { if cf_z[o] >> k & 1 != 0 { bz *= fa; } else { bn *= land_factor(st[k], ew[k], sb_q, xg[k], xh[k]); } }
+                                let fa = lp[o * nu + k].f(yg[k], yh[k]); a *= fa;
+                                if open { if cf_z[o] >> k & 1 != 0 { bz *= fa; } else { bn *= lp[o * nu + k].f(xg[k], xh[k]); } }
                             }
                             let f = if open {
                                 let mut r = rn[o]; for &(p, _, rm, _) in och { r *= rm[x[p] as usize * cf_no + o]; }
@@ -901,23 +913,22 @@ impl<'a> DeckSpace<'a> {
                 } }
                 let opts = &model.opts[sb_u];
                 let mut best = 0.0f64;
-                for (o, (st, _)) in opts.iter().enumerate() {
-                    let ew = &model.ews[sb_u][o];
+                for o in 0..opts.len() {
                     // per cap: every target at its lowest misses (A)
                     for cc in 0..cz { let mut a = 1.0f64; let b = cc * nu * 2;
-                        for ((&sk, &ek), z2) in st[..nu].iter().zip(&ew[..nu]).zip(zw[b..b + 2 * nu].chunks_exact(2)) { a *= land_factor(sk, ek, sb_q, z2[0], z2[1]); } ac[cc] = a; }
+                        for (lpk, z2) in lp[o * nu..(o + 1) * nu].iter().zip(zw[b..b + 2 * nu].chunks_exact(2)) { a *= lpk.f(z2[0], z2[1]); } ac[cc] = a; }
                     let mut pb = 1.0f64;
-                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { pb *= land_factor(st[k], ew[k], sb_q, pg[k], ph[k]); } }
+                    for k in 0..nu { if cf_z[o] >> k & 1 == 0 { pb *= lp[o * nu + k].f(pg[k], ph[k]); } }
                     // per chain slot and level its ratio (rsn, slot after slot at stride cz), times the zero-base targets
                     // it carries
                     for s in 0..nch { let (_, rows, filled, rm, nl) = chs(s); for l in 0..nl { rsn[s * cz + l] = if !filled || base_empty { rm[l * cf_no + o] } else {
-                        let mut x = 1.0f64; for k in 0..nu { if cf_z[o] >> k & 1 == 0 { x *= land_factor(st[k], ew[k], sb_q, pg[k] * rows[l * nu + k].0, ph[k] * rows[l * nu + k].1); } } x / pb }; } }
+                        let mut x = 1.0f64; for k in 0..nu { if cf_z[o] >> k & 1 == 0 { x *= lp[o * nu + k].f(pg[k] * rows[l * nu + k].0, ph[k] * rows[l * nu + k].1); } } x / pb }; } }
                     let mut zconst = 1.0f64;
                     for k in 0..nu { if cf_z[o] >> k & 1 == 0 { continue; }
                         match zs[k] {
-                            None => { zconst *= land_factor(st[k], ew[k], sb_q, zrest[k].0, zrest[k].1); }
+                            None => { zconst *= lp[o * nu + k].f(zrest[k].0, zrest[k].1); }
                             Some(s0) => { let (_, rows, _, _, nl) = chs(s0);
-                                for l in 0..nl { rsn[s0 * cz + l] *= land_factor(st[k], ew[k], sb_q, zrest[k].0 * rows[l * nu + k].0, zrest[k].1 * rows[l * nu + k].1); } }
+                                for l in 0..nl { rsn[s0 * cz + l] *= lp[o * nu + k].f(zrest[k].0 * rows[l * nu + k].0, zrest[k].1 * rows[l * nu + k].1); } }
                         } }
                     let base = pb * rn[o] * zconst;
                     // per n: the lower of A at the cap min(n, cmax) and the ratio bound
@@ -969,7 +980,8 @@ impl<'a> DeckSpace<'a> {
                     let mut st = St { sel: std::mem::take(&mut st_sel), pw: std::mem::take(&mut st_pw), pg: std::mem::take(&mut st_pg), pid: pid_next };
                     st.sel.clear(); st.pw.clear(); st.pw.resize(nrows * nu, 1.0); st.pg.clear(); st.pg.resize(nrows * nu, 1.0);
                     let nhc = 2 * (gs.iter().map(|x| x.1).sum::<usize>() + 1);
-                    while hc.len() < nhc { hc.push(Hc { pid: usize::MAX, fa: vec![0.0; noq * nu] }); }
+                    while hc.len() < nhc { hc.push(Hc { pid: usize::MAX, fa: vec![0.0; noq * nu], pp: vec![1.0; noq * (nu + 1)] }); }
+                    if a_rows { while hb.len() < nrows { hb.push(Hb { pid: usize::MAX, pdw: [0.0; 32], pdg: [0.0; 32], st: vec![usize::MAX; noq], fb: vec![0.0; noq * nu], pb: vec![1.0; noq * (nu + 1)] }); } }
                     // per (group g, cards left, borrowing allowed): the per-target suffix factors (a, b) and the per-outfit
                     // ratio products r depend on nothing else, so they are constants of the configuration: tabulated on
                     // first use of their row (the same expressions, so the same f64s as computing them per node); row
@@ -1013,21 +1025,25 @@ impl<'a> DeckSpace<'a> {
                                 // the same f64s; ka, kb depend only on the row, the same for all children of one parent
                                 // and borrowing variant). So the factors are computed once per parent (here, at its first
                                 // child), a child recomputes only its touched targets', and A is the product in target
-                                // order (`OutfitPre::eval`'s)
+                                // order (`OutfitPre::eval`'s). The factors before the first touched target t0 are the
+                                // parent's, and so is their product from 1.0 (`pp`, kept per parent): a child's product
+                                // starts there and multiplies on from t0, the same multiplications in the same order
                                 let c = &mut hc[dep * 2 + (one_b && can) as usize];
                                 if c.pid != pid {
                                     c.pid = pid;
                                     let (mut bw, mut bg) = ([0.0f64; 32], [0.0f64; 32]);
                                     for t in 0..nu { bw[t] = 1.0 - ppw[t] * ka[t]; bg[t] = 1.0 - ppg[t] * kb[t]; }
                                     for ix in 0..noq { orow[ix].factors(oqq[ix], &bw[..nu], &bg[..nu], &mut c.fa[ix * nu..(ix + 1) * nu]); }
+                                    for (row, pr) in c.fa.chunks_exact(nu).zip(c.pp.chunks_exact_mut(nu + 1)) { for t in 0..nu { pr[t + 1] = pr[t] * row[t]; } }
                                 }
                                 let mut m = tm;
                                 while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; tw[t] = 1.0 - pw[t] * ka[t]; tg[t] = 1.0 - pg[t] * kb[t]; }
-                                for (ix, row) in c.fa.chunks_exact_mut(nu).enumerate() {
+                                let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
+                                for (ix, (row, pr)) in c.fa.chunks_exact_mut(nu).zip(c.pp.chunks_exact(nu + 1)).enumerate() {
                                     let (o, q) = (&orow[ix], oqq[ix]);
                                     let mut m = tm;
                                     while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; told[t] = row[t]; row[t] = o.factor_at(t, q, tw[t], tg[t]); }
-                                    let mut p = 1.0f64; for &x in row.iter() { p *= x; }
+                                    let mut p = pr[t0]; for &x in row[t0..].iter() { p *= x; }
                                     let mut m = tm;
                                     while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; row[t] = told[t]; }
                                     av[ix] = p;
@@ -1061,7 +1077,35 @@ impl<'a> DeckSpace<'a> {
                                     else { gbs[g].rown[ix][left] * po[g + 1][ix] };
                             }
                         }
-                        if have_a { for t in 0..nu { pdw[t] = 1.0 - pw[t]; pdg[t] = 1.0 - pg[t]; } }
+                        // B's factors are at the child's odds 1 - pw, 1 - pg. With the per-parent rows (have_a) they are
+                        // the parent's at its targets the card does not touch (pw[t] is the parent's, bit for bit, as
+                        // for A): per row, the parent's factors (`Hb`, built at the first child that evaluates the row)
+                        // with the touched targets' recomputed, and B the product over its targets in target
+                        // order from 1.0 (`eval`'s and `eval_in`'s), the full one from the parent's prefix at t0.
+                        // Otherwise at pdw, pdg (filled above)
+                        let t0 = if tm == 0 { nu } else { tm.trailing_zeros() as usize };
+                        if have_a {
+                            let h = &mut hb[dep];
+                            if h.pid != pid { h.pid = pid; for t in 0..nu { h.pdw[t] = 1.0 - ppw[t]; h.pdg[t] = 1.0 - ppg[t]; } }
+                            let mut m = tm;
+                            while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; bdw[t] = 1.0 - pw[t]; bdg[t] = 1.0 - pg[t]; }
+                        }
+                        // (have_a: row ix's B factors into `brow`, the parent's row with the touched ones recomputed;
+                        // with `full`, their product, else 0)
+                        let mut bfill = |ix: usize, full: bool, brow: &mut [f64; 32]| -> f64 {
+                            let (o, q) = (&orow[ix], oqq[ix]);
+                            let Hb { st, pdw: hw, pdg: hg, fb, pb, .. } = &mut hb[dep];
+                            let (fr, pr) = (&mut fb[ix * nu..(ix + 1) * nu], &mut pb[ix * (nu + 1)..(ix + 1) * (nu + 1)]);
+                            if st[ix] != pid { st[ix] = pid; o.factors(q, &hw[..nu], &hg[..nu], fr); for t in 0..nu { pr[t + 1] = pr[t] * fr[t]; } }
+                            brow[..nu].copy_from_slice(fr);
+                            let mut m = tm;
+                            while m != 0 { let t = m.trailing_zeros() as usize; m &= m - 1; brow[t] = o.factor_at(t, q, bdw[t], bdg[t]); }
+                            if !full { return 0.0; }
+                            let mut p = pr[t0]; for &x in brow[t0..nu].iter() { p *= x; }
+                            p
+                        };
+                        // (the product of `brow` over the targets in z, in target order: `eval_in`'s)
+                        let bin = |brow: &[f64; 32], z: u32| -> f64 { let (mut z, mut p) = (z, 1.0f64); while z != 0 { let t = z.trailing_zeros() as usize; z &= z - 1; p *= brow[t]; } p };
                         // the real bound, the same expression in the same order; an outfit whose A is at most the running
                         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
                         cv.iter_mut().for_each(|x| *x = 0.0);
@@ -1072,7 +1116,8 @@ impl<'a> DeckSpace<'a> {
                                 let a = av[ix];
                                 if a <= m { continue; }
                                 let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
-                                m = m.max(a.min(orow[ix].eval(q, &pdw, &pdg) * r));
+                                let b = if have_a { bfill(ix, true, &mut brow) } else { orow[ix].eval(q, &pdw, &pdg) };
+                                m = m.max(a.min(b * r));
                             }
                             cv[ci] += fixed * m;
                         } } else {
@@ -1095,8 +1140,13 @@ impl<'a> DeckSpace<'a> {
                                     if a <= m { continue; }
                                     let r = if row == usize::MAX { 1.0 } else { kr[row * nc + ix] };
                                     // A's factors of the zero targets times N's ratio bound; a low split's, the lower
-                                    let mut b = if zm[ix] != 0 { a_z(ix, zm[ix]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[ix]) * r) } else { orow[ix].eval(q, &pdw, &pdg) * r };
-                                    for c in alt[ix].0..alt[ix].1 { let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] }; b = b.min(a_z(ix, zm[c]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[c]) * r)); }
+                                    let mut b = if have_a {
+                                        let full = bfill(ix, zm[ix] == 0, &mut brow);
+                                        if zm[ix] != 0 { a_z(ix, zm[ix]) * (bin(&brow, nm[ix]) * r) } else { full * r }
+                                    } else if zm[ix] != 0 { a_z(ix, zm[ix]) * (orow[ix].eval_in(q, &pdw, &pdg, nm[ix]) * r) } else { orow[ix].eval(q, &pdw, &pdg) * r };
+                                    for c in alt[ix].0..alt[ix].1 { let r = if row == usize::MAX { 1.0 } else { kr[row * nc + c] };
+                                        let bn = if have_a { bin(&brow, nm[c]) } else { orow[ix].eval_in(q, &pdw, &pdg, nm[c]) };
+                                        b = b.min(a_z(ix, zm[c]) * (bn * r)); }
                                     m = m.max(a.min(b));
                                 }
                                 cv[ci] += fixed * m;

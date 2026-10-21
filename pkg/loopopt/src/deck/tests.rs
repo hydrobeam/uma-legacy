@@ -388,3 +388,22 @@ fn joint_equals_product_without_correlation() {
         }
     }
 }
+/// `top_asc` and `top_desc` keep the stable sorts' first k values bit for bit, ties (0 and -0 among them) in input order.
+#[test]
+fn top_k_is_stable_sort_prefix() {
+    let pool = [0.0f64, -0.0, 0.25, 0.5, 1.0, 0.5, f64::INFINITY, 1e-300, 0.25];
+    let mut s = 12345u64;
+    for _ in 0..4000 {
+        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let n = (s >> 60) as usize;
+        let k = ((s >> 56) & 7) as usize;
+        let v: Vec<f64> = (0..n).map(|i| pool[((s >> (i * 4 % 48)) % pool.len() as u64) as usize]).collect();
+        let (mut a, mut d) = (vec![], vec![]);
+        for &x in &v { top_asc(&mut a, k, x); top_desc(&mut d, k, x); }
+        let mut sa = v.clone(); sa.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        let mut sd = v.clone(); sd.sort_by(|x, y| y.partial_cmp(x).unwrap());
+        let bits = |x: &[f64]| x.iter().map(|y| y.to_bits()).collect::<Vec<_>>();
+        assert_eq!(bits(&a), bits(&sa[..k.min(n)]), "{v:?} k {k}");
+        assert_eq!(bits(&d), bits(&sd[..k.min(n)]), "{v:?} k {k}");
+    }
+}

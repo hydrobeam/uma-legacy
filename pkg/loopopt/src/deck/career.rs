@@ -975,7 +975,8 @@ impl<'a> Env<'a> {
             let t0 = now_ms();
             while i >= *upto && *upto < cands.len() {
                 let rest = &mut cands[*upto..];
-                let m = (*upto).max(1024).min(rest.len());
+                // (chunks of 1024, then 4x what is sorted: each selection scans the whole remainder)
+                let m = (4 * *upto).max(1024).min(rest.len());
                 if m < rest.len() { rest.select_nth_unstable_by(m - 1, ord); }
                 rest[..m].sort_unstable_by(ord);
                 *upto += m;
@@ -1315,12 +1316,14 @@ impl<'a> Env<'a> {
         let (su, sf) = self.scale(&vec![6; ntar]);
         let ents: Vec<(&Src, Kind)> = sel.ents.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect();
         let pre = joint_prep(self.model.uncertain.len(), &ents, sel.filler);
+        // (one chance vector and one `JointExt` for every corner: joint_eval only reads su, sf; `marg` is not read here,
+        // so not summed)
+        let mut q = q0.to_vec();
+        let mut ext = JointExt { su, sf, marg: vec![], sets: vec![], per_outfit: vec![] };
         for c in 0..(1usize << nu) {
-            let mut q = q0.to_vec();
             for (k, &i) in self.uncv.iter().enumerate() { let x = if c >> k & 1 == 1 { 1.0 } else { 0.0 }; q[i] = 1.0 - (1.0 - q0[i]) * x; }
             set_ews(&mut self.model.ews[t], &self.ew0[t], &self.uncv, &q);
-            let mut ext = JointExt { su: su.clone(), sf: sf.clone(), marg: vec![], sets: vec![], per_outfit: vec![] };
-            joint_eval(&self.model, t, &[0.0], &pre, ntar, false, Some(&mut ext));
+            joint_eval(&self.model, t, &[0.0], &pre, ntar, false, false, Some(&mut ext));
             for o in 0..no { corners[o][c] = ext.per_outfit[o]; }
         }
         corners

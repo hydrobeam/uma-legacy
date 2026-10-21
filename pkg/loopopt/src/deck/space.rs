@@ -126,12 +126,14 @@ impl<'a> DeckSpace<'a> {
     /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
     pub(super) fn gm_cached(&self, u: usize, code: u64, groups: &[&Vec<usize>], need: u64, mw: &[f64], mg: &[f64], nu: usize, size: usize) -> std::rc::Rc<Vec<Vec<(Vec<f64>, Vec<f64>)>>> {
         if let Some(r) = self.gmc.borrow().get(&(u, code)) { return r.clone(); }
+        // (each target's `size` lowest, as the first `size` of the stable ascending sort: `top_asc`)
+        let (mut a, mut b) = (Vec::with_capacity(size), Vec::with_capacity(size));
         let r = std::rc::Rc::new(groups.iter().enumerate().map(|(gi, l)| {
             if need >> gi & 1 == 0 { return vec![]; }
             let mut pre = vec![(vec![1.0f64; nu], vec![1.0f64; nu]); size + 1];
             for t in 0..nu {
-                let mut a: Vec<f64> = l.iter().map(|&j| mw[j * nu + t]).collect(); a.sort_by(|x, y| x.partial_cmp(y).unwrap());
-                let mut b: Vec<f64> = l.iter().map(|&j| mg[j * nu + t]).collect(); b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                a.clear(); b.clear();
+                for &j in l.iter() { top_asc(&mut a, size, mw[j * nu + t]); top_asc(&mut b, size, mg[j * nu + t]); }
                 for r in 1..=size { pre[r].0[t] = pre[r - 1].0[t] * a.get(r - 1).copied().unwrap_or(1.0); pre[r].1[t] = pre[r - 1].1[t] * b.get(r - 1).copied().unwrap_or(1.0); }
             }
             pre }).collect::<Vec<_>>());
@@ -221,4 +223,20 @@ pub(super) fn deck_space<'a>(cr: &'a CardsRaw, dj: &'a DeckJob, sk: &'a SkillsRa
         plain: e.plain_ids.iter().zip(&e.plain_names).map(|(&id, n)| (id, n.clone(), card_of[&id])).collect(),
         locked: e.locked.clone(), allowed_borrow: if dj.borrow { 1 } else { 0 }, kinds_all, keys: Default::default(), red: Default::default(), gmc: Default::default(), nodes: Default::default(),
         legt: Default::default(), counts: Default::default(), lockbits: Default::default(), sbcfg: Default::default(), sbrows: Default::default(), domc: Default::default() }
+}
+/// The first k values of a stable ascending sort (`sort_by(|x, y| x.partial_cmp(y).unwrap())`) of the values pushed in
+/// turn, kept in `buf` (at most k, in that order): a value equal to some already kept goes after them, where the stable
+/// sort puts it, so the kept values are the sorted prefix's, value for value (0 and -0 included)
+#[inline]
+pub(super) fn top_asc(buf: &mut Vec<f64>, k: usize, v: f64) {
+    if buf.len() == k { if k == 0 || !(v < buf[k - 1]) { return; } buf.pop(); }
+    let p = buf.iter().position(|&x| x > v).unwrap_or(buf.len());
+    buf.insert(p, v);
+}
+/// `top_asc` for the stable descending sort (`sort_by(|a, b| b.partial_cmp(a).unwrap())`)
+#[inline]
+pub(super) fn top_desc(buf: &mut Vec<f64>, k: usize, v: f64) {
+    if buf.len() == k { if k == 0 || !(v > buf[k - 1]) { return; } buf.pop(); }
+    let p = buf.iter().position(|&x| x < v).unwrap_or(buf.len());
+    buf.insert(p, v);
 }
