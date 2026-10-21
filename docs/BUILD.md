@@ -168,6 +168,12 @@ IndexedDB.
   which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …` times
   the wasm.
 
+## Rust style
+
+`pkg/loopopt/rustfmt.toml` sets the formatting (`cargo fmt` in `pkg/loopopt`). Commits that only reformat are
+listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once per clone:
+`git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 ## Releases
 
 `./build.sh native wasm page` (plus `data` / `events` when inputs changed), tests pass, full `val` on anything that

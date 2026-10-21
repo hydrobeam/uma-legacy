@@ -1,6 +1,7 @@
 # whitelist: only the project is tracked; scratch experiments, binaries and downloads stay out
 /*
 !/.gitignore
+!/.git-blame-ignore-revs
 !/build.sh
 !/README.md
 !/AGENTS.md
