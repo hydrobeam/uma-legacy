@@ -287,6 +287,7 @@ marked, each from the commit named; nothing after that commit has re-timed it.
   the scoring keeps its state effects (her schedule, every partner's `val` search under the looped block's cap,
   `sc_prep` and its counters) and skips the evaluation. p16_88's plan 922 -> 886 ms, export 2's 3,171 -> 3,097 ms (best
   of 3, back to back); every output identical but `sc_out` (p16_88's reference updated; owner's sign-off).
+
 ### Open
 
 - `outcome_hi`: y_hi is computed only where y < 0.5; stopping each cell's bound once it reaches 0.5 would keep every
