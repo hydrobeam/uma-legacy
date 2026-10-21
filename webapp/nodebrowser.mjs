@@ -97,7 +97,9 @@ function ensureEditor(el) {
   else if (!el.closest('dialog[open]')) open.forEach(x => x.close());
 }
 function editorAware(pg) {
-  const before = (loc) => loc.first().evaluate(ensureEditor, null, { timeout: 1500 }).catch(() => {});
+  // no budget of its own: a short one that ran out under load (a busy renderer answers slowly) left the dialog shut and
+  // the action then waited its 30 s for a tile it could never see. A locator that never appears fails in the action.
+  const before = (loc) => loc.first().evaluate(ensureEditor).catch(() => {});
   const wrap = (loc) => new Proxy(loc, { get(t, k) { const v = t[k]; if (typeof v !== 'function') return v;
     if (ACTS.includes(k)) return async (...a) => { await before(t); return v.apply(t, a); };
     return (...a) => { const r = v.apply(t, a); return r && r.constructor && /Locator$/.test(r.constructor.name) ? wrap(r) : r; }; } });
@@ -594,6 +596,9 @@ const TESTS = {
   },
   async panels(b) {
     const pg = await open(b);
+    // the worker's replies are held until the last switch: a search an Owned switch starts would otherwise end, under
+    // load, before the next step, and its new results close the panel that step clicks in
+    await pg.evaluate(() => { window.__hold = true; });
     const dc = pg.locator('.deck .dc').first(); await dc.click();
     const href = await pg.locator('.cpop .gtl').getAttribute('href');
     check('deck card panel: GameTora card link', /^https:\/\/gametora\.com\/umamusume\/supports\/\d+-[a-z0-9-]+$/.test(href || ''), href);
@@ -620,7 +625,7 @@ const TESTS = {
     check('member panel: GameTora character link', /^https:\/\/gametora\.com\/umamusume\/characters\/\d{6}-[a-z0-9-]+$/.test(uh || ''), uh);
     await pg.locator('.cpop .sw').click();
     check('member Owned switch updates the roster and greys her', (await pg.locator('#roster .ut[data-s="out"]').count()) === 1 && (await pg.locator('.mem.off').count()) > 0);
-    await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await settle(pg);
+    await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape'); await pg.evaluate(() => window.__release()); await settle(pg);
     check('no page errors', !pg.errors.length, pg.errors.join(' | '));
     await pg.context().close();
   },
@@ -1363,11 +1368,15 @@ const TESTS = {
     // a roll during an exact comparison: its worker goes, and the next one takes the state stored promptly after the plan,
     // so the roll is answered from the kept roll state, not planned again (planning took most of a second)
     const ins0 = await pg.evaluate(() => window.__careerJobs.filter(j => j.cmd === 'state_in').length), ex0 = await refines();
-    await pg.evaluate(() => { window.__rollPatch = { y: 0.9, y_hi: null }; const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
-    const exStarted = await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare && j.next).length > n, ex0, { timeout: 30000 }).then(() => true, () => false);
-    await pg.evaluate(() => { delete window.__rollPatch; });
-    const nr = await pg.evaluate(() => window.__careerResults.filter(r => r.next?.roll).length);
-    await pg.evaluate(() => { const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; });
+    // (the second roll is clicked by the page in the task after the comparison's job is posted: one clicked from here,
+    // a few round trips later, could find the comparison already done on a loaded machine)
+    await pg.evaluate(() => { const jobs = window.__careerJobs, push = jobs.push, roll = () => { const r = Math.random; Math.random = () => 0; document.getElementById('sim-roll').click(); Math.random = r; };
+      jobs.push = function (...x) { const n = push.apply(this, x);
+        if (x.some(j => j?.compare && j.next)) { jobs.push = push; setTimeout(() => { delete window.__rollPatch; window.__nr = window.__careerResults.filter(r => r.next?.roll).length; roll(); }, 0); }
+        return n; };
+      window.__rollPatch = { y: 0.9, y_hi: null }; roll(); });
+    const exStarted = await pg.waitForFunction(n => window.__careerJobs.filter(j => j.compare && j.next).length > n && window.__nr !== undefined, ex0, { timeout: 30000 }).then(() => true, () => false);
+    const nr = await pg.evaluate(() => window.__nr);
     await pg.waitForFunction(n => window.__careerResults.filter(r => r.next?.roll).length > n, nr, { timeout: 180000 });
     const after = await pg.evaluate(n => ({ ins: window.__careerJobs.filter(j => j.cmd === 'state_in').length, roll: window.__careerResults.filter(r => r.next?.roll).at(-1).next.roll }), nr);
     check('career: … a roll that stops an exact comparison (its worker goes) is answered from the restored state, not planned again',
