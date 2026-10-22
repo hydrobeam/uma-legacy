@@ -364,6 +364,8 @@ Skill model: a target is acquired if guaranteed, on the trainee's own outfit ski
 inherited; an acquired skill becomes a spark at the generation rate. The equations and fitted values (inheritance,
 per-legacy affinity, spark generation, star mix) are in `docs/RESEARCH.md` §1-5. Odds are averaged over the
 structure's lineages (12 in a loop, 3 in a rotation).
+A loop lineage (T, P1, P2, X) is a trainee T, two of the other three members as her parents P1 and P2, and the fourth
+member X, each parent bred from the other parent and X.
 
 ### Three-uma rotations (`sizes`)
 

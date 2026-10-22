@@ -177,25 +177,15 @@ def claims() -> list[Value | Finding]:
 
 
 def generation_claims(ts: list[Trial]) -> list[Value | Finding]:
-    """obs / pred for parents and grandparents, and the grandparent weight (full base against halved)"""
-    out: list[Value | Finding] = []
-    P = [t for t in ts if t.category == "P"]
+    """the trial counts by generation, and the grandparent weight (full base against halved)"""
     G = [t for t in ts if t.category == "G"]
-    for lab, sub in (("parents", P), ("grandparents", G)):
-        c = ratio(sub)
-        out += [
-            Value(SEC, f"trials, {lab}", c.trials),
-            Value(SEC, f"{lab}: passes observed", c.observed),
-            Value(SEC, f"{lab}: predicted, full base", c.predicted),
-            Value(SEC, f"{lab}: obs / pred", c.ratio),
-            Value(SEC, f"{lab}: obs / pred 95% low", c.low),
-            Value(SEC, f"{lab}: obs / pred 95% high", c.high),
-        ]
-    halved = sum(min(1.0, 0.5 * t.base * (1 + t.affinity / 100)) for t in G)
+    out: list[Value | Finding] = [
+        Value(SEC, "trials, parents", sum(t.category == "P" for t in ts)),
+        Value(SEC, "trials, grandparents", len(G)),
+    ]
     d_half = ll(ts) - ll(ts, grandparent_weight=0.5)
     kg, kg_lo, kg_hi = fit1(lambda k: llr(ts, grandparent_weight=k), 0.2, 2.0)
     out += [
-        Value(SEC, "grandparents: predicted, halved base", halved),
         Value(SEC, "grandparents full over halved, nats", d_half),
         Value(SEC, "grandparent weight fitted", kg),
         Value(SEC, "grandparent weight 95% low", kg_lo),
@@ -228,16 +218,13 @@ def slope_claims(ts: list[Trial]) -> list[Value | Finding]:
         Value(SEC, "affinity slope 95% low", s_lo),
         Value(SEC, "affinity slope 95% high", s_hi),
         Value(SEC, "affinity over none, nats", d0),
-        Value(SEC, "affinity slope refitted over slope 1 in sample, nats", d_fit),
         *held_out_values("affinity slope", held),
     ]
-    for lab, c in (("below 200", below), ("200 and above", above)):
-        out += [
-            Value(SEC, f"parents at affinity {lab} trials", c.trials),
-            Value(SEC, f"parents at affinity {lab} obs / pred", c.ratio),
-            Value(SEC, f"parents at affinity {lab} 95% low", c.low),
-            Value(SEC, f"parents at affinity {lab} 95% high", c.high),
-        ]
+    out += [
+        Value(SEC, "parents at affinity 200 and above obs / pred", above.ratio),
+        Value(SEC, "parents at affinity 200 and above 95% low", above.low),
+        Value(SEC, "parents at affinity 200 and above 95% high", above.high),
+    ]
     out.append(
         common.finding(
             SEC,
@@ -259,6 +246,15 @@ def slope_claims(ts: list[Trial]) -> list[Value | Finding]:
             f"slope held out {held_text(held)}",
         )
     )
+    every = sum(t.affinity >= MISS_FROM for t in ts)
+    out.append(
+        common.finding(
+            SEC,
+            "Every trial at affinity 200 or above is a parent's, so the top band is the parents' known miss",
+            above.trials == every,
+            f"{above.trials:,} parents' trials of {every:,} at 200+",
+        )
+    )
     return out
 
 
@@ -276,7 +272,6 @@ def affinity_part_claims(full: list[s05_affinity.Trial]) -> list[Value | Finding
         Value(SEC, "relation part slope fitted", sr_hat),
         Value(SEC, "relation part slope 95% low", sr_lo),
         Value(SEC, "relation part slope 95% high", sr_hi),
-        Value(SEC, "trials with shared wins", sum(1 for t in full if t.race_part > 0)),
         *held_out_values("race part slope", race_held),
         *held_out_values("relation part slope", rel_held),
     ]
