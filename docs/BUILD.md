@@ -218,8 +218,10 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
   longer-lived owner) and it is off the hot path; say so in a comment where that is not obvious. A change that adds
   clones lists each in its description with its reason.
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
-  turns on `.githooks/pre-commit`, which runs `cargo fmt --check` when the commit stages a `pkg/loopopt` `.rs` file
-  (about a second; it checks the working tree's files, not only the staged parts). Clippy is left to `lint`.
+  turns on `.githooks/pre-commit`, which checks what the commit stages, by kind: Rust, `cargo fmt --check` and native
+  clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
+  and format on the staged files; the page's JS, Biome on the staged files and `tsc` (each under a second). It checks
+  the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
 - **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 

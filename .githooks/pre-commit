@@ -1,9 +1,29 @@
 #!/bin/sh
-# Checks the solver's Rust formatting when a commit stages Rust files under pkg/loopopt (about a second; otherwise
-# nothing). Enabled by ./build.sh hooks (git config core.hooksPath .githooks). Clippy runs in ./build.sh lint.
-git diff --cached --quiet --diff-filter=ACMR -- 'pkg/loopopt/*.rs' && exit 0
-cd "$(git rev-parse --show-toplevel)/pkg/loopopt" || exit 1
-if ! out=$(cargo fmt --check --message-format short 2>&1); then
-  printf 'pre-commit: Rust formatting differs (cargo fmt in pkg/loopopt fixes it):\n%s\n' "$out" >&2
-  exit 1
+# Checks what a commit stages, by kind (enabled by ./build.sh hooks: git config core.hooksPath .githooks):
+#   Rust under pkg/loopopt: cargo fmt --check and clippy, warnings denied (native, dev profile: about 5 s after a change,
+#     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
+#   Python: ruff check and ruff format --check on the staged files (well under a second)
+#   the page's JS: Biome on the staged files, then tsc's checkJs over the page (under a second)
+# A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
+root=$(git rev-parse --show-toplevel) || exit 1
+staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
+fail() { printf 'pre-commit: %s\n' "$1" >&2; exit 1; }
+
+if [ -n "$(staged 'pkg/loopopt/*.rs')" ]; then
+  (cd "$root/pkg/loopopt" && cargo fmt --check --message-format short) || fail 'Rust formatting differs (cargo fmt in pkg/loopopt fixes it)'
+  (cd "$root/pkg/loopopt" && cargo clippy --quiet --offline --all-targets -- -D warnings) || fail 'clippy warnings (above)'
 fi
+
+py=$(staged '*.py')
+if [ -n "$py" ]; then
+  # shellcheck disable=SC2086 # one path per word: the repo's paths have no spaces
+  (cd "$root" && uv run --quiet ruff check $py && uv run --quiet ruff format --check $py) || fail 'ruff (above; ruff format fixes formatting)'
+fi
+
+js=$(staged 'webapp/*.js' 'webapp/*.mjs' | sed 's#^webapp/##')
+if [ -n "$js" ]; then
+  # shellcheck disable=SC2086 # as above
+  (cd "$root/webapp" && npx --no-install biome lint --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
+    && npx --no-install tsc -p .) || fail 'Biome or tsc (above)'
+fi
+exit 0
