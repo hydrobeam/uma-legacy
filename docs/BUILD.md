@@ -199,6 +199,14 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
   order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
   `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
   clippy part before its tests.
+- **Ownership and clones:** the borrow checker is a guide to the design, not an obstacle to get around. When it refuses,
+  it is pointing at a real overlap (a value read while something else may change it); answer it by restructuring: borrow
+  the fields a function needs separately, keep the read-only context behind `&` and the one mutable owner behind `&mut`,
+  shorten a borrow's scope, or move a value instead of sharing it. A `.clone()`, `.to_vec()` or `.to_owned()` that
+  exists only to make a conflict go away is a silent cost (outputs stay identical, only speed suffers) and is not
+  accepted. A clone stays when the copy is the point (a snapshot kept while the original changes, a value handed to a
+  longer-lived owner) and it is off the hot path; say so in a comment where that is not obvious. A change that adds
+  clones lists each in its description with its reason.
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
   turns on `.githooks/pre-commit`, which runs `cargo fmt --check` when the commit stages a `pkg/loopopt` `.rs` file
   (about a second; it checks the working tree's files, not only the staged parts). Clippy is left to `lint`.
