@@ -7,9 +7,7 @@ use crate::deck::dominance::{
     DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
 };
 use crate::deck::loop_search::{LoopJobInputs, run_multi};
-use crate::deck::sources::{
-    Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries, src_miss,
-};
+use crate::deck::sources::{Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries};
 use crate::deck::space::deck_space;
 use crate::deck::{CardsRaw, DeckJob};
 use crate::skills::{Model, SkillJob, SkillsRaw};
@@ -51,7 +49,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // every entry, before card dominance drops any: the exact per-uma search enumerates decks from these
     let space = (!dj.deck_only).then(|| deck_space(cr, &dj, sk, &unc, &ent));
     let source_builder = Sources { dj: &dj, unc: &unc };
-    let n_card_dropped = drop_dominated_cards(&mut ent, &dj, target_count);
+    let n_card_dropped = ent.drop_dominated_cards(&dj, target_count);
     let coordinates = dominance_coords(&ent.srcs, target_count);
     let en = match DeckEnumerator::new(&ent, &dj, target_count, &coordinates) {
         Ok(x) => x,
@@ -107,9 +105,11 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     run_multi(inputs, stats)
 }
 
-/// Whether the player owns a card (a locked card counts as owned)
-fn is_owned(dj: &DeckJob, id: u32) -> bool {
-    dj.owned_cards.is_empty() || dj.owned_cards.contains(&id) || dj.lock_cards.contains(&id)
+impl DeckJob {
+    /// Whether the player owns a card (a locked card counts as owned).
+    fn is_owned(&self, id: u32) -> bool {
+        self.owned_cards.is_empty() || self.owned_cards.contains(&id) || self.lock_cards.contains(&id)
+    }
 }
 
 /// Calls `out` on every multiset of at most `left` values from `vals[start..]` (as index-ordered lists)
@@ -131,85 +131,96 @@ fn multisets(
     }
 }
 
-/// ---- card dominance (exact) ----
-/// Card A can stand in for card B in the product search when both have the same chain kind (so the
-/// deck's chain odds do not change), A is owned whenever B is, and A at its weakest still beats B at its
-/// strongest on every target: A's miss chances with its chain links at their lowest possible odds (the most
-/// crowded deck) are no higher than B's with every link firing, for both "no gold hint" and "no hint at all".
-/// Swapping B for A then gives a deck at least as good on every dominance coordinate, with the same pal
-/// count when required. The swap is blocked if B is locked or A shares a character with one of the other
-/// deck_size - 1 cards, so B is dropped when kept dominators with at least deck_size - 1 + top_decks
-/// distinct characters exist: every deck with B then has top_decks distinct kept decks at least as good
-/// (swap the deck's other dropped cards first, then B for each unblocked dominator).
-/// Drops them from every entry column; how many it dropped.
-fn drop_dominated_cards(ent: &mut Entries, dj: &DeckJob, target_count: usize) -> usize {
-    let mut n_card_dropped = 0usize;
-    // Pals and R cards both take no chain slot, so they can stand in for each other unless the job fixes the pal
-    // count
-    let pal_fixed = dj.pals.is_some();
-    let nrel0 = ent.rel.len();
-    let bounds = miss_bounds(&ent.kind, &ent.srcs, dj.deck_size.saturating_sub(1), target_count);
-    let strength = |j: usize| {
-        (0..target_count).map(|k| 2.0 - bounds.strongest[j].no_gold[k] - bounds.strongest[j].no_hint[k]).sum::<f64>()
-    };
-    let mut order: Vec<usize> = (0..nrel0).collect();
-    let tr = tie_rank(&ent.rel, &ent.cards);
-    order.sort_by(|&a, &b| strength(b).partial_cmp(&strength(a)).unwrap().then(tr[a].cmp(&tr[b])));
-    let need = dj.deck_size.saturating_sub(1) + 1;
-    let mut keep = vec![true; nrel0];
-    let mut done: Vec<usize> = vec![];
-    for &b in &order {
-        let cb = ent.cards[ent.rel[b]];
-        if !ent.locked.contains(&ent.rel[b]) {
-            let mut charas: Vec<u32> = vec![];
-            for &a in &done {
-                if !keep[a] {
-                    continue;
+impl Entries<'_> {
+    /// ---- card dominance (exact) ----
+    /// Card A can stand in for card B in the product search when both have the same chain kind (so the
+    /// deck's chain odds do not change), A is owned whenever B is, and A at its weakest still beats B at its
+    /// strongest on every target: A's miss chances with its chain links at their lowest possible odds (the most
+    /// crowded deck) are no higher than B's with every link firing, for both "no gold hint" and "no hint at all".
+    /// Swapping B for A then gives a deck at least as good on every dominance coordinate, with the same pal
+    /// count when required. The swap is blocked if B is locked or A shares a character with one of the other
+    /// deck_size - 1 cards, so B is dropped when kept dominators with at least deck_size - 1 + top_decks
+    /// distinct characters exist: every deck with B then has top_decks distinct kept decks at least as good
+    /// (swap the deck's other dropped cards first, then B for each unblocked dominator).
+    /// Drops them from every entry column; how many it dropped.
+    fn drop_dominated_cards(&mut self, deck_job: &DeckJob, target_count: usize) -> usize {
+        let mut dropped_count = 0usize;
+        // Pals and R cards both take no chain slot, so they can stand in for each other unless the job fixes the pal
+        // count
+        let pal_fixed = deck_job.pals.is_some();
+        let original_count = self.rel.len();
+        let bounds = miss_bounds(&self.kind, &self.srcs, deck_job.deck_size.saturating_sub(1), target_count);
+        let strength = |j: usize| {
+            (0..target_count)
+                .map(|k| 2.0 - bounds.strongest[j].no_gold[k] - bounds.strongest[j].no_hint[k])
+                .sum::<f64>()
+        };
+        let mut order: Vec<usize> = (0..original_count).collect();
+        let tie_ranks = tie_rank(&self.rel, &self.cards);
+        order.sort_by(|&dominator, &candidate| {
+            strength(candidate)
+                .partial_cmp(&strength(dominator))
+                .unwrap()
+                .then(tie_ranks[dominator].cmp(&tie_ranks[candidate]))
+        });
+        let need = deck_job.deck_size.saturating_sub(1) + 1;
+        let mut keep = vec![true; original_count];
+        let mut visited: Vec<usize> = vec![];
+        for &candidate in &order {
+            let candidate_card = self.cards[self.rel[candidate]];
+            if !self.locked.contains(&self.rel[candidate]) {
+                let mut characters: Vec<u32> = vec![];
+                for &dominator in &visited {
+                    if !keep[dominator] {
+                        continue;
+                    }
+                    let dominator_card = self.cards[self.rel[dominator]];
+                    if self.kind[dominator] != self.kind[candidate]
+                        || (pal_fixed && dominator_card.pal != candidate_card.pal)
+                    {
+                        continue;
+                    }
+                    if deck_job.is_owned(candidate_card.id) && !deck_job.is_owned(dominator_card.id) {
+                        continue;
+                    }
+                    if !(0..target_count).all(|k| {
+                        bounds.weakest[dominator].no_gold[k] <= bounds.strongest[candidate].no_gold[k]
+                            && bounds.weakest[dominator].no_hint[k] <= bounds.strongest[candidate].no_hint[k]
+                    }) {
+                        continue;
+                    }
+                    if !characters.contains(&dominator_card.chara) {
+                        characters.push(dominator_card.chara);
+                    }
+                    if characters.len() >= need {
+                        break;
+                    }
                 }
-                let ca = ent.cards[ent.rel[a]];
-                if ent.kind[a] != ent.kind[b] || (pal_fixed && ca.pal != cb.pal) {
-                    continue;
-                }
-                if is_owned(dj, cb.id) && !is_owned(dj, ca.id) {
-                    continue;
-                }
-                if !(0..target_count).all(|k| {
-                    bounds.weakest[a].no_gold[k] <= bounds.strongest[b].no_gold[k]
-                        && bounds.weakest[a].no_hint[k] <= bounds.strongest[b].no_hint[k]
-                }) {
-                    continue;
-                }
-                if !charas.contains(&ca.chara) {
-                    charas.push(ca.chara);
-                }
-                if charas.len() >= need {
-                    break;
+                if characters.len() >= need {
+                    keep[candidate] = false;
+                    dropped_count += 1;
                 }
             }
-            if charas.len() >= need {
-                keep[b] = false;
-                n_card_dropped += 1;
+            visited.push(candidate);
+        }
+        if std::env::var("DECK_DEBUG").is_ok() {
+            for j in 0..original_count {
+                if !keep[j] {
+                    eprintln!("  drop {}", self.cards[self.rel[j]].name);
+                }
             }
         }
-        done.push(b);
-    }
-    if std::env::var("DECK_DEBUG").is_ok() {
-        for j in 0..nrel0 {
-            if !keep[j] {
-                eprintln!("  drop {}", ent.cards[ent.rel[j]].name);
-            }
+        if std::env::var("DECK_DEBUG_PAIRS").is_ok() {
+            debug_robust(self, &keep, &bounds, &tie_ranks, pal_fixed, target_count);
         }
+        // All entry columns use the same original-index mask and keep their relative order.
+        retain_entries(&mut self.rel, &keep);
+        retain_entries(&mut self.srcs, &keep);
+        retain_entries(&mut self.kind, &keep);
+        retain_entries(&mut self.endk, &keep);
+        retain_entries(&mut self.vark, &keep);
+        dropped_count
     }
-    if std::env::var("DECK_DEBUG_PAIRS").is_ok() {
-        debug_robust(ent, &keep, &bounds, &tr, pal_fixed, target_count);
-    }
-    // All entry columns use the same original-index mask and keep their relative order.
-    retain_entries(&mut ent.rel, &keep);
-    retain_entries(&mut ent.srcs, &keep);
-    retain_entries(&mut ent.kind, &keep);
-    retain_entries(&mut ent.endk, &keep);
-    retain_entries(&mut ent.vark, &keep);
-    n_card_dropped
 }
 
 /// Each entry's (miss gold, miss any) per target at its strongest (every link firing) and weakest (its links at their
@@ -250,7 +261,7 @@ fn miss_bounds(kind: &[ChainKind], srcs: &[TargetSources], others: usize, target
         };
         let mut mw = vec![1.0f64; target_count];
         let mut mg = vec![1.0f64; target_count];
-        src_miss(&srcs[j], &m, &mut mw, &mut mg);
+        srcs[j].src_miss(&m, &mut mw, &mut mg);
         let mh: Vec<f64> = (0..target_count).map(|k| mg[k] * mw[k]).collect();
         MissProbabilities { no_gold: mg, no_hint: mh }
     };
@@ -438,8 +449,13 @@ struct FrontierCandidate<'selection> {
     gold_hint_chances: &'selection [f64; 32],
     coordinate_sum: f64,
 }
-/// The frontier being built, per group (one global group, (0, 0))
-type Groups = crate::FxMap<(usize, usize), DominanceIndex>;
+/// Every deck competes in the same frontier, regardless of its pal count.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum FrontierGroup {
+    Global,
+}
+
+type Groups = crate::FxMap<FrontierGroup, DominanceIndex>;
 
 // ---- enumerate decks ----
 // Decks are enumerated one chain-kind key at a time (the key fixes every entry's chain odds), so each deck is
@@ -503,7 +519,7 @@ impl<'env> DeckEnumerator<'env> {
             return Err(json!({"error": "too many distinct characters among relevant cards"}));
         }
         let character_bits: Vec<u128> = rel.iter().map(|&r| 1u128 << chara_ix[&cards[r].chara]).collect();
-        let borrowed_entries: Vec<bool> = rel.iter().map(|&r| !is_owned(deck_job, cards[r].id)).collect();
+        let borrowed_entries: Vec<bool> = rel.iter().map(|&r| !deck_job.is_owned(cards[r].id)).collect();
         let mut chain_kinds: Vec<ChainKind> =
             (0..entry_count).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
         chain_kinds.push(ChainKind::FILLER);
@@ -557,8 +573,7 @@ impl<'env> DeckEnumerator<'env> {
         let mut white_misses = vec![1.0f64; entry_count * target_count];
         let mut gold_misses = vec![1.0f64; entry_count * target_count];
         for j in 0..entry_count {
-            src_miss(
-                &srcs[j],
+            srcs[j].src_miss(
                 marg.get(&kind[j]).unwrap_or(&empty),
                 &mut white_misses[j * target_count..(j + 1) * target_count],
                 &mut gold_misses[j * target_count..(j + 1) * target_count],
@@ -613,10 +628,10 @@ impl<'env> DeckEnumerator<'env> {
             self.enum_key(counts, options, &mut workspace);
         }
         let mut front: Vec<DeckEval> = vec![];
-        let mut gkeys: Vec<(usize, usize)> = workspace.groups.keys().copied().collect();
-        gkeys.sort_unstable();
-        for pc in &gkeys {
-            let list = workspace.groups.remove(pc).unwrap().into_list();
+        let mut group_keys: Vec<FrontierGroup> = workspace.groups.keys().copied().collect();
+        group_keys.sort_unstable();
+        for group in &group_keys {
+            let list = workspace.groups.remove(group).unwrap().into_list();
             // With one dominator the online set is already an antichain: k_filter would only reorder it.
             let kept = if options.maximum_dominators == 1 {
                 kfilter_order(list, self.coordinates.len())
@@ -890,19 +905,22 @@ impl<'env> DeckEnumerator<'env> {
         // One global frontier: pals have already passed the job's count constraint. A deck
         // matched or beaten on every coordinate is no better for any loop.
         let nd = coordinates.len();
-        let g = workspace.groups.entry((0, 0)).or_insert_with(|| DominanceIndex::new(nd));
-        if options.maximum_dominators == 1 && g.has_last && dominates(&g.lastrow, &workspace.coordinates) {
+        let g = workspace.groups.entry(FrontierGroup::Global).or_insert_with(|| DominanceIndex::new(nd));
+        if options.maximum_dominators == 1
+            && g.has_last_dominator
+            && dominates(&g.last_dominator, &workspace.coordinates)
+        {
             return;
         }
         if options.maximum_dominators == 1
             && nd > 0
-            && (0..g.rlen).any(|r| dominates(&g.recent[r * nd..(r + 1) * nd], &workspace.coordinates))
+            && (0..g.recent_count).any(|r| dominates(&g.recent[r * nd..(r + 1) * nd], &workspace.coordinates))
         {
             workspace.counts.recent_rejections += 1;
             return;
         }
         if options.maximum_dominators > 1
-            && g.rlen >= options.maximum_dominators
+            && g.recent_count >= options.maximum_dominators
             && g.count_recent(&workspace.coordinates) >= options.maximum_dominators
         {
             workspace.counts.recent_rejections += 1;
@@ -1083,6 +1101,21 @@ fn skyline(front: &[DeckEval]) -> Vec<usize> {
     (0..front.len()).collect()
 }
 
+/// A card entry's display identity, including its chain and event choices.
+#[derive(PartialEq, Eq, Hash)]
+struct DisplayEntry {
+    card: usize,
+    end_link: u8,
+    variant: u32,
+}
+
+/// Shared labels, with the borrowed label built only when requested.
+struct EntryLabels {
+    name: Name,
+    choices: Name,
+    borrowed: Option<Name>,
+}
+
 /// The skyline's decks detached from the search (names, ids and choice labels instead of indices): the frontier
 /// consumed, the skyline's decks (ascending indices, `sky`) in order: each deck's lists move into its PDeck and the
 /// rest is freed before `run_multi`
@@ -1090,7 +1123,7 @@ fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, source_builder: &S
     let cards = &ent.cards;
     // per (card, end link, variant): its name with the choice and end-link notes, its choice label, and the name
     // marked borrowed (built at first need)
-    let mut shown: crate::FxMap<(usize, u8, u32), (Name, Name, Option<Name>)> = crate::FxMap::default();
+    let mut shown: crate::FxMap<DisplayEntry, EntryLabels> = crate::FxMap::default();
     // (and the shared strings of the card names, the plain pals and the filler)
     let mut cname: crate::FxMap<usize, Name> = crate::FxMap::default();
     let plain_rc: Vec<Name> = ent.plain_names.iter().map(|n| Name::from(n.as_str())).collect();
@@ -1111,7 +1144,7 @@ fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, source_builder: &S
             let mut names: Vec<Name> = Vec::with_capacity(x.cards.len() + x.plain + x.filler);
             let mut choices: Vec<Name> = Vec::with_capacity(x.cards.len());
             for ((&i, &e), &v) in x.cards.iter().zip(&x.ends).zip(&x.vars) {
-                let (n, lb, nb) = shown.entry((i, e, v)).or_insert_with(|| {
+                let labels = shown.entry(DisplayEntry { card: i, end_link: e, variant: v }).or_insert_with(|| {
                     let mut n = cards[i].name.clone();
                     let lb = source_builder.label(cards[i], (e > 0).then_some(e), v, sk);
                     if !lb.is_empty() {
@@ -1120,14 +1153,16 @@ fn detach(front: Vec<DeckEval>, sky: &[usize], ent: &Entries, source_builder: &S
                     if e > 0 {
                         n = format!("{n} (end chain at link {e})");
                     }
-                    (Name::from(n), Name::from(lb), None)
+                    EntryLabels { name: Name::from(n), choices: Name::from(lb), borrowed: None }
                 });
                 names.push(if Some(i) == x.borrowed {
-                    std::rc::Rc::clone(nb.get_or_insert_with(|| Name::from(format!("{n} (borrowed)"))))
+                    std::rc::Rc::clone(
+                        labels.borrowed.get_or_insert_with(|| Name::from(format!("{} (borrowed)", labels.name))),
+                    )
                 } else {
-                    std::rc::Rc::clone(n)
+                    std::rc::Rc::clone(&labels.name)
                 });
-                choices.push(std::rc::Rc::clone(lb));
+                choices.push(std::rc::Rc::clone(&labels.choices));
             }
             names.extend(plain_rc.iter().take(x.plain).cloned());
             for _ in 0..x.filler {

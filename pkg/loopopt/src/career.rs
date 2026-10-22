@@ -33,7 +33,7 @@ use crate::career::search::{CareerSearchResult, Ref, SearchRequest, solve_kept};
 use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
 use crate::data::Data;
 use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P};
-use crate::deck::sources::{deck_entries, src_miss};
+use crate::deck::sources::deck_entries;
 use crate::deck::space::{DeckSpace, SelectedDeck, deck_space};
 use crate::deck::{Card, CardsRaw, DeckJob, d_true};
 use crate::skills::{Model, SkillJob, SkillsRaw};
@@ -527,7 +527,7 @@ fn deck_odds_ceilings(
     let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.card_indices.len())
         .map(|j| {
             let (mut mw, mut mg) = (vec![1.0f64; nu], vec![1.0f64; nu]);
-            src_miss(&space.sources[j], &vec![1.0; space.kind[j].stop as usize], &mut mw, &mut mg);
+            space.sources[j].src_miss(&vec![1.0; space.kind[j].stop as usize], &mut mw, &mut mg);
             let mh: Vec<f64> = (0..nu).map(|k| mg[k] * mw[k]).collect();
             (mg, mh)
         })

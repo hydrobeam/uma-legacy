@@ -113,7 +113,7 @@ impl Bucket {
     }
     /// Deck bits in `word` that pass all of the query's level-index tests.
     #[inline]
-    pub(super) fn cand_word(&self, word: usize, query_offsets: &[usize]) -> u64 {
+    pub(super) fn candidate_word(&self, word: usize, query_offsets: &[usize]) -> u64 {
         let remaining = self.esig.len() - word * 64;
         let mut candidates = if remaining >= 64 { u64::MAX } else { (1u64 << remaining) - 1 };
         let base = word * LVW;
@@ -139,44 +139,50 @@ pub(super) fn query_offsets(q: Sig, out: &mut [usize; SIG_FIELDS]) -> usize {
     n
 }
 
+/// One kept deck located by the most recent dominance scan.
+struct DominatorLocation {
+    bucket: usize,
+    deck: usize,
+}
+
 /// Kept decks of one pal count. A dominator's coordinate sum is at least the deck's (less float slack), so a
 /// query only visits buckets at or above the deck's sum.
 /// `recent`: coordinates of the last RECENT decks that dominated a new deck.
 ///   top_decks = 1: a deck on it may since have been dropped, but then a kept deck dominates it, so it still
 ///   proves that any deck it dominates is not needed.
 ///   top_decks > 1: kept decks are only dropped at compaction, which starts a fresh `DominanceIndex`, so every deck on it
-///   is still kept; `ruid` holds their ids so each counts once.
+///   is still kept; `recent_ids` holds their ids so each counts once.
 pub(super) struct DominanceIndex {
-    pub(super) nd: usize,
-    pub(super) bw: f64,
+    pub(super) coordinate_count: usize,
+    pub(super) bucket_width: f64,
     pub(super) buckets: Vec<Bucket>,
     pub(super) n: usize,
     pub(super) next_uid: u64,
-    pub(super) lastrow: Vec<f64>,
-    pub(super) has_last: bool,
+    pub(super) last_dominator: Vec<f64>,
+    pub(super) has_last_dominator: bool,
     pub(super) cap: usize,
     pub(super) recent: Vec<f64>,
-    pub(super) rpos: usize,
-    pub(super) rlen: usize,
-    pub(super) ruid: Vec<u64>,
-    pub(super) found: Vec<(usize, usize)>,
+    pub(super) recent_position: usize,
+    pub(super) recent_count: usize,
+    pub(super) recent_ids: Vec<u64>,
+    found: Vec<DominatorLocation>,
 }
 pub(super) const RECENT: usize = 32;
 impl DominanceIndex {
     pub(super) fn new(nd: usize) -> Self {
         Self {
-            nd,
-            bw: (nd.max(1) as f64) / NBUCKET as f64,
+            coordinate_count: nd,
+            bucket_width: (nd.max(1) as f64) / NBUCKET as f64,
             buckets: (0..NBUCKET).map(|_| Bucket::default()).collect(),
             n: 0,
             next_uid: 0,
-            lastrow: vec![0.0; nd],
-            has_last: false,
+            last_dominator: vec![0.0; nd],
+            has_last_dominator: false,
             cap: 512,
             recent: vec![0.0; RECENT * nd],
-            rpos: 0,
-            rlen: 0,
-            ruid: vec![u64::MAX; RECENT],
+            recent_position: 0,
+            recent_count: 0,
+            recent_ids: vec![u64::MAX; RECENT],
             found: vec![],
         }
     }
@@ -185,11 +191,11 @@ impl DominanceIndex {
     }
     #[inline]
     fn bucket_of(&self, s: f64) -> usize {
-        ((s / self.bw).floor().max(0.0) as usize).min(NBUCKET - 1)
+        ((s / self.bucket_width).floor().max(0.0) as usize).min(NBUCKET - 1)
     }
     /// number of kept decks dominating x (stops at `need`)
     pub(super) fn count(&mut self, x: &[f64], xq: Sig, s: f64, need: usize, tests: &mut usize) -> usize {
-        let nd = self.nd;
+        let nd = self.coordinate_count;
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
         self.found.clear();
@@ -198,7 +204,7 @@ impl DominanceIndex {
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
             for w in 0..bk.esig.len().div_ceil(64) {
-                let mut cm = bk.cand_word(w, &qo[..nq]);
+                let mut cm = bk.candidate_word(w, &qo[..nq]);
                 while cm != 0 {
                     let i = w * 64 + cm.trailing_zeros() as usize;
                     cm &= cm - 1;
@@ -206,10 +212,10 @@ impl DominanceIndex {
                     let row = &bk.flat[i * nd..(i + 1) * nd];
                     if dominates(row, x) {
                         n += 1;
-                        self.found.push((bi, i));
+                        self.found.push(DominatorLocation { bucket: bi, deck: i });
                         if n >= need {
-                            self.lastrow.copy_from_slice(row);
-                            self.has_last = true;
+                            self.last_dominator.copy_from_slice(row);
+                            self.has_last_dominator = true;
                             return n;
                         }
                     }
@@ -220,7 +226,7 @@ impl DominanceIndex {
     }
     /// like `count`, without touching the remembered-dominator state (for a fixed reference set)
     pub(super) fn count_ro(&self, x: &[f64], xq: Sig, s: f64, need: usize) -> usize {
-        let nd = self.nd;
+        let nd = self.coordinate_count;
         let b0 = self.bucket_of(s - SUM_EPS);
         let mut n = 0;
         let mut qo = [0usize; SIG_FIELDS];
@@ -228,7 +234,7 @@ impl DominanceIndex {
         for bi in (b0..NBUCKET).rev() {
             let bk = &self.buckets[bi];
             for w in 0..bk.esig.len().div_ceil(64) {
-                let mut cm = bk.cand_word(w, &qo[..nq]);
+                let mut cm = bk.candidate_word(w, &qo[..nq]);
                 while cm != 0 {
                     let i = w * 64 + cm.trailing_zeros() as usize;
                     cm &= cm - 1;
@@ -244,25 +250,25 @@ impl DominanceIndex {
         n
     }
     pub(super) fn count_recent(&self, x: &[f64]) -> usize {
-        let nd = self.nd;
-        (0..self.rlen).filter(|&r| dominates(&self.recent[r * nd..(r + 1) * nd], x)).count()
+        let nd = self.coordinate_count;
+        (0..self.recent_count).filter(|&r| dominates(&self.recent[r * nd..(r + 1) * nd], x)).count()
     }
     /// put the dominators the last count found on `recent`
     pub(super) fn remember_found(&mut self) {
-        let nd = self.nd;
+        let nd = self.coordinate_count;
         // (the buffer put back after, its capacity kept for the next `count`)
         let mut found = std::mem::take(&mut self.found);
-        for &(bi, i) in &found {
+        for &DominatorLocation { bucket: bi, deck: i } in &found {
             let id = self.buckets[bi].uid[i];
-            if self.ruid[..self.rlen].contains(&id) {
+            if self.recent_ids[..self.recent_count].contains(&id) {
                 continue;
             }
-            let r = self.rpos;
+            let r = self.recent_position;
             let (rec, flat) = (&mut self.recent, &self.buckets[bi].flat);
             rec[r * nd..(r + 1) * nd].copy_from_slice(&flat[i * nd..(i + 1) * nd]);
-            self.ruid[r] = id;
-            self.rpos = (r + 1) % RECENT;
-            self.rlen = (self.rlen + 1).min(RECENT);
+            self.recent_ids[r] = id;
+            self.recent_position = (r + 1) % RECENT;
+            self.recent_count = (self.recent_count + 1).min(RECENT);
         }
         found.clear();
         self.found = found;
@@ -296,7 +302,7 @@ impl DominanceIndex {
     /// drop kept decks that x dominates (only decks with sum <= s + slack can be), in place, keeping the order of
     /// the rest
     pub(super) fn remove_dominated_by(&mut self, x: &[f64], xe: Sig, s: f64) {
-        let nd = self.nd;
+        let nd = self.coordinate_count;
         let top = self.bucket_of(s + SUM_EPS);
         // lq offsets of x's entry signature: fields below the top level constrain the deck's query field
         let mut xo = [0usize; SIG_FIELDS];
@@ -381,7 +387,7 @@ pub(super) fn k_filter(mut g: Vec<DeckEval>, kmax: usize, nd: usize) -> Dominanc
             kept.insert(x);
         }
     }
-    kept.has_last = false;
+    kept.has_last_dominator = false;
     kept
 }
 

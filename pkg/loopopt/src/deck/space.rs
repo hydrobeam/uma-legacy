@@ -1,9 +1,9 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, cv_mask, test_caps};
+use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, test_caps};
 use crate::deck::chains::{ChainKind, chain_marginals};
 use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
-use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources, src_miss};
+use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources};
 use crate::deck::state_bound::StateBoundConfig;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};
@@ -212,8 +212,7 @@ impl<'data> DeckSpace<'data> {
         let mut mw = vec![1.0f64; n * target_count];
         let mut mg = vec![1.0f64; n * target_count];
         for j in 0..n {
-            src_miss(
-                &self.sources[j],
+            self.sources[j].src_miss(
                 marg.get(&self.kind[j]).unwrap_or(&empty),
                 &mut mw[j * target_count..(j + 1) * target_count],
                 &mut mg[j * target_count..(j + 1) * target_count],
@@ -617,7 +616,7 @@ pub(crate) fn deck_space<'data>(
         variants: entries.vark.clone(),
         sources: entries.srcs.clone(),
         borrowed: entries.rel.iter().map(|&r| !is_owned(entries.cards[r].id)).collect(),
-        class_masks: entries.srcs.iter().map(cv_mask).collect(),
+        class_masks: entries.srcs.iter().map(TargetSources::cv_mask).collect(),
         plain_pals: entries
             .plain_ids
             .iter()
