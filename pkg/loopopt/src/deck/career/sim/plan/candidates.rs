@@ -4,7 +4,9 @@ use super::{
     PlanRow, PlanSearches, PlanSetup, RowOrigin, Want, best_of, best_sur, bests_key, capped, certified, hint_umas,
     is_full, lift_eff, rotation, same_career, score_career, sim_for, stamp_ok, stamped, take_kept_plan,
 };
+use crate::deck::career::sim::plan::ScoringContext;
 use crate::deck::career::sim::{Env, Found, Ref, Sel, Sim, Value, json, now_ms, prof, progress};
+use crate::deck::career::{Career, Lineage};
 
 pub(in crate::deck::career::sim::plan) fn setup_plan_candidates<'env, 'data>(
     env: &'env mut Env<'data>,
@@ -13,7 +15,9 @@ pub(in crate::deck::career::sim::plan) fn setup_plan_candidates<'env, 'data>(
     gp: Found,
     buf: &mut Vec<f64>,
 ) -> Result<PlanSetup<'env, 'data>, Value> {
-    let PlanInputs { d, sk, cr, job, legs, pool, sv, fix, trainees, pj, .. } = *input;
+    let PlanInputs { legacies: legs, pool, solved: sv, fixed_parents: fix, trainees, settings: pj, .. } = *input;
+    let d = input.resources.data;
+    let job = input.resources.job;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
     let (nodes0, joints0) = (env.space.nodes.get(), crate::deck::JCOUNT.with(std::cell::Cell::get));
     // the loop planner's members only when the job names them (`loop_members`, an override; the plan no longer runs the
@@ -103,7 +107,7 @@ pub(in crate::deck::career::sim::plan) fn setup_plan_candidates<'env, 'data>(
     env.hard = 0;
     env.budget = original_budget;
     let mut search_ms = now_ms() - t1;
-    let mut s = sim_for(env, d, sk, cr, job, pj)?;
+    let mut s = sim_for(env, input.resources, pj)?;
     // the cache the planner's table values read (trios' third members, candidates' lifted odds): each search's exact
     // winners only, the main search's best careers and each uma's best one, so what it holds (and every number read from
     // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
@@ -193,7 +197,8 @@ pub(in crate::deck::career::sim::plan) fn score_and_admit_proxies(
     profile: &mut PlanProfile,
     buf: &mut Vec<f64>,
 ) -> BaseRows {
-    let PlanInputs { d, legs, pool, sv, fix, pj, .. } = *input;
+    let PlanInputs { legacies: legs, pool, solved: sv, fixed_parents: fix, settings: pj, .. } = *input;
+    let d = input.resources.data;
     let n = candidates.trainees.len();
     let nl = legs.len();
     let mut runs: Vec<PlanRow> = vec![];
@@ -230,7 +235,13 @@ pub(in crate::deck::career::sim::plan) fn score_and_admit_proxies(
                 profile.search_ms += now_ms() - ts;
                 let Some(f) = pf else { continue };
                 let (CareerScore { lift_stats: st, .. }, sv) = stamped(s, Some(&candidates.trainees), |s| {
-                    score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf)
+                    score_career(
+                        s,
+                        &ScoringContext { score_base: &base_s, legacies: legs, pool },
+                        Career { lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b }, deck: &f.sel },
+                        Want::Stats,
+                        buf,
+                    )
                 });
                 runs.push(PlanRow::new(x, f, st, RowOrigin::Base, false, sv));
                 continue;
@@ -262,8 +273,13 @@ pub(in crate::deck::career::sim::plan) fn score_and_admit_proxies(
                 profile.search_ms += now_ms() - ts;
             }
             let Some(f) = searches.best[x].found().cloned() else { continue };
-            let CareerScore { lift_stats: st, .. } =
-                score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
+            let CareerScore { lift_stats: st, .. } = score_career(
+                s,
+                &ScoringContext { score_base: &base_s, legacies: legs, pool },
+                Career { lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b }, deck: &f.sel },
+                Want::Stats,
+                buf,
+            );
             runs.push(PlanRow::new(x, f, st, RowOrigin::Base, true, None));
         }
         // the near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
@@ -347,7 +363,8 @@ fn plan_surrogate(
     buf: &mut Vec<f64>,
     sur_diff: &mut Vec<Value>,
 ) {
-    let PlanInputs { d, pool, fix, pj, .. } = *input;
+    let PlanInputs { pool, fixed_parents: fix, settings: pj, .. } = *input;
+    let d = input.resources.data;
 
     let f = best_sur(s, pool, fix, u, pj.sur_margin, buf);
     if pj.sur == 2 {
@@ -374,8 +391,8 @@ pub(in crate::deck::career::sim::plan) fn exact_plan_career(
     buf: &mut Vec<f64>,
     reuse: Option<(&Found, &[(f64, f64)], Option<(usize, usize)>)>,
 ) -> Option<(Found, Vec<(f64, f64)>)> {
-    let PlanInputs { d, legs, pool, fix, pj, .. } = *input;
-    let nl = input.legs.len();
+    let PlanInputs { legacies: legs, pool, fixed_parents: fix, settings: pj, .. } = *input;
+    let nl = input.legacies.len();
     let base_s = candidates.stats_base();
 
     if searches.best[x].is_unsearched() {
@@ -405,8 +422,13 @@ pub(in crate::deck::career::sim::plan) fn exact_plan_career(
         prof("reuse_st", 1.0);
         return Some((f, proxy_stats.to_vec()));
     }
-    let CareerScore { lift_stats: st, .. } =
-        score_career(s, d, &base_s, legs, pool, x, f.a, f.b, &f.sel, Want::Stats, buf);
+    let CareerScore { lift_stats: st, .. } = score_career(
+        s,
+        &ScoringContext { score_base: &base_s, legacies: legs, pool },
+        Career { lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b }, deck: &f.sel },
+        Want::Stats,
+        buf,
+    );
     Some((f, st))
 }
 
@@ -419,7 +441,7 @@ pub(in crate::deck::career::sim::plan) fn set_plan_wins(
 ) {
     let PlanInputs { pool, .. } = *input;
 
-    let w = s.wins(pool, x, f.a, f.b);
+    let w = s.wins(pool, Lineage { trainee: x, first_parent: f.a, second_parent: f.b });
     wins_by_trainee[x] = w.iter().enumerate().filter(|x| *x.1 > 0.5).map(|x| x.0).collect();
 }
 
@@ -430,9 +452,9 @@ pub(in crate::deck::career::sim::plan) fn exact_no_borrow_career(
     x: usize,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
-    let PlanInputs { fix, pj, .. } = *input;
+    let PlanInputs { fixed_parents: fix, settings: pj, .. } = *input;
     let pick_pool = input.pick_pool();
-    let nl = input.legs.len();
+    let nl = input.legacies.len();
 
     capped(s, pj.search_work, searches.original_budget, |s| {
         if pj.sur == 1 {

@@ -1,8 +1,8 @@
 //! Candidate searches, rotation setup and proxy limits.
 use super::PlanJob;
-use crate::deck::career::sim::{
-    Ancestor, Bar, CardsRaw, Data, Env, Found, Legacy, Pool, Sim, SimJob, SkillJob, SkillsRaw, Value, json,
-};
+use crate::deck::career::sim::{Ancestor, Bar, Data, Env, Found, Legacy, Pool, Sim, SimJob, SkillJob, Value, json};
+use crate::deck::career::sim::{DeckRequest, SimulationOptions, SimulationRoster};
+use crate::deck::career::{JobInputs, Lineage};
 
 pub(in crate::deck::career::sim::plan) const fn p_margin() -> f64 {
     1e9
@@ -14,10 +14,7 @@ pub(in crate::deck::career::sim::plan) const fn p_swork() -> usize {
 
 pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
     env: &'env mut Env<'data>,
-    d: &'data Data,
-    sk: &'data SkillsRaw,
-    cr: &'data CardsRaw,
-    job: &'data Value,
+    input: &JobInputs<'data>,
     pj: &PlanJob,
 ) -> Result<Sim<'env, 'data>, Value> {
     let ntar = env.ntar;
@@ -28,7 +25,13 @@ pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
         .map_err(|e| json!({"error": format!("The plan's margin does not make a simulator setting: {e}")}))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.owned.clone();
-    Ok(Sim::new(env, d, sk, cr, job, cfg, trainees, vec![], vec![], false, true))
+    Ok(Sim::new(
+        env,
+        input,
+        cfg,
+        SimulationRoster { trainees, members: vec![], member_by_trainee: vec![] },
+        SimulationOptions { record_audits: false, fill_missing_decks: true },
+    ))
 }
 
 /// The rotation for the loop base `ids` (`PlanJob::loop_members`): (members as uma indices, their {id, name}, or why
@@ -61,8 +64,8 @@ pub(in crate::deck::career::sim::plan) const IDX_CANDS: usize = 8;
 pub(in crate::deck::career::sim::plan) const IDX_PARTNERS: usize = 2;
 
 /// legal parents a, b for trainee u (`Pool::pair_ok`)
-pub(in crate::deck::career::sim::plan) fn legal_pair(d: &Data, p: &Pool, u: usize, a: usize, b: usize) -> bool {
-    p.pair_ok(d.umas[u].id, a, b)
+pub(in crate::deck::career::sim::plan) fn legal_pair(d: &Data, p: &Pool, lineage: Lineage) -> bool {
+    p.pair_ok(d.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
 }
 
 /// Whether builder x's career f (her deck class's proxy) is provably her best, without a career search: over every legal
@@ -86,7 +89,7 @@ pub(in crate::deck::career::sim::plan) fn certified(
         if Env::ceiling_out(ub, bar) {
             continue;
         }
-        let c = env.lineage_into(pool, x, a, b, &mut q);
+        let c = env.lineage_into(pool, Lineage { trainee: x, first_parent: a, second_parent: b }, &mut q);
         if env.refs_out(x, &q, c, env.seen[ct].iter(), bar) || env.ruled_out(x, &q, c, &env.ruled[ct], bar) {
             continue;
         }
@@ -96,19 +99,18 @@ pub(in crate::deck::career::sim::plan) fn certified(
 }
 
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
-pub(in crate::deck::career::sim::plan) fn val(
-    s: &mut Sim,
-    p: &Pool,
-    u: usize,
-    a: usize,
-    b: usize,
-    buf: &mut Vec<f64>,
-) -> f64 {
+pub(in crate::deck::career::sim::plan) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -> f64 {
+    let Lineage { trainee: u, first_parent: a, second_parent: b } = lineage;
     let mut q = std::mem::take(&mut s.qs);
-    let c = s.env.lineage_into(p, u, a, b, &mut q);
+    let c = s.env.lineage_into(p, Lineage { trainee: u, first_parent: a, second_parent: b }, &mut q);
     let v = match s.env.ceiling(u, &q, c) {
         None => 0.0,
-        Some(ub) => s.deck_for(u, &q, c, ub, 0.0, buf).map_or(0.0, |x| x.0),
+        Some(ub) => s
+            .deck_for(
+                DeckRequest { trainee: u, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: 0.0 },
+                buf,
+            )
+            .map_or(0.0, |x| x.0),
     };
     s.qs = q;
     v
@@ -137,8 +139,11 @@ pub(in crate::deck::career::sim::plan) fn best_sur(
             break;
         }
         let mut q = std::mem::take(&mut s.qs);
-        let c = s.env.lineage_into(pool, u, a, b, &mut q);
-        let r = s.deck_for(u, &q, c, ub, bar, buf);
+        let c = s.env.lineage_into(pool, Lineage { trainee: u, first_parent: a, second_parent: b }, &mut q);
+        let r = s.deck_for(
+            DeckRequest { trainee: u, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: bar },
+            buf,
+        );
         s.qs = q;
         if let Some((v, di)) = r
             && v > bar
@@ -211,7 +216,6 @@ pub(in crate::deck::career::sim::plan) const OPT_SHOW: usize = 8;
 /// rank's mix, G1 wins `w1` / `w2`), each bred from the other and from u (grandparents every target at 2 stars)
 pub(in crate::deck::career::sim::plan) fn loop_ceiling(
     s: &mut Sim,
-    d: &Data,
     pool: &Pool,
     u: usize,
     b1: usize,
@@ -219,6 +223,7 @@ pub(in crate::deck::career::sim::plan) fn loop_ceiling(
     wins: &dyn Fn(usize) -> Vec<usize>,
     buf: &mut Vec<f64>,
 ) -> f64 {
+    let d = s.d;
     let sj = s.env.sj;
     let star = s.env.sj.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
@@ -238,7 +243,11 @@ pub(in crate::deck::career::sim::plan) fn loop_ceiling(
     s.env.pool_push(&mut p, &mk(b1, b2, u));
     s.env.pool_push(&mut p, &mk(b2, b1, u));
     let n = p.me.len();
-    let v = if legal_pair(d, &p, u, n - 2, n - 1) { val(s, &p, u, n - 2, n - 1, buf) } else { 0.0 };
+    let v = if legal_pair(d, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }) {
+        val(s, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }, buf)
+    } else {
+        0.0
+    };
     Env::pool_pop(&mut p);
     Env::pool_pop(&mut p);
     s.put_pool(pool, p);
@@ -302,8 +311,8 @@ pub(in crate::deck::career::sim::plan) fn hint_umas(
         env.pool_push(&mut p, &mk(ca, cb, id));
         env.pool_push(&mut p, &mk(cb, ca, id));
         let n = p.me.len();
-        if legal_pair(d, &p, u, n - 2, n - 1) {
-            let (q, c) = env.lineage_q(&p, u, n - 2, n - 1);
+        if legal_pair(d, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }) {
+            let (q, c) = env.lineage_q(&p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 });
             if let Some(v) = env.ceiling(u, &q, c)
                 && v > 0.0
             {
