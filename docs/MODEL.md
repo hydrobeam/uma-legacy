@@ -10,16 +10,16 @@ fit a table cell point to a section below the table.
 | Assumption | Value in the model | Source | Status |
 |---|---|---|---|
 | Relation points | `pair`/`tri` = sum of `succession_relation.relation_point` over groups containing all members | master.mdb | exact (game data) |
-| Race affinity | +3 per shared single-race G1 win, by win-saddle group (relocated venues = same race, 1025→1012, 1027→1006, 1028→1005); multi-race titles count 0 | the game rule as community tools implement it; `docs/RESEARCH.md` §3 fits the weight per shared win on the runs' real lineages | fitted (weight 3 per shared win within the 95% interval) |
+| Race affinity | +3 per shared single-race G1 win, by race (relocated venues = same race: 1025→1012, 1027→1006, 1028→1005, and in the loop planner also 1029→1016; the career planner reads a veteran's wins by win-saddle group); multi-race titles count 0 | the game rule as community tools implement it; `docs/RESEARCH.md` §3 fits the weight per shared win on the runs' real lineages | fitted (weight 3 per shared win within the 95% interval) |
 | Per-legacy affinity | parent P: pair(T,P) + pair(P1,P2) + Σ over P's own parents G [trio(T,P,G) + 3·shared(P,G)] + 3·shared(P,other parent); grandparent G under P: trio(T,P,G) + 3·shared(P,G). In a loop the other parent is also P's own parent, so the parents' shared G1s count twice | `docs/RESEARCH.md` §3, §5: the roll scales with this affinity on single-ancestor trials | fitted (slope within the 95% interval of 1) |
 | Inheritance chance | per spark per legacy per roll: base × (1 + affinity/100), capped 1; two rolls per career (Classic and Senior April); grandparents full rate (no halving) | community figures; `docs/RESEARCH.md` §3 tests the skill-white rolls (grandparent weight, affinity slope, stars) and §13 on whole careers | fitted (grandparents full rate; skill whites calibrated) |
 | Base by spark type and stars | skill/scenario white 3/6/9%, race white 1/2/3%, green 5/10/15%, pink 1/3/5%, blue 70/80/90% | community figures; skill whites tested in `docs/RESEARCH.md` §3 | skill whites fitted; the other types assumed (unused by the odds) |
-| Star mix of legacy sparks | 50/45/5% (1/2/3★) for rank score 6,500–17,499 (default); 20/70/10% at 17,500+ (90/10/0% below 6,500), for skill (white) and unique (green) sparks; the page defaults the band by scenario: SS for Grand Concert and Grand Masters, below SS for URA Finale, Unity Cup and Trackblazer | community figures (mixes); the band per scenario from the runs' rank scores, `docs/RESEARCH.md` §2 | mixes assumed; band per scenario derived |
+| Star mix of legacy sparks | 50/45/5% (1/2/3★) for rank score 6,500–17,499 (default); 20/70/10% at 17,500+ (the page offers only these two bands), for skill (white) and unique (green) sparks; the page defaults the band by scenario: SS for Grand Concert and Grand Masters, below SS for URA Finale, Unity Cup and Trackblazer | community figures (mixes); the band per scenario from the runs' rank scores, `docs/RESEARCH.md` §2 | mixes assumed; band per scenario derived |
 | Spark generation | learned white 20%, gold 40% (double-circle 25%), ×1.1 per ancestor carrying the spark; loop uses n = 6: 35.43% / 70.86%. The spark is always the group's white (a bought gold sparks its white) | community figure | assumed; the runs cannot test it (they show inherited sparks, not produced ones) |
 | End-of-career spark reroll (the game: once per career every spark drawn again, the better roll kept, 30 TP) | not modelled: rerolling when she learned every target roughly halves the careers to a fully looped parent (per career P(all land) becomes (2 - G) P, G under 0.001), but scales every career alike, so it doesn't change which career to run | the game; measured 2026-10-21 on 11 plan jobs (picks unchanged, estimate x0.50-0.56) | left out: it moves no decision |
 | Every target spark on all six legacies | yes (a running loop keeps veterans that landed everything) | assumed | simplification; a loop being built has fewer (the career planner uses real carriers) |
 | Great-grandparents | no effect on affinity or carrier counts | the game's two-generation lineage | assumed (the runs show no great-grandparents) |
-| Loop structure and ranking | four-uma loops (12 lineages: trainee, two of the other three as parents, each parent bred from the other parent and the fourth uma) and three-uma rotations (3 lineages: each parent bred from the other parent and the trainee's own earlier veteran), ranked together on the mean P(all) over their lineages, i.e. every member trains equally often | a modelling choice (2026-10-07); the rotation occurs in uma-it runs (`docs/RESEARCH.md` §6) and in GameTora's legacy guide ("she can be her own sub-legacy") | the equal-training average is a choice, not a fit: it is the long-run rate of a player who trains every member in turn. A player who keeps re-training only the best trainee would score a structure by its best lineage instead (not offered) |
+| Loop structure and ranking | four-uma loops (12 lineages: trainee, two of the other three as parents, each parent bred from the other parent and the fourth uma) and three-uma rotations (3 lineages: each parent bred from the other parent and the trainee's own earlier veteran), ranked together on the mean P(all) over their lineages, i.e. every member trains equally often | a modelling choice; the rotation occurs in uma-it runs (`docs/RESEARCH.md` §6) and in GameTora's legacy guide ("she can be her own sub-legacy") | the equal-training average is a choice, not a fit: it is the long-run rate of a player who trains every member in turn. A player who keeps re-training only the best trainee would score a structure by its best lineage instead (not offered) |
 | Repeated character in a trio | tri(T, P, T) = 0: a relation group counts only for distinct characters (`rel_tables`), so a self-grandparent brings only her shared G1s with her child | fitted on uma-it inspiration trials (`docs/RESEARCH.md` §5, *Self-grandparent*); uma.moe's backend uses 0, uma-it-optimizer counts pair(T, P) | measured (a rate fit; the game's code path is not seen) |
 
 ## Races
@@ -52,7 +52,7 @@ fit a table cell point to a section below the table.
 | Assumption | Value in the model | Source | Status |
 |---|---|---|---|
 | Veterans | the loop model with what real veterans carry: each legacy's stars per target (no spark: no chance), recorded single-race G1 wins for race affinity, the recorded parents as grandparents (unknown parent: no relation points, sparks still count); spark generation ×1.1 per legacy actually carrying the spark | umadump exports (trained_chara_data.json; rental_chara_data.json for the borrow list): factor_id = factor group × 100 + stars, saddles via `single_mode_wins_saddle.group_id`; borrowed when owner_viewer_id ≠ 0 | exact decoding (master.mdb); borrowed flag checked on one export of each kind (owner_viewer_id 0 on 242 own veterans, the lender's viewer_id on 69 borrowable; use_type 0 on all) |
-| Career schedule | the trainee's schedule maximizes expected distinct G1 wins, a race a parent won counting double (affinity later); no training cost, as in the loop planner | derived | |
+| Career schedule | the trainee's schedule maximizes expected distinct G1 wins plus one per parent who won the race (affinity later); no training cost, as in the loop planner | derived | |
 | Next career (the planner's pick, `next`) | the career that brings a fully looped parent (an 8/8 whose parents are 8/8s) closest per run, with each candidate's continuation (`Cont`: how her own odds rise as builder careers improve her lineage) priced in; mechanics in `docs/SOLVER.md`, *Next career* | continuation form assumed, fitted per pool; shape fitted to simulated builder traces | section *Next career* below |
 | Compare and Reroll (*Veteran analysis*) | Compare: the planner's expected careers to a fully looped parent (V) for the pool now against a full plan of the pool with her added, fitted to that pool (the plan Add to veterans then shows); her own 8/8 with 8/8 parents is a fully looped parent. Reroll asks the plan for that one outcome's saving (`next.roll`, from the pick's kept scoring), proven "no saving" where its bound `y_hi` is under half a career, else checked by a Compare | exact parts as the planner's | the two Vs come from two fits (Cont is refitted per pool), so a veteran can raise V; the page shows a rise as no change. Monotonicity is checked by `val/mono.py`, not assumed |
 | Aptitude (pink), blue and unique sparks | section *Sparks the odds don't use* | | |
@@ -62,15 +62,15 @@ fit a table cell point to a section below the table.
 The mechanics (objective V, `Cont`, a career's score, builders through their deck class) are in `docs/SOLVER.md`,
 *Next career*. The evidence behind them:
 
-- **Cont's shape.** `CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 are fitted to the measured builder traces of
-  `val/sim/README.md` E5 (four player pools of 2, 5, 11 and 19 veterans): Cont tracks achievable building within 0-5% on
+- **Cont's shape.** `CEIL_SHARE` 0.6 and `LAM_DECAY` 1.5 are fitted to builder traces measured with the policy
+  simulator's `trace` policy (`val/sim/README.md`; Agnes Digital on four player pools of 2, 5, 11 and 19 veterans): Cont tracks achievable building within 0-5% on
   2, 11 and 19 veterans and is 70% too pessimistic on 5, where lam rises after the first lift (builders improve) while
   Cont only lets it decay (taking lam as the larger of now and one lift later fixes most of it: 995 -> 734
   careers on 5 veterans, the others unchanged; not built); leave-one-pool-out fits of the shape ranged 0.6-1.0 and 1-3, so it is a calibration on
   these pools, not a law. Not yet measured against other policies: the simulator's `index` policy runs the page's
   planner on the same draws as `greedy` (`docs/SOLVER.md`, *Policy simulator*), but no comparison of useful size has
   been run.
-- **Builders through their deck class** (2026-10-08): the proxy, checked 2026-10-09 with `proxy_check` on val/plan,
+- **Builders through their deck class**: the proxy, checked 2026-10-09 with `proxy_check` on val/plan,
   reads at most 2.79% low (efficiency) and 2.67% (saving), so the 6% band (`PROXY_EFF`, `PROXY_SAVE`) is over twice
   the worst error; picks, the top-8 rows, V and the shown scores are unchanged on val/plan.
 - **Forms rejected**: crediting each improvement as the last (a frozen tail) overrated builders 10-40x; a single-step
@@ -103,6 +103,6 @@ is guaranteed at 3★ or more). The blue stars' stat band is an assumption.
 ## Where the model is weakest
 
 The pieces that decide rankings, and have the least evidence, are the deck-side ones: training-hint counts, chain
-completion, and event-choice behaviour; the uma-it runs have now measured the first two and four outcome shares
+completion, and event-choice behaviour; the uma-it runs measure the first two, and five outcome shares,
 part by part. The composed model (a whole career's predicted P(target) against what landed) is tested end to end in
 `docs/RESEARCH.md` §13. On the planner side, the continuation (`Cont`) is a calibration on four player pools.

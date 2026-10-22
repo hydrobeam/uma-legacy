@@ -86,8 +86,8 @@ by more than 25% (the most seen is 18%). When a search runs long the margin shri
 schedules are the optimiser's best found, not proven best.</li>
 <li>The counted hints rely on the player's IT priorities; the deck card names the one the planner knows (Sasami
 Anshinzawa SSR: prioritise Risky Business).</li>
-<li><strong>Not modelled:</strong> random character events from support cards (about one career in six; under 2% on
-the odds); conditional and secret events, except Tokai Teio's Head-On; hint levels and skill-point costs; Grand
+<li><strong>Not modelled:</strong> random character events from support cards (each fires in about one career in seven where it can; 0.3% on
+the runs' odds on average); conditional and secret events, except Tokai Teio's Head-On; hint levels and skill-point costs; Grand
 Concert's low rate for the first choice of Sasami Anshinzawa SSR's finale.</li>
 <li><strong>Placeholders:</strong> Grand Masters' hint rate (base 1.86, specialty weight 0.26: the other scenarios' pooled fit) is a guess,
 with no IT runs to set it. R cards are left
@@ -96,7 +96,7 @@ launch.</li>
 <li><strong>Data:</strong> card events come from cached GameTora files; the game data is the Global game data as of
 the latest update the page was built from. Umas, outfits and cards it holds ahead of their banner appear at the banner's
 start.</li>
-<li>Every measured rate comes from uma-it uploads.</li>
+<li>The hint, chain and event-outcome rates are measured on uma-it uploads.</li>
 </ol>
 
 <h3 id="loop">The loop</h3>
@@ -191,7 +191,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   heads 3 careers. A three-uma rotation has 3 careers, one per trainee <math><mi>T</mi></math>: her parents are the other two, and each
   parent's own parents are the other parent and <math><mi>T</mi></math>, so <math><mi>X</mi><mo>=</mo><mi>T</mi></math> below (her own earlier veteran, with her
   schedule's wins). A trio counts only distinct umas, so <math><mtext>trio</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>T</mi><mo>)</mo><mo>=</mo><mn>0</mn></math>
-  (fitted on 101,536 inspirations from IT runs: counting it as <math><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></math> predicts 16% more
+  (fitted on 114,240 inspirations from IT runs: counting it as <math><mtext>pair</mtext><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></math> predicts 16% more
   passes from such grandparents than seen).</p>
 
   <p><strong>2. Affinity of each legacy.</strong> pair and trio are the game's relation points (the sum over the relation
@@ -199,7 +199,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><msub><mi>A</mi><mi>P</mi></msub><mo>=</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>pair</mtext><mrow><mo>(</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow></mrow><mo>+</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>X</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mrow><mo>[</mo><mn>2</mn><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><msup><mi>P</mi><mo>′</mo></msup><mo>)</mo></mrow><mo>+</mo><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>X</mi><mo>)</mo></mrow><mo>]</mo></mrow></math><math display="block"><msub><mi>A</mi><mi>G</mi></msub><mo>=</mo><mrow><mtext>trio</mtext><mrow><mo>(</mo><mi>T</mi><mo>,</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow></mrow><mo>+</mo><mn>3</mn><mi>w</mi><mrow><mo>(</mo><mi>P</mi><mo>,</mo><mi>G</mi><mo>)</mo></mrow><mo>,</mo><mtext>  G ∈ {P′, X}</mtext></math>
   <p>Relation points come from the game's succession-relation table: each relation group has a point value and a member
   list; <math><mtext>pair</mtext><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>)</mo></math> sums the points of every group holding both, <math><mtext>trio</mtext><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>,</mo><mi>c</mi><mo>)</mo></math> of every group holding all three
-  (three distinct umas). Two umas share a G1 when both win the same race: races are matched by race id, with the three
+  (three distinct umas). Two umas share a G1 when both win the same race: races are matched by race id, with
   relocated venues counted as their usual race. The results' affinity table shows exactly these per-legacy
   values.</p>
 
@@ -211,7 +211,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
 
   <p><strong>4. One target's spark chance.</strong> For target <math><mi>k</mi></math>: <math><msub><mi>g</mi><mi>k</mi></msub></math> the deck's chance of a gold hint,
   <math><msub><mi>w</mi><mi>k</mi></msub></math> its chance of a white hint given no gold hint (step 6), <math><msub><mi>e</mi><mi>k</mi></msub></math> the chance the trainee's own events
-  hint it. A skill the trainee learns becomes a spark 0.709 of the time as a gold and 0.354 as a white (<math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math> or <math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math>):</p>
+  hint it. A skill the trainee learns becomes a spark 0.709 of the time as a gold and 0.354 as a white (<math><mn>0.4</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math> or <math><mn>0.2</mn><mo>×</mo><msup><mn>1.1</mn><mn>6</mn></msup></math>):</p>
   <math display="block"><msub><mi>s</mi><mi>k</mi></msub><mo>=</mo><mn>0.709</mn><msub><mi>g</mi><mi>k</mi></msub><mo>+</mo><mn>0.354</mn><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>g</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>[</mo><mn>1</mn><mo>−</mo><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>w</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>e</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mi>q</mi><mo>)</mo></mrow><mo>]</mo></mrow></math>
   <p>If the trainee's outfit has the target as a gold, <math><msub><mi>s</mi><mi>k</mi></msub><mo>=</mo><mn>0.709</mn></math>; as a white, the bracket is 1. A uma's owned outfits
   (minus any excluded) are grouped by what they give: per open target, 2 if the outfit's skill list has the gold, 1 if the
@@ -354,10 +354,10 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><mi>V</mi><mo>≤</mo><mi>ρ</mi><mspace width="0.2em"/><mover><mi>V</mi><mo>^</mo></mover><mo>,</mo><mspace width="1em"/><mi>ρ</mi><mo>≤</mo><mn>1.25</mn></math>
   <p><math><mi>V</mi></math> and <math><mover><mi>V</mi><mo>^</mo></mover></math> differ because the deck's chain cards share the run's chain events: the targets a chain link
   feeds land or miss together, and the cards compete for events, which can tie even one target's sources together. The
-  cap depends on how many such targets the deck has: <math><mi>ρ</mi><mo>=</mo><mn>1.05</mn></math> with at most two (and no event outcome hinting two
-  targets together), 1.25 with three or more, both assumed from measurement. A half-built deck takes the
-  <math><mi>ρ</mi></math> of every target it can still reach. The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored: 1.037 with two
-  such targets, 1.127 with three, 1.18 with more (a Global validation deck; 1.17 on Grand Masters). No data-free cap
+  cap depends on how many such targets the deck has: <math><mi>ρ</mi><mo>=</mo><mn>1.05</mn></math> with at most two (and no event hinting several
+  targets whose outcomes aren't proven negatively dependent, step 13), 1.25 otherwise, both assumed from measurement. A half-built deck takes the
+  <math><mi>ρ</mi></math> of every target it can still reach. The largest <math><mi>V</mi><mo>/</mo><mover><mi>V</mi><mo>^</mo></mover></math> seen on any deck scored: 1.020 with two
+  such targets, 1.127 with three, 1.18 with more (a Global validation deck; 1.10 on the Grand Masters-era data). No data-free cap
   can be proven for those: two targets whose only source is one card's last link make the ratio
   <math><mn>1</mn><mo>/</mo><mi>P</mi><mo>(</mo><mtext>link</mtext><mo>)</mo></math>. Every deck scored is checked against its cap, the largest ratios are reported with the
   result, validation fails when one passes three quarters of its cap's margin over 1, and an audit reruns searches with
@@ -486,8 +486,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   machine: 2 per half-built deck tested, 5 per deck listed, 10,000 per deck search, 25 per filter bound (100 with a
   shared deck), 200 per exact score (800 with a shared deck). If it runs out, or a deck search exceeds 50,000 decks, the
   search reruns with every <math><mi>ρ</mi></math> at most 1.12, then 1.05, each with a quarter of the budget more and reusing every exact value, table cell
-  and schedule already computed (cells from a cut-short deck search are discarded). If none finishes, loops are ranked
-  by <math><mover><mi>V</mi><mo>^</mo></mover></math> and each shown result is scored exactly. The status line says which cap the result was checked under. The page
+  and schedule already computed (cells from a cut-short deck search are discarded). If none finishes, a last pass at
+  <math><mi>ρ</mi><mo>=</mo><mn>1</mn></math> gives each trainee the best by exact odds of her three best decks by <math><mover><mi>V</mi><mo>^</mo></mover></math> and ranks loops on those. The status line says which cap the result was checked under. The page
   runs the product ranking first and shows it at once, then the exact search. Either way the guarantee is relative to
   the schedules found (step 9), which are not proven optimal.</p>
 
@@ -599,8 +599,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>G</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><msubsup><mo>∏</mo><mi>j</mi><mrow><mo>(</mo><mn>6</mn><mo>)</mo></mrow></msubsup><msub><mi>H</mi><mrow><mi>j</mi><mi>k</mi></mrow></msub><mo>,</mo><mspace width="1em"/><msubsup><mi>w</mi><mi>k</mi><mtext>max</mtext></msubsup><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><mn>1</mn><mo>−</mo><msubsup><mi>h</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow><mrow><mn>1</mn><mo>−</mo><msubsup><mi>g</mi><mi>k</mi><mtext>max</mtext></msubsup></mrow></mfrac></math>
   <p>Each target's best is taken separately, so no real deck can beat it; <math><mi>ρ</mi></math> is the top cap, 1.25 (no deck is known yet). The main search has a work budget of 300 million units (the units of step 18), past which its deck searches score only
   their best deck by product (and the decks they start from) and its answer is marked unproven; each planner search has 5 million, past which it also stops
-  taking candidates. A deck scored above its class's cap (the cap's assumption failing) also marks the search unproven, and
-  the result names the class. A deck search listing more than
+  taking candidates. A deck scored above its class's cap (the cap's assumption failing) has its deck search rerun with no cap,
+  and the result names the class; only a rerun that proves nothing leaves the search unproven. A deck search listing more than
   50,000 decks is rerun with <math><mi>ρ</mi></math> at most 1.12, then 1.05, then 1; the plan then says it is not complete and which cap it holds under. Candidates are taken best ceiling first; each gets its exact best deck
   (step 14) against the bar it must beat, unless a cheaper proof rules it out first:</p>
   <ul>
@@ -652,7 +652,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   with hypothetical n/n veterans of her two most efficient builders of different characters as parents (bred from each
   other and from her), at least <math><msub><mi>p</mi><mn>1</mn></msub></math>; with no builder that lifts her, her step is <math><mn>1</mn><mo>/</mo><msub><mi>p</mi><mi>u</mi></msub></math>; <math><mi>φ</mi><mo>=</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mn>1</mn></msub><mo>/</mo><mi>p</mi><mo>)</mo><mo>/</mo><mo>ln</mo><mo>(</mo><msub><mi>p</mi><mi>∞</mi></msub><mo>/</mo><mi>p</mi><mo>)</mo></math>. The share 0.6
   and the exponent 1.5 were fitted to traces of building for Agnes Digital on four player pools (2, 5, 11 and
-  19 veterans): within 10–20% on 11 and 19; fits leaving one pool out ranged 0.6–1.0 and 1–3.</p>
+  19 veterans): within 0–5% on 2, 11 and 19, and 70% too pessimistic on 5; fits leaving one pool out ranged 0.6–1.0 and 1–3.</p>
 
   <p><strong>C8. A career's score: saves per run.</strong> Running career <math><mi>c</mi></math> (trainee <math><mi>x</mi></math>, parents <math><mi>a</mi></math>, <math><mi>b</mi></math>)
   leaves a veteran: her parents <math><mi>a</mi></math> and <math><mi>b</mi></math>, her G1 wins at her schedule's chances, and the targets she lands. Her
@@ -710,9 +710,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <p><strong>Using the plan. C9. Reroll.</strong> A roll draws one outcome of the career on show from its exact
   chances (C8), with stars from the rank's mix and G1 wins at the schedule's chances. For the veteran it would add, it
   also draws the skills bought (a landed target is bought, as a gold with the report's chance; one that didn't land is
-  bought anyway with its remaining buying chance), her pink spark (C2b), one blue spark (a stat, near uniform, stars at
+  bought anyway with its remaining buying chance), her pink spark (C2b), one blue spark (one of the five stats, 20% each, stars at
   the rank's mix) and her outfit's unique (green) spark at the rank's mix; these don't enter the plan's numbers. When the career on show is the
-  pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> worked out for that one outcome from what the solver kept of the plan (the same sums in the same order, so the same number a full table would hold), in the same solver call as one search for the best career with
+  pick, its saving is <math><mi>y</mi><mo>(</mo><mi>ω</mi><mo>)</mo></math> worked out for that one outcome from what the solver kept of the plan (the same sums in the same order, so the same number a full table would hold), and a second solver call searches the best career with
   her as a parent. A replan with her in the pool can find more than <math><mi>y</mi></math>: a partner beyond the two, a deck not yet
   found (its continuations are the plan's, C10). So each outcome with <math><mi>y</mi><mo>&lt;</mo><mn>0.5</mn></math> (the only ones where a bound can decide anything, below) also carries an upper bound <math><msub><mi>y</mi><mtext>hi</mtext></msub></math> on what her veteran's direct
   effect could save. For candidate <math><mi>u</mi></math> with odds <math><msub><mi>p</mi><mi>u</mi></msub></math> now, every partner <math><mi>y</mi></math> (all of them, not two), and her
@@ -722,7 +722,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   deck's change between chances. The inner minimum also runs over chances whose best odds are proven, each in place of
   <math><msub><mi>p</mi><mi>u</mi></msub><mo>/</mo><msub><mi>C</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></math> at its own <math><msub><mi>q</mi><mrow><mi>y</mi><mi>z</mi></mrow></msub></math>: the main search's careers of her deck class, and, for the partners behind the
   likeliest outcomes that would otherwise need a check, her best deck searched with the new veteran's spark of every
-  target at 2 stars and at 3 (an option, off by default: at most 10 searches in all). <math><msub><mtext>ceil</mtext><mi>y</mi></msub></math> is C4's ceiling for that lineage. Her step then costs at least
+  target at 2 stars and at 3 (built in but off: at 10 searches it cost the plan 6–11%). <math><msub><mtext>ceil</mtext><mi>y</mi></msub></math> is C4's ceiling for that lineage. Her step then costs at least
   <math><msub><mtext>cost</mtext><mtext>lo</mtext></msub><mo>(</mo><msubsup><mi>p</mi><mi>u</mi><mtext>hi</mtext></msubsup><mo>)</mo></math>, the minimum of C7's sum over every number of builds (C7's choice stops at the first minimum), which
   falls as the odds rise; <math><msub><mi>V</mi><mtext>lo</mtext></msub><mo>(</mo><mi>ω</mi><mo>)</mo></math> is C5's minimum with those costs (and her own n/n credit), and
   <math><msub><mi>y</mi><mtext>hi</mtext></msub><mo>=</mo><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mi>V</mi><mo>−</mo><msub><mi>V</mi><mtext>lo</mtext></msub><mo>)</mo><mo>≥</mo><mi>y</mi></math>. It bounds the replan's direct effect only; what a replan's refits do (Cont fitted again,
@@ -744,7 +744,7 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <ol>
   <li><strong>Fully looped parent:</strong> she is n/n and both her parents are n/n (the goal itself).</li>
   <li><strong>n/n: step 1 done:</strong> she is n/n.</li>
-  <li><strong>Improves your loop:</strong> while the exact count runs for a roll the plan said saves careers.</li>
+  <li><strong>Checking…:</strong> while the exact count runs for a roll the plan said saves careers.</li>
   <li><strong>Saves N careers:</strong> <math><msub><mi>V</mi><mtext>without</mtext></msub><mo>−</mo><msub><mi>V</mi><mtext>with</mtext></msub><mo>≥</mo><mn>0.5</mn></math>. A line under it says where the saving lands: the next career when
     she is one of its parents, else a later career, named by the route step (A, B or C of V's plan) whose careers fell
     most (unnamed when the route itself changed), with the next career beside it.</li>

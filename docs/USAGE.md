@@ -10,7 +10,7 @@ Finds the loop (a three-uma rotation or a four-uma loop) and support decks with 
 skill as a spark, with each uma's race schedule. Results update by themselves 0.55 s after any change (switch
 *Auto-search* off to search on demand).
 
-**Settings**
+**Loop setup**
 - *Game data*: Global (umas, outfits and cards turn on at their release time, without a new build) or JP, Grand
   Masters (JP data cut at L'Arc's launch, 24 Aug 2023). Owned umas, outfits and cards are kept separately for each.
 - *Scenario*: Unity Cup (default), Grand Concert, URA Finale, Trackblazer, and Grand Masters on the JP data. It sets the
@@ -21,9 +21,9 @@ skill as a spark, with each uma's race schedule. Results update by themselves 0.
 - *Deck per uma* (on by default): each trainee gets her own best deck. Every deck may borrow one friend's card.
 - *Results*: 1 or 3.
 - **Umas**: one tile per outfit; tap to mark it owned or not owned.
-- **Support cards**: tap the cards you don't own. Only cards that can give a target are listed.
+- **Support cards**: tap the cards you don't own. Only cards that can give a target, and pals, are listed.
 - **Target skills**: type to add. **Presets** save, load, overwrite and rename sets of targets; *8/8 example* holds the
-  eight default targets. Presets are shared by both pages and carried by Export.
+  eight default targets. Presets are shared by both pages and carried by *Export / import settings*.
 
 **Results**, per loop: the odds that every target lands; each uma with her outfit and her odds as the trainee; the
 deck, with pals, the borrowed card and "prioritise …" on a card whose event needs that skill set as an IT priority;
@@ -38,7 +38,8 @@ keeps what was found.
 ## Career planner
 
 Picks the next career from the veterans you have, aiming at a *fully looped parent* (an 8/8 whose parents are both
-8/8s). It shares the loop planner's settings, plus **Veteran Umamusume**. *Career setup* folds to a one-line summary
+8/8s). It shares the loop planner's game data, scenario, rank, umas, cards and targets, plus *Borrowed parent* and
+**Veteran Umamusume**. *Career setup* folds to a one-line summary
 (click its ribbon); until you fold or open it yourself, it opens folded once you have veterans.
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
   parents) or its `rental_chara_data.json`, the veterans the career start screen offers for borrowing (same fields,
@@ -57,7 +58,7 @@ the later careers with a borrow, since borrows come back each day. *Never* leave
 as a parent by hand is then refused with a message (choose one of yours, or allow a borrowed parent), and the parent
 picker greys borrowed veterans out.
 
-The pedigree shows the trainee, her two parents and their parents. Each place is set by hand (*Choose parent*) or left
+The pedigree shows the trainee, her two parents and their parents. Each place is set by hand (*Choose trainee*, *Choose parent*) or left
 to the planner, which tries every owned uma and every pair of your veterans (at most one borrowed, as *Borrowed parent*
 allows). Every edit that
 changes the job starts one run (one that leaves it as it is, such as renaming a preset, lets the run under way go on);
@@ -69,23 +70,25 @@ odds and *Saves per run*, how much it lowers that estimate of the careers to a f
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
 those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two 8/8 parents
 (*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. A line under
-the table says when the search for a shown uma could not prove its answer (on large pools it usually ran out of time):
-her row is the best it found, and a better career may exist. **What do
-these mean?** explains the numbers on the page. **Use this** sets the career's places; the table stays (the last plan's,
+the table says when the search for a shown uma could not prove its answer (it ran out of its work budget, or a deck passed its cap):
+her row is the best it found, and a better career may exist. The (i) by the title
+(*What these numbers mean*) explains them on the page. **Use this** sets the career's places; the table stays (the last plan's,
 while the veterans and settings are unchanged), with your career marked (*your choice* when the plan didn't list it),
 and **Back to the planner's pick** returns to the places the plan ran with. The last few answers are kept, so going
 back to one draws it again without a run.
 
-**Veteran analysis** shows the career's result as the game's *Umamusume Details* card (skills, inspiration, career
-record). It starts as a random result of the career:
+**Veteran analysis** shows the career's result as the game's *Umamusume Details* card (Skills, Inspiration, Career
+Info). It starts as a random result of the career:
 - **Reroll** draws another result (targets, stars, G1 wins, her pink spark) and gets its saving from the plan at once
   (worked out by the solver for that roll); the best career with her as a parent follows from one quick search.
 - Set it to what she actually landed and press **Compare** for the exact plan with her added: careers to a fully
   looped parent now and with her, and the best career with her as a parent.
 - **Add to veterans** saves her (with her parents) and hands every place back to the planner for the next career.
 
-Below it: the career's odds, its deck and **Race schedule**, each target's inheritance chance, and her aptitudes after
-the legacies' pink sparks.
+The card's header holds the career's odds (click for the chance of each count); the card shows her aptitudes at the end
+of that result (the legacies' pink sparks included). **Deck** and **Race schedule** sit under the trainee in the pedigree. Below the card, **Target
+skills** gives per target the chance her legacies pass it on, how many of the six carry it, and the chance her veteran
+gets its spark.
 
-**Export** shows your veterans, the plan and the solver job as text (*Copy*, *Download*), to move them to another
+**Export** (in **Veteran Umamusume**) shows your veterans, the places you set and the solver job as text (*Copy*, *Download*), to move them to another
 browser or replay a search outside the page.
