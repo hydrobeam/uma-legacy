@@ -79,6 +79,12 @@ pub(crate) struct ConfigurationBounds<Ratios, Odds, Root> {
     pub(crate) root: Root,
 }
 
+/// Lower bounds on one target's misses over the remaining cards.
+struct TargetMissBounds {
+    white: f64,
+    gold: f64,
+}
+
 impl DeckSpace<'_> {
     /// Enumerate legal card-count configurations, preserving stable root-bound order and
     /// deferring ratio tables for the product search until traversal actually needs them.
@@ -137,62 +143,68 @@ impl DeckSpace<'_> {
         let mut configurations: Vec<SearchConfig> = vec![];
         let mut pending: Vec<PendingConfig> = vec![];
         let mut key_ratios: Vec<Option<std::rc::Rc<GroupTable>>> = vec![];
-        for cnt in counts {
-            let chain_slots: usize = cnt.iter().sum();
-            if (0..kind_count).any(|i| i != filler_kind_index && cnt[i] > by_kind[i].len()) {
+        for kind_counts in counts {
+            let chain_slots: usize = kind_counts.iter().sum();
+            if (0..kind_count).any(|i| i != filler_kind_index && kind_counts[i] > by_kind[i].len()) {
                 continue;
             }
-            let mut pkey_new = true;
-            let code: u64 = cnt.iter().zip(kind_place_values).map(|(&c, &p)| c as u64 * p).sum();
+            let mut needs_ratio_key = true;
+            let code: u64 = kind_counts.iter().zip(kind_place_values).map(|(&c, &p)| c as u64 * p).sum();
             let key_misses = self.key_miss(code);
-            let (mw, mg) = (&key_misses.white, &key_misses.gold);
+            let (white_misses, gold_misses) = (&key_misses.white, &key_misses.gold);
             // per kind group and target: products of the r lowest miss chances of distinct entries, r = 0..=size
             // (any r entries of the group miss at least that much); cached per trainee and key
             // (the groups a configuration of this key can use: its kinds and, with slots left, the pal entries)
-            let needed_groups: u64 = (0..kind_count).filter(|&i| cnt[i] > 0).fold(0u64, |m, i| m | 1 << i)
+            let needed_groups: u64 = (0..kind_count).filter(|&i| kind_counts[i] > 0).fold(0u64, |m, i| m | 1 << i)
                 | if chain_slots < size { 1 << kind_count } else { 0 };
             let group_misses = self.gm_cached(
                 GroupMissKey { set_id, code },
                 groups_all,
                 needed_groups,
-                EntryMisses { white: mw, gold: mg, target_count },
+                EntryMisses { white: white_misses, gold: gold_misses, target_count },
             );
             // the key's bound: no variant (real (2, 2) and pal entries counted 0 ..= their most) can pass when the value
             // at odds above every variant's fails with room for rounding (`key_slack`)
             if skip_bounded_keys {
-                let (r22, npm) = (
-                    cnt[filler_kind_index].min(by_kind[filler_kind_index].len()),
+                let (real_filler_limit, pal_entry_limit) = (
+                    kind_counts[filler_kind_index].min(by_kind[filler_kind_index].len()),
                     (size - chain_slots).min(pal_entries.len()),
                 );
-                let lo = |i: usize, c: usize, t: usize| -> (f64, f64) {
-                    let gb = group_misses.grp(i);
-                    (0..=c).fold((f64::INFINITY, f64::INFINITY), |m, x| {
-                        (m.0.min(gm_w(gb, target_count, x)[t]), m.1.min(gm_g(gb, target_count, x)[t]))
+                let lowest_misses = |i: usize, count: usize, t: usize| -> TargetMissBounds {
+                    let group_bound = group_misses.grp(i);
+                    (0..=count).fold(TargetMissBounds { white: f64::INFINITY, gold: f64::INFINITY }, |misses, slots| {
+                        TargetMissBounds {
+                            white: misses.white.min(gm_w(group_bound, target_count, slots)[t]),
+                            gold: misses.gold.min(gm_g(group_bound, target_count, slots)[t]),
+                        }
                     })
                 };
                 for t in 0..target_count {
-                    let (mut a, mut b) = (1.0f64, 1.0f64);
-                    if npm > 0 {
-                        let x = lo(kind_count, npm, t);
-                        a *= x.0;
-                        b *= x.1;
+                    let (mut white_product, mut gold_product) = (1.0f64, 1.0f64);
+                    if pal_entry_limit > 0 {
+                        let misses = lowest_misses(kind_count, pal_entry_limit, t);
+                        white_product *= misses.white;
+                        gold_product *= misses.gold;
                     }
                     for i in (0..kind_count).rev() {
-                        let c = if i == filler_kind_index { r22 } else { cnt[i] };
-                        if c == 0 {
+                        let slots = if i == filler_kind_index { real_filler_limit } else { kind_counts[i] };
+                        if slots == 0 {
                             continue;
                         }
-                        let x = if i == filler_kind_index {
-                            lo(i, c, t)
+                        let misses = if i == filler_kind_index {
+                            lowest_misses(i, slots, t)
                         } else {
-                            let gb = group_misses.grp(i);
-                            (gm_w(gb, target_count, c)[t], gm_g(gb, target_count, c)[t])
+                            let group_bound = group_misses.grp(i);
+                            TargetMissBounds {
+                                white: gm_w(group_bound, target_count, slots)[t],
+                                gold: gm_g(group_bound, target_count, slots)[t],
+                            }
                         };
-                        a *= x.0;
-                        b *= x.1;
+                        white_product *= misses.white;
+                        gold_product *= misses.gold;
                     }
-                    key_white[t] = 1.0 - a;
-                    key_gold[t] = 1.0 - b;
+                    key_white[t] = 1.0 - white_product;
+                    key_gold[t] = 1.0 - gold_product;
                 }
                 // (a band's class caps are at most rho)
                 let none = if best {
@@ -210,29 +222,29 @@ impl DeckSpace<'_> {
             // per kind group and (clause, chance, outfit): products of the r best single-card ratios, r = 0..=size;
             // built only for keys with a configuration the per-target bound lets through
             let mut ratio_prefixes: Option<std::rc::Rc<GroupTable>> = None;
-            for real22 in 0..=cnt[filler_kind_index].min(by_kind[filler_kind_index].len()) {
-                let filler = cnt[filler_kind_index] - real22;
-                let rem = size - chain_slots;
-                for np in 0..=rem.min(pal_entries.len()) {
-                    let plain = rem - np;
-                    if plain > plain_pal_count {
+            for real_filler_count in 0..=kind_counts[filler_kind_index].min(by_kind[filler_kind_index].len()) {
+                let filler_count = kind_counts[filler_kind_index] - real_filler_count;
+                let remaining_slots = size - chain_slots;
+                for pal_entry_count in 0..=remaining_slots.min(pal_entries.len()) {
+                    let plain_pals = remaining_slots - pal_entry_count;
+                    if plain_pals > plain_pal_count {
                         continue;
                     }
                     if let Some(p) = self.deck_job.pals
-                        && (np + plain < p || plain > p)
+                        && (pal_entry_count + plain_pals < p || plain_pals > p)
                     {
                         continue;
                     }
                     let groups = &mut *group_buffer;
                     groups.clear();
                     for i in 0..kind_count {
-                        let c = if i == filler_kind_index { real22 } else { cnt[i] };
+                        let c = if i == filler_kind_index { real_filler_count } else { kind_counts[i] };
                         if c > 0 {
                             groups.push(GroupSlots { group: i, slots: c });
                         }
                     }
-                    if np > 0 {
-                        groups.push(GroupSlots { group: kind_count, slots: np });
+                    if pal_entry_count > 0 {
+                        groups.push(GroupSlots { group: kind_count, slots: pal_entry_count });
                     }
                     let groups = &**group_buffer;
                     if all_lock_bits & !groups.iter().fold(0u8, |m, group| m | group_lock_bits[group.group]) != 0 {
@@ -260,18 +272,18 @@ impl DeckSpace<'_> {
                         continue;
                     }
                     if lazy {
-                        if pkey_new {
+                        if needs_ratio_key {
                             key_ratios.push(None);
-                            pkey_new = false;
+                            needs_ratio_key = false;
                         }
                         pending.push(PendingConfig {
                             upper_bound: iv * (1.0 + 1e-12),
                             ratio_key_index: key_ratios.len() - 1,
                             code,
-                            real_filler_count: real22,
-                            pal_entry_count: np,
-                            filler_count: filler,
-                            plain_pal_count: plain,
+                            real_filler_count,
+                            pal_entry_count,
+                            filler_count,
+                            plain_pal_count: plain_pals,
                             needed_groups,
                             groups: groups.to_vec(),
                             group_misses: std::rc::Rc::clone(&group_misses),
@@ -280,8 +292,8 @@ impl DeckSpace<'_> {
                     }
                     if ratio_prefixes.is_none() {
                         ratio_prefixes = Some(std::rc::Rc::new((bounds.ratio_prefixes)(
-                            mw,
-                            mg,
+                            white_misses,
+                            gold_misses,
                             &key_misses.touched_targets,
                             needed_groups,
                         )));
@@ -310,10 +322,10 @@ impl DeckSpace<'_> {
                     configurations.push(SearchConfig {
                         root,
                         code,
-                        real_filler_count: real22,
-                        pal_entry_count: np,
-                        filler_count: filler,
-                        plain_pal_count: plain,
+                        real_filler_count,
+                        pal_entry_count,
+                        filler_count,
+                        plain_pal_count: plain_pals,
                         groups: groups.to_vec(),
                         group_misses: std::rc::Rc::clone(&group_misses),
                         ratio_prefixes: std::rc::Rc::clone(ratio_prefixes),

@@ -66,9 +66,9 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
                 .iter()
                 .map(|outcome| EventOutcome { probability: outcome.probability, rewards: &*outcome.rewards })
                 .collect();
-            let rest = 1.0 - group.iter().map(|outcome| outcome.probability).sum::<f64>();
-            if rest > 1e-15 {
-                outcomes.push(EventOutcome { probability: rest, rewards: &[][..] });
+            let no_reward_probability = 1.0 - group.iter().map(|outcome| outcome.probability).sum::<f64>();
+            if no_reward_probability > 1e-15 {
+                outcomes.push(EventOutcome { probability: no_reward_probability, rewards: &[][..] });
             }
             groups.push(CoupledGroup { targets: marginals.iter().map(|entry| entry.0).collect(), outcomes });
             coupled.push(groups.len() - 1);
@@ -82,12 +82,12 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
     let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count]);
     let mut base_coupled: Vec<usize> = vec![];
     let mut groups: Vec<CoupledGroup> = vec![];
-    for SourceEntry { sources: src, .. } in entries {
-        let src: &TargetSources = src.borrow();
-        for &TrainingHint { target: k, probability: p } in &src.training_hints {
+    for SourceEntry { sources, .. } in entries {
+        let sources: &TargetSources = sources.borrow();
+        for &TrainingHint { target: k, probability: p } in &sources.training_hints {
             base_no_hint[k] *= 1.0 - p;
         }
-        for group in &src.fixed_outcomes {
+        for group in &sources.fixed_outcomes {
             add_group(group, &mut groups, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
         }
     }
@@ -110,8 +110,8 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
     let mut chains: Vec<ChainProgress> = vec![];
     for (position, &ChainEntry { kind, source_index: entry }) in chain_entries.iter().enumerate() {
         let Some(i) = entry else { continue };
-        let src: &TargetSources = entries[i].sources.borrow();
-        if src.chain_outcomes.is_empty() {
+        let sources: &TargetSources = entries[i].sources.borrow();
+        if sources.chain_outcomes.is_empty() {
             continue;
         }
         let (mut no_gold, mut no_hint, mut coupled) =
@@ -121,7 +121,7 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
         let mut class_of_progress = vec![0u8];
         for link in 1..=kind.stop {
             let mut changed = false;
-            for ChainOutcome { link: group_link, outcomes: group } in &src.chain_outcomes {
+            for ChainOutcome { link: group_link, outcomes: group } in &sources.chain_outcomes {
                 if *group_link == link {
                     add_group(group, &mut groups, &mut coupled, &mut no_gold, &mut no_hint);
                     changed = true;
@@ -167,24 +167,27 @@ pub(crate) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
         groups,
     }
 }
-/// Evaluate a prepared deck with fresh scratch. Disabling marginals leaves the extension's marginal buffer empty.
-pub(super) fn joint_eval(
-    model: &Model,
-    query: JointQuery,
-    prepared: &JointPrep,
-    options: JointOptions,
-    extension: Option<&mut JointExt>,
-) -> Vec<JointChances> {
-    evaluate_prepared(model, query, prepared, options, extension, &mut JointScratch::default())
-}
-#[derive(Clone, Copy)]
-struct LandingProbability {
-    all: f64,
-    all_but_one: f64,
+impl JointPrep<'_> {
+    /// Evaluate a prepared deck with fresh scratch. Disabling marginals leaves the extension's marginal buffer empty.
+    pub(super) fn evaluate(
+        &self,
+        model: &Model,
+        query: JointQuery,
+        options: JointOptions,
+        extension: Option<&mut JointExt>,
+    ) -> Vec<JointChances> {
+        evaluate_prepared(model, query, self, options, extension, &mut JointScratch::default())
+    }
 }
 
-/// `joint_eval`'s working buffers, kept by a caller that evaluates many times (`CareerSetup::corners`): each call sets
-/// every one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets'
+#[derive(Clone, Copy)]
+pub(super) struct LandingProbability {
+    pub(super) all: f64,
+    pub(super) all_but_one: f64,
+}
+
+/// `JointPrep::evaluate`'s working buffers, kept by a caller that evaluates many times (`CareerSetup::corners`): each call
+/// sets every one to the contents a fresh one starts with (the same lengths and values; the clusters' and the landed sets'
 /// inner buffers are cleared where first used, as fresh ones are), so only their capacity carries over
 #[derive(Default)]
 pub(crate) struct JointScratch {
@@ -259,8 +262,11 @@ impl JointScratch {
         }
         for &g in &self.coupled_groups {
             let targets = &groups[g].targets;
-            for w2 in targets.windows(2) {
-                let (a, b) = (root(&mut self.target_parents, w2[0]), root(&mut self.target_parents, w2[1]));
+            for adjacent_targets in targets.windows(2) {
+                let (a, b) = (
+                    root(&mut self.target_parents, adjacent_targets[0]),
+                    root(&mut self.target_parents, adjacent_targets[1]),
+                );
                 if a != b {
                     self.target_parents[a.max(b)] = a.min(b);
                 }
@@ -299,7 +305,7 @@ impl JointScratch {
     }
 }
 
-/// `joint_eval` with reused buffers from `scratch`.
+/// `JointPrep::evaluate` with reused buffers from `scratch`.
 pub(crate) fn joint_eval_in(
     model: &Model,
     query: JointQuery,
@@ -328,6 +334,7 @@ fn evaluate_prepared(
     mut extension: Option<&mut JointExt>,
     workspace: &mut JointScratch,
 ) -> Vec<JointChances> {
+    // Phase 1: reset per-query outputs and retained scratch; unit scales leave factors bit-identical.
     let target_count = model.uncertain.len();
     let mut scratch = std::mem::take(workspace);
     let JointPrep { base, chains, states, groups } = prepared;
@@ -335,24 +342,26 @@ fn evaluate_prepared(
     let outfit_count = outfits.len();
     let chance_count = query.inheritance_chances.len();
     let fixed_target_count = model.n_fixed_gold as usize;
-    let fixed = match &extension {
-        Some(x) => x.scales.guaranteed.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
+    let fixed_factor = match &extension {
+        Some(extra) => extra.scales.guaranteed.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
         None => model.fixed_factor(),
     };
-    let want_sets = extension.as_ref().is_some_and(|x| !x.sets.is_empty()) && target_count <= 16;
-    if let Some(x) = extension.as_deref_mut() {
+    let want_landed_sets = extension.as_ref().is_some_and(|extra| !extra.sets.is_empty()) && target_count <= 16;
+    if let Some(extra) = extension.as_deref_mut() {
         if options.marginals {
-            x.marginals = vec![0.0; chance_count * outfit_count * target_count];
+            extra.marginals = vec![0.0; chance_count * outfit_count * target_count];
         }
-        if want_sets {
-            x.sets = vec![0.0; (chance_count * outfit_count) << target_count];
+        if want_landed_sets {
+            extra.sets = vec![0.0; (chance_count * outfit_count) << target_count];
         }
     }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
-    let unit_scales = extension.as_ref().is_none_or(|x| x.scales.uncertain.iter().all(|&s| s == 1.0));
+    let has_unit_scales = extension.as_ref().is_none_or(|extra| extra.scales.uncertain.iter().all(|&s| s == 1.0));
     let query_outfit_count = chance_count * outfit_count;
-    scratch.reset(target_count, query_outfit_count, want_sets);
+    scratch.reset(target_count, query_outfit_count, want_landed_sets);
     let mut outcomes: Vec<&[EventOutcome<&[TargetReward]>]> = vec![];
+    // Phase 2: condition on each collapsed chain state in first-seen order. Given that state,
+    // only targets connected by a coupled outcome group can remain dependent.
     for state in states {
         let state_probability = state.probability;
         scratch.no_gold.copy_from_slice(&base.no_gold);
@@ -367,65 +376,73 @@ fn evaluate_prepared(
             }
             scratch.coupled_groups.extend(factors.coupled.iter().copied());
         }
-        for (qi, &q) in query.inheritance_chances.iter().enumerate() {
-            for (o, OutfitOption { coverage: st, .. }) in outfits.iter().enumerate() {
-                let ew = &query.event_chances[o];
-                let base = (qi * outfit_count + o) * target_count;
+        // Phase 3: tabulate landing factors for no coupled hint, a white hint, and a gold hint.
+        for (chance_index, &q) in query.inheritance_chances.iter().enumerate() {
+            for (o, OutfitOption { coverage, .. }) in outfits.iter().enumerate() {
+                let event_chances = &query.event_chances[o];
+                let base = (chance_index * outfit_count + o) * target_count;
                 for k in 0..target_count {
-                    let lp = LandPre::new(st[k], ew[k], q);
-                    scratch.landing_factors[base + k] =
-                        [lp.f(scratch.no_gold[k], scratch.no_hint[k]), lp.f(scratch.no_gold[k], 0.0), lp.f(0.0, 0.0)];
-                    if !unit_scales && let Some(x) = &extension {
-                        for v in &mut scratch.landing_factors[base + k] {
-                            *v *= x.scales.uncertain[k];
+                    let landing_factor = LandPre::new(coverage[k], event_chances[k], q);
+                    scratch.landing_factors[base + k] = [
+                        landing_factor.f(scratch.no_gold[k], scratch.no_hint[k]),
+                        landing_factor.f(scratch.no_gold[k], 0.0),
+                        landing_factor.f(0.0, 0.0),
+                    ];
+                    if !has_unit_scales && let Some(extra) = &extension {
+                        for factor in &mut scratch.landing_factors[base + k] {
+                            *factor *= extra.scales.uncertain[k];
                         }
                     }
                 }
             }
         }
+        // Phase 4: combine independent targets; each update preserves P(all) and P(exactly one miss).
         let cluster_count = scratch.build_clusters(groups, target_count);
         // per (q, outfit): (P(all land), P(exactly one misses)) of each independent unit, combined
         scratch.all_land.fill(1.0);
         scratch.one_misses.fill(0.0);
-        let push = |all: &mut [f64], one: &mut [f64], i: usize, a: f64, b: f64| {
-            one[i] = one[i] * a + all[i] * b;
-            all[i] *= a;
-        };
+        let combine_independent =
+            |all_land: &mut [f64], one_misses: &mut [f64], i: usize, unit_all: f64, unit_one: f64| {
+                one_misses[i] = one_misses[i] * unit_all + all_land[i] * unit_one;
+                all_land[i] *= unit_all;
+            };
         for i in 0..query_outfit_count {
             for k in 0..target_count {
                 if !scratch.in_cluster[k] {
                     let f = scratch.landing_factors[i * target_count + k][0];
-                    push(&mut scratch.all_land, &mut scratch.one_misses, i, f, 1.0 - f);
+                    combine_independent(&mut scratch.all_land, &mut scratch.one_misses, i, f, 1.0 - f);
                     if options.marginals
-                        && let Some(x) = extension.as_deref_mut()
+                        && let Some(extra) = extension.as_deref_mut()
                     {
-                        x.marginals[i * target_count + k] += state_probability * f;
+                        extra.marginals[i * target_count + k] += state_probability * f;
                     }
                 }
             }
         }
         // the landed sets: independent targets first, clusters below (their targets join through `scratch.cluster_distribution`)
-        if want_sets {
+        if want_landed_sets {
             for i in 0..query_outfit_count {
-                let d = &mut scratch.landed_sets[i];
-                d.clear();
-                d.resize(1 << target_count, 0.0);
-                d[0] = 1.0;
+                let distribution = &mut scratch.landed_sets[i];
+                distribution.clear();
+                distribution.resize(1 << target_count, 0.0);
+                distribution[0] = 1.0;
                 for k in 0..target_count {
                     if scratch.in_cluster[k] {
                         continue;
                     }
-                    let (f, b) = (scratch.landing_factors[i * target_count + k][0], 1usize << k);
-                    for m in 0..(1usize << target_count) {
-                        if m & b == 0 && d[m] != 0.0 {
-                            let x = d[m];
-                            d[m] = x * (1.0 - f);
-                            d[m | b] += x * f;
+                    let (landing_chance, target_bit) = (scratch.landing_factors[i * target_count + k][0], 1usize << k);
+                    for mask in 0..(1usize << target_count) {
+                        if mask & target_bit == 0 && distribution[mask] != 0.0 {
+                            let probability = distribution[mask];
+                            distribution[mask] = probability * (1.0 - landing_chance);
+                            distribution[mask | target_bit] += probability * landing_chance;
                         }
                     }
                 }
             }
         }
+        // Phase 5: enumerate each connected cluster's outcomes, then convolve its independent
+        // contribution into the state totals and, when requested, the landed-set distribution.
         for (targets, group_indices) in
             scratch.cluster_targets[..cluster_count].iter().zip(&scratch.cluster_groups[..cluster_count])
         {
@@ -434,12 +451,12 @@ fn evaluate_prepared(
             scratch.cluster_all_land.fill(0.0);
             scratch.cluster_one_misses.fill(0.0);
             // per (chance, outfit): distribution over the subsets of this cluster's targets (as full masks)
-            if want_sets {
-                let nsub = 1usize << targets.len();
+            if want_landed_sets {
+                let subset_count = 1usize << targets.len();
                 scratch.cluster_distribution.clear();
-                scratch.cluster_distribution.resize(query_outfit_count * nsub, 0.0);
+                scratch.cluster_distribution.resize(query_outfit_count * subset_count, 0.0);
                 scratch.cluster_masks.clear();
-                scratch.cluster_masks.resize(nsub, 0);
+                scratch.cluster_masks.resize(subset_count, 0);
             }
             scratch.outcome_indices.clear();
             scratch.outcome_indices.resize(outcomes.len(), 0);
@@ -455,43 +472,49 @@ fn evaluate_prepared(
                     }
                 }
                 for i in 0..query_outfit_count {
-                    let (mut a, mut b) = (1.0f64, 0.0f64);
+                    let (mut all_land, mut one_misses) = (1.0f64, 0.0f64);
                     for &k in targets {
-                        let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
-                        b = b * f + a * (1.0 - f);
-                        a *= f;
+                        let landing_chance =
+                            scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                        one_misses = one_misses * landing_chance + all_land * (1.0 - landing_chance);
+                        all_land *= landing_chance;
                     }
-                    scratch.cluster_all_land[i] += outcome_probability * a;
-                    scratch.cluster_one_misses[i] += outcome_probability * b;
+                    scratch.cluster_all_land[i] += outcome_probability * all_land;
+                    scratch.cluster_one_misses[i] += outcome_probability * one_misses;
                     if options.marginals
-                        && let Some(x) = extension.as_deref_mut()
+                        && let Some(extra) = extension.as_deref_mut()
                     {
                         for &k in targets {
-                            x.marginals[i * target_count + k] += state_probability
+                            extra.marginals[i * target_count + k] += state_probability
                                 * outcome_probability
                                 * scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                         }
                     }
-                    if want_sets {
+                    if want_landed_sets {
                         scratch.subsets.clear();
                         scratch.subsets.push(SubsetProbability { targets: 0, probability: outcome_probability });
                         for &k in targets {
-                            let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
+                            let landing_chance =
+                                scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                             scratch.next_subsets.clear();
-                            for &SubsetProbability { targets: m, probability: p } in &scratch.subsets {
-                                scratch.next_subsets.push(SubsetProbability { targets: m, probability: p * (1.0 - f) });
-                                scratch
-                                    .next_subsets
-                                    .push(SubsetProbability { targets: m | 1 << k, probability: p * f });
+                            for &SubsetProbability { targets: mask, probability } in &scratch.subsets {
+                                scratch.next_subsets.push(SubsetProbability {
+                                    targets: mask,
+                                    probability: probability * (1.0 - landing_chance),
+                                });
+                                scratch.next_subsets.push(SubsetProbability {
+                                    targets: mask | (1 << k),
+                                    probability: probability * landing_chance,
+                                });
                             }
                             std::mem::swap(&mut scratch.subsets, &mut scratch.next_subsets);
                         }
-                        let ci = &mut scratch.cluster_distribution
+                        let cluster_row = &mut scratch.cluster_distribution
                             [i * scratch.subsets.len()..(i + 1) * scratch.subsets.len()];
-                        for (j, &SubsetProbability { targets: m, probability: p }) in scratch.subsets.iter().enumerate()
+                        for (j, &SubsetProbability { targets: mask, probability }) in scratch.subsets.iter().enumerate()
                         {
-                            ci[j] += p;
-                            scratch.cluster_masks[j] = m;
+                            cluster_row[j] += probability;
+                            scratch.cluster_masks[j] = mask;
                         }
                     }
                 }
@@ -509,7 +532,7 @@ fn evaluate_prepared(
                 }
             }
             for i in 0..query_outfit_count {
-                push(
+                combine_independent(
                     &mut scratch.all_land,
                     &mut scratch.one_misses,
                     i,
@@ -518,74 +541,81 @@ fn evaluate_prepared(
                 );
             }
             // (each entry m0 | m of a row is written once, m0 holding no target of this cluster: the order is free)
-            if want_sets {
-                let nsub = scratch.cluster_masks.len();
+            if want_landed_sets {
+                let subset_count = scratch.cluster_masks.len();
                 for i in 0..query_outfit_count {
-                    let d = &mut scratch.landed_sets[i];
+                    let distribution = &mut scratch.landed_sets[i];
                     scratch.next_distribution.clear();
                     scratch.next_distribution.resize(1 << target_count, 0.0);
-                    for (m0, &x) in d.iter().enumerate() {
-                        if x == 0.0 {
+                    for (outside_mask, &outside_probability) in distribution.iter().enumerate() {
+                        if outside_probability == 0.0 {
                             continue;
                         }
-                        for (&m, &p) in
-                            scratch.cluster_masks.iter().zip(&scratch.cluster_distribution[i * nsub..(i + 1) * nsub])
+                        for (&cluster_mask, &cluster_probability) in scratch
+                            .cluster_masks
+                            .iter()
+                            .zip(&scratch.cluster_distribution[i * subset_count..(i + 1) * subset_count])
                         {
-                            scratch.next_distribution[m0 | m] += x * p;
+                            scratch.next_distribution[outside_mask | cluster_mask] +=
+                                outside_probability * cluster_probability;
                         }
                     }
-                    std::mem::swap(d, &mut scratch.next_distribution);
+                    std::mem::swap(distribution, &mut scratch.next_distribution);
                 }
             }
         }
+        // Phase 6: include fixed golds and accumulate this state in the original summation order.
         for i in 0..query_outfit_count {
-            let (mut a, mut b) = (scratch.all_land[i], scratch.one_misses[i]);
+            let (mut all_land, mut one_misses) = (scratch.all_land[i], scratch.one_misses[i]);
             if options.all_but_one {
                 for j in 0..fixed_target_count {
-                    let g = match &extension {
-                        Some(x) => GEN_GOLD * x.scales.guaranteed[j],
+                    let gold_chance = match &extension {
+                        Some(extra) => GEN_GOLD * extra.scales.guaranteed[j],
                         None => GEN_GOLD,
                     };
-                    b = b * g + a * (1.0 - g);
-                    a *= g;
+                    one_misses = one_misses * gold_chance + all_land * (1.0 - gold_chance);
+                    all_land *= gold_chance;
                 }
             } else {
-                a *= fixed;
+                all_land *= fixed_factor;
             }
             // P(at least options.target_count - 1 land) over target_count + fixed_target_count targets
-            let m = if options.target_count <= target_count + fixed_target_count {
-                if options.target_count == 0 { 1.0 } else { a + b }
+            let all_but_one = if options.target_count <= target_count + fixed_target_count {
+                if options.target_count == 0 { 1.0 } else { all_land + one_misses }
             } else {
                 0.0
             };
-            scratch.totals[i].all += state_probability * a;
-            scratch.totals[i].all_but_one += state_probability * if options.all_but_one { m } else { 0.0 };
-            if want_sets && let Some(x) = extension.as_deref_mut() {
-                for (m, &p) in scratch.landed_sets[i].iter().enumerate() {
-                    x.sets[(i << target_count) + m] += state_probability * p;
+            scratch.totals[i].all += state_probability * all_land;
+            scratch.totals[i].all_but_one += state_probability * if options.all_but_one { all_but_one } else { 0.0 };
+            if want_landed_sets && let Some(extra) = extension.as_deref_mut() {
+                for (landed_mask, &probability) in scratch.landed_sets[i].iter().enumerate() {
+                    extra.sets[(i << target_count) + landed_mask] += state_probability * probability;
                 }
             }
         }
     }
+    // Phase 7: publish per-outfit totals and select the first outfit maximizing P(all).
     if let Some(x) = extension {
         x.per_outfit.clear();
         x.per_outfit.extend(scratch.totals.iter().map(|a| a.all));
     }
-    let r = (0..chance_count)
-        .map(|qi| {
-            let mut b = 0;
+    let chances = (0..chance_count)
+        .map(|chance_index| {
+            let mut best_outfit = 0;
             for o in 1..outfit_count {
-                if scratch.totals[qi * outfit_count + o].all > scratch.totals[qi * outfit_count + b].all {
-                    b = o;
+                if scratch.totals[chance_index * outfit_count + o].all
+                    > scratch.totals[chance_index * outfit_count + best_outfit].all
+                {
+                    best_outfit = o;
                 }
             }
             JointChances {
-                all: scratch.totals[qi * outfit_count + b].all,
-                all_but_one: scratch.totals[qi * outfit_count + b].all_but_one,
-                outfit: b,
+                all: scratch.totals[chance_index * outfit_count + best_outfit].all,
+                all_but_one: scratch.totals[chance_index * outfit_count + best_outfit].all_but_one,
+                outfit: best_outfit,
             }
         })
         .collect();
     *workspace = scratch;
-    r
+    chances
 }

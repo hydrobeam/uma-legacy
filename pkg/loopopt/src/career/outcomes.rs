@@ -192,11 +192,11 @@ impl CareerSetup<'_> {
             .map(|&j| crate::deck::sources::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
             .collect();
         let pre = joint_prep(self.space.deck_job.chain_events(), self.model.uncertain.len(), &ents, sel.filler_cards);
-        // (one chance vector and one `JointExt` for every corner: joint_eval only reads `scales`; `marginals` is not read here,
-        // so not summed)
+        // (one chance vector and one `JointExt` for every corner: `JointPrep::evaluate` only reads `scales`; `marginals` is
+        // not read here, so not summed)
         let mut q = q0.to_vec();
         let mut ext = JointExt { scales, marginals: vec![], sets: vec![], per_outfit: vec![] };
-        // (and one set of joint_eval's buffers)
+        // (and one set of `JointPrep::evaluate`'s buffers)
         let mut sx = JointScratch::default();
         for c in 0..(1usize << nu) {
             for (k, &i) in self.uncertain_targets.iter().enumerate() {

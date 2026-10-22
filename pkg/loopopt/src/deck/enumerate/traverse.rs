@@ -89,9 +89,9 @@ impl DeckSpace<'_> {
             impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
         >,
         ratio_at: impl Fn(usize, &[f64], &[f64]) -> f64,
-        cf_ratios: &CapFreeRatios<'_>,
+        cap_free_ratios: &CapFreeRatios<'_>,
     ) -> SearchOutcome {
-        let t_dfs = Instant::now();
+        let traversal_start = Instant::now();
         let PreparedSearch { context, mut scratch, mut results } =
             DeckSearchContext::prepare(self, chances, clauses, controls, tables, scratch, clause_value);
         let uncapped = controls.state_bound_mode == 2;
@@ -101,14 +101,14 @@ impl DeckSpace<'_> {
                 break;
             }
             if let Some(stop) =
-                context.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cf_ratios)
+                context.visit(state_bounds, &mut scratch, &mut results, &configuration, &ratio_at, cap_free_ratios)
             {
                 return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
             }
         }
         SPT.with(|c| {
             let mut v = c.get();
-            v.tree_seconds += t_dfs.elapsed().as_secs_f64();
+            v.tree_seconds += traversal_start.elapsed().as_secs_f64();
             c.set(v);
         });
         SearchOutcome { decks: results.decks, incomplete: None, uncapped }
@@ -286,7 +286,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         results: &mut SearchResults,
         configuration: &SearchConfig,
         ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
-        cf_ratios: &CapFreeRatios<'_>,
+        cap_free_ratios: &CapFreeRatios<'_>,
     ) -> Option<SearchStop> {
         let search = self;
         let DeckSearchScratch { nodes, configuration_scratch, borrow_cache } = scratch;
@@ -325,12 +325,12 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         nodes.partial_white.resize(controls.target_count, 0.0);
         nodes.partial_gold.clear();
         nodes.partial_gold.resize(controls.target_count, 0.0);
-        let ng = groups.len();
+        let group_count = groups.len();
         if !controls.best {
             configuration_scratch.fill_class_suffixes(&groups, &space.class_masks);
         }
         // A root bound below the bar rules out every deck in the configuration.
-        let sbc = search.state_cfg(state_bounds, configuration, &groups);
+        let sbc = search.state_configuration(state_bounds, configuration, &groups);
         let mut sbb = StateBound::new(
             sbc,
             &groups,
@@ -342,7 +342,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
                 target_count: controls.target_count,
                 outfit_count: controls.cap_free_outfit_count,
             },
-            cf_ratios,
+            cap_free_ratios,
             BoundOptions {
                 chain_events: space.deck_job.chain_events(),
                 cap_free: controls.cap_free,
@@ -386,11 +386,11 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         // first use of their row (the same expressions, so the same f64s as computing them per node); row
         // (loff[g] + left) * ncan + can, a row of 2 controls.target_count factors (a then b) and one of outfit_row_count ratios
         let ncan = if bt.has_borrowed_entries { 2 } else { 1 };
-        let mut loff = vec![0usize; ng + 1];
-        for g in 0..ng {
+        let mut loff = vec![0usize; group_count + 1];
+        for g in 0..group_count {
             loff[g + 1] = loff[g] + groups[g].slots + 1;
         }
-        nodes.reset_constants(loff[ng] * ncan, controls.target_count, controls.column_count);
+        nodes.reset_constants(loff[group_count] * ncan, controls.target_count, controls.column_count);
         // (a branch that can no longer place every locked card is dropped)
         if !configuration_scratch.fill_available_locks(&groups, tables.lock_bits, tables.all_lock_bits) {
             return None;
@@ -427,7 +427,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             available_locks,
             remaining_offsets: &loff,
             borrow_state_count: ncan,
-            group_count: ng,
+            group_count,
             total_slots: groups.iter().map(|x| x.slots).sum(),
             root_bound: sb_root,
         };
@@ -450,7 +450,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
                 0,
             )
         } else {
-            walk.rec(
+            walk.walk(
                 &mut walk_scratch,
                 results,
                 path,
@@ -481,9 +481,15 @@ struct ConfigurationDominance {
     suffix_characters: Vec<u128>,
 }
 
+/// Chain-distribution position and its configuration group; fillers have no group.
+struct ConfigurationChain {
+    kind: ChainKind,
+    group: usize,
+}
+
 impl<V> DeckSearchContext<'_, '_, V> {
-    /// The dominance tables of `configuration`'s groups (`dom_table`), and per flat index f (the groups' entries in turn) the
-    /// characters of the entries from f on (`dsuf`, group g's from `doff[g]`); empty without the dominance skip
+    /// The dominance tables of `configuration`'s groups (`dominance_table`), and per flat index f (the groups' entries in turn) the
+    /// characters of the entries from f on (`dominance_suffix`, group g's from `dominance_offsets[g]`); empty without the dominance skip
     fn dominance(
         &self,
         configuration: &SearchConfig,
@@ -492,12 +498,12 @@ impl<V> DeckSearchContext<'_, '_, V> {
     ) -> ConfigurationDominance {
         let SearchControl { use_dominance, set_id, .. } = self.controls;
         let PreparedTables { character_bits, groups_all, lock_bits, .. } = self.tables;
-        let doms: Vec<std::rc::Rc<Vec<Vec<Dominator>>>> = if use_dominance {
+        let dominators: Vec<std::rc::Rc<Vec<Vec<Dominator>>>> = if use_dominance {
             configuration
                 .groups
                 .iter()
                 .map(|&GroupSlots { group: i, .. }| {
-                    self.space.dom_table(
+                    self.space.dominance_table(
                         DominanceKey { set_id, code: configuration.code, group: i },
                         groups_all[i],
                         lock_bits,
@@ -508,85 +514,89 @@ impl<V> DeckSearchContext<'_, '_, V> {
         } else {
             vec![]
         };
-        let (mut doff, mut dsuf): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
+        let (mut dominance_offsets, mut dominance_suffix): (Vec<usize>, Vec<u128>) = (vec![0], vec![]);
         if use_dominance {
             for group in groups {
                 for &j in group.entries {
-                    dsuf.push(character_bits[j]);
+                    dominance_suffix.push(character_bits[j]);
                 }
-                doff.push(dsuf.len());
+                dominance_offsets.push(dominance_suffix.len());
             }
-            dsuf.push(0);
-            for f in (0..dsuf.len() - 1).rev() {
-                dsuf[f] |= dsuf[f + 1];
+            dominance_suffix.push(0);
+            for f in (0..dominance_suffix.len() - 1).rev() {
+                dominance_suffix[f] |= dominance_suffix[f + 1];
             }
         }
-        ConfigurationDominance { tables: doms, offsets: doff, suffix_characters: dsuf }
+        ConfigurationDominance { tables: dominators, offsets: dominance_offsets, suffix_characters: dominance_suffix }
     }
 
     /// Group gi's `BorrowBounds` under the key's miss chances `white_misses`, `gold_misses` (`ratio_at`: a card's ratio per column)
     fn borrow_bounds(
         &self,
-        gi: usize,
+        group_index: usize,
         misses: EntryMisses<'_>,
         ratio_at: &impl Fn(usize, &[f64], &[f64]) -> f64,
     ) -> BorrowBounds {
         let SearchControl { target_count, size, column_count, .. } = self.controls;
-        let l = self.tables.groups_all[gi];
-        let (own, bor): (Vec<usize>, Vec<usize>) = l.iter().partition(|&&j| !self.space.borrowed[j]);
-        let mut om = vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; size + 1];
-        let mut bm = MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] };
+        let entries = self.tables.groups_all[group_index];
+        let (owned_entries, borrowed_entries): (Vec<usize>, Vec<usize>) =
+            entries.iter().partition(|&&j| !self.space.borrowed[j]);
+        let mut owned_misses =
+            vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; size + 1];
+        let mut best_borrowed_misses = MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] };
         for t in 0..target_count {
-            let mut a: Vec<f64> = own.iter().map(|&j| misses.white[j * target_count + t]).collect();
-            a.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            let mut b: Vec<f64> = own.iter().map(|&j| misses.gold[j * target_count + t]).collect();
-            b.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            let mut a: Vec<f64> = owned_entries.iter().map(|&j| misses.white[j * target_count + t]).collect();
+            a.sort_by(|left, right| left.partial_cmp(right).unwrap());
+            let mut b: Vec<f64> = owned_entries.iter().map(|&j| misses.gold[j * target_count + t]).collect();
+            b.sort_by(|left, right| left.partial_cmp(right).unwrap());
             for r in 1..=size {
-                om[r].white[t] = om[r - 1].white[t] * a.get(r - 1).copied().unwrap_or(1.0);
-                om[r].gold[t] = om[r - 1].gold[t] * b.get(r - 1).copied().unwrap_or(1.0);
+                owned_misses[r].white[t] = owned_misses[r - 1].white[t] * a.get(r - 1).copied().unwrap_or(1.0);
+                owned_misses[r].gold[t] = owned_misses[r - 1].gold[t] * b.get(r - 1).copied().unwrap_or(1.0);
             }
-            for &j in &bor {
-                bm.white[t] = bm.white[t].min(misses.white[j * target_count + t]);
-                bm.gold[t] = bm.gold[t].min(misses.gold[j * target_count + t]);
+            for &j in &borrowed_entries {
+                best_borrowed_misses.white[t] = best_borrowed_misses.white[t].min(misses.white[j * target_count + t]);
+                best_borrowed_misses.gold[t] = best_borrowed_misses.gold[t].min(misses.gold[j * target_count + t]);
             }
         }
-        let mut one = om.clone();
+        let mut one_borrow_misses = owned_misses.clone();
         for r in 1..=size {
             for t in 0..target_count {
-                one[r].white[t] = om[r].white[t].min(om[r - 1].white[t] * bm.white[t]);
-                one[r].gold[t] = om[r].gold[t].min(om[r - 1].gold[t] * bm.gold[t]);
+                one_borrow_misses[r].white[t] =
+                    owned_misses[r].white[t].min(owned_misses[r - 1].white[t] * best_borrowed_misses.white[t]);
+                one_borrow_misses[r].gold[t] =
+                    owned_misses[r].gold[t].min(owned_misses[r - 1].gold[t] * best_borrowed_misses.gold[t]);
             }
         }
-        let (mut x, mut y) = (vec![0.0f64; target_count], vec![0.0f64; target_count]);
+        let (mut white_chances, mut gold_chances) = (vec![0.0f64; target_count], vec![0.0f64; target_count]);
         // (`ratio_at`: without a split column, every zm 0 and cix the identity, the plain ratio)
         let mut ratio = |j: usize| -> Vec<f64> {
             for t in 0..target_count {
-                x[t] = 1.0 - misses.white[j * target_count + t];
-                y[t] = 1.0 - misses.gold[j * target_count + t];
+                white_chances[t] = 1.0 - misses.white[j * target_count + t];
+                gold_chances[t] = 1.0 - misses.gold[j * target_count + t];
             }
-            (0..column_count).map(|i| ratio_at(i, &x, &y)).collect()
+            (0..column_count).map(|i| ratio_at(i, &white_chances, &gold_chances)).collect()
         };
-        let ro: Vec<Vec<f64>> = own.iter().map(|&j| ratio(j)).collect();
-        let rb: Vec<Vec<f64>> = bor.iter().map(|&j| ratio(j)).collect();
+        let owned_card_ratios: Vec<Vec<f64>> = owned_entries.iter().map(|&j| ratio(j)).collect();
+        let borrowed_card_ratios: Vec<Vec<f64>> = borrowed_entries.iter().map(|&j| ratio(j)).collect();
         let (mut owned_ratios, mut borrow_ratios) = (vec![], vec![]);
         for i in 0..column_count {
-            let mut r: Vec<f64> = ro.iter().map(|v| v[i]).collect();
+            let mut r: Vec<f64> = owned_card_ratios.iter().map(|v| v[i]).collect();
             r.sort_by(|a, b| b.partial_cmp(a).unwrap());
-            let best_b = rb.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
-            let mut pre = vec![1.0f64; size + 1];
+            let best_borrowed_ratio = borrowed_card_ratios.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max);
+            let mut prefixes = vec![1.0f64; size + 1];
             for k in 1..=size {
-                pre[k] = pre[k - 1] * r.get(k - 1).copied().unwrap_or(1.0);
+                prefixes[k] = prefixes[k - 1] * r.get(k - 1).copied().unwrap_or(1.0);
             }
-            let mut borrow_ratio_suffix = pre.clone();
-            if best_b > f64::NEG_INFINITY {
+            let mut borrow_ratio_suffix = prefixes.clone();
+            if best_borrowed_ratio > f64::NEG_INFINITY {
                 for k in 1..=size {
-                    borrow_ratio_suffix[k] = pre[k].max(pre[k - 1] * best_b);
+                    borrow_ratio_suffix[k] = prefixes[k].max(prefixes[k - 1] * best_borrowed_ratio);
                 }
             }
-            owned_ratios.push(pre);
+            owned_ratios.push(prefixes);
             borrow_ratios.push(borrow_ratio_suffix);
         }
-        BorrowBounds { owned_misses: om, borrow_misses: one, owned_ratios, borrow_ratios }
+        BorrowBounds { owned_misses, borrow_misses: one_borrow_misses, owned_ratios, borrow_ratios }
     }
 
     /// `configuration`'s one-borrowed-card tables (each group's `BorrowBounds` cached by `BorrowKey` in `borrow_cache`).
@@ -617,25 +627,25 @@ impl<V> DeckSearchContext<'_, '_, V> {
         } else {
             vec![]
         };
-        let ngs = configuration.groups.len();
+        let group_count = configuration.groups.len();
         // (allocated only when used)
-        let nb = if has_borrowed_entries { ngs + 1 } else { 0 };
+        let suffix_count = if has_borrowed_entries { group_count + 1 } else { 0 };
         // (vec![x; 0] would still build x: none without borrowing)
-        let (mut owned_suffix, mut borrow_suffix) = if nb > 0 {
+        let (mut owned_suffix, mut borrow_suffix) = if suffix_count > 0 {
             (
-                vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; nb],
-                vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; nb],
+                vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; suffix_count],
+                vec![MissProducts { white: vec![1.0; target_count], gold: vec![1.0; target_count] }; suffix_count],
             )
         } else {
             (vec![], vec![])
         };
-        let (mut owned_ratio_suffix, mut borrow_ratio_suffix) = if nb > 0 {
-            (vec![vec![1.0f64; column_count]; nb], vec![vec![1.0f64; column_count]; nb])
+        let (mut owned_ratio_suffix, mut borrow_ratio_suffix) = if suffix_count > 0 {
+            (vec![vec![1.0f64; column_count]; suffix_count], vec![vec![1.0f64; column_count]; suffix_count])
         } else {
             (vec![], vec![])
         };
         if has_borrowed_entries {
-            for g in (0..ngs).rev() {
+            for g in (0..group_count).rev() {
                 let (gb, c) = (&group_bounds[g], configuration.groups[g].slots);
                 for t in 0..target_count {
                     owned_suffix[g].white[t] = gb.owned_misses[c].white[t] * owned_suffix[g + 1].white[t];
@@ -666,16 +676,16 @@ impl<V> DeckSearchContext<'_, '_, V> {
     /// chain positions (sorted kinds, the key's state distribution projected on the positions whose group has chain
     /// targets), per group its slots' positions and, per chain level, each target's lowest misses over the group's
     /// entries (a slot may take any of them, the same one twice: a relaxation). None without the bound (`state_bound_mode` 0)
-    fn state_cfg(
+    fn state_configuration(
         &self,
         state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         configuration: &SearchConfig,
         groups: &[TraversalEntryGroup<'_>],
     ) -> Option<std::rc::Rc<StateBoundConfig>> {
         let SearchControl { target_count, kind_count, set_id, state_bound_mode, .. } = self.controls;
-        let (space, state_rows, filler, ng) =
+        let (space, state_rows, filler, group_count) =
             (self.space, self.tables.state_rows, configuration.filler_count, groups.len());
-        let sbkey = crate::deck::state_bound::StateBoundKey {
+        let state_key = crate::deck::state_bound::StateBoundKey {
             set_id,
             code: configuration.code,
             real_filler_count: configuration.real_filler_count,
@@ -683,67 +693,72 @@ impl<V> DeckSearchContext<'_, '_, V> {
         };
         if state_bound_mode == 0 {
             None
-        } else if let Some(r) = state_bounds.configurations.get(&sbkey).cloned() {
+        } else if let Some(r) = state_bounds.configurations.get(&state_key).cloned() {
             Some(r)
         } else {
-            let mut kinds: Vec<(ChainKind, usize)> = vec![]; // (kind, group, or usize::MAX for a filler)
+            let mut chains: Vec<ConfigurationChain> = vec![]; // usize::MAX marks a filler group.
             for (g, &GroupSlots { group: i, slots: c }) in configuration.groups.iter().enumerate() {
                 if i < kind_count {
                     for _ in 0..c {
-                        kinds.push((space.kinds_all[i], g));
+                        chains.push(ConfigurationChain { kind: space.kinds_all[i], group: g });
                     }
                 }
             }
             for _ in 0..filler {
-                kinds.push((ChainKind::FILLER, usize::MAX));
+                chains.push(ConfigurationChain { kind: ChainKind::FILLER, group: usize::MAX });
             }
-            kinds.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            let kl: Vec<ChainKind> = kinds.iter().map(|x| x.0).collect();
-            let full = if kl.is_empty() {
+            chains.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.group.cmp(&b.group)));
+            let chain_kinds: Vec<ChainKind> = chains.iter().map(|chain| chain.kind).collect();
+            let full = if chain_kinds.is_empty() {
                 std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
             } else {
-                chain_states(space.deck_job.chain_events(), &kl)
+                chain_states(space.deck_job.chain_events(), &chain_kinds)
             };
             let has_chain: Vec<bool> = groups
                 .iter()
                 .map(|group| group.entries.iter().any(|&j| !space.sources[j].chain_misses.is_empty()))
                 .collect();
-            let rel_pos: Vec<usize> =
-                (0..kinds.len()).filter(|&p| kinds[p].1 != usize::MAX && has_chain[kinds[p].1]).collect();
-            let mut slots: Vec<Vec<usize>> = vec![vec![]; ng];
-            for (ri, &p) in rel_pos.iter().enumerate() {
-                slots[kinds[p].1].push(ri);
+            let projected_positions: Vec<usize> =
+                (0..chains.len()).filter(|&p| chains[p].group != usize::MAX && has_chain[chains[p].group]).collect();
+            let mut slots: Vec<Vec<usize>> = vec![vec![]; group_count];
+            for (ri, &p) in projected_positions.iter().enumerate() {
+                slots[chains[p].group].push(ri);
             }
-            for g in 0..ng {
+            for g in 0..group_count {
                 while slots[g].len() < groups[g].slots {
                     slots[g].push(usize::MAX);
                 }
             }
             // (with at most 16 positions and levels below 16, the projected key packed 4 bits per position, the first
             // highest: the same sums, each in the order of `full`, sorted the same way)
-            let states: Vec<ChainState> = if rel_pos.len() <= 16 && kl.iter().all(|k| k.stop < 16) {
-                let mut proj: crate::FxMap<u64, f64> = crate::FxMap::default();
+            let states: Vec<ChainState> = if projected_positions.len() <= 16 && chain_kinds.iter().all(|k| k.stop < 16)
+            {
+                let mut projected_probabilities: crate::FxMap<u64, f64> = crate::FxMap::default();
                 for ChainState { progress: x, probability: w } in full.iter() {
-                    let key = rel_pos.iter().fold(0u64, |m, &p| m << 4 | u64::from(x[p]));
-                    *proj.entry(key).or_insert(0.0) += w;
+                    let key = projected_positions.iter().fold(0u64, |m, &p| (m << 4) | u64::from(x[p]));
+                    *projected_probabilities.entry(key).or_insert(0.0) += w;
                 }
-                let mut v: Vec<(u64, f64)> = proj.into_iter().collect();
+                let mut v: Vec<(u64, f64)> = projected_probabilities.into_iter().collect();
                 v.sort_unstable_by_key(|a| a.0);
-                let np = rel_pos.len();
+                let position_count = projected_positions.len();
                 v.into_iter()
                     .map(|(k, w)| ChainState {
-                        progress: (0..np).map(|i| (k >> (4 * (np - 1 - i)) & 15) as u8).collect(),
+                        progress: (0..position_count)
+                            .map(|i| (k >> (4 * (position_count - 1 - i)) & 15) as u8)
+                            .collect(),
                         probability: w,
                     })
                     .collect()
             } else {
-                let mut proj: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
+                let mut projected_probabilities: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
                 for ChainState { progress: x, probability: w } in full.iter() {
-                    let key: Vec<u8> = rel_pos.iter().map(|&p| x[p]).collect();
-                    *proj.entry(key).or_insert(0.0) += w;
+                    let key: Vec<u8> = projected_positions.iter().map(|&p| x[p]).collect();
+                    *projected_probabilities.entry(key).or_insert(0.0) += w;
                 }
-                let mut states: Vec<ChainState> =
-                    proj.into_iter().map(|(progress, probability)| ChainState { progress, probability }).collect();
+                let mut states: Vec<ChainState> = projected_probabilities
+                    .into_iter()
+                    .map(|(progress, probability)| ChainState { progress, probability })
+                    .collect();
                 states.sort_by(|a, b| a.progress.cmp(&b.progress));
                 states
             };
@@ -752,7 +767,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 .iter()
                 .map(|&GroupSlots { group: i, .. }| if i < kind_count { space.kinds_all[i].stop as usize } else { 0 })
                 .collect();
-            let group_misses: Vec<Vec<MissFactors>> = (0..ng)
+            let group_misses: Vec<Vec<MissFactors>> = (0..group_count)
                 .map(|g| {
                     let mut m = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; (stops[g] + 1) * target_count];
                     for &j in groups[g].entries {
@@ -770,11 +785,11 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 states,
                 slots,
                 group_misses,
-                kinds: kl,
-                projected_positions: rel_pos,
+                kinds: chain_kinds,
+                projected_positions,
                 order: std::cell::OnceCell::default(),
             });
-            state_bounds.configurations.insert(sbkey, std::rc::Rc::clone(&r));
+            state_bounds.configurations.insert(state_key, std::rc::Rc::clone(&r));
             Some(r)
         }
     }

@@ -2,15 +2,13 @@
 use crate::Instant;
 use crate::checks::SPT;
 use crate::deck::chains::ChainKind;
-use crate::deck::enumerate::bounds::{
-    OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes,
-};
+use crate::deck::enumerate::bounds::{OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationScratch, ConfigurationTables};
 use crate::deck::enumerate::traverse::{PreparedTables, SearchControl, TraversalScratch};
 use crate::deck::enumerate::{
     BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome, SearchSetup, SearchStop,
 };
-use crate::deck::joint::{LandPre, src_levels};
+use crate::deck::joint::LandPre;
 use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SelectedDeck, gm_g, gm_w, top_desc};
 use crate::deck::state_bound::{CapFreeRatios, LandingBoundTables};
 use crate::skills::DeckChances;
@@ -33,9 +31,9 @@ impl DeckSpace<'_> {
         if self.locked.iter().any(|&l| trainee_ids.iter().any(|&id| self.cards[l].blocks(id, self.deck_job.checks))) {
             return Err(SearchOutcome { decks: vec![], incomplete: None, uncapped: false });
         }
-        let crate::deck::space::ReducedEntries { entries: legal_rc, set_id } =
+        let crate::deck::space::ReducedEntries { entries: legal_entries, set_id } =
             self.reduced_cached(chances.model, trainees, trainee_ids);
-        let legal_tables = self.legal_tabs(&legal_rc, set_id, trainee_ids);
+        let legal_tables = self.legal_tabs(&legal_entries, set_id, trainee_ids);
         if legal_tables.too_many_characters {
             return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit), uncapped: false });
         }
@@ -57,7 +55,7 @@ impl DeckSpace<'_> {
             _ => None,
         };
         let cap_free = cap_free_node_limit.is_some();
-        if cap_free && !legal_rc.iter().all(|&j| self.sources[j].certified_cap_free) {
+        if cap_free && !legal_entries.iter().all(|&j| self.sources[j].certified_cap_free) {
             return Err(SearchOutcome {
                 decks: vec![],
                 incomplete: Some(SearchStop::UnsupportedCapFreeProof),
@@ -76,14 +74,16 @@ impl DeckSpace<'_> {
             0
         };
         let state_rows: std::rc::Rc<Vec<Option<Vec<crate::deck::joint::MissFactors>>>> = if state_bound_mode > 0
-            && (cap_free || !legal_rc.iter().any(|&j| self.sources[j].uncertified_association))
+            && (cap_free || !legal_entries.iter().any(|&j| self.sources[j].uncertified_association))
         {
             let hit = self.state_row_cache.borrow().get(&set_id).cloned();
             hit.unwrap_or_else(|| {
                 let r = std::rc::Rc::new(
                     (0..self.card_indices.len())
                         .map(|j| {
-                            legal_rc.contains(&j).then(|| src_levels(&self.sources[j], self.kind[j].stop, target_count))
+                            legal_entries
+                                .contains(&j)
+                                .then(|| self.sources[j].miss_levels(self.kind[j].stop, target_count))
                         })
                         .collect::<Vec<_>>(),
                 );
@@ -150,7 +150,7 @@ impl DeckSpace<'_> {
             bound_inheritance,
             landing_factors,
             class_caps,
-            legal_entries: legal_rc,
+            legal_entries,
         })
     }
 
@@ -192,11 +192,13 @@ impl DeckSpace<'_> {
         } = setup;
         let character_bits: &[u128] = &legal_tables.character_bits;
         let (by_kind, pal_entries) = (&legal_tables.by_kind, &legal_tables.pal_entries);
-        let val = |cl: &SearchClause, dw: &[f64], dg: &[f64]| {
+        let val = |cl: &SearchClause, white_chances: &[f64], gold_chances: &[f64]| {
             fixed
                 * cl.lineages
                     .iter()
-                    .map(|&LineageChance { trainee: k, inheritance: q }| chances.trainee_fast(trainees[k], q, dw, dg))
+                    .map(|&LineageChance { trainee: k, inheritance: q }| {
+                        chances.trainee_fast(trainees[k], q, white_chances, gold_chances)
+                    })
                     .sum::<f64>()
         };
         // every chance and outfit odd in [0, 1] and a fixed factor >= 0: then a deck's value rises with each of its odds
@@ -213,14 +215,14 @@ impl DeckSpace<'_> {
         // the product search builds its configurations lazily (`PendingConfig`): roots and ratio tables only for those it may
         // visit
         let lazy = best && valid;
-        let t_cfg = Instant::now();
+        let configuration_start = Instant::now();
         let out: Vec<ScoredDeck<SelectedDeck>> = vec![];
         let best_value = if best { seed } else { f64::NEG_INFINITY };
         let counts = self.counts_all();
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_entries)).collect();
         // the cap-free band's ratio tables (`CapFreeRatios`), built on first use
         let cap_free_outfit_count = if cap_free { chances.model.opts[bound_trainee].len() } else { 0 };
-        let cf_ratios = CapFreeRatios::new(
+        let cap_free_ratios = CapFreeRatios::new(
             LandingBoundTables {
                 factors: &landing_factors,
                 entry_rows: &state_rows,
@@ -241,12 +243,12 @@ impl DeckSpace<'_> {
             ((&*x.entry_bits), x.all_bits)
         };
         let group_lock_bits: &[u8] = &legal_tables.group_lock_bits;
-        let mut dw = vec![0.0f64; target_count];
-        let mut dg = vec![0.0f64; target_count];
+        let mut white_chances = vec![0.0f64; target_count];
+        let mut gold_chances = vec![0.0f64; target_count];
         // (scratch of the configuration build: a candidate's groups, copied into its SearchConfig only when kept; the root's
         // clause sums)
         let mut group_buffer: Vec<GroupSlots> = vec![];
-        let (mut cvr, mut cvro) = (vec![0.0f64; clauses.len()], vec![0.0f64; clauses.len()]);
+        let (mut clause_bounds, mut order_bounds) = (vec![0.0f64; clauses.len()], vec![0.0f64; clauses.len()]);
         let OutfitBounds {
             outfit_rows,
             outfit_runs,
@@ -283,7 +285,7 @@ impl DeckSpace<'_> {
         // the root bound's ratio products (row 0 of the ratio suffix table, which is built only for configurations the
         // DFS expands)
         let mut ratio_products = vec![1.0f64; column_count];
-        let RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes } = prepare_ratio_prefixes(&RatioColumns {
+        let RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes } = RatioColumns {
             outfit_rows: &outfit_rows,
             outfits: &outfits,
             empty_values: &empty_values,
@@ -292,15 +294,16 @@ impl DeckSpace<'_> {
             nonzero_masks: &nonzero_masks,
             divisors: &divisors,
             target_count,
-        });
+        }
+        .prepare_prefixes();
         // Per kind group in `needed_groups` (the others are never read: empty) and column, the products of its entries' r best
         // ratios (the first `size` of their stable descending sort, `top_desc`), r = 0..=size
         // (a `GroupTable`: per group, column c's products at c (size + 1); `top`, the columns' best ratios, reused)
-        let rtop: std::cell::RefCell<Vec<Vec<f64>>> =
+        let top_ratios: std::cell::RefCell<Vec<Vec<f64>>> =
             std::cell::RefCell::new((0..column_count).map(|_| Vec::with_capacity(size)).collect());
         let ratio_prefixes_for = |mw: &[f64], mg: &[f64], touched_targets: &[u32], needed_groups: u64| -> GroupTable {
             let (mut x, mut y) = ([0.0f64; 32], [0.0f64; 32]);
-            let mut top = rtop.borrow_mut();
+            let mut top = top_ratios.borrow_mut();
             let mut tab = GroupTable::new(groups_all.len(), needed_groups, column_count * (size + 1));
             for (gi, l) in groups_all.iter().enumerate() {
                 if needed_groups >> gi & 1 == 0 {
@@ -357,18 +360,19 @@ impl DeckSpace<'_> {
         // A configuration's per-target bound (`groups`, the key's `group_misses`): each target's odds at the product of
         // its groups' lowest misses, from the last group down (row 0 of the suffix table the DFS builds, the same products
         // in the same order). The eager and the lazy build both take it
-        let configuration_odds = |groups: &[GroupSlots], group_misses: &GroupTable, dw: &mut [f64], dg: &mut [f64]| {
-            for t in 0..target_count {
-                let (mut a, mut b) = (1.0f64, 1.0f64);
-                for g in (0..groups.len()).rev() {
-                    let gb = group_misses.grp(groups[g].group);
-                    a *= gm_w(gb, target_count, groups[g].slots)[t];
-                    b *= gm_g(gb, target_count, groups[g].slots)[t];
+        let configuration_odds =
+            |groups: &[GroupSlots], group_misses: &GroupTable, white_chances: &mut [f64], gold_chances: &mut [f64]| {
+                for t in 0..target_count {
+                    let (mut a, mut b) = (1.0f64, 1.0f64);
+                    for g in (0..groups.len()).rev() {
+                        let gb = group_misses.grp(groups[g].group);
+                        a *= gm_w(gb, target_count, groups[g].slots)[t];
+                        b *= gm_g(gb, target_count, groups[g].slots)[t];
+                    }
+                    white_chances[t] = 1.0 - a;
+                    gold_chances[t] = 1.0 - b;
                 }
-                dw[t] = 1.0 - a;
-                dg[t] = 1.0 - b;
-            }
-        };
+            };
         // Its root bound at those odds with `ratio_prefixes`: the root ratio products (row 0 of the suffix
         // table, from the last group down), then per (chance, outfit) the lower of the per-target bound and the ratio
         // bound, summed per clause with the split (`cv`) and without (`cvo`). With ZSPLIT rows `cvo` sets the visiting
@@ -377,8 +381,8 @@ impl DeckSpace<'_> {
         // or, with no card to place, 0 * 1
         let configuration_root_bound = |groups: &[GroupSlots],
                                         ratio_prefixes: &GroupTable,
-                                        dw: &[f64],
-                                        dg: &[f64],
+                                        white_chances: &[f64],
+                                        gold_chances: &[f64],
                                         ratio_products: &mut [f64],
                                         cv: &mut [f64],
                                         cvo: &mut [f64]| {
@@ -397,10 +401,13 @@ impl DeckSpace<'_> {
                 let (mut m, mut mo) = (0.0f64, 0.0f64);
                 for o in 0..no {
                     let ix = i + o;
-                    let a = outfits[ix].eval(q, dw, dg);
+                    let a = outfits[ix].eval(q, white_chances, gold_chances);
                     let (mut t, to) = if zero_masks[ix] != 0 {
                         (
-                            a.min(outfits[ix].eval_in(q, dw, dg, zero_masks[ix]) * (divisors[ix] * ratio_products[ix])),
+                            a.min(
+                                outfits[ix].eval_in(q, white_chances, gold_chances, zero_masks[ix])
+                                    * (divisors[ix] * ratio_products[ix]),
+                            ),
                             a.min(empty_values[ix] * if ng > 0 { f64::INFINITY } else { 1.0 }),
                         )
                     } else {
@@ -409,7 +416,10 @@ impl DeckSpace<'_> {
                     };
                     // (a low split: the lower B, outside the visiting order)
                     for c in alternative_columns[ix].start..alternative_columns[ix].end {
-                        t = t.min(outfits[ix].eval_in(q, dw, dg, zero_masks[c]) * (divisors[c] * ratio_products[c]));
+                        t = t.min(
+                            outfits[ix].eval_in(q, white_chances, gold_chances, zero_masks[c])
+                                * (divisors[c] * ratio_products[c]),
+                        );
                     }
                     m = m.max(t);
                     mo = mo.max(to);
@@ -475,11 +485,11 @@ impl DeckSpace<'_> {
                 skip_bounded_keys: keyskip,
             },
             ConfigurationScratch {
-                white_chances: &mut dw,
-                gold_chances: &mut dg,
+                white_chances: &mut white_chances,
+                gold_chances: &mut gold_chances,
                 groups: &mut group_buffer,
-                clause_bounds: &mut cvr,
-                order_bounds: &mut cvro,
+                clause_bounds: &mut clause_bounds,
+                order_bounds: &mut order_bounds,
                 ratio_products: &mut ratio_products,
                 key_white: &mut kdw,
                 key_gold: &mut kdg,
@@ -490,7 +500,7 @@ impl DeckSpace<'_> {
         );
         SPT.with(|c| {
             let mut v = c.get();
-            v.setup_seconds += t_cfg.elapsed().as_secs_f64();
+            v.setup_seconds += configuration_start.elapsed().as_secs_f64();
             v.configurations += configurations.configurations.len();
             v.count_vectors += counts.len();
             c.set(v);
@@ -515,18 +525,11 @@ impl DeckSpace<'_> {
                 alternative_columns: &alternative_columns,
             },
             configurations,
-            TraversalScratch {
-                decks: out,
-                best_value,
-                white_chances: dw,
-                gold_chances: dg,
-                target_bounds,
-                diagnostic_bounds,
-            },
+            TraversalScratch { decks: out, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds },
             val,
             &bounds,
             ratio_at,
-            &cf_ratios,
+            &cap_free_ratios,
         )
     }
 }

@@ -4,7 +4,7 @@
 //! `state_value_cf`), and the configuration tables they read (`StateBoundConfig`).
 //! Exact joint evaluation belongs to `joint`.
 use crate::deck::chains::{ChainKind, ChainState, KeyLevel, chain_states, event_pmf_job, key_level};
-use crate::deck::joint::{ChainEntry, JointQuery, LandPre, MissFactors, land_factor, src_levels};
+use crate::deck::joint::{ChainEntry, JointQuery, LandPre, MissFactors, land_factor};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{GroupSlots, TraversalEntryGroup};
 use crate::skills::{Model, OutfitOption};
@@ -1134,7 +1134,7 @@ fn state_value_any(
     let mut cg = vec![1.0f64; uncertain_count];
     let mut chh = vec![1.0f64; uncertain_count];
     for e in entries.iter().filter(|e| e.kind == ChainKind::NONE) {
-        let r = src_levels(e.sources, 0, uncertain_count);
+        let r = e.sources.miss_levels(0, uncertain_count);
         for k in 0..uncertain_count {
             cg[k] *= r[k].no_gold;
             chh[k] *= r[k].no_hint;
@@ -1143,7 +1143,7 @@ fn state_value_any(
     let rows: Vec<Option<Vec<MissFactors>>> = chain_entries
         .iter()
         .map(|&ChainEntry { kind: kd, source_index: e }| {
-            e.map(|i| src_levels(entries[i].sources, kd.stop, uncertain_count))
+            e.map(|i| entries[i].sources.miss_levels(kd.stop, uncertain_count))
         })
         .collect();
     let opts = &model.opts[query.trainee];

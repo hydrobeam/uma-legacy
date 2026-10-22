@@ -11,22 +11,22 @@ struct QueuedConfig {
 }
 
 impl PartialEq for QueuedConfig {
-    fn eq(&self, o: &Self) -> bool {
-        self.cmp(o) == std::cmp::Ordering::Equal
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
     }
 }
 
 impl Eq for QueuedConfig {}
 
 impl PartialOrd for QueuedConfig {
-    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(o))
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for QueuedConfig {
-    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
-        self.root.partial_cmp(&o.root).unwrap().then(o.insertion_index.cmp(&self.insertion_index))
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.root.partial_cmp(&other.root).unwrap().then(other.insertion_index.cmp(&self.insertion_index))
     }
 }
 

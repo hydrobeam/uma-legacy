@@ -1,10 +1,10 @@
 //! Joint landing odds of a deck: the entry points (`joint_b`, `joint_fast`, with `joint_checked`'s diagnostic checks) and
 //! the records the exact sum (`exact`), its reference (`reference`) and the negative-association bound (`upper`) share,
-//! with the per-target landing factor (`land_factor`, `LandPre`) and miss rows (`src_levels`) the state bounds also take.
+//! with the per-target landing factor (`land_factor`, `LandPre`) and miss rows (`TargetSources::miss_levels`) the state bounds also take.
 use crate::checks::{CFCHK, SBCHK};
 use crate::deck::DeckJob;
 use crate::deck::chains::{ChainEvents, ChainKind};
-use crate::deck::joint::exact::{joint_eval, joint_prep};
+use crate::deck::joint::exact::joint_prep;
 use crate::deck::joint::reference::joint_trainee_ref;
 use crate::deck::sources::{LinkMisses, SourceEntry, TargetChainMisses, TargetMisses, TargetSources, TrainingHint};
 use crate::deck::state_bound::{state_value, state_value_cf};
@@ -117,20 +117,20 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     filler: usize,
     options: JointOptions,
 ) -> Vec<JointChances> {
-    let r = evaluate_joint(model, query, entries, filler, options, None);
+    let chances = evaluate_joint(model, query, entries, filler, options, None);
     if query.checks.sb_check {
-        let er: Vec<SourceEntry<&TargetSources>> =
+        let borrowed_entries: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
-        if let Some(sv) = state_value(model, query, &er, filler) {
+        if let Some(state_bounds) = state_value(model, query, &borrowed_entries, filler) {
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
-                for (v, x) in sv.iter().zip(&r) {
+                for (v, x) in state_bounds.iter().zip(&chances) {
                     if x.all > 0.0 {
-                        let rt = v / x.all;
+                        let bound_ratio = v / x.all;
                         c.decks += 1;
-                        c.max_ratio = c.max_ratio.max(rt);
-                        c.min_ratio = c.min_ratio.min(rt);
-                        if rt < 1.0 - 1e-9 {
+                        c.max_ratio = c.max_ratio.max(bound_ratio);
+                        c.min_ratio = c.min_ratio.min(bound_ratio);
+                        if bound_ratio < 1.0 - 1e-9 {
                             c.below += 1;
                         }
                     }
@@ -140,12 +140,12 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     }
     // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
     if query.checks.cf_check > 0.0 {
-        let er: Vec<SourceEntry<&TargetSources>> =
+        let borrowed_entries: Vec<SourceEntry<&TargetSources>> =
             entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
-        if let Some(sv) = state_value_cf(model, query, &er, filler) {
+        if let Some(state_bounds) = state_value_cf(model, query, &borrowed_entries, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
-                for (v, x) in sv.iter().zip(&r) {
+                for (v, x) in state_bounds.iter().zip(&chances) {
                     c.scorings += 1;
                     if x.all > v * (1.0 + 1e-9) {
                         c.scoring_violations += 1;
@@ -158,20 +158,21 @@ fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
         }
     }
     if query.checks.joint_check {
-        let own: Vec<SourceEntry<TargetSources>> = entries
+        let owned_entries: Vec<SourceEntry<TargetSources>> = entries
             .iter()
             .map(|entry| SourceEntry { sources: entry.sources.borrow().clone(), kind: entry.kind })
             .collect();
-        let x = joint_trainee_ref(model, query, &own, filler, options.target_count);
-        for (a, b) in r.iter().zip(&x) {
-            let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
+        let x = joint_trainee_ref(model, query, &owned_entries, filler, options.target_count);
+        for (a, b) in chances.iter().zip(&x) {
+            let relative_error = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
             assert!(
-                rel(a.all, b.all) < 1e-11 && (!options.all_but_one || rel(a.all_but_one, b.all_but_one) < 1e-11),
+                relative_error(a.all, b.all) < 1e-11
+                    && (!options.all_but_one || relative_error(a.all_but_one, b.all_but_one) < 1e-11),
                 "joint mismatch: {a:?} vs {b:?}"
             );
         }
     }
-    r
+    chances
 }
 
 /// Per-target spark-generation scales, with each partition in job order.
@@ -221,13 +222,7 @@ fn evaluate_joint<S: std::borrow::Borrow<TargetSources>>(
     options: JointOptions,
     extension: Option<&mut JointExt>,
 ) -> Vec<JointChances> {
-    joint_eval(
-        model,
-        query,
-        &joint_prep(query.chain_events, model.uncertain.len(), entries, filler),
-        options,
-        extension,
-    )
+    joint_prep(query.chain_events, model.uncertain.len(), entries, filler).evaluate(model, query, options, extension)
 }
 
 /// Per-target misses after conditioning on chain progress.
@@ -237,43 +232,47 @@ pub(crate) struct MissFactors {
     pub(super) no_hint: f64,
 }
 
-/// One entry's miss chances at each number of its chain links done: row d = links 1..=d fired, per target (P(no gold),
-/// P(no hint)); training hints and non-chain groups in every row. `stop` rows after row 0. The same factors
-/// `joint_fast` applies to an entry at chain progress d (`fixed_misses` and `chain_misses`).
-pub(super) fn src_levels(source: &TargetSources, stop: u8, uncertain_count: usize) -> Vec<MissFactors> {
-    let mut base = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; uncertain_count];
-    for &TrainingHint { target: k, probability: p } in &source.training_hints {
-        base[k].no_hint *= 1.0 - p;
-    }
-    for &TargetMisses { target: k, no_gold: ng, no_hint: nh } in &source.fixed_misses {
-        base[k].no_gold *= ng;
-        base[k].no_hint *= nh;
-    }
-    let mut out = Vec::with_capacity((stop as usize + 1) * uncertain_count);
-    out.extend_from_slice(&base);
-    for d in 1..=stop {
-        let mut row: Vec<MissFactors> = out[(d as usize - 1) * uncertain_count..d as usize * uncertain_count].to_vec();
-        for TargetChainMisses { target: k, links } in &source.chain_misses {
-            for &LinkMisses { link: l, no_gold: ng, no_hint: nh } in links {
-                if l == d {
-                    row[*k].no_gold *= ng;
-                    row[*k].no_hint *= nh;
+impl TargetSources {
+    /// One entry's miss chances at each number of its chain links done: row d = links 1..=d fired, per target (P(no gold),
+    /// P(no hint)); training hints and non-chain groups in every row. `stop` rows after row 0. The same factors
+    /// `joint_fast` applies to an entry at chain progress d (`fixed_misses` and `chain_misses`).
+    pub(crate) fn miss_levels(&self, stop: u8, uncertain_count: usize) -> Vec<MissFactors> {
+        let mut base = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; uncertain_count];
+        for &TrainingHint { target: k, probability: p } in &self.training_hints {
+            base[k].no_hint *= 1.0 - p;
+        }
+        for &TargetMisses { target: k, no_gold, no_hint } in &self.fixed_misses {
+            base[k].no_gold *= no_gold;
+            base[k].no_hint *= no_hint;
+        }
+        let mut levels = Vec::with_capacity((stop as usize + 1) * uncertain_count);
+        levels.extend_from_slice(&base);
+        for d in 1..=stop {
+            let mut row: Vec<MissFactors> =
+                levels[(d as usize - 1) * uncertain_count..d as usize * uncertain_count].to_vec();
+            for TargetChainMisses { target: k, links } in &self.chain_misses {
+                for &LinkMisses { link: l, no_gold, no_hint } in links {
+                    if l == d {
+                        row[*k].no_gold *= no_gold;
+                        row[*k].no_hint *= no_hint;
+                    }
                 }
             }
+            levels.extend_from_slice(&row);
         }
-        out.extend_from_slice(&row);
+        levels
     }
-    out
 }
-/// Target k's landing factor at its misses (no gold `ng`, no hint `nh`), the one definition `joint_eval`, `upper_na`
-/// and the state bounds take (falls with ng and with nh). `skills::land_dw` writes the same model in one deck's
+
+/// Target k's landing factor at its misses (`no_gold`, `no_hint`), the one definition `JointPrep::evaluate`, `upper_na`
+/// and the state bounds take (falls with both miss chances). `skills::land_dw` writes the same model in one deck's
 /// per-target odds; its floats are its own.
 #[inline]
-pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
-    LandPre::new(st, ew, q).f(ng, nh)
+pub(super) fn land_factor(coverage: u8, event_chance: f64, inheritance_chance: f64, no_gold: f64, no_hint: f64) -> f64 {
+    LandPre::new(coverage, event_chance, inheritance_chance).f(no_gold, no_hint)
 }
-/// `land_factor` of one (outfit, target) at one chance, its constants taken once: 1 - ew and 1 - q kept apart, so
-/// nh * (1 - ew) * (1 - q) is multiplied in the same order (the same f64 for every ng, nh)
+/// `land_factor` of one (outfit, target) at one chance, its constants taken once: 1 - event_chance and 1 - inheritance_chance kept apart, so
+/// no_hint * (1 - event_chance) * (1 - inheritance_chance) is multiplied in the same order (the same f64 for every pair of miss chances)
 #[derive(Clone, Copy)]
 pub(crate) struct LandPre {
     coverage: u8,
@@ -281,17 +280,19 @@ pub(crate) struct LandPre {
     no_inheritance: f64,
 }
 impl LandPre {
-    pub(super) fn new(st: u8, ew: f64, q: f64) -> Self {
-        Self { coverage: st, no_event: 1.0 - ew, no_inheritance: 1.0 - q }
+    pub(super) fn new(coverage: u8, event_chance: f64, inheritance_chance: f64) -> Self {
+        Self { coverage, no_event: 1.0 - event_chance, no_inheritance: 1.0 - inheritance_chance }
     }
     #[inline]
-    pub(super) fn f(&self, ng: f64, nh: f64) -> f64 {
+    pub(super) fn f(&self, no_gold: f64, no_hint: f64) -> f64 {
         use crate::skills::GEN_WHITE;
-        let pg = 1.0 - ng;
+        let gold_chance = 1.0 - no_gold;
         match self.coverage {
             2 => GEN_GOLD,
-            1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
-            _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.no_event * self.no_inheritance),
+            1 => GEN_GOLD * gold_chance + GEN_WHITE * (1.0 - gold_chance),
+            _ => {
+                GEN_GOLD * gold_chance + GEN_WHITE * (1.0 - gold_chance - no_hint * self.no_event * self.no_inheritance)
+            }
         }
     }
 }
