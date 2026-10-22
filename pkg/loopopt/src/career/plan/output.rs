@@ -288,7 +288,7 @@ impl PlanContext<'_, '_> {
                 "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
                 "lam": continuation.lam,
                 "phi": continuation.phi,
-                "builds": build_plan.builds,
+                "building_careers": build_plan.building_careers,
                 "p_switch": build_plan.grind_odds,
                 "careers": step(ui, uses_existing)
             })

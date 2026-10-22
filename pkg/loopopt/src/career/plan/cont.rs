@@ -148,7 +148,7 @@ impl SameBits for f64 {
 impl SameBits for BuildPlan {
     fn same_bits(&self, o: &Self) -> bool {
         self.expected_careers.same_bits(&o.expected_careers)
-            && self.builds == o.builds
+            && self.building_careers.same_bits(&o.building_careers)
             && self.grind_odds.same_bits(&o.grind_odds)
     }
 }
@@ -286,13 +286,14 @@ pub(crate) struct ContStep {
     pub(crate) gap_left: f64,
 }
 
-/// What `Cont::plan` chooses at odds p: build `builds` successes, then grind.
+/// What `Cont::plan` chooses at odds p: build n successes, then grind.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BuildPlan {
     /// Expected careers to her full veteran.
     pub(crate) expected_careers: f64,
-    /// Successes built before grinding.
-    pub(crate) builds: i32,
+    /// Expected careers spent building her n successes (each success takes 1 / lam_j careers): the table's
+    /// `careers_built` through success n, 0 with no building. `expected_careers` is this plus 1 / `grind_odds`.
+    pub(crate) building_careers: f64,
     /// Her odds once building stops.
     pub(crate) grind_odds: f64,
 }
@@ -339,10 +340,10 @@ impl Cont {
     /// The best plan from odds p: build n successes (sum of 1 / lam_j careers), then grind at p_n; the best n
     pub(crate) fn plan(&self, p: f64) -> BuildPlan {
         if p <= 0.0 {
-            return BuildPlan { expected_careers: f64::INFINITY, builds: 0, grind_odds: p };
+            return BuildPlan { expected_careers: f64::INFINITY, building_careers: 0.0, grind_odds: p };
         }
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p {
-            return BuildPlan { expected_careers: 1.0 / p, builds: 0, grind_odds: p };
+            return BuildPlan { expected_careers: 1.0 / p, building_careers: 0.0, grind_odds: p };
         }
         self.memo.plan.borrow_mut().get_or(|| p.to_bits(), || self.plan_n(p))
     }
@@ -361,7 +362,9 @@ impl Cont {
             best = x;
             n += 1;
         }
-        BuildPlan { expected_careers: best, builds: n as i32, grind_odds: self.pinf * (lr * t[n].gap_left).exp() }
+        // (row n - 1 holds the careers built through success n, the sum `best` took)
+        let building_careers = if n == 0 { 0.0 } else { t[n - 1].careers_built };
+        BuildPlan { expected_careers: best, building_careers, grind_odds: self.pinf * (lr * t[n].gap_left).exp() }
     }
     pub(crate) fn cost(&self, p: f64) -> f64 {
         self.plan(p).expected_careers

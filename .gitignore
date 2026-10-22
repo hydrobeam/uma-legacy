@@ -91,7 +91,7 @@
 !/val/milp_fixtures.py
 # research scripts are tracked; the run records they read (research/data/) are not
 !/research/
-/research/data/
+/research/data
 master.mdb
 master.mdb.*
 __pycache__/
