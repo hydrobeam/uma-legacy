@@ -1,10 +1,12 @@
 //! The state-conditioned bounds of one configuration (`StateBound`): the band pass's (`plain`) and the cap-free band's,
 //! its cheap bound (`cheap`) tried before the per-state one (`full`); and the search-wide ratio tables the cap-free
-//! bounds read (`CapFreeRatios`).
-use crate::deck::chains::{ChainKind, ChainState, KeyLevel, event_pmf_job, key_level};
-use crate::deck::joint::{LandPre, MissFactors, StateBoundConfig};
+//! bounds read (`CapFreeRatios`). Also the state-conditioned value they bound, at a whole deck (`state_value`,
+//! `state_value_cf`), and the configuration tables they read (`StateBoundConfig`).
+use crate::deck::chains::{ChainKind, ChainState, KeyLevel, chain_states, event_pmf_job, key_level};
+use crate::deck::joint::{ChainEntry, LandPre, MissFactors, land_factor, src_levels};
+use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{EntryGroup, GroupSlots};
-use crate::skills::Model;
+use crate::skills::{Model, OutfitOption};
 use std::cell::RefCell;
 use std::rc::Rc;
 /// Landing factors and entry misses used by both state-conditioned bounds.
@@ -552,7 +554,7 @@ impl StateBoundContext<'_> {
                 for i in (0..state_count).rev() {
                     t[i] = t[i + 1] + configuration.states[o[i] as usize].probability;
                 }
-                crate::deck::joint::WeightedStates { indices: o, suffix_weights: t }
+                WeightedStates { indices: o, suffix_weights: t }
             });
             (&*x.indices, &*x.suffix_weights)
         } else {
@@ -1050,4 +1052,130 @@ impl StateBoundContext<'_> {
         }
         fixed_factor * best
     }
+}
+
+/// The state-conditioned value of one deck (trainee `u`, per `inheritance_chances`, fixed factor included): over the chain
+/// progress states x (`chain_states`, early ends and stop risk folded in), P(x) times the product over targets of each
+/// target's factor at its misses given x, every group's outcomes at their per-target chances; the best outfit.
+/// Derived: given x, every source's outcomes are independent of the others' (`joint_fast`); one group's outcomes are a
+/// single draw, so when each outcome hints at most one target its per-target indicators are negatively associated
+/// (a one-trial multinomial), and so are increasing functions of disjoint sets of them; each target's factor rises
+/// with its own indicators, so the expected product given x is at most the product of the targets' expected factors,
+/// equal without coupled groups. Hence value >= the exact P(all), equal when no group touches two targets.
+/// None when some entry fails the negative-association certification (`TargetSources::uncertified_association`, `group_assoc`).
+pub(super) fn state_value(
+    model: &Model,
+    u: crate::uma::UmaIndex,
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
+    filler: usize,
+) -> Option<Vec<f64>> {
+    if entries.iter().any(|e| e.sources.uncertified_association) {
+        return None;
+    }
+    Some(state_value_any(model, u, inheritance_chances, entries, filler))
+}
+/// `state_value` for the decks the cap-free search covers (`TargetSources::certified_cap_free`: every group's levels negatively upper-orthant
+/// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
+/// apply.
+pub(super) fn state_value_cf(
+    model: &Model,
+    u: crate::uma::UmaIndex,
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
+    filler: usize,
+) -> Option<Vec<f64>> {
+    if entries.iter().any(|e| !e.sources.certified_cap_free) {
+        return None;
+    }
+    Some(state_value_any(model, u, inheritance_chances, entries, filler))
+}
+fn state_value_any(
+    model: &Model,
+    u: crate::uma::UmaIndex,
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
+    filler: usize,
+) -> Vec<f64> {
+    let uncertain_count = model.uncertain.len();
+    let mut chain_entries: Vec<ChainEntry> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.kind != ChainKind::NONE)
+        .map(|(i, e)| ChainEntry { kind: e.kind, source_index: Some(i) })
+        .collect();
+    for _ in 0..filler {
+        chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
+    }
+    chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|x| x.kind).collect();
+    let states = if kinds.is_empty() {
+        std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+    } else {
+        chain_states(&kinds)
+    };
+    // the non-chain entries' misses (constant over states), and per chain position its entry's rows
+    let mut cg = vec![1.0f64; uncertain_count];
+    let mut chh = vec![1.0f64; uncertain_count];
+    for e in entries.iter().filter(|e| e.kind == ChainKind::NONE) {
+        let r = src_levels(e.sources, 0, uncertain_count);
+        for k in 0..uncertain_count {
+            cg[k] *= r[k].no_gold;
+            chh[k] *= r[k].no_hint;
+        }
+    }
+    let rows: Vec<Option<Vec<MissFactors>>> = chain_entries
+        .iter()
+        .map(|&ChainEntry { kind: kd, source_index: e }| {
+            e.map(|i| src_levels(entries[i].sources, kd.stop, uncertain_count))
+        })
+        .collect();
+    let opts = &model.opts[u];
+    let outfit_count = opts.len();
+    let mut acc = vec![0.0f64; inheritance_chances.len() * outfit_count];
+    let (mut ng, mut nh) = (vec![0.0f64; uncertain_count], vec![0.0f64; uncertain_count]);
+    for ChainState { progress: x, probability: w } in states.iter() {
+        ng.copy_from_slice(&cg);
+        nh.copy_from_slice(&chh);
+        for (p, r) in rows.iter().enumerate() {
+            if let Some(r) = r {
+                let b = x[p] as usize * uncertain_count;
+                for k in 0..uncertain_count {
+                    ng[k] *= r[b + k].no_gold;
+                    nh[k] *= r[b + k].no_hint;
+                }
+            }
+        }
+        for (qi, &q) in inheritance_chances.iter().enumerate() {
+            for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
+                let ew = &model.ews[u][o];
+                let f: f64 = (0..uncertain_count).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
+                acc[qi * outfit_count + o] += w * f;
+            }
+        }
+    }
+    let fixed = model.fixed_factor();
+    (0..inheritance_chances.len())
+        .map(|qi| fixed * (0..outfit_count).map(|o| acc[qi * outfit_count + o]).fold(0.0f64, f64::max))
+        .collect()
+}
+
+/// A configuration's state-conditioned bound tables: the chain state distribution projected on the positions whose
+/// group has chain targets, per group its slots' positions (usize::MAX: level-independent), per group and chain level
+/// each target's lowest misses over the group's entries
+pub(super) struct StateBoundConfig {
+    pub(super) states: Vec<crate::deck::chains::ChainState>,
+    pub(super) slots: Vec<Vec<usize>>,
+    pub(super) group_misses: Vec<Vec<MissFactors>>,
+    /// the configuration's chain kinds in position order (fillers included) and each projected position's place among them
+    pub(super) kinds: Vec<ChainKind>,
+    pub(super) projected_positions: Vec<usize>,
+    /// (the cap-free bound's early stop) the states by weight, highest first, and the weight from each on (built on first use)
+    pub(super) order: std::cell::OnceCell<WeightedStates>,
+}
+
+/// State indices in descending probability order and the remaining weight from each index.
+pub(super) struct WeightedStates {
+    pub(super) indices: Vec<u32>,
+    pub(super) suffix_weights: Vec<f64>,
 }
