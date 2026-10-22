@@ -1,4 +1,4 @@
-// ---------- results: one card per loop (odds, members, decks), the schedule and affinity buttons ----------
+// ---------- results: one card per loop (odds, members, decks), the odds, schedule and affinity buttons ----------
 import { $, esc, fmtIn } from './dom.js';
 import { CARDS, CARD_BY_ID, SK } from './data.js';
 import { ui } from './state.js';
@@ -10,7 +10,7 @@ import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
 /**
- * A deck in a result (the solver's `Deck::out`, deck/kept.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
+ * A deck in a result (the solver's `PDeck::out`, deck/kept.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
  * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
  * @typedef {object} ResultDeck
  * @property {string[]} cards

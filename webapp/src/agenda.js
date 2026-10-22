@@ -63,8 +63,8 @@ function raceCell(tag, { bannerName, label, goal }) {
   return el;
 }
 const turnName = (turn) => `${YEARS[(turn / 24) | 0]} Year, ${turn % 2 ? 'Late' : 'Early'} ${MONTHS[(turn % 24) >> 1]}`;
-// the schedule window's calendar: three year columns of 24 half-month slots (the career starts in Junior Year, early
-// July); fill(year, slot index, slot element) fills each slot
+// the schedule window's calendar: three year columns of half-month slots, Junior's from July (the career starts in Junior
+// Year, early July); fill(year, slot index 0-23, slot element) fills each slot
 // On the planner pages (html.game) it is the game's Scheduled Races, all three years side by side: each year 4 x 6 slots, Junior's
 // first three rows the game's grey cells for April to June (labelled as the game labels them, each half-month twice).
 /** @param {(year: number, slot: number, cell: HTMLElement) => void} fill @returns {HTMLDivElement} */
@@ -82,7 +82,7 @@ export function agendaGrid(fill) {
     }
     for (let slotIndex = 0; slotIndex < 24; slotIndex++) {
       const slot = document.createElement('div');
-      if (y === 0 && slotIndex < 12) {   // Junior January to June: one note fills the blank half-year
+      if (y === 0 && slotIndex < 12) {   // Junior January to June, before the career: off html.game, one note fills it
         if (!game && slotIndex === 0) { slot.className = 'ag-pre'; slot.textContent = 'The career starts in Junior Year, early July'; grid.appendChild(slot); }
         continue;
       }
@@ -224,7 +224,6 @@ export function winsAgenda(opts) {
   return box;
 }
 // the race schedule window: one tab per member, her races on the calendar
-// loop: {members: [{id, name, short?}], outfits: [{outfits}] (per member), schedule: ScheduleRow[]}
 /** @param {{members: {id: number, name: string, short?: string}[], outfits: {outfits: {id: number, label: string}[]}[], schedule: ScheduleRow[]}} loop */
 export function openSched(loop) {
   const members = loop.members, schedule = loop.schedule, body = $('sched-body'); body.textContent = '';

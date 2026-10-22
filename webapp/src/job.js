@@ -14,5 +14,5 @@ export function ownedCards() {
   if (notOwned === CARDS.length) return [0];
   return CARDS.filter(c => state.cardsOff[c.id] !== false).map(c => c.id);
 }
-// R cards are opt-in
+// R cards (not pals) stay out of every search: state.js `rcards`, which no setting turns on
 export const rcardsOff = () => state.rcards ? {} : { exclude_cards: CARDS.filter(c => c.rar === 1 && !c.pal).map(c => c.id) };

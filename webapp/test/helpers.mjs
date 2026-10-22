@@ -101,13 +101,12 @@ function collectErrors(pg) {
  */
 export async function open(browser, { w = 1440, h = 900, mobile = false, init, before, scheme = 'light' } = {}) {
   const ctx = await timed('ctx', browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile && browser.browserType().name() === 'chromium' ? { isMobile: true, hasTouch: true } : {}) }));
-  await ctx.addInitScript(() => {   // count worker creations/terminations
+  await ctx.addInitScript(() => {
     const W = window.Worker; window.__made = 0; window.__killed = 0;
     window.__runs = [];   // the jobs sent to the engine, in order
     // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     window.Worker = function (...a) { const w = new W(...a); window.__made++; const t = w.terminate.bind(w); w.terminate = () => { window.__killed++; t(); };
       const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); };
-      // window.__hold: the worker's replies wait (a search stays running however fast it is) until window.__release()
       let h = null, q = [], dead = false; Object.defineProperty(w, 'onmessage', { get: () => h, set: (f) => { h = f; } });
       w.addEventListener('message', (e) => { if (window.__hold) q.push(e); else if (h) h(e); });
       const kill = w.terminate; w.terminate = () => { dead = true; q = []; kill(); };
@@ -144,7 +143,7 @@ export const until = (pg, fn, arg, timeout = 3000) => pg.waitForFunction(fn, arg
 export async function navClick(pg, sel) { await Promise.all([pg.waitForEvent('load'), pg.click(sel)]); }   // a click that reloads the page
 export const note = (pg) => pg.locator('#run-note').innerText();
 export const odds = (pg) => pg.evaluate(() => document.querySelector('#results .loop .odds')?.textContent || '');
-// the page's data by its old element id: the shared lists come from build.py's data scripts (self.__LLP_DATA), the rest from JSON elements
+// the page's data by its id ('data-cards', ...): the shared lists come from build.py's data scripts (self.__LLP_DATA), the rest from JSON elements
 export const json = (pg, id) => pg.evaluate((id) => self.__LLP_DATA && id in self.__LLP_DATA ? self.__LLP_DATA[id] : JSON.parse(document.getElementById(id).textContent), id);
 export const scen = (pg) => pg.getAttribute('#x-scen', 'data-value');   // the chosen scenario
 export async function pickScen(pg, v) { await pg.click('#x-scen'); await pg.click(`#scen-menu .stile[data-v="${v}"]`); }

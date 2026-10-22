@@ -19,8 +19,8 @@ self.onmessage = async (e) => {
   try {
     if (message.type === 'init') {
       try {
-        // env.clock_ms: the solver's wall clock (the career plan's time budget); env.progress: the career plan's phase (k
-        // of n), posted to the page from inside the call
+        // env.clock_ms: the solver's wall clock (the career plan's timings, reported with it); env.progress: the career
+        // plan's phase (k of n), posted to the page from inside the call
         const imports = { env: { clock_ms: () => performance.now(), progress: (ph, k, n) => self.postMessage({ type: 'progress', id: runId, ph, k, n }) } };
         if (message.module) solver = (await WebAssembly.instantiate(message.module, imports)).exports;   // compiled once by the page
         else solver = (await WebAssembly.instantiate(message.bytes, imports)).instance.exports;
@@ -33,7 +33,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'ready' });
     } else if (message.type === 'run') {
       const t0 = performance.now(), job = message.job; runId = message.id;
-      // a deck search runs twice: first ranked by per-target odds (fast, posted at once), then by exact odds
+      // a deck search runs twice: first by the product of per-target odds (fast, posted at once), then by exact odds
       if ((job.cmd === 'deck' || job.mode === 'deck') && job.exact !== false) {
         const quick = callRaw(JSON.stringify(Object.assign({}, job, { exact: false })));
         post('interim', message.id, quick, t0);

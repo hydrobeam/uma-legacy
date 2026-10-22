@@ -1,7 +1,8 @@
 // ---------- the veteran card: the game's "Umamusume Details" screen ----------
 // Her portrait and outfit, her aptitude grades (Track / Distance / Style, the game's letters), then three tabs as in the
 // game: Skills (the target skills she learned), Inspiration (her sparks as the game's spark bars, stars under each, then
-// "Legacy Origin": her two parents' sparks) and Career Info (the G1s she ran and won). No stats (the model has none).
+// "Legacy Origin": her two parents' sparks) and Career Info (her support cards, her two legacies, the G1s she ran and
+// won). No stats (the model has none).
 // The game's own art where the build shipped it (images.py: grade letters, spark bars and bullets, skill tiles), the
 // same shapes in CSS without it. Her sparks stay editable (vets.js sparksEl: click for stars, x removes, + adds).
 import { el } from './dom.js';
@@ -59,9 +60,6 @@ function gradeEl(g) {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const when = (turn) => `${['Junior', 'Classic', 'Senior'][Math.floor(turn / 24)]} ${(turn % 2 ? 'Late ' : 'Early ')}${MONTHS[Math.floor((turn % 24) / 2)]}`;
 
-// d: the veteran (chara, outfit, sparks, pinks, wins, parents); outfit: her outfit's label; apt: her ten grades at the
-// end of this career (null: unknown); races: the G1s her schedule runs [{ix, name, turns}]; raceName(ix); onEdit: an edit
-// to her sparks; winsBtn: the G1 wins editor's button; parentLabel(j): a parent's place ("#3")
 /**
  * @typedef {object} DetailsSpec
  * @property {LineageNode & {parents: LineageNode[], bought?: Object<number, string>}} d  the veteran
@@ -197,8 +195,7 @@ function inspPane({ d, onEdit, parentLabel }) {
   return p;
 }
 // The game's Inspiration view of a veteran: "Sparks", her sparks as the game's spark bars (stars on their edge), then
-// "Legacy Origin": her parents' (each a row with her portrait). key: her sparks' control names; parentKey(j): a parent's
-// (null: her parents' sparks read-only); onEdit / onEditParent: an edit. Also the tree's node popups (career.js).
+// "Legacy Origin": her parents' (each a row with her portrait). Also the tree's node popups (career.js).
 /**
  * @typedef {object} InspViewSpec
  * @property {LineageNode & {parents?: LineageNode[]}} d  the veteran shown (her parents: none, or her two)
@@ -234,8 +231,6 @@ export function inspView({ d, key, onEdit, meClass = '', parentLabel = null, par
   return p;
 }
 
-// Career Info, as the game's: her support cards, her two legacies (each with her parents, the borrowed one a guest),
-// and her career record (G1 races entered and won; the race-by-race record behind a button, with the G1 wins editor)
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
 // borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
 // then the plain ones (plain_ids), in the order of `cards`.
@@ -247,6 +242,8 @@ export function deckCardAt(deck, i) {
   return { base, borrowed, card: CARD_BY_ID.get(id) || CARDS.find(x => x.name === base) };
 }
 let showRaces = false;
+// Career Info, as the game's: her support cards, her two legacies (each with her parents, the borrowed one a guest),
+// and her career record (G1 races entered and won; the race-by-race record behind a button, with the G1 wins editor)
 function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
   const p = el('div');
   if (deck) {

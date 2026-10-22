@@ -1,8 +1,8 @@
 // The data build.py embeds in the page, for the chosen era.
 import { $ } from './dom.js';
 import { ERA } from './settings.js';
-// the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed by the ids of the elements that
-// used to hold it); what stays in the page (the asset table, the example) from its JSON elements
+// the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
+// in the page (the asset table, the example) from its JSON elements of the same ids
 const BUNDLED = self.__LLP_DATA || {};
 const parse = (id) => id in BUNDLED ? BUNDLED[id] : JSON.parse($(id).textContent);
 const has = (id) => id in BUNDLED || !!$(id);
@@ -39,8 +39,8 @@ export const ASSETS = parse('data-assets');
  * @property {Outfit[]} outfits
  */
 /** @typedef {{w: string, gd: string | null}} SkillNames a skill group's white name and its gold's (null: none) */
-// The active era's data, set by loadData() before the page starts. Global's is inline in the page; the GM era's is
-// fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
+// The active era's data, set by loadData() before the page starts. Global's comes with the page's data scripts; the GM
+// era's is fetched (ASSETS.dataGm) only when that era is selected (switching era reloads the page).
 /** @type {Card[]} */
 export let CARDS;
 /** @type {Uma[]} */
@@ -53,7 +53,7 @@ export let CARD_BY_ID;
 export let SK;
 /** @type {Map<number, string>} character id -> name (the career page's sample veterans included) */
 export let NAME;
-// the career page's veteran import tables ({factors, saddles, races}); null on the planner page
+// the career page's tables (build.py `career`: factors, saddles, races, mobs, ...); null on the planner page in the Global era
 export let CAREER = null;
 // what the data holds ahead of its start (a build from a master.mdb fetched ahead of its update holds the next week's
 // umas, outfits and cards, pkg/loopopt/export/upcoming.py): hidden here and left out of every search until its start,
@@ -140,5 +140,5 @@ for (const scenario of SCENARIOS) {
   scenario.mult = `Hint rate ×${(scenario.base / URA_BASE).toFixed(2)}`;
   scenario.rate = scenario.mult + (scenario.est ? ' (estimate)' : '');
 }
-// the 8/8 example: the default eight targets, as skill groups (what the scenario guarantees: state.js goldGiven)
+// the 8/8 example: the default eight targets, as skill groups (Unity Cup's two guaranteed golds among them: state.js goldGiven)
 export const PRESET = [20159, 20049, 20166, 20046, 20161, 21010, 20165, 20203];

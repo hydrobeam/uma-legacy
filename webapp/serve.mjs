@@ -18,8 +18,8 @@ export function serveDist(port = 0, host = '127.0.0.1') {
     if (!file.startsWith(DIST + path.sep)) { res.writeHead(403); return res.end(); }   // outside dist/ (a path with ..)
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404); return res.end('not found'); }
-      // as the host serves it (dist/_headers): fingerprinted assets/ a year, immutable (their names change with their
-      // content); the pages and everything else revalidated on every load
+      // fingerprinted assets/ a year, immutable, as the host serves them (dist/_headers); the pages and everything else
+      // revalidated on every load here (the host caches them 5 minutes), so a rebuild shows on the next load
       const cache = urlPath.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache });
       res.end(buf);

@@ -22,7 +22,7 @@ export default async function upcoming(b) {
   check('upcoming: what starts later is left out of the search', now.job && has(now.job.exclude, ids('umas')) && has(now.job.exclude_outfits, ids('outfits')) && has(now.job.exclude_cards, ids('cards')),
     JSON.stringify(later));
   const then = await look(`{ const off = ${at} - Date.now(), n = Date.now; Date.now = () => n() + off; }`);
-  // R cards stay out by default whatever their date (the page's R-cards switch)
+  // R cards stay out whatever their date (no setting turns them on: state.js `rcards`)
   const rare = new Set(JSON.parse(fs.readFileSync(repoUrl('pkg/loopopt/data/global/web_cards.json'), 'utf8')).cards.filter(c => c.rarity > 1 || c.pal).map(c => c.id));
   check('upcoming: once started it is in the search', then.job && none(then.job.exclude, ids('umas')) && none(then.job.exclude_outfits, ids('outfits'))
     // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
