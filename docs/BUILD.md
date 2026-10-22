@@ -11,10 +11,11 @@ A fresh clone needs two commands:
 ./build.sh serve      # http://localhost:8000 (WebAssembly needs the page served, not opened as a file)
 ```
 
-The first `./build.sh` installs what it needs into the folder: the Rust toolchain through rustup, the npm packages
-and GameTora's data files. With the game files in `game/` (below) it extracts the art too; without them it says so
-and the page shows initials. To check a change, `./build.sh testq` (the browser suite's fast tier; it installs its
-browsers the first time) and `./build.sh valq TAG` (the validation jobs against their reference outputs).
+The first `./build.sh` installs what it needs: rustup fetches the pinned Rust toolchain, `npm ci` the npm packages
+into `webapp/node_modules`, uv the Python environment into `.venv/`. With the game files in `game/` (below) it
+extracts the art too; without them it says so and the page shows initials. To check a change, `./build.sh testq`
+(the browser suite's fast tier; it installs its browsers the first time) and `./build.sh valq TAG` (the validation
+jobs against their reference outputs).
 
 A fresh clone builds the page from the tracked data files and passes the solver tests, validation and the browser
 suite. Without game art the page shows initials in place of pictures and a spinner in place of the runner, and the
@@ -22,7 +23,8 @@ browser suite skips the checks of the art itself (it says which).
 
 ## What is needed
 
-Everything a build reads lives inside the repository folder; nothing is looked up elsewhere on the machine.
+Everything a build reads lives inside the repository folder, apart from the tools below and their own stores
+(rustup's toolchains, Cargo's crate downloads, uv's Python and cache, npm's cache).
 
 **Tools you install**
 - Rust, via rustup: `rust-toolchain.toml` pins 1.98.1 with `rust-src` and the `wasm32-unknown-unknown` target.
@@ -30,13 +32,14 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 - [uv](https://docs.astral.sh/uv/) (it provides Python 3.14).
 - bash, git; tar with zstd for `runners` only.
 
-**Libraries, installed into the folder by the build**
+**Libraries, installed by the build**
 
 | Where | What | Used by |
 |---|---|---|
 | `pkg/loopopt/Cargo.toml` | `serde`, `serde_json` | the solver |
-| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler` | `wasm`, `page`, `runners`, the tests, `deploy` |
+| `webapp/package.json` (`npm ci` on first use) | `binaryen` (`wasm-opt`), `esbuild`, `@fontsource/*` (4 fonts), `three`, `playwright` (pinned), `wrangler`, `@biomejs/biome` | `wasm`, `page`, `runners`, the tests, `deploy`, `lint` |
 | `pyproject.toml` (`.venv/`, created by uv) | `UnityPy`, `Pillow` | `images`, `runners` (the exporters use the standard library) |
+| `pyproject.toml`, group `dev` | `ruff` | `lint` |
 | `pyproject.toml`, group `research` | `numpy`, `scipy` | `research` |
 | `webapp/node_modules` (`./build.sh browsers`) | Playwright's Chromium and Firefox (`PLAYWRIGHT_BROWSERS_PATH=0`) | `test`, `testq`, `runners` |
 | `cache/gametora/` (`./build.sh gametora`) | GameTora's data files at the versions pinned in `pkg/loopopt/data/gametora.json`. GameTora does not keep old versions online (6 of the 13 pins answered 404 on 2026-10-21), so the pinned set exists only in a cache that already holds it; elsewhere `GAMETORA_LATEST=1` moves the pins, and the events may change | `events` |
@@ -46,7 +49,7 @@ Everything a build reads lives inside the repository folder; nothing is looked u
 
 | File | What it is | Needed by |
 |---|---|---|
-| `game/global/master.mdb` | the Global client's game database (plain SQLite) | `data`, `events` |
+| `game/global/master.mdb` | the Global client's game database (plain SQLite) | `data`, `events`, `runners` |
 | `game/jp/master.mdb` | the JP client's game database (plain SQLite), for the Grand Masters era | `data`, `events` |
 | `game/global/resources.assets` | the Global PC install's built-in assets file (the game's common buttons and check box) | `images` |
 | `game/global/decrypted/` | the Global client's asset bundles, decrypted, laid out by asset path (`chara/chr1001/...`) | `images`, `runners` |
@@ -59,9 +62,9 @@ game art are never committed.
 ## Reproducing it
 
 1. **The page, the solver and its checks** need only the tools above: `./build.sh`, then `./build.sh testq` (71 checks;
-   the five art checks fail without art) and `./build.sh valq TAG` (every job matches its reference). This runs on
-   the tracked data files, which were exported from the Global game database of 2026-10-10 and the JP one of
-   2025-10-09.
+   the checks of the art skip themselves without art) and `./build.sh valq TAG` (every job matches its reference).
+   This runs on the tracked data files, which were exported from the Global game database of 2026-10-10 and the JP
+   one of 2025-10-09.
 2. **The data from the game:** with both `master.mdb` files in `game/`, `./build.sh data events pb`. With the same
    game databases the exports come out byte-identical, except `upcoming.json` (what starts after the build date) once
    a banner in it has started; a newer Global database adds its new umas, cards and races. Check with
@@ -70,18 +73,18 @@ game art are never committed.
 
 ## Steps
 
-Each step checks its requirements first and, when something is missing, names every missing tool or file and what
-it is before it stops; the `art` step instead says what it skipped.
+Each step but `hooks` and `research` checks its requirements first and, when something is missing, names every
+missing tool or file and what it is before it stops; the `art` step instead says what it skipped.
 
 | Step | Does |
 |---|---|
 | `all` | `data events native pb wasm art page` |
 | `art` | `images` and `runners`, each when its game files are in `game/global/` (skipped with a note otherwise); part of the default build |
-| `data` | the Global and Grand Masters-era exports from `master.mdb`: `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
+| `data` | the Global and Grand Masters-era exports from `master.mdb`: `base.json` (roster and aptitudes), `data.json`, `web_skills.json`, `web_cards.json` (with the scenario card bans), `career.json` (the veteran import's spark-factor and win-saddle tables), `upcoming.json` |
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff pinned in the dev group); Biome on the page's JS with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); Biome on the page's JS with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -93,13 +96,14 @@ it is before it stops; the `art` step instead says what it skipped.
 | `serve` | `webapp/dist` on http://localhost:8000 (`PORT=…`) |
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
 | `deploy` | builds the page and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
+| `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
 ## Data updates
 
 Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, validation, and a release.
 
 - `data` keeps every uma, outfit and support card that `master.mdb` dates up to 60 days past the build
-  (`pkg/loopopt/export/upcoming.py`; an outfit starts with its first gacha, else with its uma; content the game has
+  (`AHEAD` in `pkg/loopopt/export/era.py`; an outfit starts with its first gacha, else with its uma; content the game has
   not dated carries a 2050 placeholder and stays out). `pkg/loopopt/data/global/upcoming.json` lists what starts after the build.
   The page hides each entry until its start time and leaves it out of every search (`webapp/src/data.js` `LATER`,
   `engine.js`), so a banner turns on by itself; the precomputed example leaves the same entries out
@@ -135,8 +139,9 @@ search works (a spinner when a build has none). How the pipeline works and what 
   font faces and UI sprites as CSS variables), the shared data script (`self.__LLP_DATA`), the page bundles, the wasm,
   each era's solver data, the Grand Masters page data (loaded when that era is chosen), the fonts and `img.<hash>/`.
   A revisit fetches only the HTML (about 33 KB).
-- favicons, `og.png`, font licences in `licenses/`, `_headers` and `robots.txt`. `serve.mjs` serves with the same
-  cache rules as the host.
+- favicons, `og.png`, font licences in `licenses/`, `_headers` (the host caches the pages 5 minutes, `assets/` a
+  year), `_redirects` (`/loop` to `/`) and `robots.txt`. `serve.mjs` caches `assets/` a year as the host does and
+  serves the pages uncached.
 
 The solver runs as WebAssembly in a Web Worker (`worker.template.js`). Saved settings are one versioned object,
 `localStorage['llp:settings']`, migrated in `settings.js`. Shared page state is two exported objects (`state`: the
@@ -162,14 +167,14 @@ IndexedDB.
   work keeps, `docs/PERF.md`). Solver process failures and comparison failures exit nonzero. `uv run val/test_validation.py` checks these failure
   paths with synthetic outputs and a stub solver, without running any searches.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the nine plan jobs in
-  `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py` checks that adding a veteran
-  never raises the planner's estimate; `val/capaudit.py` checks the exact caps.
+  `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py BIN` checks that adding a veteran
+  never raises the planner's estimate; `val/capaudit.py BIN` checks the exact caps.
 - **Exactness:** `uv run val/owncheck.py BIN 3 "Yaeno Muteki"` and `uv run val/permcheck.py BIN 3` check the search
   against brute force on small owned sets; `uv run val/joint_check.py TAG` recomputes every deck result's odds
   independently.
 - **Speed work** follows `docs/PERF.md` (byte-identical outputs, one item per commit with its gain),
-  which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …` times
-  the wasm.
+  which also holds the planner's speed record. `node webapp/nodebench.mjs <wasm> global pal_A2 …`
+  (era `global` or `gm`; it reads its paths relative to `webapp/`) times the wasm.
 
 ## Continuous integration
 
@@ -181,7 +186,8 @@ IndexedDB.
 
 ## Rust style
 
-`./build.sh lint` passes before every Rust commit. It runs, in `pkg/loopopt`:
+`./build.sh lint` passes before every Rust commit. Its Rust and shell checks, in `pkg/loopopt` (ruff and Biome follow;
+see *Steps*):
 
 ```
 cargo fmt --check
@@ -195,7 +201,7 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
 - **Lints:** clippy's default groups, with the few that fight this code deliberately allowed in the `[lints.clippy]`
   table of `pkg/loopopt/Cargo.toml`, each with its reason, and a chosen set of pedantic, nursery and restriction lints
   denied there; an `#[allow]` in the code needs `reason = "..."`. `unsafe_code` is denied crate-wide and allowed only
-  for the wasm exports (`web.rs`) and host imports (`deck/career.rs`), each unsafe block with a `// SAFETY:` note. A lint fix that could change floating-point evaluation
+  for the wasm exports (`web.rs`) and host imports (`deck/career/clock.rs`), each unsafe block with a `// SAFETY:` note. A lint fix that could change floating-point evaluation
   order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
   `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
   clippy part before its tests.
@@ -285,8 +291,10 @@ pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` a
 pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
                      launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,
                      base.json and manual.json (hand-entered card events), plus upcoming.json for Global; and the
-                     inputs both eras share, event_shares.json and gametora.json (GameTora's pinned versions)
-val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks
+                     files both eras share, event_shares.json, gametora.json (GameTora's pinned versions) and
+                     gametora_slugs.json (the page's links to GameTora)
+val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks;
+                     plan/ (the career planner's jobs and references)
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)
