@@ -16,11 +16,16 @@ Every analysis runs on every record, on three row sets:
   h = base_s (1 + hf/100) (1 + d_s spec/100); its later-runs test fits on the earlier half of the records (by seq) and
   scores the later half;
 - tests of the current model: the adopted rate (the same h with hints.rs's constants) on the fit's card-runs, for the
-  other covariates (a free level per scenario in both fits), the spark deficit (every row), drop-out and priority.
-Rate forms, specialty choices and SR/pal covariates are also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
+  other covariates (a free level per scenario in both fits), per-card differences, the spark deficit (every row),
+  drop-out and priority;
+- the same-card test: cards whose specialty differs between limit breaks, every limit break, a base per (card,
+  scenario); on every such card and on the clean ones (hint frequency the same at every limit break).
+Rate forms, specialty choices, SR/pal covariates and a factor per card are also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
 on the other four, per-run held-out log-likelihoods compared by common.compare_held_out using a z > 1.96 threshold. Every other result is in-sample on the pooled runs. Intervals and z on observed / predicted over rows (the
 spark deficit, priority, the specialty cells) are run-clustered (common.cluster_ci): one run gives many rows; the
-specialty cells are tested jointly by a run-clustered Wald chi2 (common.cluster_chi2), their largest |z| only described.
+specialty cells and the per-card cells are tested jointly by a run-clustered Wald chi2 (common.cluster_chi2), the
+specialty cells' largest |z| only described. Every test reads every run; the general collection's own numbers (batches
+GENERAL_BATCHES) are context where they explain a result.
 """
 
 import collections, functools, math, re, unicodedata
@@ -38,6 +43,10 @@ MIL: list[int] = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # the milestone lev
 EFFECT_INITIAL_BOND, EFFECT_HINT_LEVELS, EFFECT_HINT_FREQUENCY, EFFECT_SPECIALTY = 14, 17, 18, 19
 SCENARIOS: tuple[tuple[int, str], ...] = ((1, "URA Finale"), (2, "Unity Cup"), (3, "Grand Concert"), (4, "Trackblazer"))
 NELDER_MEAD: dict[str, float] = {"xatol": 1e-6, "fatol": 1e-7, "maxiter": 40000, "maxfev": 80000}
+GENERAL_BATCHES: range = range(18)  # the general collection's batches (later ones: targeted collections)
+CARD_ROWS: int = 200  # the rows a card needs for its own cell in the per-card tests
+CHI1: float = 1.920729  # chi2(1) 95% / 2: a likelihood gain beyond it is detectable
+SAME_CARD_D: tuple[float, float] = (-0.9, 1.5)  # the range searched for the same-card d (1 + d sp/100 stays positive)
 
 Rate = Callable[[np.ndarray], np.ndarray]  # parameters -> h per card-run
 Mask = np.ndarray  # a boolean mask over rows
@@ -419,14 +428,21 @@ def best_base(
     bounds: tuple[float, float],
     xatol: float,
     clipped: bool = False,
+    grid: int = 0,
 ) -> Any:
     """the base b maximising the classes' likelihood with h = b * mult through the draw table tab (bounded
-    minimize_scalar's result: x the base, fun minus the log-likelihood)"""
+    minimize_scalar's result: x the base, fun minus the log-likelihood). With `grid` > 0 the search starts from the
+    best of `grid` log-spaced bases over the bounds and refines between its neighbours: on wide bounds a bounded search
+    alone can settle on a flat stretch (draws beyond what a small pool takes, where P(hit) = 1) far from the optimum."""
 
     def nll(b: float) -> float:
         h = b * mult
         return -class_ll(1 - mix(tab, clip(h) if clipped else h), hits, n)
 
+    if grid:
+        bs = np.geomspace(*bounds, grid)
+        k = int(np.argmin([nll(b) for b in bs]))
+        bounds = (bs[max(k - 1, 0)], bs[min(k + 1, grid - 1)])
     return minimize_scalar(nll, bounds=bounds, method="bounded", options={"xatol": xatol})
 
 
@@ -895,6 +911,29 @@ class CovariateRows:
         b = r2 if r2.fun <= r1.fun else r1
         return CovFit(b.x, -b.fun)
 
+    def fit_many(self, X: np.ndarray, q: Mask, x0: np.ndarray) -> CovFit:
+        """fit() for many columns (a factor per card): L-BFGS-B from x0 on the analytic gradient (the draw table is
+        piecewise linear in h, its slope tab[t + 1] - tab[t] between whole draws)"""
+        w, hits, nr = tally(self.cls, self.y, q, len(self.rep))
+        r = self.rep[w]
+        tw, hw = self.tab[r], self.h[r]
+        Z = np.concatenate([np.eye(4)[self.scen[r]], X[r]], 1)  # the design: scenario levels, then the columns
+        ix = np.arange(len(r))
+
+        def nll(th: np.ndarray) -> tuple[float, np.ndarray]:
+            h = hw * np.exp(Z @ th)
+            hc = clip(h)
+            t0 = np.floor(hc).astype(int)
+            slope = tw[ix, t0 + 1] - tw[ix, t0]
+            m = np.clip(tw[ix, t0] + (hc - t0) * slope, 1e-12, 1 - 1e-12)  # P(miss)
+            ll = hits @ np.log(1 - m) + (nr - hits) @ np.log(m)
+            dll_dm = (nr - hits) / m - hits / (1 - m)
+            dll_deta = dll_dm * slope * np.where(h < TMAX - 1e-6, h, 0.0)  # dh / d(Z th) = h below the table's end
+            return -ll, -(Z.T @ dll_deta)
+
+        b = minimize(nll, x0, jac=True, method="L-BFGS-B", options={"maxiter": 2000})
+        return CovFit(b.x, -b.fun)
+
 
 def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     hit, sc, n = D.hit, D.scen, D.nskill.astype(float)
@@ -938,6 +977,59 @@ def covariates(D: Data, AR: AdoptedRate, out: Out) -> None:
     add(out, "held out: covariate runs", len(hoc["none"]))
     for nm in ("SR", "pals per deck"):
         out.extend(compared(f"covariate {nm} vs none", hoc[nm], hoc["none"]))
+    # context: the SR factor on the general collection and on the targeted ones (decks chosen for their cards)
+    general = general_rows(D, ck)
+    for label, q in (("general collection", general), ("targeted collections", ~general)):
+        add(out, f"covariate factor SR, {label}", np.exp(rows.fit(covs["SR"][ck], q).theta[4]))
+    card_heterogeneity(D, rows, general, out)
+
+
+def general_rows(D: Data, card_run: np.ndarray) -> Mask:
+    """the given card-runs that belong to runs of the general collection"""
+    batch = {r["id"]: r["batch"] for r in common.runs()}
+    return np.isin([batch[int(r)] for r in run_of_rows(D, card_run)], GENERAL_BATCHES)
+
+
+def card_heterogeneity(D: Data, rows: CovariateRows, general: Mask, out: Out) -> None:
+    """hint rates by card beyond the adopted rate (with a free level per scenario): per-card obs / pred on the cards with
+    CARD_ROWS+ rows, tested jointly (run-clustered Wald; the same on the general collection's rows as context), and
+    held out a factor per such card against none (whether the cards' differences carry over to unseen runs)"""
+    cid = np.array([x.cid for x in D.obs])[rows.card_run]
+    run = run_of_rows(D, rows.card_run)
+    count = collections.Counter(cid)
+    cards = sorted(k for k, v in count.items() if v >= CARD_ROWS)
+    pos = {k: i for i, k in enumerate(cards)}
+    code = np.array([pos.get(k, -1) for k in cid])
+    X = (code[:, None] == np.arange(len(cards))).astype(float)
+    cls, rep = alike(rows.cls, code)  # rows alike in what the covariate fits read and in their card
+    R = CovariateRows(rows.y, rows.tab, rows.h, rows.scen, rows.card_run, cls, rep)
+    none = np.zeros((len(cid), 0))
+    every = np.ones(len(cid), bool)
+    p = R.p(R.fit(none).theta, none, every)
+    O = np.bincount(code + 1, weights=rows.y)[1:]
+    E = np.bincount(code + 1, weights=p)[1:]
+    add(out, "per-card cards", len(cards), note=f"cards with {CARD_ROWS}+ covariate rows")
+    add(out, "per-card rows", (code >= 0).sum())
+    add(out, "per-card obs/pred min", (O / E).min(), note="the adopted rate with a free level per scenario")
+    add(out, "per-card obs/pred max", (O / E).max())
+    for label, q in (("", every), (", general collection", general)):
+        n_ = collections.Counter(cid[q])
+        k = q & np.array([n_[c] >= CARD_ROWS for c in cid])
+        x2, df, pv = common.cluster_chi2(list(zip(cid[k], rows.y[k] - p[k])), run[k])
+        add(out, f"per-card Wald chi2{label}", x2, note="run-clustered, each card's obs - pred")
+        add(out, f"per-card Wald df{label}", df)
+        add(out, f"per-card Wald p{label}", pv)
+
+    def fold(tr: Mask, te: Mask) -> dict[str, np.ndarray]:
+        f0 = R.fit(none, tr)
+        f1 = R.fit_many(X, tr, np.concatenate([f0.theta, np.zeros(len(cards))]))
+        return {
+            "none": row_ll(R.p(f0.theta, none, te), R.y[te]),
+            "per card": row_ll(R.p(f1.theta, X, te), R.y[te]),
+        }
+
+    ho = cv(run, fold)
+    out.extend(compared("a factor per card vs none", ho["per card"], ho["none"]))
 
 
 def clustered_ratio(D: Data, AR: AdoptedRate, q: Mask) -> tuple[float, float, float]:
@@ -1121,13 +1213,32 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
             "; ".join(f"{nm} +{cov[nm][0]:.1f} nats, p = {cov[nm][1]:.1e}" for nm in miss_c),
         )
     )
+    sr, pals = H("covariate SR vs none"), H("covariate pals per deck vs none")
     fs.append(
         F(
-            "Known miss (not modelled): rarity (SR against SSR) and pals per deck each predict unseen runs better than the adopted "
-            "rate without them (5-fold held out, each z > 1.96)",
-            all(H(f"covariate {nm} vs none")[2] > 1.96 for nm in miss_c),
+            "Known miss (not modelled): pals per deck predicts unseen runs better than the adopted rate without it (5-fold held "
+            "out, z > 1.96); rarity (SR against SSR), detectable in-sample, does not (z <= 1.96)",
+            pals[2] > 1.96 and sr[2] <= 1.96,
             "; ".join(f"{nm} " + hs(f"covariate {nm} vs none") for nm in miss_c)
-            + f" on {g['held out: covariate runs']:,.0f} runs",
+            + f" on {g['held out: covariate runs']:,.0f} runs; SR factor {g['covariate factor SR']:.3f}, general collection "
+            f"{g['covariate factor SR, general collection']:.3f}, targeted collections "
+            f"{g['covariate factor SR, targeted collections']:.3f}",
+        )
+    )
+    fs.append(
+        F(
+            "Known miss (not modelled): hint rates differ by card beyond the adopted rate: per-card obs/pred on the cards with "
+            f"{CARD_ROWS}+ rows are jointly inconsistent with it (run-clustered Wald, p < 0.001, on every run and on the general "
+            "collection alone), and the cards' differences carry over to unseen runs (a factor per card against none, 5-fold "
+            "held out, z > 1.96); which card properties explain them is open",
+            g["per-card Wald p"] < 0.001
+            and g["per-card Wald p, general collection"] < 0.001
+            and H("a factor per card vs none")[2] > 1.96,
+            f"obs/pred {g['per-card obs/pred min']:.2f}-{g['per-card obs/pred max']:.2f} across {g['per-card cards']:.0f} cards; "
+            f"chi2 {g['per-card Wald chi2']:.0f} on {g['per-card Wald df']:.0f}, p = {g['per-card Wald p']:.1e}; general "
+            f"collection chi2 {g['per-card Wald chi2, general collection']:.0f} on "
+            f"{g['per-card Wald df, general collection']:.0f}, p = {g['per-card Wald p, general collection']:.1e}; held out "
+            + hs("a factor per card vs none"),
         )
     )
     fs.append(
@@ -1255,11 +1366,12 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     )
     fs.append(
         F(
-            "The specialty effect is not an artefact of one card, one rarity or one period: one pooled d stays positive and within "
-            "a factor 2 everywhere",
-            g["specialty d robustness min"] > 0
-            and g["specialty d robustness max"] < 2 * g["specialty d robustness min"],
-            f"d {g['specialty d robustness min']:.2f}-{g['specialty d robustness max']:.2f}",
+            "The specialty effect is not an artefact of one card, one rarity or one period: one scale k on the adopted per-scenario "
+            "d's (k = 1 on every row), refitted without each of the eight most-used cards, on SR and SSR alone and on each half "
+            "of the records, stays positive and within a factor 2 everywhere (largest k under twice the smallest)",
+            g["specialty scale k robustness min"] > 0
+            and g["specialty scale k robustness max"] < 2 * g["specialty scale k robustness min"],
+            f"k {g['specialty scale k robustness min']:.2f}-{g['specialty scale k robustness max']:.2f}",
         )
     )
     gd = g["specialty model: free divisor gain, nats"]
@@ -1287,11 +1399,23 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     )
     fs.append(
         F(
-            "Not shown to be causal: within the same card across limit breaks the estimate agrees in size with the across-card "
-            "one but is not significant (gain under 1.92 nats)",
-            g["specialty same-card: gain, nats"] < 1.92 and g["specialty same-card: d"] > 0,
-            f"same-card d {g['specialty same-card: d']:.2f} on {g['specialty same-card: cards']:.0f} cards, +{g['specialty same-card: gain, nats']:.1f} nats; "
-            f"across cards d {g['specialty d URA Finale']:.2f} URA Finale, {g['specialty d Unity Cup']:.2f} Unity Cup",
+            "Not shown to be causal: within the same card across limit breaks, on the clean cards (hint frequency the same at "
+            "every limit break, so only the specialty term changes), d is not decisive either way: its 95% profile interval "
+            "covers both 0 and every per-scenario d",
+            g["specialty same-card clean: d 95% low"] <= 0 <= g["specialty same-card clean: d 95% high"]
+            and all(
+                g["specialty same-card clean: d 95% low"]
+                <= g[f"specialty d {nm}"]
+                <= g["specialty same-card clean: d 95% high"]
+                for _, nm in SCENARIOS
+            ),
+            f"clean cards d {g['specialty same-card clean: d']:.2f} [{g['specialty same-card clean: d 95% low']:.2f}, "
+            f"{g['specialty same-card clean: d 95% high']:.2f}] on {g['specialty same-card clean: cards']:.0f} cards, "
+            f"{g['specialty same-card clean: gain, nats']:+.2f} nats; per-scenario d "
+            + ", ".join(f"{g[f'specialty d {nm}']:.2f}" for _, nm in SCENARIOS)
+            + f"; every card (hf also changes with limit break, confounded) d {g['specialty same-card: d']:.2f} "
+            f"[{g['specialty same-card: d 95% low']:.2f}, {g['specialty same-card: d 95% high']:.2f}] on "
+            f"{g['specialty same-card: cards']:.0f} cards",
         )
     )
     rows, ob, pr = g["priority rows"], g["priority observed"], g["priority predicted"]
@@ -1492,20 +1616,31 @@ def specialty(A: Data) -> list[common.Value]:
     u = (sc == 2) & (S.hfr == 0) & (sp == 0)
     add(out, "Unity hf-0 spec-0 before", y[u].sum() / fit.p_without[u].sum())
     add(out, "Unity hf-0 spec-0 after", y[u].sum() / fit.p_with[u].sum())
-    # robustness of one pooled d: halves of the records, rarity, without each of the eight most-used cards
+    # robustness of the adopted per-scenario d's: one scale k on them, h = base_s (1 + hf/100) (1 + k d_s sp/100), the
+    # d_s fitted on every row, a base per scenario refitted on each subset (halves of the records, rarity, without each
+    # of the eight most-used cards); k = 1 on every row
     runs = common.runs()
     cut = runs[len(runs) // 2]["seq"]  # the later half of the records starts here
     rob = {"earlier half": S.seq < cut, "later half": S.seq >= cut, "SR": S.rar == 2, "SSR": S.rar == 3}
     top = [k for k, _ in collections.Counter(S.cid).most_common(8)]
     rob.update({f"without card {k}": S.cid != k for k in top})
-    ds = {nm: S.pooled_d(q)[0] for nm, q in rob.items()}
+
+    def scaled(k: float, q: Mask) -> float:
+        """LL of rows q with a base per scenario and the specialty term k d_s (a multiplier per scenario: the fit's
+        classes do not separate scenarios)"""
+        return sum(S.fit(q & (sc == s), S.with_d(k * fit.d[s]))[0] for s in (1, 2, 3, 4) if (q & (sc == s)).any())
+
+    ks = {
+        nm: minimize_scalar(lambda k, q=q: -scaled(k, q), bounds=(-1, 3), method="bounded", options={"xatol": 1e-4}).x
+        for nm, q in rob.items()
+    }
     add(
         out,
-        "specialty d robustness min",
-        min(ds.values()),
-        note="; ".join(f"{k} {v:.2f}" for k, v in ds.items() if not k.startswith("without")),
+        "specialty scale k robustness min",
+        min(ks.values()),
+        note="; ".join(f"{k} {v:.2f}" for k, v in ks.items() if not k.startswith("without")),
     )
-    add(out, "specialty d robustness max", max(ds.values()))
+    add(out, "specialty scale k robustness max", max(ks.values()))
     s_free = S.slope_of(S.every)
     add(out, "specialty model: free divisor c", 1 / s_free)
     # ll_ds(every, hfm) is the per-scenario fit above (the same d fits, the same rows)
@@ -1563,43 +1698,83 @@ def five_fold(S: SpecialtyRows, out: Out) -> None:
     out.extend(compared("specialty model, free divisor vs 1/100", hos["free divisor"], hos["per-scenario d"]))
 
 
-def same_card(A: Data) -> list[common.Value]:
-    """the same card at different limit breaks: a base per (card, scenario), d pooled, every limit break"""
+def clean_cards(g: GameData) -> set[int]:
+    """SR and SSR cards (pals out) whose hint frequency is the same at every limit break while their specialty priority
+    is not: across their limit breaks only the specialty term changes the predicted rate"""
+    out = set()
+    for cid, (rar, _) in g.card_info.items():
+        if rar == 1 or cid not in g.cards or g.cards[cid]["pal"]:
+            continue
+        levels = g.level_cap[rar]
+        hf = {effect(g, cid, EFFECT_HINT_FREQUENCY, lv) for lv in levels}
+        sp = {effect(g, cid, EFFECT_SPECIALTY, lv) for lv in levels}
+        if len(hf) == 1 and len(sp) > 1:
+            out.add(cid)
+    return out
+
+
+def same_card_fit(A: Data, cards: Sequence[int]) -> tuple[float, float, float, float]:
+    """the given cards at every limit break, rows no spark hinted: a base per (card, scenario), one pooled d, draws capped
+    at the card's own increment at its level. Returns (d, LL gain over no term, 95% profile interval low, high; an
+    end the interval reaches is the end of SAME_CARD_D)"""
     ci = A.ci
-    out: Out = []
     cidall = np.array([x.cid for x in A.obs])
-    lv = collections.defaultdict(set)
-    for i, x in enumerate(A.obs):
-        if x.rar != 1:
-            lv[x.cid].add(A.spec[i])
-    vary = [k for k, v in lv.items() if len(v) > 1]
-    jr = np.nonzero(A.noinsp & (A.rar[ci] != 1) & np.isin(cidall[ci], vary))[0]
+    jr = np.nonzero(A.noinsp & (A.rar[ci] != 1) & np.isin(cidall[ci], cards))[0]
     cw = ci[jr]
-    tw = miss_table(np.ones(len(jr), int), A.nskill[cw], cap_draws(A.hinc[cw]))
+    tw = miss_table(np.ones(len(jr), int), A.nskill[cw], cap_draws(A.inc[cw]))
     yw = A.hit[jr]
     hw = 1 + A.hf[cw] / 100
     sw = A.spec[cw]
     gw = np.array([f"{a}-{b}" for a, b in zip(cidall[cw], A.scen[cw])])
     gu, gcode = np.unique(gw, return_inverse=True)  # (card, scenario) groups, in sorted order
-    wc, wrep = alike(gcode, A.hf[cw], sw, A.nskill[cw], A.hinc[cw])
+    wc, wrep = alike(gcode, A.hf[cw], sw, A.nskill[cw], A.inc[cw])
     nwc = len(wrep)
     wh = np.bincount(wc, weights=yw, minlength=nwc)
     wn = np.bincount(wc, minlength=nwc).astype(float)
     twc = tw[wrep]
     gq = [np.nonzero(gcode[wrep] == u)[0] for u in range(len(gu))]  # each group's classes
 
-    def lw(m: np.ndarray) -> float:
-        """LL with a base per (card, scenario) group for multiplier m"""
-        mc = m[wrep]
-        return sum(-best_base(twc[q], mc[q], wh[q], wn[q], bounds=(0.05, 12), xatol=1e-6, clipped=True).fun for q in gq)
+    def lw(d: float) -> float:
+        """LL with a base per (card, scenario) group for the specialty term with this d"""
+        mc = (hw * (1 + d * sw / 100))[wrep]
+        return sum(
+            -best_base(twc[q], mc[q], wh[q], wn[q], bounds=(0.05, 12), xatol=1e-6, clipped=True, grid=24).fun
+            for q in gq
+        )
 
-    l0 = lw(hw)
-    rw = minimize_scalar(
-        lambda d: -lw(hw * (1 + d * sw / 100)), bounds=(-0.5, 0.7), method="bounded", options={"xatol": 1e-3}
-    )
-    add(out, "specialty same-card: cards", len(vary))
-    add(out, "specialty same-card: d", rw.x)
-    add(out, "specialty same-card: gain, nats", -rw.fun - l0)
+    from scipy.optimize import brentq
+
+    rw = minimize_scalar(lambda d: -lw(d), bounds=SAME_CARD_D, method="bounded", options={"xatol": 1e-3})
+    d, best = rw.x, -rw.fun
+
+    def short(x: float) -> float:
+        """how far LL(x) lies above the 95% profile bound"""
+        return lw(x) - (best - CHI1)
+
+    lo, hi = SAME_CARD_D
+    lo = brentq(short, lo, d, xtol=1e-3) if short(lo) < 0 else lo
+    hi = brentq(short, d, hi, xtol=1e-3) if short(hi) < 0 else hi
+    return d, best - lw(0.0), lo, hi
+
+
+def same_card(A: Data) -> list[common.Value]:
+    """the same card at different limit breaks (specialty seen at two or more values in the runs, R cards out): every
+    such card, whose hint frequency mostly changes with limit break too (so its d also absorbs any misfit of the hf
+    slope), and the clean cards among them (clean_cards: only the specialty term changes)"""
+    out: Out = []
+    lv = collections.defaultdict(set)
+    for i, x in enumerate(A.obs):
+        if x.rar != 1:
+            lv[x.cid].add(A.spec[i])
+    vary = sorted(k for k, v in lv.items() if len(v) > 1)
+    clean = [k for k in vary if k in clean_cards(_game())]
+    for label, cards in (("specialty same-card", vary), ("specialty same-card clean", clean)):
+        d, gain, lo, hi = same_card_fit(A, cards)
+        add(out, f"{label}: cards", len(cards))
+        add(out, f"{label}: d", d)
+        add(out, f"{label}: d 95% low", lo, note=f"profile likelihood; searched over {SAME_CARD_D}")
+        add(out, f"{label}: d 95% high", hi)
+        add(out, f"{label}: gain, nats", gain)
     return out
 
 
