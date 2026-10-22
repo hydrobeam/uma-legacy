@@ -7,7 +7,7 @@ use crate::deck::caps::src_class;
 use crate::deck::dominance::{Cl, DeckEval, DeckId, PDeck, k_filter, split};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::upper::upper_na;
-use crate::deck::joint::{JointChances, joint, joint_b};
+use crate::deck::joint::{JointChances, JointQuery, joint, joint_b};
 use crate::deck::sources::{SourceEntry, Sources, TargetSources};
 use crate::deck::space::{HintCoordinate, UCHK};
 use crate::optimize::{members, pair_ceilings};
@@ -405,12 +405,12 @@ impl<'data> Multi<'data> {
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
         let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
-        let j = joint_b(model, u, qs, &e, fl, self.requested_target_count, false);
+        let j = joint_b(model, JointQuery::unfolded(model, u, qs), &e, fl, self.requested_target_count, false);
         tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
         if std::env::var("UPPER_CHECK").is_ok() {
             let er: Vec<SourceEntry<&TargetSources>> =
                 e.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
-            if let Some(ub) = upper_na(model, u, qs, &er, fl) {
+            if let Some(ub) = upper_na(model, JointQuery::unfolded(model, u, qs), &er, fl) {
                 for (i, y) in j.iter().enumerate() {
                     assert!(
                         ub[i] >= y.all * (1.0 - 1e-12),
@@ -475,7 +475,7 @@ impl<'data> Multi<'data> {
         }
         if ent.best.is_none() {
             let SearchOutcome { decks: r, .. } = space.search(
-                model,
+                &model.deck_chances(),
                 &[u],
                 &[uid],
                 &[SearchClause {
@@ -505,7 +505,7 @@ impl<'data> Multi<'data> {
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete } = space.search(
-            model,
+            &model.deck_chances(),
             &[u],
             &[uid],
             &[SearchClause {
@@ -548,7 +548,7 @@ impl<'data> Multi<'data> {
                     .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                     .collect();
                 let t1 = Instant::now();
-                let ubo = upper_na(model, u, qs, &e, sel.filler_cards);
+                let ubo = upper_na(model, JointQuery::unfolded(model, u, qs), &e, sel.filler_cards);
                 tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ubo {
                     tally.spend(25);
@@ -572,10 +572,24 @@ impl<'data> Multi<'data> {
     fn best_of(&self, u: UmaIndex, qs: &[f64], ent: &ExactCacheEntry) -> Best {
         if let Some(ScoredDeck { value: sum, deck: x }) = &ent.best {
             let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
-            let per = joint_b(self.inputs.model, u, qs, &e, fl, self.requested_target_count, true);
+            let per = joint_b(
+                self.inputs.model,
+                JointQuery::unfolded(self.inputs.model, u, qs),
+                &e,
+                fl,
+                self.requested_target_count,
+                true,
+            );
             Best { sum: *sum, deck: Some(x.clone()), lineage_chances: per }
         } else {
-            let per = joint(self.inputs.model, u, qs, &[], 0, self.requested_target_count, true);
+            let per = joint(
+                self.inputs.model,
+                JointQuery::unfolded(self.inputs.model, u, qs),
+                &[],
+                0,
+                self.requested_target_count,
+                true,
+            );
             Best { sum: per.iter().map(|y| y.all).sum(), deck: None, lineage_chances: per }
         }
     }

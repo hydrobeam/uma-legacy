@@ -356,6 +356,12 @@ replaced by 1 − (1 − e)(1 − q_k) and the deck search runs unchanged at q =
 same for every deck and multiplies P(all) (`JointExt` applies it per target for P(all but one) and the per-target
 chances, which are exact marginals of the joint model). Tested against the loop model by `career_fold_and_scale`.
 
+`run_career` builds `Model` once; `Env` borrows it read-only. `Model::ews` always holds the own-event chances.
+`Env::folded_events` owns one reusable outfit/target buffer per trainee; `set_ews` refills it in place for each
+lineage or corner. Exact scoring and its bounds read the chosen chances through `JointQuery::event_chances`;
+enumeration borrows `DeckChances` (the model plus the selected event-chance table). Loop searches select the
+unfolded table. The career deck memo keys the folded buffer; class and rise calculations read `Model::ews`.
+
 #### Search and output
 
 Search: each candidate gets a ceiling ρ·C·max_outfit Π_k f_k at each target's best possible deck odds (the deck_size

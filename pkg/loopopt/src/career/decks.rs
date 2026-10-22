@@ -8,7 +8,7 @@ use crate::deck::joint::upper::upper_na;
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 /// What a `best_deck` call without start decks reads: the trainee's deck class (everything of her the deck search reads
-/// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the model state the search runs on,
+/// but the folded chances), her folded event-hint chances per outfit (`set_trainee`: the folded buffer the search runs on,
 /// to the bit), the spark scale c, the bar th (every th <= 0 as one: each gives no seed and passes the ceiling test),
 /// and the work spent before the call (the work budget's tests read it)
 #[derive(PartialEq, Eq, Hash)]
@@ -87,7 +87,7 @@ struct RatioDeck {
     deck: SelectedDeck,
 }
 
-/// One deck search's question beside the chances folded into the model (`set_trainee`).
+/// One deck search's question beside the chances folded into the trainee buffer (`set_trainee`).
 #[derive(Clone, Copy)]
 struct DeckSearch {
     trainee: crate::uma::UmaIndex,
@@ -259,7 +259,7 @@ impl Env<'_> {
         }
         let key = DeckSearchKey {
             class: self.deck_class[t],
-            hint_chances: self.model.ews[t].iter().flatten().map(|x| x.to_bits()).collect(),
+            hint_chances: self.folded_events[t].iter().flatten().map(|x| x.to_bits()).collect(),
             spark_scale: c.to_bits(),
             bar: if th <= 0.0 { 0 } else { th.to_bits() },
             work: self.work,
@@ -457,7 +457,7 @@ impl Env<'_> {
         } else {
             let n0 = self.space.nodes.get();
             let SearchOutcome { decks: r, incomplete } = self.space.search(
-                &self.model,
+                &self.deck_chances(),
                 &[t],
                 &[uid],
                 &[SearchClause { lineages: vec![LineageChance { trainee: 0, inheritance: 0.0 }], threshold: 0.0 }],
@@ -475,7 +475,7 @@ impl Env<'_> {
             }
         };
         let score = |env: &Env, sel: &SelectedDeck| {
-            joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler_cards, ntar, false)[0].all
+            joint_b(env.model, env.joint_query(t), &env.ents_of(sel), sel.filler_cards, ntar, false)[0].all
         };
         let mut best = (score(self, &sel), sel);
         *scored += 1;
@@ -498,7 +498,7 @@ impl Env<'_> {
         crate::deck::joint::CF_ON.with(|x| x.set(true));
         crate::deck::joint::CF_LIM.with(|x| x.set(n0.saturating_add(budget.saturating_sub(work) / CF_NODE_WORK)));
         let SearchOutcome { decks: mut more, incomplete } = self.space.search(
-            &self.model,
+            &self.deck_chances(),
             &[t],
             &[uid],
             &[SearchClause {
@@ -523,7 +523,7 @@ impl Env<'_> {
             }
             let k = self.space.sel_class(&s);
             let e = self.ents_of(&s);
-            if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
+            if let Some(ub) = upper_na(self.model, self.joint_query(t), &e, s.filler_cards) {
                 work += 25;
                 if ub[0] * (1.0 + 1e-9) < best.0.max(the) {
                     continue;
@@ -571,7 +571,7 @@ impl Env<'_> {
         let seed =
             if th.is_finite() && th > 0.0 { th / (rho * c * (1.0 + 1e-9)) * (1.0 - 1e-12) } else { f64::NEG_INFINITY };
         let SearchOutcome { decks: r, incomplete } = self.space.search(
-            &self.model,
+            &self.deck_chances(),
             &[t],
             &[uid],
             &[SearchClause { lineages: vec![LineageChance { trainee: 0, inheritance: 0.0 }], threshold: 0.0 }],
@@ -599,7 +599,7 @@ impl Env<'_> {
             return CappedSearch { result: DeckRes::Bounded, product_deck: Some(ValuedDeck { value: pv, deck: sel }) };
         }
         let score = |env: &Env, sel: &SelectedDeck| {
-            joint_b(&env.model, t, &[0.0], &env.ents_of(sel), sel.filler_cards, ntar, false)[0].all
+            joint_b(env.model, env.joint_query(t), &env.ents_of(sel), sel.filler_cards, ntar, false)[0].all
         };
         let product_deck = Some(ValuedDeck { value: pv, deck: sel.clone() });
         let mut best = (score(self, &sel), sel);
@@ -626,7 +626,7 @@ impl Env<'_> {
             crate::deck::joint::SB_ON.with(|c| c.set(true));
             crate::deck::joint::SB_USED.with(|c| c.set(0));
             let SearchOutcome { decks: mut more, incomplete } = self.space.search(
-                &self.model,
+                &self.deck_chances(),
                 &[t],
                 &[uid],
                 &[SearchClause { lineages: vec![LineageChance { trainee: 0, inheritance: 0.0 }], threshold: best.0 }],
@@ -673,7 +673,7 @@ impl Env<'_> {
                     continue;
                 }
                 let e = self.ents_of(&s);
-                if let Some(ub) = upper_na(&self.model, t, &[0.0], &e, s.filler_cards) {
+                if let Some(ub) = upper_na(self.model, self.joint_query(t), &e, s.filler_cards) {
                     self.work += 25;
                     if ub[0] * (1.0 + 1e-9) < best.0 {
                         continue;

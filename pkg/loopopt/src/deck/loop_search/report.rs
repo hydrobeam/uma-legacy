@@ -5,7 +5,7 @@ use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
 use crate::data::dot;
 use crate::deck::dominance::PDeck;
-use crate::deck::joint::{JointChances, JointExt, joint_b, joint_fast};
+use crate::deck::joint::{JointChances, JointExt, JointQuery, joint_b, joint_fast};
 use crate::deck::space::{SPT, UCHK};
 use crate::optimize::members;
 use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
@@ -127,7 +127,14 @@ impl Multi<'_> {
                 for t in 0..nm {
                     let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
                     let qt: Vec<f64> = ls.iter().map(|&l| inheritance_chances[l]).collect();
-                    let j = joint_b(self.inputs.model, members[t], &qt, &e, fl, self.requested_target_count, true);
+                    let j = joint_b(
+                        self.inputs.model,
+                        JointQuery::unfolded(self.inputs.model, members[t], &qt),
+                        &e,
+                        fl,
+                        self.requested_target_count,
+                        true,
+                    );
                     for (i, &l) in ls.iter().enumerate() {
                         per_l[l] = j[i];
                     }
@@ -199,7 +206,15 @@ impl Multi<'_> {
                 sets: vec![0.0],
                 per_outfit: vec![],
             };
-            joint_fast(model, member_slice[t], &[inheritance_chances[l]], e, fl, ntar, false, Some(&mut ext));
+            joint_fast(
+                model,
+                JointQuery::unfolded(model, member_slice[t], &[inheritance_chances[l]]),
+                e,
+                fl,
+                ntar,
+                false,
+                Some(&mut ext),
+            );
             let o = per_l[l].outfit;
             let mut g = vec![1.0f64];
             for _ in target_count..ntar {

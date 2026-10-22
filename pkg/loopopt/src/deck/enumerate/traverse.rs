@@ -12,7 +12,7 @@ use crate::deck::space::{
     DeckSpace, Dominator, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck, TraversalEntryGroup,
 };
 use crate::deck::state_bound::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
-use crate::skills::Model;
+use crate::skills::DeckChances;
 use std::collections::HashMap;
 /// Immutable controls selected before traversal. Scalar copies do not change the search's buffers.
 #[derive(Clone, Copy)]
@@ -74,7 +74,7 @@ impl DeckSpace<'_> {
     /// tables and the depth-first walk of its decks (`DeckSearchContext::visit`), until one ends the search.
     pub(crate) fn traverse_configurations(
         &self,
-        model: &Model,
+        chances: &DeckChances,
         clauses: &[SearchClause],
         controls: SearchControl,
         tables: PreparedTables<'_>,
@@ -91,7 +91,7 @@ impl DeckSpace<'_> {
     ) -> SearchOutcome {
         let t_dfs = Instant::now();
         let PreparedSearch { context, mut scratch, mut results } =
-            DeckSearchContext::prepare(self, model, clauses, controls, tables, scratch, clause_value);
+            DeckSearchContext::prepare(self, chances, clauses, controls, tables, scratch, clause_value);
         let mut order = ConfigOrder::new(queue, controls);
         while let Some(configuration) = order.next(self, results.best_value, bounds) {
             if context.past_bar(&configuration, &results) {
@@ -162,7 +162,7 @@ pub(crate) struct ParentRatioBounds {
 /// What every configuration of one traversal reads: the search, its controls and tables, and `clause_value`.
 pub(crate) struct DeckSearchContext<'run, 'space, V> {
     pub(crate) space: &'run DeckSpace<'space>,
-    pub(crate) model: &'run Model<'run>,
+    pub(crate) chances: &'run DeckChances<'run>,
     pub(crate) clauses: &'run [SearchClause],
     pub(crate) controls: SearchControl,
     pub(crate) tables: PreparedTables<'run>,
@@ -202,7 +202,7 @@ struct PreparedSearch<'run, 'space, Value> {
 impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContext<'run, 'space, V> {
     fn prepare(
         space: &'run DeckSpace<'space>,
-        model: &'run Model<'run>,
+        chances: &'run DeckChances<'run>,
         clauses: &'run [SearchClause],
         controls: SearchControl,
         tables: PreparedTables<'run>,
@@ -216,7 +216,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
         let inheritance_chances: Vec<f64> = tables.outfit_rows.iter().map(|x| x.inheritance).collect();
         let context = Self {
             space,
-            model,
+            chances,
             clauses,
             controls,
             tables,
@@ -338,7 +338,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             sbc,
             &groups,
             &configuration.groups,
-            search.model,
+            search.chances.model,
             LandingBoundTables {
                 factors: tables.landing_factors,
                 entry_rows: tables.state_rows,

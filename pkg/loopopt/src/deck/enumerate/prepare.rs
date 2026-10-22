@@ -12,12 +12,12 @@ use crate::deck::enumerate::{
 use crate::deck::joint::{CF_LIM, CF_ON, LandPre, SB_ON, SB_USED, cf_check, sb_mode, src_levels};
 use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SPT, SelectedDeck, gm_g, gm_w, top_desc};
 use crate::deck::state_bound::{CapFreeRatios, LandingBoundTables};
-use crate::skills::Model;
+use crate::skills::DeckChances;
 impl DeckSpace<'_> {
     /// Resolve legality and proof modes before preparing configuration bounds or visiting a deck.
     pub(crate) fn configure_search(
         &self,
-        model: &Model,
+        chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
         clauses: &[SearchClause],
@@ -33,7 +33,7 @@ impl DeckSpace<'_> {
             return Err(SearchOutcome { decks: vec![], incomplete: None });
         }
         let crate::deck::space::ReducedEntries { entries: legal_rc, set_id } =
-            self.reduced_cached(model, trainees, trainee_ids);
+            self.reduced_cached(chances.model, trainees, trainee_ids);
         let legal_tables = self.legal_tabs(&legal_rc, set_id, trainee_ids);
         if legal_tables.too_many_characters {
             return Err(SearchOutcome { decks: vec![], incomplete: Some(SearchStop::CharacterLimit) });
@@ -43,7 +43,7 @@ impl DeckSpace<'_> {
         let filler_kind_index = self.kinds_all.iter().position(|&k| k == ChainKind::FILLER).unwrap();
         let kind_place_values: Vec<u64> = (0..kind_count).map(|i| 7u64.pow(i as u32)).collect();
         assert!(kind_count < 64, "{kind_count} chain kinds: the packed key holds fewer than 64");
-        let fixed = model.fixed_factor();
+        let fixed = chances.model.fixed_factor();
         // the state-conditioned node bound (SBOUND; the career's band pass, one trainee): per legal entry its miss rows
         // Per chain level; the ordinary bound is off when an entry fails group_assoc certification (`state_value`).
         // The cap-free band (`CF_ON`, one trainee at one chance; `Env::best_deck_cf`): two proven bounds at every node and
@@ -92,12 +92,12 @@ impl DeckSpace<'_> {
         };
         // the trainee's `land_factor` per (outfit, target), row o * target_count + k (`LandPre`: the same values)
         let landing_factors: Vec<LandPre> = if state_bound_mode > 0 {
-            (0..model.opts[bound_trainee].len())
+            (0..chances.model.opts[bound_trainee].len())
                 .flat_map(|o| {
                     (0..target_count).map(move |k| {
                         LandPre::new(
-                            model.opts[bound_trainee][o].coverage[k],
-                            model.ews[bound_trainee][o][k],
+                            chances.model.opts[bound_trainee][o].coverage[k],
+                            chances.event_chances[bound_trainee][o][k],
                             bound_inheritance,
                         )
                     })
@@ -151,7 +151,7 @@ impl DeckSpace<'_> {
     /// these tables and their lazy caches for both phases; none need copying or dynamic dispatch.
     pub(crate) fn search_with_bounds(
         &self,
-        model: &Model,
+        chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         clauses: &[SearchClause],
         setup: SearchSetup,
@@ -188,7 +188,7 @@ impl DeckSpace<'_> {
             fixed
                 * cl.lineages
                     .iter()
-                    .map(|&LineageChance { trainee: k, inheritance: q }| model.trainee_fast(trainees[k], q, dw, dg))
+                    .map(|&LineageChance { trainee: k, inheritance: q }| chances.trainee_fast(trainees[k], q, dw, dg))
                     .sum::<f64>()
         };
         // every chance and outfit odd in [0, 1] and a fixed factor >= 0: then a deck's value rises with each of its odds
@@ -198,7 +198,7 @@ impl DeckSpace<'_> {
         let valid = fixed >= 0.0
             && clauses.iter().all(|cl| {
                 cl.lineages.iter().all(|&LineageChance { trainee: k, inheritance: q }| {
-                    in01(q) && model.ews[trainees[k]].iter().flatten().all(|&x| in01(x))
+                    in01(q) && chances.event_chances[trainees[k]].iter().flatten().all(|&x| in01(x))
                 })
             });
         let use_dominance = best && valid;
@@ -211,7 +211,7 @@ impl DeckSpace<'_> {
         let counts = self.counts_all();
         let groups_all: Vec<&Vec<usize>> = by_kind.iter().chain(std::iter::once(pal_entries)).collect();
         // the cap-free band's ratio tables (`CapFreeRatios`), built on first use
-        let cap_free_outfit_count = if cap_free { model.opts[bound_trainee].len() } else { 0 };
+        let cap_free_outfit_count = if cap_free { chances.model.opts[bound_trainee].len() } else { 0 };
         let cf_ratios = CapFreeRatios::new(
             LandingBoundTables {
                 factors: &landing_factors,
@@ -252,7 +252,7 @@ impl DeckSpace<'_> {
             divisors,
             alternative_columns,
             column_count,
-        } = prepare_outfit_bounds(model, trainees, clauses, target_count);
+        } = prepare_outfit_bounds(chances, trainees, clauses, target_count);
         // a card's ratio for column c (its single-card odds x, y): N's (a split column), the plain ratio, or infinite
         let ratio_at = |c: usize, x: &[f64], y: &[f64]| -> f64 {
             let i = row_indices[c];
@@ -261,7 +261,7 @@ impl DeckSpace<'_> {
             if zero_masks[c] != 0 {
                 outfits[i].eval_in(q, x, y, nonzero_masks[c]) / divisors[c]
             } else if empty_values[i] > 0.0 {
-                model.outfit_fast(u, o, q, x, y) / empty_values[i]
+                chances.outfit_fast(u, o, q, x, y) / empty_values[i]
             } else {
                 f64::INFINITY
             }
@@ -488,7 +488,7 @@ impl DeckSpace<'_> {
             c.set(v);
         });
         self.traverse_configurations(
-            model,
+            chances,
             clauses,
             controls,
             PreparedTables {

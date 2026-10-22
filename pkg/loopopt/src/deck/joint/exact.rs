@@ -301,8 +301,7 @@ impl JointScratch {
 /// `joint_eval` with reused buffers from `scratch`.
 pub(crate) fn joint_eval_in(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     prepared: &JointPrep,
     requested_target_count: usize,
     all_but_one: bool,
@@ -312,7 +311,7 @@ pub(crate) fn joint_eval_in(
 ) -> Vec<JointChances> {
     evaluate_prepared(
         model,
-        JointQuery { trainee: u, inheritance_chances },
+        query,
         prepared,
         JointOptions { target_count: requested_target_count, all_but_one, marginals },
         extension,
@@ -369,7 +368,7 @@ fn evaluate_prepared(
         }
         for (qi, &q) in query.inheritance_chances.iter().enumerate() {
             for (o, OutfitOption { coverage: st, .. }) in outfits.iter().enumerate() {
-                let ew = &model.ews[query.trainee][o];
+                let ew = &query.event_chances[o];
                 let base = (qi * outfit_count + o) * target_count;
                 for k in 0..target_count {
                     let lp = LandPre::new(st[k], ew[k], q);

@@ -193,6 +193,43 @@ pub(crate) struct Model<'data> {
     pub(crate) ews: UmaTable<Vec<Vec<f64>>>,
 }
 
+/// Read-only outfit data and the event chances selected for one deck search.
+/// Loop searches borrow `Model::ews`; career searches borrow their reusable folded buffers.
+pub(crate) struct DeckChances<'search> {
+    pub(crate) model: &'search Model<'search>,
+    pub(crate) event_chances: &'search UmaTable<Vec<Vec<f64>>>,
+}
+
+impl DeckChances<'_> {
+    pub(crate) fn trainee_fast(&self, u: UmaIndex, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+        let mut best = 0.0f64;
+        for o in 0..self.model.sts[u].len() {
+            let p = self.outfit_fast(u, o, q, dw, dg);
+            if p > best {
+                best = p;
+            }
+        }
+        best
+    }
+    #[inline]
+    pub(crate) fn outfit_fast(&self, u: UmaIndex, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+        outfit_value(&self.model.sts[u][o], &self.event_chances[u][o], q, dw, dg)
+    }
+    /// Prepare one outfit and its selected event chances for repeated bound evaluations.
+    pub(crate) fn outfit_pre(&self, u: UmaIndex, o: usize) -> OutfitPre {
+        OutfitPre::new(&self.model.sts[u][o], &self.event_chances[u][o])
+    }
+}
+
+#[inline]
+fn outfit_value(st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+    let mut p = 1.0f64;
+    for k in 0..st.len() {
+        p *= land_dw(st[k], dw[k], dg[k], ew[k], q);
+    }
+    p
+}
+
 impl<'data> Model<'data> {
     pub(crate) fn new(d: &'data Data, sk: &SkillsRaw, job: &'data SkillJob) -> Self {
         let uncertain: Vec<usize> = (0..job.targets.len()).filter(|&i| job.targets[i].guaranteed != 2).collect();
@@ -397,22 +434,16 @@ impl<'data> Model<'data> {
         }
         best
     }
+    pub(crate) const fn deck_chances(&self) -> DeckChances<'_> {
+        DeckChances { model: self, event_chances: &self.ews }
+    }
     pub(crate) fn fixed_factor(&self) -> f64 {
         self.fixed()
     }
     /// `trainee_fast` for one outfit option `o` of trainee `u`.
     #[inline]
     pub(crate) fn outfit_fast(&self, u: UmaIndex, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
-        let (st, ew) = (&self.sts[u][o], &self.ews[u][o]);
-        let mut p = 1.0f64;
-        for k in 0..st.len() {
-            p *= land_dw(st[k], dw[k], dg[k], ew[k], q);
-        }
-        p
-    }
-    /// `outfit_fast` for many calls on one outfit: its inputs resolved and prepared once (`OutfitPre`)
-    pub(crate) fn outfit_pre(&self, u: UmaIndex, o: usize) -> OutfitPre {
-        OutfitPre::new(&self.sts[u][o], &self.ews[u][o])
+        outfit_value(&self.sts[u][o], &self.ews[u][o], q, dw, dg)
     }
     pub(crate) fn n_outfits(&self, u: UmaIndex) -> usize {
         self.sts[u].len()
