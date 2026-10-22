@@ -164,6 +164,9 @@ IndexedDB.
 - **Career planner:** `uv run val/planval.py pkg/loopopt/target/release/loopopt TAG` runs the nine plan jobs in
   `val/plan/` and compares each whole output with `val/plan/ref__*.out`; `val/mono.py` checks that adding a veteran
   never raises the planner's estimate; `val/capaudit.py` checks the exact caps.
+- **Policy simulator:** `uv run val/simval.py pkg/loopopt/target/release/loopopt TAG` runs the five short simulator
+  jobs in `val/sim/jobs.json` (each policy on `val/sim/pools/pool4.json`, about 6 s) and compares each whole output,
+  wall clocks aside, with `val/sim/ref__*.out` (`val/same.py TAG --sim`).
 - **Exactness:** `uv run val/owncheck.py BIN 3 "Yaeno Muteki"` and `uv run val/permcheck.py BIN 3` check the search
   against brute force on small owned sets; `uv run val/joint_check.py TAG` recomputes every deck result's odds
   independently.
@@ -175,7 +178,8 @@ IndexedDB.
 
 `.github/workflows/ci.yml` runs on every push to main and every pull request, with the same `./build.sh` steps:
 - **solver:** `lint`, `native` (release build, clippy, tests), then `valq ci` with `val/same.py ci`, `val/planval.py`
-  with `val/same.py ci --plan` (every output byte-identical to the references, work counters included) and `val/mono.py`.
+  with `val/same.py ci --plan` (every output byte-identical to the references, work counters included), `val/mono.py`
+  and `val/simval.py` (the policy simulator's five jobs against `val/sim/ref__*`).
 - **page:** `wasm page` (no game art in a clone: the page shows initials) and `testq` (Chromium); the checks that need
   the art skip themselves.
 
