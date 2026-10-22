@@ -65,19 +65,14 @@ pub(in crate::deck::career::sim) struct OwnTrio {
     pub(in crate::deck::career::sim) finisher_cost: f64,
 }
 
-/// V over the trios at step costs c1
+/// V over the trios at step costs c1 (per candidate)
 pub(in crate::deck::career::sim::plan) fn trio_v(c1: &[f64], combos: &[Trio]) -> f64 {
     // (a plain comparison: no value here is NaN, so the same minimum as f64::min)
     let mut best = f64::INFINITY;
-    for &Trio {
-        candidate_a: CandidateIndex(ia),
-        candidate_b: CandidateIndex(ib),
-        finisher_cost: c3,
-        a_uses_existing: ra,
-        b_uses_existing: rb,
-    } in combos
-    {
-        let v = (if ra { 0.0 } else { c1[ia] }) + (if rb { 0.0 } else { c1[ib] }) + c3;
+    for trio in combos {
+        let a_cost = if trio.a_uses_existing { 0.0 } else { c1[trio.candidate_a.0] };
+        let b_cost = if trio.b_uses_existing { 0.0 } else { c1[trio.candidate_b.0] };
+        let v = a_cost + b_cost + trio.finisher_cost;
         if v < best {
             best = v;
         }
@@ -92,12 +87,29 @@ pub(in crate::deck::career::sim::plan) fn trio_v(c1: &[f64], combos: &[Trio]) ->
 /// (the wasm page's memory).
 pub(in crate::deck::career::sim) struct Memo<K, V> {
     map: FxMap<K, V>,
-    look: u64,
-    hit: u64,
-    off: bool,
-    kind: usize,
-    cap: usize,
+    lookups: u64,
+    hits: u64,
+    /// Gated off (or off from the start, `PLAN_MEMO_OFF`): every call computes.
+    disabled: bool,
+    /// Which memo this is, for its counters in `MEMO_STATS`.
+    kind: MemoKind,
+    /// Entries past which the map is cleared.
+    capacity: usize,
 }
+
+/// The memo kinds, by their counters' place in `MEMO_STATS` (lookups, hits and gated-off memos at 3 x kind).
+#[derive(Clone, Copy)]
+enum MemoKind {
+    /// `Cont::plan`'s results.
+    Plan = 0,
+    /// `Cont::cost_lo`'s results.
+    CostLowerBound = 1,
+}
+
+/// `MEMO_STATS`' places after the memo kinds': Cont refits and the cap's clears.
+const REFITS_STAT: usize = 6;
+
+const CLEARS_STAT: usize = 7;
 
 const MEMO_PROBE: u64 = 4096;
 
@@ -117,47 +129,53 @@ impl SameBits for f64 {
     }
 }
 
-impl SameBits for (f64, i32, f64) {
+impl SameBits for BuildPlan {
     fn same_bits(&self, o: &Self) -> bool {
-        self.0.same_bits(&o.0) && self.1 == o.1 && self.2.same_bits(&o.2)
+        self.expected_careers.same_bits(&o.expected_careers)
+            && self.builds == o.builds
+            && self.grind_odds.same_bits(&o.grind_odds)
     }
 }
 
 impl<K: std::hash::Hash + Eq, V: Copy + SameBits + std::fmt::Debug> Memo<K, V> {
     // (`PLAN_MEMO_OFF`: every memo off from the start, for the test that compares against no memo)
     // (`PLAN_MEMO_CAP`: another cap, for the test: entries kept long enough to be read after a refit)
-    fn new(kind: usize) -> Self {
-        let e = memo_env();
-        Self { map: FxMap::default(), look: 0, hit: 0, off: e.0, kind, cap: e.2 }
+    fn new(kind: MemoKind) -> Self {
+        let settings = memo_settings();
+        Self { map: FxMap::default(), lookups: 0, hits: 0, disabled: settings.off, kind, capacity: settings.capacity }
     }
     #[inline]
-    fn get_or(&mut self, k: impl FnOnce() -> K, f: impl FnOnce() -> V) -> V {
-        if self.off {
-            return f();
+    fn get_or(&mut self, key: impl FnOnce() -> K, compute: impl FnOnce() -> V) -> V {
+        if self.disabled {
+            return compute();
         }
-        self.look += 1;
-        let k = k();
-        if let Some(&v) = self.map.get(&k) {
-            self.hit += 1;
+        self.lookups += 1;
+        let key = key();
+        if let Some(&value) = self.map.get(&key) {
+            self.hits += 1;
             // (`PLAN_MEMO_CHECK`: every hit computed again and compared bit for bit; tests/plan_memo.rs)
-            if memo_env().1 {
-                let w = f();
-                assert!(v.same_bits(&w), "memo kind {}: hit {v:?}, computed {w:?}", self.kind);
+            if memo_settings().check_hits {
+                let computed = compute();
+                assert!(
+                    value.same_bits(&computed),
+                    "memo kind {}: hit {value:?}, computed {computed:?}",
+                    self.kind as usize
+                );
             }
-            return v;
+            return value;
         }
-        let v = f();
-        if self.look >= MEMO_PROBE && self.hit * MEMO_MIN_HIT < self.look {
-            self.off = true;
+        let value = compute();
+        if self.lookups >= MEMO_PROBE && self.hits * MEMO_MIN_HIT < self.lookups {
+            self.disabled = true;
             self.map = FxMap::default();
-            return v;
+            return value;
         }
-        if self.map.len() >= self.cap {
+        if self.map.len() >= self.capacity {
             self.map.clear();
-            memo_stat(7);
+            memo_stat(CLEARS_STAT);
         }
-        self.map.insert(k, v);
-        v
+        self.map.insert(key, value);
+        value
     }
 }
 
@@ -167,55 +185,70 @@ thread_local! { static MEMO_STATS: std::cell::Cell<[u64; 8]> = const { std::cell
 
 impl<K, V> Drop for Memo<K, V> {
     fn drop(&mut self) {
+        let first = 3 * self.kind as usize;
         MEMO_STATS.with(|c| {
-            let mut s = c.get();
-            s[3 * self.kind] += self.look;
-            s[3 * self.kind + 1] += self.hit;
-            s[3 * self.kind + 2] += u64::from(self.off);
-            c.set(s);
+            let mut stats = c.get();
+            stats[first] += self.lookups;
+            stats[first + 1] += self.hits;
+            stats[first + 2] += u64::from(self.disabled);
+            c.set(stats);
         });
     }
 }
 
-/// (PLAN_MEMO_OFF, PLAN_MEMO_CHECK, PLAN_MEMO_CAP or MEMO_CAP)
-fn memo_env() -> (bool, bool, usize) {
-    static E: std::sync::OnceLock<(bool, bool, usize)> = std::sync::OnceLock::new();
-    *E.get_or_init(|| {
-        (
-            std::env::var("PLAN_MEMO_OFF").is_ok(),
-            std::env::var("PLAN_MEMO_CHECK").is_ok(),
-            std::env::var("PLAN_MEMO_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(MEMO_CAP),
-        )
+/// The memos' test settings, read from the environment once.
+#[derive(Clone, Copy)]
+struct MemoSettings {
+    /// `PLAN_MEMO_OFF`
+    off: bool,
+    /// `PLAN_MEMO_CHECK`
+    check_hits: bool,
+    /// `PLAN_MEMO_CAP`, else MEMO_CAP
+    capacity: usize,
+}
+
+fn memo_settings() -> MemoSettings {
+    static SETTINGS: std::sync::OnceLock<MemoSettings> = std::sync::OnceLock::new();
+    *SETTINGS.get_or_init(|| MemoSettings {
+        off: std::env::var("PLAN_MEMO_OFF").is_ok(),
+        check_hits: std::env::var("PLAN_MEMO_CHECK").is_ok(),
+        capacity: std::env::var("PLAN_MEMO_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(MEMO_CAP),
     })
 }
 
-pub(in crate::deck::career::sim::plan) fn memo_stat(i: usize) {
+fn memo_stat(place: usize) {
     MEMO_STATS.with(|c| {
-        let mut s = c.get();
-        s[i] += 1;
-        c.set(s);
+        let mut stats = c.get();
+        stats[place] += 1;
+        c.set(stats);
     });
+}
+
+/// Count a Cont refit for `PLAN_MEMO`.
+pub(in crate::deck::career::sim::plan) fn count_refit() {
+    memo_stat(REFITS_STAT);
 }
 
 pub(in crate::deck::career::sim::plan) struct MemoReport;
 
 impl Drop for MemoReport {
     fn drop(&mut self) {
-        let s = MEMO_STATS.with(|c| c.replace([0; 8]));
+        let stats = MEMO_STATS.with(|c| c.replace([0; 8]));
         if std::env::var("PLAN_MEMO").is_ok() {
-            let r = |l: u64, h: u64| if l == 0 { 0.0 } else { 100.0 * h as f64 / l as f64 };
+            let hit_percent =
+                |lookups: u64, hits: u64| if lookups == 0 { 0.0 } else { 100.0 * hits as f64 / lookups as f64 };
             eprintln!(
                 "PLAN_MEMO plan lookups {} hits {} ({:.1}%) off {} | cost_lo lookups {} hits {} ({:.1}%) off {} | refits {} clears {}",
-                s[0],
-                s[1],
-                r(s[0], s[1]),
-                s[2],
-                s[3],
-                s[4],
-                r(s[3], s[4]),
-                s[5],
-                s[6],
-                s[7]
+                stats[0],
+                stats[1],
+                hit_percent(stats[0], stats[1]),
+                stats[2],
+                stats[3],
+                stats[4],
+                hit_percent(stats[3], stats[4]),
+                stats[5],
+                stats[REFITS_STAT],
+                stats[CLEARS_STAT]
             );
         }
     }
@@ -232,24 +265,44 @@ pub(in crate::deck::career::sim) struct Cont {
     pub(in crate::deck::career::sim::plan) lam: f64,
     pub(in crate::deck::career::sim::plan) phi: f64,
     pub(in crate::deck::career::sim::plan) pinf: f64,
-    /// per n (0..=CONT_N): the careers built through the n-th success (the sum `plan` takes, in its order), and (1 - phi)^n:
-    /// `plan` reads them instead of evaluating the powers per call (the same expressions, so the same values)
-    pub(in crate::deck::career::sim::plan) tab: std::rc::Rc<Vec<(f64, f64)>>,
+    /// per n (0..=CONT_N): `plan` reads them instead of evaluating the powers per call (the same expressions, so the
+    /// same values). Empty in a default Cont.
+    pub(in crate::deck::career::sim::plan) tab: std::rc::Rc<Vec<ContStep>>,
     /// `plan`'s and `cost_lo`'s results by the bits of p. Exact: both read p and lam, phi, pinf and tab alone, which are
     /// set once in `new` and never written after (private fields; a refit makes new Conts). A clone shares the memos and
     /// carries the same parameters; a new or default Cont gets its own
     pub(in crate::deck::career::sim::plan) memo: std::rc::Rc<ContMemo>,
 }
 
+/// One row of a Cont's table, for n successes.
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim) struct ContStep {
+    /// The careers built through the n-th success (the sum `plan` takes, in its order).
+    pub(in crate::deck::career::sim::plan) careers_built: f64,
+    /// (1 - phi)^n: the share of the log-odds gap to pinf left after n successes.
+    pub(in crate::deck::career::sim::plan) gap_left: f64,
+}
+
+/// What `Cont::plan` chooses at odds p: build `builds` successes, then grind.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::deck::career::sim::plan) struct BuildPlan {
+    /// Expected careers to her 8/8.
+    pub(in crate::deck::career::sim::plan) expected_careers: f64,
+    /// Successes built before grinding.
+    pub(in crate::deck::career::sim::plan) builds: i32,
+    /// Her odds once building stops.
+    pub(in crate::deck::career::sim::plan) grind_odds: f64,
+}
+
 pub(in crate::deck::career::sim) struct ContMemo {
-    plan: std::cell::RefCell<Memo<u64, (f64, i32, f64)>>,
-    lo: std::cell::RefCell<Memo<u64, f64>>,
+    plan: std::cell::RefCell<Memo<u64, BuildPlan>>,
+    cost_lower_bound: std::cell::RefCell<Memo<u64, f64>>,
 }
 
 fn cont_memo() -> std::rc::Rc<ContMemo> {
     std::rc::Rc::new(ContMemo {
-        plan: std::cell::RefCell::new(Memo::new(0)),
-        lo: std::cell::RefCell::new(Memo::new(1)),
+        plan: std::cell::RefCell::new(Memo::new(MemoKind::Plan)),
+        cost_lower_bound: std::cell::RefCell::new(Memo::new(MemoKind::CostLowerBound)),
     })
 }
 
@@ -273,42 +326,41 @@ impl Cont {
         let mut tab = Vec::with_capacity(CONT_N + 1);
         let mut built = 0.0f64;
         for n in 0..=CONT_N as i32 {
-            let b = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY));
-            tab.push((b, r.powi(n)));
-            built = b;
+            let careers_built = built + 1.0 / (lam * r.powi(n).powf(LAM_DECAY));
+            tab.push(ContStep { careers_built, gap_left: r.powi(n) });
+            built = careers_built;
         }
         Self { lam, phi, pinf, tab: std::rc::Rc::new(tab), memo: cont_memo() }
     }
-    /// (expected careers to her 8/8 from odds p, the best number of successes before grinding, the odds then): build n
-    /// successes (sum of 1 / lam_j careers), then grind at p_n; the best n
-    pub(in crate::deck::career::sim::plan) fn plan(&self, p: f64) -> (f64, i32, f64) {
+    /// The best plan from odds p: build n successes (sum of 1 / lam_j careers), then grind at p_n; the best n
+    pub(in crate::deck::career::sim::plan) fn plan(&self, p: f64) -> BuildPlan {
         if p <= 0.0 {
-            return (f64::INFINITY, 0, p);
+            return BuildPlan { expected_careers: f64::INFINITY, builds: 0, grind_odds: p };
         }
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p {
-            return (1.0 / p, 0, p);
+            return BuildPlan { expected_careers: 1.0 / p, builds: 0, grind_odds: p };
         }
         self.memo.plan.borrow_mut().get_or(|| p.to_bits(), || self.plan_n(p))
     }
     /// `plan` past its early returns (the first stop of the building loop). Past them lam > 0, which only `Cont::new`
     /// makes (with its table; `rolls_in` refuses a stored Cont with lam and phi > 0 but no table)
-    fn plan_n(&self, p: f64) -> (f64, i32, f64) {
+    fn plan_n(&self, p: f64) -> BuildPlan {
         debug_assert!(self.tab.len() > CONT_N, "plan_n needs the continuation's table");
         let lr = (p / self.pinf).ln();
         let t = &self.tab;
         let (mut n, mut best) = (0usize, 1.0 / p);
         while n < CONT_N {
-            let x = t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp());
+            let x = t[n].careers_built + 1.0 / (self.pinf * (lr * t[n + 1].gap_left).exp());
             if x >= best {
                 break;
             }
             best = x;
             n += 1;
         }
-        (best, n as i32, self.pinf * (lr * t[n].1).exp())
+        BuildPlan { expected_careers: best, builds: n as i32, grind_odds: self.pinf * (lr * t[n].gap_left).exp() }
     }
     pub(in crate::deck::career::sim::plan) fn cost(&self, p: f64) -> f64 {
-        self.plan(p).0
+        self.plan(p).expected_careers
     }
     /// a lower bound on `cost` at every odds up to p: the minimum over every n (not the first local one `plan` stops at).
     /// Each n's cost B_n + 1 / p_n falls as p rises (p_n = pinf exp(ln(p / pinf) r^n) rises with p), so this minimum falls
@@ -320,7 +372,7 @@ impl Cont {
         if self.lam <= 0.0 || self.phi <= 0.0 || self.pinf <= p {
             return 1.0 / p;
         }
-        self.memo.lo.borrow_mut().get_or(|| p.to_bits(), || self.cost_lo_n(p))
+        self.memo.cost_lower_bound.borrow_mut().get_or(|| p.to_bits(), || self.cost_lo_n(p))
     }
     /// `cost_lo` past its early returns (every n: CONT_N exp; `outcome_hi` asks for it per outcome and candidate; the
     /// table as in `plan_n`)
@@ -332,15 +384,15 @@ impl Cont {
         // building alone reaches the best found no later n can be lower: the scan stops there, the same minimum
         let t = &self.tab;
         for n in 0..CONT_N {
-            if t[n].0 >= best {
+            if t[n].careers_built >= best {
                 break;
             }
-            best = best.min(t[n].0 + 1.0 / (self.pinf * (lr * t[n + 1].1).exp()));
+            best = best.min(t[n].careers_built + 1.0 / (self.pinf * (lr * t[n + 1].gap_left).exp()));
         }
         best
     }
     /// Whether `cost_lb` holds: `plan`'s path past its early returns at every p in (1e-250 pinf, pinf) (lam > 0, 0 < phi <
-    /// 1, pinf finite, the table built: t[n].0 nondecreasing, t[n].1 = (1 - phi)^n >= 0)
+    /// 1, pinf finite, the table built: `careers_built` nondecreasing, `gap_left` = (1 - phi)^n >= 0)
     pub(in crate::deck::career::sim::plan) fn lb_ok(&self) -> bool {
         self.lam > 0.0
             && self.lam.is_finite()
@@ -354,12 +406,12 @@ impl Cont {
     /// LB_SHIFT, 128 cells per binade), memoised in `cell` (direct-mapped by cell): cost_lo(g) (1 - 1e-9), g the cell's top
     /// (bits (key + 1) << LB_SHIFT, above every p in it), where pinf 1e-250 < p and g < pinf. Derived: computed cost(p) >=
     /// computed cost_lo(p) bit for bit (the same x_n expressions; cost_lo's minimum is over every n until the building
-    /// alone t[n].0 reaches its best, so it is at most each x_n, as each is at least its t[n].0, and at most 1/p, where
-    /// `plan` returns one of them). In exact arithmetic on the stored t, X_n(p) = t[n].0 + 1 / (pinf exp(ln(p / pinf)
-    /// t[n+1].1)) and 1/p fall as p rises, so L(p) = min(1/p, min_n<CONT_N X_n(p)) does; each computed x_n is within a
+    /// alone B_n (t[n].careers_built) reaches its best, so it is at most each x_n, as each is at least its B_n, and at
+    /// most 1/p, where `plan` returns one of them). In exact arithmetic on the stored t, X_n(p) = B_n + 1 / (pinf
+    /// exp(ln(p / pinf) r_(n+1))), r_n = t[n].gap_left, and 1/p fall as p rises, so L(p) = min(1/p, min_n<CONT_N X_n(p)) does; each computed x_n is within a
     /// factor 1 +- eps of X_n, eps <= (2 |ln(p / pinf)| + 6) u < 2e-13 here (ln and exp within 1 ulp, as glibc's and the
     /// musl-derived wasm libm are; |ln(p / pinf)| < 576), and L(g) >= cost_lo(g) / (1 + eps) (the n past cost_lo's stop
-    /// are each at least t[n].0 >= its best). So for p < g: cost(p) >= cost_lo(p) >= (1 - eps) L(p) >= (1 - eps) L(g) >=
+    /// are each at least B_n >= its best). So for p < g: cost(p) >= cost_lo(p) >= (1 - eps) L(p) >= (1 - eps) L(g) >=
     /// cost_lo(g) (1 - eps) / (1 + eps) > the bound, rounded once more
     pub(in crate::deck::career::sim::plan) fn cost_lb(&self, p: f64, cell: &mut [(u64, f64); LB_CELLS]) -> Option<f64> {
         if !(p > self.pinf * 1e-250) {
