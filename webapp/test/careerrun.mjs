@@ -7,6 +7,7 @@ export default async function careerrun(b) {
   // the status line's texts, and the workers started (a stopped plan takes its worker with it)
   await pg.evaluate(() => { window.__notes = []; const n = document.getElementById('run-note');
     new MutationObserver(() => { if (window.__notes.at(-1) !== n.textContent) window.__notes.push(n.textContent); }).observe(n, { subtree: true, childList: true, characterData: true });
+    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     const W = window.Worker; window.__workers = 0; window.Worker = function (...a) { window.__workers++; return new W(...a); }; });
   await importDump();
   await pg.waitForFunction(() => window.__careerJobs.some(j => j.next));   // the plan job is in the worker

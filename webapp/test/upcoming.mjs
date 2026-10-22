@@ -25,6 +25,7 @@ export default async function upcoming(b) {
   // R cards stay out by default whatever their date (the page's R-cards switch)
   const rare = new Set(JSON.parse(fs.readFileSync(repoUrl('pkg/loopopt/data/global/web_cards.json'), 'utf8')).cards.filter(c => c.rarity > 1 || c.pal).map(c => c.id));
   check('upcoming: once started it is in the search', then.job && none(then.job.exclude, ids('umas')) && none(then.job.exclude_outfits, ids('outfits'))
+    // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
     && none(then.job.exclude_cards, ids('cards').filter(id => rare.has(id))), JSON.stringify(then.job && then.job.exclude_cards.filter(id => ids('cards').includes(id))));
   check('upcoming: once started its outfits and cards are on the page', then.tiles - now.tiles === ids('outfits').length && then.cards > now.cards,
     `tiles ${now.tiles} -> ${then.tiles}, cards ${now.cards} -> ${then.cards}`);

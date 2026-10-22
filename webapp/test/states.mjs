@@ -3,6 +3,7 @@ import { check, open, busy, settle, kind, until, note, json, AUDIT } from './hel
 export default async function states(b) {
   // what the status line says when the settings can't be searched, and the results on screen meanwhile (kept, dimmed)
   // (window.__trap: the next jobs reach the worker without their job, so they fail inside it, as a solver trap would)
+  // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
   const pg = await open(b, { init: () => { const W0 = window.Worker; window.Worker = function (...a) { const w = new W0(...a), pm = w.postMessage.bind(w);
     w.postMessage = (m, ...r) => pm(m && m.type === 'run' && window.__trap ? { ...m, job: null } : m, ...r); return w; }; } });
   const head = () => pg.evaluate(() => ({ kind: document.getElementById('rhead').dataset.kind, note: document.getElementById('run-note').textContent, act: document.getElementById('r-act').innerText,

@@ -12,7 +12,7 @@ export default async function panels(b) {
   check('deck card panel opens beside the card (desktop), not over the deck below', side.beside && side.top <= 2, JSON.stringify(side));
   const cid = await dc.getAttribute('data-cid');
   await pg.locator('.cpop .sw').click();
-  check('deck card Owned switch updates the card picker', await pg.evaluate((id) => [...document.querySelectorAll('#cards .ct')].some(t => t.querySelector('img') && t.getAttribute('aria-pressed') === 'false'), cid));
+  check('deck card Owned switch updates the card picker', await pg.evaluate((_id) => [...document.querySelectorAll('#cards .ct')].some(t => t.querySelector('img') && t.getAttribute('aria-pressed') === 'false'), cid));
   check('… and greys the card in the result', (await pg.locator('.deck .dc.off').count()) > 0);
   await pg.locator('.cpop .sw').click(); await pg.keyboard.press('Escape');
   check('Escape closes the panel', await pg.evaluate(() => document.querySelector('.cpop').hidden));

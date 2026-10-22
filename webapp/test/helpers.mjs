@@ -51,6 +51,7 @@ const timed = (key, promise, prof = groupProfile()) => { if (!prof) return promi
 async function profile(ctx, pg) {   // the solver's time per job (the worker reports it with each result), fixed sleeps, audits
   const prof = groupProfile(); if (!prof) return;
   await ctx.exposeBinding('__llpSolved', (_, kind, ms) => { prof['solver:' + kind] = (prof['solver:' + kind] || 0) + ms; prof['solver:' + kind + '#'] = (prof['solver:' + kind + '#'] || 0) + 1; prof.solverLog ||= []; prof.solverLog.push(`${kind} ${ms}`); });
+  // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
   await ctx.addInitScript(() => { const W = window.Worker; window.Worker = function (...a) { const w = new W(...a), kinds = new Map(), pm = w.postMessage.bind(w);
     w.postMessage = (m, ...r) => { if (m && m.type === 'run') kinds.set(m.id, m.job.cmd ? m.job.cmd + (m.job.next ? '.next' : '') + (m.job.compare ? '.compare' : '') : 'loop'); return pm(m, ...r); };
     w.addEventListener('message', (e) => { if (e.data?.type === 'result') window.__llpSolved(kinds.get(e.data.id) || '?', Math.round(e.data.ms)); }); return w; }; });
@@ -103,6 +104,7 @@ export async function open(browser, { w = 1440, h = 900, mobile = false, init, b
   await ctx.addInitScript(() => {   // count worker creations/terminations
     const W = window.Worker; window.__made = 0; window.__killed = 0;
     window.__runs = [];   // the jobs sent to the engine, in order
+    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     window.Worker = function (...a) { const w = new W(...a); window.__made++; const t = w.terminate.bind(w); w.terminate = () => { window.__killed++; t(); };
       const pm = w.postMessage.bind(w); w.postMessage = (m, ...r) => { if (m && m.type === 'run') window.__runs.push(m.job); return pm(m, ...r); };
       // window.__hold: the worker's replies wait (a search stays running however fast it is) until window.__release()
@@ -248,6 +250,7 @@ export async function careerPage(b) {
     // then: careerphone checks that)
     try { if (localStorage.getItem('llp:setup-folded') === null) localStorage.setItem('llp:setup-folded', '0'); } catch {}
     const W = window.Worker; window.__careerJobs = []; window.__careerResults = [];
+    // biome-ignore lint/complexity/useArrowFunction: the Worker stand-in is called with `new`, which an arrow function cannot be
     window.Worker = function (...args) { const w = new W(...args), post = w.postMessage.bind(w);
       // (`__rollPatch`: a test's stand-in for a roll's saving, put over the solver's before the page reads it)
       w.addEventListener('message', (e) => { if (e.data?.type === 'result') { if (window.__rollPatch && e.data.r?.next?.roll) Object.assign(e.data.r.next.roll, window.__rollPatch); window.__careerResults.push(e.data.r); } });

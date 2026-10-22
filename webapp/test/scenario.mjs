@@ -27,6 +27,7 @@ export default async function scenario(b) {
   // Unity Cup's guaranteed golds: their gold skill icons on the hint-rate line, named by tooltip and alt text
   const golds = await pg.evaluate(() => { const skl = self.__LLP_DATA['data-skills'], gi = self.__LLP_DATA['data-skillicon'].gold;
     const g = document.querySelector('#scen-menu .stile[data-v="unity"] .ssub .sgolds');
+    // biome-ignore lint/complexity/useOptionalChain: `?.` would turn null into undefined, which the stringified check compares
     return { want: [20049, 20046].map(x => ({ name: skl.find(s => s[0] === x)[2], src: `/skill/${gi[x]}.avif` })), group: g && g.getAttribute('aria-label'),
       got: g ? [...g.querySelectorAll('img')].map(i => ({ alt: i.alt, title: i.title, src: i.getAttribute('src'), h: Math.round(i.getBoundingClientRect().height) })) : [],
       text: g ? g.innerText.trim() : null, others: document.querySelectorAll('#scen-menu .stile:not([data-v="unity"]) .sgolds').length }; });

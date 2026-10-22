@@ -5,7 +5,7 @@
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary, clippy (as in lint), tests
 #   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied; shellcheck on the scripts;
-#            Python: ruff check and ruff format --check (pyproject.toml)
+#            Python: ruff check and ruff format --check (pyproject.toml); the page's JS: Biome, warnings denied (webapp/biome.json)
 #   hooks    use the tracked git hooks (.githooks: the pre-commit formatting check); once per clone
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -65,9 +65,10 @@ step_events() {
 step_native() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; check native; (cd "$C" && cargo build --release 2>&1 | tail -1 && clippy_all && { out=$(cargo test --release 2>&1); rc=$?; printf '%s\n' "$out" | grep -E "^test result|FAILED|panicked|^error"; exit $rc; }); }   # every test binary's result line, any failure, and the tests' exit status
 # clippy as ./build.sh lint runs it (lints chosen in pkg/loopopt/Cargo.toml): quiet unless it finds something
 clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy --quiet --target wasm32-unknown-unknown --lib -- -D warnings; }
-step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; check lint
+step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check lint; step_npm
   (cd "$C" && cargo fmt --check && clippy_all) && uvx --quiet --from shellcheck-py shellcheck "$R/build.sh" "$R/.githooks/pre-commit" \
-    && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check) && echo "lint: clean"; }
+    && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check) \
+    && (cd "$W" && npx --no-install biome lint --error-on-warnings --diagnostic-level=warn) && echo "lint: clean"; }
 step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"; }
 step_wasm() {
   MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
