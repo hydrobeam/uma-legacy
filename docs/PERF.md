@@ -59,6 +59,11 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 
 ## Pitfalls in this codebase
 
+- Loop-search caches and counters live in `LoopSearchState`, passed mutably beside the read-only `Multi` context.
+  Keep this state across certification passes: a lower-cap retry reuses exact results, chance-grid cells and
+  schedules, and starts its allowance from the work already spent. `bb_max` and `sky_top` take their reusable
+  cluster buffers explicitly; their heaps return the same allocation to those buffers. Reporting only reads
+  `Tally`. `DeckSpace`'s interior caches have a separate job-wide lifetime, including its state-bound configurations.
 - Career inheritance folding must reuse `Env::folded_events` in place (`set_ews`'s matching-shape path), including
   the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances, without
   copying them per candidate. `joint_eval_in` still takes explicit scratch; `refolding_reuses_outfit_buffers` checks buffer reuse.
