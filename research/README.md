@@ -33,8 +33,8 @@ use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips sec
 | `s07_hints.py` | §7 training hints: the form study, bases and specialty weights per scenario, the Lv-5 cap, joint draws, spark deficit, held-out and same-card tests |
 | `s08_chains.py` | §8 chain events: the fit of N and its held-out comparison, the marker allowance, final links by pals and by card, the allocation rule, the exact link tables, known misses |
 | `s09_outcomes.py` | §9 measured outcome shares and the choice-rule evidence |
-| `s10_random_events.py` | §10 random card events: the fitted rate, the form comparison, what leaving them out costs on real decks |
-| `s11_conditional.py` | §11 conditional character events: counts, how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
+| `s10_random_events.py` | §10 random card events: the fitted rate and what leaving them out costs on real decks |
+| `s11_conditional.py` | §11 conditional character events: how often they fire in the runs, what leaving them out costs, Tokai Teio's Head-On |
 | `s13_calibration.py` | §13 the calibration against real careers, §3's test on whole careers, §9's certainty checks |
 
 §12 (the composed model) is derived and has no script. Comparisons follow the three rules in *How to read*: same

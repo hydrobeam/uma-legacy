@@ -51,6 +51,7 @@ Each is measured in its section. *How to read* says why a listed miss can be par
 | Chain events | with six chain cards, more chains never start | {{8.never_started_6_chain_cards_observed|.2f}} against {{8.never_started_6_chain_cards_model|.2f}} | 8 |
 | Chain events | individual cards' final links differ beyond chance | $\chi^2$ = {{8.final_links_by_card_chi2|.0f}} on {{8.final_links_by_card_cards|.0f}} cards | 8 |
 | Event choices | prioritised targets' event hints read just below the model | {{13.1_events_only_prioritised_obs_per_pred|.3f}} [{{13.1_events_only_prioritised_ratio_95_pct_low|.3f}}, {{13.1_events_only_prioritised_ratio_95_pct_high|.4f}}] | 9, 13 |
+| Event choices | four outcome shares the model leaves at the equal 0.5 read off it: Tazuna Hayakawa [Tracen Reception]'s finale, Agnes Tachyon [Q≠0] link 1, Marvelous Sunday [Dazzling Day in the Snow] link 3, Light Hello [From the Ground Up]'s finale | {{9.tazuna_finale_concentration|.2f}}, {{9.tachyon_link_1_choice_2_murmur|.2f}}, {{9.marvelous_sunday_link_3_position_pilfer|.2f}}, {{9.light_hello_finale_share|.2f}} | 9 |
 | Left out | targets a deck card's random event can hint | {{10.calibration_obs_per_pred_left_out|.2f}} [{{10.calibration_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_ratio_95_pct_high_left_out|.2f}}] | 10 |
 | Left out | Vodka's own Nimble Navigator | her events give it in {{11.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{11.vodka_any_outfit_nimble_navigator_rows|.0f}} runs | 11 |
 
