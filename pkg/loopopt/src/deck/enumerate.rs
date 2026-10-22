@@ -6,10 +6,10 @@ use config::{ConfigurationQueue, ConfigurationScratch, ConfigurationTables, Pend
 use order::{ConfigOrder, DeckPath};
 use scratch::{ConfigScratch, NodeScratch};
 use traverse::{
-    BorrowTables, ParentRatioBounds, ParentTargetBounds, SearchControl, TraversalInputs, TraversalScratch,
-    TraversalTables,
+    BorrowTables, DeckSearchContext, ParentRatioBounds, ParentTargetBounds, PreparedTables, SearchControl,
+    SearchResults, TraversalScratch,
 };
-use walk::Walk;
+use walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
 mod bounds;
 mod config;
 mod order;
@@ -48,10 +48,10 @@ struct SearchSetup {
     seed: f64,
     rho: f64,
     cap: usize,
-    nu: usize,
+    target_count: usize,
     size: usize,
     nplain: usize,
-    nk: usize,
+    kind_count: usize,
     ki22: usize,
     kpos: Vec<u64>,
     set_id: usize,
@@ -59,16 +59,16 @@ struct SearchSetup {
     // Keep the cached-entry handle alive through traversal, as before extraction.
     legal_entries: std::rc::Rc<Vec<usize>>,
     fixed: f64,
-    cfm: bool,
-    cf_lim: usize,
-    cfs: f64,
-    sbm: u8,
-    sb_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>,
-    sb_bar: f64,
-    sb_u: usize,
-    sb_q: f64,
-    lp: Vec<LandPre>,
-    ccap: [f64; 4],
+    cap_free: bool,
+    cap_free_node_limit: usize,
+    cap_free_check_scale: f64,
+    state_bound_mode: u8,
+    state_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>,
+    state_bound_threshold: f64,
+    bound_trainee: usize,
+    bound_inheritance: f64,
+    landing_factors: Vec<LandPre>,
+    class_caps: [f64; 4],
 }
 
 impl DeckSpace<'_> {
