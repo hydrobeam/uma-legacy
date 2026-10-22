@@ -2,7 +2,7 @@
 decrypted asset bundles.
 
 Collects every uma, outfit and support card id the page can show (both eras' exports), finds its bundle, decodes the
-texture with UnityPy and writes a small AVIF (quality 55) to webapp/img/{kind}/{id}.avif (UI sprites: lossless WebP),
+texture with UnityPy and writes a small AVIF (quality 55, or 60 for scenario character art) to webapp/img/{kind}/{id}.avif (UI sprites: lossless WebP; Enhance textures: lossy WebP),
 plus img/manifest.json (the bundle each image came from, and every id with no bundle). Images already extracted are
 kept unless --force; an older WebP of the same image is removed when its AVIF is written.
 
@@ -22,7 +22,7 @@ kept unless --force; an older WebP of the same image is removed when its AVIF is
                                                              group -> white icon, img/skill_icons_gold.json -> gold
   scen     single/banner/bnr_{image:03d}_text                scenario logo (the scenario picker's title art, Global:
                                                              1 URA Finale, 2 Unity Cup, 3 Grand Concert, 4 Trackblazer,
-                                                             5 Grand Masters (not decrypted locally yet);
+                                                             5 Grand Masters;
                                                              image = single_mode_scenario.scenario_image_id). The
                                                              512x512 texture is shown 1.25x as wide as tall in the
                                                              game (SCEN_ASPECT), so it is widened to 640x512 first,
@@ -63,8 +63,7 @@ SIZE = {
 # the square texture alone looks squeezed (round letters come out tall)
 SCEN_ASPECT = 1.25
 # what the Global client lacks (the Grand Masters scenario's banner art, JP-only skill icons): the JP client's bundle,
-# read from game/jp/bundles/<asset path> when present. The module that fetches and reads the game's own asset index
-# is not published; without these bundles the page keeps its drawn fallbacks.
+# read from game/jp/bundles/<asset path> when present; otherwise the page keeps its drawn fallbacks.
 JP_BUNDLES = os.path.join(R, "game", "jp", "bundles")
 
 
@@ -74,11 +73,7 @@ def jp_bundle(rel):
 
 
 INSET = {"uma": 26, "mob": 26}  # px of the 256 px icon cut inside the visible area: the white ring
-# Outfit icons (chr_icon_{chara}_{dress}_01) are a portrait in a silver frame that sits at the same place in every
-# texture (outer edge x 10-245, y 34/35-248/249; inner picture x 23-232, y 47-235, checked on all 137 icons); ears and
-# hair often stick out above it by 0-20 px. Cropping from the visible area kept the frame's top edge at a different
-# height per uma, with the page's tile colour showing through above it. A fixed square inside the frame is the same
-# for every icon: the picture and its striped background only.
+# Fixed square crop inside the outfit icon frame.
 OUTFIT_BOX = (34, 47, 222, 235)
 ERAS = [("pkg/loopopt/data/global", "game/global/master.mdb"), ("pkg/loopopt/data/jp", "game/jp/master.mdb")]
 
@@ -294,14 +289,8 @@ def ui_sprites(force, manifest):
     return n
 
 
-# dark-mode versions of the light UI sprites (the game has no dark mode): each pixel keeps its hue, saturation and alpha,
-# and its lightness is mapped from the sprite's own range onto a dark one (lo..hi), so the game's shading, sheen and
-# rims survive in dark tones. Written as ui/<key>_dark.webp beside the original.
-# (lo, hi, saturation factor, smoothing radius): the skill tile's art has a narrow lightness range whose compression speckle
-# a full stretch would amplify, so its range is taken between percentiles, its saturation kept and its lightness smoothed
-# face tones set so each dark face stands off the dark panel (#1f2328) by about the CIELAB lightness gap its light face
-# has on white, the skill tile below it (gaps of 12 and 9 read too light): skill tile ~6 (light 14), spark
-# bar ~10 (9), button ~5 (4)
+# Dark sprites keep alpha, remap lightness and adjust saturation; neutral pixels get a lavender tint.
+# (lo, hi, saturation factor, blur radius); CHROMA_CAP uses SHADE to retain shading instead of stretching the range.
 DARK_SPRITES = {
     "spark_white": (0.09, 0.245, 1.0, 0),
     "skill_white": (0.09, 0.235, 1.0, 0),
@@ -323,14 +312,13 @@ CHROMA_CAP = {
     "slot_frame",
     "slot_empty",
 }  # their saturation is capped by the pixel's real chroma
+# Fraction of the source lightness variation retained (default 0.8).
 SHADE = {"skill_white": 0.35}
-# the light rim's tone drifts along the tile (L 0.84 to 0.74, bluer in patches), which darkened per pixel came out as navy
-# smudges; these keys get one even rim instead: the opaque pixels within this many px of the edge, under the face's
-# darkest end (hi - 0.075), as the light rim is under its face, in the face's lavender
+# Uniform lavender rim at lightness hi - 0.075; values set its width in pixels.
 RIM = {"skill_white": 3}
 MIRROR = {
     "skill_white"
-}  # the dark skill tile's face gradient runs the other way (darker left, lighter right); its shape is symmetric   # how much of the light face's shading the dark one keeps (else 0.8): the skill tile's long lavender gradient deepens too far
+}  # the dark skill tile's face gradient runs the other way (darker left, lighter right); its shape is symmetric
 
 
 # the game's Enhance menu buttons (home/ui/texture utx_btn_home_umamusume_00..02: Trainee, Support Cards, Veteran
@@ -439,12 +427,12 @@ def _smooth(t):
     return t * t * (3 - 2 * t)
 
 
-# the Enhance buttons' label band and its fade into the picture, 0..1: the lower band of the square ones, the right of the wide one
 ENH_INSET = {
     "enh_umas": (3, 7, 3),
     "enh_cards": (3, 7, 3),
     "enh_vets": (4, 9, 8),
 }  # the picture's inset from the panel's sides and top, its corner radius, its inset from the panel's foot (the wide one's foot includes its drop shadow), px
+# Label-band weight, 0..1: lower band for square buttons, right band for the wide button.
 ENH_BANDS = {
     "enh_umas": lambda x, y, w, h: _smooth((y / h - 0.66) / 0.12),
     "enh_cards": lambda x, y, w, h: _smooth((y / h - 0.66) / 0.12),
@@ -472,13 +460,13 @@ class RoundedRectangle:
         )
 
     def coverage(self, x, y):
-        """Fraction of a pixel covered by the picture, using the existing 4-by-4 sample grid."""
+        """Fraction of a pixel covered by the picture, using a 4-by-4 sample grid."""
         return sum(self.contains(x + (i + 0.5) / 4, y + (j + 0.5) / 4) for i in range(4) for j in range(4)) / 16
 
 
 def dark_enh(force, manifest):
     """Dark-mode Enhance buttons: the white frame and label band turned dark slate (their faint pattern kept), the art left alone.
-    Inside the band's fade only uncoloured pixels change (chroma, not HLS saturation, which blows up near white)."""
+    Inside the band's fade the tint is reduced with chroma, reaching zero at chroma 0.3 (chroma, not HLS saturation, which blows up near white)."""
     import colorsys
     from PIL import ImageFilter
 
@@ -496,11 +484,7 @@ def dark_enh(force, manifest):
         ys = [y for y in range(h) if px[int(w * 0.03), y][3] > 200]
         xs = [x for x in range(w) if px[x, h - 10][3] > 200]
         y0, y1, x0, x1 = ys[0], ys[-1], xs[0], xs[-1]  # the panel; the art spills over its top
-        # the frame by geometry: the picture is a rounded rectangle inset from the panel's edge (measured on the light
-        # textures: 3 px with 7 px corners on the square ones, 4 px with 9 px corners on the wide one, 8 px above its foot); outside it is frame,
-        # darkened; its 1 px edge blended by how much of the pixel the picture covers (4x4 samples). Coloured art crossing
-        # the frame (the characters' hair over the top) is kept. (Tracing the frame's light pixels leaked into the picture's
-        # light parts; a fixed-width ring left a speckled fringe.)
+        # Use the inset picture geometry to darken the frame; coverage blends its edge, chroma protects coloured art.
         k, rad, kb = ENH_INSET[key]
         picture = RoundedRectangle(left=x0 + k, top=y0 + k, right=x1 - k + 1, bottom=y1 - kb + 1, radius=rad)
         chroma = lambda p: max(p[:3]) - min(p[:3])

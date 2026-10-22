@@ -1,4 +1,4 @@
-"""Every conditional character event (secret and race-result events (GameTora training_events/char, section 4) that gives a skill hint, with its
+"""Every conditional character event (secret and race-result events; GameTora training_events_char, row index 4) that gives a skill hint, with its
 conditions decoded, and a feasibility check of the race conditions against the solver's Global data.json.
 Writes cache/secret_events.md (per uma, then an index by skill). usage: uv run val/secret_events.py [OUT.md]"""
 
@@ -65,7 +65,7 @@ YEAR = {1: "Junior", 2: "Classic", 3: "Senior"}
 
 
 def forced(u):
-    """turn -> set of option indices allowed by a goal that has a single alternative (turns are 1-based in goals)"""
+    """zero-based turn -> allowed option indices for a single-alternative goal (input goal turns are one-based)"""
     out = {}
     for alts in u["goals"]:
         if len(alts) == 1:
@@ -75,7 +75,7 @@ def forced(u):
 
 
 def feasible(character_id, instance_id, year):
-    """'ok' / 'impossible: reason' / 'unknown: reason' for winning race instance `inst` in `year` (None = any)."""
+    """'ok' / 'impossible: reason' / 'unknown: reason' for winning race instance `instance_id` in `year` (None = any)."""
     if character_id not in umas:
         return "unknown: uma not in Global data"
     race_id, _name = race_instances.get(instance_id, (None, str(instance_id)))

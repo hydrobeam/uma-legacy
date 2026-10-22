@@ -1,9 +1,7 @@
 """Render docs/RESEARCH.md from docs/RESEARCH.template.md and the computed values in research/results.json.
 
 A placeholder {{KEY|SPEC}} is replaced by the value at KEY formatted with SPEC: a Python format spec ('.3f', ',.0f',
-'.1%', '+.1f'), with a leading 'u' to print a negative with a typographic minus. Every number the document states that
-the scripts compute comes from here; a placeholder without a value is an error, so the document cannot state a number
-the data did not produce.
+'.1%', '+.1f'), with a leading 'u' to print a negative with a typographic minus. A matching placeholder without a value is an error; literal numbers in the template are not checked.
 
   uv run --group research research/render.py           write docs/RESEARCH.md
   uv run --group research research/render.py --check   exit 1 if docs/RESEARCH.md differs from the rendering"""

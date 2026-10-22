@@ -1,10 +1,10 @@
-"""Section 5, loop structures: the race weights (derived by expanding the six legacy affinities of every lineage of a
+"""Section 6, loop structures: the race weights (derived by expanding the six legacy affinities of every lineage of a
 four-uma loop and a three-uma rotation into shared-win terms o(a, b)) and how often a trainee's own character appears
 among her grandparents in the run records (research/data/runs.jsonl, not included; Independent Training runs from
 uma-it), with how many lineages have the exact shape of a rotation or a loop lineage (by character).
 
 Schedules for shared wins, not odds (derived, then computed on the validation results). The solver picks a structure's
-race schedules to maximise sum over pairs of o(a, b) = sum_r P_a(r) P_b(r), not P-bar directly. P-bar is increasing in
+race schedules to maximise sum over pairs of o(a, b) = sum_r P_a(r) P_b(r), not P-bar directly. P-bar is nondecreasing in
 every o(a, b):
   o(a, b) enters a legacy's affinity A only with coefficient +3 (A_P = pair + pair + 3 o(P, P') + sum_G [tri + 3 o(P, G)],
   A_G = tri + 3 o(P, G));
@@ -15,8 +15,8 @@ every o(a, b):
   nondecreasing in q; the max over the trainee's outfits and the mean over the lineages keep that.
 A schedule attempts race r at a subset of the turns that offer it, each at clamp(bp - pen_k, 0, 100)% <= clamp(bp, 0,
 100)% (pen_k >= 0), so P_a(r) <= Pmax_a(r) = 1 - prod over every turn offering r to a of (1 - clamp(bp, 0, 100)/100), and
-o(a, b) <= o_max(a, b) = sum_r Pmax_a(r) Pmax_b(r) for any schedule. Hence, for a solved loop with its decks fixed, any
-schedule, including one chosen for P-bar directly, scores between P_found and P_ceiling (every pair at o_max), and
+o(a, b) <= o_max(a, b) = sum_r Pmax_a(r) Pmax_b(r) for any schedule. Hence, for a solved loop with its decks fixed, the
+optimal schedule for P-bar scores between P_found and P_ceiling (every pair at o_max), and
 P_floor (every o = 0) is the loop without race affinity. Computed on every deck result of the validation reference
 outputs (val/ref__*.out, val/refpu__*.out) with val/joint_check.py's independent Python recomputation of the exact
 odds, the affinities rebuilt here from the reported pairs' o and relation parts; o itself is recomputed from the
@@ -41,7 +41,7 @@ Overlap = dict[tuple[int, int], float]
 
 def lineage_terms(T: Hashable, P1: Hashable, P2: Hashable, X: Hashable) -> collections.Counter[frozenset[Hashable]]:
     """coefficient of each o(a, b) (unordered pair) in the six affinities of lineage (T, P1, P2, X), in units of 3:
-    A_P = ... + 3 o(P, P') + sum over G in par(P) of 3 o(P, G); A_G = ... + 3 o(P, G) (RESEARCH.md section 5)"""
+    A_P = ... + 3 o(P, P') + sum over G in par(P) of 3 o(P, G); A_G = ... + 3 o(P, G) (RESEARCH.md section 6)"""
     c: collections.Counter[frozenset[Hashable]] = collections.Counter()
     par = {P1: (P2, X), P2: (P1, X)}
     for P, Pp in ((P1, P2), (P2, P1)):
@@ -203,7 +203,7 @@ def o_pb(lp: dict[str, Any], data: dict[str, Any]) -> Overlap:
 
 def lineage_q(L: dict[str, Any], o: Overlap, det: dict[str, Any]) -> tuple[float, list[float]]:
     """q of lineage L when the pairs' shared wins are o: each slot's affinity = its relation part + 3 x its o terms
-    (section 5), r = min(1, b (1 + A/100)) (x gp_rate for a grandparent), q = 1 - prod (1 - r)^inspirations; also the
+    (section 5), r = min(1, b (1 + A/100)), with b multiplied by gp_rate for a grandparent, q = 1 - prod (1 - r)^inspirations; also the
     slots' race parts, to check against the reported ones"""
     (p1, p2), x = L["p"], L["x"]
     par = {p1: (p2, x), p2: (p1, x)}
@@ -255,8 +255,6 @@ class MaxErrors:
 
 
 class ScheduleBound(NamedTuple):
-    """schedule_bound()"""
-
     rows: list[ScheduleRow]
     errors: MaxErrors
     penalties: set[int]  # every streak penalty in the eras' data.json

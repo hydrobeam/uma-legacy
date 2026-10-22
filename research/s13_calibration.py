@@ -10,8 +10,8 @@ interval that ratio interval times the mean prediction; where every run gives on
 
   uv run --group research research/s13_calibration.py [--wide]
 
-Steps (outputs under research/data/out/calib/, reused while the jobs and the solver are unchanged):
-  card variants   every card at limit breaks 0-3: hint frequency and increment read at that limit break's level cap
+Steps (outputs under research/data/out/calib/; solver results cached by fingerprint()):
+  card variants   every card at limit breaks 0-3: hint frequency, increment and specialty priority read at that level cap
                   from master.mdb (effect values linear between milestone levels, floored; unique effect from its level)
   jobs            default eight targets (Unity Cup's two golds guaranteed there); --wide: every other skill a deck card
                   or an ancestor's spark could give, in jobs of at most 24 targets, on a seeded 30% sample of the runs
@@ -20,7 +20,7 @@ Steps (outputs under research/data/out/calib/, reused while the jobs and the sol
                   to report8.txt / reportW.txt
 
 Dropped runs: a deck that is not six known cards, an R card in the deck, a trainee outfit not in web_skills.json, the
-same parent twice, shared-G1 counts that do not fit the race list."""
+same parent twice or the trainee as a parent, shared-G1 counts that do not fit the race list."""
 
 import collections, hashlib, json, math, os, random, subprocess, sys, time
 from collections.abc import Callable, Iterable, Sequence
@@ -59,7 +59,7 @@ class CalRow(TypedDict):
     zero: bool  # nothing can give the target: not sent to the solver, every prediction 0
     dg: float  # predicted P(a deck card hints the gold)
     dw: float  # predicted P(a deck card hints the white)
-    q: float  # predicted P(an inspiration of the target in years 2 and 3)
+    q: float  # predicted P(at least one inspiration of the target in year 2 or 3)
     nc: int  # carriers: legacies holding the target's spark
     p: float  # the solver's P(the target lands: acquired and sparked)
     acq: float  # predicted P(acquired, gold or white); 1 for a scenario gold
@@ -73,14 +73,14 @@ class CalRow(TypedDict):
     o_insp_years: int  # observed: years (of 2 and 3) with an inspiration of the target
     o_insp_hits: int  # observed: inspiration hits of the target over both years
     o_insp_src: bool  # observed: a hint credited to Inspiration
-    o_events: bool  # observed: a hint credited to Events (no deck card's events could give it)
+    o_events: bool  # observed: a hint credited to Events
     o_other: bool  # observed: a hint credited to a source neither Inspiration, Events nor a deck card
     prio: bool | None  # the target is on the run's priority list; None when the run shows no list
     pool_lb: int | None  # the lowest limit break among deck cards whose training pool holds it; None: no card
     cards_pool: list[int]  # deck cards whose training pool holds the target
     cards_ev: list[int]  # deck cards whose events can hint the target
     p_pred: float  # predicted landing: p, or the gold's generic spark chance for a scenario gold
-    l_obs: float  # observed-equivalent landing: the spark chance of what was hinted (gold, white or none)
+    l_obs: float  # observed-equivalent landing: spark chance of the hinted or outfit-owned skill (gold, white or none)
 
 
 class RunRows(TypedDict):
@@ -273,13 +273,13 @@ class Model:
         return gs
 
     def spark_groups(self, r: Run) -> set[int]:
-        """skill groups any of the run's four ancestors carries a white spark of"""
+        """skill groups any of the run's six ancestors carries a white spark of"""
         return {g for p in r["parents"] for a in [p] + p["gps"] for g, s in self.sparks(a["factors"]) if s > 0}
 
     def wins(self, affinity: dict[str, list[int]]) -> RaceWins | None:
         """race wins laid out so every pair the model reads shares the record's shared-G1 count: parent 1 wins races
-        0..m1-1 (m1 the most she shares with anyone), her grandparents its first a1 / b1; parent 2 shares the first s12
-        of them and wins new races after m1 for what her grandparents share beyond s12. None when that needs more
+        0..m1-1 (m1 the most she shares with anyone), her parents its first a1 / b1; parent 2 shares the first s12
+        of them and wins new races after m1 for what her parents share beyond s12. None when that needs more
         races than the race list has."""
 
         def shared(pair: str) -> int:
@@ -422,7 +422,7 @@ def build_jobs(
 
 
 def fingerprint(jobdir: str, files: Iterable[str]) -> str:
-    """a hash of the job files and of everything else the solver reads"""
+    """a hash of the jobs, solver, data.json, cards_lb.json and events_lb.json; web_skills.json is not included"""
     h = hashlib.sha256()
     for f in sorted(files):
         h.update(open(os.path.join(jobdir, f + ".json"), "rb").read())
@@ -437,7 +437,6 @@ def fingerprint(jobdir: str, files: Iterable[str]) -> str:
 
 
 def solver_lines(stdout: str) -> list[str]:
-    """the solver's JSON output lines, one per job"""
     return [line for line in stdout.splitlines() if line.startswith("{")]
 
 
@@ -491,8 +490,8 @@ def run_solver(
     share: float | None = None,
     man: list[ManEntry] | None = None,
 ) -> SolverOut:
-    """one process at a time; returns {file id: output}; cached in resf with a fingerprint of everything read. share: the
-    seeded fraction of the manifest's runs whose jobs run (run ids drawn in order)"""
+    """one process at a time; returns {file id: output}; cached in resf using fingerprint(). share: the
+    seeded fraction of the manifest's runs whose jobs run (sampled from sorted run ids)"""
     if share is not None:
         keep = set(random.Random(1).sample(sorted(m.run_id for m in man), round(share * len(man))))
         files = [x for x in files if int(x.split("_")[0]) in keep]
@@ -836,7 +835,7 @@ def is_open(r: CalRow) -> bool:
 
 
 def in_deck_test(r: CalRow) -> bool:
-    """an open target no inspiration touched: the deck's hints alone"""
+    """an open target no inspiration touched; used to compare deck-attributed hints with deck odds"""
     return is_open(r) and not r["o_insp"] and not r["o_insp_src"]
 
 
@@ -884,7 +883,6 @@ def source_kind(r: CalRow) -> str:
 
 
 def one_deck_source(r: CalRow) -> bool:
-    """exactly one deck card can hint the target (by training or event)"""
     return len(set(r["cards_pool"]) | set(r["cards_ev"])) == 1
 
 
@@ -1007,8 +1005,6 @@ def test_values(name: str, s: Stat, fields: Iterable[str] = tuple(STAT), note: s
 
 @dataclass
 class Calibration:
-    """what every test reads"""
-
     rows: list[CalRow]
     runs: list[RunRows]
     report: Report  # the tables go here (report8.txt)
@@ -1524,10 +1520,10 @@ def per_run_tests(cal: Calibration, out: list[Value]) -> PerRunTests:
         Value(S13, "P(all eight): optimism the interval allows (1 / 95% low)", common.div(1, landing["all"].low))
     )
     out.append(Value(S13, "Trackblazer's model P(all)", sum(x.p_all for x in runs if x.scenario == 4)))
-    # the solver's exact P(all) against the product of its per-target p, summed over runs (what 90 runs would have to separate)
+    # the solver's exact P(all) against the product of its per-target p, summed over runs
     exact = sum(x["p_all"] for x in cal.runs)
     product = sum(math.prod(r["p_pred"] for r in x["rows"]) for x in cal.runs)
-    # per run, acquired: the observed mean's 95% interval over runs
+    # Acquired targets per run: observed mean and sample standard deviation.
     mean = sum(x.acquired_observed for x in runs) / n
     sd = (
         math.sqrt(sum((x.acquired_observed - mean) ** 2 for x in runs) / max(1, len(runs) - 1))
@@ -1695,8 +1691,6 @@ def certainty_checks(cal: Calibration, out: list[Value]) -> dict[str, Stat]:
 
 @dataclass
 class Tests:
-    """every step's results the findings read"""
-
     deck: DeckTests
     inheritance: InheritanceTests
     acquisition: AcquisitionTests

@@ -58,7 +58,7 @@ CAP_CLASSES = ["0-1", "2", "3", "4+"]
 
 def near_cap(ratio, cap):
     # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
-    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05).
+    # over 1 (1.1875 of 1.25; 1.0375 of 1.05).
     # The same rule as val/planval.py.
     return ratio > 1 + 0.75 * (cap - 1)
 
@@ -87,8 +87,7 @@ for reference_path in sorted(glob.glob(VALIDATION_DIR + sys.argv[2] + "__*.out")
         print(name, "PARSE FAIL", reference is None, candidate is None)
         mismatches += 1
         continue
-    # the assumed caps per structure class: no scored deck's exact / product may come near its class's cap (a deck
-    # above it is missed unseen)
+    # Ratios near an assumed cap warn that pruning may discard a better deck.
     certificate = candidate.get("exact") if isinstance(candidate, dict) else None
     if isinstance(certificate, dict) and isinstance(certificate.get("class_max_ratio"), list):
         for k, (ratio, cap) in enumerate(zip(certificate["class_max_ratio"], certificate["class_caps"])):

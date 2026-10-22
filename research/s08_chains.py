@@ -1,4 +1,4 @@
-"""Section 7 of docs/RESEARCH.md: chain events.
+"""Section 8 of docs/RESEARCH.md: chain events.
 
 Reproduces the derived numbers (Binomial(21, 0.35), P(N >= 6), the exact allocation tables, the worked example) and
 the fits on the run records (research/data/runs.jsonl, not included; Independent Training runs from uma-it).
@@ -6,15 +6,15 @@ the fits on the run records (research/data/runs.jsonl, not included; Independent
 Markers. A card's chain progress is read from "marker" skills of its link events (GameTora card events through
 gametora.py, chain links from master.mdb single_mode_story_data.show_progress_1) credited to "<character> event" in a
 run's hint list. A link is observable only if every choice and every outcome of its event carries a skill appearing
-in no other event of the card. A credit "A or B event" naming the card counts as seen, unless B is another deck card
-whose events can give the marker (then the link is unknown); a marker listed with "Inspiration" as its only source is
+in no other event of the card. A link is unknown when every matching credit names another deck card
+whose events can give the marker; otherwise a matching credit counts as seen; a marker listed with "Inspiration" as its only source is
 unknown. Decks with an unknown card or a non-pal R card are left out.
 
 Data. Every analysis runs on every run record, selected only by pal count
 where the analysis is by pal count:
   - the fit of N (0-5 pals): a distribution-free fit (EM over P(N = 0..15), P(N >= 16)) against Binomial(21, 0.35),
     Binomial(15, 0.48), Poisson(7.1) and the binomial's profile over n (p re-fitted at each n), each by likelihood ratio
-    (Binomial(21, 0.35) with 14 fewer parameters, Poisson with 15, n and p free with 1 more than (21, 0.35)); the same
+    (the thresholds used are in fit_findings); the same
     fit per scenario (scenarios with 30+ runs) against one N for all;
   - N per pal count (1-4 pals): the binomial grid MLE on each pal count's runs;
   - the marker allowance: the share of links implied fired (a later link of the card shows) whose marker is missing,
@@ -191,7 +191,7 @@ def paths(ck: tuple[Kind, ...], rule: str = "slots") -> Paths:
 
 
 def final_w(ck: tuple[Kind, ...], pmf: Pmf, rule: str = "slots") -> tuple[np.ndarray, np.ndarray]:
-    """each path entry's probability of being the final state under the event-count pmf"""
+    """the path states and each state's probability of being final under the event-count pmf"""
     S, L, A, P = paths(ck, rule)
     pm = np.asarray(pmf, float)
     tail = np.concatenate([[1.0], 1.0 - np.cumsum(pm)])
@@ -375,8 +375,8 @@ def link_markers(evs: dict[int, list[CardEvent]]) -> dict[int, dict[int, set[str
 
 
 def game() -> GameData:
-    """skill names, decoded SR/SSR card events, the per-card skill pools and each card's observable links with their
-    markers (chain links from master.mdb single_mode_story_data)"""
+    """support cards, skill names, per-card skill pools, observable links with their markers, and exported card events
+    (chain links from master.mdb single_mode_story_data)"""
     if _game:
         return _game[0]
     gt = common.gametora()
@@ -441,7 +441,7 @@ def observations(r: Run) -> ChainObservations | None:
                 [y.strip() for y in x[:-6].split(" or ")] for s in mk for x in hints.get(s, ()) if x.endswith(" event")
             ]
             credits = [c for c in credits if nm in c]
-            # "A or B event": unknown when B is another deck card whose events can give the marker
+            # Unknown only when every matching credit has another possible deck-card source.
             if credits and all(any(y != nm and y in by_name and mk & g.pool[by_name[y]] for y in c) for c in credits):
                 continue
             seen = bool(credits)

@@ -1,7 +1,7 @@
-"""Section 8: event choices and outcome shares, counted on the run records (research/data/runs.jsonl, not included;
+"""Section 9: event choices and outcome shares, counted on the run records (research/data/runs.jsonl, not included;
 Independent Training runs from uma-it).
 
-The shares were measured on the first 2,865 records (seq < 2865); the priority-list count uses all of them.
+The split-choice, Anshinzawa and Helios counts use seq < 2865; Festa and priority-list counts use all records.
 
 - Outcome shares (Riko Kashimoto, Seiun Sky, Smart Falcon, Tazuna Hayakawa, Agnes Tachyon, Marvelous Sunday, Gold Ship,
   King Halo, Light Hello): every SR/SSR card event choice with two or more outcomes (GameTora, through gametora.py).
@@ -54,7 +54,6 @@ def hints(r: Run) -> dict[str, Hint]:
 
 
 def credited(hs: dict[str, Hint], skill: str, source: str) -> bool:
-    """the run's hint of `skill` lists `source` among its sources"""
     return skill in hs and source in hs[skill]["src"]
 
 
@@ -132,7 +131,7 @@ def could_show(hs: dict[str, Hint], sig: Sig, was_credited: bool) -> bool:
 
 
 def split_choices(R: list[Run]) -> list[SplitChoice]:
-    """every SR/SSR split choice, with its outcomes' markers and their credits in the runs"""
+    """SR/SSR choices with differing skill outcomes and at least one observable marker, with their credits in the runs"""
     gt = common.gametora()
     db = common.mdb()
     sk = dict(db.execute("select [index], text from text_data where category = 47"))
@@ -166,7 +165,9 @@ def split_choices(R: list[Run]) -> list[SplitChoice]:
             for ch in chs:
                 for o in outcome_skills(ch, gt, sk):
                     giver |= {("sh", s) for s in o}
-        nsrc = collections.Counter(s for _, s in giver)  # skill -> events of the character giving it
+        nsrc = collections.Counter(
+            s for _, s in giver
+        )  # skill -> card story sources plus one collective shared-event source
         mine = [(r, hs) for r, d, hs in runs if cid in d and r["chara"] != chara]
         for t, sid, chs in es:
             for ci, ch in enumerate(chs):
@@ -404,8 +405,6 @@ def riko_lone_wolf(R: list[Run], prioritised: bool = True) -> Count:
 
 
 class RikoFirings(NamedTuple):
-    """riko_firings()"""
-
     ramp_up: int  # top choice, Ramp Up firings
     maverick: int  # top choice, Maverick firings
     lone_wolf: int  # bottom choice firings
@@ -415,7 +414,7 @@ class RikoFirings(NamedTuple):
 
 def riko_firings(R: list[Run]) -> RikoFirings:
     """her "Unexpected Side": top choice Ramp Up +3 or Maverick ○ +5, bottom choice Lone Wolf +3 (its middle choice gives
-    nothing and cannot be seen). Every credited outcome is one firing, counted where all three could show (each skill's
+    nothing and cannot be seen). Credits are counted once per skill per run, where all three could show (each skill's
     level from other sources below 5). Returns (Ramp Up, Maverick, Lone Wolf firings, runs counted, runs with Ramp Up)"""
     sk = (("Ramp Up", 3), ("Maverick ○", 5), ("Lone Wolf", 3))
     c = [0, 0, 0]
@@ -469,7 +468,7 @@ def festa(R: list[Run]) -> collections.Counter[str]:
 
 
 def festa_numbers() -> dict[str, float]:
-    """Festa's share on every research run with her card.
+    """Festa's share on research runs with her card, excluding her own careers and decks with Anshinzawa.
     Her exclusive credits ("Nakayama Festa event") are wins; a Risky Business credit shared with another card's event
     ("A or B event") is hers with chance r_F / (1 - (1 - r_F)(1 - r_o)), r_F her exclusive Risky Business rate per run,
     r_o the other card's rate in runs without her; blank runs with Risky Business at Lv 5 are split by the firing rate

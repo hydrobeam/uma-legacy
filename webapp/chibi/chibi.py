@@ -10,8 +10,7 @@ CRC32 of their path) is decoded here; webapp/chibi/render.mjs renders the frames
 cropped to her box over the loop and written as AVIF.
 
 Third-party tools, fetched on first use into cache/chibi/tools (never committed): AssetStudioModCLI (aelurum/AssetStudio
-v0.19.0, net9 linux64) with a .NET 9 runtime, FBX2glTF 0.9.7, and libxml2.so.2 (Arch's libxml2-legacy) when the system
-has only the newer libxml2.
+v0.19.0, net9 linux64) with a .NET 9 runtime, FBX2glTF 0.9.7, and a local copy of libxml2.so.2 (Arch's libxml2-legacy).
 
 usage: uv run webapp/chibi/chibi.py [all | ID ...] [--force]     (./build.sh runners: all)
 """
@@ -118,7 +117,7 @@ def bundles(meta, character_id, *, skin, tail, body):
 def export(character_id, *, skin, tail, body, meta, env):
     work_dir = os.path.join(WORK, str(character_id))
     if os.path.exists(os.path.join(work_dir, "run.json")):
-        return None  # exported before (the game files don't change under an id; delete cache/chibi/work/ID to redo)
+        return None  # --force rerenders but reuses this export; clear cache/chibi/work/ID to re-export changed assets
     os.makedirs(os.path.join(work_dir, "in"), exist_ok=True)
     missing = []
     for n in bundles(meta, character_id, skin=skin, tail=tail, body=body):

@@ -2,10 +2,10 @@
 still there). For each val/plan job: plan the pool less its last veteran, then the full pool under that plan's fit
 (`next.fit`, as the page's Compare prices it), and report V without -> V with and the route steps. A rise is the model's
 error, not hers (the fixed fit rules out the continuation's refit; what remains is the route's fixed lineages: each fresh
-8/8 bred from her uma's best pair now).
+all-target veteran bred from her uma's best pair now).
 
 usage: mono.py BIN [JOB ...] [-j N]   (default: every job in val/plan/jobs.json; -j jobs at a time, default 2)
-  writes nothing; exits 1 when a V rises by more than 1e-9 relative"""
+  writes temporary job files; exits 1 when a V rises by more than 1e-9 relative"""
 
 import json
 import os

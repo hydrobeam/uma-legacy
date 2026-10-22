@@ -1,5 +1,5 @@
 """Compare a validation tag with a reference when every value is expected to scale: same loops and decks, and the
-ratio of each top result's p_all / p_minus1. usage: cmp_ratio.py TAG REF"""
+new/reference ratios of p_all and p_minus1 for the first result. usage: cmp_ratio.py TAG REF"""
 
 import json
 import sys

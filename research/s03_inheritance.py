@@ -106,7 +106,6 @@ def fit1(run_ll: RunLL, lo: float, hi: float) -> Fit:
 
 
 def pred(a: float, b: float) -> float:
-    """the model's chance at affinity a and base b"""
     return min(1.0, b * (1 + a / 100))
 
 

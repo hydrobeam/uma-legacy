@@ -1,10 +1,10 @@
 """The career planner's next-plan jobs (val/plan/jobs.json): run them, then compare each output with the reference
-strictly (the whole JSON, equal values; only timings and search-work counters are ignored). For solver work that must
+strictly (the whole JSON, equal values; keys in SKIP and keys ending in _ms are ignored). For solver work that must
 not move the planner's results; `val/runval.py` does not cover these jobs.
 
 usage: planval.py BIN TAG [REF] [-j N]
   writes val/plan/TAG__NAME.out and val/plan/TAG_times.txt; compares with val/plan/REF__NAME.out (default REF: ref)
-  -j N  jobs at a time (default 2: the jobs take 2-8 s each; timings are only comparable at the same load)"""
+  -j N  jobs at a time (default 2; timings are only comparable at the same load)"""
 
 import json
 import os
@@ -56,7 +56,7 @@ with ThreadPoolExecutor(parallelism) as ex:
 open(os.path.join(PLAN_DIR, f"{tag}_times.txt"), "w").write(
     "".join(f"{name} {s}\n" for name, s in sorted(times.items()))
 )
-# search-work counters and timings: they move with any pruning change and say nothing about the answer
+# This comparison skips work and bound diagnostics as well as timings; it does not enforce byte-identical outputs.
 SKIP = {
     "timing_s",
     "work",
@@ -103,7 +103,7 @@ CLS = ["0-1", "2", "3", "4+"]
 
 def near_cap(ratio, cap):
     # a scored deck's exact / product r is near its class's assumed cap c: past three quarters of the cap's headroom
-    # over 1 (1.1875 of 1.25, about the old 1.25 / 1.05; 1.0375 of 1.05).
+    # over 1 (1.1875 of 1.25; 1.0375 of 1.05).
     # The same rule as val/cmp2.py.
     return ratio > 1 + 0.75 * (cap - 1)
 
@@ -137,8 +137,7 @@ def compare_job(name):
         else f"{k} {reference_work.get(k, '?')} -> {candidate_work.get(k, '?')}"
         for k in ("nodes", "exact")
     )
-    # the assumed caps, per structure class: no scored deck's exact / product may come near its class's cap (a deck
-    # above it would be missed unseen)
+    # Ratios near an assumed cap warn that pruning may discard a better deck.
     max_ratios, caps = candidate_work.get("class_max_ratio"), candidate_work.get("class_caps")
     if not isinstance(max_ratios, list):
         max_ratios, caps = [candidate_work.get("max_ratio")], [candidate_work.get("cap")]

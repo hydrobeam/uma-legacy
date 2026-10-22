@@ -5,9 +5,8 @@ largest ratio passes its normal cap, and fails when the answer moves (a deck the
 
 usage: capaudit.py BIN [JOB ...]
   JOB: a val/plan job name (p16, gm16, ...) or a val/jobs job name with ':pu' for per-uma (v_uc_k1:pu).
-  Default: p16, gm16, v_uc_k1:pu (about 35 s natively, one job at a time; the audit runs take most of
-  it). v_uc_k1's per-uma audit run lists over 500,000 decks at 2.0 and falls to 1.12: there it checks the 1.05 classes
-  (0-1 and 2) only.
+  Default: p16, gm16, v_uc_k1:pu, one job at a time. An audit that falls down the cap ladder
+  checks only classes whose normal cap is below the reached cap.
   Exits 1 when an answer moves or a ratio passes its cap."""
 
 import json
@@ -123,8 +122,7 @@ for requested in want:
             job["per_uma"] = True
             name += "_pu"
     normal, normal_seconds = run(era=era, job=job, name=name)
-    # (a per-uma audit run gets ten times the work budget, as `cap_audit` gives its bands ten times the room: at caps of
-    # 2.0 the defaults run out and the pass falls down the ladder; the career planner's own budget is ample)
+    # Validation jobs get a larger exact-search budget to reduce fallback down the cap ladder.
     env = None if requested in plan_dirs else dict(os.environ, EXACT_BUDGET=str(300_000_000))
     audited, audit_seconds = run(era=era, job=dict(job, cap_audit=True), name=name + "_audit", env=env)
     differences = []

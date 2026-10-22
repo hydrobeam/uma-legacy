@@ -3,8 +3,8 @@
 the model does on real careers. Every run record is used; one sample.
 
 Markers (GameTora training_events_shared, through gametora.py): a character's shared event with two or more choices
-whose top choice gives a skill in every outcome and whose other choices give none; the skill is her marker (one per
-character). A reading is one run with a card of hers in the deck (any rarity, group cards aside), someone else
+whose top choice has a skill common to every outcome and whose other choices have no skill common to all their
+outcomes; the top choice's skill is her marker (one per character). A reading is one run with a card of hers in the deck (any rarity, group cards aside), someone else
 training, and the marker not given by that card's own events; a hit is the marker credited to "<her name> event"
 ("A or B event" counts as a miss). K = random events on offer: every shared event of the deck's characters plus the
 trainee's own.
@@ -69,7 +69,7 @@ class Reading(TypedDict):
     cens: int  # 1: no credit, the marker already at Lv 5 from other sources (the event could not show)
     K: int  # random events on offer in the run (offer())
     pals: int  # pal cards in the deck
-    links: int  # chain links of the deck's other cards
+    links: int  # chain links of all non-pal cards in the deck
     char: int  # her character id
     lb: int  # the card's limit break
     scen: int  # scenario id
@@ -95,9 +95,9 @@ class RandomRow(TypedDict):
 class SharedEventMarkers(NamedTuple):
     """markers(): what the readings are read from (GameTora, through gametora.py)"""
 
-    nshared: collections.Counter[int]  # character -> her shared events
+    nshared: collections.Counter[int]  # character -> count of her shared events
     marker: dict[int, str]  # character -> her marker skill
-    cardsk: collections.defaultdict[int, set[str]]  # card -> every skill its own events can give
+    cardsk: collections.defaultdict[int, set[str]]  # SR/SSR card -> skills decoded from its own events
     sc: dict[int, dict[str, Any]]  # GameTora support-cards by id
 
 
@@ -122,8 +122,8 @@ def sure_skills(rewards: Any, gt: Any, sk: dict[int, str]) -> set[str]:
 
 
 def markers() -> SharedEventMarkers:
-    """each character's marker: the skill her shared event's top choice hints in every outcome when its other choices
-    hint none"""
+    """each character's marker: a skill common to every top-choice outcome, when no other choice has a skill common
+    to all its outcomes"""
     gt = common.gametora()
     db = common.mdb()
     sk = dict(db.execute("select [index], text from text_data where category = 47"))
@@ -139,9 +139,7 @@ def markers() -> SharedEventMarkers:
                 a, b = sure_skills(chs[0][1], gt, sk), set().union(*[sure_skills(ch[1], gt, sk) for ch in chs[1:]])
                 if a and not b:
                     marker[chara] = sorted(a)[0]
-    cardsk: collections.defaultdict[int, set[str]] = collections.defaultdict(
-        set
-    )  # every skill a card's own events can give
+    cardsk: collections.defaultdict[int, set[str]] = collections.defaultdict(set)
     for key in ("training_events_sr", "training_events_ssr"):
         for cid, es in gt.load(key):
             for e in es:
@@ -636,7 +634,7 @@ def robust_z(b: np.ndarray, V: np.ndarray, naive: np.ndarray, j: int, null: floa
 
 
 def robust(rows: Sequence[Reading], f: Fits) -> dict[str, float]:
-    """each likelihood-ratio / profile test of the findings, redone run-clustered: Values by name"""
+    """each likelihood-ratio / profile test of the findings, redone run-clustered: numbers by name"""
     x = reading_arrays(rows)
     g = form_tests(x, f) | slot_tests(rows, x) | covariate_tests(rows, x)
     return {k: float(v) for k, v in g.items()}
@@ -665,15 +663,14 @@ def slot_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]:
     g: dict[str, Any] = {}
     # c / T: t = (c, pal weight, chain-link weight)
     ct: Callable[[np.ndarray], np.ndarray] = lambda t: t[0] / (t[2] * Lk + K + t[1] * Pl)
-    # chain-link weight 1: the fitted weight sits on its bound 0, where a Wald test is not valid; a score test at the null
-    # (weight 1, c and the pal weight fitted) is
+    # Score test at chain-link weight 1, fitting c and the pal weight under the null.
     th1, _ = slot_fit(rows, link=1.0)
     S, H = run_scores(ct, y, run, th1, [0, 1, 2])
     g["chain-link weight 1: robust score z"] = score_z(S, H, 2)
     g["chain-link weight 1: model score z"] = float(
         S[:, 2].sum() - H[2, :2] @ np.linalg.solve(H[:2, :2], S[:, :2].sum(0))
     ) / np.sqrt(-(H[2, 2] - H[2, :2] @ np.linalg.solve(H[:2, :2], H[:2, 2])))
-    # pal weight: c / T fit (chain-link weight on its bound 0, held there), estimate +- 1.96 robust SE
+    # Pal-weight interval: hold the chain-link weight fixed if its fit is at the lower bound.
     th, _ = slot_fit(rows)
     free = [0, 1] + ([2] if th[2] > 1e-6 else [])
     V, Vn = sandwich(*run_scores(ct, y, run, th, free))
@@ -1009,7 +1006,7 @@ def held_out_findings(g: dict[str, Any]) -> list[common.Finding]:
 # ---------------------------------------------------------------- effect on real careers (section 13's rows)
 def calib() -> tuple[list[CalRow], list[RunRows]]:
     """section 13's calibration rows and per-run rows (default targets, each run on its own deck), exactly as
-    s13_calibration.claims builds them; the solver's results are reused from its cache while nothing they read changes"""
+    s13_calibration.claims builds them; solver-result reuse follows s13_calibration.fingerprint"""
     if "calib" not in common._cache:
         import s13_calibration as s13
 
@@ -1190,7 +1187,6 @@ class CalibTest:
         return f"{side.ratio:.3f} [{side.rlo:.2f}, {side.rhi:.2f}]"
 
     def ll_gain(self) -> float:
-        """the log-likelihood credited minus left out"""
         return self.credited.ll - self.left_out.ll
 
 
@@ -1252,8 +1248,8 @@ def calib_values(sec: str, pre: str, t: CalibTest) -> list[common.Value | common
 
 
 def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow], collections.Counter[str]]:
-    """the calibration rows a random event could hint: (row, kind, rate, hit, only, ambiguous); kind 'deck' (a deck
-    card's character's event, at the fitted form at the run's K) or 'own' (the trainee's own, rate filled in later)"""
+    """the calibration rows a random event could hint, as RandomRow dictionaries, and counts of skipped rows; kind
+    'deck' uses the fitted rate at the run's K, 'own' has its rate filled in later"""
     a, b = ab
     nshared, marker, cardsk, sc = markers()
     E = event_groups()

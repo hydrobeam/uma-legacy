@@ -1,7 +1,7 @@
 """Section 4: the race win table, tested against the races Independent Training runs actually ran.
 
 The model (pkg/loopopt/src/lib.rs, data.json `pen`): an attempt at one of the 34 single-race G1s wins with
-p = clamp(bp - PEN_j, 0, 100) / 100, bp = 110 - cost(distance grade) - cost(surface grade) from her base aptitudes
+p = clamp(bp - PEN_j, 0, 100) / 100, bp = max(-20, 110 - cost(distance grade) - cost(surface grade)) from her base aptitudes
 (data.json umas[].turns[t][].bp; cost S/A 0, B 10, C 20, D 30, E 40, F 60, G 90), PEN_j = data.json `pen` for the j-th
 race in a row (any race, goals included; a turn without a race resets). A community table, assumed.
 
@@ -19,7 +19,7 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
   independent; the cells against the recalibrated pink table are also compared held out (5-fold by run, held_out_cells);
 - aptitude raised by pink sparks: the planner's rule (docs/MODEL.md: at the start the six legacies' pink stars per
   aptitude raise the base grade by 1/2/3/4 at 1/4/7/10 stars, at most A; each April firing recorded in the run, years
-  2 and 3 from turns 30 and 54 on, +1 grade, at most S) gives a pink-adjusted bp. Every calibration is reported on both
+  2 and 3 from turns 30 and 54 on, +1 grade, at most S) gives a pink-adjusted bp. The overall and detail calibrations are reported on both
   the base bp (what the solver uses) and the pink-adjusted bp, as are the attempts the rule moves and those after an
   April firing of the race's distance or surface; the fits use the pink-adjusted bp;
 - where the residual sits: goal and chosen races from the 4th in a row; detail() also scores a goal race one streak

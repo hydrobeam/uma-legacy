@@ -2,9 +2,9 @@
 reward codes decoded by gametora.py (`choices`, `outcomes`, `hints`, `pal_event`); outcomes are taken as equally likely.
   - continuing:  skill -> chance over the choices that keep the chain going (k of n outcomes: k/n), the best choice per skill;
   - ending:  the same over the choices that end the chain on every outcome (a separate "end the chain here" option);
-  - risk:  [k, n] when IT's default (first) choice ends the chain on k of its n outcomes (it is then not offered);
-  - alts:  the full structure of the choices that keep the chain going, [choice][outcome] -> sorted skill names, when
-           the event names two or more skills. `continuing` credits each skill on its own; the solver uses `alts` instead,
+  - stop_risk:  [k, n] when IT's default (first) choice ends the chain on k of its n outcomes (it is then not offered);
+  - alternatives:  the full structure of the choices that keep the chain going, [choice][outcome] -> sorted skill names, when
+           the continuing choices name two or more skills. Stored as `alts`, these replace the separate `continuing` chances,
            so skills on different choices are never credited together and outcomes of one choice exclude each other."""
 
 from typing import NamedTuple
@@ -58,9 +58,7 @@ def decode(event_choices, skill_names):
             normal.append([sorted(set(branch)) for branch in branches])
         names = {skill_name for branch in branches for skill_name in branch}
         for skill_name in names:
-            chance = sum(skill_name in branch for branch in branches) / len(
-                branches
-            )  # in k of n outcomes: k/n (outcomes equally likely)
+            chance = sum(skill_name in branch for branch in branches) / len(branches)
             chances[skill_name] = max(chances.get(skill_name, 0), chance)
     alts = normal if len({skill_name for choice in normal for branch in choice for skill_name in branch}) >= 2 else None
     return DecodedEvent(continuing=continuing, ending=ending, has_ending=has_ending, stop_risk=risk, alternatives=alts)

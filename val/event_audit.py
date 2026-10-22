@@ -5,7 +5,7 @@ card-specific events, per-card variants) through pkg/loopopt/export/gametora.py,
 card can give. Each is checked against the card's entry in
 pkg/loopopt/data/global/card_events.json (always / chance / disabled). Exit code 1 if any target hint is unaccounted for.
 
-usage (repo root): python3 val/event_audit.py [--all]     --all also prints the non-target hints
+usage (repo root): uv run val/event_audit.py [--all]     --all also prints the non-target hints
 Needs game/global/master.mdb.
 """
 

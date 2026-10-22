@@ -5,7 +5,7 @@ ahead of its update already holds the next week's, with their start times. The p
 until its start time (webapp/src/data.js), so a banner turns on without a rebuild. Content the game has not dated
 yet carries a 2050 placeholder and stays out.
 
-Run as a script (step data, after the other exports): data/global/upcoming.json, the entries dated after the build, as
+Run as a script (step data, after the other exports): pkg/loopopt/data/global/upcoming.json, the entries dated after the build, as
 {umas, outfits, cards: [[id, start (unix s)], ...]}, for webapp/example.mjs, whose precomputed result must not use them.
 """
 

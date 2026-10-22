@@ -1,9 +1,8 @@
 """The game era an export runs for, given as the script's argument: `global` or `jp` (the Grand Masters era: the JP
-game database cut at L'Arc's launch, with English names taken from the Global database by id). Every exporter here
-reads its database, output folder, names and release rules from this module.
+game database cut at L'Arc's launch, with English names taken from the Global database by id). Database-backed
+exporters read their paths, names and release rules here.
 
-The only differences: the database, the output folder and the cut. Global keeps everything the database dates up to
-AHEAD past the build (the page hides each entry until its start time); JP keeps what started before L'Arc's launch."""
+Global keeps everything the database dates up to AHEAD past the build (the page hides each entry until its start time); JP keeps what started before L'Arc's launch."""
 
 import os, sqlite3, sys, time
 
@@ -34,14 +33,14 @@ def names(category):
 
 
 def outfit_starts():
-    """outfit (trainee card) id -> its start: its first gacha or exchange-ticket listing; an outfit given as a
-    main-story reward counts from the start; otherwise its uma's start date."""
+    """outfit (trainee card) id -> its start: its first gacha or exchange-ticket listing; a main-story reward
+    with no such listing counts from the start; otherwise its uma's start date."""
     first = {}
     for card_id, start_date in q(
         "select a.card_id, min(g.start_date) from gacha_available a join gacha_data g on g.id=a.gacha_id where a.card_type=1 group by a.card_id"
     ):
         first[card_id] = start_date
-    if q("select 1 from sqlite_master where name='exchange_ticket_detail'"):  # the JP database has exchange tickets
+    if q("select 1 from sqlite_master where name='exchange_ticket_detail'"):
         for card_id, start_date in q(
             "select card_id, min(start_date) from exchange_ticket_detail where card_type=1 group by card_id"
         ):

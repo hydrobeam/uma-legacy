@@ -1,4 +1,4 @@
-"""Section 4: the self-grandparent fit, tri(T, P, T) = 0, and a check of the records' affinity tables.
+"""Section 5: the self-grandparent fit, tri(T, P, T) = 0, and a check of the records' affinity tables.
 
 Reproduces from the run records (research/data/runs.jsonl, not included; Independent Training runs from uma-it):
 - the trials: one per (ancestor, skill white spark, career year 2 or 3) where that spark's skill is carried by exactly
@@ -11,7 +11,7 @@ Reproduces from the run records (research/data/runs.jsonl, not included; Indepen
 Also checks the records' relation-point column (base) against pair and tri computed from master.mdb.
 Findings: each hypothesis's predicted pass sum against the observed one (z with a run-clustered sd: a run's trials
 share its lineage, so the variance sums each run's squared residual, observed minus predicted passes), the kappa
-likelihood interval, the same sums for ordinary ancestors (the fit's premise), and the records' +3 per shared win.
+grid maximum-likelihood estimate, the same sums for ordinary ancestors (the fit's premise), and the records' +3 per shared win.
 """
 
 import collections, math
@@ -23,7 +23,7 @@ from common import Finding, Run, Value
 SEC: str = "5"
 BASE: tuple[float, float, float] = (0.03, 0.06, 0.09)  # b by the spark's stars (1, 2, 3)
 G_OF: dict[int, tuple[int, int]] = {0: (1, 2), 3: (4, 5)}  # ancestor slots: 0 P1, 1 G1a, 2 G1b, 3 P2, 4 G2a, 5 G2b
-CHI95: float = 1.920729  # chi2(1) 95% / 2: a 95% likelihood interval
+CHI95: float = 1.920729
 PAIR_ROW: str = "parent 1 × parent 2"  # the record's affinity row of the two parents
 GRANDPARENT_ROWS: dict[int, str] = {
     1: "parent 1 × grandparent 1a",
@@ -80,7 +80,7 @@ def relations() -> Relations:
 
 
 def lineage(r: Run) -> list[dict[str, Any]] | None:
-    """[P1, G1a, G1b, P2, G2a, G2b] as (chara, factors) or None when a slot is missing"""
+    """[P1, G1a, G1b, P2, G2a, G2b] as ancestor dictionaries, or None when a slot or its character is missing"""
     out: list[dict[str, Any]] = []
     for p in r.get("parents") or []:
         out.append(p)
@@ -100,8 +100,8 @@ def six_affinities(
 ) -> dict[int, int]:
     """{slot: affinity} for the six ancestors (slots as G_OF) of trainee T, A the ancestors' characters by slot:
     relation points S from master.mdb plus 3 x the record's shared G1 wins per pair (aff: row label -> [base, shared,
-    bonus, total]); h = 0: tri(T, P, T) = 0, h = 1: tri(T, P, T) = pair(T, P); part 'rel' or 'race' keeps only the
-    relation points or only the shared-win terms"""
+    bonus, total]); when G equals T or P, h = 0 sets tri(T, P, G) to 0 and h = 1 to pair(T, P).
+    part 'rel' or 'race' keeps only relation points or shared-win terms"""
     w = 0 if part == "rel" else 3
     shared_parents = w * aff[PAIR_ROW][1]
     shared_grandparent = {g: w * aff[label][1] for g, label in GRANDPARENT_ROWS.items()}

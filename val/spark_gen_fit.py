@@ -2,9 +2,10 @@
 umadump trained_chara_data.json, by the version bought and by how many of the career's six ancestors carried that
 spark. Fits "x m per carrier" against "+a points per carrier".
 
-usage: spark_gen_fit.py TRAINED_CHARA_DATA_JSON [MASTER_MDB] [--scenario N]   (MASTER_MDB default game/global/master.mdb)
+usage: spark_gen_fit.py TRAINED_CHARA_DATA_JSON [MASTER_MDB] [--scenario N]
+MASTER_MDB defaults to game/global/master.mdb only without --scenario; supply it explicitly with --scenario.
 Ancestors: positions 10/20 are the veteran's parents. Its grandparents are positions 11/12/21/22 when the dump has
-them; otherwise a parent is matched to an owned veteran with the same card, sparks and win saddles, and that
+them; otherwise a parent is matched to exactly one input veteran with the same card, sparks and win saddles, and that
 veteran's parents are used. Skill-observations whose six ancestors are not all known are reported but not fitted.
 """
 

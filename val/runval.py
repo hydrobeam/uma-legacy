@@ -2,10 +2,8 @@
 job again with per_uma on (val/TAGpu__*.out), plus val/TAG_times.txt and val/TAGpu_times.txt (seconds per job).
 
 usage: runval.py BIN TAG [--quick] [-j N]
-  --quick  leave out the jobs in val/slow.json (the shared-deck three-result runs that take minutes; every code path
-           they use is also exercised by the smaller three-result jobs, at small scale). For iterating on a change;
-           releases and merges run the full set.
-  -j N     jobs at a time (default: $VAL_J, else CPU count - 2; ./build.sh passes VAL_J through)."""
+  --quick  leave out the jobs in val/slow.json. For iterating on a change; releases and merges run the full set.
+  -j N     jobs at a time (default: nonzero $VAL_J, else max(1, CPU count - 2), or 2 if CPU count is unavailable; ./build.sh passes VAL_J through)."""
 
 import json
 import os
@@ -18,7 +16,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ValidationTask:
-    """One solver invocation; job paths are resolved from the era's data directory."""
+    """One solver invocation, run from the era's data directory with an absolute job path."""
 
     mode: str  # Empty for shared decks, 'pu' for per-uma decks.
     name: str  # Era-qualified name used in output filenames.

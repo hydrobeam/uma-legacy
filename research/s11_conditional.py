@@ -1,4 +1,4 @@
-"""Section 10, conditional character events: secret and race-result events that give skill hints (GameTora
+"""Section 11, conditional character events: secret and race-result events that give skill hints (GameTora
 training_events_char through gametora.py, current versions; skills from master.mdb), how many touch the default
 targets and whether any gives a gold. Also checks the one exception modelled as always acquired, Tokai Teio's Head-On:
 its event's condition (GameTora), her career goals (master.mdb single_mode_route_race; condition_value_1 read as the
@@ -6,7 +6,7 @@ place the goal requires) and, in the run records (research/data/runs.jsonl, not 
 from uma-it), the runs training her.
 
 Effect on real careers (section 13's calibration rows, read through s10_random_events.calib: each run rebuilt on its
-own deck, default targets). Section 12's jobs carry no trainee event hints (e_k = 0 on every row) and the run records
+own deck, default targets). Section 13's jobs carry no trainee event hints (e_k = 0 on every row) and the run records
 credit every trainee and scenario event alike as "Events", so neither separates ordinary trainee events from
 conditional ones; they are separated here by game data (s10_random_events.event_groups):
   rows        free rows (not on the trainee's outfit, not a scenario gold) whose trainee has a current conditional event
@@ -20,7 +20,7 @@ conditional ones; they are separated here by game data (s10_random_events.event_
   crediting   each row at its (trainee, target) rate, as in section 10 (m multiplied by (1 - r), section 12):
               relative change of each run's product of per-target odds, and acquisition observed against predicted
               without and with crediting (obs / pred, run-clustered 95%, s10_random_events.calib_test; Bernoulli
-              log-likelihood over the rows with a positive prediction, tested against the chi2 95% point of one degree
+              log-likelihood over the rows with a positive prediction, tested against half the chi2 95% point of one degree
               of freedom per fitted rate)
 """
 

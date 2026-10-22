@@ -56,7 +56,7 @@ def export_uma(character, *, races, race_indices):
         groups.append(
             [[turn, [choice["prog"] for choice in turns[turn - 1]].index(program)] for turn, program in group]
         )
-    # A race appears at most once per year half.
+    # Each race appears at most once through Classic year, and once in Senior year.
     seen = {}
     for turn, choices in enumerate(turns, 1):
         for choice in choices:
