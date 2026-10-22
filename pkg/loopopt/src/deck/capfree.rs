@@ -4,262 +4,356 @@
 use super::{KeyLevel, Kind, LandPre, Model, SbCfg, event_pmf_job, key_level};
 use std::{cell::RefCell, rc::Rc};
 
+/// Landing factors and entry misses used by both state-conditioned bounds.
+#[derive(Clone, Copy)]
+pub(super) struct LandingBoundTables<'table> {
+    /// Outfit-major factors, one block of target_count per outfit.
+    pub(super) factors: &'table [LandPre],
+    /// Entry-major optional rows, then chain level and target.
+    pub(super) entry_rows: &'table [Option<Vec<(f64, f64)>>],
+    pub(super) target_count: usize,
+    pub(super) outfit_count: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct BoundOptions {
+    pub(super) cap_free: bool,
+    pub(super) trainee: usize,
+    pub(super) fixed_factor: f64,
+}
+
+/// Slots fill in configuration-group order; chain_position is absent for a level-free slot.
+#[derive(Clone, Copy)]
+struct BoundSlot {
+    group: usize,
+    chain_position: usize,
+}
+
+/// A filled chain slot uses its chosen entry's miss rows at the state's level.
+#[derive(Clone, Copy)]
+struct FilledChainSlot<'row> {
+    position: usize,
+    rows: &'row [(f64, f64)],
+}
+
+/// An open chain slot relaxes over its group's entries, independently for misses and ratios.
+#[derive(Clone, Copy)]
+struct OpenChainSlot<'row> {
+    position: usize,
+    rows: &'row [(f64, f64)],
+    ratios: &'row [f64],
+    group: usize,
+}
+
+/// One chain slot's tables in the event-count bound, in deck pick order.
+#[derive(Clone, Copy)]
+struct ChainRatioSlot<'row> {
+    position: usize,
+    rows: &'row [(f64, f64)],
+    filled: bool,
+    ratios: &'row [f64],
+    level_count: usize,
+}
+
 /// The cap-free band's ratio tables (the ratio bound of `StateBound::full` and `cheap`), one search's: per outfit of the
 /// trainee its zero-base targets (`z`: factor 0 with no hint, whose ratios would be infinite, so they take the
-/// per-target bound), and per group of `groups` (`group`), level and outfit (row l * no + o) the best ratio over its
+/// per-target bound), and per group of `groups` (`group`), level and outfit (row l * outfit_count + o) the best ratio over its
 /// entries: R(e, l) = prod over the other targets of the factor at e's misses at level l over the factor with no card;
 /// per entry (`entry`) the same ratio of that entry alone. Both built on first use.
 pub(super) struct CapFreeRatios<'tab> {
-    nu: usize,
-    no: usize,
-    nk: usize,
-    lp: &'tab [LandPre],
-    sb_rows: &'tab [Option<Vec<(f64, f64)>>],
+    target_count: usize,
+    outfit_count: usize,
+    kind_count: usize,
+    landing_factors: &'tab [LandPre],
+    entry_rows: &'tab [Option<Vec<(f64, f64)>>],
     groups: &'tab [&'tab Vec<usize>],
     kinds: &'tab [Kind],
     pub(super) z: Vec<u32>,
-    rmx: RefCell<Vec<Option<Rc<Vec<f64>>>>>,
-    rent: RefCell<crate::FxMap<usize, Rc<Vec<f64>>>>,
+    group_ratios: RefCell<Vec<Option<Rc<Vec<f64>>>>>,
+    entry_ratios: RefCell<crate::FxMap<usize, Rc<Vec<f64>>>>,
 }
 
 impl<'tab> CapFreeRatios<'tab> {
-    /// `no`: the trainee's outfit count in the cap-free band (`cfm`), else 0 (no tables)
+    /// `outfit_count`: the trainee's outfit count in the cap-free band (`cap_free`), else 0 (no tables)
     pub(super) fn new(
-        cfm: bool,
-        nu: usize,
-        no: usize,
-        nk: usize,
-        lp: &'tab [LandPre],
-        sb_rows: &'tab [Option<Vec<(f64, f64)>>],
+        tables: LandingBoundTables<'tab>,
+        cap_free: bool,
+        kind_count: usize,
         groups: &'tab [&'tab Vec<usize>],
         kinds: &'tab [Kind],
     ) -> Self {
-        let z: Vec<u32> = (0..no)
-            .map(|o| (0..nu).filter(|&k| !(lp[o * nu + k].f(1.0, 1.0) > 0.0)).fold(0u32, |m, k| m | 1 << k))
+        let LandingBoundTables { factors: landing_factors, entry_rows, target_count, outfit_count } = tables;
+        let z: Vec<u32> = (0..outfit_count)
+            .map(|o| {
+                (0..target_count)
+                    .filter(|&k| !(landing_factors[o * target_count + k].f(1.0, 1.0) > 0.0))
+                    .fold(0u32, |m, k| m | 1 << k)
+            })
             .collect();
-        let rmx = RefCell::new(vec![None; if cfm { groups.len() } else { 0 }]);
-        CapFreeRatios { nu, no, nk, lp, sb_rows, groups, kinds, z, rmx, rent: RefCell::default() }
+        let group_ratios = RefCell::new(vec![None; if cap_free { groups.len() } else { 0 }]);
+        CapFreeRatios {
+            target_count,
+            outfit_count,
+            kind_count,
+            landing_factors,
+            entry_rows,
+            groups,
+            kinds,
+            z,
+            group_ratios,
+            entry_ratios: RefCell::default(),
+        }
     }
 
     /// (outfit o's product over the targets outside its Z of the factors with no card: R's denominator)
     fn den(&self, o: usize) -> f64 {
-        let (nu, lp, z) = (self.nu, self.lp, &self.z);
-        (0..nu).filter(|&k| z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(1.0, 1.0)).product()
+        let (target_count, landing_factors, z) = (self.target_count, self.landing_factors, &self.z);
+        (0..target_count)
+            .filter(|&k| z[o] >> k & 1 == 0)
+            .map(|k| landing_factors[o * target_count + k].f(1.0, 1.0))
+            .product()
     }
 
     /// (outfit o's product over the targets outside its Z of the factors at an entry's level-l misses `row`, over `den`:
     /// R(e, l))
     fn ratio(&self, o: usize, row: &[(f64, f64)], den: f64) -> f64 {
-        let (nu, lp, z) = (self.nu, self.lp, &self.z);
-        (0..nu).filter(|&k| z[o] >> k & 1 == 0).map(|k| lp[o * nu + k].f(row[k].0, row[k].1)).product::<f64>() / den
+        let (target_count, landing_factors, z) = (self.target_count, self.landing_factors, &self.z);
+        (0..target_count)
+            .filter(|&k| z[o] >> k & 1 == 0)
+            .map(|k| landing_factors[o * target_count + k].f(row[k].0, row[k].1))
+            .product::<f64>()
+            / den
     }
 
-    /// Group gi's best ratio per level (up to its kind's stop) and outfit, row l * no + o
+    /// Group gi's best ratio per level (up to its kind's stop) and outfit, row l * outfit_count + o
     pub(super) fn group(&self, gi: usize) -> Rc<Vec<f64>> {
-        if let Some(r) = &self.rmx.borrow()[gi] {
+        if let Some(r) = &self.group_ratios.borrow()[gi] {
             return Rc::clone(r);
         }
-        let (nu, no) = (self.nu, self.no);
-        let stop = if gi < self.nk { self.kinds[gi].1 as usize } else { 0 };
-        let mut m = vec![0.0f64; (stop + 1) * no];
-        for o in 0..no {
+        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+        let stop = if gi < self.kind_count { self.kinds[gi].1 as usize } else { 0 };
+        let mut m = vec![0.0f64; (stop + 1) * outfit_count];
+        for o in 0..outfit_count {
             let den = self.den(o);
             for &j in self.groups[gi] {
-                if let Some(rows) = &self.sb_rows[j] {
-                    for l in 0..=stop.min(rows.len() / nu - 1) {
-                        let r = self.ratio(o, &rows[l * nu..(l + 1) * nu], den);
-                        if !(r <= m[l * no + o]) {
-                            m[l * no + o] = r;
+                if let Some(rows) = &self.entry_rows[j] {
+                    for l in 0..=stop.min(rows.len() / target_count - 1) {
+                        let r = self.ratio(o, &rows[l * target_count..(l + 1) * target_count], den);
+                        if !(r <= m[l * outfit_count + o]) {
+                            m[l * outfit_count + o] = r;
                         }
                     }
                 }
             }
         }
         let r = Rc::new(m);
-        self.rmx.borrow_mut()[gi] = Some(Rc::clone(&r));
+        self.group_ratios.borrow_mut()[gi] = Some(Rc::clone(&r));
         r
     }
 
-    /// Entry j's ratio per level and outfit, row l * no + o
+    /// Entry j's ratio per level and outfit, row l * outfit_count + o
     pub(super) fn entry(&self, j: usize) -> Rc<Vec<f64>> {
-        if let Some(r) = self.rent.borrow().get(&j) {
+        if let Some(r) = self.entry_ratios.borrow().get(&j) {
             return Rc::clone(r);
         }
-        let (nu, no) = (self.nu, self.no);
-        let rows = self.sb_rows[j].as_ref().unwrap();
-        let nl = rows.len() / nu;
-        let mut m = vec![0.0f64; nl * no];
-        for o in 0..no {
+        let (target_count, outfit_count) = (self.target_count, self.outfit_count);
+        let rows = self.entry_rows[j].as_ref().unwrap();
+        let level_count = rows.len() / target_count;
+        let mut m = vec![0.0f64; level_count * outfit_count];
+        for o in 0..outfit_count {
             let den = self.den(o);
-            for l in 0..nl {
-                m[l * no + o] = self.ratio(o, &rows[l * nu..(l + 1) * nu], den);
+            for l in 0..level_count {
+                m[l * outfit_count + o] = self.ratio(o, &rows[l * target_count..(l + 1) * target_count], den);
             }
         }
         let r = Rc::new(m);
-        self.rent.borrow_mut().insert(j, Rc::clone(&r));
+        self.entry_ratios.borrow_mut().insert(j, Rc::clone(&r));
         r
     }
 }
 
 /// (`StateBound::full`'s cache, per number of filled slots and visiting order: each state's classes in the order the
-/// states are visited, extended as far as a call has reached: `fid` the class of its levels at the filled chain
-/// positions (`fk`), `rep` the first state visited whose levels agree at the filled positions and, per group, up to
-/// their order at its open positions (`ck`))
+/// states are visited, extended as far as a call has reached: `filled_classes` the class of its levels at the filled chain
+/// positions (`filled_keys`), `representatives` the first state visited whose levels agree at the filled positions and, per group, up to
+/// their order at its open positions (`completion_keys`))
 struct StateClasses {
-    fid: Vec<u32>,
-    rep: Vec<u32>,
-    fk: crate::FxMap<u64, u32>,
-    ck: crate::FxMap<u64, u32>,
+    filled_classes: Vec<u32>,
+    representatives: Vec<u32>,
+    filled_keys: crate::FxMap<u64, u32>,
+    completion_keys: crate::FxMap<u64, u32>,
 }
 
-/// (Kept between calls of `full`, this configuration's: `maps` (`StateClasses`); per call (`stamp`): each filled class's
-/// misses and ratio-bound factor (`fx`, `fst` its call), each visited state's terms.)
+/// (Kept between calls of `full`, this configuration's: `state_classes` (`StateClasses`); per call (`generation`): each filled class's
+/// misses and ratio-bound factor (`filled_factors`, `filled_stamps` its call), each visited state's terms.)
 struct StateBoundCache {
-    maps: Vec<Option<StateClasses>>,
-    fst: Vec<u32>,
-    fx: Vec<f64>,
-    term: Vec<f64>,
-    stamp: u32,
+    state_classes: Vec<Option<StateClasses>>,
+    filled_stamps: Vec<u32>,
+    filled_factors: Vec<f64>,
+    state_terms: Vec<f64>,
+    generation: u32,
 }
 
-/// (Kept between calls of `cheap`, this configuration's, the same values as computing each from scratch: the products are
-/// formed in the same order on the same f64s. `sel`: the deck whose slots 0..sel.len() the prefix rows hold, `z` per
-/// depth i and level cap the products of slots 0..i's rows (zg, zh), `p` those of their level-free slots' level-0 rows
-/// (pg, ph: slots fill in order, so the filled ones come first), `tab` each filled chain slot's ratio table; per outfit
-/// and chain slot its last ratios (`rs`, `rsl` levels, 0 none yet), their expectations per event count (`e`) and the
-/// product of the expectations of the chain slots up to it (`pp`): a slot whose ratios are unchanged keeps its
-/// expectations, and the products are redone from the first slot that changed.)
+/// Event-count bound workspace. Prefixes are extended only beyond the unchanged selected entries;
+/// products keep their original target and slot order.
 struct EventBoundCache {
-    sel: Vec<usize>,
-    tab: Vec<Option<Rc<Vec<f64>>>>,
-    z: Vec<f64>,
-    p: Vec<f64>,
-    zw: Vec<f64>,
-    ac: Vec<f64>,
-    rs: Vec<f64>,
-    rsl: Vec<usize>,
-    rsn: Vec<f64>,
-    e: Vec<f64>,
-    pp: Vec<f64>,
+    cached_entries: Vec<usize>,
+    /// Filled slot's ratios, indexed by level and outfit.
+    entry_ratios: Vec<Option<Rc<Vec<f64>>>>,
+    /// Per depth and level cap, white/gold miss products of the slots already filled.
+    level_prefix_misses: Vec<f64>,
+    /// Per depth, misses of the filled slots with no chain level.
+    plain_prefix_misses: Vec<f64>,
+    level_misses: Vec<f64>,
+    target_bounds: Vec<f64>,
+    /// Last evaluated ratios per outfit, chain slot and level.
+    cached_ratios: Vec<f64>,
+    cached_level_counts: Vec<usize>,
+    slot_ratios: Vec<f64>,
+    /// Expectations per outfit, chain slot and event count; unchanged ratios reuse these values.
+    expected_ratios: Vec<f64>,
+    prefix_expectations: Vec<f64>,
 }
 
 /// One configuration's state-conditioned bounds at a partial deck `sel` (entries in pick order, filling the groups in
-/// turn), over its tables `sbc` (`SbCfg`; None when the search uses none, and then no bound is asked for)
-pub(super) struct StateBound<'cfg> {
-    sbc: Option<Rc<SbCfg>>,
-    gs: &'cfg [(&'cfg [usize], usize)],
+/// turn), over its tables `configuration` (`SbCfg`; None when the search uses none, and then no bound is asked for)
+struct StateBoundContext<'cfg> {
+    configuration: Option<Rc<SbCfg>>,
+    groups: &'cfg [(&'cfg [usize], usize)],
     model: &'cfg Model<'cfg>,
-    sb_u: usize,
-    sb_rows: &'cfg [Option<Vec<(f64, f64)>>],
-    lp: &'cfg [LandPre],
-    cf_z: &'cfg [u32],
+    trainee: usize,
+    entry_rows: &'cfg [Option<Vec<(f64, f64)>>],
+    landing_factors: &'cfg [LandPre],
+    zero_base_targets: &'cfg [u32],
     ratios: &'cfg CapFreeRatios<'cfg>,
-    nu: usize,
-    cf_no: usize,
-    fixed: f64,
-    cfm: bool,
+    target_count: usize,
+    cap_free_outfit_count: usize,
+    fixed_factor: f64,
+    cap_free: bool,
     // (each slot's group and chain position in pick order, the chain slots, each group's best ratios)
-    cc_slot: Vec<(usize, usize)>,
-    cc_grm: Vec<Rc<Vec<f64>>>,
-    cc_chain: Vec<usize>,
-    cc_cmax: usize,
-    ub_cache: StateBoundCache,
-    cf_kl: Option<Rc<KeyLevel>>,
-    cf_pmf: Rc<Vec<f64>>,
-    cf_ns: Vec<usize>,
-    cf_rest: f64,
-    cc_zall: u32,
-    cc_cache: EventBoundCache,
+    slots: Vec<BoundSlot>,
+    group_ratios: Vec<Rc<Vec<f64>>>,
+    chain_slots: Vec<usize>,
+    maximum_level: usize,
+    key_levels: Option<Rc<KeyLevel>>,
+    event_probabilities: Rc<Vec<f64>>,
+    event_counts: Vec<usize>,
+    remaining_event_mass: f64,
+    all_zero_base_targets: u32,
+}
+
+pub(super) struct StateBound<'cfg> {
+    context: StateBoundContext<'cfg>,
+    state_cache: StateBoundCache,
+    event_cache: EventBoundCache,
 }
 
 impl<'cfg> StateBound<'cfg> {
-    /// `gs`: the configuration's groups (entries, slots), `cgs` the same as (group index, slots)
+    /// `groups`: the configuration's groups (entries, slots), `cgs` the same as (group index, slots)
     pub(super) fn new(
-        sbc: Option<Rc<SbCfg>>,
-        gs: &'cfg [(&'cfg [usize], usize)],
+        configuration: Option<Rc<SbCfg>>,
+        groups: &'cfg [(&'cfg [usize], usize)],
         cgs: &[(usize, usize)],
         model: &'cfg Model<'cfg>,
-        sb_u: usize,
-        sb_rows: &'cfg [Option<Vec<(f64, f64)>>],
-        lp: &'cfg [LandPre],
+        tables: LandingBoundTables<'cfg>,
         ratios: &'cfg CapFreeRatios<'cfg>,
-        nu: usize,
-        cf_no: usize,
-        fixed: f64,
-        cfm: bool,
+        options: BoundOptions,
     ) -> Self {
-        let ng = gs.len();
-        let cf_z = &*ratios.z;
-        let mut cc_slot: Vec<(usize, usize)> = vec![];
-        let mut cc_grm: Vec<Rc<Vec<f64>>> = vec![];
-        if cfm && let Some(c) = &sbc {
-            for g in 0..ng {
-                for t in 0..gs[g].1 {
-                    cc_slot.push((g, c.slots[g][t]));
+        let LandingBoundTables {
+            factors: landing_factors,
+            entry_rows,
+            target_count,
+            outfit_count: cap_free_outfit_count,
+        } = tables;
+        let BoundOptions { cap_free, trainee, fixed_factor } = options;
+        let group_count = groups.len();
+        let zero_base_targets = &*ratios.z;
+        let mut slots: Vec<BoundSlot> = vec![];
+        let mut group_ratios: Vec<Rc<Vec<f64>>> = vec![];
+        if cap_free && let Some(c) = &configuration {
+            for g in 0..group_count {
+                for t in 0..groups[g].1 {
+                    slots.push(BoundSlot { group: g, chain_position: c.slots[g][t] });
                 }
             }
-            cc_grm = (0..ng).map(|g| ratios.group(cgs[g].0)).collect();
+            group_ratios = (0..group_count).map(|g| ratios.group(cgs[g].0)).collect();
         }
-        let cc_chain: Vec<usize> = (0..cc_slot.len()).filter(|&i| cc_slot[i].1 != usize::MAX).collect();
-        let cc_cmax = sbc.as_ref().map_or(0, |c| c.kl.iter().map(|k| k.1 as usize).max().unwrap_or(0));
-        let ub_cache = StateBoundCache { maps: vec![], fst: vec![], fx: vec![], term: vec![], stamp: 0 };
-        let cf_kl: Option<Rc<KeyLevel>> =
-            if cfm { sbc.as_ref().and_then(|c| (!c.kl.is_empty()).then(|| key_level(&c.kl))) } else { None };
-        let cf_pmf = if cfm { event_pmf_job() } else { Rc::new(vec![]) };
+        let chain_slots: Vec<usize> = (0..slots.len()).filter(|&i| slots[i].chain_position != usize::MAX).collect();
+        let maximum_level = configuration.as_ref().map_or(0, |c| c.kl.iter().map(|k| k.1 as usize).max().unwrap_or(0));
+        let state_cache = StateBoundCache {
+            state_classes: vec![],
+            filled_stamps: vec![],
+            filled_factors: vec![],
+            state_terms: vec![],
+            generation: 0,
+        };
+        let key_levels: Option<Rc<KeyLevel>> = if cap_free {
+            configuration.as_ref().and_then(|c| (!c.kl.is_empty()).then(|| key_level(&c.kl)))
+        } else {
+            None
+        };
+        let event_probabilities = if cap_free { event_pmf_job() } else { Rc::new(vec![]) };
         // (the event counts summed term by term, those of P(n) >= 1e-12; the rest's mass, each such term at most A
         // at every slot's most links done)
-        let cf_ns: Vec<usize> = (0..cf_pmf.len()).filter(|&n| cf_pmf[n] >= 1e-12).collect();
-        let cf_rest: f64 =
-            (0..cf_pmf.len()).filter(|&n| cf_pmf[n] < 1e-12).map(|n| cf_pmf[n]).sum::<f64>() * (1.0 + 1e-9) + 1e-300;
-        let cc_zall: u32 = cf_z.iter().fold(0u32, |m, &z| m | z);
+        let event_counts: Vec<usize> =
+            (0..event_probabilities.len()).filter(|&n| event_probabilities[n] >= 1e-12).collect();
+        let remaining_event_mass: f64 = (0..event_probabilities.len())
+            .filter(|&n| event_probabilities[n] < 1e-12)
+            .map(|n| event_probabilities[n])
+            .sum::<f64>()
+            * (1.0 + 1e-9)
+            + 1e-300;
+        let all_zero_base_targets: u32 = zero_base_targets.iter().fold(0u32, |m, &z| m | z);
         // (at most 16 chain slots, as outfits)
-        assert!(cc_chain.len() <= 16, "{} chain slots: at most 16", cc_chain.len());
-        let cc_cache = {
-            let (nsl, cz, nch, nn, on) = (cc_slot.len(), cc_cmax + 1, cc_chain.len(), cf_ns.len(), usize::from(cfm));
+        assert!(chain_slots.len() <= 16, "{} chain slots: at most 16", chain_slots.len());
+        let event_cache = {
+            let (slot_count, level_cap_count, chain_count, event_count, on) =
+                (slots.len(), maximum_level + 1, chain_slots.len(), event_counts.len(), usize::from(cap_free));
             EventBoundCache {
-                sel: vec![],
-                tab: vec![None; on * nsl],
-                z: vec![1.0f64; on * (nsl + 1) * cz * nu * 2],
-                p: vec![1.0f64; on * (nsl + 1) * nu * 2],
-                zw: vec![1.0f64; on * cz * nu * 2],
-                ac: vec![0.0f64; on * cz],
-                rs: vec![0.0f64; cf_no * nch * cz],
-                rsl: vec![0usize; cf_no * nch],
-                rsn: vec![0.0f64; nch * cz],
-                e: vec![0.0f64; cf_no * nch * nn],
-                pp: vec![0.0f64; cf_no * nch * nn],
+                cached_entries: vec![],
+                entry_ratios: vec![None; on * slot_count],
+                level_prefix_misses: vec![1.0f64; on * (slot_count + 1) * level_cap_count * target_count * 2],
+                plain_prefix_misses: vec![1.0f64; on * (slot_count + 1) * target_count * 2],
+                level_misses: vec![1.0f64; on * level_cap_count * target_count * 2],
+                target_bounds: vec![0.0f64; on * level_cap_count],
+                cached_ratios: vec![0.0f64; cap_free_outfit_count * chain_count * level_cap_count],
+                cached_level_counts: vec![0usize; cap_free_outfit_count * chain_count],
+                slot_ratios: vec![0.0f64; chain_count * level_cap_count],
+                expected_ratios: vec![0.0f64; cap_free_outfit_count * chain_count * event_count],
+                prefix_expectations: vec![0.0f64; cap_free_outfit_count * chain_count * event_count],
             }
         };
         StateBound {
-            sbc,
-            gs,
-            model,
-            sb_u,
-            sb_rows,
-            lp,
-            cf_z,
-            ratios,
-            nu,
-            cf_no,
-            fixed,
-            cfm,
-            cc_slot,
-            cc_grm,
-            cc_chain,
-            cc_cmax,
-            ub_cache,
-            cf_kl,
-            cf_pmf,
-            cf_ns,
-            cf_rest,
-            cc_zall,
-            cc_cache,
+            context: StateBoundContext {
+                configuration,
+                groups,
+                model,
+                trainee,
+                entry_rows,
+                landing_factors,
+                zero_base_targets,
+                ratios,
+                target_count,
+                cap_free_outfit_count,
+                fixed_factor,
+                cap_free,
+                slots,
+                group_ratios,
+                chain_slots,
+                maximum_level,
+                key_levels,
+                event_probabilities,
+                event_counts,
+                remaining_event_mass,
+                all_zero_base_targets,
+            },
+            state_cache,
+            event_cache,
         }
     }
 
     /// The configuration's root bound: no deck of it can reach the bar `sb_bar` below it (0 without a bound)
     pub(super) fn root(&mut self, cfs: f64, sb_bar: f64, sbm: u8) -> f64 {
-        if self.cfm {
+        if self.context.cap_free {
             let x = self.cheap(&[]);
             if cfs == 0.0 && x * (1.0 + 1e-9) < sb_bar {
                 x
@@ -275,59 +369,74 @@ impl<'cfg> StateBound<'cfg> {
 
     /// The state-conditioned bound at `sel`: the cap-free band's per-state one (`full`, the full sum), else `plain`
     pub(super) fn bound(&mut self, sel: &[usize]) -> f64 {
-        if self.cfm { self.full(sel, 0.0) } else { self.plain(sel) }
+        if self.context.cap_free { self.full(sel, 0.0) } else { self.plain(sel) }
     }
 
+    pub(super) fn plain(&self, selection: &[usize]) -> f64 {
+        self.context.plain(selection)
+    }
+
+    pub(super) fn full(&mut self, selection: &[usize], threshold: f64) -> f64 {
+        self.context.full(&mut self.state_cache, selection, threshold)
+    }
+
+    pub(super) fn cheap(&mut self, selection: &[usize]) -> f64 {
+        self.context.cheap(&mut self.event_cache, selection)
+    }
+}
+
+impl StateBoundContext<'_> {
     /// The band pass's state-conditioned bound: per chain state, each target at its partial deck's misses and its open
     /// slots' groups' lowest, the state's weight times the product of the factors, summed; the best outfit
-    pub(super) fn plain(&self, sel: &[usize]) -> f64 {
-        let StateBound { sbc, gs, model, sb_u, sb_rows, lp, nu, fixed, .. } = self;
-        let (nu, fixed, ng) = (*nu, *fixed, gs.len());
-        let c = sbc.as_ref().unwrap();
-        let (mut kg, mut kh) = ([1.0f64; 32], [1.0f64; 32]);
-        let mut chain: Vec<(usize, &[(f64, f64)])> = vec![];
+    fn plain(&self, sel: &[usize]) -> f64 {
+        let context = self;
+        let (target_count, fixed_factor, group_count) =
+            (context.target_count, context.fixed_factor, context.groups.len());
+        let c = context.configuration.as_ref().unwrap();
+        let (mut base_white_misses, mut base_gold_misses) = ([1.0f64; 32], [1.0f64; 32]);
+        let mut chain: Vec<FilledChainSlot<'_>> = vec![];
         let mut idx = 0usize;
-        for g in 0..ng {
-            for t in 0..gs[g].1 {
+        for g in 0..group_count {
+            for t in 0..context.groups[g].1 {
                 let rows: &[(f64, f64)] =
-                    if idx < sel.len() { sb_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
+                    if idx < sel.len() { context.entry_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
                 idx += 1;
                 let p = c.slots[g][t];
                 if p == usize::MAX {
-                    for k in 0..nu {
-                        kg[k] *= rows[k].0;
-                        kh[k] *= rows[k].1;
+                    for k in 0..target_count {
+                        base_white_misses[k] *= rows[k].0;
+                        base_gold_misses[k] *= rows[k].1;
                     }
                 } else {
-                    chain.push((p, rows));
+                    chain.push(FilledChainSlot { position: p, rows });
                 }
             }
         }
-        let opts = &model.opts[*sb_u];
+        let opts = &context.model.opts[context.trainee];
         let mut acc = [0.0f64; 16];
-        let (mut xg, mut xh) = ([0.0f64; 32], [0.0f64; 32]);
+        let (mut state_white_misses, mut state_gold_misses) = ([0.0f64; 32], [0.0f64; 32]);
         for (x, w) in &c.states {
-            xg[..nu].copy_from_slice(&kg[..nu]);
-            xh[..nu].copy_from_slice(&kh[..nu]);
-            for &(p, rows) in &chain {
-                let b = x[p] as usize * nu;
-                for k in 0..nu {
-                    xg[k] *= rows[b + k].0;
-                    xh[k] *= rows[b + k].1;
+            state_white_misses[..target_count].copy_from_slice(&base_white_misses[..target_count]);
+            state_gold_misses[..target_count].copy_from_slice(&base_gold_misses[..target_count]);
+            for &FilledChainSlot { position: p, rows } in &chain {
+                let b = x[p] as usize * target_count;
+                for k in 0..target_count {
+                    state_white_misses[k] *= rows[b + k].0;
+                    state_gold_misses[k] *= rows[b + k].1;
                 }
             }
             for o in 0..opts.len() {
                 let mut f = 1.0f64;
-                for k in 0..nu {
-                    f *= lp[o * nu + k].f(xg[k], xh[k]);
+                for k in 0..target_count {
+                    f *= context.landing_factors[o * target_count + k].f(state_white_misses[k], state_gold_misses[k]);
                 }
                 acc[o] += w * f;
             }
         }
-        fixed * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
+        fixed_factor * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
     }
 
-    /// The cap-free band's bound (`cfm`): per chain state x the lower of `plain`'s per-target bound A_x and a ratio
+    /// The cap-free band's bound (`cap_free`): per chain state x the lower of `plain`'s per-target bound A_x and a ratio
     /// bound B_x, summed over states, the best outfit. Derived: given x the deck's state value is a product over
     /// targets of phi_k at its misses given x (phi_k = G - (G - W) ng - W a nh, a = (1 - e)(1 - q)); its log gains
     /// less from a card the lower the misses already are (phi(ng y, nh y') / phi(ng, nh) rises with ng and with
@@ -340,84 +449,93 @@ impl<'cfg> StateBound<'cfg> {
     /// it decides the test, returning its partial sum plus the weight left times every state's most (A with every
     /// slot at its most links done, at least any state's term): an upper bound either way, below `cut` exactly
     /// when the full sum's test would fail to the slack. 0: the full sum, in state order.
-    pub(super) fn full(&mut self, sel: &[usize], cut: f64) -> f64 {
-        let StateBound { sbc, gs, model, sb_u, sb_rows, lp, cf_z, nu, cf_no, fixed, cc_grm, cc_cmax, ub_cache, .. } =
-            self;
-        let (nu, cf_no, fixed, cc_cmax, ng) = (*nu, *cf_no, *fixed, *cc_cmax, gs.len());
-        let (sb_rows, lp, cf_z) = (*sb_rows, *lp, *cf_z);
-        let c = sbc.as_ref().unwrap();
-        // filled slots without a level (pg, ph), open ones (ag, ah: their groups' lowest misses; rn: their best
+    fn full(&self, state_cache: &mut StateBoundCache, sel: &[usize], cut: f64) -> f64 {
+        let context = self;
+        let (target_count, cap_free_outfit_count, fixed_factor, maximum_level, group_count) = (
+            context.target_count,
+            context.cap_free_outfit_count,
+            context.fixed_factor,
+            context.maximum_level,
+            context.groups.len(),
+        );
+        let c = context.configuration.as_ref().unwrap();
+        // filled slots without a level (partial_white_misses, partial_gold_misses), open ones (open_white_misses, open_gold_misses: their groups' lowest misses; open_ratios: their best
         // ratios); filled chain slots (position, rows), open ones (position, lowest rows, ratio table, group);
-        // every slot at its most links done (ug, uh)
-        let (mut pg, mut ph, mut ag, mut ah) = ([1.0f64; 32], [1.0f64; 32], [1.0f64; 32], [1.0f64; 32]);
-        let (mut ug, mut uh) = ([1.0f64; 32], [1.0f64; 32]);
-        let mut rn = [1.0f64; 16];
-        let (mut fch, mut nf): ([(usize, &[(f64, f64)]); 16], usize) = ([(0, &[]); 16], 0);
-        let (mut ochv, mut no_): ([(usize, &[(f64, f64)], &[f64], usize); 16], usize) = ([(0, &[], &[], 0); 16], 0);
+        // every slot at its most links done (lowest_white_misses, lowest_gold_misses)
+        let (mut partial_white_misses, mut partial_gold_misses, mut open_white_misses, mut open_gold_misses) =
+            ([1.0f64; 32], [1.0f64; 32], [1.0f64; 32], [1.0f64; 32]);
+        let (mut lowest_white_misses, mut lowest_gold_misses) = ([1.0f64; 32], [1.0f64; 32]);
+        let mut open_ratios = [1.0f64; 16];
+        let mut filled_slots = [FilledChainSlot { position: 0, rows: &[] }; 16];
+        let mut filled_count = 0;
+        let mut open_slots = [OpenChainSlot { position: 0, rows: &[], ratios: &[], group: 0 }; 16];
+        let mut open_count = 0;
         let mut open = false;
         let mut idx = 0usize;
-        for g in 0..ng {
-            for t in 0..gs[g].1 {
+        for g in 0..group_count {
+            for t in 0..context.groups[g].1 {
                 let filled = idx < sel.len();
-                let rows: &[(f64, f64)] = if filled { sb_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
+                let rows: &[(f64, f64)] =
+                    if filled { context.entry_rows[sel[idx]].as_deref().unwrap() } else { &c.gmin[g] };
                 idx += 1;
-                let top = &rows[(rows.len() / nu - 1) * nu..];
-                for k in 0..nu {
-                    ug[k] *= top[k].0;
-                    uh[k] *= top[k].1;
+                let top = &rows[(rows.len() / target_count - 1) * target_count..];
+                for k in 0..target_count {
+                    lowest_white_misses[k] *= top[k].0;
+                    lowest_gold_misses[k] *= top[k].1;
                 }
                 let p = c.slots[g][t];
                 if filled {
                     if p == usize::MAX {
-                        for k in 0..nu {
-                            pg[k] *= rows[k].0;
-                            ph[k] *= rows[k].1;
+                        for k in 0..target_count {
+                            partial_white_misses[k] *= rows[k].0;
+                            partial_gold_misses[k] *= rows[k].1;
                         }
                     } else {
-                        fch[nf] = (p, rows);
-                        nf += 1;
+                        filled_slots[filled_count] = FilledChainSlot { position: p, rows };
+                        filled_count += 1;
                     }
                 } else {
                     open = true;
-                    let rm = &cc_grm[g][..];
+                    let rm = &context.group_ratios[g][..];
                     if p == usize::MAX {
-                        for k in 0..nu {
-                            ag[k] *= rows[k].0;
-                            ah[k] *= rows[k].1;
+                        for k in 0..target_count {
+                            open_white_misses[k] *= rows[k].0;
+                            open_gold_misses[k] *= rows[k].1;
                         }
-                        for o in 0..cf_no {
-                            rn[o] *= rm[o];
+                        for o in 0..cap_free_outfit_count {
+                            open_ratios[o] *= rm[o];
                         }
                     } else {
-                        ochv[no_] = (p, rows, rm, g);
-                        no_ += 1;
+                        open_slots[open_count] = OpenChainSlot { position: p, rows, ratios: rm, group: g };
+                        open_count += 1;
                     }
                 }
             }
         }
-        let (fch, och) = (&fch[..nf], &ochv[..no_]);
-        let opts = &model.opts[*sb_u];
-        let no = opts.len();
+        let filled_slots = &filled_slots[..filled_count];
+        let open_slots = &open_slots[..open_count];
+        let opts = &context.model.opts[context.trainee];
+        let outfit_count = opts.len();
         let early = cut > 0.0;
         let mut umax = [0.0f64; 16];
         if early {
             for o in 0..opts.len() {
                 let mut a = 1.0f64;
-                for k in 0..nu {
-                    a *= lp[o * nu + k].f(ug[k], uh[k]);
+                for k in 0..target_count {
+                    a *= context.landing_factors[o * target_count + k].f(lowest_white_misses[k], lowest_gold_misses[k]);
                 }
                 umax[o] = a;
             }
         }
-        let ns = c.states.len();
+        let state_count = c.states.len();
         let (ord, tail) = if early {
             let x = c.order.get_or_init(|| {
-                let mut o: Vec<u32> = (0..ns as u32).collect();
+                let mut o: Vec<u32> = (0..state_count as u32).collect();
                 o.sort_by(|&a, &b| {
                     c.states[b as usize].1.partial_cmp(&c.states[a as usize].1).unwrap().then(a.cmp(&b))
                 });
-                let mut t = vec![0.0f64; ns + 1];
-                for i in (0..ns).rev() {
+                let mut t = vec![0.0f64; state_count + 1];
+                for i in (0..state_count).rev() {
                     t[i] = t[i + 1] + c.states[o[i] as usize].1;
                 }
                 (o, t)
@@ -428,26 +546,30 @@ impl<'cfg> StateBound<'cfg> {
         };
         let mut acc = [0.0f64; 16];
         let mut chk = true;
-        let (mut xg, mut xh) = ([0.0f64; 32], [0.0f64; 32]);
+        let (mut state_white_misses, mut state_gold_misses) = ([0.0f64; 32], [0.0f64; 32]);
         // x*: state x's misses of the partial deck (its level-free filled slots', then its filled chain slots'
         // rows at x's levels)
-        let xstar = |x: &[u8], xg: &mut [f64; 32], xh: &mut [f64; 32]| {
-            xg[..nu].copy_from_slice(&pg[..nu]);
-            xh[..nu].copy_from_slice(&ph[..nu]);
-            for &(p, rows) in fch {
-                let r = &rows[x[p] as usize * nu..][..nu];
-                for ((y, z), rk) in xg[..nu].iter_mut().zip(xh[..nu].iter_mut()).zip(r) {
+        let xstar = |x: &[u8], state_white_misses: &mut [f64; 32], state_gold_misses: &mut [f64; 32]| {
+            state_white_misses[..target_count].copy_from_slice(&partial_white_misses[..target_count]);
+            state_gold_misses[..target_count].copy_from_slice(&partial_gold_misses[..target_count]);
+            for &FilledChainSlot { position: p, rows } in filled_slots {
+                let r = &rows[x[p] as usize * target_count..][..target_count];
+                for ((y, z), rk) in state_white_misses[..target_count]
+                    .iter_mut()
+                    .zip(state_gold_misses[..target_count].iter_mut())
+                    .zip(r)
+                {
                     *y *= rk.0;
                     *z *= rk.1;
                 }
             }
         };
         // per outfit, the ratio bound's factor of the targets outside Z at x*
-        let bn_of = |o: usize, xg: &[f64], xh: &[f64]| -> f64 {
+        let bn_of = |o: usize, state_white_misses: &[f64], state_gold_misses: &[f64]| -> f64 {
             let mut bn = 1.0f64;
-            for k in 0..nu {
-                if cf_z[o] >> k & 1 == 0 {
-                    bn *= lp[o * nu + k].f(xg[k], xh[k]);
+            for k in 0..target_count {
+                if context.zero_base_targets[o] >> k & 1 == 0 {
+                    bn *= context.landing_factors[o * target_count + k].f(state_white_misses[k], state_gold_misses[k]);
                 }
             }
             bn
@@ -455,40 +577,41 @@ impl<'cfg> StateBound<'cfg> {
         // the state's term per outfit from x* and its bn (open slots only): y*, every open slot at its group's
         // lowest, then A at y* (and Z's part of it, bz), with an open slot min(A, bz bn r) (r: the open slots' best
         // ratios at x's levels), else A
-        let terms = |x: &[u8], xg: &[f64], xh: &[f64], bn: &[f64; 16], f: &mut [f64; 16]| {
-            let (mut yg, mut yh) = ([0.0f64; 32], [0.0f64; 32]);
-            for k in 0..nu {
-                yg[k] = xg[k] * ag[k];
-                yh[k] = xh[k] * ah[k];
-            }
-            for &(p, rows, _, _) in och {
-                let r = &rows[x[p] as usize * nu..][..nu];
-                for ((y, z), rk) in yg[..nu].iter_mut().zip(yh[..nu].iter_mut()).zip(r) {
-                    *y *= rk.0;
-                    *z *= rk.1;
+        let terms =
+            |x: &[u8], state_white_misses: &[f64], state_gold_misses: &[f64], bn: &[f64; 16], f: &mut [f64; 16]| {
+                let (mut yg, mut yh) = ([0.0f64; 32], [0.0f64; 32]);
+                for k in 0..target_count {
+                    yg[k] = state_white_misses[k] * open_white_misses[k];
+                    yh[k] = state_gold_misses[k] * open_gold_misses[k];
                 }
-            }
-            for o in 0..no {
-                let (mut a, mut bz) = (1.0f64, 1.0f64);
-                for k in 0..nu {
-                    let fa = lp[o * nu + k].f(yg[k], yh[k]);
-                    a *= fa;
-                    if cf_z[o] >> k & 1 != 0 {
-                        bz *= fa;
+                for &OpenChainSlot { position: p, rows, .. } in open_slots {
+                    let r = &rows[x[p] as usize * target_count..][..target_count];
+                    for ((y, z), rk) in yg[..target_count].iter_mut().zip(yh[..target_count].iter_mut()).zip(r) {
+                        *y *= rk.0;
+                        *z *= rk.1;
                     }
                 }
-                f[o] = if open {
-                    let mut r = rn[o];
-                    for &(p, _, rm, _) in och {
-                        r *= rm[x[p] as usize * cf_no + o];
+                for o in 0..outfit_count {
+                    let (mut a, mut bz) = (1.0f64, 1.0f64);
+                    for k in 0..target_count {
+                        let fa = context.landing_factors[o * target_count + k].f(yg[k], yh[k]);
+                        a *= fa;
+                        if context.zero_base_targets[o] >> k & 1 != 0 {
+                            bz *= fa;
+                        }
                     }
-                    a.min(bz * bn[o] * r)
-                } else {
-                    a
-                };
-            }
-        };
-        let (mut bnv, mut fv) = ([0.0f64; 16], [0.0f64; 16]);
+                    f[o] = if open {
+                        let mut r = open_ratios[o];
+                        for &OpenChainSlot { position: p, ratios: rm, .. } in open_slots {
+                            r *= rm[x[p] as usize * cap_free_outfit_count + o];
+                        }
+                        a.min(bz * bn[o] * r)
+                    } else {
+                        a
+                    };
+                }
+            };
+        let (mut ratio_products, mut outfit_values) = ([0.0f64; 16], [0.0f64; 16]);
         // With an open chain slot, the states share work. A state's filled part (its misses x* given x and, per
         // outfit, the ratio bound's factor of the targets outside Z at x*) depends only on its levels at the
         // filled positions, so it is computed once per class (the same expressions on the same f64s: the same
@@ -496,47 +619,48 @@ impl<'cfg> StateBound<'cfg> {
         // (those slots share their group's lowest rows and best ratios, multiplied in), so the states that agree
         // up to that order have one term (exactly, in real arithmetic), taken from the first of them visited:
         // the sum is the same, up to the rounding of the products.
-        let ucache = ub_cache;
-        let memo = !och.is_empty() && cc_cmax < 16;
+        let ucache = state_cache;
+        let memo = !open_slots.is_empty() && maximum_level < 16;
         if memo {
             let uc = &mut *ucache;
             let mi = sel.len() * 2 + usize::from(early);
-            if uc.maps.len() <= mi {
-                uc.maps.resize_with(mi + 1, || None);
+            if uc.state_classes.len() <= mi {
+                uc.state_classes.resize_with(mi + 1, || None);
             }
-            uc.stamp = uc.stamp.wrapping_add(1);
-            if uc.stamp == 0 {
-                uc.fst.iter_mut().for_each(|x| *x = 0);
-                uc.stamp = 1;
+            uc.generation = uc.generation.wrapping_add(1);
+            if uc.generation == 0 {
+                uc.filled_stamps.iter_mut().for_each(|x| *x = 0);
+                uc.generation = 1;
             }
         }
-        for i in 0..ns {
+        for i in 0..state_count {
             let (x, w) = if early { &c.states[ord[i] as usize] } else { &c.states[i] };
             if memo {
-                let StateBoundCache { maps, fst, fx, term, stamp } = &mut *ucache;
-                let mp = maps[sel.len() * 2 + usize::from(early)].get_or_insert_with(|| StateClasses {
-                    fid: vec![],
-                    rep: vec![],
-                    fk: crate::FxMap::default(),
-                    ck: crate::FxMap::default(),
+                let StateBoundCache { state_classes, filled_stamps, filled_factors, state_terms, generation } =
+                    &mut *ucache;
+                let mp = state_classes[sel.len() * 2 + usize::from(early)].get_or_insert_with(|| StateClasses {
+                    filled_classes: vec![],
+                    representatives: vec![],
+                    filled_keys: crate::FxMap::default(),
+                    completion_keys: crate::FxMap::default(),
                 });
-                if mp.rep.len() <= i {
+                if mp.representatives.len() <= i {
                     // (the state's keys: its levels at the filled positions, then per group its open positions'
                     // levels sorted; 4 bits each, at most 16 positions)
                     let mut fkey = 0u64;
-                    for &(p, _) in fch {
+                    for &FilledChainSlot { position: p, .. } in filled_slots {
                         fkey = fkey << 4 | u64::from(x[p]);
                     }
                     let mut ckey = fkey;
                     let mut s0 = 0usize;
-                    while s0 < och.len() {
+                    while s0 < open_slots.len() {
                         let mut s1 = s0;
-                        while s1 < och.len() && och[s1].3 == och[s0].3 {
+                        while s1 < open_slots.len() && open_slots[s1].group == open_slots[s0].group {
                             s1 += 1;
                         }
                         let mut lv = [0u8; 16];
                         for s in s0..s1 {
-                            lv[s - s0] = x[och[s].0];
+                            lv[s - s0] = x[open_slots[s].position];
                         }
                         lv[..s1 - s0].sort_unstable();
                         for &l in &lv[..s1 - s0] {
@@ -544,59 +668,66 @@ impl<'cfg> StateBound<'cfg> {
                         }
                         s0 = s1;
                     }
-                    let nfk = mp.fk.len() as u32;
-                    let f = *mp.fk.entry(fkey).or_insert(nfk);
-                    let r = *mp.ck.entry(ckey).or_insert(i as u32);
-                    mp.fid.push(f);
-                    mp.rep.push(r);
+                    let nfk = mp.filled_keys.len() as u32;
+                    let f = *mp.filled_keys.entry(fkey).or_insert(nfk);
+                    let r = *mp.completion_keys.entry(ckey).or_insert(i as u32);
+                    mp.filled_classes.push(f);
+                    mp.representatives.push(r);
                 }
-                let r = mp.rep[i] as usize;
-                if term.len() < (i + 1) * no {
-                    term.resize((i + 1) * no, 0.0);
+                let r = mp.representatives[i] as usize;
+                if state_terms.len() < (i + 1) * outfit_count {
+                    state_terms.resize((i + 1) * outfit_count, 0.0);
                 }
                 if r == i {
-                    let f = mp.fid[i] as usize;
-                    let fw = 2 * nu + no;
-                    if fst.len() <= f {
-                        fst.resize(f + 1, 0);
-                        fx.resize((f + 1) * fw, 0.0);
+                    let f = mp.filled_classes[i] as usize;
+                    let fw = 2 * target_count + outfit_count;
+                    if filled_stamps.len() <= f {
+                        filled_stamps.resize(f + 1, 0);
+                        filled_factors.resize((f + 1) * fw, 0.0);
                     }
-                    let fxr = &mut fx[f * fw..(f + 1) * fw];
-                    if fst[f] != *stamp {
-                        fst[f] = *stamp;
-                        xstar(x, &mut xg, &mut xh);
-                        fxr[..nu].copy_from_slice(&xg[..nu]);
-                        fxr[nu..2 * nu].copy_from_slice(&xh[..nu]);
-                        for o in 0..no {
-                            fxr[2 * nu + o] = bn_of(o, &xg, &xh);
+                    let fxr = &mut filled_factors[f * fw..(f + 1) * fw];
+                    if filled_stamps[f] != *generation {
+                        filled_stamps[f] = *generation;
+                        xstar(x, &mut state_white_misses, &mut state_gold_misses);
+                        fxr[..target_count].copy_from_slice(&state_white_misses[..target_count]);
+                        fxr[target_count..2 * target_count].copy_from_slice(&state_gold_misses[..target_count]);
+                        for o in 0..outfit_count {
+                            fxr[2 * target_count + o] = bn_of(o, &state_white_misses, &state_gold_misses);
                         }
                     }
-                    bnv[..no].copy_from_slice(&fxr[2 * nu..2 * nu + no]);
-                    terms(x, &fxr[..nu], &fxr[nu..2 * nu], &bnv, &mut fv);
-                    for o in 0..no {
-                        term[i * no + o] = fv[o];
-                        acc[o] += w * fv[o];
+                    ratio_products[..outfit_count]
+                        .copy_from_slice(&fxr[2 * target_count..2 * target_count + outfit_count]);
+                    terms(
+                        x,
+                        &fxr[..target_count],
+                        &fxr[target_count..2 * target_count],
+                        &ratio_products,
+                        &mut outfit_values,
+                    );
+                    for o in 0..outfit_count {
+                        state_terms[i * outfit_count + o] = outfit_values[o];
+                        acc[o] += w * outfit_values[o];
                     }
                 } else {
-                    for o in 0..no {
-                        acc[o] += w * term[r * no + o];
+                    for o in 0..outfit_count {
+                        acc[o] += w * state_terms[r * outfit_count + o];
                     }
                 }
             } else {
-                xstar(x, &mut xg, &mut xh);
+                xstar(x, &mut state_white_misses, &mut state_gold_misses);
                 if open {
-                    for o in 0..no {
-                        bnv[o] = bn_of(o, &xg, &xh);
+                    for o in 0..outfit_count {
+                        ratio_products[o] = bn_of(o, &state_white_misses, &state_gold_misses);
                     }
                 }
-                terms(x, &xg, &xh, &bnv, &mut fv);
-                for o in 0..no {
-                    acc[o] += w * fv[o];
+                terms(x, &state_white_misses, &state_gold_misses, &ratio_products, &mut outfit_values);
+                for o in 0..outfit_count {
+                    acc[o] += w * outfit_values[o];
                 }
             }
             // (every 4 states: a test decided by a partial sum is the full sum's, so how often it is tried
             // changes no outcome, only where the sum stops)
-            if early && chk && (i & 3 == 3 || i + 1 == ns) {
+            if early && chk && (i & 3 == 3 || i + 1 == state_count) {
                 // (the weight left with a hair of slack for its rounding)
                 let rem = tail[i + 1] * (1.0 + 1e-12);
                 let (mut hi, mut lo) = (0.0f64, 0.0f64);
@@ -604,17 +735,17 @@ impl<'cfg> StateBound<'cfg> {
                     hi = hi.max(acc[o] + rem * umax[o]);
                     lo = lo.max(acc[o]);
                 }
-                // (an infinite or NaN term: no early stop, the full sum)
+                // An infinite or NaN term prevents an early stop; evaluate the full sum.
                 if !hi.is_finite() {
                     chk = false;
                     continue;
                 }
-                if fixed * hi * (1.0 + 1e-9) < cut || fixed * lo * (1.0 + 1e-9) >= cut {
-                    return fixed * hi;
+                if fixed_factor * hi * (1.0 + 1e-9) < cut || fixed_factor * lo * (1.0 + 1e-9) >= cut {
+                    return fixed_factor * hi;
                 }
             }
         }
-        fixed * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
+        fixed_factor * acc[..opts.len()].iter().copied().fold(0.0f64, f64::max)
     }
 
     /// The cap-free band's cheap bound, tried before `full` (a node either fails is pruned): given N = n events
@@ -627,187 +758,201 @@ impl<'cfg> StateBound<'cfg> {
     /// checked exactly, the projection on these positions included), the expected product is at most the product
     /// of the slots' expected ratios at P(level | n); summed over P(n). Infinite (no prune) when the key fails
     /// the orthant check.
-    pub(super) fn cheap(&mut self, sel: &[usize]) -> f64 {
-        let StateBound {
-            sbc,
-            model,
-            sb_u,
-            sb_rows,
-            lp,
-            cf_z,
-            ratios,
-            nu,
-            cf_no,
-            fixed,
-            cc_slot,
-            cc_grm,
-            cc_chain,
-            cc_cmax,
-            cf_kl,
-            cf_pmf,
-            cf_ns,
-            cf_rest,
-            cc_zall,
-            cc_cache,
-            ..
-        } = self;
-        let (nu, cf_no, fixed, cf_rest, cc_zall) = (*nu, *cf_no, *fixed, *cf_rest, *cc_zall);
-        let (sb_rows, lp, cf_z) = (*sb_rows, *lp, *cf_z);
-        let c = sbc.as_ref().unwrap();
-        if cf_kl.as_ref().is_some_and(|k| !k.nuod) {
+    fn cheap(&self, event_cache: &mut EventBoundCache, sel: &[usize]) -> f64 {
+        let context = self;
+        let (target_count, cap_free_outfit_count, fixed_factor, remaining_event_mass, all_zero_base_targets) = (
+            context.target_count,
+            context.cap_free_outfit_count,
+            context.fixed_factor,
+            context.remaining_event_mass,
+            context.all_zero_base_targets,
+        );
+        let c = context.configuration.as_ref().unwrap();
+        if context.key_levels.as_ref().is_some_and(|k| !k.nuod) {
             return f64::INFINITY;
         }
-        let EventBoundCache { sel: csel, tab, z, p, zw, ac, rs: crs, rsl, rsn, e: ce, pp } = cc_cache;
-        let (nsl, cmax, nch, nn) = (cc_slot.len(), *cc_cmax, cc_chain.len(), cf_ns.len());
-        let cz = cmax + 1;
+        // Borrow the independent hot buffers once: writes to one must not reload another's Vec metadata.
+        let EventBoundCache {
+            cached_entries,
+            entry_ratios,
+            level_prefix_misses,
+            plain_prefix_misses,
+            level_misses,
+            target_bounds,
+            cached_ratios,
+            cached_level_counts,
+            slot_ratios,
+            expected_ratios,
+            prefix_expectations,
+        } = event_cache;
+        let (slot_count, maximum_level, chain_count, event_count) =
+            (context.slots.len(), context.maximum_level, context.chain_slots.len(), context.event_counts.len());
+        let level_cap_count = maximum_level + 1;
         let d = sel.len();
         // the prefix rows: kept up to the first pick that differs from the last deck's, extended to this one's
-        let mut l0 = 0usize;
-        while l0 < d && l0 < csel.len() && csel[l0] == sel[l0] {
-            l0 += 1;
+        let mut shared_prefix = 0usize;
+        while shared_prefix < d
+            && shared_prefix < cached_entries.len()
+            && cached_entries[shared_prefix] == sel[shared_prefix]
+        {
+            shared_prefix += 1;
         }
-        csel.truncate(l0);
-        for i in l0..d {
-            let rows: &[(f64, f64)] = sb_rows[sel[i]].as_deref().unwrap();
-            let nl = rows.len() / nu;
-            let (zlo, zhi) = z.split_at_mut((i + 1) * cz * nu * 2);
-            let (zp, zc) = (&zlo[i * cz * nu * 2..], &mut zhi[..cz * nu * 2]);
-            for cc in 0..cz {
-                let r = &rows[cc.min(nl - 1) * nu..][..nu];
-                let b = cc * nu * 2;
-                for ((z2, p2), rk) in
-                    zc[b..b + 2 * nu].chunks_exact_mut(2).zip(zp[b..b + 2 * nu].chunks_exact(2)).zip(r)
+        cached_entries.truncate(shared_prefix);
+        for i in shared_prefix..d {
+            let rows: &[(f64, f64)] = context.entry_rows[sel[i]].as_deref().unwrap();
+            let level_count = rows.len() / target_count;
+            let (zlo, zhi) = level_prefix_misses.split_at_mut((i + 1) * level_cap_count * target_count * 2);
+            let (zp, zc) =
+                (&zlo[i * level_cap_count * target_count * 2..], &mut zhi[..level_cap_count * target_count * 2]);
+            for cc in 0..level_cap_count {
+                let r = &rows[cc.min(level_count - 1) * target_count..][..target_count];
+                let b = cc * target_count * 2;
+                for ((z2, p2), rk) in zc[b..b + 2 * target_count]
+                    .chunks_exact_mut(2)
+                    .zip(zp[b..b + 2 * target_count].chunks_exact(2))
+                    .zip(r)
                 {
                     z2[0] = p2[0] * rk.0;
                     z2[1] = p2[1] * rk.1;
                 }
             }
-            let (plo, phi) = p.split_at_mut((i + 1) * nu * 2);
-            let (pp0, pc) = (&plo[i * nu * 2..], &mut phi[..nu * 2]);
-            if cc_slot[i].1 == usize::MAX {
-                for k in 0..nu {
+            let (plo, phi) = plain_prefix_misses.split_at_mut((i + 1) * target_count * 2);
+            let (pp0, pc) = (&plo[i * target_count * 2..], &mut phi[..target_count * 2]);
+            if context.slots[i].chain_position == usize::MAX {
+                for k in 0..target_count {
                     pc[2 * k] = pp0[2 * k] * rows[k].0;
                     pc[2 * k + 1] = pp0[2 * k + 1] * rows[k].1;
                 }
             } else {
                 pc.copy_from_slice(pp0);
-                tab[i] = Some(ratios.entry(sel[i]));
+                entry_ratios[i] = Some(context.ratios.entry(sel[i]));
             }
-            csel.push(sel[i]);
+            cached_entries.push(sel[i]);
         }
-        // filled level-free slots' misses (pg, ph); per level cap c (every slot at most c links done, at most its
-        // stop) each slot at its lowest misses (zw at c: the prefix's, then the open slots'); open level-free
-        // slots' best ratios (rn); every level-free slot's lowest misses (lg, lh: the zero-base targets'
+        // filled level-free slots' misses (partial_white_misses, partial_gold_misses); per level cap c (every slot at most c links done, at most its
+        // stop) each slot at its lowest misses (level_misses at c: the prefix's, then the open slots'); open level-free
+        // slots' best ratios (open_ratios); every level-free slot's lowest misses (plain_white_misses, plain_gold_misses: the zero-base targets'
         // level-free part)
-        let (mut pg, mut ph) = ([1.0f64; 32], [1.0f64; 32]);
-        for k in 0..nu {
-            pg[k] = p[d * nu * 2 + 2 * k];
-            ph[k] = p[d * nu * 2 + 2 * k + 1];
+        let (mut partial_white_misses, mut partial_gold_misses) = ([1.0f64; 32], [1.0f64; 32]);
+        for k in 0..target_count {
+            partial_white_misses[k] = plain_prefix_misses[d * target_count * 2 + 2 * k];
+            partial_gold_misses[k] = plain_prefix_misses[d * target_count * 2 + 2 * k + 1];
         }
-        zw.copy_from_slice(&z[d * cz * nu * 2..(d + 1) * cz * nu * 2]);
-        let (mut lg, mut lh) = (pg, ph);
-        let mut rn = [1.0f64; 16];
-        for i in d..nsl {
-            let (g, pos) = cc_slot[i];
+        level_misses.copy_from_slice(
+            &level_prefix_misses[d * level_cap_count * target_count * 2..(d + 1) * level_cap_count * target_count * 2],
+        );
+        let (mut plain_white_misses, mut plain_gold_misses) = (partial_white_misses, partial_gold_misses);
+        let mut open_ratios = [1.0f64; 16];
+        for i in d..slot_count {
+            let BoundSlot { group: g, chain_position: pos } = context.slots[i];
             let rows: &[(f64, f64)] = &c.gmin[g];
-            let nl = rows.len() / nu;
-            for cc in 0..cz {
-                let r = &rows[cc.min(nl - 1) * nu..][..nu];
-                let b = cc * nu * 2;
-                for (z2, rk) in zw[b..b + 2 * nu].chunks_exact_mut(2).zip(r) {
+            let level_count = rows.len() / target_count;
+            for cc in 0..level_cap_count {
+                let r = &rows[cc.min(level_count - 1) * target_count..][..target_count];
+                let b = cc * target_count * 2;
+                for (z2, rk) in level_misses[b..b + 2 * target_count].chunks_exact_mut(2).zip(r) {
                     z2[0] *= rk.0;
                     z2[1] *= rk.1;
                 }
             }
             if pos == usize::MAX {
-                for k in 0..nu {
-                    lg[k] *= rows[k].0;
-                    lh[k] *= rows[k].1;
+                for k in 0..target_count {
+                    plain_white_misses[k] *= rows[k].0;
+                    plain_gold_misses[k] *= rows[k].1;
                 }
-                let rm = &cc_grm[g];
-                for o in 0..cf_no {
-                    rn[o] *= rm[o];
+                let rm = &context.group_ratios[g];
+                for o in 0..cap_free_outfit_count {
+                    open_ratios[o] *= rm[o];
                 }
             }
         }
         // the chain slots, in pick order: (position, rows (an open slot's: its group's lowest), filled, ratio
         // table (a filled slot's own from no card, an open slot's group's best), levels)
-        let mut chv: [(usize, &[(f64, f64)], bool, &[f64], usize); 16] = [(0, &[], false, &[], 0); 16];
-        for (s, &i) in cc_chain.iter().enumerate() {
-            let (g, pos) = cc_slot[i];
+        let mut chain_slots =
+            [ChainRatioSlot { position: 0, rows: &[], filled: false, ratios: &[], level_count: 0 }; 16];
+        for (s, &i) in context.chain_slots.iter().enumerate() {
+            let BoundSlot { group: g, chain_position: pos } = context.slots[i];
             let (rows, filled, rm): (&[(f64, f64)], bool, &[f64]) = if i < d {
-                (sb_rows[sel[i]].as_deref().unwrap(), true, &tab[i].as_ref().unwrap()[..])
+                (context.entry_rows[sel[i]].as_deref().unwrap(), true, &entry_ratios[i].as_ref().unwrap()[..])
             } else {
-                ((&*c.gmin[g]), false, &cc_grm[g][..])
+                ((&*c.gmin[g]), false, &context.group_ratios[g][..])
             };
-            chv[s] = (pos, rows, filled, rm, rows.len() / nu);
+            chain_slots[s] =
+                ChainRatioSlot { position: pos, rows, filled, ratios: rm, level_count: rows.len() / target_count };
         }
-        let chs = |s: usize| chv[s];
         // (no filled level-free slot: the filled chain slots' ratios over that base are their tabled ratios from
         // no card)
-        let base_empty = pg[..nu].iter().all(|&x| x == 1.0) && ph[..nu].iter().all(|&x| x == 1.0);
+        let base_empty = partial_white_misses[..target_count].iter().all(|&x| x == 1.0)
+            && partial_gold_misses[..target_count].iter().all(|&x| x == 1.0);
         // each zero-base target's factor as a function of one chain slot's level: the slot whose own misses fall
-        // the most from no links to all (its `zs`), every other slot at its lowest (a factor at least the
+        // the most from no links to all (its `target_carriers`), every other slot at its lowest (a factor at least the
         // target's on every state, rising with that slot's level); None: no chain slot's misses of it fall with
-        // its level. Per zero-base target: its misses with every slot at its lowest but its `zs` slot (every slot
+        // its level. Per zero-base target: its misses with every slot at its lowest but its `target_carriers` slot (every slot
         // when None). (Only the zero-base targets of some outfit are used.)
-        let (mut zs, mut zrest) = ([None::<usize>; 32], [(1.0f64, 1.0f64); 32]);
-        if cc_zall != 0 {
-            for k in 0..nu {
-                if cc_zall >> k & 1 == 0 {
+        let (mut target_carriers, mut other_slot_misses) = ([None::<usize>; 32], [(1.0f64, 1.0f64); 32]);
+        if all_zero_base_targets != 0 {
+            for k in 0..target_count {
+                if all_zero_base_targets >> k & 1 == 0 {
                     continue;
                 }
                 let mut b: Option<(usize, f64)> = None;
-                for si in 0..nch {
-                    let (_, rows, _, _, nl) = chs(si);
-                    let (r0, rt) = (rows[k].1, rows[(nl - 1) * nu + k].1);
+                for si in 0..chain_count {
+                    let ChainRatioSlot { rows, level_count, .. } = chain_slots[si];
+                    let (r0, rt) = (rows[k].1, rows[(level_count - 1) * target_count + k].1);
                     let drop = if r0 > 0.0 { rt / r0 } else { 1.0 };
                     if drop < 1.0 && b.is_none_or(|x| drop < x.1) {
                         b = Some((si, drop));
                     }
                 }
-                zs[k] = b.map(|x| x.0);
-                let (mut a, mut bb) = (lg[k], lh[k]);
-                for si in 0..nch {
-                    if zs[k] != Some(si) {
-                        let (_, rows, _, _, nl) = chs(si);
-                        a *= rows[(nl - 1) * nu + k].0;
-                        bb *= rows[(nl - 1) * nu + k].1;
+                target_carriers[k] = b.map(|x| x.0);
+                let (mut a, mut bb) = (plain_white_misses[k], plain_gold_misses[k]);
+                for si in 0..chain_count {
+                    if target_carriers[k] != Some(si) {
+                        let ChainRatioSlot { rows, level_count, .. } = chain_slots[si];
+                        a *= rows[(level_count - 1) * target_count + k].0;
+                        bb *= rows[(level_count - 1) * target_count + k].1;
                     }
                 }
-                zrest[k] = (a, bb);
+                other_slot_misses[k] = (a, bb);
             }
         }
-        let opts = &model.opts[*sb_u];
+        let opts = &context.model.opts[context.trainee];
         let mut best = 0.0f64;
         for o in 0..opts.len() {
             // per cap: every target at its lowest misses (A)
-            for cc in 0..cz {
+            for cc in 0..level_cap_count {
                 let mut a = 1.0f64;
-                let b = cc * nu * 2;
-                for (lpk, z2) in lp[o * nu..(o + 1) * nu].iter().zip(zw[b..b + 2 * nu].chunks_exact(2)) {
+                let b = cc * target_count * 2;
+                for (lpk, z2) in context.landing_factors[o * target_count..(o + 1) * target_count]
+                    .iter()
+                    .zip(level_misses[b..b + 2 * target_count].chunks_exact(2))
+                {
                     a *= lpk.f(z2[0], z2[1]);
                 }
-                ac[cc] = a;
+                target_bounds[cc] = a;
             }
             let mut pb = 1.0f64;
-            for k in 0..nu {
-                if cf_z[o] >> k & 1 == 0 {
-                    pb *= lp[o * nu + k].f(pg[k], ph[k]);
+            for k in 0..target_count {
+                if context.zero_base_targets[o] >> k & 1 == 0 {
+                    pb *= context.landing_factors[o * target_count + k]
+                        .f(partial_white_misses[k], partial_gold_misses[k]);
                 }
             }
-            // per chain slot and level its ratio (rsn, slot after slot at stride cz), times the zero-base targets
+            // per chain slot and level its ratio (slot_ratios, slot after slot at stride level_cap_count), times the zero-base targets
             // it carries
-            for s in 0..nch {
-                let (_, rows, filled, rm, nl) = chs(s);
-                for l in 0..nl {
-                    rsn[s * cz + l] = if !filled || base_empty {
-                        rm[l * cf_no + o]
+            for s in 0..chain_count {
+                let ChainRatioSlot { rows, filled, ratios: rm, level_count, .. } = chain_slots[s];
+                for l in 0..level_count {
+                    slot_ratios[s * level_cap_count + l] = if !filled || base_empty {
+                        rm[l * cap_free_outfit_count + o]
                     } else {
                         let mut x = 1.0f64;
-                        for k in 0..nu {
-                            if cf_z[o] >> k & 1 == 0 {
-                                x *= lp[o * nu + k].f(pg[k] * rows[l * nu + k].0, ph[k] * rows[l * nu + k].1);
+                        for k in 0..target_count {
+                            if context.zero_base_targets[o] >> k & 1 == 0 {
+                                x *= context.landing_factors[o * target_count + k].f(
+                                    partial_white_misses[k] * rows[l * target_count + k].0,
+                                    partial_gold_misses[k] * rows[l * target_count + k].1,
+                                );
                             }
                         }
                         x / pb
@@ -815,62 +960,71 @@ impl<'cfg> StateBound<'cfg> {
                 }
             }
             let mut zconst = 1.0f64;
-            for k in 0..nu {
-                if cf_z[o] >> k & 1 == 0 {
+            for k in 0..target_count {
+                if context.zero_base_targets[o] >> k & 1 == 0 {
                     continue;
                 }
-                match zs[k] {
+                match target_carriers[k] {
                     None => {
-                        zconst *= lp[o * nu + k].f(zrest[k].0, zrest[k].1);
+                        zconst *= context.landing_factors[o * target_count + k]
+                            .f(other_slot_misses[k].0, other_slot_misses[k].1);
                     }
                     Some(s0) => {
-                        let (_, rows, _, _, nl) = chs(s0);
-                        for l in 0..nl {
-                            rsn[s0 * cz + l] *=
-                                lp[o * nu + k].f(zrest[k].0 * rows[l * nu + k].0, zrest[k].1 * rows[l * nu + k].1);
+                        let ChainRatioSlot { rows, level_count, .. } = chain_slots[s0];
+                        for l in 0..level_count {
+                            slot_ratios[s0 * level_cap_count + l] *= context.landing_factors[o * target_count + k].f(
+                                other_slot_misses[k].0 * rows[l * target_count + k].0,
+                                other_slot_misses[k].1 * rows[l * target_count + k].1,
+                            );
                         }
                     }
                 }
             }
-            let base = pb * rn[o] * zconst;
-            // per n: the lower of A at the cap min(n, cmax) and the ratio bound
-            let tot = match &cf_kl {
-                None => ac[0].min(base),
+            let base = pb * open_ratios[o] * zconst;
+            // per n: the lower of A at the cap min(n, maximum_level) and the ratio bound
+            let tot = match &context.key_levels {
+                None => target_bounds[0].min(base),
                 Some(kl) => {
                     // each chain slot's expectation at P(level | n) and their running product, from the first slot
                     // whose ratios changed
                     let mut redo = false;
-                    for s in 0..nch {
-                        let (pos, _, _, _, nl) = chs(s);
-                        let (cs, ci) = ((o * nch + s) * cz, o * nch + s);
-                        let same = rsl[ci] == nl && (0..nl).all(|l| crs[cs + l].to_bits() == rsn[s * cz + l].to_bits());
-                        let eo = ci * nn;
+                    for s in 0..chain_count {
+                        let ChainRatioSlot { position: pos, level_count, .. } = chain_slots[s];
+                        let (cs, ci) = ((o * chain_count + s) * level_cap_count, o * chain_count + s);
+                        let same = cached_level_counts[ci] == level_count
+                            && (0..level_count).all(|l| {
+                                cached_ratios[cs + l].to_bits() == slot_ratios[s * level_cap_count + l].to_bits()
+                            });
+                        let eo = ci * event_count;
                         if !same {
-                            rsl[ci] = nl;
-                            crs[cs..cs + nl].copy_from_slice(&rsn[s * cz..s * cz + nl]);
-                            let rr = &rsn[s * cz..s * cz + nl];
-                            for (ni, &n) in cf_ns.iter().enumerate() {
-                                let m = &kl.marg[c.rel_pos[pos]][n][..nl];
+                            cached_level_counts[ci] = level_count;
+                            cached_ratios[cs..cs + level_count]
+                                .copy_from_slice(&slot_ratios[s * level_cap_count..s * level_cap_count + level_count]);
+                            let rr = &slot_ratios[s * level_cap_count..s * level_cap_count + level_count];
+                            for (ni, &n) in context.event_counts.iter().enumerate() {
+                                let m = &kl.marg[c.rel_pos[pos]][n][..level_count];
                                 let mut x = 0.0f64;
                                 for (&ml, &rl) in m.iter().zip(rr) {
                                     x += ml * rl;
                                 }
-                                ce[eo + ni] = x;
+                                expected_ratios[eo + ni] = x;
                             }
                             redo = true;
                         }
                         if redo {
-                            for ni in 0..nn {
-                                pp[eo + ni] = if s == 0 { 1.0 } else { pp[eo - nn + ni] } * ce[eo + ni];
+                            for ni in 0..event_count {
+                                prefix_expectations[eo + ni] =
+                                    if s == 0 { 1.0 } else { prefix_expectations[eo - event_count + ni] }
+                                        * expected_ratios[eo + ni];
                             }
                         }
                     }
-                    let mut tot = cf_rest * ac[cmax];
-                    let last = (o * nch + nch.max(1) - 1) * nn;
-                    for (ni, &n) in cf_ns.iter().enumerate() {
-                        let pn = cf_pmf[n];
-                        let prod = if nch == 0 { 1.0f64 } else { pp[last + ni] };
-                        tot += pn * ac[n.min(cmax)].min(base * prod);
+                    let mut tot = remaining_event_mass * target_bounds[maximum_level];
+                    let last = (o * chain_count + chain_count.max(1) - 1) * event_count;
+                    for (ni, &n) in context.event_counts.iter().enumerate() {
+                        let pn = context.event_probabilities[n];
+                        let prod = if chain_count == 0 { 1.0f64 } else { prefix_expectations[last + ni] };
+                        tot += pn * target_bounds[n.min(maximum_level)].min(base * prod);
                     }
                     tot
                 }
@@ -879,6 +1033,6 @@ impl<'cfg> StateBound<'cfg> {
                 best = if tot.is_nan() { f64::INFINITY } else { tot };
             }
         }
-        fixed * best
+        fixed_factor * best
     }
 }

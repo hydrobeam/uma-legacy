@@ -1,42 +1,45 @@
 // Solver worker: the Rust solver compiled to WebAssembly.
-let ex = null, runId;   // runId: the job in the solver now (its progress reports name it)
-const enc = new TextEncoder(), dec = new TextDecoder();
+// The wasm's calling convention: the page's JSON request is copied into memory the solver allocates (`alloc`), `call`
+// returns where its JSON answer starts and `result_len` its length, and the request's memory is freed (`dealloc`).
+let solver = null, runId;   // solver: the instance's exports; runId: the job in the solver now (its progress reports name it)
+const encoder = new TextEncoder(), decoder = new TextDecoder();
 function callRaw(text) {
-  const b = enc.encode(text);
-  const p = ex.alloc(b.length);
-  new Uint8Array(ex.memory.buffer, p, b.length).set(b);
-  const r = ex.call(p, b.length);
-  const n = ex.result_len();
-  const out = dec.decode(new Uint8Array(ex.memory.buffer, r, n));   // a view, no copy: the memory is not shared and nothing runs in between
-  ex.dealloc(p, b.length);
-  return JSON.parse(out);
+  const request = encoder.encode(text);
+  const at = solver.alloc(request.length);
+  new Uint8Array(solver.memory.buffer, at, request.length).set(request);
+  const answerAt = solver.call(at, request.length);
+  const answerLength = solver.result_len();
+  const answer = decoder.decode(new Uint8Array(solver.memory.buffer, answerAt, answerLength));   // a view, no copy: the memory is not shared and nothing runs in between
+  solver.dealloc(at, request.length);
+  return JSON.parse(answer);
 }
+const post = (type, id, r, t0) => self.postMessage({ type, id, r, ms: performance.now() - t0 });
 self.onmessage = async (e) => {
-  const m = e.data;
+  const message = e.data;
   try {
-    if (m.type === 'init') {
+    if (message.type === 'init') {
       try {
         // env.clock_ms: the solver's wall clock (the career plan's time budget); env.progress: the career plan's phase (k
         // of n), posted to the page from inside the call
         const imports = { env: { clock_ms: () => performance.now(), progress: (ph, k, n) => self.postMessage({ type: 'progress', id: runId, ph, k, n }) } };
-        if (m.module) ex = (await WebAssembly.instantiate(m.module, imports)).exports;   // compiled once by the page
-        else ex = (await WebAssembly.instantiate(m.bytes, imports)).instance.exports;
-      } catch (err) {
+        if (message.module) solver = (await WebAssembly.instantiate(message.module, imports)).exports;   // compiled once by the page
+        else solver = (await WebAssembly.instantiate(message.bytes, imports)).instance.exports;
+      } catch {
         throw new Error('This browser refused to run WebAssembly, which the solver needs. Use a current browser with WebAssembly enabled.');
       }
-      const r = callRaw('{"cmd":"init",' + m.data.trim().slice(1));
+      // the init command with the era's data: its JSON object with "cmd" put first
+      const r = callRaw(`{"cmd":"init",${message.data.trim().slice(1)}`);
       if (r.error) throw new Error(r.error);
       self.postMessage({ type: 'ready' });
-    } else if (m.type === 'run') {
-      const t = performance.now(); runId = m.id;
+    } else if (message.type === 'run') {
+      const t0 = performance.now(), job = message.job; runId = message.id;
       // a deck search runs twice: first ranked by per-target odds (fast, posted at once), then by exact odds
-      if ((m.job.cmd === 'deck' || m.job.mode === 'deck') && m.job.exact !== false) {
-        const r0 = callRaw(JSON.stringify(Object.assign({}, m.job, { exact: false })));
-        self.postMessage({ type: 'interim', id: m.id, r: r0, ms: performance.now() - t });
-        if (r0.error) { self.postMessage({ type: 'result', id: m.id, r: r0, ms: performance.now() - t }); return; }
+      if ((job.cmd === 'deck' || job.mode === 'deck') && job.exact !== false) {
+        const quick = callRaw(JSON.stringify(Object.assign({}, job, { exact: false })));
+        post('interim', message.id, quick, t0);
+        if (quick.error) { post('result', message.id, quick, t0); return; }
       }
-      const r = callRaw(JSON.stringify(m.job));
-      self.postMessage({ type: 'result', id: m.id, r, ms: performance.now() - t });
+      post('result', message.id, callRaw(JSON.stringify(job)), t0);
     }
-  } catch (err) { self.postMessage({ type: 'error', id: m.type === 'run' ? m.id : undefined, message: String(err && err.message || err) }); }
+  } catch (err) { self.postMessage({ type: 'error', id: message.type === 'run' ? message.id : undefined, message: String(err?.message || err) }); }
 };

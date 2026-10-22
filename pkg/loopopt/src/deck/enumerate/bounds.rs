@@ -1,4 +1,5 @@
 //! Outfit bounds and ratio prefixes.
+use crate::deck::space::EntryMisses;
 use crate::deck::{DeckSpace, Model};
 
 /// Outfit rows and their zero/low-target split columns, in clause/chance/outfit order.
@@ -16,7 +17,7 @@ pub(in crate::deck::enumerate) struct OutfitBounds {
     pub(in crate::deck::enumerate) nm: Vec<u32>,
     pub(in crate::deck::enumerate) p0n: Vec<f64>,
     pub(in crate::deck::enumerate) alt: Vec<(usize, usize)>,
-    pub(in crate::deck::enumerate) nc: usize,
+    pub(in crate::deck::enumerate) column_count: usize,
 }
 
 /// Empty-card factors, ratio-column masks/divisors, and ordered factor prefixes.
@@ -30,7 +31,7 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
     model: &Model,
     us: &[usize],
     clauses: &[(Vec<(usize, f64)>, f64)],
-    nu: usize,
+    target_count: usize,
 ) -> OutfitBounds {
     // (clause, chance, outfit) triples; the product value of one outfit at one chance is submodular in the set of
     // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
@@ -53,7 +54,7 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
         }
         v
     };
-    let zero = vec![0.0f64; nu];
+    let zero = vec![0.0f64; target_count];
     // the node bound's per-target values, one per (clause, chance, outfit)
     let av = vec![0.0f64; oq.len()];
     // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
@@ -69,7 +70,7 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
     // (empty-deck factor at most LOW_SPLIT of the factor with a certain white hint: their ratios overstate what
     // several cards add) gets one more split, Z its zero and low targets, kept beside its own (neither is lower
     // everywhere). The ratio tables have one column per (row, split): columns 0..noq the rows themselves (zm = 0:
-    // the plain ratio bound, or for a zero row nothing to split on (nu > 32, N's empty value 0 by underflow): its
+    // the plain ratio bound, or for a zero row nothing to split on (target_count > 32, N's empty value 0 by underflow): its
     // ratios infinite, as before), then the low splits (`alt[row]`, a range). Per column: its row, Z's and N's
     // target masks, N's empty-deck value
     let noq = oq.len();
@@ -81,15 +82,15 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
             vec![1.0f64; noq],
             vec![(0usize, 0usize); noq],
         );
-        if nu <= 32 {
+        if target_count <= 32 {
             for i in 0..noq {
-                if orow[i].len() != nu {
+                if orow[i].len() != target_count {
                     continue;
                 }
                 let q = oq[i].2;
-                let full = if nu == 32 { u32::MAX } else { (1u32 << nu) - 1 };
+                let full = if target_count == 32 { u32::MAX } else { (1u32 << target_count) - 1 };
                 let mut z = 0u32;
-                for t in 0..nu {
+                for t in 0..target_count {
                     if !(orow[i].factor_at(t, q, 0.0, 0.0) > 0.0) {
                         z |= 1 << t;
                     }
@@ -106,7 +107,7 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
                 let (start, mut prev) = (cix.len(), z);
                 for &tau in &LOW_SPLIT {
                     let mut za = z;
-                    for t in 0..nu {
+                    for t in 0..target_count {
                         if orow[i].factor_at(t, q, 0.0, 0.0) <= tau * orow[i].factor_at(t, q, 1.0, 0.0) {
                             za |= 1 << t;
                         }
@@ -128,60 +129,73 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
         }
         (cix, zm, nm, p0n, alt)
     };
-    let nc = cix.len();
-    OutfitBounds { oq, og, zero, av, orow, p0, cix, zm, nm, p0n, alt, nc }
+    let column_count = cix.len();
+    OutfitBounds { oq, og, zero, av, orow, p0, cix, zm, nm, p0n, alt, column_count }
 }
 
-pub(in crate::deck::enumerate) fn prepare_ratio_prefixes(
-    nu: usize,
-    oq: &[(usize, usize, f64, usize)],
-    orow: &[crate::skills::OutfitPre],
-    p0: &[f64],
-    cix: &[usize],
-    zm: &[u32],
-    nm: &[u32],
-    p0n: &[f64],
-) -> RatioPrefixes {
-    let noq = oq.len();
-    let nc = cix.len();
-    // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every zm 0) is
-    // the product of its row's factors over a target mask (nm[c] for a split column, else all the row's targets, as
-    // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (p0n[c], p0[i]), or infinite (no
-    // split and p0[i] not > 0: `cmk` None). At a target the card does not touch (miss chances exactly 1.0, the key's
+/// Column i names an outfit row and a target split; every slice uses that column order.
+pub(in crate::deck::enumerate) struct RatioColumns<'table> {
+    pub(in crate::deck::enumerate) outfit_rows: &'table [(usize, usize, f64, usize)],
+    pub(in crate::deck::enumerate) outfits: &'table [crate::skills::OutfitPre],
+    pub(in crate::deck::enumerate) empty_values: &'table [f64],
+    pub(in crate::deck::enumerate) row_indices: &'table [usize],
+    pub(in crate::deck::enumerate) zero_masks: &'table [u32],
+    pub(in crate::deck::enumerate) nonzero_masks: &'table [u32],
+    pub(in crate::deck::enumerate) divisors: &'table [f64],
+    pub(in crate::deck::enumerate) target_count: usize,
+}
+
+pub(in crate::deck::enumerate) fn prepare_ratio_prefixes(columns: &RatioColumns<'_>) -> RatioPrefixes {
+    let noq = columns.outfit_rows.len();
+    let column_count = columns.row_indices.len();
+    // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every columns.zero_masks 0) is
+    // the product of its row's factors over a target mask (columns.nonzero_masks[c] for a split column, else all the row's targets, as
+    // `outfit_fast` multiplies them), in target order from 1.0, over a divisor (columns.divisors[c], columns.empty_values[i]), or infinite (no
+    // split and columns.empty_values[i] not > 0: `cmk` None). At a target the card does not touch (miss chances exactly 1.0, the key's
     // mask `km.2`) its odds are 1 - 1 = 0, the factor `f0` at (0, 0): so per column the products of `f0` over the
     // mask's targets below each t (`cpre`, the same multiplications in the same order), and a card's ratio starts
     // from the prefix at its first touched target: the same f64s
     let f0: Vec<f64> = (0..noq)
         .flat_map(|i| {
-            let (o, q) = (&orow[i], oq[i].2);
-            (0..nu).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
+            let (o, q) = (&columns.outfits[i], columns.outfit_rows[i].2);
+            (0..columns.target_count).map(move |t| if t < o.len() { o.factor_at(t, q, 0.0, 0.0) } else { 1.0 })
         })
         .collect();
-    let cmk: Vec<Option<(u32, f64)>> = (0..nc)
+    let cmk: Vec<Option<(u32, f64)>> = (0..column_count)
         .map(|c| {
-            let i = cix[c];
-            let n = orow[i].len();
-            if zm[c] != 0 {
-                Some((nm[c], p0n[c]))
-            } else if p0[i] > 0.0 {
-                Some((if n >= 32 { u32::MAX } else { (1u32 << n) - 1 }, p0[i]))
+            let i = columns.row_indices[c];
+            let n = columns.outfits[i].len();
+            if columns.zero_masks[c] != 0 {
+                Some((columns.nonzero_masks[c], columns.divisors[c]))
+            } else if columns.empty_values[i] > 0.0 {
+                Some((if n >= 32 { u32::MAX } else { (1u32 << n) - 1 }, columns.empty_values[i]))
             } else {
                 None
             }
         })
         .collect();
-    let cpre: Vec<f64> = (0..nc)
+    let cpre: Vec<f64> = (0..column_count)
         .flat_map(|c| {
-            let i = cix[c];
+            let i = columns.row_indices[c];
             let m = cmk[c].map_or(0, |x| x.0);
-            let mut v = vec![1.0f64; nu + 1];
-            for t in 0..nu {
-                v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * nu + t] } else { v[t] };
+            let mut v = vec![1.0f64; columns.target_count + 1];
+            for t in 0..columns.target_count {
+                v[t + 1] = if m >> t & 1 != 0 { v[t] * f0[i * columns.target_count + t] } else { v[t] };
             }
             v
         })
         .collect();
     RatioPrefixes { f0, cmk, cpre }
+}
+
+/// Dominance is cached per legal entry set, chain key and group.
+#[derive(Clone, Copy)]
+pub(in crate::deck::enumerate) struct DominanceRequest<'group> {
+    pub(in crate::deck::enumerate) set_id: usize,
+    pub(in crate::deck::enumerate) code: u64,
+    pub(in crate::deck::enumerate) group: usize,
+    pub(in crate::deck::enumerate) entries: &'group [usize],
+    pub(in crate::deck::enumerate) lock_bits: &'group [u8],
 }
 
 impl DeckSpace<'_> {
@@ -204,58 +218,60 @@ impl DeckSpace<'_> {
     /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
     /// pick of A's character (`need`). Only which decks are visited (the rest in the same order) and how the bar rises
     /// change: the deck found, its value and odds do not.
-    pub(in crate::deck) fn dom_table(
+    pub(in crate::deck::enumerate) fn dom_table(
         &self,
-        set_id: usize,
-        code: u64,
-        gi: usize,
-        l: &[usize],
-        mw: &[f64],
-        mg: &[f64],
-        lbit: &[u8],
+        request: DominanceRequest<'_>,
+        misses: EntryMisses<'_>,
     ) -> std::rc::Rc<Vec<Vec<(u32, u32)>>> {
-        if let Some(r) = self.domc.borrow().get(&(set_id, code, gi)) {
+        if let Some(r) = self.domc.borrow().get(&(request.set_id, request.code, request.group)) {
             return std::rc::Rc::clone(r);
         }
-        let nu = self.unc.len();
+        let target_count = self.unc.len();
         let in01 = |x: f64| (0.0..=1.0).contains(&x);
-        let ok = |j: usize| (0..nu).all(|t| in01(mw[j * nu + t]) && in01(mg[j * nu + t]));
+        let ok = |j: usize| {
+            (0..target_count)
+                .all(|t| in01(misses.white[j * target_count + t]) && in01(misses.gold[j * target_count + t]))
+        };
         let pal = |j: usize| self.cards[self.rel[j]].pal;
         let r = std::rc::Rc::new(
-            (0..l.len())
+            (0..request.entries.len())
                 .map(|p| {
-                    let b = l[p];
+                    let b = request.entries[p];
                     if !ok(b) {
                         return vec![];
                     }
                     (0..p)
                         .filter_map(|a| {
-                            let aj = l[a];
+                            let aj = request.entries[a];
                             if self.ebor[aj] && !self.ebor[b] {
                                 return None;
                             }
-                            if lbit[b] != 0 && lbit[aj] != lbit[b] {
+                            if request.lock_bits[b] != 0 && request.lock_bits[aj] != request.lock_bits[b] {
                                 return None;
                             }
                             if self.dj.pals.is_some() && pal(aj) != pal(b) {
                                 return None;
                             }
                             if !ok(aj)
-                                || !(0..nu)
-                                    .all(|t| mw[aj * nu + t] <= mw[b * nu + t] && mg[aj * nu + t] <= mg[b * nu + t])
+                                || !(0..target_count).all(|t| {
+                                    misses.white[aj * target_count + t] <= misses.white[b * target_count + t]
+                                        && misses.gold[aj * target_count + t] <= misses.gold[b * target_count + t]
+                                })
                             {
                                 return None;
                             }
                             Some((
                                 a as u32,
-                                (0..nu).filter(|&t| mg[aj * nu + t] < mg[b * nu + t]).fold(0u32, |m, t| m | 1 << t),
+                                (0..target_count)
+                                    .filter(|&t| misses.gold[aj * target_count + t] < misses.gold[b * target_count + t])
+                                    .fold(0u32, |m, t| m | 1 << t),
                             ))
                         })
                         .collect()
                 })
                 .collect::<Vec<_>>(),
         );
-        self.domc.borrow_mut().insert((set_id, code, gi), std::rc::Rc::clone(&r));
+        self.domc.borrow_mut().insert((request.set_id, request.code, request.group), std::rc::Rc::clone(&r));
         r
     }
 }

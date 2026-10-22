@@ -10,6 +10,7 @@ evidence), `docs/RESEARCH.md` (the maths), `docs/USAGE.md` (the page), `docs/PER
 - **Python** runs in the uv environment: `uv run script.py`; add dependencies with `uv add`.
 - **Rust:** `./build.sh lint` passes before a commit; the pre-commit hook checks formatting.
 - **Code clarity:** follow `docs/BUILD.md`, *Code clarity*, in every language. Lint passing is not a readability review.
+- **Clones:** never clone to appease the borrow checker; restructure the borrows instead (`docs/BUILD.md`, *Ownership and clones*).
 - **Results are pinned.** A change that can move the solver's results runs `./build.sh valq TAG` while iterating and
   `./build.sh val TAG` before it lands; career-planner changes also run `val/planval.py` and `val/mono.py`. When results
   move on purpose, the new outputs replace `val/ref__*` / `val/refpu__*` (or `val/plan/ref__*`) in the same commit.

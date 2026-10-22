@@ -9,127 +9,188 @@ import { pickOutfit, outfitNote } from './roster.js';
 import { openSched } from './agenda.js';
 import { openWhy } from './affinity.js';
 import { openOdds } from './odds.js';
-const loopKey = (l) => l.members.map((m, k) => m.id + ':' + l.outfits[k].outfits.map(o => o.id).join('/')).join(' ');
-// one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
-// only one result is shown), top: the #1 result (to say what differs from it)}
-function loopCard(l, meta, ctx) {
-  const n = meta.targets.length;
-  const card = document.createElement('article'); card.className = 'loop' + (ctx.rank <= 1 ? ' first' : '');
-  const ref = ctx.rank > 1 ? ctx.top : null, sameLoop = ref && loopKey(ref.loop) === loopKey(l);
-  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(l.p_all)}</b> runs to land all ${n}</span></div>`;
-  if (meta.deck) {
-    const D = meta.decks, M = l.members;
-    const key = (d) => d.cards.join('|');
-    const same = !D || D.every(d => key(d) === key(meta.deck));
-    const lastBor = (d, idx) => { const o = borLast(d.cards); return o.filter(i => idx.includes(i)); };   // borrowed card in the sixth slot
-    const chip = (d, ci) => { const nm = d.cards[ci]; const pals = new Set(d.pal_cards || []);
-      const bor = /\(borrowed\)$/.test(nm); const base = nm.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
-      const c = CARD_BY_ID.get(d.card_ids[ci]) || CARDS.find(x => x.name === base);   // plain pals have a name but no entry in card_ids
-      // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
-      // credited event choice needs (derived from the event data: c.pri)
-      const endAt = (d.end_chain_at || [])[ci] || 0, pick = (d.choices || [])[ci] || (c && c.pri ? c.pri.join(', ') : '');
-      const tagPick = pick ? ' · prioritise ' + pick : '';
-      const t = c ? cardTitle(c) : { nm: base, ti: '' };
-      const tag = bor ? 'borrowed' : pals.has(base) ? 'pal' : '', full = t.nm + (t.ti ? ' · ' + t.ti : '') + (tag ? ` (${tag})` : '') + tagPick;
-      return `<button type="button" class="dc${bor ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(t.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
-        ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
-        `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`; };
-    // per target the deck can hint: the gold's odds, then the white's (a gold hint counts for the white too, so the
-    // white's number is the chance of at least the white): the two numbers the landing odds depend on; each with its icon
-    const icon = (g, gold) => { const i = skillIcon(g, gold); return i ? i.outerHTML : ''; };
-    // shown on demand (the (i) button by the deck's title): one tile per hint: icon, name and percentage over a bar
-    // (the icons alone don't tell skills apart: the game draws one icon per effect type)
-    const oddsOf = (d) => { const tile = (g, gold, name, p, tip) => { const pc = Math.round(p * 100);
-        return `<span class="dsk${gold ? ' g' : ''}" title="${esc(tip || name)}: ${pc}%">${icon(g, gold)}<span class="dnm">${esc(name)}</span><span class="dbar" aria-hidden="true"><span style="width:${pc}%"></span></span><b>${pc}%</b></span>`; };
-      const odds = d.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => { const s = SK.get(o.group) || { w: o.group, gd: null };
-        const h = 1 - (1 - o.white) * (1 - o.gold), parts = [];
-        if (o.gold > 0.005) parts.push(tile(o.group, true, s.gd || s.w, o.gold));
-        if (h - o.gold > 0.005) parts.push(tile(o.group, false, s.w, h, o.gold > 0.005 ? s.w + ' or its gold' : ''));
-        return parts.join(''); }).join('');
-      return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`; };
-    // what a swap changes: the hint odds that move against the shared deck (the gold's, then at least the white's),
-    // largest change first; two shown, a click on the list shows them all (and again folds it). who: the members on
-    // that deck; a hint all of them have on their own outfit's skill list is no change for them (its gold: they have the
-    // gold; the white: they have at least the white), so it isn't listed (her deck drops it because she doesn't need it)
-    const deltas = (d, who) => { const base = new Map(meta.deck.odds.map(o => [o.group, o])), out = [];
-      const own = (g) => Math.min(...who.map(k => (l.outfits[k].covers.find(c => c.group === g) || { level: 0 }).level));
-      const h = (o) => o ? 1 - (1 - o.white) * (1 - o.gold) : 0;
-      for (const o of d.odds) { const b = base.get(o.group), s = SK.get(o.group) || { w: o.group, gd: null }, lv = own(o.group);
-        if (lv < 2 && Math.abs(o.gold - (b ? b.gold : 0)) >= 0.005) out.push({ g: o.group, gold: true, nm: s.gd || s.w, a: b ? b.gold : 0, z: o.gold });
-        if (lv < 1 && Math.abs(h(o) - h(b)) >= 0.005 && (h(o) - o.gold > 0.005 || h(b) - (b ? b.gold : 0) > 0.005)) out.push({ g: o.group, gold: false, nm: s.w, a: h(b), z: h(o) }); }
-      out.sort((x, y) => Math.abs(y.z - y.a) - Math.abs(x.z - x.a));
-      if (!out.length) return '';
-      const pc = (p) => Math.round(p * 100) + '%', one = (x) => `<span class="swd1${x.z < x.a ? ' down' : ''}">${icon(x.g, x.gold)}${esc(x.nm)} <b>${pc(x.a)} → ${pc(x.z)}</b></span>`;
-      if (out.length <= 2) return `<span class="swd">${out.map(one).join('')}</span>`;
-      return `<button type="button" class="swd more" aria-expanded="false">${out.map((x, i) => i < 2 ? one(x) : one(x).replace('class="swd1', 'class="swd1 extra')).join('')}<span class="swmore" data-n="${out.length - 2}">+${out.length - 2} more</span></button>`; };
-    const info = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
-    // a member's portrait (her outfit's when the loop fixes one), with her name as its tooltip
-    // a member's portrait: a button opening her panel, as her name at the top does
-    const face = (k, size) => { const of = l.outfits[k].outfits, av = umaAv(M[k].id, of.length === 1 ? of[0].id : null, size), nm = M[k].name + (of.length === 1 ? ' ' + of[0].label : '');
-      return `<button type="button" class="facebtn" data-uma="${M[k].id}" title="${esc(nm)}" aria-label="${esc(nm)}" aria-haspopup="dialog" aria-expanded="false">${av.outerHTML}</button>`; };
-    const block = (d, title) => { const dk = document.createElement('div'); dk.className = 'deck';
-      dk.innerHTML = `<div class="dtitle"><b>${title}</b></div>${info}<div class="dcards">${lastBor(d, d.cards.map((_, ci) => ci)).map(ci => chip(d, ci)).join('')}</div>` + oddsOf(d);
-      return dk; };
-    if (same) card.appendChild(block(meta.deck, D ? `Deck for all ${M.length === 3 ? 'three' : 'four'}` : 'Deck'));
-    else {
-      // the deck most members share, then each other member's deck by its changes to it, one row each: her face, the card
-      // that goes (greyed) ➜ the card that comes in, and what it does to the odds
-      const users = M.map((m, k) => k).filter(k => key(D[k]) === key(meta.deck));
-      card.appendChild(block(meta.deck, `Deck for <span class="dwho">${users.map(k => face(k, 42)).join('')}</span><span class="vh">${esc(users.map(k => M[k].name).join(', '))}</span>`));
-      const seen = new Set();
-      // a label where the other decks start: each row below is another uma's deck, by its changes to the deck above
-      if (M.some((m, k) => key(D[k]) !== key(meta.deck))) { const h = document.createElement('p'); h.className = 'swhead'; h.textContent = 'Swaps'; card.appendChild(h); }
-      M.forEach((m, k) => { if (key(D[k]) === key(meta.deck) || seen.has(key(D[k]))) return; seen.add(key(D[k]));
-        const d = D[k]; const who = M.filter((_, j) => key(D[j]) === key(d)).map(x => x.name);
-        // who: her character icon (her outfit's when the loop fixes one), the words for screen readers and the tooltip
-        const whoT = (who.length === 1 ? who[0] : who.slice(0, -1).join(', ') + ' and ' + who.at(-1)) + '’s deck';   // "X’s deck", "X and Y’s deck"
-        const js = M.map((x, j) => j).filter(j => key(D[j]) === key(d)), faces = js.map(j => face(j, 64)).join('');   // each portrait its own tooltip
-        const out = meta.deck.cards.map((_, ci) => ci).filter(ci => !d.cards.includes(meta.deck.cards[ci]));
-        const inn = d.cards.map((_, ci) => ci).filter(ci => !meta.deck.cards.includes(d.cards[ci]));
-        const dk = document.createElement('div'); dk.className = 'deck swap';
-        dk.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whoT)}:</span></span>` +
-          `<div class="swcards"><span class="swc swout"><span class="vh">out:</span>${lastBor(meta.deck, out).map(ci => chip(meta.deck, ci)).join('')}</span>` +
-          `<span class="swa" aria-hidden="true">${ARROW}</span><span class="swc swin"><span class="vh">in:</span>${lastBor(d, inn).map(ci => chip(d, ci)).join('')}</span></div>${deltas(d, js)}</div>${info}` + oddsOf(d);
-        card.appendChild(dk); });
+/**
+ * A deck in a result (the solver's `Deck::out`, deck/kept.rs). Parallel lists: `cards[i]` is named with ` (borrowed)` or
+ * ` (end chain at link N)` appended where that applies; `card_ids[i]` is its id (plain pals have a name but no entry).
+ * @typedef {object} ResultDeck
+ * @property {string[]} cards
+ * @property {number[]} card_ids
+ * @property {string[]} [pal_cards] the cards in it that are pals, by name
+ * @property {number[]} [end_chain_at] per card: the chain link to end its story at (0: none)
+ * @property {string[]} [choices] per card: the skill to prioritise at its chain link
+ * @property {{group: number, white: number, gold: number}[]} odds per target: the chance the deck hints its white, its gold
+ */
+const loopKey = (loop) => loop.members.map((m, k) => `${m.id}:${loop.outfits[k].outfits.map(o => o.id).join('/')}`).join(' ');
+const deckKey = (deck) => deck.cards.join('|');
+const SHOWN = 0.005;   // hint odds and their changes under half a percent are not shown
+// the chance of at least the white: a gold hint counts for the white too
+const atLeastWhite = (odds) => odds ? 1 - (1 - odds.white) * (1 - odds.gold) : 0;
+const namesOf = (group) => SK.get(group) || { w: group, gd: null };
+const iconHTML = (group, gold) => { const icon = skillIcon(group, gold); return icon ? icon.outerHTML : ''; };
+// the deck's card indices among `indices`, the borrowed card last (the sixth slot, as in the game)
+const borrowedLast = (deck, indices) => borLast(deck.cards).filter(i => indices.includes(i));
+const allIndices = (list) => list.map((_, i) => i);
+// one card of a deck as a button opening its panel: its art, name and title, and what to do with it in IT
+function cardChip(deck, i) {
+  const named = deck.cards[i], pals = new Set(deck.pal_cards || []);
+  const borrowed = /\(borrowed\)$/.test(named), base = named.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '');
+  const c = CARD_BY_ID.get(deck.card_ids[i]) || CARDS.find(x => x.name === base);   // plain pals have a name but no entry in card_ids
+  // pick: the skill to prioritise in IT: the search's choice at a chain link ("link 1: Uma Stan"), or what a pal's
+  // credited event choice needs (derived from the event data: c.pri)
+  const endAt = (deck.end_chain_at || [])[i] || 0, pick = (deck.choices || [])[i] || (c?.pri ? c.pri.join(', ') : '');
+  const pickNote = pick ? ` · prioritise ${pick}` : '';
+  const title = c ? cardTitle(c) : { nm: base, ti: '' };
+  const tag = borrowed ? 'borrowed' : pals.has(base) ? 'pal' : '', full = title.nm + (title.ti ? ` · ${title.ti}` : '') + (tag ? ` (${tag})` : '') + pickNote;
+  return `<button type="button" class="dc${borrowed ? ' bor' : pals.has(base) ? ' pal' : ''}" data-cid="${c ? c.id : ''}" data-name="${esc(title.nm)}"${endAt ? ` data-end="${endAt}"` : ''}` +
+    ` title="${esc(full)}" aria-label="${esc(full)}" aria-haspopup="dialog" aria-expanded="false">` +
+    `<span class="dn">${esc(full)}</span>${pick ? `<i>prioritise ${esc(pick)}</i>` : ''}${endAt ? `<i>chain end: link ${endAt}</i>` : ''}</button>`;
+}
+// per target the deck can hint: the gold's odds, then the white's (the chance of at least the white): the two numbers
+// the landing odds depend on. Shown on demand (the (i) button by the deck's title): one tile per hint: icon, name and
+// percentage over a bar (the icons alone don't tell skills apart: the game draws one icon per effect type)
+function hintOddsHTML(deck) {
+  const tile = (group, gold, name, p, tip) => {
+    const percent = Math.round(p * 100);
+    return `<span class="dsk${gold ? ' g' : ''}" title="${esc(tip || name)}: ${percent}%">${iconHTML(group, gold)}<span class="dnm">${esc(name)}</span><span class="dbar" aria-hidden="true"><span style="width:${percent}%"></span></span><b>${percent}%</b></span>`;
+  };
+  const odds = deck.odds.filter(o => o.white > SHOWN || o.gold > SHOWN).map(o => {
+    const names = namesOf(o.group), white = atLeastWhite(o), parts = [];
+    if (o.gold > SHOWN) parts.push(tile(o.group, true, names.gd || names.w, o.gold));
+    if (white - o.gold > SHOWN) parts.push(tile(o.group, false, names.w, white, o.gold > SHOWN ? `${names.w} or its gold` : ''));
+    return parts.join('');
+  }).join('');
+  return `<div class="dodds" hidden><span class="dlab">Hint odds from this deck</span>${odds || '<span>This deck gives none of the targets.</span>'}</div>`;
+}
+// what a swap changes: the hint odds that move against the shared deck (the gold's, then at least the white's),
+// largest change first; two shown, a click on the list shows them all (and again folds it). who: the members on
+// that deck; a hint all of them have on their own outfit's skill list is no change for them (its gold: they have the
+// gold; the white: they have at least the white), so it isn't listed (her deck drops it because she doesn't need it)
+function swapDeltasHTML(loop, shared, deck, who) {
+  const before = new Map(shared.odds.map(o => [o.group, o])), changes = [];
+  const ownLevel = (group) => Math.min(...who.map(k => (loop.outfits[k].covers.find(c => c.group === group) || { level: 0 }).level));
+  for (const o of deck.odds) {
+    const b = before.get(o.group), names = namesOf(o.group), level = ownLevel(o.group);
+    if (level < 2 && Math.abs(o.gold - (b ? b.gold : 0)) >= SHOWN) changes.push({ group: o.group, gold: true, name: names.gd || names.w, from: b ? b.gold : 0, to: o.gold });
+    if (level < 1 && Math.abs(atLeastWhite(o) - atLeastWhite(b)) >= SHOWN && (atLeastWhite(o) - o.gold > SHOWN || atLeastWhite(b) - (b ? b.gold : 0) > SHOWN)) {
+      changes.push({ group: o.group, gold: false, name: names.w, from: atLeastWhite(b), to: atLeastWhite(o) });
     }
-    card.querySelectorAll('.swd.more').forEach(b => b.onclick = () => { const open = b.getAttribute('aria-expanded') !== 'true';
-      b.setAttribute('aria-expanded', String(open)); const m = b.querySelector('.swmore'); m.textContent = open ? 'Show less' : `+${m.dataset.n} more`; });
-    card.querySelectorAll('.deck .oinfo').forEach(b => b.onclick = () => { const o = b.closest('.deck').querySelector('.dodds');
-      o.hidden = !o.hidden; b.setAttribute('aria-expanded', String(!o.hidden)); });
-    card.querySelectorAll('.deck .dc').forEach(el => { const c = CARD_BY_ID.get(+el.dataset.cid); el.prepend(cardAv(c || null, 96)); });
   }
-  let mem;
-  if (sameLoop) { mem = document.createElement('p'); mem.className = 'same'; mem.textContent = 'Same loop as #1 (the same umas and outfits); only the deck differs.'; }
-  else {
-    mem = document.createElement('div'); mem.className = 'members' + (l.members.length === 3 ? ' n3' : '');
-    l.members.forEach((m, k) => {
-      const o = l.outfits[k]; const d = document.createElement('div'); d.className = 'mem';
-      // one outfit named, never "any outfit" (her popup says when any would do, or which others are as good)
-      const f = pickOutfit(m.id, o.outfits), outfit = f.list[0]?.label || '';
-      d.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span>` +
-        `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(l.per_trainee[k])}</span></span>`;
-      d.dataset.uma = m.id; d.dataset.outfit = o.outfits.length === 1 ? o.outfits[0].id : ''; d.dataset.outfitLabel = outfit; d.dataset.outfitNote = outfitNote(f);
-      d.querySelector('.nm').textContent = m.name; d.querySelector('.of').textContent = outfit;
-      d.querySelector('.head').prepend(umaAv(m.id, f.list[0]?.id ?? null, 38));
-      // targets on her own outfit's skill list (she has them when she is the trainee)
-      const sk = d.querySelector('.sk');
-      // each its icon and name
-      for (const c of o.covers) { const s = SK.get(c.group) || { w: c.group, gd: null }; const sp = document.createElement('span');
-        sp.className = 'spark' + (c.level === 2 ? ' g' : '');
-        const ic = skillIcon(c.group, c.level === 2); if (ic) sp.appendChild(ic);
-        sp.append(c.level === 2 ? (s.gd || s.w) : s.w); sk.appendChild(sp); }
-      mem.appendChild(d);
+  changes.sort((x, y) => Math.abs(y.to - y.from) - Math.abs(x.to - x.from));
+  if (!changes.length) return '';
+  const percent = (p) => `${Math.round(p * 100)}%`;
+  const one = (x) => `<span class="swd1${x.to < x.from ? ' down' : ''}">${iconHTML(x.group, x.gold)}${esc(x.name)} <b>${percent(x.from)} → ${percent(x.to)}</b></span>`;
+  if (changes.length <= 2) return `<span class="swd">${changes.map(one).join('')}</span>`;
+  return `<button type="button" class="swd more" aria-expanded="false">${changes.map((x, i) => i < 2 ? one(x) : one(x).replace('class="swd1', 'class="swd1 extra')).join('')}<span class="swmore" data-n="${changes.length - 2}">+${changes.length - 2} more</span></button>`;
+}
+const INFO_BUTTON = '<button type="button" class="oinfo" aria-expanded="false" aria-label="Hint odds from this deck" title="Hint odds from this deck">i</button>';
+// a member's portrait (her outfit's when the loop fixes one): a button opening her panel, as her name at the top does,
+// with her name as its tooltip
+function faceButton(loop, k, size) {
+  const member = loop.members[k], outfits = loop.outfits[k].outfits, one = outfits.length === 1;
+  const avatar = umaAv(member.id, one ? outfits[0].id : null, size), name = member.name + (one ? ` ${outfits[0].label}` : '');
+  return `<button type="button" class="facebtn" data-uma="${member.id}" title="${esc(name)}" aria-label="${esc(name)}" aria-haspopup="dialog" aria-expanded="false">${avatar.outerHTML}</button>`;
+}
+function deckBlock(deck, title) {
+  const block = document.createElement('div'); block.className = 'deck';
+  block.innerHTML = `<div class="dtitle"><b>${title}</b></div>${INFO_BUTTON}<div class="dcards">${borrowedLast(deck, allIndices(deck.cards)).map(i => cardChip(deck, i)).join('')}</div>${hintOddsHTML(deck)}`;
+  return block;
+}
+// another member's deck by its changes to the shared one, one row: her face (each with her name as its tooltip), the
+// cards that go (greyed) ➜ the cards that come in, and what it does to the odds. `who`: the members on this deck
+function swapRow(loop, shared, deck, who) {
+  const names = who.map(k => loop.members[k].name);
+  const whose = `${names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`}’s deck`;   // "X’s deck", "X and Y’s deck"
+  const faces = who.map(k => faceButton(loop, k, 64)).join('');
+  const out = allIndices(shared.cards).filter(i => !deck.cards.includes(shared.cards[i]));
+  const comingIn = allIndices(deck.cards).filter(i => !shared.cards.includes(deck.cards[i]));
+  const row = document.createElement('div'); row.className = 'deck swap';
+  row.innerHTML = `<div class="swrow"><span class="swho">${faces}<span class="vh">${esc(whose)}:</span></span>` +
+    `<div class="swcards"><span class="swc swout"><span class="vh">out:</span>${borrowedLast(shared, out).map(i => cardChip(shared, i)).join('')}</span>` +
+    `<span class="swa" aria-hidden="true">${ARROW}</span><span class="swc swin"><span class="vh">in:</span>${borrowedLast(deck, comingIn).map(i => cardChip(deck, i)).join('')}</span></div>${swapDeltasHTML(loop, shared, deck, who)}</div>${INFO_BUTTON}${hintOddsHTML(deck)}`;
+  return row;
+}
+// the deck(s) of a result into its card: one deck for all, or the deck most members share and the swaps from it
+function appendDecks(card, loop, shared, decks) {
+  const members = loop.members;
+  if (!decks || decks.every(d => deckKey(d) === deckKey(shared))) {
+    card.appendChild(deckBlock(shared, decks ? `Deck for all ${members.length === 3 ? 'three' : 'four'}` : 'Deck'));
+  } else {
+    const users = allIndices(members).filter(k => deckKey(decks[k]) === deckKey(shared));
+    card.appendChild(deckBlock(shared, `Deck for <span class="dwho">${users.map(k => faceButton(loop, k, 42)).join('')}</span><span class="vh">${esc(users.map(k => members[k].name).join(', '))}</span>`));
+    // a label where the other decks start: each row below is another uma's deck, by its changes to the deck above
+    const heading = document.createElement('p'); heading.className = 'swhead'; heading.textContent = 'Swaps'; card.appendChild(heading);
+    const seen = new Set();
+    members.forEach((_, k) => {
+      const deck = decks[k];
+      if (deckKey(deck) === deckKey(shared) || seen.has(deckKey(deck))) return;
+      seen.add(deckKey(deck));
+      card.appendChild(swapRow(loop, shared, deck, allIndices(members).filter(j => deckKey(decks[j]) === deckKey(deck))));
     });
   }
-  const firstDeck = card.querySelector('.deck');   // the loop (members, odds) reads before the decks that serve it
-  card.insertBefore(mem, firstDeck);
-  const acts = document.createElement('div'); acts.className = 'row lacts';
-  // the chance of each count of targets landed (the solver's, exact over the landed sets), as the career planner's
-  if (l.landed) { const ob = document.createElement('button'); ob.type = 'button'; ob.className = 'btn sbtn'; ob.textContent = 'Odds'; ob.setAttribute('aria-haspopup', 'dialog');
-    ob.onclick = () => openOdds({ title: 'Odds of this loop', n, ex: l.landed, pAll: l.p_all, expected: l.landed.reduce((s, x, k) => s + k * x, 0) }); acts.appendChild(ob); }
-  const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'btn sbtn'; sb.textContent = 'Race schedule'; sb.onclick = () => openSched(l); acts.appendChild(sb);
-  if (l.detail) { const ab = document.createElement('button'); ab.type = 'button'; ab.className = 'btn sbtn'; ab.textContent = 'Affinity'; ab.onclick = () => openWhy(l); acts.appendChild(ab); }
-  card.appendChild(acts);
+  card.querySelectorAll('.swd.more').forEach(b => {
+    b.onclick = () => {
+      const open = b.getAttribute('aria-expanded') !== 'true';
+      b.setAttribute('aria-expanded', String(open));
+      const more = b.querySelector('.swmore'); more.textContent = open ? 'Show less' : `+${more.dataset.n} more`;
+    };
+  });
+  card.querySelectorAll('.deck .oinfo').forEach(b => {
+    b.onclick = () => { const odds = b.closest('.deck').querySelector('.dodds'); odds.hidden = !odds.hidden; b.setAttribute('aria-expanded', String(!odds.hidden)); };
+  });
+  card.querySelectorAll('.deck .dc').forEach(chip => { const c = CARD_BY_ID.get(+chip.dataset.cid); chip.prepend(cardAv(c || null, 96)); });
+}
+// the loop's members: face and name (a button opening her panel), the outfit named, the targets on her own outfit's
+// skill list (she has them when she is the trainee) and the odds with her as the trainee
+function membersEl(loop) {
+  const box = document.createElement('div'); box.className = `members${loop.members.length === 3 ? ' n3' : ''}`;
+  loop.members.forEach((m, k) => {
+    const offered = loop.outfits[k], member = document.createElement('div'); member.className = 'mem';
+    // one outfit named, never "any outfit" (her popup says when any would do, or which others are as good)
+    const pick = pickOutfit(m.id, offered.outfits), outfit = pick.list[0]?.label || '';
+    member.innerHTML = `<button type="button" class="head memb" aria-haspopup="dialog" aria-expanded="false"><span class="nm"></span></button><span class="of"></span><span class="sk"></span>` +
+      `<span class="own" title="The odds that every target lands in a run with her as the trainee">as trainee: <span class="num">${fmtIn(loop.per_trainee[k])}</span></span>`;
+    member.dataset.uma = m.id; member.dataset.outfit = offered.outfits.length === 1 ? offered.outfits[0].id : '';
+    member.dataset.outfitLabel = outfit; member.dataset.outfitNote = outfitNote(pick);
+    member.querySelector('.nm').textContent = m.name; member.querySelector('.of').textContent = outfit;
+    member.querySelector('.head').prepend(umaAv(m.id, pick.list[0]?.id ?? null, 38));
+    const skills = member.querySelector('.sk');
+    for (const cover of offered.covers) {   // each its icon and name
+      const names = namesOf(cover.group), gold = cover.level === 2, spark = document.createElement('span');
+      spark.className = `spark${gold ? ' g' : ''}`;
+      const icon = skillIcon(cover.group, gold); if (icon) spark.appendChild(icon);
+      spark.append(gold ? (names.gd || names.w) : names.w); skills.appendChild(spark);
+    }
+    box.appendChild(member);
+  });
+  return box;
+}
+const smallButton = (text) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn sbtn'; b.textContent = text; return b; };
+// the result's dialogs: the odds of each count landed (the solver's, exact over the landed sets, as the career
+// planner's), the race schedule and the affinity
+function actionsEl(loop, n) {
+  const row = document.createElement('div'); row.className = 'row lacts';
+  if (loop.landed) {
+    const odds = smallButton('Odds'); odds.setAttribute('aria-haspopup', 'dialog');
+    odds.onclick = () => openOdds({ title: 'Odds of this loop', n, ex: loop.landed, pAll: loop.p_all, expected: loop.landed.reduce((sum, p, k) => sum + k * p, 0) });
+    row.appendChild(odds);
+  }
+  const schedule = smallButton('Race schedule'); schedule.onclick = () => openSched(loop); row.appendChild(schedule);
+  if (loop.detail) { const affinity = smallButton('Affinity'); affinity.onclick = () => openWhy(loop); row.appendChild(affinity); }
+  return row;
+}
+// one result: its odds, the three or four umas, the deck(s), the schedule and affinity buttons. ctx: {rank (1-based, 0 when
+// only one result is shown), top: the #1 result (to say what differs from it)}
+function loopCard(loop, meta, ctx) {
+  const n = meta.targets.length;
+  const card = document.createElement('article'); card.className = `loop${ctx.rank <= 1 ? ' first' : ''}`;
+  const sameLoop = ctx.rank > 1 && loopKey(ctx.top.loop) === loopKey(loop);
+  card.innerHTML = `<div class="lhead">${ctx.rank ? `<span class="rank">#${ctx.rank}</span>` : ''}<span class="odds"><b>${fmtIn(loop.p_all)}</b> runs to land all ${n}</span></div>`;
+  if (meta.deck) appendDecks(card, loop, meta.deck, meta.decks);
+  let members;
+  if (sameLoop) { members = document.createElement('p'); members.className = 'same'; members.textContent = 'Same loop as #1 (the same umas and outfits); only the deck differs.'; }
+  else members = membersEl(loop);
+  card.insertBefore(members, card.querySelector('.deck'));   // the loop (members, odds) reads before the decks that serve it
+  card.appendChild(actionsEl(loop, n));
   return card;
 }
 // the game's green arrow (white-edged, dark green outline) between the card that goes and the one that comes in
@@ -142,7 +203,7 @@ export function renderDeck(res, meta) {
   ui.headline = fmtIn(res.top[0].loop.p_all);   // only results with loops reach this (search.js keeps errors off the page)
   setRunnerFrom(res.top[0].loop.members.map(m => m.id));   // the runner while the next search works: one of this loop's umas
   const many = res.top.length > 1;
-  res.top.forEach((t, i) => box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0] })));
+  res.top.forEach((t, i) => { box.appendChild(loopCard(t.loop, { ...meta, deck: t.deck, decks: t.decks || null }, { rank: many ? i + 1 : 0, top: res.top[0] })); });
   if (refocus) $('rcol').focus({ preventScroll: true });
   markOwn();   // grey out anything marked not owned since the search (needs the cards on the page)
 }
