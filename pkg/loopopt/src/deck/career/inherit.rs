@@ -1,7 +1,7 @@
 //! Legacy slots, affinity and inheritance chances.
 use super::{Env, Pool, Who, shared};
 use crate::deck::career::Lineage;
-use crate::deck::{ChainKind, JointExt, SelectedDeck, Src, joint_fast};
+use crate::deck::{JointExt, SelectedDeck, TargetSources, joint_fast};
 
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
 /// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Sim::fast_ub`, the planner's her-slot setups).
@@ -342,19 +342,22 @@ impl Env<'_> {
             chances_without_her: q0,
         })
     }
-    pub(crate) fn scale(&self, nc: &[i32]) -> (Vec<f64>, Vec<f64>) {
-        (
-            self.uncertain_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
-            self.fixed_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
-        )
+    pub(crate) fn scale(&self, nc: &[i32]) -> crate::deck::joint::SparkScales {
+        crate::deck::joint::SparkScales {
+            uncertain: self.uncertain_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
+            guaranteed: self.fixed_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
+        }
     }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
     pub(crate) fn set_trainee(&mut self, t: crate::UmaIndex, q: &[f64]) {
         set_ews(&mut self.model.ews[t], &self.own_event_chances[t], &self.uncertain_targets, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
-    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<(&Src, ChainKind)> {
-        sel.entries.iter().map(|&j| (&self.space.srcs[j], self.space.kind[j])).collect()
+    pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<crate::deck::SourceEntry<&TargetSources>> {
+        sel.entries
+            .iter()
+            .map(|&j| crate::deck::SourceEntry { sources: &self.space.sources[j], kind: self.space.kind[j] })
+            .collect()
     }
     /// exact P(all) of trainee t (her inheritance already folded in) with deck `sel`, scaled per target by the
     /// carrier counts `nc`; `options` says what else to compute
@@ -365,15 +368,14 @@ impl Env<'_> {
         nc: &[i32],
         options: ExactOptions,
     ) -> ExactCareer {
-        let (su, sf) = self.scale(nc);
+        let scales = self.scale(nc);
         let mut ext = JointExt {
-            su,
-            sf,
-            marg: vec![],
+            scales,
+            marginals: vec![],
             sets: if options.landed_sets { vec![0.0] } else { vec![] },
             per_outfit: vec![],
         };
-        let (p_all, p_all_but_one, outfit) = joint_fast(
+        let crate::deck::joint::JointChances { all: p_all, all_but_one: p_all_but_one, outfit } = joint_fast(
             &self.model,
             t,
             &[0.0],

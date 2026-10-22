@@ -228,15 +228,15 @@ use self::{
     },
     hints::{hint_base, hint_miss, hint_spec, scenario_name},
     joint::{
-        JointExt, JointScratch, LandPre, SbCfg, cf_check, joint, joint_b, joint_eval_in, joint_fast, joint_prep,
-        sb_check, sb_mode, src_levels, upper_na,
+        JointExt, JointScratch, LandPre, StateBoundConfig, cf_check, joint, joint_b, joint_eval_in, joint_fast,
+        joint_prep, sb_check, sb_mode, src_levels, upper_na,
     },
     kept::{Cl, DeckEval, DeckId, Kept, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, split, tie_rank},
     multi::run_multi,
-    sources::{Entries, Group, Sources, Src, deck_entries, group_gh, group_nuod, src_miss},
+    sources::{Entries, Group, SourceEntry, Sources, TargetSources, deck_entries, group_gh, group_nuod, src_miss},
     space::{
-        DeckSpace, GTab, LegalTabs, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, SelectedDeck, UCHK, deck_space, gm_g,
-        gm_w, kinds_all, top_desc,
+        DeckSpace, GroupTable, LegalTables, MAX_DECK, MAX_KINDS, MAX_UNCERTAIN, SPT, SelectedDeck, UCHK, deck_space,
+        gm_g, gm_w, kinds_all, top_desc,
     },
 };
 

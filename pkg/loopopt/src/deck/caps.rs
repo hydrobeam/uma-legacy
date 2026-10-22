@@ -1,5 +1,5 @@
 //! The assumed caps on exact over product odds, per deck structure class, and the exact search's budgets.
-use super::Src;
+use super::TargetSources;
 
 /// Assumed caps on a deck's exact odds over its product odds, by the deck's structure class (`cap_class`): decks and
 /// loops are scored exactly wherever their product-odds ceiling times the cap could beat the best exact value. Chain
@@ -26,10 +26,10 @@ pub(super) fn test_caps() -> Option<[f64; 4]> {
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
 pub(super) const AUDIT_CAP: f64 = 2.0;
 /// An entry's chain-varying targets (bit t: uncertain target t is fed by one of its chain links) and bit 63 when one
-/// of its groups is not negatively associated (`Src::multi`).
-pub(super) fn cv_mask(source: &Src) -> u64 {
-    let chain_targets = source.cm.iter().fold(0u64, |mask, (target, _)| mask | 1u64 << *target);
-    chain_targets | if source.multi { 1u64 << 63 } else { 0 }
+/// of its groups is not negatively associated (`TargetSources::uncertified_association`).
+pub(super) fn cv_mask(source: &TargetSources) -> u64 {
+    let chain_targets = source.chain_misses.iter().fold(0u64, |mask, target| mask | 1u64 << target.target);
+    chain_targets | if source.uncertified_association { 1u64 << 63 } else { 0 }
 }
 /// The structure class of a deck from its entries' `cv_mask`s ORed (or of every deck a search node can still reach,
 /// from the masks of its cards and of every candidate left): 0 at most one chain-varying target, 1 two, 2 three, 3 four
@@ -46,7 +46,7 @@ pub(crate) const fn cap_class(mask: u64) -> usize {
     }
 }
 /// The class of a deck given by its sources.
-pub(super) fn src_class<'src>(it: impl Iterator<Item = &'src Src>) -> usize {
+pub(super) fn src_class<'src>(it: impl Iterator<Item = &'src TargetSources>) -> usize {
     cap_class(it.fold(0u64, |m, s| m | cv_mask(s)))
 }
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.

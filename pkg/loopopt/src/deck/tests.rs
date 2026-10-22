@@ -1,7 +1,7 @@
 use super::chains::{chain_marginals_dense, chain_marginals_ref, event_pmf};
 use super::hints::miss_draws;
 use super::joint::{joint_trainee_ref, land_factor, state_value_cf};
-use super::sources::group_nuod_lvl;
+use super::sources::{ChainOutcome, EventOutcome, TargetReward, TrainingHint, group_nuod_lvl};
 use super::space::top_asc;
 use super::*;
 use crate::{load, skills};
@@ -143,19 +143,19 @@ fn training_draws_over_two_targets() {
     let tr = sb.train(c);
     assert_eq!(tr.len(), 2);
     let g = sb.train_group(c, &tr);
-    assert!(g.iter().map(|x| x.0).sum::<f64>() <= 1.0 + 1e-12);
+    assert!(g.iter().map(|x| x.probability).sum::<f64>() <= 1.0 + 1e-12);
     let gh = group_gh(&g);
     for (k, _, ph) in &gh {
-        assert!((ph - tr[*k].1).abs() < 1e-12, "{gh:?} vs {tr:?}");
+        assert!((ph - tr[*k].probability).abs() < 1e-12, "{gh:?} vs {tr:?}");
     }
-    let both = g.iter().filter(|x| x.1.len() == 2).map(|x| x.0).sum::<f64>();
-    assert!(both < tr[0].1 * tr[1].1);
+    let both = g.iter().filter(|x| x.rewards.len() == 2).map(|x| x.probability).sum::<f64>();
+    assert!(both < tr[0].probability * tr[1].probability);
     let h = hint_base("unity") * (1.0 + c.hf / 100.0) * (1.0 + hint_spec("unity") * c.spec / 100.0);
-    assert!((tr[0].1 - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12); // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
+    assert!((tr[0].probability - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12); // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
     let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
     src_miss(&sb.src(c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
     for k in 0..2 {
-        assert!((1.0 - mw[k] * mg[k] - tr[k].1).abs() < 1e-9 || mg[k] < 1.0, "{mw:?} {mg:?} {tr:?}");
+        assert!((1.0 - mw[k] * mg[k] - tr[k].probability).abs() < 1e-9 || mg[k] < 1.0, "{mw:?} {mg:?} {tr:?}");
         assert!(mw[k] * mg[k] < 1.0);
     }
 }
@@ -319,11 +319,11 @@ fn chain_states_match_marginals() {
         let mut ks = ks;
         ks.sort_unstable();
         let st = chain_states(&ks);
-        assert!((st.iter().map(|x| x.1).sum::<f64>() - 1.0).abs() < 1e-12);
+        assert!((st.iter().map(|x| x.probability).sum::<f64>() - 1.0).abs() < 1e-12);
         let m = chain_marginals(&ks);
         for (i, kd) in ks.iter().enumerate() {
             for l in 1..=kd.stop {
-                let p: f64 = st.iter().filter(|x| x.0[i] >= l).map(|x| x.1).sum();
+                let p: f64 = st.iter().filter(|x| x.progress[i] >= l).map(|x| x.probability).sum();
                 assert!(
                     (p - m[kd][l as usize - 1]).abs() < 1e-12,
                     "{ks:?} entry {i} link {l}: {p} vs {}",
@@ -354,7 +354,7 @@ fn key_level_matches_states() {
         let (st, kl) = (chain_states(&ks), key_level(&ks));
         let at = |gi: usize| (0..kl.lev.len()).map(|m| pmf[m] * kl.lev[m][gi]).sum::<f64>();
         let mut seen = 0.0f64;
-        for (s, p) in st.iter() {
+        for super::chains::ChainState { progress: s, probability: p } in st.iter() {
             let gi: usize = s.iter().zip(&kl.gstride).map(|(&x, &g)| x as usize * g).sum();
             let q = at(gi);
             seen += q;
@@ -371,24 +371,45 @@ fn joint_fast_matches_reference() {
     let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-    let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    };
+    let two = |a: usize, b: usize| -> Group {
+        vec![
+            EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: a, level: 2 }] },
+            EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: b, level: 1 }] },
+        ]
+    };
     // chain cards with single-target and coupled outcomes, a coupled fixed event, a stop risk, fillers
-    let a = Src {
-        train: vec![(0, 0.3)],
-        chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))],
+    let a = TargetSources {
+        training_hints: vec![TrainingHint { target: 0, probability: 0.3 }],
+        chain_outcomes: vec![
+            ChainOutcome { link: 1, outcomes: g1(1, 1, 1.0) },
+            ChainOutcome { link: 2, outcomes: two(1, 2) },
+            ChainOutcome { link: 3, outcomes: g1(0, 2, 0.5) },
+        ],
         ..Default::default()
     }
     .finish();
-    let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
-    let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
-    let e = Src { fixed: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
+    let b = TargetSources {
+        fixed_outcomes: vec![two(3, 0)],
+        chain_outcomes: vec![ChainOutcome { link: 2, outcomes: g1(3, 2, 1.0) }],
+        ..Default::default()
+    }
+    .finish();
+    let c = TargetSources {
+        training_hints: vec![TrainingHint { target: 2, probability: 0.2 }],
+        chain_outcomes: vec![ChainOutcome { link: 1, outcomes: two(2, 3) }],
+        ..Default::default()
+    }
+    .finish();
+    let e = TargetSources { fixed_outcomes: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
     let risk = stop_risk_code(&[(2, 1, 2)], 3);
-    let ents = vec![
-        (a, THREE_LINKS),
-        (b, ChainKind::FILLER),
-        (c, ChainKind { links: 3, stop: 3, stop_risk: risk }),
-        (e, ChainKind::NONE),
+    let ents: Vec<SourceEntry<TargetSources>> = vec![
+        SourceEntry { sources: a, kind: THREE_LINKS },
+        SourceEntry { sources: b, kind: ChainKind::FILLER },
+        SourceEntry { sources: c, kind: ChainKind { links: 3, stop: 3, stop_risk: risk } },
+        SourceEntry { sources: e, kind: ChainKind::NONE },
     ];
     for fill in [0usize, 2] {
         for u in [0, 5, 20].map(crate::UmaIndex) {
@@ -396,13 +417,15 @@ fn joint_fast_matches_reference() {
             let y = joint_trainee_ref(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len());
             for (p, r) in x.iter().zip(&y) {
                 assert!(
-                    (p.0 - r.0).abs() < 1e-13 && (p.1 - r.1).abs() < 1e-13 && p.2 == r.2,
+                    (p.all - r.all).abs() < 1e-13
+                        && (p.all_but_one - r.all_but_one).abs() < 1e-13
+                        && p.outfit == r.outfit,
                     "fill {fill} uma {u}: {p:?} vs {r:?}"
                 );
             }
             let z = joint_fast(&m, u, &[0.1, 0.5, 0.9], &ents, fill, sj.targets.len(), false, None);
             for (p, r) in z.iter().zip(&y) {
-                assert!((p.0 - r.0).abs() < 1e-13);
+                assert!((p.all - r.all).abs() < 1e-13);
             }
         }
     }
@@ -418,17 +441,42 @@ fn career_fold_and_scale() {
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}],
         "trainee_hints": [[1001, 20166, 0.3]]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-    let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
-    let a = Src {
-        train: vec![(0, 0.3)],
-        chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))],
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    };
+    let two = |a: usize, b: usize| -> Group {
+        vec![
+            EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: a, level: 2 }] },
+            EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: b, level: 1 }] },
+        ]
+    };
+    let a = TargetSources {
+        training_hints: vec![TrainingHint { target: 0, probability: 0.3 }],
+        chain_outcomes: vec![
+            ChainOutcome { link: 1, outcomes: g1(1, 1, 1.0) },
+            ChainOutcome { link: 2, outcomes: two(1, 2) },
+            ChainOutcome { link: 3, outcomes: g1(0, 2, 0.5) },
+        ],
         ..Default::default()
     }
     .finish();
-    let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
-    let c = Src { train: vec![(2, 0.2)], chains: vec![(1, two(2, 3))], ..Default::default() }.finish();
-    let ents = vec![(a, THREE_LINKS), (b, ChainKind::FILLER), (c, THREE_LINKS)];
+    let b = TargetSources {
+        fixed_outcomes: vec![two(3, 0)],
+        chain_outcomes: vec![ChainOutcome { link: 2, outcomes: g1(3, 2, 1.0) }],
+        ..Default::default()
+    }
+    .finish();
+    let c = TargetSources {
+        training_hints: vec![TrainingHint { target: 2, probability: 0.2 }],
+        chain_outcomes: vec![ChainOutcome { link: 1, outcomes: two(2, 3) }],
+        ..Default::default()
+    }
+    .finish();
+    let ents: Vec<SourceEntry<TargetSources>> = vec![
+        SourceEntry { sources: a, kind: THREE_LINKS },
+        SourceEntry { sources: b, kind: ChainKind::FILLER },
+        SourceEntry { sources: c, kind: THREE_LINKS },
+    ];
     let rel = |x: f64, y: f64| (x - y).abs() / y.abs().max(1e-300);
     for u in [0, 5, 20].map(crate::UmaIndex) {
         for q in [0.1, 0.6] {
@@ -436,33 +484,58 @@ fn career_fold_and_scale() {
             let mut f = Model::new(&d, &sk, &sj);
             f.ews[u] = m.ews[u].iter().map(|o| o.iter().map(|e| 1.0 - (1.0 - e) * (1.0 - q)).collect()).collect();
             let y = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, None)[0];
-            assert!(rel(y.0, x.0) < 1e-12 && rel(y.1, x.1) < 1e-12 && x.2 == y.2, "fold uma {u} q {q}: {x:?} vs {y:?}");
+            assert!(
+                rel(y.all, x.all) < 1e-12 && rel(y.all_but_one, x.all_but_one) < 1e-12 && x.outfit == y.outfit,
+                "fold uma {u} q {q}: {x:?} vs {y:?}"
+            );
             let su = vec![1.1f64.powi(-1), 1.0, 1.1f64.powi(-3), 1.1f64.powi(-6)];
-            let mut ext =
-                JointExt { su: su.clone(), sf: vec![1.1f64.powi(-2)], marg: vec![], sets: vec![], per_outfit: vec![] };
+            let mut ext = JointExt {
+                scales: super::joint::SparkScales { uncertain: su.clone(), guaranteed: vec![1.1f64.powi(-2)] },
+                marginals: vec![],
+                sets: vec![],
+                per_outfit: vec![],
+            };
             let z = joint_fast(&f, u, &[0.0], &ents, 1, sj.targets.len(), true, Some(&mut ext))[0];
             let c = su.iter().product::<f64>() * 1.1f64.powi(-2);
-            assert!(rel(z.0, c * y.0) < 1e-12 && z.2 == y.2, "scale uma {u}: {} vs {}", z.0, c * y.0);
-            assert!(z.1 >= z.0 && z.1 <= 1.0);
+            assert!(rel(z.all, c * y.all) < 1e-12 && z.outfit == y.outfit, "scale uma {u}: {} vs {}", z.all, c * y.all);
+            assert!(z.all_but_one >= z.all && z.all_but_one <= 1.0);
         }
     }
     // two targets, coupled sources: marginals against P(all) and P(all but at most one)
     let sj2: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20166}]})).unwrap();
     let m2 = Model::new(&d, &sk, &sj2);
-    let p =
-        Src { train: vec![(0, 0.2)], chains: vec![(1, two(0, 1)), (2, g1(1, 1, 0.7))], ..Default::default() }.finish();
-    let r = Src { fixed: vec![two(1, 0)], chains: vec![(1, g1(0, 2, 0.4))], ..Default::default() }.finish();
-    let ents2 = vec![(p, ChainKind::FILLER), (r, ChainKind::FILLER)];
+    let p = TargetSources {
+        training_hints: vec![TrainingHint { target: 0, probability: 0.2 }],
+        chain_outcomes: vec![
+            ChainOutcome { link: 1, outcomes: two(0, 1) },
+            ChainOutcome { link: 2, outcomes: g1(1, 1, 0.7) },
+        ],
+        ..Default::default()
+    }
+    .finish();
+    let r = TargetSources {
+        fixed_outcomes: vec![two(1, 0)],
+        chain_outcomes: vec![ChainOutcome { link: 1, outcomes: g1(0, 2, 0.4) }],
+        ..Default::default()
+    }
+    .finish();
+    let ents2: Vec<SourceEntry<TargetSources>> =
+        vec![SourceEntry { sources: p, kind: ChainKind::FILLER }, SourceEntry { sources: r, kind: ChainKind::FILLER }];
     for u in [0, 5, 20].map(crate::UmaIndex) {
-        let mut ext = JointExt { su: vec![0.9, 0.8], sf: vec![], marg: vec![], sets: vec![0.0], per_outfit: vec![] };
+        let mut ext = JointExt {
+            scales: super::joint::SparkScales { uncertain: vec![0.9, 0.8], guaranteed: vec![] },
+            marginals: vec![],
+            sets: vec![0.0],
+            per_outfit: vec![],
+        };
         let j = joint_fast(&m2, u, &[0.3], &ents2, 0, 2, true, Some(&mut ext))[0];
-        let (m0, m1) = (ext.marg[j.2 * 2], ext.marg[j.2 * 2 + 1]);
-        assert!(rel(m0 + m1, j.0 + j.1) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.0, j.1);
+        let (m0, m1) = (ext.marginals[j.outfit * 2], ext.marginals[j.outfit * 2 + 1]);
+        assert!(rel(m0 + m1, j.all + j.all_but_one) < 1e-12, "uma {u}: {m0} + {m1} vs {} + {}", j.all, j.all_but_one);
         // the landed sets: they sum to 1, {both} is P(all), and each target's sets sum to its marginal
-        let st = &ext.sets[(j.2 << 2)..(j.2 << 2) + 4];
+        let st = &ext.sets[(j.outfit << 2)..(j.outfit << 2) + 4];
         assert!(
             (st.iter().sum::<f64>() - 1.0).abs() < 1e-12
-                && rel(st[3], j.0) < 1e-12
+                && rel(st[3], j.all) < 1e-12
                 && rel(st[1] + st[3], m0) < 1e-12
                 && rel(st[2] + st[3], m1) < 1e-12,
             "sets {st:?}"
@@ -478,27 +551,60 @@ fn upper_bound_covers_exact() {
     let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-    let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
-    let a = Src {
-        train: vec![(0, 0.3)],
-        chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))],
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    };
+    let two = |a: usize, b: usize| -> Group {
+        vec![
+            EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: a, level: 2 }] },
+            EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: b, level: 1 }] },
+        ]
+    };
+    let a = TargetSources {
+        training_hints: vec![TrainingHint { target: 0, probability: 0.3 }],
+        chain_outcomes: vec![
+            ChainOutcome { link: 1, outcomes: g1(1, 1, 1.0) },
+            ChainOutcome { link: 2, outcomes: two(1, 2) },
+            ChainOutcome { link: 3, outcomes: g1(0, 2, 0.5) },
+        ],
         ..Default::default()
     }
     .finish();
-    let b = Src { fixed: vec![two(3, 0)], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
-    let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
-    let e = Src { fixed: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
+    let b = TargetSources {
+        fixed_outcomes: vec![two(3, 0)],
+        chain_outcomes: vec![ChainOutcome { link: 2, outcomes: g1(3, 2, 1.0) }],
+        ..Default::default()
+    }
+    .finish();
+    let c = TargetSources {
+        training_hints: vec![TrainingHint { target: 2, probability: 0.2 }],
+        chain_outcomes: vec![ChainOutcome { link: 3, outcomes: g1(2, 2, 0.6) }],
+        ..Default::default()
+    }
+    .finish();
+    let e = TargetSources { fixed_outcomes: vec![g1(1, 2, 0.25)], ..Default::default() }.finish();
     let risk = stop_risk_code(&[(2, 1, 2)], 3);
-    let decks: Vec<Vec<(Src, ChainKind)>> = vec![
-        vec![(a.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER), (e.clone(), ChainKind::NONE)],
-        vec![(a.clone(), THREE_LINKS), (c.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER)],
+    let decks: Vec<Vec<SourceEntry<TargetSources>>> = vec![
         vec![
-            (a.clone(), ChainKind { links: 3, stop: 2, stop_risk: 0 }),
-            (c.clone(), ChainKind { links: 3, stop: 3, stop_risk: risk }),
-            (b, ChainKind::FILLER),
+            SourceEntry { sources: a.clone(), kind: THREE_LINKS },
+            SourceEntry { sources: b.clone(), kind: ChainKind::FILLER },
+            SourceEntry { sources: e.clone(), kind: ChainKind::NONE },
         ],
-        vec![(a, THREE_LINKS), (c, ChainKind { links: 3, stop: 1, stop_risk: 0 }), (e, ChainKind::NONE)],
+        vec![
+            SourceEntry { sources: a.clone(), kind: THREE_LINKS },
+            SourceEntry { sources: c.clone(), kind: THREE_LINKS },
+            SourceEntry { sources: b.clone(), kind: ChainKind::FILLER },
+        ],
+        vec![
+            SourceEntry { sources: a.clone(), kind: ChainKind { links: 3, stop: 2, stop_risk: 0 } },
+            SourceEntry { sources: c.clone(), kind: ChainKind { links: 3, stop: 3, stop_risk: risk } },
+            SourceEntry { sources: b, kind: ChainKind::FILLER },
+        ],
+        vec![
+            SourceEntry { sources: a, kind: THREE_LINKS },
+            SourceEntry { sources: c, kind: ChainKind { links: 3, stop: 1, stop_risk: 0 } },
+            SourceEntry { sources: e, kind: ChainKind::NONE },
+        ],
     ];
     let mut covered = 0;
     for ents in &decks {
@@ -506,16 +612,17 @@ fn upper_bound_covers_exact() {
             for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, ents, fill, sj.targets.len(), false, None);
-                let er: Vec<(&Src, ChainKind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
+                let er: Vec<SourceEntry<&TargetSources>> =
+                    ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
                 if let Some(ub) = upper_na(&m, u, &qs, &er, fill) {
                     covered += 1;
                     for (i, y) in x.iter().enumerate() {
                         assert!(
-                            ub[i] >= y.0 * (1.0 - 1e-12) && ub[i] <= y.0 * 1.5,
+                            ub[i] >= y.all * (1.0 - 1e-12) && ub[i] <= y.all * 1.5,
                             "fill {fill} uma {u} q {}: bound {} exact {}",
                             qs[i],
                             ub[i],
-                            y.0
+                            y.all
                         );
                     }
                 }
@@ -528,9 +635,25 @@ fn upper_bound_covers_exact() {
 /// Groups whose outcomes each hint one target pass the orthant check; an outcome hinting two targets together fails.
 #[test]
 fn group_orthant_check() {
-    assert!(group_nuod(&vec![(0.5, vec![(0, 2)]), (0.3, vec![(1, 1)])]));
-    assert!(!group_nuod(&vec![(0.5, vec![(0, 1), (1, 1)]), (0.3, vec![(1, 1)])]));
-    assert!(group_nuod(&vec![(0.2, vec![(0, 1), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])])); // 0.2 <= 0.5 * 0.5
+    assert!(group_nuod(&vec![
+        EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: 0, level: 2 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] }
+    ]));
+    assert!(!group_nuod(&vec![
+        EventOutcome {
+            probability: 0.5,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 1, level: 1 }]
+        },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] }
+    ]));
+    assert!(group_nuod(&vec![
+        EventOutcome {
+            probability: 0.2,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 1, level: 1 }]
+        },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 0, level: 1 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] }
+    ])); // 0.2 <= 0.5 * 0.5
 }
 
 /// Exceeding the exhaustive-check budget must not certify a positively correlated group, or shift past u32.
@@ -538,12 +661,16 @@ fn group_orthant_check() {
 fn group_orthant_check_declines_unchecked_groups() {
     for n in [20, 21, 32, 33] {
         // Any pair has joint probability 0.5, above the product of its marginals (0.25).
-        let g = vec![(0.5, (0..n).map(|k| (k, 1)).collect())];
+        let g = vec![EventOutcome {
+            probability: 0.5,
+            rewards: (0..n).map(|k| TargetReward { target: k, level: 1 }).collect(),
+        }];
         assert!(!group_nuod(&g), "{n} targets");
-        for src in
-            [Src { fixed: vec![g.clone()], ..Default::default() }, Src { chains: vec![(1, g)], ..Default::default() }]
-        {
-            assert!(src.finish().not_nuod, "{n} targets");
+        for src in [
+            TargetSources { fixed_outcomes: vec![g.clone()], ..Default::default() },
+            TargetSources { chain_outcomes: vec![ChainOutcome { link: 1, outcomes: g }], ..Default::default() },
+        ] {
+            assert!(src.finish().uncertified_orthant, "{n} targets");
         }
     }
 }
@@ -565,11 +692,14 @@ fn unchecked_inline_event_disables_orthant_bound() {
     let dj = job_with(json!({"alts": [[card.id, 1, [[rewards, []]]]]}));
     let sb = Sources { dj: &dj, unc: &unc };
     let src = sb.src(&card, None, 0);
-    assert_eq!(src.chains.len(), 1);
-    assert_eq!(src.chains[0].1[0].0, 0.5);
-    assert_eq!(src.chains[0].1[0].1.len(), 21);
-    assert!(src.not_nuod);
-    assert!(upper_na(&model, crate::UmaIndex(0), &[0.0], &[(&src, sb.kind(&card, None))], 0).is_none());
+    assert_eq!(src.chain_outcomes.len(), 1);
+    assert_eq!(src.chain_outcomes[0].outcomes[0].probability, 0.5);
+    assert_eq!(src.chain_outcomes[0].outcomes[0].rewards.len(), 21);
+    assert!(src.uncertified_orthant);
+    assert!(
+        upper_na(&model, crate::UmaIndex(0), &[0.0], &[SourceEntry { sources: &src, kind: sb.kind(&card, None) }], 0)
+            .is_none()
+    );
 }
 
 /// The level check behind the cap-free bound (`group_nuod_lvl`): single-target outcomes pass, an outcome hinting two
@@ -578,49 +708,116 @@ fn unchecked_inline_event_disables_orthant_bound() {
 /// least the exact value.
 #[test]
 fn group_level_orthant_check() {
-    assert!(group_nuod_lvl(&vec![(0.5, vec![(0, 2)]), (0.3, vec![(1, 1)])]));
-    assert!(!group_nuod_lvl(&vec![(0.5, vec![(0, 1), (1, 1)]), (0.3, vec![(1, 1)])]));
-    let g = vec![(0.2, vec![(0, 2), (1, 1)]), (0.3, vec![(0, 1)]), (0.3, vec![(1, 1)])];
+    assert!(group_nuod_lvl(&vec![
+        EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: 0, level: 2 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] }
+    ]));
+    assert!(!group_nuod_lvl(&vec![
+        EventOutcome {
+            probability: 0.5,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 1, level: 1 }]
+        },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] }
+    ]));
+    let g: Group = vec![
+        EventOutcome {
+            probability: 0.2,
+            rewards: vec![TargetReward { target: 0, level: 2 }, TargetReward { target: 1, level: 1 }],
+        },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 0, level: 1 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 1, level: 1 }] },
+    ];
     assert!(group_nuod(&g) && !group_nuod_lvl(&g));
     // three targets, white only, joint terms below the products (a card's training draws)
     assert!(group_nuod_lvl(&vec![
-        (0.2, vec![(0, 1)]),
-        (0.2, vec![(1, 1)]),
-        (0.2, vec![(2, 1)]),
-        (0.03, vec![(0, 1), (1, 1)]),
-        (0.03, vec![(1, 1), (2, 1)]),
-        (0.03, vec![(0, 1), (2, 1)])
+        EventOutcome { probability: 0.2, rewards: vec![TargetReward { target: 0, level: 1 }] },
+        EventOutcome { probability: 0.2, rewards: vec![TargetReward { target: 1, level: 1 }] },
+        EventOutcome { probability: 0.2, rewards: vec![TargetReward { target: 2, level: 1 }] },
+        EventOutcome {
+            probability: 0.03,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 1, level: 1 }]
+        },
+        EventOutcome {
+            probability: 0.03,
+            rewards: vec![TargetReward { target: 1, level: 1 }, TargetReward { target: 2, level: 1 }]
+        },
+        EventOutcome {
+            probability: 0.03,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 2, level: 1 }]
+        }
     ]));
     let d = load(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/data_v1.json"));
     let sk = fixture_skills();
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-    let two = |a: usize, b: usize| -> Group { vec![(0.5, vec![(a, 2)]), (0.3, vec![(b, 1)])] };
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    };
+    let two = |a: usize, b: usize| -> Group {
+        vec![
+            EventOutcome { probability: 0.5, rewards: vec![TargetReward { target: a, level: 2 }] },
+            EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: b, level: 1 }] },
+        ]
+    };
     // (an outcome hinting two targets at once, at most independent at every level: covered, though not `group_assoc`)
-    let three: Group =
-        vec![(0.3, vec![(0, 1)]), (0.3, vec![(2, 1)]), (0.3, vec![(3, 1)]), (0.02, vec![(0, 1), (2, 1)])];
-    let a = Src {
-        train: vec![(0, 0.3)],
-        chains: vec![(1, g1(1, 1, 1.0)), (2, two(1, 2)), (3, g1(0, 2, 0.5))],
+    let three: Group = vec![
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 0, level: 1 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 2, level: 1 }] },
+        EventOutcome { probability: 0.3, rewards: vec![TargetReward { target: 3, level: 1 }] },
+        EventOutcome {
+            probability: 0.02,
+            rewards: vec![TargetReward { target: 0, level: 1 }, TargetReward { target: 2, level: 1 }],
+        },
+    ];
+    let a = TargetSources {
+        training_hints: vec![TrainingHint { target: 0, probability: 0.3 }],
+        chain_outcomes: vec![
+            ChainOutcome { link: 1, outcomes: g1(1, 1, 1.0) },
+            ChainOutcome { link: 2, outcomes: two(1, 2) },
+            ChainOutcome { link: 3, outcomes: g1(0, 2, 0.5) },
+        ],
         ..Default::default()
     }
     .finish();
-    let b = Src { fixed: vec![two(3, 0), three], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
-    let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
-    assert!(a.cf_ok && b.cf_ok && c.cf_ok && b.multi);
-    for ents in [
-        vec![(a.clone(), THREE_LINKS), (b.clone(), ChainKind::FILLER)],
-        vec![(a, THREE_LINKS), (c, THREE_LINKS), (b, ChainKind::FILLER)],
-    ] {
+    let b = TargetSources {
+        fixed_outcomes: vec![two(3, 0), three],
+        chain_outcomes: vec![ChainOutcome { link: 2, outcomes: g1(3, 2, 1.0) }],
+        ..Default::default()
+    }
+    .finish();
+    let c = TargetSources {
+        training_hints: vec![TrainingHint { target: 2, probability: 0.2 }],
+        chain_outcomes: vec![ChainOutcome { link: 3, outcomes: g1(2, 2, 0.6) }],
+        ..Default::default()
+    }
+    .finish();
+    assert!(a.certified_cap_free && b.certified_cap_free && c.certified_cap_free && b.uncertified_association);
+    let decks: [Vec<SourceEntry<TargetSources>>; 2] = [
+        vec![
+            SourceEntry { sources: a.clone(), kind: THREE_LINKS },
+            SourceEntry { sources: b.clone(), kind: ChainKind::FILLER },
+        ],
+        vec![
+            SourceEntry { sources: a, kind: THREE_LINKS },
+            SourceEntry { sources: c, kind: THREE_LINKS },
+            SourceEntry { sources: b, kind: ChainKind::FILLER },
+        ],
+    ];
+    for ents in decks {
         for fill in [0usize, 2] {
             for u in [0, 5, 20].map(crate::UmaIndex) {
                 let qs = [0.1, 0.5, 0.9];
                 let x = joint_fast(&m, u, &qs, &ents, fill, sj.targets.len(), false, None);
-                let er: Vec<(&Src, ChainKind)> = ents.iter().map(|(s, k)| (s, *k)).collect();
+                let er: Vec<SourceEntry<&TargetSources>> =
+                    ents.iter().map(|entry| SourceEntry { sources: &entry.sources, kind: entry.kind }).collect();
                 let sv = state_value_cf(&m, u, &qs, &er, fill).unwrap();
                 for (i, y) in x.iter().enumerate() {
-                    assert!(sv[i] >= y.0 * (1.0 - 1e-12), "fill {fill} uma {u}: state value {} exact {}", sv[i], y.0);
+                    assert!(
+                        sv[i] >= y.all * (1.0 - 1e-12),
+                        "fill {fill} uma {u}: state value {} exact {}",
+                        sv[i],
+                        y.all
+                    );
                 }
             }
         }
@@ -636,14 +833,24 @@ fn joint_equals_product_without_correlation() {
     let sj: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20049,"guaranteed":2},{"group":20166},{"group":20161},{"group":20203}]})).unwrap();
     let m = Model::new(&d, &sk, &sj);
     let nu = m.uncertain.len();
-    let g1 = |k: usize, lvl: u8, p: f64| -> Group { vec![(p, vec![(k, lvl)])] };
-    let a = Src {
-        train: vec![(0, 0.3), (2, 0.2)],
-        fixed: vec![g1(1, 2, 0.5), g1(3, 2, 0.5), g1(3, 1, 1.0)],
+    let g1 = |k: usize, lvl: u8, p: f64| -> Group {
+        vec![EventOutcome { probability: p, rewards: vec![TargetReward { target: k, level: lvl }] }]
+    };
+    let a = TargetSources {
+        training_hints: vec![
+            TrainingHint { target: 0, probability: 0.3 },
+            TrainingHint { target: 2, probability: 0.2 },
+        ],
+        fixed_outcomes: vec![g1(1, 2, 0.5), g1(3, 2, 0.5), g1(3, 1, 1.0)],
         ..Default::default()
     }
     .finish();
-    let b = Src { train: vec![(1, 0.4)], fixed: vec![g1(0, 2, 0.25)], ..Default::default() }.finish();
+    let b = TargetSources {
+        training_hints: vec![TrainingHint { target: 1, probability: 0.4 }],
+        fixed_outcomes: vec![g1(0, 2, 0.25)],
+        ..Default::default()
+    }
+    .finish();
     let (mut mw, mut mg) = (vec![1.0; nu], vec![1.0; nu]);
     for x in [&a, &b] {
         src_miss(x, &[], &mut mw, &mut mg);
@@ -656,13 +863,16 @@ fn joint_equals_product_without_correlation() {
                 &m,
                 u,
                 &[q],
-                &[(a.clone(), ChainKind::NONE), (b.clone(), ChainKind::NONE)],
+                &[
+                    SourceEntry { sources: a.clone(), kind: ChainKind::NONE },
+                    SourceEntry { sources: b.clone(), kind: ChainKind::NONE },
+                ],
                 0,
                 sj.targets.len(),
                 true,
             );
             let p = m.fixed_factor() * m.trainee_fast(u, q, &dw, &dg);
-            assert!((j[0].0 - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].0);
+            assert!((j[0].all - p).abs() < 1e-14, "uma {u} q {q}: {} vs {p}", j[0].all);
         }
     }
 }

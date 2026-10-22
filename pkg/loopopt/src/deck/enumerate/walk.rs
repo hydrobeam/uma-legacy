@@ -4,18 +4,20 @@ use super::{
     BorrowTables, DOM_GAP, DeckPath, DeckSearchContext, NodeScratch, ParentRatioBounds, PreparedTables, SearchConfig,
     SearchControl, SearchResults,
 };
+use crate::deck::SourceEntry;
+use crate::deck::space::{Dominator, EntryGroup};
 use crate::deck::{
-    CFCHK, ChainKind, SBCHK, SBN, SelectedDeck, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check,
+    CFCHK, SBCHK, SBN, SelectedDeck, StateBound, TargetSources, cap_class, gm_g, gm_w, joint_fast, sb_check,
 };
 
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
 pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     pub(crate) search: &'walk DeckSearchContext<'run, 'space, V>,
     pub(crate) configuration: &'walk SearchConfig,
-    pub(crate) filler: usize,
-    pub(crate) plain: usize,
+    pub(crate) filler_count: usize,
+    pub(crate) plain_pal_count: usize,
     /// Configuration groups in pick order: eligible entry indices and required slot count.
-    pub(crate) groups: &'walk [(&'run [usize], usize)],
+    pub(crate) groups: &'walk [EntryGroup<'run>],
     /// Per group, white/gold miss-product rows indexed by gm_w/gm_g.
     pub(crate) group_misses: &'walk [&'walk [f64]],
     /// Per group, column-major ratio prefixes with deck_size + 1 entries per column.
@@ -33,7 +35,7 @@ pub(crate) struct ConfigurationContext<'walk, 'run, 'space, V> {
     /// Per group suffix, one product per ratio column.
     pub(crate) suffix_ratios: &'walk [f64],
     /// Per group and candidate position, earlier dominator positions and their gold-gap masks.
-    pub(crate) dominators: &'walk [std::rc::Rc<Vec<Vec<(u32, u32)>>>],
+    pub(crate) dominators: &'walk [std::rc::Rc<Vec<Vec<Dominator>>>],
     /// Flat entry offsets for each group in dominance_suffix.
     pub(crate) dominance_offsets: &'walk [usize],
     /// Characters available from each flat entry position onward.
@@ -105,7 +107,7 @@ struct NodeIdentity {
     touched_targets: u32,
 }
 
-impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationContext<'_, '_, '_, V> {
+impl<V: Fn(&super::SearchClause, &[f64], &[f64]) -> f64> ConfigurationContext<'_, '_, '_, V> {
     /// Walk completions in group/entry order. A true result means the output limit stopped the search.
     /// The context's hot slices are copied here so mutable node writes cannot force their repeated reload.
     pub(crate) fn rec(
@@ -117,21 +119,21 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         constraints: &DeckConstraints,
     ) -> bool {
         let (space, target_count, groups) = (self.search.space, self.search.controls.target_count, self.groups);
-        let PreparedTables { ebit, lbit, all_lk: all_locked, .. } = self.search.tables;
-        let (avail, white_misses, gold_misses, touched_targets) =
+        let PreparedTables { character_bits, lock_bits, all_lock_bits: all_locked, .. } = self.search.tables;
+        let (available_locks, white_misses, gold_misses, touched_targets) =
             (self.available_locks, self.white_misses, self.gold_misses, self.touched_targets);
         if cursor.remaining == 0 {
             if cursor.group + 1 >= groups.len() {
                 if constraints.required_characters & !constraints.characters != 0 {
                     return false;
                 }
-                let row_offset = path.sel.len() * target_count;
+                let row_offset = path.entries.len() * target_count;
                 return self.leaf(
                     scratch,
                     results,
-                    &path.sel,
-                    &path.pw[row_offset..row_offset + target_count],
-                    &path.pg[row_offset..row_offset + target_count],
+                    &path.entries,
+                    &path.white_misses[row_offset..row_offset + target_count],
+                    &path.gold_misses[row_offset..row_offset + target_count],
                     constraints.class_mask,
                 );
             }
@@ -139,38 +141,43 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 scratch,
                 results,
                 path,
-                DeckCursor { group: cursor.group + 1, start: 0, remaining: groups[cursor.group + 1].1 },
+                DeckCursor { group: cursor.group + 1, start: 0, remaining: groups[cursor.group + 1].slots },
                 constraints,
             );
         }
-        if all_locked & !constraints.locked_cards & !avail[cursor.group][cursor.start] != 0 {
+        if all_locked & !constraints.locked_cards & !available_locks[cursor.group][cursor.start] != 0 {
             return false;
         }
-        let list = groups[cursor.group].0;
+        let list = groups[cursor.group].entries;
         // the deck so far is row sel.len(); a child's row is the next one (overwritten per child)
-        let row_offset = path.sel.len() * target_count;
+        let row_offset = path.entries.len() * target_count;
         // this parent's id and depth (the per-parent rows of `hopeful`)
         path.parent_id += 1;
-        let (parent_id, parent_depth) = (path.parent_id, path.sel.len());
+        let (parent_id, parent_depth) = (path.parent_id, path.entries.len());
         for p in cursor.start..list.len() {
             if list.len() - p < cursor.remaining {
                 break;
             }
             let j = list[p];
-            if constraints.characters & ebit[j] != 0
-                || (space.ebor[j] && constraints.borrowed_count >= space.allowed_borrow)
+            if constraints.characters & character_bits[j] != 0
+                || (space.borrowed[j] && constraints.borrowed_count >= space.allowed_borrow)
             {
                 continue;
             }
-            let Some(required_characters) =
-                self.dom(scratch, cursor, constraints, p, &path.pg[row_offset..row_offset + target_count], &path.sel)
-            else {
+            let Some(required_characters) = self.dom(
+                scratch,
+                cursor,
+                constraints,
+                p,
+                &path.gold_misses[row_offset..row_offset + target_count],
+                &path.entries,
+            ) else {
                 continue;
             };
             space.nodes.set(space.nodes.get() + 1);
             // the child's row (depth + 1): the parent's times the card's misses
             {
-                let (parent, child) = path.pw.split_at_mut(row_offset + target_count);
+                let (parent, child) = path.white_misses.split_at_mut(row_offset + target_count);
                 let (entry_misses, parent, child) = (
                     &white_misses[j * target_count..(j + 1) * target_count],
                     &parent[row_offset..],
@@ -181,7 +188,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 }
             }
             {
-                let (parent, child) = path.pg.split_at_mut(row_offset + target_count);
+                let (parent, child) = path.gold_misses.split_at_mut(row_offset + target_count);
                 let (entry_misses, parent, child) = (
                     &gold_misses[j * target_count..(j + 1) * target_count],
                     &parent[row_offset..],
@@ -191,9 +198,9 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                     child[t] = parent[t] * entry_misses[t];
                 }
             }
-            let child_class = constraints.class_mask | space.cvm[j];
+            let child_class = constraints.class_mask | space.class_masks[j];
             let child_constraints = DeckConstraints {
-                borrowed_count: constraints.borrowed_count + usize::from(space.ebor[j]),
+                borrowed_count: constraints.borrowed_count + usize::from(space.borrowed[j]),
                 class_mask: child_class,
                 ..*constraints
             };
@@ -204,18 +211,18 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 &child_constraints,
                 p,
                 MissRows {
-                    child_white: &path.pw[row_offset + target_count..row_offset + 2 * target_count],
-                    child_gold: &path.pg[row_offset + target_count..row_offset + 2 * target_count],
-                    parent_white: &path.pw[row_offset..row_offset + target_count],
-                    parent_gold: &path.pg[row_offset..row_offset + target_count],
+                    child_white: &path.white_misses[row_offset + target_count..row_offset + 2 * target_count],
+                    child_gold: &path.gold_misses[row_offset + target_count..row_offset + 2 * target_count],
+                    parent_white: &path.white_misses[row_offset..row_offset + target_count],
+                    parent_gold: &path.gold_misses[row_offset..row_offset + target_count],
                 },
                 NodeIdentity { parent_depth, parent_id, touched_targets: touched_targets[j] },
             ) {
                 continue;
             }
-            path.sel.push(j);
-            if !self.sbx(scratch, &path.sel) {
-                path.sel.pop();
+            path.entries.push(j);
+            if !self.sbx(scratch, &path.entries) {
+                path.entries.pop();
                 continue;
             }
             let stop = self.rec(
@@ -224,13 +231,13 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 path,
                 DeckCursor { group: cursor.group, start: p + 1, remaining: cursor.remaining - 1 },
                 &DeckConstraints {
-                    characters: constraints.characters | ebit[j],
-                    locked_cards: constraints.locked_cards | lbit[j],
+                    characters: constraints.characters | character_bits[j],
+                    locked_cards: constraints.locked_cards | lock_bits[j],
                     required_characters,
                     ..child_constraints
                 },
             );
-            path.sel.pop();
+            path.entries.pop();
             if stop {
                 return true;
             }
@@ -255,20 +262,21 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             return Some(constraints.required_characters);
         }
         let (groups, doff, doms, dsuf) = (self.groups, self.dominance_offsets, self.dominators, self.dominance_suffix);
-        let (ebit, touched_targets, gold_misses) = (self.search.tables.ebit, self.touched_targets, self.gold_misses);
-        let l = groups[cursor.group].0;
+        let (character_bits, touched_targets, gold_misses) =
+            (self.search.tables.character_bits, self.touched_targets, self.gold_misses);
+        let l = groups[cursor.group].entries;
         let bj = l[position];
         let f = doff[cursor.group] + position;
         let mut nd = constraints.required_characters;
         let dl = &doms[cursor.group][position];
         if !dl.is_empty() {
             // (the deck's picks in group cursor.group so far, all at positions below `cursor.start`)
-            let sg = &selection[selection.len() - (groups[cursor.group].1 - cursor.remaining)..];
+            let sg = &selection[selection.len() - (groups[cursor.group].slots - cursor.remaining)..];
             let (pr, mut prm) = (&mut scratch.nodes.dominance_products, 0u32);
-            for &(a, sm) in dl {
+            for &Dominator { position: a, gold_gap_targets: sm } in dl {
                 let a = a as usize;
                 let aj = l[a];
-                if constraints.characters & ebit[aj] != 0 {
+                if constraints.characters & character_bits[aj] != 0 {
                     continue;
                 }
                 if a < cursor.start && sg.iter().any(|&j| j > aj && touched_targets[j] & touched_targets[bj] != 0) {
@@ -297,15 +305,15 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                         continue;
                     }
                 }
-                if ebit[aj] != ebit[bj] && ebit[aj] & dsuf[f + 1] != 0 {
-                    nd |= ebit[aj];
+                if character_bits[aj] != character_bits[bj] && character_bits[aj] & dsuf[f + 1] != 0 {
+                    nd |= character_bits[aj];
                     continue;
                 }
                 return None;
             }
         }
         // a needed character that no later pick can bring
-        if nd & !(constraints.characters | ebit[bj]) & !dsuf[f + 1] != 0 {
+        if nd & !(constraints.characters | character_bits[bj]) & !dsuf[f + 1] != 0 {
             return None;
         }
         Some(nd)
@@ -356,40 +364,45 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             (self.remaining_offsets[cursor.group] + cursor.remaining) * self.borrow_state_count
                 + usize::from(has_borrowed_entries && can)
         };
-        let (pw, pg) = (&misses.child_white[..target_count], &misses.child_gold[..target_count]);
+        let (white_misses, gold_misses) = (&misses.child_white[..target_count], &misses.child_gold[..target_count]);
         if row == usize::MAX {
             for t in 0..target_count {
-                nodes.white_chances[t] = 1.0 - pw[t] * 1.0;
-                nodes.gold_chances[t] = 1.0 - pg[t] * 1.0;
-                nodes.partial_white[t] = 1.0 - pw[t];
-                nodes.partial_gold[t] = 1.0 - pg[t];
+                nodes.white_chances[t] = 1.0 - white_misses[t] * 1.0;
+                nodes.gold_chances[t] = 1.0 - gold_misses[t] * 1.0;
+                nodes.partial_white[t] = 1.0 - white_misses[t];
+                nodes.partial_gold[t] = 1.0 - gold_misses[t];
             }
         } else {
             if !nodes.has_target_constants[row] {
                 nodes.has_target_constants[row] = true;
-                let (group_misses, sufw, sufg) = (self.group_misses, self.suffix_white, self.suffix_gold);
+                let (group_misses, suffix_white, suffix_gold) =
+                    (self.group_misses, self.suffix_white, self.suffix_gold);
                 let BorrowTables { group_bounds, owned_suffix, borrow_suffix, .. } = self.borrow_bounds;
                 for t in 0..target_count {
                     let (a, b) = if !has_borrowed_entries {
                         (
                             gm_w(group_misses[cursor.group], target_count, cursor.remaining)[t]
-                                * sufw[(cursor.group + 1) * target_count + t],
+                                * suffix_white[(cursor.group + 1) * target_count + t],
                             gm_g(group_misses[cursor.group], target_count, cursor.remaining)[t]
-                                * sufg[(cursor.group + 1) * target_count + t],
+                                * suffix_gold[(cursor.group + 1) * target_count + t],
                         )
                     } else if can {
                         let gb = &group_bounds[cursor.group];
                         (
-                            (gb.one[cursor.remaining].white[t] * owned_suffix[cursor.group + 1].white[t])
-                                .min(gb.own[cursor.remaining].white[t] * borrow_suffix[cursor.group + 1].white[t]),
-                            (gb.one[cursor.remaining].gold[t] * owned_suffix[cursor.group + 1].gold[t])
-                                .min(gb.own[cursor.remaining].gold[t] * borrow_suffix[cursor.group + 1].gold[t]),
+                            (gb.borrow_misses[cursor.remaining].white[t] * owned_suffix[cursor.group + 1].white[t])
+                                .min(
+                                    gb.owned_misses[cursor.remaining].white[t]
+                                        * borrow_suffix[cursor.group + 1].white[t],
+                                ),
+                            (gb.borrow_misses[cursor.remaining].gold[t] * owned_suffix[cursor.group + 1].gold[t]).min(
+                                gb.owned_misses[cursor.remaining].gold[t] * borrow_suffix[cursor.group + 1].gold[t],
+                            ),
                         )
                     } else {
                         (
-                            group_bounds[cursor.group].own[cursor.remaining].white[t]
+                            group_bounds[cursor.group].owned_misses[cursor.remaining].white[t]
                                 * owned_suffix[cursor.group + 1].white[t],
-                            group_bounds[cursor.group].own[cursor.remaining].gold[t]
+                            group_bounds[cursor.group].owned_misses[cursor.remaining].gold[t]
                                 * owned_suffix[cursor.group + 1].gold[t],
                         )
                     };
@@ -401,9 +414,9 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 nodes.target_constants[row * 2 * target_count..(row + 1) * 2 * target_count].split_at(target_count);
             if search.cache_parent_rows {
                 let (outfit_row_count, orow, inheritance_chances) =
-                    (search.outfit_row_count, search.tables.orow, &*search.inheritance_chances);
+                    (search.outfit_row_count, search.tables.outfits, &*search.inheritance_chances);
                 // A child is its parent plus one card: for a target the card does not touch (its miss
-                // chances exactly 1.0) the child's pw[t] = parent's pw[t] * 1.0 is the parent's, bit for
+                // chances exactly 1.0) the child's white miss is the parent's times 1.0: equal bit for
                 // bit, and so are nodes.white_chances[t], nodes.gold_chances[t] and every outfit's A factor of t (the same expressions on
                 // the same f64s; ka, kb depend only on the row, the same for all children of one parent
                 // and borrowing variant). So the factors are computed once per parent (here, at its first
@@ -438,8 +451,8 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 while m != 0 {
                     let t = m.trailing_zeros() as usize;
                     m &= m - 1;
-                    nodes.touched_white[t] = 1.0 - pw[t] * ka[t];
-                    nodes.touched_gold[t] = 1.0 - pg[t] * kb[t];
+                    nodes.touched_white[t] = 1.0 - white_misses[t] * ka[t];
+                    nodes.touched_gold[t] = 1.0 - gold_misses[t] * kb[t];
                 }
                 let t0 = if node.touched_targets == 0 {
                     target_count
@@ -476,10 +489,10 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 have_a = true;
             } else {
                 for t in 0..target_count {
-                    nodes.white_chances[t] = 1.0 - pw[t] * ka[t];
-                    nodes.gold_chances[t] = 1.0 - pg[t] * kb[t];
-                    nodes.partial_white[t] = 1.0 - pw[t];
-                    nodes.partial_gold[t] = 1.0 - pg[t];
+                    nodes.white_chances[t] = 1.0 - white_misses[t] * ka[t];
+                    nodes.gold_chances[t] = 1.0 - gold_misses[t] * kb[t];
+                    nodes.partial_white[t] = 1.0 - white_misses[t];
+                    nodes.partial_gold[t] = 1.0 - gold_misses[t];
                 }
             }
         }
@@ -490,24 +503,24 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             if best {
                 cvx[0] * bound_check_scale * (1.0 + 1e-9) >= best_value
             } else {
-                (0..clauses.len()).any(|ci| rho * cvx[ci] * bound_check_scale * (1.0 + 1e-9) >= clauses[ci].1)
+                (0..clauses.len()).any(|ci| rho * cvx[ci] * bound_check_scale * (1.0 + 1e-9) >= clauses[ci].threshold)
             }
         };
         // the per-target values A first (each outfit's term is min(A, B r) <= A, so the clause sums with
         // A alone are upper bounds of the real ones: when they fail, so does the real test; A is finite,
         // its inputs being probabilities, and a NaN falls through to the real test)
         nodes.clause_values.fill(0.0);
-        let PreparedTables { oq, og, orow, .. } = search.tables;
+        let PreparedTables { outfit_rows, outfit_runs, outfits, .. } = search.tables;
         let fixed = search.controls.fixed;
         let mut nan = false;
-        for &(ci, i, no) in og {
-            let q = oq[i].2;
+        for &super::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
+            let q = outfit_rows[i].inheritance;
             let mut m = 0.0f64;
             for o in 0..no {
                 let a = if have_a {
                     nodes.outfit_bounds[i + o]
                 } else {
-                    orow[i + o].eval(q, &nodes.white_chances, &nodes.gold_chances)
+                    outfits[i + o].eval(q, &nodes.white_chances, &nodes.gold_chances)
                 };
                 nodes.outfit_bounds[i + o] = a;
                 nan |= a.is_nan();
@@ -521,12 +534,12 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         let column_count = search.controls.column_count;
         if row != usize::MAX && !nodes.has_ratio_constants[row] {
             nodes.has_ratio_constants[row] = true;
-            let (size, group_ratios, spf) = (search.controls.size, self.group_ratios, self.suffix_ratios);
+            let (size, group_ratios, suffix_ratios) = (search.controls.size, self.group_ratios, self.suffix_ratios);
             let BorrowTables { group_bounds, owned_ratio_suffix, borrow_ratio_suffix, .. } = self.borrow_bounds;
             for ix in 0..column_count {
                 nodes.ratio_constants[row * column_count + ix] = if !has_borrowed_entries {
                     group_ratios[cursor.group][ix * (size + 1) + cursor.remaining]
-                        * spf[(cursor.group + 1) * column_count + ix]
+                        * suffix_ratios[(cursor.group + 1) * column_count + ix]
                 } else if can {
                     (group_bounds[cursor.group].borrow_ratios[ix][cursor.remaining]
                         * owned_ratio_suffix[cursor.group + 1][ix])
@@ -540,8 +553,8 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 };
             }
         }
-        // B's factors are at the child's odds 1 - pw, 1 - pg. With the per-parent rows (have_a) they are
-        // the parent's at its targets the card does not touch (pw[t] is the parent's, bit for bit, as
+        // B's factors are at one minus the child's misses. With the per-parent rows (have_a) they are
+        // the parent's at targets the card does not touch (the white miss is the parent's, bit for bit, as
         // for A): per row, the parent's factors (`ParentRatioBounds`, built at the first child that evaluates the row)
         // with the touched targets' recomputed, and B the product over its targets in target
         // order from 1.0 (`eval`'s and `eval_in`'s), the full one from the parent's prefix at t0.
@@ -560,15 +573,15 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
             while m != 0 {
                 let t = m.trailing_zeros() as usize;
                 m &= m - 1;
-                nodes.ratio_white[t] = 1.0 - pw[t];
-                nodes.ratio_gold[t] = 1.0 - pg[t];
+                nodes.ratio_white[t] = 1.0 - white_misses[t];
+                nodes.ratio_gold[t] = 1.0 - gold_misses[t];
             }
         }
         // (have_a: row ix's B factors into `nodes.ratio_factors`, the parent's row with the touched ones recomputed;
         // with `full`, their product, else 0)
         let inheritance_chances = &*search.inheritance_chances;
         let mut bfill = |ix: usize, full: bool, brow: &mut [f64; 32]| -> f64 {
-            let (o, q) = (&orow[ix], inheritance_chances[ix]);
+            let (o, q) = (&outfits[ix], inheritance_chances[ix]);
             let ParentRatioBounds { row_stamps, white_chances: hw, gold_chances: hg, factors, prefix_products, .. } =
                 &mut nodes.parent_ratios[node.parent_depth];
             let (fr, pr) = (
@@ -612,14 +625,14 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         // maximum leaves it unchanged (min(A, B r) <= A <= m) and is skipped
         nodes.clause_values.fill(0.0);
         {
-            let PreparedTables { zm, nm, alt, .. } = search.tables;
+            let PreparedTables { zero_masks, nonzero_masks, alternative_columns, .. } = search.tables;
             // (ZSPLIT; a row without a split, zm 0 and no low split, takes min(A, B r)) A's product over a
             // split's Z: from the per-parent row with the child's touched targets recomputed (A's own
             // factors), or at the node's odds
             let hrow =
                 if have_a { node.parent_depth * 2 + usize::from(has_borrowed_entries && can) } else { usize::MAX };
             let a_z = |ix: usize, z: u32| -> f64 {
-                let (o, q) = (&orow[ix], inheritance_chances[ix]);
+                let (o, q) = (&outfits[ix], inheritance_chances[ix]);
                 if hrow == usize::MAX {
                     return o.eval_in(q, &nodes.white_chances, &nodes.gold_chances, z);
                 }
@@ -636,8 +649,8 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 }
                 position
             };
-            for &(ci, i, no) in og {
-                let q = oq[i].2;
+            for &super::bounds::OutfitRun { clause: ci, start: i, count: no } in outfit_runs {
+                let q = outfit_rows[i].inheritance;
                 let mut m = 0.0f64;
                 for o in 0..no {
                     let ix = i + o;
@@ -648,21 +661,26 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                     let r = if row == usize::MAX { 1.0 } else { nodes.ratio_constants[row * column_count + ix] };
                     // A's factors of the zero targets times N's ratio bound; a low split's, the lower
                     let mut b = if have_a {
-                        let full = bfill(ix, zm[ix] == 0, &mut nodes.ratio_factors);
-                        if zm[ix] != 0 { a_z(ix, zm[ix]) * (bin(&nodes.ratio_factors, nm[ix]) * r) } else { full * r }
-                    } else if zm[ix] != 0 {
-                        a_z(ix, zm[ix]) * (orow[ix].eval_in(q, &nodes.partial_white, &nodes.partial_gold, nm[ix]) * r)
+                        let full = bfill(ix, zero_masks[ix] == 0, &mut nodes.ratio_factors);
+                        if zero_masks[ix] != 0 {
+                            a_z(ix, zero_masks[ix]) * (bin(&nodes.ratio_factors, nonzero_masks[ix]) * r)
+                        } else {
+                            full * r
+                        }
+                    } else if zero_masks[ix] != 0 {
+                        a_z(ix, zero_masks[ix])
+                            * (outfits[ix].eval_in(q, &nodes.partial_white, &nodes.partial_gold, nonzero_masks[ix]) * r)
                     } else {
-                        orow[ix].eval(q, &nodes.partial_white, &nodes.partial_gold) * r
+                        outfits[ix].eval(q, &nodes.partial_white, &nodes.partial_gold) * r
                     };
-                    for c in alt[ix].0..alt[ix].1 {
+                    for c in alternative_columns[ix].start..alternative_columns[ix].end {
                         let r = if row == usize::MAX { 1.0 } else { nodes.ratio_constants[row * column_count + c] };
                         let bn = if have_a {
-                            bin(&nodes.ratio_factors, nm[c])
+                            bin(&nodes.ratio_factors, nonzero_masks[c])
                         } else {
-                            orow[ix].eval_in(q, &nodes.partial_white, &nodes.partial_gold, nm[c])
+                            outfits[ix].eval_in(q, &nodes.partial_white, &nodes.partial_gold, nonzero_masks[c])
                         };
-                        b = b.min(a_z(ix, zm[c]) * (bn * r));
+                        b = b.min(a_z(ix, zero_masks[c]) * (bn * r));
                     }
                     m = m.max(a.min(b));
                 }
@@ -683,7 +701,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
 
     /// The state-conditioned bound at depth <= 1 (mode 1) or at every depth, the leaf included (mode 2); with
     /// SB_CHECK, every leaf's value against its root's and depth-1 node's bounds. False: the node is pruned
-    fn sbx(&self, scratch: &mut WalkScratch<'_>, sel: &[usize]) -> bool {
+    fn sbx(&self, scratch: &mut WalkScratch<'_>, selection: &[usize]) -> bool {
         let search = self.search;
         if search.controls.cap_free {
             let SearchControl {
@@ -705,11 +723,11 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 scratch.limit_reached = true;
                 return false;
             }
-            let d = sel.len();
+            let d = selection.len();
             let leafd = d == total_slots;
             let s = if leafd { 1.0 } else { cap_free_check_scale.max(1.0) };
             // the cheap bound first, the state-conditioned one only where it passes
-            let ubc = scratch.state_bound.cheap(sel);
+            let ubc = scratch.state_bound.cheap(selection);
             // (CF_CHECK: both always, so the check below tests each: an exact value above either is above their minimum)
             let ub = if cap_free_check_scale == 0.0 && ubc * s * (1.0 + 1e-9) < state_bound_threshold {
                 ubc
@@ -717,7 +735,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 ubc.min(
                     scratch
                         .state_bound
-                        .full(sel, if cap_free_check_scale == 0.0 { state_bound_threshold / s } else { 0.0 }),
+                        .full(selection, if cap_free_check_scale == 0.0 { state_bound_threshold / s } else { 0.0 }),
                 )
             };
             SBN.with(|c| c.borrow_mut().1 += 1);
@@ -727,18 +745,21 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 path.truncate(d);
                 path.push(ub);
                 if leafd {
-                    let ents: Vec<(&Src, ChainKind)> = sel.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                    let entries: Vec<SourceEntry<&TargetSources>> = selection
+                        .iter()
+                        .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
+                        .collect();
                     let x = joint_fast(
                         model,
                         bound_trainee,
                         &[bound_inheritance],
-                        &ents,
-                        self.filler,
+                        &entries,
+                        self.filler_count,
                         target_count + model.n_fixed_gold as usize,
                         false,
                         None,
                     )[0]
-                    .0;
+                    .all;
                     CFCHK.with(|c| {
                         let mut c = c.borrow_mut();
                         c.4 += 1;
@@ -763,7 +784,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         if state_bound_mode == 0 || (state_bound_mode == 3 && !sb_check()) {
             return true;
         }
-        let d = sel.len();
+        let d = selection.len();
         let chk = sb_check();
         let leafd = d == self.total_slots;
         if (state_bound_mode == 1 || state_bound_mode == 3) && d > 1 && !(chk && leafd) {
@@ -772,7 +793,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         if state_bound_mode == 3 && d == 1 && !chk {
             return true;
         }
-        let ub = scratch.state_bound.bound(sel);
+        let ub = scratch.state_bound.bound(selection);
         SBN.with(|c| c.borrow_mut().1 += 1);
         if d == 1 {
             scratch.depth_one_bound = ub;
@@ -797,38 +818,38 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         pass
     }
 
-    /// A complete deck `sel` (its miss products `pw`, `pg`, class mask `cmk`): kept when it beats the bar (product
+    /// A complete deck `selection` (its `white_misses`, `gold_misses`, `class_mask`): kept when it beats the bar (product
     /// search) or passes a clause at its class cap (band). True: the output is full, the search stops
     pub(crate) fn leaf(
         &self,
         scratch: &mut WalkScratch<'_>,
         results: &mut SearchResults,
-        sel: &[usize],
-        pw: &[f64],
-        pg: &[f64],
-        cmk: u64,
+        selection: &[usize],
+        white_misses: &[f64],
+        gold_misses: &[f64],
+        class_mask: u64,
     ) -> bool {
         let SearchControl { best, cap, target_count, cap_free, class_caps, check_ratio_bounds, .. } =
             self.search.controls;
         let (space, clauses, val) = (self.search.space, self.search.clauses, &self.search.clause_value);
-        let (plain, filler) = (self.plain, self.filler);
-        let pals = sel.iter().filter(|&&j| space.cards[space.rel[j]].pal).count() + plain;
-        if let Some(p) = space.dj.pals
+        let (plain, filler) = (self.plain_pal_count, self.filler_count);
+        let pals = selection.iter().filter(|&&j| space.cards[space.card_indices[j]].pal).count() + plain;
+        if let Some(p) = space.deck_job.pals
             && p != pals
         {
             return false;
         }
-        if !space.locked.iter().all(|l| sel.iter().any(|&j| space.rel[j] == *l)) {
+        if !space.locked.iter().all(|l| selection.iter().any(|&j| space.card_indices[j] == *l)) {
             return false;
         }
         for t in 0..target_count {
-            scratch.white_chances[t] = 1.0 - pw[t];
-            scratch.gold_chances[t] = 1.0 - pg[t];
+            scratch.white_chances[t] = 1.0 - white_misses[t];
+            scratch.gold_chances[t] = 1.0 - gold_misses[t];
         }
         let (dw, dg) = (&scratch.white_chances[..target_count], &scratch.gold_chances[..target_count]);
         // RB_CHECK: each clause's value against the bounds of the root and of every node above the deck
         if check_ratio_bounds {
-            let (s, cf) = (&scratch.nodes.diagnostic_bounds, self.configuration);
+            let (s, configuration) = (&scratch.nodes.diagnostic_bounds, self.configuration);
             RBCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 c.0 += 1;
@@ -837,8 +858,8 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                         break;
                     }
                     let x = val(cl, dw, dg);
-                    for d in 0..=sel.len() {
-                        let ub = if d == 0 { cf.clause_bounds[ci] } else { s[d][ci] };
+                    for d in 0..=selection.len() {
+                        let ub = if d == 0 { configuration.clause_bounds[ci] } else { s[d][ci] };
                         c.1 += 1;
                         if x > ub * (1.0 + 1e-9) {
                             c.2 += 1;
@@ -850,19 +871,19 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 }
             });
         }
-        let mk = |v: f64| {
-            let mut e = sel.to_vec();
+        let mk = |v: f64| -> super::ScoredDeck<SelectedDeck> {
+            let mut e = selection.to_vec();
             e.sort_unstable();
-            (
-                v,
-                SelectedDeck {
+            super::ScoredDeck {
+                value: v,
+                deck: SelectedDeck {
                     entries: e,
                     plain_pals: plain,
                     filler_cards: filler,
                     white_hint_chances: dw.to_vec(),
                     gold_hint_chances: dg.to_vec(),
                 },
-            )
+            }
         };
         if best {
             let v = val(&clauses[0], dw, dg);
@@ -875,11 +896,11 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
         } else {
             // each clause's value once: the best of them, and whether any passes its bar at the deck's class cap
             let (mut v, mut pass) = (f64::NEG_INFINITY, false);
-            let rho = class_caps[cap_class(cmk)];
+            let rho = class_caps[cap_class(class_mask)];
             for cl in clauses {
                 let x = val(cl, dw, dg);
                 v = v.max(x);
-                pass = pass || cap_free || rho * x * (1.0 + 1e-9) >= cl.1;
+                pass = pass || cap_free || rho * x * (1.0 + 1e-9) >= cl.threshold;
             }
             if pass {
                 results.decks.push(mk(v));

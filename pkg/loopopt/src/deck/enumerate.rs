@@ -1,5 +1,6 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
-use crate::deck::{DeckSpace, LandPre, LegalTabs, Model, SelectedDeck};
+use crate::deck::joint::MissFactors;
+use crate::deck::{DeckSpace, LandPre, LegalTables, Model, SelectedDeck};
 pub(crate) use bounds::RBCHK;
 use bounds::{DOM_GAP, OutfitBounds, RatioPrefixes, prepare_outfit_bounds, prepare_ratio_prefixes, rb_check};
 use config::{ConfigurationQueue, ConfigurationScratch, ConfigurationTables, PendingConfig, SearchConfig};
@@ -35,8 +36,28 @@ pub(super) enum SearchStop {
     OutputLimit,
 }
 
+/// One trainee position and inheritance chance contributing to a clause.
+#[derive(Clone, Copy)]
+pub(super) struct LineageChance {
+    pub(super) trainee: usize,
+    pub(super) inheritance: f64,
+}
+
+/// Sum the best outfit value at each lineage, then compare with the threshold.
+pub(super) struct SearchClause {
+    pub(super) lineages: Vec<LineageChance>,
+    pub(super) threshold: f64,
+}
+
+/// A selected or detached deck with its search value.
+#[derive(Clone)]
+pub(super) struct ScoredDeck<Deck> {
+    pub(super) value: f64,
+    pub(super) deck: Deck,
+}
+
 pub(super) struct SearchOutcome {
-    pub(super) decks: Vec<(f64, SelectedDeck)>,
+    pub(super) decks: Vec<ScoredDeck<SelectedDeck>>,
     /// None means enumeration finished under the requested bounds; exact scoring may still be needed.
     pub(super) incomplete: Option<SearchStop>,
 }
@@ -50,12 +71,12 @@ pub(crate) struct SearchSetup {
     cap: usize,
     target_count: usize,
     size: usize,
-    nplain: usize,
+    plain_pal_count: usize,
     kind_count: usize,
-    ki22: usize,
-    kpos: Vec<u64>,
+    filler_kind_index: usize,
+    kind_place_values: Vec<u64>,
     set_id: usize,
-    lt: std::rc::Rc<LegalTabs>,
+    legal_tables: std::rc::Rc<LegalTables>,
     // Keep the cached-entry handle alive through traversal, as before extraction.
     legal_entries: std::rc::Rc<Vec<usize>>,
     fixed: f64,
@@ -63,7 +84,7 @@ pub(crate) struct SearchSetup {
     cap_free_node_limit: usize,
     cap_free_check_scale: f64,
     state_bound_mode: u8,
-    state_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>,
+    state_rows: std::rc::Rc<Vec<Option<Vec<MissFactors>>>>,
     state_bound_threshold: f64,
     bound_trainee: crate::UmaIndex,
     bound_inheritance: f64,
@@ -72,24 +93,24 @@ pub(crate) struct SearchSetup {
 }
 
 impl DeckSpace<'_> {
-    /// Decks legal for trainees `us` (uma indices; `ids` their ids). `clauses`: ((trainee position in `us`,
-    /// inheritance chance) pairs, threshold); a deck's clause value is the sum of its product values (fixed factor
-    /// included) over those pairs. Best mode requires one clause and keeps its highest-value deck above `seed`
+    /// Decks legal for `trainees` and their `trainee_ids`. Each clause names lineage chances by trainee position and
+    /// a threshold; its value is the sum of the deck's product values, including the fixed factor, over those lineages.
+    /// Best mode requires one clause and keeps its highest-value deck above `seed`
     /// (none if no deck beats it; ties: the first found). Band mode collects decks for which some clause has
     /// c * value >= threshold, c the deck's class cap (`cap_class`, `caps`) at most `ratio_cap`.
     /// Reaching `max_decks` ends the band immediately and reports `OutputLimit`, even if that was the last deck.
     pub(super) fn search(
         &self,
         model: &Model,
-        us: &[crate::UmaIndex],
-        ids: &[u32],
-        clauses: &[(Vec<(usize, f64)>, f64)],
+        trainees: &[crate::UmaIndex],
+        trainee_ids: &[u32],
+        clauses: &[SearchClause],
         mode: SearchMode,
     ) -> SearchOutcome {
-        let setup = match self.configure_search(model, us, ids, clauses, mode) {
+        let setup = match self.configure_search(model, trainees, trainee_ids, clauses, mode) {
             Ok(setup) => setup,
             Err(outcome) => return outcome,
         };
-        self.search_with_bounds(model, us, clauses, setup)
+        self.search_with_bounds(model, trainees, clauses, setup)
     }
 }

@@ -353,8 +353,8 @@ impl Env<'_> {
     // ---- what a stored state (`state_in`) says of a setup, checked where it meets this one ----
     /// a stored deck: entries of this job's deck space, within its deck size, a chance per uncertain target
     fn sel_fits(&self, s: &SelectedDeck) -> bool {
-        s.entries.iter().all(|&j| j < self.space.rel.len())
-            && s.entries.len() + s.plain_pals + s.filler_cards <= self.space.dj.deck_size
+        s.entries.iter().all(|&j| j < self.space.card_indices.len())
+            && s.entries.len() + s.plain_pals + s.filler_cards <= self.space.deck_job.deck_size
             && s.white_hint_chances.len() == self.uncertain_count
     }
     /// a stored fully checked deck: a chance per job target, and its deck

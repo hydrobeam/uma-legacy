@@ -1,14 +1,15 @@
 //! The visiting order of queued configurations.
 use super::config::ConfigurationBounds;
 use super::{ConfigurationQueue, PendingConfig, SearchConfig, SearchControl};
-use crate::deck::{DeckSpace, GTab};
+use crate::deck::space::GroupSlots;
+use crate::deck::{DeckSpace, GroupTable};
 
 /// (lazy: the pending configurations by bound, highest first; the computed ones not yet visited, best root first
 /// and, among equal roots, first built first, the order of the stable sort above)
 struct QueuedConfig {
     root: f64,
-    idx: usize,
-    cf: SearchConfig,
+    insertion_index: usize,
+    configuration: SearchConfig,
 }
 
 impl PartialEq for QueuedConfig {
@@ -27,17 +28,17 @@ impl PartialOrd for QueuedConfig {
 
 impl Ord for QueuedConfig {
     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
-        self.root.partial_cmp(&o.root).unwrap().then(o.idx.cmp(&self.idx))
+        self.root.partial_cmp(&o.root).unwrap().then(o.insertion_index.cmp(&self.insertion_index))
     }
 }
 
-/// The partial decks' miss products, one row of `target_count` per depth (the last row: the deck so far): `pw`, `pg` hold one
+/// The partial decks' miss products: `white_misses` and `gold_misses` each hold one
 /// row of target_count per depth 0 ..= the deck's slots, row d at d * target_count (the partial deck with d cards); `parent_id` the last parent
 /// id given out (kept across configurations)
 pub(crate) struct DeckPath {
-    pub(crate) sel: Vec<usize>,
-    pub(crate) pw: Vec<f64>,
-    pub(crate) pg: Vec<f64>,
+    pub(crate) entries: Vec<usize>,
+    pub(crate) white_misses: Vec<f64>,
+    pub(crate) gold_misses: Vec<f64>,
     pub(crate) parent_id: usize,
 }
 
@@ -64,7 +65,7 @@ pub(crate) struct ConfigOrder {
     check_ratio_bounds: bool,
     configurations: Vec<SearchConfig>,
     pending: Vec<PendingConfig>,
-    key_ratios: Vec<Option<std::rc::Rc<GTab>>>,
+    key_ratios: Vec<Option<std::rc::Rc<GroupTable>>>,
     pending_order: Vec<usize>,
     heap: std::collections::BinaryHeap<QueuedConfig>,
     pending_position: usize,
@@ -79,9 +80,9 @@ pub(crate) struct ConfigOrder {
 impl ConfigOrder {
     pub(crate) fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
         let SearchControl { lazy, check_ratio_bounds, target_count, column_count, .. } = controls;
-        let ConfigurationQueue { cfgs: configurations, pend: pending, pkeys: key_ratios } = queue;
+        let ConfigurationQueue { configurations, pending, key_ratios } = queue;
         let mut pending_order: Vec<usize> = (0..pending.len()).collect();
-        pending_order.sort_by(|&a, &b| pending[b].u.partial_cmp(&pending[a].u).unwrap());
+        pending_order.sort_by(|&a, &b| pending[b].upper_bound.partial_cmp(&pending[a].upper_bound).unwrap());
         let heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
         let (white_chances, gold_chances, ratio_products, prune_bounds, order_bounds) = (
             vec![0.0f64; target_count],
@@ -114,9 +115,9 @@ impl ConfigOrder {
         space: &DeckSpace<'_>,
         best_value: f64,
         bounds: &ConfigurationBounds<
-            impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
-            impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
-            impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+            impl Fn(&[f64], &[f64], &[u32], u64) -> GroupTable,
+            impl Fn(&[GroupSlots], &GroupTable, &mut [f64], &mut [f64]),
+            impl Fn(&[GroupSlots], &GroupTable, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
         >,
     ) -> Option<ConfigRef<'_>> {
         if self.lazy {
@@ -124,21 +125,32 @@ impl ConfigOrder {
             // left has a bound, so a root, below it (or cannot reach the bar)
             while self.pending_position < self.pending_order.len() {
                 let pending_config = &self.pending[self.pending_order[self.pending_position]];
-                if !(pending_config.u * (1.0 + 1e-9) >= best_value
-                    && self.heap.peek().is_none_or(|h| pending_config.u >= h.root))
+                if !(pending_config.upper_bound * (1.0 + 1e-9) >= best_value
+                    && self.heap.peek().is_none_or(|h| pending_config.upper_bound >= h.root))
                 {
                     break;
                 }
                 self.pending_position += 1;
-                // the eager build's values: the per-target bound, the key's ratio tables, sp0 and the root
-                (bounds.odds)(&pending_config.gs, &pending_config.gm, &mut self.white_chances, &mut self.gold_chances);
-                let rpk: &std::rc::Rc<GTab> = self.key_ratios[pending_config.key].get_or_insert_with(|| {
-                    let km = space.key_miss(pending_config.code);
-                    std::rc::Rc::new((bounds.ratio_prefixes)(&km.0, &km.1, &km.2, pending_config.gneed))
-                });
+                // The eager build's values: the per-target bound, the key's ratio tables, ratio products and root.
+                (bounds.odds)(
+                    &pending_config.groups,
+                    &pending_config.group_misses,
+                    &mut self.white_chances,
+                    &mut self.gold_chances,
+                );
+                let ratio_prefixes: &std::rc::Rc<GroupTable> = self.key_ratios[pending_config.ratio_key_index]
+                    .get_or_insert_with(|| {
+                        let key_misses = space.key_miss(pending_config.code);
+                        std::rc::Rc::new((bounds.ratio_prefixes)(
+                            &key_misses.white,
+                            &key_misses.gold,
+                            &key_misses.touched_targets,
+                            pending_config.needed_groups,
+                        ))
+                    });
                 (bounds.root)(
-                    &pending_config.gs,
-                    rpk,
+                    &pending_config.groups,
+                    ratio_prefixes,
                     &mut self.white_chances,
                     &mut self.gold_chances,
                     &mut self.ratio_products,
@@ -147,23 +159,23 @@ impl ConfigOrder {
                 );
                 self.heap.push(QueuedConfig {
                     root: self.order_bounds[0],
-                    idx: self.pending_order[self.pending_position - 1],
-                    cf: SearchConfig {
+                    insertion_index: self.pending_order[self.pending_position - 1],
+                    configuration: SearchConfig {
                         root: self.order_bounds[0],
                         code: pending_config.code,
-                        code_real22: pending_config.real22,
-                        np: pending_config.np,
-                        filler: pending_config.filler,
-                        plain: pending_config.plain,
-                        gs: pending_config.gs.clone(),
-                        gm: std::rc::Rc::clone(&pending_config.gm),
-                        rpk: std::rc::Rc::clone(rpk),
+                        real_filler_count: pending_config.real_filler_count,
+                        pal_entry_count: pending_config.pal_entry_count,
+                        filler_count: pending_config.filler_count,
+                        plain_pal_count: pending_config.plain_pal_count,
+                        groups: pending_config.groups.clone(),
+                        group_misses: std::rc::Rc::clone(&pending_config.group_misses),
+                        ratio_prefixes: std::rc::Rc::clone(ratio_prefixes),
                         prune_bound: self.prune_bounds[0],
                         clause_bounds: if self.check_ratio_bounds { self.prune_bounds.clone() } else { vec![] },
                     },
                 });
             }
-            self.heap.pop().map(|h| ConfigRef::Computed(h.cf))
+            self.heap.pop().map(|h| ConfigRef::Computed(h.configuration))
         } else {
             if self.eager_position >= self.configurations.len() {
                 return None;

@@ -1,8 +1,13 @@
 //! Joint landing odds of a deck: exact over chain progress and outcome groups, the negative-association bound, and the
 //! state-conditioned bound.
+use super::SourceEntry;
+use super::chains::ChainState;
+use super::sources::{
+    ChainOutcome, EventOutcome, LinkMisses, TargetChainMisses, TargetMisses, TargetReward, TrainingHint,
+};
 use super::{
-    ChainKind, GEN_GOLD, Group, JCOUNT, Model, OutfitOption, Src, chain_states, event_pmf_job, group_gh, group_nuod,
-    key_level,
+    ChainKind, GEN_GOLD, Group, JCOUNT, Model, OutfitOption, TargetSources, chain_states, event_pmf_job, group_gh,
+    group_nuod, key_level,
 };
 
 /// The trainee and ordered inheritance chances to evaluate against one deck.
@@ -20,14 +25,37 @@ struct JointOptions {
     target_count: usize,
     /// Also compute the chance of landing at least all but one target.
     all_but_one: bool,
-    /// Fill `JointExt::marg` when an extension is supplied.
+    /// Fill `JointExt::marginals` when an extension is supplied.
     marginals: bool,
 }
 
+/// Exact landing probabilities and the outfit maximizing the all-target chance.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct JointChances {
+    pub(super) all: f64,
+    pub(super) all_but_one: f64,
+    /// Option index within the queried trainee's outfits.
+    pub(super) outfit: usize,
+}
+
+/// A chain's source entry, or a filler which still consumes chain events.
+#[derive(Clone, Copy)]
+struct ChainEntry {
+    kind: ChainKind,
+    source_index: Option<usize>,
+}
+
+/// One landed-target subset and its probability in the current outcome product.
+#[derive(Clone, Copy)]
+struct SubsetProbability {
+    targets: usize,
+    probability: f64,
+}
+
 /// Exact chances that all targets land, and all but one, for trainee `u` with one deck, at each inheritance chance in
-/// `qs`: (P(all), P(all but one), outfit option index in `model.opts[u]`) per q, with the outfit that gives the
+/// `inheritance_chances`: P(all), P(all but one), and the outfit option in `model.opts[u]` per q, choosing the
 /// higher P(all).
-/// `ents`: the deck's entries (sources, chain kind); `filler`: cards without target hints, which still take chain
+/// `entries`: the deck's sources and chain kinds; `filler`: cards without target hints, which still take chain
 /// slots (as 2-link SRs). The per-target odds (`src_miss`) are the marginals of the same model; the metric the
 /// search ranks by multiplies them as if targets were independent. They are not: chain cards share one run's
 /// chain events (a run with many completes several chains, a short one starves them all), and one event's
@@ -38,50 +66,51 @@ struct JointOptions {
 pub(super) fn joint(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(Src, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<TargetSources>],
     filler: usize,
-    n_targets: usize,
-    m1: bool,
-) -> Vec<(f64, f64, usize)> {
-    joint_b(model, u, qs, ents, filler, n_targets, m1)
+    requested_target_count: usize,
+    all_but_one: bool,
+) -> Vec<JointChances> {
+    joint_b(model, u, inheritance_chances, entries, filler, requested_target_count, all_but_one)
 }
 /// `joint` with the sources owned or borrowed (it only reads them)
-pub(super) fn joint_b<S: std::borrow::Borrow<Src>>(
+pub(super) fn joint_b<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(S, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<S>],
     filler: usize,
-    n_targets: usize,
-    m1: bool,
-) -> Vec<(f64, f64, usize)> {
+    requested_target_count: usize,
+    all_but_one: bool,
+) -> Vec<JointChances> {
     joint_checked(
         model,
-        JointQuery { trainee: u, inheritance_chances: qs },
-        ents,
+        JointQuery { trainee: u, inheritance_chances },
+        entries,
         filler,
-        JointOptions { target_count: n_targets, all_but_one: m1, marginals: true },
+        JointOptions { target_count: requested_target_count, all_but_one, marginals: true },
     )
 }
 
-fn joint_checked<S: std::borrow::Borrow<Src>>(
+fn joint_checked<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
     query: JointQuery,
-    ents: &[(S, ChainKind)],
+    entries: &[SourceEntry<S>],
     filler: usize,
     options: JointOptions,
-) -> Vec<(f64, f64, usize)> {
+) -> Vec<JointChances> {
     JCOUNT.with(|c| c.set(c.get() + 1));
-    let r = evaluate_joint(model, query, ents, filler, options, None);
+    let r = evaluate_joint(model, query, entries, filler, options, None);
     if sb_check() {
-        let er: Vec<(&Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
+        let er: Vec<SourceEntry<&TargetSources>> =
+            entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(sv) = state_value(model, query.trainee, query.inheritance_chances, &er, filler) {
             SBCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
-                    if x.0 > 0.0 {
-                        let rt = v / x.0;
+                    if x.all > 0.0 {
+                        let rt = v / x.all;
                         c.0 += 1;
                         c.1 = c.1.max(rt);
                         c.2 = c.2.min(rt);
@@ -95,17 +124,18 @@ fn joint_checked<S: std::borrow::Borrow<Src>>(
     }
     // CF_CHECK: the cap-free bound's value at a whole deck (its leaf test) against the exact value
     if cf_check() > 0.0 {
-        let er: Vec<(&Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow(), e.1)).collect();
+        let er: Vec<SourceEntry<&TargetSources>> =
+            entries.iter().map(|entry| SourceEntry { sources: entry.sources.borrow(), kind: entry.kind }).collect();
         if let Some(sv) = state_value_cf(model, query.trainee, query.inheritance_chances, &er, filler) {
             CFCHK.with(|c| {
                 let mut c = c.borrow_mut();
                 for (v, x) in sv.iter().zip(&r) {
                     c.6 += 1;
-                    if x.0 > v * (1.0 + 1e-9) {
+                    if x.all > v * (1.0 + 1e-9) {
                         c.7 += 1;
                     }
                     if *v > 0.0 {
-                        c.8 = c.8.max(x.0 / v);
+                        c.8 = c.8.max(x.all / v);
                     }
                 }
             });
@@ -113,12 +143,15 @@ fn joint_checked<S: std::borrow::Borrow<Src>>(
     }
     static CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *CHECK.get_or_init(|| std::env::var("JOINT_CHECK").is_ok()) {
-        let own: Vec<(Src, ChainKind)> = ents.iter().map(|e| (e.0.borrow().clone(), e.1)).collect();
+        let own: Vec<SourceEntry<TargetSources>> = entries
+            .iter()
+            .map(|entry| SourceEntry { sources: entry.sources.borrow().clone(), kind: entry.kind })
+            .collect();
         let x = joint_trainee_ref(model, query.trainee, query.inheritance_chances, &own, filler, options.target_count);
         for (a, b) in r.iter().zip(&x) {
             let rel = |p: f64, q: f64| (p - q).abs() / q.abs().max(1e-300);
             assert!(
-                rel(a.0, b.0) < 1e-11 && (!options.all_but_one || rel(a.1, b.1) < 1e-11),
+                rel(a.all, b.all) < 1e-11 && (!options.all_but_one || rel(a.all_but_one, b.all_but_one) < 1e-11),
                 "joint mismatch: {a:?} vs {b:?}"
             );
         }
@@ -126,50 +159,55 @@ fn joint_checked<S: std::borrow::Borrow<Src>>(
     r
 }
 
+/// Per-target spark-generation scales, with each partition in job order.
+pub(crate) struct SparkScales {
+    pub(crate) uncertain: Vec<f64>,
+    pub(crate) guaranteed: Vec<f64>,
+}
+
 pub(crate) struct JointExt {
-    pub su: Vec<f64>,
-    pub sf: Vec<f64>,
-    pub marg: Vec<f64>,
+    pub scales: SparkScales,
+    pub marginals: Vec<f64>,
     pub sets: Vec<f64>,
     pub per_outfit: Vec<f64>,
 }
-/// `joint_trainee` without the reference check; `m1` = also compute P(all but one) (else 0).
+/// `joint_trainee` without the reference check; `all_but_one` also computes P(all but one) (else 0).
 /// Faster form of the same sum: chain states are collapsed to the progress that changes some target's factors (a
 /// filler's progress, and links that add nothing, drop out), and outcome groups touching two or more targets are
 /// enumerated per cluster of targets they connect (clusters are independent given the chain state).
-/// `ext` (the career planner): each target's landing factor times its spark-generation scale (`su` per uncertain
-/// target, `sf` per guaranteed gold, in job order), and per (chance, outfit, uncertain target) the exact chance it
-/// lands, summed into `marg`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
+/// `extension` (the career planner): each target's landing factor times its spark-generation scale (`scales.uncertain` or
+/// `scales.guaranteed`, in job order), and per (chance, outfit, uncertain target) the exact chance it
+/// lands, summed into `marginals`; with `sets` non-empty on entry, per (chance, outfit) the chance of each set of uncertain
 /// targets landing (bit k = uncertain target k), 2^nu entries each. None leaves every number as it is.
-pub(super) fn joint_fast<S: std::borrow::Borrow<Src>>(
+pub(super) fn joint_fast<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(S, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<S>],
     filler: usize,
-    n_targets: usize,
-    m1: bool,
-    ext: Option<&mut JointExt>,
-) -> Vec<(f64, f64, usize)> {
+    requested_target_count: usize,
+    all_but_one: bool,
+    extension: Option<&mut JointExt>,
+) -> Vec<JointChances> {
     evaluate_joint(
         model,
-        JointQuery { trainee: u, inheritance_chances: qs },
-        ents,
+        JointQuery { trainee: u, inheritance_chances },
+        entries,
         filler,
-        JointOptions { target_count: n_targets, all_but_one: m1, marginals: true },
-        ext,
+        JointOptions { target_count: requested_target_count, all_but_one, marginals: true },
+        extension,
     )
 }
 
-fn evaluate_joint<S: std::borrow::Borrow<Src>>(
+fn evaluate_joint<S: std::borrow::Borrow<TargetSources>>(
     model: &Model,
     query: JointQuery,
-    ents: &[(S, ChainKind)],
+    entries: &[SourceEntry<S>],
     filler: usize,
     options: JointOptions,
-    ext: Option<&mut JointExt>,
-) -> Vec<(f64, f64, usize)> {
-    joint_eval(model, query, &joint_prep(model.uncertain.len(), ents, filler), options, ext)
+    extension: Option<&mut JointExt>,
+) -> Vec<JointChances> {
+    joint_eval(model, query, &joint_prep(model.uncertain.len(), entries, filler), options, extension)
 }
 /// The deck-dependent part of `joint_fast`, before inheritance chances or outfit state are applied.
 /// Collapsed states retain first-seen order; each weight is summed in the original chain-state order.
@@ -202,11 +240,11 @@ struct ChainProgress {
 /// A coupled group's ascending target indices and outcomes. The implicit no-reward outcome is last if above 1e-15.
 struct CoupledGroup<'group> {
     targets: Vec<usize>,
-    outcomes: Vec<(f64, &'group [(usize, u8)])>,
+    outcomes: Vec<EventOutcome<&'group [TargetReward]>>,
 }
-pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(
-    nu: usize,
-    ents: &[(S, ChainKind)],
+pub(super) fn joint_prep<S: std::borrow::Borrow<TargetSources>>(
+    uncertain_count: usize,
+    entries: &[SourceEntry<S>],
     filler: usize,
 ) -> JointPrep<'_> {
     fn add_group<'group>(
@@ -218,11 +256,13 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(
     ) {
         let marginals = group_gh(group);
         if marginals.len() >= 2 {
-            let mut outcomes: Vec<(f64, &[(usize, u8)])> =
-                group.iter().map(|(p, rewards)| (*p, (&**rewards))).collect();
-            let rest = 1.0 - group.iter().map(|outcome| outcome.0).sum::<f64>();
+            let mut outcomes: Vec<EventOutcome<&[TargetReward]>> = group
+                .iter()
+                .map(|outcome| EventOutcome { probability: outcome.probability, rewards: &*outcome.rewards })
+                .collect();
+            let rest = 1.0 - group.iter().map(|outcome| outcome.probability).sum::<f64>();
             if rest > 1e-15 {
-                outcomes.push((rest, &[][..]));
+                outcomes.push(EventOutcome { probability: rest, rewards: &[][..] });
             }
             groups.push(CoupledGroup { targets: marginals.iter().map(|entry| entry.0).collect(), outcomes });
             coupled.push(groups.len() - 1);
@@ -233,44 +273,49 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(
             no_hint[k] *= 1.0 - any_hint;
         }
     }
-    let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count]);
     let mut base_coupled: Vec<usize> = vec![];
     let mut groups: Vec<CoupledGroup> = vec![];
-    for (src, _) in ents {
-        let src: &Src = src.borrow();
-        for &(k, p) in &src.train {
+    for SourceEntry { sources: src, .. } in entries {
+        let src: &TargetSources = src.borrow();
+        for &TrainingHint { target: k, probability: p } in &src.training_hints {
             base_no_hint[k] *= 1.0 - p;
         }
-        for group in &src.fixed {
+        for group in &src.fixed_outcomes {
             add_group(group, &mut groups, &mut base_coupled, &mut base_no_gold, &mut base_no_hint);
         }
     }
-    let mut chain_entries: Vec<(ChainKind, Option<usize>)> = ents
+    let mut chain_entries: Vec<ChainEntry> = entries
         .iter()
         .enumerate()
-        .filter(|(_, entry)| entry.1 != ChainKind::NONE)
-        .map(|(i, entry)| (entry.1, Some(i)))
+        .filter(|(_, entry)| entry.kind != ChainKind::NONE)
+        .map(|(i, entry)| ChainEntry { kind: entry.kind, source_index: Some(i) })
         .collect();
     for _ in 0..filler {
-        chain_entries.push((ChainKind::FILLER, None));
+        chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
     }
-    chain_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<ChainKind> = chain_entries.iter().map(|entry| entry.0).collect();
-    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
+    chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|entry| entry.kind).collect();
+    let states = if kinds.is_empty() {
+        std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+    } else {
+        chain_states(&kinds)
+    };
     let mut chains: Vec<ChainProgress> = vec![];
-    for (position, &(kind, entry)) in chain_entries.iter().enumerate() {
+    for (position, &ChainEntry { kind, source_index: entry }) in chain_entries.iter().enumerate() {
         let Some(i) = entry else { continue };
-        let src: &Src = ents[i].0.borrow();
-        if src.chains.is_empty() {
+        let src: &TargetSources = entries[i].sources.borrow();
+        if src.chain_outcomes.is_empty() {
             continue;
         }
-        let (mut no_gold, mut no_hint, mut coupled) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
+        let (mut no_gold, mut no_hint, mut coupled) =
+            (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count], vec![]);
         let mut levels =
             vec![ChainFactors { no_gold: no_gold.clone(), no_hint: no_hint.clone(), coupled: coupled.clone() }];
         let mut class_of_progress = vec![0u8];
         for link in 1..=kind.stop {
             let mut changed = false;
-            for (group_link, group) in &src.chains {
+            for ChainOutcome { link: group_link, outcomes: group } in &src.chain_outcomes {
                 if *group_link == link {
                     add_group(group, &mut groups, &mut coupled, &mut no_gold, &mut no_hint);
                     changed = true;
@@ -292,7 +337,7 @@ pub(super) fn joint_prep<S: std::borrow::Borrow<Src>>(
     // Preserve first-seen order separately from the map: it controls the later floating-point sums.
     let mut collapsed: crate::FxMap<Vec<u8>, f64> = crate::FxMap::default();
     let mut order: Vec<Vec<u8>> = vec![];
-    for (progress, probability) in states.iter() {
+    for ChainState { progress, probability } in states.iter() {
         let key: Vec<u8> =
             chains.iter().map(|chain| chain.class_of_progress[progress[chain.position] as usize]).collect();
         if let Some(weight) = collapsed.get_mut(&key) {
@@ -323,7 +368,7 @@ fn joint_eval(
     prepared: &JointPrep,
     options: JointOptions,
     extension: Option<&mut JointExt>,
-) -> Vec<(f64, f64, usize)> {
+) -> Vec<JointChances> {
     evaluate_prepared(model, query, prepared, options, extension, &mut JointScratch::default())
 }
 #[derive(Clone, Copy)]
@@ -356,8 +401,8 @@ pub(super) struct JointScratch {
     outcome_indices: Vec<usize>,
     cluster_distribution: Vec<f64>,
     cluster_masks: Vec<usize>,
-    subsets: Vec<(usize, f64)>,
-    next_subsets: Vec<(usize, f64)>,
+    subsets: Vec<SubsetProbability>,
+    next_subsets: Vec<SubsetProbability>,
     next_distribution: Vec<f64>,
 }
 impl JointScratch {
@@ -448,25 +493,25 @@ impl JointScratch {
     }
 }
 
-/// `joint_eval` with its buffers from `sx`
+/// `joint_eval` with reused buffers from `scratch`.
 pub(super) fn joint_eval_in(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    pre: &JointPrep,
-    n_targets: usize,
-    m1: bool,
-    marg: bool,
-    ext: Option<&mut JointExt>,
-    sx: &mut JointScratch,
-) -> Vec<(f64, f64, usize)> {
+    inheritance_chances: &[f64],
+    prepared: &JointPrep,
+    requested_target_count: usize,
+    all_but_one: bool,
+    marginals: bool,
+    extension: Option<&mut JointExt>,
+    scratch: &mut JointScratch,
+) -> Vec<JointChances> {
     evaluate_prepared(
         model,
-        JointQuery { trainee: u, inheritance_chances: qs },
-        pre,
-        JointOptions { target_count: n_targets, all_but_one: m1, marginals: marg },
-        ext,
-        sx,
+        JointQuery { trainee: u, inheritance_chances },
+        prepared,
+        JointOptions { target_count: requested_target_count, all_but_one, marginals },
+        extension,
+        scratch,
     )
 }
 
@@ -477,7 +522,7 @@ fn evaluate_prepared(
     options: JointOptions,
     mut extension: Option<&mut JointExt>,
     workspace: &mut JointScratch,
-) -> Vec<(f64, f64, usize)> {
+) -> Vec<JointChances> {
     let target_count = model.uncertain.len();
     let mut scratch = std::mem::take(workspace);
     let JointPrep { base, chains, states, groups } = prepared;
@@ -486,23 +531,23 @@ fn evaluate_prepared(
     let chance_count = query.inheritance_chances.len();
     let fixed_target_count = model.n_fixed_gold as usize;
     let fixed = match &extension {
-        Some(x) => x.sf.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
+        Some(x) => x.scales.guaranteed.iter().fold(1.0, |a, s| a * GEN_GOLD * s),
         None => model.fixed_factor(),
     };
     let want_sets = extension.as_ref().is_some_and(|x| !x.sets.is_empty()) && target_count <= 16;
     if let Some(x) = extension.as_deref_mut() {
         if options.marginals {
-            x.marg = vec![0.0; chance_count * outfit_count * target_count];
+            x.marginals = vec![0.0; chance_count * outfit_count * target_count];
         }
         if want_sets {
             x.sets = vec![0.0; (chance_count * outfit_count) << target_count];
         }
     }
     // (a scale of exactly 1.0 for every target leaves each factor as it is, x * 1.0 = x: not multiplied)
-    let unit_scales = extension.as_ref().is_none_or(|x| x.su.iter().all(|&s| s == 1.0));
+    let unit_scales = extension.as_ref().is_none_or(|x| x.scales.uncertain.iter().all(|&s| s == 1.0));
     let query_outfit_count = chance_count * outfit_count;
     scratch.reset(target_count, query_outfit_count, want_sets);
-    let mut outcomes: Vec<&[(f64, &[(usize, u8)])]> = vec![];
+    let mut outcomes: Vec<&[EventOutcome<&[TargetReward]>]> = vec![];
     for state in states {
         let state_probability = state.probability;
         scratch.no_gold.copy_from_slice(&base.no_gold);
@@ -527,7 +572,7 @@ fn evaluate_prepared(
                         [lp.f(scratch.no_gold[k], scratch.no_hint[k]), lp.f(scratch.no_gold[k], 0.0), lp.f(0.0, 0.0)];
                     if !unit_scales && let Some(x) = &extension {
                         for v in &mut scratch.landing_factors[base + k] {
-                            *v *= x.su[k];
+                            *v *= x.scales.uncertain[k];
                         }
                     }
                 }
@@ -549,7 +594,7 @@ fn evaluate_prepared(
                     if options.marginals
                         && let Some(x) = extension.as_deref_mut()
                     {
-                        x.marg[i * target_count + k] += state_probability * f;
+                        x.marginals[i * target_count + k] += state_probability * f;
                     }
                 }
             }
@@ -595,12 +640,12 @@ fn evaluate_prepared(
             scratch.outcome_indices.resize(outcomes.len(), 0);
             loop {
                 let outcome_probability: f64 =
-                    (0..outcomes.len()).map(|i| outcomes[i][scratch.outcome_indices[i]].0).product();
+                    (0..outcomes.len()).map(|i| outcomes[i][scratch.outcome_indices[i]].probability).product();
                 for &k in targets {
                     scratch.hint_levels[k] = 0;
                 }
                 for i in 0..outcomes.len() {
-                    for &(k, l) in outcomes[i][scratch.outcome_indices[i]].1 {
+                    for &TargetReward { target: k, level: l } in outcomes[i][scratch.outcome_indices[i]].rewards {
                         scratch.hint_levels[k] = scratch.hint_levels[k].max(if l >= 2 { 2 } else { 1 });
                     }
                 }
@@ -617,26 +662,29 @@ fn evaluate_prepared(
                         && let Some(x) = extension.as_deref_mut()
                     {
                         for &k in targets {
-                            x.marg[i * target_count + k] += state_probability
+                            x.marginals[i * target_count + k] += state_probability
                                 * outcome_probability
                                 * scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                         }
                     }
                     if want_sets {
                         scratch.subsets.clear();
-                        scratch.subsets.push((0, outcome_probability));
+                        scratch.subsets.push(SubsetProbability { targets: 0, probability: outcome_probability });
                         for &k in targets {
                             let f = scratch.landing_factors[i * target_count + k][scratch.hint_levels[k] as usize];
                             scratch.next_subsets.clear();
-                            for &(m, p) in &scratch.subsets {
-                                scratch.next_subsets.push((m, p * (1.0 - f)));
-                                scratch.next_subsets.push((m | 1 << k, p * f));
+                            for &SubsetProbability { targets: m, probability: p } in &scratch.subsets {
+                                scratch.next_subsets.push(SubsetProbability { targets: m, probability: p * (1.0 - f) });
+                                scratch
+                                    .next_subsets
+                                    .push(SubsetProbability { targets: m | 1 << k, probability: p * f });
                             }
                             std::mem::swap(&mut scratch.subsets, &mut scratch.next_subsets);
                         }
                         let ci = &mut scratch.cluster_distribution
                             [i * scratch.subsets.len()..(i + 1) * scratch.subsets.len()];
-                        for (j, &(m, p)) in scratch.subsets.iter().enumerate() {
+                        for (j, &SubsetProbability { targets: m, probability: p }) in scratch.subsets.iter().enumerate()
+                        {
                             ci[j] += p;
                             scratch.cluster_masks[j] = m;
                         }
@@ -690,7 +738,7 @@ fn evaluate_prepared(
             if options.all_but_one {
                 for j in 0..fixed_target_count {
                     let g = match &extension {
-                        Some(x) => GEN_GOLD * x.sf[j],
+                        Some(x) => GEN_GOLD * x.scales.guaranteed[j],
                         None => GEN_GOLD,
                     };
                     b = b * g + a * (1.0 - g);
@@ -726,7 +774,11 @@ fn evaluate_prepared(
                     b = o;
                 }
             }
-            (scratch.totals[qi * outfit_count + b].all, scratch.totals[qi * outfit_count + b].all_but_one, b)
+            JointChances {
+                all: scratch.totals[qi * outfit_count + b].all,
+                all_but_one: scratch.totals[qi * outfit_count + b].all_but_one,
+                outfit: b,
+            }
         })
         .collect();
     *workspace = scratch;
@@ -738,29 +790,29 @@ fn evaluate_prepared(
 pub(super) fn joint_trainee_ref(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(Src, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<TargetSources>],
     filler: usize,
-    n_targets: usize,
-) -> Vec<(f64, f64, usize)> {
+    requested_target_count: usize,
+) -> Vec<JointChances> {
     reference_joint(
         model,
-        JointQuery { trainee: u, inheritance_chances: qs },
-        ents,
+        JointQuery { trainee: u, inheritance_chances },
+        entries,
         filler,
-        JointOptions { target_count: n_targets, all_but_one: true, marginals: false },
+        JointOptions { target_count: requested_target_count, all_but_one: true, marginals: false },
     )
 }
 
 fn reference_joint(
     model: &Model,
     query: JointQuery,
-    ents: &[(Src, ChainKind)],
+    entries: &[SourceEntry<TargetSources>],
     filler: usize,
     options: JointOptions,
-) -> Vec<(f64, f64, usize)> {
+) -> Vec<JointChances> {
     use crate::skills::GEN_WHITE;
-    let nu = model.uncertain.len();
+    let uncertain_count = model.uncertain.len();
     // per-target miss factors (no gold, no hint) of the groups that touch one target; the others are "coupled"
     fn take<'group>(g: &'group Group, coupled: &mut Vec<&'group Group>, ng: &mut [f64], nh: &mut [f64]) {
         let gh = group_gh(g);
@@ -774,35 +826,43 @@ fn reference_joint(
         }
     }
     // sources that do not depend on the chain
-    let (mut bg, mut bh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let (mut bg, mut bh) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count]);
     let mut bc: Vec<&Group> = vec![];
-    for (src, _) in ents {
-        for &(k, p) in &src.train {
+    for SourceEntry { sources: src, .. } in entries {
+        for &TrainingHint { target: k, probability: p } in &src.training_hints {
             bh[k] *= 1.0 - p;
         }
-        for g in &src.fixed {
+        for g in &src.fixed_outcomes {
             take(g, &mut bc, &mut bg, &mut bh);
         }
     }
     // chain entries sorted by kind (with fillers) for the memoised state distribution; per entry and links done,
     // the cumulative factors and coupled groups of the links fired so far
-    let mut ch: Vec<(ChainKind, Option<usize>)> =
-        ents.iter().enumerate().filter(|(_, e)| e.1 != ChainKind::NONE).map(|(i, e)| (e.1, Some(i))).collect();
-    for _ in 0..filler {
-        ch.push((ChainKind::FILLER, None));
-    }
-    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<ChainKind> = ch.iter().map(|x| x.0).collect();
-    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
-    let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = ch
+    let mut chain_entries: Vec<ChainEntry> = entries
         .iter()
-        .map(|&(kd, e)| {
+        .enumerate()
+        .filter(|(_, e)| e.kind != ChainKind::NONE)
+        .map(|(i, e)| ChainEntry { kind: e.kind, source_index: Some(i) })
+        .collect();
+    for _ in 0..filler {
+        chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
+    }
+    chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|x| x.kind).collect();
+    let states = if kinds.is_empty() {
+        std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+    } else {
+        chain_states(&kinds)
+    };
+    let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = chain_entries
+        .iter()
+        .map(|&ChainEntry { kind: kd, source_index: e }| {
             e.map(|i| {
-                let src = &ents[i].0;
-                let (mut g, mut h, mut c) = (vec![1.0f64; nu], vec![1.0f64; nu], vec![]);
+                let src = &entries[i].sources;
+                let (mut g, mut h, mut c) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count], vec![]);
                 let mut out = vec![(g.clone(), h.clone(), c.clone())];
                 for l in 1..=kd.stop {
-                    for (cl, grp) in &src.chains {
+                    for ChainOutcome { link: cl, outcomes: grp } in &src.chain_outcomes {
                         if *cl == l {
                             take(grp, &mut c, &mut g, &mut h);
                         }
@@ -814,17 +874,17 @@ fn reference_joint(
         })
         .collect();
     let opts = &model.opts[query.trainee];
-    let no = opts.len();
-    let nq = query.inheritance_chances.len();
+    let outfit_count = opts.len();
+    let chance_count = query.inheritance_chances.len();
     let nfix = model.n_fixed_gold as usize;
     let fixed = model.fixed_factor();
-    let mut acc = vec![(0.0f64, 0.0f64); nq * no];
-    let (mut ng, mut nh) = (vec![1.0f64; nu], vec![1.0f64; nu]);
+    let mut acc = vec![(0.0f64, 0.0f64); chance_count * outfit_count];
+    let (mut ng, mut nh) = (vec![1.0f64; uncertain_count], vec![1.0f64; uncertain_count]);
     let mut coupled: Vec<&Group> = vec![];
-    let mut alts: Vec<Vec<(f64, &[(usize, u8)])>> = vec![];
+    let mut alts: Vec<Vec<EventOutcome<&[TargetReward]>>> = vec![];
     let mut pick: Vec<usize> = vec![];
     let mut dist = [0.0f64; 40];
-    for (prog, w) in states.iter() {
+    for ChainState { progress: prog, probability: w } in states.iter() {
         ng.copy_from_slice(&bg);
         nh.copy_from_slice(&bh);
         coupled.clear();
@@ -832,7 +892,7 @@ fn reference_joint(
         for (pos, l) in lv.iter().enumerate() {
             let Some(l) = l else { continue };
             let (g, h, c) = &l[prog[pos] as usize];
-            for k in 0..nu {
+            for k in 0..uncertain_count {
                 ng[k] *= g[k];
                 nh[k] *= h[k];
             }
@@ -841,21 +901,24 @@ fn reference_joint(
         // outcomes of the coupled groups: each group's outcomes plus "nothing" (the rest of its weight)
         alts.clear();
         for g in &coupled {
-            let mut v: Vec<(f64, &[(usize, u8)])> = g.iter().map(|(p, o)| (*p, (&**o))).collect();
-            let rest = 1.0 - g.iter().map(|x| x.0).sum::<f64>();
+            let mut v: Vec<EventOutcome<&[TargetReward]>> = g
+                .iter()
+                .map(|outcome| EventOutcome { probability: outcome.probability, rewards: &*outcome.rewards })
+                .collect();
+            let rest = 1.0 - g.iter().map(|x| x.probability).sum::<f64>();
             if rest > 1e-15 {
-                v.push((rest, &[][..]));
+                v.push(EventOutcome { probability: rest, rewards: &[][..] });
             }
             alts.push(v);
         }
         pick.clear();
         pick.resize(alts.len(), 0);
         loop {
-            let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].0).product::<f64>() * w;
+            let wc: f64 = (0..alts.len()).map(|i| alts[i][pick[i]].probability).product::<f64>() * w;
             let mut fg = [false; 32];
             let mut fh = [false; 32];
             for i in 0..alts.len() {
-                for &(k, lvl) in alts[i][pick[i]].1 {
+                for &TargetReward { target: k, level: lvl } in alts[i][pick[i]].rewards {
                     fh[k] = true;
                     if lvl >= 2 {
                         fg[k] = true;
@@ -867,9 +930,9 @@ fn reference_joint(
                     let ew = &model.ews[query.trainee][o];
                     // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
                     let mut all = fixed;
-                    dist[..=nu + nfix].iter_mut().for_each(|x| *x = 0.0);
+                    dist[..=uncertain_count + nfix].iter_mut().for_each(|x| *x = 0.0);
                     dist[0] = 1.0;
-                    for k in 0..nu {
+                    for k in 0..uncertain_count {
                         let pg = if fg[k] { 1.0 } else { 1.0 - ng[k] };
                         let pnh = if fh[k] { 0.0 } else { nh[k] };
                         let f = match st[k] {
@@ -884,15 +947,18 @@ fn reference_joint(
                         }
                     }
                     for _ in 0..nfix {
-                        for j in (0..=nu + nfix).rev() {
+                        for j in (0..=uncertain_count + nfix).rev() {
                             if j + 1 < dist.len() {
                                 dist[j + 1] += dist[j] * GEN_GOLD;
                             }
                             dist[j] *= 1.0 - GEN_GOLD;
                         }
                     }
-                    let m1: f64 = dist[options.target_count.saturating_sub(1).min(nu + nfix)..=nu + nfix].iter().sum();
-                    let a = &mut acc[qi * no + o];
+                    let m1: f64 = dist
+                        [options.target_count.saturating_sub(1).min(uncertain_count + nfix)..=uncertain_count + nfix]
+                        .iter()
+                        .sum();
+                    let a = &mut acc[qi * outfit_count + o];
                     a.0 += wc * all;
                     a.1 += wc * m1;
                 }
@@ -911,23 +977,24 @@ fn reference_joint(
             }
         }
     }
-    (0..nq)
+    (0..chance_count)
         .map(|qi| {
             let mut b = 0;
-            for o in 1..no {
-                if acc[qi * no + o].0 > acc[qi * no + b].0 {
+            for o in 1..outfit_count {
+                if acc[qi * outfit_count + o].0 > acc[qi * outfit_count + b].0 {
                     b = o;
                 }
             }
-            (acc[qi * no + b].0, acc[qi * no + b].1, b)
+            JointChances { all: acc[qi * outfit_count + b].0, all_but_one: acc[qi * outfit_count + b].1, outfit: b }
         })
         .collect()
 }
 
+/// Per-target misses after conditioning on chain progress.
 #[derive(Clone, Copy)]
-struct MissFactors {
-    no_gold: f64,
-    no_hint: f64,
+pub(super) struct MissFactors {
+    pub(super) no_gold: f64,
+    pub(super) no_hint: f64,
 }
 
 struct BoundTarget {
@@ -941,7 +1008,7 @@ struct BoundChain {
     targets: Vec<BoundTarget>,
 }
 
-/// Upper bound on exact P(all), per inheritance chance in `qs`, including the fixed-gold factor.
+/// Upper bound on exact P(all), per inheritance chance, including the fixed-gold factor.
 /// Each chain card is grouped with the targets it feeds. Given N = n, the checked upper-orthant inequality lets
 /// the expectation of the product be bounded by the product of expectations over those groups. One pair of cards
 /// may form a joint group (`KeyLevel::pair_ok`); targets that would connect more cards are bounded at full progress.
@@ -954,20 +1021,20 @@ pub(super) fn upper_na(
     model: &Model,
     trainee: crate::UmaIndex,
     inheritance_chances: &[f64],
-    entries: &[(&Src, ChainKind)],
+    entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
     let target_count = model.uncertain.len();
     // every group touching two or more targets must be negatively upper-orthant dependent, or the per-target
     // marginals below could understate a group whose outcomes hint targets together
-    // (checked once per source, when it is built: `Src::not_nuod`)
-    for (src, _) in entries {
-        if src.not_nuod {
+    // (checked once per source, when it is built: `TargetSources::uncertified_orthant`)
+    for SourceEntry { sources: src, .. } in entries {
+        if src.uncertified_orthant {
             if std::env::var("UPPER_WHY").is_ok()
                 && let Some(g) = src
-                    .fixed
+                    .fixed_outcomes
                     .iter()
-                    .chain(src.chains.iter().map(|x| &x.1))
+                    .chain(src.chain_outcomes.iter().map(|x| &x.outcomes))
                     .find(|g| group_gh(g).len() >= 2 && !group_nuod(g))
             {
                 eprintln!("why: group {g:?}");
@@ -976,32 +1043,32 @@ pub(super) fn upper_na(
         }
     }
     let (mut base_no_gold, mut base_no_hint) = (vec![1.0f64; target_count], vec![1.0f64; target_count]);
-    for (src, _) in entries {
-        for &(k, p) in &src.train {
+    for SourceEntry { sources: src, .. } in entries {
+        for &TrainingHint { target: k, probability: p } in &src.training_hints {
             base_no_hint[k] *= 1.0 - p;
         }
-        // (Src::fm: the fixed groups' (k, 1 - P(gold), 1 - P(any hint)) in group order, as group_gh gives them: the same
+        // (`fixed_misses`: the fixed groups' target and miss factors in group order, as group_gh gives them: the same
         // factors in the same order, computed once per source)
-        for &(k, mg, mh) in &src.fm {
+        for &TargetMisses { target: k, no_gold: mg, no_hint: mh } in &src.fixed_misses {
             base_no_gold[k] *= mg;
             base_no_hint[k] *= mh;
         }
     }
     // chain cards in key order (fillers included): (kind, per target: cumulative (miss gold, miss any) after l links)
     let mut chains: Vec<BoundChain> = vec![];
-    for (src, kind) in entries {
+    for SourceEntry { sources: src, kind } in entries {
         if *kind == ChainKind::NONE {
             continue;
         }
         let stop = kind.stop as usize;
         let targets: Vec<BoundTarget> = src
-            .cm
+            .chain_misses
             .iter()
-            .map(|(k, per)| {
+            .map(|TargetChainMisses { target: k, links: per }| {
                 let mut cumulative = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; stop + 1];
                 for l in 1..=stop {
                     cumulative[l] = cumulative[l - 1];
-                    for &(lk, g, h) in per {
+                    for &LinkMisses { link: lk, no_gold: g, no_hint: h } in per {
                         if lk as usize == l {
                             cumulative[l].no_gold *= g;
                             cumulative[l].no_hint *= h;
@@ -1197,25 +1264,25 @@ pub(super) fn upper_na(
 
 /// One entry's miss chances at each number of its chain links done: row d = links 1..=d fired, per target (P(no gold),
 /// P(no hint)); training hints and non-chain groups in every row. `stop` rows after row 0. The same factors
-/// `joint_fast` applies to an entry at chain progress d (each group's per-target chances, `fm` / `cm`).
-pub(super) fn src_levels(s: &Src, stop: u8, nu: usize) -> Vec<(f64, f64)> {
-    let mut base = vec![(1.0f64, 1.0f64); nu];
-    for &(k, p) in &s.train {
-        base[k].1 *= 1.0 - p;
+/// `joint_fast` applies to an entry at chain progress d (`fixed_misses` and `chain_misses`).
+pub(super) fn src_levels(source: &TargetSources, stop: u8, uncertain_count: usize) -> Vec<MissFactors> {
+    let mut base = vec![MissFactors { no_gold: 1.0, no_hint: 1.0 }; uncertain_count];
+    for &TrainingHint { target: k, probability: p } in &source.training_hints {
+        base[k].no_hint *= 1.0 - p;
     }
-    for &(k, ng, nh) in &s.fm {
-        base[k].0 *= ng;
-        base[k].1 *= nh;
+    for &TargetMisses { target: k, no_gold: ng, no_hint: nh } in &source.fixed_misses {
+        base[k].no_gold *= ng;
+        base[k].no_hint *= nh;
     }
-    let mut out = Vec::with_capacity((stop as usize + 1) * nu);
+    let mut out = Vec::with_capacity((stop as usize + 1) * uncertain_count);
     out.extend_from_slice(&base);
     for d in 1..=stop {
-        let mut row: Vec<(f64, f64)> = out[(d as usize - 1) * nu..d as usize * nu].to_vec();
-        for (k, links) in &s.cm {
-            for &(l, ng, nh) in links {
+        let mut row: Vec<MissFactors> = out[(d as usize - 1) * uncertain_count..d as usize * uncertain_count].to_vec();
+        for TargetChainMisses { target: k, links } in &source.chain_misses {
+            for &LinkMisses { link: l, no_gold: ng, no_hint: nh } in links {
                 if l == d {
-                    row[*k].0 *= ng;
-                    row[*k].1 *= nh;
+                    row[*k].no_gold *= ng;
+                    row[*k].no_hint *= nh;
                 }
             }
         }
@@ -1234,26 +1301,26 @@ pub(super) fn land_factor(st: u8, ew: f64, q: f64, ng: f64, nh: f64) -> f64 {
 /// nh * (1 - ew) * (1 - q) is multiplied in the same order (the same f64 for every ng, nh)
 #[derive(Clone, Copy)]
 pub(super) struct LandPre {
-    st: u8,
-    ne: f64,
-    omq: f64,
+    coverage: u8,
+    no_event: f64,
+    no_inheritance: f64,
 }
 impl LandPre {
     pub(super) fn new(st: u8, ew: f64, q: f64) -> Self {
-        Self { st, ne: 1.0 - ew, omq: 1.0 - q }
+        Self { coverage: st, no_event: 1.0 - ew, no_inheritance: 1.0 - q }
     }
     #[inline]
     pub(super) fn f(&self, ng: f64, nh: f64) -> f64 {
         use crate::skills::GEN_WHITE;
         let pg = 1.0 - ng;
-        match self.st {
+        match self.coverage {
             2 => GEN_GOLD,
             1 => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg),
-            _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.ne * self.omq),
+            _ => GEN_GOLD * pg + GEN_WHITE * (1.0 - pg - nh * self.no_event * self.no_inheritance),
         }
     }
 }
-/// The state-conditioned value of one deck (trainee `u`, per chance in `qs`, fixed factor included): over the chain
+/// The state-conditioned value of one deck (trainee `u`, per `inheritance_chances`, fixed factor included): over the chain
 /// progress states x (`chain_states`, early ends and stop risk folded in), P(x) times the product over targets of each
 /// target's factor at its misses given x, every group's outcomes at their per-target chances; the best outfit.
 /// Derived: given x, every source's outcomes are independent of the others' (`joint_fast`); one group's outcomes are a
@@ -1261,88 +1328,102 @@ impl LandPre {
 /// (a one-trial multinomial), and so are increasing functions of disjoint sets of them; each target's factor rises
 /// with its own indicators, so the expected product given x is at most the product of the targets' expected factors,
 /// equal without coupled groups. Hence value >= the exact P(all), equal when no group touches two targets.
-/// None when some entry fails the negative-association certification (`Src::multi`, `group_assoc`).
+/// None when some entry fails the negative-association certification (`TargetSources::uncertified_association`, `group_assoc`).
 pub(super) fn state_value(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(&Src, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
-    if ents.iter().any(|e| e.0.multi) {
+    if entries.iter().any(|e| e.sources.uncertified_association) {
         return None;
     }
-    Some(state_value_any(model, u, qs, ents, filler))
+    Some(state_value_any(model, u, inheritance_chances, entries, filler))
 }
-/// `state_value` for the decks the cap-free search covers (`Src::cf_ok`: every group's levels negatively upper-orthant
+/// `state_value` for the decks the cap-free search covers (`TargetSources::certified_cap_free`: every group's levels negatively upper-orthant
 /// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
 /// apply.
 pub(super) fn state_value_cf(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(&Src, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
-    if ents.iter().any(|e| !e.0.cf_ok) {
+    if entries.iter().any(|e| !e.sources.certified_cap_free) {
         return None;
     }
-    Some(state_value_any(model, u, qs, ents, filler))
+    Some(state_value_any(model, u, inheritance_chances, entries, filler))
 }
 fn state_value_any(
     model: &Model,
     u: crate::UmaIndex,
-    qs: &[f64],
-    ents: &[(&Src, ChainKind)],
+    inheritance_chances: &[f64],
+    entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Vec<f64> {
-    let nu = model.uncertain.len();
-    let mut ch: Vec<(ChainKind, Option<usize>)> =
-        ents.iter().enumerate().filter(|(_, e)| e.1 != ChainKind::NONE).map(|(i, e)| (e.1, Some(i))).collect();
+    let uncertain_count = model.uncertain.len();
+    let mut chain_entries: Vec<ChainEntry> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.kind != ChainKind::NONE)
+        .map(|(i, e)| ChainEntry { kind: e.kind, source_index: Some(i) })
+        .collect();
     for _ in 0..filler {
-        ch.push((ChainKind::FILLER, None));
+        chain_entries.push(ChainEntry { kind: ChainKind::FILLER, source_index: None });
     }
-    ch.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let kinds: Vec<ChainKind> = ch.iter().map(|x| x.0).collect();
-    let states = if kinds.is_empty() { std::rc::Rc::new(vec![(vec![], 1.0)]) } else { chain_states(&kinds) };
+    chain_entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.source_index.cmp(&b.source_index)));
+    let kinds: Vec<ChainKind> = chain_entries.iter().map(|x| x.kind).collect();
+    let states = if kinds.is_empty() {
+        std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
+    } else {
+        chain_states(&kinds)
+    };
     // the non-chain entries' misses (constant over states), and per chain position its entry's rows
-    let mut cg = vec![1.0f64; nu];
-    let mut chh = vec![1.0f64; nu];
-    for e in ents.iter().filter(|e| e.1 == ChainKind::NONE) {
-        let r = src_levels(e.0, 0, nu);
-        for k in 0..nu {
-            cg[k] *= r[k].0;
-            chh[k] *= r[k].1;
+    let mut cg = vec![1.0f64; uncertain_count];
+    let mut chh = vec![1.0f64; uncertain_count];
+    for e in entries.iter().filter(|e| e.kind == ChainKind::NONE) {
+        let r = src_levels(e.sources, 0, uncertain_count);
+        for k in 0..uncertain_count {
+            cg[k] *= r[k].no_gold;
+            chh[k] *= r[k].no_hint;
         }
     }
-    let rows: Vec<Option<Vec<(f64, f64)>>> =
-        ch.iter().map(|&(kd, e)| e.map(|i| src_levels(ents[i].0, kd.stop, nu))).collect();
+    let rows: Vec<Option<Vec<MissFactors>>> = chain_entries
+        .iter()
+        .map(|&ChainEntry { kind: kd, source_index: e }| {
+            e.map(|i| src_levels(entries[i].sources, kd.stop, uncertain_count))
+        })
+        .collect();
     let opts = &model.opts[u];
-    let no = opts.len();
-    let mut acc = vec![0.0f64; qs.len() * no];
-    let (mut ng, mut nh) = (vec![0.0f64; nu], vec![0.0f64; nu]);
-    for (x, w) in states.iter() {
+    let outfit_count = opts.len();
+    let mut acc = vec![0.0f64; inheritance_chances.len() * outfit_count];
+    let (mut ng, mut nh) = (vec![0.0f64; uncertain_count], vec![0.0f64; uncertain_count]);
+    for ChainState { progress: x, probability: w } in states.iter() {
         ng.copy_from_slice(&cg);
         nh.copy_from_slice(&chh);
         for (p, r) in rows.iter().enumerate() {
             if let Some(r) = r {
-                let b = x[p] as usize * nu;
-                for k in 0..nu {
-                    ng[k] *= r[b + k].0;
-                    nh[k] *= r[b + k].1;
+                let b = x[p] as usize * uncertain_count;
+                for k in 0..uncertain_count {
+                    ng[k] *= r[b + k].no_gold;
+                    nh[k] *= r[b + k].no_hint;
                 }
             }
         }
-        for (qi, &q) in qs.iter().enumerate() {
+        for (qi, &q) in inheritance_chances.iter().enumerate() {
             for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
                 let ew = &model.ews[u][o];
-                let f: f64 = (0..nu).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
-                acc[qi * no + o] += w * f;
+                let f: f64 = (0..uncertain_count).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
+                acc[qi * outfit_count + o] += w * f;
             }
         }
     }
     let fixed = model.fixed_factor();
-    (0..qs.len()).map(|qi| fixed * (0..no).map(|o| acc[qi * no + o]).fold(0.0f64, f64::max)).collect()
+    (0..inheritance_chances.len())
+        .map(|qi| fixed * (0..outfit_count).map(|o| acc[qi * outfit_count + o]).fold(0.0f64, f64::max))
+        .collect()
 }
 thread_local! {
     /// SB_CHECK: per exact scoring, the state-conditioned value against the exact value: (decks, max value/exact, min
@@ -1353,15 +1434,21 @@ thread_local! { pub(crate) static SBN: std::cell::RefCell<(usize, usize, usize)>
 /// A configuration's state-conditioned bound tables: the chain state distribution projected on the positions whose
 /// group has chain targets, per group its slots' positions (usize::MAX: level-independent), per group and chain level
 /// each target's lowest misses over the group's entries
-pub(super) struct SbCfg {
-    pub(super) states: Vec<(Vec<u8>, f64)>,
+pub(super) struct StateBoundConfig {
+    pub(super) states: Vec<super::chains::ChainState>,
     pub(super) slots: Vec<Vec<usize>>,
-    pub(super) gmin: Vec<Vec<(f64, f64)>>,
+    pub(super) group_misses: Vec<Vec<MissFactors>>,
     /// the configuration's chain kinds in position order (fillers included) and each projected position's place among them
-    pub(super) kl: Vec<ChainKind>,
-    pub(super) rel_pos: Vec<usize>,
+    pub(super) kinds: Vec<ChainKind>,
+    pub(super) projected_positions: Vec<usize>,
     /// (the cap-free bound's early stop) the states by weight, highest first, and the weight from each on (built on first use)
-    pub(super) order: std::cell::OnceCell<(Vec<u32>, Vec<f64>)>,
+    pub(super) order: std::cell::OnceCell<WeightedStates>,
+}
+
+/// State indices in descending probability order and the remaining weight from each index.
+pub(super) struct WeightedStates {
+    pub(super) indices: Vec<u32>,
+    pub(super) suffix_weights: Vec<f64>,
 }
 pub(super) fn sb_check() -> bool {
     static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -1380,7 +1467,7 @@ thread_local! { pub(crate) static SB_ON: std::cell::Cell<bool> = const { std::ce
 thread_local! { pub(crate) static SB_USED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) }; }
 thread_local! {
     /// the next band search is cap-free (`Env::best_deck_cf`): pruned by its two proven bounds alone (`cf_cheap`, `cf_ub`), at every
-    /// node and leaf, no cap anywhere; it stops (`over`) past CF_LIM partial decks tested (the space's node count)
+    /// node and leaf, no cap anywhere; it stops past CF_LIM partial decks tested (the space's node count)
     pub(crate) static CF_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     pub(crate) static CF_LIM: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
     /// CF_CHECK: (cap-free searches run beside a capped one, capped answers below the cap-free one (a deck the caps
