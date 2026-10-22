@@ -27,7 +27,7 @@ pub(crate) fn assemble_plan_output<'data>(
     let pool = input.pool;
     let data = context.data();
     let is_runnable = |f: &Found| input.is_runnable(f);
-    // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same 8/8 pair; an
+    // a looped or nb row that repeats an earlier row's career (a builder's exact search can land on the same pair of full veterans; an
     // nb row on her looped one): left out, the pick moved to the earlier one (the same career, the same score)
     let repeated: Vec<Option<usize>> = (0..runs.len()).map(|i| (0..i).find(|&j| runs[j].repeats(&runs[i]))).collect();
     let dup: Vec<bool> = repeated.iter().map(Option::is_some).collect();
@@ -48,7 +48,7 @@ pub(crate) fn assemble_plan_output<'data>(
             runs.push(PlanRow::proxy(f.trainee, f.clone(), vec![], RowOrigin::Fallback, None));
         }
     }
-    // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own 8/8
+    // pick: the highest score; within NEAR of it (the model's noise), the better odds of her own full veteran
     let total = |i: usize| runs[i].total();
     let PlanPick { row: pick, top } = pick_of(&runs, is_runnable, &undup);
     let near = |i: usize| is_runnable(&runs[i].career) && total(i) >= near_floor(top);
@@ -71,7 +71,7 @@ pub(crate) fn assemble_plan_output<'data>(
             ),
         );
         option.insert("chosen".into(), json!(i == pick));
-        // both parents 8/8s: her 8/8 here is a fully looped parent
+        // both parents full veterans: her full veteran here is a fully looped parent
         option.insert("looped".into(), json!(looped));
         // false: a builder the plan could not turn on, her career from her deck class's winning decks (no career search)
         option.insert("exact".into(), json!(row.exact || row.origin == RowOrigin::Fallback));
@@ -230,8 +230,8 @@ impl PlanContext<'_, '_> {
     }
 }
 
-/// A career's role in the plan: one of the best trio's A and B, its finisher (C on A's and B's real 8/8s, so only on two
-/// 8/8 parents), else a loop member, a candidate or a builder
+/// A career's role in the plan: one of the best trio's A and B, its finisher (C on A's and B's real full veterans, so only on two
+/// full veteran parents), else a loop member, a candidate or a builder
 fn row_role(
     candidates: &PlanCandidates,
     scores: &PlanScores,
@@ -274,16 +274,16 @@ impl PlanContext<'_, '_> {
         let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
         let uma_name =
             |u: crate::uma::UmaIndex| if u == crate::optimize::NONE { Value::Null } else { json!(data.umas[u].name) };
-        // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
+        // a side's step: free from a real full veteran of hers, else her fresh full veteran's step
         let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
-        // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
+        // a member: `real` when the trio uses a real full veteran of hers (her step free), else her fresh full veteran's step
         let member = |ui: usize, uses_existing: bool| {
             let continuation = &scores.fit.continuations[ui];
             let build_plan = continuation.plan(candidates.current_odds[ui]);
             json!({
                 "trainee": uma_name(candidates.trainees[ui]),
                 "p": candidates.current_odds[ui],
-                "have8": candidates.has_full_veteran[ui],
+                "has_full_veteran": candidates.has_full_veteran[ui],
                 "real": uses_existing,
                 "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
                 "lam": continuation.lam,

@@ -246,7 +246,7 @@ struct PlanCandidates {
     careers: Vec<Option<Found>>,
     /// Each candidate's odds now: her initial career's P(all), 0 without one.
     current_odds: Vec<f64>,
-    /// Whether an 8/8 of hers exists (a free side of the trios).
+    /// Whether a full veteran of hers exists (a free side of the trios).
     has_full_veteran: Vec<bool>,
     /// Zeros: the stages-2-3 costs (`ScoreBase::later_stage_costs`), which the trios replace.
     later_stage_costs: Vec<f64>,
@@ -340,7 +340,7 @@ struct PlanSearches {
     base_incomplete: crate::uma::UmaTable<bool>,
     looped_incomplete: crate::uma::UmaTable<bool>,
     no_borrow_incomplete: crate::uma::UmaTable<bool>,
-    /// Each uma's best career on two real 8/8 parents, where searched (`add_looped_rows`).
+    /// Each uma's best career on two real full veteran parents, where searched (`add_looped_rows`).
     looped_careers: crate::uma::UmaTable<CachedSearch>,
     /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `BESTS` while this
     /// plan runs and put back after it: every reroll of a career reuses the same one).
@@ -410,13 +410,13 @@ struct PlanRows {
 }
 
 /// The page's next career, exact where it can be and without simulation: the career that brings a FULLY LOOPED veteran
-/// (an 8/8 whose parents are 8/8s) the closest. V = the cheapest trio: A and B two stage candidates, each step "build
-/// while it pays, then run her" (`Cont`, fitted to the pool now; free when an 8/8 of hers exists), C the best allowed
-/// uma with A's and B's 8/8s as parents (1 / her full-loop odds). A career is scored E[V - V with her veteran] - 1, exact
-/// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own 8/8 ends her own
+/// (a full veteran whose parents are full veterans) the closest. V = the cheapest trio: A and B two stage candidates, each step "build
+/// while it pays, then run her" (`Cont`, fitted to the pool now; free when a full veteran of hers exists), C the best allowed
+/// uma with A's and B's full veterans as parents (1 / her full-loop odds). A career is scored E[V - V with her veteran] - 1, exact
+/// over her outcomes: her veteran as a parent raising any candidate's odds lowers that step, her own full veteran ends her own
 /// step; a roll that changes nothing leaves every score as it was (repeat). Pick: the highest;
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
-/// real 8/8 (free) with 8/8 parents, a strong side of the trios.
+/// real full veteran (free) with full veteran parents, a strong side of the trios.
 pub(crate) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
     let started_ms = now_ms();
     let pick_career = input.pick_solved().found[0].clone();

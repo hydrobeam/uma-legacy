@@ -49,7 +49,7 @@ const jobKey = (job) => {
 };
 const runKey = (job) => `${jobKey(job)}\n${JSON.stringify(plan)}`;
 // the plan's phase reports (career/plan.rs `index_rule`: phase, k of n) in words
-const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
+const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two full veteran parents'
   : ph === 4 ? `weighing ${n} careers` : '';
 /**
  * The status line's message once no run is at work.
@@ -104,7 +104,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number[]|null} outcome_sets  [mask]: the chance of landing exactly the targets in mask (as
  *   `schedule`, up to 12 targets)
  * @property {number|null} g1_wins  her G1 wins, expected (as `schedule`)
- * @property {boolean} [looped]  a plan option: both parents are 8/8s
+ * @property {boolean} [looped]  a plan option: both parents are full veterans
  *
  * A row of a career's schedule (career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
  * @typedef {import('./agenda.js').ScheduleRow & CareerScheduleFields} CareerScheduleRow
@@ -164,7 +164,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {'plan'|'finish'|'loop'|'candidate'|'builder'} role  her place in today's estimate (`roleText`)
  * @property {boolean} best_odds  the search's best career
  * @property {boolean} chosen  the plan's pick
- * @property {boolean} looped  both parents are 8/8s
+ * @property {boolean} looped  both parents are full veterans
  * @property {boolean} exact  scored from her own career search
  * @property {boolean} [proven]  false: her career search was cut short
  * @property {number|null} stage_cost
@@ -181,8 +181,8 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @typedef {object} RouteMember
  * @property {string|null} trainee  her name
  * @property {number} p  her best career's chance of landing every target today
- * @property {boolean} have8  she already has an all-targets veteran (a poorer parent than a fresh one)
- * @property {boolean} real  the route uses her existing all-targets veteran: her step costs no careers
+ * @property {boolean} has_full_veteran  she already has a full veteran (a poorer parent than a fresh one)
+ * @property {boolean} real  the route uses her existing full veteran: her step costs no careers
  * @property {number|null} p_inf  her effective ceiling, the odds her lifts approach (null when lam is 0: no building)
  * @property {number} lam  the chance a building career lifts her odds, before it falls with the remaining gap
  * @property {number} phi  the share of the remaining log-odds gap to p_inf that each lift closes
@@ -327,9 +327,9 @@ function buildJob() {
   if (borrowChoice() !== 'allow') job.borrowed_parent = borrowChoice();
   return job;
 }
-// an 8/8 veteran: a spark of every target (with 8/8 parents: a fully looped parent)
+// a full veteran: a spark of every target (with full veteran parents: a fully looped parent)
 const isFull = (nd) => !!nd && state.targets.length > 0 && state.targets.every(t => nd.sparks?.[t.group] > 0);
-// a career on two 8/8 parents: her own 8/8 there is a fully looped parent (the plan says so; a search's row is read off the veterans)
+// a career on two full veteran parents: her own full veteran there is a fully looped parent (the plan says so; a search's row is read off the veterans)
 const looped = (r) => r.looped ?? r.parents.every(i => isFull(vets[i]));
 const ROLL_K = 6;   // careers a search returns with a place open (the plan's candidates; `buildJob`)
 // the job of today's best career over everything (no place set, one result): the comparison's baseline
@@ -496,7 +496,7 @@ async function planPhase(id, job, found) {
 // (the plan's pick once it is made, else the highest odds)
 const shown = () => last && last.plan === JSON.stringify(plan) && last.r.results[0] ? (planState.state === 'done' && planState.r.choice || last.r.results[0]) : null;
 // an option's role: her place in today's estimate (the route the (i) popup walks through), in plain words
-const roleText = (o) => o.role === 'plan' ? 'One of the two parents in today\'s estimate' : o.role === 'finish' ? 'The last run in today\'s estimate (with the two 8/8 parents)'
+const roleText = (o) => o.role === 'plan' ? 'One of the two parents in today\'s estimate' : o.role === 'finish' ? 'The last run in today\'s estimate (with the two full veteran parents)'
   : o.role === 'loop' ? 'In your loop' : o.role === 'candidate' ? 'A possible parent, not on today\'s cheapest route' : 'Not on today\'s estimated route';
 // an option's net saving: the careers her veteran saves toward a fully looped parent on average, minus the one it costs
 const netText = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
@@ -1287,11 +1287,11 @@ function openSaveWhy(planReport) {
   const routePlan = planReport.v0_plan, routeMembers = planReport.members || [], careersToday = planReport.v0 != null ? fmtN(planReport.v0) : null;
   const routeStep = (m, i) => { const careers = routePlan?.careers?.[i]; const c = careers != null ? ` (about ${fmtN(careers)} careers)` : '';
     if (m.real) return `your ${n}/${n} of ${m.trainee} (no careers)`;
-    const who = m.have8 ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
+    const who = m.has_full_veteran ? `a fresh ${n}/${n} of ${m.trainee} (yours is the poorer parent): ` : '';
     return m.builds > 0 ? `${who}lift ${m.trainee}'s odds with about ${m.builds} building careers (${fmtIn(m.p)} now, to about ${fmtIn(m.p_switch)}), then rerun her until she lands ${n}/${n}${c}`
       : `${who}rerun ${m.trainee}'s best career (${fmtIn(m.p)}) until she lands ${n}/${n}${c}`; };
   const route = routePlan && routeMembers.length >= 2 && careersToday ? `First ${routeStep(routeMembers[0], 0)}; then ${routeStep(routeMembers[1], 1)}; then ${routePlan.c} with those two ${n}/${n}s as parents${routePlan.careers?.[2] != null ? ` (about ${fmtN(routePlan.careers[2])} careers)` : ''}. About ${careersToday} careers in all.` : 'No estimate: no route from the veterans you have now.';
-  // the example: the route's first step of a uma not yet 8/8, her rerun odds (after its building careers, if any) lifted by
+  // the example: the route's first step of an uma without a full veteran yet, her rerun odds (after its building careers, if any) lifted by
   // 6% (one helpful parent)
   const example = routeMembers.find(m => !m.real && (m.builds > 0 ? m.p_switch : m.p) > 0), exampleOdds = example && (example.builds > 0 ? example.p_switch : example.p);
   const exampleText = example ? `Say her veteran, as a parent, lifts ${esc(example.trainee)}'s odds for her reruns from ${fmtIn(exampleOdds)} to ${fmtIn(exampleOdds * 1.06)}. Those reruns then take <b>about ${fmtN(1 / exampleOdds - 1 / (exampleOdds * 1.06))} fewer careers</b>. Most of her possible results lift nothing, so the planner averages over all of them, weighted by how likely each is.` : '';

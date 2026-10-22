@@ -1,9 +1,9 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
-use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, cv_mask, test_caps};
+use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class, test_caps};
 use crate::deck::chains::{ChainKind, chain_marginals};
 use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
-use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources, src_miss};
+use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources};
 use crate::deck::state_bound::StateBoundConfig;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};
@@ -179,16 +179,6 @@ pub(crate) struct EntryMisses<'table> {
     pub(super) target_count: usize,
 }
 
-/// A key's used groups, with the cache's legal-entry-set identity.
-#[derive(Clone, Copy)]
-pub(super) struct GroupTableRequest<'group> {
-    pub(super) set_id: usize,
-    pub(super) code: u64,
-    pub(super) groups: &'group [&'group Vec<usize>],
-    pub(super) needed_groups: u64,
-    pub(super) deck_size: usize,
-}
-
 impl<'data> DeckSpace<'data> {
     /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
     /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
@@ -212,8 +202,7 @@ impl<'data> DeckSpace<'data> {
         let mut mw = vec![1.0f64; n * target_count];
         let mut mg = vec![1.0f64; n * target_count];
         for j in 0..n {
-            src_miss(
-                &self.sources[j],
+            self.sources[j].src_miss(
                 marg.get(&self.kind[j]).unwrap_or(&empty),
                 &mut mw[j * target_count..(j + 1) * target_count],
                 &mut mg[j * target_count..(j + 1) * target_count],
@@ -366,21 +355,22 @@ impl<'data> DeckSpace<'data> {
     }
     /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
     /// (a `GroupTable` of rows r = 0..=size, each the white then the gold products per target: `gm_w`, `gm_g`)
-    pub(super) fn gm_cached(&self, request: GroupTableRequest<'_>, misses: EntryMisses<'_>) -> std::rc::Rc<GroupTable> {
-        if let Some(r) =
-            self.group_miss_cache.borrow().get(&GroupMissKey { set_id: request.set_id, code: request.code })
-        {
+    pub(super) fn gm_cached(
+        &self,
+        key: GroupMissKey,
+        groups: &[&Vec<usize>],
+        needed_groups: u64,
+        misses: EntryMisses<'_>,
+    ) -> std::rc::Rc<GroupTable> {
+        if let Some(r) = self.group_miss_cache.borrow().get(&key) {
             return std::rc::Rc::clone(r);
         }
-        // (each target's `request.deck_size` lowest, as the first `request.deck_size` of the stable ascending sort: `top_asc`)
-        let (mut a, mut b) = (Vec::with_capacity(request.deck_size), Vec::with_capacity(request.deck_size));
-        let mut r = GroupTable::new(
-            request.groups.len(),
-            request.needed_groups,
-            (request.deck_size + 1) * 2 * misses.target_count,
-        );
-        for (gi, l) in request.groups.iter().enumerate() {
-            if request.needed_groups >> gi & 1 == 0 {
+        // Each target's lowest misses, as the first `deck_size` of the stable ascending sort (`top_asc`).
+        let deck_size = self.deck_job.deck_size;
+        let (mut a, mut b) = (Vec::with_capacity(deck_size), Vec::with_capacity(deck_size));
+        let mut r = GroupTable::new(groups.len(), needed_groups, (deck_size + 1) * 2 * misses.target_count);
+        for (gi, l) in groups.iter().enumerate() {
+            if needed_groups >> gi & 1 == 0 {
                 continue;
             }
             let pre = r.grp_mut(gi);
@@ -388,10 +378,10 @@ impl<'data> DeckSpace<'data> {
                 a.clear();
                 b.clear();
                 for &j in *l {
-                    top_asc(&mut a, request.deck_size, misses.white[j * misses.target_count + t]);
-                    top_asc(&mut b, request.deck_size, misses.gold[j * misses.target_count + t]);
+                    top_asc(&mut a, deck_size, misses.white[j * misses.target_count + t]);
+                    top_asc(&mut b, deck_size, misses.gold[j * misses.target_count + t]);
                 }
-                for r in 1..=request.deck_size {
+                for r in 1..=deck_size {
                     pre[r * 2 * misses.target_count + t] =
                         pre[(r - 1) * 2 * misses.target_count + t] * a.get(r - 1).copied().unwrap_or(1.0);
                     pre[(r * 2 + 1) * misses.target_count + t] =
@@ -400,9 +390,7 @@ impl<'data> DeckSpace<'data> {
             }
         }
         let r = std::rc::Rc::new(r);
-        self.group_miss_cache
-            .borrow_mut()
-            .insert(GroupMissKey { set_id: request.set_id, code: request.code }, std::rc::Rc::clone(&r));
+        self.group_miss_cache.borrow_mut().insert(key, std::rc::Rc::clone(&r));
         r
     }
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use
@@ -617,7 +605,7 @@ pub(crate) fn deck_space<'data>(
         variants: entries.vark.clone(),
         sources: entries.srcs.clone(),
         borrowed: entries.rel.iter().map(|&r| !is_owned(entries.cards[r].id)).collect(),
-        class_masks: entries.srcs.iter().map(cv_mask).collect(),
+        class_masks: entries.srcs.iter().map(TargetSources::cv_mask).collect(),
         plain_pals: entries
             .plain_ids
             .iter()

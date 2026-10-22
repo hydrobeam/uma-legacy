@@ -101,7 +101,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let candidate_count = candidate_trainees.len();
     let current_odds: Vec<f64> = careers.iter().map(|f| f.as_ref().map_or(0.0, |f| f.value)).collect();
     let sj = sim.env.skill_job;
-    // per candidate whether an 8/8 of hers exists (a free side of the trios)
+    // per candidate whether a full veteran of hers exists (a free side of the trios)
     let has_full_veteran: Vec<bool> = candidate_trainees
         .iter()
         .map(|&u| {
@@ -315,7 +315,7 @@ pub(crate) fn score_and_admit_proxies(
 }
 
 /// Every allowed uma's base row, the main career's trainee first: a proxy while proxies are on and she is unsearched,
-/// else her searched best career. (Placeholder step costs: 1, so every candidate's lifts are gathered; an 8/8 of hers
+/// else her searched best career. (Placeholder step costs: 1, so every candidate's lifts are gathered; a full veteran of hers
 /// may be a poorer parent than a fresh one.)
 fn pass_one_rows(
     simulator: &mut Sim,

@@ -92,7 +92,7 @@ impl StepCost for Lo {
 /// and rounded sums are monotone), so at least the minimum: every trio a pending candidate left uncosted reads is at
 /// least the minimum, and with her step left at the base's (above the step she would take) still is, while every
 /// trio at the minimum reads only costed steps. So the least trio value found is the minimum `v0_after` (or `SingleCandidateValue::value`)
-/// takes over every trio, the same f64 (equal minima the same bits: `evaluate_outcomes`), and V after her. Her own 8/8's
+/// takes over every trio, the same f64 (equal minima the same bits: `evaluate_outcomes`), and V after her. Her own full veteran's
 /// trios (`Scored::own_trios`) read every step: then all are costed, and V after her is taken as without the lazy pass
 #[derive(Default)]
 pub(crate) struct StepEstimate<'base> {
@@ -420,7 +420,7 @@ impl ScoreBase<'_> {
     }
 }
 
-/// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs (a real partner side free)
+/// V after her with her own full veteran a trio side (`her_trios`), at the candidates' step costs (a real partner side free)
 fn with_her(value: f64, own_trios: &[OwnTrio], step_costs: &[f64]) -> f64 {
     own_trios
         .iter()
@@ -431,7 +431,7 @@ fn with_her(value: f64, own_trios: &[OwnTrio], step_costs: &[f64]) -> f64 {
 }
 
 impl ScoreBase<'_> {
-    /// V after her before her own 8/8 and the goal, at the candidates' step costs: the trios' least cost (`trio_v`; with no
+    /// V after her before her own full veteran and the goal, at the candidates' step costs: the trios' least cost (`trio_v`; with no
     /// trio, the least of each candidate's step plus her stages 2-3)
     fn v0_after(&self, step_costs: &[f64]) -> f64 {
         if self.trios.is_empty() {

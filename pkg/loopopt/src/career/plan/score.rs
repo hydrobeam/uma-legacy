@@ -15,13 +15,13 @@ struct FinisherCeiling {
     lineage: Lineage,
 }
 
-/// A career's own 8/8 as a trio side when her uma is not a stage candidate (her outcome lands every target): the replan
-/// would take her uma in (a veteran of hers) with that real 8/8 a free side. Per candidate side (real or fresh) her 8/8 can
-/// pair with, C's step: 1 / the best allowed C's value with the two 8/8s as parents (every allowed uma but hers and the
+/// A career's own full veteran as a trio side when her uma is not a stage candidate (her outcome lands every target): the replan
+/// would take her uma in (a veteran of hers) with that real full veteran a free side. Per candidate side (real or fresh) her full veteran can
+/// pair with, C's step: 1 / the best allowed C's value with the two full veterans as parents (every allowed uma but hers and the
 /// partner's, best ceiling first, the value taken until no ceiling can beat the best, as `plan_combinations` does).
-/// Her 8/8 is the new veteran in `extended_pool` (`Env::veteran`: every target at the rank's star mix), valued as
+/// Her full veteran is the new veteran in `extended_pool` (`Env::veteran`: every target at the rank's star mix), valued as
 /// every fresh side is
-/// (the trios' own 8/8s use the rank's mix too), so the trios with her compare like for like with the others; one per
+/// (the trios' own full veterans use the rank's mix too), so the trios with her compare like for like with the others; one per
 /// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
 /// (B's candidate index, partner side real, C's step)
 pub(crate) fn her_trios(
@@ -95,16 +95,16 @@ pub(crate) fn her_trios(
     trios
 }
 
-/// How a career's own 8/8 ends her part of the plan (`her_ends`).
+/// How a career's own full veteran ends her part of the plan (`her_ends`).
 #[derive(Clone, Copy)]
 pub(crate) struct HerEnds {
     /// Her place among the stage candidates; None: her uma is not one.
     pub(crate) own_candidate: Option<usize>,
-    /// Her parents are both 8/8s: her own 8/8 a fully looped parent, V after her 0 (the goal).
+    /// Her parents are both full veterans: her own full veteran a fully looped parent, V after her 0 (the goal).
     pub(crate) completes_goal: bool,
 }
 
-/// Career x's place among the stage candidates and whether its parents a, b are both 8/8s: what `score_career`,
+/// Career x's place among the stage candidates and whether its parents a, b are both full veterans: what `score_career`,
 /// `outcome_hi` and `pick_her` read of her first
 pub(crate) fn her_ends(simulator: &Sim, score_base: &ScoreBase, legacies: &[Legacy], lineage: Lineage) -> HerEnds {
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
@@ -185,7 +185,7 @@ pub(crate) struct CareerScore {
 /// and per candidate (P(her veteran lifts her), the summed lifted odds): what `want` asks for (`Want`).
 /// Exact over her landed set (`outcome_sets`) and her stars per uncertain target (the
 /// rank's mix): her veteran as a parent of each stage-1 candidate (her best IDX_PARTNERS partners, the trainee's cached
-/// decks' corner tables, folded one target at a time); her own 8/8 ends her stage when she is a candidate.
+/// decks' corner tables, folded one target at a time); her own full veteran ends her stage when she is a candidate.
 ///
 /// `context.pool` must be `Env::pool(context.legacies)` (the planner's callers): her veteran is then an entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
@@ -392,7 +392,7 @@ fn evaluate_career(
             slot_by_candidate[candidate].is_some() || context.score_base.current_odds[candidate] > thresholds[candidate]
         })
         .collect();
-    // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
+    // her own full veteran as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
     let full_mask = (1usize << target_count) - 1;
     let own_trios_started = now_ms();
     scored.own_trios = if own_candidate.is_none()
