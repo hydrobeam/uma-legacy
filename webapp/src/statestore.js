@@ -27,6 +27,7 @@ function transact(mode, use) {
   }));
 }
 // what was stored under key (null when nothing is, or anything fails); other keys are dropped (a past release's)
+/** @param {string} key */
 export async function stateLoad(key) {
   try {
     const keys = await transact('readonly', store => store.getAllKeys());
@@ -34,5 +35,7 @@ export async function stateLoad(key) {
     return (await transact('readonly', store => store.get(key))) || null;
   } catch { return null; }
 }
+/** @param {string} key @param {unknown} value */
 export async function stateSave(key, value) { try { await transact('readwrite', store => store.put(value, key)); } catch { /* quota, private mode: plan cold next time */ } }
+/** @param {string} key */
 export async function stateDrop(key) { try { await transact('readwrite', store => store.delete(key)); } catch { /* nothing to drop */ } }

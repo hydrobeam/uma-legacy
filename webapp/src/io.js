@@ -1,5 +1,5 @@
 // ---------- export / import ----------
-import { $, fmtIn } from './dom.js';
+import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
@@ -60,7 +60,7 @@ const VALID = {
 function loadSettings() {
   const message = $('ex-msg');
   try {
-    const parsed = JSON.parse($('ex-text').value);
+    const parsed = JSON.parse($textarea('ex-text').value);
     if (!parsed?.settings) throw new Error('no settings');
     const settings = parsed.settings, era = settings.era === 'gm' ? 'gm' : 'global';
     const keys = SETTINGS.filter(k => k in settings), use = keys.filter(k => VALID[k](settings[k], era)), bad = keys.filter(k => !use.includes(k));
@@ -73,18 +73,18 @@ function loadSettings() {
     }
     for (const k of use) state[k] = imported(k);
     dropRequired(state); save();
-    paintRank(); paintTop(); $('c-peruma').checked = state.perUma !== false;
-    $('x-auto').checked = state.auto !== false; paintScen();
+    paintRank(); paintTop(); $input('c-peruma').checked = state.perUma !== false;
+    $input('x-auto').checked = state.auto !== false; paintScen();
     renderRoster(); renderTargets();
     message.textContent = `Settings loaded.${bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : ''}`;
   } catch { message.textContent = 'That text is not an export from this page.'; }
 }
 export function initIO() {
-  $('ex-open').onclick = () => { $('ex-text').value = exportText(); $('ex-msg').textContent = ''; $('ex-dlg').showModal(); };
-  $('ex-close').onclick = () => $('ex-dlg').close();
-  $('ex-dlg').addEventListener('click', (e) => { if (e.target === $('ex-dlg')) $('ex-dlg').close(); });
+  $('ex-open').onclick = () => { $textarea('ex-text').value = exportText(); $('ex-msg').textContent = ''; $dialog('ex-dlg').showModal(); };
+  $('ex-close').onclick = () => $dialog('ex-dlg').close();
+  $dialog('ex-dlg').addEventListener('click', (e) => { if (e.target === $dialog('ex-dlg')) $dialog('ex-dlg').close(); });
   $('ex-copy').onclick = () => {
-    const text = $('ex-text'); const done = () => { $('ex-msg').textContent = 'Copied.'; };
+    const text = $textarea('ex-text'); const done = () => { $('ex-msg').textContent = 'Copied.'; };
     const fallback = () => { text.focus(); text.select(); $('ex-msg').textContent = 'Selected. Press Ctrl+C (or ⌘C) to copy.'; };
     try { navigator.clipboard.writeText(text.value).then(done, fallback); } catch { fallback(); }
   };

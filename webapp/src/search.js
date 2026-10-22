@@ -135,11 +135,13 @@ export function firstResult() {
 }
 // What the result is checked against (the solver's `exact`: rho = the cap it is certified under, rho_target the
 // cap aimed for; see the model notes on /about): nothing when fully checked, else a short caveat
+/** @param {{rho: number, rho_target: number}|null|undefined} exact */
 export function certText(exact) {
   if (!exact || exact.rho >= exact.rho_target) return '';
   if (exact.rho > 1) return ` · exact check: decks within ${Math.round((1 - 1 / exact.rho) * 100)}% of it (ran out of time)`;
   return ' · not checked exactly (ran out of time)';
 }
+/** @type {(r: import('./results.js').LoopReport, ms: number) => import('./state.js').Status} */
 const doneText = (r, ms) => ({ kind: 'done', text: `Checked ${r.decks_built.toLocaleString()} decks / ${r.foursomes.toLocaleString()} loops in ${(ms / 1000).toFixed(1)} s${certText(r.exact)}` });
 // auto: the search the pause starts (not the Search buttons): edits that end where they started run nothing when the
 // result on show is the finished search of the same job (its key holds the solver's and data's fingerprints, the era and

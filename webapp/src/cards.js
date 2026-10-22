@@ -1,16 +1,19 @@
 // ---------- support cards: the picker (owned or not, by rarity) and deck options ----------
-import { $, esc } from './dom.js';
+import { $, $input, esc } from './dom.js';
 import { CARDS, SK, SCENARIOS } from './data.js';
 import { state, goldGiven } from './state.js';
 import { cardAv } from './images.js';
 import { save } from './save.js';
 import { paintSort, sortMenu } from './sortmenu.js';
+/** @import { Card } from './data.js' */
 const RARITY = { 1: 'R', 2: 'SR', 3: 'SSR' };
 const BORROWED = /\(borrowed\)$/;   // a deck names its borrowed card with this suffix
 // a deck's card indices with the borrowed card last: the sixth slot, as in the game
-export const borLast = (cards) => cards.map((_, i) => i).sort((a, b) => BORROWED.test(cards[a]) - BORROWED.test(cards[b]));
+/** @type {(cards: string[]) => number[]} card names (a deck's `cards`) -> their indices */
+export const borLast = (cards) => cards.map((_, i) => i).sort((a, b) => Number(BORROWED.test(cards[a])) - Number(BORROWED.test(cards[b])));
 // a card's name split as the game shows it: {nm: the character (with the rarity, "Daitaku Helios SSR", unless `rar` is
 // false: the card list leaves it out, its frame and section heading show it), ti: the card's title ('' when none)}
+/** @type {(c: Card, rar?: boolean) => {nm: string, ti: string}} */
 export const cardTitle = (c, rar = true) => {
   const parts = /^\[(.*)\] (.*)$/.exec(c.name);
   return parts ? { nm: parts[2] + (rar ? ` ${RARITY[c.rar]}` : ''), ti: parts[1] } : { nm: c.name, ti: '' };
@@ -43,6 +46,7 @@ export function cardGives(c, groups) {
   return out;
 }
 // the gifts as the game's small labels (the card list's tiles and a deck card's panel)
+/** @type {(gifts: CardGift[]) => string} */
 export const giftsHTML = (gifts) => gifts.map(x => `<span class="gv${x.gold ? ' g' : ''}" title="${esc(x.tip)}">${esc(x.skill)} <small>${esc(x.note)}</small></span>`).join('');
 const scenarioName = (v) => SCENARIOS.find(s => s.v === v)?.name;
 // one card's tile in the picker: a toggle, pressed = owned; its name is its visible text (name, title, what it gives),
@@ -66,6 +70,7 @@ function cardTile(c, gifts) {
 export function renderCards() {
   const groups = new Set(state.targets.filter(t => !goldGiven(t.group)).map(t => t.group));   // what the deck still has to give
   const box = $('cards'); box.textContent = '';
+  /** @type {[string, (c: Card) => boolean][]} label and test of each rarity's section */
   const sections = [['SSR', c => c.rar === 3], ['SR', c => c.rar === 2], ['R', c => c.rar === 1 && (c.pal || state.rcards)]];   // R pals stay usable without R cards
   const dir = state.cdir === 'desc' ? -1 : 1, sortName = (c) => { const t = cardTitle(c); return `${t.nm} ${t.ti}`; };
   const order = (a, b) => dir * (state.csort === 'name' ? sortName(a.c).localeCompare(sortName(b.c)) : (a.c.rel - b.c.rel) || (a.c.id - b.c.id));
@@ -88,7 +93,7 @@ export function paintCards() {
 }
 // the filter hides cards (and a rarity section left empty) instead of rebuilding the list on every keystroke
 function filterCards() {
-  const filter = $('c-filter').value.trim().toLowerCase();
+  const filter = $input('c-filter').value.trim().toLowerCase();
   for (const section of $('cards').querySelectorAll('.cgroup')) {
     let any = false;
     for (const tile of section.querySelectorAll('.ct')) { tile.hidden = !!filter && !tile._searchName.includes(filter); any ||= !tile.hidden; }
@@ -103,7 +108,7 @@ function cardCount() {
 }
 export function initCards() {
   sortMenu('cs', 'c', () => renderCards());
-  $('c-filter').oninput = filterCards;
+  $input('c-filter').oninput = filterCards;
   $('c-all').onclick = () => { state.cardsOff = {}; save(); paintCards(); };
   $('c-none').onclick = () => { for (const c of CARDS) state.cardsOff[c.id] = false; save(); paintCards(); };
   if (!$('c-top')) return;   // the career page has neither: one career, one deck
@@ -117,7 +122,7 @@ export function initCards() {
     pickTop(other.dataset.v); other.focus();
   });
   paintTop();
-  $('c-peruma').checked = state.perUma; $('c-peruma').onchange = (e) => { state.perUma = e.target.checked; save(); };
+  $input('c-peruma').checked = state.perUma; $input('c-peruma').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => { state.perUma = e.target.checked; save(); };
 }
 export function paintTop() {
   const top = document.getElementById('c-top'); if (!top) return;

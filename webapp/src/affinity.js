@@ -4,7 +4,7 @@
 // relation points, the G1 wins they share (expected: from the schedules' win chances, x3) and the affinity, and the
 // total. In a three-uma rotation the trainee is her own grandparent twice (her earlier veteran): no relation points
 // with her (a trio counts distinct umas), only the G1s it shares with its child.
-import { $ } from './dom.js';
+import { $, $dialog } from './dom.js';
 import { umaAv } from './images.js';
 import { affEl, affTable } from './afftable.js';
 import { pickOutfit } from './roster.js';
@@ -41,6 +41,7 @@ function arrowKeys(box, items, show) {
 const mark = (pills, isOn) => pills.forEach(([, b, key]) => {
   const on = isOn(key); b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); b.tabIndex = on ? 0 : -1;
 });
+/** @param {import('./results.js').ResultLoop} loop */
 export function openWhy(loop) {
   const lineages = loop.detail.lineages, members = loop.members, body = $('why-body'); body.textContent = '';
   const shortName = (i) => members[i].short || members[i].name;
@@ -48,7 +49,7 @@ export function openWhy(loop) {
   const face = (i, size) => umaAv(members[i].id, outfitOf(i), size);
   const head = document.createElement('div'); head.className = 'row between dhead';
   head.innerHTML = '<h3 id="why-title">Affinity</h3>';
-  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
+  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $dialog('why-dlg').close(); head.appendChild(close);
   body.appendChild(head);
   // the careers to pick from: one pill per trainee (a rotation's three); in a four-uma loop each trainee heads three
   // careers (her parents two of the other three), so a second row picks her parents
@@ -102,5 +103,5 @@ export function openWhy(loop) {
     view.replaceChildren(affTable(legaciesOf(lineage), `${members[lineage.t].name}: her six legacies`));
   }
   show(traineePills[0][0]);
-  $('why-dlg').showModal();
+  $dialog('why-dlg').showModal();
 }
