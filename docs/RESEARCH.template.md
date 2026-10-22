@@ -568,159 +568,124 @@ Computed by `research/s08_chains.py`.
 
 ### Findings
 
-- **A career gets a random number $N$ of chain events, Binomial(21, 0.35)**, the same for every deck and scenario.
-  The scenario comparison finds no significant difference under its nominal test.
-- **Binomial(21, 0.35) is kept by choice.** No alternative crosses the approximate held-out threshold; that does not
-  establish equivalence. The free distribution fits better in-sample, but its nominal rejection needs recalibration.
-  Binomial(18, 0.405) is the candidate the runs now favour in-sample.
-- **Each event goes to a chain card in proportion to its remaining links.** This fits better than equal shares per
-  card.
-- **Pal events are assumed to use no chain budget.** The fitted means by pal count do not establish that mechanism.
-- **Known misses**: two deck and trainee effects on $N$, which the model's single $N$ does not have. Causes unknown: in
-  crowded decks, with many chain cards and few pals, early links run short and more chains never start than
-  predicted. Final links fit pooled, but individual cards differ far beyond chance.
+- **A career gets $N \sim \mathrm{Binomial}(21, 0.35)$ chain events, whatever its deck or scenario. The pair is kept by
+  choice.** No alternative predicts unseen runs clearly better. In-sample, a free distribution of $N$ rejects it
+  nominally and a binomial with $n$ near {{8.best_binomial_n_free_n|.0f}} fits better: a known miss.
+- **One $N$ serves every scenario.** Separate distributions per scenario gain nothing significant.
+- **Each event goes to a chain card in proportion to its remaining links** (**fitted**). This scores better than equal
+  shares per card.
+- **Known misses**, causes unknown. Decks with Sasami Anshinzawa [This Might Sting!]'s pal card get more chain events,
+  and Inari One's careers fewer. In decks with many chain cards and few pals, early links run short and more chains
+  never start. Final links fit pooled, but individual cards differ beyond chance.
 
 ### Model
 
-A run gets $N \sim \mathrm{Binomial}(21, 0.35)$ chain events, mean {{8.binomial_21_0_35_mean|.2f}}. Each event advances one non-pal chain card by one
-link. The card is picked in proportion to its links not yet fired: uniformly over the remaining *slots*. A chain is 3
-links on an SSR and 2 on an SR, and a stopped chain takes no more events. Pal and group cards take no slot
-(**assumed**; the comparisons below are descriptive).
+A run gets $N \sim \mathrm{Binomial}(21, 0.35)$ chain events (**fitted**, kept by choice), mean {{8.binomial_21_0_35_mean|.2f}}.
+Each event advances one chain card by one link. The card is picked in proportion to its links not yet fired, its
+remaining *slots*. A chain is 3 links on an SSR and 2 on an SR, and a stopped chain takes no more events.
+
+Pal and group cards take no slot (**assumed**). The runs do not identify this: decks with more pals have fewer chain
+cards, which finish early and leave larger counts unobserved.
 
 A chain can stop early (**assumed**, from section 9's equal outcomes). If IT's default choice at a link ends the chain
-on $k$ of its $n$ outcomes, the chain stops there with chance $k/n$. Its unused slots return to the pool. The model
-enumerates the exact distribution of final chain states (section 12).
+on some of its outcomes, the chain stops there with the share of outcomes that end it. Its unused slots return to the
+pool. The model enumerates the exact distribution of final chain states (section 12).
 
 ### Evidence
 
-*Reading a chain's progress.* Progress is read from marker skills, on {{8.fit_of_n_runs|,.0f}} runs. A link is observable only if every
-choice and outcome of its event carries a skill appearing in no other event of that card. A credit naming two sources,
-"A or B event", counts as unknown when B is another deck card whose events can give the marker. So does a marker listed
-only under inspiration. The fitted distribution of $N$ is the one that best explains progress over all decks.
+*Reading a chain's progress.* Progress is read from marker skills, on {{8.fit_of_n_runs|,.0f}} runs. A link is
+observable only if every choice and outcome of its event carries a skill that no other event of the card gives. A
+credit naming two sources, "A or B event", counts as unknown when B is another deck card whose events can give the
+marker. So does a marker credited only to inspiration. Each fit of $N$ is exact over the chain states the run's deck
+can pass through.
 
-*The marker allowance.* The fit lets a fired link's marker go unseen with chance 0.02. Without an allowance, a run whose
-later link shows while an earlier one does not has likelihood 0. Since links fire in order, those runs measure the
-rate, and 0.02 is set to it:
+*The marker allowance* (**fitted**). The fits let a fired link's marker go unseen with chance 0.02; without it, a run
+whose later link shows while an earlier one does not has likelihood 0. Links fire in order, so those earlier links
+measure the rate:
 
 | Earlier links implied fired by a later one | Showing no marker | Share [95%] |
 |---|---|---|
 | {{8.allowance_earlier_links_implied_fired|,.0f}} | {{8.allowance_marker_not_shown|.0f}} | {{8.allowance_share|.3f}} [{{8.allowance_95_pct_low|.3f}}, {{8.allowance_95_pct_high|.3f}}] |
 
-The cause is not known, and the fit does not depend on it. Across allowances from 0.01 to 0.045, the best $p$ at
-$n = 21$ stays within {{8.allowance_sensitivity_lowest_best_p_at_n_21|.2f}}-{{8.allowance_sensitivity_highest_best_p_at_n_21|.2f}}. That holds too with no allowance, on the {{8.allowance_0_runs_without_a_contradiction|,.0f}} runs that need none.
+The fit does not depend on it. With allowances from 0.01 to 0.045, and with none on the runs that need none, the best
+$p$ at $n = 21$ stays within {{8.allowance_sensitivity_lowest_best_p_at_n_21|.2f}}-{{8.allowance_sensitivity_highest_best_p_at_n_21|.2f}}.
 
-*Which distribution for $N$?* The table keeps the scripts' nominal tests. The fixed adopted binomial has no fitted
-parameters, so subtracting the fitted binomial family's dimension is inappropriate. A free integer $n$ also lacks the
-continuous parameter required by an ordinary Wilks profile interval. Latent-distribution tests need identifiability
-and boundary checks before their reference distribution can be used. In-sample, against the free distribution:
+*Which distribution for $N$?* The free distribution fits $P(N = 0..17)$ and $P(N \ge 18)$. No deck has more than 18
+links, so the runs cannot tell larger counts apart, and every mean and variance of a free fit here is that of
+$\min(N, 18)$. A likelihood-ratio test against the free distribution counts
+{{8.distribution_free_fit_parameters_more_than_the_binomial|.0f}} parameters' difference: its 18 less a binomial's two.
+(21, 0.35) itself fits none, so its $p$ is nominal (*How to read*, rule 2). Held out, each form is fitted on four
+groups of runs and scored on the fifth.
 
-| Form for $N$ | Nats behind the free distribution | p-value | Note |
+| Claim | Estimate | Test | Verdict |
 |---|---|---|---|
-| free distribution | 0 | | mean {{8.distribution_free_mean|.2f}}, variance {{8.distribution_free_variance|.2f}} |
-| Binomial(21, 0.35) | {{8.binomial_21_0_35_nats_behind_distribution_free|.1f}} | {{8.binomial_21_0_35_lr_p|.1e}} | rejected; {{8.distribution_free_fit_parameters_more_than_the_binomial|.0f}} fewer parameters |
-| Binomial($n$, $p$), both fitted | {{8.best_binomial_n_free_nats_behind_distribution_free|.1f}} | {{8.best_binomial_n_free_lr_p|.3f}} | best at $n$ = {{8.best_binomial_n_free_n|.0f}}, $p$ = {{8.best_binomial_n_free_p|.3f}} |
-| Conway-Maxwell-Poisson | {{8.conway_maxwell_poisson_nats_behind_distribution_free|.1f}} | {{8.conway_maxwell_poisson_lr_p|.3f}} | |
-| Binomial(15, 0.48) | {{8.binomial_15_0_48_nats_behind_distribution_free|.1f}} | | |
-| Poisson(7.1) | {{8.poisson_7_1_nats_behind_distribution_free|.1f}} | | variance = mean, too wide; rejected |
+| $\min(N, 18)$ is under-dispersed | free fit: mean {{8.distribution_free_mean|.2f}}, variance {{8.distribution_free_variance|.2f}}, ratio {{8.distribution_free_variance_per_mean|.2f}} | Poisson(7.1) {{8.poisson_7_1_nats_behind_distribution_free|.1f}} nats behind the free fit | Poisson rejected; $N$'s own dispersion not identified |
+| The binomial is the better under-dispersed two-parameter form | best at $n$ = {{8.best_binomial_n_free_n|.0f}}, $p$ = {{8.best_binomial_n_free_p|.3f}} | {{8.best_binomial_n_free_over_conway_maxwell_poisson_nats|.1f}} nats above Conway-Maxwell-Poisson | binomial |
+| The fitted binomial fits in-sample | {{8.best_binomial_n_free_nats_behind_distribution_free|.1f}} nats behind the free fit | $p$ = {{8.best_binomial_n_free_lr_p|.3f}} | not rejected |
+| Binomial(21, 0.35) fits in-sample | variance {{8.binomial_21_0_35_variance|.2f}}; {{8.binomial_21_0_35_nats_behind_distribution_free|.1f}} nats behind the free fit | $p$ = {{8.binomial_21_0_35_lr_p|.1e}} | rejected: known miss |
+| $n = 21$ is in the binomial's profile set | $n$ from {{8.binomial_n_95_pct_profile_interval_low|.0f}} to {{8.binomial_n_95_pct_profile_interval_high|.0f}} | $n = 21$ is {{8.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best | just outside |
+| The free distribution predicts unseen runs better than (21, 0.35) | | held out {{8.held_out_free_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_free_over_binomial_21_0_35_se|.1f}} nats, $z$ = {{8.held_out_free_over_binomial_21_0_35_z|u+.2f}} | no clear advantage |
+| The fitted binomial predicts unseen runs better | | held out {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_se|.1f}} nats, $z$ = {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_z|u+.2f}} | no clear advantage |
 
-The count capped at 18, $\min(N, 18)$, is under-dispersed: its variance is {{8.distribution_free_variance_per_mean|.2f}} of its mean. The runs cannot
-tell counts above 18 apart, so the dispersion of $N$ itself is not identified. The fitted Poisson scores worse; these moments alone do not reject every
-over-dispersed count distribution. The binomial is the simplest under-dispersed count. It fits better than the
-Conway-Maxwell-Poisson, the other two-parameter family that can be under-dispersed, by {{8.best_binomial_n_free_over_conway_maxwell_poisson_nats|.1f}} nats.
+The runs fix $N$'s mean well and its spread loosely, so the binomial's $n$ and $p$ trade off along a ridge. The nominal
+95% profile set keeps every $n$ whose refitted $p$ comes within 1.92 nats of the best. So the runs favour a smaller $n$
+in-sample, but no single pair is a finding, and keeping (21, 0.35) is a decision.
 
-The runs fix $N$'s mean well and its spread loosely, so $n$ and $p$ trade off along a ridge. The mean at the best $n$
-is {{8.binomial_mean_n_p_at_the_best_n|.2f}}. Re-fitting $p$ at each $n$, every $n$ from {{8.binomial_n_95_pct_profile_interval_low|.0f}} to {{8.binomial_n_95_pct_profile_interval_high|.0f}} lies within 1.92 nats of the best: the 95%
-nominal profile set, whose coverage is uncalibrated for integer $n$. So the best single pair is not itself a finding.
-The adopted $n = 21$ lies just outside that set
-in-sample, {{8.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best $n$. Its variance is {{8.binomial_21_0_35_variance|.2f}}.
+*Does $N$ depend on the deck or trainee?* For two groups, yes. The model has one $N$ for every deck and trainee, so it
+under-predicts the first and over-predicts the second. The test refits $p$ at $n = 21$ on each side:
 
-*Does the in-sample preference survive held out?* No alternative crosses the approximate threshold. Each form was fitted on four groups of runs and scored against
-Binomial(21, 0.35) on the fifth:
+| Group | Runs | Mean $N$, group / other runs | $p$ at $n = 21$, group / other runs | Likelihood-ratio $p$ |
+|---|---|---|---|---|
+| decks with Sasami Anshinzawa [This Might Sting!]'s pal card | {{8.sasami_anshinzawa_s_card_runs|,.0f}} | {{8.sasami_anshinzawa_s_card_mean_of_n|.2f}} / {{8.sasami_anshinzawa_s_card_mean_of_n_the_other_runs|.2f}} | {{8.sasami_anshinzawa_s_card_p_at_n_21|.3f}} / {{8.sasami_anshinzawa_s_card_p_at_n_21_the_other_runs|.3f}} | {{8.sasami_anshinzawa_s_card_p_at_n_21_on_each_side_lr_p|.0e}} |
+| Inari One's careers | {{8.inari_one_runs|,.0f}} | {{8.inari_one_mean_of_n|.2f}} / {{8.inari_one_mean_of_n_the_other_runs|.2f}} | {{8.inari_one_p_at_n_21|.3f}} / {{8.inari_one_p_at_n_21_the_other_runs|.3f}} | {{8.inari_one_p_at_n_21_on_each_side_lr_p|.3f}} |
 
-| Form | Held-out nats over (21, 0.35) ± SE | $z$ |
-|---|---|---|
-| free distribution | {{8.held_out_free_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_free_over_binomial_21_0_35_se|.1f}} | {{8.held_out_free_over_binomial_21_0_35_z|u+.2f}} |
-| binomial, $n$ and $p$ by likelihood | {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_se|.1f}} | {{8.held_out_binomial_by_likelihood_over_binomial_21_0_35_z|u+.2f}} |
-| binomial by moments | {{8.held_out_binomial_by_moments_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_binomial_by_moments_over_binomial_21_0_35_se|.1f}} | {{8.held_out_binomial_by_moments_over_binomial_21_0_35_z|u+.2f}} |
-| Conway-Maxwell-Poisson | {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_se|.1f}} | {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_z|u+.2f}} |
-| Poisson | {{8.held_out_poisson_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_poisson_over_binomial_21_0_35_se|.1f}} | {{8.held_out_poisson_over_binomial_21_0_35_z|u+.2f}} |
+These two do not explain the in-sample rejection: on the runs with neither, the free distribution still rejects
+Binomial(21, 0.35), $p$ = {{8.binomial_21_0_35_lr_p_runs_with_neither|.3f}}.
 
-No alternative has a clear held-out advantage under the approximate comparison, and the Poisson scores worse. Keeping (21, 0.35) is a decision rather than
-a fit. In-sample the candidate Binomial(18, 0.405) fits {{8.candidate_binomial_18_0_405_over_binomial_21_0_35_in_sample_nats|.1f}} nats better. It lies inside the profile interval, with
-mean {{8.candidate_binomial_18_0_405_mean|.2f}} and variance {{8.candidate_binomial_18_0_405_variance|.2f}}.
+*Scenarios.* A free distribution per scenario gains {{8.per_scenario_log_likelihood_gain|.1f}} nats for
+{{8.per_scenario_extra_parameters|.0f}} extra parameters, short of the nominal threshold.
 
-*Does $N$ depend on the deck or trainee?* For two, yes. The model has one $N$ for every deck and trainee, so it
-under-predicts the first and over-predicts the second, both known misses:
+*Slots or cards?* (**fitted**.) The slot rule scores {{8.allocation_slot_over_card_nats|.1f}} nats better than giving
+each running card's next event the same chance. The score sums each link's own likelihood, a composite score
+(*How to read*). Final links by pal count show where the rules differ. These checks score each link by the model's
+chance of reaching it, without the marker allowance:
 
-| Group | Runs | Mean $N$ | Mean $N$, other runs | $p$ at $n = 21$ | Same, other runs | Likelihood-ratio $p$ |
-|---|---|---|---|---|---|---|
-| decks with Sasami Anshinzawa [This Might Sting!]'s pal card | {{8.sasami_anshinzawa_s_card_runs|,.0f}} | {{8.sasami_anshinzawa_s_card_mean_of_n|.2f}} | {{8.sasami_anshinzawa_s_card_mean_of_n_the_other_runs|.2f}} | {{8.sasami_anshinzawa_s_card_p_at_n_21|.3f}} | {{8.sasami_anshinzawa_s_card_p_at_n_21_the_other_runs|.3f}} | {{8.sasami_anshinzawa_s_card_p_at_n_21_on_each_side_lr_p|.0e}} |
-| Inari One's careers | {{8.inari_one_runs|,.0f}} | {{8.inari_one_mean_of_n|.2f}} | {{8.inari_one_mean_of_n_the_other_runs|.2f}} | {{8.inari_one_p_at_n_21|.3f}} | {{8.inari_one_p_at_n_21_the_other_runs|.3f}} | {{8.inari_one_p_at_n_21_on_each_side_lr_p|.3f}} |
+| Pals | Chain cards | Runs | Final link reached [95%] | Adopted model |
+|---|---|---|---|---|
+| 5 | 1 | {{8.final_link_table_5_pals_runs|,.0f}} | {{8.final_link_table_5_pals_observed|.3f}} [{{8.final_link_table_5_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_5_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_5_pals_binomial_21_0_35|.3f}} |
+| 4 | 2 | {{8.final_link_table_4_pals_runs|,.0f}} | {{8.final_link_table_4_pals_observed|.3f}} [{{8.final_link_table_4_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_4_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_4_pals_binomial_21_0_35|.3f}} |
+| 3 | 3 | {{8.final_link_table_3_pals_runs|,.0f}} | {{8.final_link_table_3_pals_observed|.3f}} [{{8.final_link_table_3_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_3_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_3_pals_binomial_21_0_35|.3f}} |
+| 2 | 4 | {{8.final_link_table_2_pals_runs|,.0f}} | {{8.final_link_table_2_pals_observed|.3f}} [{{8.final_link_table_2_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_2_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_2_pals_binomial_21_0_35|.3f}} |
+| 1 | 5 | {{8.final_link_table_1_pals_runs|,.0f}} | {{8.final_link_table_1_pals_observed|.3f}} [{{8.final_link_table_1_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_1_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_1_pals_binomial_21_0_35|.3f}} |
+| 0 | 6 | {{8.final_link_table_0_pals_runs|,.0f}} | {{8.final_link_table_0_pals_observed|.3f}} [{{8.final_link_table_0_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_0_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_0_pals_binomial_21_0_35|.3f}} |
 
-On the runs with neither, Binomial(21, 0.35) is still rejected against a free distribution, $p$ = {{8.binomial_21_0_35_lr_p_runs_with_neither|.3f}}.
-
-*Scenarios and pals.* A free distribution per scenario gains {{8.per_scenario_log_likelihood_gain|.1f}} nats for {{8.per_scenario_extra_parameters|.0f}} extra parameters, below the nominal threshold.
-The fitted means by pal count do not decrease monotonically. Deck composition and weakly observed counts beyond
-short decks' completion prevent this from identifying whether pal events consume chain budget. Over {{8.per_pal_count_runs_1_4_pals|,.0f}} runs with 1-4 pals:
-
-| | Unity Cup | Grand Concert | URA Finale | Trackblazer | | 1 pal | 2 pals | 3 pals | 4 pals |
-|---|---|---|---|---|---|---|---|---|---|
-| Mean $N$ | {{8.per_scenario_mean_unity_cup|.2f}} | {{8.per_scenario_mean_grand_concert|.2f}} | {{8.per_scenario_mean_ura_finale|.2f}} | {{8.per_scenario_mean_trackblazer|.2f}} | | {{8.per_pal_count_mean_1_pals|.2f}} | {{8.per_pal_count_mean_2_pals|.2f}} | {{8.per_pal_count_mean_3_pals|.2f}} | {{8.per_pal_count_mean_4_pals|.2f}} |
-
-*Final links by pal count.* These comparisons also use latent reach without the marker allowance. The binomial lies
-inside the observed 95% interval at 3, 1 and 0 pals. It lies above it at
-5 and 2 pals and below it at 4.
-
-| Pals | Chain cards | Runs | Final link reached [95%] | Binomial(21, 0.35) | Poisson(7.1) |
-|---|---|---|---|---|---|
-| 5 | 1 | {{8.final_link_table_5_pals_runs|,.0f}} | {{8.final_link_table_5_pals_observed|.3f}} [{{8.final_link_table_5_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_5_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_5_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_5_pals_poisson_7_1|.3f}} |
-| 4 | 2 | {{8.final_link_table_4_pals_runs|,.0f}} | {{8.final_link_table_4_pals_observed|.3f}} [{{8.final_link_table_4_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_4_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_4_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_4_pals_poisson_7_1|.3f}} |
-| 3 | 3 | {{8.final_link_table_3_pals_runs|,.0f}} | {{8.final_link_table_3_pals_observed|.3f}} [{{8.final_link_table_3_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_3_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_3_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_3_pals_poisson_7_1|.3f}} |
-| 2 | 4 | {{8.final_link_table_2_pals_runs|,.0f}} | {{8.final_link_table_2_pals_observed|.3f}} [{{8.final_link_table_2_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_2_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_2_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_2_pals_poisson_7_1|.3f}} |
-| 1 | 5 | {{8.final_link_table_1_pals_runs|,.0f}} | {{8.final_link_table_1_pals_observed|.3f}} [{{8.final_link_table_1_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_1_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_1_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_1_pals_poisson_7_1|.3f}} |
-| 0 | 6 | {{8.final_link_table_0_pals_runs|,.0f}} | {{8.final_link_table_0_pals_observed|.3f}} [{{8.final_link_table_0_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_0_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_0_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_0_pals_poisson_7_1|.3f}} |
-
-*Slots or cards?* The slot rule has the higher sum of marginal link scores. The alternative gives each running card's next event the same chance. The slot rule scores
-{{8.allocation_slot_over_card_nats|.1f}} nats better over {{8.allocation_runs|,.0f}} runs. With no pals it lies inside the observed interval and the card rule outside.
-With two pals both predict more final links than seen, the card rule further.
-
-| | Observed | Uniform over remaining slots, adopted | Uniform over cards |
-|---|---|---|---|
-| Total LL | | {{8.allocation_total_ll_slot_rule|u,.1f}} | {{8.allocation_total_ll_card_rule|u,.1f}} |
-| Final links, 2 pals | {{8.allocation_final_links_2_pals_observed|.2f}} | {{8.allocation_final_links_2_pals_slot_rule|.2f}} | {{8.allocation_final_links_2_pals_card_rule|.2f}} |
-| Final links, 0 pals | {{8.allocation_final_links_0_pals_observed|.2f}} | {{8.allocation_final_links_0_pals_slot_rule|.2f}} | {{8.allocation_final_links_0_pals_card_rule|.2f}} |
-
-*Two-chain decks.* The prediction below is latent completion, while the observations require both markers to show.
-The marker allowance must also be applied before this is a calibration check.
-Decks with two 3-link SSRs and four pals need $N \ge 6$ to finish both chains:
-
-| Runs | Both chains finished | Share [95%] | Predicted |
-|---|---|---|---|
-| {{8.two_chain_decks_runs|.0f}} | {{8.two_chain_decks_both_chains_finish|.0f}} | {{8.two_chain_decks_share|.2f}} [{{8.two_chain_decks_95_pct_low|.2f}}, {{8.two_chain_decks_95_pct_high|.2f}}] | {{8.two_chain_decks_predicted_p_n_ge_6|.2f}} |
+The adopted model lies inside the observed interval at 3, 1 and 0 pals, above it at 5 and 2, and below it at 4. Equal
+shares per card predict {{8.allocation_final_links_2_pals_card_rule|.2f}} at 2 pals, further above. At 0 pals they
+predict {{8.allocation_final_links_0_pals_card_rule|.2f}}, outside the interval.
 
 *Known miss: early links in crowded decks run short.* An early link is one before a chain's final link. The shortfall
-is the share of early links the model expects to fire minus the share seen, ± its run-clustered standard error. $z$
-sums each run's links as one cluster: $z = \sum(\text{pred} - \text{obs}) / \sqrt{\sum(\text{pred} - \text{obs})^2}$.
+is the share of early links the model expects to fire minus the share seen, ± its run-clustered standard error. Each
+run's links form one cluster: $z = \sum(\text{pred} - \text{obs}) / \sqrt{\sum(\text{pred} - \text{obs})^2}$, summed
+over runs.
 
 | Pals | 4 | 3 | 2 | 1 | 0 |
 |---|---|---|---|---|---|
 | Early-link shortfall | {{8.early_link_shortfall_4_pals|.2f}} ± {{8.early_link_shortfall_4_pals_pm|.2f}} | {{8.early_link_shortfall_3_pals|.2f}} ± {{8.early_link_shortfall_3_pals_pm|.2f}} | {{8.early_link_shortfall_2_pals|.2f}} ± {{8.early_link_shortfall_2_pals_pm|.2f}} | {{8.early_link_shortfall_1_pals|.2f}} ± {{8.early_link_shortfall_1_pals_pm|.2f}} | {{8.early_link_shortfall_0_pals|.2f}} ± {{8.early_link_shortfall_0_pals_pm|.2f}} |
 | $z$ | {{8.early_link_shortfall_4_pals_z|.1f}} | {{8.early_link_shortfall_3_pals_z|.1f}} | {{8.early_link_shortfall_2_pals_z|.1f}} | {{8.early_link_shortfall_1_pals_z|.1f}} | {{8.early_link_shortfall_0_pals_z|.1f}} |
 
-*Known miss: individual cards' final links.* Pooled, final links fit: {{8.final_links_by_card_pooled_observed|.3f}} observed against {{8.final_links_by_card_pooled_model|.3f}}. Card by card they
-do not. The test covers the {{8.final_links_by_card_cards|.0f}} cards with 60 or more final-link observations, clustered by run since one run's
-chain cards share its $N$. It gives $\chi^2$ = {{8.final_links_by_card_chi2|.0f}}, where chance alone gives about {{8.final_links_by_card_cards|.0f}}. The cause is not known.
+*Known miss: chains that never start.* With five or six chain cards, more chains never reach their first link than
+predicted:
 
-*Known miss: chains that never start.* More chains never start in crowded decks than predicted:
-
-| Chain cards | Never started, observed | Model |
+| Chain cards | Never started, observed [95%] | Model |
 |---|---|---|
-| 5 | {{8.never_started_5_chain_cards_observed|.2f}} | {{8.never_started_5_chain_cards_model|.2f}} |
-| 6 | {{8.never_started_6_chain_cards_observed|.2f}} | {{8.never_started_6_chain_cards_model|.2f}} |
+| 5 | {{8.never_started_5_chain_cards_observed|.2f}} [{{8.never_started_5_chain_cards_observed_95_pct_low|.2f}}, {{8.never_started_5_chain_cards_observed_95_pct_high|.2f}}] | {{8.never_started_5_chain_cards_model|.2f}} |
+| 6 | {{8.never_started_6_chain_cards_observed|.2f}} [{{8.never_started_6_chain_cards_observed_95_pct_low|.2f}}, {{8.never_started_6_chain_cards_observed_95_pct_high|.2f}}] | {{8.never_started_6_chain_cards_model|.2f}} |
 
-A per-card activation parameter remains unresolved. The disjoint coarse grids for activation and its null give
-{{8.activation_corrected_reading_joint_with_n_gain_nats|u.1f}} nats at $a = {{8.activation_corrected_reading_joint_with_n_a|.2f}}$.
-This is not a nested maximised comparison and cannot reject activation.
+*Known miss: individual cards' final links.* Pooled, final links fit: {{8.final_links_by_card_pooled_observed|.3f}}
+observed against {{8.final_links_by_card_pooled_model|.3f}}. Card by card they do not. The test covers the
+{{8.final_links_by_card_cards|.0f}} cards with 60 or more final-link observations, clustered by run, since one run's
+chain cards share its $N$. It gives $\chi^2$ = {{8.final_links_by_card_chi2|.0f}}, where chance alone gives about
+{{8.final_links_by_card_cards|.0f}}.
 
 ## 9. Event choices and outcomes
 
