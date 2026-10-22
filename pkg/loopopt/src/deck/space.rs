@@ -63,9 +63,9 @@ pub(crate) struct PlainPal<'data> {
 
 /// A monotone skyline coordinate: gold probability or probability of any hint at a target.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct HintCoordinate {
-    pub(super) target: usize,
-    pub(super) gold: bool,
+pub(crate) struct HintCoordinate {
+    pub(crate) target: usize,
+    pub(crate) gold: bool,
 }
 
 /// Group-miss tables depend on the reduced entry set and chain-count code.
@@ -102,8 +102,8 @@ pub(crate) struct DeckSpace<'data> {
     // Entry indices differ from card indices: one card can have several end-link/variant entries.
     pub(crate) card_indices: Vec<usize>,
     pub(crate) kind: Vec<ChainKind>,
-    pub(super) end_links: Vec<u8>,
-    pub(super) variants: Vec<u32>,
+    pub(crate) end_links: Vec<u8>,
+    pub(crate) variants: Vec<u32>,
     pub(crate) sources: Vec<TargetSources>,
     pub(super) borrowed: Vec<bool>,
     // per entry, `cv_mask` of its source (the class caps)

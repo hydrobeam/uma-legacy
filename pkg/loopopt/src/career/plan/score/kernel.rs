@@ -1,6 +1,6 @@
 //! The scoring kernels: a prepared scoring (`Scored`) folded into its outcome rows and evaluated over every outcome
 //! (`Scored::evaluate`, `evaluate_outcomes`, `sc_loop`), with the scratch they reuse between scorings. Building a scoring (her setups,
-//! tables and collapsed targets) is `score.rs`'s; the step costs V after her reads are `step.rs`'s.
+//! tables and collapsed targets) is `build.rs`'s; the step costs V after her reads are `step.rs`'s.
 use crate::career::clock::{now_ms, prof};
 use crate::career::plan::cont::{OwnTrio, ScoreBase, Want};
 use crate::career::plan::fold::{FoldContext, FoldCursor, FoldWorkspace, LeafLayout, Leaves, SlotTables, leaf_set};

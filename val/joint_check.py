@@ -1,4 +1,4 @@
-"""Independent check of the solver's exact landing odds (`joint_fast` in src/deck/joint.rs).
+"""Independent check of the solver's exact landing odds (`joint_fast` in src/deck/joint/mod.rs).
 
 For every deck result of a validation run, recompute P(all targets land) from the job, the card data and the
 reported decks and loops, jointly over the chain process (job chain_events, default Binomial(21, 0.35) events, each advancing a random remaining

@@ -1,7 +1,7 @@
 //! CLI job loading, event enrichment, kept-state restoration and result dispatch.
 //! Solver algorithms and the wasm interface live in their own modules.
 use crate::data::{Data, DataRaw, PbRaw, load_str, pb_fingerprint};
-use crate::optimize::pair_ceilings;
+use crate::loop_planner::schedules::pair_ceilings;
 use crate::uma::UmaIndex;
 use crate::{Instant, skills};
 use serde::Deserialize;
@@ -118,7 +118,7 @@ pub(crate) fn print_cli_job(
     let mut out = if mode == "career" {
         crate::career::run_career(data, skills, cards, job)
     } else {
-        crate::deck::frontier::run_deck(data, skills, cards, job)
+        crate::loop_planner::job::run_deck(data, skills, cards, job)
     };
     out["timing_s"] = serde_json::json!(started.elapsed().as_secs_f64());
     println!("{out}");

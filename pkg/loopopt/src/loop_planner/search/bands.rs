@@ -7,9 +7,9 @@ use super::{Multi, SharedDeckKey};
 use crate::data::{Choice, NT, dot};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_RHO, EXACT_STEPS};
 use crate::deck::enumerate::ScoredDeck;
-use crate::optimize::{NONE, Res, members, optimize_fam};
+use crate::loop_planner::schedules::{Res, members, optimize_fam};
 use crate::skills::lins;
-use crate::uma::{UmaIndex, UmaTable};
+use crate::uma::{NONE, UmaIndex, UmaTable};
 use std::rc::Rc;
 
 /// A loop awaiting evaluation, in descending product-ceiling order.

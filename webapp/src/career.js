@@ -84,7 +84,7 @@ const jobKey = (job) => {
   return `${JSON.stringify([ERA, { ...job, legacies: 0 }])}\n${legaciesJson.json}`;
 };
 const runKey = (job) => `${jobKey(job)}\n${JSON.stringify(plan)}`;
-// the plan's phase reports (career/plan.rs `index_rule`: phase, k of n) in words
+// the plan's phase reports (career/plan/mod.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) =>
   ph === 1
     ? 'searching the candidates'
@@ -248,7 +248,7 @@ const progText = ({ ph, k, n }) =>
  *   roll is of (`next.roll`)
  * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
  *
- * The career search's report (career.rs), or its refusal (`error`).
+ * The career search's report (career/run.rs `search_output`), or its refusal (`error`).
  * @typedef {object} CareerSearch
  * @property {string} [error]
  * @property {CareerReport[]} results  the best careers, best first
@@ -691,7 +691,7 @@ function searchStatus(m, found) {
     : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${state.targets.length} targets${why}` };
 }
-// The plan (solver: career/plan.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
+// The plan (solver: career/plan/mod.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
 // best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page reads `next`
 // alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick (no plan phase).
 // Returns the plan's state, or null when a newer edit (run `id` no longer current) took over.

@@ -4,7 +4,7 @@ use crate::career::pool::{Pool, RaceWin};
 use crate::career::{CareerSetup, Lineage};
 use crate::chart::{chart_race_name, when};
 use crate::data::{Choice, NT, Uma, scored_position};
-use crate::optimize::FILL_EPS;
+use crate::loop_planner::schedules::FILL_EPS;
 use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];

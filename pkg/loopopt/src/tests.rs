@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------------------------
 use crate::chart;
 use crate::data::{Choice, Data, NT, Sched, Uma, dot, load, load_str};
-use crate::optimize::{C_PAIR, FILL_EPS, LoopProblem, optimize, pair_ceilings};
+use crate::loop_planner::schedules::{C_PAIR, FILL_EPS, LoopProblem, optimize, pair_ceilings};
 use crate::uma::UmaIndex;
 use std::sync::OnceLock;
 fn data() -> &'static Data {

@@ -1,6 +1,21 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
+//!
+//! `index_rule` (here, with the plan's records and job settings) runs the phases in order: `candidates` sets them up
+//! and admits proxies, `rows` adds and scores the rows, `output` assembles the answer.
+//! - `candidates`: candidate setup, exact and surrogate careers, the proxies admitted.
+//! - `search`: candidate searches, rotation setup and proxy limits.
+//! - `rows`: plan rows (looped, no-borrow), their scoring and promotion.
+//! - `score/`: a career's score over her possible veterans (`score_career`).
+//! - `step`: step costs and the leaves the next career is estimated with.
+//! - `cont`: the continuation (`Cont`) and its memo.
+//! - `combine`: continuation fits and candidate combinations.
+//! - `fold`: folding spark outcomes and their rises.
+//! - `anchors`: anchor bounds and the best partners after an outcome.
+//! - `kept`: kept plans and cached career searches.
+//! - `roll`: the roll of the plan's pick and its kept state (`roll_kept`).
+//! - `output`: the assembled plan response.
 use crate::career::cache::Cache;
 use crate::career::clock::{now_ms, progress};
 use crate::career::plan::candidates::{score_and_admit_proxies, setup_plan_candidates};

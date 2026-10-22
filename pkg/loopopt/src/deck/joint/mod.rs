@@ -1,6 +1,10 @@
 //! Joint landing odds of a deck: the entry points (`joint_b`, `joint_fast`, with `joint_checked`'s diagnostic checks) and
 //! the records the exact sum (`exact`), its reference (`reference`) and the negative-association bound (`upper`) share,
 //! with the per-target landing factor (`land_factor`, `LandPre`) and miss rows (`TargetSources::miss_levels`) the state bounds also take.
+//!
+//! - `exact`: the exact sum, prepared once per deck (`joint_prep`) and evaluated per inheritance chance and outfit.
+//! - `reference`: the unoptimized reference sum `JOINT_CHECK` and the tests compare `exact` with.
+//! - `upper`: the negative-association upper bound on P(all) (`upper_na`).
 use crate::checks::{CFCHK, SBCHK};
 use crate::deck::DeckJob;
 use crate::deck::chains::{ChainEvents, ChainKind};
@@ -82,7 +86,7 @@ pub(super) struct ChainEntry {
 /// sources are independent, except outcome groups that touch two or more targets, whose outcomes are enumerated.
 /// A card's training hints across several targets are one outcome group (`Sources::train_group`), so their
 /// dependence is included in the same enumeration.
-pub(super) fn joint(
+pub(crate) fn joint(
     model: &Model,
     query: JointQuery,
     entries: &[SourceEntry<TargetSources>],

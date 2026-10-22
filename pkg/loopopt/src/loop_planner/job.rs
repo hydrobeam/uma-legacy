@@ -1,15 +1,15 @@
 //! Deck-job setup and enumeration of the nondominated deck frontier (`run_deck`).
-//! Loop structures, schedules and exact deck searches belong to `loop_search` and `enumerate`.
+//! Loop structures, schedules and exact deck searches belong to `search` and `deck::enumerate`.
 use crate::Instant;
 use crate::data::Data;
 use crate::deck::chains::{ChainEvents, ChainKind, chain_marginals};
 use crate::deck::dominance::{
     DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
 };
-use crate::deck::loop_search::{LoopJobInputs, run_multi};
 use crate::deck::sources::{Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries};
 use crate::deck::space::deck_space;
 use crate::deck::{CardsRaw, DeckJob};
+use crate::loop_planner::search::{LoopJobInputs, run_multi};
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use serde::Deserialize;
 use serde_json::{Value, json};

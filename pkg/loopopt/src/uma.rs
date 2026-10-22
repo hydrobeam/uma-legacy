@@ -12,6 +12,9 @@ impl std::fmt::Display for UmaIndex {
         self.0.fmt(formatter)
     }
 }
+/// Missing fourth member in the fixed-size representation of a three-uma rotation.
+/// `members` removes this sentinel before callers use the entries as indices into the uma table.
+pub(crate) const NONE: UmaIndex = UmaIndex(usize::MAX);
 
 /// One entry per roster position. Nested tables use the same roster on each axis.
 #[repr(transparent)]

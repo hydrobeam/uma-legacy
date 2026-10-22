@@ -8,7 +8,7 @@ use crate::checks::{SPT, UCHK};
 use crate::data::dot;
 use crate::deck::dominance::PDeck;
 use crate::deck::joint::{JointChances, JointExt, JointQuery, joint_b, joint_fast};
-use crate::optimize::members;
+use crate::loop_planner::schedules::members;
 use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
 use serde_json::{Value, json};
 use std::cell::Cell;
@@ -130,7 +130,7 @@ impl Multi<'_> {
                 let SolvedLoop { members, inheritance_chances, .. } = &pass.solved[solved_index];
                 let DeckSources { entries, filler_count } = self.ents_of(deck);
                 let lineages = lin_of(members);
-                let member_count = crate::optimize::members(members).len();
+                let member_count = crate::loop_planner::schedules::members(members).len();
                 let mut per_lineage = vec![JointChances::default(); lineages.len()];
                 for member in 0..member_count {
                     let member_lineages: Vec<usize> =
@@ -187,7 +187,7 @@ impl Multi<'_> {
         let (decks, per_lineage, loop_value) = (&pick.decks, &pick.lineage_chances, pick.value);
         let SolvedLoop { members, schedule, inheritance_chances, .. } = &pass.solved[pick.solved_index];
         let lineages = lin_of(members);
-        let member_slice = crate::optimize::members(members);
+        let member_slice = crate::loop_planner::schedules::members(members);
         let member_count = member_slice.len();
         let lineage_count = lineages.len();
         let mut per_trainee = vec![(0.0, 0usize); member_count];

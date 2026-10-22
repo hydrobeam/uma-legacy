@@ -129,16 +129,16 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 
 ## Open in the deck search (estimates)
 
-- One shared deck, three or four trainees: the loop search's scoring (`loop_search/shared.rs`, `Multi::score_shared`, and
-  `loop_search/report.rs`, `Multi::shared_picks`)
+- One shared deck, three or four trainees: the loop search's scoring (`loop_planner/search/shared.rs`,
+  `Multi::score_shared`, and `loop_planner/search/report.rs`, `Multi::shared_picks`)
   calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
   Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and the
   product of event outcomes on every call, though they depend only on the ordered active groups (`CareerSetup::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
   (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
   `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive). The
-  profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_search/bands.rs`. Reprofile
-  before acting on that measurement.
+  profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_planner/search/bands.rs`.
+  Reprofile before acting on that measurement.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
   per size (`3^m - 1` additions to `2^(m+1) - 2`, same order per subset), and `group_nuod`'s `O(4^m)` subset scan has
   the same symmetry. The jobs in `val/jobs.json` and `val/plan/jobs.json` have at most three uncertain targets in

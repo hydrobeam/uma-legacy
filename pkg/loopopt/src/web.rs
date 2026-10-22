@@ -132,7 +132,7 @@ fn handle(request_text: &str) -> serde_json::Value {
                     return serde_json::json!({"error": "no card data"});
                 };
                 crate::deck::sources::apply_event_lists(&mut job, events);
-                crate::deck::frontier::run_deck(data, skills, cards, &job)
+                crate::loop_planner::job::run_deck(data, skills, cards, &job)
             })
         }),
         // state_out / state_in read no events

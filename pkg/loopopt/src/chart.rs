@@ -1,5 +1,5 @@
 //! Race and member labels and structured schedule charts for solver results.
-//! Win probabilities come from `data`; schedule optimization belongs to `optimize`.
+//! Win probabilities come from `data`; schedule optimization belongs to `loop_planner::schedules`.
 use crate::data::{Choice, Data, NT, OptRaw, Sched};
 use crate::uma::UmaIndex;
 use serde_json::{Value, json};

@@ -12,7 +12,7 @@ import { stateLoad, stateSave, stateDrop } from './statestore.js';
  * A job for the solver: its command and that command's fields.
  * @typedef {{cmd: string} & Record<string, unknown>} SolverJob
  *
- * A career plan's phase report (career/plan.rs `index_rule`): phase `ph`, step k of n.
+ * A career plan's phase report (career/plan/mod.rs `index_rule`): phase `ph`, step k of n.
  * @typedef {{ph: number, k: number, n: number}} PlanProgress
  *
  * A job posted to the worker and not answered yet, by its id.
@@ -230,7 +230,7 @@ const gate = (job) =>
         exclude_cards: [...(job.exclude_cards || []), ...LATER.cards],
       };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
-// with the career plan's phase reports ({ph, k, n}: career/plan.rs `index_rule`) while it runs
+// with the career plan's phase reports ({ph, k, n}: career/plan/mod.rs `index_rule`) while it runs
 /**
  * @param {SolverJob} job
  * @param {PendingJob['interim']} [interim]

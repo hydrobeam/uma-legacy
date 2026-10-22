@@ -12,7 +12,7 @@ use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointChances, JointQuery, joint, joint_b};
 use crate::deck::sources::{SourceEntry, Sources, TargetSources};
 use crate::deck::space::HintCoordinate;
-use crate::optimize::{members, pair_ceilings};
+use crate::loop_planner::schedules::{members, pair_ceilings};
 use crate::skills::{Model, OutfitOption};
 use crate::uma::{UmaIndex, UmaTable};
 use std::borrow::Cow;

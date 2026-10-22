@@ -1,4 +1,14 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
+//!
+//! The entry is `DeckSpace::search` (here, with the records a search takes and returns): `prepare`'s `configure_search`
+//! sets the pass up and `search_with_bounds` runs it.
+//! - `prepare`: search legality and the shared bounds the enumeration uses; the two calls above.
+//! - `config`: the legal card-count configurations and their bounds.
+//! - `order`: the order queued configurations are visited in.
+//! - `traverse`: the traversal of configurations, with their borrowed-card and state bounds.
+//! - `walk`: the depth-first walk of the decks of one configuration.
+//! - `bounds`: outfit bounds and ratio prefixes.
+//! - `scratch`: the reusable buffers of configuration and node bounds.
 use crate::deck::joint::{LandPre, MissFactors};
 use crate::deck::space::{DeckSpace, LegalTables, SelectedDeck};
 use crate::skills::DeckChances;
