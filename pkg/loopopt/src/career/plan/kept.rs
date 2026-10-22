@@ -3,7 +3,7 @@ use crate::career::Env;
 use crate::career::plan::ParentPool;
 use crate::career::search::{Found, Ref};
 use crate::career::sim::Sim;
-use crate::career::state::setup_hash;
+use crate::career::state::hash_text;
 use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 /// A cached result may be available from searching, certification or reuse. A known empty result is
@@ -64,16 +64,14 @@ pub(crate) struct Bests {
     pub(crate) looped_incomplete: UmaTable<bool>,
 }
 
-thread_local! { pub(crate) static BESTS: std::cell::RefCell<Vec<Bests>> = const { std::cell::RefCell::new(Vec::new()) }; }
-
 /// the kept plans for the page to store (`state_out`): per plan its key and every uma's kept best (her decks' refs are
 /// not kept: nothing reads them back)
-pub(crate) fn bests_out() -> Value {
-    BESTS.with(|c| Value::Array(c.borrow().iter().map(|b| json!({"k": [crate::career::state::ux(b.key.0), crate::career::state::ux(b.key.1)], "n": b.best_careers.len(),
+pub(crate) fn bests_out(bests: &[Bests]) -> Value {
+    Value::Array(bests.iter().map(|b| json!({"k": [crate::career::state::ux(b.key.0), crate::career::state::ux(b.key.1)], "n": b.best_careers.len(),
         "b": cached_searches_out(&b.best_careers),
         "l": cached_searches_out(&b.looped_careers),
         "u": b.base_incomplete.indices().filter(|&u| b.base_incomplete[u]).collect::<Vec<_>>(),
-        "lu": b.looped_incomplete.indices().filter(|&u| b.looped_incomplete[u]).collect::<Vec<_>>()})).collect()))
+        "lu": b.looped_incomplete.indices().filter(|&u| b.looped_incomplete[u]).collect::<Vec<_>>()})).collect())
 }
 
 pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
@@ -121,22 +119,10 @@ pub(crate) fn bests_in(v: &Value) -> Option<Vec<Bests>> {
         .collect()
 }
 
-pub(crate) fn bests_set(b: Vec<Bests>) {
-    BESTS.with(|c| *c.borrow_mut() = b);
-}
-
-/// the kept plans, taken out (the simulator's `index` policy starts each run without them, `sim::kept_swap`)
-pub(crate) fn bests_take() -> Vec<Bests> {
-    BESTS.with(|c| std::mem::take(&mut *c.borrow_mut()))
-}
-
 /// Remove one kept plan while `index_rule` owns it; the plan puts retained entries back when it finishes.
-pub(crate) fn take_kept_plan(key: (u64, u64)) -> Option<Bests> {
-    BESTS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let index = cache.iter().position(|plan| plan.key == key);
-        index.map(|index| cache.remove(index))
-    })
+pub(crate) fn take_kept_plan(kept: &mut crate::career::state::KeptState, key: (u64, u64)) -> Option<Bests> {
+    let index = kept.bests.iter().position(|plan| plan.key == key)?;
+    Some(kept.bests.remove(index))
 }
 
 /// A kept plan's key: (setup and places, the first `legacy_count` legacies). The borrowed-parent rule is in the first
@@ -153,14 +139,14 @@ pub(crate) fn bests_key(job: &Value, fixed_parents: &[usize], legacy_count: usiz
         .get("borrowed_parent")
         .and_then(|b| b.as_str())
         .filter(|&b| b != "allow")
-        .map_or(0, |b| setup_hash(b).rotate_left(2));
+        .map_or(0, |b| hash_text(b).rotate_left(2));
     (
-        crate::career::state::setup_fp(job) ^ setup_hash(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
-        setup_hash(&legacies_text),
+        crate::career::state::setup_fp(job) ^ hash_text(&format!("{fixed_parents:?}")).rotate_left(1) ^ borrowing_rule,
+        hash_text(&legacies_text),
     )
 }
 
-/// The kept plans a career search may reuse (`Bests`), taken out of `BESTS` while the plan runs.
+/// The kept plans a career search may reuse (`Bests`), taken out of `KeptState::bests` while the plan runs.
 #[derive(Clone, Copy)]
 pub(crate) struct KeptPlans<'kept> {
     /// A kept plan of this very pool.

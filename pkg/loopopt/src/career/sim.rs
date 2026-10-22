@@ -13,8 +13,8 @@
 //! career's exact landed-set distribution with the all-landed set removed), and stops when S_t < eps or at
 //! `max_careers`, where the tail S_t / p_t (career t repeated forever) is added.
 //!
-//! The modules call each other on purpose: `run_career` (career.rs) runs `simulate` for a job with `simulate`, and the
-//! `exact` and `index` policies (`exact_cur`, `index_cur`) call `run_career` again on that job with `simulate` removed,
+//! The modules call each other on purpose: `run_career_in` (career.rs) runs `simulate` for a job with `simulate`, and the
+//! `exact` and `index` policies (`exact_cur`, `index_cur`) call `run_career_in` again on that job with `simulate` removed,
 //! so the simulator tests the same path the page runs.
 //!
 //! The surrogate (policy `greedy`): the career with the highest P(all), where each candidate (trainee, parents) is
@@ -47,8 +47,9 @@
 //! plan: `index_rule` on the step's pool, run as the page's plan job in process, its `choice` the career run). A policy
 //! picks the next career (`Cur`) from the state (`PathState`) in `play`; `trace` runs its own loop and returns its rows.
 //!
-//! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`plan::kept::BESTS`), proofs (`SEEN`),
-//! main searches (`LAST_SOLVE`) and deck memos (`DECK_KEEP`). Each run starts with all four empty (`kept_swap`; the
+//! `index` and the worker's kept state: a plan job reads and leaves the kept plans (`KeptState::bests`), proofs (`KeptState::seen`),
+//! main searches (`KeptState::searches`), roll states (`KeptState::rolls`) and deck memos (`KeptState::decks`). Each run
+//! starts with the entire record empty (`kept_swap`; the
 //! state before the simulation is put back after it), so a run's plans read only what its own earlier steps left: a
 //! run's careers are a function of the job and the run index, not of the runs before it or their order. Within a run
 //! a step's pool is the last one plus her veteran at the end (or the same pool, when she is pruned), the case the kept
@@ -62,8 +63,6 @@
 //! the new one for the next two loop careers (`rot_update`), keeping the previous veteran on a tie.
 use crate::career::evaluator::{Cur, Evaluator};
 /// the page's next career (`next` on a career job)
-use crate::career::plan;
-use crate::career::search::Ref;
 use crate::career::sim::play::PathState;
 use crate::career::{Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
@@ -157,26 +156,6 @@ fn d_next() -> Value {
 }
 /// index: the page's `top` for its plan job (`ROLL_K` in webapp/src/career.js)
 const PAGE_TOP: usize = 6;
-/// The worker's kept state across jobs: the kept plans, proofs, main searches and deck memos
-#[derive(Default)]
-struct KeptState {
-    bests: Vec<plan::kept::Bests>,
-    seen: Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>,
-    searches: Vec<crate::career::state::KeptSolve>,
-    decks: Vec<(u64, crate::career::decks::DeckSearchCache)>,
-}
-/// Replace the worker's kept state, returning the previous state (`index`: module notes).
-fn kept_swap(replacement: KeptState) -> KeptState {
-    let bests = plan::kept::bests_take();
-    plan::kept::bests_set(replacement.bests);
-    let seen = crate::career::state::SEEN.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.seen));
-    let searches = crate::career::state::LAST_SOLVE
-        .with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.searches));
-    let decks =
-        crate::career::decks::DECK_KEEP.with(|cache| std::mem::replace(&mut *cache.borrow_mut(), replacement.decks));
-    KeptState { bests, seen, searches, decks }
-}
-
 /// Owned roster tables moved into a simulator.
 pub(super) struct SimulationRoster {
     /// Trainees considered by later simulated careers, in search order.
@@ -200,6 +179,8 @@ pub(super) struct SimulationOptions {
 /// (`career::evaluator`, owned here and borrowed beside `env`), and the path's fixed inputs.
 pub(crate) struct Sim<'env, 'data> {
     pub(super) env: &'env mut Env<'data>,
+    /// Retained work shared with nested career jobs; index runs replace and restore it explicitly.
+    pub(super) kept: &'env mut crate::career::state::KeptState,
     pub(super) d: &'data Data,
     skills: &'data SkillsRaw,
     cards: &'data CardsRaw,
@@ -244,6 +225,7 @@ impl<'env, 'data> Sim<'env, 'data> {
     /// (`Evaluator::new`)
     pub(super) fn new(
         env: &'env mut Env<'data>,
+        kept: &'env mut crate::career::state::KeptState,
         input: &JobInputs<'data>,
         cfg: SimJob,
         roster: SimulationRoster,
@@ -265,6 +247,7 @@ impl<'env, 'data> Sim<'env, 'data> {
         let evaluator = Evaluator::new(setup, cfg.margin, options.fill_missing_decks);
         Sim {
             env,
+            kept,
             d: input.data,
             skills: input.skills,
             cards: input.cards,

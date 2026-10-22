@@ -150,7 +150,7 @@ impl CareerSetup<'_> {
     /// `corners` at q0 = 0 (a cached deck's table, `Cache::add`), memoised by (deck class, entries, filler). Exact: the
     /// table reads trainee t only through her model (outfit coverage, own-skill chances: `set_trainee` from
     /// `Model::ews`), which her deck class holds to the bit, and the deck only through its entries and filler;
-    /// the memo is kept between jobs of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her folded buffer
+    /// the memo is kept between jobs of one setup (`KeptState::decks`: the same model and entries). `corners` leaves her folded buffer
     /// at its last corner, q = 0 for every target (1 - (1 - 0) x 1); a hit sets the same state
     pub(crate) fn corners_kept(
         &self,

@@ -18,6 +18,7 @@ pub(crate) const fn p_swork() -> usize {
 
 pub(crate) fn sim_for<'env, 'data>(
     env: &'env mut Env<'data>,
+    kept: &'env mut crate::career::state::KeptState,
     input: &JobInputs<'data>,
     settings: &PlanJob,
 ) -> Result<Sim<'env, 'data>, Value> {
@@ -30,6 +31,7 @@ pub(crate) fn sim_for<'env, 'data>(
     let trainees = env.setup.owned.clone();
     Ok(Sim::new(
         env,
+        kept,
         input,
         cfg,
         SimulationRoster { trainees, members: vec![], member_by_trainee: crate::uma::UmaTable(vec![]) },

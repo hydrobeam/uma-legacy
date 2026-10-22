@@ -185,6 +185,6 @@ pub(crate) mod joint;
 mod loop_search;
 pub(crate) mod sources;
 pub(crate) mod space;
-mod state_bound;
+pub(crate) mod state_bound;
 #[cfg(test)]
 mod tests;

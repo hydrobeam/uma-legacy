@@ -1,16 +1,48 @@
 //! The worker's saved searches and their validation.
 
 use crate::career::CareerSetup;
+use crate::career::decks::DeckSearchCache;
+use crate::career::plan::kept::Bests;
+use crate::career::plan::roll::RollKeep;
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found, Ref};
 use crate::deck::space::{MAX_DECK, SelectedDeck};
 use serde_json::{Value, json};
+
+/// Work retained between jobs. The worker owns it; career and planner operations borrow it explicitly.
+#[derive(Default)]
+pub(crate) struct KeptState {
+    /// Best careers and proofs per plan, oldest first.
+    pub(crate) bests: Vec<Bests>,
+    /// Fully checked decks per setup and deck class, oldest setup first. Each Ref's chances and exact value
+    /// depend on the setup only; the job's trainee filter changes plain-pal order, not deck values.
+    pub(crate) seen: Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>,
+    /// Main searches and their product proofs, oldest first, keyed by the job without `next` and `no_reports`.
+    /// Reuse restores the product proofs a combined search/plan job would have left for its plan.
+    pub(crate) searches: Vec<KeptSolve>,
+    /// Roll scorings for recent plans, oldest first.
+    pub(crate) rolls: Vec<RollKeep>,
+    /// Deck outcomes and corner tables per setup and trainee order; not serialized.
+    pub(crate) decks: Vec<(u64, DeckSearchCache)>,
+}
+
+thread_local! {
+    /// Native and wasm entry points retain one record per worker thread. Search code receives `&mut KeptState`;
+    /// recursive simulator jobs use that borrow directly rather than borrowing this cell again.
+    pub(crate) static KEPT: std::cell::RefCell<KeptState> = std::cell::RefCell::default();
+}
+
+/// Replace all kept work, including roll states, when isolating a simulated index run.
+pub(crate) const fn kept_swap(kept: &mut KeptState, replacement: KeptState) -> KeptState {
+    std::mem::replace(kept, replacement)
+}
+
 /// A job's setup fingerprint: everything but the pool and the places (targets, roster, cards, scenario, ...), the
 /// key of what one job's search proves that holds for the next (p_bar, fully checked decks)
 pub(crate) fn setup_fp(v: &Value) -> u64 {
     // (also the page's flags that change no deck value: `compare`, the plan's own fields, so the plan and compare
     // jobs share what the search jobs proved, and `borrowed_parent`, a rule on the pairs as `fix` is)
-    setup_hash(&json_without(
+    hash_text(&json_without(
         v,
         &[
             "legacies",
@@ -54,22 +86,14 @@ pub(crate) fn json_without(v: &Value, drop: &[&str], next_drop: &[&str]) -> Stri
     serde_json::to_string(&Strip { v, drop, next_drop }).unwrap()
 }
 
-pub(crate) fn setup_hash(s: &str) -> u64 {
+pub(crate) fn hash_text(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut h);
     h.finish()
 }
 
-thread_local! {
-    /// the last few jobs' main searches (the most recent last), each keyed by the whole job without `next` and
-    /// `no_reports` (the page's plan job repeats the job it follows), with what the search's product searches proved
-    /// (`SearchState::ruled` as the search left it: a job that takes a kept search starts its plan from the search
-    /// state a combined job's plan starts from); kept across page reloads (`state_out`)
-    pub(crate) static LAST_SOLVE: std::cell::RefCell<Vec<KeptSolve>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// One kept main search (`LAST_SOLVE`).
+/// One kept main search (`KeptState::searches`).
 pub(crate) struct KeptSolve {
     /// The job's key (`CareerRun::search_key`).
     pub(crate) key: u64,
@@ -91,23 +115,15 @@ pub(crate) struct ProductProof {
     pub(crate) product_bound: f64,
 }
 
-/// main searches kept (`LAST_SOLVE`): the page's run, and one it goes back to (a setting changed and back, a Compare or
+/// main searches kept (`KeptState::searches`): the page's run, and one it goes back to (a setting changed and back, a Compare or
 /// Reroll plan in between)
 pub(crate) const SOLVE_KEEP: usize = 3;
-
-thread_local! {
-    /// per setup fingerprint (the last few), every fully checked deck found so far (`SearchState::seen`): what the
-    /// page's earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact
-    /// value there, which depend on the setup only (the job's trainees change no deck value: they only order plain
-    /// pals).
-    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
-}
 
 /// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
 pub(crate) const SEEN_KEEP: usize = 256;
 
 // ---------- the worker's kept work across page loads ----------
-// What a worker keeps between jobs (the kept plans, `plan::kept::BESTS`; the proofs, `SEEN`) leaves as `state_out` and comes
+// What a worker keeps between jobs (the kept plans, `KeptState::bests`; the proofs, `KeptState::seen`) leaves as `state_out` and comes
 // back as `state_in`, so the first plan after a page reload reuses the work of the last session. Every float travels as
 // its bit pattern in hex (decimal JSON does not round-trip here), so what comes back is what left, bit for bit; the page
 // keys what it stores by the solver and data fingerprints, so a release starts afresh (the keys inside, `setup_fp` and
@@ -209,26 +225,24 @@ pub(crate) fn found_in(v: &Value) -> Option<Found> {
     })
 }
 
-/// SEEN as [fingerprint, classes, [[class, [refs]], ...]] per setup (only the classes holding proofs)
-fn seen_out() -> Value {
-    SEEN.with(|c| {
-        Value::Array(
-            c.borrow()
-                .iter()
-                .map(|(fp, vv)| {
-                    json!([
-                        ux(*fp),
-                        vv.len(),
-                        vv.iter()
-                            .enumerate()
-                            .filter(|(_, rs)| !rs.is_empty())
-                            .map(|(i, rs)| json!([i, rs.iter().map(ref_out).collect::<Vec<_>>()]))
-                            .collect::<Vec<_>>()
-                    ])
-                })
-                .collect(),
-        )
-    })
+/// Kept proofs as [fingerprint, classes, [[class, [refs]], ...]] per setup (only the classes holding proofs)
+fn seen_out(kept: &KeptState) -> Value {
+    Value::Array(
+        kept.seen
+            .iter()
+            .map(|(fp, vv)| {
+                json!([
+                    ux(*fp),
+                    vv.len(),
+                    vv.iter()
+                        .enumerate()
+                        .filter(|(_, rs)| !rs.is_empty())
+                        .map(|(i, rs)| json!([i, rs.iter().map(ref_out).collect::<Vec<_>>()]))
+                        .collect::<Vec<_>>()
+                ])
+            })
+            .collect(),
+    )
 }
 
 fn seen_in(v: &Value) -> Option<Vec<(u64, crate::uma::UmaTable<Vec<Ref>>)>> {
@@ -278,12 +292,12 @@ fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crat
     Some(vv)
 }
 
-/// LAST_SOLVE as [key, search, proofs] per kept search: every field of `CareerSearchResult`, floats as bit patterns
-fn solve_out() -> Value {
-    LAST_SOLVE.with(|c| Value::Array(c.borrow().iter().map(|KeptSolve { key: k, solved: s, ruled: r }| json!([ux(*k), {
+/// Kept searches as [key, search, proofs] per kept search: every field of `CareerSearchResult`, floats as bit patterns
+fn solve_out(kept: &KeptState) -> Value {
+    Value::Array(kept.searches.iter().map(|KeptSolve { key: k, solved: s, ruled: r }| json!([ux(*k), {
         "found": s.found.iter().map(found_out).collect::<Vec<_>>(), "refs": lists_out(&s.refs, ref_out),
         "n": [s.work, s.cands, s.solved, s.bounded, s.scored, s.skipped], "next_bound": hx(s.next_bound), "complete": s.complete, "proven": s.proven, "cert": hx(s.cert)
-    }, lists_out(r, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)]))])).collect()))
+    }, lists_out(r, |proof| json!([fvec(&proof.inheritance_chances), hx(proof.product_bound)]))])).collect())
 }
 
 fn solve_in(v: &Value) -> Option<Vec<KeptSolve>> {
@@ -319,13 +333,13 @@ fn solve_in(v: &Value) -> Option<Vec<KeptSolve>> {
         .collect()
 }
 
-pub(crate) fn state_out() -> Value {
-    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(), "seen": seen_out(), "solve": solve_out(), "rolls": crate::career::plan::roll::rolls_out()}})
+pub(crate) fn state_out(kept: &KeptState) -> Value {
+    json!({"ok": true, "state": {"v": STATE_VERSION, "bests": crate::career::plan::kept::bests_out(&kept.bests), "seen": seen_out(kept), "solve": solve_out(kept), "rolls": crate::career::plan::roll::rolls_out(&kept.rolls)}})
 }
 
 /// replaces the kept plans, proofs, main searches and plans' roll states with the page's stored ones (all or nothing: a
 /// store that does not parse is refused)
-pub(crate) fn state_in(v: &Value) -> Value {
+pub(crate) fn state_in(kept: &mut KeptState, v: &Value) -> Value {
     if v["v"].as_u64() != Some(STATE_VERSION) {
         return json!({"error": "state: another version"});
     }
@@ -343,10 +357,8 @@ pub(crate) fn state_in(v: &Value) -> Value {
         return json!({"error": "state: does not parse"});
     };
     let (nb, ns, nm, nr) = (bests.len(), seen.len(), searches.len(), rolls.len());
-    crate::career::plan::kept::bests_set(bests);
-    SEEN.with(|cache| *cache.borrow_mut() = seen);
-    LAST_SOLVE.with(|cache| *cache.borrow_mut() = searches);
-    crate::career::plan::roll::rolls_set(rolls);
+    // Deck memos are process-local and were never part of the stored format; retain them on import.
+    *kept = KeptState { bests, seen, searches, rolls, decks: std::mem::take(&mut kept.decks) };
     json!({"ok": true, "bests": nb, "seen": ns, "solve": nm, "rolls": nr})
 }
 
@@ -362,11 +374,11 @@ impl CareerSetup<'_> {
     fn ref_fits(&self, r: &Ref) -> bool {
         r.q.len() == self.target_count && self.sel_fits(&r.deck)
     }
-    /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
+    /// stored proofs (`KeptState::seen`): per deck class (one per uma) the fully checked decks
     pub(crate) fn seen_fits(&self, seen: &crate::uma::UmaTable<Vec<Ref>>) -> bool {
         seen.len() == self.data.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
     }
-    /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
+    /// a stored main search (`KeptState::searches`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
     /// veterans
     pub(crate) fn solved_fits(&self, sv: &CareerSearchResult, ruled: &Ruled, p: &Pool) -> bool {
         let n = self.data.umas.len();

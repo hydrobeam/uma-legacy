@@ -26,7 +26,8 @@ The affinity core and loop search's modules:
 | `src/deck/loop_search/bands.rs` | Loop bands, schedules, certification and solved passes |
 | `src/deck/loop_search/report.rs` | Reported picks, JSON and diagnostic summaries |
 
-The `kept` module is `career/plan/kept.rs`: cached career plans and searches between planner jobs.
+The `kept` module is `career/plan/kept.rs`: cached career plans and searches. `career/state.rs` owns the worker
+record (`KeptState`) and its saved-state format.
 
 Searches parent loops (four-uma loops and three-uma rotations) and support decks for landing target skills in
 Independent Training, reports each uma's race schedule, and plans careers to a looped parent (`/career`). Its
@@ -282,8 +283,8 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   passes. `Multi` holds the job inputs, skyline classes and clusters, fixed ceilings and ranked pool. Cache-filling
   phases take `&Multi` and `&mut LoopSearchState`: the latter holds the two chance-grid tables, per-uma and shared
   exact results, schedules, two cluster scratch buffers and `Tally`. Scoring takes `&mut Tally`, cluster scans take
-  their buffer by `&mut`, and reporting reads `&Tally`. The borrowed `DeckSpace` still owns its interior caches and
-  node counter, including the state-bound configuration cache shared with career searches.
+  their buffer by `&mut`, and reporting reads `&Tally`. `LoopSearchState` also owns the job's `StateBoundMemo`, passed
+  mutably through deck enumeration. `DeckSpace` retains its other interior caches and node counter.
 - **Per-uma tables.** X(u, i) = the best exact value of trainee u over every legal deck at grid chance i (64 points); V rises with q, so a lineage at chance q is bounded by X at the next grid point up. Cells are computed lazily: a loop's ceiling uses each cell's exact value when known, else the lowest known value at a higher grid point, else ρ times the product ceiling; while the ceiling beats the k-th best, the loosest term is refined (first at the uma's highest grid point, then halfway down).
 - **Loops.** Structures of both sizes are generated in bands of a separable bound, the mean of the members' best product values M_u at their highest chances (a member heads 3 of 12 lineages in a loop, 1 of 3 in a rotation, so the product ceiling is at most the golds' factor times that mean; bands are kept in four-member sum units, a rotation's sum s counting as 4s/3); a structure is solved (schedules, then exact values) only when its exact ceiling at the pairwise-ceiling chances, then at its own schedule's chances, can still beat the k-th best exact value; the search stops when no ceiling (times ρ for the ungenerated ones) can.
 - **Shared deck** (`per_uma` false): a loop's value is the best exact sum over its lineages (12 or 3) among decks legal for all its members, divided by their number; ceilings are the lower of the per-uma tables and ρ times the best single skyline deck's product value over its lineages. `top_decks` counts distinct decks, each with its best loop; per loop, every deck at or above the k-th best distinct deck so far is kept.
@@ -336,7 +337,7 @@ sharing the first job's skill and card files. A job's fully checked decks are ke
 searches; `setup_fp` excludes the pool, trainee and parent filters, result counts and page request flags. The
 simulator's seed search disables these kept proofs. Timings and work counts depend on reuse.
 The page runs a career as two jobs: the search, then the same job with `next`, which reuses the
-search the worker keeps (`LAST_SOLVE`, the last three, keyed by the whole job without `next` and `no_reports`) together with what its
+search the worker keeps (`KeptState::searches`, the last three, keyed by the whole job without `next` and `no_reports`) together with what its
 product searches proved (`SearchState::ruled` as the search left it). `tests/plan_state.rs` compares separate
 search/plan jobs with a combined job. The product-search proofs go no further than their own search: `certified` takes a
 proxy career a proof certifies in place of an exact search, which may name another pair or deck of equal value, so
@@ -355,7 +356,7 @@ proofs from other pools could change an output.
 | `compare` | marks the page's veteran-analysis jobs (the best career with her fixed as a parent, and the plan of the pool with her added); echoed as `compare: true` in the output, changes nothing else | `false` |
 | `no_reports` | leaves out `results` (the main search's career reports and the first one's schedule search): the page's plan-only jobs read `next` alone; out of the setup fingerprint and the kept main search's key, so it changes nothing else | `false` |
 | `roll` | `{job, stars}`: a roll of a plan, answered beside this job's own answer as `roll` (the plan job `job` run after this one with `next.roll` = `stars`, its `next.roll`; below). (The page's Reroll now sends the plan job with `next.roll` alone first, so the saving shows at once, then its search) | none |
-| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`LAST_SOLVE` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`ROLLS`, *Next career*: a reload's first roll plans nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
+| `cmd: "state_out"` / `cmd: "state_in"` | the worker's kept work across page loads: `state_out` returns `{ok, state}`, the kept plans (each uma's best career per pool, as above), the kept proofs (fully checked decks per setup and deck class), the kept main searches (`KeptState::searches` with their product proofs, so a reload's first run searches nothing again) and the plans' roll states (`KeptState::rolls`, *Next career*: a reload's first roll plans nothing again), every float as its bit pattern in hex; `state_in` with that `state` puts them back (all or nothing: a state that does not parse, or of another version, is refused with `error`; so is one with a stored count above 1024 (`STATE_MAX_N`; a count is at most the umas in the data), an index past its list, a NaN, a chance outside [0, 1], a deck of more than six cards or a roll state whose vectors do not fit together or exceed the plan's 12 targets, 10 uncertain. Stored decks and careers are checked again where they meet a setup (`CareerSetup::seen_fits`, `solved_fits`): one naming a deck entry, trainee or veteran the setup does not have is not used there). The career page stores it in IndexedDB keyed by the solver's and data's fingerprints, after each plan, and restores it before a new worker's first job. Natively: `LOOPOPT_STATE_IN` / `LOOPOPT_STATE_OUT` (files) around a career run | none |
 
 #### Model per career
 
@@ -368,14 +369,16 @@ replaced by 1 − (1 − e)(1 − q_k) and the deck search runs unchanged at q =
 same for every deck and multiplies P(all) (`JointExt` applies it per target for P(all but one) and the per-target
 chances, which are exact marginals of the joint model). Tested against the loop model by `career_fold_and_scale`.
 
-`run_career` builds `Model` once; `CareerSetup` borrows it read-only. `Model::ews` always holds the own-event chances.
+`run_career_in` builds `Model` once; `CareerSetup` borrows it read-only. `Model::ews` always holds the own-event chances.
 A job's `Env` owns four records, split by who changes what. `CareerSetup` (data, model, targets, deck space, odds
 ceilings, outfit coverage, deck classes, borrowing rule) is built once by `career_setup`, which also restores the proofs
 earlier jobs kept, and is only read after it (its methods take `&self`). `SearchState` is what a search changes: the
 folded buffers, work and budget, exact scorings, seen decks, product proofs, the pruning floor. `DeckSearchAudit` holds
 what the deck searches certified (certificates, band overflows, cap ratios and breaches, cap-free counters, the decks
-that set the ratios); `DeckSearchMemo` the deck and corner memos kept between jobs. A method takes the records it
-changes as `&mut` beside the setup, so the cap-free check beside a search saves and restores the audit as one value.
+that set the ratios); `DeckSearchMemo` owns the deck and corner memos kept between jobs, plus `StateBoundMemo` for
+this job alone. State-bound configurations are keyed by the fixed deck space's entry set and configuration; enumeration
+borrows that memo mutably beside `&DeckSpace`. A method takes the records it changes as `&mut` beside the setup,
+so the cap-free check beside a search saves and restores the audit as one value.
 `SearchState::folded_events` owns one reusable outfit/target buffer per trainee; `set_ews` refills it in place for each
 lineage or corner. Exact scoring and its bounds read the chosen chances through `JointQuery::event_chances`;
 enumeration borrows `DeckChances` (the model plus the selected event-chance table). Loop searches select the
@@ -564,8 +567,15 @@ next fully looped parent, any uma: a fully looped veteran you have is a real ful
 places and pool takes them as they are (no search: a reload, an edit undone); a plan of the same setup and places whose
 pool is a kept one plus one veteran at the end (Compare, then Add) takes the better of the kept best and a search with
 her fixed, whose bar starts at the kept value (`SearchState::floor`). `best_deck`'s results (with their certificates, band overflows, work counts
-and per-class ratios) and the corner tables are also kept between jobs of one setup and trainee order (`DECK_KEEP`), subject to memo keys and capacity limits. The kept plans, proofs, main searches and roll states survive a page reload through `cmd: "state_out"` /
+and per-class ratios) and the corner tables are also kept between jobs of one setup and trainee order (`KeptState::decks`), subject to memo keys and capacity limits. The kept plans, proofs, main searches and roll states survive a page reload through `cmd: "state_out"` /
 `"state_in"` (fields table above).
+
+The worker owns one `KeptState` (plans, proofs, main searches, rolls and deck memos). Native and wasm entry points
+borrow it from one thread-local; `run_career_in`, planning and nested simulator jobs pass `&mut KeptState` downward.
+`state_out` reads `&KeptState`; `state_in` validates everything before replacing its serialized fields through `&mut`,
+leaving process-local deck memos intact. The JSON format is unchanged. `run_career_in` explicitly returns the deck
+and corner memos to kept state after every completed job, including early answers; `Env` has no publishing destructor.
+State-bound configurations expire with the job, never enter kept state, and are not serialized.
 
 #### Work budget
 
@@ -618,13 +628,14 @@ model's); the loop planner coordinates schedules across members, this does not.
 
 `index`: each career is the page's pick for the pool as it stands. The simulator runs the plan job the page sends
 (`webapp/src/career.js`: the job with the pool as `legacies`, no places, `top` 6, `per_trainee` false, `next`,
-`no_reports`; the job's `trainees` kept) through `run_career` in process, and runs `next.choice` (its exact P(all) and
+`no_reports`; the job's `trainees` kept) through `run_career_in` in process, and runs `next.choice` (its exact P(all) and
 landed-set chances from the report) until the pool changes; a pruned veteran (as for `greedy`) leaves the pool, and so
 the pick, as it was. Each step's pool is the last one plus one veteran at the end, so each plan takes the kept plan of
 the step before (*Kept plans*: the better of each uma's kept best and a search with her fixed) instead of searching
 every uma afresh; the main search runs again each step. Kept state and determinism: the plan jobs read and leave the
-kept plans, proofs (`SEEN`), main searches and `best_deck` memos (`DECK_KEEP`); each run starts with all four empty and
-the state from before the simulation is put back after it, so a run's careers depend on the job and the run index alone
+kept plans, proofs, main searches, roll states and `best_deck` memos in `KeptState`; each run swaps the whole record
+for an empty one and restores the state from before the simulation afterward, so a run's careers depend on the job
+and the run index alone
 (the same run alone or among others, in any order, gives the same decisions and sampled outcomes). No checks or audits. Per run it adds
 `index`: `plans` (plan jobs run), `plan_s` (each one's seconds), `roles` (the picks' `role` counts) and `best_odds` (picks
 that were the main search's best career, the `greedy_exact` pick up to ties). The tail assumes the final pick repeats forever; a plan can finish at a builder

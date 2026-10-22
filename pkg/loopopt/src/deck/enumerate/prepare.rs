@@ -158,6 +158,7 @@ impl DeckSpace<'_> {
     /// these tables and their lazy caches for both phases; none need copying or dynamic dispatch.
     pub(crate) fn search_with_bounds(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         clauses: &[SearchClause],
@@ -495,6 +496,7 @@ impl DeckSpace<'_> {
             c.set(v);
         });
         self.traverse_configurations(
+            state_bounds,
             chances,
             clauses,
             controls,

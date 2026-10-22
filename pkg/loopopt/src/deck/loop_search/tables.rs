@@ -389,11 +389,11 @@ impl<'data> Multi<'data> {
             reported_best: None,
         });
         if ent.certified_cap < 0.0 {
-            self.seed_exact(&mut state.tally, u, qs, &mut ent);
+            self.seed_exact(&mut state.state_bounds, &mut state.tally, u, qs, &mut ent);
             ent.certified_cap = 1.0;
         }
         if lv > ent.certified_cap {
-            self.raise_exact(&mut state.tally, u, qs, lv, &mut ent);
+            self.raise_exact(&mut state.state_bounds, &mut state.tally, u, qs, lv, &mut ent);
         }
         let b = Rc::new(self.best_of(u, qs, &ent));
         ent.reported_best = Some(Rc::clone(&b));
@@ -462,7 +462,14 @@ impl<'data> Multi<'data> {
     }
 
     /// seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
-    fn seed_exact(&self, tally: &mut Tally, u: UmaIndex, qs: &[f64], ent: &mut ExactCacheEntry) {
+    fn seed_exact(
+        &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
+        tally: &mut Tally,
+        u: UmaIndex,
+        qs: &[f64],
+        ent: &mut ExactCacheEntry,
+    ) {
         let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
@@ -487,6 +494,7 @@ impl<'data> Multi<'data> {
         }
         if ent.best.is_none() {
             let SearchOutcome { decks: r, .. } = space.search(
+                state_bounds,
                 &model.deck_chances(),
                 &[u],
                 &[uid],
@@ -505,7 +513,15 @@ impl<'data> Multi<'data> {
 
     /// Raises an entry's certified cap to lv: every legal deck that might beat its best under the cap is scored (after
     /// the proven bound); a deck search cut short or the budget running out certifies nothing and aborts the pass
-    fn raise_exact(&self, tally: &mut Tally, u: UmaIndex, qs: &[f64], lv: f64, ent: &mut ExactCacheEntry) {
+    fn raise_exact(
+        &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
+        tally: &mut Tally,
+        u: UmaIndex,
+        qs: &[f64],
+        lv: f64,
+        ent: &mut ExactCacheEntry,
+    ) {
         let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uid = self.inputs.data.umas[u].id;
         let mut complete = true;
@@ -517,6 +533,7 @@ impl<'data> Multi<'data> {
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
+            state_bounds,
             &model.deck_chances(),
             &[u],
             &[uid],

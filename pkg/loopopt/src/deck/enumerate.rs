@@ -109,6 +109,7 @@ impl DeckSpace<'_> {
     /// Reaching `max_decks` ends the band immediately and reports `OutputLimit`, even if that was the last deck.
     pub(crate) fn search(
         &self,
+        state_bounds: &mut crate::deck::state_bound::StateBoundMemo,
         chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
@@ -119,6 +120,6 @@ impl DeckSpace<'_> {
             Ok(setup) => setup,
             Err(outcome) => return outcome,
         };
-        self.search_with_bounds(chances, trainees, clauses, setup)
+        self.search_with_bounds(state_bounds, chances, trainees, clauses, setup)
     }
 }
