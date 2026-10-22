@@ -5,22 +5,22 @@ use crate::career::sim::{Cur, Sim};
 use crate::career::{Ancestor, Legacy, Lineage};
 
 // ---- random numbers ----
-const fn fmix(mut h: u32) -> u32 {
-    h ^= h >> 16;
-    h = h.wrapping_mul(0x85eb_ca6b);
-    h ^= h >> 13;
-    h = h.wrapping_mul(0xc2b2_ae35);
-    h ^= h >> 16;
-    h
+const fn fmix(mut hash: u32) -> u32 {
+    hash ^= hash >> 16;
+    hash = hash.wrapping_mul(0x85eb_ca6b);
+    hash ^= hash >> 13;
+    hash = hash.wrapping_mul(0xc2b2_ae35);
+    hash ^= hash >> 16;
+    hash
 }
 /// 53 bits in [0, 1) from the keys
 fn u01(keys: &[u32]) -> f64 {
-    let (mut a, mut b) = (0x9e37_79b9u32, 0x7f4a_7c15u32);
-    for &k in keys {
-        a = fmix((a ^ k).wrapping_add(0x632b_e5ab));
-        b = fmix(b.wrapping_add(k.wrapping_mul(0x27d4_eb2f)) ^ a);
+    let (mut high_bits, mut low_bits) = (0x9e37_79b9u32, 0x7f4a_7c15u32);
+    for &key in keys {
+        high_bits = fmix((high_bits ^ key).wrapping_add(0x632b_e5ab));
+        low_bits = fmix(low_bits.wrapping_add(key.wrapping_mul(0x27d4_eb2f)) ^ high_bits);
     }
-    (f64::from(a) * 2f64.powi(21) + f64::from(b >> 11)) / 2f64.powi(53)
+    (f64::from(high_bits) * 2f64.powi(21) + f64::from(low_bits >> 11)) / 2f64.powi(53)
 }
 const STREAM_SET: u32 = 1;
 const STREAM_STAR: u32 = 2;
@@ -31,63 +31,66 @@ pub(super) enum Keys {
     Main { seed: u32, run: u32 },
 }
 impl Keys {
-    pub(super) fn u(self, t: usize, stream: u32, item: usize) -> f64 {
-        match self {
-            Self::Main { seed, run } => u01(&[seed, run, t as u32, stream, item as u32]),
+    pub(super) fn uniform(&self, career_index: usize, stream: u32, item: usize) -> f64 {
+        match *self {
+            Self::Main { seed, run } => u01(&[seed, run, career_index as u32, stream, item as u32]),
         }
     }
 }
 
 impl Sim<'_, '_> {
-    /// the veteran career number t leaves when it fails: her landed set drawn from the failed sets, her stars from the
+    /// the veteran a failed career leaves: her landed set drawn from the failed sets, her stars from the
     /// rank's mix, her wins from her schedule's chances
-    pub(super) fn draw(&self, c: &Cur, legs: &[Legacy], keys: Keys, t: usize) -> Legacy {
-        let tot: f64 = self.failed_sets.iter().map(|&m| c.os[m]).sum();
-        let mut u = keys.u(t, STREAM_SET, 0) * tot;
-        let (mut mask, mut last) = (usize::MAX, usize::MAX);
-        for &m in &self.failed_sets {
-            if c.os[m] <= 0.0 {
+    pub(super) fn draw(&self, career: &Cur, legacies: &[Legacy], keys: Keys, career_index: usize) -> Legacy {
+        let failed_probability: f64 = self.failed_sets.iter().map(|&outcome_mask| career.os[outcome_mask]).sum();
+        let mut remaining_mass = keys.uniform(career_index, STREAM_SET, 0) * failed_probability;
+        let (mut landed_mask, mut last_failed_mask) = (usize::MAX, usize::MAX);
+        for &outcome_mask in &self.failed_sets {
+            if career.os[outcome_mask] <= 0.0 {
                 continue;
             }
-            last = m;
-            if u < c.os[m] {
-                mask = m;
+            last_failed_mask = outcome_mask;
+            if remaining_mass < career.os[outcome_mask] {
+                landed_mask = outcome_mask;
                 break;
             }
-            u -= c.os[m];
+            remaining_mass -= career.os[outcome_mask];
         }
-        if mask == usize::MAX {
-            mask = last;
+        if landed_mask == usize::MAX {
+            landed_mask = last_failed_mask;
         }
         let mut sparks = vec![];
-        for (i, tg) in self.env.skill_job.targets.iter().enumerate() {
-            if mask >> i & 1 == 0 {
+        for (i, target) in self.env.skill_job.targets.iter().enumerate() {
+            if landed_mask >> i & 1 == 0 {
                 continue;
             }
-            let x = keys.u(t, STREAM_STAR, i);
-            let s = if x < self.star_mix[0] {
+            let star_draw = keys.uniform(career_index, STREAM_STAR, i);
+            let stars = if star_draw < self.star_mix[0] {
                 1
-            } else if x < self.star_mix[0] + self.star_mix[1] {
+            } else if star_draw < self.star_mix[0] + self.star_mix[1] {
                 2
             } else {
                 3
             };
-            sparks.push((tg.group, s));
+            sparks.push((target.group, stars));
         }
-        let wins: Vec<usize> =
-            c.wp.iter()
-                .enumerate()
-                .filter(|&(ri, &p)| p > 0.0 && keys.u(t, STREAM_WIN, ri) < p)
-                .map(|(ri, _)| ri)
-                .collect();
-        let Lineage { trainee, first_parent, second_parent } = c.lineage;
+        let wins: Vec<usize> = career
+            .wp
+            .iter()
+            .enumerate()
+            .filter(|&(race_index, &win_chance)| {
+                win_chance > 0.0 && keys.uniform(career_index, STREAM_WIN, race_index) < win_chance
+            })
+            .map(|(race_index, _)| race_index)
+            .collect();
+        let Lineage { trainee, first_parent, second_parent } = career.lineage;
         Legacy {
             chara: self.d.umas[trainee].id,
             borrowed: false,
             sparks,
             wins,
             pinks: vec![],
-            parents: vec![Ancestor::of_legacy(&legs[first_parent]), Ancestor::of_legacy(&legs[second_parent])],
+            parents: vec![Ancestor::of_legacy(&legacies[first_parent]), Ancestor::of_legacy(&legacies[second_parent])],
             ..Default::default()
         }
     }

@@ -16,172 +16,196 @@ impl Sim<'_, '_> {
     /// deck search there: [kind, table value, exact value, (exact - table) / exact, landed-set total variation between
     /// the two decks, search finished].
     pub(super) fn audit_row(&mut self, pool: &Pool, lineage: Lineage, kind: AuditKind) -> Value {
-        let t = lineage.trainee;
-        let LineageChances { chances: q, carriers: nc, spark_scale: c } = self.env.lineage(pool, lineage);
-        let mut buf = vec![];
-        let (tv, di) = self.tval(t, &q, c, &mut buf);
-        let best = self.exact_best(t, &q, c);
-        let tvd = if di == usize::MAX {
+        let trainee = lineage.trainee;
+        let LineageChances { chances: inheritance_chances, carriers, spark_scale } = self.env.lineage(pool, lineage);
+        let mut interpolation_scratch = vec![];
+        let (table_value, deck_index) =
+            self.tval(trainee, &inheritance_chances, spark_scale, &mut interpolation_scratch);
+        let best = self.exact_best(trainee, &inheritance_chances, spark_scale);
+        let landed_distance = if deck_index == usize::MAX {
             1.0
         } else {
-            let cached = self.cache.decks[t][di].sel.clone();
-            self.landed_set_distance(t, &q, &nc, &cached, &best.deck)
+            let cached = self.cache.decks[trainee][deck_index].sel.clone();
+            self.landed_set_distance(trainee, &inheritance_chances, &carriers, &cached, &best.deck)
         };
-        let exv = best.value;
-        json!([kind as u8, tv, exv, if exv > 0.0 { (exv - tv) / exv } else { 0.0 }, tvd, best.finished])
+        best.audit_row(kind, table_value, landed_distance)
     }
-    /// total variation distance between the landed-set distributions of two decks of trainee t at chances q (carriers
-    /// nc)
+    /// Total variation distance between two decks' landed-set distributions at the same inheritance chances.
     fn landed_set_distance(
         &mut self,
-        t: crate::uma::UmaIndex,
-        q: &[f64],
-        nc: &[i32],
+        trainee: crate::uma::UmaIndex,
+        inheritance_chances: &[f64],
+        carriers: &[i32],
         first: &SelectedDeck,
         second: &SelectedDeck,
     ) -> f64 {
-        let mut sets = |sel: &SelectedDeck| {
-            self.env.set_trainee(t, q);
-            let exact = self.env.exact(t, sel, nc, ExactOptions { all_but_one: false, landed_sets: true });
+        let mut sets = |deck: &SelectedDeck| {
+            self.env.set_trainee(trainee, inheritance_chances);
+            let exact = self.env.exact(trainee, deck, carriers, ExactOptions { all_but_one: false, landed_sets: true });
             self.env.outcome_sets(exact.outfit, &exact.ext)
         };
-        let s1 = sets(first);
-        let s2 = sets(second);
-        0.5 * s1.iter().zip(&s2).map(|(x, y)| (x - y).abs()).sum::<f64>()
+        let first_sets = sets(first);
+        let second_sets = sets(second);
+        0.5 * first_sets.iter().zip(&second_sets).map(|(x, y)| (x - y).abs()).sum::<f64>()
     }
-    /// trainee t's exact best deck at chances q (a full deck search), its value with spark scale c
-    pub(super) fn exact_best(&mut self, t: crate::uma::UmaIndex, q: &[f64], c: f64) -> ExactDeck {
-        self.env.set_trainee(t, q);
+    /// The trainee's exact best deck at these inheritance chances (a full search), including the spark scale.
+    pub(super) fn exact_best(
+        &mut self,
+        trainee: crate::uma::UmaIndex,
+        inheritance_chances: &[f64],
+        spark_scale: f64,
+    ) -> ExactDeck {
+        self.env.set_trainee(trainee, inheritance_chances);
         self.env.work = 0;
-        let mut sc = 0;
-        let r = self.env.best_deck(t, c, 0.0, &[], &mut sc);
+        let mut scored_decks = 0;
+        let search_result = self.env.best_deck(trainee, spark_scale, 0.0, &[], &mut scored_decks);
         self.env.last_product_bound = None;
-        match r {
-            DeckRes::Done(v, deck, finished) => ExactDeck { value: c * v, deck, finished },
+        match search_result {
+            DeckRes::Done(value, deck, finished) => ExactDeck { value: spark_scale * value, deck, finished },
             _ => panic!("audit: no legal deck"),
         }
     }
     /// The greedy audit at a pick change: the exact career search's pick against the surrogate's, and audit rows for
     /// the pick and `audit_sample` random candidates with the newest veteran as a parent (ceiling at least 0.3 x B; every
     /// candidate of the pool at the start)
-    pub(super) fn audit_greedy(&mut self, st: &mut PathState, keys: Keys, t_career: usize) -> Value {
-        let cur = self.greedy_cur(st);
+    pub(super) fn audit_greedy(&mut self, state: &mut PathState, keys: Keys, career_index: usize) -> Value {
+        let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
-        let ex = sv.found.first().map(|f| {
+        let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
+        let exact_pick = search.found.first().map(|found| {
             (
-                f.value,
+                found.value,
                 format!(
                     "{}:{},{}",
-                    self.d.umas[f.trainee].id,
-                    f.first_parent.min(f.second_parent),
-                    f.first_parent.max(f.second_parent)
+                    self.d.umas[found.trainee].id,
+                    found.first_parent.min(found.second_parent),
+                    found.first_parent.max(found.second_parent)
                 ),
             )
         });
-        let sk = self.key(&cur);
-        let differs = ex.as_ref().is_none_or(|x| x.1 != sk);
-        let mut rows = vec![self.audit_row(&st.pool, cur.lineage, AuditKind::Pick)];
-        let bv = st.best.map_or(0.0, |p| p.value);
-        let n = st.legacies.len();
-        let vi = n - 1;
-        let all = t_career == 0;
-        let picked = cur.lineage.ordered();
-        let mut cs = vec![];
-        for &t in &trainees {
-            for a in 0..n {
-                for b in a + 1..n {
-                    if !all && b != vi {
+        let surrogate_key = self.key(&career);
+        let differs = exact_pick.as_ref().is_none_or(|(_, key)| *key != surrogate_key);
+        let mut rows = vec![self.audit_row(&state.pool, career.lineage, AuditKind::Pick)];
+        let best_value = state.best.map_or(0.0, |pick| pick.value);
+        let pool_size = state.legacies.len();
+        let newest_veteran = pool_size - 1;
+        let all = career_index == 0;
+        let picked = career.lineage.ordered();
+        let mut candidates = vec![];
+        for &trainee in &trainees {
+            for first_parent in 0..pool_size {
+                for second_parent in first_parent + 1..pool_size {
+                    if !all && second_parent != newest_veteran {
                         continue;
                     }
-                    let lineage = Lineage { trainee: t, first_parent: a, second_parent: b };
-                    if !self.legal(st, lineage) || lineage == picked {
+                    let lineage = Lineage { trainee, first_parent, second_parent };
+                    if !self.legal(state, lineage) || lineage == picked {
                         continue;
                     }
-                    if self.fast_ub(st, lineage) >= 0.3 * bv {
-                        cs.push(lineage);
+                    if self.fast_ub(state, lineage) >= 0.3 * best_value {
+                        candidates.push(lineage);
                     }
                 }
             }
         }
-        for i in 0..self.cfg.audit_sample.min(cs.len()) {
-            let j = i + (keys.u(t_career, 9, i) * (cs.len() - i) as f64) as usize;
-            let last = cs.len() - 1;
-            cs.swap(i, j.min(last));
-            rows.push(self.audit_row(&st.pool, cs[i], AuditKind::Random));
+        for i in 0..self.cfg.audit_sample.min(candidates.len()) {
+            let j = i + (keys.uniform(career_index, 9, i) * (candidates.len() - i) as f64) as usize;
+            let last = candidates.len() - 1;
+            candidates.swap(i, j.min(last));
+            rows.push(self.audit_row(&state.pool, candidates[i], AuditKind::Random));
         }
-        json!({"t": t_career, "pool": n, "sur": sk, "sur_p": cur.p_all, "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0),
-               "differs": differs, "proven": sv.proven, "rows": rows})
+        json!({"t": career_index, "pool": pool_size, "sur": surrogate_key, "sur_p": career.p_all, "ex": exact_pick.as_ref().map(|(_, key)| key.clone()), "ex_p": exact_pick.as_ref().map(|(value, _)| *value),
+               "differs": differs, "proven": search.proven, "rows": rows})
     }
     /// the surrogate against exact searches on this pool (the argmax career, and the newest veteran's lineages)
-    pub(super) fn check(&mut self, st: &mut PathState, all: bool) -> Value {
-        let cur = self.greedy_cur(st);
+    pub(super) fn check(&mut self, state: &mut PathState, all: bool) -> Value {
+        let career = self.greedy_cur(state);
         let trainees = self.trainees.clone();
-        let sv = self.env.solve(&st.pool, &[], &trainees, false, 1);
-        let ex = sv
-            .found
-            .first()
-            .map(|f| (f.value, format!("{}:{},{}", self.d.umas[f.trainee].id, f.first_parent, f.second_parent)));
-        let argmax = json!({"pool": st.legacies.len(), "sur": self.key(&cur), "sur_p": cur.p_all, "sur_val": st.best.map(|p| p.value),
-                            "ex": ex.as_ref().map(|x| x.1.clone()), "ex_p": ex.as_ref().map(|x| x.0), "proven": sv.proven});
+        let search = self.env.solve(&state.pool, &[], &trainees, false, 1);
+        let exact_pick = search.found.first().map(|found| {
+            (found.value, format!("{}:{},{}", self.d.umas[found.trainee].id, found.first_parent, found.second_parent))
+        });
+        let argmax = json!({"pool": state.legacies.len(), "sur": self.key(&career), "sur_p": career.p_all, "sur_val": state.best.map(|pick| pick.value),
+                            "ex": exact_pick.as_ref().map(|(_, key)| key.clone()), "ex_p": exact_pick.as_ref().map(|(value, _)| *value), "proven": search.proven});
         let mut rows = vec![];
         if self.cfg.check_lineages > 0 {
-            let bv = st.best.map_or(0.0, |p| p.value);
-            let n = st.legacies.len();
-            let vi = n - 1;
+            let best_value = state.best.map_or(0.0, |pick| pick.value);
+            let pool_size = state.legacies.len();
+            let newest_veteran = pool_size - 1;
             // (the legal careers with her, or every one, `gen_cands`' ceilings, at least check_frac x the best)
-            let mut cs: Vec<RankedCareer> = self
+            let mut candidates: Vec<RankedCareer> = self
                 .env
-                .gen_cands(&st.pool, &[], &trainees, |_, b| all || b == vi, RankedCareer::new)
+                .gen_cands(
+                    &state.pool,
+                    &[],
+                    &trainees,
+                    |_, second_parent| all || second_parent == newest_veteran,
+                    RankedCareer::new,
+                )
                 .into_iter()
-                .filter(|x| x.ceiling >= self.cfg.check_frac * bv)
+                .filter(|candidate| candidate.ceiling >= self.cfg.check_frac * best_value)
                 .collect();
-            cs.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
-            cs.truncate(self.cfg.check_lineages);
-            if let Some(p) = st.best
-                && !cs.iter().any(|x| x.lineage == p.lineage)
+            candidates.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
+            candidates.truncate(self.cfg.check_lineages);
+            if let Some(pick) = state.best
+                && !candidates.iter().any(|candidate| candidate.lineage == pick.lineage)
             {
-                let (q, c) = self.env.lineage_q(&st.pool, p.lineage);
-                cs.push(RankedCareer {
-                    ceiling: self.env.ceiling(p.lineage.trainee, &q, c).unwrap(),
-                    lineage: p.lineage,
+                let (inheritance_chances, spark_scale) = self.env.lineage_q(&state.pool, pick.lineage);
+                candidates.push(RankedCareer {
+                    ceiling: self.env.ceiling(pick.lineage.trainee, &inheritance_chances, spark_scale).unwrap(),
+                    lineage: pick.lineage,
                 });
             }
-            let mut buf = vec![];
-            for RankedCareer { ceiling: ub, lineage } in cs {
-                let t = lineage.trainee;
-                let LineageChances { chances: q, carriers: nc, spark_scale: c } = self.env.lineage(&st.pool, lineage);
-                let rb = self.cache.refs[t].iter().map(|r| self.env.ref_bound(t, &q, c, r)).fold(ub, f64::min);
-                let (tv, di) = self.tval(t, &q, c, &mut buf);
-                self.env.set_trainee(t, &q);
-                self.env.work = 0;
-                let mut sc = 0;
-                let r = self.env.best_deck(t, c, 0.0, &[], &mut sc);
-                self.env.last_product_bound = None;
-                let DeckRes::Done(v, sel, full) = r else { continue };
-                let exv = c * v;
-                // landed sets: the cached argmax deck against the exact best deck (total variation distance)
-                let tvd = if di == usize::MAX {
-                    1.0
-                } else {
-                    let cached = self.cache.decks[t][di].sel.clone();
-                    self.landed_set_distance(t, &q, &nc, &cached, &sel)
-                };
-                let pick = st.best.is_some_and(|p| p.lineage == lineage);
-                rows.push(json!([
-                    ub,
-                    rb,
-                    tv,
-                    exv,
-                    (exv - tv) / exv,
-                    rb <= tv * (1.0 + self.cfg.margin),
-                    tvd,
-                    full,
-                    pick
-                ]));
+            let mut interpolation_scratch = vec![];
+            for candidate in candidates {
+                if let Some(row) = self.check_lineage(state, candidate, &mut interpolation_scratch) {
+                    rows.push(row);
+                }
             }
         }
         json!({"argmax": argmax, "lineages": rows})
+    }
+    fn check_lineage(
+        &mut self,
+        state: &PathState,
+        candidate: RankedCareer,
+        interpolation_scratch: &mut Vec<f64>,
+    ) -> Option<Value> {
+        let RankedCareer { ceiling, lineage } = candidate;
+        let trainee = lineage.trainee;
+        let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
+            self.env.lineage(&state.pool, lineage);
+        let reference_bound = self.cache.refs[trainee]
+            .iter()
+            .map(|reference| self.env.ref_bound(trainee, &inheritance_chances, spark_scale, reference))
+            .fold(ceiling, f64::min);
+        let (table_value, deck_index) = self.tval(trainee, &inheritance_chances, spark_scale, interpolation_scratch);
+        self.env.set_trainee(trainee, &inheritance_chances);
+        self.env.work = 0;
+        let mut scored_decks = 0;
+        let search_result = self.env.best_deck(trainee, spark_scale, 0.0, &[], &mut scored_decks);
+        self.env.last_product_bound = None;
+        let DeckRes::Done(value, deck, finished) = search_result else { return None };
+        let exact_value = spark_scale * value;
+        // landed sets: the cached argmax deck against the exact best deck (total variation distance)
+        let landed_distance = if deck_index == usize::MAX {
+            1.0
+        } else {
+            let cached = self.cache.decks[trainee][deck_index].sel.clone();
+            self.landed_set_distance(trainee, &inheritance_chances, &carriers, &cached, &deck)
+        };
+        let pick = state.best.is_some_and(|pick| pick.lineage == lineage);
+        Some(json!([
+            ceiling,
+            reference_bound,
+            table_value,
+            exact_value,
+            (exact_value - table_value) / exact_value,
+            reference_bound <= table_value * (1.0 + self.cfg.margin),
+            landed_distance,
+            finished,
+            pick
+        ]))
     }
 }
 
@@ -192,7 +216,7 @@ pub(super) struct RankedCareer {
     pub(super) lineage: Lineage,
 }
 impl RankedCareer {
-    /// `gen_cands`' constructor: (ceiling, trainee position, trainee, a, b)
+    /// Constructor for `Env::gen_cands`; the unused argument is the trainee position.
     pub(super) const fn new(
         ceiling: f64,
         _: usize,
@@ -222,4 +246,18 @@ pub(super) struct ExactDeck {
     deck: SelectedDeck,
     /// The deck search finished (proven best).
     finished: bool,
+}
+
+impl ExactDeck {
+    fn audit_row(&self, kind: AuditKind, table_value: f64, landed_distance: f64) -> Value {
+        let exact_value = self.value;
+        json!([
+            kind as u8,
+            table_value,
+            exact_value,
+            if exact_value > 0.0 { (exact_value - table_value) / exact_value } else { 0.0 },
+            landed_distance,
+            self.finished
+        ])
+    }
 }
