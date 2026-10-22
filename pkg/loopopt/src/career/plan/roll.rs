@@ -59,8 +59,8 @@ impl KeptBase {
 }
 
 /// A plan's roll state (`next.roll`), kept per plan job (`roll_key`): the pick's last scoring (`Scored`) and the base it
-/// was scored against, the pick's career, and what its bound reads beyond them (`outcome_hi`): her own 8/8's trio sides as
-/// the plan's end has them (`pick_her`) and the main search's found-career anchors (`found_anchors`)
+/// was scored against, the pick's career, and what its bound reads beyond them (`outcome_hi`): her own full veteran's trio
+/// sides at the plan's end (`pick_her`) and the main search's found-career anchors (`found_anchors`)
 pub(crate) struct RollKeep {
     /// The plan job's roll key (`roll_key`).
     pub(crate) key: u64,
@@ -69,7 +69,7 @@ pub(crate) struct RollKeep {
     /// The pick's trainee and parents, and her deck.
     pub(crate) lineage: Lineage,
     pub(crate) deck: SelectedDeck,
-    /// Her own 8/8's trio sides at the plan's end (`pick_her`).
+    /// Her own full veteran's trio sides at the plan's end (`pick_her`).
     pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
     pub(crate) found_anchors: Vec<Option<FoundAnchor>>,
