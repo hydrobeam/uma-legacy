@@ -112,6 +112,8 @@ pub(crate) struct Uma {
     pub(crate) best_case_probs: Vec<f64>,
     /// Per turn: choice code 0 = rest, code o + 1 = option o (precomputed for `dp_exact`).
     pub(crate) choices: Vec<[RaceChoice; 6]>,
+    /// Joint pink-history tables for repeated races with uncertain aptitudes; empty for base aptitudes.
+    pub(crate) repeated_races: Vec<RepeatedRace>,
     /// Per turn: the allowed choice codes when nothing is forced, rest first then options in index order, and their
     /// count.
     pub(crate) choice_codes: Vec<([u8; 6], usize)>,
@@ -129,6 +131,26 @@ pub(crate) struct RaceChoice {
     pub(crate) win_chances: [f64; 7],
 }
 const REST_CHOICE: RaceChoice = RaceChoice { race: -1, rest: true, goal_bits: 0, win_chances: [0.0; 7] };
+
+/// Two offers of one race, exactly 24 turns apart, sharing a career's aptitude history.
+#[derive(Clone)]
+pub(crate) struct RepeatedRace {
+    pub(crate) race: usize,
+    pub(crate) classic_turn: usize,
+    pub(crate) classic_option: u8,
+    pub(crate) senior_option: u8,
+    /// E[pClassic * pSenior] by actual streak positions 1..=6 (goal shifts already applied).
+    pub(crate) both_wins: [[f64; 7]; 7],
+}
+
+impl RepeatedRace {
+    pub(crate) fn win_chance(&self, uma: &Uma, classic_streak: usize, senior_streak: usize) -> f64 {
+        let classic = &uma.choices[self.classic_turn][self.classic_option as usize + 1];
+        let senior = &uma.choices[self.classic_turn + 24][self.senior_option as usize + 1];
+        classic.win_chances[classic_streak] + senior.win_chances[senior_streak]
+            - self.both_wins[classic_streak][senior_streak]
+    }
+}
 
 pub(crate) struct Data {
     pub(crate) race_count: usize,
@@ -369,6 +391,7 @@ impl Uma {
             all_goals: (1u32 << multi_turn_goals) - 1,
             best_case_probs: miss.iter().map(|miss_chance| 1.0 - miss_chance).collect(),
             choices,
+            repeated_races: vec![],
             choice_codes,
             aptitudes: raw.aptitudes,
         }
@@ -408,14 +431,14 @@ pub(crate) fn dot(a: &[f64], b: &[f64]) -> f64 {
 }
 
 impl Data {
-    /// Per race, the chance she wins it at least once on `schedule`: 1 - prod(1 - p) over her attempts at it.
+    /// Per race, the chance she wins it at least once on `schedule`, averaging over shared pink histories.
     pub(crate) fn win_chances(&self, uma: &Uma, schedule: &Sched) -> Vec<f64> {
         let mut chances = vec![];
         self.win_chances_into(uma, schedule, &mut chances);
         chances
     }
 
-    /// `win_chances` into a reused buffer (same arithmetic, so bit-identical).
+    /// `win_chances` into a reused buffer. Certain aptitudes retain the original miss-product arithmetic.
     pub(crate) fn win_chances_into(&self, uma: &Uma, schedule: &Sched, chances: &mut Vec<f64>) {
         // per race, the chance she misses every attempt, then its complement
         chances.clear();
@@ -437,6 +460,24 @@ impl Data {
         }
         for chance in chances.iter_mut() {
             *chance = 1.0 - *chance;
+        }
+        if uma.repeated_races.is_empty() {
+            return;
+        }
+        let mut streaks = [0usize; NT];
+        let mut streak = 0;
+        for (turn, choice) in schedule.iter().enumerate() {
+            streak = if *choice == Choice::Rest { 0 } else { (streak + 1).min(6) };
+            streaks[turn] = streak;
+        }
+        for repeated in &uma.repeated_races {
+            let classic_turn = repeated.classic_turn;
+            let senior_turn = classic_turn + 24;
+            if schedule[classic_turn] == Choice::Opt(repeated.classic_option)
+                && schedule[senior_turn] == Choice::Opt(repeated.senior_option)
+            {
+                chances[repeated.race] = repeated.win_chance(uma, streaks[classic_turn], streaks[senior_turn]);
+            }
         }
     }
 }

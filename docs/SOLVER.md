@@ -120,7 +120,7 @@ Global data's penalties; it does not check the exported aptitude costs.
 - **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it. A goal race
   (an option of one of the career's goals) takes the penalty of position k − 1; it still counts toward the races after it.
 - **Turn** = 24·year + 2·(month−1) + half, with year 0 = Junior, 1 = Classic, 2 = Senior: turns 1–24, 25–48, 49–72; half 1 = Early, 2 = Late.
-- **Win probability per race:** P_a(r) = 1 − Π(1 − p) over uma a's attempts at race r. A race can be run in Classic and Senior; it still counts once.
+- **Win probability per race:** P_a(r) = E[1 − Π(1 − p)] over uma a's attempts at race r, with the expectation over her shared pink aptitude history. A race can be run in Classic and Senior; it still counts once. For two attempts this is E[p_C] + E[p_S] − E[p_C p_S]; race outcomes are independent conditional on the grades. With certain aptitudes it reduces to 1 − (1−p_C)(1−p_S).
 
 **Objective (expected affinity per 4 runs):**
 
@@ -152,7 +152,7 @@ equally. Test `score_matches_per_legacy_sum` checks the closed form against a di
 
 | Function | What it does | Exact? |
 |---|---|---|
-| `Uma::dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. `Data::best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
+| `Uma::dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so its reward is computed exactly: E[p_C] + E[p_S] − E[p_C p_S]. The adjusted uma precomputes E[p_C p_S] for each repeated race and streak-position pair by enumerating Classic grades, then Senior grades conditional on them, for distance and surface. The DP state is unchanged. Certain aptitudes retain 1 − (1−p_C)(1−p_S). `Data::best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
 | `LoopProblem::ascent` | Best-response dynamics: each member re-solves against the other members until none improves by more than 1e-9. This is a Nash point up to that tolerance, not necessarily the global optimum. | Local |
 | `LoopProblem::group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. | Local |
 | `optimize` (`LoopProblem::solve`) | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
@@ -476,7 +476,7 @@ it from each (`gold`, `white`, `land_gold`, `land_white`; land_gold + land_white
 the two inheritance rolls passes it on, 1/3/5% for 1/2/3 stars × (1 + affinity/100), capped at 1 per roll, and `carriers`; reported only: aptitudes
 do not enter the skill odds), `aptitudes` (her grades and pink spark, MODEL.md: `base` and `start` codes in `apt` order,
 `fire` = each legacy pink with its chance to fire at one April inspiration, `pink_gen` = per aptitude the chance her
-veteran's pink is that one; her schedule's win chances count them; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
+veteran's pink is that one; her schedule's win chances count them, combining repeated races over the shared grade history as above; the evaluator reuses these probabilities for hypothetical veterans and continuation scores; absent without aptitude data), `p_all`, `p_minus1`, `expected` (Σ p), `deck`; and `candidates`, `solved`,
 `bounded`, `complete`, `proven_top`, `work` (the main search's deck-search nodes and exact scorings, deterministic; 0
 when the worker kept the search from the job before). A scored deck whose exact / product ratio passes its class's
 cap (`EXACT_CAPS`, an assumption) has its deck search rerun cap-free (*Cap-free rerun* above); a proven rerun does
