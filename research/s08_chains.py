@@ -12,7 +12,7 @@ unknown. Decks with an unknown card or a non-pal R card are left out.
 
 Data. Every analysis runs on every run record, selected only by pal count
 where the analysis is by pal count:
-  - the fit of N (0-5 pals): a distribution-free fit (EM over P(N = 0..15), P(N >= 16)) against Binomial(21, 0.35),
+  - the fit of N (0-5 pals): a distribution-free fit (EM over P(N = 0..17), P(N >= 18)) against Binomial(21, 0.35),
     Binomial(15, 0.48), Poisson(7.1) and the binomial's profile over n (p re-fitted at each n), each by likelihood ratio
     (the thresholds used are in fit_findings); the same
     fit per scenario (scenarios with 30+ runs) against one N for all;
@@ -44,7 +44,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 import numpy as np
-from scipy.optimize import minimize, minimize_scalar
+from scipy.optimize import brentq, minimize, minimize_scalar
 from scipy.stats import chi2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -106,7 +106,10 @@ Pmf = Sequence[float] | np.ndarray
 
 SEC: str = "8"
 EPS: float = 0.02  # chance a fired link's marker hint does not show (the fits' allowance; allowance_claims measures it)
-KMAX: int = 16  # distribution-free fit: P(N = 0..15) and P(N >= 16)
+# Global web_cards.json has at most three links per chain card, and a deck has six cards.
+# Every path absorbs by sum(kind.last_link) <= 18; run_levels enforces that bound.
+# Cutting here keeps all distinguishable counts, without duplicate post-absorption columns.
+KMAX: int = 6 * 3  # distribution-free fit: P(N = 0..17) and P(N >= 18)
 ALL: set[int] = {0, 1, 2, 3, 4, 5}  # pal counts of decks with a chain card
 CHI1: float = 1.920729  # chi2(1) 95% / 2
 CANDIDATE: tuple[int, float] = (18, 0.405)  # the binomial proposed for N in place of (CHAIN_N, CHAIN_P)
@@ -202,10 +205,15 @@ def final_w(ck: tuple[Kind, ...], pmf: Pmf, rule: str = "slots") -> tuple[np.nda
     """the path states and each state's probability of being final under the event-count pmf"""
     S, L, A, P = paths(ck, rule)
     pm = np.asarray(pmf, float)
-    tail = np.concatenate([[1.0], 1.0 - np.cumsum(pm)])
+    tail = survival(pm)
     ok = len(pm) > L
     Lc = np.minimum(L, len(pm) - 1)
     return S, np.where(ok, P * np.where(A, tail[Lc], pm[Lc]), 0.0)
+
+
+def survival(pmf: Pmf) -> np.ndarray:
+    """P(N >= l), at each pmf index l; clip negative roundoff after the cumulative sum reaches one."""
+    return np.maximum(0.0, np.concatenate([[1.0], 1.0 - np.cumsum(pmf)[:-1]]))
 
 
 _reach: dict[tuple[Any, ...], dict[tuple[int, int], float]] = {}
@@ -225,16 +233,18 @@ def reach(kinds: Sequence[Kind], pmf: Pmf = BIN, rule: str = "slots") -> dict[tu
 def run_levels(
     kinds: Sequence[Kind], obs: Iterable[Obs], eps: float = EPS, rule: str = "slots"
 ) -> tuple[np.ndarray, np.ndarray]:
-    """the run's observations weighted over the chain process, by events taken: (A, B) arrays over levels 0..40,
+    """the run's observations weighted over the chain process, by events taken: (A, B) arrays over levels 0..KMAX,
     A for states that end there with N = l, B for absorbed states (N >= l)"""
+    if sum(k.last_link for k in kinds) > KMAX:
+        raise ValueError(f"chain process exceeds the absorption bound {KMAX}")
     ck, pos = canon(tuple(kinds))
     S, L, A, P = paths(ck, rule)
     w = P.copy()
     for ci, lk, seen in obs:
         fired = S[:, pos[ci]] >= lk
         w = w * np.where(fired, (1 - eps) if seen else eps, 0.0 if seen else 1.0)
-    a = np.bincount(L[~A], w[~A], minlength=41)[:41]
-    b = np.bincount(L[A], w[A], minlength=41)[:41]
+    a = np.bincount(L[~A], w[~A], minlength=KMAX + 1)
+    b = np.bincount(L[A], w[A], minlength=KMAX + 1)
     return a, b
 
 
@@ -245,12 +255,13 @@ def lump(v: Pmf) -> list[float]:
     return [*v, max(0.0, 1 - sum(v))]
 
 
-def lk_matrix(xs: Iterable[tuple[list[Kind], list[Obs]]]) -> np.ndarray:
-    """per run, P(observations | N = k) for k = 0..KMAX-1 and N >= KMAX (the distribution-free fit's design)"""
+def lk_matrix(xs: Iterable[tuple[list[Kind], list[Obs]]], eps: float = EPS, rule: str = "slots") -> np.ndarray:
+    """per run, P(observations | N = k), k < KMAX, and N >= KMAX. Every path is absorbed by KMAX,
+    so the last column is constant for all counts in the tail and needs no within-tail distribution."""
     out: list[list[float]] = []
     for kinds, obs in xs:
-        a, b = run_levels(kinds, obs)
-        row = [a[k] + b[: k + 1].sum() for k in range(KMAX)] + [b.sum() + a[KMAX:].sum()]
+        a, b = run_levels(kinds, obs, eps, rule)
+        row = [a[k] + b[: k + 1].sum() for k in range(KMAX)] + [b.sum()]
         out.append(row)
     return np.array(out)
 
@@ -269,6 +280,9 @@ def ll(pi: Pmf, M: np.ndarray) -> float:
 
 
 def mean_var(v: np.ndarray) -> tuple[float, float]:
+    """Moments of the indexed cells: for a lumped/free pmf these are of min(N, KMAX), not N.
+    The tail's internal moments are unidentifiable. Both capped moments bound their uncapped counterparts
+    from below, but their ratio does not determine whether N is under-dispersed."""
     k = np.arange(len(v))
     m = float((k * v).sum())
     return m, float((k * k * v).sum()) - m * m
@@ -513,10 +527,24 @@ def binom_profile(M: np.ndarray, ns: Iterable[int] = range(8, 41)) -> list[tuple
     return [(n, *best_binomial_p(M, n)) for n in ns]
 
 
+def binomial_moments(mean: float, variance: float) -> tuple[int, float]:
+    """Match the free fit's capped mean and closest capped variance over n = 10..40 (the held-out MLE grid).
+    Matching uncapped binomial moments to these cells would silently put the whole tail at KMAX."""
+    candidates = []
+    for n in range(10, 41):
+        if min(n, KMAX) < mean:
+            continue
+        p = brentq(lambda p, n=n: mean_var(np.asarray(lump(binom_pmf(n, p))))[0] - mean, 0.0, 1.0)
+        _, fitted_variance = mean_var(np.asarray(lump(binom_pmf(n, p))))
+        candidates.append((abs(fitted_variance - variance), n, p))
+    _, n, p = min(candidates)
+    return n, p
+
+
 def held_out(xs: list[Row], M: np.ndarray) -> dict[str, common.HeldOutComparison]:
     """5-fold cross-validation (common.fold by run id): each fold's runs are scored by forms fitted on the other four, the
-    free distribution, the binomial by likelihood (n 10..40, p re-fitted), the binomial by moments (n = mean^2 / (mean -
-    variance) of the free fit, rounded; p = mean / n), the Conway-Maxwell-Poisson and the Poisson (mean fitted), against
+    free distribution, the binomial by likelihood (n 10..40, p re-fitted), the binomial by capped moments
+    (binomial_moments), the Conway-Maxwell-Poisson and the Poisson (capped mean matched), against
     Binomial(21, 0.35) (nothing fitted). Per run held-out log-likelihoods; {form: (nats, SE, z)} from
     common.compare_held_out, positive when the form predicts unseen runs better than (21, 0.35)"""
     folds = np.array([common.fold(x.run["id"]) for x in xs])
@@ -530,15 +558,15 @@ def held_out(xs: list[Row], M: np.ndarray) -> dict[str, common.HeldOutComparison
         free = em(T)
         m, v = mean_var(free)
         bn, bp, _ = max(binom_profile(T, range(10, 41)), key=lambda x: x[2])
-        nm = round(m * m / (m - v))
-        pm = m / nm
+        nm, pm = binomial_moments(m, v)
+        poisson_mean = brentq(lambda lam, m=m: mean_var(np.asarray(lump(pois_pmf(lam))))[0] - m, 0.0, 100.0)
         _, lam, nu = cmp_ll(T)
         pmfs = {
             "free": list(free),
             "binomial by likelihood": lump(binom_pmf(bn, bp)),
             "binomial by moments": lump(binom_pmf(nm, pm)),
             "Conway-Maxwell-Poisson": lump(cmp_pmf(lam, nu)),
-            "Poisson": lump(pois_pmf(m)),
+            "Poisson": lump(pois_pmf(poisson_mean)),
             "base": lump(BIN),
         }
         for f, pmf in pmfs.items():
@@ -552,8 +580,8 @@ def binom_mle(xs: list[Row]) -> BinomialFit:
     A = np.array([a for a, _ in ab])
     B = np.array([b for _, b in ab])
     grid = [(n, k / 200) for n in range(6, 41) for k in range(40, 200)]
-    PM = np.array([binom_pmf(n, p, 41) for n, p in grid])
-    TL = np.hstack([np.ones((len(grid), 1)), 1 - np.cumsum(PM, 1)[:, :40]])
+    PM = np.array([binom_pmf(n, p, KMAX + 1) for n, p in grid])
+    TL = np.array([survival(pm) for pm in PM])
     V = A @ PM.T + B @ TL.T
     lls = np.where((V <= 0).any(0), -1e18, np.log(np.maximum(V, 1e-300)).sum(0))
     return BinomialFit(*max((float(v), n, p) for v, (n, p) in zip(lls, grid)))
@@ -623,8 +651,8 @@ def fit_claims() -> list[common.Value | common.Finding]:
     l_cmp = cmp_ll(M)[0]
     out: list[common.Value | common.Finding] = [
         V("fit of N: runs", len(xs), note=note),
-        V("distribution-free: mean", mn),
-        V("distribution-free: variance", vr),
+        V("distribution-free: mean", mn, note=f"E[min(N, {KMAX})]; uncapped moments are not identified"),
+        V("distribution-free: variance", vr, note=f"Var(min(N, {KMAX}))"),
         V("Binomial(21, 0.35): nats behind distribution-free", llp - l21, note=f"LL {l21:.1f} vs {llp:.1f}"),
         V("Binomial(15, 0.48): nats behind distribution-free", llp - l15),
         V("Poisson(7.1): nats behind distribution-free", llp - lp),
@@ -637,7 +665,7 @@ def fit_claims() -> list[common.Value | common.Finding]:
         V("binomial n: 95% profile interval high", max(n_ for n_, _, l_ in prof if lb - l_ <= CHI1)),
         V("binomial n = 21, p re-fitted: nats below the best n", lb - {n_: l_ for n_, _, l_ in prof}[21]),
         V("binomial mean n p at the best n", bn * bp),
-        V("distribution-free: variance / mean", vr / mn),
+        V("distribution-free: variance / mean", vr / mn, note=f"for min(N, {KMAX}), not N"),
         *[
             V(f"held out: {form} over Binomial(21, 0.35): {w}", x)
             for form, t_ in ho.items()
@@ -659,7 +687,7 @@ def fit_claims() -> list[common.Value | common.Finding]:
             V(
                 f"per scenario: mean, {common.SCEN[sc]}",
                 mean_var(sep[sc])[0] if sc in sep else None,
-                note=f"{len(by[sc])} runs",
+                note=f"{len(by[sc])} runs; E[min(N, {KMAX})]",
             )
         )
     out.append(V("per scenario: log-likelihood gain", lls - llp))
@@ -696,8 +724,8 @@ def property_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.
         free_gain = ll(em(M[g]), M[g]) + ll(em(M[~g]), M[~g]) - llp
         out += [
             V(f"{nm}: runs", int(g.sum())),
-            V(f"{nm}: mean of N", mean_var(em(M[g]))[0]),
-            V(f"{nm}: mean of N, the other runs", mean_var(em(M[~g]))[0]),
+            V(f"{nm}: mean of N", mean_var(em(M[g]))[0], note=f"E[min(N, {KMAX})]"),
+            V(f"{nm}: mean of N, the other runs", mean_var(em(M[~g]))[0], note=f"E[min(N, {KMAX})]"),
             V(f"{nm}: separate free fits, gain", free_gain, note=f"{KMAX} parameters"),
             V(f"{nm}: separate free fits, LR p", float(chi2.sf(2 * free_gain, KMAX))),
             V(f"{nm}: p at n = {CN}", p_in),
@@ -975,8 +1003,8 @@ def best_p_at_allowance(xs: list[Row], eps: float) -> float:
     B = np.array([b for _, b in ab])
     res: list[tuple[float, float]] = []
     for p_ in [i / 1000 for i in range(300, 401, 5)]:
-        pm = np.array(binom_pmf(CN, p_, 41))
-        v = A @ pm + B @ np.concatenate([[1.0], 1 - np.cumsum(pm)[:40]])
+        pm = np.array(binom_pmf(CN, p_, KMAX + 1))
+        v = A @ pm + B @ survival(pm)
         if (v > 0).all():
             res.append((float(np.log(v).sum()), p_))
     return max(res)[1]
@@ -1143,8 +1171,8 @@ def activation_claims() -> list[common.Value | common.Finding]:
     xs = dataset(ALL)
 
     def LL(p_: float, a: float) -> float:
-        pm = np.array(binom_pmf(CN, p_, 41))
-        tl = np.concatenate([[1.0], 1 - np.cumsum(pm)[:40]])
+        pm = np.array(binom_pmf(CN, p_, KMAX + 1))
+        tl = survival(pm)
         t = 0.0
         for x in xs:
             A, B = run_levels(with_activation(x.kinds, a), x.obs)
@@ -1253,7 +1281,7 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
     )
     fs.append(
         F(
-            "N is under-dispersed (the free fit's variance / mean below 1, so no Poisson or over-dispersed family fits), and "
+            f"The capped count min(N, {KMAX}) has variance / mean below 1 (uncapped dispersion is not identified), and "
             "of the two under-dispersed two-parameter families the binomial fits better: the best binomial's log-likelihood "
             "is above the Conway-Maxwell-Poisson fit's (same parameter count, compared directly)",
             vm < 1 and bc > 0,
