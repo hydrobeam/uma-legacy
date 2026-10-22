@@ -7,7 +7,7 @@ use crate::career::plan::CandidateIndex;
 pub(crate) struct ScoreBase<'base> {
     /// The stage-1 candidates, as umas.
     pub(crate) candidates: &'base [crate::uma::UmaIndex],
-    /// Each candidate's stage-1 step in expected careers (c1; 0: her 8/8 exists).
+    /// Each candidate's stage-1 step in expected careers (c1; 0: her full veteran exists).
     pub(crate) step_costs: &'base [f64],
     /// Each candidate's stages 2-3 in expected careers (m23).
     pub(crate) later_stage_costs: &'base [f64],
@@ -17,20 +17,20 @@ pub(crate) struct ScoreBase<'base> {
     pub(crate) current_odds: &'base [f64],
     /// Each candidate's fitted continuation; a candidate past its end has none (`cost` grinds at p).
     pub(crate) continuations: &'base [Cont],
-    /// The trios (A, B as candidate indices, C's step, A and B from a real 8/8 of hers): V = min over them of A's
-    /// step + B's step + C's step, a side from a real 8/8 costing 0, else c1; empty: min over a of c1[a] + m23[a]
+    /// The trios (A, B as candidate indices, C's step, A and B from a real full veteran of hers): V = min over them of A's
+    /// step + B's step + C's step, a side from a real full veteran costing 0, else c1; empty: min over a of c1[a] + m23[a]
     pub(crate) trios: &'base [Trio],
-    /// Per candidate, the trios' sides: her real 8/8s and the 8/8 her best career now would leave; with
-    /// `finisher_umas`, what `her_trios` pairs a new real 8/8 with. Empty: none
+    /// Per candidate, the trios' sides: her real full veterans and the full veteran her best career now would leave; with
+    /// `finisher_umas`, what `her_trios` pairs a new real full veteran with. Empty: none
     pub(crate) trio_sides: &'base [Vec<TrioSideVeteran>],
     /// The umas a trio's C may be.
     pub(crate) finisher_umas: &'base [crate::uma::UmaIndex],
 }
 
-/// A trio side's veteran as `her_trios` reads it: a real 8/8 of the candidate's, or the fresh 8/8 her best career now
+/// A trio side's veteran as `her_trios` reads it: a real full veteran of the candidate's, or the fresh full veteran her best career now
 /// would leave.
 pub(crate) struct TrioSideVeteran {
-    /// A real 8/8 veteran already in the pool (a side that costs no step).
+    /// A real full veteran already in the pool (a side that costs no step).
     pub(crate) uses_existing: bool,
     pub(crate) legacy: Legacy,
 }
@@ -54,7 +54,7 @@ pub(crate) enum Want {
     Touch,
 }
 
-/// (A, B, C's step, A from a real 8/8, B from a real 8/8)
+/// (A, B, C's step, A from a real full veteran, B from a real full veteran)
 #[derive(Clone, Copy)]
 pub(crate) struct Trio {
     /// First side's position in the candidate table.
@@ -299,7 +299,7 @@ pub(crate) struct ContStep {
 /// What `Cont::plan` chooses at odds p: build `builds` successes, then grind.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BuildPlan {
-    /// Expected careers to her 8/8.
+    /// Expected careers to her full veteran.
     pub(crate) expected_careers: f64,
     /// Successes built before grinding.
     pub(crate) builds: i32,

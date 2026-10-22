@@ -1739,7 +1739,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 .rb .setlist { grid-template-columns: max-content; }
 .rb .lptgt .panel > .targets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* career setup: Target skills shorter: the add
-   box in its title row beside Load 8/8 example, the tiles three to a row from 1240 px */
+   box in its title row beside Presets, the tiles three to a row from 1240 px */
 /* the settings spread down the panel's height (Target skills sets it) */
 .rb .rbbar { grid-template-areas: "hdr enh tgt" "list enh tgt"; grid-template-rows: auto 1fr; }
 .rb .setlist { align-content: space-evenly; align-self: stretch; padding-bottom: 6px; }
@@ -1826,7 +1826,7 @@ button.swd .swmore { color: var(--accent); font-weight: 600; }
 /* the career setup's rows fit the screen (they were max-content wide: 32 px past a 360 px screen) */
 @media (max-width: 640px) { .rb .setlist { grid-template-columns: minmax(0, 1fr); } }
 .game .setlist .scenbtn { max-width: 100%; }   /* (its 210 px reached past a 360 px screen's panel) */
-/* career Target skills on a phone: the add box on its own row (beside the title and Load 8/8 example it was squeezed
+/* career Target skills on a phone: the add box on its own row (beside the title and Presets it was squeezed
    to a 20 px sliver) */
 @media (max-width: 620px) {
   .rb .lptgt .panel { grid-template-columns: minmax(0, 1fr) max-content; grid-template-areas: "h btn" "add add" "list list"; }
