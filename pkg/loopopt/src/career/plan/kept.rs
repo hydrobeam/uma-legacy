@@ -267,11 +267,11 @@ struct CacheVersion {
 fn cache_version(s: &Sim, trainees: Option<&[UmaIndex]>) -> CacheVersion {
     let (decks, proofs) = match trainees {
         Some(trainees) => trainees.iter().fold((0, 0), |(decks, proofs), &trainee| {
-            (decks + s.cache.decks[trainee].len(), proofs + s.cache.refs[trainee].len())
+            (decks + s.evaluator.cache.decks[trainee].len(), proofs + s.evaluator.cache.refs[trainee].len())
         }),
-        None => (s.cache.deck_count(), s.cache.refs.iter().map(std::vec::Vec::len).sum()),
+        None => (s.evaluator.cache.deck_count(), s.evaluator.cache.refs.iter().map(std::vec::Vec::len).sum()),
     };
-    CacheVersion { stamp: CacheStamp { decks, proofs }, deck_searches: s.n.searches }
+    CacheVersion { stamp: CacheStamp { decks, proofs }, deck_searches: s.evaluator.n.searches }
 }
 
 /// A scoring with its stamp: the cache it read (`cache_version` over `trainees`, those whose decks it reads) when it

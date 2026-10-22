@@ -1,12 +1,13 @@
 //! Career selection for greedy, loop, trace, exact and page-index policies, with rotation and index-run records.
 //! Draws, path execution and exact audit comparisons live in the sibling modules.
 
+use crate::career::evaluator::{Cur, DeckRequest, SurrogatePick};
 use crate::career::plan;
 use crate::career::plan::ScoringContext;
 use crate::career::pool::Pool;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
-use crate::career::sim::{Cur, DeckRequest, PAGE_TOP, Sim, SurrogatePick, leg_json};
+use crate::career::sim::{PAGE_TOP, Sim, leg_json};
 use crate::career::{Career, Lineage, run_career};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -96,17 +97,12 @@ impl Rotation {
 }
 
 impl Sim<'_, '_> {
-    /// a cached pick's career (her cached deck cloned out of the cache)
-    fn pick_cur(&mut self, pool: &Pool, pick: SurrogatePick, rotation: bool) -> Cur {
-        let deck = self.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
-        self.make_cur(pool, Career { lineage: pick.lineage, deck: &deck }, rotation)
-    }
     pub(super) fn greedy_cur(&mut self, state: &mut PathState) -> Rc<Cur> {
         if let Some(career) = &state.current {
             return Rc::clone(career);
         }
         let pick = state.best.expect("no legal career");
-        let career = Rc::new(self.pick_cur(&state.pool, pick, false));
+        let career = Rc::new(self.evaluator.cached_cur(self.env, &state.pool, pick, false));
         state.current = Some(Rc::clone(&career));
         career
     }
@@ -128,7 +124,7 @@ impl Sim<'_, '_> {
                 let Some(builder) = self.trace_builder(&state, finisher_odds, &mut interpolation_scratch) else {
                     break;
                 };
-                let career = self.pick_cur(&state.pool, builder.pick, false);
+                let career = self.evaluator.cached_cur(self.env, &state.pool, builder.pick, false);
                 let veteran = self.draw(&career, &state.legacies, keys, career_index);
                 self.add_veteran(&mut state, veteran, true, &mut interpolation_scratch);
                 let after = state.member_best[0].map_or(finisher_odds, |pick| pick.value);
@@ -177,7 +173,8 @@ impl Sim<'_, '_> {
         let mut best_builder: Option<BuilderCareer> = None;
         for member_index in 1..self.members.len() {
             let Some(pick) = state.member_best[member_index] else { continue };
-            let deck = self.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
+            // (cloned: the scoring borrows the whole simulator and may add decks to her cache)
+            let deck = self.evaluator.cache.decks[pick.lineage.trainee][pick.deck].sel.clone();
             let plan::score::CareerScore { lift_stats, .. } = plan::score::score_career_of(
                 self,
                 &scoring,
@@ -219,8 +216,10 @@ impl Sim<'_, '_> {
             let (inheritance_chances, spark_scale) = self.env.lineage_q(&state.pool, lineage);
             let ceiling = self.env.ceiling(trainee, &inheritance_chances, spark_scale).unwrap_or(f64::INFINITY);
             let mut interpolation_scratch = vec![];
-            let (_, deck_index) = self
+            let (value, deck) = self
+                .evaluator
                 .deck_for(
+                    self.env,
                     DeckRequest {
                         trainee,
                         inheritance_chances: &inheritance_chances,
@@ -231,14 +230,13 @@ impl Sim<'_, '_> {
                     &mut interpolation_scratch,
                 )
                 .expect("loop career without a deck");
-            let deck = self.cache.decks[trainee][deck_index].sel.clone();
-            self.make_cur(&state.pool, Career { lineage, deck: &deck }, true)
+            self.evaluator.cached_cur(self.env, &state.pool, SurrogatePick { value, lineage, deck }, true)
         } else {
             self.env.use_seen = true;
             let search = self.env.solve(&state.pool, &parents, &[trainee], false, 1);
             let found = search.found.first().expect("loop bootstrap: no legal career for a member");
-            self.cache.absorb(self.env, &search.refs);
-            self.make_cur(&state.pool, Career { lineage: found.lineage(), deck: &found.deck }, true)
+            self.evaluator.cache.absorb(self.env, &search.refs);
+            self.evaluator.make_cur(self.env, &state.pool, Career { lineage: found.lineage(), deck: &found.deck }, true)
         };
         let career = Rc::new(career);
         state.current = Some(Rc::clone(&career));
@@ -266,7 +264,9 @@ impl Sim<'_, '_> {
                 let ceiling =
                     simulator.env.ceiling(trainee, &inheritance_chances, spark_scale).unwrap_or(f64::INFINITY);
                 total += simulator
+                    .evaluator
                     .deck_for(
+                        simulator.env,
                         DeckRequest {
                             trainee,
                             inheritance_chances: &inheritance_chances,
@@ -308,7 +308,7 @@ impl Sim<'_, '_> {
         let outcome_sets: Vec<f64> =
             pick["outcome_sets"].as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
         let lineage = Lineage { trainee, first_parent: parent_a, second_parent: parent_b };
-        let win_probs = self.wins(pool, lineage);
+        let win_probs = self.evaluator.wins(self.env, pool, lineage);
         Cur { lineage, p_all: pick["p_all"].as_f64().unwrap(), os: outcome_sets, wp: win_probs, rotation: false }
     }
     /// the in-process career search's pick (greedy_exact: the best career by P(all))
