@@ -155,6 +155,11 @@
   "13.3_acquired_prioritised_ratio_95_pct_low": 0.9927978957725173,
   "13.3_acquired_prioritised_rows": 3556.0,
   "13.3_acquired_shortfall_share_on_non_prioritised_rows": 0.8545926179695014,
+  "13.3_acquired_unknown_priority_obs_per_pred": 0.9958539030774979,
+  "13.3_acquired_unknown_priority_predicted": 0.48281567467823533,
+  "13.3_acquired_unknown_priority_ratio_95_pct_high": 1.0042271635904745,
+  "13.3_acquired_unknown_priority_ratio_95_pct_low": 0.9874806425645214,
+  "13.3_acquired_unknown_priority_rows": 29292.0,
   "13.4_landing_ratio": 0.9842772753980035,
   "13.acquisitions_from_unmodelled_events": 299.0,
   "13.acquisitions_from_unmodelled_events_share_of_rows": 0.00801888057499933,
@@ -164,8 +169,8 @@
   "13.cute_cute_mayano_top_gun_gt_nimble_navigator_ratio_95_pct_low": 0.3964238852120059,
   "13.cute_cute_mayano_top_gun_gt_nimble_navigator_rows": 77.0,
   "13.deck_shortfall_in_buckets_predicted_0_6_and_above": 0.913619472141693,
-  "13.findings_holding": 22,
-  "13.findings_total": 23,
+  "13.findings_holding": 23,
+  "13.findings_total": 24,
   "13.gold_acquisition_it_s_on": 0.4563432968269887,
   "13.gold_acquisition_it_s_on_95_pct_high": 0.6209180189604464,
   "13.gold_acquisition_it_s_on_95_pct_low": 0.3275730337051209,
@@ -244,6 +249,26 @@
   "13.ramp_up_deck_hint_95_pct_high": 0.8631542428159737,
   "13.ramp_up_deck_hint_95_pct_low": 0.783255377984105,
   "13.ramp_up_inheritance": 1.0085217235246706,
+  "13.reliability_acquired_0_00_0_20_mean_predicted": 0.15424540246326718,
+  "13.reliability_acquired_0_00_0_20_observed": 0.16212043232115286,
+  "13.reliability_acquired_0_00_0_20_rows": 1943.0,
+  "13.reliability_acquired_0_20_0_40_mean_predicted": 0.30349752035633576,
+  "13.reliability_acquired_0_20_0_40_observed": 0.31925498426023086,
+  "13.reliability_acquired_0_20_0_40_rows": 3812.0,
+  "13.reliability_acquired_0_40_0_60_mean_predicted": 0.5005406404894382,
+  "13.reliability_acquired_0_40_0_60_observed": 0.5005396071659831,
+  "13.reliability_acquired_0_40_0_60_rows": 4633.0,
+  "13.reliability_acquired_0_60_0_80_mean_predicted": 0.7132111764454244,
+  "13.reliability_acquired_0_60_0_80_observed": 0.6891080617495712,
+  "13.reliability_acquired_0_60_0_80_rows": 6996.0,
+  "13.reliability_acquired_0_80_0_95_mean_predicted": 0.8561396735274559,
+  "13.reliability_acquired_0_80_0_95_observed": 0.8318922179770762,
+  "13.reliability_acquired_0_80_0_95_rows": 4973.0,
+  "13.reliability_acquired_0_95_1_00_mean_predicted": 0.9969621825832713,
+  "13.reliability_acquired_0_95_1_00_observed": 0.9741322855271775,
+  "13.reliability_acquired_0_95_1_00_rows": 6108.0,
+  "13.reliability_acquired_0_observed": 0.010768533212423487,
+  "13.reliability_acquired_0_rows": 8822.0,
   "13.risky_business_acquired": 0.8913962158937935,
   "13.risky_business_acquired_95_pct_high": 0.9351835026212075,
   "13.risky_business_acquired_95_pct_low": 0.8490293632350804,
@@ -451,6 +476,7 @@
   "4.held_out_goal_shift_vs_exclusion_se": 61.92454760161711,
   "4.held_out_goal_shift_vs_exclusion_z": 18.580960555511354,
   "4.held_out_runs": 5470.0,
+  "4.low_aptitude_basis_bucket": "<=70",
   "4.proc_timing_attempts": 502.0,
   "4.proc_timing_observed": 0.7370517928286853,
   "4.proc_timing_observed_95_pct_high": 0.7778427234366252,
@@ -543,6 +569,7 @@
   "5.self_grandparent_passes_z_with_pair": -6.263195707831815,
   "5.trials_attributable_to_one_ancestor": 174056.0,
   "6.a_grandparent_of_her_own_character": 1911.0,
+  "6.exact_rotation_lineages": 102.0,
   "6.findings_holding": 7,
   "6.findings_total": 7,
   "6.four_uma_loop_lineages": 12.0,
@@ -739,8 +766,8 @@
   "8.best_binomial_n_free_nats_behind_distribution_free": 12.14093518732443,
   "8.best_binomial_n_free_over_conway_maxwell_poisson_nats": 4.762929076969158,
   "8.best_binomial_n_free_p": 0.4264715618589801,
-  "8.binomial_21_0_35_lr_p": 0.00021414068702851243,
-  "8.binomial_21_0_35_lr_p_runs_with_neither": 0.005724399901838103,
+  "8.binomial_21_0_35_lr_p": 0.0006232190629680648,
+  "8.binomial_21_0_35_lr_p_runs_with_neither": 0.01321315523061394,
   "8.binomial_21_0_35_mean": 7.35,
   "8.binomial_21_0_35_nats_behind_distribution_free": 21.882498004946683,
   "8.binomial_21_0_35_variance": 4.7775,
@@ -819,6 +846,7 @@
   "8.findings_holding": 15,
   "8.findings_total": 15,
   "8.fit_of_n_runs": 5316.0,
+  "8.fixed_binomial_nominal_lr_df": 18.0,
   "8.held_out_binomial_by_likelihood_over_binomial_21_0_35_nats": 6.4377399695652535,
   "8.held_out_binomial_by_likelihood_over_binomial_21_0_35_se": 4.805314327162948,
   "8.held_out_binomial_by_likelihood_over_binomial_21_0_35_z": 1.3397125622302604,
@@ -959,13 +987,13 @@
   },
   {
    "section": "3",
-   "statement": "Affinity scales the roll as (1 + A/100): the term beats no affinity by more than 1.92 nats, and a refitted slope does not predict unseen runs better than slope 1 (5-fold held out by run, z <= 1.96)",
+   "statement": "Affinity scales the roll as (1 + A/100): the term beats no affinity by more than 1.92 nats, and a refitted slope has no established held-out improvement over slope 1 (5-fold held out by run, z <= 1.96)",
    "verdict": "holds",
    "evidence": "over none 5427.3 nats; slope 0.97 [0.95, 0.99], in sample +2.86 nats over slope 1, held out +2.07 +- 2.43 nats, z 0.86"
   },
   {
    "section": "3",
-   "statement": "Known miss: the model over-predicts parents at affinity 200 or above (observed / predicted, 95% interval below 1), and slope 1 is kept because a refitted slope does not predict unseen runs better (z <= 1.96)",
+   "statement": "Known miss: the model over-predicts parents at affinity 200 or above (observed / predicted, 95% interval below 1), and slope 1 is kept with no established held-out improvement from refitting (z <= 1.96)",
    "verdict": "holds",
    "evidence": "parents at 200+ 0.966 [0.945, 0.987] (36,680 trials), below 200 1.040 [0.985, 1.094] (7,330); slope held out +2.07 +- 2.43 nats, z 0.86"
   },
@@ -1061,7 +1089,7 @@
   },
   {
    "section": "4",
-   "statement": "Low chances win a little less than predicted: pink-adjusted bp <= 70 has an obs/pred 95% interval entirely below 1",
+   "statement": "The lowest aptitude-basis bucket, before streak penalties, wins less than predicted: pink-adjusted bp <= 70 has an obs/pred 95% interval entirely below 1",
    "verdict": "holds",
    "evidence": "obs/pred 0.949 [0.931, 0.968], n 9,574"
   },
@@ -1235,7 +1263,7 @@
   },
   {
    "section": "7",
-   "statement": "Spark-hinted skills do not drop out of the draws (observed nearer no drop-out than full drop-out)",
+   "statement": "Removing both inspired skills for the whole run predicts more redistribution than observed; the observed rate is nearer keeping both skills (partial or time-dependent removal is untested)",
    "verdict": "holds",
    "evidence": "observed 0.371, no drop-out 0.340, drop-out 0.462"
   },
@@ -1301,15 +1329,15 @@
   },
   {
    "section": "8",
-   "statement": "Known miss: Binomial(21, 0.35) is rejected against a free distribution of N (likelihood ratio on its 16 fewer parameters, p < 0.05)",
+   "statement": "Known miss: Binomial(21, 0.35) has nominal LR p < 0.05 against a free distribution of N (18 df; the reference distribution needs calibration)",
    "verdict": "holds",
-   "evidence": "21.9 nats behind distribution-free, LR p = 0.00021; best binomial (n free) 12.1 nats behind, p 0.084; Binomial(21, 0.35) on the runs with neither Sasami Anshinzawa's card nor Inari One p 0.006"
+   "evidence": "21.9 nats behind distribution-free, LR p = 0.00062; best binomial (n free) 12.1 nats behind, p 0.084; Binomial(21, 0.35) on the runs with neither Sasami Anshinzawa's card nor Inari One p 0.013"
   },
   {
    "section": "8",
    "statement": "N depends on the deck and the trainee where the model has it fixed: decks with Sasami Anshinzawa [This Might Sting!] reach more chain events than the other runs and Inari One's careers fewer (p at n = 21 re-fitted on each side, likelihood ratio on one parameter, p < 0.05)",
    "verdict": "holds",
-   "evidence": "Sasami Anshinzawa's card: mean of N 7.74 vs 7.17, p 0.374 vs 0.342 (LR p 2.8e-07); Inari One: mean of N 6.83 vs 7.26, p 0.326 vs 0.347 (LR p 0.001)"
+   "evidence": "Sasami Anshinzawa's card: mean of min(N, 18) 7.74 vs 7.17, p 0.374 vs 0.342 (LR p 2.8e-07); Inari One: mean of min(N, 18) 6.83 vs 7.26, p 0.326 vs 0.347 (LR p 0.001)"
   },
   {
    "section": "8",
@@ -1349,43 +1377,43 @@
   },
   {
    "section": "8",
-   "statement": "The fit of N does not depend on the allowance: over allowances 0-0.045 the best p at n = 21 stays within 0.34-0.36",
+   "statement": "At fixed n = 21, the best p stays within 0.34-0.35 over the tested marker allowances; zero allowance uses only runs without a contradiction",
    "verdict": "holds",
    "evidence": "eps 0.01: 0.345, eps 0.02: 0.345, eps 0.03: 0.345, eps 0.045: 0.350, eps 0.0: 0.340 (eps 0.0 on the 5280 runs without a contradiction)"
   },
   {
    "section": "8",
-   "statement": "Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 3, 1 and 0 pals, above it at 5 and 2 pals and below it at 4 pals",
+   "statement": "Final-link markers against latent completion, without marker allowance: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 3, 1 and 0 pals, above it at 5 and 2 pals and below it at 4 pals",
    "verdict": "holds",
    "evidence": "5 pals 0.952 [0.899, 0.978] vs 0.979 (above); 4 pals 0.892 [0.869, 0.915] vs 0.860 (below); 3 pals 0.583 [0.565, 0.602] vs 0.566 (inside); 2 pals 0.318 [0.304, 0.332] vs 0.342 (above); 1 pals 0.224 [0.213, 0.234] vs 0.225 (inside); 0 pals 0.146 [0.130, 0.163] vs 0.158 (inside); decks with Sasami Anshinzawa's card: 5 pals 0.429 vs 0.991 (7 links), 4 pals 0.909 vs 0.865 (352 links), 3 pals 0.694 vs 0.603 (579 links), 2 pals 0.374 vs 0.337 (446 links)"
   },
   {
    "section": "8",
-   "statement": "The slot rule beats the card rule on total log-likelihood by more than 1.92 nats",
+   "statement": "Without marker allowance, the slot rule exceeds the card rule by more than 1.92 nats in composite link score",
    "verdict": "holds",
    "evidence": "slots -11046.4, cards -11148.4: +101.9 nats"
   },
   {
    "section": "8",
-   "statement": "Final links in crowded decks: at 0 pals the slot rule lies inside the observed interval and the card rule outside; at 2 pals both lie above it, the card rule further",
+   "statement": "Final-link markers against latent completion in crowded decks, without marker allowance: at 0 pals the slot rule lies inside the observed interval and the card rule outside; at 2 pals both lie above it, the card rule further",
    "verdict": "holds",
    "evidence": "0 pals obs 0.146 [0.130, 0.163], slots 0.158; 0 pals obs 0.146 [0.130, 0.163], cards 0.230; 2 pals obs 0.318 [0.304, 0.332], slots 0.342; 2 pals obs 0.318 [0.304, 0.332], cards 0.407"
   },
   {
    "section": "8",
-   "statement": "Known miss: early links run short of the model (z > 2) at exactly 3, 2, 1 and 0 pals",
+   "statement": "Without marker allowance, early-link markers run short of latent completion predictions (z > 2) at exactly 3, 2, 1 and 0 pals",
    "verdict": "holds",
    "evidence": "4 pals z 1.3, 3 pals z 4.7, 2 pals z 6.5, 1 pals z 3.7, 0 pals z 5.8"
   },
   {
    "section": "8",
-   "statement": "Known miss: more chains never start than predicted with five or six chain cards (model below the observed interval)",
+   "statement": "Without marker allowance, absent first-link markers exceed predicted unstarted chains with five or six chain cards",
    "verdict": "holds",
    "evidence": "5 cards 0.19 [0.16, 0.22] vs 0.13, 6 cards 0.34 [0.29, 0.39] vs 0.20"
   },
   {
    "section": "8",
-   "statement": "Final links fit when pooled, but cards differ beyond the model: pooled within 0.01, the spread between cards far beyond chance (p < 0.001)",
+   "statement": "Without marker allowance, final-link markers and latent completion differ by less than 0.01 pooled; the card residuals have nominal Wald p < 0.001",
    "verdict": "holds",
    "evidence": "pooled 0.348 vs 0.353; chi2 386 on 50 cards, p = 2e-53; lowest [Urara's Day Off!] Haru Urara 0.25/0.36, [Double Carrot Punch!] Biko Pegasus 0.22/0.33, [Piece of Mind] Super Creek 0.15/0.22; highest [Wave of Gratitude] Fine Motion 0.38/0.25, [Touching Sleeves Is Good Luck! ♪] Matikanefukukitaru 0.13/0.08, [My Umadol Way! ☆] Smart Falcon 0.46/0.31"
   },
@@ -1517,19 +1545,19 @@
   },
   {
    "section": "10",
-   "statement": "Deck cards' random events, left out: acquisition on the rows they could hint is under-predicted: obs / pred has a 95% interval entirely above 1",
+   "statement": "Deck cards' random events, left out: hybrid reconstructed acquisition on the rows they could hint is under-predicted: obs / pred has a 95% interval entirely above 1",
    "verdict": "holds",
    "evidence": "305 rows, 140 acquired; left out 1.244 [1.11, 1.38]; credited 1.004 [0.90, 1.11]"
   },
   {
    "section": "10",
-   "statement": "Deck cards' random events, credited at the fitted rate: acquisition obs / pred has a 95% interval covering 1",
+   "statement": "Deck cards' random events, credited at the fitted rate: hybrid reconstructed acquisition obs / pred has a 95% interval covering 1",
    "verdict": "holds",
    "evidence": "credited 1.004 [0.90, 1.11]"
   },
   {
    "section": "10",
-   "statement": "Crediting deck cards' random events at the fitted rate is not shown to predict unseen runs' acquisition better than leaving them out: the held-out gain is positive but z <= 1.96",
+   "statement": "For hybrid reconstructed acquisition on positive-baseline rows, crediting random events is not shown to predict better than leaving them out: the held-out gain is positive but z <= 1.96",
    "verdict": "holds",
    "evidence": "232 runs, 232 rows with a positive chance left out; rate fitted on the other four folds' readings: +4.86 nats, SE 2.76, z +1.76 (credited against left out)"
   },
@@ -1559,13 +1587,13 @@
   },
   {
    "section": "11",
-   "statement": "Conditional-only rows, left out: acquisition obs / pred has a 95% interval covering 1",
+   "statement": "Conditional-only rows, left out: hybrid reconstructed acquisition obs / pred has a 95% interval covering 1",
    "verdict": "holds",
    "evidence": "89 rows; left out 1.099 [0.81, 1.39]; credited 0.973 [0.74, 1.20]"
   },
   {
    "section": "11",
-   "statement": "Conditional-only rows: crediting each (trainee, target) at its measured rate does not improve the fit significantly: the gain on the rows with a positive prediction is below the chi2 95% point (one degree of freedom per fitted rate, halved)",
+   "statement": "Conditional-only rows: crediting each (trainee, target) at its measured rate gives an inconclusive nominal fit comparison using hybrid reconstructed acquisition: the gain on the rows with a positive prediction is below the chi2 95% point (one degree of freedom per fitted rate, halved)",
    "verdict": "holds",
    "evidence": "+0.5 nats against 3.91 (3 rates; 25 rows at 0 apart)"
   },
@@ -1577,13 +1605,13 @@
   },
   {
    "section": "11",
-   "statement": "With Vodka's rows included (her random event can hint the target too), leaving these trainees' events out under-predicts acquisition: obs / pred has a 95% interval entirely above 1",
+   "statement": "With Vodka's rows included (her random event can hint the target too), leaving these trainees' events out under-predicts hybrid reconstructed acquisition: obs / pred has a 95% interval entirely above 1",
    "verdict": "holds",
    "evidence": "116 rows; left out 1.327 [1.12, 1.53]; credited 1.000 [0.88, 1.12]"
   },
   {
    "section": "11",
-   "statement": "All these trainees' rows: crediting at the measured rates improves the fit by more than the chi2 95% point (one degree of freedom per fitted rate, halved) on the rows with a positive prediction",
+   "statement": "All these trainees' rows: crediting at the measured rates improves the hybrid reconstructed acquisition fit by more than the chi2 95% point (one degree of freedom per fitted rate, halved) on the rows with a positive prediction",
    "verdict": "holds",
    "evidence": "+16.2 nats against 4.74 (4 rates; 25 rows at 0 apart)"
   },
@@ -1649,9 +1677,15 @@
   },
   {
    "section": "13",
-   "statement": "the composed acquisition odds are calibrated where the model's priority assumption fits: acquired from any source on the rows whose target is prioritised or whose run shows no list, 95% interval covers 1; on the rows a list shows un-prioritised (the model assumes every target prioritised) it lies below 1",
+   "statement": "the acquisition product approximation assigns zero probability to some observed acquisitions",
    "verdict": "holds",
-   "evidence": "priority assumption fits 0.998 [0.990, 1.005], 32,848 rows; not prioritised 0.911 [0.893, 0.929], 4,439 rows; every row 0.986 [0.980, 0.993], 37,287 rows"
+   "evidence": "0: 0.011 [0.009, 0.013] vs 0.000"
+  },
+  {
+   "section": "13",
+   "statement": "the acquisition product approximation has no detected pooled bias separately on known-prioritised and unknown-priority rows (each 95% ratio interval covers 1); known-unprioritised rows lie below 1",
+   "verdict": "holds",
+   "evidence": "prioritised 1.008 [0.993, 1.024], 3,556 rows; unknown priority 0.996 [0.987, 1.004], 29,292 rows; not prioritised 0.911 [0.893, 0.929], 4,439 rows; every row 0.986 [0.980, 0.993], 37,287 rows"
   },
   {
    "section": "13",
@@ -1667,7 +1701,7 @@
   },
   {
    "section": "13",
-   "statement": "the deck's shortfall is almost all from the priority assumption: rows with an event source carry at least 80% of the shortfall (predicted minus observed hints), and on runs showing a priority list event-only hints of non-prioritised targets fall below 1 and below the prioritised interval",
+   "statement": "event-source rows carry at least 80% of the positive deck shortfall (predicted minus observed hints); this does not identify its cause",
    "verdict": "holds",
    "evidence": "event-source shortfall 468.3 of 465.4 hints (101%); training pool only 0.994 [0.959, 1.028], 5,036 rows; prioritised 0.970 [0.940, 1.000], 551 rows; not prioritised 0.653 [0.613, 0.694], 584 rows; no priority list shown 0.930 [0.916, 0.943], 2,403 rows"
   },
