@@ -14,7 +14,7 @@ use crate::career::plan::search::{
 };
 use crate::career::plan::{
     ParentPool, PlanCandidates, PlanContext, PlanInputs, PlanProfile, PlanRows, PlanSearches, PlanSetup, found_career,
-    found_lineage, search_best_career, unordered_parents,
+    found_lineage, search_best_career,
 };
 use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Found};
@@ -54,11 +54,11 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
         env.hard_work_cap = settings.search_work;
     }
     env.use_seen = true;
-    let mut searches = new_searches(input, &main_career, env_budget);
+    let mut searches = input.new_searches(&main_career, env_budget);
     if settings.sur != 1 {
         for &u in &candidate_trainees {
             if searches.best_careers[u].is_unsearched() {
-                let search = best_of(env, input_parents(input), u, searches.kept_plans(legacies.len()));
+                let search = best_of(env, input.input_parents(), u, searches.kept_plans(legacies.len()));
                 searches.record_best_career(u, search);
             }
         }
@@ -105,9 +105,9 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let has_full_veteran: Vec<bool> = candidate_trainees
         .iter()
         .map(|&u| {
-            legacies
-                .iter()
-                .any(|l| l.chara == data.umas[u].id && is_full(sj, &l.sparks) && input.pool.bor_one(l.borrowed))
+            legacies.iter().any(|l| {
+                l.chara == data.umas[u].id && is_full(sj, &l.sparks) && input.pool.alone_within_borrow_limit(l.borrowed)
+            })
         })
         .collect();
     let later_stage_costs = vec![0.0f64; candidate_count];
@@ -181,14 +181,14 @@ fn stage_candidates(
         let lineage_charas =
             std::iter::once(legacies[parent].chara).chain(legacies[parent].parents.iter().map(|p| p.chara));
         for chara in lineage_charas {
-            if let Some(u) = env.uix(chara) {
+            if let Some(u) = env.uma_index(chara) {
                 push(u, &mut trainees);
             }
         }
     }
     for legacy in legacies.iter().rev() {
         if !legacy.borrowed
-            && let Some(u) = env.uix(legacy.chara)
+            && let Some(u) = env.uma_index(legacy.chara)
         {
             push(u, &mut trainees);
         }
@@ -199,7 +199,7 @@ fn stage_candidates(
     trainees.truncate(IDX_CANDS);
     if let Some(fit) = &settings.fit {
         trainees =
-            fit.iter().filter_map(|&(chara, ..)| env.uix(chara)).filter(|u| input.trainees.contains(u)).collect();
+            fit.iter().filter_map(|&(chara, ..)| env.uma_index(chara)).filter(|u| input.trainees.contains(u)).collect();
     }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
     // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage
@@ -217,34 +217,38 @@ fn stage_candidates(
     StageCandidates { trainees, hint }
 }
 
-/// The plan's searches before any is run: the main search's best career known, and the kept plans of this pool and of
-/// this pool less its last veteran taken out of `BESTS`
-fn new_searches(input: &PlanInputs, main_career: &Found, env_budget: usize) -> PlanSearches {
-    let uma_count = input.resources.data.umas.len();
-    let legacy_count = input.legacies.len();
-    let mut best_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
-    best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
-    let kept_same_pool = take_kept_plan(bests_key(input.resources.job, input.fixed_parents, legacy_count));
-    let kept_previous_pool = if legacy_count > 1 {
-        take_kept_plan(bests_key(input.resources.job, input.fixed_parents, legacy_count - 1))
-    } else {
-        None
-    };
-    PlanSearches {
-        best_careers,
-        proof_refs: crate::uma::UmaTable(vec![crate::uma::UmaTable(vec![]); uma_count]),
-        base_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
-        looped_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
-        no_borrow_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
-        looped_careers: crate::uma::UmaTable(vec![]),
-        kept_same_pool,
-        kept_previous_pool,
-        env_budget,
+impl PlanInputs<'_, '_> {
+    /// The plan's searches before any is run: the main search's best career known, and the kept plans of this pool and of
+    /// this pool less its last veteran taken out of `BESTS`
+    fn new_searches(&self, main_career: &Found, env_budget: usize) -> PlanSearches {
+        let uma_count = self.resources.data.umas.len();
+        let legacy_count = self.legacies.len();
+        let mut best_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; uma_count]);
+        best_careers[main_career.trainee] = CachedSearch::Known(Some(main_career.clone()));
+        let kept_same_pool = take_kept_plan(bests_key(self.resources.job, self.fixed_parents, legacy_count));
+        let kept_previous_pool = if legacy_count > 1 {
+            take_kept_plan(bests_key(self.resources.job, self.fixed_parents, legacy_count - 1))
+        } else {
+            None
+        };
+        PlanSearches {
+            best_careers,
+            proof_refs: crate::uma::UmaTable(vec![crate::uma::UmaTable(vec![]); uma_count]),
+            base_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+            looped_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+            no_borrow_incomplete: crate::uma::UmaTable(vec![false; uma_count]),
+            looped_careers: crate::uma::UmaTable(vec![]),
+            kept_same_pool,
+            kept_previous_pool,
+            env_budget,
+        }
     }
 }
 
-const fn input_parents<'input>(input: &PlanInputs<'input, '_>) -> ParentPool<'input> {
-    ParentPool { pool: input.pool, fixed_parents: input.fixed_parents }
+impl<'input> PlanInputs<'input, '_> {
+    const fn input_parents(&self) -> ParentPool<'input> {
+        ParentPool { pool: self.pool, fixed_parents: self.fixed_parents }
+    }
 }
 
 /// A winning deck of the main search or a candidate's best career, which a builder of the same deck class may use.
@@ -274,38 +278,38 @@ pub(crate) fn class_winners(
 /// Builder `trainee`'s proxy career: her deck class's winning decks added to her cached decks, then her best career
 /// through the surrogate (`best_sur`, no refresh)
 pub(crate) fn proxy_career(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     winners: &[ClassWinner],
     parents: ParentPool,
     trainee: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
-    let deck_class = sim.env.deck_class[trainee];
+    let deck_class = simulator.env.deck_class[trainee];
     for winner in winners {
-        if winner.trainee != trainee && sim.env.deck_class[winner.trainee] == deck_class {
-            sim.cache.add(sim.env, trainee, &winner.deck);
+        if winner.trainee != trainee && simulator.env.deck_class[winner.trainee] == deck_class {
+            simulator.cache.add(simulator.env, trainee, &winner.deck);
         }
     }
-    best_sur(sim, parents, trainee, 1e9, buf)
+    best_sur(simulator, parents, trainee, 1e9, buf)
 }
 
 /// Pass 1: every allowed uma's best career; per candidate, the chance her veteran raises that candidate's odds and the
 /// mean odds raised to (exact over her outcomes). Then the near-top builders' proxies searched exactly, and each row's
 /// trainee's G1 wins.
 pub(crate) fn score_and_admit_proxies(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     profile: &mut PlanProfile,
     buf: &mut Vec<f64>,
 ) -> PlanRows {
-    let mut rows = pass_one_rows(sim, context, searches, profile, buf);
+    let mut rows = pass_one_rows(simulator, context, searches, profile, buf);
     if context.candidates.proxies_enabled {
-        admit_near_top_proxies(sim, context, searches, profile, &mut rows, buf);
+        admit_near_top_proxies(simulator, context, searches, profile, &mut rows, buf);
     }
     let mut wins_by_trainee = crate::uma::UmaTable(vec![vec![]; context.data().umas.len()]);
     for row in &rows {
-        set_plan_wins(sim, context.input.pool, &mut wins_by_trainee, row.trainee, &row.career);
+        set_plan_wins(simulator, context.input.pool, &mut wins_by_trainee, row.trainee, &row.career);
     }
     PlanRows { rows, wins_by_trainee }
 }
@@ -314,7 +318,7 @@ pub(crate) fn score_and_admit_proxies(
 /// else her searched best career. (Placeholder step costs: 1, so every candidate's lifts are gathered; an 8/8 of hers
 /// may be a poorer parent than a fresh one.)
 fn pass_one_rows(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     profile: &mut PlanProfile,
@@ -335,23 +339,24 @@ fn pass_one_rows(
         progress(2, order.iter().position(|&y| y == x).unwrap_or(0), order.len()); // pass 1: uma k of n
         if candidates.proxies_enabled && searches.best_careers[x].is_unsearched() {
             let proxy_started_ms = now_ms();
-            let proxy = proxy_career(sim, &winners, context.parents(), x, buf);
+            let proxy = proxy_career(simulator, &winners, context.parents(), x, buf);
             profile.search_ms += now_ms() - proxy_started_ms;
             let Some(career) = proxy else { continue };
-            let (CareerScore { lift_stats, .. }, stats_stamp) = stamped(sim, Some(&candidates.trainees), |sim| {
-                score_career(sim, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf)
-            });
+            let (CareerScore { lift_stats, .. }, stats_stamp) =
+                stamped(simulator, Some(&candidates.trainees), |simulator| {
+                    score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf)
+                });
             rows.push(PlanRow::proxy(x, career, lift_stats, RowOrigin::Base, stats_stamp));
             continue;
         }
         if searches.best_careers[x].is_unsearched() || (settings.sur == 2 && !candidates.trainees.contains(&x)) {
             let search_started_ms = now_ms();
-            capped(sim, settings.search_work, searches.env_budget, |sim| {
+            capped(simulator, settings.search_work, searches.env_budget, |simulator| {
                 if settings.sur != 1 && searches.best_careers[x].is_unsearched() {
-                    search_best_career(sim, context, searches, x);
+                    search_best_career(simulator, context, searches, x);
                 }
                 if settings.sur > 0
-                    && let Some(difference) = plan_surrogate(sim, input, &mut searches.best_careers, x, buf)
+                    && let Some(difference) = plan_surrogate(simulator, input, &mut searches.best_careers, x, buf)
                 {
                     profile.surrogate_differences.push(difference);
                 }
@@ -360,7 +365,7 @@ fn pass_one_rows(
         }
         let Some(career) = searches.best_careers[x].found().cloned() else { continue };
         let CareerScore { lift_stats, .. } =
-            score_career(sim, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
+            score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
         rows.push(PlanRow::exact(x, career, lift_stats, RowOrigin::Base));
     }
     rows
@@ -377,7 +382,7 @@ struct RowEfficiency {
 /// The near-top builders searched exactly: per candidate every proxy whose efficiency reaches (1 - PROXY_EFF) of the
 /// candidate's second best (exact and proxy careers together), until none is left
 fn admit_near_top_proxies(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     profile: &mut PlanProfile,
@@ -385,48 +390,50 @@ fn admit_near_top_proxies(
     buf: &mut Vec<f64>,
 ) {
     loop {
-        let admitted = near_top_proxies(context, rows);
+        let admitted = context.near_top_proxies(rows);
         if admitted.is_empty() {
             break;
         }
         let search_started_ms = now_ms();
         for row in admitted {
-            make_row_exact(sim, context, searches, profile, &mut rows[row], buf);
+            make_row_exact(simulator, context, searches, profile, &mut rows[row], buf);
         }
         profile.search_ms += now_ms() - search_started_ms;
     }
 }
 
-/// The proxy rows within PROXY_EFF of a candidate's second most efficient row, in row order
-fn near_top_proxies(context: &PlanContext, rows: &[PlanRow]) -> Vec<usize> {
-    let PlanContext { input, candidates } = *context;
-    let data = context.data();
-    let mut admitted: Vec<usize> = vec![];
-    for ui in 0..candidates.trainees.len() {
-        if candidates.current_odds[ui] <= 0.0 {
-            continue;
-        }
-        let (u, p) = (candidates.trainees[ui], candidates.current_odds[ui]);
-        let mut efficiencies: Vec<RowEfficiency> = rows
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| data.umas[r.trainee].id != data.umas[u].id && r.lift_stats[ui].lift_chance > 0.0)
-            .map(|(row, r)| RowEfficiency { efficiency: r.lift_stats[ui].efficiency(p), row })
-            .collect();
-        efficiencies.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
-        let Some(best) = efficiencies.first() else { continue };
-        let second = efficiencies.get(1).map_or(best.efficiency, |x| x.efficiency);
-        for candidate_row in &efficiencies {
-            if candidate_row.efficiency < second * (1.0 - input.settings.proxy_eff.unwrap_or(PROXY_EFF)) {
-                break;
+impl PlanContext<'_, '_> {
+    /// The proxy rows within PROXY_EFF of a candidate's second most efficient row, in row order
+    fn near_top_proxies(&self, rows: &[PlanRow]) -> Vec<usize> {
+        let PlanContext { input, candidates } = *self;
+        let data = self.data();
+        let mut admitted: Vec<usize> = vec![];
+        for ui in 0..candidates.trainees.len() {
+            if candidates.current_odds[ui] <= 0.0 {
+                continue;
             }
-            if !rows[candidate_row.row].exact && !admitted.contains(&candidate_row.row) {
-                admitted.push(candidate_row.row);
+            let (u, p) = (candidates.trainees[ui], candidates.current_odds[ui]);
+            let mut efficiencies: Vec<RowEfficiency> = rows
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| data.umas[r.trainee].id != data.umas[u].id && r.lift_stats[ui].lift_chance > 0.0)
+                .map(|(row, r)| RowEfficiency { efficiency: r.lift_stats[ui].efficiency(p), row })
+                .collect();
+            efficiencies.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
+            let Some(best) = efficiencies.first() else { continue };
+            let second = efficiencies.get(1).map_or(best.efficiency, |x| x.efficiency);
+            for candidate_row in &efficiencies {
+                if candidate_row.efficiency < second * (1.0 - input.settings.proxy_eff.unwrap_or(PROXY_EFF)) {
+                    break;
+                }
+                if !rows[candidate_row.row].exact && !admitted.contains(&candidate_row.row) {
+                    admitted.push(candidate_row.row);
+                }
             }
         }
+        admitted.sort_unstable();
+        admitted
     }
-    admitted.sort_unstable();
-    admitted
 }
 
 /// How a proxy row was made exact.
@@ -439,7 +446,7 @@ pub(crate) enum MadeExact {
 
 /// A proxy row made exact: certified by her class's proofs, else her best career searched (`exact_plan_career`)
 pub(crate) fn make_row_exact(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     profile: &mut PlanProfile,
@@ -448,13 +455,13 @@ pub(crate) fn make_row_exact(
 ) -> MadeExact {
     let trainee = row.trainee;
     // a proxy the class's proofs certify needs no search (it is her best career's value)
-    if certified(sim.env, context.parents(), trainee, &row.career) {
+    if certified(simulator.env, context.parents(), trainee, &row.career) {
         searches.best_careers[trainee] = CachedSearch::Known(Some(row.career.clone()));
         row.exact = true;
         profile.certified_proxies += 1;
         return MadeExact::Certified;
     }
-    let exact = exact_plan_career(sim, context, searches, row, buf);
+    let exact = exact_plan_career(simulator, context, searches, row, buf);
     let replaced = exact.is_some();
     if let Some(ExactPlanCareer { career, lift_stats }) = exact {
         row.career = career;
@@ -468,14 +475,14 @@ pub(crate) fn make_row_exact(
 /// Where `sur` 2's surrogate and search disagree for one uma, as the output reports it; with `sur` 1 the surrogate's
 /// career replaces her best career (None returned)
 fn plan_surrogate(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     input: &PlanInputs,
     best_careers: &mut crate::uma::UmaTable<CachedSearch>,
     u: crate::uma::UmaIndex,
     buf: &mut Vec<f64>,
 ) -> Option<Value> {
     let settings = input.settings;
-    let surrogate = best_sur(sim, input_parents(input), u, settings.sur_margin, buf);
+    let surrogate = best_sur(simulator, input.input_parents(), u, settings.sur_margin, buf);
     if settings.sur != 2 {
         best_careers[u] = CachedSearch::Known(surrogate);
         return None;
@@ -483,7 +490,7 @@ fn plan_surrogate(
     let searched = best_careers[u].found().cloned();
     let (searched_value, surrogate_value) =
         (searched.as_ref().map_or(0.0, |f| f.value), surrogate.as_ref().map_or(0.0, |f| f.value));
-    let same = searched.as_ref().map(unordered_parents) == surrogate.as_ref().map(unordered_parents);
+    let same = searched.as_ref().map(Found::unordered_parents) == surrogate.as_ref().map(Found::unordered_parents);
     if !same || (searched_value - surrogate_value).abs() > 1e-9 * searched_value.max(surrogate_value) {
         let data = input.resources.data;
         return Some(
@@ -503,7 +510,7 @@ pub(crate) struct ExactPlanCareer {
 /// they are when the search found the same career and nothing they read has changed (their stamp, `stamped`, over the
 /// candidates' decks: this base reads no other's)
 fn exact_plan_career(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     proxy: &PlanRow,
@@ -512,30 +519,31 @@ fn exact_plan_career(
     let x = proxy.trainee;
     let settings = context.settings();
     if searches.best_careers[x].is_unsearched() {
-        capped(sim, settings.search_work, searches.env_budget, |sim| {
-            search_best_career(sim, context, searches, x);
+        capped(simulator, settings.search_work, searches.env_budget, |simulator| {
+            search_best_career(simulator, context, searches, x);
         });
     }
     let career = searches.best_careers[x].found().cloned()?;
-    if same_career(&proxy.career, &career) && stamp_ok(sim, Some(&context.candidates.trainees), proxy.stats_stamp) {
+    if same_career(&proxy.career, &career) && stamp_ok(simulator, Some(&context.candidates.trainees), proxy.stats_stamp)
+    {
         prof("reuse_st", 1.0);
         return Some(ExactPlanCareer { career, lift_stats: proxy.lift_stats.clone() });
     }
     let stats_base = context.candidates.stats_base();
     let CareerScore { lift_stats, .. } =
-        score_career(sim, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
+        score_career(simulator, &context.scoring(&stats_base), found_career(x, &career), Want::Stats, buf);
     Some(ExactPlanCareer { career, lift_stats })
 }
 
 /// Record the G1 races trainee's career wins with a chance above 0.5 (`PlanRows::wins_by_trainee`)
 pub(crate) fn set_plan_wins(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     pool: &Pool,
     wins_by_trainee: &mut crate::uma::UmaTable<Vec<usize>>,
     trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
-    let win_chances = sim.wins(pool, found_lineage(trainee, career));
+    let win_chances = simulator.wins(pool, found_lineage(trainee, career));
     wins_by_trainee[trainee] =
         win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
 }
@@ -543,7 +551,7 @@ pub(crate) fn set_plan_wins(
 /// The trainee's best career without a borrowed parent, on the pick's pool: the surrogate's under `sur` 1, else
 /// searched (not reusing kept plans)
 pub(crate) fn exact_no_borrow_career(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     trainee: crate::uma::UmaIndex,
@@ -551,11 +559,11 @@ pub(crate) fn exact_no_borrow_career(
 ) -> Option<Found> {
     let settings = context.settings();
     let no_kept_plans = KeptPlans { same_pool: None, previous_pool: None, legacy_count: context.legacy_count() };
-    capped(sim, settings.search_work, searches.env_budget, |sim| {
+    capped(simulator, settings.search_work, searches.env_budget, |simulator| {
         if settings.sur == 1 {
-            best_sur(sim, context.pick_parents(), trainee, settings.sur_margin, buf)
+            best_sur(simulator, context.pick_parents(), trainee, settings.sur_margin, buf)
         } else {
-            let search = best_of(sim.env, context.pick_parents(), trainee, no_kept_plans);
+            let search = best_of(simulator.env, context.pick_parents(), trainee, no_kept_plans);
             if !search.complete {
                 searches.no_borrow_incomplete[trainee] = true;
             }

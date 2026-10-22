@@ -1,6 +1,6 @@
 //! Exact shared-deck scans and their cached results, seeded from legal skyline decks.
 //! Loop enumeration and certification across structures belong to `bands`.
-use super::{DeckSources, Multi, SharedQueryKey, lin_of, qkey};
+use super::{ChanceKey, DeckSources, Multi, SharedQueryKey, lin_of};
 use crate::Instant;
 use crate::data::Data;
 use crate::deck::caps::src_class;
@@ -76,7 +76,7 @@ impl Multi<'_> {
     // Ceilings
     // stay the per-uma ones (each trainee's best deck bounds her share of any shared deck).
     pub(super) fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SharedDecks {
-        let key = SharedQueryKey { members: f, chances: qkey(qa) };
+        let key = SharedQueryKey { members: f, chances: ChanceKey::new(qa) };
         if let Some(SharedResult { certified_cap: l, floor: fl, decks: r }) = self.shared_cache.borrow().get(&key)
             && *l >= lv
             && *fl <= floor

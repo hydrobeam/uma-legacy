@@ -212,7 +212,7 @@ impl<'plan> PlanInputs<'plan, '_> {
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
     /// row's career are dropped later, at output.
     fn is_runnable(&self, f: &Found) -> bool {
-        self.pick_pool().bor_ok(f.first_parent, f.second_parent)
+        self.pick_pool().within_borrow_limit(f.first_parent, f.second_parent)
     }
 }
 
@@ -322,9 +322,11 @@ const fn found_career(trainee: crate::uma::UmaIndex, found: &Found) -> Career<'_
     Career { lineage: found_lineage(trainee, found), deck: &found.deck }
 }
 
-/// A found career's parents in either order.
-fn unordered_parents(found: &Found) -> (usize, usize) {
-    (found.first_parent.min(found.second_parent), found.first_parent.max(found.second_parent))
+impl Found {
+    /// A found career's parents in either order.
+    fn unordered_parents(&self) -> (usize, usize) {
+        (self.first_parent.min(self.second_parent), self.first_parent.max(self.second_parent))
+    }
 }
 
 /// Searches and their completeness, including the kept plans used to extend this pool. Per-uma vectors are indexed by
@@ -367,14 +369,14 @@ impl PlanSearches {
 
 /// `trainee`'s best career searched now, its deck added to the cache the planner's tables read, and recorded
 fn search_best_career(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     trainee: crate::uma::UmaIndex,
 ) {
-    let search = best_of(sim.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
+    let search = best_of(simulator.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
     if let Some(found) = &search.found {
-        sim.cache.add(sim.env, trainee, &found.deck);
+        simulator.cache.add(simulator.env, trainee, &found.deck);
     }
     searches.record_best_career(trainee, search);
 }
