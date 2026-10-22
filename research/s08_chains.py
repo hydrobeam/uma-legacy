@@ -559,6 +559,7 @@ def derived() -> list[common.Value | common.Finding]:
             note=f"P(N = 0..{KMAX - 1}), P(N >= {KMAX}): {KMAX} free",
         )
     )
+    out.append(V("fixed binomial: nominal LR df", KMAX))
     return out
 
 
@@ -644,7 +645,11 @@ def property_claims(xs: list[Row], M: np.ndarray) -> list[common.Value | common.
     g = ~sides["Sasami Anshinzawa's card"] & ~sides["Inari One"]
     gap = ll(em(M[g]), M[g]) - ll(lump(BIN), M[g])
     out.append(
-        V("Binomial(21, 0.35) LR p, runs with neither", float(chi2.sf(2 * gap, KMAX - 2)), note=f"{g.sum()} runs")
+        V(
+            "Binomial(21, 0.35) LR p, runs with neither",
+            float(chi2.sf(2 * gap, KMAX)),
+            note=f"{KMAX} nominal df; {g.sum()} runs",
+        )
     )
     return out
 
@@ -990,7 +995,13 @@ def claims() -> list[common.Value | common.Finding]:
         for v in out
         if isinstance(v, common.Value) and v.name == "Binomial(21, 0.35): nats behind distribution-free"
     )
-    out.append(V("binomial(21, 0.35) LR p", float(chi2.sf(2 * gap, KMAX - 2)), note=f"{KMAX - 2} df"))
+    out.append(
+        V(
+            "binomial(21, 0.35) LR p",
+            float(chi2.sf(2 * gap, KMAX)),
+            note=f"{KMAX} nominal df; reference needs calibration",
+        )
+    )
     fb = final_by_card()
     out += [
         V("final links by card: pooled observed", fb.obs, note=f"{fb.n:,} card-links, every run"),
@@ -1018,13 +1029,13 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
     """the form of N"""
     fs: list[common.Finding] = []
     gap = g["Binomial(21, 0.35): nats behind distribution-free"]
-    df = g["distribution-free fit: parameters more than the binomial"]
+    df = g["fixed binomial: nominal LR df"]
     lrp = g["binomial(21, 0.35) LR p"]
     fs.append(
         F(
-            f"Known miss: Binomial({CN}, {CP}) is rejected against a free distribution of N (likelihood ratio on its {df:.0f} "
-            "fewer parameters, p < 0.05)",
-            lrp < 0.05,
+            f"Known miss: Binomial({CN}, {CP}) has nominal LR p < 0.05 against a free distribution of N "
+            f"({df:.0f} df; the reference distribution needs calibration)",
+            gap > 0 and df == KMAX and lrp < 0.05,
             f"{gap:.1f} nats behind distribution-free, LR p = {lrp:.2g}; best binomial (n free) "
             f"{g['best binomial n free: nats behind distribution-free']:.1f} nats behind, p "
             f"{g['best binomial n free: LR p']:.3f}; Binomial({CN}, {CP}) on the runs with neither Sasami Anshinzawa's card "
@@ -1042,7 +1053,7 @@ def fit_findings(g: dict[str, Any]) -> list[common.Finding]:
             and g[f"{i_}: p at n = {CN}"] < g[f"{i_}: p at n = {CN}, the other runs"]
             and g[f"{i_}: p at n = {CN} on each side, LR p"] < 0.05,
             "; ".join(
-                f"{nm}: mean of N {g[f'{nm}: mean of N']:.2f} vs {g[f'{nm}: mean of N, the other runs']:.2f}, p "
+                f"{nm}: mean of min(N, {KMAX}) {g[f'{nm}: mean of N']:.2f} vs {g[f'{nm}: mean of N, the other runs']:.2f}, p "
                 f"{g[f'{nm}: p at n = {CN}']:.3f} vs {g[f'{nm}: p at n = {CN}, the other runs']:.3f} "
                 f"(LR p {g[f'{nm}: p at n = {CN} on each side, LR p']:.2g})"
                 for nm in (a_, i_)
@@ -1117,7 +1128,7 @@ def allowance_findings(g: dict[str, Any], sens: AllowanceSensitivity) -> list[co
     sh = g["allowance: share"]
     lo, hi = g["allowance: 95% low"], g["allowance: 95% high"]
     ps = list(sens.best_p.values())
-    lo_, hi_ = round(CP - 0.01, 2), round(CP + 0.01, 2)  # the adopted p +- 0.01
+    lo_, hi_ = 0.34, 0.35  # the reported range, tested at fixed n only
     return [
         F(
             f"The {EPS} marker allowance lies inside the 95% interval of the measured rate of fired links whose marker is missing",
@@ -1125,8 +1136,9 @@ def allowance_findings(g: dict[str, Any], sens: AllowanceSensitivity) -> list[co
             f"{g['allowance: marker not shown']:.0f} of {g['allowance: earlier links implied fired']:.0f} = {sh:.3f} [{lo:.3f}, {hi:.3f}]",
         ),
         F(
-            f"The fit of N does not depend on the allowance: over allowances 0-0.045 the best p at n = {CN} stays within {lo_}-{hi_}",
-            min(ps) >= lo_ and max(ps) <= hi_,
+            f"At fixed n = {CN}, the best p stays within {lo_}-{hi_} over the tested marker allowances; "
+            "zero allowance uses only runs without a contradiction",
+            bool(ps) and all(lo_ <= p <= hi_ for p in ps),
             ", ".join(f"eps {k}: {v:.3f}" for k, v in sens.best_p.items())
             + f" (eps 0.0 on the {sens.clean_runs} runs without a contradiction)",
         ),
@@ -1144,7 +1156,7 @@ def link_findings(g: dict[str, Any], fl: LinkTables, al: Allocation) -> list[com
     pos = {npal: placement(t.binomial, t.low, t.high) for npal, t in fl.final.items()}
     fs.append(
         F(
-            "Final links: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 3, 1 and 0 pals, above it "
+            "Final-link markers against latent completion, without marker allowance: the Binomial(21, 0.35) prediction lies inside the observed 95% interval at 3, 1 and 0 pals, above it "
             "at 5 and 2 pals and below it at 4 pals",
             pos == {5: "above", 4: "below", 3: "inside", 2: "above", 1: "inside", 0: "inside"},
             "; ".join(
@@ -1162,7 +1174,7 @@ def link_findings(g: dict[str, Any], fl: LinkTables, al: Allocation) -> list[com
     tl = al.total
     fs.append(
         F(
-            "The slot rule beats the card rule on total log-likelihood by more than 1.92 nats",
+            "Without marker allowance, the slot rule exceeds the card rule by more than 1.92 nats in composite link score",
             g["allocation: slot over card, nats"] > 1.92,
             f"slots {tl['slots']:.1f}, cards {tl['cards']:.1f}: {tl['slots'] - tl['cards']:+.1f} nats",
         )
@@ -1179,7 +1191,7 @@ def link_findings(g: dict[str, Any], fl: LinkTables, al: Allocation) -> list[com
     w = {(k, r): where(k, r) for k in (0, 2) for r in ("slots", "cards")}
     fs.append(
         F(
-            "Final links in crowded decks: at 0 pals the slot rule lies inside the observed interval and the card rule outside; at 2 pals "
+            "Final-link markers against latent completion in crowded decks, without marker allowance: at 0 pals the slot rule lies inside the observed interval and the card rule outside; at 2 pals "
             "both lie above it, the card rule further",
             w[(0, "slots")][0] == "inside"
             and w[(0, "cards")][0] != "inside"
@@ -1198,7 +1210,7 @@ def miss_findings(g: dict[str, Any]) -> list[common.Finding]:
     zs = {k: g[f"early-link shortfall, {k} pals: z"] for k in (4, 3, 2, 1, 0)}
     fs.append(
         F(
-            "Known miss: early links run short of the model (z > 2) at exactly 3, 2, 1 and 0 pals",
+            "Without marker allowance, early-link markers run short of latent completion predictions (z > 2) at exactly 3, 2, 1 and 0 pals",
             {k for k, v in zs.items() if v > 2} == {3, 2, 1, 0},
             ", ".join(f"{k} pals z {v:.1f}" for k, v in zs.items()),
         )
@@ -1206,7 +1218,7 @@ def miss_findings(g: dict[str, Any]) -> list[common.Finding]:
     nv = {nc: MISC[("never", nc)] for nc in (5, 6)}
     fs.append(
         F(
-            "Known miss: more chains never start than predicted with five or six chain cards (model below the observed interval)",
+            "Without marker allowance, absent first-link markers exceed predicted unstarted chains with five or six chain cards",
             all(x.low > x.model for x in nv.values()),
             ", ".join(
                 f"{nc} cards {x.not_started / x.links:.2f} [{x.low:.2f}, {x.high:.2f}] vs {x.model:.2f}"
@@ -1217,8 +1229,8 @@ def miss_findings(g: dict[str, Any]) -> list[common.Finding]:
     fb: FinalByCard = MISC["final_by_card"]
     fs.append(
         F(
-            "Final links fit when pooled, but cards differ beyond the model: pooled within 0.01, the spread between cards far "
-            "beyond chance (p < 0.001)",
+            "Without marker allowance, final-link markers and latent completion differ by less than 0.01 pooled; "
+            "the card residuals have nominal Wald p < 0.001",
             abs(fb.obs - fb.model) < 0.01 and fb.p < 0.001,
             f"pooled {fb.obs:.3f} vs {fb.model:.3f}; chi2 {fb.chi2:.0f} on {fb.cards} cards, p = {fb.p:.1g}; lowest "
             + ", ".join(f"{fb.name(c)} {fb.rate[c][0]:.2f}/{fb.rate[c][1]:.2f}" for c, _ in fb.low)

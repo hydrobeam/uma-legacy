@@ -217,12 +217,12 @@ def career_findings(
             ),
         ),
         F(
-            "Conditional-only rows, left out: acquisition obs / pred has a 95% interval covering 1",
+            "Conditional-only rows, left out: hybrid reconstructed acquisition obs / pred has a 95% interval covering 1",
             lambda: tc.left_out.rlo <= 1 <= tc.left_out.rhi,
             lambda: f"{tc.n} rows; left out {tc.ratio_text(tc.left_out)}; credited {tc.ratio_text(tc.credited)}",
         ),
         F(
-            "Conditional-only rows: crediting each (trainee, target) at its measured rate does not improve the fit significantly: "
+            "Conditional-only rows: crediting each (trainee, target) at its measured rate gives an inconclusive nominal fit comparison using hybrid reconstructed acquisition: "
             "the gain on the rows with a positive prediction is below the chi2 95% point (one degree of freedom per fitted rate, halved)",
             lambda: tc.ll_gain() < lim(kcond),
             lambda: (
@@ -239,12 +239,12 @@ def career_findings(
         ),
         F(
             "With Vodka's rows included (her random event can hint the target too), leaving these trainees' events out "
-            "under-predicts acquisition: obs / pred has a 95% interval entirely above 1",
+            "under-predicts hybrid reconstructed acquisition: obs / pred has a 95% interval entirely above 1",
             lambda: t.left_out.rlo > 1,
             lambda: f"{t.n} rows; left out {t.ratio_text(t.left_out)}; credited {t.ratio_text(t.credited)}",
         ),
         F(
-            "All these trainees' rows: crediting at the measured rates improves the fit by more than the chi2 95% point (one "
+            "All these trainees' rows: crediting at the measured rates improves the hybrid reconstructed acquisition fit by more than the chi2 95% point (one "
             "degree of freedom per fitted rate, halved) on the rows with a positive prediction",
             lambda: t.ll_gain() > lim(kall),
             lambda: f"{t.ll_gain():+.1f} nats against {lim(kall):.2f} ({len(kall)} rates; {t.n_zero} rows at 0 apart)",

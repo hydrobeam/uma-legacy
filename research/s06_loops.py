@@ -124,6 +124,7 @@ def own_character_claims() -> list[Value | Finding]:
     out: list[Value | Finding] = [
         Value(SEC, "runs", len(R)),
         Value(SEC, "a grandparent of her own character", gp),
+        Value(SEC, "exact rotation lineages", sh["rotation"]),
     ]
     lo, hi = common.wilson(gp, len(R))
     out.append(
