@@ -747,7 +747,8 @@ and boundary checks before their reference distribution can be used. In-sample, 
 | Binomial(15, 0.48) | {{8.binomial_15_0_48_nats_behind_distribution_free|.1f}} | | |
 | Poisson(7.1) | {{8.poisson_7_1_nats_behind_distribution_free|.1f}} | | variance = mean, too wide; rejected |
 
-$N$ is under-dispersed: the free fit's variance is {{8.distribution_free_variance_per_mean|.2f}} of its mean. The fitted Poisson scores worse; these moments alone do not reject every
+The count capped at 18, $\min(N, 18)$, is under-dispersed: its variance is {{8.distribution_free_variance_per_mean|.2f}} of its mean. The runs cannot
+tell counts above 18 apart, so the dispersion of $N$ itself is not identified. The fitted Poisson scores worse; these moments alone do not reject every
 over-dispersed count distribution. The binomial is the simplest under-dispersed count. It fits better than the
 Conway-Maxwell-Poisson, the other two-parameter family that can be under-dispersed, by {{8.best_binomial_n_free_over_conway_maxwell_poisson_nats|.1f}} nats.
 

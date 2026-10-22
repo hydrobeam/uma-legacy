@@ -64,7 +64,7 @@ intervals and nominal significance do not establish every listed miss after sele
 | Training hints | more pals per deck give slightly more hints | factor 1.028 per pal | 7 |
 | Training hints | Trackblazer's base over-predicts real careers | 0.779 [0.63, 0.93] | 13 |
 | Training hints | non-target skills are under-predicted | 1.056 [1.045, 1.068] | 13 |
-| Chain events | Binomial(21, 0.35) is rejected in-sample | p-value 6.5e-05 | 8 |
+| Chain events | Binomial(21, 0.35) is rejected in-sample | p-value 2.1e-04 | 8 |
 | Chain events | decks with Sasami Anshinzawa [This Might Sting!]'s pal card get more | mean 7.74 against 7.17 | 8 |
 | Chain events | Inari One's careers get fewer | mean 6.83 against 7.26 | 8 |
 | Chain events | with six chain cards, more chains never start | 0.34 against 0.20 | 8 |
@@ -748,21 +748,22 @@ and boundary checks before their reference distribution can be used. In-sample, 
 | Form for $N$ | Nats behind the free distribution | p-value | Note |
 |---|---|---|---|
 | free distribution | 0 | | mean 7.22, variance 4.44 |
-| Binomial(21, 0.35) | 21.9 | 6.5e-05 | rejected; 14 fewer parameters |
-| Binomial($n$, $p$), both fitted | 12.1 | 0.042 | best at $n$ = 17, $p$ = 0.426 |
-| Conway-Maxwell-Poisson | 16.9 | 0.002 | |
+| Binomial(21, 0.35) | 21.9 | 2.1e-04 | rejected; 16 fewer parameters |
+| Binomial($n$, $p$), both fitted | 12.1 | 0.084 | best at $n$ = 17, $p$ = 0.426 |
+| Conway-Maxwell-Poisson | 16.9 | 0.006 | |
 | Binomial(15, 0.48) | 19.4 | | |
-| Poisson(7.1) | 136.1 | | variance = mean, too wide; rejected |
+| Poisson(7.1) | 136.2 | | variance = mean, too wide; rejected |
 
-$N$ is under-dispersed: the free fit's variance is 0.62 of its mean. The fitted Poisson scores worse; these moments alone do not reject every
+The count capped at 18, $\min(N, 18)$, is under-dispersed: its variance is 0.62 of its mean. The runs cannot
+tell counts above 18 apart, so the dispersion of $N$ itself is not identified. The fitted Poisson scores worse; these moments alone do not reject every
 over-dispersed count distribution. The binomial is the simplest under-dispersed count. It fits better than the
-Conway-Maxwell-Poisson, the other two-parameter family that can be under-dispersed, by 4.7 nats.
+Conway-Maxwell-Poisson, the other two-parameter family that can be under-dispersed, by 4.8 nats.
 
 The runs fix $N$'s mean well and its spread loosely, so $n$ and $p$ trade off along a ridge. The mean at the best $n$
 is 7.25. Re-fitting $p$ at each $n$, every $n$ from 16 to 19 lies within 1.92 nats of the best: the 95%
 nominal profile set, whose coverage is uncalibrated for integer $n$. So the best single pair is not itself a finding.
 The adopted $n = 21$ lies just outside that set
-in-sample, 6.41 nats below the best $n$. Its variance is 4.78.
+in-sample, 6.42 nats below the best $n$. Its variance is 4.78.
 
 *Does the in-sample preference survive held out?* No alternative crosses the approximate threshold. Each form was fitted on four groups of runs and scored against
 Binomial(21, 0.35) on the fifth:
@@ -771,9 +772,9 @@ Binomial(21, 0.35) on the fifth:
 |---|---|---|
 | free distribution | +12.6 ± 6.6 | +1.90 |
 | binomial, $n$ and $p$ by likelihood | +6.4 ± 4.8 | +1.34 |
-| binomial by moments | +4.7 ± 4.0 | +1.17 |
+| binomial by moments | +4.7 ± 4.0 | +1.18 |
 | Conway-Maxwell-Poisson | +2.0 ± 4.9 | +0.41 |
-| Poisson | −108.8 ± 11.6 | −9.37 |
+| Poisson | −108.9 ± 11.6 | −9.38 |
 
 No alternative has a clear held-out advantage under the approximate comparison, and the Poisson scores worse. Keeping (21, 0.35) is a decision rather than
 a fit. In-sample the candidate Binomial(18, 0.405) fits 8.8 nats better. It lies inside the profile interval, with
@@ -787,9 +788,9 @@ under-predicts the first and over-predicts the second, both known misses:
 | decks with Sasami Anshinzawa [This Might Sting!]'s pal card | 639 | 7.74 | 7.17 | 0.374 | 0.342 | 3e-07 |
 | Inari One's careers | 473 | 6.83 | 7.26 | 0.326 | 0.347 | 0.001 |
 
-On the runs with neither, Binomial(21, 0.35) is still rejected against a free distribution, $p$ = 0.002.
+On the runs with neither, Binomial(21, 0.35) is still rejected against a free distribution, $p$ = 0.006.
 
-*Scenarios and pals.* A free distribution per scenario gains 29.6 nats for 48 extra parameters, below the nominal threshold.
+*Scenarios and pals.* A free distribution per scenario gains 29.5 nats for 54 extra parameters, below the nominal threshold.
 The fitted means by pal count do not decrease monotonically. Deck composition and weakly observed counts beyond
 short decks' completion prevent this from identifying whether pal events consume chain budget. Over 4,791 runs with 1-4 pals:
 
