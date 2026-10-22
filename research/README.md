@@ -42,8 +42,8 @@ parameter count, compared directly; an extra parameter, by likelihood ratio (det
 predicts better, by 5-fold cross-validation by run id (`common.fold`, `common.compare_held_out`).
 
 Every analysis runs on every run in the pool. What the runs cannot test is labelled **assumed** in the document and
-claims no evidence: §1's spark curve, §2's star mixes and §3's base rates other than the skill whites (community
-figures).
+claims no evidence: §1's spark curve and §2's star mixes (community figures). The bases of the spark types the odds do
+not use are listed only in `docs/MODEL.md`.
 
 **Data.** The measured values rest on Independent Training runs from uma-it, read as run records
 (`research/data/runs.jsonl`; every run record is part of the pool) and, for §2, the run list's rank-score estimates
