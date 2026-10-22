@@ -7,9 +7,9 @@ document keeps the evidence.
 ## Results
 
 The model's odds rest on one prediction: the chance that a career acquires each target. Section 13 tests it on
-{{13.runs_used|,.0f}} real Independent Training careers, each rebuilt from its own deck and lineage. The chance is calibrated where the
-model's priority assumption holds. Over all rows it is slightly optimistic, because the model assumes every target is
-prioritised and some players prioritise other skills.
+{{13.runs_used|,.0f}} real Independent Training careers, each rebuilt from its own deck and lineage. Aggregate acquisition is consistent with
+the product approximation on rows whose target is prioritised or whose priority list is unknown. Unknown lists do not
+establish the priority assumption. Over all rows the approximation is slightly optimistic.
 
 | Rows | Rows (n) | Observed / predicted [95%] |
 |---|---|---|
@@ -18,10 +18,15 @@ prioritised and some players prioritise other skills.
 | target shown not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}] |
 | all eight default targets landed, per run | | {{13.p_all_eight_ratio_all|.2f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] |
 
-The not-prioritised rows carry {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}} of the shortfall. The last row is consistent with calibrated but weak: only
-{{13.runs_acquiring_every_open_target|.0f}} runs acquired every target. The terms are defined in *How to read*.
+The not-prioritised rows carry {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}} of the shortfall; this allocation does not establish its cause.
+The last row is a spark-weighted acquisition check against the exact joint model, with only
+{{13.runs_acquiring_every_open_target|.0f}} runs acquiring every target. It tests neither spark generation nor the ranking of candidates.
+The terms are defined in *How to read*.
 
 ### What each part rests on
+
+The schedule ceiling below fixes each loop's reported decks. Scenario bands are chosen defaults informed by measured
+rank distributions. The tests and their nominal labels have the limits set out in *How to read*.
 
 | Part | How it is set | Main evidence | Section |
 |---|---|---|---|
@@ -42,7 +47,8 @@ The not-prioritised rows carry {{13.3_acquired_shortfall_share_on_non_prioritise
 
 ### Known misses
 
-Each is measured and tested in its section.
+Each is measured and tested in its section. These are exploratory discrepancies under the tests below; pointwise
+intervals and nominal significance do not establish every listed miss after selection across many comparisons.
 
 | Part | Miss | Observed / predicted | Section |
 |---|---|---|---|
@@ -91,6 +97,11 @@ evidence is claimed for it.
 **Intervals.** $x$ [$a$, $b$] is an estimate with its 95% interval, or 90% where marked. Where a run gives one
 observation, it is the Wilson interval. Where a run gives several rows, such as targets, race attempts or trials, the
 interval is clustered by run, so a run is the unit.
+Calibration ratio intervals treat predictions as fixed and runs as independent; they do not include uncertainty from fitting the
+predictions or dependence between careers. Wilson divided by a mean prediction is a marginal rate interval, not a
+conditional Poisson-binomial calibration test for heterogeneous predictions. Band tests are run-clustered Wald tests,
+whose reference distribution requires enough independent runs and full-rank covariance. Unless stated otherwise,
+intervals are pointwise and comparisons exploratory; covering the prediction does not establish equivalence.
 
 **Terms.**
 
@@ -111,22 +122,29 @@ interval is clustered by run, so a run is the unit.
   Stamina, Slipstream / Perfect Spot!, Risky Business / Nothing Ventured. The model is the same for every skill, so
   section 13 also checks a sample of every other skill.
 
-**Fit comparisons.** A model's *log-likelihood* (LL) sums the log of the probability it gave to what was seen. A
-difference of $\Delta$ *nats* means the better model made the data $e^{\Delta}$ times as likely; 5 nats is about 150. A
-*free* fit gives each quantity its own value with no formula, such as a win rate per cell. It is the yardstick a
+**Fit comparisons.** A model's *log-likelihood* (LL) sums the log of the probability it gave to what was seen. For a
+joint likelihood, a difference of $\Delta$ *nats* is a likelihood ratio of $e^{\Delta}$. Sums of dependent marginal
+scores, including training-skill rows and the chain-allocation link scores, are composite likelihoods. Their differences
+compare scores without giving that likelihood ratio for whole careers. A *free* fit gives each quantity its own value
+with no formula, such as a win rate per cell. It is the yardstick a
 formula is measured against. There are three kinds of comparison, each with its rule:
 
-1. **Same number of fitted parameters**: compared directly by LL on the same data.
-2. **Is an extra parameter detectable?** The likelihood-ratio test (Wilks 1938): with $k$ extra parameters, $2\Delta$
-   is compared with $\chi^2$ on $k$ degrees of freedom. One parameter needs $\Delta > 1.92$ at 5%. A detectable effect
-   is reported as detectable, not as a better model.
-3. **Does a model predict better?** This alone decides whether a form is adopted. The runs are split into five groups
-   by run id, and each group is scored by the model fitted on the other four: *held out*. Two models are compared run
-   by run (Vuong 1989): $z$ is the summed difference over its standard error, and $z > 1.96$ means one predicts unseen
-   runs better beyond chance.
+1. **Same number of fitted parameters**: compared descriptively by LL on the same data; no universal significance
+   cutoff follows for nonnested models.
+2. **Is an extra parameter detectable?** For regular nested joint-likelihood fits, Wilks' reference distribution
+   compares $2\Delta$ with $\chi^2$ on the difference in parameter dimensions. The scripts' unadjusted tests on
+   composite likelihoods, discrete count parameters or boundary fits need separate calibration. Their nominal
+   significance alone does not establish detection.
+3. **Does a model predict better?** The scripts compare folds grouped by run id. Each fold should refit the complete
+   prediction pipeline on its training runs. The hint covariate and card-effect checks retain full-pool specialty
+   weights, so those comparisons are only partly held out. Their per-scenario levels are refitted. The reported
+   standard error treats per-run score differences as independent and ignores overlapping training folds and model
+   selection. Its $z$ is an approximate comparison, and failure to cross the script's threshold does not show that
+   alternatives are equivalent or worse.
 
 Every number here is computed by the scripts in `research/`, which also test each conclusion the text draws
-(`research/README.md`). Only the assumed inputs are typed in.
+(`research/README.md`). A script's **holds** records its predicate, subject to these limitations. Only the assumed
+inputs are typed in.
 
 ## 0. What is computed
 
@@ -145,17 +163,18 @@ runs show the sparks a career inherited, not the ones it produced, so nothing he
 Computed by `research/s02_stars.py`.
 
 The star mixes are **assumed** (community figures; `docs/MODEL.md`): 50 / 45 / 5% of sparks at 1 / 2 / 3★ below a rank
-score of 17,500, and 20 / 70 / 10% from 17,500 up. The runs show which band each scenario uses and what averaging over
-stars costs.
+score of 17,500, and 20 / 70 / 10% from 17,500 up. The page chooses the majority band in each measured scenario.
+That default is a rule informed by the rank scores, not a fitted mixture for veterans retained in a loop.
 
 ### Findings
 
 - **Grand Concert uses the higher band; URA Finale, Unity Cup and Trackblazer the lower.** Unity Cup is close to even.
-- **Averaging over stars overstates the inheritance chance slightly**, by at most {{2.q_overstatement_below_17_500_max|.2%}}.
+- **Averaging over stars overstates the single-target inheritance chance in the sampled configurations**, by at most
+  {{2.q_overstatement_below_17_500_max|.2%}} within the assumed mixes. This is no bound on every lineage or on joint landing odds.
 
 ### Evidence
 
-*Which band?* (**derived** from the runs.) Each scenario takes the band most of its careers reach. A career's rank score
+*Which band?* (**chosen** from measured rank distributions.) Each measured scenario takes the majority band. A career's rank score
 is estimated with every skill point spent, over every completed run in the run list.
 
 | Scenario | Runs | Share at 17,500+ [95%] | Band |
@@ -168,11 +187,13 @@ is estimated with every skill point spent, over every completed run in the run l
 Grand Masters has no runs and is **assumed** 17,500+.
 
 *What does averaging over stars cost?* (**derived**.) For a planned loop the model uses each legacy's expected base per
-roll. That is exact for one roll but not for two, because a legacy's stars are the same in both rolls. With $r$ a
+roll. That is exact for one roll only when the cap is inactive. Across both rolls the same stars persist. With $r$ a
 legacy's chance per roll, convexity gives $E[(1 - r)^2] \ge (1 - E[r])^2$. So averaging overstates $q$, the chance of
 an inspiration over the career (section 3).
 The table measures the overstatement on the six real affinities of each of the {{2.lineages|,.0f}} lineages in the runs, for a target
-carried by all six:
+carried by all six. The calculation assumes independent unknown stars across slots; repeated appearances of the same
+veteran would share her stars. With capping, the squared miss remains convex in the base, so the same direction holds
+under this slot-independence assumption.
 
 | Band | Mean overstatement of $q$ | Largest |
 |---|---|---|
@@ -190,6 +211,7 @@ The roll tested is the community formula (`docs/MODEL.md`). At each of the two i
 passes it with chance $r = \min\{1,\ b(s)(1 + A/100)\}$: a base $b(s)$ set by the spark's stars $s$, 3 / 6 / 9% for a
 skill white, raised in proportion to the legacy's affinity $A$. Over the career the chance of at least one inspiration
 of the skill is $q = 1 - [\prod_l (1 - r_l)]^2$ over the six legacies $l$. The odds use skill whites only.
+This assumes independent firings across legacies and inspirations conditional on the stars and affinities.
 
 The parts are **fitted** on *trials*. A trial is one ancestor's white spark in one year where she is the only one of the
 six legacies carrying the skill, so that year's inspiration of it can only come from her. The trial *passes* when the
@@ -199,13 +221,13 @@ character as a grandparent is section 5's.
 ### Findings
 
 - **Grandparents pass sparks at the full base rate, as parents do.**
-- **Affinity raises the roll exactly as the formula says.** A free slope, or a free weight on either part of
-  affinity, predicts unseen runs no better than 1.
-- **The skill-white bases hold at 1, 2 and 3 stars.**
+- **The affinity formula is retained.** A free slope, or a free weight on either part of affinity, has no clear
+  held-out advantage under the reported comparison.
+- **The skill-white bases lie inside the pointwise intervals by stars.**
 - **Known miss: parents at affinity 200 or more pass sparks less often than predicted.** A refitted slope does not
   predict unseen runs better, so the model keeps the formula and this miss.
-- **Known miss: one band of predicted chance lies outside its own interval** on whole careers, though the bands hold
-  jointly. Whole-career totals and Tail Held High are in section 13.
+- **One band of predicted chance lies outside its pointwise interval** on whole careers, though the joint test does
+  not reject the prediction. Whole-career totals and Tail Held High are in section 13.
 
 ### Evidence
 
@@ -255,7 +277,7 @@ Parents read {{3.parents_obs_per_pred|.3f}} of the model, the shortfall coming f
 | the four below 200 | {{3.affinity_bands_below_200_chi2|.1f}} | {{3.affinity_bands_below_200_chi2_p|.2f}} | consistent |
 | all five | {{3.affinity_bands_chi2|.1f}} | {{3.affinity_bands_chi2_p|.3f}} | not consistent: a known miss |
 
-*Whole careers.* Section 13 gives the totals: calibrated apart from Tail Held High. Without it, the finer checks hold
+*Whole careers.* Section 13 gives the totals and the Tail Held High discrepancy. Without it, the finer checks are consistent
 over {{3.inheritance_without_tail_held_high_rows|,.0f}} rows:
 
 | Check, without Tail Held High | Observed / expected | Verdict |
@@ -264,7 +286,7 @@ over {{3.inheritance_without_tail_held_high_rows|,.0f}} rows:
 | years in which an inspiration of the skill fired | {{3.per_roll_without_tail_held_high_spark_years_obs_per_exp|.3f}} | {{3.per_roll_without_tail_held_high_spark_years_sds_below_expectation|.2f}} sd below, inside the 95% band |
 | legacy firings, against $2\sum_l r_l$ | {{3.per_roll_without_tail_held_high_ancestor_hits_obs_per_exp|.3f}} | |
 
-*Every predicted chance?* The rows are grouped by predicted $q$ into {{3.reliability_chi2_buckets|.0f}} groups, which are jointly calibrated.
+*Every predicted chance?* The rows are grouped by predicted $q$ into {{3.reliability_chi2_buckets|.0f}} groups, whose joint test does not reject the prediction.
 Their joint test gives $\chi^2$ = {{3.reliability_chi2|.1f}}, $p$ = {{3.reliability_chi2_p|.2f}}. One group, {{3.reliability_buckets_outside_their_own_95_pct_interval|s}}, lies outside its own 95% interval.
 
 | Predicted $q$ | Rows | Observed | Mean predicted |
@@ -297,8 +319,8 @@ races pay 0, 0, 0, 5, 20, 30. The planner counts $j$ up to 6.
   it. Why is not known; the runs only show that it does.
 - **Grades must include inherited aptitude sparks.** On base grades the table predicts too few wins. Pink sparks raise
   grades at the start of a career and at each inspiration, from that April on.
-- **Races in a row lower the chance; wins do not.** The previous race's result does not change the next chance.
-- **One formula is enough.** A free win rate per cell does not predict unseen runs better.
+- **Races in a row lower the chance.** The previous race's result shows no detectable additional effect in these contrasts.
+- **The table is retained.** Free cell rates have no clear held-out advantage.
 - **Known misses**: chances of 70 or less, and chosen races at the 1st and 2nd race in a row, win slightly less than
   predicted. Goal races 7th or later in a row, which the planner charges as the 6th, win less than it predicts.
 
@@ -334,7 +356,7 @@ same two parameters in each, and the comparisons follow rule 1 of *How to read*.
 | base | {{4.race_win_rate_predicted_base|.1%}} | {{4.race_obs_per_pred_base|.3f}} [{{4.race_obs_per_pred_base_95_pct_low|.3f}}, {{4.race_obs_per_pred_base_95_pct_high|.3f}}] | {{4.race_base_bp_lt_70_obs_per_pred|.2f}} over {{4.race_base_bp_lt_70_attempts|,.0f}} attempts |
 | raised | {{4.race_win_rate_predicted_pink|.1%}} | {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] | {{4.race_pink_bp_lt_70_obs_per_pred|.2f}} |
 
-Outside chosen races at the 1st and 2nd race in a row, every scenario is calibrated. Over all attempts, the scenarios
+Outside chosen races at the 1st and 2nd race in a row, every scenario is consistent with the prediction. Over all attempts, the scenarios
 outside their intervals are: {{4.race_pink_scenarios_outside_their_interval|s}}.
 
 *Goal races.* Under the community table, goal races from the 4th race in a row win more than predicted, while chosen
@@ -347,8 +369,7 @@ the same fitted floor and ceiling:
 | Community table | $\mathrm{PEN}_j$ | yes | {{4.held_out_goal_shift_vs_community_table_nats|,.0f}} ± {{4.held_out_goal_shift_vs_community_table_se|.0f}} nats worse, $z$ = {{4.held_out_goal_shift_vs_community_table_z|.2f}} |
 | Exclusion | $\mathrm{PEN}$ at the chosen races before it | no | {{4.held_out_goal_shift_vs_exclusion_nats|,.0f}} ± {{4.held_out_goal_shift_vs_exclusion_se|.0f}} nats worse, $z$ = {{4.held_out_goal_shift_vs_exclusion_z|.2f}} |
 
-In-sample the adopted form fits {{4.race_ll_recalibrated_pink_table_recalibrated_community_table_nats|,.0f}} nats better than the community table. Adopted, goal races are calibrated at
-each position, and chosen races from the 3rd on. Chosen races at the 1st and 2nd fall slightly short, a known miss.
+In-sample the adopted form fits {{4.race_ll_recalibrated_pink_table_recalibrated_community_table_nats|,.0f}} nats better than the community table. With the adopted shift, the grouped goal-race intervals cover the prediction, and chosen races from the 3rd on. Chosen races at the 1st and 2nd fall slightly short, a known miss.
 
 | Race in a row | Goal races: observed / predicted [95%] | Attempts | Chosen races: observed / predicted [95%] | Attempts |
 |---|---|---|---|---|
@@ -360,7 +381,7 @@ each position, and chosen races from the 3rd on. Chosen races at the 1st and 2nd
 | 6th or later | {{4.race_pink_goal_j_6_obs_per_pred|.3f}} [{{4.race_pink_goal_j_6_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_goal_j_6_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_goal_j_6_attempts|,.0f}} | {{4.race_pink_chosen_j_6_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_6_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_6_obs_per_pred_95_pct_high|.3f}}] | {{4.race_pink_chosen_j_6_attempts|,.0f}} |
 | goal, 7th or later | {{4.race_pink_goal_j_ge_7_obs_per_pred|.2f}} [{{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_high|.2f}}] | {{4.race_pink_goal_j_ge_7_attempts|,.0f}} | | |
 
-*Every chance?* On raised grades, the table holds down to a chance of 80:
+*Every chance?* On raised grades, the pointwise intervals cover the prediction down to a chance of 80:
 
 | Table's chance | Attempts | Observed / predicted [95%] |
 |---|---|---|
@@ -374,7 +395,7 @@ each position, and chosen races from the 3rd on. Chosen races at the 1st and 2nd
 matters on {{4.proc_timing_attempts|,.0f}} Senior January-March attempts; the claims table compares them.
 
 *The previous race's result.* The test divides observed / predicted after a loss by the same after a win, with a
-run-clustered interval. Every contrast covers 1: the penalty counts races entered, not wins.
+run-clustered interval. Every contrast covers 1; this supports retaining the race-count penalty without establishing absence of a win-history effect.
 
 | Race in a row | After a win [95%] | Attempts | After a loss [95%] | Attempts | Loss / win [95%] |
 |---|---|---|---|---|---|
@@ -383,8 +404,7 @@ run-clustered interval. Every contrast covers 1: the penalty counts races entere
 | 4th or later | {{4.race_in_a_streak_j_4_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_win_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_4_after_a_win_attempts|,.0f}} | {{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_loss_obs_per_pred_95_pct_high|.3f}}] | {{4.race_in_a_streak_j_4_after_a_loss_attempts|,.0f}} | {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred|.3f}} [{{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_low|.3f}}, {{4.race_in_a_streak_j_4_after_a_loss_per_after_a_win_obs_per_pred_95_pct_high|.3f}}] |
 
 *One formula.* Giving each of the {{4.race_pink_cells_bp_x_j_x_goal|.0f}} (chance, streak position, goal or chosen) cells its own win rate fits better
-in-sample. The gain exceeds the {{4.race_ll_threshold_pink_cells_bp_x_j_x_goal|.0f}} nats chance allows for {{4.race_ll_pink_cells_bp_x_j_x_goal_extra_parameters|.0f}} extra parameters if attempts were independent. They are
-not: one trainee's stats carry through her races. Held out, the per-cell rates predict no better, so the table stands.
+in-sample. The gain exceeds the {{4.race_ll_threshold_pink_cells_bp_x_j_x_goal|.0f}} nats of the nominal independent-attempt threshold for {{4.race_ll_pink_cells_bp_x_j_x_goal_extra_parameters|.0f}} extra parameters if attempts were independent. The shared career state can make those attempts dependent. Held out, the per-cell rates predict no better, so the table stands.
 
 The test is conditional on IT having chosen each non-goal race. Stats are not modelled.
 
@@ -403,6 +423,8 @@ Here pair and tri are the relation points of the groups holding all the characte
 P_b(r)$ is the expected number of single-race G1s both $a$ and $b$ win, where $P_a(r)$ is $a$'s chance of winning race
 $r$ at least once over her schedule (section 4, base aptitudes). Schedules fixed in advance and careers independent are
 **assumed**. The 3 per shared win is tested in section 3.
+The loop model inserts expected shared wins into the nonlinear inheritance formula; it does not average inheritance
+over joint future race outcomes.
 
 ### Findings
 
@@ -437,10 +459,10 @@ structure is ranked by its lineages' mean $P(\text{all})$, a definition (`docs/M
 ### Findings
 
 - **The rotation occurs in practice**: {{6.a_grandparent_of_her_own_character|,.0f}} of {{6.runs|,.0f}} runs have a grandparent of the trainee's own character.
-- **Every pair of umas carries the same weight**, so a loop's race schedules can be chosen for the most expected shared
-  wins over all its pairs.
-- **Scheduling for shared wins instead of odds costs little**: no schedule could raise a reference loop's odds by
-  more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, and no listed runner-up could overtake its winner.
+- **Every pair of umas carries the same weight in the sum of affinities.** Total expected shared wins is the chosen
+  scheduling objective; equal affinity weights do not make it equivalent to the nonlinear landing score.
+- **With each loop's reported decks fixed, scheduling for shared wins costs little on the references**: no schedule
+  could raise a reference loop's odds by more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, and no listed runner-up could overtake its winner.
 
 ### Evidence
 
@@ -450,18 +472,20 @@ twice each. Summed over the lineages, every pair gets the same weight:
 
 $$\text{loop: } {{6.one_lineage_o_p1_p2_weight|.0f}}\cdot 2 + {{6.one_lineage_o_p1_x_weight|.0f}}\cdot 4 = {{6.loop_weight_per_pair|.0f}}, \qquad \text{rotation: } {{6.one_lineage_o_p1_p2_weight|.0f}} + {{6.one_lineage_o_p1_x_weight|.0f}} + {{6.one_lineage_o_p1_x_weight|.0f}} = {{6.rotation_weight_per_pair|.0f}}.$$
 
-So a structure's schedules maximise $\sum_{a<b} o(a,b)$, the total expected shared wins.
+The scheduler seeks a large $\sum_{a<b} o(a,b)$, the total expected shared wins, as a symmetric surrogate.
 
 *The schedule bound* (**derived**, on the reference loops: the best loops and decks found for a fixed set of reference
-setups). Schedules are chosen for shared wins, not for the score. The score rises with every $o$: $o$ enters each
+setups). Schedules are chosen for shared wins, not for the score. The score is nondecreasing in every $o$: $o$ enters each
 legacy's affinity with weight +3, and every later step is nondecreasing in its inputs. So, with a loop's decks fixed, no
-schedule can score above the odds with every pair at its highest possible overlap. That includes a schedule chosen for
-the score directly. The bound is computed on {{6.schedules_result_files|.0f}} reference results, whose odds an independent implementation
+schedule can score above the odds with every pair at a valid upper bound on its overlap. The best schedule value lies
+between the feasible score found and this ceiling. Outfits are reselected at the ceiling, while decks remain fixed.
+The bound is computed on {{6.schedules_result_files|.0f}} reference results, whose odds an independent implementation
 reproduces to within {{6.schedules_recomputed_odds_max_relative_error|.0e}}.
 
 Two ceilings bound the best possible overlap. $o_{\max}(a,b) = \sum_r P^{\max}_a(r)\,P^{\max}_b(r)$ is an independent
-one: every offering of every G1 attempted, with no streak penalty. The *pair ceilings* are the highest overlap each
-pair reaches over feasible schedules. They are tight but come from the same search code that chose the schedules, so
+one: every offering of every G1 attempted, with no streak penalty. Each *pair ceiling* is the smaller of the bounds
+obtained by optimising either member's feasible schedule against the other's componentwise best-case win chances.
+The pair need not attain that ceiling jointly. These bounds come from the same search code that chose the schedules, so
 they are not an independent check; they sit between $o$ and $o_{\max}$ on every pair.
 
 | Quantity | Value | Runner-ups that reach their winner |
@@ -471,7 +495,8 @@ they are not an independent check; they sit between $o$ and $o_{\max}$ on every 
 | gain allowed by the pair ceilings | {{6.schedules_pb_ceiling_gain_min_pct|.2f}}-{{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, median {{6.schedules_pb_ceiling_gain_median_pct|.2f}}% | {{6.schedules_runner_ups_whose_pb_ceiling_reaches_the_winner|.0f}} of {{6.schedules_runner_up_loops_checked|.0f}} |
 
 $o_{\max}$ is far from reachable: the schedules found reach about {{6.schedules_overlap_found_as_pct_of_o_max_median|.0f}}% of it, so it cannot settle the ranking.
-The pair ceilings can: no listed runner-up reaches its winner under them.
+The pair ceilings settle this comparison with each loop's decks fixed: no listed runner-up reaches its winner under them.
+They do not certify the ranking after jointly changing schedules and decks.
 
 ## 7. Training hints
 
@@ -482,7 +507,7 @@ Specialty Priority, both at maximum limit break with unique effects included.
 
 ### Findings
 
-- **A card gives about the same number of training hints every career, each a uniformly random skill from its pool.**
+- **The adopted form gives a nearly fixed count of uniform skill draws per card.**
   A skill already at hint level 5 is no longer picked. The fitted table below gives a typical card's hints per
   scenario.
 - **Hint frequency scales that number directly**: Hint Frequency +40% gives 40% more hints. The slope is **assumed**;
@@ -560,8 +585,8 @@ With it, the excess is gone:
 | Same card, hint frequency fixed | $d$ = {{7.specialty_same_card_clean_d|u.2f}} [{{7.specialty_same_card_clean_d_95_pct_low|u.2f}}, {{7.specialty_same_card_clean_d_95_pct_high|.2f}}], {{7.specialty_same_card_clean_cards|.0f}} cards | {{7.specialty_same_card_clean_gain_nats|+.2f}} nats over no term | cause undecided |
 
 The scale $k$ multiplies the adopted per-scenario weights and is 1 on every row. It is refitted on either half of the
-runs, on SR or SSR cards alone, and without any one of the eight most-used cards. The last two rows are the causal
-test. The same card at different limit breaks has different specialty priority but is otherwise the same card. On most
+runs, on SR or SSR cards alone, and without any one of the eight most-used cards. The last two rows are within-card
+comparisons. The same card at different limit breaks has different specialty priority but is otherwise the same card. On most
 such cards hint frequency changes too, so their weight, with a base per card and scenario, also absorbs any misfit of
 the hint-frequency term. On the clean cards, whose hint frequency never changes, the estimate is consistent with no
 effect and with every per-scenario weight.
@@ -573,7 +598,8 @@ effect and with every per-scenario weight.
 | adopted, with the specialty term | {{7.specialty_model_free_divisor_c|.0f}} | {{7.held_out_specialty_model_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_specialty_model_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_specialty_model_free_divisor_vs_1_per_100_z|.1f}} | $1/100$ kept |
 | form study, without it | {{7.free_divisor_c|.0f}} | {{7.held_out_free_divisor_vs_1_per_100_nats|.1f}} ± {{7.held_out_free_divisor_vs_1_per_100_se|.1f}} nats, $z$ = {{7.held_out_free_divisor_vs_1_per_100_z|.1f}} | free divisor better |
 
-On the adopted model the free divisor is detectable in-sample but does not predict unseen careers better.
+On the adopted model the free divisor gains in-sample but has no clear held-out advantage. The nominal in-sample
+likelihood-ratio test uses dependent skill marginals without adjustment.
 
 *The form.* The form was fixed on every card at any limit break, R cards included, without the specialty term:
 {{7.form_rows|,.0f}} rows from {{7.form_runs|,.0f}} runs. Per-scenario $\beta(1 + hf/100)$ predicts unseen runs better than every alternative:
@@ -587,7 +613,10 @@ On the adopted model the free divisor is detectable in-sample but does not predi
 | per-scenario $\beta(1 + hf/100)$ | {{7.ll_per_scenario_base_1_hf_per_100|u,.1f}} | |
 | free divisor, $c = {{7.free_divisor_c|.0f}}$ | {{7.ll_free_divisor|u,.1f}} | slope table above |
 
-The other checks of the form:
+The other checks of the form are descriptive. The stat-option variance check selects uncensored card-runs and uses
+a downward-biased sample variance; its sign-test reference probability is unjustified. It does not establish the
+absence of a stat option. The pair check uses continuous draw powers at the earlier rate without specialty priority;
+it does not test the adopted cap-aware integer mixture.
 
 | Question | Result |
 |---|---|
@@ -610,7 +639,8 @@ The other checks of the form:
 | 2 | {{7.cap_table_2_draws_rows|,.0f}} | {{7.cap_table_2_draws_replacement|.3f}} | {{7.cap_table_2_draws_cap|.3f}} |
 | 1 | {{7.cap_table_1_draws_rows|.0f}} | {{7.cap_table_1_draws_replacement|.3f}} | {{7.cap_table_1_draws_cap|.3f}} |
 
-*Covariates and cards.* On top of the adopted rate, over {{7.covariate_rows|,.0f}} rows:
+*Covariates and cards.* The in-sample significance labels below use unadjusted composite-likelihood tests. The
+held-out comparisons retain full-pool specialty weights. On top of the adopted rate, over {{7.covariate_rows|,.0f}} rows:
 
 | Added term | In-sample gain | Held out | Verdict |
 |---|---|---|---|
@@ -641,7 +671,7 @@ hinted it, the card's own hint is seen this often, against the adopted rate:
 | card event | {{7.spark_card_event_rows|,.0f}} | {{7.spark_card_event_observed|.3f}} | {{7.spark_card_event_predicted|.3f}} | {{7.spark_card_event_ratio|.2f}} |
 | other card's training | {{7.spark_other_card_training_rows|,.0f}} | {{7.spark_other_card_training_observed|.3f}} | {{7.spark_other_card_training_predicted|.3f}} | {{7.spark_other_card_training_ratio|.2f}} |
 
-With no other source the adopted rate is calibrated. A skill hinted by inspiration is
+With no other source the adopted rate is consistent with the aggregate interval. A skill hinted by inspiration is
 hinted by training less than predicted, which is not modelled. The cause is not that such a skill leaves the card's
 pool. With two pool skills hinted by inspiration, the rest are hinted at {{7.drop_out_test_observed|.3f}}:
 
@@ -663,12 +693,13 @@ Computed by `research/s08_chains.py`.
 ### Findings
 
 - **A career gets a random number $N$ of chain events, Binomial(21, 0.35)**, the same for every deck and scenario.
-  Scenarios show no difference.
-- **Binomial(21, 0.35) is kept by choice.** No alternative predicts unseen runs better, but in-sample a free
-  distribution rejects it, a known miss. Binomial(18, 0.405) is the candidate the runs now favour in-sample.
+  The scenario comparison finds no significant difference under its nominal test.
+- **Binomial(21, 0.35) is kept by choice.** No alternative crosses the approximate held-out threshold; that does not
+  establish equivalence. The free distribution fits better in-sample, but its nominal rejection needs recalibration.
+  Binomial(18, 0.405) is the candidate the runs now favour in-sample.
 - **Each event goes to a chain card in proportion to its remaining links.** This fits better than equal shares per
   card.
-- **Pal events do not use up chain events**: decks with more pals do not get fewer.
+- **Pal events are assumed to use no chain budget.** The fitted means by pal count do not establish that mechanism.
 - **Known misses**: two deck and trainee effects on $N$, which the model's single $N$ does not have. Causes unknown: in
   crowded decks, with many chain cards and few pals, early links run short and more chains never start than
   predicted. Final links fit pooled, but individual cards differ far beyond chance.
@@ -678,7 +709,7 @@ Computed by `research/s08_chains.py`.
 A run gets $N \sim \mathrm{Binomial}(21, 0.35)$ chain events, mean {{8.binomial_21_0_35_mean|.2f}}. Each event advances one non-pal chain card by one
 link. The card is picked in proportion to its links not yet fired: uniformly over the remaining *slots*. A chain is 3
 links on an SSR and 2 on an SR, and a stopped chain takes no more events. Pal and group cards take no slot
-(**assumed**, supported below).
+(**assumed**; the comparisons below are descriptive).
 
 A chain can stop early (**assumed**, from section 9's equal outcomes). If IT's default choice at a link ends the chain
 on $k$ of its $n$ outcomes, the chain stops there with chance $k/n$. Its unused slots return to the pool. The model
@@ -702,7 +733,10 @@ rate, and 0.02 is set to it:
 The cause is not known, and the fit does not depend on it. Across allowances from 0.01 to 0.045, the best $p$ at
 $n = 21$ stays within {{8.allowance_sensitivity_lowest_best_p_at_n_21|.2f}}-{{8.allowance_sensitivity_highest_best_p_at_n_21|.2f}}. That holds too with no allowance, on the {{8.allowance_0_runs_without_a_contradiction|,.0f}} runs that need none.
 
-*Which distribution for $N$?* In-sample, against the free distribution:
+*Which distribution for $N$?* The table keeps the scripts' nominal tests. The fixed adopted binomial has no fitted
+parameters, so subtracting the fitted binomial family's dimension is inappropriate. A free integer $n$ also lacks the
+continuous parameter required by an ordinary Wilks profile interval. Latent-distribution tests need identifiability
+and boundary checks before their reference distribution can be used. In-sample, against the free distribution:
 
 | Form for $N$ | Nats behind the free distribution | p-value | Note |
 |---|---|---|---|
@@ -713,16 +747,17 @@ $n = 21$ stays within {{8.allowance_sensitivity_lowest_best_p_at_n_21|.2f}}-{{8.
 | Binomial(15, 0.48) | {{8.binomial_15_0_48_nats_behind_distribution_free|.1f}} | | |
 | Poisson(7.1) | {{8.poisson_7_1_nats_behind_distribution_free|.1f}} | | variance = mean, too wide; rejected |
 
-$N$ is under-dispersed: the free fit's variance is {{8.distribution_free_variance_per_mean|.2f}} of its mean. That rules out the Poisson and every
-over-dispersed count. The binomial is the simplest under-dispersed count. It fits better than the
+$N$ is under-dispersed: the free fit's variance is {{8.distribution_free_variance_per_mean|.2f}} of its mean. The fitted Poisson scores worse; these moments alone do not reject every
+over-dispersed count distribution. The binomial is the simplest under-dispersed count. It fits better than the
 Conway-Maxwell-Poisson, the other two-parameter family that can be under-dispersed, by {{8.best_binomial_n_free_over_conway_maxwell_poisson_nats|.1f}} nats.
 
 The runs fix $N$'s mean well and its spread loosely, so $n$ and $p$ trade off along a ridge. The mean at the best $n$
 is {{8.binomial_mean_n_p_at_the_best_n|.2f}}. Re-fitting $p$ at each $n$, every $n$ from {{8.binomial_n_95_pct_profile_interval_low|.0f}} to {{8.binomial_n_95_pct_profile_interval_high|.0f}} lies within 1.92 nats of the best: the 95%
-interval. So the best single pair is not itself a finding. The adopted $n = 21$ lies just outside that interval
+nominal profile set, whose coverage is uncalibrated for integer $n$. So the best single pair is not itself a finding.
+The adopted $n = 21$ lies just outside that set
 in-sample, {{8.binomial_n_21_p_re_fitted_nats_below_the_best_n|.2f}} nats below the best $n$. Its variance is {{8.binomial_21_0_35_variance|.2f}}.
 
-*Does the in-sample preference survive held out?* No. Each form was fitted on four groups of runs and scored against
+*Does the in-sample preference survive held out?* No alternative crosses the approximate threshold. Each form was fitted on four groups of runs and scored against
 Binomial(21, 0.35) on the fifth:
 
 | Form | Held-out nats over (21, 0.35) ± SE | $z$ |
@@ -733,7 +768,7 @@ Binomial(21, 0.35) on the fifth:
 | Conway-Maxwell-Poisson | {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_se|.1f}} | {{8.held_out_conway_maxwell_poisson_over_binomial_21_0_35_z|u+.2f}} |
 | Poisson | {{8.held_out_poisson_over_binomial_21_0_35_nats|u+.1f}} ± {{8.held_out_poisson_over_binomial_21_0_35_se|.1f}} | {{8.held_out_poisson_over_binomial_21_0_35_z|u+.2f}} |
 
-No form predicts unseen runs better, and the Poisson predicts them worse. Keeping (21, 0.35) is a decision rather than
+No alternative has a clear held-out advantage under the approximate comparison, and the Poisson scores worse. Keeping (21, 0.35) is a decision rather than
 a fit. In-sample the candidate Binomial(18, 0.405) fits {{8.candidate_binomial_18_0_405_over_binomial_21_0_35_in_sample_nats|.1f}} nats better. It lies inside the profile interval, with
 mean {{8.candidate_binomial_18_0_405_mean|.2f}} and variance {{8.candidate_binomial_18_0_405_variance|.2f}}.
 
@@ -747,14 +782,16 @@ under-predicts the first and over-predicts the second, both known misses:
 
 On the runs with neither, Binomial(21, 0.35) is still rejected against a free distribution, $p$ = {{8.binomial_21_0_35_lr_p_runs_with_neither|.3f}}.
 
-*Scenarios and pals.* A mean per scenario gains {{8.per_scenario_log_likelihood_gain|.1f}} nats for {{8.per_scenario_extra_parameters|.0f}} extra parameters, which is not significant.
-More pals do not lower $N$, so pal events do not consume chain events. Over {{8.per_pal_count_runs_1_4_pals|,.0f}} runs with 1-4 pals:
+*Scenarios and pals.* A free distribution per scenario gains {{8.per_scenario_log_likelihood_gain|.1f}} nats for {{8.per_scenario_extra_parameters|.0f}} extra parameters, below the nominal threshold.
+The fitted means by pal count do not decrease monotonically. Deck composition and weakly observed counts beyond
+short decks' completion prevent this from identifying whether pal events consume chain budget. Over {{8.per_pal_count_runs_1_4_pals|,.0f}} runs with 1-4 pals:
 
 | | Unity Cup | Grand Concert | URA Finale | Trackblazer | | 1 pal | 2 pals | 3 pals | 4 pals |
 |---|---|---|---|---|---|---|---|---|---|
 | Mean $N$ | {{8.per_scenario_mean_unity_cup|.2f}} | {{8.per_scenario_mean_grand_concert|.2f}} | {{8.per_scenario_mean_ura_finale|.2f}} | {{8.per_scenario_mean_trackblazer|.2f}} | | {{8.per_pal_count_mean_1_pals|.2f}} | {{8.per_pal_count_mean_2_pals|.2f}} | {{8.per_pal_count_mean_3_pals|.2f}} | {{8.per_pal_count_mean_4_pals|.2f}} |
 
-*Final links by pal count.* The binomial lies inside the observed 95% interval at 3, 1 and 0 pals. It lies above it at
+*Final links by pal count.* These comparisons also use latent reach without the marker allowance. The binomial lies
+inside the observed 95% interval at 3, 1 and 0 pals. It lies above it at
 5 and 2 pals and below it at 4.
 
 | Pals | Chain cards | Runs | Final link reached [95%] | Binomial(21, 0.35) | Poisson(7.1) |
@@ -766,7 +803,7 @@ More pals do not lower $N$, so pal events do not consume chain events. Over {{8.
 | 1 | 5 | {{8.final_link_table_1_pals_runs|,.0f}} | {{8.final_link_table_1_pals_observed|.3f}} [{{8.final_link_table_1_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_1_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_1_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_1_pals_poisson_7_1|.3f}} |
 | 0 | 6 | {{8.final_link_table_0_pals_runs|,.0f}} | {{8.final_link_table_0_pals_observed|.3f}} [{{8.final_link_table_0_pals_observed_95_pct_low|.3f}}, {{8.final_link_table_0_pals_observed_95_pct_high|.3f}}] | {{8.final_link_table_0_pals_binomial_21_0_35|.3f}} | {{8.final_link_table_0_pals_poisson_7_1|.3f}} |
 
-*Slots or cards?* Slots. The alternative gives each running card's next event the same chance. The slot rule fits
+*Slots or cards?* The slot rule has the higher sum of marginal link scores. The alternative gives each running card's next event the same chance. The slot rule scores
 {{8.allocation_slot_over_card_nats|.1f}} nats better over {{8.allocation_runs|,.0f}} runs. With no pals it lies inside the observed interval and the card rule outside.
 With two pals both predict more final links than seen, the card rule further.
 
@@ -776,7 +813,9 @@ With two pals both predict more final links than seen, the card rule further.
 | Final links, 2 pals | {{8.allocation_final_links_2_pals_observed|.2f}} | {{8.allocation_final_links_2_pals_slot_rule|.2f}} | {{8.allocation_final_links_2_pals_card_rule|.2f}} |
 | Final links, 0 pals | {{8.allocation_final_links_0_pals_observed|.2f}} | {{8.allocation_final_links_0_pals_slot_rule|.2f}} | {{8.allocation_final_links_0_pals_card_rule|.2f}} |
 
-*Two-chain decks finish as predicted.* Decks with two 3-link SSRs and four pals need $N \ge 6$ to finish both chains:
+*Two-chain decks.* The prediction below is latent completion, while the observations require both markers to show.
+The marker allowance must also be applied before this is a calibration check.
+Decks with two 3-link SSRs and four pals need $N \ge 6$ to finish both chains:
 
 | Runs | Both chains finished | Share [95%] | Predicted |
 |---|---|---|---|
@@ -802,8 +841,9 @@ chain cards share its $N$. It gives $\chi^2$ = {{8.final_links_by_card_chi2|.0f}
 | 5 | {{8.never_started_5_chain_cards_observed|.2f}} | {{8.never_started_5_chain_cards_model|.2f}} |
 | 6 | {{8.never_started_6_chain_cards_observed|.2f}} | {{8.never_started_6_chain_cards_model|.2f}} |
 
-A per-card activation parameter, a chain card active with probability $a$, does not fix it. Fitted jointly with $N$, it
-gains {{8.activation_corrected_reading_joint_with_n_gain_nats|u.1f}} nats at $a = {{8.activation_corrected_reading_joint_with_n_a|.2f}}$: rejected.
+A per-card activation parameter remains unresolved. The disjoint coarse grids for activation and its null give
+{{8.activation_corrected_reading_joint_with_n_gain_nats|u.1f}} nats at $a = {{8.activation_corrected_reading_joint_with_n_a|.2f}}$.
+This is not a nested maximised comparison and cannot reject activation.
 
 ## 9. Event choices and outcomes
 
@@ -815,7 +855,8 @@ holds no outcome odds.
 
 A target counts as *prioritised* when it is on the run's priority list and not outranked. It is outranked when a
 higher-ranked prioritised skill sits on a rival choice of every event offering it. That affects {{9.event_only_hints_outranked_on_a_rival_choice_rows|.0f}} event-only rows;
-which way the rank runs is assumed, not tested.
+which way the rank runs is assumed, not tested. The classifier does not compare each choice's best-ranked skill,
+so a higher-ranked companion on the target's own choice can invalidate its outranked label.
 
 ### Findings
 
@@ -825,11 +866,13 @@ which way the rank runs is assumed, not tested.
 - **Known miss: event-only hints of prioritised targets read just below the model**, at {{9.event_only_hints_prioritised_targets_obs_per_pred|.3f}}.
 - **Five measured outcomes depart from equal shares**, and the model uses the measured values. Some other outcomes are
   off the equal rule but left at it: known misses.
-- **Pal and group finales are modelled as certain**, and both checked hold.
+- **Pal and group finales are assumed certain.** Every checked run is consistent with that
+  assumption; finite samples do not establish certainty.
 
 ### Measured shares
 
-These shares are **fitted**, with 90% intervals. A *reading* is a firing where every outcome could show: her hint
+These shares are **fitted**, with 90% intervals. Riko's adopted value is a per-career approximation under the observed
+choice policy. Festa's interval treats estimated latent assignments as binomial trials and omits their uncertainty. A *reading* is a firing where every outcome could show: her hint
 credited, and the skill's level from other sources below 5.
 
 | Event, outcome | Observed | Share [90%] | Adopted |
@@ -843,7 +886,8 @@ credited, and the skill's level from other sources below 5.
 
 The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
 Positioning. Sasami Anshinzawa's rows use the {{9.anshinzawa_runs_with_the_card_no_festa|.0f}} runs with her card and without Nakayama Festa's; Nakayama Festa's
-use all {{9.festa_runs_with_the_card|.0f}} runs with her card.
+start from {{9.festa_runs_with_the_card|.0f}} runs with her card, then exclude her own careers and decks with Sasami Anshinzawa's SSR.
+The split-choice, Sasami Anshinzawa and Daitaku Helios analyses use the earlier collection subset, not the full pool.
 
 ### Evidence
 
@@ -881,7 +925,7 @@ GameTora marks that choice as ending her event chain, which for a pal card means
 fires: at least {{9.anshinzawa_rb_prioritised_runs_showing_the_finale|.0f}} of {{9.anshinzawa_rb_prioritised_runs|.0f}} such runs show its outcome. IT apparently keeps her dates either way.
 
 *Why Riko Kashimoto's adopted share is lower than measured.* The adopted value is a per-run chance of her Ramp Up
-hint, whichever choice IT took:
+hint, whichever choice IT took. Transferring it to a policy that prioritises Ramp Up is an assumption:
 
 | Riko Kashimoto [Planned Perfection] | Count | Share [90%] |
 |---|---|---|
@@ -889,7 +933,8 @@ hint, whichever choice IT took:
 | firings where IT took the top choice | {{9.riko_firings_top_choice|.0f}} of {{9.riko_firings_all|.0f}} | {{9.riko_firings_top_choice_rate|.2f}} |
 | firings where IT took the bottom choice, Lone Wolf | {{9.riko_firings_bottom_choice|.0f}} | |
 
-*Reading Nakayama Festa's share.* Her event's credits in the {{9.festa_runs_with_the_card|.0f}} runs with her card:
+*Reading Nakayama Festa's share.* The following credits are from the eligible subset of the
+{{9.festa_runs_with_the_card|.0f}} runs with her card:
 
 | Credit | Runs |
 |---|---|
@@ -898,14 +943,17 @@ hint, whichever choice IT took:
 | Risky Business, to "her or another card's event" | {{9.festa_rb_shared_credits|.0f}}, Team Sirius in {{9.festa_shared_with_team_sirius|.0f}} |
 | neither outcome, with Risky Business already at Lv 5 | {{9.festa_blank_risky_business_at_lv_5|.0f}} |
 
-A shared credit is split by each card's own rate. Let $r_F$ be the rate at which she gives Risky Business in runs with
+A shared credit is split by estimated source rates. Let $r_F$ be her exclusive Risky Business credit rate in runs with
 her card, {{9.festa_her_rb_rate|.3f}}. Let $r_o$ be the rate at which the other card alone is credited with it in runs without her:
-{{9.festa_team_sirius_alone_rb_rate|.3f}} for Team Sirius, {{9.festa_anshinzawa_alone_rb_rate|.3f}} for Sasami Anshinzawa. A shared credit is hers with chance
+{{9.festa_team_sirius_alone_rb_rate|.3f}} for Team Sirius, {{9.festa_anshinzawa_alone_rb_rate|.3f}} for Sasami Anshinzawa. The estimator assigns a shared credit to her with weight
 $r_F / (1 - (1 - r_F)(1 - r_o))$, which gives her {{9.festa_shared_credits_hers|.1f}} of them.
 
 In the blank runs a Risky Business win cannot show, or the event never fired. They are split by the rate at which the
 event shows where both outcomes can, {{9.festa_firing_rate_where_both_can_show|.2f}}. That gives the share in the measured-shares table. Whatever share of
-the shared credits is hers, it stays within {{9.festa_share_shared_all_hers|.3f}}-{{9.festa_share_shared_none_hers|.3f}}. It shows no dependence on the trainee's final Wit.
+the shared credits is hers, it stays within {{9.festa_share_shared_all_hers|.3f}}-{{9.festa_share_shared_none_hers|.3f}} under the same blank-case correction.
+This attribution assumes independent source firings but substitutes exclusive credits for marginal firing rates.
+The blank-case correction does not condition on the missing gold outcome. Both corrections need a joint observation
+model, and no final-Wit test is computed here.
 
 *Shares left at the equal rule.*
 
@@ -919,7 +967,7 @@ the shared credits is hers, it stays within {{9.festa_share_shared_all_hers|.3f}
 | King Halo [Tonight, We Waltz] link 3 | {{9.king_halo_link_3_gap_closer|.2f}} | consistent with 0.5 |
 | Daitaku Helios [Sunlit Angel ♪] link 2, Tail Held High, where link 3 visibly fired | {{9.helios_link_2_tail_held_high_given_link_3|.2f}} | consistent with 0.5 |
 
-*Pal and group finales are certain.* Light Hello [From the Ground Up] credits See Ya Later! to her event in {{9.light_hello_credited_credited|.0f}} of
+*Pal and group finales are assumed certain.* Light Hello [From the Ground Up] credits See Ya Later! to her event in {{9.light_hello_credited_credited|.0f}} of
 {{9.light_hello_credited_runs_carrying_her|.0f}} runs carrying her. Team Sirius is credited with Risky Business, alone or shared, in {{9.team_sirius_credited_credited|.0f}} of {{9.team_sirius_credited_runs_carrying_her|.0f}}.
 
 ## 10. Random card events (not modelled)
@@ -935,7 +983,8 @@ is one such event in one run, read through the marker skill on its top choice.
 - **A shared random event fires in about {{10.constant_p|.2f}} of the careers it can fire in** (**fitted**). This is a lower bound.
   The rate falls a little as more events are on offer, but a constant rate predicts unseen runs as well.
 - **Leaving them out under-predicts the targets they can hint**, which read {{10.calibration_obs_per_pred_left_out|.2f}} of the model.
-- **Crediting them at the fitted rate is not shown to predict unseen careers better.**
+- **On rows with a positive baseline prediction, crediting them has no clear held-out advantage.** Rows predicted
+  impossible are excluded from that score, so it cannot settle the value of adding a previously missing source.
 - **The card's initial friendship gauge raises the rate.** This is a known miss of the measured rate; friendship bonus
   and specialty priority show no effect.
 - **Two default targets are affected**: Vodka's Nimble Navigator and Nice Nature's Ramp Up, the only ones that are a
@@ -984,7 +1033,8 @@ take no weight, and pals do compete:
 | a chain link | {{10.every_slot_competing_chain_link_weight|.0f}} | weight 1 rejected, score test |
 | a pal, $w$ | {{10.every_slot_competing_pal_weight|.2f}} [{{10.every_slot_competing_pal_weight_robust_95_pct_low|.2f}}, {{10.every_slot_competing_pal_weight_robust_95_pct_high|.2f}}] | 0 excluded |
 
-*What else moves the rate?* Little. Within a run, events fire independently.
+*What else moves the rate?* The measured effects are below. The within-run check does not detect dependence;
+independent firing remains an assumption.
 
 | $K$ | 4 | 6 | 8 | 10 | 12 | 14 |
 |---|---|---|---|---|---|---|
@@ -1027,7 +1077,8 @@ scores whether the target was acquired from any source, so it does not depend on
 | left out, as modelled | {{10.calibration_obs_per_pred_left_out|.2f}} [{{10.calibration_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_ratio_95_pct_high_left_out|.2f}}] |
 | credited at the fitted rate, about {{10.careers_mean_fitted_rate_there|.2f}} there | {{10.calibration_obs_per_pred_credited|.2f}} [{{10.calibration_ratio_95_pct_low_credited|.2f}}, {{10.calibration_ratio_95_pct_high_credited|.2f}}] |
 
-Held out, with the rate fitted on the other four groups' readings, crediting gains {{10.held_out_credited_against_left_out_nats|.1f}} ± {{10.held_out_credited_against_left_out_se|.1f}} nats. That is $z$ =
+Held out, on the {{10.calibration_rows_with_a_positive_prediction|.0f}} rows with positive baseline predictions and with the rate fitted on the other groups'
+readings, crediting gains {{10.held_out_credited_against_left_out_nats|.1f}} ± {{10.held_out_credited_against_left_out_se|.1f}} nats. That is $z$ =
 {{10.held_out_credited_against_left_out_z|.2f}}, short of 1.96. Crediting would raise an affected run's odds by a median {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_median|.0%}}, over the targets it can land.
 The largest rise is {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_max|.0%}}, over {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_runs|.0f}} affected runs. The trainee's own random event can be told apart only for Nice Nature: it
 gave the target on {{10.careers_trainee_s_own_acquired_through_her_events|.0f}} of {{10.careers_rows_of_the_trainee_s_own_event_identifiable|.0f}} rows.
@@ -1042,13 +1093,14 @@ nor the scenario's.
 
 ### Findings
 
-- **Where only such an event can give a target, leaving them out shows no significant cost.** Crediting the measured
-  rates gains only {{11.calibration_conditional_only_ll_credited_minus_left_out_positive_rows|.1f}} nats.
+- **The conditional-only sample does not settle the cost of omission for individual trainees.** Crediting the measured
+  rates on positive-baseline rows gains {{11.calibration_conditional_only_ll_credited_minus_left_out_positive_rows|.1f}} nats.
 - **The exception is Vodka's Nimble Navigator.** Her own events give it in most of her runs, and the model
   under-predicts it. Her random and conditional events both give it and cannot be told apart.
 - **Tokai Teio's Head-On is modelled as always acquired**, like Yamanin Zephyr's Slipstream. All three of its races
   are her career goals. The goals ask only for top 5, top 5 and top 3, but IT won all three in {{11.of_them_winning_all_three|.0f}} of {{11.runs_training_tokai_teio|.0f}}
-  runs training her. Every run where her event could show credits Head-On.
+  runs training her. Every run where her event could show credits Head-On. Certainty remains an assumption; her goals
+  require placings, while the event requires wins.
 
 ### Evidence
 
@@ -1066,32 +1118,39 @@ nor the scenario's.
 
 ## 12. The composed career model
 
-The composition is **derived** from sections 1-11; there is nothing to fit and no script. An independent implementation
-(`val/joint_check.py`) reproduces the solver's exact odds on every reference loop (section 6).
+The composition is **derived given the independence assumptions** in sections 1-11 and below; there is nothing further
+to fit and no script. An independent implementation (`val/joint_check.py`) reproduces the solver's exact odds on every
+reference loop (section 6).
 
 A target lands if the deck hints the gold and it sparks, or else if any source hints the white and that sparks. For a
 target $k$ not guaranteed:
 
-$$p_k = d^{g}_k\, G_k + (1 - d^{g}_k)\, W_k \left[1 - (1 - d^{w}_k)(1 - e_k)(1 - q_k)\right]$$
+$$p_k = (1 - m^{g}_k)\,G_k + W_k\left[m^{g}_k - m^{0}_k(1 - e_k)(1 - q_k)\right].$$
 
-Here $G_k = 0.4\cdot 1.1^{n_k}$ and $W_k = 0.2\cdot 1.1^{n_k}$ are the spark chances (section 1). $d^g_k$ and $d^w_k$ are
-the chances the deck hints the gold and the white, $e_k$ that the trainee's own events hint it, and $q_k$ that it is
-inherited (section 3). A skill on the trainee's outfit replaces the bracket by 1 for a white, or gives $p_k = G_k$ for a
-gold. A scenario-guaranteed gold gives $G_k$. Inheritance only ever supplies the white.
+Here $G_k = 0.4\cdot 1.1^{n_k}$ and $W_k = 0.2\cdot 1.1^{n_k}$ are the spark chances (section 1). $m^g_k$ is the chance
+the deck gives no gold hint and $m^0_k$ the chance it gives neither tier, jointly over its sources. $e_k$ is the chance
+the trainee's own events hint the white, and $q_k$ that it is inherited (section 3). A skill on the trainee's outfit
+replaces the bracket by $m^g_k$ for a white, or gives $p_k = G_k$ for a gold. A scenario-guaranteed gold gives $G_k$.
+Inheritance only ever supplies the white. The miss product assumes the deck, own-event acquisition and inheritance
+are independent conditional on the model inputs.
 
 Targets are not independent. Chain cards share one run's $N$, a card's training draws are joint (section 7), and one
 event's outcomes exclude each other (section 9). So the model fixes the final chain state $c$, with the links where
-chains stopped, and the joint training and event outcomes $H$. Given both, the per-target chances multiply:
+chains stopped, and the joint training and deck-event outcomes $H$. Independent training processes across cards and
+independent event-outcome groups conditional on chain progress are assumed. Given $c,H$ and the lineage inputs,
+the remaining inheritance, own-event and generation outcomes are assumed independent across targets, so the
+per-target chances multiply:
 
-$$P(\text{all}) = \sum_{c} P(c)\, E_{H\mid c}\!\left[\prod_{k} p_k(c,H)\right] \qquad (\text{exact, **derived**}).$$
+$$P(\text{all}) = \sum_{c} P(c)\, E_{H\mid c}\!\left[\prod_{k} p_k(c,H)\right] \qquad (\text{exact under the assumptions}).$$
 
 Multiplying the targets' marginal chances given $c$ alone would discard those dependencies. The implementation
 enumerates connected target groups and multiplies independent groups (`joint_eval_in`).
 
 *Real legacies.* The same model uses each veteran's real stars, real G1 wins and recorded parents. An unknown parent
 brings no relation points, but her sparks count. $n_k$ is then the number of legacies actually carrying $k$. Since
-$q_k$ and $e_k$ enter only as $(1 - e_k)(1 - q_k)$, $e_k$ is replaced by $1 - (1 - e_k)(1 - q_k)$, and $1.1^{n_k - 6}$
-scales $P(\text{all})$ (**derived**).
+$q_k$ and $e_k$ enter only as $(1 - e_k)(1 - q_k)$, $e_k$ is replaced by $1 - (1 - e_k)(1 - q_k)$.
+Relative to the loop's generation constants, $1.1^{n_k - 6}$ scales target $k$'s landing factor; the total scale is
+$\prod_k 1.1^{n_k - 6} = 1.1^{\sum_k(n_k - 6)}$, including guaranteed targets (**derived**).
 
 ## 13. Calibration against real careers
 
@@ -1099,16 +1158,16 @@ Computed by `research/s13_calibration.py`.
 
 ### Findings
 
-- **The model's acquisition odds are calibrated where its priority assumption holds** (Results). Most of the shortfall
+- **Aggregate acquisition is consistent with the product approximation on prioritised-or-unknown rows** (Results). Most of the shortfall
   over all rows, {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}}, sits on rows the run's list shows not prioritised.
-- **Inheritance is calibrated apart from one target**: without Tail Held High it reads {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} of the model.
+- **Aggregate inheritance without Tail Held High is consistent with the model**: it reads {{3.inheritance_without_tail_held_high_obs_per_pred|.3f}} of the model.
 - **Known miss: Tail Held High is inherited less often than predicted**, the only target of eight whose interval
   excludes 1. The cause is not known.
-- **Deck hints read optimistic, almost all from the priority assumption.** Event hints of targets not prioritised land
+- **Deck hints read optimistic, with shortfalls concentrated in event sources.** Event hints of targets not prioritised land
   at {{13.1_events_only_not_prioritised_obs_per_pred|.2f}} of the model.
 - **Known miss: prioritised targets' event hints read just below the model.**
 - **Known miss: Trackblazer's training-hint base over-predicts these runs.** The other scenarios' intervals cover 1.
-- **Landing all eight targets reads {{13.p_all_eight_ratio_all|.2f}} of the model**: consistent with calibrated, but a weak test.
+- **The spark-weighted acquisition check reads {{13.p_all_eight_ratio_all|.2f}} of the exact joint model**: a weak test that does not measure spark generation.
 - **Beyond the eight targets**, inheritance reads slightly short of the model, spread over many skills: a known miss.
   Training-pool hints are under-predicted.
 
@@ -1127,15 +1186,21 @@ Rows on her outfit and scenario golds are *certain*: they could only count as su
 out. The rest are *open targets*. Intervals are clustered by run, since a run's eight targets share its deck and
 lineage. The runs end before skills are bought, so "acquired" means hinted, the model's own meaning.
 
+The deck and acquisition tests use the career report's `buy` product approximation across cards. Its white chance is
+conditional on no gold in that approximation; it is not an unconditional white marginal. Shared chain progress can
+make these predictions differ from the joint engine's acquisition probabilities. The landing test uses exact spark
+marginals, and the all-target spark-weighted check uses exact `p_all`.
+
 1. **Deck hint**: does a deck card hint the skill, by training or by its events, as often as sections 7-9 predict? The
-   prediction is $d^g + (1 - d^g)d^w$; observed is a deck card credited with a hint of the skill. Only rows where no
+   prediction is $d^g + (1 - d^g)d^w$, with $d^g$ the gold chance and $d^w$ the white chance conditional on no gold in
+   the product approximation; observed is a deck card credited with a hint of the skill. Only rows where no
    inspiration hinted the skill are used (section 7). The rows split by where the deck's chance comes from:
    **training pool only** or **events only**. Events only splits again by whether the target was **prioritised**
    (section 9), for runs that show a list.
 2. **Inheritance**: does an inspiration of the skill fire as often as $q$ (section 3)?
 3. **Acquired**: does the skill end up hinted, from any source, as often as all modelled sources together predict?
-   This is what the odds rest on. It is also read on the rows the priority assumption fits: the target prioritised,
-   or the run showing no list.
+   This is what the odds rest on. It is also read on rows with the target prioritised or the run showing no list;
+   the latter have unknown priority status.
 4. **Landing**: the model's $p$ against the same chance computed from what the run acquired: $0.4 \cdot 1.1^n$ if the
    gold was hinted, $0.2 \cdot 1.1^n$ if only the white. It checks the acquired step through the spark step. It does
    not test spark generation (section 1).
@@ -1164,9 +1229,10 @@ lineage. The runs end before skills are bought, so "acquired" means hinted, the 
 the others less often: the two "3. Acquired" rows split by priority. The pooled test averages the two with the runs
 that show no list.
 
-*Where the deck loses its points.* Almost all in event hints of targets the player did not prioritise: test 1's split.
+*Where the deck loses its points.* The shortfall is concentrated in event sources: test 1's split.
 Unmodelled scenario and trainee events supply the few points the deck loses: {{13.acquisitions_from_unmodelled_events|.0f}} target acquisitions, {{13.acquisitions_from_unmodelled_events_share_of_rows|.1%}} of
-rows. On the rows the priority assumption fits, the deck and inspiration alone already read {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_obs_per_pred|.3f}} of the model.
+rows. On prioritised-or-unknown rows, the deck and inspiration alone read {{13.3_acquired_deck_or_inspiration_only_prioritised_or_no_list_shown_obs_per_pred|.3f}} of the model.
+Agreement after adding unmodelled acquisitions can conceal component errors and does not validate candidate rankings.
 
 *Per target*, observed / predicted:
 
@@ -1232,9 +1298,10 @@ training-pool rows, is within its interval.
 | all open targets acquired, model as product of odds | all | {{13.per_run_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_all_open_acquired_observed|.4f}} [{{13.per_run_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_all_open_acquired_95_pct_high|.4f}}] |
 | all open targets acquired, model as product of odds | where the priority assumption fits | {{13.per_run_priority_assumption_fits_all_open_acquired_product_of_odds|.4f}} | {{13.per_run_priority_assumption_fits_all_open_acquired_observed|.4f}} [{{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_low|.4f}}, {{13.per_run_priority_assumption_fits_all_open_acquired_95_pct_high|.4f}}] |
 
-The priority assumption fits a run when every open target is prioritised or no list is shown.
+The table's "priority assumption fits" group includes runs with no list, whose priorities are unknown.
+The all-open acquisition predictions multiply the approximate per-target acquisition probabilities.
 
-*Landing all eight.* $P(\text{all eight})$ is recomputed from what each run acquired and compared with the model's exact
+*Spark-weighted acquisition of all targets.* $P(\text{all eight})$ is recomputed from what each run acquired and compared with the model's exact
 $P(\text{all})$. The intervals bootstrap whole runs:
 
 | Scenarios | Observed / predicted [95%] |
