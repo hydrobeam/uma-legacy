@@ -89,8 +89,8 @@ pub(crate) struct ActiveCandidate {
 /// One scoring's outcome evaluation as `Scored::evaluate` reads it (built by `evaluate_career`; a plan keeps its pick's for a
 /// roll, `RollKeep`): per setup her miss factor's parts and her spark scales, with what the fold and the outcome loop
 /// read of them (`derive`); the tables kept (`prepare_scoring`) and each one's setup; the collapsed targets; per setup its
-/// candidate slot and per slot the odds now; her landed sets' chances; the candidates the loop can lift; her own 8/8's
-/// trio sides; her candidate index, the goal, the star mix. A setup is one place her veteran may be a parent (`Setup`).
+/// candidate slot and per slot the odds now; her landed sets' chances; the candidates the loop can lift; her own full
+/// veteran's trio sides; her candidate index, the goal, the star mix. A setup is one place her veteran may be a parent (`Setup`).
 pub(crate) struct Scored {
     /// nu: the job's uncertain targets.
     pub(crate) uncertain_target_count: usize,
@@ -102,7 +102,7 @@ pub(crate) struct Scored {
     pub(crate) slot_count: usize,
     /// Her own place among the stage candidates (`her_ends`); None: her uma is not one.
     pub(crate) own_candidate: Option<usize>,
-    /// Her parents are both 8/8s: her own 8/8 completes the loop (V after her 0).
+    /// Her parents are both full veterans: her full veteran is a fully looped parent (V after her 0).
     pub(crate) completes_goal: bool,
     /// The rank's star mix (1, 2, 3 stars).
     pub(crate) star_mix: [f64; 3],
@@ -130,7 +130,7 @@ pub(crate) struct Scored {
     pub(crate) landed_set_chances: Vec<f64>,
     /// The candidates the outcome loop can lift, in candidate order.
     pub(crate) active_candidates: Vec<ActiveCandidate>,
-    /// Her own 8/8's trio sides when her uma is not a stage candidate (`her_trios`).
+    /// Her own full veteran's trio sides when her uma is not a stage candidate (`her_trios`).
     pub(crate) own_trios: Vec<OwnTrio>,
     /// Derived (`derive`): per setup, uncertain target and star level, x = x0 xm.
     pub(crate) present_factors: Vec<Vec<[f64; 4]>>,

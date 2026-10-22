@@ -450,7 +450,7 @@ fn hi_at(
     saving_lo(score_base, candidate_probabilities, landed_mask, own, step_costs)
 }
 
-/// V - V_lo at candidate odds `candidate_probabilities`: each step that rose at `Cont::cost_lo`, her own 8/8
+/// V - V_lo at candidate odds `candidate_probabilities`: each step that rose at `Cont::cost_lo`, her own full veteran
 /// (`Scored::own_candidate`, `her_trios`) on the full set, the goal's V; `step_costs` scratch
 fn saving_lo(
     score_base: &ScoreBase,
@@ -879,7 +879,7 @@ fn hi_partner(
 
 impl RollKeep {
     /// The pick's upper bound at one outcome (a roll's `y_hi`, `roll_answer`): the most V can fall through her
-    /// veteran's DIRECT lifts. The outcomes, base and own-8/8 credit (`her_trios`) are `score_career`'s; but each stage
+    /// veteran's DIRECT lifts. The outcomes, base and credit for her own full veteran (`her_trios`) are `score_career`'s; each stage
     /// candidate's odds with her as a parent, with EVERY legal partner y (not the table value of her IDX_PARTNERS best), are
     /// bounded from the candidate's exact best now (pnow): every pair (y, z) of today's pool that keeps the plan's places is
     /// a career of hers worth at most pnow, so (`Env::rise`: E(q') <= E(q) x rise(q', q) for every deck)
@@ -909,7 +909,7 @@ impl RollKeep {
     ///     with partner y is at most c' E_A rise(q', q_A) for every A, and at most its ceiling. In the exact replan with her
     ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
     ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
-    ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
+    ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own full veteran).
     pub(super) fn outcome_hi(
         &mut self,
         simulator: &mut Sim,
@@ -1147,7 +1147,7 @@ impl RollKeep {
     }
 }
 
-/// The pick's own 8/8 as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
+/// The pick's own full veteran as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
 /// `her_trios` reads C's cached decks), where an outcome that lands every target reads y < 0.5 (`full_lo`: only there
 /// does `saving_lo` read it; else none)
 pub(crate) fn pick_her(
