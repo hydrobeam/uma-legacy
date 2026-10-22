@@ -101,8 +101,9 @@ missing tool or file and what it is before it stops; the `art` step instead says
 The solver's training-hint constants (each scenario's base and specialty weight, `src/deck/hints.rs`) are the research
 fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every build, native
 or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the solver's results
-(rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). A missing key fails the build
-with its name.
+(rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). The page's scenario tiles
+take the bases the same way: `webapp/build.py` (`hint_bases`) reads build.rs's keys with its rounding into the page's
+data. A missing key fails either build with its name.
 
 ## Data updates
 
