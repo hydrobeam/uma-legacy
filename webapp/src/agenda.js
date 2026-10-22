@@ -11,7 +11,8 @@ import { pickOutfit } from './roster.js';
  * @typedef {object} ScheduleCell
  * @property {number} p  her win chance, in percent
  * @property {number} [apt]  the aptitude cost (distance and surface grades), in percentage points
- * @property {number} [pen]  the penalty for racing several turns in a row, in percentage points
+ * @property {number} [pen]  the penalty for racing several turns in a row, in percentage points (a goal race pays the
+ *   previous position's)
  * @property {number} [row]  which race in a row this is (1 = the first)
  * @property {boolean} goal  a goal race of her scenario
  *
@@ -44,13 +45,13 @@ function whenBar(slot, /** @type {ScheduleCell|null} */ cell = null) {
   return bar;
 }
 // why a race isn't a sure win: 110 minus the aptitude cost (distance and surface grades) minus the penalty for the k-th
-// race in a row, capped at 100% ('' when the cell doesn't say)
+// race in a row (a goal race pays the (k-1)-th's), capped at 100% ('' when the cell doesn't say)
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th or later'];
 const why = (/** @type {ScheduleCell} */ cell) => {
   if (cell.apt === undefined) return '';
   const parts = [];
   if (cell.apt > 0) parts.push(`aptitude −${cell.apt}`);
-  if (cell.pen > 0) parts.push(`${ORD[Math.min(cell.row, 6)]} race in a row −${cell.pen}`);
+  if (cell.pen > 0) parts.push(`${ORD[Math.min(cell.row, 6)]} race in a row${cell.goal ? ' (a goal race: one less)' : ''} −${cell.pen}`);
   const costs = parts.length ? `, ${parts.join(', ')}` : '', capped = 110 - cell.apt - cell.pen > 100 ? ', capped at 100' : '';
   return `${cell.p}% win: 110${costs}${capped}`;
 };

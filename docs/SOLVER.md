@@ -20,15 +20,17 @@ master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──�
 **Win chance** of one attempt (the model and its evidence: `docs/MODEL.md`):
 
 ```
-p = clamp(110 − cost(distance grade) − cost(surface grade) − PEN[k], 0, 100) / 100
-cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[k] = 0,0,5,20,30,50 for streak position k = 1..6+
+p = clamp(110 − cost(distance grade) − cost(surface grade) − PEN[s], 0, 100) / 100
+cost: S,A=0  B=10  C=20  D=30  E=40  F=60  G=90      PEN[s] = 0,0,5,20,30,50 for s = 1..6+
+s = k for a chosen race; s = max(k − 1, 1) for a goal race (scored_position)
 ```
 
 The algorithm tests run on frozen data with older win chances (`tests/fixtures/data_v1.json`: PEN =
 0,0,10,25,35,50). `win_table_matches_community_table` checks 13 cost rows and all six streak positions using the
 Global data's penalties; it does not check the exported aptitude costs.
 
-- **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it.
+- **Streak position k:** counts consecutive turns with *any* race, goal races included. A rest resets it. A goal race
+  (an option of one of the career's goals) takes the penalty of position k − 1; it still counts toward the races after it.
 - **Turn** = 24·year + 2·(month−1) + half, with year 0 = Junior, 1 = Classic, 2 = Senior: turns 1–24, 25–48, 49–72; half 1 = Early, 2 = Late.
 - **Win probability per race:** P_a(r) = 1 − Π(1 − p) over uma a's attempts at race r. A race can be run in Classic and Senior; it still counts once.
 
