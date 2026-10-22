@@ -80,6 +80,13 @@ class ValidationExitTests(unittest.TestCase):
         (self.val / "trial__tiny.out").unlink()
         self.assertNotEqual(self.run_script("same.py", "trial").returncode, 0)
 
+    def test_whole_output_missing_key_is_not_null(self):
+        self.write(self.val / "ref__tiny.out", self.output)
+        self.write(self.val / "trial__tiny.out", {**self.output, "extra": None})
+        result = self.run_script("same.py", "trial")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(".extra", result.stdout)
+
     def test_whole_output_plan_directory(self):
         self.write(self.plan / "trial__tiny.out", self.output)
         self.assertEqual(self.run_script("same.py", "trial", "--plan").returncode, 0)
