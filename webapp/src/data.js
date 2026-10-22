@@ -4,7 +4,7 @@ import { ERA } from './settings.js';
 // the shared data comes from build.py's fingerprinted data scripts (self.__LLP_DATA, keyed 'data-cards', ...); what stays
 // in the page (the asset table, the example) from its JSON elements of the same ids
 const BUNDLED = self.__LLP_DATA || {};
-const parse = (id) => id in BUNDLED ? BUNDLED[id] : JSON.parse($(id).textContent);
+const parse = (id) => (id in BUNDLED ? BUNDLED[id] : JSON.parse($(id).textContent));
 const has = (id) => id in BUNDLED || !!$(id);
 // Fingerprinted files next to the page (build.py): the wasm, each era's solver data, the GM era's page data, the image folder.
 export const ASSETS = parse('data-assets');
@@ -61,45 +61,58 @@ export let CAREER = null;
 export let LATER = { umas: [], outfits: [], cards: [] };
 function setData(data) {
   const now = Date.now() / 1000;
-  LATER = { umas: [], outfits: [], cards: data.cards.filter(c => c.rel > now).map(c => c.id) };
-  const umas = data.umas.map(u => {
-    const later = (u.outfits || []).filter(o => o.rel > now);
+  LATER = { umas: [], outfits: [], cards: data.cards.filter((c) => c.rel > now).map((c) => c.id) };
+  const umas = data.umas.map((u) => {
+    const later = (u.outfits || []).filter((o) => o.rel > now);
     if (!later.length) return u;
-    LATER.outfits.push(...later.map(o => o.id));
-    const outfits = u.outfits.filter(o => o.rel <= now);
+    LATER.outfits.push(...later.map((o) => o.id));
+    const outfits = u.outfits.filter((o) => o.rel <= now);
     if (!outfits.length) LATER.umas.push(u.id);
     return { ...u, outfits };
   });
-  CARDS = data.cards.filter(c => c.rel <= now); UMAS = umas.filter(u => !LATER.umas.includes(u.id));
-  CAT = data.skills; CAREER = data.career || null;
-  CARD_BY_ID = new Map(data.cards.map(c => [c.id, c]));
+  CARDS = data.cards.filter((c) => c.rel <= now);
+  UMAS = umas.filter((u) => !LATER.umas.includes(u.id));
+  CAT = data.skills;
+  CAREER = data.career || null;
+  CARD_BY_ID = new Map(data.cards.map((c) => [c.id, c]));
   SK = new Map(CAT.map(([group, white, gold]) => [group, { w: white, gd: gold }]));
-  NAME = new Map(data.umas.map(u => [u.id, u.name]));
-  for (const [id, name] of CAREER?.mobs || []) NAME.set(id, name);   // the career page's sample (mob) veterans
+  NAME = new Map(data.umas.map((u) => [u.id, u.name]));
+  for (const [id, name] of CAREER?.mobs || []) NAME.set(id, name); // the career page's sample (mob) veterans
 }
 // a download that failed: for visitors a connection problem; opened as a file (the page must be served), the fix for that
 export const loadFail = (what) => {
-  const asFile = location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '';
+  const asFile =
+    location.protocol === 'file:' ? ' The page has to be served, not opened as a file: ./build.sh serve.' : '';
   return `Could not load ${what}. Check your connection and reload the page.${asFile}`;
 };
 export async function loadData() {
   if (ERA !== 'gm') {
-    setData({ cards: parse('data-cards'), umas: parse('data-umas'), skills: parse('data-skills'), career: has('data-career') ? parse('data-career') : null });
+    setData({
+      cards: parse('data-cards'),
+      umas: parse('data-umas'),
+      skills: parse('data-skills'),
+      career: has('data-career') ? parse('data-career') : null,
+    });
     return;
   }
   let response;
-  try { response = await fetch(ASSETS.dataGm); } catch { response = null; }
+  try {
+    response = await fetch(ASSETS.dataGm);
+  } catch {
+    response = null;
+  }
   if (!response?.ok) throw new Error(loadFail('the Grand Masters-era data'));
   setData(await response.json());
 }
-export const EXAMPLE = $('data-example') ? parse('data-example') : null;       // precomputed default result (the planner page)
+export const EXAMPLE = $('data-example') ? parse('data-example') : null; // precomputed default result (the planner page)
 const IMAGES = parse('data-img');
-export const SHIPPED = new Set(IMAGES.keys);   // images in dist/<IMG_BASE>: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
-export const IMG_BASE = IMAGES.base;           // the fingerprinted image folder, e.g. 'assets/img.1a2b3c4d5e/'
-export const IMG_EXT = IMAGES.ext;             // file extension per kind: avif, webp for the UI sprites
+export const SHIPPED = new Set(IMAGES.keys); // images in dist/<IMG_BASE>: 'uma:1001' | 'outfit:100102' | 'card:30116' | ...
+export const IMG_BASE = IMAGES.base; // the fingerprinted image folder, e.g. 'assets/img.1a2b3c4d5e/'
+export const IMG_EXT = IMAGES.ext; // file extension per kind: avif, webp for the UI sprites
 const SKILL_ICONS = parse('data-skillicon');
-export const SKILLICON = SKILL_ICONS.white, SKILLICON_GOLD = SKILL_ICONS.gold;   // skill group -> icon id of its white / gold version
-export const RACEIDS = parse('data-raceids');       // race name -> race id (banner key)
+export const SKILLICON = SKILL_ICONS.white,
+  SKILLICON_GOLD = SKILL_ICONS.gold; // skill group -> icon id of its white / gold version
+export const RACEIDS = parse('data-raceids'); // race name -> race id (banner key)
 // target golds a scenario hands out in every Independent Training run (Unity Cup: No Stopping Me!, It's On!)
 export const SCEN_GOLDS = { unity: [20049, 20046] };
 // each scenario's training-hint base by scenario key: research/results.json's fit rounded to 3 decimals, which build.py
@@ -133,11 +146,20 @@ export const SCENARIOS = [
   { v: 'gc', id: 3, name: 'Grand Concert', base: HINT_BASE.gc, ss: true, tint: '#ebe3ff' },
   { v: 'ura', id: 1, name: 'URA Finale', base: HINT_BASE.ura, ss: false, tint: '#e6f4c9' },
   { v: 'trackblazer', id: 4, name: 'Trackblazer', base: HINT_BASE.trackblazer, ss: false, tint: '#faeebf' },
-  { v: 'grandmasters', id: 5, name: 'Grand Masters', base: HINT_BASE.grandmasters, est: true, ss: true, era: 'gm', tint: '#f3e1d2' },
+  {
+    v: 'grandmasters',
+    id: 5,
+    name: 'Grand Masters',
+    base: HINT_BASE.grandmasters,
+    est: true,
+    ss: true,
+    era: 'gm',
+    tint: '#f3e1d2',
+  },
 ];
 // lineage rank: the star mix of the legacies' sparks (state.rank), below SS (rank score 6,500-17,499) or SS (17,500+)
 export const RANKS = { below: '0.50,0.45,0.05', ss: '0.20,0.70,0.10' };
-const URA_BASE = SCENARIOS.find(s => s.v === 'ura').base;
+const URA_BASE = SCENARIOS.find((s) => s.v === 'ura').base;
 // mult: "Hint rate ×1.76" (the tile's line, which adds "(estimate)" itself); rate: with "(estimate)" (tooltips, labels)
 for (const scenario of SCENARIOS) {
   scenario.mult = `Hint rate ×${(scenario.base / URA_BASE).toFixed(2)}`;

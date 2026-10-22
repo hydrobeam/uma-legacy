@@ -2,5 +2,10 @@
 // The settings editors (targets, umas, cards, scenario) call save(); each page sets its reaction with onSave.
 import { writeSaved } from './state.js';
 let react = () => {};
-export function onSave(reaction) { react = reaction; }
-export const save = () => { react(); writeSaved(); };
+export function onSave(reaction) {
+  react = reaction;
+}
+export const save = () => {
+  react();
+  writeSaved();
+};

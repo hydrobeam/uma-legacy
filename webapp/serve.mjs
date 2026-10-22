@@ -7,25 +7,49 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.webp': 'image/webp', '.avif': 'image/avif', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.js': 'text/javascript',
+  '.json': 'application/json',
+  '.txt': 'text/plain',
+  '.woff2': 'font/woff2',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+};
 
 export function serveDist(port = 0, host = '127.0.0.1') {
   const server = http.createServer((req, res) => {
     let urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (urlPath.endsWith('/')) urlPath += 'index.html';
-    else if (!path.extname(urlPath)) urlPath += '.html';   // /about -> about.html, as Cloudflare Pages serves it
+    else if (!path.extname(urlPath)) urlPath += '.html'; // /about -> about.html, as Cloudflare Pages serves it
     const file = path.normalize(path.join(DIST, urlPath));
-    if (!file.startsWith(DIST + path.sep)) { res.writeHead(403); return res.end(); }   // outside dist/ (a path with ..)
+    if (!file.startsWith(DIST + path.sep)) {
+      res.writeHead(403);
+      return res.end();
+    } // outside dist/ (a path with ..)
     fs.readFile(file, (err, buf) => {
-      if (err) { res.writeHead(404); return res.end('not found'); }
+      if (err) {
+        res.writeHead(404);
+        return res.end('not found');
+      }
       // fingerprinted assets/ a year, immutable, as the host serves them (dist/_headers); the pages and everything else
       // revalidated on every load here (the host caches them 5 minutes), so a rebuild shows on the next load
       const cache = urlPath.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache });
+      res.writeHead(200, {
+        'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
+        'Cache-Control': cache,
+      });
       res.end(buf);
     });
   });
-  return new Promise((resolve) => server.listen(port, host, () => resolve({ server, url: `http://${host}:${server.address().port}/` })));
+  return new Promise((resolve) =>
+    server.listen(port, host, () => resolve({ server, url: `http://${host}:${server.address().port}/` })),
+  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

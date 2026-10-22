@@ -43,13 +43,46 @@ import careerrun from './test/careerrun.mjs';
 import contrast from './test/contrast.mjs';
 
 /** The groups by name, each an `async (browser) => void` that logs its checks. */
-const TESTS = { load, scenario, autosearch, roster, upcoming, cards, panels, targets, keyboard, states, fourloop, borrowed, popups, phone, careerphone,
-  nonecards, reload, delivery, gm, settings, about, dark, career, careervets, careergen, careerpool, careerborrow, careerrun, contrast };
+const TESTS = {
+  load,
+  scenario,
+  autosearch,
+  roster,
+  upcoming,
+  cards,
+  panels,
+  targets,
+  keyboard,
+  states,
+  fourloop,
+  borrowed,
+  popups,
+  phone,
+  careerphone,
+  nonecards,
+  reload,
+  delivery,
+  gm,
+  settings,
+  about,
+  dark,
+  career,
+  careervets,
+  careergen,
+  careerpool,
+  careerborrow,
+  careerrun,
+  contrast,
+};
 
-process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';   // the browsers live in webapp/node_modules (./build.sh browsers)
+process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0'; // the browsers live in webapp/node_modules (./build.sh browsers)
 let pw;
-try { pw = createRequire(import.meta.url)('playwright'); }
-catch { console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)'); process.exit(1); }
+try {
+  pw = createRequire(import.meta.url)('playwright');
+} catch {
+  console.error('Playwright is missing: run ./build.sh browsers (or cd webapp && npm ci)');
+  process.exit(1);
+}
 
 // ---------- what runs
 const argv = process.argv.slice(2);
@@ -58,31 +91,49 @@ const argv = process.argv.slice(2);
 // light mode (contrast), /about, and the career page up to its one-run answer (career stops there in this tier)
 const QUICK_GROUPS = ['career', 'load', 'popups', 'phone', 'contrast', 'about'];
 const BROWSER_NAMES = ['chromium', 'firefox'];
-const BROWSERS = BROWSER_NAMES.filter(b => argv.some(a => BROWSER_NAMES.includes(a)) ? argv.includes(b) : !QUICK || b === 'chromium');
+const BROWSERS = BROWSER_NAMES.filter((b) =>
+  argv.some((a) => BROWSER_NAMES.includes(a)) ? argv.includes(b) : !QUICK || b === 'chromium',
+);
 // the longest groups start first (each runs serially; one started last would end the run alone), the slowest first
 const FIRST = ['careergen', 'careervets', 'career', 'careerpool', 'careerphone'];
-const startRank = (group) => FIRST.includes(group) ? FIRST.indexOf(group) : FIRST.length;
-const groups = (QUICK ? QUICK_GROUPS : Object.keys(TESTS)).filter(t => !argv.some(a => a in TESTS) || argv.includes(t))
+const startRank = (group) => (FIRST.includes(group) ? FIRST.indexOf(group) : FIRST.length);
+const groups = (QUICK ? QUICK_GROUPS : Object.keys(TESTS))
+  .filter((t) => !argv.some((a) => a in TESTS) || argv.includes(t))
   .sort((a, c) => startRank(a) - startRank(c));
-const JOBS = Math.max(1, +process.env.LLP_JOBS || 4), T0 = Date.now();
+const JOBS = Math.max(1, +process.env.LLP_JOBS || 4),
+  T0 = Date.now();
 
 // ---------- running them
 // one group in one browser: its lines buffered and printed together when it ends (a throw counts as one failure)
 async function runGroup(browserName, browser, group) {
-  const log = { lines: [], prof: PROF ? {} : null }, t0 = Date.now();
-  await groupLog.run(log, async () => { try { await TESTS[group](browser); } catch (e) { tally.failed++; say('  FAIL ' + group + ' threw: ' + String(e).split('\n').slice(0, 3).join(' ')); } });
+  const log = { lines: [], prof: PROF ? {} : null },
+    t0 = Date.now();
+  await groupLog.run(log, async () => {
+    try {
+      await TESTS[group](browser);
+    } catch (e) {
+      tally.failed++;
+      say('  FAIL ' + group + ' threw: ' + String(e).split('\n').slice(0, 3).join(' '));
+    }
+  });
   const wall = Date.now() - t0;
   console.log(`[${browserName}] ${group} (${(wall / 1000).toFixed(1)} s)\n` + log.lines.join('\n'));
-  if (PROF) fs.appendFileSync(PROF, JSON.stringify({ browser: browserName, group, wall, start: t0 - T0, ...log.prof }) + '\n');
+  if (PROF)
+    fs.appendFileSync(PROF, JSON.stringify({ browser: browserName, group, wall, start: t0 - T0, ...log.prof }) + '\n');
 }
 // every chosen group in one browser, JOBS at a time, in the order of `groups`
 async function runBrowser(name) {
-  const browser = await pw[name].launch(), queue = [...groups];
-  const worker = async () => { while (queue.length > 0) await runGroup(name, browser, queue.shift()); };
+  const browser = await pw[name].launch(),
+    queue = [...groups];
+  const worker = async () => {
+    while (queue.length > 0) await runGroup(name, browser, queue.shift());
+  };
   await Promise.all(Array.from({ length: JOBS }, worker));
   await browser.close();
 }
 await Promise.all(BROWSERS.map(runBrowser));
 const { passed, failed, skipped } = tally;
-console.log(`\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped (no game art)` : ''} in ${((Date.now() - T0) / 1000).toFixed(1)} s`);
+console.log(
+  `\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped (no game art)` : ''} in ${((Date.now() - T0) / 1000).toFixed(1)} s`,
+);
 process.exit(failed ? 1 : 0);
