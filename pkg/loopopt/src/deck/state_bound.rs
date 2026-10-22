@@ -4,7 +4,7 @@
 //! `state_value_cf`), and the configuration tables they read (`StateBoundConfig`).
 //! Exact joint evaluation belongs to `joint`.
 use crate::deck::chains::{ChainKind, ChainState, KeyLevel, chain_states, event_pmf_job, key_level};
-use crate::deck::joint::{ChainEntry, LandPre, MissFactors, land_factor, src_levels};
+use crate::deck::joint::{ChainEntry, JointQuery, LandPre, MissFactors, land_factor, src_levels};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{GroupSlots, TraversalEntryGroup};
 use crate::skills::{Model, OutfitOption};
@@ -1066,35 +1066,32 @@ impl StateBoundContext<'_> {
 /// None when some entry fails the negative-association certification (`TargetSources::uncertified_association`, `group_assoc`).
 pub(super) fn state_value(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if entries.iter().any(|e| e.sources.uncertified_association) {
         return None;
     }
-    Some(state_value_any(model, u, inheritance_chances, entries, filler))
+    Some(state_value_any(model, query, entries, filler))
 }
 /// `state_value` for the decks the cap-free search covers (`TargetSources::certified_cap_free`: every group's levels negatively upper-orthant
 /// dependent, `group_nuod_lvl`, all the derivation above needs of a group); None otherwise. The same value where both
 /// apply.
 pub(super) fn state_value_cf(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Option<Vec<f64>> {
     if entries.iter().any(|e| !e.sources.certified_cap_free) {
         return None;
     }
-    Some(state_value_any(model, u, inheritance_chances, entries, filler))
+    Some(state_value_any(model, query, entries, filler))
 }
 fn state_value_any(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<&TargetSources>],
     filler: usize,
 ) -> Vec<f64> {
@@ -1131,9 +1128,9 @@ fn state_value_any(
             e.map(|i| src_levels(entries[i].sources, kd.stop, uncertain_count))
         })
         .collect();
-    let opts = &model.opts[u];
+    let opts = &model.opts[query.trainee];
     let outfit_count = opts.len();
-    let mut acc = vec![0.0f64; inheritance_chances.len() * outfit_count];
+    let mut acc = vec![0.0f64; query.inheritance_chances.len() * outfit_count];
     let (mut ng, mut nh) = (vec![0.0f64; uncertain_count], vec![0.0f64; uncertain_count]);
     for ChainState { progress: x, probability: w } in states.iter() {
         ng.copy_from_slice(&cg);
@@ -1147,16 +1144,16 @@ fn state_value_any(
                 }
             }
         }
-        for (qi, &q) in inheritance_chances.iter().enumerate() {
+        for (qi, &q) in query.inheritance_chances.iter().enumerate() {
             for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
-                let ew = &model.ews[u][o];
+                let ew = &query.event_chances[o];
                 let f: f64 = (0..uncertain_count).map(|k| land_factor(st[k], ew[k], q, ng[k], nh[k])).product();
                 acc[qi * outfit_count + o] += w * f;
             }
         }
     }
     let fixed = model.fixed_factor();
-    (0..inheritance_chances.len())
+    (0..query.inheritance_chances.len())
         .map(|qi| fixed * (0..outfit_count).map(|o| acc[qi * outfit_count + o]).fold(0.0f64, f64::max))
         .collect()
 }

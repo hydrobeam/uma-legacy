@@ -1,7 +1,7 @@
 //! The deck enumeration (`DeckSpace::search`): node bounds, the exact pass with its caps and certificate.
 use crate::deck::joint::{LandPre, MissFactors};
 use crate::deck::space::{DeckSpace, LegalTables, SelectedDeck};
-use crate::skills::Model;
+use crate::skills::DeckChances;
 pub(crate) mod bounds;
 mod config;
 mod order;
@@ -92,16 +92,16 @@ impl DeckSpace<'_> {
     /// Reaching `max_decks` ends the band immediately and reports `OutputLimit`, even if that was the last deck.
     pub(crate) fn search(
         &self,
-        model: &Model,
+        chances: &DeckChances,
         trainees: &[crate::uma::UmaIndex],
         trainee_ids: &[u32],
         clauses: &[SearchClause],
         mode: SearchMode,
     ) -> SearchOutcome {
-        let setup = match self.configure_search(model, trainees, trainee_ids, clauses, mode) {
+        let setup = match self.configure_search(chances, trainees, trainee_ids, clauses, mode) {
             Ok(setup) => setup,
             Err(outcome) => return outcome,
         };
-        self.search_with_bounds(model, trainees, clauses, setup)
+        self.search_with_bounds(chances, trainees, clauses, setup)
     }
 }
