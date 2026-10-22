@@ -4,7 +4,9 @@ use super::{
     PlanSearches, RollKeep, RowOrigin, bests_key, found_anchors, is_full, keep_roll, near_floor, pick_her, pick_of,
     roll_kept, roll_key,
 };
+use crate::deck::career::sim::plan::ScoringContext;
 use crate::deck::career::sim::{Found, PROF, Sim, Value, json, now_ms};
+use crate::deck::career::{Career, Lineage};
 
 pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
     mut s: Sim<'_, 'data>,
@@ -18,7 +20,9 @@ pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
     buf: &mut Vec<f64>,
 ) -> Value {
     let sj = s.env.sj;
-    let PlanInputs { d, sk, cr, job, legs, pool, sv, fix, pj, .. } = *input;
+    let PlanInputs { legacies: legs, pool, solved: sv, fixed_parents: fix, settings: pj, .. } = *input;
+    let d = input.resources.data;
+    let job = input.resources.job;
     let psv = input.pick_solved();
     let n = candidates.trainees.len();
     let nl = legs.len();
@@ -52,7 +56,13 @@ pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
                 let (x, f) = (runs[pk].trainee, runs[pk].career.clone());
                 let KeptScoring { scored: sd, full_landing_below_threshold: full_lo } =
                     runs[pk].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
-                let her_hi = pick_her(&mut s, d, &base, legs, pool, x, f.a, f.b, &f.sel, full_lo, buf);
+                let her_hi = pick_her(
+                    &mut s,
+                    &ScoringContext { score_base: &base, legacies: legs, pool },
+                    Career { lineage: Lineage { trainee: x, first_parent: f.a, second_parent: f.b }, deck: &f.sel },
+                    full_lo,
+                    buf,
+                );
                 RollKeep {
                     key: roll_key(job),
                     sd,
@@ -109,8 +119,7 @@ pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
     // per career: the trios' last step (C on A's and B's real 8/8s) only on two 8/8 parents
     let role = |u: usize, f: &Found| match scores.best_combo {
         Some(combination)
-            if u == candidates.trainees[combination.candidate_a_index]
-                || u == candidates.trainees[combination.candidate_b_index] =>
+            if u == candidates[combination.candidate_a_index] || u == candidates[combination.candidate_b_index] =>
         {
             "plan"
         }
@@ -203,10 +212,10 @@ pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
             let a = (combination.candidate_a_index, combination.a_uses_existing);
             let b = (combination.candidate_b_index, combination.b_uses_existing);
             let ((first_index, first_uses_existing), (second_index, second_uses_existing)) =
-                if step(a.0, a.1) <= step(b.0, b.1) { (a, b) } else { (b, a) };
+                if step(a.0.0, a.1) <= step(b.0.0, b.1) { (a, b) } else { (b, a) };
             (
-                json!({"a": uname(candidates.trainees[first_index]), "b": uname(candidates.trainees[second_index]), "c": uname(combination.finisher_trainee), "careers": [step(first_index, first_uses_existing), step(second_index, second_uses_existing), combination.finisher_cost]}),
-                json!([member(first_index, first_uses_existing), member(second_index, second_uses_existing)]),
+                json!({"a": uname(candidates[first_index]), "b": uname(candidates[second_index]), "c": uname(combination.finisher_trainee), "careers": [step(first_index.0, first_uses_existing), step(second_index.0, second_uses_existing), combination.finisher_cost]}),
+                json!([member(first_index.0, first_uses_existing), member(second_index.0, second_uses_existing)]),
             )
         }
         None => (Value::Null, json!([])),
@@ -238,7 +247,7 @@ pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
     // a roll sent with the plan job (`next.roll`) when the worker kept no roll state for it: answered from the state just
     // kept (none when nothing was scored)
     if pj.roll.is_some() {
-        out["roll"] = match roll_kept(env, d, sk, cr, job, legs, pool, fix, pj) {
+        out["roll"] = match roll_kept(env, input.resources, legs, pool, fix, pj) {
             Some(mut r) => {
                 r["planned"] = json!(true);
                 r

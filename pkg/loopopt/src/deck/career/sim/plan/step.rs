@@ -1,5 +1,7 @@
 //! Step costs and the leaves used to estimate the next career.
 use super::{Cont, LB_CELLS, ScoreBase, Trio, trio_v, v0_after, with_her};
+use crate::deck::career::sim::plan::CandidateIndex;
+use crate::deck::career::sim::plan::cont::OwnTrio;
 
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`Est`, `Cont::cost`,
 /// for y) or the lower bound's (`Lo`, `Cont::cost_lo`, for y_hi). Monomorphised: each path keeps its own code
@@ -194,7 +196,13 @@ impl StepCost for Est<'_> {
             } else {
                 let mut best = f64::INFINITY;
                 for k in 0..self.tord.len() {
-                    let (ia, ib, c3, ra, rb) = bs.combos[self.tord[k]];
+                    let Trio {
+                        candidate_a: CandidateIndex(ia),
+                        candidate_b: CandidateIndex(ib),
+                        finisher_cost: c3,
+                        a_uses_existing: ra,
+                        b_uses_existing: rb,
+                    } = bs.combos[self.tord[k]];
                     let st = |s: &Self, i: usize, real: bool| {
                         if real {
                             0.0
@@ -257,7 +265,7 @@ pub(in crate::deck::career::sim::plan) fn v_after<C: StepCost>(
     m: usize,
     full_m: usize,
     xi: Option<usize>,
-    her: &[(usize, bool, f64)],
+    her: &[OwnTrio],
     goal: bool,
 ) -> f64 {
     // (the candidates whose step moved: if none, c1 is the base's)
@@ -296,7 +304,14 @@ pub(in crate::deck::career::sim::plan) struct One {
 
 pub(in crate::deck::career::sim::plan) fn one_of(combos: &[Trio], c1: &[f64], i: usize) -> One {
     let (mut not, mut rd, mut ok) = (f64::INFINITY, vec![], true);
-    for &(ia, ib, c3, ra, rb) in combos {
+    for &Trio {
+        candidate_a: CandidateIndex(ia),
+        candidate_b: CandidateIndex(ib),
+        finisher_cost: c3,
+        a_uses_existing: ra,
+        b_uses_existing: rb,
+    } in combos
+    {
         let (av, bv) = (if ra { 0.0 } else { c1[ia] }, if rb { 0.0 } else { c1[ib] });
         match (ia == i && !ra, ib == i && !rb) {
             (false, false) => {

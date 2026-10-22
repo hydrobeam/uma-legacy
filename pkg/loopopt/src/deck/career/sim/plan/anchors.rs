@@ -3,9 +3,12 @@ use super::{
     Lo, ScoreBase, fm_masks, her_ends, her_pool, her_pool_done, her_trios, leaf_products, leaf_set, legal_pair,
     rise_leaves, v_after,
 };
+use crate::deck::career::sim::plan::cont::OwnTrio;
+use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
 use crate::deck::career::sim::{
-    Data, DeckRes, Env, HerSlot, Legacy, Pool, Sel, Sim, Solved, holds_fix, now_ms, prof, rise_factor,
+    Data, DeckRes, Env, HerSlot, Legacy, Pool, Sim, Solved, holds_fix, now_ms, prof, rise_factor,
 };
+use crate::deck::career::{Career, Lineage};
 
 /// `outcome_hi`'s bound for one (candidate, partner), bd per leaf: the least of the ceiling rfc = rf x the best fast
 /// outfit's product and, over the anchors (f, qa), f x `rise_leaves`(qa); the same f64s as `rfc.min(anc)` with anc
@@ -346,7 +349,7 @@ fn hi_at(
     m: usize,
     full_m: usize,
     xi: Option<usize>,
-    her: &[(usize, bool, f64)],
+    her: &[OwnTrio],
     goal: bool,
     c1: &mut [f64],
     up: &mut [f64],
@@ -369,7 +372,7 @@ fn saving_lo(
     m: usize,
     full_m: usize,
     xi: Option<usize>,
-    her: &[(usize, bool, f64)],
+    her: &[OwnTrio],
     goal: bool,
     c1: &mut [f64],
 ) -> f64 {
@@ -432,7 +435,43 @@ struct HiScr {
 
 /// One (candidate, partner)'s anchors as `hi_partner` keeps them for the next call of the same pick (a roll's: none until
 /// its first roll): (candidate, partner), and per anchor (f, chances) that can lower some leaf, in their order
-pub(in crate::deck::career::sim::plan) type HiAnc = ((usize, usize), Option<Vec<(f64, Vec<f64>)>>);
+pub(in crate::deck::career::sim::plan) struct PartnerAnchors {
+    /// Candidate whose odds these anchors bound.
+    pub(in crate::deck::career::sim::plan) candidate: CandidateIndex,
+    /// Partner's index in the extended legacy pool.
+    pub(in crate::deck::career::sim::plan) partner: usize,
+    /// Retained (factor, inheritance chances) anchors, in their original order.
+    pub(in crate::deck::career::sim::plan) anchors: Option<Vec<(f64, Vec<f64>)>>,
+}
+
+/// A fully checked career used as an exact anchor for its deck class.
+pub(in crate::deck::career::sim::plan) struct FoundAnchor {
+    /// Deck class shared by trainees with the same legal deck search.
+    pub(in crate::deck::career::sim::plan) deck_class: usize,
+    /// Inheritance chances at the exact check, in job target order.
+    pub(in crate::deck::career::sim::plan) inheritance_chances: Vec<f64>,
+    /// Best deck value at those chances and unit spark scale.
+    pub(in crate::deck::career::sim::plan) value: f64,
+}
+
+/// Extra immutable inputs to the bound on a career's outcomes.
+pub(in crate::deck::career::sim::plan) struct OutcomeBounds<'bounds> {
+    /// Parent indices required by the job.
+    pub(in crate::deck::career::sim::plan) fixed_parents: &'bounds [usize],
+    /// Fully checked main-search careers, indexed in found-career order.
+    pub(in crate::deck::career::sim::plan) found_anchors: &'bounds [Option<FoundAnchor>],
+    /// Trio sides contributed by this career's own full veteran.
+    pub(in crate::deck::career::sim::plan) own_trios: &'bounds [OwnTrio],
+}
+
+/// One outcome and its estimated saving, before bounding that same outcome.
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim::plan) struct OutcomeEstimate {
+    /// Cell built from uncertain stars and the fixed-target landing mask.
+    pub(in crate::deck::career::sim::plan) index: OutcomeIndex,
+    /// Expected careers saved at this outcome.
+    pub(in crate::deck::career::sim::plan) saving: f64,
+}
 
 #[inline(never)]
 #[allow(clippy::absurd_extreme_comparisons, reason = "HI_SEARCHES is a tuning constant, now 0 (anchors off)")]
@@ -447,7 +486,7 @@ fn hi_partner(
     ews: &[Vec<f64>],
     ew_ok: bool,
     fr: &[usize],
-    fr_of: &[Option<(usize, Vec<f64>, f64)>],
+    fr_of: &[Option<FoundAnchor>],
     tu: &mut [f64],
     hp: &mut HiScr,
     hs: &mut Vec<(usize, Vec<f64>, Vec<f64>)>,
@@ -457,7 +496,11 @@ fn hi_partner(
     let HiCx { bs, d, legs, pool, fix, uncv, mk, mc, lm, nu, ntar, nm, nf, ncell, nmc, iv, rf } = *hx;
     let HiScr { bb, g1, gc, lp, lp_tmp, qz, tg } = hp;
     // her slot's miss factors and spark scales (`Env::her_slot`, as `score_career`'s setups)
-    let Some(HerSlot { q0, x0, xms, pw }) = s.env.her_slot(pv, u, y, iv) else { return };
+    let Some(HerSlot { q0, x0, xms, pw }) =
+        s.env.her_slot(pv, Lineage { trainee: u, first_parent: y, second_parent: iv })
+    else {
+        return;
+    };
     // the best outfit's product per leaf: per outfit and target the factor A - B (1 - q') at each of her four star
     // levels, 1 - q' = x0 xm (`outfit_fast` at her chances folded in, as `Sim::fast_ub` takes it)
     let t0 = now_ms();
@@ -573,8 +616,11 @@ fn hi_partner(
     } else {
         if bs.pnow[ui] > 0.0 {
             let mut nz = 0usize;
-            for z in (0..legs.len()).filter(|&z| legal_pair(d, pool, u, y, z) && holds_fix(fix, y, z)) {
-                let cz = s.env.lineage_qc(pool, u, y, z, uncv, qz, tg);
+            for z in (0..legs.len()).filter(|&z| {
+                legal_pair(d, pool, Lineage { trainee: u, first_parent: y, second_parent: z }) && holds_fix(fix, y, z)
+            }) {
+                let cz =
+                    s.env.lineage_qc(pool, Lineage { trainee: u, first_parent: y, second_parent: z }, uncv, qz, tg);
                 if cz <= 0.0 {
                     continue;
                 }
@@ -586,7 +632,7 @@ fn hi_partner(
             }
         }
         for &i in fr {
-            let (_, fq, fv) = fr_of[i].as_ref().unwrap();
+            let FoundAnchor { inheritance_chances: fq, value: fv, .. } = fr_of[i].as_ref().unwrap();
             add(bb, *fv, fq, &mut gs, &mut fs, &mut direct, &mut kept);
         }
         prof("hi_kept", kept.len() as f64);
@@ -689,29 +735,25 @@ fn hi_partner(
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
 pub(in crate::deck::career::sim::plan) fn outcome_hi(
     s: &mut Sim,
-    d: &Data,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    pool: &Pool,
-    fix: &[usize],
-    fr_of: &[Option<(usize, Vec<f64>, f64)>],
-    want: &[(usize, f64)],
-    her: &[(usize, bool, f64)],
-    x: usize,
-    a: usize,
-    b: usize,
-    sel: &Sel,
-    acache: &mut Vec<HiAnc>,
-) -> Vec<f64> {
-    let n = bs.cands.len();
+    context: &ScoringContext,
+    career: Career,
+    bounds: &OutcomeBounds,
+    outcome: OutcomeEstimate,
+    acache: &mut Vec<PartnerAnchors>,
+) -> f64 {
+    let d = s.d;
+    let x = career.lineage.trainee;
+    let want = &[(outcome.index.0, outcome.saving)];
+
+    let n = context.score_base.cands.len();
     let ntar = s.env.ntar;
     let nu = s.env.uncv.len();
     let uncv = s.env.uncv.clone();
     let fixed_t = s.env.fixed_t.clone();
     let w = s.env.sj.star_dist;
-    let (xi, goal) = her_ends(s, bs, legs, x, a, b);
-    let c = s.make_cur(pool, x, a, b, sel, false);
-    let pv = her_pool(s, legs, pool, true, x, a, b, &c);
+    let (xi, goal) = her_ends(s, context.score_base, context.legacies, career.lineage);
+    let c = s.make_cur(context.pool, career, false);
+    let pv = her_pool(s, context.legacies, context.pool, true, career.lineage, &c);
     let iv = pv.me.len() - 1;
     // per candidate and EVERY legal partner: her slot's miss factors and the spark scale, as `score_career`'s setups
     let nleaf = 1usize << (2 * nu);
@@ -729,7 +771,7 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
     let fmm = fm_masks(&fixed_t);
     let cell = |i: usize| {
         let (mu, pr_st) = leaf_set(i >> nf, &uncv, w);
-        let m = mu | fmm[i & ((1usize << nf) - 1)];
+        let m = mu | fmm[i & ((1usize << nf) - 1)].bits();
         (c.os[m] * pr_st, m)
     };
     // the outcomes whose bound is read (`want`, ascending, each with its y < 0.5: the page reads y_hi only there) that
@@ -771,7 +813,7 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
     prof("hi_cells", mc.len() as f64);
     prof("hi_mleaves", nml as f64);
     if mc.is_empty() {
-        return vec![0.0; want.len()];
+        return 0.0;
     }
     // the cells the table holds: the marked ones, or with most leaves marked every possible one, folded as before
     // (vectorised where every cell is possible; an unmarked leaf's bound is -inf, so its cells keep p_now, never read)
@@ -780,16 +822,33 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
     let lm: Vec<u32> = ms.iter().map(|&m| m as u32).collect();
     let nmc = mc.len();
     // per candidate and marked outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without `hs`)
-    let mut tab: Vec<f64> = (0..n).flat_map(|ui| std::iter::repeat_n(bs.pnow[ui], nmc)).collect();
+    let mut tab: Vec<f64> = (0..n).flat_map(|ui| std::iter::repeat_n(context.score_base.pnow[ui], nmc)).collect();
     // an anchor's chances (`Env::lineage_qc`: only the uncertain targets' entries, the ones the factors read)
     let mut hp = HiScr { bb: AncBb::new(), g1: vec![], gc: vec![], lp, lp_tmp, qz: vec![0.0f64; ntar], tg: vec![] };
-    let hx =
-        HiCx { bs, d, legs, pool, fix, uncv: &uncv, mk: &mk, mc: &mc, lm: &lm, nu, ntar, nm, nf, ncell, nmc, iv, rf };
+    let hx = HiCx {
+        bs: context.score_base,
+        d,
+        legs: context.legacies,
+        pool: context.pool,
+        fix: bounds.fixed_parents,
+        uncv: &uncv,
+        mk: &mk,
+        mc: &mc,
+        lm: &lm,
+        nu,
+        ntar,
+        nm,
+        nf,
+        ncell,
+        nmc,
+        iv,
+        rf,
+    };
     // (each (candidate, partner)'s anchors as a call keeps them for the next, `acache`: in this loop's order)
     let mut np = 0usize;
     for ui in 0..n {
-        let u = bs.cands[ui];
-        if d.umas[u].id == d.umas[x].id || bs.c1[ui] == 0.0 || s.fastc[u].is_empty() {
+        let u = context.score_base.cands[ui];
+        if d.umas[u].id == d.umas[x].id || context.score_base.c1[ui] == 0.0 || s.fastc[u].is_empty() {
             continue;
         }
         // her outfits' skill coverage and own chances (as `Env::rise` reads them)
@@ -797,15 +856,17 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
         hp.tg.clear(); // (`Env::lineage_qc`'s table: another trainee)
         // the main search's found careers of her deck class that it fully checked (`found_anchors`)
         let ct = s.env.cls[u];
-        let fr: Vec<usize> = (0..fr_of.len()).filter(|&i| fr_of[i].as_ref().is_some_and(|f| f.0 == ct)).collect();
+        let fr: Vec<usize> = (0..bounds.found_anchors.len())
+            .filter(|&i| bounds.found_anchors[i].as_ref().is_some_and(|f| f.deck_class == ct))
+            .collect();
         // `AncBb::root_min`'s premises on her own chances
         let ew_ok = ews.iter().all(|ew| ew.iter().all(|e| (0.0..=1.0).contains(e)));
-        for y in (0..iv).filter(|&y| legal_pair(d, &pv, u, y, iv)) {
+        for y in (0..iv).filter(|&y| legal_pair(d, &pv, Lineage { trainee: u, first_parent: y, second_parent: iv })) {
             if acache.len() <= np {
-                acache.push(((ui, y), None));
+                acache.push(PartnerAnchors { candidate: CandidateIndex(ui), partner: y, anchors: None });
             }
-            if acache[np].0 != (ui, y) {
-                acache[np] = ((ui, y), None);
+            if acache[np].candidate != CandidateIndex(ui) || acache[np].partner != y {
+                acache[np] = PartnerAnchors { candidate: CandidateIndex(ui), partner: y, anchors: None };
             }
             hi_partner(
                 s,
@@ -818,24 +879,24 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
                 ews,
                 ew_ok,
                 &fr,
-                fr_of,
+                bounds.found_anchors,
                 &mut tab[ui * nmc..(ui + 1) * nmc],
                 &mut hp,
                 &mut hs,
                 &mut hq,
-                &mut acache[np].1,
+                &mut acache[np].anchors,
             );
             np += 1;
         }
     }
-    her_pool_done(s, pool, true, pv);
+    her_pool_done(s, context.pool, true, pv);
     let HiScr { mut lp, mut lp_tmp, .. } = hp;
     let full_m = nm - 1;
     // per wanted cell its bound (0 where it can't happen), from its place among the cells held (`mc`, ascending)
-    let mut ys: Vec<f64> = vec![0.0; want.len()];
+    let mut ys = [0.0];
     let at: Vec<Option<usize>> =
         want.iter().zip(&wc).map(|(w, p)| if p.0 > 0.0 { mc.binary_search(&w.0).ok() } else { None }).collect();
-    let mut c1 = bs.c1.to_vec();
+    let mut c1 = context.score_base.c1.to_vec();
     let mut up = vec![0.0f64; n];
     let t5 = now_ms();
     for (k, &j) in at.iter().enumerate() {
@@ -843,7 +904,7 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
         for ui in 0..n {
             up[ui] = tab[ui * nmc + j];
         }
-        ys[k] = saving_lo(bs, &up, ms[j], full_m, xi, her, goal, &mut c1);
+        ys[k] = saving_lo(context.score_base, &up, ms[j], full_m, xi, bounds.own_trios, goal, &mut c1);
     }
     drop(tab);
     prof("hi_ys_ms", now_ms() - t5);
@@ -859,15 +920,15 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
             break;
         }
         let (leaf, m) = (want[k].0 >> nf, wc[k].1);
-        let h = hi_at(bs, &hs, leaf, m, full_m, xi, her, goal, &mut c1, &mut up);
+        let h = hi_at(context.score_base, &hs, leaf, m, full_m, xi, bounds.own_trios, goal, &mut c1, &mut up);
         let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
         for ui in 0..n {
-            if up[ui] <= bs.pnow[ui] * (1.0 + 1e-9) {
+            if up[ui] <= context.score_base.pnow[ui] * (1.0 + 1e-9) {
                 continue;
             }
             let keep = up[ui];
-            up[ui] = bs.pnow[ui];
-            let h2 = saving_lo(bs, &up, m, full_m, xi, her, goal, &mut c1);
+            up[ui] = context.score_base.pnow[ui];
+            let h2 = saving_lo(context.score_base, &up, m, full_m, xi, bounds.own_trios, goal, &mut c1);
             up[ui] = keep;
             if h2 >= h - 1e-9 {
                 continue;
@@ -877,9 +938,9 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
                     continue;
                 }
                 let v = sc[m] * bd[leaf];
-                if v > bs.pnow[ui] * (1.0 + 1e-9) {
+                if v > context.score_base.pnow[ui] * (1.0 + 1e-9) {
                     need.push(pi);
-                    if v > HI_RISE * bs.pnow[ui] {
+                    if v > HI_RISE * context.score_base.pnow[ui] {
                         far = true;
                     }
                 }
@@ -919,10 +980,21 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
     }
     if !chosen.is_empty() {
         for &k in &band {
-            ys[k] = hi_at(bs, &hs, want[k].0 >> nf, wc[k].1, full_m, xi, her, goal, &mut c1, &mut up);
+            ys[k] = hi_at(
+                context.score_base,
+                &hs,
+                want[k].0 >> nf,
+                wc[k].1,
+                full_m,
+                xi,
+                bounds.own_trios,
+                goal,
+                &mut c1,
+                &mut up,
+            );
         }
     }
-    ys
+    ys[0]
 }
 
 /// The pick's own 8/8 as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
@@ -930,30 +1002,24 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
 /// does `saving_lo` read it; else none)
 pub(in crate::deck::career::sim::plan) fn pick_her(
     s: &mut Sim,
-    d: &Data,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    pool: &Pool,
-    x: usize,
-    a: usize,
-    b: usize,
-    sel: &Sel,
+    context: &ScoringContext,
+    career: Career,
     full_lo: bool,
     buf: &mut Vec<f64>,
-) -> Vec<(usize, bool, f64)> {
-    let (xi, goal) = her_ends(s, bs, legs, x, a, b);
-    if !full_lo || xi.is_some() || goal || bs.sides.is_empty() {
+) -> Vec<OwnTrio> {
+    let (xi, goal) = her_ends(s, context.score_base, context.legacies, career.lineage);
+    if !full_lo || xi.is_some() || goal || context.score_base.sides.is_empty() {
         return vec![];
     }
-    let c = s.make_cur(pool, x, a, b, sel, false);
+    let c = s.make_cur(context.pool, career, false);
     let full_m = (1usize << s.env.ntar) - 1;
     if c.os[full_m] <= 0.0 {
         return vec![];
     }
-    let mut pv = her_pool(s, legs, pool, true, x, a, b, &c);
+    let mut pv = her_pool(s, context.legacies, context.pool, true, career.lineage, &c);
     let iv = pv.me.len() - 1;
-    let r = her_trios(s, d, bs, &mut pv, iv, x, buf);
-    her_pool_done(s, pool, true, pv);
+    let r = her_trios(s, context.score_base, &mut pv, iv, career.lineage.trainee, buf);
+    her_pool_done(s, context.pool, true, pv);
     r
 }
 
@@ -964,12 +1030,16 @@ pub(in crate::deck::career::sim::plan) fn found_anchors(
     env: &Env,
     pool: &Pool,
     msv: &Solved,
-) -> Vec<Option<(usize, Vec<f64>, f64)>> {
+) -> Vec<Option<FoundAnchor>> {
     msv.found
         .iter()
         .map(|f| {
-            let (fq, _) = env.lineage_q(pool, f.t, f.a, f.b);
-            msv.refs.get(f.t).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| (env.cls[f.t], r.q.clone(), r.val))
+            let (fq, _) = env.lineage_q(pool, Lineage { trainee: f.t, first_parent: f.a, second_parent: f.b });
+            msv.refs.get(f.t).and_then(|rs| rs.iter().find(|r| r.q == fq)).map(|r| FoundAnchor {
+                deck_class: env.cls[f.t],
+                inheritance_chances: r.q.clone(),
+                value: r.val,
+            })
         })
         .collect()
 }

@@ -32,6 +32,7 @@
 !/webapp/career.template.html
 !/webapp/panels.template.html
 !/webapp/src/
+!/webapp/test/
 !/webapp/worker.template.js
 !/webapp/example.mjs
 !/webapp/example.json
