@@ -2,7 +2,7 @@
 //! Loop structures, schedules and exact deck searches belong to `loop_search` and `enumerate`.
 use crate::Instant;
 use crate::data::Data;
-use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P, ChainKind, chain_marginals};
+use crate::deck::chains::{ChainEvents, ChainKind, chain_marginals};
 use crate::deck::dominance::{
     DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
 };
@@ -30,7 +30,6 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
         Ok(x) => x,
         Err(e) => return json!({"error": e.to_string()}),
     };
-    CHAIN_EVENTS.with(|c| c.set(dj.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let model = Model::new(d, sk, &sj);
     let unc: Vec<u32> = model.uncertain.iter().map(|&i| sj.targets[i].group).collect();
     let target_count = unc.len();
@@ -60,7 +59,7 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
     // the decks no other deck beats on every dominance coordinate (the exact search scores every deck it needs from
     // `DeckSpace`, so one skyline serves any `top_decks`)
     let front: Vec<DeckEval> = en.run_enum(FrontierOptions { maximum_dominators: 1, first_frontier: None }, &mut ct);
-    if std::env::var("DECK_DEBUG").is_ok() {
+    if dj.checks.deck_debug {
         eprintln!(
             "tests {} scans {} avg_lim {:.0} dom_in_scan {} ring {} swapped {} subtrees {} s1 {}",
             ct.dominance_tests,
@@ -73,17 +72,17 @@ pub(super) fn run_deck_relaxed(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Valu
             ct.first_frontier_rejections
         );
     }
-    if std::env::var("DECK_DEBUG").is_ok() {
+    if dj.checks.deck_debug {
         eprintln!("rel {} decks {} enum {:.2}s", en.entry_count, ct.decks_built, t0.elapsed().as_secs_f64());
     }
-    if std::env::var("DECK_DEBUG").is_ok() {
+    if dj.checks.deck_debug {
         eprintln!("front {} pareto {:.2}s", front.len(), t0.elapsed().as_secs_f64());
     }
     if front.is_empty() {
         return json!({"error": "No deck can be built from the allowed cards."});
     }
     let sky = skyline(&front);
-    if std::env::var("DECK_DEBUG").is_ok() {
+    if dj.checks.deck_debug {
         eprintln!("skyline {} of {}", sky.len(), front.len());
     }
     let n_front = front.len();
@@ -149,7 +148,13 @@ impl Entries<'_> {
         // count
         let pal_fixed = deck_job.pals.is_some();
         let original_count = self.rel.len();
-        let bounds = miss_bounds(&self.kind, &self.srcs, deck_job.deck_size.saturating_sub(1), target_count);
+        let bounds = miss_bounds(
+            deck_job.chain_events(),
+            &self.kind,
+            &self.srcs,
+            deck_job.deck_size.saturating_sub(1),
+            target_count,
+        );
         let strength = |j: usize| {
             (0..target_count)
                 .map(|k| 2.0 - bounds.strongest[j].no_gold[k] - bounds.strongest[j].no_hint[k])
@@ -203,14 +208,14 @@ impl Entries<'_> {
             }
             visited.push(candidate);
         }
-        if std::env::var("DECK_DEBUG").is_ok() {
+        if deck_job.checks.deck_debug {
             for j in 0..original_count {
                 if !keep[j] {
                     eprintln!("  drop {}", self.cards[self.rel[j]].name);
                 }
             }
         }
-        if std::env::var("DECK_DEBUG_PAIRS").is_ok() {
+        if deck_job.checks.deck_debug_pairs {
             debug_robust(self, &keep, &bounds, &tie_ranks, pal_fixed, target_count);
         }
         // All entry columns use the same original-index mask and keep their relative order.
@@ -225,7 +230,13 @@ impl Entries<'_> {
 
 /// Each entry's (miss gold, miss any) per target at its strongest (every link firing) and weakest (its links at their
 /// lowest odds over any `others` other chain cards)
-fn miss_bounds(kind: &[ChainKind], srcs: &[TargetSources], others: usize, target_count: usize) -> MissBounds {
+fn miss_bounds(
+    events: ChainEvents,
+    kind: &[ChainKind],
+    srcs: &[TargetSources],
+    others: usize,
+    target_count: usize,
+) -> MissBounds {
     let nrel0 = kind.len();
     let mut kindset: Vec<ChainKind> = (0..nrel0).filter(|&j| kind[j] != ChainKind::NONE).map(|j| kind[j]).collect();
     kindset.push(ChainKind::FILLER);
@@ -244,7 +255,7 @@ fn miss_bounds(kind: &[ChainKind], srcs: &[TargetSources], others: usize, target
         multisets(&kindset, 0, others, &mut vec![], &mut |o| {
             let mut key = vec![key_data];
             key.extend_from_slice(o);
-            let m = chain_marginals(&key);
+            let m = chain_marginals(events, &key);
             for k in 0..key_data.stop as usize {
                 mins[k] = mins[k].min(m[&key_data][k]);
             }
@@ -568,7 +579,7 @@ impl<'env> DeckEnumerator<'env> {
             }
             c /= 7;
         }
-        let marg = chain_marginals(&ks);
+        let marg = chain_marginals(self.deck_job.chain_events(), &ks);
         let empty: Vec<f64> = vec![];
         let mut white_misses = vec![1.0f64; entry_count * target_count];
         let mut gold_misses = vec![1.0f64; entry_count * target_count];

@@ -50,10 +50,10 @@ pub(crate) struct Card {
     pub charas: Vec<u32>,
 }
 impl Card {
-    /// The character rule. `RULE_OFF=1` (brute-force checks only, val/permcheck.py and owncheck.py) switches it off.
-    pub(crate) fn blocks(&self, uma: u32) -> bool {
-        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        !*OFF.get_or_init(|| std::env::var("RULE_OFF").is_ok()) && (self.chara == uma || self.charas.contains(&uma))
+    /// The character rule. `RULE_OFF=1` (`Checks::rule_off`: brute-force checks only, val/permcheck.py and
+    /// owncheck.py) switches it off.
+    pub(crate) fn blocks(&self, uma: u32, checks: &crate::checks::Checks) -> bool {
+        !checks.rule_off && (self.chara == uma || self.charas.contains(&uma))
     }
 }
 #[derive(Deserialize)]
@@ -67,6 +67,9 @@ pub(crate) struct CardsRaw {
 
 #[derive(Deserialize)]
 pub(crate) struct DeckJob {
+    /// The process's diagnostic switches (`checks::get`), borrowed by the job's searches.
+    #[serde(skip, default = "crate::checks::get")]
+    pub(crate) checks: &'static crate::checks::Checks,
     /// chain events per run: Binomial(n, p); defaults CHAIN_N, CHAIN_P (for experiments)
     #[serde(default)]
     pub chain_events: Option<(u32, f64)>,
@@ -144,6 +147,13 @@ pub(crate) struct DeckJob {
     /// those that saw a deck past its class's cap (checks and comparisons; slower)
     #[serde(default)]
     pub cap_free: bool,
+}
+impl DeckJob {
+    /// The job's chain-event distribution: `chain_events`, else Binomial(CHAIN_N, CHAIN_P).
+    pub(crate) fn chain_events(&self) -> chains::ChainEvents {
+        let (count, probability) = self.chain_events.unwrap_or((chains::CHAIN_N, chains::CHAIN_P));
+        chains::ChainEvents { count, probability }
+    }
 }
 
 const fn d_one() -> usize {

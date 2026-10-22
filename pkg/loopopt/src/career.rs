@@ -32,7 +32,6 @@ use crate::career::pool::Pool;
 use crate::career::search::{CareerSearchResult, Ref, SearchRequest, solve_kept};
 use crate::career::state::{ProductProof, SEEN, SEEN_KEEP, json_without, setup_fp, setup_hash, state_in, state_out};
 use crate::data::Data;
-use crate::deck::chains::{CHAIN_EVENTS, CHAIN_N, CHAIN_P};
 use crate::deck::sources::deck_entries;
 use crate::deck::space::{DeckSpace, SelectedDeck, deck_space};
 use crate::deck::{Card, CardsRaw, DeckJob, d_true};
@@ -51,6 +50,7 @@ mod search;
 mod state;
 
 mod cache;
+mod evaluator;
 
 mod plan;
 mod sim;
@@ -228,6 +228,9 @@ struct Env<'data> {
     owned: Vec<UmaIndex>,
     budget: usize,
     work: usize,
+    /// Exact scorings the job's deck searches made (`best_deck`'s `joint_b` calls, a memo hit's as if it ran):
+    /// reported as a load-free measure of the search's and the plan's work.
+    exact_scorings: usize,
     /// every earlier search's fully checked decks per deck class (`deck_class`; one model, so each is a proven best at
     /// its chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them,
     /// so ties resolve as in a lone search
@@ -300,7 +303,6 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
         Ok(jobs) => jobs,
         Err(error) => return error,
     };
-    CHAIN_EVENTS.with(|c| c.set(jobs.deck.chain_events.unwrap_or((CHAIN_N, CHAIN_P))));
     let t_all = Instant::now();
     let input = JobInputs { data: d, skills: sk, cards: cr, job: v };
     let model = Model::new(d, sk, &jobs.skills);
@@ -333,11 +335,11 @@ pub(crate) fn run_career(d: &Data, sk: &SkillsRaw, cr: &CardsRaw, v: &Value) -> 
     env.use_seen = true;
     // the main search's own work (deck-search nodes, exact scorings; deterministic, comparable at any load): 0 when the
     // search was kept from the job before
-    let (sn0, sj0) = (env.space.nodes.get(), crate::deck::caps::JCOUNT.with(std::cell::Cell::get));
+    let (sn0, sj0) = (env.space.nodes.get(), env.exact_scorings);
     let sv = solve_kept(&mut env, run.search_key(&["next", "no_reports"]), &run.pick_search_request());
-    let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - sj0});
+    let search_work = json!({"nodes": env.space.nodes.get() - sn0, "exact": env.exact_scorings - sj0});
     env.use_seen = true;
-    if std::env::var("CAREER_WORK").is_ok() {
+    if jobs.deck.checks.career_work {
         eprintln!("career search: work {} of {}, solved {}, proven {}", sv.work, env.budget, sv.solved, sv.proven);
     }
     if sv.cands == 0 {
@@ -433,7 +435,7 @@ fn career_setup<'data>(
     let n = d.umas.len();
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let lock_blocked =
-        |u: UmaIndex| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id)));
+        |u: UmaIndex| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id, dj.checks)));
     let id_ok = |id: u32| (sj.owned.is_empty() || sj.owned.contains(&id)) && !sj.exclude.contains(&id);
     // every uma that can train (the plan's next career takes any of them); the job's trainees are among these
     let owned: Vec<UmaIndex> =
@@ -452,7 +454,7 @@ fn career_setup<'data>(
     let deck_odds_ceilings = deck_odds_ceilings(d, &space, &owned, uncertain_count, dj.deck_size);
     let outfit_coverage: UmaTable<Vec<Vec<u8>>> =
         model.opts.iter().map(|m| m.iter().map(|x| x.coverage.clone()).collect()).collect();
-    let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
+    let budget = dj.checks.exact_budget.unwrap_or(CAREER_BUDGET);
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
     let setup_fingerprint = setup_fp(v);
     let memo_fingerprint = {
@@ -490,6 +492,7 @@ fn career_setup<'data>(
         owned,
         budget,
         work: 0,
+        exact_scorings: 0,
         seen: UmaTable(vec![vec![]; n]),
         use_seen: true,
         ruled: UmaTable(vec![vec![]; n]),
@@ -539,8 +542,9 @@ fn deck_odds_ceilings(
                 return None;
             }
             let uid = d.umas[u].id;
-            let legal: Vec<usize> =
-                (0..space.card_indices.len()).filter(|&j| !space.cards[space.card_indices[j]].blocks(uid)).collect();
+            let legal: Vec<usize> = (0..space.card_indices.len())
+                .filter(|&j| !space.cards[space.card_indices[j]].blocks(uid, space.deck_job.checks))
+                .collect();
             let lowest = |f: &dyn Fn(usize) -> f64| {
                 let mut m: Vec<f64> = legal.iter().map(|&j| f(j)).collect();
                 m.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -586,7 +590,7 @@ fn assign_deck_classes(env: &mut Env) {
         k.push(u64::MAX);
         k.extend(
             (0..env.space.card_indices.len())
-                .filter(|&j| env.space.cards[env.space.card_indices[j]].blocks(uid))
+                .filter(|&j| env.space.cards[env.space.card_indices[j]].blocks(uid, env.space.deck_job.checks))
                 .map(|j| j as u64),
         );
         k.push(u64::MAX);

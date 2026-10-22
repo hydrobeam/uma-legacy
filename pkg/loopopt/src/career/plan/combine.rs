@@ -194,7 +194,7 @@ pub(crate) fn plan_combinations(
             }
             // (`Env::pool` of the legacies and the fresh full veterans: the working copy of `pool` with them pushed, A's first,
             // popped below)
-            let mut working_pool = simulator.take_pool(pool);
+            let mut working_pool = simulator.evaluator.take_pool(pool);
             let sides = |simulator: &mut Sim, working_pool: &mut Pool, ui: usize| -> Vec<TrioSide> {
                 let mut sides: Vec<TrioSide> =
                     full_veterans[ui].iter().map(|&legacy| TrioSide { uses_existing: true, legacy }).collect();
@@ -242,7 +242,7 @@ pub(crate) fn plan_combinations(
             while working_pool.veterans.len() > pool.veterans.len() {
                 working_pool.pop_veteran();
             }
-            simulator.put_pool(pool, working_pool);
+            simulator.evaluator.put_pool(pool, working_pool);
         }
     }
     combos
@@ -256,7 +256,7 @@ fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64],
     let candidates = context.candidates;
     let career = candidates.careers[ui].as_ref()?;
     let lineage = found_lineage(candidates.trainees[ui], career);
-    let win_chances = simulator.wins(context.input.pool, lineage);
+    let win_chances = simulator.evaluator.wins(simulator.env, context.input.pool, lineage);
     Some(simulator.env.veteran(context.input.legacies, lineage, win_chances.to_vec()))
 }
 

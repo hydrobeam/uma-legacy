@@ -1,8 +1,9 @@
 //! Candidate searches, rotation setup and proxy limits.
+use crate::career::evaluator::DeckRequest;
 use crate::career::plan::{ParentPool, PlanJob};
 use crate::career::pool::Pool;
 use crate::career::search::{Bar, Found, RankedPair};
-use crate::career::sim::{DeckRequest, Sim, SimJob, SimulationOptions, SimulationRoster};
+use crate::career::sim::{Sim, SimJob, SimulationOptions, SimulationRoster};
 use crate::career::{Ancestor, Env, JobInputs, Legacy, Lineage};
 use crate::data::Data;
 use crate::skills::SkillJob;
@@ -117,12 +118,14 @@ pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::uma::UmaIn
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
 pub(crate) fn val(simulator: &mut Sim, pool: &Pool, lineage: Lineage, score_buffer: &mut Vec<f64>) -> f64 {
     let trainee = lineage.trainee;
-    let mut inheritance_chances = std::mem::take(&mut simulator.qs);
+    let mut inheritance_chances = std::mem::take(&mut simulator.evaluator.qs);
     let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
     let value = match simulator.env.ceiling(trainee, &inheritance_chances, spark_scale) {
         None => 0.0,
         Some(ceiling) => simulator
+            .evaluator
             .deck_for(
+                simulator.env,
                 DeckRequest {
                     trainee,
                     inheritance_chances: &inheritance_chances,
@@ -134,7 +137,7 @@ pub(crate) fn val(simulator: &mut Sim, pool: &Pool, lineage: Lineage, score_buff
             )
             .map_or(0.0, |x| x.0),
     };
-    simulator.qs = inheritance_chances;
+    simulator.evaluator.qs = inheritance_chances;
     value
 }
 
@@ -150,8 +153,8 @@ pub(crate) fn best_sur(
     score_buffer: &mut Vec<f64>,
 ) -> Option<Found> {
     let ParentPool { pool, fixed_parents } = parents;
-    let margin_before = simulator.cfg.margin;
-    simulator.cfg.margin = margin;
+    let margin_before = simulator.evaluator.margin;
+    simulator.evaluator.margin = margin;
     // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
     let mut best: Option<SurrogateBest> = None;
     for RankedPair { ceiling, first_parent, second_parent } in
@@ -162,27 +165,28 @@ pub(crate) fn best_sur(
             break;
         }
         let lineage = Lineage { trainee, first_parent, second_parent };
-        let mut inheritance_chances = std::mem::take(&mut simulator.qs);
+        let mut inheritance_chances = std::mem::take(&mut simulator.evaluator.qs);
         let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
-        let deck = simulator.deck_for(
+        let deck = simulator.evaluator.deck_for(
+            simulator.env,
             DeckRequest { trainee, inheritance_chances: &inheritance_chances, spark_scale, ceiling, threshold: bar },
             score_buffer,
         );
-        simulator.qs = inheritance_chances;
+        simulator.evaluator.qs = inheritance_chances;
         if let Some((value, deck_index)) = deck
             && value > bar
         {
             best = Some(SurrogateBest { lineage, value, ceiling, deck_index });
         }
     }
-    simulator.cfg.margin = margin_before;
+    simulator.evaluator.margin = margin_before;
     best.map(|found| Found {
         trainee,
         first_parent: found.lineage.first_parent,
         second_parent: found.lineage.second_parent,
         value: found.value,
         ceiling: found.ceiling,
-        deck: simulator.cache.decks[trainee][found.deck_index].sel.clone(),
+        deck: simulator.evaluator.cache.decks[trainee][found.deck_index].sel.clone(),
     })
 }
 
@@ -269,7 +273,7 @@ pub(crate) fn loop_ceiling(
         mix: Some(star),
     };
     // (`Env::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
-    let mut p = simulator.take_pool(pool);
+    let mut p = simulator.evaluator.take_pool(pool);
     simulator.env.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
     simulator.env.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
     let n = p.veterans.len();
@@ -277,7 +281,7 @@ pub(crate) fn loop_ceiling(
     let v = if legal_pair(d, &p, lineage) { val(simulator, &p, lineage, buf) } else { 0.0 };
     p.pop_veteran();
     p.pop_veteran();
-    simulator.put_pool(pool, p);
+    simulator.evaluator.put_pool(pool, p);
     v
 }
 

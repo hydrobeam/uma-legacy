@@ -6,7 +6,7 @@ use crate::career::plan::score::kernel::{ActiveCandidate, FOLD_SCRATCH, LiftStat
 use crate::career::plan::search::{IDX_PARTNERS, is_full, legal_pair, val};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
-use crate::career::sim::{Cur, Sim};
+use crate::career::sim::Sim;
 use crate::career::{Career, Legacy, Lineage};
 pub(crate) mod kernel;
 
@@ -35,8 +35,8 @@ pub(crate) fn her_trios(
     let data = simulator.d;
     let trainee_id = data.umas[trainee].id;
     let mut trios = vec![];
-    // the pool with her (`her_pool`: `Env::pool` of the legacies and hers), with each side pushed in turn (the same Pool
-    // as `Env::pool` of those and the side) and popped after
+    // the pool with her (`Evaluator::push_her`: `Env::pool` of the legacies and hers), with each side pushed in turn
+    // (the same Pool as `Env::pool` of those and the side) and popped after
     let partner_index = extended_pool.veterans.len();
     let (mut inheritance_chances, mut finishers): (Vec<f64>, Vec<FinisherCeiling>) =
         (Vec::with_capacity(simulator.env.target_count), vec![]);
@@ -128,37 +128,6 @@ pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
             landed
         })
         .collect()
-}
-
-/// Build the pool with this career's veteran. A recorded pool is the pool of `legacies`, so reuse its
-/// working copy and push one entry; otherwise rebuild from the recorded legacies and the new veteran.
-pub(crate) fn her_pool(
-    simulator: &mut Sim,
-    legacies: &[Legacy],
-    pool: &Pool,
-    recorded_pool: bool,
-    lineage: Lineage,
-    outcome: &Cur,
-) -> Pool {
-    let veteran = simulator.env.veteran(legacies, lineage, outcome.wp.to_vec());
-    if recorded_pool {
-        debug_assert_eq!(pool.veterans.len(), legacies.len(), "one legacy per pool member");
-        let mut extended = simulator.take_pool(pool);
-        simulator.env.pool_push(&mut extended, &veteran);
-        extended
-    } else {
-        let mut extended = legacies.to_vec();
-        extended.push(veteran);
-        simulator.env.pool(&extended)
-    }
-}
-
-/// Return a recorded pool's working copy after popping the new veteran (`Sim::put_pool`).
-pub(crate) fn her_pool_done(simulator: &mut Sim, pool: &Pool, recorded_pool: bool, mut extended_pool: Pool) {
-    if recorded_pool {
-        extended_pool.pop_veteran();
-        simulator.put_pool(pool, extended_pool);
-    }
 }
 
 /// Prepared scoring retained for the chosen career's later rolls.
@@ -286,8 +255,8 @@ fn prepare_setups(
             let Some(slot) = simulator.env.her_slot(pool, lineage) else {
                 continue;
             };
-            let deck_count = simulator.cache.decks[candidate_trainee].len();
-            if simulator.cache.decks[candidate_trainee].iter().all(|deck| deck.tab.is_empty()) {
+            let deck_count = simulator.evaluator.cache.decks[candidate_trainee].len();
+            if simulator.evaluator.cache.decks[candidate_trainee].iter().all(|deck| deck.tab.is_empty()) {
                 continue;
             }
             setups.push(Setup {
@@ -320,16 +289,16 @@ fn evaluate_career(
     let HerEnds { own_candidate, completes_goal } =
         her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current_started = now_ms();
-    let current = simulator.make_cur(context.pool, career, false);
+    let current = simulator.evaluator.make_cur(simulator.env, context.pool, career, false);
     let pool_started = now_ms();
     prof("sc_cur_ms", pool_started - current_started);
     let mut extended_pool =
-        her_pool(simulator, context.legacies, context.pool, recorded_pool, career.lineage, &current);
-    let new_veteran = extended_pool.veterans.len() - 1;
+        simulator.evaluator.push_her(simulator.env, context.legacies, context.pool, recorded_pool, &current);
+    let new_veteran = extended_pool.pool.veterans.len() - 1;
     // where she can be a parent: per stage-1 candidate (stage 1 still to run) her best partners
     let setups_started = now_ms();
     prof("sc_pool_ms", setups_started - pool_started);
-    let mut setups = prepare_setups(simulator, context.score_base, &extended_pool, trainee, score_buffer);
+    let mut setups = prepare_setups(simulator, context.score_base, &extended_pool.pool, trainee, score_buffer);
     prof("sc_setup_ms", now_ms() - setups_started);
     let fold_started = now_ms();
     // per setup, per star pattern of the uncertain targets (base 4, position k = uncv[k]; 0 absent), the best table value
@@ -400,7 +369,7 @@ fn evaluate_career(
         && !context.score_base.trio_sides.is_empty()
         && scored.landed_set_chances[full_mask] > 0.0
     {
-        her_trios(simulator, context.score_base, &mut extended_pool, new_veteran, trainee, score_buffer)
+        her_trios(simulator, context.score_base, &mut extended_pool.pool, new_veteran, trainee, score_buffer)
     } else {
         vec![]
     };
@@ -415,7 +384,7 @@ fn evaluate_career(
             current_chance: context.score_base.current_odds[candidate],
         })
         .collect();
-    her_pool_done(simulator, context.pool, recorded_pool, extended_pool);
+    simulator.evaluator.pop_her(context.pool, extended_pool);
     if want == Want::Touch {
         return CareerScore {
             expected_saving: 0.0,
@@ -479,7 +448,8 @@ fn prepare_scoring(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], sc
     let (mut setup_by_table, mut initial_tables): (Vec<usize>, Vec<f64>) = (vec![], vec![]);
     let mut dominated_tables = 0usize;
     for (si, setup) in setups.iter().enumerate() {
-        let tables: Vec<&Vec<f64>> = simulator.cache.decks[score_base.candidates[setup.candidate]][..setup.deck_count]
+        let tables: Vec<&Vec<f64>> = simulator.evaluator.cache.decks[score_base.candidates[setup.candidate]]
+            [..setup.deck_count]
             .iter()
             .flat_map(|deck| deck.tab.iter())
             .collect();

@@ -1,5 +1,6 @@
 //! Configuration traversal and its borrowed-card and state bounds.
 use crate::Instant;
+use crate::checks::{SBN, SPT};
 use crate::deck::chains::{ChainKind, ChainState, chain_states};
 use crate::deck::enumerate::bounds::{OutfitRow, OutfitRun, SplitColumns};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
@@ -7,9 +8,9 @@ use crate::deck::enumerate::order::{ConfigOrder, DeckPath};
 use crate::deck::enumerate::scratch::{ConfigScratch, NodeScratch};
 use crate::deck::enumerate::walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
 use crate::deck::enumerate::{ScoredDeck, SearchClause, SearchOutcome, SearchStop};
-use crate::deck::joint::{LandPre, MissFactors, SBN};
+use crate::deck::joint::{LandPre, MissFactors};
 use crate::deck::space::{
-    DeckSpace, DominanceKey, Dominator, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck, TraversalEntryGroup,
+    DeckSpace, DominanceKey, Dominator, EntryMisses, GroupSlots, GroupTable, SelectedDeck, TraversalEntryGroup,
 };
 use crate::deck::state_bound::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
 use crate::skills::DeckChances;
@@ -92,21 +93,22 @@ impl DeckSpace<'_> {
         let t_dfs = Instant::now();
         let PreparedSearch { context, mut scratch, mut results } =
             DeckSearchContext::prepare(self, chances, clauses, controls, tables, scratch, clause_value);
+        let uncapped = controls.state_bound_mode == 2;
         let mut order = ConfigOrder::new(queue, controls);
         while let Some(configuration) = order.next(self, results.best_value, bounds) {
             if context.past_bar(&configuration, &results) {
                 break;
             }
             if let Some(stop) = context.visit(&mut scratch, &mut results, &configuration, &ratio_at, cf_ratios) {
-                return SearchOutcome { decks: results.decks, incomplete: Some(stop) };
+                return SearchOutcome { decks: results.decks, incomplete: Some(stop), uncapped };
             }
         }
         SPT.with(|c| {
             let mut v = c.get();
-            v.1 += t_dfs.elapsed().as_secs_f64();
+            v.tree_seconds += t_dfs.elapsed().as_secs_f64();
             c.set(v);
         });
-        SearchOutcome { decks: results.decks, incomplete: None }
+        SearchOutcome { decks: results.decks, incomplete: None, uncapped }
     }
 }
 
@@ -337,7 +339,12 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
                 outfit_count: controls.cap_free_outfit_count,
             },
             cf_ratios,
-            BoundOptions { cap_free: controls.cap_free, trainee: controls.bound_trainee, fixed_factor: controls.fixed },
+            BoundOptions {
+                chain_events: space.deck_job.chain_events(),
+                cap_free: controls.cap_free,
+                trainee: controls.bound_trainee,
+                fixed_factor: controls.fixed,
+            },
         );
         let sb_root =
             sbb.root(controls.cap_free_check_scale, controls.state_bound_threshold, controls.state_bound_mode);
@@ -347,11 +354,11 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
                 return Some(SearchStop::CapFreeNodeLimit);
             }
             if sb_root * controls.cap_free_check_scale.max(1.0) * (1.0 + 1e-9) < controls.state_bound_threshold {
-                SBN.with(|c| c.borrow_mut().0 += 1);
+                SBN.with(|c| c.borrow_mut().configurations_cut += 1);
                 return None;
             }
         } else if controls.state_bound_mode > 0 && sb_root * (1.0 + 1e-9) < controls.state_bound_threshold {
-            SBN.with(|c| c.borrow_mut().0 += 1);
+            SBN.with(|c| c.borrow_mut().configurations_cut += 1);
             return None;
         }
         // (CF_CHECK: the bounds of the nodes on the current path, per depth, the root's at 0)
@@ -690,7 +697,7 @@ impl<V> DeckSearchContext<'_, '_, V> {
             let full = if kl.is_empty() {
                 std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
             } else {
-                chain_states(&kl)
+                chain_states(space.deck_job.chain_events(), &kl)
             };
             let has_chain: Vec<bool> = groups
                 .iter()

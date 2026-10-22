@@ -235,18 +235,21 @@ impl Multi<'_> {
     /// budget; a lower cap's pass reuses everything computed so far and gets a quarter of the budget more. When none
     /// finishes, a pass with the cap at 1 (product odds: no deck searches) gives the answer. (the pass, its cap)
     pub(super) fn certify(&self) -> (Pass, f64) {
-        let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(EXACT_BUDGET);
-        let caps: Vec<f64> = if !self.inputs.deck_job.exact {
-            vec![]
-        } else if let Ok(list) = std::env::var("EXACT_STEPS") {
-            list.split(',').filter_map(|cap| cap.parse().ok()).collect()
+        let checks = self.inputs.deck_job.checks;
+        let budget = checks.exact_budget.unwrap_or(EXACT_BUDGET);
+        let default_caps;
+        let caps: &[f64] = if !self.inputs.deck_job.exact {
+            &[]
+        } else if let Some(list) = &checks.exact_steps {
+            list
         } else {
-            EXACT_STEPS.iter().map(|&cap| if cap == EXACT_RHO { self.maximum_exact_ratio } else { cap }).collect()
+            default_caps = EXACT_STEPS.map(|cap| if cap == EXACT_RHO { self.maximum_exact_ratio } else { cap });
+            &default_caps
         };
         let mut finished: Option<Pass> = None;
         let mut certified_cap = 1.0f64;
         let mut allowance = budget;
-        for &cap in &caps {
+        for &cap in caps {
             self.tally.budget.set(allowance);
             if let Some(pass) = self.run_pass(cap) {
                 finished = Some(pass);

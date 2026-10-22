@@ -5,7 +5,7 @@ use crate::Instant;
 use crate::data::Data;
 use crate::deck::caps::src_class;
 use crate::deck::dominance::{DeckId, PDeck};
-use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
+use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointQuery, joint_b};
 use crate::deck::sources::{SourceEntry, TargetSources};
@@ -110,7 +110,7 @@ impl Multi<'_> {
         for t in 0..sc.member_count {
             let j = joint_b(
                 model,
-                JointQuery::unfolded(model, f[t], &sc.chances_by_member[t]),
+                JointQuery::unfolded(model, self.inputs.deck_job, f[t], &sc.chances_by_member[t]),
                 &e,
                 fl,
                 self.requested_target_count,
@@ -144,7 +144,9 @@ impl Multi<'_> {
                     .sum::<f64>()
         };
         let ids = &sc.member_ids;
-        let seeds = self.sky_top(self.loop_limit + 2, &val, &|x| ids.iter().all(|&id| !x.blocks(id, &self.card_of)));
+        let seeds = self.sky_top(self.loop_limit + 2, &val, &|x| {
+            ids.iter().all(|&id| !x.blocks(id, &self.card_of, self.inputs.deck_job.checks))
+        });
         self.tally.seed_seconds.set(self.tally.seed_seconds.get() + t0.elapsed().as_secs_f64());
         for &(_, j) in &seeds {
             self.score_shared(sc, &self.inputs.skyline[j]);
@@ -172,12 +174,12 @@ impl Multi<'_> {
         tally.band_decks.set(tally.band_decks.get() + 1);
         let t0 = Instant::now();
         let n0 = space.nodes.get();
-        let SearchOutcome { decks: mut cands, incomplete } = space.search(
+        let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
             &model.deck_chances(),
             members(&f),
             &sc.member_ids,
             &[SearchClause { lineages: sc.lineages.clone(), threshold: sc.need() }],
-            SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() },
+            SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
         tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
@@ -213,7 +215,7 @@ impl Multi<'_> {
                     .map(|t| {
                         upper_na(
                             model,
-                            JointQuery::unfolded(model, f[t], &sc.chances_by_member[t]),
+                            JointQuery::unfolded(model, self.inputs.deck_job, f[t], &sc.chances_by_member[t]),
                             &e,
                             sel.filler_cards,
                         )

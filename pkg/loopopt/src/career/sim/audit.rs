@@ -1,13 +1,13 @@
 //! Surrogate checks against exact career and deck searches, including audit rows and their ranking records.
 //! Career selection and path execution live in the sibling modules.
 
-use crate::career::Lineage;
 use crate::career::inherit::{ExactOptions, LineageChances};
 use crate::career::pool::Pool;
 use crate::career::search::DeckRes;
 use crate::career::sim::Sim;
 use crate::career::sim::draw::Keys;
 use crate::career::sim::play::PathState;
+use crate::career::{Env, Lineage};
 use crate::deck::space::SelectedDeck;
 use serde_json::{Value, json};
 
@@ -20,19 +20,19 @@ impl Sim<'_, '_> {
         let LineageChances { chances: inheritance_chances, carriers, spark_scale } = self.env.lineage(pool, lineage);
         let mut interpolation_scratch = vec![];
         let (table_value, deck_index) =
-            self.tval(trainee, &inheritance_chances, spark_scale, &mut interpolation_scratch);
+            self.evaluator.tval(self.env, trainee, &inheritance_chances, spark_scale, &mut interpolation_scratch);
         let best = self.exact_best(trainee, &inheritance_chances, spark_scale);
         let landed_distance = if deck_index == usize::MAX {
             1.0
         } else {
-            let cached = self.cache.decks[trainee][deck_index].sel.clone();
-            self.landed_set_distance(trainee, &inheritance_chances, &carriers, &cached, &best.deck)
+            let cached = &self.evaluator.cache.decks[trainee][deck_index].sel;
+            Self::landed_set_distance(self.env, trainee, &inheritance_chances, &carriers, cached, &best.deck)
         };
         best.audit_row(kind, table_value, landed_distance)
     }
     /// Total variation distance between two decks' landed-set distributions at the same inheritance chances.
     fn landed_set_distance(
-        &mut self,
+        env: &mut Env,
         trainee: crate::uma::UmaIndex,
         inheritance_chances: &[f64],
         carriers: &[i32],
@@ -40,9 +40,9 @@ impl Sim<'_, '_> {
         second: &SelectedDeck,
     ) -> f64 {
         let mut sets = |deck: &SelectedDeck| {
-            self.env.set_trainee(trainee, inheritance_chances);
-            let exact = self.env.exact(trainee, deck, carriers, ExactOptions { all_but_one: false, landed_sets: true });
-            self.env.outcome_sets(exact.outfit, &exact.ext)
+            env.set_trainee(trainee, inheritance_chances);
+            let exact = env.exact(trainee, deck, carriers, ExactOptions { all_but_one: false, landed_sets: true });
+            env.outcome_sets(exact.outfit, &exact.ext)
         };
         let first_sets = sets(first);
         let second_sets = sets(second);
@@ -102,7 +102,7 @@ impl Sim<'_, '_> {
                     if !self.legal(state, lineage) || lineage == picked {
                         continue;
                     }
-                    if self.fast_ub(state, lineage) >= 0.3 * best_value {
+                    if self.evaluator.fast_ub(self.env, &state.pool, lineage) >= 0.3 * best_value {
                         candidates.push(lineage);
                     }
                 }
@@ -175,11 +175,12 @@ impl Sim<'_, '_> {
         let trainee = lineage.trainee;
         let LineageChances { chances: inheritance_chances, carriers, spark_scale } =
             self.env.lineage(&state.pool, lineage);
-        let reference_bound = self.cache.refs[trainee]
+        let reference_bound = self.evaluator.cache.refs[trainee]
             .iter()
             .map(|reference| self.env.ref_bound(trainee, &inheritance_chances, spark_scale, reference))
             .fold(ceiling, f64::min);
-        let (table_value, deck_index) = self.tval(trainee, &inheritance_chances, spark_scale, interpolation_scratch);
+        let (table_value, deck_index) =
+            self.evaluator.tval(self.env, trainee, &inheritance_chances, spark_scale, interpolation_scratch);
         self.env.set_trainee(trainee, &inheritance_chances);
         self.env.work = 0;
         let mut scored_decks = 0;
@@ -191,8 +192,8 @@ impl Sim<'_, '_> {
         let landed_distance = if deck_index == usize::MAX {
             1.0
         } else {
-            let cached = self.cache.decks[trainee][deck_index].sel.clone();
-            self.landed_set_distance(trainee, &inheritance_chances, &carriers, &cached, &deck)
+            let cached = &self.evaluator.cache.decks[trainee][deck_index].sel;
+            Self::landed_set_distance(self.env, trainee, &inheritance_chances, &carriers, cached, &deck)
         };
         let pick = state.best.is_some_and(|pick| pick.lineage == lineage);
         Some(json!([
@@ -201,7 +202,7 @@ impl Sim<'_, '_> {
             table_value,
             exact_value,
             (exact_value - table_value) / exact_value,
-            reference_bound <= table_value * (1.0 + self.cfg.margin),
+            reference_bound <= table_value * (1.0 + self.evaluator.margin),
             landed_distance,
             finished,
             pick

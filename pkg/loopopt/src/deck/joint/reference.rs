@@ -73,7 +73,7 @@ fn reference_joint(
     let states = if kinds.is_empty() {
         std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
     } else {
-        chain_states(&kinds)
+        chain_states(query.chain_events, &kinds)
     };
     let lv: Vec<Option<Vec<(Vec<f64>, Vec<f64>, Vec<&Group>)>>> = chain_entries
         .iter()

@@ -111,6 +111,7 @@ mod skills;
 mod web;
 
 mod chart;
+mod checks;
 mod cli;
 mod data;
 mod optimize;

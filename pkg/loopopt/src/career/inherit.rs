@@ -5,7 +5,8 @@ use crate::deck::joint::{JointExt, joint_fast};
 use crate::deck::sources::TargetSources;
 use crate::deck::space::SelectedDeck;
 /// The inheritance model's per-slot terms (MODEL.md; /about states the constants), shared by every copy of the
-/// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Sim::fast_ub`, the planner's her-slot setups).
+/// inheritance chance (`inherit`, `Env::lineage_qc`, `Env::gen_cands`, `Evaluator::fast_ub`, the planner's her-slot
+/// setups).
 /// A slot's affinity factor 1 + A / 100, A its relation part plus its race part
 #[inline(always)]
 pub(crate) fn aff_factor(rel: f64, race: f64) -> f64 {
@@ -280,7 +281,7 @@ impl Env<'_> {
     /// `r`: per parent x (partner y) her relation part, pt(x) + pair(x, y) then her grandparent slots' gt(x, gi) in
     /// order, and her race part, 3 x shared(a, b) then theirs (`Pool::grandparent_race_affinity`) in order
     /// (`part_sum`); a grandparent slot's parts are its own. The one definition of the slots' affinity every copy reads
-    /// (`slots`, `lineage`, `lineage_qc`, `her_slot`, `Sim::fast_ub`; `gen_cands` hoists the same sums)
+    /// (`slots`, `lineage`, `lineage_qc`, `her_slot`, `Evaluator::fast_ub`; `gen_cands` hoists the same sums)
     #[inline(always)]
     pub(crate) fn walk_slots<'pool, R: RelPts, S: SlotSink<'pool>>(
         &self,
@@ -354,6 +355,8 @@ impl Env<'_> {
     }
     pub(crate) fn joint_query(&self, trainee: crate::uma::UmaIndex) -> crate::deck::joint::JointQuery<'_> {
         crate::deck::joint::JointQuery {
+            chain_events: self.space.deck_job.chain_events(),
+            checks: self.space.deck_job.checks,
             trainee,
             inheritance_chances: &[0.0],
             event_chances: &self.folded_events[trainee],

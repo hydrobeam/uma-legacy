@@ -9,17 +9,6 @@ use crate::deck::sources::TargetSources;
 pub(crate) const EXACT_CAPS: [f64; 4] = [1.05, 1.05, 1.25, 1.25];
 /// The highest cap (class 4+), the one every ceiling that does not know its deck takes.
 pub(crate) const EXACT_RHO: f64 = EXACT_CAPS[3];
-/// `CAPS_TEST=a,b,c,d` (checks only): these caps in place of `EXACT_CAPS` (lowered, they force breaches, so the
-/// cap-free rerun can be checked against `cap_audit`)
-pub(super) fn test_caps() -> Option<[f64; 4]> {
-    static CAPS: std::sync::OnceLock<Option<[f64; 4]>> = std::sync::OnceLock::new();
-    *CAPS.get_or_init(|| {
-        // Preserve the diagnostic parser's permissive behavior: malformed fields are skipped.
-        let values: Vec<f64> =
-            std::env::var("CAPS_TEST").ok()?.split(',').filter_map(|field| field.parse().ok()).collect();
-        (values.len() == 4).then(|| [values[0], values[1], values[2], values[3]])
-    })
-}
 /// Every class cap under the job field `cap_audit` (`val/capaudit.py`: a deck the normal caps would miss shows up)
 pub(super) const AUDIT_CAP: f64 = 2.0;
 impl TargetSources {
@@ -57,5 +46,3 @@ pub(super) const EXACT_CAP: usize = 50_000;
 /// (see `run_multi`). Jobs where many decks lie within
 /// the cap of each other (high inheritance chances, few open targets, borrowing) can exhaust it.
 pub(crate) const EXACT_BUDGET: usize = 30_000_000;
-// exact scorings made on this thread (the planner reports its own as a load-free measure of its work)
-thread_local! { pub(crate) static JCOUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }

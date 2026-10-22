@@ -33,8 +33,7 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let legacies = input.legacies;
     let data = input.resources.data;
     // the work counters at the start (deck-search nodes, exact scorings): reported as this plan's own
-    let (nodes_at_start, exact_scorings_at_start) =
-        (env.space.nodes.get(), crate::deck::caps::JCOUNT.with(std::cell::Cell::get));
+    let (nodes_at_start, exact_scorings_at_start) = (env.space.nodes.get(), env.exact_scorings);
     // Named loop members supplement the candidates; this setup does not run the loop search.
     let loop_rotation = match &settings.loop_members {
         Some(ids) => rotation(env, ids),
@@ -72,15 +71,15 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     // it) depends on the job alone, not on what the pruning happened to check fully (earlier jobs' proofs, the order, a
     // kept plan).
     for found in &input.solved.found {
-        sim.cache.add(sim.env, found.trainee, &found.deck);
+        sim.evaluator.cache.add(sim.env, found.trainee, &found.deck);
     }
     for &u in &candidate_trainees {
         if let Some(found) = searches.best_careers[u].found() {
-            sim.cache.add(sim.env, u, &found.deck);
+            sim.evaluator.cache.add(sim.env, u, &found.deck);
         }
     }
     // (`proxy_check`: the cache as it is before any builder's search, for the proxies at the end)
-    let cache_before_builders = settings.proxy_check.then(|| sim.cache.clone());
+    let cache_before_builders = settings.proxy_check.then(|| sim.evaluator.cache.clone());
     // the surrogate's best careers (sur 1: in place of the searches; 2: beside them, differences reported)
     let mut surrogate_differences: Vec<Value> = vec![];
     if settings.sur > 0 {
@@ -287,7 +286,7 @@ pub(crate) fn proxy_career(
     let deck_class = simulator.env.deck_class[trainee];
     for winner in winners {
         if winner.trainee != trainee && simulator.env.deck_class[winner.trainee] == deck_class {
-            simulator.cache.add(simulator.env, trainee, &winner.deck);
+            simulator.evaluator.cache.add(simulator.env, trainee, &winner.deck);
         }
     }
     best_sur(simulator, parents, trainee, 1e9, buf)
@@ -543,7 +542,7 @@ pub(crate) fn set_plan_wins(
     trainee: crate::uma::UmaIndex,
     career: &Found,
 ) {
-    let win_chances = simulator.wins(pool, found_lineage(trainee, career));
+    let win_chances = simulator.evaluator.wins(simulator.env, pool, found_lineage(trainee, career));
     wins_by_trainee[trainee] =
         win_chances.iter().enumerate().filter(|(_, chance)| **chance > 0.5).map(|(race, _)| race).collect();
 }

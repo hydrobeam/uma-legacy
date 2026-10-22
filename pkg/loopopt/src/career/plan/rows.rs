@@ -493,7 +493,7 @@ pub(crate) fn score_and_promote_rows(
         .copied();
     let index_ms = now_ms() - profile.index_started_ms;
     let env = &simulator.env;
-    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": crate::deck::caps::JCOUNT.with(std::cell::Cell::get) - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
+    let work = json!({"nodes": env.space.nodes.get() - profile.nodes_at_start, "exact": env.exact_scorings - profile.exact_scorings_at_start, "max_ratio": env.max_ratio.iter().copied().fold(0.0f64, f64::max), "class_max_ratio": env.max_ratio, "class_max_deck": env.max_decks(), "cap": env.space.rho_top().min(env.cert), "class_caps": env.space.caps()});
     let any_scored = runs.iter().any(|r| r.scoring.is_some());
     PlanScores { fit, best_combo, any_scored, combo_ms, index_ms, work }
 }
@@ -568,7 +568,7 @@ pub(crate) fn check_plan_proxies(
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let candidate_count = candidates.trainees.len();
-    std::mem::swap(&mut simulator.cache, &mut cache_before_builders);
+    std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
@@ -633,7 +633,7 @@ pub(crate) fn check_plan_proxies(
         rows.push(json!({"trainee": data.umas[x].name, "cand": is_candidate, "class": simulator.env.deck_class[x], "exact_val": r.career.value, "proxy_val": proxy.as_ref().map(|f| f.value),
         "same_pair": same_pair, "same_deck": same_deck, "score": r.net_saving(), "proxy_score": proxy_score, "eff": exact_efficiencies, "proxy_eff": proxy_efficiencies}));
     }
-    std::mem::swap(&mut simulator.cache, &mut cache_before_builders);
+    std::mem::swap(&mut simulator.evaluator.cache, &mut cache_before_builders);
     json!({"cands": candidates.trainees.iter().map(|&u| data.umas[u].name.clone()).collect::<Vec<_>>(), "rows": rows})
 }
 

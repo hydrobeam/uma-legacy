@@ -2,14 +2,15 @@
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
 use super::{CardEntryKey, ChanceKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of};
 use crate::Instant;
+use crate::checks::UCHK;
 use crate::data::{Data, Sched, dot};
 use crate::deck::caps::src_class;
 use crate::deck::dominance::{Cl, DeckEval, DeckId, PDeck, k_filter, split};
-use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
+use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointChances, JointQuery, joint, joint_b};
 use crate::deck::sources::{SourceEntry, Sources, TargetSources};
-use crate::deck::space::{HintCoordinate, UCHK};
+use crate::deck::space::HintCoordinate;
 use crate::optimize::{members, pair_ceilings};
 use crate::skills::{Model, OutfitOption};
 use crate::uma::{UmaIndex, UmaTable};
@@ -405,12 +406,19 @@ impl<'data> Multi<'data> {
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
         let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
-        let j = joint_b(model, JointQuery::unfolded(model, u, qs), &e, fl, self.requested_target_count, false);
+        let j = joint_b(
+            model,
+            JointQuery::unfolded(model, self.inputs.deck_job, u, qs),
+            &e,
+            fl,
+            self.requested_target_count,
+            false,
+        );
         tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
-        if std::env::var("UPPER_CHECK").is_ok() {
+        if self.inputs.deck_job.checks.upper_check {
             let er: Vec<SourceEntry<&TargetSources>> =
                 e.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
-            if let Some(ub) = upper_na(model, JointQuery::unfolded(model, u, qs), &er, fl) {
+            if let Some(ub) = upper_na(model, JointQuery::unfolded(model, self.inputs.deck_job, u, qs), &er, fl) {
                 for (i, y) in j.iter().enumerate() {
                     assert!(
                         ub[i] >= y.all * (1.0 - 1e-12),
@@ -421,15 +429,15 @@ impl<'data> Multi<'data> {
                     );
                     UCHK.with(|c| {
                         let mut v = c.get();
-                        v.0 += 1;
-                        v.1 = v.1.max(ub[i] / y.all);
+                        v.checked += 1;
+                        v.max_ratio = v.max_ratio.max(ub[i] / y.all);
                         c.set(v);
                     });
                 }
             } else {
                 UCHK.with(|c| {
                     let mut v = c.get();
-                    v.2 += 1;
+                    v.uncovered += 1;
                     c.set(v);
                 });
             }
@@ -464,7 +472,7 @@ impl<'data> Multi<'data> {
                 .iter()
                 .position(|s| s.0.partial_cmp(&t).unwrap() == std::cmp::Ordering::Less)
                 .unwrap_or(seeds.len());
-            if at < 3 && !x.blocks(uid, &self.card_of) {
+            if at < 3 && !x.blocks(uid, &self.card_of, self.inputs.deck_job.checks) {
                 seeds.insert(at, (t, x));
                 seeds.truncate(3);
             }
@@ -504,7 +512,7 @@ impl<'data> Multi<'data> {
         tally.band_decks.set(tally.band_decks.get() + 1);
         let t0 = Instant::now();
         let n0 = space.nodes.get();
-        let SearchOutcome { decks: mut cands, incomplete } = space.search(
+        let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
             &model.deck_chances(),
             &[u],
             &[uid],
@@ -512,7 +520,7 @@ impl<'data> Multi<'data> {
                 lineages: qs.iter().map(|&q| LineageChance { trainee: 0, inheritance: q }).collect(),
                 threshold: thr,
             }],
-            SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap() },
+            SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
         tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
@@ -548,7 +556,8 @@ impl<'data> Multi<'data> {
                     .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                     .collect();
                 let t1 = Instant::now();
-                let ubo = upper_na(model, JointQuery::unfolded(model, u, qs), &e, sel.filler_cards);
+                let ubo =
+                    upper_na(model, JointQuery::unfolded(model, self.inputs.deck_job, u, qs), &e, sel.filler_cards);
                 tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
                 if let Some(ub) = ubo {
                     tally.spend(25);
@@ -574,7 +583,7 @@ impl<'data> Multi<'data> {
             let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
             let per = joint_b(
                 self.inputs.model,
-                JointQuery::unfolded(self.inputs.model, u, qs),
+                JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, u, qs),
                 &e,
                 fl,
                 self.requested_target_count,
@@ -584,7 +593,7 @@ impl<'data> Multi<'data> {
         } else {
             let per = joint(
                 self.inputs.model,
-                JointQuery::unfolded(self.inputs.model, u, qs),
+                JointQuery::unfolded(self.inputs.model, self.inputs.deck_job, u, qs),
                 &[],
                 0,
                 self.requested_target_count,

@@ -23,6 +23,8 @@ pub(super) struct LandingBoundTables<'table> {
 
 #[derive(Clone, Copy)]
 pub(super) struct BoundOptions {
+    /// The job's chain-event distribution (the cap-free bounds' event counts and key levels).
+    pub(super) chain_events: crate::deck::chains::ChainEvents,
     pub(super) cap_free: bool,
     pub(super) trainee: crate::uma::UmaIndex,
     pub(super) fixed_factor: f64,
@@ -270,7 +272,7 @@ impl<'cfg> StateBound<'cfg> {
             target_count,
             outfit_count: cap_free_outfit_count,
         } = tables;
-        let BoundOptions { cap_free, trainee, fixed_factor } = options;
+        let BoundOptions { chain_events, cap_free, trainee, fixed_factor } = options;
         let group_count = groups.len();
         let zero_base_targets = &*ratios.z;
         let mut slots: Vec<BoundSlot> = vec![];
@@ -294,11 +296,11 @@ impl<'cfg> StateBound<'cfg> {
             generation: 0,
         };
         let key_levels: Option<Rc<KeyLevel>> = if cap_free {
-            configuration.as_ref().and_then(|c| (!c.kinds.is_empty()).then(|| key_level(&c.kinds)))
+            configuration.as_ref().and_then(|c| (!c.kinds.is_empty()).then(|| key_level(chain_events, &c.kinds)))
         } else {
             None
         };
-        let event_probabilities = if cap_free { event_pmf_job() } else { Rc::new(vec![]) };
+        let event_probabilities = if cap_free { event_pmf_job(chain_events) } else { Rc::new(vec![]) };
         // (the event counts summed term by term, those of P(n) >= 1e-12; the rest's mass, each such term at most A
         // at every slot's most links done)
         let event_counts: Vec<usize> =
@@ -1110,7 +1112,7 @@ fn state_value_any(
     let states = if kinds.is_empty() {
         std::rc::Rc::new(vec![ChainState { progress: vec![], probability: 1.0 }])
     } else {
-        chain_states(&kinds)
+        chain_states(query.chain_events, &kinds)
     };
     // the non-chain entries' misses (constant over states), and per chain position its entry's rows
     let mut cg = vec![1.0f64; uncertain_count];
