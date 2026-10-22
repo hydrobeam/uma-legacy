@@ -74,6 +74,10 @@ todo = "deny"
 undocumented_unsafe_blocks = "deny"
 unimplemented = "deny"
 unwrap_in_result = "deny"
+# clones: none of a value its owner no longer needs, and clone_from where a clone overwrites an allocation (docs/BUILD.md,
+# Ownership and clones)
+assigning_clones = "deny"
+redundant_clone = "deny"
 
 # unsafe only where the wasm exports and imports need it (web.rs, and the host imports in deck/career.rs), each allowed
 # there with its reason

@@ -61,7 +61,7 @@ fn per_uma_rotation_result() {
     assert_eq!(l["detail"]["pairs"].as_array().unwrap().len(), 3);
     // four required: loops only, the same answer as a four-only search with that requirement
     let req = json!(ids(&four["top"][0]["loop"]));
-    let r4 = run(&job(true, json!([3, 4]), req.clone()));
+    let r4 = run(&job(true, json!([3, 4]), req));
     assert_eq!(ids(&r4["top"][0]["loop"]), ids(&four["top"][0]["loop"]));
     assert_eq!(p(&r4), p(&four));
 }
