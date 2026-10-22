@@ -246,18 +246,8 @@ pub(crate) fn prepare_ratio_prefixes(columns: &RatioColumns<'_>) -> RatioPrefixe
     RatioPrefixes { empty_factors, ratio_divisors, factor_prefixes }
 }
 
-/// Dominance is cached per legal entry set, chain key and group.
-#[derive(Clone, Copy)]
-pub(crate) struct DominanceRequest<'group> {
-    pub(crate) set_id: usize,
-    pub(crate) code: u64,
-    pub(crate) group: usize,
-    pub(crate) entries: &'group [usize],
-    pub(crate) lock_bits: &'group [u8],
-}
-
 impl DeckSpace<'_> {
-    /// The product search's dominance table for `request`: per position p in `request.entries`, the earlier
+    /// The product search's dominance table for `key`: per position p in `entries`, the earlier
     /// positions a whose entry A could take B's place in any deck (borrowed only if B is, B's locked card if B
     /// is one, B's pal status when the job fixes the pals) with every miss chance in [0, 1] and at most B's, white and
     /// gold, for every target; with the targets where A's gold miss is the lower (bit t).
@@ -276,16 +266,14 @@ impl DeckSpace<'_> {
     /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
     /// pick of A's character (`required_characters`). Only which decks are visited (the rest in the same order) and
     /// how the bar rises change: the deck found, its value and odds do not.
-    pub(crate) fn dom_table(
+    pub(super) fn dom_table(
         &self,
-        request: DominanceRequest<'_>,
+        key: DominanceKey,
+        entries: &[usize],
+        lock_bits: &[u8],
         misses: EntryMisses<'_>,
     ) -> std::rc::Rc<Vec<Vec<Dominator>>> {
-        if let Some(r) = self.dominance_cache.borrow().get(&DominanceKey {
-            set_id: request.set_id,
-            code: request.code,
-            group: request.group,
-        }) {
+        if let Some(r) = self.dominance_cache.borrow().get(&key) {
             return std::rc::Rc::clone(r);
         }
         let target_count = self.target_groups.len();
@@ -296,19 +284,19 @@ impl DeckSpace<'_> {
         };
         let pal = |j: usize| self.cards[self.card_indices[j]].pal;
         let r = std::rc::Rc::new(
-            (0..request.entries.len())
+            (0..entries.len())
                 .map(|p| {
-                    let b = request.entries[p];
+                    let b = entries[p];
                     if !ok(b) {
                         return vec![];
                     }
                     (0..p)
                         .filter_map(|a| {
-                            let aj = request.entries[a];
+                            let aj = entries[a];
                             if self.borrowed[aj] && !self.borrowed[b] {
                                 return None;
                             }
-                            if request.lock_bits[b] != 0 && request.lock_bits[aj] != request.lock_bits[b] {
+                            if lock_bits[b] != 0 && lock_bits[aj] != lock_bits[b] {
                                 return None;
                             }
                             if self.deck_job.pals.is_some() && pal(aj) != pal(b) {
@@ -333,10 +321,7 @@ impl DeckSpace<'_> {
                 })
                 .collect::<Vec<_>>(),
         );
-        self.dominance_cache.borrow_mut().insert(
-            DominanceKey { set_id: request.set_id, code: request.code, group: request.group },
-            std::rc::Rc::clone(&r),
-        );
+        self.dominance_cache.borrow_mut().insert(key, std::rc::Rc::clone(&r));
         r
     }
 }

@@ -387,7 +387,7 @@ impl Rng {
 }
 
 /// Bonus per expected G1 win in the tie-break pass (`LoopProblem::tie_break_pass`).
-const FILL_EPS: f64 = 1e-7;
+pub(crate) const FILL_EPS: f64 = 1e-7;
 
 /// Schedules found for a loop, in member order; a three-member structure fills s[0..3] and leaves s[3] all rest.
 #[derive(Clone)]

@@ -60,7 +60,7 @@ Superstan.</li>
 
 <h3 id="assumptions">Assumptions</h3>
 <ol>
-<li><strong>8/8 legacies</strong> (loop planner): both parents are 8/8, and so are all four grandparents: each carries
+<li><strong>Full legacies</strong> (loop planner): both parents are full veterans (a spark of every target), and so are all four grandparents: each carries
 every target spark, as in a running loop. A loop still being built has fewer carriers and lower odds. The career planner
 uses what your veterans actually carry instead.</li>
 <li><strong>Spark generation:</strong> <math><mrow><mi>P</mi><mrow><mo>(</mo><mtext>spark</mtext><mo>)</mo></mrow></mrow><mo>=</mo><mi>b</mi><mo>×</mo><msup><mn>1.1</mn><mi>n</mi></msup></math>, with b = 20% for a white or 40% for a gold, and n the
@@ -564,7 +564,9 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   title saddles count for nothing); a win that is only a chance (a veteran a career would leave, with her schedule's
   win chances) counts as an expected number. The trainee's own schedule doesn't enter: her affinity with her legacies
   is set before she races. Her race schedule (step 9) uses her aptitudes after her legacies' pink sparks, and decides
-  the wins her own veteran will carry.</p>
+  the wins her own veteran will carry. It aims at the G1s her parents won, each weighted by the chance each parent won
+  it (their wins are the guide to what her later partners will have won); a G1 neither parent won is run only where it
+  costs those races nothing.</p>
 
   <p><strong>C2b. Aptitudes, pink sparks and her schedule.</strong> Per aptitude <math><mi>k</mi></math> (four distances, two surfaces,
   four running styles), the pink stars of that aptitude on her six legacies are summed; the sum raises her starting

@@ -22,7 +22,7 @@ skill as a spark, with each uma's race schedule. Results update by themselves 0.
 - *Results*: 1 or 3.
 - **Umas**: one tile per outfit; tap to mark it owned or not owned.
 - **Support cards**: tap the cards you don't own. Only cards that can give a target, and pals, are listed.
-- **Target skills**: type to add. **Presets** save, load, overwrite and rename sets of targets; *8/8 example* holds the
+- **Target skills**: type to add. **Presets** save, load, overwrite and rename sets of targets; *full veteran example* holds the
   eight default targets. Presets are shared by both pages and carried by *Export / import settings*.
 
 **Results**, per loop: the odds that every target lands; each uma with her outfit and her odds as the trainee; the
@@ -37,8 +37,8 @@ keeps what was found.
 
 ## Career planner
 
-Picks the next career from the veterans you have, aiming at a *fully looped parent* (an 8/8 whose parents are both
-8/8s). It shares the loop planner's game data, scenario, rank, umas, cards and targets, plus *Borrowed parent* and
+Picks the next career from the veterans you have, aiming at a *fully looped parent* (a full veteran whose parents are both
+full veterans). It shares the loop planner's game data, scenario, rank, umas, cards and targets, plus *Borrowed parent* and
 **Veteran Umamusume**. *Career setup* folds to a one-line summary
 (click its ribbon); until you fold or open it yourself, it opens folded once you have veterans.
 - *Import umadump file* reads umadump's `trained_chara_data.json` (sparks with stars, single-race G1 wins, both
@@ -68,8 +68,8 @@ of 83 umas*).
 **Career choices** lists what the planner weighed, under its estimate of the careers you still need: per career its
 odds and *Saves per run*, how much it lowers that estimate of the careers to a fully looped parent, averaged over every
 result she could roll, minus the run itself: a yardstick for comparing careers, not a forecast of careers saved. *about the same* marks careers within 5% of the best (at least a quarter of a career); among
-those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two 8/8 parents
-(*8/8 parents*), where an 8/8 of hers is a fully looped parent; the second can save more with lower odds. A line under
+those the planner takes the better odds. An uma can have two rows: her best odds, and her best career on two full veteran parents
+(*n/n parents*, with n the number of targets), where a full veteran of hers is a fully looped parent; the second can save more with lower odds. A line under
 the table says when the search for a shown uma could not prove its answer (it ran out of its work budget, or a deck passed its cap):
 her row is the best it found, and a better career may exist. The (i) by the title
 (*What these numbers mean*) explains them on the page. **Use this** sets the career's places; the table stays (the last plan's,

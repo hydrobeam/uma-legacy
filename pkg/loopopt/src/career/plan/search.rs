@@ -198,7 +198,7 @@ struct SurrogateBest {
     deck_index: usize,
 }
 
-/// an 8/8 veteran (a spark of every job target), yours or borrowed
+/// a full veteran (a spark of every job target), yours or borrowed
 pub(crate) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
     sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0))
 }

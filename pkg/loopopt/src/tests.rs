@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------------------------
 use crate::chart::{self, ScheduleChart};
 use crate::data::{Choice, Data, NT, Sched, Uma, dot, load, load_str};
-use crate::optimize::{C_PAIR, LoopProblem, optimize, pair_ceilings};
+use crate::optimize::{C_PAIR, FILL_EPS, LoopProblem, optimize, pair_ceilings};
 use crate::uma::UmaIndex;
 use std::sync::OnceLock;
 fn data() -> &'static Data {
@@ -245,6 +245,32 @@ fn score_matches_per_legacy_sum() {
 
 /// Optional G1s (run by one member only) cost no affinity: stripping them from optimized schedules leaves the score
 /// unchanged (within the fill tolerance).
+/// The career schedule's tie-break (`FILL_EPS` on every G1, career/schedule.rs) never trades the parents' races for a G1
+/// neither parent won: on each uma, with every third G1 weighted as a parent's win, the schedule solved with the
+/// tie-break scores the parents' races within its total bonus of the schedule solved without it.
+#[test]
+fn tie_break_costs_the_parents_races_nothing() {
+    let d = data();
+    for uma in &d.umas {
+        let parents: Vec<f64> = (0..d.nr).map(|race| if race % 3 == 0 { 1.0 } else { 0.0 }).collect();
+        let with_tie_break: Vec<f64> = parents.iter().map(|weight| weight + FILL_EPS).collect();
+        let (Some((best, _)), Some((tied, _))) =
+            (uma.best_response(d.nr, &parents, None), uma.best_response(d.nr, &with_tie_break, None))
+        else {
+            continue;
+        };
+        let best_value = dot(&parents, &uma.win_chances(d.nr, &best));
+        let tied_value = dot(&parents, &uma.win_chances(d.nr, &tied));
+        let bonus = FILL_EPS * d.nr as f64;
+        assert!(
+            tied_value >= best_value - bonus,
+            "uma {}: the tie-break lost {} of her parents' races",
+            uma.id,
+            best_value - tied_value
+        );
+    }
+}
+
 #[test]
 fn optional_g1s_cost_nothing() {
     let d = data();

@@ -213,11 +213,11 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   choice layout and IT's rule (the skills on that choice and on no choice above it; a choice nothing steers to is an
   error), and the page shows it on the deck card (Anshinzawa SSR: Risky Business).
 - **Gold and white**: a card's gold and white of one skill are combined exactly (deck `odds`: `gold` = P(gold hint),
-  `white` = P(white hint | no gold hint)).
+  `white` = P(white hint | no gold hint)); `TargetSources::src_miss` accumulates the corresponding miss factors.
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their chain progress is coupled, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` compares both in the `joint_checked` wrapper; direct calls to `joint_fast` bypass it). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (`rank_value` in the output), is only used to bound and order the work:
 - **Assumed caps, per deck class.** The capped search assumes V ≤ ρ·V̂, with ρ set by the deck's class
-  (`EXACT_CAPS`, `cap_class`): 1.05 when at most two targets are fed by chain links (`TargetSources::chain_misses`) and every outcome
+  (`EXACT_CAPS`, `cap_class`, with entry masks from `TargetSources::cv_mask`): 1.05 when at most two targets are fed by chain links (`TargetSources::chain_misses`) and every outcome
   group passes `group_assoc`, otherwise 1.25 (`EXACT_RHO`). `TargetSources::uncertified_association` marks a group that fails that check; merely
   touching two targets does not fail it. These caps are assumptions, not proven bounds. A search node takes the
   class of its cards plus every candidate still to add, so its cap is at least any completion's; bounds that know no
@@ -317,7 +317,7 @@ and the search ranks both sizes together.
 The best next career from the veterans a player has: trainee, two veterans as parents (at most one borrowed, or none:
 `borrowed_parent`), deck.
 Same files as deck mode, plus `legacies`; the shared and deck fields apply (`owned`/`exclude`/`exclude_outfits`
-choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh 8/8s, the simulator's draws; other loop fields are unused).
+choose the trainees, `owned_cards`, `borrow`, `scenario`, ...; `star_dist` sets the stars of a veteran before her result is known: the plan's fresh full veterans, the simulator's draws; other loop fields are unused).
 `uv run val/career_job.py TRAINED_CHARA_JSON BASE_JOB OUT_JOB` builds a job from an umadump export, as the page does.
 Several career jobs run in one process with `target/release/loopopt data.json a.json b.json ...` (one output line each),
 sharing the first job's skill and card files. A job's fully checked decks are kept per setup and bound later jobs'
@@ -400,12 +400,17 @@ and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins
   chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null], `shared` = a parent won it)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
-  1 plus 1 per parent who won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
-  she is a parent herself), under goal races, same-turn clashes and streak win penalties. `g1_wins`: expected wins.
+  by the chance each parent won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them
+  when she is a parent herself, and her parents' wins guide what later partners will have won), under goal races,
+  same-turn clashes and streak win penalties. Every G1 also weighs `FILL_EPS` (1e-7, the loop planner's tie-break), so a
+  G1 neither parent won is run only where it costs the parents' races nothing. `g1_wins`: expected wins.
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
   (bit i = job target i), guaranteed golds' spark generation included.
 
 #### Next career (`next`)
+
+**Vocabulary:** a **full veteran** carries every target spark, for any number of player-selected targets.
+A **fully looped parent** is a full veteran whose parents are both full veterans.
 
 The page's plan (`career::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
 `next: {}` with `no_reports: true`, after the search job (it reuses the search the worker keeps). The model and its
@@ -444,22 +449,22 @@ raises that candidate's odds and the mean odds raised to.
   mob or affinity-free parents every classmate has the same chances and one search proves her class. Counted in
   `umas_certified`.
 - Cont's two builders come from the exactly searched careers.
-- **Looped careers.** Each uma whose career above is not on two 8/8 parents also gets her best career on two real 8/8
+- **Looped careers.** Each uma whose career above is not on two full veteran parents also gets her best career on two real full
   veterans (a legal pair, all of `fix` among them; pairs by ceiling, each searched exactly with both fixed and the best
   looped value so far as its bar, `Env::floor`, stopping when the next ceiling is below it; the surrogate's under `sur`
-  1), as a row of its own: only there is her own 8/8 a fully looped
+  1), as a row of its own: only there is her own full veteran a fully looped
   parent. These rows are not among Cont's builders and are not added to the deck cache. A looped row that repeats
   another row's career is left out.
 - **Without a borrowed parent now** (`borrowed_parent` "later"). The rows are the careers the player may run now, while
   everything V and V' read is the job with borrowing: the main search with borrowing (the "allow" job's, kept under its
   key, so a plan after an "allow" run takes it as it is), each candidate's best career and odds, Cont's builders, the
-  trios and every scoring's partners and anchors (`outcome_hi`). A base row whose career has a borrowed parent stays a
+  trios and every scoring's partners and anchors (`RollKeep::outcome_hi`). A base row whose career has a borrowed parent stays a
   builder (its lifts) and is neither scored against V, shown nor picked; her best career without one becomes a row of
   its own after the looped rows (an *nb row*: her cached decks through the surrogate while proxies are on, searched or
   certified exactly on the pool without borrowed parents once a shown row or the pick's band can turn on it; exact from
   the start whenever proxies are off, as under `exact_all`). A proxy row whose exact search turns out a borrowed career
   leaves its proxy career as her nb row. The looped rows are searched on that pool too, also for an uma whose best
-  career is looped on a borrowed 8/8. Nb rows
+  career is looped on a borrowed full veteran. Nb rows
   are not among Cont's builders and not added to the deck cache. The pass-2 band and the outcome tables' pruning read
   the rows that can be picked only, so which proxies are searched exactly can differ from the "allow" plan's, and V with
   it.
@@ -467,34 +472,34 @@ raises that candidate's odds and the mean odds raised to.
 **Continuation and V.** Per candidate a continuation (`Cont`, assumed form): builder careers lift her odds with chance
 lam_j = lam ((1 - phi)^j)^`LAM_DECAY` (1.5) at the j-th success, each closing phi of the gap in log probability to
 p_inf, the greater of the best builder's mean lifted odds and `CEIL_SHARE` (0.6) x her odds with a full loop lineage
-(parents hypothetical 8/8s of her two most efficient builders, bred from each other and from her). With only one
-builder, p_inf is her mean lifted odds. Her step (a fresh 8/8) costs
+(parents hypothetical full veterans of her two most efficient builders, bred from each other and from her). With only one
+builder, p_inf is her mean lifted odds. Her step (a fresh full veteran) costs
 sum_{j<n} 1/lam_j + 1/p_n: `Cont::plan` starts at n = 0 and stops at the first non-improving n, with at most
 `CONT_N` = 500 successes. `Cont::cost_lo`, used for bounds, takes the minimum over that range, stopping early
 only when building alone reaches the best cost. `Cont::plan` and `Cont::cost_lo` are memoised per Cont by the bits of p
 (`PLAN_MEMO=1` prints lookups and hits, `PLAN_MEMO_CHECK` recomputes every hit and panics unless bit-identical,
 `PLAN_MEMO_OFF`, `PLAN_MEMO_CAP` replaces the 16k cap); `score_career` costs a lifted candidate's step only where it
 could still set V's minimum against a lower bound per cell of her odds (`Cont::cost_lb`), the same V to the bit. V = min over trios of side(A) + side(B) + 1/p_C: A and B
-candidates, each side either a real 8/8 veteran of hers (cost 0) or a fresh 8/8 (her step; the veteran her best career
+candidates, each side either a real full veteran of hers (cost 0) or a fresh full veteran (her step; the veteran her best career
 now would leave, `Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances), C
-every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real 8/8 with poor parents
+every allowed uma at her odds with those two as parents (C's own step is not lifted by builders). The cheapest choice of sides wins: a real full veteran with poor parents
 can lose to a fresh one.
 
 **Pass 2 and the pick.** A career's score is E[V - V with her veteran] - 1 over its outcomes: her veteran as a parent
-raises any candidate's odds, her own 8/8 makes her fresh side free, and with two 8/8 parents her own 8/8 is the goal
+raises any candidate's odds, her own full veteran makes her fresh side free, and with two full veteran parents her own full veteran is the goal
 (V after 0). A target whose stars can't move any table value (per scoring and for every setup, either her miss factor
 for it is the same f64 at 1, 2 and 3 stars, or every kept table reads the same with the target landed or not) is folded
 at 0 and 1 star only: an outcome with 2 or 3 stars there reads the 1-star outcome's y and lifted odds, and every
 outcome is still summed at its own chance, in order. The fold is exact in real arithmetic; floating-point rounding can differ between star levels. A roll
 (`next.roll`) reads the same representative. Pick: the highest; within 0.25 careers per run (`NEAR`) or 5%, the better own odds. The goal is always the
-next fully looped parent, any uma: a fully looped veteran you have is a real 8/8 (free side) with 8/8 parents.
+next fully looped parent, any uma: a fully looped veteran you have is a real full veteran (free side) with full veteran parents.
 
 **Output `next`:**
 - `options`: per career `role` (plan / finish / loop / candidate / builder; finish is C's career on A's and B's real
-  8/8s, the trios' last step, only when both sides are real and her parents are both 8/8s), `looped` (both parents
-  8/8s), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
+  full veterans, the trios' last step, only when both sides are real and her parents are both full veterans), `looped` (both parents
+  full veterans), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
   lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
-- `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi,
+- `members` (A and B): `{trainee, p, has_full_veteran, real (the trio uses a real full veteran of hers), p_inf, lam, phi,
   building_careers (the expected careers spent building before she grinds), p_switch, careers}`; `v0` (V); `v0_plan`
   (`{a, b, c, careers}`); `fit` (the stage candidates in order with their continuations, `[chara, lam, phi, pinf]`).
 - `outcomes`: the career a roll is of, `{trainee, parents, uncv, fixed}`: the pick, her uncertain targets and the
@@ -504,8 +509,8 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   `planned: true` when the plan had to run for it. The plan keeps its pick's roll state (`RollKeep`, the last 4 plans,
   `ROLL_KEEP`, keyed by the plan job without `next.roll`, top-level `roll`, `no_reports` and `compare`; in `state_out`): the pick's last
   scoring as its fold and outcome loop read it (`Scored`: the kept tables, her miss factors and spark scales per
-  setup, the collapsed targets, her landed sets' chances, her own 8/8's trio sides), the base it was scored against,
-  her own 8/8's trio sides as the bound reads them at the plan's end (`pick_her`) and the main search's found-career
+  setup, the collapsed targets, her landed sets' chances, her own full veteran's trio sides), the base it was scored against,
+  her own full veteran's trio sides as the bound reads them at the plan's end (`pick_her`) and the main search's found-career
   anchors (`found_anchors`). `y`, the pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
   outcome loop (`Scored::evaluate`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
   only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the

@@ -114,7 +114,7 @@ impl PlanRow {
     }
 }
 
-/// Both parents of `career` are 8/8 veterans: her 8/8 from it is a fully looped parent
+/// Both parents of `career` are full veterans: her full veteran from it is a fully looped parent
 pub(crate) fn has_looped_parents(sj: &SkillJob, legacies: &[Legacy], career: &Found) -> bool {
     is_full(sj, &legacies[career.first_parent].sparks) && is_full(sj, &legacies[career.second_parent].sparks)
 }
@@ -150,13 +150,6 @@ pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[u
     PlanPick { row: pick, top }
 }
 
-/// Which pool veterans are 8/8s (legacy indices), for the looped rows' pairs
-struct FullVeterans {
-    is_full: Vec<bool>,
-    /// The pool's last veteran (the one a kept plan of the pool less her lacks) is an 8/8.
-    newest_is_full: bool,
-}
-
 /// The looped rows (below) of `runs`' base rows, in their order.
 pub(crate) fn add_looped_rows(
     simulator: &mut Sim,
@@ -172,15 +165,15 @@ pub(crate) fn add_looped_rows(
     let legacies = input.legacies;
     let legacy_count = legacies.len();
     let sj = simulator.env.skill_job;
-    // Looped careers: per uma whose career above has parents that are not both 8/8s, her best career on two real 8/8
-    // veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her own 8/8 a fully
+    // Looped careers: per uma whose career above has parents that are not both full veterans, her best career on two real
+    // full veterans (a legal pair, all of `fix` among them), a row of its own beside it. Only there is her full veteran a fully
     // looped parent (the goal), so these rows make the trios' runnable last steps available as options.
     // Exact (the surrogate's under `sur` 1); pairs by ceiling, stopping below the best found. Not among Cont's builders
     // (Cont is fitted on each uma's best career) and not added to the cache (what the tables read stays the job's
     // winners). Their scoring preparation can still search for decks that later scorings read.
     // Per uma her best looped career where searched (`Unsearched` or `Known`, including no legal pair), kept with
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
-    // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
+    // gives it as kept unless she is a full veteran (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
     searches.looped_careers = crate::uma::UmaTable(vec![CachedSearch::Unsearched; context.data().umas.len()]);
     progress(3, 0, 0); // the looped careers
@@ -188,10 +181,7 @@ pub(crate) fn add_looped_rows(
         return added;
     }
     let full_veteran_indices: Vec<usize> = (0..legacy_count).filter(|&i| is_full(sj, &legacies[i].sparks)).collect();
-    let full_veterans = FullVeterans {
-        is_full: (0..legacy_count).map(|i| full_veteran_indices.contains(&i)).collect(),
-        newest_is_full: legacy_count > 0 && full_veteran_indices.contains(&(legacy_count - 1)),
-    };
+    let full_veterans: Vec<bool> = (0..legacy_count).map(|i| full_veteran_indices.contains(&i)).collect();
     let looped_started_ms = now_ms();
     let nodes_before = simulator.env.space.nodes.get();
     capped(simulator, input.settings.search_work, searches.env_budget, |simulator| {
@@ -238,15 +228,15 @@ fn kept_looped(kept: Option<&Bests>, trainee: crate::uma::UmaIndex) -> Option<Ke
     }
 }
 
-/// `trainee`'s best career on two real 8/8 parents: as kept, else the legal pairs of two 8/8s searched (only those with
-/// the newest veteran when a kept plan of the pool less her had the rest), by ceiling, the exact search's bar at the
-/// best so far
+/// `trainee`'s best career on two real full veterans as parents: as kept, else the legal pairs of full veterans searched
+/// (only those with the newest veteran when a kept plan of the pool less her had the rest), by ceiling, the exact
+/// search's bar at the best so far
 fn looped_career(
     simulator: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
     trainee: crate::uma::UmaIndex,
-    full_veterans: &FullVeterans,
+    is_full: &[bool],
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
     let settings = context.settings();
@@ -260,13 +250,12 @@ fn looped_career(
         searches.looped_incomplete[trainee] = kept.incomplete;
     }
     let start = start.and_then(|kept| kept.career);
-    if only_newest && !full_veterans.newest_is_full {
+    if only_newest && !is_full.last().copied().unwrap_or(false) {
         return start;
     }
     // (`pick_pool` and `pool` differ in `max_borrowed` alone, which the ceilings do not read)
     let ParentPool { pool: pick_pool, fixed_parents } = context.pick_parents();
     let newest = context.legacy_count().wrapping_sub(1);
-    let is_full = &full_veterans.is_full;
     let pairs = simulator.env.ranked_pairs(pick_pool, fixed_parents, trainee, |a, b| {
         is_full[a] && is_full[b] && (!only_newest || b == newest)
     });
@@ -348,10 +337,10 @@ struct FittedTrios {
     combination_ms: f64,
 }
 
-/// The trios under `continuations`: A and B two candidates (unordered), C the best allowed uma with an 8/8 of A and one
-/// of B as parents. Each side: a real 8/8 veteran of hers (free), or a fresh one, her step, the 8/8 her best career now
-/// would leave (`Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances),
-/// whichever trio is cheaper; C's 8/8 is then a fully looped parent
+/// The trios under `continuations`: A and B two candidates (unordered), C the best allowed uma with a full veteran of A
+/// and one of B as parents. Each side: a real full veteran of hers (free), or a fresh full veteran from her best career
+/// now, costing her step (`Env::veteran`: its parents, every target at the rank's star mix, her G1 wins at their chances),
+/// whichever trio is cheaper; C's full veteran is then a fully looped parent
 fn fit_trios(
     simulator: &mut Sim,
     context: &PlanContext,
@@ -360,7 +349,7 @@ fn fit_trios(
     buf: &mut Vec<f64>,
 ) -> FittedTrios {
     let candidates = context.candidates;
-    // a fresh 8/8 of hers (her step); a real 8/8 of hers costs nothing (the trios' side choice)
+    // a fresh full veteran of hers (her step); a real full veteran of hers costs nothing (the trios' side choice)
     let step_costs: Vec<f64> =
         (0..candidates.trainees.len()).map(|ui| continuations[ui].cost(candidates.current_odds[ui])).collect();
     let started_ms = now_ms();
@@ -393,7 +382,7 @@ pub(crate) fn score_and_promote_rows(
     // each candidate's step with building: her most efficient builder now (rate, log-odds step), her full-loop ceiling with
     // her two most efficient builders (among the exactly searched careers)
     let continuations = plan_continuations(simulator, context, &plan_rows.rows, &plan_rows.wins_by_trainee, buf);
-    // per candidate, her real 8/8 veterans this pool may use (legacy indices)
+    // per candidate, her real full veterans this pool may use (legacy indices)
     let full_veterans: Vec<Vec<usize>> = candidates
         .trainees
         .iter()

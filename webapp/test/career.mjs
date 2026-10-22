@@ -173,7 +173,7 @@ export default async function career(b) {
   check('career: Options lists each option with "1 in X" for this career and its net saving per run, the plan to a fully looped parent above, the pick marked and shown above', opts.length >= 2
     && opts.every(c => /^1 in [\d,.]+$/.test(c[1]) && /^[+−]\d+\.\d$/.test(c[2])) && await pg.locator('#save-why').count() === 1 && await pg.locator('.alts tr.on', { hasText: 'shown above' }).count() === 1
     && await pg.locator('.alts .otag.pick').count() === 1 && !(await pg.locator('#ahead-sec').count()), opts.map(c => c.join(' / ')).join(' | '));
-  // the trio: each step's line (her odds now and the lifts building pays for, or your 8/8 at no cost)
+  // the trio: each step's line (her odds now and the lifts building pays for, or your full veteran at no cost)
   await pg.click('#save-why'); await dialog(pg, 'save-dlg');
   const memTxt = await pg.textContent('#save-dlg .oloop').catch(() => ''), aboutLink = await pg.locator('#save-dlg a[href="about#career-planner"]').count();
   await pg.keyboard.press('Escape');

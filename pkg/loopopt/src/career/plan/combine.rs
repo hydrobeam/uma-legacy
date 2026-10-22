@@ -42,7 +42,7 @@ impl PlanCombination {
 /// Per-candidate buffers use the fixed order in `PlanCandidates::trainees`.
 pub(crate) struct PlanFit {
     pub(crate) continuations: Vec<Cont>,
-    /// Each candidate's step: the expected careers to a fresh 8/8 of hers under her continuation.
+    /// Each candidate's step: the expected careers to a fresh full veteran of hers under her continuation.
     pub(crate) step_costs: Vec<f64>,
     pub(crate) trios: Vec<Trio>,
     /// Per candidate, the trios' sides (`ScoreBase::trio_sides`).
@@ -155,7 +155,7 @@ pub(crate) fn plan_continuations(
     continuations
 }
 
-/// One side of a trio: a real 8/8 veteran of the candidate's, or the fresh one her best career now would leave.
+/// One side of a trio: a real full veteran of the candidate's, or the fresh one her best career now would leave.
 #[derive(Clone, Copy)]
 struct TrioSide {
     uses_existing: bool,
@@ -170,8 +170,8 @@ struct Finisher {
     trainee: crate::uma::UmaIndex,
 }
 
-/// Combinations in candidate-pair order, then fresh/existing side order. `full_veterans`: per candidate her real 8/8s
-/// (legacy indices); `step_costs`: per candidate, a fresh 8/8's step (a fresh side only where it is finite).
+/// Combinations in candidate-pair order, then fresh/existing side order. `full_veterans`: per candidate her real full veterans
+/// (legacy indices); `step_costs`: per candidate, a fresh full veteran's step (a fresh side only where it is finite).
 pub(crate) fn plan_combinations(
     simulator: &mut Sim,
     context: &PlanContext,
@@ -192,7 +192,7 @@ pub(crate) fn plan_combinations(
             if data.umas[ua].id == data.umas[ub].id {
                 continue;
             }
-            // (`Env::pool` of the legacies and the fresh 8/8s: the working copy of `pool` with them pushed, A's first,
+            // (`Env::pool` of the legacies and the fresh full veterans: the working copy of `pool` with them pushed, A's first,
             // popped below)
             let mut working_pool = simulator.take_pool(pool);
             let sides = |simulator: &mut Sim, working_pool: &mut Pool, ui: usize| -> Vec<TrioSide> {
@@ -248,7 +248,7 @@ pub(crate) fn plan_combinations(
     combos
 }
 
-/// The fresh 8/8 candidate `ui`'s best career now would leave (`Env::veteran`), where her step is finite
+/// The fresh full veteran candidate `ui`'s best career now would leave (`Env::veteran`), where her step is finite
 fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64], ui: usize) -> Option<Legacy> {
     if !step_costs[ui].is_finite() {
         return None;
@@ -260,7 +260,7 @@ fn fresh_veteran(simulator: &mut Sim, context: &PlanContext, step_costs: &[f64],
     Some(simulator.env.veteran(context.input.legacies, lineage, win_chances.to_vec()))
 }
 
-/// The trios' sides per candidate (her real 8/8s, then the fresh 8/8 her best career now would leave), for `her_trios`
+/// The trios' sides per candidate (her real full veterans, then the fresh full veteran her best career now would leave), for `her_trios`
 pub(crate) fn plan_sides(
     simulator: &mut Sim,
     context: &PlanContext,
