@@ -1,7 +1,7 @@
 //! Outfit bounds and ratio prefixes.
 use crate::deck::enumerate::{LineageChance, SearchClause};
 use crate::deck::space::{DeckSpace, DominanceKey, Dominator, EntryMisses};
-use crate::skills::Model;
+use crate::skills::DeckChances;
 /// One outfit at one inheritance chance within a search clause.
 #[derive(Clone, Copy)]
 pub(crate) struct OutfitRow {
@@ -59,7 +59,7 @@ pub(crate) struct RatioPrefixes {
 }
 
 pub(crate) fn prepare_outfit_bounds(
-    model: &Model,
+    chances: &DeckChances,
     trainees: &[crate::uma::UmaIndex],
     clauses: &[SearchClause],
     target_count: usize,
@@ -73,7 +73,7 @@ pub(crate) fn prepare_outfit_bounds(
         .enumerate()
         .flat_map(|(ci, cl)| {
             cl.lineages.iter().flat_map(move |&LineageChance { trainee: k, inheritance: q }| {
-                (0..model.n_outfits(trainees[k])).map(move |o| OutfitRow {
+                (0..chances.model.n_outfits(trainees[k])).map(move |o| OutfitRow {
                     clause: ci,
                     trainee: trainees[k],
                     inheritance: q,
@@ -86,7 +86,7 @@ pub(crate) fn prepare_outfit_bounds(
         let mut v = vec![];
         let mut i = 0;
         while i < outfit_rows.len() {
-            let no = model.n_outfits(outfit_rows[i].trainee);
+            let no = chances.model.n_outfits(outfit_rows[i].trainee);
             v.push(OutfitRun { clause: outfit_rows[i].clause, start: i, count: no });
             i += no;
         }
@@ -97,10 +97,10 @@ pub(crate) fn prepare_outfit_bounds(
     let target_bounds = vec![0.0f64; outfit_rows.len()];
     // each (clause, chance, outfit)'s outfit, prepared once for the bounds below (`OutfitPre`: the same values as outfit_fast)
     let outfits: Vec<crate::skills::OutfitPre> =
-        outfit_rows.iter().map(|&OutfitRow { trainee: u, outfit: o, .. }| model.outfit_pre(u, o)).collect();
+        outfit_rows.iter().map(|&OutfitRow { trainee: u, outfit: o, .. }| chances.outfit_pre(u, o)).collect();
     let empty_values: Vec<f64> = outfit_rows
         .iter()
-        .map(|&OutfitRow { trainee: u, inheritance: q, outfit: o, .. }| model.outfit_fast(u, o, q, &zero, &zero))
+        .map(|&OutfitRow { trainee: u, inheritance: q, outfit: o, .. }| chances.outfit_fast(u, o, q, &zero, &zero))
         .collect();
     // The ratio bound split by target (ZSPLIT). An outfit's value is a product of per-target factors; split the
     // targets into Z and N: over the decks below a node, Z's factors are at most A's (each target's at its lowest

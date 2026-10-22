@@ -7,7 +7,7 @@ use crate::deck::enumerate::scratch::NodeScratch;
 use crate::deck::enumerate::traverse::{
     BorrowTables, DeckSearchContext, ParentRatioBounds, PreparedTables, SearchControl, SearchResults,
 };
-use crate::deck::joint::{CFCHK, SBCHK, SBN, joint_fast, sb_check};
+use crate::deck::joint::{CFCHK, JointQuery, SBCHK, SBN, joint_fast, sb_check};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::{Dominator, SelectedDeck, TraversalEntryGroup, gm_g, gm_w};
 use crate::deck::state_bound::StateBound;
@@ -713,7 +713,7 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 bound_inheritance,
                 ..
             } = search.controls;
-            let (space, model, total_slots) = (search.space, search.model, self.total_slots);
+            let (space, chances, total_slots) = (search.space, search.chances, self.total_slots);
             // the cap-free band: the bound at every node and leaf, nothing else prunes; past the node
             // limit every child fails and the search ends with CapFreeNodeLimit
             if scratch.limit_reached {
@@ -750,12 +750,15 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                         .map(|&j| SourceEntry { sources: &space.sources[j], kind: space.kind[j] })
                         .collect();
                     let x = joint_fast(
-                        model,
-                        bound_trainee,
-                        &[bound_inheritance],
+                        chances.model,
+                        JointQuery {
+                            trainee: bound_trainee,
+                            inheritance_chances: &[bound_inheritance],
+                            event_chances: &chances.event_chances[bound_trainee],
+                        },
                         &entries,
                         self.filler_count,
-                        target_count + model.n_fixed_gold as usize,
+                        target_count + chances.model.n_fixed_gold as usize,
                         false,
                         None,
                     )[0]

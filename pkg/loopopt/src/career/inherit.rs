@@ -195,8 +195,8 @@ pub(crate) struct Slot {
     pub(crate) mix: Option<[f64; 3]>,
 }
 
-/// `Env::set_trainee` on the fields it writes and reads (her model hint chances `cur`, her own `own_event_chances`),
-/// for callers that hold a borrow of the deck space
+/// Fold inheritance into the trainee buffer `cur`, reading her immutable own-event chances `ew0`.
+/// Kept separate from `Env` so callers can keep the deck space borrowed.
 pub(crate) fn set_ews(cur: &mut Vec<Vec<f64>>, ew0: &[Vec<f64>], uncv: &[usize], q: &[f64]) {
     // (in place when the shape is already this one: the same values)
     if cur.len() == ew0.len() && cur.iter().zip(ew0).all(|(c, o)| c.len() == o.len().min(uncv.len())) {
@@ -349,9 +349,19 @@ impl Env<'_> {
             guaranteed: self.fixed_targets.iter().map(|&i| spark_scale(nc[i])).collect(),
         }
     }
+    pub(crate) const fn deck_chances(&self) -> crate::skills::DeckChances<'_> {
+        crate::skills::DeckChances { model: self.model, event_chances: &self.folded_events }
+    }
+    pub(crate) fn joint_query(&self, trainee: crate::uma::UmaIndex) -> crate::deck::joint::JointQuery<'_> {
+        crate::deck::joint::JointQuery {
+            trainee,
+            inheritance_chances: &[0.0],
+            event_chances: &self.folded_events[trainee],
+        }
+    }
     /// trainee t's event hint chances with her lineage's inheritance chances folded in (the search then runs at q = 0)
     pub(crate) fn set_trainee(&mut self, t: crate::uma::UmaIndex, q: &[f64]) {
-        set_ews(&mut self.model.ews[t], &self.own_event_chances[t], &self.uncertain_targets, q);
+        set_ews(&mut self.folded_events[t], &self.model.ews[t], &self.uncertain_targets, q);
     }
     /// a deck's entries (sources borrowed from the deck space: `joint` only reads them)
     pub(crate) fn ents_of(&self, sel: &SelectedDeck) -> Vec<crate::deck::sources::SourceEntry<&TargetSources>> {
@@ -377,9 +387,8 @@ impl Env<'_> {
             per_outfit: vec![],
         };
         let crate::deck::joint::JointChances { all: p_all, all_but_one: p_all_but_one, outfit } = joint_fast(
-            &self.model,
-            t,
-            &[0.0],
+            self.model,
+            self.joint_query(t),
             &self.ents_of(sel),
             sel.filler_cards,
             self.target_count,
@@ -397,7 +406,7 @@ impl Env<'_> {
     pub(crate) fn rise(&self, t: crate::uma::UmaIndex, q: &[f64], q0: &[f64]) -> f64 {
         self.outfit_coverage[t]
             .iter()
-            .zip(&self.own_event_chances[t])
+            .zip(&self.model.ews[t])
             .map(|(st, ew)| {
                 self.uncertain_targets
                     .iter()
@@ -533,5 +542,24 @@ impl Env<'_> {
         }
         let pw = &tg[nl * (G + 1)..];
         self.uncertain_targets.iter().chain(&self.fixed_targets).map(|&i| pw[acc.nc[i]]).product::<f64>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::set_ews;
+
+    #[test]
+    fn refolding_reuses_outfit_buffers() {
+        let own = vec![vec![0.25, 0.5], vec![0.75, 0.0]];
+        let mut folded = Vec::new();
+        set_ews(&mut folded, &own, &[0, 2], &[0.5, 0.0, 1.0]);
+        assert_eq!(folded, vec![vec![0.625, 1.0], vec![0.875, 1.0]]);
+        let outer = folded.as_ptr();
+        let outfits: Vec<_> = folded.iter().map(Vec::as_ptr).collect();
+        set_ews(&mut folded, &own, &[0, 2], &[0.0, 1.0, 0.5]);
+        assert_eq!(folded, vec![vec![0.25, 0.75], vec![0.75, 0.5]]);
+        assert_eq!(folded.as_ptr(), outer);
+        assert!(folded.iter().zip(outfits).all(|(row, pointer)| row.as_ptr() == pointer));
     }
 }

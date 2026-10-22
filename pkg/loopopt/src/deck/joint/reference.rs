@@ -11,15 +11,14 @@ use crate::skills::{GEN_GOLD, Model, OutfitOption};
 /// it in `joint_checked` and panics on a relative difference at or above 1e-11.
 pub(in crate::deck) fn joint_trainee_ref(
     model: &Model,
-    u: crate::uma::UmaIndex,
-    inheritance_chances: &[f64],
+    query: JointQuery,
     entries: &[SourceEntry<TargetSources>],
     filler: usize,
     requested_target_count: usize,
 ) -> Vec<JointChances> {
     reference_joint(
         model,
-        JointQuery { trainee: u, inheritance_chances },
+        query,
         entries,
         filler,
         JointOptions { target_count: requested_target_count, all_but_one: true, marginals: false },
@@ -149,7 +148,7 @@ fn reference_joint(
             }
             for (qi, &q) in query.inheritance_chances.iter().enumerate() {
                 for (o, OutfitOption { coverage: st, .. }) in opts.iter().enumerate() {
-                    let ew = &model.ews[query.trainee][o];
+                    let ew = &query.event_chances[o];
                     // P(all land) and the distribution of how many of the uncertain targets land (fixed golds after)
                     let mut all = fixed;
                     dist[..=uncertain_count + nfix].iter_mut().for_each(|x| *x = 0.0);

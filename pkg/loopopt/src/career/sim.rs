@@ -313,7 +313,7 @@ fn fastc(env: &Env) -> crate::uma::UmaTable<Vec<Vec<(f64, f64)>>> {
             None => vec![],
             Some((dw, dg)) => env.outfit_coverage[t]
                 .iter()
-                .zip(&env.own_event_chances[t])
+                .zip(&env.model.ews[t])
                 .map(|(sv, ew)| {
                     (0..env.uncertain_count)
                         .map(|k| match sv[k] {
