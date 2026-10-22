@@ -6,6 +6,7 @@ use super::{
     Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter, lins, member_json, members,
     optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
 };
+use crate::{UmaIndex, UmaTable};
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -89,48 +90,48 @@ struct Multi<'data> {
     requested_target_count: usize,
     // (looked up only, never iterated: the hasher changes no order)
     card_of: crate::FxMap<u32, &'data Card>,
-    pool: Vec<usize>,
-    required_umas: Vec<usize>,
+    pool: Vec<UmaIndex>,
+    required_umas: Vec<UmaIndex>,
     allow_three: bool,
     allow_four: bool,
-    fixed_schedules: Option<Vec<Option<Sched>>>,
+    fixed_schedules: Option<UmaTable<Option<Sched>>>,
     no_race: bool,
     /// pair ceilings (or the fixed schedules' pair values), by uma index
-    pair_bounds: Vec<Vec<f64>>,
+    pair_bounds: UmaTable<UmaTable<f64>>,
     fixed: f64,
     /// each uma's highest inheritance chance
-    maximum_chances: Vec<f64>,
+    maximum_chances: UmaTable<f64>,
     grid: Grid,
     no_hint_chances: Vec<f64>,
     /// per class of umas with the same value coordinates (`ucoords`): its skyline decks and their clusters; each
     /// uma's class
     class_decks: Vec<Vec<usize>>,
     class_clusters: Vec<Vec<Cl>>,
-    class_by_trainee: Vec<usize>,
+    class_by_trainee: UmaTable<usize>,
     /// clusters of the whole skyline (empty with per-uma decks)
     skyline_clusters: Vec<Cl>,
     /// the clusters' bounds in reused buffers (`bb_max`, `sky_top`)
     cluster_bound_scratch: RefCell<Vec<ByBound>>,
     skyline_bound_scratch: RefCell<Vec<ByBound>>,
     /// B[u][i] = max over all skyline decks (legal for u or not) of T(u, grid[i], deck): no legal deck beats it
-    relaxed_ceiling_cache: RefCell<Vec<[f64; NG]>>,
+    relaxed_ceiling_cache: RefCell<UmaTable<[f64; NG]>>,
     /// exact ceiling table: X[u][i] = best exact value over every legal deck at chance grid[i] under the cap it was
     /// computed for (rises with the chance, so a lineage with chance q is bounded at grid[gidx(q)]; each lineage may
     /// take its own deck)
-    exact_ceiling_cache: RefCell<Vec<[(f64, f64); NG]>>,
+    exact_ceiling_cache: RefCell<UmaTable<[(f64, f64); NG]>>,
     /// the deck space's entry per (card id, end link, variant)
     entry_by_card: crate::FxMap<(u32, u8, u32), usize>,
-    exact_cache: RefCell<crate::FxMap<(usize, ChanceKey), ExactCacheEntry>>,
-    shared_cache: RefCell<crate::FxMap<([usize; 4], ChanceKey), (f64, f64, SList)>>,
+    exact_cache: RefCell<crate::FxMap<(UmaIndex, ChanceKey), ExactCacheEntry>>,
+    shared_cache: RefCell<crate::FxMap<([UmaIndex; 4], ChanceKey), (f64, f64, SList)>>,
     /// schedules found, per foursome (shared by the passes)
-    schedule_cache: RefCell<crate::FxMap<[usize; 4], Res>>,
+    schedule_cache: RefCell<crate::FxMap<[UmaIndex; 4], Res>>,
     tally: Tally,
     exact_caps: [f64; 4],
     maximum_exact_ratio: f64,
     shared: bool,
     loop_limit: usize,
     /// the pool by M_u (`rank`), highest first, and their M_u; the highest structure sum
-    ranked_pool: Vec<usize>,
+    ranked_pool: Vec<UmaIndex>,
     ranked_ceilings: Vec<f64>,
     maximum_structure_sum: f64,
     started: Instant,
@@ -213,7 +214,7 @@ struct ExactCacheEntry {
 /// One loop's shared-deck scoring: its members' ids, (trainee, chance) per lineage and each member's chances, the
 /// floor, and the decks scored so far
 struct SharedScan {
-    f: [usize; 4],
+    f: [UmaIndex; 4],
     nm: usize,
     ids: Vec<u32>,
     pairs: Vec<(usize, f64)>,
@@ -224,7 +225,7 @@ struct SharedScan {
     list: Vec<(f64, PDeck)>,
 }
 impl SharedScan {
-    fn new(d: &Data, f: [usize; 4], qa: &[f64], floor: f64, kloops: usize) -> Self {
+    fn new(d: &Data, f: [UmaIndex; 4], qa: &[f64], floor: f64, kloops: usize) -> Self {
         let ln = lin_of(&f);
         let fm = members(&f);
         let nm = fm.len();
@@ -246,7 +247,7 @@ impl SharedScan {
 
 /// A solved loop: members, schedule, lineage chances, per-member bests (per-uma decks) and value
 struct Solved {
-    f: [usize; 4],
+    f: [UmaIndex; 4],
     r: Res,
     qs: Vec<f64>,
     bests: Vec<Rc<Best>>,
@@ -269,7 +270,7 @@ struct Pass {
 /// A pass's queue of structures: (ceiling, members) in ceiling order, the next to scan, and the sum below which no
 /// band has been generated yet
 struct Queue {
-    cand: Vec<(f64, [usize; 4])>,
+    cand: Vec<(f64, [UmaIndex; 4])>,
     next: usize,
     hi_sum: f64,
 }
@@ -281,9 +282,9 @@ struct Pick<'pass> {
     value: f64,
 }
 
-// Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages; `lins`), members as [usize; 4] with
+// Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages; `lins`), members as [UmaIndex; 4] with
 // `NONE` last for three; a structure's value is the mean over its lineages, so both sizes rank together.
-fn lin_of(f: &[usize; 4]) -> &'static [crate::skills::Lin] {
+fn lin_of(f: &[UmaIndex; 4]) -> &'static [crate::skills::Lin] {
     lins(members(f).len())
 }
 /// A three-member structure's sum s in four-member sum units
@@ -292,14 +293,13 @@ fn e3(s: f64) -> f64 {
 }
 
 struct TrainingPool {
-    eligible: Vec<usize>,
-    required: Vec<usize>,
+    eligible: Vec<UmaIndex>,
+    required: Vec<UmaIndex>,
 }
 
 /// The umas that can train (owned or required, not excluded, with an outfit, not blocked by a locked card) and the
 /// required ones
 fn trainable(inputs: &LoopJobInputs, card_of: &crate::FxMap<u32, &Card>) -> TrainingPool {
-    let n = inputs.data.umas.len();
     let id_ok = |id: u32| {
         (inputs.skill_job.owned.is_empty()
             || inputs.skill_job.owned.contains(&id)
@@ -307,25 +307,38 @@ fn trainable(inputs: &LoopJobInputs, card_of: &crate::FxMap<u32, &Card>) -> Trai
             && !inputs.skill_job.exclude.contains(&id)
     };
     // a locked card goes in every deck, so a uma it blocks cannot train at all
-    let lock_blocked = |u: usize| {
+    let lock_blocked = |u: UmaIndex| {
         inputs.deck_job.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(inputs.data.umas[u].id)))
     };
-    let pool: Vec<usize> =
-        (0..n).filter(|&i| id_ok(inputs.data.umas[i].id) && !inputs.model.no_outfit[i] && !lock_blocked(i)).collect();
-    let req: Vec<usize> =
-        inputs.skill_job.require.iter().filter_map(|&id| inputs.data.umas.iter().position(|u| u.id == id)).collect();
+    let pool: Vec<UmaIndex> = inputs
+        .data
+        .umas
+        .indices()
+        .filter(|&i| id_ok(inputs.data.umas[i].id) && !inputs.model.no_outfit[i] && !lock_blocked(i))
+        .collect();
+    let req: Vec<UmaIndex> = inputs
+        .skill_job
+        .require
+        .iter()
+        .filter_map(|&id| inputs.data.umas.iter().position(|u| u.id == id).map(UmaIndex))
+        .collect();
     TrainingPool { eligible: pool, required: req }
 }
 
 /// Each pair's race-win ceiling: the fixed schedules' values where the job fixes them (0 without races), else the
 /// pair ceilings
-fn pair_table(d: &Data, pool: &[usize], fixed_s: Option<&[Option<Sched>]>, no_race: bool) -> Vec<Vec<f64>> {
+fn pair_table(
+    d: &Data,
+    pool: &[UmaIndex],
+    fixed_s: Option<&UmaTable<Option<Sched>>>,
+    no_race: bool,
+) -> UmaTable<UmaTable<f64>> {
     let n = d.umas.len();
     match fixed_s {
         Some(fs) => {
-            let ps: Vec<Option<Vec<f64>>> =
-                fs.iter().enumerate().map(|(i, s)| s.as_ref().map(|s| probs(d, &d.umas[i], s))).collect();
-            let mut m = vec![vec![0.0f64; n]; n];
+            let ps: UmaTable<Option<Vec<f64>>> =
+                fs.indexed().map(|(i, s)| s.as_ref().map(|s| probs(d, &d.umas[i], s))).collect();
+            let mut m = UmaTable(vec![UmaTable(vec![0.0f64; n]); n]);
             if !no_race {
                 for &a in pool {
                     for &b in pool {
@@ -344,7 +357,7 @@ fn pair_table(d: &Data, pool: &[usize], fixed_s: Option<&[Option<Sched>]>, no_ra
 // A uma's value depends only on the targets some outfit of hers lacks: (g, h) = (P(gold), P(any hint)) where
 // an outfit lacks the skill, g alone where her outfits have at most the white. Decks are thinned per class of
 // umas with the same coordinates: a deck another beats on all of them never wins for those umas.
-fn ucoords(model: &Model, u: usize, nu: usize) -> Vec<(usize, bool)> {
+fn ucoords(model: &Model, u: UmaIndex, nu: usize) -> Vec<(usize, bool)> {
     let mut c = vec![];
     for k in 0..nu {
         if model.opts[u].iter().any(|(st, _)| st[k] == 0) {
@@ -391,12 +404,12 @@ fn thin(list: &[PDeck], co: &[(usize, bool)]) -> Vec<usize> {
     v
 }
 /// The pool's classes of umas with the same coordinates: each class's skyline decks, and each uma's class
-fn classes(model: &Model, pool: &[usize], sky: &[PDeck], nu: usize, n: usize) -> (Vec<Vec<usize>>, Vec<usize>) {
+fn classes(model: &Model, pool: &[UmaIndex], sky: &[PDeck], nu: usize, n: usize) -> (Vec<Vec<usize>>, UmaTable<usize>) {
     // the full coordinate set needs no thinning: the skyline is already thin on it
     let full: Vec<(usize, bool)> = (0..nu).flat_map(|k| [(k, true), (k, false)]).collect();
     let mut class_ix: crate::FxMap<Vec<(usize, bool)>, usize> = crate::FxMap::default();
     let mut class_sky: Vec<Vec<usize>> = vec![];
-    let mut ucls: Vec<usize> = vec![usize::MAX; n];
+    let mut ucls = UmaTable(vec![usize::MAX; n]);
     for &u in pool {
         let co = ucoords(model, u, nu);
         let ci = if let Some(&c) = class_ix.get(&co) {
@@ -459,14 +472,22 @@ impl<'data> Multi<'data> {
         }
         let (allow_three, allow_four) = (inputs.skill_job.sizes.contains(&3), inputs.skill_job.sizes.contains(&4));
         let started = Instant::now();
-        let fixed_schedules: Option<Vec<Option<Sched>>> = inputs.deck_job.schedule.as_deref().map(|mode| {
-            (0..n).map(|i| pool.contains(&i).then(|| prebuilt(inputs.data, &inputs.data.umas[i], mode))).collect()
+        let fixed_schedules: Option<UmaTable<Option<Sched>>> = inputs.deck_job.schedule.as_deref().map(|mode| {
+            inputs
+                .data
+                .umas
+                .indices()
+                .map(|i| pool.contains(&i).then(|| prebuilt(inputs.data, &inputs.data.umas[i], mode)))
+                .collect()
         });
         let no_race = inputs.deck_job.schedule.as_deref() == Some("none");
-        let pair_bounds = pair_table(inputs.data, &pool, fixed_schedules.as_deref(), no_race);
+        let pair_bounds = pair_table(inputs.data, &pool, fixed_schedules.as_ref(), no_race);
         let fixed = inputs.model.fixed_factor();
-        let maximum_chances: Vec<f64> =
-            (0..n)
+        let maximum_chances: UmaTable<f64> =
+            inputs
+                .data
+                .umas
+                .indices()
                 .map(|u| {
                     if pool.contains(&u) { inputs.model.q_ub_trainee(u, &pool, &pair_bounds, allow_three) } else { 0.0 }
                 })
@@ -528,8 +549,8 @@ impl<'data> Multi<'data> {
             skyline_clusters,
             cluster_bound_scratch: RefCell::default(),
             skyline_bound_scratch: RefCell::default(),
-            relaxed_ceiling_cache: RefCell::new(vec![[f64::NAN; NG]; n]),
-            exact_ceiling_cache: RefCell::new(vec![[(f64::NAN, 0.0); NG]; n]),
+            relaxed_ceiling_cache: RefCell::new(UmaTable(vec![[f64::NAN; NG]; n])),
+            exact_ceiling_cache: RefCell::new(UmaTable(vec![[(f64::NAN, 0.0); NG]; n])),
             entry_by_card,
             exact_cache: RefCell::default(),
             shared_cache: RefCell::default(),
@@ -552,11 +573,14 @@ impl<'data> Multi<'data> {
     /// Orders the pool by M_u (the product ceiling at her highest chance), highest first, for `band`, and sets the
     /// highest structure sum
     fn rank(&mut self) {
-        let n = self.inputs.data.umas.len();
-        let mval: Vec<f64> = (0..n)
+        let mval: UmaTable<f64> = self
+            .inputs
+            .data
+            .umas
+            .indices()
             .map(|u| if self.pool.contains(&u) { self.btab(u, self.grid.idx(self.maximum_chances[u])) } else { 0.0 })
             .collect();
-        let mut ord: Vec<usize> = self.pool.clone();
+        let mut ord: Vec<UmaIndex> = self.pool.clone();
         ord.sort_by(|&a, &b| mval[b].partial_cmp(&mval[a]).unwrap());
         let mv: Vec<f64> = ord.iter().map(|&u| mval[u]).collect();
         let k = self.pool.len();
@@ -566,7 +590,7 @@ impl<'data> Multi<'data> {
         self.ranked_ceilings = mv;
     }
 
-    fn uview(&self, u: usize) -> &Vec<usize> {
+    fn uview(&self, u: UmaIndex) -> &Vec<usize> {
         &self.class_decks[self.class_by_trainee[u]]
     }
 
@@ -574,7 +598,7 @@ impl<'data> Multi<'data> {
 
     /// max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
     /// (the clusters' bounds in a reused buffer, popped from a heap in the stable sort's order: `ByBound`)
-    fn bb_max(&self, u: usize, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64) -> f64 {
+    fn bb_max(&self, u: UmaIndex, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64) -> f64 {
         let cls = &self.class_clusters[self.class_by_trainee[u]];
         let sky = &self.inputs.skyline;
         if cls.is_empty() {
@@ -598,7 +622,7 @@ impl<'data> Multi<'data> {
     }
 
     /// B[u][i] (`btab_c`), computed at first need
-    fn btab(&self, u: usize, i: usize) -> f64 {
+    fn btab(&self, u: UmaIndex, i: usize) -> f64 {
         let v = self.relaxed_ceiling_cache.borrow()[u][i];
         if !v.is_nan() {
             return v;
@@ -651,7 +675,7 @@ impl<'data> Multi<'data> {
     }
 
     /// shared-deck ceiling: the best single skyline deck (legal or not) over the loop's twelve lineages, product odds
-    fn relaxed_shared(&self, f: [usize; 4], qa: &[f64; 12]) -> f64 {
+    fn relaxed_shared(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let model = self.inputs.model;
         let ln = lin_of(&f);
         let val =
@@ -660,7 +684,7 @@ impl<'data> Multi<'data> {
     }
 
     /// ceiling with each uma's best skyline deck (legal or not), the same deck across her lineages
-    fn relaxed(&self, f: [usize; 4], qa: &[f64; 12]) -> f64 {
+    fn relaxed(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let (model, sky) = (self.inputs.model, &self.inputs.skyline);
         let mut tot = 0.0;
         let ln = lin_of(&f);
@@ -720,7 +744,7 @@ impl<'data> Multi<'data> {
 
     /// Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
     /// and every legal deck whose product value times lv reaches it (each first through the proven bound).
-    fn exact_best(&self, u: usize, qs: &[f64], lv: f64) -> Rc<Best> {
+    fn exact_best(&self, u: UmaIndex, qs: &[f64], lv: f64) -> Rc<Best> {
         let key = (u, qkey(qs));
         if let Some(entry) = self.exact_cache.borrow().get(&key)
             && entry.certified_cap >= lv
@@ -749,7 +773,7 @@ impl<'data> Multi<'data> {
     }
 
     /// Scores deck x exactly for trainee u at chances qs (once per entry) and keeps it if it is the best
-    fn score_exact(&self, u: usize, qs: &[f64], x: &PDeck, ent: &mut ExactCacheEntry) {
+    fn score_exact(&self, u: UmaIndex, qs: &[f64], x: &PDeck, ent: &mut ExactCacheEntry) {
         if !ent.scored_decks.insert(x.id()) {
             return;
         }
@@ -801,7 +825,7 @@ impl<'data> Multi<'data> {
     }
 
     /// seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
-    fn seed_exact(&self, u: usize, qs: &[f64], ent: &mut ExactCacheEntry) {
+    fn seed_exact(&self, u: UmaIndex, qs: &[f64], ent: &mut ExactCacheEntry) {
         let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
@@ -841,7 +865,7 @@ impl<'data> Multi<'data> {
 
     /// Raises an entry's certified cap to lv: every legal deck that might beat its best under the cap is scored (after
     /// the proven bound); a deck search cut short or the budget running out certifies nothing and aborts the pass
-    fn raise_exact(&self, u: usize, qs: &[f64], lv: f64, ent: &mut ExactCacheEntry) {
+    fn raise_exact(&self, u: UmaIndex, qs: &[f64], lv: f64, ent: &mut ExactCacheEntry) {
         let (model, space, tally) = (self.inputs.model, self.inputs.deck_space, &self.tally);
         let uid = self.inputs.data.umas[u].id;
         let mut complete = true;
@@ -906,7 +930,7 @@ impl<'data> Multi<'data> {
     }
 
     /// The entry's best with its per-lineage values (the deckless value when no deck is legal)
-    fn best_of(&self, u: usize, qs: &[f64], ent: &ExactCacheEntry) -> Best {
+    fn best_of(&self, u: UmaIndex, qs: &[f64], ent: &ExactCacheEntry) -> Best {
         if let Some((sum, x)) = &ent.best {
             let (e, fl) = self.ents_of(x);
             let per = joint_b(self.inputs.model, u, qs, &e, fl, self.requested_target_count, true);
@@ -918,7 +942,7 @@ impl<'data> Multi<'data> {
     }
 
     /// X[u][i] under cap lv (`xtab_c`), computed when not known under lv or more
-    fn xtab(&self, u: usize, i: usize, lv: f64) -> f64 {
+    fn xtab(&self, u: UmaIndex, i: usize, lv: f64) -> f64 {
         let (v, l) = self.exact_ceiling_cache.borrow()[u][i];
         if !v.is_nan() && l >= lv {
             return v;
@@ -933,7 +957,7 @@ impl<'data> Multi<'data> {
 
     /// Ceiling of a cell (uma, grid point) under cap lv: the exact value if computed under lv or more, else the lowest
     /// such value at a higher grid point, else the product-odds bound times lv; (bound, exact?)
-    fn cell(&self, u: usize, i: usize, lv: f64) -> (f64, bool) {
+    fn cell(&self, u: UmaIndex, i: usize, lv: f64) -> (f64, bool) {
         let mut b = lv * self.fixed * self.btab(u, i) * (1.0 + 1e-12);
         let xb = self.exact_ceiling_cache.borrow();
         let row = &xb[u];
@@ -949,10 +973,10 @@ impl<'data> Multi<'data> {
     /// Exact ceiling of a foursome at chances `qa`, refined lazily: while it beats `kth`, the loosest inexact term is
     /// tightened (first computed at the uma's highest grid point, then halfway down towards its own) until the ceiling
     /// stops beating `kth` or every term is exact. Each step is one exact deck search for one uma.
-    fn exact_ceiling(&self, f: [usize; 4], qa: &[f64; 12], kth: f64, lv: f64) -> f64 {
+    fn exact_ceiling(&self, f: [UmaIndex; 4], qa: &[f64; 12], kth: f64, lv: f64) -> f64 {
         loop {
             let mut tot = 0.0;
-            let mut worst: Option<(f64, usize, usize)> = None;
+            let mut worst: Option<(f64, UmaIndex, usize)> = None;
             let ln = lin_of(&f);
             for l in 0..ln.len() {
                 let (u, i) = (f[ln[l].0], self.grid.idx(qa[l]));
@@ -985,7 +1009,7 @@ impl<'data> Multi<'data> {
     // for all four members. Per loop: every such deck whose exact sum is at least `floor` (the k-th best distinct
     // deck so far, times 12) or among the loop's own best `top_decks`, under cap lv; sorted, best first. Ceilings
     // stay the per-uma ones (each trainee's best deck bounds her share of any shared deck).
-    fn exact_shared(&self, f: [usize; 4], qa: &[f64], floor: f64, lv: f64) -> SList {
+    fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SList {
         let key = (f, qkey(qa));
         if let Some((l, fl, r)) = self.shared_cache.borrow().get(&key)
             && *l >= lv
@@ -1128,7 +1152,7 @@ impl<'data> Multi<'data> {
     // ---- the loop search ----
 
     /// The structures whose member sum (in four-member units) is in [lo, hi), with their product ceilings
-    fn band(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [usize; 4])>) {
+    fn band(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
         if self.allow_four {
             self.band4(lo, hi, out);
         }
@@ -1136,7 +1160,7 @@ impl<'data> Multi<'data> {
             self.band3(lo, hi, out);
         }
     }
-    fn band4(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [usize; 4])>) {
+    fn band4(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
         let (mv, ord, k) = (&self.ranked_ceilings, &self.ranked_pool, self.pool.len());
         for a in 0..k {
             if a + 3 >= k || mv[a] + mv[a + 1] + mv[a + 2] + mv[a + 3] < lo {
@@ -1174,7 +1198,7 @@ impl<'data> Multi<'data> {
             }
         }
     }
-    fn band3(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [usize; 4])>) {
+    fn band3(&self, lo: f64, hi: f64, out: &mut Vec<(f64, [UmaIndex; 4])>) {
         let (mv, ord, k) = (&self.ranked_ceilings, &self.ranked_pool, self.pool.len());
         for a in 0..k {
             if a + 2 >= k || e3(mv[a] + mv[a + 1] + mv[a + 2]) < lo {
@@ -1249,7 +1273,7 @@ impl<'data> Multi<'data> {
     /// stop rule compares them with the k-th exact value. None when the budget runs out (the pass certifies nothing).
     fn run_pass(&self, lv: f64) -> Option<Pass> {
         let lo_sum = self.maximum_structure_sum * 0.85;
-        let mut cand: Vec<(f64, [usize; 4])> = vec![];
+        let mut cand: Vec<(f64, [UmaIndex; 4])> = vec![];
         self.band(lo_sum, f64::INFINITY, &mut cand);
         cand.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
         let mut p = Pass {
@@ -1300,11 +1324,11 @@ impl<'data> Multi<'data> {
         let kth_lo = if kth > f64::NEG_INFINITY { kth / lv * 12.0 / (3.0 * self.fixed) * (1.0 - 1e-9) } else { 0.0 };
         let lo = kth_lo.max(q.hi_sum * 0.85);
         let lo = if lo < self.maximum_structure_sum * 1e-6 { 0.0 } else { lo };
-        let mut more: Vec<(f64, [usize; 4])> = vec![];
+        let mut more: Vec<(f64, [UmaIndex; 4])> = vec![];
         self.band(lo, q.hi_sum, &mut more);
         q.hi_sum = lo;
         let added = more.len();
-        let mut rest: Vec<(f64, [usize; 4])> = q.cand.split_off(q.next);
+        let mut rest: Vec<(f64, [UmaIndex; 4])> = q.cand.split_off(q.next);
         rest.extend(more);
         rest.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
         q.cand.extend(rest);
@@ -1313,7 +1337,7 @@ impl<'data> Multi<'data> {
 
     /// Structure f's turn in a pass: rejected by its ceilings (cheapest first), else scheduled and solved exactly into
     /// the pass. None when the budget runs out.
-    fn solve(&self, f: [usize; 4], lv: f64, p: &mut Pass) -> Option<()> {
+    fn solve(&self, f: [UmaIndex; 4], lv: f64, p: &mut Pass) -> Option<()> {
         let kth = p.kth;
         let beats = |c: f64| c > kth * (1.0 + 4e-12);
         let fm = members(&f);
@@ -1398,7 +1422,7 @@ impl<'data> Multi<'data> {
     }
 
     /// The schedule of structure f: the job's fixed ones, else the optimiser's (kept for later passes)
-    fn schedule(&self, f: [usize; 4], nm: usize) -> Res {
+    fn schedule(&self, f: [UmaIndex; 4], nm: usize) -> Res {
         let r = self.schedule_cache.borrow().get(&f).cloned();
         r.unwrap_or_else(|| {
             let r = match &self.fixed_schedules {

@@ -30,6 +30,7 @@ use crate::deck::{
     CHAIN_EVENTS, CHAIN_N, CHAIN_P, Card, CardsRaw, Data, DeckJob, DeckSpace, Deserialize, FxMap, GEN_GOLD, HashMap,
     Instant, Model, SelectedDeck, SkillJob, SkillsRaw, Value, d_true, deck_entries, deck_space, json, src_miss,
 };
+use crate::{UmaIndex, UmaTable};
 use clock::{PROF, now_ms, prof, progress};
 pub(crate) use decks::CfStats;
 use decks::{DECK_KEEP, JOB_NO};
@@ -65,7 +66,7 @@ mod sim;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Lineage {
     /// Trainee's index in Data::umas.
-    pub(crate) trainee: usize,
+    pub(crate) trainee: UmaIndex,
     /// First parent's index in the supplied pool or legacy slice.
     pub(crate) first_parent: usize,
     /// Second parent's index, preserving the caller's order.
@@ -216,7 +217,7 @@ struct Env<'data> {
     model: Model<'data>,
     /// Per uma, per outfit option, the chance her own events hint each uncertain target's white (`Model::ews` before
     /// any inheritance chance is folded in).
-    own_event_chances: Vec<Vec<Vec<f64>>>,
+    own_event_chances: UmaTable<Vec<Vec<f64>>>,
     /// The uncertain targets (not guaranteed gold), as job-target indices.
     uncertain_targets: Vec<usize>,
     /// The other targets (guaranteed gold), as job-target indices.
@@ -229,30 +230,30 @@ struct Env<'data> {
     uncertain_groups: Vec<u32>,
     space: DeckSpace<'data>,
     /// Per uma (None when she does not train), the deck odds ceiling per uncertain target (`deck_odds_ceilings`).
-    deck_odds_ceilings: Vec<Option<(Vec<f64>, Vec<f64>)>>,
+    deck_odds_ceilings: UmaTable<Option<(Vec<f64>, Vec<f64>)>>,
     /// Per uma, per outfit option, its coverage of each uncertain target (2: the gold skill, 1: the white one, 0:
     /// neither; `Model::opts` without the labels).
-    outfit_coverage: Vec<Vec<Vec<u8>>>,
-    owned: Vec<usize>,
+    outfit_coverage: UmaTable<Vec<Vec<u8>>>,
+    owned: Vec<UmaIndex>,
     budget: usize,
     work: usize,
     /// every earlier search's fully checked decks per deck class (`deck_class`; one model, so each is a proven best at
     /// its chances for every trainee of the class): later searches bound with them (`rise`), but don't start from them,
     /// so ties resolve as in a lone search
-    seen: Vec<Vec<Ref>>,
+    seen: UmaTable<Vec<Ref>>,
     /// each trainee's deck class, as the index of its first trainee: trainees with the same outfit coverage and own-skill
     /// chances of the targets, the same relevant cards barred and as many plain pals face the same deck problem (her
     /// best deck and its value are one function of the inheritance chances; `rise` and `deck_odds_ceilings` agree), so
     /// a proof one of them makes (`Ref`, `ruled`) holds for all of them. Within a class only the slots' affinity (so q)
     /// differs.
-    deck_class: Vec<usize>,
+    deck_class: UmaTable<UmaIndex>,
     /// whether `solve` bounds with `seen`: off for the search whose fully checked decks seed the simulator's cache
     /// (so the simulator's values do not depend on what earlier searches proved)
     use_seen: bool,
     /// per deck class (`deck_class`), what its product searches proved (`best_deck` pass 1): (chances q, S) with every
     /// legal deck's product value at q (fixed factor included, before the spark scale) at most S. Bounds her other
     /// candidates (`solve`).
-    ruled: Vec<Vec<(Vec<f64>, f64)>>,
+    ruled: UmaTable<Vec<(Vec<f64>, f64)>>,
     /// what the last `best_deck` call's product search proved: Some(S) as in `ruled`, None when it proved nothing
     last_product_bound: Option<f64>,
     /// `solve` keeps only careers above this value (the plan's search with a new veteran fixed, against the trainee's kept
@@ -269,7 +270,7 @@ struct Env<'data> {
     /// a rerun (`CAP_RERUN=0`), their work (counted apart from `work`)
     pub(crate) cap_free_stats: CfStats,
     /// per class, the trainee and deck that set `max_ratio`
-    pub(crate) max_deck: [Option<(usize, SelectedDeck)>; 4],
+    pub(crate) max_deck: [Option<(UmaIndex, SelectedDeck)>; 4],
     /// the lowest cap any deck search was certified under (`best_deck_run`: a band over EXACT_CAP decks is retried
     /// down the cap ladder), and how many bands overflowed; a search below the top cap is not `full`
     pub(crate) cert: f64,
@@ -280,7 +281,7 @@ struct Env<'data> {
     /// (kept between jobs of one setup, `DECK_KEEP`)
     deck_memo: crate::FxMap<DeckKey, DeckMemo>,
     /// `corners_kept`'s tables by (deck class, the deck's entries, filler), kept between jobs of one setup with `deck_memo`
-    corner_memo: crate::FxMap<(usize, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+    corner_memo: crate::FxMap<(UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
     memo_fingerprint: u64,
     job_number: u64,
@@ -416,7 +417,7 @@ impl CareerJobs {
 struct CareerSetup<'data> {
     env: Env<'data>,
     /// The job's trainees (uma indices), owned umas in roster order.
-    trainees: Vec<usize>,
+    trainees: Vec<UmaIndex>,
     /// `setup_fp` of the job: what earlier jobs of this setup proved is kept under it (`SEEN`).
     setup_fingerprint: u64,
 }
@@ -437,12 +438,12 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
     let n = d.umas.len();
     let card_of: HashMap<u32, &Card> = cr.cards.iter().map(|c| (c.id, c)).collect();
     let lock_blocked =
-        |u: usize| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id)));
+        |u: UmaIndex| dj.lock_cards.iter().any(|id| card_of.get(id).is_some_and(|c| c.blocks(d.umas[u].id)));
     let id_ok = |id: u32| (sj.owned.is_empty() || sj.owned.contains(&id)) && !sj.exclude.contains(&id);
     // every uma that can train (the plan's next career takes any of them); the job's trainees are among these
-    let owned: Vec<usize> =
-        (0..n).filter(|&i| id_ok(d.umas[i].id) && !model.no_outfit[i] && !lock_blocked(i)).collect();
-    let trainees: Vec<usize> =
+    let owned: Vec<UmaIndex> =
+        d.umas.indices().filter(|&i| id_ok(d.umas[i].id) && !model.no_outfit[i] && !lock_blocked(i)).collect();
+    let trainees: Vec<UmaIndex> =
         owned.iter().copied().filter(|&i| cj.trainees.is_empty() || cj.trainees.contains(&d.umas[i].id)).collect();
     if trainees.is_empty() {
         return Err(json!({"error": "No trainee to search: pick at least one owned uma."}));
@@ -454,7 +455,7 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
     let ent = deck_entries(cr, dj, &uncertain_groups, &pool_ids)?;
     let space = deck_space(cr, dj, sk, &uncertain_groups, &ent);
     let deck_odds_ceilings = deck_odds_ceilings(d, &space, &owned, uncertain_count, dj.deck_size);
-    let outfit_coverage: Vec<Vec<Vec<u8>>> =
+    let outfit_coverage: UmaTable<Vec<Vec<u8>>> =
         model.opts.iter().map(|m| m.iter().map(|x| x.0.clone()).collect()).collect();
     let budget = std::env::var("EXACT_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(CAREER_BUDGET);
     // the kept `best_deck` memo of this setup (`DECK_KEEP`), and this job's number
@@ -494,9 +495,9 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
         owned,
         budget,
         work: 0,
-        seen: vec![vec![]; n],
+        seen: UmaTable(vec![vec![]; n]),
         use_seen: true,
-        ruled: vec![vec![]; n],
+        ruled: UmaTable(vec![vec![]; n]),
         last_product_bound: None,
         floor: f64::NEG_INFINITY,
         hard_work_cap: 0,
@@ -510,7 +511,7 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
         corner_memo,
         memo_fingerprint,
         job_number,
-        deck_class: (0..n).collect(),
+        deck_class: d.umas.indices().collect(),
         max_borrowed: u8::from(cj.borrowed_parent != BorrowedParent::Never),
     };
     assign_deck_classes(&mut env);
@@ -523,10 +524,10 @@ fn career_setup<'data>(input: &JobInputs<'data>, jobs: &'data CareerJobs) -> Res
 fn deck_odds_ceilings(
     d: &Data,
     space: &DeckSpace,
-    owned: &[usize],
+    owned: &[UmaIndex],
     nu: usize,
     deck_size: usize,
-) -> Vec<Option<(Vec<f64>, Vec<f64>)>> {
+) -> UmaTable<Option<(Vec<f64>, Vec<f64>)>> {
     // per relevant entry: (miss of a gold hint, miss of any hint) per uncertain target
     let strong: Vec<(Vec<f64>, Vec<f64>)> = (0..space.rel.len())
         .map(|j| {
@@ -536,7 +537,8 @@ fn deck_odds_ceilings(
             (mg, mh)
         })
         .collect();
-    (0..d.umas.len())
+    d.umas
+        .indices()
         .map(|u| {
             if !owned.contains(&u) {
                 return None;
@@ -564,8 +566,8 @@ fn deck_odds_ceilings(
 /// own-skill chances to the bit, `deck_odds_ceilings`, the relevant cards she may not take, how many plain pals she
 /// may); each trainee's class is the first trainee with her key.
 fn assign_deck_classes(env: &mut Env) {
-    let mut first: crate::FxMap<Vec<u64>, usize> = crate::FxMap::default();
-    for u in 0..env.data.umas.len() {
+    let mut first: crate::FxMap<Vec<u64>, UmaIndex> = crate::FxMap::default();
+    for u in env.data.umas.indices() {
         let uid = env.data.umas[u].id;
         let mut k: Vec<u64> = vec![];
         for o in &env.outfit_coverage[u] {
@@ -634,7 +636,7 @@ struct CareerRun<'run, 'data> {
     input: &'run JobInputs<'data>,
     job: &'run CareerJob,
     /// The job's trainees (uma indices).
-    trainees: &'run [usize],
+    trainees: &'run [UmaIndex],
     /// The job's pool of legacies, borrowing as `borrowed_parent` allows in the plan's look-ahead.
     pool: &'run Pool,
     /// `borrowed_parent` "later": `pool` without borrowed parents, where the career picked comes from.
@@ -867,9 +869,9 @@ mod tests {
                 }
             }
             let ks: Vec<usize> = (0..env.target_count).collect();
-            let trainees: Vec<usize> = env.owned.clone();
+            let trainees: Vec<UmaIndex> = env.owned.clone();
             let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<u64>>();
-            let (mut n, mut tg, mut tg_t) = (0usize, vec![], usize::MAX);
+            let (mut n, mut tg, mut tg_t) = (0usize, vec![], crate::NONE);
             for fix in [vec![], vec![2usize]] {
                 let cands = env.gen_cands(&p, &fix, &trainees, |_, _| true, |ub, _, t, a, b| (ub, t, a, b));
                 assert!(!cands.is_empty());

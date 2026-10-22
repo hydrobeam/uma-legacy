@@ -68,7 +68,7 @@ thread_local! {
 }
 
 /// per deck class, the product searches' proofs (`Env::ruled`)
-pub(crate) type Ruled = Vec<Vec<(Vec<f64>, f64)>>;
+pub(crate) type Ruled = crate::UmaTable<Vec<(Vec<f64>, f64)>>;
 
 /// main searches kept (`LAST_SOLVE`): the page's run, and one it goes back to (a setting changed and back, a Compare or
 /// Reroll plan in between)
@@ -78,7 +78,7 @@ thread_local! {
     /// per setup fingerprint (the last few), every fully checked deck found so far (`Env::seen`): what the page's
     /// earlier jobs proved bounds the next job's searches. A Ref holds a trainee's chances and her best exact value
     /// there, which depend on the setup only (the job's trainees change no deck value: they only order plain pals).
-    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, Vec<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static SEEN: std::cell::RefCell<Vec<(u64, crate::UmaTable<Vec<Ref>>)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Fully checked decks kept per trainee across jobs (the most recent): the bound loop over them stays cheap
@@ -180,7 +180,7 @@ pub(crate) fn found_out(f: &Found) -> Value {
 pub(crate) fn found_in(v: &Value) -> Option<Found> {
     let a = v.as_array()?;
     Some(Found {
-        trainee: usz(a.first()?)?,
+        trainee: crate::UmaIndex(usz(a.first()?)?),
         first_parent: usz(a.get(1)?)?,
         second_parent: usz(a.get(2)?)?,
         value: fx(a.get(3)?)?,
@@ -211,20 +211,20 @@ fn seen_out() -> Value {
     })
 }
 
-fn seen_in(v: &Value) -> Option<Vec<(u64, Vec<Vec<Ref>>)>> {
+fn seen_in(v: &Value) -> Option<Vec<(u64, crate::UmaTable<Vec<Ref>>)>> {
     v.as_array()?
         .iter()
         .map(|e| {
             let a = e.as_array()?;
             let (fp, n) = (uxr(a.first()?)?, len_in(a.get(1)?)?);
-            let mut vv: Vec<Vec<Ref>> = vec![vec![]; n];
+            let mut vv = crate::UmaTable(vec![vec![]; n]);
             for c in a.get(2)?.as_array()? {
                 let ca = c.as_array()?;
                 let i = usz(ca.first()?)?;
                 if i >= n {
                     return None;
                 }
-                vv[i] = ca.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
+                vv[crate::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(ref_in).collect::<Option<_>>()?;
             }
             Some((fp, vv))
         })
@@ -232,7 +232,7 @@ fn seen_in(v: &Value) -> Option<Vec<(u64, Vec<Vec<Ref>>)>> {
 }
 
 /// per-uma (or per-class) lists as [length, [[index, [items]], ...]] (only the non-empty ones)
-fn lists_out<T>(vv: &[Vec<T>], f: impl Fn(&T) -> Value) -> Value {
+fn lists_out<T>(vv: &crate::UmaTable<Vec<T>>, f: impl Fn(&T) -> Value) -> Value {
     json!([
         vv.len(),
         vv.iter()
@@ -243,17 +243,17 @@ fn lists_out<T>(vv: &[Vec<T>], f: impl Fn(&T) -> Value) -> Value {
     ])
 }
 
-fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<Vec<Vec<T>>> {
+fn lists_in<T: Clone>(v: &Value, f: impl Fn(&Value) -> Option<T>) -> Option<crate::UmaTable<Vec<T>>> {
     let a = v.as_array()?;
     let n = len_in(a.first()?)?;
-    let mut vv: Vec<Vec<T>> = vec![vec![]; n];
+    let mut vv = crate::UmaTable(vec![vec![]; n]);
     for c in a.get(1)?.as_array()? {
         let ca = c.as_array()?;
         let i = usz(ca.first()?)?;
         if i >= n {
             return None;
         }
-        vv[i] = ca.get(1)?.as_array()?.iter().map(&f).collect::<Option<_>>()?;
+        vv[crate::UmaIndex(i)] = ca.get(1)?.as_array()?.iter().map(&f).collect::<Option<_>>()?;
     }
     Some(vv)
 }
@@ -343,7 +343,7 @@ impl Env<'_> {
         r.q.len() == self.target_count && self.sel_fits(&r.deck)
     }
     /// stored proofs (`SEEN`): per deck class (one per uma) the fully checked decks
-    pub(crate) fn seen_fits(&self, seen: &[Vec<Ref>]) -> bool {
+    pub(crate) fn seen_fits(&self, seen: &crate::UmaTable<Vec<Ref>>) -> bool {
         seen.len() == self.data.umas.len() && seen.iter().flatten().all(|r| self.ref_fits(r))
     }
     /// a stored main search (`LAST_SOLVE`) of pool `p`: per uma its refs and product proofs, careers of its trainees and
@@ -355,7 +355,7 @@ impl Env<'_> {
             && sv.refs.len() == n
             && sv.refs.iter().flatten().all(|r| self.ref_fits(r))
             && sv.found.iter().all(|f| {
-                f.trainee < n
+                f.trainee.0 < n
                     && f.first_parent < p.veterans.len()
                     && f.second_parent < p.veterans.len()
                     && self.sel_fits(&f.deck)

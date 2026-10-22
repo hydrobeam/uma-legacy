@@ -65,7 +65,7 @@ pub(crate) struct SearchSetup {
     state_bound_mode: u8,
     state_rows: std::rc::Rc<Vec<Option<Vec<(f64, f64)>>>>,
     state_bound_threshold: f64,
-    bound_trainee: usize,
+    bound_trainee: crate::UmaIndex,
     bound_inheritance: f64,
     landing_factors: Vec<LandPre>,
     class_caps: [f64; 4],
@@ -81,7 +81,7 @@ impl DeckSpace<'_> {
     pub(super) fn search(
         &self,
         model: &Model,
-        us: &[usize],
+        us: &[crate::UmaIndex],
         ids: &[u32],
         clauses: &[(Vec<(usize, f64)>, f64)],
         mode: SearchMode,

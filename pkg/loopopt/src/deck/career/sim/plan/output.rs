@@ -118,7 +118,7 @@ pub(crate) fn assemble_plan_output<'data>(
         })
         .collect();
     let umas_unproven =
-        (0..data.umas.len()).filter(|&u| incomplete.base[u] || incomplete.looped[u] || incomplete.no_borrow[u]).count();
+        data.umas.indices().filter(|&u| incomplete.base[u] || incomplete.looped[u] || incomplete.no_borrow[u]).count();
     let current_value = if fit.current_value.is_finite() { json!(fit.current_value) } else { Value::Null };
     let mut out = json!({"choice": choice, "rule": "index", "mode": "trio", "v0": current_value, "outcomes": outcomes,
            "members": members_json,
@@ -175,13 +175,13 @@ fn pick_roll_state(
 
 /// Per uma (`Data::umas`), whether a search behind her rows was incomplete, by the row's origin
 struct IncompleteSearches {
-    base: Vec<bool>,
-    looped: Vec<bool>,
-    no_borrow: Vec<bool>,
+    base: crate::UmaTable<bool>,
+    looped: crate::UmaTable<bool>,
+    no_borrow: crate::UmaTable<bool>,
 }
 
 impl IncompleteSearches {
-    fn of(&self, origin: RowOrigin, trainee: usize) -> bool {
+    fn of(&self, origin: RowOrigin, trainee: crate::UmaIndex) -> bool {
         match origin {
             RowOrigin::Base => self.base[trainee],
             RowOrigin::Looped => self.looped[trainee],
@@ -226,7 +226,7 @@ fn keep_plan_searches(context: &PlanContext, searches: PlanSearches) -> Incomple
 
 /// A career's role in the plan: one of the best trio's A and B, its finisher (C on A's and B's real 8/8s, so only on two
 /// 8/8 parents), else a loop member, a candidate or a builder
-fn row_role(candidates: &PlanCandidates, scores: &PlanScores, trainee: usize, looped: bool) -> &'static str {
+fn row_role(candidates: &PlanCandidates, scores: &PlanScores, trainee: crate::UmaIndex, looped: bool) -> &'static str {
     match scores.best_combo {
         Some(combination)
             if trainee == candidates[combination.candidate_a_index]
@@ -260,7 +260,7 @@ fn trio_report(context: &PlanContext, scores: &PlanScores) -> (Value, Value) {
     let candidates = context.candidates;
     let data = context.data();
     let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
-    let uma_name = |u: usize| if u == usize::MAX { Value::Null } else { json!(data.umas[u].name) };
+    let uma_name = |u: crate::UmaIndex| if u == crate::NONE { Value::Null } else { json!(data.umas[u].name) };
     // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
     let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step

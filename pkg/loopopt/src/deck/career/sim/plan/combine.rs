@@ -15,7 +15,7 @@ pub(crate) struct PlanCombination {
     pub(crate) candidate_b_index: CandidateIndex,
     /// Expected careers for the finisher, after A and B are full veterans.
     pub(crate) finisher_cost: f64,
-    pub(crate) finisher_trainee: usize,
+    pub(crate) finisher_trainee: crate::UmaIndex,
     pub(crate) a_uses_existing: bool,
     pub(crate) b_uses_existing: bool,
 }
@@ -83,7 +83,7 @@ struct BuilderLift {
     /// `lift_eff` at the candidate's odds now.
     efficiency: f64,
     /// The builder's uma (`Data::umas`).
-    builder: usize,
+    builder: crate::UmaIndex,
     /// P(her veteran lifts the candidate): lam.
     lift_chance: f64,
     /// The mean odds lifted to.
@@ -97,13 +97,13 @@ pub(crate) fn plan_continuations(
     sim: &mut Sim,
     context: &PlanContext,
     runs: &[PlanRow],
-    wins_by_trainee: &[Vec<usize>],
+    wins_by_trainee: &crate::UmaTable<Vec<usize>>,
     buf: &mut Vec<f64>,
 ) -> Vec<Cont> {
     let PlanContext { input, candidates } = *context;
     let data = context.data();
     let candidate_count = candidates.trainees.len();
-    let wins = |x: usize| wins_by_trainee[x].clone();
+    let wins = |x: crate::UmaIndex| wins_by_trainee[x].clone();
     let mut continuations = vec![Cont::default(); candidate_count];
     for ui in 0..candidate_count {
         if candidates.current_odds[ui] <= 0.0 || runs.is_empty() {
@@ -167,7 +167,7 @@ struct TrioSide {
 #[derive(Clone, Copy)]
 struct Finisher {
     odds: f64,
-    trainee: usize,
+    trainee: crate::UmaIndex,
 }
 
 /// Combinations in candidate-pair order, then fresh/existing side order. `full_veterans`: per candidate her real 8/8s

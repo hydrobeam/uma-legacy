@@ -85,7 +85,7 @@ pub(crate) fn her_trios(
     score_base: &ScoreBase,
     extended_pool: &mut Pool,
     new_veteran: usize,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<OwnTrio> {
     let data = simulator.d;
@@ -274,7 +274,7 @@ fn prepare_setups(
     simulator: &mut Sim,
     score_base: &ScoreBase,
     pool: &Pool,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     score_buffer: &mut Vec<f64>,
 ) -> Vec<Setup> {
     let data = simulator.d;

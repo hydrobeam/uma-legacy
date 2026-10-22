@@ -34,7 +34,7 @@ pub(crate) enum RowOrigin {
 /// until pass 2 either reuses it (same career and valid stamp) or scores it again.
 pub(crate) struct PlanRow {
     /// The career's trainee (`Data::umas`).
-    pub(crate) trainee: usize,
+    pub(crate) trainee: crate::UmaIndex,
     pub(crate) career: Found,
     /// Per candidate (`PlanCandidates::trainees` order): P(her veteran lifts the candidate's odds) and the summed
     /// lifted odds (`CareerScore::lift_stats`); zeros where only Cont and `proxy_check` would read them.
@@ -61,13 +61,18 @@ pub(crate) struct RowScoring {
 
 impl PlanRow {
     /// A row whose career was searched exactly.
-    pub(crate) const fn exact(trainee: usize, career: Found, lift_stats: Vec<(f64, f64)>, origin: RowOrigin) -> Self {
+    pub(crate) const fn exact(
+        trainee: crate::UmaIndex,
+        career: Found,
+        lift_stats: Vec<(f64, f64)>,
+        origin: RowOrigin,
+    ) -> Self {
         Self { trainee, career, lift_stats, origin, exact: true, stats_stamp: None, scoring: None }
     }
 
     /// A row whose career is a proxy (or, for `RowOrigin::Fallback`, the main search's), its lifts' stamp if any.
     pub(crate) const fn proxy(
-        trainee: usize,
+        trainee: crate::UmaIndex,
         career: Found,
         lift_stats: Vec<(f64, f64)>,
         origin: RowOrigin,
@@ -170,7 +175,7 @@ pub(crate) fn add_looped_rows(
     // the plan's best careers: a kept plan of this very pool gives it as kept; one of this pool less its last veteran
     // gives it as kept unless she is an 8/8 (then only her pairs are new: the better of the kept one and those, a tie
     // keeping the kept one)
-    searches.looped_careers = vec![CachedSearch::Unsearched; context.data().umas.len()];
+    searches.looped_careers = crate::UmaTable(vec![CachedSearch::Unsearched; context.data().umas.len()]);
     progress(3, 0, 0); // the looped careers
     if input.fixed_parents.len() >= 2 {
         return added;
@@ -215,7 +220,7 @@ struct KeptLooped {
     incomplete: bool,
 }
 
-fn kept_looped(kept: Option<&Bests>, trainee: usize) -> Option<KeptLooped> {
+fn kept_looped(kept: Option<&Bests>, trainee: crate::UmaIndex) -> Option<KeptLooped> {
     let kept = kept?;
     match kept.looped_careers.get(trainee) {
         Some(CachedSearch::Known(found)) => Some(KeptLooped {
@@ -233,7 +238,7 @@ fn looped_career(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     full_veterans: &FullVeterans,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
@@ -562,7 +567,7 @@ pub(crate) fn check_plan_proxies(
     let winners = class_winners(input.solved, candidates, &searches.best_careers);
     let stats_base = candidates.stats_base();
     let score_base = scores.fit.score_base(candidates);
-    let efficiencies = |x: usize, lift_stats: &[(f64, f64)]| -> Vec<f64> {
+    let efficiencies = |x: crate::UmaIndex, lift_stats: &[(f64, f64)]| -> Vec<f64> {
         (0..candidate_count)
             .map(|ui| {
                 let (lift_chance, lifted_odds_sum) = lift_stats[ui];

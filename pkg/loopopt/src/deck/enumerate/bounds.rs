@@ -5,7 +5,7 @@ use crate::deck::{DeckSpace, Model};
 /// Outfit rows and their zero/low-target split columns, in clause/chance/outfit order.
 /// Bound calculations borrow the tables; traversal takes the `av` scratch buffer.
 pub(crate) struct OutfitBounds {
-    pub(crate) oq: Vec<(usize, usize, f64, usize)>,
+    pub(crate) oq: Vec<(usize, crate::UmaIndex, f64, usize)>,
     pub(crate) og: Vec<(usize, usize, usize)>,
     // Retain the preparation buffer until traversal ends, preserving its allocation lifetime.
     pub(crate) zero: Vec<f64>,
@@ -29,7 +29,7 @@ pub(crate) struct RatioPrefixes {
 
 pub(crate) fn prepare_outfit_bounds(
     model: &Model,
-    us: &[usize],
+    us: &[crate::UmaIndex],
     clauses: &[(Vec<(usize, f64)>, f64)],
     target_count: usize,
 ) -> OutfitBounds {
@@ -37,7 +37,7 @@ pub(crate) fn prepare_outfit_bounds(
     // cards (log of each target's factor gains less from a card the more the deck already has), so a deck's value
     // is at most a partial deck's value times the best ratios P({card}) / P({}) of the cards still to add
     // (clause, trainee, chance, outfit), each (clause, trainee, chance) a run of its trainee's outfits: og
-    let oq: Vec<(usize, usize, f64, usize)> = clauses
+    let oq: Vec<(usize, crate::UmaIndex, f64, usize)> = clauses
         .iter()
         .enumerate()
         .flat_map(|(ci, cl)| {
@@ -135,7 +135,7 @@ pub(crate) fn prepare_outfit_bounds(
 
 /// Column i names an outfit row and a target split; every slice uses that column order.
 pub(crate) struct RatioColumns<'table> {
-    pub(crate) outfit_rows: &'table [(usize, usize, f64, usize)],
+    pub(crate) outfit_rows: &'table [(usize, crate::UmaIndex, f64, usize)],
     pub(crate) outfits: &'table [crate::skills::OutfitPre],
     pub(crate) empty_values: &'table [f64],
     pub(crate) row_indices: &'table [usize],

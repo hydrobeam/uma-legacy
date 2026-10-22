@@ -131,7 +131,7 @@ impl Env<'_> {
     /// grades; then after one inspiration; from Senior April after both). None when nothing changes (no aptitude data,
     /// or her grades and the base data agree at every turn).
     /// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
-    fn pink_uma(&self, pc: &PinkCareer, t: usize) -> Option<(Uma, Vec<Vec<f64>>)> {
+    fn pink_uma(&self, pc: &PinkCareer, t: crate::UmaIndex) -> Option<(Uma, Vec<Vec<f64>>)> {
         let d = self.data;
         if d.race_cat.len() < d.nr || d.race_ground.len() < d.nr {
             return None;

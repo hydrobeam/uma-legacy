@@ -99,7 +99,7 @@ impl Scored {
 /// Per-candidate vectors follow `candidates`' order.
 pub(crate) struct KeptBase {
     /// The stage candidates (`ScoreBase::cands`).
-    candidates: Vec<usize>,
+    candidates: Vec<crate::UmaIndex>,
     /// Each candidate's step (`ScoreBase::c1`).
     step_costs: Vec<f64>,
     /// V (`ScoreBase::v0`).
@@ -160,7 +160,7 @@ pub(crate) struct RollKeep {
 
 impl RollKeep {
     /// The state is of this trainee's career on these parents, in this order.
-    pub(crate) const fn is_of(&self, trainee: usize, career: &Found) -> bool {
+    pub(crate) fn is_of(&self, trainee: crate::UmaIndex, career: &Found) -> bool {
         self.lineage.trainee == trainee
             && self.lineage.first_parent == career.first_parent
             && self.lineage.second_parent == career.second_parent
@@ -336,7 +336,7 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                         Some(None)
                     } else {
                         Some(Some(FoundAnchor {
-                            deck_class: usz(&a[0])?,
+                            deck_class: crate::UmaIndex(usz(&a[0])?),
                             inheritance_chances: crate::deck::career::pvec_r(&a[1])?,
                             value: fx(&a[2])?,
                         }))
@@ -354,7 +354,7 @@ pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
                 key: uxr(&entry["k"])?,
                 scored,
                 base,
-                lineage: Lineage { trainee, first_parent, second_parent },
+                lineage: Lineage { trainee: crate::UmaIndex(trainee), first_parent, second_parent },
                 deck: sel_in(&entry["sel"])?,
                 own_trios,
                 found_anchors,
@@ -413,7 +413,7 @@ fn kept_base_in(b: &Value) -> Option<KeptBase> {
         })
         .collect::<Option<Vec<Trio>>>()?;
     Some(KeptBase {
-        candidates: usize_vec(&b["cands"])?,
+        candidates: usize_vec(&b["cands"])?.into_iter().map(crate::UmaIndex).collect(),
         step_costs: fvec_r(&b["c1"])?,
         current_value: fx(&b["v0"])?,
         current_odds: fvec_r(&b["pnow"])?,

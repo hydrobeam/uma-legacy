@@ -28,8 +28,10 @@
 //! See docs/SOLVER.md for the data format, job fields, validation and benchmarks.
 
 use serde::{Deserialize, Serialize};
+mod uma;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+use uma::{UmaIndex, UmaPairTable, UmaTable};
 /// wasm32-unknown-unknown has no clock (Instant::now panics); timings read as zero there.
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
@@ -129,11 +131,11 @@ struct DataRaw {
     umas: Vec<UmaRaw>,
     /// relation groups: (points, roster indices); pair / tri are rebuilt from them (older data.json files carry the tables)
     #[serde(default)]
-    relations: Option<Vec<(i32, Vec<usize>)>>,
+    relations: Option<Vec<(i32, Vec<UmaIndex>)>>,
     #[serde(default)]
-    pair: Option<Vec<Vec<i32>>>,
+    pair: Option<UmaTable<UmaTable<i32>>>,
     #[serde(default)]
-    tri: Option<Vec<Vec<Vec<i32>>>>,
+    tri: Option<UmaTable<UmaTable<UmaTable<i32>>>>,
     pen: Vec<i32>,
     #[serde(default)]
     pb: Option<PbRaw>,
@@ -144,9 +146,9 @@ struct DataRaw {
     race_ground: Vec<u8>,
 }
 /// pair[a][b] / tri[a][b][c]: summed points of the relation groups holding every one of the (distinct) umas.
-fn rel_tables(n: usize, rels: &[(i32, Vec<usize>)]) -> (Vec<Vec<i32>>, Vec<Vec<Vec<i32>>>) {
-    let mut pair = vec![vec![0i32; n]; n];
-    let mut tri = vec![vec![vec![0i32; n]; n]; n];
+fn rel_tables(n: usize, rels: &[(i32, Vec<UmaIndex>)]) -> (UmaTable<UmaTable<i32>>, UmaTable<UmaTable<UmaTable<i32>>>) {
+    let mut pair = UmaTable(vec![UmaTable(vec![0i32; n]); n]);
+    let mut tri = UmaTable(vec![UmaTable(vec![UmaTable(vec![0i32; n]); n]); n]);
     for (points, members) in rels {
         for &a in members {
             for &b in members {
@@ -204,12 +206,12 @@ const ENT_REST: Ent = Ent { race: -1, rest: true, bit: 0, p: [0.0; 7] };
 
 struct Data {
     nr: usize,
-    umas: Vec<Uma>,
-    pair: Vec<Vec<i32>>,
-    tri: Vec<Vec<Vec<i32>>>,
+    umas: UmaTable<Uma>,
+    pair: UmaTable<UmaTable<i32>>,
+    tri: UmaTable<UmaTable<UmaTable<i32>>>,
     pk: Vec<[f64; 7]>,
     race_names: Vec<String>,
-    pbt: Option<Vec<f64>>, // n x n pairwise ceilings from data.json's table, when its fingerprint matches
+    pbt: Option<UmaPairTable<f64>>, // n x n pairwise ceilings from data.json's table, when its fingerprint matches
     pen: Vec<i32>, // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
     race_cat: Vec<u8>,
     race_ground: Vec<u8>,
@@ -249,7 +251,7 @@ fn pb_fingerprint(raw: &DataRaw) -> String {
     }
     format!("{:016x}", hash.finish())
 }
-fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
+fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
     let stored = raw.pb.as_ref()?;
     let n = raw.umas.len();
     if stored.fp != pb_fingerprint(raw) || stored.rows.len() != n {
@@ -266,7 +268,7 @@ fn pb_table_from(raw: &DataRaw) -> Option<Vec<f64>> {
             table[b * n + a] = value;
         }
     }
-    Some(table)
+    Some(UmaPairTable { values: table, roster_len: n })
 }
 
 // pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
@@ -391,7 +393,7 @@ fn load_raw(raw: DataRaw) -> Data {
     };
     Data {
         nr,
-        umas,
+        umas: UmaTable(umas),
         pair,
         tri,
         pk: pkt,
@@ -764,7 +766,7 @@ fn best_response_solve(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choi
 /// A loop of N members for the schedule optimiser: N = 4 (the 12-lineage loop) or N = 3 (a three-uma rotation, whose
 /// race weights are uniform too: see `skills::lins`).
 struct Loop<const N: usize = 4> {
-    m: [usize; N],
+    m: [UmaIndex; N],
     base: f64,
 }
 /// Race weight C of every pair and the trio coefficient of the base, with grandparent slots at half weight. Per lineage,
@@ -774,9 +776,9 @@ struct Loop<const N: usize = 4> {
 /// scales the objective: the schedules are those of plain total affinity.
 const C_PAIR: f64 = 2.0;
 const K_TRIO: f64 = 2.0;
-fn make_loop<const N: usize>(d: &Data, m: [usize; N]) -> Loop<N> {
-    let pr = |a: usize, b: usize| f64::from(d.pair[a][b]);
-    let tr = |a: usize, b: usize, x: usize| f64::from(d.tri[a][b][x]);
+fn make_loop<const N: usize>(d: &Data, m: [UmaIndex; N]) -> Loop<N> {
+    let pr = |a: UmaIndex, b: UmaIndex| f64::from(d.pair[a][b]);
+    let tr = |a: UmaIndex, b: UmaIndex, x: UmaIndex| f64::from(d.tri[a][b][x]);
     let mut pair_sum = 0.0;
     let mut trio_sum = 0.0;
     for i in 0..N {
@@ -993,9 +995,9 @@ struct Res {
 }
 /// Missing fourth member in the fixed-size representation of a three-uma rotation.
 /// `members` removes this sentinel before callers use the entries as indices into the uma table.
-pub(crate) const NONE: usize = usize::MAX;
-/// The members of a structure stored as [usize; 4] (three members: the fourth is `NONE`).
-pub(crate) fn members(f: &[usize; 4]) -> &[usize] {
+pub(crate) const NONE: UmaIndex = UmaIndex(usize::MAX);
+/// The members of a structure stored as [UmaIndex; 4] (three members: the fourth is `NONE`).
+pub(crate) fn members(f: &[UmaIndex; 4]) -> &[UmaIndex] {
     if f[3] == NONE { &f[..3] } else { &f[..] }
 }
 
@@ -1075,7 +1077,7 @@ fn fill_optional<const N: usize>(d: &Data, lp: &Loop<N>, s: &mut [Sched; N], v: 
     cur
 }
 
-fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, margin: f64) -> Res {
+fn optimize<const N: usize>(d: &Data, m: [UmaIndex; N], iters: usize, seed: u64, margin: f64) -> Res {
     let _memo = MemoScope::new();
     let lp = make_loop(d, m);
     let mut rng = Rng(seed.wrapping_mul(2_654_435_761).wrapping_add(1) | 1);
@@ -1112,8 +1114,8 @@ fn optimize<const N: usize>(d: &Data, m: [usize; N], iters: usize, seed: u64, ma
     result_schedules[..N].copy_from_slice(&schedules);
     Res { s: result_schedules }
 }
-/// `optimize` for a structure of three or four members (`members` of a [usize; 4] with `NONE` last for three).
-pub(crate) fn optimize_fam(d: &Data, f: &[usize; 4], iters: usize, seed: u64, margin: f64) -> Res {
+/// `optimize` for a structure of three or four members (`members` of a [UmaIndex; 4] with `NONE` last for three).
+pub(crate) fn optimize_fam(d: &Data, f: &[UmaIndex; 4], iters: usize, seed: u64, margin: f64) -> Res {
     if f[3] == NONE {
         optimize(d, [f[0], f[1], f[2]], iters, seed, margin)
     } else {
@@ -1189,7 +1191,7 @@ fn short_name(name: &str) -> String {
     name.split_whitespace().next().unwrap_or(name).chars().take(8).collect()
 }
 /// Row label: the race, or "A/B" (alphabetical) when interchangeable alternatives exist at that turn.
-fn row_label(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> String {
+fn row_label(d: &Data, m: &[UmaIndex], s: &[Sched], t: usize, race: i32) -> String {
     let mut names = vec![chart_race_name(&d.race_names[race as usize])];
     for a in interchangeable(d, m, s, t, race) {
         names.push(chart_race_name(&d.race_names[a as usize]));
@@ -1213,7 +1215,7 @@ fn chart_race_name(name: &str) -> String {
 /// is offered the alternative at that turn with the same win-rate basis (so the same odds at the same streak position),
 /// it is nobody's goal, and neither race appears anywhere else in any member's schedule (so all pair overlaps are
 /// preserved when all runners switch together).
-fn interchangeable(d: &Data, m: &[usize], s: &[Sched], t: usize, race: i32) -> Vec<i32> {
+fn interchangeable(d: &Data, m: &[UmaIndex], s: &[Sched], t: usize, race: i32) -> Vec<i32> {
     let n = m.len();
     let appears = |r: i32, skip_t: Option<usize>| {
         (0..n).any(|i| {
@@ -1264,19 +1266,19 @@ struct Jobs {
 
 /// Exact pairwise ceilings PB(a,b) = min(BR_a(W = PM_b), BR_b(W = PM_a)) for all pairs in `pool`.
 /// Valid because P_b <= PM_b elementwise and P_a >= 0, so <P_a,P_b> <= <P_a,PM_b> <= BR_a(PM_b).
-fn pair_ceilings(d: &Data, pool: &[usize]) -> Vec<Vec<f64>> {
+fn pair_ceilings(d: &Data, pool: &[UmaIndex]) -> UmaTable<UmaTable<f64>> {
     let n = d.umas.len();
-    let mut pb = vec![vec![0.0f64; n]; n];
+    let mut pb = UmaTable(vec![UmaTable(vec![0.0f64; n]); n]);
     if let Some(t) = &d.pbt {
         for (x, &a) in pool.iter().enumerate() {
             for &b in &pool[x + 1..] {
-                pb[a][b] = t[a * n + b];
-                pb[b][a] = t[b * n + a];
+                pb[a][b] = t[(a, b)];
+                pb[b][a] = t[(b, a)];
             }
         }
         return pb;
     }
-    let br = |a: usize, b: usize| best_response(d, &d.umas[a], &d.umas[b].pm, None).map_or(0.0, |r| r.1);
+    let br = |a: UmaIndex, b: UmaIndex| best_response(d, &d.umas[a], &d.umas[b].pm, None).map_or(0.0, |r| r.1);
     for (x, &a) in pool.iter().enumerate() {
         for &b in &pool[x + 1..] {
             let v = br(a, b).min(br(b, a));
@@ -1293,10 +1295,11 @@ fn pb_table_json(json: &str) -> serde_json::Value {
     let mut d = load_str(json);
     d.pbt = None;
     let n = d.umas.len();
-    let all: Vec<usize> = (0..n).collect();
+    let all: Vec<UmaIndex> = d.umas.indices().collect();
     let pb = pair_ceilings(&d, &all);
-    let rows: Vec<String> =
-        (0..n).map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[a][b].to_bits())).collect()).collect();
+    let rows: Vec<String> = (0..n)
+        .map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[UmaIndex(a)][UmaIndex(b)].to_bits())).collect())
+        .collect();
     serde_json::to_value(PbRaw { fp, rows }).unwrap()
 }
 
@@ -1447,8 +1450,8 @@ mod tests {
         let p = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
         serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
     }
-    fn ix(d: &Data, id: u32) -> usize {
-        d.umas.iter().position(|u| u.id == id).unwrap()
+    fn ix(d: &Data, id: u32) -> UmaIndex {
+        UmaIndex(d.umas.iter().position(|u| u.id == id).unwrap())
     }
     fn opt_at(u: &Uma, t: usize, prog: u32) -> Choice {
         Choice::Opt(u.opts[t - 1].iter().position(|o| o.prog == prog).unwrap() as u8)
@@ -1577,13 +1580,12 @@ mod tests {
             };
             let mut fresh = load_str(&txt);
             fresh.pbt = None;
-            let n = d.umas.len();
-            let pool: Vec<usize> = (0..n).collect();
+            let pool: Vec<UmaIndex> = d.umas.indices().collect();
             let pb = pair_ceilings(&fresh, &pool);
-            for a in 0..n {
-                for b in 0..n {
+            for a in d.umas.indices() {
+                for b in d.umas.indices() {
                     if a != b {
-                        assert_eq!(t[a * n + b].to_bits(), pb[a][b].to_bits(), "{path} PB({a},{b})");
+                        assert_eq!(t[(a, b)].to_bits(), pb[a][b].to_bits(), "{path} PB({a},{b})");
                     }
                 }
             }
@@ -1597,7 +1599,7 @@ mod tests {
     #[test]
     fn pair_ceilings_match_milp() {
         let d = data();
-        let all: Vec<usize> = (0..d.umas.len()).collect();
+        let all: Vec<UmaIndex> = d.umas.indices().collect();
         let pb = pair_ceilings(d, &all);
         for e in fixture("pb_milp.json").as_array().unwrap() {
             let (a, b) = (ix(d, e[0].as_u64().unwrap() as u32), ix(d, e[1].as_u64().unwrap() as u32));
@@ -1611,13 +1613,13 @@ mod tests {
     fn score_matches_per_legacy_sum() {
         let d = data();
         let mut rng = Lcg(2024);
-        let pr = |a: usize, b: usize| f64::from(d.pair[a][b]);
-        let tr = |a: usize, b: usize, c: usize| if a == c || b == c { 0.0 } else { f64::from(d.tri[a][b][c]) };
+        let pr = |a: UmaIndex, b: UmaIndex| f64::from(d.pair[a][b]);
+        let tr = |a: UmaIndex, b: UmaIndex, c: UmaIndex| if a == c || b == c { 0.0 } else { f64::from(d.tri[a][b][c]) };
         for _ in 0..60 {
-            let mut f = [0usize; 4];
+            let mut f = [UmaIndex(0); 4];
             loop {
                 for x in &mut f {
-                    *x = (rng.next() as usize) % d.umas.len();
+                    *x = UmaIndex((rng.next() as usize) % d.umas.len());
                 }
                 let mut g = f;
                 g.sort_unstable();

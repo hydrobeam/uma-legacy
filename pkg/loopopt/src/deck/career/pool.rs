@@ -1,5 +1,6 @@
 //! Veteran pools and legal parent pairs.
 use super::{Ancestor, Env, Legacy};
+use crate::UmaIndex;
 
 /// What `Env::who` reads of a legacy or of one of her recorded parents.
 struct VeteranTraits<'veteran> {
@@ -46,7 +47,7 @@ impl<'veteran> VeteranTraits<'veteran> {
 /// (stars and pinks shared with the lineage slots made from her: `Env::slots` takes them without copying)
 pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
-    pub(crate) uma_index: Option<usize>,
+    pub(crate) uma_index: Option<UmaIndex>,
     pub(crate) chara: u32,
     /// (race index, win chance), sorted by race; chance 1 for a win on record.
     pub(crate) wins: Vec<(usize, f64)>,
@@ -154,8 +155,8 @@ pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
 }
 
 impl Env<'_> {
-    pub(crate) fn uix(&self, id: u32) -> Option<usize> {
-        self.data.umas.iter().position(|u| u.id == id)
+    pub(crate) fn uix(&self, id: u32) -> Option<UmaIndex> {
+        self.data.umas.iter().position(|u| u.id == id).map(UmaIndex)
     }
     fn stars_of(&self, sp: &[(u32, u8)]) -> Vec<u8> {
         self.skill_job

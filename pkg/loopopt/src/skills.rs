@@ -19,6 +19,7 @@
 //! `lins`). Metric: P(all targets land on the veteran), averaged over the structure's lineages, so both sizes rank
 //! together. Schedules are affinity-optimised: in both structures every pair's shared G1s weigh the same.
 use super::{Choice, Data, Deserialize, NT, Sched, chart_race_name, interchangeable, pk, row_label, short_name, when};
+use crate::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
 
 /// Chance a skill learned in a career becomes a spark on the veteran: 20% for a white, 40% for a gold, x1.1 for each of
@@ -150,14 +151,14 @@ pub(crate) struct Model<'data> {
     pub(crate) n_fixed_gold: i32,
     base: f64,
     /// per uma index: distinct coverage tuples over `uncertain` (0/1/2) -> outfit labels giving them
-    pub(crate) opts: Vec<Vec<(Vec<u8>, Vec<(u32, String)>)>>,
+    pub(crate) opts: UmaTable<Vec<(Vec<u8>, Vec<(u32, String)>)>>,
     /// per uma index: every listed outfit is excluded
-    pub(crate) no_outfit: Vec<bool>,
+    pub(crate) no_outfit: UmaTable<bool>,
     job: &'data SkillJob,
     /// coverage tuples without labels, for the allocation-free hot path
-    sts: Vec<Vec<Vec<u8>>>,
+    sts: UmaTable<Vec<Vec<u8>>>,
     /// per uma index, per option: chance the trainee's own events hint each uncertain target's white
-    pub(crate) ews: Vec<Vec<Vec<f64>>>,
+    pub(crate) ews: UmaTable<Vec<Vec<f64>>>,
 }
 
 impl<'data> Model<'data> {
@@ -229,7 +230,17 @@ impl<'data> Model<'data> {
             ews.push(event_chances);
         }
         let sts = opts.iter().map(|options| options.iter().map(|(coverage, _)| coverage.clone()).collect()).collect();
-        Model { d, uncertain, n_fixed_gold, base, opts, no_outfit, job, sts, ews }
+        Model {
+            d,
+            uncertain,
+            n_fixed_gold,
+            base,
+            opts: UmaTable(opts),
+            no_outfit: UmaTable(no_outfit),
+            job,
+            sts,
+            ews: UmaTable(ews),
+        }
     }
 
     pub(crate) fn skill_probs(&self, st: &[u8], ew: &[f64], q: f64) -> Vec<f64> {
@@ -243,7 +254,7 @@ impl<'data> Model<'data> {
             .collect()
     }
     /// best outfit for trainee `u` given per-career proc q: (product over uncertain skills, option index)
-    fn trainee(&self, u: usize, q: f64) -> (f64, usize) {
+    fn trainee(&self, u: UmaIndex, q: f64) -> (f64, usize) {
         let mut best = (-1.0, 0);
         for (k, (st, _)) in self.opts[u].iter().enumerate() {
             let v: f64 = self.skill_probs(st, &self.ews[u][k], q).iter().product();
@@ -260,12 +271,12 @@ impl<'data> Model<'data> {
     /// per-lineage proc q from slot affinities computed with overlap function `o(a, b)` (member positions), for the
     /// lineages of `lins(f.len())`. In a rotation X = T: tri(T, P, T) = 0 (`rel_tables` counts a group only for distinct
     /// characters; fitted on 101,536 inspiration trials) and o(P, T) is the overlap with the trainee's own schedule.
-    pub(crate) fn lineage_q(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
+    pub(crate) fn lineage_q(&self, f: &[UmaIndex], o: &dyn Fn(usize, usize) -> f64) -> Vec<f64> {
         self.lineage_q_arr(f, o)[..lins(f.len()).len()].to_vec()
     }
     /// `lineage_q` into a fixed array (no allocation; `lineage_q` is its prefix).
     /// (Lineages of `lins(f.len())`; a rotation fills the first 3 entries.)
-    pub(crate) fn lineage_q_arr(&self, f: &[usize], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
+    pub(crate) fn lineage_q_arr(&self, f: &[UmaIndex], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
         let d = self.d;
         let mut out = [0.0f64; 12];
         for (l, &(t, p1, p2, x)) in lins(f.len()).iter().enumerate() {
@@ -297,9 +308,9 @@ impl<'data> Model<'data> {
     /// q. Harmless where it is read (`multi.rs`: the q grid's top and each uma's ceiling cell), as the tests against
     /// those ceilings carry relative slacks of 1e-12 or more. With `rot` the X slot may also be the trainee's own
     /// character (a three-member rotation: tri(T, P, T) + 3·o(P, T), the trio 0).
-    pub(crate) fn q_ub_trainee(&self, t: usize, pool: &[usize], pb: &[Vec<f64>], rot: bool) -> f64 {
+    pub(crate) fn q_ub_trainee(&self, t: UmaIndex, pool: &[UmaIndex], pb: &UmaTable<UmaTable<f64>>, rot: bool) -> f64 {
         let d = self.d;
-        let others: Vec<usize> = pool.iter().copied().filter(|&u| u != t).collect();
+        let others: Vec<UmaIndex> = pool.iter().copied().filter(|&u| u != t).collect();
         let xmax: Vec<f64> = others
             .iter()
             .map(|&par| {
@@ -342,7 +353,7 @@ impl<'data> Model<'data> {
     /// Best-outfit product over the uncertain targets for trainee `u` at proc `q` (the per-lineage term of
     /// the structure's metric, before the fixed-gold factor); increasing in q and in every deck odd.
     #[inline]
-    pub(crate) fn trainee_fast(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+    pub(crate) fn trainee_fast(&self, u: UmaIndex, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
         let mut best = 0.0f64;
         for o in 0..self.sts[u].len() {
             let p = self.outfit_fast(u, o, q, dw, dg);
@@ -357,7 +368,7 @@ impl<'data> Model<'data> {
     }
     /// `trainee_fast` for one outfit option `o` of trainee `u`.
     #[inline]
-    pub(crate) fn outfit_fast(&self, u: usize, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
+    pub(crate) fn outfit_fast(&self, u: UmaIndex, o: usize, q: f64, dw: &[f64], dg: &[f64]) -> f64 {
         let (st, ew) = (&self.sts[u][o], &self.ews[u][o]);
         let mut p = 1.0f64;
         for k in 0..st.len() {
@@ -366,17 +377,17 @@ impl<'data> Model<'data> {
         p
     }
     /// `outfit_fast` for many calls on one outfit: its inputs resolved and prepared once (`OutfitPre`)
-    pub(crate) fn outfit_pre(&self, u: usize, o: usize) -> OutfitPre {
+    pub(crate) fn outfit_pre(&self, u: UmaIndex, o: usize) -> OutfitPre {
         OutfitPre::new(&self.sts[u][o], &self.ews[u][o])
     }
-    pub(crate) fn n_outfits(&self, u: usize) -> usize {
+    pub(crate) fn n_outfits(&self, u: UmaIndex) -> usize {
         self.sts[u].len()
     }
     /// Per-skill landing odds with deck hint odds supplied per uncertain target (white, gold) instead of the job's.
     pub(crate) fn skill_probs_d(st: &[u8], ew: &[f64], q: f64, dw: &[f64], dg: &[f64]) -> Vec<f64> {
         st.iter().enumerate().map(|(k, &v)| land_dw(v, dw[k], dg[k], ew[k], q)).collect()
     }
-    pub(crate) fn trainee_d(&self, u: usize, q: f64, dw: &[f64], dg: &[f64]) -> (f64, usize) {
+    pub(crate) fn trainee_d(&self, u: UmaIndex, q: f64, dw: &[f64], dg: &[f64]) -> (f64, usize) {
         let mut best = (-1.0, 0);
         for (k, (st, _)) in self.opts[u].iter().enumerate() {
             let v: f64 = Self::skill_probs_d(st, &self.ews[u][k], q, dw, dg).iter().product();
@@ -394,7 +405,7 @@ impl<'data> Model<'data> {
     /// `f`: the members (3 or 4); lineages as in `lins(f.len())`, a rotation's X being the trainee.
     pub(crate) fn detail(
         &self,
-        f: &[usize],
+        f: &[UmaIndex],
         o: &dyn Fn(usize, usize) -> f64,
         deck: Option<&[(&[f64], &[f64])]>,
     ) -> Value {
@@ -540,7 +551,7 @@ impl OutfitPre {
     }
 }
 /// Structured schedule chart: shared G1s (affinity) and optional G1s (one runner, race sparks only).
-pub(crate) fn chart_rows(d: &Data, members: &[usize], schedules: &[Sched]) -> Value {
+pub(crate) fn chart_rows(d: &Data, members: &[UmaIndex], schedules: &[Sched]) -> Value {
     let n = members.len();
     let streaks: Vec<Vec<usize>> = (0..n)
         .map(|i| {
@@ -613,7 +624,7 @@ pub(crate) fn chart_rows(d: &Data, members: &[usize], schedules: &[Sched]) -> Va
     Value::Array(out)
 }
 
-pub(crate) fn member_json(d: &Data, m: &[usize]) -> Vec<Value> {
+pub(crate) fn member_json(d: &Data, m: &[UmaIndex]) -> Vec<Value> {
     m.iter()
         .map(|&x| json!({"id": d.umas[x].id, "name": d.umas[x].name, "short": short_name(&d.umas[x].name)}))
         .collect()
@@ -692,9 +703,9 @@ mod tests {
     fn outfit_exclusion() {
         let d = data();
         let sk = skills();
-        let ix = |id: u32| d.umas.iter().position(|u| u.id == id).unwrap();
+        let ix = |id: u32| UmaIndex(d.umas.iter().position(|u| u.id == id).unwrap());
         let outfits =
-            |m: &Model, i: usize| -> Vec<u32> { m.opts[i].iter().flat_map(|o| o.1.iter().map(|c| c.0)).collect() };
+            |m: &Model, i: UmaIndex| -> Vec<u32> { m.opts[i].iter().flat_map(|o| o.1.iter().map(|c| c.0)).collect() };
         let job: SkillJob =
             serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100_102]})).unwrap();
         let m = Model::new(d, &sk, &job);
@@ -731,12 +742,13 @@ mod tests {
             assert!(p1 != t && p2 != t && p1 != p2);
         }
         // repeated characters: a group counts only for distinct members, so pair(a, a) = 0 and tri(T, P, T) = 0
-        let (p, t) = rel_tables(3, &[(5, vec![0, 1]), (7, vec![0, 1, 2]), (11, vec![0, 2])]);
-        assert_eq!((p[0][1], p[0][2], p[1][2], p[0][0]), (12, 18, 7, 0));
-        assert_eq!((t[0][1][2], t[2][1][0], t[0][1][0], t[0][1][1], t[0][0][1]), (7, 7, 0, 0, 0));
+        let [a, b, c] = [0, 1, 2].map(UmaIndex);
+        let (p, t) = rel_tables(3, &[(5, vec![a, b]), (7, vec![a, b, c]), (11, vec![a, c])]);
+        assert_eq!((p[a][b], p[a][c], p[b][c], p[a][a]), (12, 18, 7, 0));
+        assert_eq!((t[a][b][c], t[c][b][a], t[a][b][a], t[a][b][b], t[a][a][b]), (7, 7, 0, 0, 0));
         let d = data();
-        for a in 0..d.umas.len() {
-            for b in 0..d.umas.len() {
+        for a in d.umas.indices() {
+            for b in d.umas.indices() {
                 assert_eq!(d.tri[a][b][a], 0);
                 assert_eq!(d.tri[a][b][b], 0);
                 assert_eq!(d.tri[a][a][b], 0);
@@ -754,7 +766,7 @@ mod tests {
         let job: SkillJob = serde_json::from_value(json!({"targets": [{"group":20159},{"group":20161}]})).unwrap();
         let m = Model::new(d, &sk, &job);
         // Agnes Digital, Tamamo Cross, Inari One and made-up shared wins per pair
-        let f = [18usize, 20, 33];
+        let f = [18, 20, 33].map(UmaIndex);
         let ov = |a: usize, b: usize| -> f64 {
             match (a.min(b), a.max(b)) {
                 (0, 1) => 2.5,
@@ -797,9 +809,10 @@ mod tests {
         }
         // race weights: a unit of shared wins on one pair moves the summed affinity by 30 (rotation), 60 (loop)
         for f in [&[18usize, 20, 33][..], &[5, 18, 20, 33][..]] {
+            let f: Vec<UmaIndex> = f.iter().copied().map(UmaIndex).collect();
             let n = f.len();
             let tot = |o: &dyn Fn(usize, usize) -> f64| -> f64 {
-                m.detail(f, o, None)["lineages"]
+                m.detail(&f, o, None)["lineages"]
                     .as_array()
                     .unwrap()
                     .iter()

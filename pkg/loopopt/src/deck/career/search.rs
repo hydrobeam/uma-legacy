@@ -6,6 +6,7 @@ use super::{
 };
 use crate::deck::SelectedDeck;
 use crate::deck::career::Lineage;
+use crate::{UmaIndex, UmaTable};
 
 /// How a bound proves a career out (`Env::ceiling_out`, `refs_out`, `ruled_out`): `Below(th)`, `solve`'s prune, the bound
 /// below the bar with its slack s, b (1 + s) < th (a computed bound a hair under the true one still proves it); or
@@ -69,7 +70,7 @@ impl Iterator for Ranked {
 #[derive(Clone)]
 pub(crate) struct Found {
     /// The trainee (uma index).
-    pub(crate) trainee: usize,
+    pub(crate) trainee: UmaIndex,
     /// The first parent (legacy index).
     pub(crate) first_parent: usize,
     /// The second parent (legacy index).
@@ -110,7 +111,7 @@ pub(crate) enum DeckRes {
 /// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see `Env::cert`)
 pub(crate) struct Solved {
     pub(crate) found: Vec<Found>,
-    pub(crate) refs: Vec<Vec<Ref>>,
+    pub(crate) refs: UmaTable<Vec<Ref>>,
     pub(crate) work: usize,
     pub(crate) cands: usize,
     pub(crate) solved: usize,
@@ -127,13 +128,13 @@ impl Env<'_> {
     /// The bound a fully checked deck search `r` (a `Ref`: chances r.q, best value r.val before the spark scale) puts on
     /// every career of trainee t's deck class at chances q with spark scale c: c r.val rise(t, q, r.q) (`Env::rise`)
     #[inline]
-    pub(crate) fn ref_bound(&self, t: usize, q: &[f64], c: f64, r: &Ref) -> f64 {
+    pub(crate) fn ref_bound(&self, t: UmaIndex, q: &[f64], c: f64, r: &Ref) -> f64 {
         c * r.val * self.rise(t, q, &r.q)
     }
     /// The bound a product search's proof (`ruled`: chances rq, best product value s) puts on it there: EXACT_RHO c s
     /// rise(t, q, rq) (`solve`'s derivation at its `ruled` test)
     #[inline]
-    fn ruled_bound(&self, t: usize, q: &[f64], c: f64, rq: &[f64], s: f64) -> f64 {
+    fn ruled_bound(&self, t: UmaIndex, q: &[f64], c: f64, rq: &[f64], s: f64) -> f64 {
         self.space.rho_top() * c * s * self.rise(t, q, rq)
     }
     /// Whether a career's ceiling `ub` (`gen_cands`) proves it out at `bar` (`Bar`; `solve`: ub (1 + 1e-9) < th)
@@ -145,7 +146,7 @@ impl Env<'_> {
     #[inline]
     pub(crate) fn refs_out<'refs>(
         &self,
-        t: usize,
+        t: UmaIndex,
         q: &[f64],
         c: f64,
         mut refs: impl Iterator<Item = &'refs Ref>,
@@ -156,7 +157,7 @@ impl Env<'_> {
     /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
     /// product value and of rise)
     #[inline]
-    pub(crate) fn ruled_out(&self, t: usize, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], bar: Bar) -> bool {
+    pub(crate) fn ruled_out(&self, t: UmaIndex, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], bar: Bar) -> bool {
         ruled.iter().any(|(rq, s)| bar.out(self.ruled_bound(t, q, c, rq, *s), 2e-9))
     }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
@@ -167,21 +168,21 @@ impl Env<'_> {
         &mut self,
         p: &Pool,
         fix: &[usize],
-        t: usize,
+        t: UmaIndex,
         keep: impl Fn(usize, usize) -> bool,
     ) -> Ranked {
         Ranked { v: self.gen_cands(p, fix, &[t], keep, |ub, _, _, a, b| (ub, a, b)), upto: 0, i: 0 }
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
-    pub(crate) fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
+    pub(crate) fn ceiling(&mut self, t: UmaIndex, q: &[f64], c: f64) -> Option<f64> {
         self.deck_odds_ceilings[t].as_ref()?;
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
         Some(self.ceiling_at(t, q, c, rho, fixed))
     }
     /// `ceiling` for a trainee with legal deck odds, EXACT_RHO and the fixed gold factor given (the same values)
     #[inline]
-    fn ceiling_at(&mut self, t: usize, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
+    fn ceiling_at(&mut self, t: UmaIndex, q: &[f64], c: f64, rho: f64, fixed: f64) -> f64 {
         self.set_trainee(t, q);
         let (dw, dg) = self.deck_odds_ceilings[t].as_ref().unwrap();
         let pv = (0..self.model.n_outfits(t)).map(|o| self.model.outfit_fast(t, o, 0.0, dw, dg)).fold(0.0f64, f64::max);
@@ -200,9 +201,9 @@ impl Env<'_> {
         &mut self,
         p: &Pool,
         fix: &[usize],
-        trainees: &[usize],
+        trainees: &[UmaIndex],
         keep: impl Fn(usize, usize) -> bool,
-        mut mk: impl FnMut(f64, usize, usize, usize, usize) -> C,
+        mut mk: impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
     ) -> Vec<C> {
         let d = self.data;
         let nl = p.veterans.len();
@@ -304,7 +305,7 @@ impl Env<'_> {
             rho: f64,
             fixed: f64,
             tp: usize,
-            t: usize,
+            t: UmaIndex,
         }
         // One trainee's candidates, pair by pair; true when it made one (q then holds the last one's chances). Its own
         // function, entered once per trainee: a wasm call keeps the code it started in (V8 has no on-stack replacement
@@ -315,7 +316,7 @@ impl Env<'_> {
             q: &mut [f64],
             nq: &mut [f64],
             out: &mut Vec<C>,
-            mk: &mut impl FnMut(f64, usize, usize, usize, usize) -> C,
+            mk: &mut impl FnMut(f64, usize, UmaIndex, usize, usize) -> C,
         ) -> bool {
             let (p, go, gw, ntar) = (cx.p, cx.go, cx.gw, cx.ntar);
             let mut last = false;
@@ -441,7 +442,7 @@ impl Env<'_> {
         &mut self,
         p: &Pool,
         fix: &[usize],
-        trainees: &[usize],
+        trainees: &[UmaIndex],
         per_trainee: bool,
         top: usize,
     ) -> Solved {
@@ -459,7 +460,11 @@ impl Env<'_> {
         }
         impl Cand {
             const fn lineage(&self) -> Lineage {
-                Lineage { trainee: self.t as usize, first_parent: self.a as usize, second_parent: self.b as usize }
+                Lineage {
+                    trainee: UmaIndex(self.t as usize),
+                    first_parent: self.a as usize,
+                    second_parent: self.b as usize,
+                }
             }
         }
         let t_gen = now_ms();
@@ -473,7 +478,7 @@ impl Env<'_> {
             fix,
             trainees,
             |_, _| true,
-            |ub, tp, t, a, b| Cand { ub, t: t as u16, tp: tp as u16, a: a as u16, b: b as u16 },
+            |ub, tp, t, a, b| Cand { ub, t: t.0 as u16, tp: tp as u16, a: a as u16, b: b as u16 },
         );
         // Best ceiling first, ties in generation order: the order a stable sort by ceiling gives (partial_cmp, so 0 and
         // -0 tie as there), as a total order on (ceiling descending, tp, a, b), unique per candidate. Sorted lazily
@@ -516,17 +521,19 @@ impl Env<'_> {
         let (mut n_solved, mut n_bounded, mut n_scored) = (0usize, 0usize, 0usize);
         let mut next = 0;
         // one result per trainee: a candidate only matters if it beats the k-th best and its trainee's best so far
-        let thr = |done: &[(f64, usize, SelectedDeck)], cands: &[Cand], t: usize| {
+        let thr = |done: &[(f64, usize, SelectedDeck)], cands: &[Cand], t: UmaIndex| {
             if per_trainee {
-                done.iter().find(|x| cands[x.1].t as usize == t).map_or_else(|| kth(done), |x| x.0.max(kth(done)))
+                done.iter()
+                    .find(|x| UmaIndex(cands[x.1].t as usize) == t)
+                    .map_or_else(|| kth(done), |x| x.0.max(kth(done)))
             } else {
                 kth(done)
             }
         };
         // per trainee, her fully checked candidates (`Ref`: chances, exact best value before the spark scale, deck)
-        let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
+        let mut refs = UmaTable(vec![vec![]; d.umas.len()]);
         // per trainee, where this search's own entries in `ruled` start
-        let ruled0: Vec<usize> = self.ruled.iter().map(std::vec::Vec::len).collect();
+        let ruled0: UmaTable<usize> = self.ruled.iter().map(std::vec::Vec::len).collect();
         // dominated veterans (`dominance_lists`), and the candidates this search took and did not solve (bounded, no
         // deck)
         let dom = dominance_lists(p);
@@ -569,7 +576,7 @@ impl Env<'_> {
             // this search's own candidates. A taken-and-solved dominator proves nothing of the kind (this one could still
             // come out solved, a Ref the later searches start from), so only unsolved ones count.
             if prune {
-                let key = |x: usize, y: usize| (t as u16, x.min(y) as u16, x.max(y) as u16);
+                let key = |x: usize, y: usize| (t.0 as u16, x.min(y) as u16, x.max(y) as u16);
                 if [(a, b), (b, a)]
                     .iter()
                     .any(|&(x, y)| dom[x].iter().any(|&v| v != y && unsolved.contains(&key(v, y))))
@@ -641,7 +648,7 @@ impl Env<'_> {
                 complete = false;
             }
             let val = c * val;
-            if per_trainee && let Some(i) = done.iter().position(|x| cands[x.1].t as usize == t) {
+            if per_trainee && let Some(i) = done.iter().position(|x| UmaIndex(cands[x.1].t as usize) == t) {
                 if done[i].0 >= val {
                     continue;
                 }
@@ -672,7 +679,7 @@ impl Env<'_> {
                 .into_iter()
                 .take(top)
                 .map(|(val, ci, sel)| Found {
-                    trainee: cands[ci].t as usize,
+                    trainee: UmaIndex(cands[ci].t as usize),
                     first_parent: cands[ci].a as usize,
                     second_parent: cands[ci].b as usize,
                     value: val,
@@ -706,7 +713,7 @@ impl Env<'_> {
     ) -> DeckRes {
         let TwinSearch { trainee: t, chances: q, spark_scale: c, bar: th, starts } = search;
         let ct = self.deck_class[t];
-        let tk = (t as u16, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
+        let tk = (t.0 as u16, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
         match twins.get(&tk) {
             Some(Twin::Done(v, sel, pv)) => {
                 if let Some(s) = pv {
@@ -740,8 +747,8 @@ impl Env<'_> {
         }
     }
     /// A search's fully checked decks (`refs`, per trainee) into `seen` (per deck class), each new one once
-    fn merge_seen(&mut self, refs: &[Vec<Ref>]) {
-        for (t, rs) in refs.iter().enumerate() {
+    fn merge_seen(&mut self, refs: &UmaTable<Vec<Ref>>) {
+        for (t, rs) in refs.indexed() {
             let ct = self.deck_class[t];
             for r in rs {
                 if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) {
@@ -799,7 +806,7 @@ type TwinKey = (u16, Vec<u64>, u64);
 /// One candidate's deck problem in `solve` (`Env::twin_deck_search`).
 #[derive(Clone, Copy)]
 struct TwinSearch<'search> {
-    trainee: usize,
+    trainee: UmaIndex,
     /// Her inheritance chances q, already folded into the model.
     chances: &'search [f64],
     /// C, the spark scale.
@@ -818,7 +825,7 @@ pub(crate) struct SearchRequest<'request> {
     /// Legacy indices that must be among the two parents (the job's places).
     pub(crate) fixed_parents: &'request [usize],
     /// Trainees to search (uma indices).
-    pub(crate) trainees: &'request [usize],
+    pub(crate) trainees: &'request [UmaIndex],
     /// One result per trainee (false: the best careers whoever trains).
     pub(crate) per_trainee: bool,
     /// How many results to keep.

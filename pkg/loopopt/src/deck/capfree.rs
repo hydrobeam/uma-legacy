@@ -18,7 +18,7 @@ pub(super) struct LandingBoundTables<'table> {
 #[derive(Clone, Copy)]
 pub(super) struct BoundOptions {
     pub(super) cap_free: bool,
-    pub(super) trainee: usize,
+    pub(super) trainee: crate::UmaIndex,
     pub(super) fixed_factor: f64,
 }
 
@@ -220,7 +220,7 @@ struct StateBoundContext<'cfg> {
     configuration: Option<Rc<SbCfg>>,
     groups: &'cfg [(&'cfg [usize], usize)],
     model: &'cfg Model<'cfg>,
-    trainee: usize,
+    trainee: crate::UmaIndex,
     entry_rows: &'cfg [Option<Vec<(f64, f64)>>],
     landing_factors: &'cfg [LandPre],
     zero_base_targets: &'cfg [u32],
