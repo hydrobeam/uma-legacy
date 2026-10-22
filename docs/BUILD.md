@@ -81,7 +81,7 @@ it is before it stops; the `art` step instead says what it skipped.
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff pinned in the dev group); Biome on the page's JS with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -151,7 +151,8 @@ IndexedDB.
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
 - **Browser suite:** `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`) in Chromium
   and Firefox, test groups in parallel (`LLP_JOBS` per browser, default 4; `node webapp/nodebrowser.mjs chromium
-  roster` runs one group). `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
+  roster` runs one group; each group is a module in `webapp/test/`, shared helpers in `webapp/test/helpers.mjs`).
+  `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
   each page's core path, about 10 s): run it after each page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs the 24 reference jobs in `val/jobs.json` (20 deck jobs, shared and per-uma
   decks, and 4 career jobs) and compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the
@@ -198,6 +199,14 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
   order, NaN handling or iteration order is a result change: it lands only with byte-identical validation (the
   `same.py` checks in *Tests*), otherwise the lint is allowed locally with a reason. `./build.sh native` runs the
   clippy part before its tests.
+- **Ownership and clones:** the borrow checker is a guide to the design, not an obstacle to get around. When it refuses,
+  it is pointing at a real overlap (a value read while something else may change it); answer it by restructuring: borrow
+  the fields a function needs separately, keep the read-only context behind `&` and the one mutable owner behind `&mut`,
+  shorten a borrow's scope, or move a value instead of sharing it. A `.clone()`, `.to_vec()` or `.to_owned()` that
+  exists only to make a conflict go away is a silent cost (outputs stay identical, only speed suffers) and is not
+  accepted. A clone stays when the copy is the point (a snapshot kept while the original changes, a value handed to a
+  longer-lived owner) and it is off the hot path; say so in a comment where that is not obvious. A change that adds
+  clones lists each in its description with its reason.
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
   turns on `.githooks/pre-commit`, which runs `cargo fmt --check` when the commit stages a `pkg/loopopt` `.rs` file
   (about a second; it checks the working tree's files, not only the staged parts). Clippy is left to `lint`.
@@ -217,13 +226,18 @@ passing the tools does not establish that a reader can understand the code. Keep
   can be appropriate in a hot loop; explain their indexing invariant rather than wrapping them just for appearance.
 - **Functions:** give each function one coherent operation or phase. A long workflow should show its phases in order,
   with inputs and results explicit. Extract around meaningful boundaries, not an arbitrary line limit.
-- **Dependencies:** values that travel together through several functions are one value: a trainee and her parents
-  are one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one
-  context struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may
-  change separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy`
-  options (as in a parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site,
-  and prefer an existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on
-  entry means the concept has not been named yet.
+- **Dependencies:** values that travel together through several functions are one value: a trainee and her parents are
+  one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one context
+  struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may change
+  separate from what it reads: a read-only context, a `&mut` scratch or output struct, and small `Copy` options (as in a
+  parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site, and prefer an
+  existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on entry means the
+  concept has not been named yet. A context is built once, where its contents come into being, and borrowed downward: a
+  phase's entry point builds it and the functions below take `&Context` (and the one mutable owner, such as `&mut Sim`)
+  plus small values; call sites do not assemble context structs from loose locals. What changes during the phase (a
+  score base refitted between phases) stays out of the long-lived context, which hands out the short-lived view through
+  a method. Records store the records they are about (a row keeps its `lineage`), so calls pass `row.lineage` rather
+  than rebuilding it.
 - **Calls:** a reader checks a call against the signature without counting arguments. Adjacent arguments of one type
   that could be swapped unnoticed (`k.x, k.a, k.b`), or a long argument list (past five or so, as a guide, not a limit),
   usually mean a record is missing (a trainee and her parents; a scoring context). A function asked for one value

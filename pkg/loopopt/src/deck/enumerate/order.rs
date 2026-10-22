@@ -1,4 +1,5 @@
 //! The visiting order of queued configurations.
+use super::config::ConfigurationBounds;
 use super::{ConfigurationQueue, PendingConfig, SearchConfig, SearchControl};
 use crate::deck::{DeckSpace, GTab};
 
@@ -30,14 +31,14 @@ impl Ord for QueuedConfig {
     }
 }
 
-/// The partial decks' miss products, one row of `nu` per depth (the last row: the deck so far): `pw`, `pg` hold one
-/// row of nu per depth 0 ..= the deck's slots, row d at d * nu (the partial deck with d cards); `pid` the last parent
+/// The partial decks' miss products, one row of `target_count` per depth (the last row: the deck so far): `pw`, `pg` hold one
+/// row of target_count per depth 0 ..= the deck's slots, row d at d * target_count (the partial deck with d cards); `parent_id` the last parent
 /// id given out (kept across configurations)
 pub(in crate::deck::enumerate) struct DeckPath {
     pub(in crate::deck::enumerate) sel: Vec<usize>,
     pub(in crate::deck::enumerate) pw: Vec<f64>,
     pub(in crate::deck::enumerate) pg: Vec<f64>,
-    pub(in crate::deck::enumerate) pid: usize,
+    pub(in crate::deck::enumerate) parent_id: usize,
 }
 
 /// The configuration to visit next: computed from a pending one (lazy) or the eager list's
@@ -60,84 +61,115 @@ impl std::ops::Deref for ConfigRef<'_> {
 /// bound, each computed (its root and the key's ratio tables) once it may come next, and popped best root first
 pub(in crate::deck::enumerate) struct ConfigOrder {
     lazy: bool,
-    rbc: bool,
-    cfgs: Vec<SearchConfig>,
-    pend: Vec<PendingConfig>,
-    pkeys: Vec<Option<std::rc::Rc<GTab>>>,
-    pord: Vec<usize>,
+    check_ratio_bounds: bool,
+    configurations: Vec<SearchConfig>,
+    pending: Vec<PendingConfig>,
+    key_ratios: Vec<Option<std::rc::Rc<GTab>>>,
+    pending_order: Vec<usize>,
     heap: std::collections::BinaryHeap<QueuedConfig>,
-    pp: usize,
-    ldw: Vec<f64>,
-    ldg: Vec<f64>,
-    lsp0: Vec<f64>,
-    lcv: Vec<f64>,
-    lcvo: Vec<f64>,
-    eager_i: usize,
+    pending_position: usize,
+    white_chances: Vec<f64>,
+    gold_chances: Vec<f64>,
+    ratio_products: Vec<f64>,
+    prune_bounds: Vec<f64>,
+    order_bounds: Vec<f64>,
+    eager_position: usize,
 }
 
 impl ConfigOrder {
     pub(in crate::deck::enumerate) fn new(queue: ConfigurationQueue, controls: SearchControl) -> Self {
-        let SearchControl { lazy, rbc, nu, nc, .. } = controls;
-        let ConfigurationQueue { cfgs, pend, pkeys } = queue;
-        let mut pord: Vec<usize> = (0..pend.len()).collect();
-        pord.sort_by(|&a, &b| pend[b].u.partial_cmp(&pend[a].u).unwrap());
+        let SearchControl { lazy, check_ratio_bounds, target_count, column_count, .. } = controls;
+        let ConfigurationQueue { cfgs: configurations, pend: pending, pkeys: key_ratios } = queue;
+        let mut pending_order: Vec<usize> = (0..pending.len()).collect();
+        pending_order.sort_by(|&a, &b| pending[b].u.partial_cmp(&pending[a].u).unwrap());
         let heap: std::collections::BinaryHeap<QueuedConfig> = std::collections::BinaryHeap::default();
-        let (ldw, ldg, lsp0, lcv, lcvo) =
-            (vec![0.0f64; nu], vec![0.0f64; nu], vec![1.0f64; nc], vec![0.0f64; 1], vec![0.0f64; 1]);
-        Self { lazy, rbc, cfgs, pend, pkeys, pord, heap, pp: 0, ldw, ldg, lsp0, lcv, lcvo, eager_i: 0 }
+        let (white_chances, gold_chances, ratio_products, prune_bounds, order_bounds) = (
+            vec![0.0f64; target_count],
+            vec![0.0f64; target_count],
+            vec![1.0f64; column_count],
+            vec![0.0f64; 1],
+            vec![0.0f64; 1],
+        );
+        Self {
+            lazy,
+            check_ratio_bounds,
+            configurations,
+            pending,
+            key_ratios,
+            pending_order,
+            heap,
+            pending_position: 0,
+            white_chances,
+            gold_chances,
+            ratio_products,
+            prune_bounds,
+            order_bounds,
+            eager_position: 0,
+        }
     }
 
-    /// The next configuration to visit at the bar `bestv`, None when none is left
+    /// The next configuration to visit at the bar `best_value`, None when none is left
     pub(in crate::deck::enumerate) fn next(
         &mut self,
-        sp: &DeckSpace<'_>,
-        bestv: f64,
-        rpk_of: &impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
-        cfg_odds: &impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
-        cfg_root: &impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+        space: &DeckSpace<'_>,
+        best_value: f64,
+        bounds: &ConfigurationBounds<
+            impl Fn(&[f64], &[f64], &[u32], u64) -> GTab,
+            impl Fn(&[(usize, usize)], &GTab, &mut [f64], &mut [f64]),
+            impl Fn(&[(usize, usize)], &GTab, &[f64], &[f64], &mut [f64], &mut [f64], &mut [f64]),
+        >,
     ) -> Option<ConfigRef<'_>> {
-        let Self { lazy, rbc, cfgs, pend, pkeys, pord, heap, pp, ldw, ldg, lsp0, lcv, lcvo, eager_i } = self;
-        if *lazy {
-            // compute the pending configurations until the heap's top comes first in the sorted order: every one
+        if self.lazy {
+            // Compute pending configurations until the heap's top comes first in the sorted order: every one
             // left has a bound, so a root, below it (or cannot reach the bar)
-            while *pp < pord.len() {
-                let pe = &pend[pord[*pp]];
-                if !(pe.u * (1.0 + 1e-9) >= bestv && heap.peek().is_none_or(|h| pe.u >= h.root)) {
+            while self.pending_position < self.pending_order.len() {
+                let pending_config = &self.pending[self.pending_order[self.pending_position]];
+                if !(pending_config.u * (1.0 + 1e-9) >= best_value
+                    && self.heap.peek().is_none_or(|h| pending_config.u >= h.root))
+                {
                     break;
                 }
-                *pp += 1;
+                self.pending_position += 1;
                 // the eager build's values: the per-target bound, the key's ratio tables, sp0 and the root
-                cfg_odds(&pe.gs, &pe.gm, ldw, ldg);
-                let rpk: &std::rc::Rc<GTab> = pkeys[pe.key].get_or_insert_with(|| {
-                    let km = sp.key_miss(pe.code);
-                    std::rc::Rc::new(rpk_of(&km.0, &km.1, &km.2, pe.gneed))
+                (bounds.odds)(&pending_config.gs, &pending_config.gm, &mut self.white_chances, &mut self.gold_chances);
+                let rpk: &std::rc::Rc<GTab> = self.key_ratios[pending_config.key].get_or_insert_with(|| {
+                    let km = space.key_miss(pending_config.code);
+                    std::rc::Rc::new((bounds.ratio_prefixes)(&km.0, &km.1, &km.2, pending_config.gneed))
                 });
-                cfg_root(&pe.gs, rpk, ldw, ldg, lsp0, lcv, lcvo);
-                heap.push(QueuedConfig {
-                    root: lcvo[0],
-                    idx: pord[*pp - 1],
+                (bounds.root)(
+                    &pending_config.gs,
+                    rpk,
+                    &mut self.white_chances,
+                    &mut self.gold_chances,
+                    &mut self.ratio_products,
+                    &mut self.prune_bounds,
+                    &mut self.order_bounds,
+                );
+                self.heap.push(QueuedConfig {
+                    root: self.order_bounds[0],
+                    idx: self.pending_order[self.pending_position - 1],
                     cf: SearchConfig {
-                        root: lcvo[0],
-                        code: pe.code,
-                        code_real22: pe.real22,
-                        np: pe.np,
-                        filler: pe.filler,
-                        plain: pe.plain,
-                        gs: pe.gs.clone(),
-                        gm: std::rc::Rc::clone(&pe.gm),
+                        root: self.order_bounds[0],
+                        code: pending_config.code,
+                        code_real22: pending_config.real22,
+                        np: pending_config.np,
+                        filler: pending_config.filler,
+                        plain: pending_config.plain,
+                        gs: pending_config.gs.clone(),
+                        gm: std::rc::Rc::clone(&pending_config.gm),
                         rpk: std::rc::Rc::clone(rpk),
-                        prune_bound: lcv[0],
-                        clause_bounds: if *rbc { lcv.clone() } else { vec![] },
+                        prune_bound: self.prune_bounds[0],
+                        clause_bounds: if self.check_ratio_bounds { self.prune_bounds.clone() } else { vec![] },
                     },
                 });
             }
-            heap.pop().map(|h| ConfigRef::Computed(h.cf))
+            self.heap.pop().map(|h| ConfigRef::Computed(h.cf))
         } else {
-            if *eager_i >= cfgs.len() {
+            if self.eager_position >= self.configurations.len() {
                 return None;
             }
-            *eager_i += 1;
-            Some(ConfigRef::Listed(&cfgs[*eager_i - 1]))
+            self.eager_position += 1;
+            Some(ConfigRef::Listed(&self.configurations[self.eager_position - 1]))
         }
     }
 }

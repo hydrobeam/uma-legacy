@@ -8,21 +8,36 @@ yet carries a 2050 placeholder and stays out.
 Run as a script (step data, after the other exports): data/global/upcoming.json, the entries dated after the build, as
 {umas, outfits, cards: [[id, start (unix s)], ...]}, for webapp/example.mjs, whose precomputed result must not use them.
 """
+
 import json, os
 from era import q, CUT, NOW, OUT, BASE, outfit_starts
 
 
-if __name__ == '__main__':
-    roster = set(json.load(open(BASE))['roster'])
+if __name__ == "__main__":
+    roster = set(json.load(open(BASE))["roster"])
     starts = outfit_starts()
-    owner = dict(q('select id, chara_id from card_data where id<900000'))
-    outfits = {o: t for o, t in starts.items() if owner[o] in roster and t <= CUT}
-    later_o = {o: t for o, t in outfits.items() if t > NOW}
+    outfit_owners = dict(q("select id, chara_id from card_data where id<900000"))
+    outfits = {
+        outfit_id: start_time
+        for outfit_id, start_time in starts.items()
+        if outfit_owners[outfit_id] in roster and start_time <= CUT
+    }
+    upcoming_outfits = {outfit_id: start_time for outfit_id, start_time in outfits.items() if start_time > NOW}
     umas = {}
-    for o, t in outfits.items(): umas.setdefault(owner[o], []).append(t)
-    later_u = {u: min(ts) for u, ts in umas.items() if min(ts) > NOW}
-    cards = {cid for cid in (x['id'] for x in json.load(open(os.path.join(OUT, 'web_cards.json')))['cards'])}
-    later_c = {i: t for i, t in q('select id, start_date from support_card_data') if i in cards and t > NOW}
-    out = {k: sorted(v.items()) for k, v in (('umas', later_u), ('outfits', later_o), ('cards', later_c))}
-    json.dump(out, open(os.path.join(OUT, 'upcoming.json'), 'w'))
-    print('upcoming (dated after the build):', {k: len(v) for k, v in out.items()})
+    for outfit_id, start_time in outfits.items():
+        umas.setdefault(outfit_owners[outfit_id], []).append(start_time)
+    upcoming_umas = {
+        character_id: min(start_times) for character_id, start_times in umas.items() if min(start_times) > NOW
+    }
+    cards = {card["id"] for card in json.load(open(os.path.join(OUT, "web_cards.json")))["cards"]}
+    upcoming_cards = {
+        i: start_time
+        for i, start_time in q("select id, start_date from support_card_data")
+        if i in cards and start_time > NOW
+    }
+    out = {
+        k: sorted(v.items())
+        for k, v in (("umas", upcoming_umas), ("outfits", upcoming_outfits), ("cards", upcoming_cards))
+    }
+    json.dump(out, open(os.path.join(OUT, "upcoming.json"), "w"))
+    print("upcoming (dated after the build):", {k: len(v) for k, v in out.items()})

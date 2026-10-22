@@ -3,10 +3,11 @@
 // a click on the backdrop closes it.
 import { backdropCloses } from './dom.js';
 export function initSetup() {
-  for (const [b, id] of [['o-skills', 'set-skills'], ['o-umas', 'set-umas'], ['o-cards', 'set-cards']]) {
-    const d = document.getElementById(id), o = document.getElementById(b); if (!d || !o) continue;   // the loop planner shows Target skills in the open
-    o.onclick = () => d.showModal();
-    backdropCloses(d);
-    d.querySelectorAll('.dclose').forEach(x => { x.onclick = () => d.close(); });
+  for (const [buttonId, dialogId] of [['o-skills', 'set-skills'], ['o-umas', 'set-umas'], ['o-cards', 'set-cards']]) {
+    const dialog = document.getElementById(dialogId), opener = document.getElementById(buttonId);
+    if (!dialog || !opener) continue;   // the loop planner shows Target skills in the open
+    opener.onclick = () => dialog.showModal();
+    backdropCloses(dialog);
+    dialog.querySelectorAll('.dclose').forEach(done => { done.onclick = () => dialog.close(); });
   }
 }
