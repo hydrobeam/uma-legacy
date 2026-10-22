@@ -6,10 +6,12 @@ was set from data, and how well it holds against real careers.
 ## Results
 
 The model's odds rest on one prediction: the chance that a career acquires each target. Against
-3,348 real Independent Training careers, each rebuilt from its own deck and lineage (section 13), that chance is
-calibrated: observed / predicted 0.994 [0.98, 1.00] over 23,919 run-target rows. The chance of landing
-all eight default targets reads 0.86 [0.69, 1.05] of the model: consistent with calibrated, but only
-132 runs acquired every target.
+5,198 real Independent Training careers, each rebuilt from its own deck and lineage (section 13), that chance is
+calibrated where the model's priority assumption holds: observed / predicted 0.999 [0.991, 1.006] over the
+32,848 run-target rows whose target was prioritised or whose run shows no priority list. Over all 37,287 rows it reads
+0.988 [0.981, 0.994], slightly optimistic: the model assumes every target prioritised, and the rows whose run shows it was not
+read 0.912 and carry 92% of the shortfall. The chance of landing all eight default targets reads
+0.93 [0.80, 1.05] of the model: consistent with calibrated, but only 220 runs acquired every target.
 
 The terms used below (observed / predicted, rows, nats, held out, the bracketed intervals) and the game's terms are
 defined in *How to read*, after this summary.
@@ -18,41 +20,52 @@ defined in *How to read*, after this summary.
 |---|---|---|---|
 | Spark generation, $0.2$ / $0.4 \times 1.1^n$ | assumed | none: the runs show the sparks a career inherited, not the ones it produced | 1 |
 | Star mix of sparks | mixes assumed; band per scenario derived | each scenario uses the band most of its careers reach (14,742 Grand Concert runs, 79% at 17,500+) | 2 |
-| Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight 1.01 [0.98, 1.03], affinity slope 0.98 [0.95, 1.01] on 69,840 + 30,368 trials; whole careers 0.989 [0.976, 1.001] | 3 |
-| Affinity: +3 per shared G1 win; own grandparent adds no trio points | +3 assumed and tested; trio rule fitted | shared-win slope 0.97 [0.93, 1.01]; trio rule 19 nats better than the alternative | 3, 5 |
-| Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 1.000 [0.999, 1.002] over 76,402 G1 attempts | 4 |
+| Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight 1.00 [0.98, 1.02], affinity slope 0.97 [0.95, 0.99] on 106,738 + 44,010 trials, which predicts unseen runs no better than slope 1 ($z$ = 0.86); whole careers 0.992 [0.982, 1.003] apart from Tail Held High | 3 |
+| Affinity: +3 per shared G1 win; own grandparent adds no trio points | +3 assumed and tested; trio rule fitted | shared-win slope 0.96 [0.92, 0.99], no better than 1 held out ($z$ = 0.81); trio rule 29 nats better than the alternative | 3, 5 |
+| Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 1.000 [0.999, 1.001] over 119,188 G1 attempts | 4 |
 | Loop schedules for shared wins | derived | on the reference loops, no other schedule could raise the best loop's odds by more than 2.02% | 6 |
-| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 61,856 rows; specialty term fitted on earlier runs gains +12.9 nats on later ones; real careers 0.988 [0.95, 1.03] of the model | 7 |
-| Chain events, Binomial(21, 0.35) per career | fitted | 3,424 runs; not rejected against a free distribution (p-value 0.06); no alternative predicts unseen runs better | 8 |
-| Chain events spread over remaining links | fitted | 66 nats better than equal shares per card | 8 |
-| Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets 1.01 of the model | 9, 13 |
-| Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured 0.61 [0.55, 0.66] (90%) | 9 |
-| Random card events | not modelled | where they could hint a target, acquisition reads 1.26 [1.11, 1.41] of the model left out, 1.00 credited | 10 |
-| Conditional character events | not modelled | where only they can hint a target, left out reads 1.20 [0.75, 1.64]; Vodka's own Nimble Navigator 25 of 27 runs | 11 |
+| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 87,801 rows; specialty term fitted on earlier runs gains +10.1 nats on later ones; real careers 1.004 [0.97, 1.04] of the model | 7 |
+| Chain events, Binomial(21, 0.35) per career | fitted, kept | 5,316 runs; rejected against a free distribution in-sample (p-value 6.5e-05), a known miss; no alternative predicts unseen runs better | 8 |
+| Chain events spread over remaining links | fitted | 102 nats better than equal shares per card | 8 |
+| Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets 0.970 [0.940, 0.9997] of the model, of the others 0.65 | 9, 13 |
+| Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured 0.61 [0.56, 0.66] (90%) | 9 |
+| Random card events | not modelled | where they could hint a target, acquisition reads 1.25 [1.12, 1.38] of the model left out, 1.01 credited | 10 |
+| Conditional character events | not modelled | where only they can hint a target, left out reads 1.10 [0.81, 1.40]; Vodka's own Nimble Navigator 25 of 27 runs | 11 |
 
 ### Known misses
 
 Each measured and tested in its section:
 
-- Chain events (8): in crowded decks early links run short, and more chains never start than predicted
-  (0.34 against 0.20 with six chain cards). Final links fit pooled (0.352 against 0.357), but
-  individual cards differ far beyond chance ($\chi^2$ = 229 on 42 cards).
-- Deck hints (13) read 0.937 [0.92, 0.95] of the model, almost all from event hints of targets the
-  player did not prioritise (0.71 of the model; the model assumes every target is prioritised).
-- Trackblazer's hint base (13) over-predicts real careers: its training-pool hints read 0.777 [0.62, 0.93] of the model.
-- Training hints (7): SR cards and decks with more pals depart from the adopted rate (+5.3 and +14.0 nats), and
-  a skill also hinted by inspiration is hinted by training less than predicted (0.75 of the model).
+- Inheritance (3, 13): Tail Held High is inherited less often than its odds say (0.953 [0.918, 0.988]
+  of the model on whole careers; cause unknown); parents at affinity 200 or more pass sparks less often than predicted
+  (0.966 [0.945, 0.987]); non-target skills are inherited slightly less often (0.986 [0.973, 0.999]).
+- Races (4): goal races from the fourth race in a row win more than the streak penalty allows
+  (1.14 [1.13, 1.16]), and chances of 70 or less win slightly less (0.95).
+- Training hints (7): cards differ in hint rate beyond the adopted rate (observed / predicted 0.80-1.17 over
+  58 cards, cause open); decks with more pals give slightly more hints (+12.5 nats); a skill also hinted by
+  inspiration is hinted by training less than predicted (0.74 of the model).
+- Chain events (8): Binomial(21, 0.35) is rejected against a free distribution of $N$ in-sample ($p$ = 6.5e-05) and kept
+  by choice: no alternative predicts unseen runs better, and the candidate Binomial(18, 0.405) fits 8.8 nats better
+  in-sample. Decks with Sasami Anshinzawa [This Might Sting!]'s pal card reach more chain events (7.74 against
+  7.17) and Inari One's careers fewer (6.83 against 7.26); in crowded decks early links run short, and more chains never start than predicted
+  (0.34 against 0.20 with six chain cards). Final links fit pooled (0.348 against 0.353), but
+  individual cards differ far beyond chance ($\chi^2$ = 386 on 50 cards).
+- Deck hints (13) read 0.929 [0.915, 0.942] of the model, almost all from event hints of targets the
+  player did not prioritise (0.65 of the model; the model assumes every target is prioritised). Event hints of
+  prioritised targets read just below the model (0.970 [0.940, 0.9997]; section 9).
+- Trackblazer's hint base (13) over-predicts real careers: its training-pool hints read 0.779 [0.63, 0.93] of the model.
 - Left out of the model: deck cards' random events, so the targets they can hint are under-predicted
-  (1.26 [1.11, 1.41] of the model on those rows; section 10); and Vodka's own Nimble Navigator (25 of 27 runs;
-  section 11).
-- Non-target skills (13): training-pool hints read 1.064 [1.05, 1.08] of the model.
+  (1.25 [1.12, 1.38] of the model on those rows; their rate rises with the card's initial friendship gauge; section
+  10); and Vodka's own Nimble Navigator (25 of 27 runs; section 11).
+- Non-target skills (13): training-pool hints read 1.065 [1.053, 1.076] of the model.
 
 ### Not settled
 
-Specialty priority predicts runs it was not fitted to (fitted on earlier runs, +12.9 nats on later
-ones), but it is not shown to cause more hints: across limit breaks of the same card the estimate is the same size
-($d$ = 0.41) but not significant (+1.5 nats). On the adopted model, a free hint-frequency divisor
-does not predict unseen runs better than $1/100$ (section 7).
+Specialty priority predicts runs it was not fitted to (fitted on earlier runs, +10.1 nats on later
+ones), but it is not shown to cause more hints: on the cards whose limit breaks change only their specialty priority,
+the estimate ($d$ = −0.06 [−0.44, 0.56]) is consistent with no effect and with every per-scenario weight.
+The hint-frequency slope $1/100$ is assumed: on the adopted model a free divisor does not predict unseen runs better,
+but in the form study, without the specialty term, one does (section 7).
 
 ### Assumed and untested
 
@@ -286,8 +299,8 @@ Grand Masters has no runs and is **assumed** 17,500+.
 
 *What does averaging over stars cost?* (**derived**.) $\bar b$ is exact for one roll but not for two: a legacy's stars
 are the same in both rolls, and by convexity $E[(1 - r)^2] \ge (1 - E[r])^2$, so averaging overstates $q_k$. On
-the six real affinities of each of the 3,607 lineages in the runs, for a target carried by all six, it overstates $q$ by
-at most 0.57% below 17,500 (mean 0.50%) and 0.33% at 17,500+.
+the six real affinities of each of the 5,527 lineages in the runs, for a target carried by all six, it overstates $q$ by
+at most 0.57% below 17,500 (mean 0.51%) and 0.33% at 17,500+.
 
 ## 3. Inheritance rolls
 
@@ -301,13 +314,17 @@ gives that chance, tests its parts on single-ancestor trials, and tests the whol
 
 - **Each legacy carrying the target gets two rolls**, at the Classic and Senior inspirations. A roll's chance is a
   base set by the spark's stars, raised in proportion to the legacy's affinity.
-- **Grandparents take the full base, as parents do**: a free weight on their roll fits 1.01 [0.98, 1.03].
-- **Affinity raises the roll as the formula says**: a free slope fits 0.98 [0.95, 1.01], and each of its
-  two parts, relation points and shared G1 wins, carries its stated weight.
-- **On whole careers the chance is calibrated**: 0.989 [0.976, 1.001] of the model over the default targets,
-  and it holds on non-target skills too.
-- **Known misses**: two affinity bands (150-199 and 200+) and one band of predicted chance (0.40-0.60) lie outside
-  their own intervals, though each set of bands holds jointly.
+- **Grandparents take the full base, as parents do**: a free weight on their roll fits 1.00 [0.98, 1.02].
+- **Affinity raises the roll as the formula says, not beaten held out**: a free slope fits 0.97 [0.95, 0.99],
+  but it predicts unseen runs no better than slope 1 ($z$ = 0.86), and neither does a free weight on either of its two
+  parts, relation points and shared G1 wins.
+- **On whole careers the chance is calibrated apart from one target**: without Tail Held High,
+  0.992 [0.982, 1.003] of the model over the other default targets.
+- **Known misses**: Tail Held High is inherited less often than predicted (0.953 [0.918, 0.988],
+  cause unknown); parents at affinity 200 or more pass less often than predicted (0.966 [0.945, 0.987]),
+  though a refitted slope does not predict unseen runs better; non-target skills
+  read 0.986 [0.973, 0.999], the shortfall spread over many skills; and the band of predicted chance
+  0.40-0.60 lies outside its own interval, though the bands hold jointly.
 
 ### Terms
 
@@ -340,52 +357,62 @@ lineage; the runs show no great-grandparents). For a planned loop $b(s_{lk})$ is
 
 ### Evidence
 
-The roll's parts are **fitted** on 30,368 parent and 69,840 grandparent trials of ordinary ancestors (the
+The roll's parts are **fitted** on 44,010 parent and 106,738 grandparent trials of ordinary ancestors (the
 self-grandparent is section 5's).
 
-*Do grandparents take the full base?* Yes. A free weight on the grandparents' roll fits 1.01 [0.98, 1.03],
-and the full base beats a halved one by 1,327 nats: 6,308 passes observed, 6,268 predicted with the full
-base, 3,134 with half. Parents read 0.982 [0.96, 1.01] of the model.
+*Do grandparents take the full base?* Yes. A free weight on the grandparents' roll fits 1.00 [0.98, 1.02],
+and the full base beats a halved one by 1,975 nats: 9,607 passes observed, 9,630 predicted with the full
+base, 4,815 with half. Parents read 0.975 [0.956, 0.995] of the model, the shortfall at high affinity (below).
 
-*Does affinity scale the roll as $(1 + A/100)$?* A free slope on $A$ fits 0.98 [0.95, 1.01], and the term beats
-no affinity by 3,760 nats. Its two parts, each fitted with the other fixed: relation points 0.96
-[0.87, 1.05]; $3 \times$ shared G1 wins 0.97 [0.93, 1.01] (99,502 trials with shared wins).
+*Does affinity scale the roll as $(1 + A/100)$?* The term beats no affinity by 5,427 nats. A free slope on $A$ fits
+0.97 [0.95, 0.99], 2.9 nats above slope 1 in-sample; held out it predicts unseen runs no better
+(2.1 ± 2.4 nats, $z$ = 0.86), so the slope stays 1. Its two parts, each fitted with the other fixed: relation
+points 0.92 [0.84, 0.99], held out 1.8 ± 2.2 nats ($z$ = 0.85); $3 \times$ shared G1 wins 0.96
+[0.92, 0.99], held out 2.0 ± 2.5 nats ($z$ = 0.81) (150,032 trials with shared wins). Neither
+weight predicts unseen runs better than 1.
 
-*Do the bases by stars hold?* Observed / predicted is 0.980 [0.94, 1.02] at 1★ (27,826 trials),
-0.995 [0.97, 1.01] at 2★ (63,864) and 1.013 [0.97, 1.06] at 3★ (8,518).
+*Do the bases by stars hold?* Observed / predicted is 0.985 [0.95, 1.02] at 1★ (41,970 trials),
+0.987 [0.97, 1.00] at 2★ (96,080) and 0.995 [0.96, 1.03] at 3★ (12,698).
 
-*Does it hold at every affinity?* Jointly, yes ($\chi^2$ = 10.0 on five bands, $p$ = 0.075), but two bands lie
-outside their own 95% interval:
+*Does it hold at every affinity?* Below 200, yes: the four bands are jointly consistent with the model ($\chi^2$ =
+2.5, $p$ = 0.65). The bands outside their own 95% interval are 200+, and with them the five
+bands are not consistent ($\chi^2$ = 12.6, $p$ = 0.027). This is a known miss: parents at affinity 200 or more read
+0.966 [0.945, 0.987] of the model (36,680 trials), parents below it 1.040 [0.985, 1.094]
+(7,330). A refitted slope does not predict unseen runs better (above), so the model keeps slope 1 and
+this miss:
 
 | Affinity | Trials | Observed / predicted |
 |---|---|---|
-| 0-49 | 9,666 | 1.003 [0.932, 1.073] |
-| 50-99 | 60,546 | 1.006 [0.981, 1.032] |
-| 100-149 | 1,180 | 0.994 [0.855, 1.132] |
-| 150-199 | 4,040 | 1.079 [1.006, 1.152] |
-| 200+ | 24,776 | 0.970 [0.944, 0.995] |
+| 0-49 | 12,628 | 0.980 [0.919, 1.042] |
+| 50-99 | 94,696 | 0.999 [0.980, 1.019] |
+| 100-149 | 1,428 | 1.025 [0.899, 1.152] |
+| 150-199 | 5,316 | 1.045 [0.982, 1.107] |
+| 200+ | 36,680 | 0.966 [0.945, 0.987] |
 
-*Does the whole hold on real careers?* Observed / predicted inspiration on 3,348 careers (section 13):
+*Does the whole hold on real careers?* Observed / predicted inspiration on 5,198 careers (section 13):
 
-- all 26,784 run-target rows: 0.989 [0.976, 1.001];
-- by the number of carriers, 1 to 6: 0.956-1.001, every interval covering 1;
-- per roll: years in which an inspiration of the skill fired, 0.988 of the model's expectation (1.69 standard
-  deviations below it, run-clustered; inside its 95% band); legacy firings, against their expectation $2\sum_l r_l$,
-  0.989;
-- 43,244 rows of non-target skills: 0.993 [0.98, 1.01].
+- all 41,584 run-target rows: 0.987 [0.978, 0.997], short of the model because of one target;
+- Tail Held High, a known miss: 0.953 [0.918, 0.988], the only default target whose interval excludes 1;
+  the cause is not known;
+- the other 36,386 rows: 0.992 [0.982, 1.003]; on them, by the number of carriers, 1 to 6:
+  0.965-1.000, every interval covering 1; per roll, years in which an inspiration of the skill fired,
+  0.989 of the model's expectation (1.84 standard deviations below it, run-clustered; inside its 95% band), and
+  legacy firings, against their expectation $2\sum_l r_l$, 0.990;
+- 66,598 rows of non-target skills, a known miss: 0.986 [0.973, 0.999], the shortfall spread over
+  many skills (no one skill carries more than 9% of it).
 
 *Does it hold at every predicted chance?* Grouped by predicted $q$, the groups are calibrated jointly ($\chi^2$ =
-5.7 on 5 groups, $p$ = 0.34). One lies outside its own 95% interval, 0.40-0.60: 0.489
-[0.474, 0.504] observed against 0.505 predicted.
+9.2 on 5 groups, $p$ = 0.10). One lies outside its own 95% interval, 0.40-0.60: 0.494
+[0.481, 0.506] observed against 0.506 predicted.
 
 | Predicted $q$ | Rows | Observed (mean predicted) |
 |---|---|---|
-| 0 | 8,723 | 0.002 |
-| above 0 to 0.20 | 2,490 | 0.156 (0.16) |
-| 0.20-0.40 | 3,163 | 0.298 (0.31) |
-| 0.40-0.60 | 4,098 | 0.489 (0.51) |
-| 0.60-0.80 | 5,786 | 0.698 (0.70) |
-| 0.80-0.95 | 2,524 | 0.834 (0.84) |
+| 0 | 13,734 | 0.001 |
+| above 0 to 0.20 | 3,884 | 0.154 (0.16) |
+| 0.20-0.40 | 4,688 | 0.294 (0.30) |
+| 0.40-0.60 | 6,232 | 0.494 (0.51) |
+| 0.60-0.80 | 9,066 | 0.697 (0.70) |
+| 0.80-0.95 | 3,980 | 0.838 (0.84) |
 
 ## 4. Race wins
 
@@ -398,31 +425,32 @@ in a row, and tests a widely used community table of that chance.
 ### Findings
 
 A race's win chance depends on the trainee's grades for its distance and surface (written as a pair, better grade
-first) and on how many races she has run in a row. Over 76,402 attempts at the 34 single-race G1s, the observed win
+first) and on how many races she has run in a row. Over 119,188 attempts at the 34 single-race G1s, the observed win
 rates are (the community table's chance in parentheses; grades include those raised by inherited aptitude sparks; S is
 shown as A, since both have the same chance; a dot where a cell has under 30 attempts; grade pairs with 200 or more
 attempts):
 
-| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | BE | CD | AF | AG |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 race | 100% (100%) | 100% (100%) | 89% (90%) | 90% (90%) | 80% (80%) | 76% (80%) | 67% (70%) | 70% (70%) | 58% (60%) | 57% (60%) | 47% (50%) | 20% (20%) |
-| 2 races | 100% (100%) | 100% (100%) | 91% (90%) | 91% (90%) | 81% (80%) | 81% (80%) | 62% (70%) | 70% (70%) | 51% (60%) | 67% (60%) | 54% (50%) | 20% (20%) |
-| 3 races | 100% (100%) | 97% (95%) | 85% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | · (65%) | · (55%) | · (55%) | 62% (45%) | 13% (15%) |
-| 4 races | 92% (90%) | 81% (80%) | 77% (70%) | · (70%) | 49% (60%) | 62% (60%) | · (50%) | 62% (50%) | · (40%) | 21% (40%) | · (30%) | · (0%) |
-| 5 races | 86% (80%) | 72% (70%) | 56% (60%) | · (60%) | 69% (50%) | · (50%) | 36% (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
-| 6 or more | 63% (60%) | 70% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
+| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | CC | BE | CD | AF | AG |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 race | 100% (100%) | 100% (100%) | 90% (90%) | 91% (90%) | 79% (80%) | 76% (80%) | 68% (70%) | 70% (70%) | 63% (70%) | 50% (60%) | 59% (60%) | 47% (50%) | 19% (20%) |
+| 2 races | 100% (100%) | 100% (100%) | 91% (90%) | 90% (90%) | 79% (80%) | 80% (80%) | 61% (70%) | 68% (70%) | 78% (70%) | 50% (60%) | 65% (60%) | 52% (50%) | 19% (20%) |
+| 3 races | 100% (100%) | 97% (95%) | 86% (85%) | · (85%) | 75% (75%) | · (75%) | 59% (65%) | 60% (65%) | · (65%) | 43% (55%) | · (55%) | 60% (45%) | 11% (15%) |
+| 4 races | 92% (90%) | 82% (80%) | 74% (70%) | · (70%) | 49% (60%) | 62% (60%) | 38% (50%) | 61% (50%) | · (50%) | · (40%) | 30% (40%) | · (30%) | · (0%) |
+| 5 races | 86% (80%) | 73% (70%) | 59% (60%) | · (60%) | 68% (50%) | · (50%) | 35% (40%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (0%) |
+| 6 or more | 66% (60%) | 69% (50%) | · (40%) | · (40%) | · (30%) | · (30%) | · (20%) | · (20%) | · (20%) | · (10%) | · (10%) | · (0%) | · (0%) |
 
-- **The community table predicts these rates**: observed / predicted 1.000 [0.999, 1.002] over all
+- **The community table predicts these rates**: observed / predicted 1.000 [0.999, 1.001] over all
   attempts, and calibrated within every scenario.
 - **Grades must include inherited aptitude sparks.** With the trainee's base grades the table predicts too few wins
-  (observed / predicted 1.079 [1.075, 1.083], 1.83 where base grades give a chance of 70 or less). Pink sparks
+  (observed / predicted 1.066 [1.063, 1.069], 1.78 where base grades give a chance of 70 or less). Pink sparks
   raise grades at the start of a career and at each inspiration, from that April on.
-- **Races in a row lower the chance; wins do not.** The penalty counts races entered, and the previous race's result
-  does not change the next chance beyond the table.
-- **Two departures**: goal races (the races a career requires) from the fourth race in a row win more than the
-  penalty allows
-  (1.13 [1.11, 1.15]), and chances of 70 or less win slightly less than predicted (0.96
-  [0.94, 0.98]).
+- **Races in a row lower the chance; wins do not.** The penalty counts races entered. At the 2nd and 3rd race in a
+  row the previous race's result does not change the next chance: after a loss the table's fit is
+  0.993 and 0.991 of its fit after a win, both intervals covering 1. From the 4th race on, attempts after a loss
+  win more than after a win (1.080 [1.038, 1.124]), where both win more than the table predicts; not explained here.
+- **Two departures, known misses**: goal races (the races a career requires) from the fourth race in a row win more
+  than the penalty allows (1.14 [1.13, 1.16]), and chances of 70 or less win slightly less than predicted (0.95
+  [0.93, 0.97]).
 
 ### Terms
 
@@ -453,19 +481,19 @@ section 5 turns these into race affinity.
 
 ### Evidence
 
-The runs record every race a career ran: 76,402 attempts at the 34 single-race G1s (22,387 of
-them goals), of which 93.1% were won.
+The runs record every race a career ran: 119,188 attempts at the 34 single-race G1s (34,089 of
+them goals), of which 93.7% were won.
 
 *Base aptitudes or raised grades?* Raised grades.
 
-- On base aptitudes (as for a planned loop), the table predicts 86.3%: observed / predicted
-  1.079 [1.075, 1.083], and 1.83 where the table gives 70 or less (14,047 attempts).
+- On base aptitudes (as for a planned loop), the table predicts 88.0%: observed / predicted
+  1.066 [1.063, 1.069], and 1.78 where the table gives 70 or less (19,012 attempts).
 - With her grades raised by the aptitude-spark rule (`docs/MODEL.md`: the legacies' pink stars at the
   start, at most to A; then each pink the run records firing at a Classic or Senior inspiration, from that April on),
-  it predicts 93.1%: observed / predicted 1.000 [0.999, 1.002], 2,119 nats better than
+  it predicts 93.7%: observed / predicted 1.000 [0.999, 1.001], 2,780 nats better than
   base aptitudes, and calibrated in every scenario.
 
-*Is the streak penalty real?* Yes: without it the fit is 1,737 nats worse.
+*Is the streak penalty real?* Yes: without it the fit is 2,618 nats worse.
 
 Both comparisons need one adjustment. The table calls some races certain (0% or 100%), and a handful went the other
 way, which gives the table as stated a log-likelihood of $-\infty$. So every model compared has its 0% and 100% pulled
@@ -476,51 +504,53 @@ numbers of fitted parameters (rule 1 of *How to read*).
 
 | Table's chance | Attempts | Observed / predicted |
 |---|---|---|
-| 110 | 50,681 | 1.002 [1.001, 1.002] |
-| 100 | 11,102 | 1.004 [1.002, 1.007] |
-| 90 | 4,674 | 1.002 [0.992, 1.012] |
-| 80 | 3,169 | 1.002 [0.984, 1.020] |
-| 70 or less | 6,776 | 0.959 [0.937, 0.982] |
+| 110 | 79,866 | 1.002 [1.001, 1.002] |
+| 100 | 18,673 | 1.005 [1.003, 1.006] |
+| 90 | 6,598 | 1.006 [0.997, 1.014] |
+| 80 | 4,477 | 0.992 [0.977, 1.007] |
+| 70 or less | 9,574 | 0.950 [0.932, 0.969] |
 
 *When does a pink spark take effect?* From the April of its inspiration. The records say which inspiration fired a
-pink, and inspirations sit at fixed turns. On the 372 Senior January-March attempts where the timing matters,
-0.739 [0.691, 0.787] were won, against 0.755 predicted with the pink counted from April and 0.865 counted
+pink, and inspirations sit at fixed turns. On the 502 Senior January-March attempts where the timing matters,
+0.737 [0.696, 0.778] were won, against 0.754 predicted with the pink counted from April and 0.864 counted
 from the year's start.
 
 *How many attempts is each cell of the table in Findings?*
 
-| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | BE | CD | AF | AG |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 race | 24,982 | 5,875 | 2,499 | 87 | 1,407 | 192 | 1,268 | 134 | 97 | 76 | 1,196 | 827 |
-| 2 races | 17,142 | 3,249 | 1,250 | 116 | 956 | 265 | 627 | 160 | 222 | 144 | 413 | 280 |
-| 3 races | 5,508 | 1,273 | 479 | 13 | 179 | 18 | 204 | 23 | 19 | 1 | 79 | 31 |
-| 4 races | 2,081 | 291 | 158 | 19 | 53 | 56 | 28 | 32 | 19 | 34 | 6 | 3 |
-| 5 races | 707 | 335 | 41 | 8 | 35 | 4 | 45 | 7 | 3 | 3 | 12 | 10 |
-| 6 or more | 261 | 79 | 4 | 0 | 4 | 0 | 2 | 0 | 1 | 0 | 6 | 3 |
+| Races in a row | AA | AB | AC | BB | AD | BC | AE | BD | CC | BE | CD | AF | AG |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 race | 39,126 | 9,780 | 3,575 | 121 | 1,967 | 256 | 1,705 | 285 | 65 | 159 | 111 | 1,921 | 1,012 |
+| 2 races | 27,468 | 5,704 | 1,742 | 177 | 1,441 | 342 | 826 | 309 | 127 | 342 | 191 | 593 | 322 |
+| 3 races | 8,535 | 2,060 | 623 | 17 | 235 | 27 | 216 | 65 | 0 | 46 | 1 | 108 | 38 |
+| 4 races | 3,235 | 500 | 196 | 29 | 82 | 73 | 37 | 36 | 27 | 21 | 44 | 15 | 8 |
+| 5 races | 1,068 | 519 | 87 | 26 | 37 | 13 | 51 | 8 | 3 | 3 | 5 | 22 | 24 |
+| 6 or more | 434 | 110 | 5 | 0 | 4 | 0 | 3 | 0 | 0 | 1 | 0 | 6 | 5 |
 
-*Does the previous race's result matter?* No. Each attempt's chance combines both effects in one formula: her grades
-for the race's distance and surface, and her position in the current streak. The penalty counts races in a row, not
-wins: within a streak, the previous race's result does not move the next chance beyond the table (observed /
-predicted, attempts):
+*Does the previous race's result matter?* Not at the 2nd and 3rd race in a row. Each attempt's chance combines both
+effects in one formula: her grades for the race's distance and surface, and her position in the current streak. The
+penalty counts races in a row, not wins. The test is the contrast: observed / predicted after a loss divided by the
+same after a win, with a run-clustered interval (observed / predicted, attempts):
 
-| Race in a row | After a win | After a loss |
-|---|---|---|
-| 2nd | 0.999 [0.997, 1.002] (23,686) | 0.996 [0.982, 1.010] (1,614) |
-| 3rd | 1.003 [0.999, 1.007] (7,346) | 0.991 [0.969, 1.013] (487) |
-| 4th or later | 1.025 [1.010, 1.039] (3,918) | 1.093 [1.041, 1.145] (472) |
+| Race in a row | After a win | After a loss | Loss / win |
+|---|---|---|---|
+| 2nd | 0.998 [0.996, 1.000] (37,863) | 0.991 [0.979, 1.003] (2,227) | 0.993 [0.981, 1.005] |
+| 3rd | 1.004 [1.001, 1.007] (11,296) | 0.995 [0.976, 1.014] (681) | 0.991 [0.972, 1.011] |
+| 4th or later | 1.030 [1.019, 1.041] (6,099) | 1.112 [1.070, 1.155] (670) | 1.080 [1.038, 1.124] |
 
-From the 4th race on both read above 1: that is the goal-race excess below.
+At the 2nd and 3rd race the contrast covers 1: the previous result does not move the next chance. From the 4th race on
+both read above 1 and a loss is followed by more wins than a win is ($z$ = 3.77). The model does not have this; the
+goal-race excess below may account for part of it, which is not tested here.
 
 *Is one formula enough?* Yes, though not exactly. Giving every (chance, streak position) cell its own win rate, read
-straight from its attempts (63 cells), explains the attempts 69 nats better than the table's one formula
-in-sample. That is beyond the 40 nats chance allows for its 61 extra parameters if attempts were independent,
+straight from its attempts (64 cells), explains the attempts 99 nats better than the table's one formula
+in-sample. That is beyond the 41 nats chance allows for its 62 extra parameters if attempts were independent,
 but they are not: one trainee's stats carry through her races. Held out, the per-cell rates do not predict unseen
-runs better than the table (78 ± 43 nats, $z$ = 1.81). So the table stands, with two departures
+runs better than the table (51 ± 29 nats, $z$ = 1.74). So the table stands, with two departures
 clear in their own intervals:
 
-- goal races from the fourth race in a row win more than the penalty allows (1.13 [1.11, 1.15], 1,339
-  attempts), while chosen races there match (0.99 [0.97, 1.00]);
-- chances of 70 or less win a little less than predicted (0.959 [0.937, 0.982]).
+- goal races from the fourth race in a row win more than the penalty allows (1.14 [1.13, 1.16], 1,984
+  attempts), while chosen races there match (0.99 [0.98, 1.01]);
+- chances of 70 or less win a little less than predicted (0.950 [0.932, 0.969]).
 
 The test is conditional on IT having chosen each non-goal race; stats are not modelled.
 
@@ -534,11 +564,11 @@ $A_l$ is computed and fits the one rule the game data leave open.
 ### Findings
 
 - **Affinity adds the characters' relation points (game data) and 3 for each single-race G1 both umas
-  won.** The 3 per shared win is **assumed** as the game's rule; section 3 finds the roll scales with it as stated
-  (slope 0.97 [0.93, 1.01]).
+  won.** The 3 per shared win is **assumed** as the game's rule; in section 3 a free weight on it fits
+  0.96 [0.92, 0.99] but predicts unseen runs no better than 1 ($z$ = 0.81).
 - **A trainee who is her own grandparent gets no trio points from it.** The game data do not say what a trio with
   one character twice counts. Counting nothing predicts the self-grandparent's inspirations in the runs; counting it
-  as the pair is about 19 nats worse.
+  as the pair is about 29 nats worse.
 
 ### Terms
 
@@ -573,13 +603,19 @@ In a loop $P'$ is also one of $P$'s own parents, so $o(P, P')$ counts twice in $
 ### Evidence
 
 *What does a self-grandparent's trio count?* ($G = T$, section 6.) $\mathrm{tri}(T,P,T) = 0$ is **fitted** on
-114,240 inspiration trials attributable to a single ancestor. Self-grandparent passes: 610 observed, 621.6
-predicted with 0, 721.2 with $\mathrm{tri}(T,P,T) = \mathrm{pair}(T,P)$ (about 19 nats worse). Run-clustered, the observed count lies
-−0.48 standard deviations from the prediction with 0 and −4.56 from the one with the pair: 0 is kept and the pair
+174,056 inspiration trials attributable to a single ancestor. Self-grandparent passes: 1045 observed, 1074.7
+predicted with 0, 1241.8 with $\mathrm{tri}(T,P,T) = \mathrm{pair}(T,P)$ (about 29 nats worse). Run-clustered, the observed count lies
+−0.96 standard deviations from the prediction with 0 and −6.26 from the one with the pair: 0 is kept and the pair
 rejected. Allowing any multiplier $\kappa$, the best fit is $\hat\kappa = 0$, at its lower bound.
 
-*Does the formula as a whole hold?* Section 3 tests it on the runs' real lineages and shared wins: the roll scales with
-this $A$ at slope 0.98 [0.95, 1.01].
+The gap is not the ordinary trials' own misfit: with the affinity slope refitted on the ordinary ancestors
+(0.97; section 3 keeps 1), the self-grandparent passes lie −0.61 standard deviations from the prediction with 0
+and −5.78 from the pair. At slope 1 ordinary parents read 0.975 of prediction and grandparents
+0.998 (section 3's known miss at high affinity).
+
+*Does the formula as a whole hold?* Section 3 tests it on the runs' real lineages and shared wins: a free slope on this $A$
+fits 0.97 [0.95, 0.99] but predicts unseen runs no better than 1 ($z$ = 0.86); parents at affinity 200 or more
+pass less often than predicted, a known miss.
 
 ## 6. Loop structures, ranking and schedules
 
@@ -591,7 +627,7 @@ loop is scored, and bounds what a different choice of race schedules could gain.
 ### Findings
 
 - **A four-uma loop has 12 lineages, a three-uma rotation 3.** In a rotation the trainee is her own grandparent,
-  and that occurs in practice: 1,087 of 3,610 runs have a grandparent of the trainee's own character.
+  and that occurs in practice: 1,911 of 5,534 runs have a grandparent of the trainee's own character.
 - **A structure is ranked by its lineages' average odds**: the long-run rate of a player who trains every member in
   turn. This is a definition of the score, not a claim.
 - **Every pair of umas carries the same weight**, so a loop's race schedules can be chosen for the most expected shared
@@ -626,7 +662,7 @@ $\sum_{a<b} o(a,b)$.
 
 ### Evidence
 
-*Does the rotation occur?* Yes: 1,087 of 3,610 runs have a grandparent of the trainee's own character, and
+*Does the rotation occur?* Yes: 1,911 of 5,534 runs have a grandparent of the trainee's own character, and
 0 have a parent of her character.
 
 *What could a different schedule gain?* (**derived**, on the reference loops.) Schedules are chosen for $\sum_{a<b} o(a,b)$, not for $\bar P_S$. $\bar P_S$ rises with every $o$: $o$ enters each legacy's affinity with
@@ -656,18 +692,22 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
   the runs' decks (hint frequency +20%, specialty priority 35) gives about 3.2 hints per career in Unity
   Cup, 2.4 in Grand Concert, 2.1 in Trackblazer and 1.8 in URA Finale. Each hint picks a skill uniformly from the pool;
   a skill already at hint level 5 is no longer picked.
-- **Hint frequency scales that number directly**: a card with Hint Frequency +40% gives 40% more hints.
+- **Hint frequency scales that number directly**: a card with Hint Frequency +40% gives 40% more hints. The slope is
+  **assumed**; on the adopted model a free one does not predict unseen careers better.
 - **Specialty priority also raises it.** The game describes Specialty Priority only as making the character join her
   preferred training type more often; in the runs, cards with more of it give more hints, by an amount that differs
-  between scenarios. The effect predicts careers it was not fitted to, but it is an association: across limit breaks
-  of the same card it is the same size without being significant, so it is not shown to be a cause.
+  between scenarios. The effect predicts careers it was not fitted to, but it is an association: on the cards whose
+  limit breaks change only their specialty priority, the data fit no effect as well as the fitted one, so it is not
+  shown to be a cause.
 - **Scenarios differ**: each has its own base (table below). The specialty weight differs too: fitted, about
-  0.35 in Unity Cup and 0.37 in URA Finale against 0.10 in Grand Concert and 0.11 in Trackblazer, and a weight per scenario
+  0.32 in Unity Cup and 0.36 in URA Finale against 0.07 in Grand Concert and 0.11 in Trackblazer, and a weight per scenario
   predicts careers it was not fitted to better than one shared weight. Nothing in the game's description of Specialty
   Priority depends on the scenario, so this weight is an association measured in each scenario's careers, not a game
   constant; why it differs is not tested here.
-- **Known misses**: SR cards give slightly fewer hints than SSR cards with the same effects, decks with more pals
-  slightly more, and a skill also hinted by inheritance is hinted by training less than predicted.
+- **Known misses**: cards differ in hint rate beyond what their effects predict, and a factor per card predicts
+  unseen careers better; which card properties explain it is open. Decks with more pals give slightly more hints, and a
+  skill also hinted by inspiration is hinted by training less than predicted. SR cards give slightly fewer hints than
+  SSR cards with the same effects in-sample, but that does not predict unseen careers better.
 
 ### Terms
 
@@ -697,15 +737,16 @@ and an exact Markov chain over the other skills' hint counts once a skill can re
 ### Fitted values
 
 These are **fitted** by maximum likelihood on every hint row, a row being one pool skill of one card in one
-run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; 61,856 rows from
-10,712 card-runs; the Runs column counts the runs that add a row; *Adopted*: the values the model uses:
+run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; 87,801 rows from
+15,120 card-runs; the Runs column counts the runs that add a row; *Adopted*: the values the model uses, fitted
+on an earlier, smaller set of the runs:
 
 | Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
 |---|---|---|---|---|---|
-| Unity Cup | 2.377 | 0.349 | 2.36 / 0.36 | 14,047 | 915 |
-| Grand Concert | 1.962 | 0.100 | 1.97 / 0.08 | 34,481 | 1,773 |
-| URA Finale | 1.369 | 0.366 | 1.34 / 0.39 | 10,958 | 631 |
-| Trackblazer | 1.700 | 0.108 | 1.70 / 0.11 | 2,370 | 99 |
+| Unity Cup | 2.395 | 0.322 | 2.36 / 0.36 | 17,737 | 1211 |
+| Grand Concert | 1.999 | 0.068 | 1.97 / 0.08 | 55,136 | 3,194 |
+| URA Finale | 1.380 | 0.359 | 1.34 / 0.39 | 12,551 | 736 |
+| Trackblazer | 1.702 | 0.107 | 1.70 / 0.11 | 2,377 | 100 |
 | Grand Masters | no runs | | 1.86 / 0.26 (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
 
 ### Evidence
@@ -715,41 +756,47 @@ with it, the excess is gone:
 
 | Specialty priority | Rows | Observed / predicted, without the term | with it |
 |---|---|---|---|
-| 0 | 18,870 | 0.951 | 1.003 |
-| 1-29 | 583 | 0.965 | 0.991 |
-| 30-59 | 30,188 | 1.005 | 0.995 |
-| 60+ | 12,215 | 1.067 | 1.005 |
+| 0 | 29,193 | 0.965 | 1.003 |
+| 1-29 | 691 | 0.966 | 0.986 |
+| 30-59 | 40,466 | 1.001 | 0.993 |
+| 60+ | 17,451 | 1.059 | 1.009 |
 
-- It predicts careers it was not fitted to: held out, the term gains 36.7 ± 4.9 nats, $z$ = 7.6; fitted on the earlier
-  half of the runs, it predicts the later half better (12.9 ± 3.3 nats, $z$ = 3.9).
-- A weight per scenario predicts better than one shared weight (8.3 ± 2.5 nats, $z$ = 3.4).
+- It predicts careers it was not fitted to: held out, the term gains 38.6 ± 5.0 nats, $z$ = 7.8; fitted on the earlier
+  half of the runs, it predicts the later half better (10.1 ± 3.6 nats, $z$ = 2.8).
+- A weight per scenario predicts better than one shared weight (13.2 ± 3.0 nats, $z$ = 4.5).
 - Split by scenario and specialty band, the 13 cells with 200 or more rows are jointly consistent with the
-  model (run-clustered $\chi^2$ = 7.4, p-value 0.88).
-- One shared weight stays between 0.16 and 0.28 on either half of the runs, on SR or SSR cards alone, and
-  without any one of the eight most-used cards.
+  model (run-clustered $\chi^2$ = 16.0, p-value 0.25).
+- It is not one card's, one rarity's or one period's: one scale $k$ on the adopted per-scenario weights ($k$ = 1 on
+  every row), refitted on either half of the runs, on SR or SSR cards alone, and without any one of the eight
+  most-used cards, stays between 0.65 and 1.12.
 - Cause or association: the same card at different limit breaks has different specialty priority but is otherwise
-  the same card. Across 50 such cards (a base per card and scenario) the weight is 0.41, the same size as
-  across cards, but the gain (1.5 nats) is not significant, so the data do not show the effect is caused by
-  specialty priority itself.
+  the same card. On most such cards hint frequency changes with limit break too, so their weight
+  (0.29 [−0.01, 0.71] over 64 cards, a base per card and scenario) also absorbs any misfit of the
+  hint-frequency term. On the 27 clean cards, whose hint frequency is the same at every limit break, it is
+  −0.06 [−0.44, 0.56] (+0.03 nats over no term): consistent with no effect and with every per-scenario
+  weight, so the data do not decide whether specialty priority itself causes the hints.
 
 *Hint frequency's slope.* The $1/100$ in $(1 + hf/100)$ is **assumed** (a card's +40% read as 40% more hints) and
-tested: on the adopted model a fitted slope ($hf/89$) is detectable in-sample but does not predict unseen careers
-better (1.1 ± 2.1 nats, $z$ = 0.5).
+tested: on the adopted model a fitted slope ($hf/90$) is detectable in-sample but does not predict unseen careers
+better (1.8 ± 2.0 nats, $z$ = 0.9). In the form study below, without the specialty term, a free divisor
+($c$ = 83) does predict unseen careers better (16.7 ± 2.6 nats, $z$ = 6.4). The adopted model keeps $1/100$: an
+assumption that, with the specialty term in, unseen careers do not reject.
 
 *The form.* Fixed on every card at any limit break, R cards included, without the specialty term
-(93,928 rows from 3,610 runs):
+(140,615 rows from 5,534 runs):
 
 | Question | Evidence |
 |---|---|
-| Rate form, LL on 93,928 rows | $1 + hf/25$ over options −61,672.2; $1 + hf/25$ over skills −60,105.9; constant −58,710.8; $\beta(1 + hf/100)$ −58,098.4; per-scenario $\beta(1 + hf/100)$ −57,642.8; free divisor ($c = 79$) −57,624.8. Held out, per-scenario $\beta(1 + hf/100)$ predicts unseen runs better than the constant (1067.3 ± 28.3, $z$ = 37.7) and the $hf/25$ forms (4027.6 ± 70.9, $z$ = 56.8; 2461.4 ± 52.6, $z$ = 46.8) |
-| Skills only, not skills + stat option | in 54 of 77 (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies |
-| Uniform draws with repeats | repeat rate $P(k \ge 2 \mid k \ge 1)$: 0.143 observed, 0.140 two-point count, 0.192 Poisson count; distinct skills 1/2/3/4 per card-run 0.152 / 0.555 / 0.253 / 0.038 observed, 0.126 / 0.554 / 0.274 / 0.044 model |
-| Covariates | per-scenario bases +456 nats (form study; held out 454.3 ± 19.0, $z$ = 23.9). On top of the adopted rate (61,856 rows): card type +0.8 nats (4 parameters), initial bond +0.0, pool size +1.8, none significant; rarity (SR against SSR) +5.3 and pals per deck +14.0 are detectable and each predicts unseen runs better (held out 4.7 ± 1.8, $z$ = 2.6; 13.8 ± 3.1, $z$ = 4.5): known misses, factors 0.954 for SR and 1.033 per pal |
-| Lv-5 cap | beats drawing with replacement by 20.2 nats with no parameter; obs / pred by draws to Lv 5, replacement vs cap: 5 draws (31,144 rows) 0.963 / 0.972, 3 (2,711) 0.955 / 0.962, 2 (32,818) 1.035 / 1.033, 1 (409) 1.223 / 0.970 |
-| Joint draws over targets | 176,927 pairs of no-spark pool skills on one card-run (Trackblazer left out): $P(\text{both})$ 0.0798 observed, 0.0794 joint, 0.1090 independent; $P(\text{neither})$ 0.4440 vs 0.4419 |
-| Pool size | obs / pred 0.92-1.15 for every $n$ with at least 150 rows |
-| Per-draw increment | 24,815 of 24,935 single-source levels are multiples of $\iota$, capped at 5 |
-| $hf$ by card level | floored linear interpolation −52,233.7, step −52,240.7, max-limit-break $hf$ for all −52,255.1 |
+| Rate form, LL on 140,615 rows | $1 + hf/25$ over options −92,742.3; $1 + hf/25$ over skills −90,327.3; constant −87,864.8; $\beta(1 + hf/100)$ −86,963.8; per-scenario $\beta(1 + hf/100)$ −86,406.6; free divisor ($c = 83$) −86,389.7. Held out, per-scenario $\beta(1 + hf/100)$ predicts unseen runs better than the constant (1457.8 ± 31.6, $z$ = 46.1) and the $hf/25$ forms (6334.1 ± 81.0, $z$ = 78.2; 3919.0 ± 60.8, $z$ = 64.5) |
+| Skills only, not skills + stat option | in 71 of 91 (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies |
+| Uniform draws with repeats | repeat rate $P(k \ge 2 \mid k \ge 1)$: 0.139 observed, 0.139 two-point count, 0.191 Poisson count; distinct skills 1/2/3/4 per card-run 0.142 / 0.575 / 0.250 / 0.032 observed, 0.120 / 0.566 / 0.273 / 0.039 model |
+| Covariates | per-scenario bases +557 nats (form study; held out 556.4 ± 20.8, $z$ = 26.7). On top of the adopted rate (87,801 rows): card type +2.8 nats (4 parameters), initial bond +0.3, pool size +0.6, none significant; rarity (SR against SSR) +3.1 and pals per deck +12.5 are detectable; pals per deck predicts unseen runs better (held out 12.2 ± 2.9, $z$ = 4.3; a known miss, factor 1.027 per pal), rarity does not (2.1 ± 1.4, $z$ = 1.5; factor 0.970 for SR) |
+| Per card | on the adopted rate with a level per scenario, the 58 cards with 200 or more rows (83,075 rows) read 0.80-1.17 of prediction, jointly far from it (run-clustered $\chi^2$ = 445 on 58, $p$ = 4e-61); a factor per card predicts unseen runs better (48.7 ± 6.0, $z$ = 8.1): a known miss, not modelled; which card properties explain it is open |
+| Lv-5 cap | beats drawing with replacement by 22.1 nats with no parameter; obs / pred by draws to Lv 5, replacement vs cap: 5 draws (44,737 rows) 0.967 / 0.975, 3 (3,011) 0.945 / 0.952, 2 (45,649) 1.032 / 1.031, 1 (465) 1.221 / 0.968 |
+| Joint draws over targets | 247,441 pairs of no-spark pool skills on one card-run (Trackblazer left out): $P(\text{both})$ 0.0792 observed, 0.0794 joint, 0.1094 independent; $P(\text{neither})$ 0.4411 vs 0.4380 |
+| Pool size | obs / pred 0.92-1.11 for every $n$ with at least 150 rows |
+| Per-draw increment | 37,333 of 37,456 single-source levels are multiples of $\iota$, capped at 5 |
+| $hf$ by card level | floored linear interpolation −78,362.7, step −78,371.3, max-limit-break $hf$ for all −78,396.3 |
 
 *Other sources of the same skill.* The fit uses rows where no inspiration hinted the skill. Where something else also
 hinted it, the card's own hint is seen this often (scored against the adopted rate on maximum-limit-break cards, R
@@ -757,20 +804,21 @@ cards out):
 
 | Other source of the skill | Rows | Observed | Predicted | Ratio |
 |---|---|---|---|---|
-| none | 54,415 | 0.342 | 0.338 | 1.01 |
-| inspiration | 6,194 | 0.265 | 0.352 | 0.75 |
-| inspiration + card event | 316 | 0.196 | 0.343 | 0.57 |
-| card event | 1,597 | 0.326 | 0.334 | 0.98 |
-| other card's training | 2,836 | 0.343 | 0.359 | 0.96 |
+| none | 77,728 | 0.341 | 0.336 | 1.01 |
+| inspiration | 8,883 | 0.262 | 0.354 | 0.74 |
+| inspiration + card event | 409 | 0.213 | 0.348 | 0.61 |
+| card event | 2,191 | 0.332 | 0.333 | 1.00 |
+| other card's training | 3,557 | 0.344 | 0.355 | 0.97 |
 
-A skill hinted by inspiration is hinted by training less than predicted (not modelled). It is not that such a skill
-leaves the card's pool: with two pool skills hinted by inspiration, the rest are hinted at 0.362, against
-0.332 if nothing leaves and 0.450 if they leave.
+With no other source the adopted rate slightly under-predicts (1.013 [1.007, 1.019]). A skill hinted by inspiration
+is hinted by training less than predicted (not modelled). It is not that such a skill
+leaves the card's pool: with two pool skills hinted by inspiration, the rest are hinted at 0.371, against
+0.338 if nothing leaves and 0.459 if they leave.
 
-*Prioritised skills.* 532 runs show a priority list; prioritised skills are hinted by training at 0.343 against
-0.318 predicted (470 rows): no effect, as the model assumes.
+*Prioritised skills.* 1201 runs show a priority list; prioritised skills are hinted by training at 0.336 against
+0.323 predicted (868 rows): no effect, as the model assumes.
 
-Against real careers (section 13), training-pool hints read 0.988 of the model.
+Against real careers (section 13), training-pool hints read 1.004 of the model.
 
 ## 8. Chain events
 
@@ -782,13 +830,16 @@ events a career gets and how they are shared among the deck's chain cards. This 
 ### Findings
 
 - **A career gets a random number of chain events, Binomial(21, 0.35)** (mean 7.35), the same for every deck and
-  scenario. No alternative predicts unseen runs better. The data do not single out the binomial family; what the
-  model uses is the distribution.
-- **Each event goes to a chain card in proportion to its remaining links.** This fits 66 nats better than equal shares
+  scenario (scenarios show no difference; two deck and trainee effects are known misses). No alternative predicts unseen runs better, but in-sample a free distribution rejects it, a known miss;
+  of the two-parameter under-dispersed families the binomial fits best. Binomial(21, 0.35) is kept by choice;
+  Binomial(18, 0.405) is the candidate the runs now favour in-sample.
+- **Each event goes to a chain card in proportion to its remaining links.** This fits 102 nats better than equal shares
   per card.
 - **Pal events do not use up chain events**: decks with more pals do not get fewer.
-- **Known misses, causes unknown**: in crowded decks early links run short and more chains never start than
-  predicted; final links fit pooled, but individual cards differ far beyond chance.
+- **Known misses**: decks with Sasami Anshinzawa [This Might Sting!]'s pal card reach more chain events and Inari
+  One's careers fewer, which the model's single $N$ does not have; and, causes unknown, in crowded decks early links
+  run short and more chains never start than predicted; final links fit pooled, but individual cards differ far beyond
+  chance.
 
 ### Terms
 
@@ -828,81 +879,91 @@ agrees to 2e-15 on every reference loop (section 6).
 
 ### Evidence
 
-*How is a chain's progress read?* From marker skills, on 3,424 runs (the pal-count table below). A link is observable
+*How is a chain's progress read?* From marker skills, on 5,316 runs (the pal-count table below). A link is observable
 only if every choice and outcome of its event carries a skill appearing in no other event of that card. A credit
 naming two sources ("A or B event") counts as unknown when B is another deck card whose events can give the marker, and
 so does a marker listed only under inspiration. $N$'s distribution is the one that best explains progress over all
 decks.
 
-The fit allows a fired link's marker to go unseen with chance 0.03 (**assumed**, a measurement allowance). Without it,
+The fit allows a fired link's marker to go unseen with chance 0.02 (a measurement allowance, set to the measured rate). Without it,
 a run in which a card's later link shows while an earlier one does not has likelihood 0. Since links fire in order,
-those runs measure the rate: of 1,149 earlier links implied fired by a later one, 24 show no marker, 0.021
-[0.012, 0.030]. The cause is not known. The fit does not depend on it: with allowances from 0.01 to 0.045, or
-with none on the 3,402 runs that show no such case, the best $p$ at $n = 21$ is 0.34-0.35.
+those runs measure the rate: of 1,800 earlier links implied fired by a later one, 38 show no marker, 0.021
+[0.014, 0.028]. The cause is not known. The fit does not depend on it: with allowances from 0.01 to 0.045, or
+with none on the 5,280 runs that show no such case, the best $p$ at $n = 21$ is 0.34-0.35.
 
 *Which distribution for $N$?* In-sample, against the free distribution:
 
 | Form for $N$ | Result |
 |---|---|
-| free distribution | mean 7.28, variance 4.47 |
-| Binomial(21, 0.35) | 11.4 nats behind the free distribution with 14 fewer parameters (not rejected, p-value 0.06) |
-| Binomial($n$, $p$), both fitted | best at $n$ = 18, $p$ = 0.406: 8.0 nats behind (p-value 0.31); $n$ is only known to lie in 16-20 |
-| Conway-Maxwell-Poisson | 10.1 nats behind (p-value 0.12) |
-| Binomial(15, 0.48) | 15.9 nats behind |
-| Poisson(7.1) | 87.8 nats behind (variance = mean, too wide; rejected) |
-| per scenario | means Unity Cup 7.57, Grand Concert 7.21, URA Finale 7.06, Trackblazer 7.03; +27.7 nats for 48 extra parameters (not significant) |
+| free distribution | mean 7.22, variance 4.44 |
+| Binomial(21, 0.35) | 21.9 nats behind the free distribution with 14 fewer parameters (rejected, p-value 6.5e-05) |
+| Binomial($n$, $p$), both fitted | best at $n$ = 17, $p$ = 0.426: 12.1 nats behind (p-value 0.042); $n$ is only known to lie in 16-19 |
+| Conway-Maxwell-Poisson | 16.9 nats behind (p-value 0.002) |
+| Binomial(15, 0.48) | 19.4 nats behind |
+| Poisson(7.1) | 136.1 nats behind (variance = mean, too wide; rejected) |
+| per scenario | means Unity Cup 7.60, Grand Concert 7.14, URA Finale 7.02, Trackblazer 6.99; +29.6 nats for 48 extra parameters (not significant) |
 
-Why a binomial: the free fit's variance is 0.61 of its mean, so $N$ is under-dispersed, which rules out the
+Why a binomial: the free fit's variance is 0.62 of its mean, so $N$ is under-dispersed, which rules out the
 Poisson and every over-dispersed count. A binomial (a fixed number of chances, each taken with the same probability)
-is the simplest under-dispersed count, but the data do not single it out: the Conway-Maxwell-Poisson fits about as
-well. What the model uses is the distribution of $N$, not the family behind it.
+is the simplest under-dispersed count, and it fits better than the Conway-Maxwell-Poisson, the other two-parameter
+family that can be under-dispersed (by 4.7 nats, same parameter count). What the model uses is the distribution of
+$N$.
 
-How $n$ and $p$ are read: fitting both $n$ and $p$, the runs fix the mean (7.30 at the best $n$) and, more
+How $n$ and $p$ are read: fitting both $n$ and $p$, the runs fix the mean (7.25 at the best $n$) and, more
 loosely, the spread, so $n$ and $p$ trade off along a ridge. Re-fitting $p$ at each $n$, every $n$ from
-16 to 20 lies within 1.92 nats of the best (the 95% interval), so the best single pair is not itself a finding. The
-adopted $n = 21$ lies just outside that interval in-sample (2.95 nats below the best $n$; variance
-$21 \cdot 0.35 \cdot 0.65 = 4.78$ against 4.47 free).
+16 to 19 lies within 1.92 nats of the best (the 95% interval), so the best single pair is not itself a finding. The
+adopted $n = 21$ lies just outside that interval in-sample (6.41 nats below the best $n$; variance
+$21 \cdot 0.35 \cdot 0.65 = 4.78$ against 4.44 free).
 
 *Does that in-sample preference survive held out?* No. Each of five groups of runs is scored by every form fitted on
 the other four, and each form is compared run by run with Binomial(21, 0.35):
 
 | Form, fitted on the other four groups | Held-out nats over (21, 0.35) ± SE | $z$ |
 |---|---|---|
-| free distribution | −1.3 ± 5.0 | −0.25 |
-| binomial, $n$ and $p$ by likelihood | +0.0 ± 2.8 | +0.01 |
-| binomial by moments | −1.4 ± 2.2 | −0.62 |
-| Conway-Maxwell-Poisson | −2.2 ± 3.3 | −0.66 |
-| Poisson | −69.6 ± 9.0 | −7.73 |
+| free distribution | +12.6 ± 6.6 | +1.90 |
+| binomial, $n$ and $p$ by likelihood | +6.4 ± 4.8 | +1.34 |
+| binomial by moments | +4.7 ± 4.0 | +1.17 |
+| Conway-Maxwell-Poisson | +2.0 ± 4.9 | +0.41 |
+| Poisson | −108.8 ± 11.6 | −9.37 |
 
 No form predicts unseen runs better than (21, 0.35) ($z$ above 1.96 would), and the Poisson predicts them worse. The
-in-sample preference for another $n$ does not carry over to unseen runs, so there is no reason to change it.
+model keeps (21, 0.35), a decision rather than a fit: in-sample it is rejected, and the candidate Binomial(18, 0.405)
+(mean 7.29, variance 4.34, inside the profile interval) fits the runs 8.8 nats better, while a binomial refitted
+by likelihood on each four groups gains 6.4 ± 4.8 nats held out ($z$ = 1.34), short of significance.
 
-*Do pals change $N$?* No. Fitted per pal count, the means are 7.58 / 7.12 / 7.41 / 8.40 for
-1 / 2 / 3 / 4 pals (2,918 runs): more pals do not lower $N$, so pal events do not consume chain events. (Per
+*Does $N$ depend on the deck or trainee?* For two, yes. Decks with Sasami Anshinzawa [This Might Sting!]'s pal card
+(639 runs) reach a mean of 7.74 chain events against 7.17 on the other runs ($p$ at $n = 21$ 0.374
+against 0.342, likelihood-ratio $p$ = 3e-07); Inari One's careers (473) reach 6.83 against 7.26
+($p$ 0.326 against 0.347, likelihood-ratio $p$ = 0.001). The model has one $N$ for every deck and
+trainee, so it under-predicts the first and over-predicts the second (known misses). On the runs with neither,
+Binomial(21, 0.35) is still rejected against a free distribution ($p$ = 0.002).
+
+*Do pals change $N$?* No. Fitted per pal count, the means are 7.36 / 7.05 / 7.41 / 8.40 for
+1 / 2 / 3 / 4 pals (4,791 runs): more pals do not lower $N$, so pal events do not consume chain events. (Per
 scenario, see the table above.)
 
-*Are final links reached as often as predicted?* Yes, except at 2 pals: the binomial lies inside every observed
-interval but that one, where it predicts more completions than seen.
+*Are final links reached as often as predicted?* Not everywhere: the binomial lies inside the observed 95% interval
+at 3, 1 and 0 pals, above it at 5 and 2 pals and below it at 4 pals.
 
-| Pals | Chain cards | Runs | Final link reached: observed / Binomial(21, 0.35) / Poisson(7.1) |
+| Pals | Chain cards | Runs | Final link reached: observed [95%] / Binomial(21, 0.35) / Poisson(7.1) |
 |---|---|---|---|
-| 5 | 1 | 120 | 0.98 / 0.98 / 0.96 |
-| 4 | 2 | 357 | 0.88 / 0.85 / 0.79 |
-| 3 | 3 | 872 | 0.60 / 0.59 / 0.54 |
-| 2 | 4 | 903 | 0.32 / 0.35 / 0.33 |
-| 1 | 5 | 786 | 0.24 / 0.23 / 0.22 |
-| 0 | 6 | 386 | 0.15 / 0.16 / 0.16 |
+| 5 | 1 | 127 | 0.952 [0.899, 0.978] / 0.979 / 0.961 |
+| 4 | 2 | 552 | 0.892 [0.869, 0.915] / 0.860 / 0.794 |
+| 3 | 3 | 1,426 | 0.583 [0.565, 0.602] / 0.566 / 0.514 |
+| 2 | 4 | 1,399 | 0.318 [0.304, 0.332] / 0.342 / 0.326 |
+| 1 | 5 | 1,414 | 0.224 [0.213, 0.234] / 0.225 / 0.221 |
+| 0 | 6 | 398 | 0.146 [0.130, 0.163] / 0.158 / 0.159 |
 
 *Spread over slots, or over cards?* Over slots. The alternative gives each running card's next event the same chance
-(uniform over cards). On 3,424 runs:
+(uniform over cards). On 5,316 runs:
 
 | | Uniform over remaining slots (adopted) | Uniform over cards |
 |---|---|---|
-| Total LL | −7,318.4 | −7,384.9 |
-| Final links, 2 pals (observed 0.32) | 0.35 | 0.41 |
+| Total LL | −11,046.4 | −11,148.4 |
+| Final links, 2 pals (observed 0.32) | 0.34 | 0.41 |
 | Final links, 0 pals (observed 0.15) | 0.16 | 0.23 |
 
-The slot rule fits better by 66.4 nats. With no pals it lies inside the observed interval and the card rule
+The slot rule fits better by 101.9 nats. With no pals it lies inside the observed interval and the card rule
 outside; with two pals both predict more final links than seen, the card rule further. What each rule implies with
 Binomial(21, 0.35), as P(reach link 1 / 2 / 3):
 
@@ -914,10 +975,10 @@ Binomial(21, 0.35), as P(reach link 1 / 2 / 3):
 | four 3-link SSRs | 0.93 / 0.65 / 0.25 | 0.88 / 0.62 / 0.33 |
 
 For example, with two 3-link cards and exactly 3 events, the slot rule gives one card all three with chance
-$\tfrac36 \cdot \tfrac25 \cdot \tfrac14 = 5\%$, the card rule $(\tfrac12)^3 = 12.5\%$.
+$\tfrac36 \cdot \tfrac25 \cdot \tfrac14$ = 5.0%, the card rule $(\tfrac12)^3$ = 12.5%.
 
 *Do two-chain decks finish as predicted?* Yes. Decks with two 3-link SSRs and four pals finish both chains in
-163 of 196 runs, 0.83 [0.77, 0.88], against 0.80 predicted.
+217 of 259 runs, 0.84 [0.79, 0.88], against 0.80 predicted.
 
 *Known miss: early links in crowded decks run short.* The shortfall is the share of early links the model expects to
 fire minus the share seen, ± its run-clustered standard error; $z = \sum(\text{pred} - \text{obs}) /
@@ -925,17 +986,17 @@ fire minus the share seen, ± its run-clustered standard error; $z = \sum(\text{
 
 | Pals | 4 | 3 | 2 | 1 | 0 |
 |---|---|---|---|---|---|
-| Early-link shortfall | 0.01 ± 0.02 | 0.04 ± 0.01 | 0.07 ± 0.02 | 0.05 ± 0.02 | 0.14 ± 0.02 |
-| $z$ | 0.8 | 3.4 | 4.7 | 2.9 | 5.6 |
+| Early-link shortfall | 0.02 ± 0.01 | 0.04 ± 0.01 | 0.08 ± 0.01 | 0.05 ± 0.01 | 0.14 ± 0.02 |
+| $z$ | 1.3 | 4.7 | 6.5 | 3.7 | 5.8 |
 
-*Known miss: individual cards' final links.* Pooled, final links fit (0.352 observed against 0.357). Card by
-card they do not: over the 42 cards with 60 or more final-link observations, a joint test that every card
-matches the model (clustered by run, since one run's chain cards share its $N$) gives $\chi^2$ = 229 on
-42 degrees of freedom, where chance alone gives about 42. The cause is not known.
+*Known miss: individual cards' final links.* Pooled, final links fit (0.348 observed against 0.353). Card by
+card they do not: over the 50 cards with 60 or more final-link observations, a joint test that every card
+matches the model (clustered by run, since one run's chain cards share its $N$) gives $\chi^2$ = 386 on
+50 degrees of freedom, where chance alone gives about 50. The cause is not known.
 
 *Known miss: chains that never start.* More chains never start in crowded decks than predicted:
-0.20 against 0.13 with five chain cards, 0.34 against 0.20 with six. A per-card activation parameter (a chain
-card active with probability $a$), fitted jointly with $N$, gains 1.1 nats ($a = 0.97$): rejected.
+0.19 against 0.13 with five chain cards, 0.34 against 0.20 with six. A per-card activation parameter (a chain
+card active with probability $a$), fitted jointly with $N$, gains −3.0 nats ($a = 0.97$): rejected.
 
 ## 9. Event choices and outcomes
 
@@ -947,8 +1008,11 @@ choice IT takes and measures the outcome shares that are not equal.
 ### Findings
 
 - **The model assumes IT takes an event's top choice unless a prioritised skill sits on another**, and that the
-  player prioritises every target. In the two events where priority lists show the choice taken, IT follows the rule, and its consequence
-  shows on real careers: event-only hints of prioritised targets land at 1.01 of the model, of non-prioritised ones at 0.71.
+  player prioritises every target. In the two events where priority lists show the choice taken, IT follows the rule.
+  Its consequence shows on real careers: event-only hints of targets not prioritised, or outranked (below), fall
+  clearly below those of prioritised ones (*prioritised* in Terms) (0.653 [0.613, 0.694] of the model against 0.970).
+- **Known miss**: event-only hints of prioritised targets read just below the model, 0.970
+  [0.940, 0.9997].
 - **Outcomes are equally likely unless measured.** Five measured outcomes depart from equal shares, and the model
   uses measured values for them, for example Nakayama Festa's Nothing Ventured at 0.61.
 - **Some other outcomes are off the equal rule but left at it**: known misses.
@@ -959,7 +1023,10 @@ choice IT takes and measures the outcome shares that are not equal.
 
 - *Choice*: an option of an event. *Top* and *bottom choice*: the first and the last.
 - *Outcome*: what a choice gives. *Firing*: one occurrence of an event in a run.
-- *Prioritised*: on the run's priority list.
+- *Prioritised*: on the run's priority list, and not outranked: a listed target counts as not prioritised when a
+  higher-ranked prioritised skill sits on a rival choice of every event offering it, since between two prioritised
+  skills on rival choices IT is taken to choose the higher-ranked one (15 event-only rows; which way the rank
+  runs is assumed, not tested).
 - *Credited*: the run record names an event as the source of a hint.
 - *Share*: the fraction of firings with a given outcome. *Equal rule*: each of a choice's outcomes equally likely.
 - *Reading*: a firing whose outcome could show.
@@ -989,7 +1056,7 @@ the skill's level from other sources below 5.
 | Riko Kashimoto [Planned Perfection] "Unexpected Side", Ramp Up (top choice taken) | 527/585 = 0.90 [0.88, 0.92] | 0.75 |
 | Seiun Sky [Foolproof Plan] link 3, Fast-Paced | 33/40 = 0.82 [0.71, 0.90] | 0.75 |
 | Smart Falcon [My Umadol Way! ☆] link 3, Center Stage | 37/51 = 0.73 [0.61, 0.81] | 0.75 |
-| Nakayama Festa [Trusting the Dice] link 3 "Upping the Ante", Nothing Ventured (603 runs with the card, below) | 138/228 = 0.61 [0.55, 0.66] | 0.60 |
+| Nakayama Festa [Trusting the Dice] link 3 "Upping the Ante", Nothing Ventured (671 runs with the card, below) | 151/247 = 0.61 [0.56, 0.66] | 0.60 |
 
 The other outcomes: Riko Kashimoto's alternative is Maverick ○, Seiun Sky's Escape Artist, Smart Falcon's Prudent
 Positioning.
@@ -1000,9 +1067,11 @@ Positioning.
 Risky Business prioritised IT took choice 2 in about 95% of runs (3 of the 4 exceptions had Risky
 Business already at hint Lv 5); with neither skill prioritised, 0 of 35 runs took choice 2. At Riko Kashimoto
 [Planned Perfection]'s event, with Lone Wolf prioritised IT took the bottom choice in 55 of 62 runs. Every run
-has a priority list, but the run records show it for only 532 of 3,610 (the rest count as unknown, never as an
+has a priority list, but the run records show it for only 1201 of 5,534 (the rest count as unknown, never as an
 empty list). So the rule is tested mainly through its consequences (section 13): event-only hints read
-1.01 of the model for prioritised targets and 0.71 for non-prioritised ones.
+0.970 [0.940, 0.9997] of the model for prioritised targets and 0.653 for the others. The
+prioritised rows read just below the model, a known miss; the model's assumption that every target is prioritised
+over-predicts the rest by far more.
 
 *How is Sasami Anshinzawa's finale read?* On runs without Nakayama Festa [Trusting the Dice], whose "Upping the Ante"
 also gives Nothing Ventured +1/+3 and is credited jointly with it. Hint levels identify the choice: her Nothing
@@ -1021,14 +1090,14 @@ way.
 Ramp Up hint in 521 of 689 runs, 0.756 [0.728, 0.782], whichever choice IT took. IT took the top choice in
 579 of 725 firings (0.80) and the bottom choice, Lone Wolf, in 146.
 
-*How is Nakayama Festa's share read?* On every run with her card (603). Her event is credited to her alone with
-Nothing Ventured in 138 runs and with Risky Business in 68. In 40 more, Risky Business is credited to "her or
-another card's event". The other card is the only one credited with it in 0.895 of runs without her (Team Sirius, 30 of
-the 40) or 0.390 (Sasami Anshinzawa), and she gives it in 0.119 of hers. So a shared credit is hers with
-chance $r_F / (1 - (1 - r_F)(1 - r_o))$, where $r_F$ is her rate and $r_o$ the other card's: 6.5 of the 40.
-In 39 runs neither outcome shows while Risky Business is already at hint Lv 5 (a Risky Business win cannot
+*How is Nakayama Festa's share read?* On every run with her card (671). Her event is credited to her alone with
+Nothing Ventured in 151 runs and with Risky Business in 71. In 58 more, Risky Business is credited to "her or
+another card's event". The other card is the only one credited with it in 0.848 of runs without her (Team Sirius, 48 of
+the 58) or 0.445 (Sasami Anshinzawa), and she gives it in 0.111 of hers. So a shared credit is hers with
+chance $r_F / (1 - (1 - r_F)(1 - r_o))$, where $r_F$ is her rate and $r_o$ the other card's: 8.3 of the 58.
+In 43 runs neither outcome shows while Risky Business is already at hint Lv 5 (a Risky Business win cannot
 show, or the event never fired); they are split by the rate at which the event shows where both outcomes can,
-0.39. The share is then 138/228 = 0.61 [0.55, 0.66]. It stays within 0.523-0.625 whatever share of the
+0.38. The share is then 151/247 = 0.61 [0.56, 0.66]. It stays within 0.504-0.635 whatever share of the
 shared credits is hers, and shows no dependence on the trainee's final Wit.
 
 *Which shares are left at the equal rule?* Off 0.5 but left at the equal rule (known misses): Tazuna Hayakawa SSR
@@ -1039,7 +1108,7 @@ Waltz] 0.57, Daitaku Helios [Sunlit Angel ♪] Tail Held High 0.47 (link 2, on r
 
 *Are pal and group events certain?* Their events are entered per card with a probability, finales certain; first-year
 date events are left out in IT (**assumed**). The finales check out: Light Hello [From the Ground Up] credits See Ya
-Later! to her event in 972 of 972 runs carrying her, and Team Sirius is credited with Risky Business (alone or shared) in 64 of 64.
+Later! to her event in 1679 of 1679 runs carrying her, and Team Sirius is credited with Risky Business (alone or shared) in 65 of 65.
 
 ## 10. Random card events (not modelled)
 
@@ -1052,9 +1121,11 @@ what leaving it out costs on real careers.
 
 - **A deck character's shared random event fires in about 0.14 of the careers it can fire in**, a lower bound. The
   rate falls a little as more such events are on offer, but a constant rate predicts unseen runs as well.
-- **Leaving them out under-predicts the targets they can hint**: acquisition there reads 1.26 [1.11, 1.41] of the
-  model. Credited at the fitted rate, it reads 1.00.
-- **Crediting them is not shown to predict unseen careers better** ($z$ = 1.72, short of 1.96).
+- **Leaving them out under-predicts the targets they can hint**: acquisition there reads 1.25 [1.12, 1.38] of the
+  model. Credited at the fitted rate, it reads 1.01.
+- **Crediting them is not shown to predict unseen careers better** ($z$ = 1.80, short of 1.96).
+- **The card's initial friendship gauge raises the rate** (a known miss of the measured rate; friendship bonus and
+  specialty priority show no effect).
 - **Two default targets are affected**: Vodka's Nimble Navigator and Nice Nature's Ramp Up, the only ones that are a
   character's top-choice marker.
 
@@ -1065,7 +1136,8 @@ what leaving it out costs on real careers.
 - $K$: the number of random events on offer: every shared event of the deck's characters plus the trainee's own.
 - *Top-choice marker*: a marker skill on an event's top choice. *Bottom-choice skill*: a skill on its bottom choice.
 - *Reading*: one shared event in one run, read through its top-choice marker. A *clean hit*: the marker credited to
-  that character's event. An *ambiguous credit*: a credit naming two cards' events.
+  that character's event. An *ambiguous credit*: a credit naming two cards' events; when the other card's events can
+  also give the marker, the reading is unknown and left out (section 8's rule).
 - *Slot form*: a form in which every event slot competes. $T = K + w \cdot \text{pals}$ counts them, $w$ being what a
   pal weighs in random events.
 
@@ -1074,17 +1146,18 @@ what leaving it out costs on real careers.
 The model leaves these events out. The fitted rate (**fitted**) is about 0.14 per event
 per career. It falls a little with $K$:
 
-$$P(\text{fires}) = 0.18\,(1 - 0.036)^{K - 4},$$
+$$P(\text{fires}) = 0.18\,(1 - 0.034)^{K - 4},$$
 
-which gives 0.18 at $K = 4$ and 0.13 at $K = 14$. The slope is detectable (run-clustered Wald test, $|z|$ =
-2.90) but does not predict unseen runs better than the constant rate.
+which gives 0.18 at $K = 4$ and 0.12 at $K = 14$. The slope is detectable (run-clustered Wald test, $|z|$ =
+2.91) but does not predict unseen runs better than the constant rate.
 
 ### Evidence
 
-*How is the rate read?* From top-choice marker skills credited to the character's event: 5,596 readings from
-2,884 runs, 786 clean hits. The 102 ambiguous credits count as misses; as hits, they would raise the rate by about
-2 points. A reading also misses a firing when the marker was already at hint Lv 5 from other sources
-(106 readings): where the event could show, the rate is 0.143, or 0.162 counting the ambiguous credits as hits.
+*How is the rate read?* From top-choice marker skills credited to the character's event: 8,169 readings from
+4,232 runs, 1,128 clean hits. Each of the 222 ambiguous credits names another deck card whose events
+can give the marker, so, as in section 8, they are left out as unknown; counted as hits, they would raise the rate by
+about 2 points. A reading also misses a firing when the marker was already at hint Lv 5 from other sources
+(153 readings): where the event could show, the rate is 0.141, or 0.164 counting the ambiguous credits as hits.
 A firing is missed too when IT takes another choice for a prioritised skill (bottom-choice rates below). The rate is
 therefore a lower bound.
 
@@ -1092,41 +1165,44 @@ therefore a lower bound.
 
 | Form | LL (in-sample) | Held out, against the line above it |
 |---|---|---|
-| constant 0.140 | −2,270.8 | |
-| $0.18(1 - 0.036)^{K-4}$ | −2,266.9 | +0.9 ± 2.9 nats ($z$ = +0.31) |
-| power law $c(K/8)^{-a}$, $a = 0.34$ (uniform competition would be $a = 1$) | −2,266.8 | +0.1 ± 0.5 against the $K$ form ($z$ = +0.11) |
-| strict competition $1 - (1 - 1/K)^S$, $S = 1.49$ | −2,283.4 | −13.3 ± 5.8 against the $K$ form ($z$ = −2.30) |
-| slot form, $c / T$ (chain links weigh 0), $c = 1.77$ | −2,266.8 | −0.1 ± 0.2 against the $K$ form ($z$ = −0.57) |
+| constant 0.138 | −3,279.6 | |
+| $0.18(1 - 0.034)^{K-4}$ | −3,275.6 | +1.8 ± 2.9 nats ($z$ = +0.63) |
+| power law $c(K/8)^{-a}$, $a = 0.32$ (uniform competition would be $a = 1$) | −3,275.5 | +0.1 ± 0.5 against the $K$ form ($z$ = +0.28) |
+| strict competition $1 - (1 - 1/K)^S$, $S = 1.47$ | −3,295.8 | −18.0 ± 6.4 against the $K$ form ($z$ = −2.82) |
+| slot form, $c / T$ (chain links weigh 0), $c = 1.75$ | −3,275.5 | −4.0 ± 2.2 against the $K$ form ($z$ = −1.80) |
 
 Held out (five groups of runs, each scored by the form fitted on the other four), no form predicts unseen runs better
 than the constant rate, and strict competition predicts them worse. Within the slot form, chain links take no weight
-(weight 1 is rejected, run-clustered score test) and pals compete: a pal weighs $w$ = 1.09 [0.57, 1.62] random
+(weight 1 is rejected, run-clustered score test) and pals compete: a pal weighs $w$ = 1.15 [0.65, 1.65] random
 events (run-clustered interval), with 0 excluded.
 
-*What else moves the rate?* Little. The observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14 is 0.17 / 0.19 / 0.17 / 0.13 / 0.14 / 0.13, and
-within a run events fire independently. A logistic slope in $K$ gives 15.7% at 8 on offer and 12.6% at 14.
-Friendship and specialty priority show no effect (run-clustered Wald tests), nor does rarity within a character
-(pooled, SSR markers fire at 15.3% against SR 11.2%).
-Scenario is borderline detectable in-sample (p-value 0.048), but a rate per scenario does not predict unseen
-runs better ($z$ = 0.30).
+*What else moves the rate?* Little. The observed hit rate by $K$ = 4 / 6 / 8 / 10 / 12 / 14 is 0.17 / 0.18 / 0.16 / 0.14 / 0.13 / 0.13, and
+within a run events fire independently. A logistic slope in $K$ gives 15.3% at 8 on offer and 12.4% at 14.
+Of the card effects, fitted together next to $K$, only the initial friendship gauge is detectable, and it raises the
+rate: +0.102 [+0.041, +0.164] on the logit scale per 10 points (Holm-adjusted run-clustered $p$ = 0.0034; on
+cards at LB4 alone, +0.101). Friendship bonus (−0.050, $p$ = 0.60) and specialty priority
+(+0.016, $p$ = 0.60) show none. The model leaves these events out, so this changes no prediction; it
+is a known miss of the measured rate. Rarity within a character shows no
+effect (pooled, SSR markers fire at 14.6% against SR 11.6%). Scenario is not detectable (run-clustered $p$ =
+0.19), and a rate per scenario does not predict unseen runs better ($z$ = −0.75).
 
-*Are bottom-choice skills credited?* Rarely. In the 532 runs showing a priority list, 22 of 925
-candidates were prioritised. Without a priority they were credited in 0.035 [0.023, 0.048] of candidates, against
-0.140 for top-choice markers; with a priority, 3 of 22.
+*Are bottom-choice skills credited?* Rarely. In the 1201 runs showing a priority list, 33 of 2247
+candidates were prioritised. Without a priority they were credited in 0.076 [0.065, 0.088] of candidates, against
+0.138 for top-choice markers; with a priority, 4 of 33.
 
 *What does leaving them out cost on real careers?* Section 13's rows, each on the run's own deck. This test scores
 whether the target was acquired from any source, so it does not depend on reading the event. Of the default targets
 only two are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nature's Ramp Up).
 
-- On the 286 run-target rows where a deck card's random event could hint the target, it was credited to that
-  event 32 times, 21 with no other source. The model gives 72 of these rows no chance, and the
+- On the 305 run-target rows where a deck card's random event could hint the target, it was credited to that
+  event 35 times, 22 with no other source. The model gives 73 of these rows no chance, and the
   event hinted the target on 6 of them.
-- Left out, acquisition there reads 1.26 [1.11, 1.41] of the model, an under-prediction. Credited at the
-  fitted rate (about 0.14 there), it reads 1.00 [0.88, 1.11].
-- Held out (the rate fitted on the other four groups' readings), crediting gains 4.8 ± 2.8 nats on
-  these rows ($z$ = 1.72): positive, but short of the 1.96 that would show it predicts unseen careers better.
-- Crediting raises an affected run's odds over the targets it can land by a median 16% (at most
-  159%; 214 runs).
+- Left out, acquisition there reads 1.25 [1.12, 1.38] of the model, an under-prediction. Credited at the
+  fitted rate (about 0.14 there), it reads 1.01 [0.90, 1.11].
+- Held out (the rate fitted on the other four groups' readings), crediting gains 5.0 ± 2.8 nats on
+  these rows ($z$ = 1.80): positive, but short of the 1.96 that would show it predicts unseen careers better.
+- Crediting raises an affected run's odds over the targets it can land by a median 13% (at most
+  156%; 232 runs).
 - The trainee's own random event can be told apart only for Nice Nature: 0 of 6 rows.
 
 The model leaves these events out; the data say it under-predicts the two affected targets on decks with those
@@ -1143,7 +1219,7 @@ leaving them out costs.
 
 - **168 secret and race-result events give hints**, for 81 umas. 11 touch the default targets, none with a gold.
 - **Where only such an event can give a target, leaving them out shows no significant cost**: acquisition reads
-  1.20 [0.75, 1.64] of the model, and crediting the measured rates gains only 0.2 nats.
+  1.10 [0.81, 1.40] of the model, and crediting the measured rates gains only 0.5 nats.
 - **The exception is Vodka's Nimble Navigator**: her own events give it in 25 of 27 runs, and the model
   under-predicts it.
 - **Tokai Teio's Head-On is modelled as always acquired**, like Yamanin Zephyr's Slipstream.
@@ -1160,13 +1236,13 @@ leaving them out costs.
 targets (Nimble Navigator, Ramp Up, Tail Held High), 0 of them giving a gold.
 
 *What does leaving them out cost?* On the conditional-only rows, her event gave the target on
-4 of 56 rows, 0.071 [0.028, 0.170]: Daiwa Scarlet, any outfit, 0 of 52 (Nimble
+5 of 89 rows, 0.056 [0.024, 0.125]: Daiwa Scarlet, any outfit, 0 of 84 (Nimble
 Navigator); Mejiro Ardan, any outfit, 4 of 4 (Ramp Up). Left out, acquisition there reads
-1.20 [0.75, 1.64] of the model, and crediting the measured rates gains only 0.2 nats.
+1.10 [0.81, 1.40] of the model, and crediting the measured rates gains only 0.5 nats.
 
 *And Vodka?* Vodka, any outfit, gets Nimble Navigator from her own events in 25 of 27 runs
 [0.77, 0.98]; her random and conditional events both give it and cannot be told apart. With her rows, the model
-left as it is reads 1.45 [1.20, 1.71], and crediting gains 15.9 nats. Not modelled, so the model
+left as it is reads 1.33 [1.12, 1.54], and crediting gains 16.2 nats. Not modelled, so the model
 under-predicts Vodka's Nimble Navigator.
 
 *Why is Tokai Teio's Head-On certain?* All three of its races are her career goals. The goals ask only for top 5, top
@@ -1227,15 +1303,22 @@ This section rebuilds real careers as the model sees them and compares what the 
 
 ### Findings
 
-- **The model's acquisition odds are calibrated**: observed / predicted 0.994 [0.98, 1.00].
-- **Inheritance is calibrated.** Of the eight targets, only Tail Held High's interval excludes 1 (0.946 [0.90, 0.99]).
-- **Deck hints read optimistic** (0.937 of the model), almost all from the priority assumption: event hints land at
-  1.01 × predicted for prioritised targets and 0.71 for others. Unmodelled scenario and trainee events supply the
-  few points the deck loses.
-- **Trackblazer's training-hint base over-predicts** these runs (0.777 of the model); the other scenarios' intervals cover 1.
-- **Landing all eight targets reads 0.86 of the model**: consistent with calibrated, though only 132 runs acquired
-  every open target and the interval allows up to about 1.4× optimism.
-- **Beyond the eight targets**, inheritance holds, and training-pool hints are under-predicted (1.064 of the model).
+- **The model's acquisition odds are calibrated where its priority assumption holds**: observed / predicted
+  0.999 [0.991, 1.006] on the rows whose target is prioritised or whose run shows no priority list. On
+  all rows they read 0.988 [0.981, 0.994]; 92% of the shortfall is on rows the run's list shows not prioritised
+  (0.912 [0.893, 0.930]), where the model's assumption does not hold.
+- **Inheritance is calibrated apart from one target**: without Tail Held High, 0.992 [0.982, 1.003].
+  Tail Held High, the only target of eight whose interval excludes 1, is a known miss (0.953 [0.918, 0.988];
+  section 3).
+- **Deck hints read optimistic** (0.929 of the model), almost all from the priority assumption: event hints land at
+  0.65 of the model for targets not prioritised. Prioritised targets' event hints read just below it,
+  0.970 [0.940, 0.9997], a known miss. Unmodelled scenario and trainee events supply the few
+  points the deck loses.
+- **Trackblazer's training-hint base over-predicts** these runs (0.779 of the model); the other scenarios' intervals cover 1.
+- **Landing all eight targets reads 0.93 of the model**: consistent with calibrated, though only 220 runs acquired
+  every open target and the interval allows up to about 1.2× optimism.
+- **Beyond the eight targets**, inheritance reads slightly short of the model (0.986 [0.973, 0.999], spread
+  over many skills: a known miss), and training-pool hints are under-predicted (1.065 of the model).
 
 ### Terms
 
@@ -1250,12 +1333,12 @@ This section rebuilds real careers as the model sees them and compares what the 
 
 ### What is compared
 
-Each of 3,348 real careers (URA Finale 645, Unity Cup 853, Grand Concert 1,768,
-Trackblazer 82) is rebuilt as the model sees a career: the trainee in her outfit, the scenario, the six cards at
+Each of 5,198 real careers (URA Finale 754, Unity Cup 1,148, Grand Concert 3,213,
+Trackblazer 83) is rebuilt as the model sees a career: the trainee in her outfit, the scenario, the six cards at
 their own limit breaks, both parents with their recorded parents and every ancestor's white sparks, and race wins
 giving the recorded shared-G1 counts. The model then gives, for each default target of that career, the chance of
-each step (sections 3-12), and the run record says what actually happened. There are 26,784 rows. Certain rows
-(1,159 on her outfit, 1,706 scenario golds) could only count as successes, so they are left out of tests 1 and 3.
+each step (sections 3-12), and the run record says what actually happened. There are 41,584 rows. Certain rows
+(2,001 on her outfit, 2,296 scenario golds) could only count as successes, so they are left out of tests 1 and 3.
 
 Each test reports observed / predicted over a set of rows: 1 means calibrated, above 1 the model is pessimistic, below
 1 optimistic. Intervals are 95%, clustered by run, since a run's eight targets share its deck and lineage (*How to
@@ -1268,12 +1351,13 @@ The four tests, each isolating one part of the model:
    card credited with a hint of the skill. Only rows where no inspiration hinted the skill are used: the hint rates are
    fitted on such rows, and with an inspiration a card's hint is seen less often (section 7). The rows are split by
    where the deck's chance comes from: **training pool only** (only cards' training can hint the skill) and **events
-   only** (only cards' events can); events only is split again by whether the target was on the run's priority list
-   (**prioritised**, for runs that show one).
+   only** (only cards' events can); events only is split again by whether the target was **prioritised** (on the
+   run's list and not outranked, section 9), for runs that show a list.
 2. **Inheritance**: does an inspiration of the skill fire as often as section 3 predicts ($q$)? Observed: a spark of
    the skill fired at the Classic or Senior inspiration.
 3. **Acquired**: does the skill end up hinted, from any source, as often as all modelled sources together predict?
-   This is what the model's odds rest on.
+   This is what the model's odds rest on. It is also read on the rows the model's priority assumption fits: the
+   target prioritised, or the run showing no list.
 4. **Landing**: the model's chance that the target lands as a spark ($p$), against the same chance computed from
    what the run actually acquired ($0.4 \cdot 1.1^n$ if the gold was hinted, $0.2 \cdot 1.1^n$ if only the white). It
    checks the acquired step through the spark step; it does not test spark generation, which the runs do not show
@@ -1281,105 +1365,119 @@ The four tests, each isolating one part of the model:
 
 | Test | Rows | Predicted | Observed [95%] | Obs / pred [95%] |
 |---|---|---|---|---|
-| 1. Deck hint, no inspiration | 15,774 | 0.260 | 0.244 [0.240, 0.249] | 0.937 [0.92, 0.95] |
-| 1. Training pool only | 3,601 | 0.355 | 0.351 | 0.988 [0.95, 1.03] |
-| 1. Events only | 2,082 | 0.884 | 0.804 | 0.909 [0.89, 0.93] |
-| 1. Events only, target prioritised | 186 | 0.864 | 0.871 | 1.007 [0.96, 1.05] |
-| 1. Events only, not prioritised | 234 | 0.860 | 0.611 | 0.711 [0.65, 0.78] |
-| 2. Inheritance | 26,784 | 0.358 | 0.354 [0.350, 0.359] | 0.989 [0.98, 1.00] |
-| 3. Acquired, any source | 23,919 | 0.514 | 0.511 [0.506, 0.515] | 0.994 [0.98, 1.00] |
-| 3. Acquired, deck or inspiration only | 23,919 | 0.514 | 0.502 | 0.976 [0.97, 0.98] |
-| 3. Acquired, prioritised | 1,587 | 0.727 | 0.747 | 1.028 [1.005, 1.051] |
-| 3. Acquired, not prioritised | 1,888 | 0.556 | 0.519 | 0.932 [0.903, 0.960] |
-| 4. Landing (sums of $p$) | 23,919 | 4,358.0 | 4,313.2 | 0.990 |
+| 1. Deck hint, no inspiration | 24,526 | 0.254 | 0.236 [0.233, 0.239] | 0.929 [0.915, 0.942] |
+| 1. Training pool only | 5,036 | 0.357 | 0.358 | 1.004 [0.969, 1.038] |
+| 1. Events only | 3,538 | 0.896 | 0.798 | 0.891 [0.878, 0.903] |
+| 1. Events only, target prioritised | 551 | 0.859 | 0.833 | 0.970 [0.940, 0.9997] |
+| 1. Events only, not prioritised | 584 | 0.884 | 0.577 | 0.653 [0.613, 0.694] |
+| 2. Inheritance | 41,584 | 0.359 | 0.354 [0.351, 0.358] | 0.987 [0.978, 0.997] |
+| 3. Acquired, any source | 37,287 | 0.512 | 0.506 [0.502, 0.509] | 0.988 [0.981, 0.994] |
+| 3. Acquired, deck or inspiration only | 37,287 | 0.512 | 0.497 | 0.972 [0.965, 0.978] |
+| 3. Acquired, any source, prioritised or no list shown | 32,848 | 0.506 | 0.505 | 0.999 [0.991, 1.006] |
+| 3. Acquired, deck or inspiration only, prioritised or no list shown | 32,848 | 0.506 | 0.497 | 0.982 [0.974, 0.989] |
+| 3. Acquired, prioritised | 3,556 | 0.700 | 0.706 | 1.009 [0.993, 1.025] |
+| 3. Acquired, not prioritised | 4,439 | 0.558 | 0.509 | 0.912 [0.893, 0.930] |
+| 4. Landing (sums of $p$) | 37,287 | 6,929.5 | 6,824.9 | 0.985 |
 
 ### Evidence
 
-*Does the priority list matter?* Yes. On the runs that show a priority list, prioritised targets are acquired slightly
-more often than predicted and non-prioritised ones less; the pooled test averages the two.
+*Does the priority list matter?* Yes. On the runs that show a priority list, prioritised targets are acquired at the
+model's rate (1.009 [0.993, 1.025]) and the others less often (0.912 [0.893, 0.930]); the
+pooled test averages the two with the runs that show no list. Of the shortfall over all rows,
+92% is on the non-prioritised rows.
 
 *Where does the deck lose its points?* Almost all in event hints of targets the player did not prioritise (test 1's
-split above). Unmodelled scenario and trainee events supply the few points the deck loses: 220 target acquisitions
-in 23,919 rows, 0.9%, and the composed acquisition odds are calibrated (0.994).
+split above). Unmodelled scenario and trainee events supply the few points the deck loses: 299 target acquisitions
+in 37,287 rows, 0.8%. On the rows the priority assumption fits, the deck and inspiration alone read
+0.982 [0.974, 0.989] of the model, and every source together 0.999 [0.991, 1.006].
 
 *Per target* (observed / predicted):
 
 | Target | Deck hint | Inheritance | Acquired | Landing |
 |---|---|---|---|---|
-| Uma Stan / Superstan | 0.80 [0.68, 0.94] | 1.001 | 0.989 | 0.991 |
-| Nimble Navigator / No Stopping Me! | 0.99 [0.88, 1.11] | 0.979 | 1.055 | 1.035 |
-| Playtime's Over! / See Ya Later! | 0.976 [0.95, 1.00] | 0.998 | 0.986 | 0.994 |
-| Ramp Up / It's On! | 0.884 [0.84, 0.93] | 1.004 | 0.939 [0.91, 0.97] | 0.929 |
-| Tail Held High / Tail Nine | 0.994 [0.93, 1.06] | 0.946 [0.90, 0.99] | 0.984 | 0.986 |
-| Racing Spirit: Stamina | no deck source | 1.003 | 1.060 | 1.049 |
-| Slipstream / Perfect Spot! | 1.011 [0.93, 1.10] | 0.998 | 1.021 | 0.978 |
-| Risky Business / Nothing Ventured | 0.830 [0.76, 0.90] | 0.944 | 0.897 [0.85, 0.95] | 0.888 |
+| Uma Stan / Superstan | 0.80 [0.70, 0.91] | 0.996 | 0.977 | 0.980 |
+| Nimble Navigator / No Stopping Me! | 1.05 [0.96, 1.16] | 0.984 | 1.051 | 1.037 |
+| Playtime's Over! / See Ya Later! | 0.985 [0.97, 1.00] | 1.000 | 0.991 | 0.996 |
+| Ramp Up / It's On! | 0.826 [0.79, 0.87] | 1.009 | 0.929 [0.90, 0.96] | 0.923 |
+| Tail Held High / Tail Nine | 0.986 [0.93, 1.04] | 0.953 [0.92, 0.99] | 0.985 | 0.985 |
+| Racing Spirit: Stamina | no deck source | 0.999 | 1.042 | 1.035 |
+| Slipstream / Perfect Spot! | 0.990 [0.92, 1.06] | 0.974 | 0.993 | 0.954 |
+| Risky Business / Nothing Ventured | 0.828 [0.77, 0.89] | 0.928 | 0.892 [0.85, 0.94] | 0.882 |
 
-*Training-pool hints by scenario* (a test of $\beta$ and $d$, section 7): Grand Concert 1.009 [0.96, 1.06], Unity Cup
-0.967 [0.86, 1.08], URA Finale 0.980 [0.86, 1.10], Trackblazer 0.777 [0.62, 0.93]. Only
+*Training-pool hints by scenario* (a test of $\beta$ and $d$, section 7): Grand Concert 1.024 [0.98, 1.06], Unity Cup
+0.932 [0.83, 1.03], URA Finale 1.013 [0.90, 1.12], Trackblazer 0.779 [0.63, 0.93]. Only
 Trackblazer's interval excludes 1, its $\beta$ over-predicting these runs. By the lowest limit break of the sourcing
-cards: LB4 0.997, LB3 0.963, LB0-2 0.83-1.03 (72-118 rows each, every interval covering 1).
+cards: LB4 1.012, LB3 0.991, LB0-2 0.87-0.98 (148-242 rows each, every interval covering 1).
 
-*Unity Cup's guaranteed golds* show in 853 of 853 Unity Cup runs each.
+*Unity Cup's guaranteed golds* show in 1148 of 1148 Unity Cup runs each.
 
-*Gold acquisition* (observed / predicted): Nothing Ventured 0.847 [0.77, 0.92] (833 rows), Perfect Spot!
-0.838 [0.76, 0.92] (439), It's On! outside Unity Cup 0.456 [0.31, 0.66] (119), No Stopping
-Me! outside Unity Cup 0.885 (63), See Ya Later! 1.000 (2,723).
+*Gold acquisition* (observed / predicted): Nothing Ventured 0.852 [0.80, 0.90] (1260 rows), Perfect Spot!
+0.835 [0.78, 0.89] (684), It's On! outside Unity Cup 0.456 [0.33, 0.62] (161), No Stopping
+Me! outside Unity Cup 0.958 (77), See Ya Later! 1.000 (4,488).
 
 *Reliability.* Rows grouped by the model's predicted chance; if the model is calibrated, each bucket's observed rate
 matches its mean prediction. Deck hint and acquired, observed (mean prediction in parentheses):
 
 | Predicted | Deck hint: rows, observed | Acquired: rows, observed |
 |---|---|---|
-| 0 | 8,743, 0.001 | 5,246, 0.015 |
-| above 0 to 0.20 | 102, 0.235 (0.17) | 1,286, 0.166 (0.16) |
-| 0.20-0.40 | 2,620, 0.297 (0.31) | 2,715, 0.309 (0.30) |
-| 0.40-0.60 | 1,328, 0.447 (0.47) | 3,147, 0.498 (0.50) |
-| 0.60-0.80 | 910, 0.623 (0.72) | 4,609, 0.706 (0.71) |
-| 0.80-0.95 | 515, 0.740 (0.87) | 3,310, 0.828 (0.86) |
-| 0.95-1 | 1,556, 0.962 (1.00) | 3,606, 0.978 (1.00) |
+| 0 | 14,258, 0.001 | 8,822, 0.011 |
+| above 0 to 0.20 | 110, 0.227 (0.17) | 1,943, 0.162 (0.15) |
+| 0.20-0.40 | 3,664, 0.308 (0.31) | 3,817, 0.319 (0.30) |
+| 0.40-0.60 | 1,833, 0.453 (0.47) | 4,638, 0.500 (0.50) |
+| 0.60-0.80 | 1,308, 0.568 (0.73) | 7,006, 0.690 (0.71) |
+| 0.80-0.95 | 672, 0.725 (0.87) | 4,958, 0.832 (0.86) |
+| 0.95-1 | 2,681, 0.954 (1.00) | 6,103, 0.974 (1.00) |
 
 The deck's over-prediction sits in its top buckets, the event rewards: the buckets predicted 0.6 and above hold
-82% of the shortfall, and 97% of their rows have an event source. The 0.20-0.40 bucket, almost all training-pool
-rows, is within its interval (0.297 [0.280, 0.314] against 0.308).
+95% of the shortfall, and 97% of their rows have an event source. The 0.20-0.40 bucket, almost all training-pool
+rows, is within its interval (0.308 [0.294, 0.323] against 0.311).
 
-*Per run.* A run has 7.14 open targets on average.
+*Per run.* A run has 7.17 open targets on average.
 
-- Targets acquired per run: expected 3.673, observed 3.650.
-- All open targets acquired: product of the model's odds 0.041, observed 0.039 [0.033, 0.047].
+- Targets acquired per run: expected 3.673, observed 3.627; on the 4,123 runs the priority assumption fits
+  (every open target prioritised, or no list shown), expected 3.485, observed 3.475.
+- All open targets acquired: product of the model's odds 0.0448, observed 0.0423 [0.0372, 0.0481]; on
+  the runs the priority assumption fits, 0.0249 against 0.0250 [0.0206, 0.0302].
 - Landing $P(\text{all eight})$, recomputed from what each run acquired, against the model's exact $P(\text{all})$:
-  0.863 [0.69, 1.05] (bootstrap over runs, resampling whole runs); Unity Cup 0.851 [0.67, 1.03],
-  Grand Concert 1.27 [0.84, 1.71], URA Finale 0.88 [0.36, 1.60]; Trackblazer's model value is 0.
+  0.927 [0.80, 1.05] (bootstrap over runs, resampling whole runs); Unity Cup 0.926 [0.80, 1.07],
+  Grand Concert 1.06 [0.67, 1.51], URA Finale 0.83 [0.35, 1.41]; Trackblazer's model value is 0.
 
-Consistent with calibrated, though the interval allows up to about 1.4× optimism (1/0.69). Only
-132 runs acquired every open target, too few to separate the exact joint from the product.
+Consistent with calibrated, though the interval allows up to about 1.2× optimism (1/0.80). Only
+220 runs acquired every open target, too few to separate the exact joint from the product.
 
 *Single-source cards.* For a single-source pair the deck test scores that card alone. The pairs furthest from the model
-(every pair of 40 or more rows whose interval excludes 1, and Gold Ship's):
+(every pair of 40 or more rows whose interval excludes 1, and two whose intervals reach 1, Gold Ship's and Sweep
+Tosho's):
 
 | Card > target | Pred | Obs | Ratio | Rows | Likely reason |
 |---|---|---|---|---|---|
-| Sasami Anshinzawa [This Might Sting!] > Risky Business | 1.000 | 0.731 | 0.73 [0.66, 0.79] | 186 | the model assumes Risky Business prioritised (finale choice 2) |
-| Riko Kashimoto [Planned Perfection] > Ramp Up | 0.750 | 0.579 | 0.77 [0.71, 0.83] | 420 | open (her Lone Wolf choice, when prioritised, accounts for part) |
-| King Halo [Tonight, We Waltz] > Uma Stan | 0.937 | 0.726 | 0.77 [0.66, 0.87] | 73 | Uma Stan sits on a choice that needs a priority |
-| Gold Ship [That Time I Became the Strongest] > Uma Stan | 0.196 | 0.133 | 0.68 [0.38, 1.17] | 75 | open |
-| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | 0.301 | 0.068 | 0.23 [0.08, 0.60] | 44 | open |
-| Maruzensky [Sentimental Flare ♪] > Slipstream | 0.237 | 0.301 | 1.27 [1.04, 1.53] | 236 | open |
-| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | 0.346 | 0.493 | 1.43 [1.11, 1.75] | 75 | open |
-| Daitaku Helios [Sunlit Angel ♪] > Slipstream | 0.710 | 0.638 | 0.90 [0.81, 0.98] | 235 | open |
-| Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | 0.337 | 0.282 | 0.84 [0.70, 0.994] | 305 | open |
-| Nakayama Festa [Trusting the Dice] > Risky Business | 0.614 | 0.508 | 0.83 [0.75, 0.90] | 423 | open |
+| Sasami Anshinzawa [This Might Sting!] > Risky Business | 1.000 | 0.760 | 0.76 [0.72, 0.80] | 437 | the model assumes Risky Business prioritised (finale choice 2) |
+| Riko Kashimoto [Planned Perfection] > Ramp Up | 0.750 | 0.490 | 0.65 [0.60, 0.70] | 708 | open (her Lone Wolf choice, when prioritised, accounts for part) |
+| King Halo [Tonight, We Waltz] > Uma Stan | 0.947 | 0.752 | 0.79 [0.71, 0.87] | 125 | Uma Stan sits on a choice that needs a priority |
+| Gold Ship [That Time I Became the Strongest] > Uma Stan | 0.196 | 0.143 | 0.73 [0.43, 1.19] | 84 | open |
+| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | 0.305 | 0.195 | 0.64 [0.40, 0.97] | 77 | open |
+| Maruzensky [Sentimental Flare ♪] > Slipstream | 0.241 | 0.291 | 1.21 [1.01, 1.42] | 330 | open |
+| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | 0.338 | 0.479 | 1.42 [1.13, 1.71] | 96 | open |
+| Daitaku Helios [Sunlit Angel ♪] > Slipstream | 0.724 | 0.641 | 0.88 [0.81, 0.95] | 345 | open |
+| Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | 0.332 | 0.293 | 0.88 [0.75, 1.022] | 396 | open |
+| Nakayama Festa [Trusting the Dice] > Risky Business | 0.610 | 0.522 | 0.85 [0.78, 0.93] | 462 | open |
+| Tokai Teio [Step! Smile! Wink!] > Nimble Navigator | 0.418 | 0.541 | 1.29 [1.10, 1.48] | 148 | open |
+
+King Halo's Uma Stan follows the priority: where the run lists Uma Stan as prioritised, her card hinted it in
+35 of 38 rows against 37.1 expected (exact Poisson-binomial $P(X \le 35)$ = 0.062,
+consistent); on a list without it, 0 of 12 against 11.7.
 
 Below 40 rows, 5 more pairs exclude 1. 3 of them are event sources of Playtime's Over! (Yukino Bijin [Dancing Light
-into the Night], Yaeno Muteki [Fiery Discipline], Sirius Symboli [Escorte Étoile]) that hinted it in 1 of 46 runs
-against 0.50-0.84 predicted. Their event puts the skill on choice 2, which ends the chain before its last link, so
-IT takes it only when the skill is prioritised. Only 3 of those runs show a priority list (the skill prioritised in
-1, hinted in 0 of the 3), and the other 43 hinted it 1 time, so the priority cause is
+into the Night], Yaeno Muteki [Fiery Discipline], Sirius Symboli [Escorte Étoile]) that hinted it in 1 of 49 runs
+against 0.51-0.84 predicted. Their event puts the skill on choice 2, which ends the chain before its last link, so
+IT takes it only when the skill is prioritised. Only 5 of those runs show a priority list (the skill prioritised in
+2, hinted in 0 of the 5), and the other 44 hinted it 1 time, so the priority cause is
 untested here.
 
 *Other skills.* Every non-target skill a deck card or spark could give, on a 30% sample of the runs
-(1,004): inheritance reads 0.993 [0.98, 1.01] over 43,244 rows, so it holds beyond the eight
-targets; training-pool hints read 1.064 [1.05, 1.08] over 16,978, under-predicted.
+(1,559): inheritance reads 0.986 [0.973, 0.999] over
+66,598 rows, slightly short of the model, a known miss spread over many skills (the largest one skill's share of
+the shortfall is 9%); training-pool hints read 1.065 [1.053, 1.076] over 26,573, under-predicted.
 
 ### Untested here
 
