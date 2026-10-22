@@ -4,6 +4,7 @@ use crate::career::pool::{Pool, RaceWin};
 use crate::career::{Env, Lineage};
 use crate::chart::{chart_race_name, when};
 use crate::data::{Choice, NT, Uma, scored_position};
+use crate::optimize::FILL_EPS;
 use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
@@ -212,17 +213,18 @@ impl Env<'_> {
         }
         out
     }
-    /// The lineage trainee's race schedule with her parents: every G1 win counts one (a G1 on her record can be shared
-    /// with a later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to
-    /// each of them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the
-    /// shared one. Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does
+    /// The lineage trainee's race schedule with her parents: a G1 counts each parent's chance of having won it (a win
+    /// she shares with a parent adds 3 affinity to each of them when she is a parent herself, and her parents' wins are
+    /// the guide to what her later partners will have won), so she runs the races her parents won; every G1 also
+    /// counts `FILL_EPS`, the loop planner's tie-break, so a G1 neither parent won enters only where it costs the
+    /// parents' races nothing (and with no G1 among her parents' wins she runs the G1s that win the most). Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does
     /// that turn. Also her win chance per race index.
     pub(crate) fn schedule(&self, p: &Pool, lineage: Lineage) -> RaceSchedule {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let d = self.data;
         let pu = self.pink_career(p, lineage).and_then(|pc| self.pink_uma(&pc, t));
         let u = pu.as_ref().map_or(&d.umas[t], |x| &x.0);
-        let mut wr = vec![1.0f64; d.nr];
+        let mut wr = vec![FILL_EPS; d.nr];
         for x in [a, b] {
             for &RaceWin { race: r, chance: pr } in &p.veterans[x].wins {
                 if r < d.nr {

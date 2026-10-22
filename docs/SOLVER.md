@@ -400,8 +400,10 @@ and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins
   chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null], `shared` = a parent won it)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
-  1 plus 1 per parent who won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
-  she is a parent herself), under goal races, same-turn clashes and streak win penalties. `g1_wins`: expected wins.
+  by the chance each parent won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them
+  when she is a parent herself, and her parents' wins guide what later partners will have won), under goal races,
+  same-turn clashes and streak win penalties. Every G1 also weighs `FILL_EPS` (1e-7, the loop planner's tie-break), so a
+  G1 neither parent won is run only where it costs the parents' races nothing. `g1_wins`: expected wins.
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
   (bit i = job target i), guaranteed golds' spark generation included.
 
