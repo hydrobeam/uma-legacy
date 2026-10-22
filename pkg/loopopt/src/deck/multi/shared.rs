@@ -1,14 +1,16 @@
 //! Exact shared-deck scans and their cached results, seeded from legal skyline decks.
 //! Loop enumeration and certification across structures belong to `bands`.
 use super::{DeckSources, Multi, SharedQueryKey, lin_of, qkey};
+use crate::Instant;
+use crate::data::Data;
 use crate::deck::caps::src_class;
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
 use crate::deck::joint::joint_b;
 use crate::deck::joint::upper::upper_na;
 use crate::deck::kept::{DeckId, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
+use crate::optimize::members;
 use crate::uma::UmaIndex;
-use crate::{Data, Instant, members};
 use std::rc::Rc;
 
 /// A loop's shared-deck list: (exact sum over its lineages, deck), best first

@@ -1,7 +1,6 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
-use crate::Data;
 use crate::career::cache::Cache;
 use crate::career::clock::{now_ms, progress};
 use crate::career::plan::candidates::{score_and_admit_proxies, setup_plan_candidates};
@@ -16,6 +15,7 @@ use crate::career::pool::Pool;
 use crate::career::search::{Found, Ref, Solved};
 use crate::career::sim::Sim;
 use crate::career::{Career, Env, JobInputs, Legacy, Lineage};
+use crate::data::Data;
 use serde::Deserialize;
 use serde_json::Value;
 mod anchors;

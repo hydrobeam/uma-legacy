@@ -5,8 +5,8 @@
 //!   {"cmd":"career", ...SkillJob + DeckJob + CareerJob}  (same)
 //!   {"cmd":"state_out"}, {"cmd":"state_in","state":...}  the career planner's kept work out and back in (page reloads)
 #![allow(unsafe_code, reason = "the wasm exports take the host's pointers: `alloc`/`dealloc` and `call`")]
+use crate::data::{Data, DataRaw, load_raw};
 use crate::skills::SkillsRaw;
-use crate::{Data, DataRaw, load_raw};
 use std::cell::RefCell;
 
 thread_local! {

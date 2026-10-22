@@ -23,7 +23,7 @@ import { openOdds } from './odds.js';
  * @property {number} [pals] how many pals it holds
  * @property {string|null} [borrowed] the borrowed card, by name (null: none)
  *
- * A member of a loop (skills.rs `member_json`).
+ * A member of a loop (chart.rs `member_json`).
  * @typedef {{id: number, name: string, short: string}} LoopMember
  *
  * A loop in a result (deck/multi.rs `loop_json`); member k is `members[k]`, with `outfits[k]` and `per_trainee[k]`.

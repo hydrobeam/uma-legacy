@@ -2,11 +2,13 @@
 //! Search and certification belong to `bands`.
 use super::bands::{DeckBest, Pass, Solved};
 use super::{DeckKey, DeckSources, Multi, RatioExample, lin_of};
+use crate::chart::{chart_rows, member_json};
+use crate::data::{probs, wval};
 use crate::deck::joint::{JointChances, JointExt, joint_b, joint_fast};
 use crate::deck::kept::PDeck;
 use crate::deck::space::{SPT, UCHK};
-use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption, chart_rows, member_json};
-use crate::{members, probs, wval};
+use crate::optimize::members;
+use crate::skills::{GEN_GOLD, MemberLineage, OutfitOption};
 use serde_json::{Value, json};
 use std::cell::Cell;
 
@@ -120,7 +122,7 @@ impl Multi<'_> {
                 let Solved { members, inheritance_chances, .. } = &p.solved[si];
                 let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
                 let ln = lin_of(members);
-                let nm = crate::members(members).len();
+                let nm = crate::optimize::members(members).len();
                 let mut per_l = vec![JointChances::default(); ln.len()];
                 for t in 0..nm {
                     let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
@@ -168,7 +170,7 @@ impl Multi<'_> {
         let (dk, per_l, pj) = (&pk.decks, &pk.lineage_chances, pk.value);
         let Solved { members, schedule, inheritance_chances, .. } = &p.solved[pk.solved_index];
         let ln = lin_of(members);
-        let member_slice = crate::members(members);
+        let member_slice = crate::optimize::members(members);
         let nm = member_slice.len();
         let nl = ln.len();
         let mut per = vec![(0.0, 0usize); nm];

@@ -268,7 +268,8 @@ fn trio_report(context: &PlanContext, scores: &PlanScores) -> (Value, Value) {
     let candidates = context.candidates;
     let data = context.data();
     let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
-    let uma_name = |u: crate::uma::UmaIndex| if u == crate::NONE { Value::Null } else { json!(data.umas[u].name) };
+    let uma_name =
+        |u: crate::uma::UmaIndex| if u == crate::optimize::NONE { Value::Null } else { json!(data.umas[u].name) };
     // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
     let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
     // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
