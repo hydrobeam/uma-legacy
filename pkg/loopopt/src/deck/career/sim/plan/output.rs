@@ -9,7 +9,7 @@ use crate::deck::career::sim::{Found, PROF, Sim, Value, json, now_ms};
 
 /// The plan's response: its options, pick and trio, with the pick's roll state and the plan's searches kept for later
 /// jobs (`RollKeep`, `Bests`)
-pub(in crate::deck::career::sim::plan) fn assemble_plan_output<'data>(
+pub(crate) fn assemble_plan_output<'data>(
     mut sim: Sim<'_, 'data>,
     context: &PlanContext<'_, 'data>,
     searches: PlanSearches,

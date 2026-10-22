@@ -30,7 +30,7 @@ jobs:
           node-version-file: webapp/package.json
           cache: npm
           cache-dependency-path: webapp/package-lock.json
-      - name: Lint (rustfmt, clippy native and wasm, shellcheck, ruff, Biome)
+      - name: Lint (rustfmt, clippy native and wasm, shellcheck, ruff, Biome, tsc)
         run: ./build.sh lint
       - name: Release build and tests
         run: ./build.sh native
@@ -40,6 +40,7 @@ jobs:
           uv run val/same.py ci
           uv run val/planval.py pkg/loopopt/target/release/loopopt ci
           uv run val/same.py ci --plan
+          uv run val/simval.py pkg/loopopt/target/release/loopopt ci
           uv run val/mono.py pkg/loopopt/target/release/loopopt
 
   page:

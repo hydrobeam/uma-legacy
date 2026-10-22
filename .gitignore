@@ -48,11 +48,13 @@
 !/webapp/package.json
 !/webapp/package-lock.json
 !/webapp/biome.json
+!/webapp/tsconfig.json
 !/val/
 /val/*
 !/val/runval.py
 !/val/test_validation.py
 !/val/same.py
+!/val/simval.py
 !/val/slow.json
 !/val/cmp2.py
 !/val/jobs.json
@@ -75,6 +77,13 @@
 !/val/refpu_times.txt
 !/val/secret_events.py
 !/val/sim/
+/val/sim/*
+!/val/sim/README.md
+!/val/sim/make_jobs.py
+!/val/sim/report.py
+!/val/sim/pools/
+!/val/sim/jobs.json
+!/val/sim/ref__*.out
 !/val/jobs/
 !/val/owncheck.py
 !/val/permcheck.py

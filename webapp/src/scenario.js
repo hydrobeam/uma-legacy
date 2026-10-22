@@ -17,7 +17,7 @@ export const scenarioOf = (v) => LIST.find(s => s.v === v) || LIST[0];
 export function paintRank() {
   const rank = $('rank'); if (!rank) return;   // the career page has no rank control (it uses each legacy's real stars)
   rank.dataset.value = state.rank;
-  rank.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.rank; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1; });
+  rank.querySelectorAll('button').forEach(b => { const on = b.dataset.v === state.rank; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
 }
 // the lineage rank a scenario starts from (its `ss`)
 const rankOf = (sc) => sc.ss ? RANKS.ss : RANKS.below;
@@ -55,7 +55,7 @@ export function paintScen() {
 function initRankNote() {
   const question = $('rank-q'), note = $('rank-note'), setOpen = (open) => { note.hidden = !open; question.setAttribute('aria-expanded', String(open)); };
   question.onclick = (e) => { e.stopPropagation(); setOpen(note.hidden); };
-  document.addEventListener('click', (e) => { if (!note.hidden && !note.contains(e.target)) setOpen(false); });
+  document.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!note.hidden && !note.contains(e.target)) setOpen(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !note.hidden) { setOpen(false); question.focus(); } });
 }
 // the lineage rank toggle: its badge images (the text stays without them), a click or the arrows pick
@@ -126,15 +126,15 @@ export function initScenario() {
   btn.addEventListener('keydown', (e) => { if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menu.hidden) { e.preventDefault(); open(true); } });
   const COLUMNS = 2;   // the grid's columns (the arrows Up and Down move a row)
   menu.addEventListener('keydown', (e) => {
-    const all = tiles(), i = all.indexOf(document.activeElement);
+    const all = tiles(), i = all.indexOf(/** @type {HTMLElement} */ (document.activeElement));
     const to = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + COLUMNS, ArrowUp: i - COLUMNS, Home: 0, End: all.length - 1 }[e.key];
     if (to === undefined) return;
     e.preventDefault(); all[Math.max(0, Math.min(all.length - 1, to))].focus();
   });
   // only the button and the open grid count as inside: a click anywhere else (the label, the row's empty space, the rank
   // control, the rest of the page) closes the picker
-  document.addEventListener('click', (e) => { if (!e.target.closest('#x-scen, #scen-menu')) close(false); });
+  document.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!e.target.closest('#x-scen, #scen-menu')) close(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) close(true); });
-  dropdown.addEventListener('focusout', (e) => { if (e.relatedTarget && !dropdown.contains(e.relatedTarget)) close(false); });
+  dropdown.addEventListener('focusout', (/** @type {FocusEvent & {relatedTarget: Element | null}} */ e) => { if (e.relatedTarget && !dropdown.contains(e.relatedTarget)) close(false); });
   paintScen();
 }

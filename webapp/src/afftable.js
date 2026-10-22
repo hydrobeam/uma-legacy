@@ -6,6 +6,7 @@
 // (Legacy 1 first); face an element (her portrait).
 import { el } from './dom.js';
 // her affinity as the game's heart and the number
+/** @param {number|null|undefined} affinity @param {string} [cls] @returns {HTMLSpanElement|null} */
 export function affEl(affinity, cls = 'aff') {
   if (affinity === null || affinity === undefined) return null;
   const shown = Math.round(affinity), heart = el('span', cls);
@@ -13,6 +14,18 @@ export function affEl(affinity, cls = 'aff') {
   heart.setAttribute('aria-label', `Affinity ${shown}`); heart.title = `Affinity ${shown}`;
   return heart;
 }
+/**
+ * One legacy's row of the table (see above).
+ * @typedef {object} AffinityLeg
+ * @property {Node} face  her portrait
+ * @property {string} name
+ * @property {string} [tag]
+ * @property {number} rel  relation points
+ * @property {number} race  shared G1 wins, as points
+ * @property {number} aff  affinity
+ * @property {AffinityLeg[]} [gps]  a parent's: her two parents
+ */
+/** @param {AffinityLeg[]} legs the parents, Legacy 1 first @param {string} [caption] @returns {HTMLTableElement} */
 export function affTable(legs, caption = 'Affinity') {
   const table = el('table', 'afftab'), whole = (x) => String(Math.round(x));
   table.innerHTML = '<thead><tr><th scope="col"></th><th scope="col">Relation</th><th scope="col">G1 wins shared</th><th scope="col">Affinity</th></tr></thead><tfoot></tfoot>';

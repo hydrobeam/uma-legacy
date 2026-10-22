@@ -5,7 +5,7 @@
 #   events   card event files from the GameTora files + manual entries (both eras); runs gametora first
 #   native   release binary, clippy (as in lint), tests
 #   lint     Rust: cargo fmt --check, clippy on every target and on the wasm lib, warnings denied; shellcheck on the scripts;
-#            Python: ruff check and ruff format --check (pyproject.toml); the page's JS: Biome, warnings denied (webapp/biome.json)
+#            Python: ruff check and ruff format --check (pyproject.toml); the page's JS: Biome, warnings denied (webapp/biome.json), and tsc's checkJs (webapp/tsconfig.json)
 #   hooks    use the tracked git hooks (.githooks: the pre-commit formatting check); once per clone
 #   pb       pairwise affinity ceilings (exact, from the native binary) stored in both data.json files; a stale
 #            table is ignored by the solver (fingerprint), so this only saves time: rerun after data or solver changes
@@ -68,7 +68,8 @@ clippy_all() { cargo clippy --quiet --all-targets -- -D warnings && cargo clippy
 step_lint() { MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check lint; step_npm
   (cd "$C" && cargo fmt --check && clippy_all) && uvx --quiet --from shellcheck-py shellcheck "$R/build.sh" "$R/.githooks/pre-commit" \
     && (cd "$R" && uv run --quiet ruff check && uv run --quiet ruff format --check) \
-    && (cd "$W" && npx --no-install biome lint --error-on-warnings --diagnostic-level=warn) && echo "lint: clean"; }
+    && (cd "$W" && npx --no-install biome lint --error-on-warnings --diagnostic-level=warn && npx --no-install tsc -p .) \
+    && echo "lint: clean"; }
 step_hooks() { git -C "$R" config core.hooksPath .githooks && echo "hooks: core.hooksPath = .githooks (every worktree of this clone)"; }
 step_wasm() {
   MISSING=(); need_cmd cargo "$TOOLS_RUST"; need_cmd rustup "$TOOLS_RUST: adds the wasm target"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check wasm
@@ -101,7 +102,10 @@ step_deploy() {
   (cd "$W" && npx wrangler pages deploy dist --project-name "${CF_PAGES_PROJECT:-uma-legacy}" --branch "${CF_PAGES_BRANCH:-main}" \
      --commit-hash "$(git -C "$R" rev-parse HEAD)" --commit-message "$(git -C "$R" describe --tags --always)" --commit-dirty="$([ -n "${DEPLOY_DIRTY:-}" ] && echo true || echo false)")
 }
-step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check npm; [ -x "$W/node_modules/.bin/esbuild" ] || (cd "$W" && npm ci --silent); }
+step_npm() { MISSING=(); need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; check npm
+  # reinstall when the lockfile is newer than what npm last installed (node_modules/.package-lock.json), so a pulled
+  # dependency change (a new or bumped package) is never checked against a stale node_modules
+  [ -x "$W/node_modules/.bin/esbuild" ] && [ ! "$W/package-lock.json" -nt "$W/node_modules/.package-lock.json" ] || (cd "$W" && npm ci --silent); }
 step_page() { MISSING=(); need_cmd uv "$TOOLS_UV"; need_cmd node "$TOOLS_NODE"; need_cmd npm "$TOOLS_NODE"; need "webapp/loopopt.opt.wasm: the solver (./build.sh wasm)"; check page; step_npm; (cd "$W" && "${PY[@]}" build.py); }
 step_pb() { MISSING=(); need_cmd uv "$TOOLS_UV"; need "pkg/loopopt/target/release/loopopt: the solver (./build.sh native)"; check pb; "${PY[@]}" "$C/export/add_pb.py" "$C/target/release/loopopt" "$C/data/global/data.json" "$C/data/jp/data.json"; }
 step_runners() { MISSING=(); need_cmd uv "$TOOLS_UV"; [ -e "$R/cache/chibi/tools/xml/usr/lib/libxml2.so.2" ] || { need_cmd tar "to unpack libxml2 once"; need_cmd zstd "to unpack libxml2 once"; }; need "${RUNNER_FILES[@]}"; check runners; step_browsers; "${PY[@]}" "$W/chibi/chibi.py" all; }

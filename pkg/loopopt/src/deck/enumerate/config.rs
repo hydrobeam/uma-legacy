@@ -4,85 +4,85 @@ use crate::deck::space::{EntryMisses, GroupTableRequest};
 use crate::deck::{DeckSpace, GTab, cap_class, gm_g, gm_w};
 
 /// Legal groups and key counts used to enumerate configurations, in their original order.
-pub(in crate::deck::enumerate) struct ConfigurationTables<'tab> {
-    pub(in crate::deck::enumerate) counts: &'tab [Vec<usize>],
-    pub(in crate::deck::enumerate) by_kind: &'tab [Vec<usize>],
-    pub(in crate::deck::enumerate) pal_ents: &'tab [usize],
-    pub(in crate::deck::enumerate) kpos: &'tab [u64],
-    pub(in crate::deck::enumerate) groups_all: &'tab [&'tab Vec<usize>],
-    pub(in crate::deck::enumerate) glk: &'tab [u8],
-    pub(in crate::deck::enumerate) gcvm: &'tab [u64],
-    pub(in crate::deck::enumerate) ki22: usize,
-    pub(in crate::deck::enumerate) nplain: usize,
-    pub(in crate::deck::enumerate) all_lk: u8,
-    pub(in crate::deck::enumerate) keyskip: bool,
+pub(crate) struct ConfigurationTables<'tab> {
+    pub(crate) counts: &'tab [Vec<usize>],
+    pub(crate) by_kind: &'tab [Vec<usize>],
+    pub(crate) pal_ents: &'tab [usize],
+    pub(crate) kpos: &'tab [u64],
+    pub(crate) groups_all: &'tab [&'tab Vec<usize>],
+    pub(crate) glk: &'tab [u8],
+    pub(crate) gcvm: &'tab [u64],
+    pub(crate) ki22: usize,
+    pub(crate) nplain: usize,
+    pub(crate) all_lk: u8,
+    pub(crate) keyskip: bool,
 }
 
 /// Configuration-build buffers stay owned by preparation; white/gold odds are reused by traversal.
-pub(in crate::deck::enumerate) struct ConfigurationScratch<'scratch> {
-    pub(in crate::deck::enumerate) dw: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) dg: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) groups: &'scratch mut Vec<(usize, usize)>,
-    pub(in crate::deck::enumerate) clause_bounds: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) order_bounds: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) ratio_products: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) key_white: &'scratch mut [f64],
-    pub(in crate::deck::enumerate) key_gold: &'scratch mut [f64],
+pub(crate) struct ConfigurationScratch<'scratch> {
+    pub(crate) dw: &'scratch mut [f64],
+    pub(crate) dg: &'scratch mut [f64],
+    pub(crate) groups: &'scratch mut Vec<(usize, usize)>,
+    pub(crate) clause_bounds: &'scratch mut [f64],
+    pub(crate) order_bounds: &'scratch mut [f64],
+    pub(crate) ratio_products: &'scratch mut [f64],
+    pub(crate) key_white: &'scratch mut [f64],
+    pub(crate) key_gold: &'scratch mut [f64],
 }
 
 // every (key, real (2, 2) entries, kind-0 entries) with its groups and root bound; visited best bound first
-pub(in crate::deck::enumerate) struct SearchConfig {
-    pub(in crate::deck::enumerate) root: f64,
-    pub(in crate::deck::enumerate) code: u64,
-    pub(in crate::deck::enumerate) code_real22: usize,
-    pub(in crate::deck::enumerate) np: usize,
-    pub(in crate::deck::enumerate) filler: usize,
-    pub(in crate::deck::enumerate) plain: usize,
-    pub(in crate::deck::enumerate) gs: Vec<(usize, usize)>,
-    pub(in crate::deck::enumerate) gm: std::rc::Rc<GTab>,
-    pub(in crate::deck::enumerate) rpk: std::rc::Rc<GTab>,
+pub(crate) struct SearchConfig {
+    pub(crate) root: f64,
+    pub(crate) code: u64,
+    pub(crate) code_real22: usize,
+    pub(crate) np: usize,
+    pub(crate) filler: usize,
+    pub(crate) plain: usize,
+    pub(crate) gs: Vec<(usize, usize)>,
+    pub(crate) gm: std::rc::Rc<GTab>,
+    pub(crate) rpk: std::rc::Rc<GTab>,
     // A tighter bound may prune without changing the root-bound visit order.
-    pub(in crate::deck::enumerate) prune_bound: f64,
+    pub(crate) prune_bound: f64,
     // Root clause values retained only for RB_CHECK.
-    pub(in crate::deck::enumerate) clause_bounds: Vec<f64>,
+    pub(crate) clause_bounds: Vec<f64>,
 }
 
 // A configuration passing the per-target bound, its root not yet computed: `u` is an upper bound on its root
 // (the root sums fixed * max over outfits of min(A, B r) per (trainee, chance), the per-target value fixed *
 // the sum of max A, the same A to the bit; terms >= 0, so the root is at most the value up to rounding);
 // `key`: its key's slot in `pkeys` (the key's ratio tables, built on first need)
-pub(in crate::deck::enumerate) struct PendingConfig {
-    pub(in crate::deck::enumerate) u: f64,
-    pub(in crate::deck::enumerate) key: usize,
-    pub(in crate::deck::enumerate) code: u64,
-    pub(in crate::deck::enumerate) real22: usize,
-    pub(in crate::deck::enumerate) np: usize,
-    pub(in crate::deck::enumerate) filler: usize,
-    pub(in crate::deck::enumerate) plain: usize,
-    pub(in crate::deck::enumerate) gneed: u64,
-    pub(in crate::deck::enumerate) gs: Vec<(usize, usize)>,
-    pub(in crate::deck::enumerate) gm: std::rc::Rc<GTab>,
+pub(crate) struct PendingConfig {
+    pub(crate) u: f64,
+    pub(crate) key: usize,
+    pub(crate) code: u64,
+    pub(crate) real22: usize,
+    pub(crate) np: usize,
+    pub(crate) filler: usize,
+    pub(crate) plain: usize,
+    pub(crate) gneed: u64,
+    pub(crate) gs: Vec<(usize, usize)>,
+    pub(crate) gm: std::rc::Rc<GTab>,
 }
 
 /// Eager configurations retain their stable root order; pending configurations retain
 /// insertion order until traversal builds its stable upper-bound ordering.
-pub(in crate::deck::enumerate) struct ConfigurationQueue {
-    pub(in crate::deck::enumerate) cfgs: Vec<SearchConfig>,
-    pub(in crate::deck::enumerate) pend: Vec<PendingConfig>,
-    pub(in crate::deck::enumerate) pkeys: Vec<Option<std::rc::Rc<GTab>>>,
+pub(crate) struct ConfigurationQueue {
+    pub(crate) cfgs: Vec<SearchConfig>,
+    pub(crate) pend: Vec<PendingConfig>,
+    pub(crate) pkeys: Vec<Option<std::rc::Rc<GTab>>>,
 }
 
 /// The same bound operations serve eager configuration construction and lazy queue expansion.
-pub(in crate::deck::enumerate) struct ConfigurationBounds<Ratios, Odds, Root> {
-    pub(in crate::deck::enumerate) ratio_prefixes: Ratios,
-    pub(in crate::deck::enumerate) odds: Odds,
-    pub(in crate::deck::enumerate) root: Root,
+pub(crate) struct ConfigurationBounds<Ratios, Odds, Root> {
+    pub(crate) ratio_prefixes: Ratios,
+    pub(crate) odds: Odds,
+    pub(crate) root: Root,
 }
 
 impl DeckSpace<'_> {
     /// Enumerate legal card-count configurations, preserving stable root-bound order and
     /// deferring ratio tables for the product search until traversal actually needs them.
-    pub(in crate::deck::enumerate) fn build_configurations(
+    pub(crate) fn build_configurations(
         &self,
         clauses: &[(Vec<(usize, f64)>, f64)],
         controls: SearchControl,

@@ -9,7 +9,7 @@ use crate::deck::career::sim::plan::search::{HintUma, LoopRotation};
 use crate::deck::career::sim::{Env, Found, Pool, Sel, Sim, Solved, Value, json, now_ms, prof, progress};
 
 /// Choose the stage candidates, search their best careers, and build the simulator the later phases share.
-pub(in crate::deck::career::sim::plan) fn setup_plan_candidates<'env, 'data>(
+pub(crate) fn setup_plan_candidates<'env, 'data>(
     env: &'env mut Env<'data>,
     input: &PlanInputs<'_, 'data>,
     started_ms: f64,
@@ -232,13 +232,13 @@ const fn input_parents<'input>(input: &PlanInputs<'input, '_>) -> ParentPool<'in
 }
 
 /// A winning deck of the main search or a candidate's best career, which a builder of the same deck class may use.
-pub(in crate::deck::career::sim::plan) struct ClassWinner {
+pub(crate) struct ClassWinner {
     trainee: usize,
     deck: Sel,
 }
 
 /// The main search's winners, then each candidate's best career (in candidate order)
-pub(in crate::deck::career::sim::plan) fn class_winners(
+pub(crate) fn class_winners(
     solved: &Solved,
     candidates: &PlanCandidates,
     best_careers: &[CachedSearch],
@@ -257,7 +257,7 @@ pub(in crate::deck::career::sim::plan) fn class_winners(
 
 /// Builder `trainee`'s proxy career: her deck class's winning decks added to her cached decks, then her best career
 /// through the surrogate (`best_sur`, no refresh)
-pub(in crate::deck::career::sim::plan) fn proxy_career(
+pub(crate) fn proxy_career(
     sim: &mut Sim,
     winners: &[ClassWinner],
     parents: ParentPool,
@@ -276,7 +276,7 @@ pub(in crate::deck::career::sim::plan) fn proxy_career(
 /// Pass 1: every allowed uma's best career; per candidate, the chance her veteran raises that candidate's odds and the
 /// mean odds raised to (exact over her outcomes). Then the near-top builders' proxies searched exactly, and each row's
 /// trainee's G1 wins.
-pub(in crate::deck::career::sim::plan) fn score_and_admit_proxies(
+pub(crate) fn score_and_admit_proxies(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
@@ -417,7 +417,7 @@ fn near_top_proxies(context: &PlanContext, rows: &[PlanRow]) -> Vec<usize> {
 }
 
 /// How a proxy row was made exact.
-pub(in crate::deck::career::sim::plan) enum MadeExact {
+pub(crate) enum MadeExact {
     /// Her class's proofs certify the proxy: it is her best career's value, no search.
     Certified,
     /// Her best career searched; `replaced`: the row's career is now that one.
@@ -425,7 +425,7 @@ pub(in crate::deck::career::sim::plan) enum MadeExact {
 }
 
 /// A proxy row made exact: certified by her class's proofs, else her best career searched (`exact_plan_career`)
-pub(in crate::deck::career::sim::plan) fn make_row_exact(
+pub(crate) fn make_row_exact(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
@@ -481,9 +481,9 @@ fn plan_surrogate(
 }
 
 /// An exact career and its lifts per candidate.
-pub(in crate::deck::career::sim::plan) struct ExactCareer {
-    pub(in crate::deck::career::sim::plan) career: Found,
-    pub(in crate::deck::career::sim::plan) lift_stats: Vec<(f64, f64)>,
+pub(crate) struct ExactCareer {
+    pub(crate) career: Found,
+    pub(crate) lift_stats: Vec<(f64, f64)>,
 }
 
 /// The proxy row's trainee's exact best career (searched now if not yet) and its lifts. The proxy's lifts are taken as
@@ -515,7 +515,7 @@ fn exact_plan_career(
 }
 
 /// Record the G1 races trainee's career wins with a chance above 0.5 (`PlanRows::wins_by_trainee`)
-pub(in crate::deck::career::sim::plan) fn set_plan_wins(
+pub(crate) fn set_plan_wins(
     sim: &mut Sim,
     pool: &Pool,
     wins_by_trainee: &mut [Vec<usize>],
@@ -529,7 +529,7 @@ pub(in crate::deck::career::sim::plan) fn set_plan_wins(
 
 /// The trainee's best career without a borrowed parent, on the pick's pool: the surrogate's under `sur` 1, else
 /// searched (not reusing kept plans)
-pub(in crate::deck::career::sim::plan) fn exact_no_borrow_career(
+pub(crate) fn exact_no_borrow_career(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,

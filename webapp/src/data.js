@@ -35,6 +35,7 @@ export const ASSETS = parse('data-assets');
  * @property {number} id character id
  * @property {string} name
  * @property {string | null} gt GameTora's slug for her page
+ * @property {number[]} [apt] her base aptitude grades (codes 1..8 = G..S, in the solver data's `apt` order), when known
  * @property {Outfit[]} outfits
  */
 /** @typedef {{w: string, gd: string | null}} SkillNames a skill group's white name and its gold's (null: none) */
@@ -109,6 +110,21 @@ export const SCEN_GOLDS = { unity: [20049, 20046] };
 // ss: picking the scenario sets the lineage rank to SS (else below SS), the band most of the scenario's careers reach
 // with every skill point spent (docs/RESEARCH.md section 2, tested there; Grand Masters has no data and is assumed SS).
 // era: offered only with that era's data (Grand Masters: the JP Grand Masters era).
+/**
+ * A scenario of the picker (the fields as above).
+ * @typedef {object} Scenario
+ * @property {string} v  its key (state.scen)
+ * @property {number} id
+ * @property {string} name
+ * @property {number} base
+ * @property {boolean} ss
+ * @property {string} tint
+ * @property {boolean} [est]
+ * @property {'gm'} [era]
+ * @property {string} [mult]  set below
+ * @property {string} [rate]  set below
+ */
+/** @type {Scenario[]} */
 export const SCENARIOS = [
   { v: 'unity', id: 2, name: 'Unity Cup', base: 2.36, ss: false, tint: '#c5ecff' },
   { v: 'gc', id: 3, name: 'Grand Concert', base: 1.97, ss: true, tint: '#ebe3ff' },

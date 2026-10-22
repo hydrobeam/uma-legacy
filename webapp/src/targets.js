@@ -1,5 +1,5 @@
 // ---------- target skills ----------
-import { $ } from './dom.js';
+import { $, $input } from './dom.js';
 import { CAT, SK } from './data.js';
 import { initPresets } from './presets.js';
 import { state, goldGiven } from './state.js';
@@ -9,6 +9,7 @@ import { renderCards } from './cards.js';
 const namesOf = (group) => SK.get(group) || { w: `Skill ${group}`, gd: null };
 // a target as the game's skill tile: icon and name; a gold the scenario guarantees shows as that gold (It's On! for
 // Ramp Up), in gold (the editor below adds its remove button; the Presets view shows the tiles alone)
+/** @param {number} group @returns {HTMLDivElement} */
 export function tileEl(group) {
   const names = namesOf(group);
   const tile = document.createElement('div'); tile.className = 'tgt'; tile.dataset.g = goldGiven(group) ? '2' : '0';
@@ -22,6 +23,7 @@ export function tileEl(group) {
 // one compact tile per target, two per row: icon and name (white → gold when the scenario guarantees the gold),
 // remove. focus: after a removal, the row index whose remove button gets the focus (the next row's, else the last
 // row's, else the add box), so the keyboard doesn't fall back to the page top
+/** @param {number|null} [focus] */
 export function renderTargets(focus = null) {
   const count = document.getElementById('o-skills-n'); if (count) count.textContent = String(state.targets.length);   // the setup panel's Target skills button
   const box = $('targets'); box.textContent = '';
@@ -38,7 +40,7 @@ export function renderTargets(focus = null) {
   renderCards();
 }
 export function initTargets() {
-  const addIn = $('t-add'), suggestions = $('t-sugg');
+  const addIn = $input('t-add'), suggestions = $('t-sugg');
   const SHOWN_MAX = 30;   // suggestions listed at most
   const items = () => [...suggestions.querySelectorAll('button')];
   const add = (group) => { state.targets.push({ group }); addIn.value = ''; suggestions.hidden = true; save(); renderTargets(); addIn.focus(); };
@@ -70,11 +72,11 @@ export function initTargets() {
     else if (e.key === 'ArrowDown' && !suggestions.hidden && items().length) { e.preventDefault(); items()[0].focus(); }
   };
   suggestions.addEventListener('keydown', (e) => {
-    const bs = items(), i = bs.indexOf(document.activeElement);
+    const bs = items(), i = bs.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); suggestions.hidden = true; addIn.focus(); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); if (i < bs.length - 1) bs[i + 1].focus(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? bs[i - 1] : addIn).focus(); }
   });
-  document.addEventListener('click', (e) => { if (!suggestions.contains(e.target) && e.target !== addIn) suggestions.hidden = true; });
+  document.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!suggestions.contains(e.target) && e.target !== addIn) suggestions.hidden = true; });
   initPresets(renderTargets);
 }

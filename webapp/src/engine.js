@@ -5,11 +5,21 @@ import { ASSETS, LATER, loadFail } from './data.js';
 import { stateLoad, stateSave, stateDrop } from './statestore.js';
 // A running wasm call cannot be interrupted, so a superseded search is stopped by terminating its worker.
 /**
+ * The worker's answer to a job: the solver's report, whose shape is the job command's (a deck search's
+ * `results.js` LoopReport, a career search's `career.js` CareerSearch, ...), and the solver's time in ms.
+ * @typedef {{r: any, ms: number}} SolverAnswer
+ *
+ * A job for the solver: its command and that command's fields.
+ * @typedef {{cmd: string} & Record<string, unknown>} SolverJob
+ *
+ * A career plan's phase report (sim/plan.rs `index_rule`): phase `ph`, step k of n.
+ * @typedef {{ph: number, k: number, n: number}} PlanProgress
+ *
  * A job posted to the worker and not answered yet, by its id.
  * @typedef {object} PendingJob
- * @property {(answer: {r: object, ms: number}) => void} done called with the solver's answer
- * @property {(message: object) => void} [interim] a deck search's fast first pass
- * @property {(message: object) => void} [progress] a career plan's phase reports
+ * @property {(answer: SolverAnswer) => void} done called with the solver's answer
+ * @property {(message: {r: any}) => void} [interim] a deck search's fast first pass
+ * @property {(message: PlanProgress) => void} [progress] a career plan's phase reports
  */
 let worker = null, ready = null, lastJobId = 0;
 /** @type {Map<number, PendingJob>} */
@@ -100,6 +110,7 @@ let persistOn = false, saveTimer = 0;
 const stateKey = () => `${ASSETS.wasm}|${ASSETS.engine[eraKey()]}`;
 export function enginePersist() { persistOn = true; }
 // posts a job to the running worker as it is (no gate) and resolves with its answer
+/** @param {SolverJob} job @param {PendingJob['interim']} [interim] @param {PendingJob['progress']} [progress] @returns {Promise<SolverAnswer>} */
 function post(job, interim, progress) {
   return new Promise(done => { const id = ++lastJobId; pending.set(id, { done, interim, progress }); worker.postMessage({ type: 'run', id, job }); });
 }
@@ -132,4 +143,10 @@ const gate = (job) => !['deck', 'career'].includes(job.cmd) ? job : { ...job,
   exclude_cards: [...(job.exclude_cards || []), ...LATER.cards] };
 // interim: called with the fast first pass of a deck search, before the exact one resolves the promise; progress: called
 // with the career plan's phase reports ({ph, k, n}: sim/plan.rs `index_rule`) while it runs
+/**
+ * @param {SolverJob} job
+ * @param {PendingJob['interim']} [interim]
+ * @param {PendingJob['progress']} [progress]
+ * @returns {Promise<SolverAnswer>}
+ */
 export function run(job, interim, progress) { return startEngine().then(() => post(gate(job), interim, progress)); }

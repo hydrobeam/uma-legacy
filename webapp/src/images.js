@@ -2,6 +2,7 @@
 // All lazy: the browser fetches an image only when it scrolls near the view (loading is set before src).
 import { SHIPPED, IMG_EXT, IMG_BASE, SKILLICON, SKILLICON_GOLD, NAME } from './data.js';
 import { spinHTML } from './dom.js';
+/** @param {string} kind the image folder ('uma', 'outfit', 'card', 'skill', 'run', ...) @param {number|string} id @returns {string|null} */
 export function srcFor(kind, id) { return SHIPPED.has(`${kind}:${id}`) ? `${IMG_BASE}${kind}/${id}.${IMG_EXT[kind]}` : null; }
 // the runner in place of a spinner: an uma's mini model running (img/run/<chara>: a strip of 18 frames of the game's
 // mini run, stepped by CSS, webapp/chibi/chibi.py). Who runs: the uma being planned (setRunner: the career page's
@@ -11,8 +12,10 @@ export function srcFor(kind, id) { return SHIPPED.has(`${kind}:${id}`) ? `${IMG_
 let runner = null;
 const RUN_CYCLE_MS = 600;   // one loop of the strip (the CSS animation's duration)
 const hasRun = (id) => SHIPPED.has(`run:${id}`);
+/** @param {number|null|undefined} id a character id */
 export function setRunner(id) { if (!id || !hasRun(id) || id === runner) return; runner = id; new Image().src = srcFor('run', id); }
 // (the one running stays while she is among them: a new strip is fetched and decoded only when the loop changes)
+/** @param {number[]} ids character ids */
 export function setRunnerFrom(ids) {
   const withStrip = ids.filter(hasRun);
   if (withStrip.length && !withStrip.includes(runner)) setRunner(withStrip[Math.floor(Math.random() * withStrip.length)]);
@@ -25,6 +28,7 @@ export function runnerHTML(big = false) {
   return `<span class="runner${big ? ' big' : ''}" aria-hidden="true" style="background-image:url(${src});animation-delay:-${delay}ms"></span>`;
 }
 // the UI sprites (--btn-w, --spark-white, ...) are CSS variables the build writes into the stylesheet (build.py SPRITES)
+/** @param {number} group a skill group @param {boolean} [gold] its gold's icon @returns {HTMLImageElement|null} */
 export function skillIcon(group, gold = false) {
   const src = srcFor('skill', (gold ? SKILLICON_GOLD : SKILLICON)[group]);
   if (!src) return null;
@@ -38,6 +42,7 @@ function initials(name) {
   return ((first || '?')[0] + (words[1] ? words[1][0] : first[1] || '')).toUpperCase();
 }
 // eager: an image in the first screenful (the roster's first rows): fetched at once, at high priority, not lazily
+/** @param {number} charaId @param {number|null|undefined} outfitId her outfit's portrait, when known @param {number} size in px @param {boolean} [eager] @returns {HTMLSpanElement} */
 export function umaAv(charaId, outfitId, size, eager = false) {
   const disc = document.createElement('span'); disc.className = 'av';
   disc.style.width = disc.style.height = `${size}px`; disc.style.fontSize = `${Math.round(size * 0.38)}px`;
@@ -59,6 +64,7 @@ export function umaAv(charaId, outfitId, size, eager = false) {
 // a card's type as the text shown without its art
 const KIND_ABBR = { speed: 'SPD', stamina: 'STA', power: 'POW', guts: 'GUT', wit: 'WIT', pal: 'PAL', group: 'GRP', other: '·' };
 const RARITY_CLASS = { 3: 'ssr', 2: 'sr', 1: 'r' };
+/** @param {import('./data.js').Card|null} c @param {number} size in px @returns {HTMLSpanElement} */
 export function cardAv(c, size) {
   const tile = document.createElement('span'); tile.className = 'cav';
   tile.style.width = tile.style.height = `${size}px`; tile.style.fontSize = `${Math.max(7, Math.round(size * 0.3))}px`;
@@ -77,6 +83,7 @@ export function cardAv(c, size) {
 }
 // scenario logo (game title art, img/scen/{id}; drawn whole inside its box, aspect kept); without it, or if it fails
 // to load, a badge with the scenario's name on a light shade of its colour
+/** @param {import('./data.js').Scenario} sc @returns {HTMLSpanElement} */
 export function scenLogo(sc) {
   const logo = document.createElement('span'); logo.className = 'slogo'; logo.setAttribute('aria-hidden', 'true');
   const badge = () => {

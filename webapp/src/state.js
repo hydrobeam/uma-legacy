@@ -15,6 +15,7 @@ export function dropRequired(settings) {
 dropRequired(state);
 // a target the scenario hands out as a gold whatever the deck (Unity Cup: No Stopping Me!, It's On!); nothing else is
 // guaranteed outside the deck, so the player never sets it
+/** @type {(group: number) => boolean} */
 export const goldGiven = (group) => (SCEN_GOLDS[state.scen || 'unity'] || []).includes(group);
 /**
  * The planner's status line when no search runs (search.js paintRunNote).
@@ -30,7 +31,8 @@ export const goldGiven = (group) => (SCEN_GOLDS[state.scen || 'unity'] || []).in
  * @property {Status} status
  * @property {string} headline the top result's odds ("1 in 139"), for the phone's floating button
  * @property {(() => void) | null} lastRender redraws the results on screen
- * @property {{kind: string, r: object, meta: object} | null} lastResult the result on screen, for Export
+ * @property {{kind: string, r: import('./results.js').LoopReport, meta: {example?: boolean}} | null} lastResult the result on
+ *   screen, for Export
  */
 /** @type {UiState} */
 export const ui = { status: { kind: 'loading', text: '' }, headline: '', lastRender: null, lastResult: null };

@@ -8,6 +8,7 @@ import { el } from './dom.js';
 import { SK, CARD_BY_ID, CARDS } from './data.js';
 import { srcFor, umaAv, skillIcon, cardAv } from './images.js';
 import { umaName, sparksEl } from './vets.js';
+/** @import { LineageNode } from './vets.js' */
 import { borLast } from './cards.js';
 
 let tab = 'insp';   // the tab on show, kept across redraws (Inspiration first: it is where her sparks are entered)
@@ -16,6 +17,7 @@ let tab = 'insp';   // the tab on show, kept across redraws (Inspiration first: 
 // names are sized together: every round writes each unsettled name's next size to try, then reads them all (one layout
 // per round, not one per step per name), halving the range of steps left (the width only grows with the size).
 const fitting = new Set();   // roots with a pass already queued (resize fires many times a frame)
+/** @param {ParentNode} [root] */
 export function fitSparks(root = document) {
   if (fitting.has(root)) return;
   fitting.add(root);
@@ -26,6 +28,7 @@ export function fitSparks(root = document) {
     const fits = (e) => !(e.scrollWidth > e.clientWidth + 0.5);
     // per name that overflows (and is on show): base size f0 in px, the steps known not to fit (lo) and known to fit, or
     // the floor (hi); step k is the size f0 - 0.5k, and k = 0 is the CSS size
+    /** @type {{e: HTMLElement, f0: number, lo: number, hi: number, mid?: number}[]} */
     const shrinking = names.filter(e => e.clientWidth).map(e => ({ e, f0: parseFloat(getComputedStyle(e).fontSize) }))
       .filter(x => !fits(x.e)).map(x => { let floorStep = 0; while (x.f0 - 0.5 * floorStep > 9) floorStep++; return { ...x, lo: 0, hi: floorStep }; });
     // the answer is the smallest step that fits, else hi
@@ -59,6 +62,23 @@ const when = (turn) => `${['Junior', 'Classic', 'Senior'][Math.floor(turn / 24)]
 // d: the veteran (chara, outfit, sparks, pinks, wins, parents); outfit: her outfit's label; apt: her ten grades at the
 // end of this career (null: unknown); races: the G1s her schedule runs [{ix, name, turns}]; raceName(ix); onEdit: an edit
 // to her sparks; winsBtn: the G1 wins editor's button; parentLabel(j): a parent's place ("#3")
+/**
+ * @typedef {object} DetailsSpec
+ * @property {LineageNode & {parents: LineageNode[], bought?: Object<number, string>}} d  the veteran
+ * @property {string|null} outfit  her outfit's label
+ * @property {number[]|null} apt  her ten grades at the end of this career (codes 1..8 = G..S; null: unknown)
+ * @property {{ix: number, name: string, p: number, turns: number[]}[]} races  the G1s her schedule runs, each with her
+ *   chance of winning it at least once
+ * @property {(ix: number) => string} raceName
+ * @property {() => void} onEdit  after an edit of her sparks
+ * @property {HTMLElement} winsBtn  the G1 wins editor's button
+ * @property {(j: number) => string} parentLabel  a parent's place ("#3")
+ * @property {import('./career.js').CareerTarget[]} [targets]  the career's per-target report
+ * @property {import('./results.js').ResultDeck|null} [deck]  her deck
+ * @property {{v: import('./vets.js').Veteran, label: string, open: () => void}[]} [legacies]  her two parents, each with
+ *   her place and what opens her node
+ */
+/** @param {DetailsSpec} spec */
 export function detailsEl({ d, outfit, apt, races, raceName, onEdit, winsBtn, parentLabel, targets = [], deck = null, legacies = [] }) {
   const card = el('div', 'ud');
   // her portrait, outfit and name
@@ -179,6 +199,18 @@ function inspPane({ d, onEdit, parentLabel }) {
 // The game's Inspiration view of a veteran: "Sparks", her sparks as the game's spark bars (stars on their edge), then
 // "Legacy Origin": her parents' (each a row with her portrait). key: her sparks' control names; parentKey(j): a parent's
 // (null: her parents' sparks read-only); onEdit / onEditParent: an edit. Also the tree's node popups (career.js).
+/**
+ * @typedef {object} InspViewSpec
+ * @property {LineageNode & {parents?: LineageNode[]}} d  the veteran shown (her parents: none, or her two)
+ * @property {string} key  her sparks' control names
+ * @property {() => void} onEdit  after an edit of her sparks
+ * @property {string} [meClass]  an extra class on her row
+ * @property {((j: number) => string)|null} [parentLabel]  parent j's label (null: "Her parent")
+ * @property {((j: number) => string)|null} [parentKey]  parent j's sparks' control names (null: her parents' read-only)
+ * @property {() => void} [onEditParent]  after an edit of a parent's sparks
+ * @property {boolean} [header]  the "Sparks" heading
+ */
+/** @param {InspViewSpec} spec */
 export function inspView({ d, key, onEdit, meClass = '', parentLabel = null, parentKey = null, onEditParent, header = true }) {
   const p = el('div', 'udinsp');
   if (header) p.appendChild(el('div', 'udhdr', 'Sparks'));
@@ -207,6 +239,7 @@ export function inspView({ d, key, onEdit, meClass = '', parentLabel = null, par
 // A deck's i-th card, from the solver's deck report: its name with the report's notes taken off (base), whether it is the
 // borrowed card, and the card's data (null when unknown). The report lists the deck's cards with ids (card_ids) and
 // then the plain ones (plain_ids), in the order of `cards`.
+/** @param {import('./results.js').ResultDeck} deck @param {number} i @returns {{base: string, borrowed: boolean, card: import('./data.js').Card|undefined}} */
 export function deckCardAt(deck, i) {
   const name = deck.cards[i];
   const borrowed = /\(borrowed\)$/.test(name), base = name.replace(/ \(borrowed\)$/, '').replace(/ \(end chain at link \d\)$/, '').replace(/ \(link \d+: [^)]*\)$/, '');
@@ -222,7 +255,7 @@ function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
     borLast(deck.cards).forEach((i) => {
       const { base, borrowed: bor, card: c } = deckCardAt(deck, i);
       const cell = el('button', `udcard dc${bor ? ' bor' : ''}`); cell.type = 'button'; cell.appendChild(cardAv(c || null, 64)); cell.title = base + (bor ? ' (borrowed)' : '');
-      if (c) cell.dataset.cid = c.id; cell.dataset.name = base; cell.setAttribute('aria-label', `${base + (bor ? ' (borrowed)' : '')}. Card details`); cell.setAttribute('aria-haspopup', 'dialog');
+      if (c) cell.dataset.cid = String(c.id); cell.dataset.name = base; cell.setAttribute('aria-label', `${base + (bor ? ' (borrowed)' : '')}. Card details`); cell.setAttribute('aria-haspopup', 'dialog');
       if (bor) cell.appendChild(el('span', 'udfr', 'Friends'));
       row.appendChild(cell);
     });
@@ -242,7 +275,7 @@ function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
       for (const g of v.parents) { const x = el('div', 'udleggx'); const gf = umaAv(g.chara || 0, g.outfit, 40); gf.setAttribute('role', 'img'); gf.setAttribute('aria-label', umaName(g.chara)); x.append(gf, el('span', '', umaName(g.chara))); gps.appendChild(x); }
       tree.append(me, gps); box.appendChild(tree); lg.appendChild(box);
       // the whole box opens her popup, as her portrait does
-      if (open) { box.classList.add('pnclick'); box.addEventListener('click', (e) => { if (!e.target.closest('button')) me.click(); }); }
+      if (open) { box.classList.add('pnclick'); box.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!e.target.closest('button')) me.click(); }); }
     });
     p.appendChild(lg);
   }
@@ -261,7 +294,7 @@ function infoPane({ d, races, raceName, winsBtn, deck, legacies }) {
   for (const r of entries) {
     const li = el('li', `udrace${r.won ? ' won' : ''}`);
     li.append(el('span', 'udrw', r.turn == null ? 'Entered here' : when(r.turn)), el('span', 'udgr', 'G1'), el('span', 'udrn', r.name), el('span', 'udres', r.won ? '1st' : '–'));
-    li.lastChild.setAttribute('aria-label', r.won ? 'won' : 'not won');
+    /** @type {HTMLElement} */ (li.lastChild).setAttribute('aria-label', r.won ? 'won' : 'not won');
     list.appendChild(li);
   }
   const act = el('div', 'udact'); act.append(tg, winsBtn); p.appendChild(act);

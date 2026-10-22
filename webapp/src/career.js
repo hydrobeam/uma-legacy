@@ -2,7 +2,7 @@
 // The lineage tree (trainee, two parents, their parents) is the page: each place is set by hand or left to the planner,
 // which tries every owned uma and every pair of the player's veterans (vets.js) and fills the open places with its
 // best pick (cmd "career"). The settings editors are the loop planner's (same modules, same saved settings).
-import { $, el, esc, fmtIn } from './dom.js';
+import { $, $dialog, $input, $textarea, el, esc, fmtIn } from './dom.js';
 import { ERA, SAVED } from './settings.js';
 import { UMAS, SK, CAREER, loadData } from './data.js';
 import { state, goldGiven, writeSaved } from './state.js';
@@ -57,17 +57,159 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {string} text
  * @property {{label: string, run: () => void}|null} [act]  a button after the text (e.g. Try sample veterans)
  *
+ * The career job (`buildJob`; the solver's `CareerJob`, deck/career.rs); a plan job adds `next` and `no_reports`, a
+ * comparison `compare`.
+ * @typedef {object} CareerJob
+ * @property {'career'} cmd
+ * @property {{group: number}[]} targets
+ * @property {number[]} exclude  umas not owned (by character id)
+ * @property {number[]} exclude_outfits  outfits not owned
+ * @property {number[][]} extra
+ * @property {number[]} owned_cards
+ * @property {boolean} borrow
+ * @property {number[]} star_dist  the lineage rank's chances of 1, 2 and 3 stars
+ * @property {string} scenario
+ * @property {number[]} [exclude_cards]  R cards (not pals) left out
+ * @property {import('./vets.js').JobLegacy[]} legacies  every veteran, by legacy index (`legaciesJob`)
+ * @property {number[]} trainees  the trainee chosen (none: the planner picks)
+ * @property {number[]} fix  the parents chosen, by legacy index
+ * @property {boolean} per_trainee
+ * @property {number} top  careers to return
+ * @property {undefined} [rollout]  never set by `buildJob` (a leftover of the rollout planner `baseOf` and the plan job
+ *   still clear)
+ * @property {undefined} [p_now]  likewise
+ * @property {'later'|'never'} [borrowed_parent]  left out at 'allow'
+ * @property {{roll?: number[]}} [next]  a plan job: its settings (`roll`: a roll's spark stars, per target)
+ * @property {boolean} [no_reports]  a plan job: no career reports, `next` only
+ * @property {boolean} [compare]  a comparison's job
+ *
+ * One career in a report (deck/career/outcomes.rs `report`): the trainee and her parents, by legacy index.
+ * @typedef {object} CareerReport
+ * @property {CareerTrainee} trainee
+ * @property {[number, number]} parents
+ * @property {CareerSlot[]} slots  her six legacies
+ * @property {CareerTarget[]} targets  per target, in the job's order
+ * @property {number} p_all  the chance she lands every target
+ * @property {number} p_minus1  the chance she lands all but at most one
+ * @property {number} expected  the targets she lands, expected
+ * @property {number} bound
+ * @property {import('./results.js').ResultDeck} deck
+ * @property {{group: number, q: number, carriers: number}[]} pinks  per aptitude: the chance a parent passes its pink on
+ * @property {{base: number[], start: number[], fire: object[], pink_gen: {group: number, p: number}[]}} aptitudes  her
+ *   aptitude grades (codes 1..8 = G..S) and her veteran's pink spark (pink.mjs)
+ * @property {CareerScheduleRow[]|null} schedule  every G1 she could enter, in turn order (the best career's only)
+ * @property {number[]|null} outcome_sets  [mask]: the chance of landing exactly the targets in mask (the best career's
+ *   only, up to 12 targets)
+ * @property {number|null} g1_wins  her G1 wins, expected (the best career's only)
+ * @property {boolean} [looped]  a plan option: both parents are 8/8s
+ *
+ * A row of a career's schedule (deck/career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
+ * @typedef {import('./agenda.js').ScheduleRow & CareerScheduleFields} CareerScheduleRow
+ * @typedef {object} CareerScheduleFields
+ * @property {number} turn  0..71
+ * @property {string} name  the race's full name (`race`: as the chart shows it)
+ * @property {boolean} run  she runs it (false: she skips it)
+ * @property {boolean} skipped
+ * @property {string} instead  what she does that turn instead (a race's name, or "rest")
+ * @property {number|null} p  her win chance (a fraction; null when she skips it)
+ * @property {boolean} goal  a goal race of her scenario
+ *
+ * @typedef {object} CareerTrainee
+ * @property {number} id
+ * @property {string} name
+ * @property {{id: number, label: string}[]} outfits  her outfits that cover a target; the page puts the one it names
+ *   first (`oneOutfit`)
+ * @property {{group: number, level: number}[]} covers
+ * @property {boolean} [anyOutfit]  set by the page: no outfit covers a target, any would do
+ * @property {string} [outfitNote]  set by the page: what her popup says about the outfit
+ *
+ * @typedef {object} CareerSlot
+ * @property {'parent'|'grandparent'} kind
+ * @property {number} legacy  the parent's legacy index
+ * @property {number|null} gp  a grandparent: which of the parent's two
+ * @property {number} chara
+ * @property {string} name
+ * @property {number} rel  relation points
+ * @property {number} race  shared G1 wins, as points
+ * @property {number} aff  affinity: rel + race
+ *
+ * @typedef {object} CareerTarget
+ * @property {number} group
+ * @property {number} q  the chance inheritance gives it
+ * @property {number} carriers  legacies with its spark
+ * @property {number} p  the chance she lands it
+ * @property {boolean} gold  a gold target
+ * @property {CareerBuy} buy
+ *
+ * How she buys a target and lands it as a spark (outcomes.rs `report`): the chance she buys it as gold and as white,
+ * lands each, and the sources; a gold the scenario hands out has `scenario` and the first four only.
+ * @typedef {object} CareerBuy
+ * @property {number} gold
+ * @property {number} white
+ * @property {number} land_gold
+ * @property {number} land_white
+ * @property {number} [deck_gold]  the deck hints its gold
+ * @property {number} [deck_white]  the deck hints its white
+ * @property {number} [own_event]  her own story events give it
+ * @property {number} [inherit]  inspiration gives it
+ * @property {0|1|2} [outfit]  her outfit's own skill: none, the white, the gold
+ * @property {boolean} [scenario]
+ *
+ * One career of the plan's table (output.rs): a career report with its place in the plan.
+ * @typedef {CareerReport & PlanOptionFields} PlanOption
+ * @typedef {object} PlanOptionFields
+ * @property {'plan'|'finish'|'loop'|'candidate'|'builder'} role  her place in today's estimate (`roleText`)
+ * @property {boolean} best_odds  the search's best career
+ * @property {boolean} chosen  the plan's pick
+ * @property {boolean} looped  both parents are 8/8s
+ * @property {boolean} exact  scored from her own career search
+ * @property {boolean} [proven]  false: her career search was cut short
+ * @property {number|null} stage_cost
+ * @property {number|null} index  the careers she saves toward a fully looped parent, net
+ * @property {number|null} saving
+ * @property {number|null} lift  the chance she improves on the parents
+ * @property {boolean} near  close to the pick
+ * @property {number|null} score  the table's order
+ *
+ * A row of the Career choices table: a plan option, or a career of the search (without the plan's fields).
+ * @typedef {CareerReport & Partial<PlanOptionFields>} OptionRow
+ *
+ * The plan's report (the solver's `next`, sim/plan/output.rs), or its refusal (`error`).
+ * @typedef {object} PlanReport
+ * @property {string} [error]
+ * @property {CareerReport|null} choice  the plan's pick
+ * @property {PlanOption[]} options  by score, best first
+ * @property {number|null} v0  expected careers to a fully looped parent with the veterans now
+ * @property {{a: string|null, b: string|null, c: string|null, careers: number[]}|null} v0_plan  today's cheapest route:
+ *   its steps' trainees by name and their careers
+ * @property {{trainee: number, parents: [number, number], uncv: number[], fixed: number[]}|null} outcomes  the career a
+ *   roll is of (`next.roll`)
+ * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
+ *
+ * The career search's report (deck/career.rs), or its refusal (`error`).
+ * @typedef {object} CareerSearch
+ * @property {string} [error]
+ * @property {CareerReport[]} results  the best careers, best first
+ * @property {number} candidates  careers it weighed
+ * @property {boolean} proven_top  the best odds' order is certified
+ * @property {PlanReport} [next]  a plan job's plan
+ * @property {boolean} [pending]  set by the page: a quick comparison's stand-in while the search for her career runs
+ *
  * The answer on show: the search's result for a job and the places it ran with (the plan's is `planState`).
  * @typedef {object} Answer
- * @property {object} r  the solver's search report (`results`: the best careers, best first)
- * @property {object} job  the job it answers
+ * @property {CareerSearch} r  the solver's search report
+ * @property {CareerJob} job  the job it answers
  * @property {string} key  `jobKey(job)`
  * @property {string} plan  the places, as JSON (`plan` when it ran)
  *
- * The answer's plan: none (the trainee chosen, or no run), done, or failed.
- * @typedef {{state: 'none'} | {state: 'done', r: object, ms: number, job: object} | {state: 'error', text: string}} PlanState
- *   r: the solver's `next` report (`choice`, `options`, `v0`, `v0_plan`, `members`, `outcomes`); job: the plan job it ran
+ * The answer's plan: none (the trainee chosen, or no run), done (`r`: the solver's `next` report; `job`: the plan job
+ * it ran), or failed.
+ * @typedef {{state: 'none', r?: null}} PlanNone
+ * @typedef {{state: 'done', r: PlanReport, ms: number, job: CareerJob}} PlanDone
+ * @typedef {{state: 'error', text: string}} PlanFailed
+ * @typedef {PlanNone | PlanDone | PlanFailed} PlanState
  */
+/** @import { LineagePlan, LineageNode } from './vets.js' */
 /** @type {Status} */
 let status = { kind: 'loading', text: 'Loading…' };
 /** @type {Answer|null} */
@@ -97,7 +239,7 @@ function paintBusy(note) {
   const seconds = Math.floor((performance.now() - phaseStart) / 1000);
   note.textContent = phase === 'plan' && phaseNote ? `${phaseNote} ` : '';
   const line = el('span'); line.innerHTML = runnerHTML();
-  line.append(phase === 'plan' ? 'Planning your next career…' : 'Searching careers…', el('span', '', seconds >= 1 ? ` ${seconds} s` : '')); line.lastChild.setAttribute('aria-hidden', 'true');
+  line.append(phase === 'plan' ? 'Planning your next career…' : 'Searching careers…', el('span', '', seconds >= 1 ? ` ${seconds} s` : '')); /** @type {HTMLElement} */ (line.lastChild).setAttribute('aria-hidden', 'true');
   // (the plan's progress, before the seconds; like them, not read out at every step)
   if (phase === 'plan' && planProgress) { const pg = el('span', 'runprog', ` (${planProgress})`); pg.setAttribute('aria-hidden', 'true'); line.insertBefore(pg, line.lastChild); }
   note.appendChild(line);
@@ -160,6 +302,7 @@ function buildJob() {
   const exclude_outfits = Object.entries(state.outfits).filter(([, v]) => v === false).map(([k]) => +k);
   const allPlaced = plan.trainee && fixed.length === 2;
   // a place left open: the K best careers by odds (the plan then picks among them and a few more, `search`)
+  /** @type {CareerJob} */
   const job = { cmd: 'career', targets: jobTargets(), exclude, exclude_outfits, extra: EXTRA, owned_cards: ownedCards(), borrow: true,
     star_dist: state.rank.split(',').map(Number), scenario: state.scen || 'unity', ...rcardsOff(), legacies: legaciesJob(), trainees: plan.trainee ? [plan.trainee] : [],
     fix: plan.parents.filter(Boolean).map(idxOf), per_trainee: false, top: allPlaced ? 1 : ROLL_K };
@@ -181,7 +324,7 @@ let planState = { state: 'none', r: null };
 const keyOf = (r) => `${r.trainee.id}:${r.parents.join(',')}`;
 // the last plan made: while the career on show is one you chose on the same setup and veterans (its job without the
 // places), its table stays, so you can weigh the plan's other careers or go back to its pick
-/** @type {{base: string, places: LineagePlan, result: object}|null} base: `refBase` of its job; places: as it ran with
+/** @type {{base: string, places: LineagePlan, result: PlanReport}|null} base: `refBase` of its job; places: as it ran with
  *  (LineagePlan: vets.js); result: its `next` report */
 let refPlan = null;
 const refBase = (job) => planKey({ ...job, exclude: UMAS.filter(u => !owned(u)).map(u => u.id), trainees: [], fix: [], top: 0 });
@@ -196,6 +339,7 @@ const planKey = (job) => { const { compare: _c, rollout: _r, p_now: _p, ...j } =
 // every career a result names gets one outfit (never "any outfit"): its trainee's outfits are reordered with the chosen
 // one first, filled with one of hers when none covers a target (`anyOutfit`); her popup says which
 function oneOutfit(t) { if (!t || t.outfitNote != null) return; const f = pickOutfit(t.id, t.outfits || []); t.outfits = f.list; t.anyOutfit = f.any; t.outfitNote = outfitNote(f); }
+/** @type {(job: CareerJob, progress?: (p: import('./engine.js').PlanProgress) => void) => Promise<{r: CareerSearch, ms: number}>} */
 const runJob = async (job, progress) => { const m = await run(job, undefined, progress), r = m.r || {};
   for (const x of [...(r.results || []), r.next?.choice, ...(r.next?.options || [])]) oneOutfit(x?.trainee);
   return m; };
@@ -205,10 +349,10 @@ try { localStorage.removeItem('llp:loops'); } catch {}
  * The veteran analysis: the veteran this career leaves (the draft) and her comparison.
  * @typedef {object} Simulation
  * @property {'none'|'ready'|'busy'|'done'|'error'} state  none: no career on show; ready: no comparison yet
- * @property {object} [draft]  the entered veteran (a Veteran without id, plus `apt` and `bought` from her roll)
- * @property {object|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the quick
- *   comparison looks for it)
- * @property {object|null} [baseline]  today's best career, without her
+ * @property {Draft|null} [draft]  the entered veteran
+ * @property {CareerSearch|null} [r]  the comparison's search: the best career with her as a parent (`pending` while the
+ *   quick comparison looks for it)
+ * @property {CareerReport|null} [baseline]  today's best career, without her
  * @property {string|null} [error]
  * @property {string} [forKey]  `keyOf` the career she came from
  * @property {'quick'|null} [kind]  the running comparison is a roll's quick one
@@ -219,10 +363,14 @@ try { localStorage.removeItem('llp:loops'); } catch {}
  * @property {boolean} [full]  she lands every target
  * @property {{now: number|null, withHer: number|null}} [v0]  expected careers to a fully looped parent with your
  *   veterans now, and with her too
- * @property {object|null} [pickA]  the planner's next career once she is added
+ * @property {PlanOption|null} [pickA]  the planner's next career once she is added
  * @property {boolean} [samePick]  it is the same as without her
  * @property {boolean} [herParent]  she is one of its parents
  * @property {string} [where]  where her saving lands (`savedWhere`)
+ *
+ * The veteran a career leaves, as entered (a Veteran without id), with `apt` (her end grades) and `bought` (skill group
+ * -> 'gold' | 'white') from her roll.
+ * @typedef {LineageNode & {borrowed: boolean, parents: LineageNode[], apt?: number[], bought?: Object<number, string>}} Draft
  */
 /** @type {Simulation} */
 let simulation = { state: 'none', draft: null, r: null, baseline: null, error: null };
@@ -284,6 +432,7 @@ function endRun(answer) {
   renderAll(); paint();
 }
 // the veteran analysis, ready for the career on show: she starts as a random result of it
+/** @type {(r: CareerReport) => Simulation} */
 const readySimulation = (r) => ({ state: 'ready', draft: draftOf(r), r: null, baseline: null, error: null, forKey: keyOf(r) });
 // the search's lead line: how many careers it weighed, in what time
 function searchedText(m) {
@@ -293,6 +442,7 @@ function searchedText(m) {
 // the search's status: done, with a caveat when the exact check ran out of time; or, when no career can land every
 // target, which targets nothing can give (no veteran or parent carries their spark; no deck, outfit or event gives them
 // either, or some career would have them)
+/** @returns {Status} */
 function searchStatus(m, found) {
   const cert = m.r.proven_top ? '' : ' The exact check of the best odds ran out of time: their order may not be final.';
   if (m.r.results.length) return { kind: 'done', text: found + cert };
@@ -312,6 +462,7 @@ async function planPhase(id, job, found) {
   try {
     // Compare may have run this very plan job already (`planKept`): take its answer instead of planning again
     const jp = { ...plain, next: {}, no_reports: true }, kept = planKept && planKept.key === planKey(jp) ? planKept : null;
+    /** @type {{r: {next?: PlanReport, error?: string}, ms: number}} */
     const m2 = kept ? { r: { next: kept.r }, ms: kept.ms } : await runJob(jp, (p) => { if (id === runId) { planProgress = progText(p); paint(); } });
     if (id !== runId) return null;
     const x = m2.r.next;
@@ -546,10 +697,10 @@ function renderTree() {
 let pickK = 0;
 function vpTab(t) {
   for (const x of ['vets', 'new', 'auto']) { $(`vp-tab-${x}`).setAttribute('aria-selected', String(x === t)); $(`vp-${x}`).hidden = x !== t; }
-  if (t === 'new') { $('vp-filter').value = ''; drawNew(); $('vp-filter').focus(); }
+  if (t === 'new') { $input('vp-filter').value = ''; drawNew(); $input('vp-filter').focus(); }
 }
-const drawNew = () => drawUmas($('vp-umas'), $('vp-filter').value, (id) => {
-  $('vpick-dlg').close();
+const drawNew = () => drawUmas($('vp-umas'), $input('vp-filter').value, (id) => {
+  $dialog('vpick-dlg').close();
   askSkills(umaName(id), false, (sp) => { const v = newVet(id, sp || {}); plan.parents[pickK] = v.id; changed(); }, true);
 });
 // The parent rules for veteran v beside the other parent o (none: no other) with trainee t (0: none), the page's form
@@ -585,12 +736,12 @@ function openParentPicker(k) {
     gp.append(` ${v.parents.map(g => g.chara ? umaName(g.chara) : 'unknown').join(', ')}`);
     b.appendChild(gp);
     if (why) b.appendChild(el('div', 'vptw', `Can't: ${why}`));
-    b.onclick = () => { plan.parents[k] = v.id; $('vpick-dlg').close(); changed(); };
+    b.onclick = () => { plan.parents[k] = v.id; $dialog('vpick-dlg').close(); changed(); };
     box.appendChild(b);
   });
   if (!vets.length) box.innerHTML = '<p class="hint">No veterans yet: import them in the paddock below, or make a new one.</p>';
   vpTab(vets.length ? 'vets' : 'new');
-  $('vpick-dlg').showModal();
+  $dialog('vpick-dlg').showModal();
 }
 
 // ---------- the career: odds, deck, targets, schedule, after this career, other picks ----------
@@ -636,7 +787,7 @@ function deckEl(r, title = 'Deck') {
     const t = c ? cardTitle(c) : { nm: base, ti: '' }, tag = bor ? 'borrowed' : c?.pal ? 'pal' : '';
     const full = t.nm + (t.ti ? ` · ${t.ti}` : '') + (tag ? ` (${tag})` : '') + (pick ? ` · prioritise ${pick}` : '');
     const b = el('button', `dc${bor ? ' bor' : c?.pal ? ' pal' : ''}`); b.type = 'button';
-    if (c) b.dataset.cid = c.id; b.dataset.name = t.nm; if (endAt) b.dataset.end = endAt;
+    if (c) b.dataset.cid = String(c.id); b.dataset.name = t.nm; if (endAt) b.dataset.end = String(endAt);
     b.title = full; b.setAttribute('aria-label', full); b.setAttribute('aria-haspopup', 'dialog'); b.setAttribute('aria-expanded', 'false');
     b.append(cardAv(c || null, 96), el('span', 'dn', full));
     if (pick) b.appendChild(el('i', '', `prioritise ${pick}`));
@@ -776,7 +927,8 @@ function rollDraft() {
 // direct lifts could save there (ceilings over every partner): a zero is proven when y_hi < 0.5, else the exact
 // comparison checks it. null when the plan isn't for this career (then Reroll compares exactly).
 function rollReq(d, r) {
-  const o = planState.state === 'done' ? planState.r?.outcomes : null;
+  if (planState.state !== 'done') return null;
+  const o = planState.r?.outcomes;
   if (!o || !planState.job || o.trainee !== r.trainee.id || o.parents.join(',') !== r.parents.join(',')) return null;
   const sp = d.sparks || {};
   return { job: planState.job, stars: state.targets.map(t => sp[t.group] || 0) };
@@ -800,8 +952,8 @@ async function quickCompare(request) {
     const roll = m.r.next?.roll;
     if (m.r.error || typeof roll?.y !== 'number') { simulation.kind = null; runComparison(); return; }
     y = roll.y; hi = typeof roll.y_hi === 'number' ? roll.y_hi : null;
-    const v0 = planState.r.v0;
-    simulation.r = { results: [], pending: true }; simulation.full = isFull(simulation.draft); simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null };
+    const v0 = /** @type {PlanDone} */ (planState).r.v0;   // done: `request` came from its `rollReq`
+    simulation.r = /** @type {CareerSearch} */ ({ results: [], pending: true }); simulation.full = isFull(simulation.draft); simulation.v0 = { now: v0, withHer: v0 != null ? Math.max(0, v0 - y) : null };   // r: a stand-in, no search figures
     simulation.pickA = null; simulation.samePick = false; simulation.herParent = false; simulation.where = ''; simulation.quick = true; simulation.state = 'done';
   } catch (e) { if (gone()) return; simulation.error = e.message; simulation.state = 'error'; }
   simulation.kind = null; renderSimulation();
@@ -840,6 +992,7 @@ function savedWhere({ planNow, planWithHer, pickA, samePick, herIndex }) {
   if (!pickA) return '';
   if (pickA.parents.includes(herIndex)) return `Improves the next career (${pickA.trainee.name}).`;
   // the route's steps: [the uma of the step, its careers]
+  /** @type {(next: PlanReport|null) => [string|null, number][]} */
   const steps = (next) => { const v = next?.v0_plan; return v ? [v.a, v.b, v.c].map((trainee, i) => [trainee, v.careers[i]]) : []; };
   const careersNow = new Map(steps(planNow)); let best = null, gain = 0;
   for (const [trainee, careers] of steps(planWithHer)) {
@@ -874,6 +1027,7 @@ async function runComparison(refine = false) {
     if (!simulation.baseline) {
       const open = !last.job.trainees.length && !last.job.fix.length;
       const cached = baselineCache?.key === key ? baselineCache.result : null;
+      /** @type {{results: CareerReport[], error?: string}} */
       const before = cached ? { results: [cached] } : open ? last.r : (await runJob(base)).r;
       if (gone()) return;
       if (before.error || !before.results?.length) throw new Error(before.error || 'No career found in the current roster.');
@@ -1022,7 +1176,7 @@ function comparisonResult(result, d) {
   result.appendChild(dd);
 }
 function renderSimulation() {
-  const ae = document.activeElement, k = ae?.dataset?.k, top = $('sim-top');
+  const ae = /** @type {HTMLElement} */ (document.activeElement), k = ae?.dataset?.k, top = $('sim-top');
   if (top) { top.replaceChildren(shown() ? simulationBody() : ''); fitSparks(top); }
   if (k?.startsWith('sim:') && !ae.isConnected) document.querySelector(`[data-k="${CSS.escape(k)}"]`)?.focus();
 }
@@ -1055,6 +1209,7 @@ function optionsEl() {
   // when the plan didn't list it: no saving), and a way back to the places it ran with
   const on = shown(), ref = refFor(), mineOnly = !!plan.trainee && plan.parents.every(Boolean);
   const planReport = planState.state === 'done' ? planState.r : mineOnly && ref ? ref.result : null, places = planState.state !== 'done' && mineOnly && ref ? ref.places : plan;
+  /** @type {OptionRow[]} the plan's rows, or the search's careers (no plan fields) */
   const list = planReport ? planReport.options.filter((o, i) => i < OPT_SHOW || o.best_odds || o.chosen || (on && keyOf(o) === keyOf(on))) : last.r.results.slice();
   const mine = planReport && on && !list.some(o => keyOf(o) === keyOf(on)) ? on : null;
   if (mine) list.unshift(mine);
@@ -1160,7 +1315,7 @@ function vetCardEl(v, i) {
   const top = el('div', 'vtop');
   top.appendChild(el('span', 'vno', `#${i + 1}`));
   const seg = el('div', 'seg sm'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', `Veteran #${i + 1}: yours or borrowed`);
-  for (const [b, l] of [[false, 'Yours'], [true, 'Borrowed']]) {
+  for (const [b, l] of /** @type {[boolean, string][]} */ ([[false, 'Yours'], [true, 'Borrowed']])) {
     const x = el('button', '', l); x.type = 'button'; x.setAttribute('aria-pressed', String(v.borrowed === b));
     x.onclick = () => { if (v.borrowed !== b) { v.borrowed = b; $('v-msg').textContent = `Moved ${umaName(v.chara)} (#${i + 1}) to ${l}.`; changed(); } }; seg.appendChild(x);   // she moves to that tab
   }
@@ -1199,7 +1354,7 @@ function renderPool() {
   const nb = vets.filter(v => v.borrowed).length;
   $('v-count').textContent = vets.length ? `${vets.length} veteran${vets.length > 1 ? 's' : ''}${nb ? `, ${nb} borrowed` : ''}.` : '';
   $('v-tab-own').textContent = `Yours · ${vets.length - nb}`; $('v-tab-bor').textContent = `Borrowed · ${nb}`;
-  if (!$('set-vets').open) { poolStale = true; return; }
+  if (!$dialog('set-vets').open) { poolStale = true; return; }
   drawPool();
 }
 function drawPool() {
@@ -1211,7 +1366,7 @@ function drawPool() {
 }
 // redraw everything, keeping the keyboard focus on the same control (every edit redraws)
 function renderAll() {
-  const k = document.activeElement?.dataset ? document.activeElement.dataset.k : null;
+  const ae = /** @type {HTMLElement} */ (document.activeElement), k = ae?.dataset ? ae.dataset.k : null;
   renderTree(); renderResults(); renderPool();
   if (k) { const e = document.querySelector(`[data-k="${CSS.escape(k)}"]`); if (e) e.focus(); }
 }
@@ -1252,7 +1407,7 @@ function paintFold() {
 // the pink ribbon toggles it (all of it, its edges included); folded, the whole bar (its summary included)
 function initFold() {
   const bar = document.querySelector('.rbbar');
-  bar.addEventListener('click', (e) => { if (!folded && !e.target.closest('#h-set')) return; folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); });
+  bar.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!folded && !e.target.closest('#h-set')) return; folded = !folded; try { localStorage.setItem('llp:setup-folded', folded ? '1' : '0'); } catch {} paintFold(); });
   paintFold();
 }
 
@@ -1263,11 +1418,11 @@ const EXPORT_APP = 'uma-legacy-veterans';
 function exportVets() {
   let job = null; try { job = buildJob(); } catch {}
   const data = { app: EXPORT_APP, version: 1, era: ERA, exported: new Date().toISOString(), veterans: vets, plan, job };
-  $('vx-text').value = JSON.stringify(data); $('vx-msg').textContent = ''; $('vx-dlg').showModal();
+  $textarea('vx-text').value = JSON.stringify(data); $('vx-msg').textContent = ''; $dialog('vx-dlg').showModal();
 }
 // Copy: the clipboard API, else select the text and the old copy command, else leave it selected for Ctrl+C
 function copyExport() {
-  const t = $('vx-text'), msg = (m) => { $('vx-msg').textContent = m; };
+  const t = $textarea('vx-text'), msg = (m) => { $('vx-msg').textContent = m; };
   const fallback = (why) => { t.focus(); t.select();
     let ok = false; try { ok = document.execCommand('copy'); } catch {}
     msg(ok ? 'Copied.' : `Could not copy${why ? ` (${why})` : ''}. The text is selected: press Ctrl+C (or ⌘C).`); };
@@ -1275,7 +1430,7 @@ function copyExport() {
   navigator.clipboard.writeText(t.value).then(() => msg('Copied.'), (e) => fallback(e?.message || 'clipboard refused'));
 }
 function downloadExport() {
-  const url = URL.createObjectURL(new Blob([$('vx-text').value], { type: 'application/json' }));
+  const url = URL.createObjectURL(new Blob([$textarea('vx-text').value], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = `uma-legacy-veterans-${ERA}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   $('vx-msg').textContent = 'Downloaded.';
@@ -1307,15 +1462,15 @@ loadData().then(() => {
     schedule(); renderAll();
   });
   for (const x of ['vets', 'new', 'auto']) $(`vp-tab-${x}`).onclick = () => vpTab(x);
-  $('vp-filter').oninput = () => filterUmas($('vp-umas'), $('vp-filter').value);
-  $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $('vpick-dlg').close(); changed(); };
-  $('v-file').onchange = async (e) => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
-  $('v-paste').onclick = () => { $('paste-text').value = ''; $('paste-dlg').showModal(); };
+  $input('vp-filter').oninput = () => filterUmas($('vp-umas'), $input('vp-filter').value);
+  $('vp-auto-go').onclick = () => { plan.parents[pickK] = null; $dialog('vpick-dlg').close(); changed(); };
+  $('v-file').onchange = async (/** @type {TargetedEvent<HTMLInputElement>} */ e) => { const f = e.target.files[0]; if (f) importText(await f.text()); e.target.value = ''; };
+  $('v-paste').onclick = () => { $textarea('paste-text').value = ''; $dialog('paste-dlg').showModal(); };
   $('v-export').onclick = exportVets; $('vx-copy').onclick = copyExport; $('vx-dl').onclick = downloadExport;
-  $('paste-load').onclick = () => { if (importText($('paste-text').value)) $('paste-dlg').close(); };
-  $('v-toggle').onclick = () => { if (poolStale) drawPool(); $('set-vets').showModal(); };
+  $('paste-load').onclick = () => { if (importText($textarea('paste-text').value)) $dialog('paste-dlg').close(); };
+  $('v-toggle').onclick = () => { if (poolStale) drawPool(); $dialog('set-vets').showModal(); };
   // however the dialog opens, its cards are drawn before it paints (a mutation callback runs before the next frame)
-  new MutationObserver(() => { if ($('set-vets').open && poolStale) drawPool(); }).observe($('set-vets'), { attributes: true, attributeFilter: ['open'] });
+  new MutationObserver(() => { if ($dialog('set-vets').open && poolStale) drawPool(); }).observe($dialog('set-vets'), { attributes: true, attributeFilter: ['open'] });
   $('v-clear').onclick = () => {   // the open tab's veterans
     const n = vets.filter(inTab).length, what = vTab === 'own' ? `${n} of your veterans` : `${n} borrowed veteran${n === 1 ? '' : 's'}`;
     if (n && confirm(`Remove all ${what}?`)) { clearVets(inTab); $('v-msg').textContent = `Removed ${what}.`; }

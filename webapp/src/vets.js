@@ -24,7 +24,7 @@
  * @property {(string|null)[]} parents  the two parent places, by veteran id
  */
 // Saved per data era in localStorage['llp:career'] = {v: 2, global: {vets, plan}, gm: {vets, plan}}.
-import { $ } from './dom.js';
+import { $, $dialog, $input } from './dom.js';
 import { ERA } from './settings.js';
 import { UMAS, NAME, SK, CAREER } from './data.js';
 import { state, goldGiven } from './state.js';
@@ -71,12 +71,18 @@ export function onVetsChange(fn) { onChange = fn; }
 // every edit: saved, then the page redraws and searches again
 export function changed() { persistSoon(); onChange(); }
 
+/** @type {(id: number|null|undefined) => string} */
 export const umaName = (id) => id ? (NAME.get(id) || `Uma ${id}`) : 'Unknown';
 const targetGroups = () => state.targets.map(t => t.group);
+/** @type {(g: number) => string} */
 export const skillName = (g) => (SK.get(g) || { w: `Skill ${g}` }).w;
+/** @type {(g: number|string) => string} */
 export const pinkName = (g) => CAREER.pinks[g] || `Aptitude ${g}`;
+/** @type {(g: number|string) => string} */
 export const blueName = (g) => CAREER.blues?.[g] || ['', 'Speed', 'Stamina', 'Power', 'Guts', 'Wit'][g] || `Stat ${g}`;
+/** @type {(g: number|string) => string|null} */
 export const uniqueName = (g) => CAREER.uniques?.[g] || null;
+/** @type {(id: string) => Veteran|undefined} */
 export const vetById = (id) => vets.find(v => v.id === id);
 const allTargetsAt = (stars) => Object.fromEntries(targetGroups().map(g => [g, stars]));
 
@@ -86,13 +92,15 @@ for (const d of document.querySelectorAll('dialog')) {
 }
 // the uma picker: every uma (or those `only` lets through), filterable; onPick(chara id)
 let onUmaPicked = null;
+/** @param {string} title @param {(chara: number) => void} onPick @param {((u: import('./data.js').Uma) => boolean)|null} [only] */
 export function openUmaPicker(title, onPick, only = null) {
-  onUmaPicked = onPick; $('pick-title').textContent = title; $('pick-filter').value = '';
-  drawUmas($('pick-list'), '', pickUma, only); $('pick-dlg').showModal(); $('pick-filter').focus();
+  onUmaPicked = onPick; $('pick-title').textContent = title; $input('pick-filter').value = '';
+  drawUmas($('pick-list'), '', pickUma, only); $dialog('pick-dlg').showModal(); $input('pick-filter').focus();
 }
-function pickUma(id) { $('pick-dlg').close(); const onPick = onUmaPicked; onUmaPicked = null; onPick?.(id); }
-$('pick-filter').oninput = () => filterUmas($('pick-list'), $('pick-filter').value);
+function pickUma(id) { $dialog('pick-dlg').close(); const onPick = onUmaPicked; onUmaPicked = null; onPick?.(id); }
+$input('pick-filter').oninput = () => filterUmas($('pick-list'), $input('pick-filter').value);
 // the picker's list: every uma `only` lets through, the filter applied by hiding (typing doesn't rebuild it)
+/** @param {HTMLElement} box @param {string} filter @param {(chara: number) => void} onPick @param {((u: import('./data.js').Uma) => boolean)|null} [only] */
 export function drawUmas(box, filter, onPick, only = null) {
   box.textContent = '';
   for (const u of [...UMAS].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -104,13 +112,15 @@ export function drawUmas(box, filter, onPick, only = null) {
   const none = document.createElement('p'); none.className = 'hint'; none.textContent = 'No uma matches.'; box.appendChild(none);
   filterUmas(box, filter);
 }
+/** @param {HTMLElement} box @param {string} filter */
 export function filterUmas(box, filter) {
   const f = filter.trim().toLowerCase(); let n = 0;
-  for (const b of box.querySelectorAll('.upick')) { b.hidden = !!f && !b._nm.includes(f); n += !b.hidden; }
+  for (const b of box.querySelectorAll('.upick')) { b.hidden = !!f && !b._nm.includes(f); n += Number(!b.hidden); }
   box.querySelector('p.hint').hidden = n > 0;
 }
 // after an uma is picked for a node that carries sparks: whether to give her the target skills. onChoice(sparks | null:
 // keep what she has)
+/** @param {string} name @param {boolean} hasSparks @param {(sparks: Sparks|null) => void} onChoice @param {boolean} [withParents] */
 export function askSkills(name, hasSparks, onChoice, withParents = false) {
   const n = targetGroups().length;
   $('ask-title').textContent = `Add skills to ${name}?`;
@@ -123,9 +133,9 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
     ...(hasSparks ? [{ label: 'Keep her current skills', sparks: () => null }] : [])];
   for (const { label, sparks, primary } of choices) {
     const b = document.createElement('button'); b.type = 'button'; b.className = `btn${primary ? ' primary' : ''}`; b.textContent = label;
-    b.onclick = () => { $('ask-dlg').close(); onChoice(sparks()); }; box.appendChild(b);
+    b.onclick = () => { $dialog('ask-dlg').close(); onChoice(sparks()); }; box.appendChild(b);
   }
-  $('ask-dlg').showModal(); box.querySelector('.primary').focus();
+  $dialog('ask-dlg').showModal(); box.querySelector('.primary').focus();
 }
 // the G1 wins of one node, on the schedule window's calendar (the editor in agenda.js): each win in its slot, click it to
 // remove it; an empty slot where a G1 is held lists the races held then. A pool veteran's wins are saved on each edit, and
@@ -134,7 +144,7 @@ export function askSkills(name, hasSparks, onChoice, withParents = false) {
 const allRaces = () => CAREER.races.map((name, ix) => ({ ix, name, turns: (CAREER.race_turns || [])[ix] || [] }));
 let winsClose = null;
 export function openWins(nd, who, opts = {}) {
-  const opener = document.activeElement;
+  const opener = /** @type {HTMLElement} */ (document.activeElement);
   $('wins-title').textContent = `G1 wins: ${who}`;
   const count = () => { $('wins-count').textContent = winsText(nd); };
   $('wins-list').replaceChildren(winsAgenda({ races: allRaces(), get: () => nd.wins, set: (w) => { nd.wins = w; }, at: () => (nd.winAt ||= {}),
@@ -142,10 +152,11 @@ export function openWins(nd, who, opts = {}) {
   count();
   // closing: the pool searches again; the focus goes back to the button that opened it (redrawn by then: found by its key)
   winsClose = opts.onClose || (() => { const k = opener?.dataset?.k; changed(); const b = k && document.querySelector(`[data-k="${CSS.escape(k)}"]`); (b || (opener?.isConnected ? opener : null))?.focus(); });
-  $('wins-dlg').showModal();
+  $dialog('wins-dlg').showModal();
 }
+/** @type {(nd: LineageNode) => string} */
 export const winsText = (nd) => nd.wins.length ? `${nd.wins.length} G1 win${nd.wins.length > 1 ? 's' : ''}` : 'No G1 wins';
-$('wins-dlg').addEventListener('close', () => { const f = winsClose; winsClose = null; f?.(); });
+$dialog('wins-dlg').addEventListener('close', () => { const f = winsClose; winsClose = null; f?.(); });
 // "+" beside a node's sparks: the target skills she lacks, as the game's white spark cells (her blue, pink and unique
 // sparks have bars of their own, each opening a picker)
 const pop = $('add-pop'); let popFor = null;
@@ -172,7 +183,7 @@ function openAdd(btn, nd, onEdit = changed) {
   else { pop.style.left = `${Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - 320))}px`; pop.style.top = `${r.bottom + scrollY + 6}px`; }
   pop.hidden = false; pop.focus();
 }
-document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target) && !(popFor?.contains(e.target))) closeAdd(); });
+document.addEventListener('click', (/** @type {TargetedEvent} */ e) => { if (!pop.hidden && !pop.contains(e.target) && !(popFor?.contains(e.target))) closeAdd(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { const b = popFor; closeAdd(); b?.focus(); } });
 
 // ---------- a node's sparks ----------
@@ -200,7 +211,7 @@ function starsEl(stars) {
 /** @param {ChipSpec} spec */
 function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = false }) {
   const c = document.createElement('span'); c.className = `vsk${pink ? ' pink' : ''}`;
-  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) b.type = 'button'; b.className = 'vskb';
+  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) /** @type {HTMLButtonElement} */ (b).type = 'button'; b.className = 'vskb';
   if (icon) b.appendChild(icon);
   const t = document.createElement('span'); t.className = 'vskn'; t.textContent = label; b.appendChild(t);
   b.appendChild(starsEl(stars));
@@ -215,6 +226,7 @@ function chip({ label, icon, stars, pink, onCycle, onRemove, key, readOnly = fal
 // each a bar of its colour (a dashed one when she has none) that opens its picker; then her target skills' white sparks
 // (click: stars 1 -> 2 -> 3 -> 1, the corner x removes), then "+" (a target skill she lacks). Sparks of skills that are
 // not targets are kept but not shown (read-only: shown). key names the controls (data-k) for the focus after a redraw.
+/** @param {LineageNode} nd @param {string} [key] @param {() => void} [onEdit] @param {boolean} [readOnly] @returns {HTMLDivElement} */
 export function sparksEl(nd, key = '', onEdit = changed, readOnly = false) {
   const sp = document.createElement('div'); sp.className = 'vsparks';
   for (const kind of ['blue', 'pink', 'green']) { const b = colourBar(nd, kind, key, onEdit, readOnly); if (b) sp.appendChild(b); }
@@ -280,7 +292,7 @@ function colourBar(nd, kind, key, onEdit, readOnly) {
   }
   // a blue (she has one or not), or no pink yet
   const c = document.createElement('span'); c.className = `vsb ${kind}${cur ? '' : ' none'}`;
-  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) { b.type = 'button'; b.dataset.k = k; b.setAttribute('aria-haspopup', 'dialog'); b.onclick = () => openColour(nd, kind, k, onEdit); }
+  const b = document.createElement(readOnly ? 'span' : 'button'); if (!readOnly) { /** @type {HTMLButtonElement} */ (b).type = 'button'; b.dataset.k = k; b.setAttribute('aria-haspopup', 'dialog'); b.onclick = () => openColour(nd, kind, k, onEdit); }
   b.className = 'vskb';
   const label = cur ? spec.name(cur[0]) || spec.title : `${spec.title}: none`;
   b.appendChild(Object.assign(document.createElement('span'), { className: 'vskn', textContent: label }));
@@ -325,6 +337,7 @@ function openColour(nd, kind, key, onEdit) {
   };
   draw(); colDlg.showModal(); colDlg.querySelector('.gmclose:last-child')?.focus();
 }
+/** @param {LineageNode} nd @param {string} who her name in the editor's title @param {string} [key] @returns {HTMLButtonElement} */
 export function winsBtn(nd, who, key = '') {
   const w = document.createElement('button'); w.type = 'button'; w.className = 'btn vwins'; if (key) w.dataset.k = `${key}:wins`;
   w.textContent = winsText(nd);
@@ -333,6 +346,7 @@ export function winsBtn(nd, who, key = '') {
   return w;
 }
 // change who a node is: pick the uma, then whether to add the target skills
+/** @param {LineageNode} nd @param {string} label */
 export function changeUma(nd, label) {
   openUmaPicker(`${label}: which uma?`, (id) => {
     nd.chara = id; delete nd.outfit; rev++;
@@ -341,6 +355,7 @@ export function changeUma(nd, label) {
 }
 // a new veteran by hand for a parent place: she gets `sparks`, and so do her parents (a looped parent's own parents carry
 // the same sparks), whose umas are not known yet
+/** @param {number|null} chara @param {Sparks} sparks @returns {Veteran} */
 export function newVet(chara, sparks) {
   const v = { id: `h${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, src: 'hand', chara, borrowed: false, sparks, pinks: {}, blues: {}, greens: {}, wins: [],
     parents: [0, 1].map(() => ({ chara: null, sparks: { ...sparks }, pinks: {}, blues: {}, greens: {}, wins: [] })) };
@@ -351,6 +366,7 @@ export function newVet(chara, sparks) {
 // lends today), after all of yours so your numbers keep. `all` (an Export of this page, holding both kinds): every
 // earlier import goes. Hand-made ones stay (a plan slot holding a removed one goes back to the planner).
 // Returns { added, updated } for yours and { borrowed, dropped } for the borrow list.
+/** @param {Veteran[]} list @param {boolean} [all] @returns {{added: number, updated: number, borrowed: number, dropped: number}} */
 export function importVets(list, all = false) {
   const isImport = (v) => v.src === 'import';
   if (all) { for (let i = vets.length - 1; i >= 0; i--) if (isImport(vets[i])) vets.splice(i, 1); }
@@ -372,6 +388,7 @@ export function importVets(list, all = false) {
 // only the targets nothing but inheritance gives (no card hints or events them, no outfit has them, the scenario
 // doesn't hand them out); her parents carry nothing. No relation points with anyone (the solver knows no mob), no G1
 // wins. Marked as samples; Remove all clears them.
+/** @returns {Veteran[]} */
 export function sampleVets() {
   const all = CAREER.mobs || [], withArt = all.filter(([id]) => srcFor('mob', id)), pool = (withArt.length >= 18 ? withArt : all).slice();
   for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
@@ -384,14 +401,23 @@ export function sampleVets() {
   return out;
 }
 // veterans from an uma.moe tree: added after the others (the numbers you have keep)
+/** @param {Veteran[]} list */
 export function addVets(list) { vets.push(...list); changed(); }
+/** @param {number} i her index in `vets` */
 export function removeVet(i) { vets.splice(i, 1); dropMissing(); changed(); }
 // every veteran, or those `drop` picks
+/** @param {(vet: Veteran) => boolean} [drop] */
 export function clearVets(drop = () => true) { for (let i = vets.length - 1; i >= 0; i--) if (drop(vets[i])) vets.splice(i, 1); dropMissing(); changed(); }
 function dropMissing() { plan.parents = plan.parents.map(id => (id && vetById(id) ? id : null)); }
 // the job's legacies (skill groups and stars as pairs; an unknown parent counts with character 0: no relation points)
 // (the same array until the next edit, `rev`: callers don't change it)
 let legaciesCache = null, legaciesRev = -1;
+/**
+ * A veteran as the solver's job takes her (sparks as [group, stars] pairs; an unknown parent's character 0).
+ * @typedef {{chara: number, sparks: [number, number][], pinks: [number, number][], wins: number[]}} JobNode
+ * @typedef {JobNode & {borrowed: boolean, parents: JobNode[]}} JobLegacy
+ * @returns {JobLegacy[]}
+ */
 export function legaciesJob() {
   if (legaciesCache && legaciesRev === rev) return legaciesCache;
   const pairs = (sparks) => Object.entries(sparks || {}).map(([group, stars]) => [+group, stars]);
