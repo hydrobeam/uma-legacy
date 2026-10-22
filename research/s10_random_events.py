@@ -5,8 +5,10 @@ the model does on real careers. Every run record is used; one sample.
 Markers (GameTora training_events_shared, through gametora.py): a character's shared event with two or more choices
 whose top choice has a skill common to every outcome and whose other choices have no skill common to all their
 outcomes; the top choice's skill is her marker (one per character). A reading is one run with a card of hers in the deck (any rarity, group cards aside), someone else
-training, and the marker not given by that card's own events; a hit is the marker credited to "<her name> event"
-("A or B event" counts as a miss). K = random events on offer: every shared event of the deck's characters plus the
+training, and the marker not given by that card's own events; a hit is the marker credited to "<her name> event" or to
+"A or <her name> event", section 8's rule: a reading is unknown, and left out, when every credit naming her also names
+another deck card whose events (its own, section 8's skill pools, or its character's shared events) can give the
+marker. K = random events on offer: every shared event of the deck's characters plus the
 trainee's own.
 The fits are maximum likelihood over readings: constant, a (1 - b)^(K - 4) form, power law, strict competition
 1 - (1 - 1/K)^S, every event slot competing (chain links, random events and pals weighted in one pool), and a logistic
@@ -14,7 +16,8 @@ model in K. As stated in RESEARCH.md, the population includes R cards; `detail()
 Findings: held-out comparisons of the forms (5-fold cross-validation by common.fold(run id), each run scored by the
 forms fitted on the other folds, compared with common.compare_held_out); tests between nested forms and on parameters
 (the slope in K, uniform competition, chain-link and pal weights, the logistic slope, the covariates next to K: card
-effects at their limit break from master.mdb, scenario, rarity within a character), run-clustered since a run gives
+effects at their limit break from master.mdb in one fit, tested jointly and each with Holm's adjustment, scenario,
+rarity within a character), run-clustered since a run gives
 several readings: Huber-White sandwich Wald tests, a score test where the estimate sits on its bound (robust();
 likelihood ratios shown beside them); within-run independence (pairs of hits against Binomial(n, p) per run); and, over
 every run that shows a priority list, how often a bottom-choice skill of these events was prioritised and credited to
@@ -65,7 +68,7 @@ class Reading(TypedDict):
     card: int  # the card's id
     rar: int  # its rarity (1 R, 2 SR, 3 SSR)
     hit: int  # 1: the marker credited to "<her name> event"
-    amb: int  # 1: credited only through an "A or B event" naming her
+    amb: int  # 1: a hit credited only through an "A or B event" naming her (B's events cannot give the marker)
     cens: int  # 1: no credit, the marker already at Lv 5 from other sources (the event could not show)
     K: int  # random events on offer in the run (offer())
     pals: int  # pal cards in the deck
@@ -87,7 +90,7 @@ class RandomRow(TypedDict):
     kind: str  # 'deck' (a deck card's character's event) or 'own' (the trainee's own)
     who: str | None  # the character's name
     rate: float | None  # the event's chance at the run's K ('own': filled in by careers())
-    hit: bool  # the target credited to that event
+    hit: bool  # the target credited to that event (credited(): section 8's rule, unknown counts as not)
     only: bool  # ... and to nothing else, nor owned
     amb: bool  # credited only through an "A or B event" naming her
 
@@ -155,15 +158,62 @@ def offer(r: Run, nshared: collections.Counter[int], sc: dict[int, dict[str, Any
     return sum(nshared[ch] for ch in chars - {r["chara"]}) + nshared[r["chara"]]
 
 
-def readings(R: list[Run]) -> list[Reading]:
+class ReadingSet(NamedTuple):
+    """readings(): the readings, and how many were left out as unknown"""
+
+    rows: list[Reading]
+    unknown: int  # every credit naming her also names another deck card whose events can give the marker
+
+
+def event_pools(sc: dict[int, dict[str, Any]]) -> dict[int, set[str]]:
+    """support card -> every skill an event credited to its character can give: the card's own events (section 8's
+    skill pools, s08_chains.game().pool) and its character's shared events (GameTora training_events_shared)"""
+    import s08_chains
+
+    gt = common.gametora()
+    sk = dict(common.mdb().execute("select [index], text from text_data where category = 47"))
+    shared: collections.defaultdict[int, set[str]] = collections.defaultdict(set)
+    for chara, es in gt.load("training_events_shared"):
+        for e in es:
+            for ch in gt.choices(e[1]):
+                shared[chara] |= set().union(*outcome_skill_sets(ch[1], gt, sk))
+    own = s08_chains.game().pool
+    return {cid: own.get(cid, set()) | shared.get(x["char_id"], set()) for cid, x in sc.items()}
+
+
+def credited(
+    srcs: Sequence[str], nm: str, m: str, deck: dict[str, list[int]], pool: dict[int, set[str]]
+) -> bool | None:
+    """section 8's rule for the marker m of the character named nm, from the sources its hint was credited to: True when
+    a credit names her ("<nm> event", or "A or <nm> event"); None (unknown) when every credit naming her also names
+    another deck card (deck: bare name -> card ids) whose events can give m (pool); False when no credit names her"""
+    credits = [[y.strip() for y in s[:-6].split(" or ")] for s in srcs if s.endswith(" event")]
+    credits = [c for c in credits if nm in c]
+    if credits and all(any(y != nm and any(m in pool.get(c, ()) for c in deck.get(y, ())) for y in c) for c in credits):
+        return None
+    return bool(credits)
+
+
+def deck_names(r: Run) -> dict[str, list[int]]:
+    """run r's deck by bare card name (as hint sources name a card): name -> card ids"""
+    out: collections.defaultdict[str, list[int]] = collections.defaultdict(list)
+    for cid, _, nm in r["deck"]:
+        out[common.bare(nm)].append(cid)
+    return out
+
+
+def readings(R: list[Run]) -> ReadingSet:
     """every reading of the runs: a deck card of a character with a marker, someone else training, the marker not given
-    by the card's own events"""
+    by the card's own events; a reading whose credit is unknown (credited()) is left out and counted"""
     nshared, marker, cardsk, sc = markers()
+    pool = event_pools(sc)
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     wc = common.cards()
     rows: list[Reading] = []
+    unknown = 0
     for r in R:
         dk = [d[0] for d in r["deck"]]
+        byname = deck_names(r)
         tr = r["chara"]
         lbs = {d[0]: d[1] for d in r["deck"]}
         pals = sum(1 for x in dk if wc.get(x, {}).get("pal"))
@@ -179,10 +229,13 @@ def readings(R: list[Run]) -> list[Reading]:
                 continue
             nm = name.get(ch)
             srcs = [s for h in r["hints"] if h["name"] == m for s in h["src"]]
-            hit = f"{nm} event" in srcs
-            amb = not hit and any(nm in s and " or " in s for s in srcs)
+            hit = credited(srcs, nm, m, byname, pool)
+            if hit is None:
+                unknown += 1
+                continue
+            amb = hit and f"{nm} event" not in srcs
             # censored: the marker already at hint Lv 5 from other sources, so the event's hint could not show
-            cens = not hit and not amb and max([h["lv"] or 0 for h in r["hints"] if h["name"] == m] or [0]) >= 5
+            cens = not hit and max([h["lv"] or 0 for h in r["hints"] if h["name"] == m] or [0]) >= 5
             rows.append(
                 Reading(
                     run=r["id"],
@@ -199,7 +252,7 @@ def readings(R: list[Run]) -> list[Reading]:
                     scen=r["scenario"],
                 )
             )
-    return rows
+    return ReadingSet(rows, unknown)
 
 
 def ll(y: np.ndarray, p: np.ndarray) -> float:
@@ -344,7 +397,8 @@ class BottomChoice(NamedTuple):
 
 def bottom_prioritised(R: list[Run]) -> BottomChoice:
     """runs showing a priority list, and how many prioritise a bottom-choice-only skill of a deck card's character;
-    also each (run, skill) candidate as (run id, prioritised, credited to her event), several to a run"""
+    also each (run, skill) candidate as (run id, prioritised, credited to her event under credited()'s rule, an unknown
+    candidate left out), several to a run"""
     gt = common.gametora()
     db = common.mdb()
     sk = dict(db.execute("select [index], text from text_data where category = 47"))
@@ -360,6 +414,7 @@ def bottom_prioritised(R: list[Run]) -> BottomChoice:
             if b and not a:
                 bottom[chara] |= b
     _, _, cardsk, sc = markers()
+    pool = event_pools(sc)
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     out = BottomChoice(0, 0, 0, collections.Counter(), [])
     shown = n = cand = 0
@@ -368,15 +423,19 @@ def bottom_prioritised(R: list[Run]) -> BottomChoice:
         if p is None:
             continue
         shown += 1
+        byname = deck_names(r)
         for cid in (d[0] for d in r["deck"]):
             x = sc.get(cid)
             if not x or x.get("type") == "group" or x["char_id"] == r["chara"]:
                 continue
-            ev = f"{name.get(x['char_id'])} event"
+            nm = name.get(x["char_id"])
             for sk_ in bottom[x["char_id"]] - cardsk[cid]:
+                hit = credited([s for h in r["hints"] if h["name"] == sk_ for s in h["src"]], nm, sk_, byname, pool)
+                if hit is None:  # unknown, as for the readings
+                    continue
                 n += sk_ in p
                 cand += 1
-                c = (sk_ in p, any(h["name"] == sk_ and ev in h["src"] for h in r["hints"]))
+                c = (sk_ in p, hit)
                 out.hits[c] += 1
                 out.each.append((r["id"], *c))
     return out._replace(shown=shown, prioritised=n, candidates=cand)
@@ -387,7 +446,7 @@ def claims() -> list[common.Value | common.Finding]:
     R = common.runs()
     if R is None:
         return []
-    rows = readings(R)
+    rows, unk = readings(R)
     f = fits(rows)
     g: dict[str, Any] = {}  # value name -> value, in the order they are listed
     y = sum(r["hit"] for r in rows)
@@ -397,9 +456,11 @@ def claims() -> list[common.Value | common.Finding]:
         {
             "readings": n,
             "runs": len({r["run"] for r in rows}),
-            "clean hits": y,
-            "ambiguous credits": amb,
-            "rate with ambiguous, points higher": 100 * amb / n,
+            "clean hits": y - amb,
+            "ambiguous credits": amb + unk,
+            "ambiguous credits, unknown (left out)": unk,
+            "ambiguous credits counted as hits": amb,
+            "rate with ambiguous, points higher": 100 * ((y + unk) / (n + unk) - y / n),
         }
     )
     cz = sum(r["cens"] for r in rows)
@@ -407,7 +468,7 @@ def claims() -> list[common.Value | common.Finding]:
         {
             "readings where the event could not show (marker at Lv 5 from other sources)": cz,
             "rate where the event could show": y / (n - cz),
-            "rate where it could show, ambiguous as hits": (y + amb) / (n - cz),
+            "rate where it could show, ambiguous as hits": (y + unk) / (n + unk - cz),
         }
     )
     g["constant p"], g["LL constant"] = f["const"]
@@ -482,16 +543,24 @@ HELD_OUT: tuple[tuple[str, str, str], ...] = (
 def slot_fit(
     rows: Sequence[Reading], link: float | None = None, pal: float | None = None
 ) -> tuple[tuple[float, float, float], float]:
-    """the c / T fit, T = link x chain links + K + pal x pals, with either weight held fixed: ((c, pal, link), max LL)"""
+    """the c / T fit, T = link x chain links + K + pal x pals, with either weight held fixed: ((c, pal, link), max LL).
+    Two starts, the chain-link weight at 0.5 and at 0, the better kept: from one start alone the fit can stop short of
+    the maximum (the link weight's maximum sits on its bound 0)"""
     y = np.array([r["hit"] for r in rows], float)
     K = np.array([r["K"] for r in rows], float)
     Lk = np.array([r["links"] for r in rows], float)
     Pl = np.array([r["pals"] for r in rows], float)
     fx: Callable[[float | None, float], float] = lambda v, x: x if v is None else v
-    o = minimize(
-        lambda q: -ll(y, q[0] / (fx(link, q[2]) * Lk + K + fx(pal, q[1]) * Pl)),
-        [3.0, 1.0, 0.5],
-        bounds=[(0.01, 200), (0, 30), (0, 10)],
+    o = min(
+        (
+            minimize(
+                lambda q: -ll(y, q[0] / (fx(link, q[2]) * Lk + K + fx(pal, q[1]) * Pl)),
+                x0,
+                bounds=[(0.01, 200), (0, 30), (0, 10)],
+            )
+            for x0 in ([3.0, 1.0, 0.5], [2.0, 1.0, 0.0])
+        ),
+        key=lambda o: o.fun,
     )
     return (o.x[0], fx(pal, o.x[1]), fx(link, o.x[2])), -o.fun
 
@@ -692,20 +761,31 @@ def covariate_tests(rows: Sequence[Reading], x: ReadingArrays) -> dict[str, Any]
     b = logit_fit(y, X)
     V, Vn = sandwich(*logit_scores(y, X, run, b))
     g["logistic slope in K: robust z"], g["logistic slope in K: model z"] = robust_z(b, V, Vn, 1)
-    # covariates next to K
-    cache: dict[tuple[int, int, int], float] = {}
-    cov: dict[str, list[np.ndarray]] = {
-        nm: [
-            np.array([cache.setdefault((r["card"], r["lb"], t), card_effect(r["card"], r["lb"], t)) for r in rows]) / 10
-        ]
-        for t, nm in COVARIATES
-    }
-    cov["scenario"] = [np.array([r["scen"] == v for r in rows], float) for v in sorted({r["scen"] for r in rows})[1:]]
-    for nm, cols in cov.items():
-        X = np.column_stack([one, K, *cols])
-        b = logit_fit(y, X)
-        V, _ = sandwich(*logit_scores(y, X, run, b))
-        g[f"{nm}: robust Wald chi2"], _, g[f"{nm}: robust p"] = wald(b, V, list(range(2, X.shape[1])))
+    # the card effects next to K, in one fit: a joint test (df 3), and each coefficient with Holm's adjustment
+    X = np.column_stack([one, K, *card_effects(rows)])
+    b = logit_fit(y, X)
+    V, _ = sandwich(*logit_scores(y, X, run, b))
+    g["card effects: robust Wald chi2"], _, g["card effects: robust p"] = wald(b, V, [2, 3, 4])
+    ps = {nm: wald(b, V, [j])[2] for j, (_, nm) in enumerate(COVARIATES, 2)}
+    holm = holm_adjust(ps)
+    for j, (_, nm) in enumerate(COVARIATES, 2):
+        se = float(np.sqrt(V[j, j]))
+        g[f"{nm}: logit per 10 points"] = b[j]
+        g[f"{nm}: 95% low"], g[f"{nm}: 95% high"] = b[j] - 1.96 * se, b[j] + 1.96 * se
+        g[f"{nm}: robust p"], g[f"{nm}: Holm p"] = ps[nm], holm[nm]
+    # the same fit on the readings of cards at their maximum limit break (4)
+    w = [i for i, r in enumerate(rows) if r["lb"] == 4]
+    Xw = X[w]
+    bw = logit_fit(y[w], Xw)
+    Vw, _ = sandwich(*logit_scores(y[w], Xw, [run[i] for i in w], bw))
+    g["initial friendship gauge, cards at limit break 4: logit per 10 points"] = bw[3]
+    g["initial friendship gauge, cards at limit break 4: 95% low"] = bw[3] - 1.96 * np.sqrt(Vw[3, 3])
+    g["initial friendship gauge, cards at limit break 4: 95% high"] = bw[3] + 1.96 * np.sqrt(Vw[3, 3])
+    # scenario next to K
+    X = np.column_stack([one, K, *scenario_columns(rows)])
+    b = logit_fit(y, X)
+    V, _ = sandwich(*logit_scores(y, X, run, b))
+    g["scenario: robust Wald chi2"], _, g["scenario: robust p"] = wald(b, V, list(range(2, X.shape[1])))
     # rarity within a character (characters with cards of more than one rarity)
     ch, w = multi_rarity(rows)
     X = np.column_stack(
@@ -725,6 +805,30 @@ COVARIATES: tuple[tuple[int, str], ...] = (
     (14, "initial friendship gauge"),
     (19, "specialty priority"),
 )
+
+
+def card_effects(rows: Sequence[Reading]) -> list[np.ndarray]:
+    """each reading's card effects (COVARIATES, in that order) at its limit break, per 10 points"""
+    cache: dict[tuple[int, int, int], float] = {}
+    return [
+        np.array([cache.setdefault((r["card"], r["lb"], t), card_effect(r["card"], r["lb"], t)) for r in rows]) / 10
+        for t, _ in COVARIATES
+    ]
+
+
+def scenario_columns(rows: Sequence[Reading]) -> list[np.ndarray]:
+    """an indicator per scenario but the first (by id)"""
+    return [np.array([r["scen"] == v for r in rows], float) for v in sorted({r["scen"] for r in rows})[1:]]
+
+
+def holm_adjust(ps: dict[str, float]) -> dict[str, float]:
+    """Holm's step-down adjustment of a family of p-values (Holm 1979): name -> adjusted p"""
+    out: dict[str, float] = {}
+    run = 0.0
+    for i, (nm, p) in enumerate(sorted(ps.items(), key=lambda t: t[1])):
+        run = max(run, min(1.0, (len(ps) - i) * p))
+        out[nm] = run
+    return out
 
 
 def multi_rarity(rows: Sequence[Reading]) -> tuple[list[int], list[int]]:
@@ -890,34 +994,37 @@ def covariate_findings(rows: Sequence[Reading], g: dict[str, Any]) -> list[commo
             f"{g['logistic: rate at K = 14']:.3f} at 14",
         )
     )
-    # covariates next to K: likelihood-ratio tests at 95%
+    # covariates next to K: likelihood ratios shown beside the run-clustered tests
     lr: Callable[[list[np.ndarray]], float] = lambda cols: 2 * (logit_ll(yb, np.column_stack([one, Kb, *cols])) - base)
-    eff: dict[str, tuple[float, int]] = {}  # covariate -> (LR, df)
-    for t, nm in COVARIATES:
-        cache: dict[tuple[int, int], float] = {}
-        x = np.array([cache.setdefault((r["card"], r["lb"]), card_effect(r["card"], r["lb"], t)) for r in rows]) / 10
-        eff[nm] = (lr([x]), 1)
-    sc = sorted({r["scen"] for r in rows})[1:]
-    eff["scenario"] = (lr([np.array([r["scen"] == v for r in rows], float) for v in sc]), len(sc))
-    ev: Callable[[Sequence[str]], str] = lambda ks: "; ".join(
-        f"{k} {g[k + ': robust Wald chi2']:.2f} (df {eff[k][1]}, limit {chi2.ppf(0.95, eff[k][1]):.2f}, "
-        f"p {g[k + ': robust p']:.3f}; LR {eff[k][0]:.2f})"
-        for k in ks
-    )
+    sc = scenario_columns(rows)
+    lr_sc = lr(sc)
     fr = tuple(nm for _, nm in COVARIATES)
+    gauge, others = "initial friendship gauge", [k for k in fr if k != "initial friendship gauge"]
+    each = "; ".join(
+        f"{k} {g[k + ': logit per 10 points']:+.3f} [{g[k + ': 95% low']:+.3f}, {g[k + ': 95% high']:+.3f}] logit per 10 "
+        f"points, p {g[k + ': robust p']:.4f}, Holm {g[k + ': Holm p']:.4f}"
+        for k in fr
+    )
+    lb4 = "initial friendship gauge, cards at limit break 4"
     out.append(
         F(
-            "Friendship (bonus, initial gauge) and specialty priority show no effect next to K: each run-clustered Wald "
-            "p > 0.05",
-            all(g[f"{k}: robust p"] > 0.05 for k in fr),
-            ev(fr),
+            "Next to K, of the card effects only the initial friendship gauge is detectable, and it raises the rate: in one "
+            "fit of friendship bonus, initial friendship gauge and specialty priority, the gauge's Holm-adjusted "
+            "run-clustered Wald p is below 0.05 with its 95% interval above 0, and the other two's are above 0.05",
+            g[f"{gauge}: Holm p"] < 0.05
+            and g[f"{gauge}: 95% low"] > 0
+            and all(g[f"{k}: Holm p"] > 0.05 for k in others),
+            f"joint {g['card effects: robust Wald chi2']:.2f} (df 3, limit {chi2.ppf(0.95, 3):.2f}, p "
+            f"{g['card effects: robust p']:.4f}; LR {lr(card_effects(rows)):.2f}); {each}; gauge on cards at limit break "
+            f"4 only {g[lb4 + ': logit per 10 points']:+.3f} [{g[lb4 + ': 95% low']:+.3f}, {g[lb4 + ': 95% high']:+.3f}]",
         )
     )
     out.append(
         F(
-            "Scenario is detectable next to K at the 5% level: run-clustered Wald p < 0.05 (df 3)",
-            g["scenario: robust p"] < 0.05,
-            ev(("scenario",)),
+            "Scenario is not detectable next to K at the 5% level: run-clustered Wald p >= 0.05 (df 3)",
+            g["scenario: robust p"] >= 0.05,
+            f"scenario {g['scenario: robust Wald chi2']:.2f} (df {len(sc)}, limit {chi2.ppf(0.95, len(sc)):.2f}, p "
+            f"{g['scenario: robust p']:.3f}; LR {lr_sc:.2f})",
         )
     )
     rar = np.array([r["rar"] for r in rows], float)
@@ -1252,6 +1359,7 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
     'deck' uses the fitted rate at the run's K, 'own' has its rate filled in later"""
     a, b = ab
     nshared, marker, cardsk, sc = markers()
+    pool = event_pools(sc)
     E = event_groups()
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
     gn = common.skills()
@@ -1286,7 +1394,7 @@ def random_rows(R: list[Run], ab: tuple[float, float]) -> tuple[list[RandomRow],
                     kind="deck",
                     who=nm,
                     rate=a * (1 - b) ** (K - 4),
-                    hit=ev in srcs,
+                    hit=credited(srcs, nm, white[g], deck_names(r), pool) is True,
                     only=ev in srcs and set(srcs) == {ev} and g not in {s // 10 for s in r.get("owned", [])},
                     amb=ev not in srcs and any(nm in t and " or " in t for t in srcs),
                 )
@@ -1428,7 +1536,7 @@ def held_out_rate(R: list[Run], dk: Sequence[RandomRow]) -> Callable[[CalRow], f
     """each deck row's rate from the form refitted without the readings of these rows' cards in these runs"""
     used = {(x["row"]["run"], x["who"]) for x in dk}
     name = dict(common.mdb().execute("select [index], text from text_data where category = 6"))
-    ha, hb = fits([r for r in readings(R) if (r["run"], name.get(r["char"])) not in used])["exp"][0]
+    ha, hb = fits([r for r in readings(R).rows if (r["run"], name.get(r["char"])) not in used])["exp"][0]
     nshared, _, _, sc = markers()
     byid = {r["id"]: r for r in R}
     hrate = {id(x["row"]): ha * (1 - hb) ** (offer(byid[x["row"]["run"]], nshared, sc) - 4) for x in dk}
@@ -1486,7 +1594,7 @@ def career_findings(
 
 
 def careers_detail(R: list[Run]) -> None:
-    a = fits(readings(R))["exp"][0]
+    a = fits(readings(R).rows)["exp"][0]
     rr, skipped = random_rows(R, a)
     print(
         "\ncareers: rows by who",
@@ -1502,7 +1610,7 @@ def careers_detail(R: list[Run]) -> None:
 
 def detail() -> None:
     R = common.runs()
-    rows = readings(R)
+    rows = readings(R).rows
     print("all records: rate by K", ", ".join(f"{k}: {h}/{n}" for k, (n, h) in sorted(by_k(rows).items())))
     t: collections.defaultdict[int, list[int]] = collections.defaultdict(lambda: [0, 0])
     for r in rows:
