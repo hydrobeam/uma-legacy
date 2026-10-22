@@ -5,30 +5,6 @@ The Rust crate in `pkg/loopopt/`; crate paths below are relative to it, while `d
 era). The CLI resolves a job's file names from the working directory; run it from the era's data folder.
 Building and running it: `docs/BUILD.md`.
 
-The affinity core's and the loop planner's modules:
-
-| File | Holds |
-|---|---|
-| `src/lib.rs` | Crate wiring, deterministic hashing, the native/wasm clock and the public CLI entry point |
-| `src/data.rs` | Raw and loaded race data, schedule choices, relation tables, ceiling fingerprints, win probabilities and feasibility |
-| `src/schedule.rs` | Exact single-uma best responses, scratch buffers and scoped memo |
-| `src/loop_planner/schedules.rs` | Loop affinity scoring, ascent, group moves, local search and pairwise ceilings |
-| `src/chart.rs` | Race/member labels and structured schedule charts |
-| `src/cli.rs` | CLI jobs, event enrichment, kept-state persistence, dispatch and bound diagnostics |
-| `src/tests.rs` | Affinity-core correctness tests against independent fixtures and model invariants |
-| `src/skills.rs` | Skill targets, outfit choices and lineage inheritance probabilities |
-| `src/loop_planner/job.rs` | Deck-job setup and nondominated frontier enumeration |
-| `src/deck/dominance.rs` | Dominance signatures, buckets, `DominanceIndex` and returned deck records |
-| `src/deck/state_bound.rs` | State-conditioned values, bounds, configuration and ratio tables |
-| `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
-| `src/loop_planner/search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
-| `src/loop_planner/search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
-| `src/loop_planner/search/bands.rs` | Loop bands, schedules, certification and solved passes |
-| `src/loop_planner/search/report.rs` | Reported picks, JSON and diagnostic summaries |
-
-The `kept` module is `career/plan/kept.rs`: cached career plans and searches. `career/state.rs` owns the worker
-record (`KeptState`) and its saved-state format.
-
 Searches parent loops (four-uma loops and three-uma rotations) and support decks for landing target skills in
 Independent Training, reports each uma's race schedule, and plans careers to a looped parent (`/career`). Its
 inputs are data files exported from the game's `master.mdb` and GameTora's event data.
@@ -36,6 +12,93 @@ inputs are data files exported from the game's `master.mdb` and GameTora's event
 ```
 master.mdb ──(export/export_rs.py)──▶ data.json ──(loopopt)──▶ ranked loops + schedules (JSON)
 ```
+
+## Finding your way
+
+A job comes in through the page's worker (`src/web.rs`) or the command line (`src/cli.rs`). A deck job (the loop
+planner) enters at `loop_planner::job::run_deck`, which builds the deck frontier and hands it to
+`loop_planner::search::run_multi`. A career job (`/career`) enters at `career::run_career` (`run_career_in` with the
+worker's kept state), which builds the job's `Env` (`career::setup`), runs the main search, then the plan
+(`career::plan::index_rule`) when the job has `next`, or the simulator (`career::sim`) when it has `simulate`. Both
+planners search decks with the engine in `src/deck/` (`DeckSpace::search`; the exact odds in `deck::joint`). In a
+folder, open `mod.rs` first: its header maps the children, and it holds the folder's main records and entry point.
+
+| Module | Holds |
+|---|---|
+| `src/lib.rs` | Crate wiring, deterministic hashing (`Fx`), the native/wasm clock and the CLI entry point (`cli_main`) |
+| `src/main.rs` | The `loopopt` binary: calls `cli_main` |
+| `src/cli.rs` | CLI job loading, event enrichment, kept-state files, dispatch and bound diagnostics |
+| `src/web.rs` | The wasm entry points and their `cmd` requests |
+| `src/checks.rs` | The environment switches, read once into `Checks` (`checks::get`), and their thread-local counters |
+| `src/data.rs` | Race data, schedule choices, relation and ceiling tables, win probabilities and feasibility |
+| `src/uma.rs` | Roster indices and per-uma tables (`UmaIndex`, `UmaTable`) |
+| `src/schedule.rs` | Exact single-uma best responses (`Uma::dp_exact`, `Data::best_response`), scratch buffers and scoped memo |
+| `src/chart.rs` | Race/member labels and structured schedule charts (`chart_rows`) |
+| `src/skills.rs` | The skill-target model (`Model`), outfit choices and lineage inheritance probabilities (`lins`) |
+| `src/tests.rs` | Affinity-core tests against independent fixtures and model invariants |
+| `src/loop_planner/mod.rs` | The loop planner: a deck job's path through its children |
+| `src/loop_planner/job.rs` | Deck-job setup and the nondominated deck frontier (`run_deck`) |
+| `src/loop_planner/schedules.rs` | Loop affinity scoring, coordinated schedules (`LoopProblem`, `optimize`) and pairwise ceilings |
+| `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
+| `src/loop_planner/search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
+| `src/loop_planner/search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
+| `src/loop_planner/search/bands.rs` | Loop bands, schedule solving and the budgeted certification passes |
+| `src/loop_planner/search/report.rs` | Reported picks, JSON and diagnostic summaries |
+| `src/deck/mod.rs` | The deck-search engine: the job records (`Card`, `CardsRaw`, `DeckJob`) and the deck model |
+| `src/deck/space.rs` | The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps |
+| `src/deck/enumerate/mod.rs` | The enumeration's entry (`DeckSpace::search`) and the records a search takes and returns (`BandBound`) |
+| `src/deck/enumerate/prepare.rs` | Search legality, the pass setup (`configure_search`, `search_with_bounds`) and the shared bounds |
+| `src/deck/enumerate/config.rs` | Legal card-count configurations and their bounds |
+| `src/deck/enumerate/order.rs` | The visiting order of queued configurations |
+| `src/deck/enumerate/traverse.rs` | Configuration traversal with its borrowed-card and state bounds |
+| `src/deck/enumerate/walk.rs` | The depth-first walk of one configuration's decks (`walk`, `hopeful`) |
+| `src/deck/enumerate/bounds.rs` | Outfit bounds and ratio prefixes |
+| `src/deck/enumerate/scratch.rs` | Reusable buffers for configuration and node bounds |
+| `src/deck/joint/mod.rs` | The joint landing odds' entry points (`joint_b`, `joint_fast`, `joint_checked`), `JointQuery` and the landing factor |
+| `src/deck/joint/exact.rs` | The exact sum: `joint_prep`, `JointPrep`, `joint_eval_in`, `evaluate_prepared` |
+| `src/deck/joint/reference.rs` | The full enumeration `JOINT_CHECK` compares with (`joint_trainee_ref`) |
+| `src/deck/joint/upper.rs` | The negative-association upper bound (`upper_na`) |
+| `src/deck/state_bound.rs` | State-conditioned bounds and values (`StateBound`, `state_value`), configuration and ratio tables, `StateBoundMemo` |
+| `src/deck/sources.rs` | Each deck entry's target sources (`TargetSources`) and dependence checks, the event data merged into a job |
+| `src/deck/chains.rs` | Chain events: count per run (`ChainEvents`), per-link marginals, final-state distributions (`key_level`) |
+| `src/deck/hints.rs` | Training-hint draws per scenario (constants from `build.rs`) and their miss chances (`miss_draws`) |
+| `src/deck/caps.rs` | The assumed caps per deck class (`EXACT_CAPS`, `cap_class`) and the exact search's budgets |
+| `src/deck/dominance.rs` | Dominance signatures, `DominanceIndex` and the decks a search returns |
+| `src/deck/tests.rs` | The deck model's tests |
+| `src/career/mod.rs` | The career planner: the job's records, `Env` and its four parts, `run_career` / `run_career_in` |
+| `src/career/setup.rs` | The job read three ways (`CareerJobs`) and its `Env` built (`career_setup`), earlier jobs' proofs restored |
+| `src/career/run.rs` | The answer once `Env` is built: the main search's output, the plan, rolls, the job's certificates |
+| `src/career/search.rs` | Career candidates (`gen_cands`), ceilings and the best careers (`Env::solve`) |
+| `src/career/decks.rs` | Exact career deck searches (`Env::best_deck`, `best_deck_run`, `best_deck_cf`) and their kept memos |
+| `src/career/inherit.rs` | Legacy slots, affinity, inheritance chances, their folding (`set_ews`) and `rise` |
+| `src/career/pool.rs` | Veteran pools and legal parent pairs |
+| `src/career/outcomes.rs` | Career reports, outcome sets, corner tables and the veteran a career leaves |
+| `src/career/schedule.rs` | Aptitude sparks and career race schedules |
+| `src/career/cache.rs` | The deck cache (`Cache`) the simulator and the plan value careers through |
+| `src/career/evaluator.rs` | The surrogate's valuation the simulator and the plan share (`Evaluator`, `deck_for`, `Cur`) |
+| `src/career/state.rs` | The worker's kept work (`KeptState`) and its saved form (`state_out`, `state_in`) |
+| `src/career/clock.rs` | Host clocks, progress and phase counters |
+| `src/career/tests.rs` | Career-job tests: kept-state round trips, inheritance copies |
+| `src/career/plan/mod.rs` | The page's next career (`index_rule`): its records and phases |
+| `src/career/plan/candidates.rs` | Candidate setup, exact and surrogate careers, the proxies admitted |
+| `src/career/plan/search.rs` | Candidate searches (`best_sur`, `certified`), rotation setup and proxy limits |
+| `src/career/plan/rows.rs` | Plan rows (looped, no-borrow), their scoring and promotion |
+| `src/career/plan/score/mod.rs` | A career's score over her possible veterans (`score_career`) |
+| `src/career/plan/score/build.rs` | Building a scoring: her setups, `evaluate_career` and the collapsed targets (`prepare_scoring`) |
+| `src/career/plan/score/kernel.rs` | The scoring kernels (`Scored::evaluate`, `evaluate_outcomes`, `sc_loop`) and their scratch |
+| `src/career/plan/step.rs` | Step costs and the leaves the next career is estimated with |
+| `src/career/plan/cont.rs` | The continuation (`Cont`) and its memo |
+| `src/career/plan/combine.rs` | Continuation fits and candidate combinations |
+| `src/career/plan/fold.rs` | Folding spark outcomes and their rises (`FoldContext`) |
+| `src/career/plan/anchors.rs` | Anchor bounds (`outcome_hi`) and the best partners after an outcome |
+| `src/career/plan/kept.rs` | Kept plans (`Bests`) and cached career searches |
+| `src/career/plan/roll.rs` | The roll of the plan's pick and its kept state (`RollKeep`) |
+| `src/career/plan/output.rs` | The assembled plan response |
+| `src/career/sim/mod.rs` | The policy simulator's shared records, construction, and the bar and best pick of a path |
+| `src/career/sim/play.rs` | `simulate` and `play`: path state, veteran admission and pruning, survival, summaries |
+| `src/career/sim/policies.rs` | Greedy, loop, trace, exact and index career selection |
+| `src/career/sim/draw.rs` | Keyed uniforms (`u01`) and failed-career veteran draws |
+| `src/career/sim/audit.rs` | Surrogate checks against exact searches, audit rows |
 
 ---
 
@@ -88,7 +151,7 @@ equally. Test `score_matches_per_legacy_sum` checks the closed form against a di
 
 | Function | What it does | Exact? |
 |---|---|---|
-| `Uma::dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. `Uma::best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
+| `Uma::dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. `Data::best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
 | `LoopProblem::ascent` | Best-response dynamics: each member re-solves against the other members until none improves by more than 1e-9. This is a Nash point up to that tolerance, not necessarily the global optimum. | Local |
 | `LoopProblem::group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. | Local |
 | `optimize` (`LoopProblem::solve`) | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
@@ -128,7 +191,7 @@ races are not listed):
 - **Unshared G1s:** run by one member only. They contribute no shared wins and can pass down race sparks. Skipping one never lowers affinity, since it can only shorten a streak, but a goal race may still be required.
 
 A cell carries the win % for that attempt (streak penalty included), the goal flag, the aptitude cost and the streak
-position; `alts` names races that can replace the row's at no affinity cost when all its runners switch together (`ScheduleChart::interchangeable`).
+position; `alts` names races that can replace the row's at no affinity cost when all its runners switch together (`chart::interchangeable`).
 
 **Optional fill pass:** after optimizing, each member re-solves against her partners with a tiny bonus (1e-7 per
 expected G1 win), keeping the result if affinity drops by at most 1e-6. A second pass tries G1s on rest turns,
@@ -217,7 +280,7 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
   `white` = P(white hint | no gold hint)); `TargetSources::src_miss` accumulates the corresponding miss factors.
 
 The environment switches named here (`JOINT_CHECK`, `CF_CHECK`, `SBOUND` and the others) are read once per process into
-`Checks` (`checks.rs`, each field saying what it does), which every job borrows (`DeckJob::checks`). What a search
+`Checks` (`checks.rs`, each field saying what it does), which the code reads where it needs it (`checks::get`). What a search
 runs under is passed to it: a band's extra bound (`BandBound`: the class caps alone, the state-conditioned bound, or
 cap-free with its node limit) and the job's chain events (`ChainEvents`). Only the checks' counters (`SBCHK`, `CFCHK`
 and the like) are thread-local, totals the CLI prints on exit.
@@ -369,7 +432,7 @@ replaced by 1 − (1 − e)(1 − q_k) and the deck search runs unchanged at q =
 same for every deck and multiplies P(all) (`JointExt` applies it per target for P(all but one) and the per-target
 chances, which are exact marginals of the joint model). Tested against the loop model by `career_fold_and_scale`.
 
-`run_career_in` builds `Model` once; `CareerSetup` borrows it read-only. `Model::ews` always holds the own-event chances.
+`run_career_in` builds `Model` once; `CareerSetup` borrows it read-only. `Model::event_chances` always holds the own-event chances.
 A job's `Env` owns four records, split by who changes what. `CareerSetup` (data, model, targets, deck space, odds
 ceilings, outfit coverage, deck classes, borrowing rule) is built once by `career_setup`, which also restores the proofs
 earlier jobs kept, and is only read after it (its methods take `&self`). `SearchState` is what a search changes: the
@@ -377,12 +440,13 @@ folded buffers, work and budget, exact scorings, seen decks, product proofs, the
 what the deck searches certified (certificates, band overflows, cap ratios and breaches, cap-free counters, the decks
 that set the ratios); `DeckSearchMemo` owns the deck and corner memos kept between jobs, plus `StateBoundMemo` for
 this job alone. State-bound configurations are keyed by the fixed deck space's entry set and configuration; enumeration
-borrows that memo mutably beside `&DeckSpace`. A method takes the records it changes as `&mut` beside the setup,
-so the cap-free check beside a search saves and restores the audit as one value.
+borrows that memo mutably beside `&DeckSpace`. `Env::solve` and `Env::best_deck` take the whole `Env` (`&mut self`); the
+setup's methods take what they change as `&mut` beside `&self`, so the cap-free check beside a search saves and
+restores the audit as one value.
 `SearchState::folded_events` owns one reusable outfit/target buffer per trainee; `set_ews` refills it in place for each
 lineage or corner. Exact scoring and its bounds read the chosen chances through `JointQuery::event_chances`;
 enumeration borrows `DeckChances` (the model plus the selected event-chance table). Loop searches select the
-unfolded table. The career deck memo keys the folded buffer; class and rise calculations read `Model::ews`.
+unfolded table. The career deck memo keys the folded buffer; class and rise calculations read `Model::event_chances`.
 
 #### Search and output
 
@@ -422,7 +486,7 @@ and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins
   chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null], `shared` = a parent won it)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
-  by the chance each parent won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them
+  by the chance each parent won it (`Data::best_response`; a G1 she shares with a parent adds 3 affinity to each of them
   when she is a parent herself, and her parents' wins guide what later partners will have won), under goal races,
   same-turn clashes and streak win penalties. Every G1 also weighs `FILL_EPS` (1e-7, the loop planner's tie-break), so a
   G1 neither parent won is run only where it costs the parents' races nothing. `g1_wins`: expected wins.
@@ -559,7 +623,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real ful
   plan's deck-search nodes and exact scorings, deterministic: a speed change can be measured at any machine load;
   `work.max_ratio` the largest exact/product ratio scored, `class_max_ratio` / `class_max_deck` per class, `class_caps`,
   `cap` the cap the plan's deck searches hold under), timings. A career deck search whose band would list over
-  50,000 decks is rebuilt at 1.12, 1.05, then 1 (`DeckSearchAudit::cert`, the lowest completed cap; 0 if every band overflows); its answer is not a proof (no `Ref`), and the output's
+  50,000 decks is rebuilt at 1.12, 1.05, then 1 (`DeckSearchAudit::certified_cap`, the lowest completed cap; 0 if every band overflows); its answer is not a proof (no `Ref`), and the output's
   top-level `cap` is lowered to that cap, `complete` set false and `band_overflows` counts overflows. A proven
   cap-free rerun supersedes that call's reduced certificate and overflow count.
 
@@ -644,17 +708,6 @@ with low odds, so a capped comparison should also report survival at the cap (`t
 Output: per run `E`, `careers`, `tail`, `final_p`, `pool`, `pruned`, `wall_s`, `refreshes`, `segs` (each pick change:
 career, p, pool size, S), `checks`, `audits`; and `E` (mean, sd, 95% CI) over the runs. `trace` returns its rows per run
 instead.
-
-The simulator's modules (under `src/career/`):
-
-| File | What it holds |
-|---|---|
-| `evaluator.rs` | The surrogate's valuation, owned by the simulator and borrowed by its policies and the plan beside `&mut Env` (a valuation that searches for decks takes it whole; one that only folds a trainee's chances in takes the setup and `&mut SearchState`; one that only reads, the setup): the deck cache, `deck_for` (the refresh rule), `fast_ub`, win chances, a career's exact numbers (`Cur`), the planner's working pool (`push_her`/`pop_her`). |
-| `sim/mod.rs` | Shared simulator records, construction, the bar and best pick of a path, and legacy identity/JSON helpers. |
-| `sim/draw.rs` | Keyed uniforms and failed-career veteran draws; pinned uniform test. |
-| `sim/policies.rs` | Greedy, loop, trace, exact and index career selection; rotation and index-run records. |
-| `sim/audit.rs` | Surrogate checks against exact searches, audit rows and ranked careers. |
-| `sim/play.rs` | Path state, veteran admission/pruning, survival accumulation, simulation entry and summaries. |
 
 Adding a policy: `simulate` (src/career/sim/play.rs) matches the policy name to a base (`Base`); `play` asks the base
 for the next career each step (`greedy_cur`, `loop_cur`: a `Cur`, the career with its exact P(all), landed-set chances
