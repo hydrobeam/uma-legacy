@@ -1,15 +1,15 @@
 //! Configuration traversal and its borrowed-card and state bounds.
 use crate::Instant;
 use crate::deck::chains::{ChainKind, ChainState, chain_states};
-use crate::deck::enumerate::bounds::{DominanceRequest, OutfitRow, OutfitRun, SplitColumns};
+use crate::deck::enumerate::bounds::{OutfitRow, OutfitRun, SplitColumns};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationQueue, SearchConfig};
 use crate::deck::enumerate::order::{ConfigOrder, DeckPath};
-use crate::deck::enumerate::scratch::{ConfigScratch, GroupBounds, NodeScratch};
+use crate::deck::enumerate::scratch::{ConfigScratch, NodeScratch};
 use crate::deck::enumerate::walk::{ConfigurationContext, DeckConstraints, DeckCursor, WalkScratch};
 use crate::deck::enumerate::{ScoredDeck, SearchClause, SearchOutcome, SearchStop};
 use crate::deck::joint::{LandPre, MissFactors, SBN};
 use crate::deck::space::{
-    DeckSpace, Dominator, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck, TraversalEntryGroup,
+    DeckSpace, DominanceKey, Dominator, EntryMisses, GroupSlots, GroupTable, SPT, SelectedDeck, TraversalEntryGroup,
 };
 use crate::deck::state_bound::{BoundOptions, CapFreeRatios, LandingBoundTables, StateBound, StateBoundConfig};
 use crate::skills::DeckChances;
@@ -309,16 +309,7 @@ impl<'run, 'space, V: Fn(&SearchClause, &[f64], &[f64]) -> f64> DeckSearchContex
             configuration.groups.iter().map(|group| configuration.group_misses.grp(group.group)).collect();
         let group_ratios: Vec<&[f64]> =
             configuration.groups.iter().map(|group| configuration.ratio_prefixes.grp(group.group)).collect();
-        configuration_scratch.fill_suffixes(
-            configuration,
-            &GroupBounds {
-                misses: &group_misses,
-                ratios: &group_ratios,
-                target_count: controls.target_count,
-                column_count: controls.column_count,
-                deck_size: controls.size,
-            },
-        );
+        configuration_scratch.fill_suffixes(configuration, &controls, &group_misses, &group_ratios);
         let misses = EntryMisses { white: white_misses, gold: gold_misses, target_count: controls.target_count };
         let dominance = search.dominance(configuration, &groups, misses);
         let bt = search.borrow_tables(borrow_cache, configuration, &groups, misses, ratio_at);
@@ -496,13 +487,9 @@ impl<V> DeckSearchContext<'_, '_, V> {
                 .iter()
                 .map(|&GroupSlots { group: i, .. }| {
                     self.space.dom_table(
-                        DominanceRequest {
-                            set_id,
-                            code: configuration.code,
-                            group: i,
-                            entries: groups_all[i],
-                            lock_bits,
-                        },
+                        DominanceKey { set_id, code: configuration.code, group: i },
+                        groups_all[i],
+                        lock_bits,
                         misses,
                     )
                 })

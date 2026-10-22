@@ -2,7 +2,7 @@
 use crate::deck::caps::cap_class;
 use crate::deck::enumerate::SearchClause;
 use crate::deck::enumerate::traverse::SearchControl;
-use crate::deck::space::{DeckSpace, EntryMisses, GroupSlots, GroupTable, GroupTableRequest, gm_g, gm_w};
+use crate::deck::space::{DeckSpace, EntryMisses, GroupMissKey, GroupSlots, GroupTable, gm_g, gm_w};
 /// Legal groups and key counts used to enumerate configurations, in their original order.
 pub(crate) struct ConfigurationTables<'tab> {
     pub(crate) counts: &'tab [Vec<usize>],
@@ -152,7 +152,9 @@ impl DeckSpace<'_> {
             let needed_groups: u64 = (0..kind_count).filter(|&i| cnt[i] > 0).fold(0u64, |m, i| m | 1 << i)
                 | if chain_slots < size { 1 << kind_count } else { 0 };
             let group_misses = self.gm_cached(
-                GroupTableRequest { set_id, code, groups: groups_all, needed_groups, deck_size: size },
+                GroupMissKey { set_id, code },
+                groups_all,
+                needed_groups,
                 EntryMisses { white: mw, gold: mg, target_count },
             );
             // the key's bound: no variant (real (2, 2) and pal entries counted 0 ..= their most) can pass when the value

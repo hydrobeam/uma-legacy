@@ -92,14 +92,6 @@ pub(crate) struct DeckConstraints {
     pub(crate) required_characters: u128,
 }
 
-/// Parent and child miss products, in target order.
-struct MissRows<'row> {
-    parent_white: &'row [f64],
-    parent_gold: &'row [f64],
-    child_white: &'row [f64],
-    child_gold: &'row [f64],
-}
-
 /// Cache identity and the targets changed by this child.
 #[derive(Clone, Copy)]
 struct NodeIdentity {
@@ -211,12 +203,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 DeckCursor { remaining: cursor.remaining - 1, ..cursor },
                 &child_constraints,
                 p,
-                MissRows {
-                    child_white: &path.white_misses[row_offset + target_count..row_offset + 2 * target_count],
-                    child_gold: &path.gold_misses[row_offset + target_count..row_offset + 2 * target_count],
-                    parent_white: &path.white_misses[row_offset..row_offset + target_count],
-                    parent_gold: &path.gold_misses[row_offset..row_offset + target_count],
-                },
+                path,
+                row_offset,
                 NodeIdentity { parent_depth, parent_id, touched_targets: touched_targets[j] },
             ) {
                 continue;
@@ -329,7 +317,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
         cursor: DeckCursor,
         constraints: &DeckConstraints,
         position: usize,
-        misses: MissRows<'_>,
+        path: &DeckPath,
+        row_offset: usize,
         node: NodeIdentity,
     ) -> bool {
         // (the cap-free band prunes by the state-conditioned bound alone, `sbx`)
@@ -364,7 +353,12 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             (self.remaining_offsets[cursor.group] + cursor.remaining) * self.borrow_state_count
                 + usize::from(has_borrowed_entries && can)
         };
-        let (white_misses, gold_misses) = (&misses.child_white[..target_count], &misses.child_gold[..target_count]);
+        let parent_white = &path.white_misses[row_offset..row_offset + target_count];
+        let parent_gold = &path.gold_misses[row_offset..row_offset + target_count];
+        let (white_misses, gold_misses) = (
+            &path.white_misses[row_offset + target_count..row_offset + 2 * target_count],
+            &path.gold_misses[row_offset + target_count..row_offset + 2 * target_count],
+        );
         if row == usize::MAX {
             for t in 0..target_count {
                 nodes.white_chances[t] = 1.0 - white_misses[t] * 1.0;
@@ -428,8 +422,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
                 if c.parent_id != node.parent_id {
                     c.parent_id = node.parent_id;
                     for t in 0..target_count {
-                        nodes.parent_white[t] = 1.0 - misses.parent_white[t] * ka[t];
-                        nodes.parent_gold[t] = 1.0 - misses.parent_gold[t] * kb[t];
+                        nodes.parent_white[t] = 1.0 - parent_white[t] * ka[t];
+                        nodes.parent_gold[t] = 1.0 - parent_gold[t] * kb[t];
                     }
                     for ix in 0..outfit_row_count {
                         orow[ix].factors(
@@ -565,8 +559,8 @@ impl<V: Fn(&crate::deck::enumerate::SearchClause, &[f64], &[f64]) -> f64> Config
             if h.parent_id != node.parent_id {
                 h.parent_id = node.parent_id;
                 for t in 0..target_count {
-                    h.white_chances[t] = 1.0 - misses.parent_white[t];
-                    h.gold_chances[t] = 1.0 - misses.parent_gold[t];
+                    h.white_chances[t] = 1.0 - parent_white[t];
+                    h.gold_chances[t] = 1.0 - parent_gold[t];
                 }
             }
             let mut m = node.touched_targets;
