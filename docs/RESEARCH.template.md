@@ -6,49 +6,31 @@ document keeps the evidence.
 
 ## Results
 
-The model's odds rest on one prediction: the chance that a career acquires each target. Section 13 tests it on
-{{13.runs_used|,.0f}} real Independent Training careers, each rebuilt from its own deck and lineage. Aggregate acquisition is consistent with
-the product approximation on rows whose target is prioritised or whose priority list is unknown. Unknown lists do not
-establish the priority assumption. Over all rows the approximation is slightly optimistic.
+On {{13.runs_used|,.0f}} real careers, each rebuilt from its own deck and lineage, the model predicts how often the
+targets are acquired where its priority assumption can hold. Over all careers it is slightly optimistic (section 13).
+Terms, labels and the limits of every test are in *How to read*.
 
-| Rows | Rows (n) | Observed / predicted [95%] |
-|---|---|---|
-| target prioritised, or no priority list shown | {{13.3_acquired_any_source_prioritised_or_no_list_shown_rows|,.0f}} | {{13.3_acquired_any_source_prioritised_or_no_list_shown_obs_per_pred|.3f}} [{{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_high|.3f}}] |
-| all | {{13.3_acquired_any_source_rows|,.0f}} | {{13.3_acquired_any_source_obs_per_pred|.3f}} [{{13.3_acquired_any_source_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_ratio_95_pct_high|.3f}}] |
-| target shown not prioritised | {{13.3_acquired_not_prioritised_rows|,.0f}} | {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}] |
-| all eight default targets landed, per run | | {{13.p_all_eight_ratio_all|.2f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}] |
-
-The not-prioritised rows carry {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}} of the shortfall; this allocation does not establish its cause.
-The last row is a spark-weighted acquisition check against the exact joint model, with only
-{{13.runs_acquiring_every_open_target|.0f}} runs acquiring every target. It tests neither spark generation nor the ranking of candidates.
-The terms are defined in *How to read*.
-
-### What each part rests on
-
-The schedule ceiling below fixes each loop's reported decks. Scenario bands are chosen defaults informed by measured
-rank distributions. The tests and their nominal labels have the limits set out in *How to read*.
-
-| Part | How it is set | Main evidence | Section |
+| § | Conclusion | How it is set | Main evidence |
 |---|---|---|---|
-| Star band per scenario | derived | Grand Concert: {{2.grand_concert_share_at_17_500_or_more|.0%}} of careers reach 17,500+ | 2 |
-| Grandparents' inheritance rate | fitted | weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}] against the parents' 1 | 3 |
-| Affinity's effect on inheritance | assumed, tested | a free slope predicts no better than 1: $z$ = {{3.affinity_slope_refitted_over_slope_1_held_out_z|.2f}} | 3 |
-| +3 affinity per shared G1 win | assumed, tested | a free weight predicts no better than 1: $z$ = {{3.race_part_slope_refitted_over_slope_1_held_out_z|.2f}} | 3 |
-| Own grandparent adds no trio points | fitted | {{5.ll_0_ll_pair_nats|.0f}} nats better than the alternative | 5 |
-| Race win table | community table, tested; goal shift fitted | {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] over {{4.race_attempts_at_the_34|,.0f}} G1 attempts | 4 |
-| Loop schedules for shared wins | derived | no other schedule could raise the best loop's odds by more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}% | 6 |
-| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, $\beta$ and $d$ fitted | real careers: {{13.1_training_pool_only_obs_per_pred|.3f}} [{{13.1_training_pool_only_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model | 7 |
-| Chain events, Binomial(21, 0.35) per career | fitted, kept by choice | no alternative predicts unseen runs better | 8 |
-| Chain events spread over remaining links | fitted | {{8.allocation_slot_over_card_nats|.0f}} nats better than equal shares per card | 8 |
-| IT takes a prioritised skill's choice | assumed, tested on careers | prioritised targets' event hints: {{13.1_events_only_prioritised_obs_per_pred|.3f}} of the model | 9, 13 |
-| Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured {{9.festa_share|.2f}} | 9 |
-| Random card events | not modelled | left out, those targets read {{10.calibration_obs_per_pred_left_out|.2f}} of the model | 10 |
-| Conditional character events | not modelled | no significant cost, except Vodka's own Nimble Navigator | 11 |
+| 2 | Grand Concert defaults to the 17,500+ star mix; URA Finale, Unity Cup and Trackblazer to the lower one | default chosen from rank scores | Grand Concert: {{2.grand_concert_share_at_17_500_or_more|.0%}} of careers reach 17,500+; averaging stars overstates the inheritance chance by at most {{2.q_overstatement_below_17_500_max|.2%}} |
+| 3 | Grandparents pass sparks at the parents' full base rate | fitted | weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}] against the parents' 1 |
+| 3 | The community affinity formula is kept, with +3 per shared G1 win | assumed, tested | free weights predict unseen runs no better: slope $z$ = {{3.affinity_slope_refitted_over_slope_1_held_out_z|.2f}}, shared wins $z$ = {{3.race_part_slope_refitted_over_slope_1_held_out_z|.2f}} |
+| 4 | The community win table holds on grades raised by pink sparks, with a goal race charged the streak position before it | community table, tested; goal shift fitted | wins {{4.race_obs_per_pred_pink|.3f}} [{{4.race_obs_per_pred_pink_95_pct_low|.3f}}, {{4.race_obs_per_pred_pink_95_pct_high|.3f}}] of predicted, over {{4.race_attempts_at_the_34|,.0f}} G1 attempts |
+| 5 | A trainee who is her own grandparent gets no trio points from it | fitted | {{5.ll_0_ll_pair_nats|.0f}} nats better than counting the pair's points |
+| 6 | Scheduling loops for total shared wins costs little | derived | with each loop's decks fixed, no schedule raises a reference loop's odds by more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}% |
+| 7 | A card's training hints are uniform draws from its pool, a number per scenario raised by Hint Frequency and Specialty Priority | form fixed on the runs; base and specialty weight fitted | real careers' training-pool hints: {{13.1_training_pool_only_obs_per_pred|.3f}} [{{13.1_training_pool_only_ratio_95_pct_low|.2f}}, {{13.1_training_pool_only_ratio_95_pct_high|.2f}}] of the model |
+| 8 | A career gets Binomial(21, 0.35) chain events, each advancing a card in proportion to its remaining links | fitted; the binomial kept by choice | no alternative predicts unseen runs clearly better; remaining links beat equal shares per card by {{8.allocation_slot_over_card_nats|.0f}} nats |
+| 9 | IT takes a prioritised skill's choice; five measured outcome shares replace equal shares | rule assumed, tested on careers; shares fitted | prioritised targets' event hints read just below the model, a known miss |
+| 10 | Random card events are left out | not modelled | the targets they can hint read {{10.calibration_obs_per_pred_left_out|.2f}} of the model |
+| 11 | Conditional character events are left out | not modelled | no detected cost, except Vodka's own Nimble Navigator |
+| 12 | The parts compose into an exact $P(\text{all})$ under stated independence assumptions | derived | an independent implementation reproduces the solver's odds on every reference loop |
+| 13 | Acquisition matches the model where the priority assumption can hold | tested | {{13.3_acquired_any_source_prioritised_or_no_list_shown_obs_per_pred|.3f}} [{{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_prioritised_or_no_list_shown_ratio_95_pct_high|.3f}}] on {{13.3_acquired_any_source_prioritised_or_no_list_shown_rows|,.0f}} rows whose target is prioritised or whose list is not shown |
+| 13 | Over all rows the model is slightly optimistic, mostly on targets shown not prioritised | tested | all rows {{13.3_acquired_any_source_obs_per_pred|.3f}} [{{13.3_acquired_any_source_ratio_95_pct_low|.3f}}, {{13.3_acquired_any_source_ratio_95_pct_high|.3f}}]; targets shown not prioritised {{13.3_acquired_not_prioritised_obs_per_pred|.3f}} [{{13.3_acquired_not_prioritised_ratio_95_pct_low|.3f}}, {{13.3_acquired_not_prioritised_ratio_95_pct_high|.3f}}], {{13.3_acquired_shortfall_share_on_non_prioritised_rows|.0%}} of the shortfall; the cause is not established |
+| 13 | $P(\text{all})$ itself is checked only weakly | tested | spark-weighted all-target acquisition {{13.p_all_eight_ratio_all|.2f}} [{{13.p_all_eight_ratio_all_95_pct_low|.2f}}, {{13.p_all_eight_ratio_all_95_pct_high|.2f}}]; only {{13.runs_acquiring_every_open_target|.0f}} runs acquired every target; tests neither spark generation nor rankings |
 
 ### Known misses
 
-Each is measured and tested in its section. These are exploratory discrepancies under the tests below; pointwise
-intervals and nominal significance do not establish every listed miss after selection across many comparisons.
+Each is measured in its section. *How to read* says why a listed miss can be partly chance.
 
 | Part | Miss | Observed / predicted | Section |
 |---|---|---|---|
@@ -56,8 +38,7 @@ intervals and nominal significance do not establish every listed miss after sele
 | Inheritance | parents at affinity 200 or more pass sparks less often | {{3.parents_at_affinity_200_and_above_obs_per_pred|.3f}} [{{3.parents_at_affinity_200_and_above_95_pct_low|.3f}}, {{3.parents_at_affinity_200_and_above_95_pct_high|.3f}}] | 3 |
 | Inheritance | non-target skills, the shortfall spread over many skills | {{13.other_skills_inheritance|.3f}} [{{13.other_skills_inheritance_95_pct_low|.3f}}, {{13.other_skills_inheritance_95_pct_high|.3f}}] | 13 |
 | Races | chances of 70 or less | {{4.race_pink_bp_lt_70_obs_per_pred|.2f}} [{{4.race_pink_bp_lt_70_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_bp_lt_70_obs_per_pred_95_pct_high|.2f}}] | 4 |
-| Races | chosen races, 1st in a row | {{4.race_pink_chosen_j_1_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_1_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_1_obs_per_pred_95_pct_high|.3f}}] | 4 |
-| Races | chosen races, 2nd in a row | {{4.race_pink_chosen_j_2_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_2_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_2_obs_per_pred_95_pct_high|.3f}}] | 4 |
+| Races | chosen races 1st and 2nd in a row | {{4.race_pink_chosen_j_1_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_1_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_1_obs_per_pred_95_pct_high|.3f}}]; {{4.race_pink_chosen_j_2_obs_per_pred|.3f}} [{{4.race_pink_chosen_j_2_obs_per_pred_95_pct_low|.3f}}, {{4.race_pink_chosen_j_2_obs_per_pred_95_pct_high|.3f}}] | 4 |
 | Races | goal races 7th or later in a row, which the planner charges as the 6th | {{4.race_pink_goal_j_ge_7_obs_per_pred|.2f}} [{{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_low|.2f}}, {{4.race_pink_goal_j_ge_7_obs_per_pred_95_pct_high|.2f}}] | 4 |
 | Training hints | cards differ beyond their effects; cause open | per card {{7.per_card_obs_per_pred_min|.2f}}-{{7.per_card_obs_per_pred_max|.2f}} | 7 |
 | Training hints | a skill also hinted by inspiration | {{7.spark_inspiration_ratio|.2f}} | 7 |
@@ -75,33 +56,23 @@ intervals and nominal significance do not establish every listed miss after sele
 
 ### Not settled
 
-Specialty priority goes with more hints, but it is not shown to cause them. Fitted on earlier runs, it predicts later
-ones better by {{7.specialty_held_out_gain_nats|.1f}} nats. On the cards whose limit breaks change only their specialty priority, the data fit
-no effect as well as the fitted one (section 7).
-
-The hint-frequency slope $1/100$ is assumed. On the adopted model a free divisor does not predict unseen runs better;
-in the form study, without the specialty term, one does (section 7).
+- Whether specialty priority causes more hints. Fitted on earlier runs, it predicts later ones better by
+  {{7.specialty_held_out_gain_nats|.1f}} nats, but on cards whose limit breaks change only their specialty priority, no
+  effect fits as well (section 7).
+- The hint-frequency slope $1/100$ (**assumed**). On the adopted model a free slope does not predict unseen runs
+  better; without the specialty term one does (section 7).
 
 ### Assumed and untested
 
-The step from acquired to landed (spark generation, section 1, and that everything hinted is bought), the star mixes
-(section 2), Grand Masters (no runs), hint levels, the priority policy run by run, and correlations inside a run beyond
-$P(\text{all})$.
+Spark generation (section 1) and that every hinted target is bought; the star mixes (section 2); Grand Masters, which
+has no runs; that pal events use no chain budget (section 8); hint levels; which targets each run prioritised, since most lists are not shown; and
+dependence inside a run beyond what section 12 models.
 
 ## How to read this document
 
-**Labels.** **fitted**: estimated from the runs, with the sample and method given. **derived**: follows from the other
-parts by computation. **assumed**: a chosen rule or an outside figure the runs cannot test; its source is named and no
-evidence is claimed for it.
-
-**Intervals.** $x$ [$a$, $b$] is an estimate with its 95% interval, or 90% where marked. Where a run gives one
-observation, it is the Wilson interval. Where a run gives several rows, such as targets, race attempts or trials, the
-interval is clustered by run, so a run is the unit.
-Calibration ratio intervals treat predictions as fixed and runs as independent; they do not include uncertainty from fitting the
-predictions or dependence between careers. Wilson divided by a mean prediction is a marginal rate interval, not a
-conditional Poisson-binomial calibration test for heterogeneous predictions. Band tests are run-clustered Wald tests,
-whose reference distribution requires enough independent runs and full-rank covariance. Unless stated otherwise,
-intervals are pointwise and comparisons exploratory; covering the prediction does not establish equivalence.
+**Labels.** **fitted**: estimated from the runs, with the sample and method given. **derived**: computed from the
+other parts. **assumed**: a chosen rule or an outside figure, with its source named; no evidence is claimed for it
+unless the text says it was tested. A **known miss** is a measured discrepancy the model keeps.
 
 **Terms.**
 
@@ -119,31 +90,42 @@ intervals are pointwise and comparisons exploratory; covering the prediction doe
 - The *priority list*: up to 10 skills the player marks at the start of an IT career for IT to favour.
 - *Targets*: the Legacy Loop Planner's eight default white / gold pairs: Uma Stan / Superstan, Nimble Navigator / No
   Stopping Me!, Playtime's Over! / See Ya Later!, Ramp Up / It's On!, Tail Held High / Tail Nine, Racing Spirit:
-  Stamina, Slipstream / Perfect Spot!, Risky Business / Nothing Ventured. The model is the same for every skill, so
-  section 13 also checks a sample of every other skill.
+  Stamina, Slipstream / Perfect Spot!, Risky Business / Nothing Ventured.
+
+**Intervals.** $x$ [$a$, $b$] is an estimate with its 95% interval, or 90% where marked. Where a run gives one
+observation, the interval is Wilson's. Where a run gives several rows, such as targets, race attempts or trials, the
+interval is clustered by run, so the run is the unit. Four limits apply throughout:
+
+- An observed / predicted interval treats the predictions as fixed and the runs as independent. It leaves out the
+  uncertainty of the fitted constants and any dependence between careers.
+- A Wilson interval divided by a mean prediction is an interval for the observed rate. It ignores that the rows'
+  predictions differ.
+- A joint test over a table's bands is a run-clustered Wald $\chi^2$. It needs many runs and a covariance that is not
+  degenerate.
+- Every interval is pointwise. One that covers the prediction shows no detected miss, not that the model is exact.
+  Among this many intervals some exclude the prediction by chance, so a listed known miss can be partly selection.
 
 **Fit comparisons.** A model's *log-likelihood* (LL) sums the log of the probability it gave to what was seen. For a
-joint likelihood, a difference of $\Delta$ *nats* is a likelihood ratio of $e^{\Delta}$. Sums of dependent marginal
-scores, including training-skill rows and the chain-allocation link scores, are composite likelihoods. Their differences
-compare scores without giving that likelihood ratio for whole careers. A *free* fit gives each quantity its own value
-with no formula, such as a win rate per cell. It is the yardstick a
-formula is measured against. There are three kinds of comparison, each with its rule:
+joint likelihood, a difference of $\Delta$ *nats* is a likelihood ratio of $e^{\Delta}$. Some scores sum one run's rows
+as if they were independent: the training-hint rows and the chain-allocation link scores. Such a sum is a *composite*
+likelihood. Its differences rank models but are no likelihood ratio for whole careers. A *free* fit gives each
+quantity its own value with no formula, such as a win rate per cell; it is the yardstick a formula is measured
+against. Each comparison is one of three kinds:
 
-1. **Same number of fitted parameters**: compared descriptively by LL on the same data; no universal significance
-   cutoff follows for nonnested models.
-2. **Is an extra parameter detectable?** For regular nested joint-likelihood fits, Wilks' reference distribution
-   compares $2\Delta$ with $\chi^2$ on the difference in parameter dimensions. The scripts' unadjusted tests on
-   composite likelihoods, discrete count parameters or boundary fits need separate calibration. Their nominal
-   significance alone does not establish detection.
-3. **Does a model predict better?** The scripts compare folds grouped by run id. Each fold should refit the complete
-   prediction pipeline on its training runs. The hint covariate and card-effect checks retain full-pool specialty
-   weights, so those comparisons are only partly held out. Their per-scenario levels are refitted. The reported
-   standard error treats per-run score differences as independent and ignores overlapping training folds and model
-   selection. Its $z$ is an approximate comparison, and failure to cross the script's threshold does not show that
-   alternatives are equivalent or worse.
+1. **Same number of fitted parameters**: compared by LL on the same data. This is descriptive; no significance cutoff
+   applies to models that are not nested.
+2. **Is an extra parameter detectable?** A likelihood-ratio test compares $2\Delta$ with $\chi^2$ on the number of
+   extra parameters. That reference holds only for regular nested fits of a joint likelihood. Tests on composite
+   likelihoods, on integer parameters such as a binomial's $n$, or at a parameter's bound are reported unadjusted.
+   Their p-values are nominal, and nominal significance alone does not establish an effect.
+3. **Does a model predict better?** Five-fold cross-validation by run id: each fold refits the prediction on four
+   fifths of the runs and scores the rest. The ± is a standard error that treats each run's score difference as
+   independent. It ignores the overlap of the training sets and the choice among models, so $z$ is approximate. A $z$
+   short of significance does not show an alternative equal or worse. Section 7's covariate and per-card checks keep
+   the full-pool specialty weights in every fold, refitting only the per-scenario levels, so they are partly held out.
 
 Every number here is computed by the scripts in `research/`, which also test each conclusion the text draws
-(`research/README.md`). A script's **holds** records its predicate, subject to these limitations. Only the assumed
+(`research/README.md`). A script's **holds** means its stated test passed, within the limits above. Only the assumed
 inputs are typed in.
 
 ## 0. What is computed
@@ -163,19 +145,20 @@ runs show the sparks a career inherited, not the ones it produced, so nothing he
 Computed by `research/s02_stars.py`.
 
 The star mixes are **assumed** (community figures; `docs/MODEL.md`): 50 / 45 / 5% of sparks at 1 / 2 / 3★ below a rank
-score of 17,500, and 20 / 70 / 10% from 17,500 up. The page chooses the majority band in each measured scenario.
-That default is a rule informed by the rank scores, not a fitted mixture for veterans retained in a loop.
+score of 17,500, and 20 / 70 / 10% from 17,500 up.
 
 ### Findings
 
-- **Grand Concert uses the higher band; URA Finale, Unity Cup and Trackblazer the lower.** Unity Cup is close to even.
-- **Averaging over stars overstates the single-target inheritance chance in the sampled configurations**, by at most
-  {{2.q_overstatement_below_17_500_max|.2%}} within the assumed mixes. This is no bound on every lineage or on joint landing odds.
+- **Grand Concert defaults to the 17,500+ mix; URA Finale, Unity Cup and Trackblazer to the lower one.** Each takes the
+  band most of its careers reach, Unity Cup by a small margin. This is a chosen default, not a fit of the stars of the
+  veterans players keep in a loop.
+- **Averaging over stars slightly overstates the inheritance chance** (**derived**). On the runs' lineages the largest
+  overstatement is {{2.q_overstatement_below_17_500_max|.2%}}, within the assumed mixes. It is no bound for every
+  lineage and says nothing of joint landing odds.
 
 ### Evidence
 
-*Which band?* (**chosen** from measured rank distributions.) Each measured scenario takes the majority band. A career's rank score
-is estimated with every skill point spent, over every completed run in the run list.
+*Which band?* A career's rank score is the run list's estimate with every skill point spent, over every completed run.
 
 | Scenario | Runs | Share at 17,500+ [95%] | Band |
 |---|---|---|---|
@@ -186,21 +169,22 @@ is estimated with every skill point spent, over every completed run in the run l
 
 Grand Masters has no runs and is **assumed** 17,500+.
 
-*What does averaging over stars cost?* (**derived**.) For a planned loop the model uses each legacy's expected base per
-roll. That is exact for one roll only when the cap is inactive. Across both rolls the same stars persist. With $r$ a
-legacy's chance per roll, convexity gives $E[(1 - r)^2] \ge (1 - E[r])^2$. So averaging overstates $q$, the chance of
-an inspiration over the career (section 3).
-The table measures the overstatement on the six real affinities of each of the {{2.lineages|,.0f}} lineages in the runs, for a target
-carried by all six. The calculation assumes independent unknown stars across slots; repeated appearances of the same
-veteran would share her stars. With capping, the squared miss remains convex in the base, so the same direction holds
-under this slot-independence assumption.
+*What does averaging over stars cost?* For a planned loop the model gives each legacy her mix's expected base $\bar b$.
+A legacy keeps her stars in both rolls. So her chance of firing in neither is $E[(1 - r_b)^2]$ over her base $b$, where
+$r_b = \min\{1,\ b(1 + A/100)\}$ is her chance per roll at affinity $A$ (section 3). The model uses $(1 - r_{\bar b})^2$
+instead. That miss is convex in $b$, cap included, so $E[(1 - r_b)^2] \ge (1 - r_{\bar b})^2$. Averaging therefore
+understates the miss and overstates $q$, the chance of at least one inspiration of the skill.
+
+The table measures the overstatement for a target all six legacies carry, at the six real affinities of each of the
+{{2.lineages|,.0f}} lineages in the runs. It treats each legacy's stars as independent of the others'; a veteran
+appearing twice in a lineage would share hers.
 
 | Band | Mean overstatement of $q$ | Largest |
 |---|---|---|
 | below 17,500 | {{2.q_overstatement_below_17_500_mean|.2%}} | {{2.q_overstatement_below_17_500_max|.2%}} |
 | 17,500+ | {{2.q_overstatement_17_500_and_up_mean|.2%}} | {{2.q_overstatement_17_500_and_up_max|.2%}} |
 
-With real legacies their actual stars are used, so this does not arise.
+With real legacies the model uses their actual stars, so this does not arise.
 
 ## 3. Inheritance rolls
 
