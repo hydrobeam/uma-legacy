@@ -68,7 +68,7 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
   space-specific keys into another job. `DeckSpace` retains its other interior caches.
 - The worker's five retained collections live in `KeptState`; nested career jobs borrow it explicitly. Index simulation
   swaps the whole record (roll states included) and restores it afterward. Publish deck and corner memos at the career
-  entry point after every completed path, including early answers; publishing from `Env::drop` hides that mutation.
+  entry point after every completed path, including early answers; a `Drop` on `Env` that published them would hide that mutation.
   Saved-state JSON still omits deck memos; importing it preserves those process-local tables.
 - Career inheritance folding must reuse `SearchState::folded_events` in place (`set_ews`'s matching-shape path),
   including the corner loop. `Model` stays read-only: `JointQuery` and `DeckChances` borrow the selected chances,
@@ -77,7 +77,7 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
 - `work.exact` counts `SearchState::exact_scorings`, the career's own `best_deck` scorings: a memo hit adds what its
   search scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
   `CareerSetup::score_exact`, or the counter moves.
-- `DominanceIndex` visit order matters: the remembered dominators feed the recent-winner ring and `lastrow`. Prefilters must
+- `DominanceIndex` visit order matters: the remembered dominators feed the `recent` ring and `last_dominator`. Prefilters must
   preserve descending bucket order and ascending row order within each bucket (`deck/dominance.rs`, `DominanceIndex::count`).
 - Float order: preserve sums and products in order. Reordering a maximum must also preserve tied winners and the
   treatment of NaNs and signed zero where they are possible.
@@ -110,8 +110,8 @@ generation took 2.0 s on export 2 against 1.2 s optimised (Node 22). So such a l
 function, entered many times (`gen_cands`' per-trainee loop), and `wasm-opt` runs with `-ocimfs=0` to disable its
 [single-caller size allowance](https://github.com/WebAssembly/binaryen/blob/main/src/tools/optimization-options.h).
 This does not disable all inlining. The planner's long loops are split the same way:
-`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s tables, fold and outcome loop (`sc_prep`, `sc_eval`,
-`sc_outcomes`, whose loop is `sc_loop`, one copy per specialisation); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
+`outcome_hi`'s per-(candidate, partner) body (`hi_partner`) and `score_career`'s tables, fold and outcome loop (`prepare_scoring`,
+`Scored::evaluate`, `evaluate_outcomes`, whose loop is `sc_loop`, one copy per specialisation); on export 2 (`.perf/careerbench.mjs`, Node, 2026-10-20) `hi_ms` 1.91 -> 1.28 s, `score_ms` 4.13 -> 3.99 s,
 the plan 10.85 -> 10.1 s, native outputs byte-identical. The optimised code belongs to the compiled module: a
 restarted worker given the same `WebAssembly.Module` starts with what the last one tiered up. Liftoff alone
 (`--liftoff-only`) took export 2's plan 39 s against 22 s (at be6bb44, before the planner's loops were split), about
@@ -132,11 +132,11 @@ On e2_v24_t10 `sc_loop_ms` 3.50 -> 3.01 s.
 - One shared deck, three or four trainees: the loop search's scoring (`loop_planner/search/shared.rs`,
   `Multi::score_shared`, and `loop_planner/search/report.rs`, `Multi::shared_picks`)
   calls `joint_b` once per trainee, and each call rebuilds `joint_prep`, which depends on the deck, not the trainee.
-  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `joint_eval` rebuilds the target clusters and the
+  Preparing once per deck removes 2/3 or 3/4 of those calls. Further: `evaluate_prepared` rebuilds the target clusters and the
   product of event outcomes on every call, though they depend only on the ordered active groups (`CareerSetup::corners`
   repeats it at each of 2^nu corners); a plan compiled per group list could replay every weighted addition in order
   (equal rewards' weights are not merged: that regroups sums). Measured 2026-10-21 (callgrind, pal_U shared): neither
-  `joint_prep` nor `joint_eval` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive). The
+  `joint_prep` nor `evaluate_prepared` shows in the profile; the joint code's cost there is `upper_na` (9.7% inclusive). The
   profile's `run_deck_relaxed::pick` no longer exists; the current loop search is in `loop_planner/search/bands.rs`.
   Reprofile before acting on that measurement.
 - Training groups: a card's inclusion-exclusion weight depends only on the subset's size, so it could be summed once
@@ -183,7 +183,7 @@ every card and uma (8 uncertain targets: the scenario guarantees none), with 24-
 and export 1 (e1_full), 315 veterans on Unity Cup (6 uncertain targets). Times are native on the i5-1340P unless
 marked, each from the commit named. These are historical measurements, not timings of the current build.
 The `hi_ms` timer and `sc_fold` function named by older measurements no longer exist; collapse detection is now in
-`sc_prep`, folding in `fold_rec`, and `outcome_hi` is called for one rolled outcome. The old shared k-best second
+`prepare_scoring`, folding in `FoldContext::fold`, and `outcome_hi` is called for one rolled outcome. The old shared k-best second
 skyline-enumeration pass is also gone: `run_deck_relaxed` builds one frontier, then `Multi::band_shared` searches the
 exact band. Its old 68-of-75-second profile is not a target for the current code. `.perf/` jobs and harnesses are
 untracked; reproducing their figures requires those inputs and the named revisions.
@@ -204,7 +204,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
   332 -> 330 on e2_full; gm16_nu8 34.30G -> 32.58G instructions (-5.0%: `score_career` -1.56G, the anchors' branch and
   bound -0.9G).
 - The star-inert collapse (d7e0cc0): an uncertain target none of whose setups' table values can move with her 1-3 stars
-  (`sc_prep`) is folded at 0 and 1 star only, and the outcome loop reads 1 star's y and odds at 2 and 3 stars while
+  (`prepare_scoring`) is folded at 0 and 1 star only, and the outcome loop reads 1 star's y and odds at 2 and 3 stars while
   every sum still takes every outcome at its own chance. On the `.perf/p0` and val/plan jobs every scoring collapses 2
   of 6 or 3 of 8 targets, all by flat tables; `score_ms` e2_v24 1.27 -> 0.46 s, e2_full 2.81 -> 1.26 s, e1_full
   0.40 -> 0.33 s, e2_v24_t10 23.2 -> 9.5 s (3 of 10). Not byte-identical (a flat table's fold rounds differently per
@@ -234,7 +234,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
   the candidates it lifts, so the leaves reading it add those stats without retaking its row. V after her is found
   lazily: a lifted candidate's step is costed only where a trio valued at her odds' cell bound (`Cont::cost_lb`:
   cost_lo at the cell's top, 128 cells per binade, less 1e-9 for libm rounding; derived in the code) could still set
-  the minimum. e2_v24_t10 (166 scorings, 174M outcomes): `bs.cost` calls 70.5M -> 5.1M; on the laptop throttled to
+  the minimum. e2_v24_t10 (166 scorings, 174M outcomes): `ScoreBase::cost` calls 70.5M -> 5.1M; on the laptop throttled to
   400 MHz, `sc_loop_ms` 12.3 -> 4.2 s, `score_ms` 14.9 -> 6.2 s, user CPU 22.9 -> 11.8 s (run alone); a paired rerun
   while another job ran, slower throughout: `score_ms` 77.5 -> 45.1 s, user 118.6 -> 86.7 s. The val/plan jobs, run
   one at a time back to back: `sc_loop_ms` about halved (p10 268 -> 133 ms, gm16_nu8 480 -> 280, p16_88 313 -> 141).
@@ -249,7 +249,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 - Reroll's saving on demand (2026-10-21, on 7d83383; every other plan output byte-identical): the plan no longer
   computes the pick's outcome table (`outcomes.y`, 4^nu 2^nf values) nor its bound (`outcome_hi` over every y < 0.5
   outcome, `y_hi`, `provisional`); it keeps the pick's scoring (`RollKeep`, 35 KB in `state_out` on p16, 89 KB on
-  gm16_nu8) and a roll evaluates that one outcome (`next.roll`, `sc_eval` at `OneLeaf`, `outcome_hi` at one cell).
+  gm16_nu8) and a roll evaluates that one outcome (`next.roll`, `Scored::evaluate` at `OneLeaf`, `outcome_hi` at one cell).
   The rows near the pick keep their scorings instead of their tables. e2_full_t10 native, one run each, the machine
   idle: user 16.7 -> 13.4 s (`hi_ms` 3.33 s gone), peak RSS 498 -> 318 MB, output 12.9 MB -> 0.63 MB. A roll there
   (the plan job with `next.roll`, after the plan): y >= 0.5 0.1 ms of solver (7 ms the whole job), y < 0.5 208 ms the
@@ -269,7 +269,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 
 - The looped careers' scoring (`Want::Touch`, 2026-10-21): their statistics feed only `proxy_check`, so without it
   the scoring keeps its state effects (her schedule, every partner's `val` search under the looped block's cap,
-  `sc_prep` and its counters) and skips the evaluation. p16_88's plan 922 -> 886 ms, export 2's 3,171 -> 3,097 ms (best
+  `prepare_scoring` and its counters) and skips the evaluation. p16_88's plan 922 -> 886 ms, export 2's 3,171 -> 3,097 ms (best
   of 3, back to back); every output identical but `sc_out` (p16_88's reference updated; owner's sign-off).
 - The page's Reroll (2026-10-21): 680-820 ms a roll after the first, every one `planned: true`. A roll after an exact
   comparison had started (at once when y >= 0.5, 0.8 s later when y < 0.5 <= y_hi) killed the worker, and the stored
@@ -301,12 +301,12 @@ untracked; reproducing their figures requires those inputs and the named revisio
 - Page: keep the worker's kept bests across a superseded job (a settings change during a plan discards them; an edit
   that leaves the job as it is no longer stops the plan); reuse kept plans for pools that grow by several veterans or
   lose one (today: the same pool, or one more veteran at the end).
-- Not worth doing (measured 2026-10-21): a memo of `sc_prep`'s dominance and flat checks per (trainee, deck prefix):
-  `sc_prep` is 1.1M of p10's 19.7G instructions; `CareerSetup::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
+- Not worth doing (measured 2026-10-21): a memo of `prepare_scoring`'s dominance and flat checks per (trainee, deck prefix):
+  `prepare_scoring` is 1.1M of p10's 19.7G instructions; `CareerSetup::corners_kept`'s deep copy on a hit: a few dozen 1-2 KB
   copies a job.
 - Where the time is (callgrind, 2026-10-21): p10 spends 88.6% of its instructions in the deck search
   (`DeckSpace::search`, 260 runs from 211 `best_deck` calls: the main search 29.6%, `best_of` 47.9%, `deck_for` 15%)
-  and 6.3% in `score_career`; `rec`'s cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):
+  and 6.3% in `score_career`; the walk's (`walk`) cost is spread (no source line above 2% self). Exports 1 and 2 (native, main):
   2.27 s and 2.90 s, deck search 2.10 and 2.17 s of it. Gains now come from fewer or smaller deck searches, not the
   scoring.
 - Parallel helper workers would need deterministic tie and reduction order as well as the winners-only cache and
@@ -322,7 +322,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 | A fused depth-first ceiling pass in `outcome_hi` | slower | the vectorised `leaf_products` is memory-bound but faster |
 | Partner pruning by ceiling in `score_career`'s setups | not exact | `val` can run a fill-mode deck search that adds to the cache; setups cost 48-80 ms |
 | Skipping cost lookups for candidates whose step can't move (`cost_lo` bound) | exact; lookups -62% | about 6% of the outcome loop (superseded: the lazy V pass, *Where it stands*, skips the steps that can't set the minimum) |
-| A 4096-entry step-cost cache per candidate (against 256) | `bs.cost` calls 35.3M -> 26.5M on e2_v24_t10, `sc_loop_ms` -1% | `Cont::plan`'s memo already caught those repeats |
+| A 4096-entry step-cost cache per candidate (against 256) | `ScoreBase::cost` calls 35.3M -> 26.5M on e2_v24_t10, `sc_loop_ms` -1% | `Cont::plan`'s memo already caught those repeats |
 | Caching the main search's ceilings for the per-uma solves | about 0.3% | about 13 MB on 315 veterans, 60+ MB on 400, with a pool key |
 | An index on `ruled` | scans about 1 ms per job | nothing to gain |
 | `her_trios`' C ranking through `gen_cands` (one pair, every trainee) | exact; p16 instructions +4.5% | `gen_cands`' per-trainee tables cover every legacy of the pool, for one pair |
@@ -343,7 +343,7 @@ untracked; reproducing their figures requires those inputs and the named revisio
 | wasm SIMD (`+simd128`) | p16 -1.7%, boot_mob +3.8% (V8, within noise) | the hot loops are branchy with serial products; recheck if `outfit_fast` becomes branch-free |
 | `outfit_fast` with u8-state `if` selects / f64-state compares | -0.4 to -1.4% / +0.6 to +0.8% | LLVM re-emits branches / no vectorisation (`OutfitPre`'s u64 masks do vectorise) |
 | Collapsed targets at their summed star chance (one outcome for 1-3 stars, weight w1 + w2 + w3) | `score_ms` e2_v24_t10 23.2 -> 6.6 s; decisions identical | the regrouped sums move the fit (lam, phi) by up to 3.9e-12 and savings by 5.3e-12 relative on e2_v24_t10, past the 1e-12 bar; kept: every outcome summed in order (9.5 s) |
-| A/B pre-check at the root bound | its B side is `p0 * sp0`, no outfit call | nothing to save |
+| A/B pre-check at the root bound | its B side is one product (`empty_values[row] * ratio_products[row]`), no outfit call | nothing to save |
 | mimalloc (native) | within noise on p16, p10, boot_mob, gm16, pal_A2 | allocation's RAM misses are at most about 7% of time |
 | talc (wasm) | p16 -4.3%, boot_mob 0% | +7% download (wasm 1.84 -> 1.97 MB) for one pool |
 | Incremental trio V (only trios reading a changed step cost) | exact; +218M instructions on p16 against `trio_v`'s 290M | nearly every trio reads the changed candidate |

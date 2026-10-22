@@ -84,7 +84,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); Biome on the page's JS (lint and formatting: 2-space indent, single quotes, 120 columns) with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); `biome check` on the page's JS (lint and formatting in one pass: 2-space indent, single quotes, 120 columns) with warnings as errors (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -98,12 +98,12 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `deploy` | builds the page and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
-The solver's training-hint constants (each scenario's base and specialty weight, `src/deck/hints.rs`) are the research
-fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every build, native
-or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the solver's results
-(rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). The page's scenario tiles
-take the bases the same way: `webapp/build.py` (`hint_bases`) reads build.rs's keys with its rounding into the page's
-data. A missing key fails either build with its name.
+The solver's training-hint constants (each scenario's base and specialty weight, `pkg/loopopt/src/deck/hints.rs`) are
+the research fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every
+build, native or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the
+solver's results (rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). The page's
+scenario tiles take the bases the same way: `webapp/build.py` (`hint_bases`) reads build.rs's keys with its rounding
+into the page's data. A missing key fails either build with its name.
 
 ## Data updates
 
@@ -245,7 +245,10 @@ passing the tools does not establish that a reader can understand the code. Keep
   different units. A tuple should be understandable without looking up its positional convention. Parallel buffers
   can be appropriate in a hot loop; explain their indexing invariant rather than wrapping them just for appearance.
 - **Functions:** give each function one coherent operation or phase. A long workflow should show its phases in order,
-  with inputs and results explicit. Extract around meaningful boundaries, not an arbitrary line limit.
+  with inputs and results explicit. Split a long function only where a block is one computation with a short signature
+  (about five arguments, and no record invented only to carry them into that call); otherwise keep it whole and mark its
+  phases with heading comments (`// Phase 2: ...`). A split that needs a long argument list or a one-off record moves
+  the complexity into the call and sends the reader elsewhere for no gain.
 - **Dependencies:** values that travel together through several functions are one value: a trainee and her parents are
   one record, and the read-only state a family of functions shares (data, pool, legacies, score base) is one context
   struct, borrowed once, with documented fields, named in full where it is used. Keep what a function may change
@@ -253,11 +256,11 @@ passing the tools does not establish that a reader can understand the code. Keep
   parser that takes `&mut Parser`, a `Cursor` and `ParseOpts`). Group by concept, not by call site, and prefer an
   existing domain record over another overlapping bundle. A struct unpacked into a dozen short locals on entry means the
   concept has not been named yet. A context is built once, where its contents come into being, and borrowed downward: a
-  phase's entry point builds it and the functions below take `&Context` (and the one mutable owner, such as `&mut Sim`)
-  plus small values; call sites do not assemble context structs from loose locals. What changes during the phase (a
-  score base refitted between phases) stays out of the long-lived context, which hands out the short-lived view through
-  a method. Records store the records they are about (a row keeps its `lineage`), so calls pass `row.lineage` rather
-  than rebuilding it.
+  phase's entry point builds it and the functions below are its methods or take `&Context` (and the one mutable owner,
+  such as `&mut Sim`) plus small values; call sites do not assemble context structs from loose locals. What changes
+  during the phase (a score base refitted between phases) stays out of the long-lived context, which hands out the
+  short-lived view through a method. Records store the records they are about (a row keeps its `lineage`), so calls pass
+  `row.lineage` rather than rebuilding it.
 - **Calls:** a reader checks a call against the signature without counting arguments. Adjacent arguments of one type
   that could be swapped unnoticed (`k.x, k.a, k.b`), or a long argument list (past five or so, as a guide, not a limit),
   usually mean a record is missing (a trainee and her parents; a scoring context). A function asked for one value
@@ -265,8 +268,12 @@ passing the tools does not establish that a reader can understand the code. Keep
   index from its star levels and fixed-target mask), and parenthesize any expression that mixes shifts with `|`, `&` or
   arithmetic. A call that spans several lines inside a closure (`(y < 0.5).then(|| …)`) is an `if`.
 - **Files:** one module per concept: a reader should find a phase by its file name. A file past about 1500 lines
-  holds several concepts and splits into a module directory; moving code between files changes no behaviour, so
+  holds several concepts and splits into a module folder; moving code between files changes no behaviour, so
   splits land as pure moves, apart from visibility, before anything is renamed.
+- **Module folders:** a module with children is a folder whose root is `name/mod.rs` (never `name.rs` beside
+  `name/`), so the folder is the whole module. Its `mod.rs` is the front door: its header maps the children, one line
+  each, and it holds the module's main records and entry point, not the bulk of the work. A reader opens one file to
+  learn where everything in the folder is.
 - **Control flow:** keep the main path easy to follow; use guards for cases with nothing to do. Use iterators where
   they clarify the operation and index loops where indices, visit order or appending to the traversed vector matter.
   Do not add allocation, copying or repeated work merely to make an expression shorter.
@@ -276,6 +283,10 @@ passing the tools does not establish that a reader can understand the code. Keep
 - **Refactors:** preserve arithmetic and evaluation order, ties, cache/proof effects and resource lifetimes unless a
   behavior change is explicitly intended. Apply the output and work-counter contract in `docs/PERF.md`, and run the
   checks in *Tests*. A smaller function or a clean lint run is not evidence of equivalent behavior or better speed.
+- **Checks in parallel work:** each branch (lane) of a batch worked in parallel runs the build, clippy and
+  `cargo test`; the byte-identity validation (`val`, `val/planval.py`, `val/same.py`) runs on each integration batch
+  once its lanes are merged, and once at the end. Validation takes minutes of CPU, and what it certifies is the
+  merged tree: lanes that each pass can still interact once merged.
 
 ## Releases
 
@@ -298,9 +309,11 @@ minutes and can serve the previous page until then.
 
 ```
 build.sh             the one entry point for every build step
-.githooks/           the pre-commit formatting check (`./build.sh hooks` turns it on)
+.githooks/           the pre-commit hook (`./build.sh hooks` turns it on)
+.github/             CI (`workflows/ci.yml`)
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
-pkg/loopopt/         the Rust solver (src/, tests/; build.rs takes the training-hint constants from research/results.json)
+pkg/loopopt/         the Rust solver (src/, its module map in docs/SOLVER.md; tests/; build.rs takes the training-hint
+                     constants from research/results.json)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
 pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
                      launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,
@@ -308,7 +321,7 @@ pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: 
                      files both eras share, event_shares.json, gametora.json (GameTora's pinned versions) and
                      gametora_slugs.json (the page's links to GameTora)
 val/                 validation: jobs/ (the job files), jobs.json and slow.json (which run), reference outputs, checks;
-                     plan/ (the career planner's jobs and references)
+                     plan/ and sim/ (the career planner's and the policy simulator's jobs and references)
 research/            scripts computing RESEARCH.md's numbers; RESEARCH.md is rendered from docs/RESEARCH.template.md (`./build.sh research`; research/README.md)
 docs/                USAGE, SOLVER, MODEL, RESEARCH, PERF and this file
 game/                your game files (gitignored)

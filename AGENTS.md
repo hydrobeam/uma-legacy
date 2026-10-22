@@ -8,7 +8,8 @@ Docs: `docs/BUILD.md` (building, testing, layout), `docs/SOLVER.md` (the solver)
 evidence), `docs/RESEARCH.md` (the maths), `docs/USAGE.md` (the page), `docs/PERF.md` (speed work).
 
 - **Python** runs in the uv environment: `uv run script.py`; add dependencies with `uv add`.
-- **Rust:** `./build.sh lint` passes before a commit; the pre-commit hook checks formatting.
+- **Lint:** `./build.sh lint` passes before a commit; the pre-commit hook checks the staged Rust, Python and page JS
+  (formatting and lints).
 - **Code clarity:** follow `docs/BUILD.md`, *Code clarity*, in every language. Lint passing is not a readability review.
 - **Clones:** never clone to appease the borrow checker; restructure the borrows instead (`docs/BUILD.md`, *Ownership and clones*).
 - **Results are pinned.** A change that can move the solver's results runs `./build.sh valq TAG` while iterating and
