@@ -87,10 +87,10 @@ equally. Test `score_matches_per_legacy_sum` checks the closed form against a di
 
 | Function | What it does | Exact? |
 |---|---|---|
-| `dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. `best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
-| `ascent` | Best-response dynamics: each member re-solves against the other members until none improves by more than 1e-9. This is a Nash point up to that tolerance, not necessarily the global optimum. | Local |
-| `group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. | Local |
-| `optimize` | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
+| `Uma::dp_exact` | Best response for one uma: maximize Σ_r W(r)·P(r) given partner weights W. Junior turns 1–24 run in sequence. Then Classic turn t and Senior turn t+24 are decided **together**, with state (Classic streak, Senior streak, goal bitmask), plus the Classic streak at turn 48 whenever turn 49 has a race option. Every race offered in both years is exactly 24 turns apart, so 1 − (1−p₁)(1−p₂) is computed exactly. `Uma::best_response` memoises calls within `optimize`. | **Yes** (tested against an exact MILP, §4) |
+| `LoopProblem::ascent` | Best-response dynamics: each member re-solves against the other members until none improves by more than 1e-9. This is a Nash point up to that tolerance, not necessarily the global optimum. | Local |
+| `LoopProblem::group_moves` | Coalition deviations: force 2+ members onto the same race (or rest) at one turn, then re-ascend. | Local |
+| `optimize` (`LoopProblem::solve`) | Optimistic start (partners at best-case odds) → ascent → group moves → `iters` rounds of iterated local search (1–2 members re-solved against noisy weights, then ascent and group moves). | Heuristic |
 | `pair_ceilings` | Exact pairwise ceilings PB(a,b) = min(BR_a(PM_b), BR_b(PM_a)), where PM is a partner's best-case odds per race: no pair of schedules shares more expected G1 wins. The deck search bounds every structure's lineage affinities with them before any schedule is optimised; `loopopt pbtable` prints the table for `export/add_pb.py` to merge into data.json. | **Guaranteed** bound |
 
 **Why the ceiling is valid:**
@@ -127,7 +127,7 @@ races are not listed):
 - **Unshared G1s:** run by one member only. They contribute no shared wins and can pass down race sparks. Skipping one never lowers affinity, since it can only shorten a streak, but a goal race may still be required.
 
 A cell carries the win % for that attempt (streak penalty included), the goal flag, the aptitude cost and the streak
-position; `alts` names races that can replace the row's at no affinity cost when all its runners switch together (`interchangeable`).
+position; `alts` names races that can replace the row's at no affinity cost when all its runners switch together (`ScheduleChart::interchangeable`).
 
 **Optional fill pass:** after optimizing, each member re-solves against her partners with a tiny bonus (1e-7 per
 expected G1 win), keeping the result if affinity drops by at most 1e-6. A second pass tries G1s on rest turns,
@@ -394,7 +394,7 @@ and the reruns in `cap_rerun`. The best career also carries `schedule`, `g1_wins
   chart name, `when`, `year`, `cells` = [{p, goal, apt, row, pen}] or [null], `shared` = a parent won it)
   plus `name` (full race name), `parents` (which won it), `run`/`skipped`, `instead` (the race she runs that turn, or
   "rest") and `p` (her win chance, null when skipped). The schedule maximizes expected distinct G1 wins, each race weighted
-  1 plus 1 per parent who won it (`best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
+  1 plus 1 per parent who won it (`Uma::best_response`; a G1 she shares with a parent adds 3 affinity to each of them when
   she is a parent herself), under goal races, same-turn clashes and streak win penalties. `g1_wins`: expected wins.
 - `outcome_sets` (up to 12 targets, else null): the exact chance of each set of targets landing, indexed by bitmask
   (bit i = job target i), guaranteed golds' spark generation included.
@@ -631,7 +631,7 @@ Results and commands: `val/sim/README.md`.
   - 71 rest-forced best responses from the MILP, including boundary turns 24, 25 and 48;
   - the full 2,278-pair ceiling table.
 - **Properties checked:**
-  - `feasible()` rejects bad schedules;
+  - `Uma::feasible` rejects bad schedules;
   - a force that conflicts with a goal is infeasible;
   - the objective equals a direct per-legacy sum; optional G1s cost nothing; interchangeable races preserve the score;
   - a three-uma rotation's schedules are a Nash point of its objective.

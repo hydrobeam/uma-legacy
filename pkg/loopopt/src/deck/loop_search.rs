@@ -5,13 +5,12 @@ use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,
 };
 use crate::Instant;
-use crate::data::{Choice, Data, NT, Sched, Uma, feasible};
+use crate::data::{Choice, Data, NT, Sched, Uma};
 use crate::deck::dominance::{Cl, Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::optimize::{Res, members};
-use crate::schedule::best_response;
 use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};
@@ -383,7 +382,7 @@ fn qkey(qs: &[f64]) -> ChanceKey {
 
 /// Fixed schedule for one uma (see DeckJob::schedule).
 fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
-    let solo = best_response(d, u, &vec![1.0; d.nr], None).expect("infeasible goals").0;
+    let solo = u.best_response(d.nr, &vec![1.0; d.nr], None).expect("infeasible goals").0;
     if mode != "goals" {
         return solo;
     }
@@ -400,5 +399,5 @@ fn prebuilt(d: &Data, u: &Uma, mode: &str) -> Sched {
             }
         }
     }
-    if feasible(u, &schedule) { schedule } else { solo }
+    if u.feasible(&schedule) { schedule } else { solo }
 }

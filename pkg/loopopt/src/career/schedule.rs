@@ -3,8 +3,7 @@ use crate::career::inherit::aff_factor;
 use crate::career::pool::{Pool, RaceWin};
 use crate::career::{Env, Lineage};
 use crate::chart::{chart_race_name, when};
-use crate::data::{Choice, NT, Uma, pk, probs, scored_position, streak_penalty};
-use crate::schedule::best_response;
+use crate::data::{Choice, NT, Uma, scored_position};
 use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
 const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
@@ -184,7 +183,7 @@ impl Env<'_> {
                         let bp = (110 - cost(gd) - cost(gs)).max(-20);
                         ebp[tt][o] += wd * ws * f64::from(bp);
                         for k in 1..=6 {
-                            pr[k] += wd * ws * pk(d, bp, scored_position(op.goal, k));
+                            pr[k] += wd * ws * d.attempt_chance(bp, scored_position(op.goal, k));
                         }
                     }
                 }
@@ -232,13 +231,9 @@ impl Env<'_> {
             }
         }
         // her own race table (pinks counted): solved directly (the memo is keyed by uma id)
-        let br = if pu.is_some() {
-            crate::schedule::best_response_solve(d, u, &wr, None)
-        } else {
-            best_response(d, u, &wr, None)
-        };
+        let br = if pu.is_some() { u.best_response_solve(d.nr, &wr, None) } else { u.best_response(d.nr, &wr, None) };
         let Some((s, _)) = br else { return RaceSchedule { rows: json!([]), win_chances: vec![0.0; d.nr] } };
-        let wp = probs(d, u, &s);
+        let wp = u.win_chances(d.nr, &s);
         let won = |x: usize, r: usize| p.veterans[x].wins.iter().find(|w| w.race == r).map_or(0.0, |w| w.chance);
         let mut rows = vec![];
         let mut k = 0usize;
@@ -271,7 +266,7 @@ impl Env<'_> {
                 let pw = u.ent[tt][o + 1].p;
                 let apt = pu.as_ref().map_or(f64::from(110 - op.bp), |x| 110.0 - x.1[tt][o]).round() as i64;
                 let cell = if run {
-                    json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": streak_penalty(d, op.goal, k)})
+                    json!({"p": (pw[k] * 100.0).round(), "goal": op.goal, "apt": apt, "row": k, "pen": d.streak_penalty(op.goal, k)})
                 } else {
                     Value::Null
                 };

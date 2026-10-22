@@ -2,7 +2,7 @@
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
 use super::{CardEntryKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of, qkey};
 use crate::Instant;
-use crate::data::{Data, Sched, probs, wval};
+use crate::data::{Data, Sched, dot};
 use crate::deck::caps::src_class;
 use crate::deck::dominance::{Cl, DeckEval, DeckId, PDeck, k_filter, split};
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
@@ -79,13 +79,13 @@ pub(super) fn pair_table(
     match fixed_s {
         Some(fs) => {
             let ps: UmaTable<Option<Vec<f64>>> =
-                fs.indexed().map(|(i, s)| s.as_ref().map(|s| probs(d, &d.umas[i], s))).collect();
+                fs.indexed().map(|(i, s)| s.as_ref().map(|s| d.umas[i].win_chances(d.nr, s))).collect();
             let mut m = UmaTable(vec![UmaTable(vec![0.0f64; n]); n]);
             if !no_race {
                 for &a in pool {
                     for &b in pool {
                         if a != b {
-                            m[a][b] = wval(ps[a].as_ref().unwrap(), ps[b].as_ref().unwrap());
+                            m[a][b] = dot(ps[a].as_ref().unwrap(), ps[b].as_ref().unwrap());
                         }
                     }
                 }

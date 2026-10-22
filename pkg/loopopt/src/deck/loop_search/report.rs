@@ -3,7 +3,7 @@
 use super::bands::{DeckBest, Pass, SolvedLoop};
 use super::{DeckSources, Multi, RatioExample, SharedDeckKey, lin_of};
 use crate::chart::{chart_rows, member_json};
-use crate::data::{probs, wval};
+use crate::data::dot;
 use crate::deck::dominance::PDeck;
 use crate::deck::joint::{JointChances, JointExt, joint_b, joint_fast};
 use crate::deck::space::{SPT, UCHK};
@@ -250,10 +250,10 @@ impl Multi<'_> {
                 json!({"outfits": outfits, "covers": covers})
             })
             .collect();
-        let pss: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[member_slice[i]], &schedule.s[i])).collect();
+        let pss: Vec<Vec<f64>> = (0..nm).map(|i| d.umas[member_slice[i]].win_chances(d.nr, &schedule.s[i])).collect();
         let dks: Vec<(&[f64], &[f64])> = (0..nm).map(|t| (&*dk[t].dw, &*dk[t].dg)).collect();
         let mut detail =
-            model.detail(member_slice, &|a, b| if self.no_race { 0.0 } else { wval(&pss[a], &pss[b]) }, Some(&dks));
+            model.detail(member_slice, &|a, b| if self.no_race { 0.0 } else { dot(&pss[a], &pss[b]) }, Some(&dks));
         if let Some(ls) = detail["lineages"].as_array_mut() {
             for (l, x) in ls.iter_mut().enumerate() {
                 x["rank_value"] = x["p_all"].clone();

@@ -89,18 +89,27 @@ pub(crate) enum Choice {
 pub(crate) struct Uma {
     pub(crate) id: u32,
     pub(crate) name: String,
-    pub(crate) opts: Vec<Vec<OptRaw>>,       // per turn (0-based index = turn-1)
-    pub(crate) forced: Vec<Option<Vec<u8>>>, // per turn: must race one of these options
-    pub(crate) bits: Vec<Vec<u32>>,          // per turn per option: multi-turn goal bits set
-    pub(crate) full: u32,                    // all multi-turn goal bits
-    pub(crate) pm: Vec<f64>,                 // best-case P per race
-    pub(crate) ent: Vec<[Ent; 6]>, // per turn: choice code 0 = rest, code o+1 = option o (precomputed for dp_exact)
-    pub(crate) chl: Vec<([u8; 6], usize)>, // per turn: allowed choice codes (no force), rest first then options in index order
-    pub(crate) apt: Vec<u8>,               // aptitude codes (UmaRaw); empty in older data
+    /// Per turn (0-based index = turn - 1): her race options.
+    pub(crate) opts: Vec<Vec<OptRaw>>,
+    /// Per turn: she must race one of these options (a single-turn goal).
+    pub(crate) forced: Vec<Option<Vec<u8>>>,
+    /// Per turn per option: the multi-turn goal bits it meets.
+    pub(crate) bits: Vec<Vec<u32>>,
+    /// All multi-turn goal bits.
+    pub(crate) full: u32,
+    /// Per race: her best-case win chance, every offer of it entered at streak position 1.
+    pub(crate) best_case_probs: Vec<f64>,
+    /// Per turn: choice code 0 = rest, code o + 1 = option o (precomputed for `dp_exact`).
+    pub(crate) ent: Vec<[Ent; 6]>,
+    /// Per turn: the allowed choice codes when nothing is forced, rest first then options in index order, and their
+    /// count.
+    pub(crate) choice_codes: Vec<([u8; 6], usize)>,
+    /// Aptitude codes (`UmaRaw`); empty in older data.
+    pub(crate) apt: Vec<u8>,
 }
 
 /// Precomputed per-choice data for dp_exact: race (-1 = none), win chance per streak position k (same values as
-/// `option_chance`), goal bits.
+/// `Data::option_chance`), goal bits.
 #[derive(Clone, Copy)]
 pub(crate) struct Ent {
     pub(crate) race: i32,
@@ -115,10 +124,12 @@ pub(crate) struct Data {
     pub(crate) umas: UmaTable<Uma>,
     pub(crate) pair: UmaTable<UmaTable<i32>>,
     pub(crate) tri: UmaTable<UmaTable<UmaTable<i32>>>,
-    pk: Vec<[f64; 7]>,
+    /// Attempt win chance by [bp + 20][scored streak position 1..=6].
+    win_table: Vec<[f64; 7]>,
     pub(crate) race_names: Vec<String>,
     pub(crate) pbt: Option<UmaPairTable<f64>>, // n x n pairwise ceilings from data.json's table, when its fingerprint matches
-    pen: Vec<i32>, // win-chance penalty for the k-th race in a row (pen[k - 1]), for the schedule's explanations
+    /// Win-chance penalty for the k-th race in a row (index k - 1), for the schedule's explanations.
+    streak_penalties: Vec<i32>,
     pub(crate) race_cat: Vec<u8>,
     pub(crate) race_ground: Vec<u8>,
 }
@@ -177,11 +188,6 @@ fn pb_table_from(raw: &DataRaw) -> Option<UmaPairTable<f64>> {
     Some(UmaPairTable { values: table, roster_len: n })
 }
 
-// pk table indexed by bp+20 (bp can be as low as -10), position k=1..6
-pub(crate) fn pk(d: &Data, bp: i32, k: usize) -> f64 {
-    d.pk[(bp + 20) as usize][k]
-}
-
 /// The streak position whose penalty a race at streak position `k` takes (`docs/MODEL.md`, win chance in IT): a goal
 /// race (one the career's goals require) takes the previous position's, so it pays 0/0/0/5/20/30 where a chosen race
 /// pays 0/0/5/20/30/50. It still counts toward the position of the races after it. The streak state stops at 6
@@ -190,15 +196,22 @@ pub(crate) const fn scored_position(goal: bool, k: usize) -> usize {
     if goal && k >= 2 { k - 1 } else { k }
 }
 
-/// Win chance of one option at streak position `k` (1..=6), its goal shift included.
-pub(crate) fn option_chance(d: &Data, option: &OptRaw, k: usize) -> f64 {
-    pk(d, option.bp, scored_position(option.goal, k))
-}
+impl Data {
+    /// Win chance of an attempt with win-rate basis `bp` (as low as -20) at scored streak position `k` (1..=6).
+    pub(crate) fn attempt_chance(&self, bp: i32, k: usize) -> f64 {
+        self.win_table[(bp + 20) as usize][k]
+    }
 
-/// The streak penalty (percentage points) an option takes at streak position `k`, for the schedule's explanations
-/// (0 at k = 0).
-pub(crate) fn streak_penalty(d: &Data, goal: bool, k: usize) -> i32 {
-    d.pen.get(scored_position(goal, k).max(1) - 1).copied().unwrap_or(0)
+    /// Win chance of one option at streak position `k` (1..=6), its goal shift included.
+    pub(crate) fn option_chance(&self, option: &OptRaw, k: usize) -> f64 {
+        self.attempt_chance(option.bp, scored_position(option.goal, k))
+    }
+
+    /// The streak penalty (percentage points) an option takes at streak position `k`, for the schedule's explanations
+    /// (0 at k = 0).
+    pub(crate) fn streak_penalty(&self, goal: bool, k: usize) -> i32 {
+        self.streak_penalties.get(scored_position(goal, k).max(1) - 1).copied().unwrap_or(0)
+    }
 }
 
 pub(crate) fn load(path: &str) -> Data {
@@ -238,85 +251,23 @@ fn check_repeated_races(umas: &[UmaRaw]) {
 
 pub(crate) fn load_raw(raw: DataRaw) -> Data {
     let pbt = pb_table_from(&raw);
-    let n_umas = raw.umas.len();
+    let roster_len = raw.umas.len();
     check_repeated_races(&raw.umas);
     let nr = raw.race_names.len();
-    let mut pkt = vec![[0.0f64; 7]; 140];
-    for (i, row) in pkt.iter_mut().enumerate() {
+    let mut win_table = vec![[0.0f64; 7]; 140];
+    for (i, row) in win_table.iter_mut().enumerate() {
         let bp = i as i32 - 20;
         for k in 1..=6 {
             row[k] = f64::from((bp - raw.pen[k - 1]).clamp(0, 100)) / 100.0;
         }
     }
     let mut umas = vec![];
-    for u in raw.umas {
-        let mut forced: Vec<Option<Vec<u8>>> = vec![None; NT];
-        let mut bits = u.turns.iter().map(|l| vec![0u32; l.len()]).collect::<Vec<_>>();
-        let mut nb = 0;
-        for g in &u.goals {
-            let ts: std::collections::BTreeSet<usize> = g.iter().map(|x| x.0).collect();
-            if ts.len() == 1 {
-                let t = *ts.iter().next().unwrap() - 1;
-                let v: Vec<u8> = g.iter().map(|x| x.1 as u8).collect();
-                forced[t] = Some(match &forced[t] {
-                    None => v,
-                    Some(old) => old.iter().copied().filter(|o| v.contains(o)).collect(),
-                });
-            } else {
-                for &(t, o) in g {
-                    bits[t - 1][o] |= 1 << nb;
-                }
-                nb += 1;
-            }
-        }
-        let mut miss = vec![1.0f64; nr];
-        for l in &u.turns {
-            for op in l {
-                if op.race >= 0 {
-                    miss[op.race as usize] *= 1.0 - pkt[(op.bp + 20) as usize][1];
-                }
-            }
-        }
-        let mut ent = vec![[ENT_REST; 6]; NT];
-        let mut chl = vec![([0u8; 6], 0usize); NT];
-        for t in 0..NT {
-            assert!(u.turns[t].len() <= 5, "more than 5 options at one turn");
-            for (o, op) in u.turns[t].iter().enumerate() {
-                let chances = &pkt[(op.bp + 20) as usize];
-                let mut p = [0.0f64; 7];
-                for (k, chance) in p.iter_mut().enumerate().skip(1) {
-                    *chance = chances[scored_position(op.goal, k)];
-                }
-                ent[t][o + 1] = Ent { race: op.race, rest: false, bit: bits[t][o], p };
-            }
-            let (a, n) = &mut chl[t];
-            if forced[t].is_none() {
-                a[*n] = 0;
-                *n += 1;
-            }
-            for o in 0..u.turns[t].len() {
-                if forced[t].as_ref().is_none_or(|f| f.contains(&(o as u8))) {
-                    a[*n] = o as u8 + 1;
-                    *n += 1;
-                }
-            }
-        }
-        umas.push(Uma {
-            id: u.id,
-            name: u.name,
-            opts: u.turns,
-            forced,
-            bits,
-            full: (1u32 << nb) - 1,
-            pm: miss.iter().map(|m| 1.0 - m).collect(),
-            ent,
-            chl,
-            apt: u.apt,
-        });
+    for uma in raw.umas {
+        umas.push(Uma::from_raw(uma, &win_table, nr));
     }
     let (pair, tri) = match (raw.pair, raw.tri, &raw.relations) {
-        (Some(p), Some(t), _) => (p, t),
-        (_, _, Some(r)) => rel_tables(n_umas, r),
+        (Some(pair), Some(tri), _) => (pair, tri),
+        (_, _, Some(relations)) => rel_tables(roster_len, relations),
         _ => panic!("data.json has neither relations nor pair/tri tables"),
     };
     Data {
@@ -324,69 +275,147 @@ pub(crate) fn load_raw(raw: DataRaw) -> Data {
         umas: UmaTable(umas),
         pair,
         tri,
-        pk: pkt,
+        win_table,
         race_names: raw.race_names,
         pbt,
-        pen: raw.pen,
+        streak_penalties: raw.pen,
         race_cat: raw.race_cat,
         race_ground: raw.race_ground,
     }
 }
 pub(crate) type Sched = [Choice; NT];
 
-pub(crate) fn probs(d: &Data, u: &Uma, s: &Sched) -> Vec<f64> {
-    let mut v = vec![];
-    probs_into(d, u, s, &mut v);
-    v
-}
-/// probs into a reused buffer (same arithmetic as `probs`, so bit-identical)
-pub(crate) fn probs_into(d: &Data, u: &Uma, s: &Sched, miss: &mut Vec<f64>) {
-    miss.clear();
-    miss.resize(d.nr, 1.0);
-    let mut k = 0usize;
-    for t in 0..NT {
-        match s[t] {
-            Choice::Rest => k = 0,
-            Choice::Opt(o) => {
-                k = (k + 1).min(6);
-                // ent[t][o+1].p[k] == option_chance(d, op, k) bit for bit (copied from the same table at load)
-                let e = &u.ent[t][o as usize + 1];
-                if e.race >= 0 {
-                    miss[e.race as usize] *= 1.0 - e.p[k];
+impl Uma {
+    /// Her tables from her data.json entry: a single-turn goal forces its options at that turn, a multi-turn goal is a
+    /// goal bit set on each of its options, and every turn's choices are precomputed for `dp_exact`.
+    fn from_raw(raw: UmaRaw, win_table: &[[f64; 7]], race_count: usize) -> Self {
+        let mut forced: Vec<Option<Vec<u8>>> = vec![None; NT];
+        let mut bits = raw.turns.iter().map(|options| vec![0u32; options.len()]).collect::<Vec<_>>();
+        let mut multi_turn_goals = 0;
+        for goal in &raw.goals {
+            let goal_turns: std::collections::BTreeSet<usize> = goal.iter().map(|&(turn, _)| turn).collect();
+            if goal_turns.len() == 1 {
+                let t = *goal_turns.iter().next().unwrap() - 1;
+                let allowed: Vec<u8> = goal.iter().map(|&(_, option)| option as u8).collect();
+                // two single-turn goals at one turn: only options in both
+                forced[t] = Some(match &forced[t] {
+                    None => allowed,
+                    Some(old) => old.iter().copied().filter(|o| allowed.contains(o)).collect(),
+                });
+            } else {
+                for &(turn, option) in goal {
+                    bits[turn - 1][option] |= 1 << multi_turn_goals;
+                }
+                multi_turn_goals += 1;
+            }
+        }
+        // best case per race: every offer of it entered at streak position 1
+        let mut miss = vec![1.0f64; race_count];
+        for options in &raw.turns {
+            for option in options {
+                if option.race >= 0 {
+                    miss[option.race as usize] *= 1.0 - win_table[(option.bp + 20) as usize][1];
                 }
             }
         }
-    }
-    for m in miss.iter_mut() {
-        *m = 1.0 - *m;
-    }
-}
-
-pub(crate) fn feasible(u: &Uma, s: &Sched) -> bool {
-    let mut m = 0u32;
-    for t in 0..NT {
-        match s[t] {
-            Choice::Rest => {
-                if u.forced[t].is_some() {
-                    return false;
+        let mut ent = vec![[ENT_REST; 6]; NT];
+        let mut choice_codes = vec![([0u8; 6], 0usize); NT];
+        for t in 0..NT {
+            assert!(raw.turns[t].len() <= 5, "more than 5 options at one turn");
+            for (o, option) in raw.turns[t].iter().enumerate() {
+                let chances = &win_table[(option.bp + 20) as usize];
+                let mut p = [0.0f64; 7];
+                for (k, chance) in p.iter_mut().enumerate().skip(1) {
+                    *chance = chances[scored_position(option.goal, k)];
                 }
+                ent[t][o + 1] = Ent { race: option.race, rest: false, bit: bits[t][o], p };
             }
-            Choice::Opt(o) => {
-                if (o as usize) >= u.opts[t].len() {
-                    return false;
+            let (codes, count) = &mut choice_codes[t];
+            if forced[t].is_none() {
+                codes[*count] = 0;
+                *count += 1;
+            }
+            for o in 0..raw.turns[t].len() {
+                if forced[t].as_ref().is_none_or(|allowed| allowed.contains(&(o as u8))) {
+                    codes[*count] = o as u8 + 1;
+                    *count += 1;
                 }
-                if let Some(f) = &u.forced[t]
-                    && !f.contains(&o)
-                {
-                    return false;
-                }
-                m |= u.bits[t][o as usize];
             }
         }
+        Self {
+            id: raw.id,
+            name: raw.name,
+            opts: raw.turns,
+            forced,
+            bits,
+            full: (1u32 << multi_turn_goals) - 1,
+            best_case_probs: miss.iter().map(|m| 1.0 - m).collect(),
+            ent,
+            choice_codes,
+            apt: raw.apt,
+        }
     }
-    m == u.full
+
+    /// Per race, the chance she wins it at least once on `schedule`: 1 - prod(1 - p) over her attempts at it.
+    pub(crate) fn win_chances(&self, race_count: usize, schedule: &Sched) -> Vec<f64> {
+        let mut chances = vec![];
+        self.win_chances_into(race_count, schedule, &mut chances);
+        chances
+    }
+
+    /// `win_chances` into a reused buffer (same arithmetic, so bit-identical).
+    pub(crate) fn win_chances_into(&self, race_count: usize, schedule: &Sched, chances: &mut Vec<f64>) {
+        // per race, the chance she misses every attempt, then its complement
+        chances.clear();
+        chances.resize(race_count, 1.0);
+        let mut k = 0usize;
+        for t in 0..NT {
+            match schedule[t] {
+                Choice::Rest => k = 0,
+                Choice::Opt(o) => {
+                    k = (k + 1).min(6);
+                    // ent[t][o+1].p[k] == option_chance(op, k) bit for bit (copied from the same table at load)
+                    let e = &self.ent[t][o as usize + 1];
+                    if e.race >= 0 {
+                        chances[e.race as usize] *= 1.0 - e.p[k];
+                    }
+                }
+            }
+        }
+        for chance in chances.iter_mut() {
+            *chance = 1.0 - *chance;
+        }
+    }
+
+    /// Whether `schedule` is legal for her: every option exists, every single-turn goal is raced and every multi-turn
+    /// goal is met.
+    pub(crate) fn feasible(&self, schedule: &Sched) -> bool {
+        let mut goals_met = 0u32;
+        for t in 0..NT {
+            match schedule[t] {
+                Choice::Rest => {
+                    if self.forced[t].is_some() {
+                        return false;
+                    }
+                }
+                Choice::Opt(o) => {
+                    if (o as usize) >= self.opts[t].len() {
+                        return false;
+                    }
+                    if let Some(allowed) = &self.forced[t]
+                        && !allowed.contains(&o)
+                    {
+                        return false;
+                    }
+                    goals_met |= self.bits[t][o as usize];
+                }
+            }
+        }
+        goals_met == self.full
+    }
 }
 
-pub(crate) fn wval(w: &[f64], p: &[f64]) -> f64 {
-    w.iter().zip(p).map(|(a, b)| a * b).sum()
+/// The dot product a · b: a member's weighted score (weights · win chances), or two members' expected shared wins.
+pub(crate) fn dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
 }

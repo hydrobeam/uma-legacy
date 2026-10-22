@@ -1,23 +1,10 @@
 //! Exact single-uma schedule search and its scratch buffers and scoped best-response memo.
 //! Loop-wide optimization belongs to `optimize`; race data and win probabilities belong to `data`.
 use crate::FxMap;
-use crate::data::{Choice, Data, Ent, NT, Sched, Uma, feasible, probs, wval};
+use crate::data::{Choice, Ent, NT, Sched, Uma, dot};
 
 const NS: usize = 7; // streak state 0 (rested) ..= 6 (6+)
 const HALF: usize = 48; // turns 1..=48 = Junior+Classic, 49..=72 = Senior
-
-/// EXACT best response: maximize sum_r W[r] * P[r], with P[r] = 1 - prod(1 - p) over attempts.
-/// Junior turns 1..24 run sequentially; then Classic turn t and Senior turn t+24 are decided together,
-/// so a race offered in both years (always exactly 24 turns apart) is scored exactly.
-/// State: (classic streak, senior streak, guessed classic streak at end of turn 48 [only if turn 49 has options], goal mask).
-/// `force`: optional (turn, choice) the schedule must take at that turn.
-/// Implementation notes (performance): choices are codes (0 = rest, o+1 = option o) into per-uma precomputed tables;
-/// loops run choice-pair outer / state inner, but each state sees candidates in the same order (classic choice outer,
-/// senior choice inner, rest first then options by index) with strict '>' updates, so values and argmax match the
-/// straightforward state-outer formulation exactly.
-fn dp_exact(_d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
-    SCRATCH.with(|c| dp_exact_in(u, wr, force, &mut c.borrow_mut()))
-}
 
 #[derive(Default)]
 struct Scratch {
@@ -30,25 +17,43 @@ struct Scratch {
 }
 thread_local! { static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::new(Scratch::default()); }
 
-/// Allowed choice codes at turn t. A force replaces the list at its turn, but only with a choice the goals allow there.
-#[inline]
-fn choice_list(u: &Uma, t: usize, force: Option<(usize, Choice)>) -> ([u8; 6], usize) {
-    if let Some((ft, fc)) = force
-        && ft == t
-    {
-        // a force can't override a single-turn goal: forcing rest, or an option outside the goal set, is infeasible
-        let code = match fc {
-            Choice::Rest => u.forced[t].is_none().then_some(0u8),
-            Choice::Opt(o) => {
-                ((o as usize) < u.opts[t].len() && u.forced[t].as_ref().is_none_or(|f| f.contains(&o))).then(|| o + 1)
-            }
-        };
-        return match code {
-            Some(c) => ([c, 0, 0, 0, 0, 0], 1),
-            None => ([0; 6], 0),
-        };
+impl Uma {
+    /// EXACT best response: maximize sum_r W[r] * P[r], with P[r] = 1 - prod(1 - p) over attempts.
+    /// Junior turns 1..24 run sequentially; then Classic turn t and Senior turn t+24 are decided together,
+    /// so a race offered in both years (always exactly 24 turns apart) is scored exactly.
+    /// State: (classic streak, senior streak, guessed classic streak at end of turn 48 [only if turn 49 has options], goal mask).
+    /// `force`: optional (turn, choice) the schedule must take at that turn.
+    /// Implementation notes (performance): choices are codes (0 = rest, o+1 = option o) into per-uma precomputed tables;
+    /// loops run choice-pair outer / state inner, but each state sees candidates in the same order (classic choice outer,
+    /// senior choice inner, rest first then options by index) with strict '>' updates, so values and argmax match the
+    /// straightforward state-outer formulation exactly.
+    fn dp_exact(&self, weights: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
+        SCRATCH.with(|scratch| dp_exact_in(self, weights, force, &mut scratch.borrow_mut()))
     }
-    u.chl[t]
+
+    /// Allowed choice codes at turn t. A force replaces the list at its turn, but only with a choice the goals allow
+    /// there.
+    #[inline]
+    fn choice_list(&self, t: usize, force: Option<(usize, Choice)>) -> ([u8; 6], usize) {
+        if let Some((forced_turn, forced_choice)) = force
+            && forced_turn == t
+        {
+            // a force can't override a single-turn goal: forcing rest, or an option outside the goal set, is infeasible
+            let code = match forced_choice {
+                Choice::Rest => self.forced[t].is_none().then_some(0u8),
+                Choice::Opt(o) => {
+                    let offered = (o as usize) < self.opts[t].len();
+                    let goals_allow = self.forced[t].as_ref().is_none_or(|allowed| allowed.contains(&o));
+                    (offered && goals_allow).then_some(o + 1)
+                }
+            };
+            return match code {
+                Some(code) => ([code, 0, 0, 0, 0, 0], 1),
+                None => ([0; 6], 0),
+            };
+        }
+        self.choice_codes[t]
+    }
 }
 
 #[inline]
@@ -56,7 +61,12 @@ const fn code_choice(c: u8) -> Choice {
     if c == 0 { Choice::Rest } else { Choice::Opt(c - 1) }
 }
 
-fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Scratch) -> Option<(Sched, f64)> {
+fn dp_exact_in(
+    u: &Uma,
+    weights: &[f64],
+    force: Option<(usize, Choice)>,
+    scratch: &mut Scratch,
+) -> Option<(Sched, f64)> {
     let nm = (u.full + 1) as usize;
     let ns0 = if u.opts[HALF].is_empty() { 1 } else { NS };
     let neg = f64::NEG_INFINITY;
@@ -79,8 +89,8 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
         if e.race >= 0 { e.p[k] } else { 0.0 }
     }
     // ---- phase 2: pairs j = 0..24 (classic turn 24+j with senior turn 48+j)
-    let v2 = &mut scr.v2;
-    let a2 = &mut scr.a2;
+    let v2 = &mut scratch.v2;
+    let a2 = &mut scratch.a2;
     v2.clear();
     v2.resize(25 * js, neg);
     a2.clear();
@@ -97,8 +107,8 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
     }
     for j in (0..24).rev() {
         let (tc, ts) = (24 + j, 48 + j);
-        let (cl, ncl) = choice_list(u, tc, force);
-        let (sl, nsl) = choice_list(u, ts, force);
+        let (cl, ncl) = u.choice_list(tc, force);
+        let (sl, nsl) = u.choice_list(ts, force);
         let (lo, hi) = v2.split_at_mut((j + 1) * js);
         let cur = &mut lo[j * js..];
         let nxt = &hi[..js];
@@ -113,7 +123,7 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
                 let k = kof(ec, sc);
                 kca[sc] = k;
                 pca[sc] = pof(ec, k);
-                ra[sc] = if ec.race >= 0 { 0.0 + wr[ec.race as usize] * pca[sc] } else { 0.0 };
+                ra[sc] = if ec.race >= 0 { 0.0 + weights[ec.race as usize] * pca[sc] } else { 0.0 };
             }
             for &cs in &sl[..nsl] {
                 let es = &u.ent[ts][cs as usize];
@@ -125,10 +135,10 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
                     let k = kof(es, ss);
                     ksa[ss] = k;
                     psa[ss] = pof(es, k);
-                    rb[ss] = if es.race >= 0 { wr[es.race as usize] * psa[ss] } else { 0.0 };
+                    rb[ss] = if es.race >= 0 { weights[es.race as usize] * psa[ss] } else { 0.0 };
                 }
                 let same = ec.race >= 0 && ec.race == es.race;
-                let wsame = if same { wr[ec.race as usize] } else { 0.0 };
+                let wsame = if same { weights[ec.race as usize] } else { 0.0 };
                 // reward for (sc, ss); bit-identical to the original formula:
                 //   same race: w * (1 - (1-pc)(1-ps)); otherwise (0.0 + w_c*pc) + w_s*ps, with absent terms dropped
                 let rew = |sc: usize, ss: usize| -> f64 {
@@ -183,8 +193,8 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
         b
     };
     // ---- phase 1: junior turns 0..24
-    let v1 = &mut scr.v1;
-    let a1 = &mut scr.a1;
+    let v1 = &mut scratch.v1;
+    let a1 = &mut scratch.a1;
     let ts1 = NS * nm;
     v1.clear();
     v1.resize(25 * ts1, neg);
@@ -196,7 +206,7 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
         }
     }
     for t in (0..24).rev() {
-        let (cl, ncl) = choice_list(u, t, force);
+        let (cl, ncl) = u.choice_list(t, force);
         let (lo, hi) = v1.split_at_mut((t + 1) * ts1);
         let cur = &mut lo[t * ts1..];
         let nxt = &hi[..ts1];
@@ -206,7 +216,7 @@ fn dp_exact_in(u: &Uma, wr: &[f64], force: Option<(usize, Choice)>, scr: &mut Sc
             let mb = e.bit as usize;
             for s in 0..NS {
                 let k = kof(e, s);
-                let rew = if e.race >= 0 { wr[e.race as usize] * e.p[k] } else { 0.0 };
+                let rew = if e.race >= 0 { weights[e.race as usize] * e.p[k] } else { 0.0 };
                 for m in 0..nm {
                     let x = nxt[k * nm + (m | mb)] + rew;
                     let ci = s * nm + m;
@@ -256,31 +266,53 @@ struct BrMemo {
 }
 thread_local! { static BR_MEMO: std::cell::RefCell<Option<BrMemo>> = const { std::cell::RefCell::new(None) }; }
 
-/// Best response (exact): wraps dp_exact and cross-checks its value against direct evaluation.
-pub(crate) fn best_response(d: &Data, u: &Uma, wr: &[f64], force: Option<(usize, Choice)>) -> Option<(Sched, f64)> {
-    BR_MEMO.with(|cell| {
-        let mut borrowed = cell.borrow_mut();
-        let Some(memo) = borrowed.as_mut() else {
-            drop(borrowed);
-            return best_response_solve(d, u, wr, force);
-        };
-        // One byte each for turn and option; 255 denotes rest. All-ones denotes no force.
-        let force_code: u16 = match force {
-            None => u16::MAX,
-            Some((turn, Choice::Rest)) => (turn * 256 + 255) as u16,
-            Some((turn, Choice::Opt(option))) => (turn * 256 + option as usize) as u16,
-        };
-        memo.key.clear();
-        memo.key.push(u64::from(u.id) << 16 | u64::from(force_code));
-        memo.key.extend(wr.iter().map(|weight| weight.to_bits()));
-        if let Some(result) = memo.map.get(&*memo.key) {
-            return *result;
-        }
-        let result = best_response_solve(d, u, wr, force);
-        let key: Box<[u64]> = memo.key.as_slice().into();
-        memo.map.insert(key, result);
-        result
-    })
+impl Uma {
+    /// Best response (exact): her schedule maximising `weights` · her win chances, `force` taken if given. Wraps
+    /// `dp_exact` and cross-checks its value against direct evaluation; memoised inside a `MemoScope`.
+    pub(crate) fn best_response(
+        &self,
+        race_count: usize,
+        weights: &[f64],
+        force: Option<(usize, Choice)>,
+    ) -> Option<(Sched, f64)> {
+        BR_MEMO.with(|cell| {
+            let mut borrowed = cell.borrow_mut();
+            let Some(memo) = borrowed.as_mut() else {
+                drop(borrowed);
+                return self.best_response_solve(race_count, weights, force);
+            };
+            // One byte each for turn and option; 255 denotes rest. All-ones denotes no force.
+            let force_code: u16 = match force {
+                None => u16::MAX,
+                Some((turn, Choice::Rest)) => (turn * 256 + 255) as u16,
+                Some((turn, Choice::Opt(option))) => (turn * 256 + option as usize) as u16,
+            };
+            memo.key.clear();
+            memo.key.push(u64::from(self.id) << 16 | u64::from(force_code));
+            memo.key.extend(weights.iter().map(|weight| weight.to_bits()));
+            if let Some(result) = memo.map.get(&*memo.key) {
+                return *result;
+            }
+            let result = self.best_response_solve(race_count, weights, force);
+            let key: Box<[u64]> = memo.key.as_slice().into();
+            memo.map.insert(key, result);
+            result
+        })
+    }
+
+    /// `best_response` without the memo (for a uma whose tables differ from her roster entry's under the same id).
+    pub(crate) fn best_response_solve(
+        &self,
+        race_count: usize,
+        weights: &[f64],
+        force: Option<(usize, Choice)>,
+    ) -> Option<(Sched, f64)> {
+        let (schedule, dp_value) = self.dp_exact(weights, force)?;
+        let value = dot(weights, &self.win_chances(race_count, &schedule));
+        assert!((value - dp_value).abs() < 1e-6, "dp_exact value {dp_value} != evaluated {value} for {}", self.name);
+        assert!(self.feasible(&schedule), "best response produced an infeasible schedule for {}", self.name);
+        Some((schedule, value))
+    }
 }
 
 /// Enables the best-response memo for the current thread until dropped (restores the previous state).
@@ -295,17 +327,4 @@ impl Drop for MemoScope {
         let previous = self.0.take();
         BR_MEMO.with(|memo| *memo.borrow_mut() = previous);
     }
-}
-
-pub(crate) fn best_response_solve(
-    d: &Data,
-    u: &Uma,
-    wr: &[f64],
-    force: Option<(usize, Choice)>,
-) -> Option<(Sched, f64)> {
-    let (s, v) = dp_exact(d, u, wr, force)?;
-    let ev = wval(wr, &probs(d, u, &s));
-    assert!((ev - v).abs() < 1e-6, "dp_exact value {v} != evaluated {ev} for {}", u.name);
-    assert!(feasible(u, &s), "best response produced an infeasible schedule for {}", u.name);
-    Some((s, ev))
 }
