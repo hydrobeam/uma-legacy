@@ -48,7 +48,7 @@ const jobKey = (job) => {
   return `${JSON.stringify([ERA, { ...job, legacies: 0 }])}\n${legaciesJson.json}`;
 };
 const runKey = (job) => `${jobKey(job)}\n${JSON.stringify(plan)}`;
-// the plan's phase reports (sim/plan.rs `index_rule`: phase, k of n) in words
+// the plan's phase reports (career/plan.rs `index_rule`: phase, k of n) in words
 const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph === 2 ? `scoring ${k + 1} of ${n} umas` : ph === 3 ? 'careers on two 8/8 parents'
   : ph === 4 ? `weighing ${n} careers` : '';
 /**
@@ -84,7 +84,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {boolean} [no_reports]  a plan job: no career reports, `next` only
  * @property {boolean} [compare]  a comparison's job
  *
- * One career in a report (deck/career/outcomes.rs `report`): the trainee and her parents, by legacy index.
+ * One career in a report (career/outcomes.rs `report`): the trainee and her parents, by legacy index.
  * @typedef {object} CareerReport
  * @property {CareerTrainee} trainee
  * @property {[number, number]} parents
@@ -106,7 +106,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number|null} g1_wins  her G1 wins, expected (as `schedule`)
  * @property {boolean} [looped]  a plan option: both parents are 8/8s
  *
- * A row of a career's schedule (deck/career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
+ * A row of a career's schedule (career/schedule.rs): the loop schedule's row, one cell (hers), with the race's turn.
  * @typedef {import('./agenda.js').ScheduleRow & CareerScheduleFields} CareerScheduleRow
  * @typedef {object} CareerScheduleFields
  * @property {number} turn  0..71
@@ -190,7 +190,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number} p_switch  her odds once building stops
  * @property {number} careers  her step's expected careers (0 when `real`)
  *
- * The plan's report (the solver's `next`, sim/plan/output.rs), or its refusal (`error`).
+ * The plan's report (the solver's `next`, career/plan/output.rs), or its refusal (`error`).
  * @typedef {object} PlanReport
  * @property {string} [error]
  * @property {CareerReport|null} choice  the plan's pick
@@ -203,7 +203,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  *   roll is of (`next.roll`)
  * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
  *
- * The career search's report (deck/career.rs), or its refusal (`error`).
+ * The career search's report (career.rs), or its refusal (`error`).
  * @typedef {object} CareerSearch
  * @property {string} [error]
  * @property {CareerReport[]} results  the best careers, best first
@@ -470,7 +470,7 @@ function searchStatus(m, found) {
   const why = none.length ? `: none of your veterans or their parents carries ${none.join(', ')}, and no deck or outfit gives ${none.length > 1 ? 'them' : 'it'}.` : ' with these veterans.';
   return { kind: 'error', text: `No career can land all ${state.targets.length} targets${why}` };
 }
-// The plan (solver: sim/plan.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
+// The plan (solver: career/plan.rs `index_rule`, exact odds, no simulation): the same job with `next`, every owned uma's
 // best career scored by the careers it saves toward a fully looped parent (the cheapest trio). The page reads `next`
 // alone, so the solver skips the career reports. A trainee you chose leaves it nothing to pick (no plan phase).
 // Returns the plan's state, or null when a newer edit (run `id` no longer current) took over.
@@ -560,7 +560,7 @@ function traineeEl(r) {
   }
   return n;
 }
-// her affinity, in all and legacy by legacy (afftable.js), from the report's six slots (deck/career/inherit.rs `slots`);
+// her affinity, in all and legacy by legacy (afftable.js), from the report's six slots (career/inherit.rs `slots`);
 // Legacy 1 and 2 follow the career's parents (a slot's legacy is her index among your veterans)
 const legacyAff = (r) => r.slots.reduce((a, x) => a + x.aff, 0);
 function affTable(r) {
@@ -940,7 +940,7 @@ function rollDraft() {
   quickCompare(request);
 }
 // A roll's careers saved, asked of the plan for the career on show (`roll`: the plan job and her stars per target; the
-// solver evaluates the plan's pick at that one outcome from what it kept of the plan, sim/plan/roll.rs `roll_kept`, so no
+// solver evaluates the plan's pick at that one outcome from what it kept of the plan, career/plan/roll.rs `roll_kept`, so no
 // plan runs again unless the worker kept none): y, exact for her sparks, her G1 wins at their chances, and, where y < 0.5, y_hi, the most her veteran's
 // direct lifts could save there (ceilings over every partner): a zero is proven when y_hi < 0.5, else the exact
 // comparison checks it. null when the plan isn't for this career (then Reroll compares exactly).
