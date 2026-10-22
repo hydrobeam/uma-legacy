@@ -20,7 +20,7 @@ export default async function states(b) {
   check('… and the next search runs', /^Checked [\d,]+ decks/.test(await note(pg)));
   while (await pg.locator('#targets .x').count()) await pg.locator('#targets .x').first().click();
   await kind(pg, 'empty'); h = await head();
-  check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /8\/8 example/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
+  check('no targets: a neutral status with a button that loads the example targets; the old result stays, dimmed', h.kind === 'empty' && /Add a target skill/.test(h.note) && /example targets/.test(h.act) && h.loops > 0 && h.stale, JSON.stringify(h));
   await pg.click('#r-act button'); await settle(pg); h = await head();
   check('… the button loads them and the search runs', (await pg.locator('#targets .tgt').count()) === 8 && h.kind === 'done' && /^Checked [\d,]+ decks \/ [\d,]+ loops in [\d.]+ s/.test(h.note) && !h.stale, JSON.stringify(h));
   await pg.click('#r-none'); await kind(pg, 'empty'); h = await head();

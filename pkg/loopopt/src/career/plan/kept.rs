@@ -56,7 +56,7 @@ pub(crate) struct Bests {
     /// Per trainee, the decks her best career's search checked fully (refs to absorb into the next search).
     pub(crate) proof_refs: UmaTable<UmaTable<Vec<Ref>>>,
     /// her best looped career (`index_rule`), where searched: kept the same way (a pool plus one veteran adds looped pairs
-    /// only when she is an 8/8)
+    /// only when she is a full veteran)
     pub(crate) looped_careers: UmaTable<CachedSearch>,
     /// whether a search behind her kept best (and her looped best) was not complete (`CareerSearchResult::complete` false: it ran
     /// out of work, a band overflowed, or a scored deck passed its class's cap)

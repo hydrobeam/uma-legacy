@@ -1,6 +1,6 @@
 // ---------- target skill presets: named sets of targets (the Target skills panel's Presets dialog) ----------
 // state.presets: [{name, groups: [skill group, ...]}], saved with the other shared settings (both pages, both data sets)
-// and carried by Export. The 8/8 example comes preloaded (state.js DEFAULTS) and is a preset like any other.
+// and carried by Export. The example targets come preloaded (state.js DEFAULTS) and is a preset like any other.
 // The list: per preset its name and count (a click opens its skills as the editor's tiles, with Rename), Load, Overwrite
 // (with the targets now) and a trash can; under it, Save current skills opens a small popup for the name (offered as
 // "Preset N+1", N the presets now). Starting from a preset is load, edit the targets, save under a new name.
