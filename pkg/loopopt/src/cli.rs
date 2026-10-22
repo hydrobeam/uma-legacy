@@ -16,16 +16,16 @@ pub(crate) struct Jobs {
 /// The full pairwise-ceiling table of a data.json, as stored in its "pb" field (computed fresh, ignoring any table).
 pub(crate) fn pb_table_json(json: &str) -> serde_json::Value {
     let raw: DataRaw = serde_json::from_str(json).unwrap();
-    let fp = pb_fingerprint(&raw);
-    let mut d = load_str(json);
-    d.pbt = None;
-    let n = d.umas.len();
-    let all: Vec<UmaIndex> = d.umas.indices().collect();
-    let pb = pair_ceilings(&d, &all);
+    let fingerprint = pb_fingerprint(&raw);
+    let mut data = load_str(json);
+    data.pbt = None;
+    let n = data.umas.len();
+    let roster: Vec<UmaIndex> = data.umas.indices().collect();
+    let ceilings = pair_ceilings(&data, &roster);
     let rows: Vec<String> = (0..n)
-        .map(|a| (a + 1..n).map(|b| format!("{:016x}", pb[UmaIndex(a)][UmaIndex(b)].to_bits())).collect())
+        .map(|a| (a + 1..n).map(|b| format!("{:016x}", ceilings[UmaIndex(a)][UmaIndex(b)].to_bits())).collect())
         .collect();
-    serde_json::to_value(PbRaw { fp, rows }).unwrap()
+    serde_json::to_value(PbRaw { fp: fingerprint, rows }).unwrap()
 }
 
 /// Emit the enabled bound diagnostics on normal return or panic unwind, including `pbtable`.
@@ -35,30 +35,33 @@ pub(crate) struct CliBoundReport;
 impl Drop for CliBoundReport {
     fn drop(&mut self) {
         if std::env::var("SB_CHECK").is_ok() {
-            crate::deck::joint::SBCHK.with(|c| {
-                let c = c.borrow();
+            crate::deck::joint::SBCHK.with(|counts| {
+                let counts = counts.borrow();
                 eprintln!(
                     "SBCHK decks {} max value/exact {:.6} min {:.9} below {} | leaves {} node violations {}",
-                    c.0, c.1, c.2, c.3, c.4, c.5
+                    counts.0, counts.1, counts.2, counts.3, counts.4, counts.5
                 );
             });
         }
         if std::env::var("SBOUND").is_ok() || std::env::var("SB_CHECK").is_ok() {
-            crate::deck::joint::SBN.with(|c| {
-                let c = c.borrow();
-                eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", c.0, c.1, c.2);
+            crate::deck::joint::SBN.with(|counts| {
+                let counts = counts.borrow();
+                eprintln!("SBN cfgs cut {} bound evals {} nodes cut {}", counts.0, counts.1, counts.2);
             });
         }
         if std::env::var("RB_CHECK").is_ok() {
-            crate::deck::enumerate::bounds::RBCHK.with(|c| {
-                let c = c.borrow();
-                eprintln!("RBCHK leaves {} tests {} violations {} max value/bound {:.9}", c.0, c.1, c.2, c.3);
+            crate::deck::enumerate::bounds::RBCHK.with(|counts| {
+                let counts = counts.borrow();
+                eprintln!(
+                    "RBCHK leaves {} tests {} violations {} max value/bound {:.9}",
+                    counts.0, counts.1, counts.2, counts.3
+                );
             });
         }
         if std::env::var("CF_CHECK").is_ok() {
-            crate::deck::joint::CFCHK.with(|c| {
-                let c = c.borrow();
-                eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", c.0, c.1, c.2, c.3, c.4, c.5, c.6, c.7, c.8);
+            crate::deck::joint::CFCHK.with(|counts| {
+                let counts = counts.borrow();
+                eprintln!("CFCHK searches {} capped below cap-free {} cap-free below capped {} unproven {} | leaves {} violations {} | scorings {} violations {} max exact/bound {:.9}", counts.0, counts.1, counts.2, counts.3, counts.4, counts.5, counts.6, counts.7, counts.8);
             });
         }
     }

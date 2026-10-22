@@ -10,16 +10,17 @@
 //! and p = clamp(110 - cost(distance grade) - cost(surface grade) - PEN[scored position], 0, 100) / 100, the scored
 //! position being the race's streak position, one less for a goal race (`data::scored_position`).
 //! This scheduling objective retains the older half-grandparent normalization: C = 2,
-//! base = 2*sum pair + 2*sum trio (`optimize::make_loop`). The skill model uses full grandparent rates.
+//! base = 2*sum pair + 2*sum trio (`optimize::LoopProblem::new`). The skill model uses full grandparent rates.
 //! Both weight every pair's shared wins uniformly, so the normalization preserves schedule rankings within a
 //! structure; `skills::lins` derives the current model's weights for loops and rotations.
 //!
 //! Layers:
-//! * `schedule::dp_exact`: exact best response for one uma against fixed partners. Junior turns run in sequence;
-//!   Classic turn t and Senior turn t+24 are decided jointly, so a race offered in both years
+//! * `Uma::dp_exact` (in `schedule`): exact best response for one uma against fixed partners. Junior turns run in
+//!   sequence; Classic turn t and Senior turn t+24 are decided jointly, so a race offered in both years
 //!   (always 24 turns apart) is scored exactly. Checked against the MILP fixtures in `best_response_matches_milp`.
-//! * `optimize::ascent`: best-response dynamics; stops when no member improves her weighted score by more than 1e-9.
-//! * `optimize::group_moves`: coalition deviations (2+ members forced onto the same race, or rest, at one turn),
+//! * `LoopProblem::ascent` (in `optimize`): best-response dynamics; stops when no member improves her weighted score by
+//!   more than 1e-9.
+//! * `LoopProblem::group_moves`: coalition deviations (2+ members forced onto the same race, or rest, at one turn),
 //!   which escape the coordination equilibria that single-member moves can't leave.
 //! * `optimize::optimize`: optimistic start + ascent + group moves + iterated local search (noisy best responses).
 //! * `optimize::pair_ceilings`: exact pairwise ceilings PB(a, b), the bound the deck search screens structures with

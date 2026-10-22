@@ -3,7 +3,7 @@
 use super::shared::SharedDecks;
 use super::tables::Best;
 use super::{Multi, SharedDeckKey};
-use crate::data::{Choice, NT, probs, wval};
+use crate::data::{Choice, NT, dot};
 use crate::deck::caps::{EXACT_BUDGET, EXACT_RHO, EXACT_STEPS};
 use crate::deck::enumerate::ScoredDeck;
 use crate::optimize::{NONE, Res, members, optimize_fam};
@@ -301,8 +301,8 @@ impl Multi<'_> {
         }
         let r = self.schedule(f, nm);
         let d = self.inputs.data;
-        let ps: Vec<Vec<f64>> = (0..nm).map(|i| probs(d, &d.umas[f[i]], &r.s[i])).collect();
-        let qs = self.inputs.model.lineage_q(fm, &|x, y| if self.no_race { 0.0 } else { wval(&ps[x], &ps[y]) });
+        let ps: Vec<Vec<f64>> = (0..nm).map(|i| d.umas[f[i]].win_chances(d.nr, &r.s[i])).collect();
+        let qs = self.inputs.model.lineage_q(fm, &|x, y| if self.no_race { 0.0 } else { dot(&ps[x], &ps[y]) });
         let qa: [f64; 12] = std::array::from_fn(|i| qs.get(i).copied().unwrap_or(0.0));
         // rejected only with the schedule found: a better schedule could change this one's fate
         if (self.shared && !beats(lv * self.relaxed_shared(f, &qa))) || !beats(self.exact_ceiling(f, &qa, kth, lv)) {
