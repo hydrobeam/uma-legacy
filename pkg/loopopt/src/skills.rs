@@ -407,7 +407,7 @@ impl<'data> Model<'data> {
     /// member, xm = max_X (tri(T, P, X) + 3 pb(P, X)), in both slots that read them. q rises with every affinity, so
     /// this is >= every such q in exact arithmetic. Not in the same order: a parent slot's affinity here is S + xm (S
     /// the terms before X's), where the lineage adds (S + tri) + 3 o, so the two can round apart by an ulp, and this
-    /// can sit that much below a lineage's q. Harmless where it is read (`deck/loop_search.rs`: the q grid's top and
+    /// can sit that much below a lineage's q. Harmless where it is read (`loop_planner/search/mod.rs`: the q grid's top and
     /// each uma's ceiling cell), as the tests against those ceilings carry relative slacks of 1e-12 or more. With
     /// `rotation` the X slot may also be the trainee's own character (a three-member rotation: tri(T, P, T) + 3·o(P,
     /// T), the trio 0).

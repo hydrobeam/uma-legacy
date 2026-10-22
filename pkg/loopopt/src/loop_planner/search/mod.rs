@@ -1,5 +1,12 @@
 //! Loop-search inputs, keys, shared state and setup for per-uma or shared decks.
 //! Ceiling tables, deck scans, search passes and reporting live in the child modules.
+//!
+//! `run_multi` is the entry: `Multi::new` (here) sets the search up, `bands`'s `certify` searches, `report`'s `report`
+//! answers.
+//! - `tables`: per-uma exact values, chance-grid ceilings and skyline clusters, the bounds every pass reads.
+//! - `shared`: exact shared-deck scans and their cached results.
+//! - `bands`: loop-structure bands, schedule solving and the budgeted certification passes.
+//! - `report`: the picks, JSON results and diagnostic summaries.
 use self::shared::SharedResult;
 use self::tables::{
     ByBound, ExactCacheEntry, ExactCeiling, Grid, NG, class_clusters, classes, full_clusters, pair_table,
@@ -10,7 +17,7 @@ use crate::deck::dominance::{DeckCluster, Name, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::deck::space::DeckSpace;
 use crate::deck::{Card, CardsRaw, DeckJob};
-use crate::optimize::{Res, members};
+use crate::loop_planner::schedules::{Res, members};
 use crate::skills::{MemberLineage, Model, SkillJob, check_sizes, lins};
 use crate::uma::{UmaIndex, UmaTable};
 use serde_json::{Value, json};

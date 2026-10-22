@@ -13,7 +13,7 @@
 //! career's exact landed-set distribution with the all-landed set removed), and stops when S_t < `survival_cutoff` or at
 //! `max_careers`, where the tail S_t / p_t (career t repeated forever) is added.
 //!
-//! The modules call each other on purpose: `run_career_in` (career.rs) runs `simulate` for a job with `simulate`, and the
+//! The modules call each other on purpose: `run_career_in` (career/mod.rs) runs `simulate` for a job with `simulate`, and the
 //! `exact` and `index` policies (`exact_cur`, `index_cur`) call `run_career_in` again on that job with `simulate` removed,
 //! so the simulator tests the same path the page runs.
 //!

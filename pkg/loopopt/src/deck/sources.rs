@@ -12,30 +12,30 @@ pub(super) type Group = Vec<EventOutcome>;
 
 /// An event's probability and the target hints awarded together.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct EventOutcome<Rewards = Vec<TargetReward>> {
+pub(crate) struct EventOutcome<Rewards = Vec<TargetReward>> {
     pub(super) probability: f64,
-    pub(super) rewards: Rewards,
+    pub(crate) rewards: Rewards,
 }
 
 /// One uncertain target's hint level in an outcome (1 white, 2 gold).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) struct TargetReward {
-    pub(super) target: usize,
-    pub(super) level: u8,
+pub(crate) struct TargetReward {
+    pub(crate) target: usize,
+    pub(crate) level: u8,
 }
 
 /// A card's independent training hint for one uncertain target.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct TrainingHint {
-    pub(super) target: usize,
+pub(crate) struct TrainingHint {
+    pub(crate) target: usize,
     pub(super) probability: f64,
 }
 
 /// An outcome group that fires when the chain reaches a link.
 #[derive(Clone, Debug)]
-pub(super) struct ChainOutcome {
+pub(crate) struct ChainOutcome {
     pub(super) link: u8,
-    pub(super) outcomes: Group,
+    pub(crate) outcomes: Group,
 }
 
 /// Miss factors contributed by a fixed outcome group to one target.
@@ -275,9 +275,9 @@ pub(super) fn group_nuod_lvl(group: &Group) -> bool {
 /// per target as miss factors (1 - P(gold), 1 - P(any hint)), the chain ones per link in link order.
 #[derive(Clone, Default)]
 pub(crate) struct TargetSources {
-    pub(super) training_hints: Vec<TrainingHint>,
-    pub(super) fixed_outcomes: Vec<Group>,
-    pub(super) chain_outcomes: Vec<ChainOutcome>,
+    pub(crate) training_hints: Vec<TrainingHint>,
+    pub(crate) fixed_outcomes: Vec<Group>,
+    pub(crate) chain_outcomes: Vec<ChainOutcome>,
     pub(super) fixed_misses: Vec<TargetMisses>,
     pub(super) chain_misses: Vec<TargetChainMisses>,
     /// a group of it touching two or more targets has not been proved negatively upper-orthant dependent:
@@ -539,9 +539,9 @@ struct ChoiceLink {
 
 /// Builds a deck entry's target sources and chain kind from the deck job; shared by the deck search and the exact
 /// evaluation of the decks it reports.
-pub(super) struct Sources<'data> {
-    pub(super) deck_job: &'data DeckJob,
-    pub(super) target_groups: &'data [u32],
+pub(crate) struct Sources<'data> {
+    pub(crate) deck_job: &'data DeckJob,
+    pub(crate) target_groups: &'data [u32],
 }
 pub(super) const fn in_range(link: u8, stop: Option<u8>) -> bool {
     match stop {
@@ -777,7 +777,7 @@ impl Sources<'_> {
     }
     /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
     /// then the ending choice's rewards at that link), taking choice variant `variant`.
-    pub(super) fn target_sources(&self, card: &Card, stop: Option<u8>, variant: u32) -> TargetSources {
+    pub(crate) fn target_sources(&self, card: &Card, stop: Option<u8>, variant: u32) -> TargetSources {
         let one = |target: usize, level: u8, probability: f64| -> Group {
             vec![EventOutcome { probability, rewards: vec![TargetReward { target, level }] }]
         };
@@ -835,7 +835,7 @@ impl Sources<'_> {
         }
         sources.finish()
     }
-    pub(super) fn kind(&self, card: &Card, stop: Option<u8>) -> ChainKind {
+    pub(crate) fn kind(&self, card: &Card, stop: Option<u8>) -> ChainKind {
         if card.pal || card.links == 0 {
             return ChainKind::NONE;
         }
@@ -850,7 +850,7 @@ impl Sources<'_> {
         ChainKind { links: card.links, stop: stop_at, stop_risk: stop_risk_code(&risk, stop_at) }
     }
     /// "link 1: Uma Stan" for each link where the variant picks between choices ("" when there is none)
-    pub(super) fn label(&self, card: &Card, stop: Option<u8>, variant: u32, skills: &SkillsRaw) -> String {
+    pub(crate) fn label(&self, card: &Card, stop: Option<u8>, variant: u32, skills: &SkillsRaw) -> String {
         let name = |k: usize, skill_level: u8| {
             skills
                 .skills
@@ -889,16 +889,16 @@ impl Sources<'_> {
 /// no relevant card, best-rarity card) and the locked cards. `pool_ids`: the umas that may train (plain pals that block
 /// none of them come first).
 pub(crate) struct Entries<'data> {
-    pub(super) cards: Vec<&'data Card>,
-    pub(super) card_indices: Vec<usize>,
-    pub(super) kind: Vec<ChainKind>,
-    pub(super) end_links: Vec<u8>,
-    pub(super) variants: Vec<u32>,
-    pub(super) sources: Vec<TargetSources>,
-    pub(super) plain_ids: Vec<u32>,
-    pub(super) plain_names: Vec<String>,
-    pub(super) plain_chars: Vec<u32>,
-    pub(super) locked: Vec<usize>,
+    pub(crate) cards: Vec<&'data Card>,
+    pub(crate) card_indices: Vec<usize>,
+    pub(crate) kind: Vec<ChainKind>,
+    pub(crate) end_links: Vec<u8>,
+    pub(crate) variants: Vec<u32>,
+    pub(crate) sources: Vec<TargetSources>,
+    pub(crate) plain_ids: Vec<u32>,
+    pub(crate) plain_names: Vec<String>,
+    pub(crate) plain_chars: Vec<u32>,
+    pub(crate) locked: Vec<usize>,
 }
 pub(crate) fn deck_entries<'data>(
     cards: &'data CardsRaw,

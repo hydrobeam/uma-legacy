@@ -1,5 +1,5 @@
 //! Race and schedule records, relation and ceiling tables, and the win-probability model.
-//! Schedule search belongs to `schedule`; loop optimization belongs to `optimize`.
+//! Schedule search belongs to `schedule`; loop optimization belongs to `loop_planner::schedules`.
 use crate::Fx;
 use crate::uma::{UmaIndex, UmaPairTable, UmaTable};
 use serde::{Deserialize, Serialize};

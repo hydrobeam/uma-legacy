@@ -2,7 +2,7 @@
 //! Single-uma best responses belong to `schedule`; chart formatting belongs to `chart`.
 use crate::data::{Choice, Data, NT, Sched, Uma, dot};
 use crate::schedule::MemoScope;
-use crate::uma::{UmaIndex, UmaTable};
+use crate::uma::{NONE, UmaIndex, UmaTable};
 
 /// Race weight C of every pair and the trio coefficient of the base, with grandparent slots at half weight. Per lineage,
 /// parent slots carry pair(T,Pi) + pair(P1,P2)/2 + 3*O(P1,P2)/2 each and a grandparent slot tri(T,Pi,G) + 3*O(Pi,G),
@@ -396,9 +396,6 @@ pub(crate) const FILL_EPS: f64 = 1e-7;
 pub(crate) struct Res {
     pub(crate) schedules: [Sched; 4],
 }
-/// Missing fourth member in the fixed-size representation of a three-uma rotation.
-/// `members` removes this sentinel before callers use the entries as indices into the uma table.
-pub(crate) const NONE: UmaIndex = UmaIndex(usize::MAX);
 /// The members of a structure stored as [UmaIndex; 4] (three members: the fourth is `NONE`).
 pub(crate) fn members(structure: &[UmaIndex; 4]) -> &[UmaIndex] {
     if structure[3] == NONE { &structure[..3] } else { &structure[..] }

@@ -82,8 +82,10 @@ unwrap_in_result = "deny"
 # Ownership and clones)
 assigning_clones = "deny"
 redundant_clone = "deny"
+# folders are name/mod.rs
+self_named_module_files = "deny"
 
-# unsafe only where the wasm exports and imports need it (web.rs, and the host imports in deck/career.rs), each allowed
+# unsafe only where the wasm exports and imports need it (web.rs, and the host imports in career/clock.rs), each allowed
 # there with its reason
 [lints.rust]
 unsafe_code = "deny"

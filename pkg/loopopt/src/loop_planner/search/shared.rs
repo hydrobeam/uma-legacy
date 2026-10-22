@@ -10,7 +10,7 @@ use crate::deck::enumerate::{BandBound, LineageChance, ScoredDeck, SearchClause,
 use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointQuery, joint_b};
 use crate::deck::sources::{SourceEntry, TargetSources};
-use crate::optimize::members;
+use crate::loop_planner::schedules::members;
 use crate::uma::UmaIndex;
 use std::rc::Rc;
 

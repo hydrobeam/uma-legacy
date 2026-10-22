@@ -24,6 +24,19 @@
 //! tables of exact values by inheritance chance) can still beat the k-th best. A pass over its work budget falls back
 //! to lower caps, then to product odds alone (`exact.rho`). Per-uma decks (`per_uma`, `run_multi`) give each trainee
 //! her own best legal deck; a shared deck must be legal for every member. docs/SOLVER.md "Deck + loop search".
+//!
+//! The job records (`Card`, `CardsRaw`, `DeckJob`) are here; the loop planner (`loop_planner`) and the career planner
+//! (`career`) both search decks through `DeckSpace`.
+//! - `space`: the space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
+//! - `enumerate`: the deck enumeration, `DeckSpace::search`.
+//! - `joint`: a deck's joint landing odds (`joint_b`, `joint_fast`) and their upper bound.
+//! - `state_bound`: the state-conditioned bounds of one configuration and the cap-free ratio tables.
+//! - `sources`: each deck entry's target sources and the event data merged into a job.
+//! - `chains`: chain events: count per run, per-link marginals, final-state distributions.
+//! - `hints`: training-hint draw counts per scenario and miss chances.
+//! - `caps`: the assumed caps on exact over product odds and the exact search's budgets.
+//! - `dominance`: dominance signatures and index, and the decks a search returns.
+//! - `tests`: the deck model's tests.
 use serde::Deserialize;
 use std::collections::HashMap;
 #[derive(Deserialize, Clone)]
@@ -182,12 +195,10 @@ const fn d_rar() -> u8 {
 
 pub(crate) mod caps;
 pub(crate) mod chains;
-mod dominance;
+pub(crate) mod dominance;
 pub(crate) mod enumerate;
-pub(crate) mod frontier;
 mod hints;
 pub(crate) mod joint;
-mod loop_search;
 pub(crate) mod sources;
 pub(crate) mod space;
 pub(crate) mod state_bound;

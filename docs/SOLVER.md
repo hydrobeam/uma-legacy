@@ -5,26 +5,26 @@ The Rust crate in `pkg/loopopt/`; crate paths below are relative to it, while `d
 era). The CLI resolves a job's file names from the working directory; run it from the era's data folder.
 Building and running it: `docs/BUILD.md`.
 
-The affinity core and loop search's modules:
+The affinity core's and the loop planner's modules:
 
 | File | Holds |
 |---|---|
 | `src/lib.rs` | Crate wiring, deterministic hashing, the native/wasm clock and the public CLI entry point |
 | `src/data.rs` | Raw and loaded race data, schedule choices, relation tables, ceiling fingerprints, win probabilities and feasibility |
 | `src/schedule.rs` | Exact single-uma best responses, scratch buffers and scoped memo |
-| `src/optimize.rs` | Loop affinity scoring, ascent, group moves, local search and pairwise ceilings |
+| `src/loop_planner/schedules.rs` | Loop affinity scoring, ascent, group moves, local search and pairwise ceilings |
 | `src/chart.rs` | Race/member labels and structured schedule charts |
 | `src/cli.rs` | CLI jobs, event enrichment, kept-state persistence, dispatch and bound diagnostics |
 | `src/tests.rs` | Affinity-core correctness tests against independent fixtures and model invariants |
 | `src/skills.rs` | Skill targets, outfit choices and lineage inheritance probabilities |
-| `src/deck/frontier.rs` | Deck-job setup and nondominated frontier enumeration |
+| `src/loop_planner/job.rs` | Deck-job setup and nondominated frontier enumeration |
 | `src/deck/dominance.rs` | Dominance signatures, buckets, `DominanceIndex` and returned deck records |
 | `src/deck/state_bound.rs` | State-conditioned values, bounds, configuration and ratio tables |
-| `src/deck/loop_search.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
-| `src/deck/loop_search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
-| `src/deck/loop_search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
-| `src/deck/loop_search/bands.rs` | Loop bands, schedules, certification and solved passes |
-| `src/deck/loop_search/report.rs` | Reported picks, JSON and diagnostic summaries |
+| `src/loop_planner/search/mod.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
+| `src/loop_planner/search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
+| `src/loop_planner/search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
+| `src/loop_planner/search/bands.rs` | Loop bands, schedules, certification and solved passes |
+| `src/loop_planner/search/report.rs` | Reported picks, JSON and diagnostic summaries |
 
 The `kept` module is `career/plan/kept.rs`: cached career plans and searches. `career/state.rs` owns the worker
 record (`KeptState`) and its saved-state format.
@@ -436,7 +436,7 @@ A **fully looped parent** is a full veteran whose parents are both full veterans
 
 The page's plan (`career::plan::index_rule`): exact where it can be, not simulated. The page sends it as a second job,
 `next: {}` with `no_reports: true`, after the search job (it reuses the search the worker keeps). The model and its
-evidence: `docs/MODEL.md`, *Next career*. The planner is split across `src/career/plan.rs` and `src/career/plan/`.
+evidence: `docs/MODEL.md`, *Next career*. The planner is in `src/career/plan/` (`mod.rs` and its children).
 
 | Field of `next` (all optional) | Meaning | Default |
 |---|---|---|
@@ -650,7 +650,7 @@ The simulator's modules (under `src/career/`):
 | File | What it holds |
 |---|---|
 | `evaluator.rs` | The surrogate's valuation, owned by the simulator and borrowed by its policies and the plan beside `&mut Env` (a valuation that searches for decks takes it whole; one that only folds a trainee's chances in takes the setup and `&mut SearchState`; one that only reads, the setup): the deck cache, `deck_for` (the refresh rule), `fast_ub`, win chances, a career's exact numbers (`Cur`), the planner's working pool (`push_her`/`pop_her`). |
-| `sim.rs` | Shared simulator records, construction, the bar and best pick of a path, and legacy identity/JSON helpers. |
+| `sim/mod.rs` | Shared simulator records, construction, the bar and best pick of a path, and legacy identity/JSON helpers. |
 | `sim/draw.rs` | Keyed uniforms and failed-career veteran draws; pinned uniform test. |
 | `sim/policies.rs` | Greedy, loop, trace, exact and index career selection; rotation and index-run records. |
 | `sim/audit.rs` | Surrogate checks against exact searches, audit rows and ranked careers. |

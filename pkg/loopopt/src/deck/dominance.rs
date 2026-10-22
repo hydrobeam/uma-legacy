@@ -1,5 +1,5 @@
 //! Deck dominance: signatures, buckets and the beaten-deck bookkeeping (`DominanceIndex`), and the decks a search returns.
-//! Frontier enumeration belongs to `frontier`; cached career plans belong to `career::plan::kept`.
+//! Frontier enumeration belongs to `loop_planner::job`; cached career plans belong to `career::plan::kept`.
 use crate::deck::Card;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -8,7 +8,7 @@ pub(super) const DOM_EPS: f64 = 1e-12;
 pub(super) const SUM_EPS: f64 = 1e-9;
 
 #[inline]
-pub(super) fn dominates(dominator: &[f64], coordinates: &[f64]) -> bool {
+pub(crate) fn dominates(dominator: &[f64], coordinates: &[f64]) -> bool {
     dominator
         .iter()
         .zip(coordinates)
@@ -33,7 +33,7 @@ pub(super) const SIG_GUARD: Sig = {
     }
     guard
 };
-pub(super) fn sig_of(coordinates: &[f64], query: bool) -> Sig {
+pub(crate) fn sig_of(coordinates: &[f64], query: bool) -> Sig {
     let mut signature: Sig = 0;
     for (field, &coordinate) in coordinates.iter().take(SIG_FIELDS).enumerate() {
         let value = if query { coordinate - DOM_EPS } else { coordinate };
@@ -156,24 +156,24 @@ struct DominatorLocation {
 ///   proves that any deck it dominates is not needed.
 ///   top_decks > 1: kept decks are only dropped at compaction, which starts a fresh `DominanceIndex`, so every deck on it
 ///   is still kept; `recent_ids` holds their ids so each counts once.
-pub(super) struct DominanceIndex {
+pub(crate) struct DominanceIndex {
     pub(super) coordinate_count: usize,
     pub(super) bucket_width: f64,
     pub(super) buckets: Vec<Bucket>,
     pub(super) deck_count: usize,
     pub(super) next_uid: u64,
-    pub(super) last_dominator: Vec<f64>,
-    pub(super) has_last_dominator: bool,
-    pub(super) cap: usize,
-    pub(super) recent: Vec<f64>,
+    pub(crate) last_dominator: Vec<f64>,
+    pub(crate) has_last_dominator: bool,
+    pub(crate) cap: usize,
+    pub(crate) recent: Vec<f64>,
     pub(super) recent_position: usize,
-    pub(super) recent_count: usize,
+    pub(crate) recent_count: usize,
     pub(super) recent_ids: Vec<u64>,
     found: Vec<DominatorLocation>,
 }
 pub(super) const RECENT: usize = 32;
 impl DominanceIndex {
-    pub(super) fn new(coordinate_count: usize) -> Self {
+    pub(crate) fn new(coordinate_count: usize) -> Self {
         Self {
             coordinate_count,
             bucket_width: (coordinate_count.max(1) as f64) / NBUCKET as f64,
@@ -190,7 +190,7 @@ impl DominanceIndex {
             found: vec![],
         }
     }
-    pub(super) const fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.deck_count
     }
     #[inline]
@@ -198,7 +198,7 @@ impl DominanceIndex {
         ((coordinate_sum / self.bucket_width).floor().max(0.0) as usize).min(NBUCKET - 1)
     }
     /// number of kept decks dominating `coordinates` (stops at `need`)
-    pub(super) fn count(
+    pub(crate) fn count(
         &mut self,
         coordinates: &[f64],
         query_signature: Sig,
@@ -236,7 +236,7 @@ impl DominanceIndex {
         n
     }
     /// like `count`, without touching the remembered-dominator state (for a fixed reference set)
-    pub(super) fn count_ro(
+    pub(crate) fn count_ro(
         &self,
         coordinates: &[f64],
         query_signature: Sig,
@@ -266,7 +266,7 @@ impl DominanceIndex {
         }
         n
     }
-    pub(super) fn count_recent(&self, coordinates: &[f64]) -> usize {
+    pub(crate) fn count_recent(&self, coordinates: &[f64]) -> usize {
         let coordinate_count = self.coordinate_count;
         (0..self.recent_count)
             .filter(|&slot| {
@@ -275,7 +275,7 @@ impl DominanceIndex {
             .count()
     }
     /// put the dominators the last count found on `recent`
-    pub(super) fn remember_found(&mut self) {
+    pub(crate) fn remember_found(&mut self) {
         let coordinate_count = self.coordinate_count;
         // (the buffer put back after, its capacity kept for the next `count`)
         let mut found = std::mem::take(&mut self.found);
@@ -300,7 +300,7 @@ impl DominanceIndex {
     }
     /// `insert` with the deck's coordinates given apart (`deck.dominance_values` then left as it is: the enumeration's
     /// single-result path, where nothing reads a kept deck's `dominance_values` again, leaves it empty)
-    pub(super) fn insert_dv(&mut self, deck: DeckEval, dominance_values: &[f64]) {
+    pub(crate) fn insert_dv(&mut self, deck: DeckEval, dominance_values: &[f64]) {
         self.insert_at(deck, Some(dominance_values));
     }
     fn insert_at(&mut self, deck: DeckEval, dominance_values: Option<&[f64]>) {
@@ -323,7 +323,7 @@ impl DominanceIndex {
     }
     /// drop kept decks that `coordinates` dominates (only decks with sum <= `coordinate_sum` + slack can be), in place,
     /// keeping the order of the rest
-    pub(super) fn remove_dominated_by(&mut self, coordinates: &[f64], entry_signature: Sig, coordinate_sum: f64) {
+    pub(crate) fn remove_dominated_by(&mut self, coordinates: &[f64], entry_signature: Sig, coordinate_sum: f64) {
         let coordinate_count = self.coordinate_count;
         let top = self.bucket_of(coordinate_sum + SUM_EPS);
         // lq offsets of the dominator's entry signature: fields below the top level constrain the deck's query field
@@ -392,14 +392,14 @@ impl DominanceIndex {
             bucket.reindex_from(first_removed);
         }
     }
-    pub(super) fn into_list(self) -> Vec<DeckEval> {
+    pub(crate) fn into_list(self) -> Vec<DeckEval> {
         self.buckets.into_iter().flat_map(|bucket| bucket.list).collect()
     }
 }
 
 /// The order k_filter(list, 1, nd).into_list() produces when it keeps every deck: stable by
 /// (bucket of the sum ascending, sum descending), ties in input order.
-pub(super) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -> Vec<DeckEval> {
+pub(crate) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -> Vec<DeckEval> {
     decks.sort_by(|a, b| b.coordinate_sum.partial_cmp(&a.coordinate_sum).unwrap());
     let kept = DominanceIndex::new(coordinate_count);
     decks.sort_by_key(|deck| kept.bucket_of(deck.coordinate_sum));
@@ -407,7 +407,7 @@ pub(super) fn kfilter_order(mut decks: Vec<DeckEval>, coordinate_count: usize) -
 }
 /// Keep each deck unless `kmax` decks scoring at least as high in every coordinate are kept before it (sorted
 /// pass). A dominator's coordinate sum is at least the deck's, so only kept decks above that sum are checked.
-pub(super) fn k_filter(mut decks: Vec<DeckEval>, kmax: usize, coordinate_count: usize) -> DominanceIndex {
+pub(crate) fn k_filter(mut decks: Vec<DeckEval>, kmax: usize, coordinate_count: usize) -> DominanceIndex {
     decks.sort_by(|a, b| b.coordinate_sum.partial_cmp(&a.coordinate_sum).unwrap());
     let mut kept = DominanceIndex::new(coordinate_count);
     let mut tests = 0usize;
@@ -425,22 +425,22 @@ pub(super) fn k_filter(mut decks: Vec<DeckEval>, kmax: usize, coordinate_count: 
 /// `dominance_values` are the coordinates used for dominance (see `run_deck`), all higher-is-better, and
 /// `coordinate_sum` is their sum.
 #[derive(Clone)]
-pub(super) struct DeckEval {
-    pub(super) pals: usize,
-    pub(super) borrowed: Option<usize>,
-    pub(super) cards: Vec<usize>,
-    pub(super) ends: Vec<u8>,
-    pub(super) variants: Vec<u32>,
-    pub(super) plain: usize,
-    pub(super) filler: usize,
-    pub(super) white_hint_chances: Vec<f64>,
-    pub(super) gold_hint_chances: Vec<f64>,
-    pub(super) dominance_values: Vec<f64>,
-    pub(super) coordinate_sum: f64,
+pub(crate) struct DeckEval {
+    pub(crate) pals: usize,
+    pub(crate) borrowed: Option<usize>,
+    pub(crate) cards: Vec<usize>,
+    pub(crate) ends: Vec<u8>,
+    pub(crate) variants: Vec<u32>,
+    pub(crate) plain: usize,
+    pub(crate) filler: usize,
+    pub(crate) white_hint_chances: Vec<f64>,
+    pub(crate) gold_hint_chances: Vec<f64>,
+    pub(crate) dominance_values: Vec<f64>,
+    pub(crate) coordinate_sum: f64,
 }
 
 /// A deck's per-target (white, gold) hint odds.
-pub(super) trait Odds {
+pub(crate) trait Odds {
     fn white_hint_chances(&self) -> &[f64];
     fn gold_hint_chances(&self) -> &[f64];
 }
@@ -461,13 +461,13 @@ impl Odds for PDeck {
     }
 }
 /// A cluster of decks (indices into the list it was built from) with their componentwise maximum odds.
-pub(super) struct DeckCluster {
-    pub(super) max_white_chances: Vec<f64>,
-    pub(super) max_gold_chances: Vec<f64>,
-    pub(super) members: Vec<usize>,
+pub(crate) struct DeckCluster {
+    pub(crate) max_white_chances: Vec<f64>,
+    pub(crate) max_gold_chances: Vec<f64>,
+    pub(crate) members: Vec<usize>,
 }
 /// Clusters of at most 16 decks by recursive median splits on the widest odds coordinate.
-pub(super) fn split<D: Odds>(skyline: &[D], members: &mut [usize], uncertain_count: usize, out: &mut Vec<DeckCluster>) {
+pub(crate) fn split<D: Odds>(skyline: &[D], members: &mut [usize], uncertain_count: usize, out: &mut Vec<DeckCluster>) {
     if members.len() <= 16 {
         let mut max_white_chances = vec![0.0f64; uncertain_count];
         let mut max_gold_chances = vec![0.0f64; uncertain_count];
@@ -511,24 +511,24 @@ pub(super) fn split<D: Odds>(skyline: &[D], members: &mut [usize], uncertain_cou
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct PDeck {
     pub(crate) names: Vec<Name>,
-    pub(super) ids: Vec<u32>,
-    pub(super) ends: Vec<u8>,
+    pub(crate) ids: Vec<u32>,
+    pub(crate) ends: Vec<u8>,
     #[serde(default)]
     #[serde(rename = "vars")]
-    pub(super) variants: Vec<u32>,
+    pub(crate) variants: Vec<u32>,
     #[serde(default)]
-    pub(super) choices: Vec<Name>,
-    pub(super) plain_ids: Vec<u32>,
-    pub(super) pal_names: Vec<Name>,
-    pub(super) pals: usize,
-    pub(super) borrowed: Option<Name>,
+    pub(crate) choices: Vec<Name>,
+    pub(crate) plain_ids: Vec<u32>,
+    pub(crate) pal_names: Vec<Name>,
+    pub(crate) pals: usize,
+    pub(crate) borrowed: Option<Name>,
     #[serde(rename = "dw")]
-    pub(super) white_hint_chances: Vec<f64>,
+    pub(crate) white_hint_chances: Vec<f64>,
     #[serde(rename = "dg")]
-    pub(super) gold_hint_chances: Vec<f64>,
+    pub(crate) gold_hint_chances: Vec<f64>,
 }
 /// A card or deck name shared between decks (serde's `rc`: serialised as the string)
-pub(super) type Name = std::rc::Rc<str>;
+pub(crate) type Name = std::rc::Rc<str>;
 impl PDeck {
     pub(crate) fn out(&self, uncertain_groups: &[u32]) -> Value {
         let odds: Vec<Value> = (0..uncertain_groups.len())
@@ -537,12 +537,12 @@ impl PDeck {
         json!({"pals": self.pals, "cards": self.names, "odds": odds, "pal_cards": self.pal_names, "borrowed": self.borrowed,
                "card_ids": self.ids, "end_chain_at": self.ends, "choices": self.choices, "plain_ids": self.plain_ids})
     }
-    pub(super) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>, checks: &crate::checks::Checks) -> bool {
+    pub(crate) fn blocks(&self, uma: u32, card_of: &crate::FxMap<u32, &Card>, checks: &crate::checks::Checks) -> bool {
         self.ids.iter().chain(&self.plain_ids).any(|id| card_of.get(id).is_some_and(|card| card.blocks(uma, checks)))
     }
     /// the deck's identity (cards, end links, variants, plain pals) as a fixed key: at most `DECK_ID_N` cards (a deck
     /// holds at most 6: the key codes count kinds in base 7), the unused places 0
-    pub(super) fn id(&self) -> DeckId {
+    pub(crate) fn id(&self) -> DeckId {
         let card_count = self.ids.len();
         assert!(
             card_count <= DECK_ID_N && self.ends.len() <= DECK_ID_N && self.variants.len() <= DECK_ID_N,
@@ -566,7 +566,7 @@ impl PDeck {
 /// `PDeck::id`'s key: equal exactly when the (ids, ends, variants, plain pal count) are (the lengths kept)
 pub(super) const DECK_ID_N: usize = 8;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct DeckId {
+pub(crate) struct DeckId {
     card_count: u8,
     end_count: u8,
     variant_count: u8,
@@ -579,7 +579,7 @@ pub(super) struct DeckId {
 /// Order for exact ties between deck entries: card order, except that one character's entries take her positions in
 /// order of rarity (highest first; stable), so an SSR wins an exact tie with her own R card ([Planned Perfection] over
 /// [Tracen Academy] Riko Kashimoto, the same event) and ties between different characters keep card order.
-pub(super) fn tie_rank(relevant: &[usize], cards: &[&Card]) -> Vec<usize> {
+pub(crate) fn tie_rank(relevant: &[usize], cards: &[&Card]) -> Vec<usize> {
     let mut rank: Vec<usize> = (0..relevant.len()).collect();
     let mut by_character: Vec<(u32, Vec<usize>)> = vec![];
     for (j, &card) in relevant.iter().enumerate() {

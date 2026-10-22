@@ -21,9 +21,9 @@ pub(crate) struct ChainKind {
 
 impl ChainKind {
     /// A pal's or a chainless card's entry: no chain.
-    pub(super) const NONE: Self = Self { links: 0, stop: 0, stop_risk: 0 };
+    pub(crate) const NONE: Self = Self { links: 0, stop: 0, stop_risk: 0 };
     /// The fillers' chain: two links, played to the end.
-    pub(super) const FILLER: Self = Self { links: 2, stop: 2, stop_risk: 0 };
+    pub(crate) const FILLER: Self = Self { links: 2, stop: 2, stop_risk: 0 };
 }
 pub(super) fn stop_risk_code(risk: &[(u8, u8, u8)], stop: u8) -> u32 {
     risk.iter().filter(|risk_row| risk_row.0 >= 1 && risk_row.0 < stop && risk_row.0 <= 4 && risk_row.2 > 0).fold(
@@ -202,7 +202,7 @@ fn chain_walk(
 /// entries' progress; every transition raises the index, so one pass in index order is a topological order.
 /// Entries are sorted first so the floating-point summation order is canonical (the reference sums its states in
 /// another order, so the two agree to float noise).
-pub(super) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
+pub(crate) fn chain_marginals(events: ChainEvents, kinds: &[ChainKind]) -> HashMap<ChainKind, Vec<f64>> {
     thread_local! { static CM: std::cell::RefCell<crate::FxMap<(Vec<ChainKind>, (u32, u64)), HashMap<ChainKind, Vec<f64>>>> = std::cell::RefCell::new(crate::FxMap::default()); }
     let mut sorted_kinds: Vec<ChainKind> = kinds.to_vec();
     sorted_kinds.sort_unstable();

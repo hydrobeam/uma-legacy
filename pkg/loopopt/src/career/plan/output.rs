@@ -287,7 +287,7 @@ impl PlanContext<'_, '_> {
         let data = self.data();
         let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
         let uma_name = |uma: crate::uma::UmaIndex| {
-            if uma == crate::optimize::NONE { Value::Null } else { json!(data.umas[uma].name) }
+            if uma == crate::uma::NONE { Value::Null } else { json!(data.umas[uma].name) }
         };
         // a side's step: free from a real full veteran of hers, else her fresh full veteran's step
         let step =

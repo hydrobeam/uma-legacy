@@ -34,7 +34,7 @@ pub(crate) const fn cap_class(mask: u64) -> usize {
     }
 }
 /// The class of a deck given by its sources.
-pub(super) fn src_class<'src>(sources: impl Iterator<Item = &'src TargetSources>) -> usize {
+pub(crate) fn src_class<'src>(sources: impl Iterator<Item = &'src TargetSources>) -> usize {
     cap_class(sources.fold(0u64, |mask, source| mask | source.cv_mask()))
 }
 /// Caps tried in turn, highest first: the answer is certified under the first whose pass finishes within budget.

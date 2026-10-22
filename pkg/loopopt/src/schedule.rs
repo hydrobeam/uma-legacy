@@ -1,5 +1,5 @@
 //! Exact single-uma schedule search and its scratch buffers and scoped best-response memo.
-//! Loop-wide optimization belongs to `optimize`; race data and win probabilities belong to `data`.
+//! Loop-wide optimization belongs to `loop_planner::schedules`; race data and win probabilities belong to `data`.
 use crate::FxMap;
 use crate::data::{Choice, Data, NT, RaceChoice, Sched, Uma, dot};
 
