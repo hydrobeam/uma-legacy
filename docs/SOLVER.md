@@ -494,9 +494,9 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   8/8s, the trios' last step, only when both sides are real and her parents are both 8/8s), `looped` (both parents
   8/8s), `best_odds` (the main search's best career, one row), `index`, `score`, `lift` (the chance her roll
   lowers V), `near`, `stage_cost` for a candidate, `chosen`; `choice`, `mode` (trio).
-- `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi, builds,
-  p_switch, careers}`; `v0` (V); `v0_plan` (`{a, b, c, careers}`); `fit` (the stage candidates in order with their
-  continuations, `[chara, lam, phi, pinf]`).
+- `members` (A and B): `{trainee, p, have8, real (the trio uses a real 8/8 of hers), p_inf, lam, phi,
+  building_careers (the expected careers spent building before she grinds), p_switch, careers}`; `v0` (V); `v0_plan`
+  (`{a, b, c, careers}`); `fit` (the stage candidates in order with their continuations, `[chara, lam, phi, pinf]`).
 - `outcomes`: the career a roll is of, `{trainee, parents, uncv, fixed}`: the pick, her uncertain targets and the
   scenario's guaranteed ones (job-target indices). The page checks a roll's career against it.
 - `roll` (a job with `next.roll`; a carried `roll` returns it as the job's `roll`): `{y, y_hi}` at her outcome (her
