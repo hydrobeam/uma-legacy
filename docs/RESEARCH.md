@@ -7,10 +7,10 @@ was set from data, and how well it holds against real careers.
 
 The model's odds rest on one prediction: the chance that a career acquires each target. Against
 5,198 real Independent Training careers, each rebuilt from its own deck and lineage (section 13), that chance is
-calibrated where the model's priority assumption holds: observed / predicted 0.999 [0.991, 1.006] over the
+calibrated where the model's priority assumption holds: observed / predicted 0.998 [0.990, 1.005] over the
 32,848 run-target rows whose target was prioritised or whose run shows no priority list. Over all 37,287 rows it reads
-0.988 [0.981, 0.994], slightly optimistic: the model assumes every target prioritised, and the rows whose run shows it was not
-read 0.912 and carry 92% of the shortfall. The chance of landing all eight default targets reads
+0.986 [0.980, 0.993], slightly optimistic: the model assumes every target prioritised, and the rows whose run shows it was not
+read 0.911 and carry 85% of the shortfall. The chance of landing all eight default targets reads
 0.93 [0.80, 1.05] of the model: consistent with calibrated, but only 220 runs acquired every target.
 
 The terms used below (observed / predicted, rows, nats, held out, the bracketed intervals) and the game's terms are
@@ -23,14 +23,14 @@ defined in *How to read*, after this summary.
 | Inheritance rolls | skill-white bases tested, grandparents fitted | grandparent weight 1.00 [0.98, 1.02], affinity slope 0.97 [0.95, 0.99] on 106,738 + 44,010 trials, which predicts unseen runs no better than slope 1 ($z$ = 0.86); whole careers 0.992 [0.982, 1.003] apart from Tail Held High | 3 |
 | Affinity: +3 per shared G1 win; own grandparent adds no trio points | +3 assumed and tested; trio rule fitted | shared-win slope 0.96 [0.92, 0.99], no better than 1 held out ($z$ = 0.81); trio rule 29 nats better than the alternative | 3, 5 |
 | Race win table | community table, tested | calibrated once grades include inherited aptitude sparks: 0.998 [0.996, 0.999] over 119,188 G1 attempts | 4 |
-| Loop schedules for shared wins | derived | on the reference loops, no other schedule could raise the best loop's odds by more than 2.02% | 6 |
-| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 87,801 rows; specialty term fitted on earlier runs gains +10.1 nats on later ones; real careers 1.004 [0.97, 1.04] of the model | 7 |
+| Loop schedules for shared wins | derived | on the reference loops, no other schedule could raise the best loop's odds by more than 2.01% | 6 |
+| Training hints, $\beta(1 + hf/100)(1 + d\,\mathit{sp}/100)$ | form fixed on the runs, slope $1/100$ assumed and tested, $\beta$ and $d$ fitted | 87,801 rows; specialty term fitted on earlier runs gains +10.1 nats on later ones; real careers 0.994 [0.96, 1.03] of the model | 7 |
 | Chain events, Binomial(21, 0.35) per career | fitted, kept | 5,316 runs; rejected against a free distribution in-sample (p-value 6.5e-05), a known miss; no alternative predicts unseen runs better | 8 |
 | Chain events spread over remaining links | fitted | 102 nats better than equal shares per card | 8 |
 | Event choices: IT takes a prioritised skill's choice | assumed | event hints of prioritised targets 0.970 [0.940, 0.9997] of the model, of the others 0.65 | 9, 13 |
 | Measured outcome shares | fitted | five events, e.g. Nakayama Festa's Nothing Ventured 0.61 [0.56, 0.66] (90%) | 9 |
-| Random card events | not modelled | where they could hint a target, acquisition reads 1.25 [1.12, 1.38] of the model left out, 1.01 credited | 10 |
-| Conditional character events | not modelled | where only they can hint a target, left out reads 1.10 [0.81, 1.40]; Vodka's own Nimble Navigator 25 of 27 runs | 11 |
+| Random card events | not modelled | where they could hint a target, acquisition reads 1.24 [1.11, 1.38] of the model left out, 1.00 credited | 10 |
+| Conditional character events | not modelled | where only they can hint a target, left out reads 1.10 [0.81, 1.39]; Vodka's own Nimble Navigator 25 of 27 runs | 11 |
 
 ### Known misses
 
@@ -43,22 +43,22 @@ Each measured and tested in its section:
   slightly less (0.996, 0.997); goal races 7th or later in a row, which the
   planner scores as the 6th, win less than it predicts (0.68, 47 attempts).
 - Training hints (7): cards differ in hint rate beyond the adopted rate (observed / predicted 0.80-1.17 over
-  58 cards, cause open); decks with more pals give slightly more hints (+12.5 nats); a skill also hinted by
-  inspiration is hinted by training less than predicted (0.74 of the model).
+  58 cards, cause open); decks with more pals give slightly more hints (+12.6 nats); a skill also hinted by
+  inspiration is hinted by training less than predicted (0.73 of the model).
 - Chain events (8): Binomial(21, 0.35) is rejected against a free distribution of $N$ in-sample ($p$ = 6.5e-05) and kept
   by choice: no alternative predicts unseen runs better, and the candidate Binomial(18, 0.405) fits 8.8 nats better
   in-sample. Decks with Sasami Anshinzawa [This Might Sting!]'s pal card reach more chain events (7.74 against
   7.17) and Inari One's careers fewer (6.83 against 7.26); in crowded decks early links run short, and more chains never start than predicted
   (0.34 against 0.20 with six chain cards). Final links fit pooled (0.348 against 0.353), but
   individual cards differ far beyond chance ($\chi^2$ = 386 on 50 cards).
-- Deck hints (13) read 0.929 [0.915, 0.942] of the model, almost all from event hints of targets the
+- Deck hints (13) read 0.926 [0.912, 0.939] of the model, almost all from event hints of targets the
   player did not prioritise (0.65 of the model; the model assumes every target is prioritised). Event hints of
   prioritised targets read just below the model (0.970 [0.940, 0.9997]; section 9).
 - Trackblazer's hint base (13) over-predicts real careers: its training-pool hints read 0.779 [0.63, 0.93] of the model.
 - Left out of the model: deck cards' random events, so the targets they can hint are under-predicted
-  (1.25 [1.12, 1.38] of the model on those rows; their rate rises with the card's initial friendship gauge; section
+  (1.24 [1.11, 1.38] of the model on those rows; their rate rises with the card's initial friendship gauge; section
   10); and Vodka's own Nimble Navigator (25 of 27 runs; section 11).
-- Non-target skills (13): training-pool hints read 1.065 [1.053, 1.076] of the model.
+- Non-target skills (13): training-pool hints read 1.056 [1.045, 1.068] of the model.
 
 ### Not settled
 
@@ -667,7 +667,7 @@ loop is scored, and bounds what a different choice of race schedules could gain.
 - **Every pair of umas carries the same weight**, so a loop's race schedules can be chosen for the most expected shared
   wins over all its pairs.
 - **Scheduling for shared wins instead of odds costs little**: no schedule could raise a reference loop's odds by
-  more than 2.02%, and no listed runner-up could overtake its winner.
+  more than 2.01%, and no listed runner-up could overtake its winner.
 
 ### Terms
 
@@ -710,7 +710,7 @@ its highest possible overlap. Over 40 reference results, whose odds an independe
   objective at 17.5%. It is far from reachable (the schedules found reach about 69% of it) and cannot
   settle the ranking: 8 of 12 listed runner-up loops reach their winner under it;
 - the pair ceilings come from the same search code that chose the schedules, so they are not an independent check, but they sit between
-  $o$ and $o_{\max}$ on every pair. They put the ceiling only 0.43-2.02% above the odds found (median 0.84%), and no listed runner-up's ceiling
+  $o$ and $o_{\max}$ on every pair. They put the ceiling only 0.43-2.01% above the odds found (median 0.84%), and no listed runner-up's ceiling
   reaches its winner (0 of 12).
 
 ## 7. Training hints
@@ -724,7 +724,7 @@ which raises one skill from the card's list of hintable skills (its *pool*) by a
 
 - **A card gives about the same number of training hints every career, each a random skill from its pool.** A typical card in
   the runs' decks (hint frequency +20%, specialty priority 35) gives about 3.2 hints per career in Unity
-  Cup, 2.4 in Grand Concert, 2.1 in Trackblazer and 1.8 in URA Finale. Each hint picks a skill uniformly from the pool;
+  Cup, 2.5 in Grand Concert, 2.1 in Trackblazer and 1.9 in URA Finale. Each hint picks a skill uniformly from the pool;
   a skill already at hint level 5 is no longer picked.
 - **Hint frequency scales that number directly**: a card with Hint Frequency +40% gives 40% more hints. The slope is
   **assumed**; on the adopted model a free one does not predict unseen careers better.
@@ -772,16 +772,16 @@ and an exact Markov chain over the other skills' hint counts once a skill can re
 
 These are **fitted** by maximum likelihood on every hint row, a row being one pool skill of one card in one
 run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; 87,801 rows from
-15,120 card-runs; the Runs column counts the runs that add a row; *Adopted*: the values the model uses, fitted
-on an earlier, smaller set of the runs:
+15,120 card-runs; the Runs column counts the runs that add a row. The model uses these values rounded to
+three decimals: the solver reads them from `research/results.json` when it is built (`pkg/loopopt/build.rs`).
 
-| Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
-|---|---|---|---|---|---|
-| Unity Cup | 2.395 | 0.322 | 2.36 / 0.36 | 17,737 | 1211 |
-| Grand Concert | 1.999 | 0.068 | 1.97 / 0.08 | 55,136 | 3,194 |
-| URA Finale | 1.380 | 0.359 | 1.34 / 0.39 | 12,551 | 736 |
-| Trackblazer | 1.702 | 0.107 | 1.70 / 0.11 | 2,377 | 100 |
-| Grand Masters | no runs | | 1.86 / 0.26 (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
+| Scenario | $\beta$ | $d$ | Rows | Runs |
+|---|---|---|---|---|
+| Unity Cup | 2.395 | 0.322 | 17,737 | 1211 |
+| Grand Concert | 1.999 | 0.068 | 55,136 | 3,194 |
+| URA Finale | 1.380 | 0.359 | 12,551 | 736 |
+| Trackblazer | 1.702 | 0.107 | 2,377 | 100 |
+| Grand Masters | 1.991 | 0.129 | no runs: **assumed**, one $\beta$ and one $d$ fitted over every scenario's rows | |
 
 ### Evidence
 
@@ -824,8 +824,8 @@ assumption that, with the specialty term in, unseen careers do not reject.
 | Rate form, LL on 140,615 rows | $1 + hf/25$ over options −92,742.3; $1 + hf/25$ over skills −90,327.3; constant −87,864.8; $\beta(1 + hf/100)$ −86,963.8; per-scenario $\beta(1 + hf/100)$ −86,406.6; free divisor ($c = 83$) −86,389.7. Held out, per-scenario $\beta(1 + hf/100)$ predicts unseen runs better than the constant (1457.8 ± 31.6, $z$ = 46.1) and the $hf/25$ forms (6334.1 ± 81.0, $z$ = 78.2; 3919.0 ± 60.8, $z$ = 64.5) |
 | Skills only, not skills + stat option | in 71 of 91 (card, $hf$) cells the draw-count variance is below the binomial floor a drawn stat option implies |
 | Uniform draws with repeats | repeat rate $P(k \ge 2 \mid k \ge 1)$: 0.139 observed, 0.139 two-point count, 0.191 Poisson count; distinct skills 1/2/3/4 per card-run 0.142 / 0.575 / 0.250 / 0.032 observed, 0.120 / 0.566 / 0.273 / 0.039 model |
-| Covariates | per-scenario bases +557 nats (form study; held out 556.4 ± 20.8, $z$ = 26.7). On top of the adopted rate (87,801 rows): card type +2.8 nats (4 parameters), initial bond +0.3, pool size +0.6, none significant; rarity (SR against SSR) +3.1 and pals per deck +12.5 are detectable; pals per deck predicts unseen runs better (held out 12.2 ± 2.9, $z$ = 4.3; a known miss, factor 1.027 per pal), rarity does not (2.1 ± 1.4, $z$ = 1.5; factor 0.970 for SR) |
-| Per card | on the adopted rate with a level per scenario, the 58 cards with 200 or more rows (83,075 rows) read 0.80-1.17 of prediction, jointly far from it (run-clustered $\chi^2$ = 445 on 58, $p$ = 4e-61); a factor per card predicts unseen runs better (48.7 ± 6.0, $z$ = 8.1): a known miss, not modelled; which card properties explain it is open |
+| Covariates | per-scenario bases +557 nats (form study; held out 556.4 ± 20.8, $z$ = 26.7). On top of the adopted rate (87,801 rows): card type +2.8 nats (4 parameters), initial bond +0.2, pool size +0.8, none significant; rarity (SR against SSR) +2.9 and pals per deck +12.6 are detectable; pals per deck predicts unseen runs better (held out 12.2 ± 2.9, $z$ = 4.2; a known miss, factor 1.028 per pal), rarity does not (1.8 ± 1.4, $z$ = 1.3; factor 0.971 for SR) |
+| Per card | on the adopted rate with a level per scenario, the 58 cards with 200 or more rows (83,075 rows) read 0.80-1.17 of prediction, jointly far from it (run-clustered $\chi^2$ = 445 on 58, $p$ = 4e-61); a factor per card predicts unseen runs better (48.2 ± 6.0, $z$ = 8.0): a known miss, not modelled; which card properties explain it is open |
 | Lv-5 cap | beats drawing with replacement by 22.1 nats with no parameter; obs / pred by draws to Lv 5, replacement vs cap: 5 draws (44,737 rows) 0.967 / 0.975, 3 (3,011) 0.945 / 0.952, 2 (45,649) 1.032 / 1.031, 1 (465) 1.221 / 0.968 |
 | Joint draws over targets | 247,441 pairs of no-spark pool skills on one card-run (Trackblazer left out): $P(\text{both})$ 0.0792 observed, 0.0794 joint, 0.1094 independent; $P(\text{neither})$ 0.4411 vs 0.4380 |
 | Pool size | obs / pred 0.92-1.11 for every $n$ with at least 150 rows |
@@ -838,21 +838,21 @@ cards out):
 
 | Other source of the skill | Rows | Observed | Predicted | Ratio |
 |---|---|---|---|---|
-| none | 77,728 | 0.341 | 0.336 | 1.01 |
-| inspiration | 8,883 | 0.262 | 0.354 | 0.74 |
-| inspiration + card event | 409 | 0.213 | 0.348 | 0.61 |
-| card event | 2,191 | 0.332 | 0.333 | 1.00 |
-| other card's training | 3,557 | 0.344 | 0.355 | 0.97 |
+| none | 77,728 | 0.341 | 0.339 | 1.01 |
+| inspiration | 8,883 | 0.262 | 0.356 | 0.73 |
+| inspiration + card event | 409 | 0.213 | 0.351 | 0.61 |
+| card event | 2,191 | 0.332 | 0.336 | 0.99 |
+| other card's training | 3,557 | 0.344 | 0.358 | 0.96 |
 
-With no other source the adopted rate slightly under-predicts (1.013 [1.007, 1.019]). A skill hinted by inspiration
+With no other source the adopted rate is calibrated (1.005 [0.999, 1.011]). A skill hinted by inspiration
 is hinted by training less than predicted (not modelled). It is not that such a skill
 leaves the card's pool: with two pool skills hinted by inspiration, the rest are hinted at 0.371, against
-0.338 if nothing leaves and 0.459 if they leave.
+0.340 if nothing leaves and 0.462 if they leave.
 
 *Prioritised skills.* 1201 runs show a priority list; prioritised skills are hinted by training at 0.336 against
-0.323 predicted (868 rows): no effect, as the model assumes.
+0.326 predicted (868 rows): no effect, as the model assumes.
 
-Against real careers (section 13), training-pool hints read 1.004 of the model.
+Against real careers (section 13), training-pool hints read 0.994 of the model.
 
 ## 8. Chain events
 
@@ -1155,9 +1155,9 @@ what leaving it out costs on real careers.
 
 - **A deck character's shared random event fires in about 0.14 of the careers it can fire in**, a lower bound. The
   rate falls a little as more such events are on offer, but a constant rate predicts unseen runs as well.
-- **Leaving them out under-predicts the targets they can hint**: acquisition there reads 1.25 [1.12, 1.38] of the
-  model. Credited at the fitted rate, it reads 1.01.
-- **Crediting them is not shown to predict unseen careers better** ($z$ = 1.80, short of 1.96).
+- **Leaving them out under-predicts the targets they can hint**: acquisition there reads 1.24 [1.11, 1.38] of the
+  model. Credited at the fitted rate, it reads 1.00.
+- **Crediting them is not shown to predict unseen careers better** ($z$ = 1.76, short of 1.96).
 - **The card's initial friendship gauge raises the rate** (a known miss of the measured rate; friendship bonus and
   specialty priority show no effect).
 - **Two default targets are affected**: Vodka's Nimble Navigator and Nice Nature's Ramp Up, the only ones that are a
@@ -1231,10 +1231,10 @@ only two are a character's top-choice marker (Vodka's Nimble Navigator, Nice Nat
 - On the 305 run-target rows where a deck card's random event could hint the target, it was credited to that
   event 35 times, 22 with no other source. The model gives 73 of these rows no chance, and the
   event hinted the target on 6 of them.
-- Left out, acquisition there reads 1.25 [1.12, 1.38] of the model, an under-prediction. Credited at the
-  fitted rate (about 0.14 there), it reads 1.01 [0.90, 1.11].
-- Held out (the rate fitted on the other four groups' readings), crediting gains 5.0 ± 2.8 nats on
-  these rows ($z$ = 1.80): positive, but short of the 1.96 that would show it predicts unseen careers better.
+- Left out, acquisition there reads 1.24 [1.11, 1.38] of the model, an under-prediction. Credited at the
+  fitted rate (about 0.14 there), it reads 1.00 [0.90, 1.11].
+- Held out (the rate fitted on the other four groups' readings), crediting gains 4.9 ± 2.8 nats on
+  these rows ($z$ = 1.76): positive, but short of the 1.96 that would show it predicts unseen careers better.
 - Crediting raises an affected run's odds over the targets it can land by a median 13% (at most
   156%; 232 runs).
 - The trainee's own random event can be told apart only for Nice Nature: 0 of 6 rows.
@@ -1253,7 +1253,7 @@ leaving them out costs.
 
 - **168 secret and race-result events give hints**, for 81 umas. 11 touch the default targets, none with a gold.
 - **Where only such an event can give a target, leaving them out shows no significant cost**: acquisition reads
-  1.10 [0.81, 1.40] of the model, and crediting the measured rates gains only 0.5 nats.
+  1.10 [0.81, 1.39] of the model, and crediting the measured rates gains only 0.5 nats.
 - **The exception is Vodka's Nimble Navigator**: her own events give it in 25 of 27 runs, and the model
   under-predicts it.
 - **Tokai Teio's Head-On is modelled as always acquired**, like Yamanin Zephyr's Slipstream.
@@ -1272,11 +1272,11 @@ targets (Nimble Navigator, Ramp Up, Tail Held High), 0 of them giving a gold.
 *What does leaving them out cost?* On the conditional-only rows, her event gave the target on
 5 of 89 rows, 0.056 [0.024, 0.125]: Daiwa Scarlet, any outfit, 0 of 84 (Nimble
 Navigator); Mejiro Ardan, any outfit, 4 of 4 (Ramp Up). Left out, acquisition there reads
-1.10 [0.81, 1.40] of the model, and crediting the measured rates gains only 0.5 nats.
+1.10 [0.81, 1.39] of the model, and crediting the measured rates gains only 0.5 nats.
 
 *And Vodka?* Vodka, any outfit, gets Nimble Navigator from her own events in 25 of 27 runs
 [0.77, 0.98]; her random and conditional events both give it and cannot be told apart. With her rows, the model
-left as it is reads 1.33 [1.12, 1.54], and crediting gains 16.2 nats. Not modelled, so the model
+left as it is reads 1.33 [1.12, 1.53], and crediting gains 16.2 nats. Not modelled, so the model
 under-predicts Vodka's Nimble Navigator.
 
 *Why is Tokai Teio's Head-On certain?* All three of its races are her career goals. The goals ask only for top 5, top
@@ -1338,13 +1338,13 @@ This section rebuilds real careers as the model sees them and compares what the 
 ### Findings
 
 - **The model's acquisition odds are calibrated where its priority assumption holds**: observed / predicted
-  0.999 [0.991, 1.006] on the rows whose target is prioritised or whose run shows no priority list. On
-  all rows they read 0.988 [0.981, 0.994]; 92% of the shortfall is on rows the run's list shows not prioritised
-  (0.912 [0.893, 0.930]), where the model's assumption does not hold.
+  0.998 [0.990, 1.005] on the rows whose target is prioritised or whose run shows no priority list. On
+  all rows they read 0.986 [0.980, 0.993]; 85% of the shortfall is on rows the run's list shows not prioritised
+  (0.911 [0.893, 0.929]), where the model's assumption does not hold.
 - **Inheritance is calibrated apart from one target**: without Tail Held High, 0.992 [0.982, 1.003].
   Tail Held High, the only target of eight whose interval excludes 1, is a known miss (0.953 [0.918, 0.988];
   section 3).
-- **Deck hints read optimistic** (0.929 of the model), almost all from the priority assumption: event hints land at
+- **Deck hints read optimistic** (0.926 of the model), almost all from the priority assumption: event hints land at
   0.65 of the model for targets not prioritised. Prioritised targets' event hints read just below it,
   0.970 [0.940, 0.9997], a known miss. Unmodelled scenario and trainee events supply the few
   points the deck loses.
@@ -1352,7 +1352,7 @@ This section rebuilds real careers as the model sees them and compares what the 
 - **Landing all eight targets reads 0.93 of the model**: consistent with calibrated, though only 220 runs acquired
   every open target and the interval allows up to about 1.2× optimism.
 - **Beyond the eight targets**, inheritance reads slightly short of the model (0.986 [0.973, 0.999], spread
-  over many skills: a known miss), and training-pool hints are under-predicted (1.065 of the model).
+  over many skills: a known miss), and training-pool hints are under-predicted (1.056 of the model).
 
 ### Terms
 
@@ -1399,49 +1399,49 @@ The four tests, each isolating one part of the model:
 
 | Test | Rows | Predicted | Observed [95%] | Obs / pred [95%] |
 |---|---|---|---|---|
-| 1. Deck hint, no inspiration | 24,526 | 0.254 | 0.236 [0.233, 0.239] | 0.929 [0.915, 0.942] |
-| 1. Training pool only | 5,036 | 0.357 | 0.358 | 1.004 [0.969, 1.038] |
+| 1. Deck hint, no inspiration | 24,526 | 0.255 | 0.236 [0.233, 0.239] | 0.926 [0.912, 0.939] |
+| 1. Training pool only | 5,036 | 0.361 | 0.358 | 0.994 [0.959, 1.028] |
 | 1. Events only | 3,538 | 0.896 | 0.798 | 0.891 [0.878, 0.903] |
 | 1. Events only, target prioritised | 551 | 0.859 | 0.833 | 0.970 [0.940, 0.9997] |
 | 1. Events only, not prioritised | 584 | 0.884 | 0.577 | 0.653 [0.613, 0.694] |
 | 2. Inheritance | 41,584 | 0.359 | 0.354 [0.351, 0.358] | 0.987 [0.978, 0.997] |
-| 3. Acquired, any source | 37,287 | 0.512 | 0.506 [0.502, 0.509] | 0.988 [0.981, 0.994] |
-| 3. Acquired, deck or inspiration only | 37,287 | 0.512 | 0.497 | 0.972 [0.965, 0.978] |
-| 3. Acquired, any source, prioritised or no list shown | 32,848 | 0.506 | 0.505 | 0.999 [0.991, 1.006] |
-| 3. Acquired, deck or inspiration only, prioritised or no list shown | 32,848 | 0.506 | 0.497 | 0.982 [0.974, 0.989] |
-| 3. Acquired, prioritised | 3,556 | 0.700 | 0.706 | 1.009 [0.993, 1.025] |
-| 3. Acquired, not prioritised | 4,439 | 0.558 | 0.509 | 0.912 [0.893, 0.930] |
-| 4. Landing (sums of $p$) | 37,287 | 6,929.5 | 6,824.9 | 0.985 |
+| 3. Acquired, any source | 37,287 | 0.513 | 0.506 [0.502, 0.509] | 0.986 [0.980, 0.993] |
+| 3. Acquired, deck or inspiration only | 37,287 | 0.513 | 0.497 | 0.971 [0.964, 0.977] |
+| 3. Acquired, any source, prioritised or no list shown | 32,848 | 0.506 | 0.505 | 0.998 [0.990, 1.005] |
+| 3. Acquired, deck or inspiration only, prioritised or no list shown | 32,848 | 0.506 | 0.497 | 0.981 [0.973, 0.988] |
+| 3. Acquired, prioritised | 3,556 | 0.700 | 0.706 | 1.008 [0.993, 1.024] |
+| 3. Acquired, not prioritised | 4,439 | 0.559 | 0.509 | 0.911 [0.893, 0.929] |
+| 4. Landing (sums of $p$) | 37,287 | 6,933.9 | 6,824.9 | 0.984 |
 
 ### Evidence
 
 *Does the priority list matter?* Yes. On the runs that show a priority list, prioritised targets are acquired at the
-model's rate (1.009 [0.993, 1.025]) and the others less often (0.912 [0.893, 0.930]); the
+model's rate (1.008 [0.993, 1.024]) and the others less often (0.911 [0.893, 0.929]); the
 pooled test averages the two with the runs that show no list. Of the shortfall over all rows,
-92% is on the non-prioritised rows.
+85% is on the non-prioritised rows.
 
 *Where does the deck lose its points?* Almost all in event hints of targets the player did not prioritise (test 1's
 split above). Unmodelled scenario and trainee events supply the few points the deck loses: 299 target acquisitions
 in 37,287 rows, 0.8%. On the rows the priority assumption fits, the deck and inspiration alone read
-0.982 [0.974, 0.989] of the model, and every source together 0.999 [0.991, 1.006].
+0.981 [0.973, 0.988] of the model, and every source together 0.998 [0.990, 1.005].
 
 *Per target* (observed / predicted):
 
 | Target | Deck hint | Inheritance | Acquired | Landing |
 |---|---|---|---|---|
-| Uma Stan / Superstan | 0.80 [0.70, 0.91] | 0.996 | 0.977 | 0.980 |
-| Nimble Navigator / No Stopping Me! | 1.05 [0.96, 1.16] | 0.984 | 1.051 | 1.037 |
+| Uma Stan / Superstan | 0.79 [0.69, 0.91] | 0.996 | 0.977 | 0.979 |
+| Nimble Navigator / No Stopping Me! | 1.04 [0.95, 1.14] | 0.984 | 1.048 | 1.035 |
 | Playtime's Over! / See Ya Later! | 0.985 [0.97, 1.00] | 1.000 | 0.991 | 0.996 |
-| Ramp Up / It's On! | 0.826 [0.79, 0.87] | 1.009 | 0.929 [0.90, 0.96] | 0.923 |
-| Tail Held High / Tail Nine | 0.986 [0.93, 1.04] | 0.953 [0.92, 0.99] | 0.985 | 0.985 |
+| Ramp Up / It's On! | 0.823 [0.78, 0.86] | 1.009 | 0.927 [0.90, 0.95] | 0.921 |
+| Tail Held High / Tail Nine | 0.979 [0.92, 1.03] | 0.953 [0.92, 0.99] | 0.983 | 0.983 |
 | Racing Spirit: Stamina | no deck source | 0.999 | 1.042 | 1.035 |
-| Slipstream / Perfect Spot! | 0.990 [0.92, 1.06] | 0.974 | 0.993 | 0.954 |
-| Risky Business / Nothing Ventured | 0.828 [0.77, 0.89] | 0.928 | 0.892 [0.85, 0.94] | 0.882 |
+| Slipstream / Perfect Spot! | 0.986 [0.92, 1.06] | 0.974 | 0.991 | 0.953 |
+| Risky Business / Nothing Ventured | 0.828 [0.77, 0.89] | 0.928 | 0.891 [0.85, 0.94] | 0.882 |
 
-*Training-pool hints by scenario* (a test of $\beta$ and $d$, section 7): Grand Concert 1.024 [0.98, 1.06], Unity Cup
-0.932 [0.83, 1.03], URA Finale 1.013 [0.90, 1.12], Trackblazer 0.779 [0.63, 0.93]. Only
+*Training-pool hints by scenario* (a test of $\beta$ and $d$, section 7): Grand Concert 1.014 [0.97, 1.05], Unity Cup
+0.928 [0.83, 1.03], URA Finale 0.995 [0.89, 1.10], Trackblazer 0.779 [0.63, 0.93]. Only
 Trackblazer's interval excludes 1, its $\beta$ over-predicting these runs. By the lowest limit break of the sourcing
-cards: LB4 1.012, LB3 0.991, LB0-2 0.87-0.98 (148-242 rows each, every interval covering 1).
+cards: LB4 1.002, LB3 0.982, LB0-2 0.86-0.98 (148-242 rows each, every interval covering 1).
 
 *Unity Cup's guaranteed golds* show in 1148 of 1148 Unity Cup runs each.
 
@@ -1456,25 +1456,25 @@ matches its mean prediction. Deck hint and acquired, observed (mean prediction i
 |---|---|---|
 | 0 | 14,258, 0.001 | 8,822, 0.011 |
 | above 0 to 0.20 | 110, 0.227 (0.17) | 1,943, 0.162 (0.15) |
-| 0.20-0.40 | 3,664, 0.308 (0.31) | 3,817, 0.319 (0.30) |
-| 0.40-0.60 | 1,833, 0.453 (0.47) | 4,638, 0.500 (0.50) |
-| 0.60-0.80 | 1,308, 0.568 (0.73) | 7,006, 0.690 (0.71) |
-| 0.80-0.95 | 672, 0.725 (0.87) | 4,958, 0.832 (0.86) |
-| 0.95-1 | 2,681, 0.954 (1.00) | 6,103, 0.974 (1.00) |
+| 0.20-0.40 | 3,655, 0.309 (0.31) | 3,812, 0.319 (0.30) |
+| 0.40-0.60 | 1,840, 0.452 (0.47) | 4,633, 0.501 (0.50) |
+| 0.60-0.80 | 1,308, 0.567 (0.73) | 6,996, 0.689 (0.71) |
+| 0.80-0.95 | 674, 0.726 (0.87) | 4,973, 0.832 (0.86) |
+| 0.95-1 | 2,681, 0.954 (1.00) | 6,108, 0.974 (1.00) |
 
 The deck's over-prediction sits in its top buckets, the event rewards: the buckets predicted 0.6 and above hold
-95% of the shortfall, and 97% of their rows have an event source. The 0.20-0.40 bucket, almost all training-pool
-rows, is within its interval (0.308 [0.294, 0.323] against 0.311).
+91% of the shortfall, and 97% of their rows have an event source. The 0.20-0.40 bucket, almost all training-pool
+rows, is within its interval (0.309 [0.294, 0.323] against 0.314).
 
 *Per run.* A run has 7.17 open targets on average.
 
-- Targets acquired per run: expected 3.673, observed 3.627; on the 4,123 runs the priority assumption fits
-  (every open target prioritised, or no list shown), expected 3.485, observed 3.475.
-- All open targets acquired: product of the model's odds 0.0448, observed 0.0423 [0.0372, 0.0481]; on
-  the runs the priority assumption fits, 0.0249 against 0.0250 [0.0206, 0.0302].
+- Targets acquired per run: expected 3.677, observed 3.627; on the 4,123 runs the priority assumption fits
+  (every open target prioritised, or no list shown), expected 3.489, observed 3.475.
+- All open targets acquired: product of the model's odds 0.0449, observed 0.0423 [0.0372, 0.0481]; on
+  the runs the priority assumption fits, 0.0250 against 0.0250 [0.0206, 0.0302].
 - Landing $P(\text{all eight})$, recomputed from what each run acquired, against the model's exact $P(\text{all})$:
-  0.927 [0.80, 1.05] (bootstrap over runs, resampling whole runs); Unity Cup 0.926 [0.80, 1.07],
-  Grand Concert 1.06 [0.67, 1.51], URA Finale 0.83 [0.35, 1.41]; Trackblazer's model value is 0.
+  0.926 [0.80, 1.05] (bootstrap over runs, resampling whole runs); Unity Cup 0.926 [0.80, 1.07],
+  Grand Concert 1.05 [0.67, 1.51], URA Finale 0.82 [0.34, 1.41]; Trackblazer's model value is 0.
 
 Consistent with calibrated, though the interval allows up to about 1.2× optimism (1/0.80). Only
 220 runs acquired every open target, too few to separate the exact joint from the product.
@@ -1488,14 +1488,14 @@ Tosho's):
 | Sasami Anshinzawa [This Might Sting!] > Risky Business | 1.000 | 0.760 | 0.76 [0.72, 0.80] | 437 | the model assumes Risky Business prioritised (finale choice 2) |
 | Riko Kashimoto [Planned Perfection] > Ramp Up | 0.750 | 0.490 | 0.65 [0.60, 0.70] | 708 | open (her Lone Wolf choice, when prioritised, accounts for part) |
 | King Halo [Tonight, We Waltz] > Uma Stan | 0.947 | 0.752 | 0.79 [0.71, 0.87] | 125 | Uma Stan sits on a choice that needs a priority |
-| Gold Ship [That Time I Became the Strongest] > Uma Stan | 0.196 | 0.143 | 0.73 [0.43, 1.19] | 84 | open |
-| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | 0.305 | 0.195 | 0.64 [0.40, 0.97] | 77 | open |
-| Maruzensky [Sentimental Flare ♪] > Slipstream | 0.241 | 0.291 | 1.21 [1.01, 1.42] | 330 | open |
-| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | 0.338 | 0.479 | 1.42 [1.13, 1.71] | 96 | open |
-| Daitaku Helios [Sunlit Angel ♪] > Slipstream | 0.724 | 0.641 | 0.88 [0.81, 0.95] | 345 | open |
-| Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | 0.332 | 0.293 | 0.88 [0.75, 1.022] | 396 | open |
-| Nakayama Festa [Trusting the Dice] > Risky Business | 0.610 | 0.522 | 0.85 [0.78, 0.93] | 462 | open |
-| Tokai Teio [Step! Smile! Wink!] > Nimble Navigator | 0.418 | 0.541 | 1.29 [1.10, 1.48] | 148 | open |
+| Gold Ship [That Time I Became the Strongest] > Uma Stan | 0.199 | 0.143 | 0.72 [0.42, 1.17] | 84 | open |
+| Mayano Top Gun [Cute + Cute = ?] > Nimble Navigator | 0.307 | 0.195 | 0.63 [0.40, 0.97] | 77 | open |
+| Maruzensky [Sentimental Flare ♪] > Slipstream | 0.244 | 0.291 | 1.19 [1.00, 1.40] | 330 | open |
+| Daitaku Helios [Let's Get This Party Lit!] > Slipstream | 0.340 | 0.479 | 1.41 [1.12, 1.70] | 96 | open |
+| Daitaku Helios [Sunlit Angel ♪] > Slipstream | 0.725 | 0.641 | 0.88 [0.81, 0.95] | 345 | open |
+| Sweep Tosho [Lamplit Training of a Witch-to-Be] > Slipstream | 0.334 | 0.293 | 0.88 [0.75, 1.018] | 396 | open |
+| Nakayama Festa [Trusting the Dice] > Risky Business | 0.612 | 0.522 | 0.85 [0.78, 0.93] | 462 | open |
+| Tokai Teio [Step! Smile! Wink!] > Nimble Navigator | 0.423 | 0.541 | 1.28 [1.09, 1.46] | 148 | open |
 
 King Halo's Uma Stan follows the priority: where the run lists Uma Stan as prioritised, her card hinted it in
 35 of 38 rows against 37.1 expected (exact Poisson-binomial $P(X \le 35)$ = 0.062,
@@ -1511,7 +1511,7 @@ untested here.
 *Other skills.* Every non-target skill a deck card or spark could give, on a 30% sample of the runs
 (1,559): inheritance reads 0.986 [0.973, 0.999] over
 66,598 rows, slightly short of the model, a known miss spread over many skills (the largest one skill's share of
-the shortfall is 9%); training-pool hints read 1.065 [1.053, 1.076] over 26,573, under-predicted.
+the shortfall is 9%); training-pool hints read 1.056 [1.045, 1.068] over 26,573, under-predicted.
 
 ### Untested here
 

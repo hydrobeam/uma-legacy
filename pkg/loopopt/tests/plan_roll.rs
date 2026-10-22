@@ -1,11 +1,12 @@
 //! A roll of the plan's pick (`next.roll`, docs/SOLVER.md *Next career*): the careers her veteran saves at one outcome
 //! and its bound, worked out from the plan's kept roll state, equal to the values the plan's full outcome table held at
 //! that outcome before the table was dropped from the output (`fixtures/plan_roll.json`: `outcomes.y` and `y_hi` of the
-//! val/plan jobs' outputs at 5834a65 with the goal races' streak shift (lib.rs `scored_position`) and the lineage
-//! schedule's race weights from `FILL_EPS` (career/schedule.rs `schedule`) patched in, at the all-zero and all-max
-//! outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her stars per job target). Also: a roll
-//! carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs first), and
-//! a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
+//! val/plan jobs' outputs at 5834a65 with the goal races' streak shift (lib.rs `scored_position`), the lineage
+//! schedule's race weights from `FILL_EPS` (career/schedule.rs `schedule`) and the training-hint bases and specialty
+//! weights of research/results.json (deck/hints.rs, via build.rs, to 3 decimals) patched in, at the all-zero and
+//! all-max outcomes and samples of y >= 0.5, of y < 0.5 <= y_hi and of y_hi < 0.5, as her stars per job target). Also:
+//! a roll carried by another job (`roll`, as the page's Reroll sends it), a roll with no plan kept (the plan runs
+//! first), and a roll in a new process after `state_out` / `state_in` (the stored roll state, no plan).
 use serde_json::{Value, json};
 use std::{
     fs,

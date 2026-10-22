@@ -11,25 +11,28 @@ pub(super) fn scenario_name(scenario: &str) -> &str {
         other => other,
     }
 }
+// The bases and specialty weights: research/results.json's section 7 fit, rounded to 3 decimals by build.rs.
+include!(concat!(env!("OUT_DIR"), "/hint_constants.rs"));
+
+/// A card's training-hint draws per run at hint frequency 0 and specialty priority 0 (docs/RESEARCH.md section 7);
+/// an unknown scenario reads as Unity Cup.
 pub(crate) fn hint_base(scenario: &str) -> f64 {
-    // Retained training-hint fit; current checks: docs/RESEARCH.md section 7 (`7.form_runs`).
-    // Grand Masters uses the pooled fit as a placeholder.
     match scenario {
-        "gc" => 1.97,
-        "ura" => 1.34,
-        "trackblazer" => 1.70,
-        "grandmasters" => 1.86,
-        _ => 2.36,
+        "gc" => BASE_GRAND_CONCERT,
+        "ura" => BASE_URA_FINALE,
+        "trackblazer" => BASE_TRACKBLAZER,
+        "grandmasters" => BASE_GRAND_MASTERS,
+        _ => BASE_UNITY_CUP,
     }
 }
 /// Specialty priority's weight in the draws: h scales by 1 + d x specialty/100 (fitted with `hint_base`).
 pub(crate) fn hint_spec(scenario: &str) -> f64 {
     match scenario {
-        "gc" => 0.08,
-        "ura" => 0.39,
-        "trackblazer" => 0.11,
-        "grandmasters" => 0.26,
-        _ => 0.36,
+        "gc" => SPEC_GRAND_CONCERT,
+        "ura" => SPEC_URA_FINALE,
+        "trackblazer" => SPEC_TRACKBLAZER,
+        "grandmasters" => SPEC_GRAND_MASTERS,
+        _ => SPEC_UNITY_CUP,
     }
 }
 /// P(none of the target skills is drawn) in `draws` training-hint draws over `pool_size` skills, each draw

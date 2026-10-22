@@ -309,11 +309,12 @@ export async function careerPage(b) {
 }
 
 // ---------- data the checks read from the repo
-// the scenario tiles' "Hint rate ×" lines as the solver's hint_base gives them (a multiple of URA Finale's), by scenario
+// the scenario tiles' "Hint rate ×" lines as the solver's hint_base gives them (a multiple of URA Finale's), by scenario:
+// research/results.json's section 7 fit rounded to 3 decimals, as pkg/loopopt/build.rs reads it (Grand Masters: the
+// pooled fit; an unknown scenario reads as Unity Cup)
 export function hintRates() {
-  const src = fs.readFileSync(repoUrl('pkg/loopopt/src/deck/hints.rs'), 'utf8');
-  const body = /fn hint_base[^{]*\{[\s\S]*?match scenario \{([^}]*)\}/.exec(src)[1];
-  const base = Object.fromEntries([...body.matchAll(/"(\w+)" => ([\d.]+)/g)].map(m => [m[1], +m[2]])), fallback = +/_ => ([\d.]+)/.exec(body)[1];
-  const of = s => base[s] ?? fallback;
+  const values = JSON.parse(fs.readFileSync(repoUrl('research/results.json'), 'utf8')).values;
+  const fitted = { unity: 'unity_cup', gc: 'grand_concert', ura: 'ura_finale', trackblazer: 'trackblazer' };
+  const of = s => +values[s === 'grandmasters' ? '7.one_base_and_one_d_base' : `7.specialty_base_${fitted[s] ?? 'unity_cup'}`].toFixed(3);
   return Object.fromEntries(['unity', 'gc', 'ura', 'trackblazer', 'grandmasters'].map(s => [s, `Hint rate ×${(of(s) / of('ura')).toFixed(2)}`]));
 }

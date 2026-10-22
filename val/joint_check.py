@@ -5,7 +5,8 @@ reported decks and loops, jointly over the chain process (job chain_events, defa
 chain slot, weight = links left, stop-risk mixture), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
 skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
-(1 + d(scenario) x specialty/100), the two constants read from src/deck/hints.rs), and compare with the
+(1 + d(scenario) x specialty/100), the two constants read from research/results.json as the solver's build reads
+them), and compare with the
 reported p_all. Written separately from the Rust code: final chain states by plain forward iteration, and the joint
 expectation by inclusion-exclusion over per-target "no gold" / "no hint" requirements.
 
@@ -66,19 +67,25 @@ class CardSources:
 
 
 def _hint_constants():
-    """hint_base and hint_spec, read from the solver's source (constants, not code: the check stays independent)"""
-    import re
+    """hint_base and hint_spec as the solver's build.rs takes them: research/results.json's section 7 fit, rounded to 3
+    decimals; Grand Masters (no runs) takes one base and one d fitted over every scenario, an unknown scenario reads as
+    Unity Cup (constants, not code: the check stays independent)"""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "research", "results.json")
+    values = json.load(open(path, encoding="utf-8"))["values"]
+    fitted_names = {"gc": "grand_concert", "ura": "ura_finale", "trackblazer": "trackblazer"}
 
-    src = open(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pkg", "loopopt", "src", "deck", "hints.rs")
-    ).read()
-    out = {}
-    for function_name in ("hint_base", "hint_spec"):
-        body = re.search(r"fn " + function_name + r"[^{]*\{.*?match scenario \{(.*?)\}", src, re.S).group(1)
-        v = {k: float(x) for k, x in re.findall(r'"(\w+)" => ([\d.]+)', body)}
-        default = float(re.search(r"_ => ([\d.]+)", body).group(1))
-        out[function_name] = lambda s, v=v, default=default: v.get(s, default)
-    return out
+    def constant(part):
+        """a scenario's base or specialty weight d (`part`: "base" or "d")"""
+        return lambda s: round(
+            values[
+                f"7.one_base_and_one_d_{part}"
+                if s == "grandmasters"
+                else f"7.specialty_{part}_{fitted_names.get(s, 'unity_cup')}"
+            ],
+            3,
+        )
+
+    return {"hint_base": constant("base"), "hint_spec": constant("d")}
 
 
 HINT = _hint_constants()

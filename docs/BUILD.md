@@ -98,6 +98,12 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `deploy` | builds the page and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
 
+The solver's training-hint constants (each scenario's base and specialty weight, `src/deck/hints.rs`) are the research
+fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every build, native
+or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the solver's results
+(rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). A missing key fails the build
+with its name.
+
 ## Data updates
 
 Put the new `master.mdb` files in `game/`, then `./build.sh data events pb`, validation, and a release.
@@ -293,7 +299,7 @@ minutes and can serve the previous page until then.
 build.sh             the one entry point for every build step
 .githooks/           the pre-commit formatting check (`./build.sh hooks` turns it on)
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
-pkg/loopopt/         the Rust solver (src/, tests/)
+pkg/loopopt/         the Rust solver (src/, tests/; build.rs takes the training-hint constants from research/results.json)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
 pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
                      launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,

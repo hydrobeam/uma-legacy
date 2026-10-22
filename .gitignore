@@ -21,6 +21,7 @@
 !/pkg/loopopt/tests/
 !/pkg/loopopt/export/
 !/pkg/loopopt/data/
+!/pkg/loopopt/build.rs
 !/pkg/loopopt/Cargo.toml
 !/pkg/loopopt/Cargo.lock
 !/pkg/loopopt/rustfmt.toml

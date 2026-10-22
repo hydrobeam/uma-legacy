@@ -758,16 +758,16 @@ and an exact Markov chain over the other skills' hint counts once a skill can re
 
 These are **fitted** by maximum likelihood on every hint row, a row being one pool skill of one card in one
 run, on maximum-limit-break cards, rows where no inspiration hinted the skill, R cards out; {{7.specialty_rows|,.0f}} rows from
-{{7.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row; *Adopted*: the values the model uses, fitted
-on an earlier, smaller set of the runs:
+{{7.specialty_card_runs|,.0f}} card-runs; the Runs column counts the runs that add a row. The model uses these values rounded to
+three decimals: the solver reads them from `research/results.json` when it is built (`pkg/loopopt/build.rs`).
 
-| Scenario | $\beta$ | $d$ | Adopted $\beta$ / $d$ | Rows | Runs |
-|---|---|---|---|---|---|
-| Unity Cup | {{7.specialty_base_unity_cup|.3f}} | {{7.specialty_d_unity_cup|.3f}} | {{7.adopted_unity_cup|.2f}} / {{7.adopted_d_unity_cup|.2f}} | {{7.specialty_rows_unity_cup|,.0f}} | {{7.specialty_runs_unity_cup|.0f}} |
-| Grand Concert | {{7.specialty_base_grand_concert|.3f}} | {{7.specialty_d_grand_concert|.3f}} | {{7.adopted_grand_concert|.2f}} / {{7.adopted_d_grand_concert|.2f}} | {{7.specialty_rows_grand_concert|,.0f}} | {{7.specialty_runs_grand_concert|,.0f}} |
-| URA Finale | {{7.specialty_base_ura_finale|.3f}} | {{7.specialty_d_ura_finale|.3f}} | {{7.adopted_ura_finale|.2f}} / {{7.adopted_d_ura_finale|.2f}} | {{7.specialty_rows_ura_finale|,.0f}} | {{7.specialty_runs_ura_finale|.0f}} |
-| Trackblazer | {{7.specialty_base_trackblazer|.3f}} | {{7.specialty_d_trackblazer|.3f}} | {{7.adopted_trackblazer|.2f}} / {{7.adopted_d_trackblazer|.2f}} | {{7.specialty_rows_trackblazer|,.0f}} | {{7.specialty_runs_trackblazer|.0f}} |
-| Grand Masters | no runs | | {{7.adopted_grand_masters|.2f}} / {{7.adopted_d_grand_masters|.2f}} (**assumed**: one $\beta$ and one $d$ over every scenario) | | |
+| Scenario | $\beta$ | $d$ | Rows | Runs |
+|---|---|---|---|---|
+| Unity Cup | {{7.specialty_base_unity_cup|.3f}} | {{7.specialty_d_unity_cup|.3f}} | {{7.specialty_rows_unity_cup|,.0f}} | {{7.specialty_runs_unity_cup|.0f}} |
+| Grand Concert | {{7.specialty_base_grand_concert|.3f}} | {{7.specialty_d_grand_concert|.3f}} | {{7.specialty_rows_grand_concert|,.0f}} | {{7.specialty_runs_grand_concert|,.0f}} |
+| URA Finale | {{7.specialty_base_ura_finale|.3f}} | {{7.specialty_d_ura_finale|.3f}} | {{7.specialty_rows_ura_finale|,.0f}} | {{7.specialty_runs_ura_finale|.0f}} |
+| Trackblazer | {{7.specialty_base_trackblazer|.3f}} | {{7.specialty_d_trackblazer|.3f}} | {{7.specialty_rows_trackblazer|,.0f}} | {{7.specialty_runs_trackblazer|.0f}} |
+| Grand Masters | {{7.one_base_and_one_d_base|.3f}} | {{7.one_base_and_one_d_d|.3f}} | no runs: **assumed**, one $\beta$ and one $d$ fitted over every scenario's rows | |
 
 ### Evidence
 
@@ -830,7 +830,7 @@ cards out):
 | card event | {{7.spark_card_event_rows|,.0f}} | {{7.spark_card_event_observed|.3f}} | {{7.spark_card_event_predicted|.3f}} | {{7.spark_card_event_ratio|.2f}} |
 | other card's training | {{7.spark_other_card_training_rows|,.0f}} | {{7.spark_other_card_training_observed|.3f}} | {{7.spark_other_card_training_predicted|.3f}} | {{7.spark_other_card_training_ratio|.2f}} |
 
-With no other source the adopted rate slightly under-predicts ({{7.spark_none_obs_per_pred|.3f}} [{{7.spark_none_obs_per_pred_95_pct_low|.3f}}, {{7.spark_none_obs_per_pred_95_pct_high|.3f}}]). A skill hinted by inspiration
+With no other source the adopted rate is calibrated ({{7.spark_none_obs_per_pred|.3f}} [{{7.spark_none_obs_per_pred_95_pct_low|.3f}}, {{7.spark_none_obs_per_pred_95_pct_high|.3f}}]). A skill hinted by inspiration
 is hinted by training less than predicted (not modelled). It is not that such a skill
 leaves the card's pool: with two pool skills hinted by inspiration, the rest are hinted at {{7.drop_out_test_observed|.3f}}, against
 {{7.drop_out_test_no_drop_out|.3f}} if nothing leaves and {{7.drop_out_test_drop_out|.3f}} if they leave.

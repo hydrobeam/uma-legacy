@@ -103,10 +103,11 @@ export const RACEIDS = parse('data-raceids');       // race name -> race id (ban
 // target golds a scenario hands out in every Independent Training run (Unity Cup: No Stopping Me!, It's On!)
 export const SCEN_GOLDS = { unity: [20049, 20046] };
 // the scenario picker's tiles, in its order. id: Global single_mode_scenario id (logo img/scen/{id}); base: training
-// hints per card per run at hint frequency 0 and specialty 0 (hint_base in pkg/loopopt/src/deck/hints.rs, which the
-// browser suite checks it equals), shown as a multiple of URA Finale's (the original scenario); est: no measured base
-// (Grand Masters: a placeholder); tint: a light shade of the game's label colour (single_mode_scenario.label_bg_color)
-// behind the name badge shown when the logo is missing; a tile also lists the scenario's guaranteed golds (SCEN_GOLDS).
+// hints per card per run at hint frequency 0 and specialty 0 (the solver's hint_base: research/results.json's fit,
+// rounded to 3 decimals by pkg/loopopt/build.rs; the browser suite checks it equals that), shown as a multiple of URA
+// Finale's (the original scenario); est: no measured base (Grand Masters: one base fitted over the other scenarios);
+// tint: a light shade of the game's label colour (single_mode_scenario.label_bg_color) behind the name badge shown
+// when the logo is missing; a tile also lists the scenario's guaranteed golds (SCEN_GOLDS).
 // ss: picking the scenario sets the lineage rank to SS (else below SS), the band most of the scenario's careers reach
 // with every skill point spent (docs/RESEARCH.md section 2, tested there; Grand Masters has no data and is assumed SS).
 // era: offered only with that era's data (Grand Masters: the JP Grand Masters era).
@@ -126,11 +127,11 @@ export const SCEN_GOLDS = { unity: [20049, 20046] };
  */
 /** @type {Scenario[]} */
 export const SCENARIOS = [
-  { v: 'unity', id: 2, name: 'Unity Cup', base: 2.36, ss: false, tint: '#c5ecff' },
-  { v: 'gc', id: 3, name: 'Grand Concert', base: 1.97, ss: true, tint: '#ebe3ff' },
-  { v: 'ura', id: 1, name: 'URA Finale', base: 1.34, ss: false, tint: '#e6f4c9' },
-  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: 1.70, ss: false, tint: '#faeebf' },
-  { v: 'grandmasters', id: 5, name: 'Grand Masters', base: 1.86, est: true, ss: true, era: 'gm', tint: '#f3e1d2' },
+  { v: 'unity', id: 2, name: 'Unity Cup', base: 2.395, ss: false, tint: '#c5ecff' },
+  { v: 'gc', id: 3, name: 'Grand Concert', base: 1.999, ss: true, tint: '#ebe3ff' },
+  { v: 'ura', id: 1, name: 'URA Finale', base: 1.380, ss: false, tint: '#e6f4c9' },
+  { v: 'trackblazer', id: 4, name: 'Trackblazer', base: 1.702, ss: false, tint: '#faeebf' },
+  { v: 'grandmasters', id: 5, name: 'Grand Masters', base: 1.991, est: true, ss: true, era: 'gm', tint: '#f3e1d2' },
 ];
 // lineage rank: the star mix of the legacies' sparks (state.rank), below SS (rank score 6,500-17,499) or SS (17,500+)
 export const RANKS = { below: '0.50,0.45,0.05', ss: '0.20,0.70,0.10' };
