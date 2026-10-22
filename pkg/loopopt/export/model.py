@@ -7,7 +7,9 @@ RN = names(32)
 B = json.load(open(BASE))
 ROSTER = B["roster"]
 NAME = {int(k): v for k, v in B["name"].items()}
-APT = {int(k): v for k, v in B["apt"].items()}  # (short,mile,mid,long,turf,dirt) codes 1..8 = G..S
+APT = {
+    int(k): v for k, v in B["apt"].items()
+}  # distance, surface, then running-style grades; base.json order, codes 1..8 = G..S
 
 
 def off(code):  # S,A ->0, B->1 ... G->6
@@ -53,7 +55,6 @@ class RaceOptions(NamedTuple):
     goals: list[list[GoalRace]]
 
 
-# program info
 PROG = {}
 for (
     program_id,

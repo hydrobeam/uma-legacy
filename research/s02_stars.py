@@ -10,7 +10,7 @@ an unselected veteran cannot be read from them. What is computed here:
   RANKS, the solver's default from pkg/loopopt/src/skills.rs);
 - what replacing a legacy's stars by that expected base costs: per run of the records (research/data/runs.jsonl), with
   its six real affinities (s05_affinity), q with b in each of the two rolls against the exact
-  1 - prod_l E_s[(1 - b(s)(1 + A_l / 100))^2] (a legacy's stars are the same in both rolls), for one target carried by
+  1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both rolls), for one target carried by
   all six legacies.
 """
 

@@ -78,7 +78,7 @@ class ValidationExitTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(".work.nodes", result.stdout)
         (self.val / "trial__tiny.out").unlink()
-        self.assertNotEqual(self.run_script("same.py", "trial").returncode, 0)  # nothing compared
+        self.assertNotEqual(self.run_script("same.py", "trial").returncode, 0)
 
     def test_whole_output_plan_directory(self):
         self.write(self.plan / "trial__tiny.out", self.output)

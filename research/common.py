@@ -1,8 +1,8 @@
 """Shared helpers for the research scripts: paths, the run records, game data, intervals and the values table.
 
 Each section script defines `claims()`, returning its Values and Findings, and prints its own detail when run alone.
-The run records (research/data/runs.jsonl, not included) are optional: without them a script returns its data
-findings as "needs data" and still checks the derived ones."""
+Without the run records (research/data/runs.jsonl, not included), sections skip record-dependent calculations or
+return findings as "needs data". Game-backed checks still require their game inputs."""
 
 import collections, json, math, os, re, sqlite3, sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -86,7 +86,6 @@ _cache: dict[
 
 
 def have_runs() -> bool:
-    """whether the run records are present"""
     return os.path.exists(RUNS)
 
 
@@ -185,7 +184,6 @@ def wilson(k: float, n: float, z: float = 1.96) -> Interval:
 
 
 def div(a: float, b: float) -> float:
-    """a / b, NaN when b is 0"""
     return a / b if b else float("nan")
 
 
@@ -306,8 +304,8 @@ class HeldOutComparison(NamedTuple):
 
 def compare_held_out(a: Sequence[float] | np.ndarray, b: Sequence[float] | np.ndarray) -> HeldOutComparison:
     """paired comparison of two models' held-out log-likelihoods, one entry per run (each run scored by the model fitted
-    on the other folds): (sum of a - b in nats, its standard error, z). z > 1.96 means a predicts unseen runs better than
-    b beyond chance (Vuong 1989: the per-run differences are independent across runs)"""
+    on the other folds): (sum of a - b in nats, its standard error, z). The normal approximation assumes independent
+    per-run differences; this standard error does not account for overlapping training folds."""
     import numpy as np
 
     d = np.asarray(a, float) - np.asarray(b, float)
@@ -333,7 +331,7 @@ def key_of(section: str, name: str) -> str:
 
 @dataclass
 class Value:
-    """One number a section computes: its name (the key in results.json and in the document template is
+    """One number or rendered table a section computes: its name (the key in results.json and in the document template is
     key_of(section, name)) and the computed value; None when it could not be computed (`status` says why, e.g.
     'needs data' without the run records)."""
 
@@ -372,8 +370,8 @@ class Finding:
 def finding(
     section: str, statement: str, test: bool | Callable[[], Any], evidence: str | Callable[[], str] = ""
 ) -> Finding:
-    """a Finding from a test that may need missing numbers: `test` is a bool or a function returning one; any error
-    computing it (a missing number) gives holds = None"""
+    """a Finding from a test that may need missing numbers: `test` is a bool or a function returning one; TypeError, KeyError,
+    ValueError or ZeroDivisionError gives holds = None"""
     try:
         holds = bool(test() if callable(test) else test)  # a missing number surfaces as one of these errors
     except TypeError, KeyError, ValueError, ZeroDivisionError:
@@ -387,12 +385,10 @@ def finding(
 
 
 def say_missing() -> None:
-    """tell the reader that the run records are absent"""
     print("run records not found (research/data/runs.jsonl, not included): data claims skipped")
 
 
 def findings_table(fs: list[Finding], out: Callable[[str], Any] = print) -> None:
-    """print each finding with its verdict and evidence"""
     if not fs:
         return
     out("\nFindings (each conclusion, tested on the reproduced numbers):")
@@ -414,7 +410,6 @@ def table(items: Sequence[Value | Finding], out: Callable[[str], Any] = print) -
 
 
 def main(claims_fn: Callable[[], list[Value | Finding]]) -> None:
-    """run one section script alone: print its claims"""
     if not have_runs():
         say_missing()
     table(claims_fn())

@@ -1,7 +1,7 @@
 """Independent check of the solver's exact landing odds (`joint_fast` in src/deck/joint.rs).
 
 For every deck result of a validation run, recompute P(all targets land) from the job, the card data and the
-reported decks and loops, jointly over the chain process (Binomial(21, 0.35) events, each advancing a random remaining
+reported decks and loops, jointly over the chain process (job chain_events, default Binomial(21, 0.35) events, each advancing a random remaining
 chain slot, weight = links left, stop-risk mixture), over each event's outcomes and over one card's training draws
 (P(no hint for a set A of its targets) by forward simulation of the draws, each uniform over the skills below Lv 5, a
 skill leaving after ceil(5 / hint levels per draw) draws; floor/ceil(h) draws, h = base(scenario) x (1 + hf/100) x
@@ -159,7 +159,7 @@ def chain_distribution(kinds, event_probability):
 
 def check(out, job, d, alt_q=None):
     """max |recomputed / reported p_all - 1| over the result's loops; with `alt_q` (top -> list of per-lineage q
-    vectors) also, per loop, the mean P(all) at each of those q vectors: returns (worst, [[P per vector] per loop])"""
+    vectors) also, per loop, the mean P(all) at each of those q vectors: returns worst alone, or (worst, [[P per vector] per loop]) with alt_q"""
     read_data = lambda f: json.load(open(os.path.join(d, f)))
     skill_targets = {}
     for g, w, gd in read_data(job["skills_file"])["skills"]:

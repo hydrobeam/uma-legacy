@@ -16,8 +16,6 @@ JP_DATA = os.path.join(HERE, "..", "pkg", "loopopt", "data", "jp")
 wasm = open(os.path.join(HERE, "loopopt.opt.wasm"), "rb").read()
 worker = open(os.path.join(HERE, "worker.template.js")).read()
 example = json.load(open(os.path.join(HERE, "example.json")))
-# character icons and card art extracted by images.py, copied to dist/img/<kind>/<id>.webp; the page gets the list of
-# keys ('card:30116', ...) so it asks only for images that exist. None is fine (the page shows initials).
 DIST = os.path.join(HERE, "dist")
 shutil.rmtree(DIST, ignore_errors=True)  # dist/ holds build output only: start clean, so nothing stale is deployed
 os.makedirs(os.path.join(DIST, "assets"), exist_ok=True)
@@ -34,7 +32,7 @@ def fingerprint(name, data):
 
 # images are AVIF (UI sprites lossless WebP); one extension per kind, given to the page with the key list. They are
 # copied to assets/img.<hash>/<kind>/<id>.<ext>, the hash taken over every file's name and content: any change gives
-# the whole set a new folder (images change only when images.py is rerun)
+# the whole set a new folder (including runner strips from chibi/chibi.py)
 class ImageFile(NamedTuple):
     """One source image and its destination name within its kind's folder."""
 
@@ -301,7 +299,7 @@ def bundle(entry):
     ).stdout
 
 
-# the inlined CSS without its comments and whitespace (no other rewriting: the rules stay as written)
+# Minify CSS whitespace; esbuild may retain legal comments.
 def css_min(text):
     return subprocess.run(
         [ESBUILD, "--loader=css", "--minify-whitespace", "--charset=utf8", "--log-level=warning"],
@@ -452,8 +450,7 @@ def sprite_rule(base):
     return ":root{" + ";".join(vs) + "}" if vs else ""
 
 
-# one stylesheet for the three pages, a fingerprinted file (cached a year; revisits and moving between pages fetch only
-# the HTML): its font and sprite paths relative to assets/, where it is served from
+# One fingerprinted stylesheet for the three pages; font and sprite paths are relative to assets/.
 css = css_min(
     "\n".join(f.replace("url(assets/", "url(") for f in faces)
     + "\n"
@@ -478,8 +475,8 @@ MATHFACE = re.sub(
 
 
 # the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids), the career page's tables
-# and each page's script: fingerprinted classic scripts at the end of the body, run in the same order as the inline ones
-# were (data first); the data under the ids of the elements that held it (data.js: self.__LLP_DATA['data-cards'], ...)
+# and each page's script: fingerprinted classic scripts at the end of the body, data first.
+# data.js reads the data from self.__LLP_DATA ('data-cards', ...).
 def data_script(name, d):
     payload = "{" + ",".join(f'"{k}":{v}' for k, v in d.items()) + "}"
     return fingerprint(
@@ -512,7 +509,7 @@ def script_preloads(*srcs):
 # the site's address for the link-preview tags (og:url, og:image); a preview deploy passes its own (SITE_URL=...)
 SITE = os.environ.get("SITE_URL", "https://uma-legacy.pages.dev").rstrip("/")
 # light / dark: the visitor's choice (the header's button, saved in this browser), else the system's preference, followed
-# live until the button is used; set on <html> before the first paint (no light flash), on both pages
+# live until the button is used; set on <html> before the first paint (no light flash), on all three pages
 THEMEJS = """
 (function () {
   var K = 'llp:theme', t = null, d = document.documentElement, m = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
@@ -569,8 +566,8 @@ assert not re.search(r"__(?!PURE__)[A-Z]+__", html), re.findall(
     r"__(?!PURE__)[A-Z]+__", html
 )  # every placeholder filled (esbuild's @__PURE__ marks aside)
 open(os.path.join(DIST, "index.html"), "w").write(html)
-# "How this works" (/about; Cloudflare Pages serves about.html there): the same styles and fonts; its one inline script opens
-# the "Show …" box a link lands on
+# "How this works" (/about; Cloudflare Pages serves about.html there): shared styles and fonts.
+# Its disclosure script opens the "Show …" box a link lands on.
 about = open(os.path.join(HERE, "about.template.html")).read()
 for k, v in [
     ("__THEMEJS__", THEMEJS),

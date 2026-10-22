@@ -17,9 +17,8 @@ Every analysis runs on every record, on three row sets:
   scores the later half;
 - tests of the current model: the adopted rate (the same h with hints.rs's constants) on the fit's card-runs, for the
   other covariates (a free level per scenario in both fits), the spark deficit (every row), drop-out and priority.
-Every model choice is also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
-on the other four, per-run held-out log-likelihoods compared by common.compare_held_out (z > 1.96 = predicts unseen runs
-better). Every other result is in-sample on the pooled runs. Intervals and z on observed / predicted over rows (the
+Rate forms, specialty choices and SR/pal covariates are also tested held out: 5-fold cross-validation by common.fold(run), each fold scored by the fits
+on the other four, per-run held-out log-likelihoods compared by common.compare_held_out using a z > 1.96 threshold. Every other result is in-sample on the pooled runs. Intervals and z on observed / predicted over rows (the
 spark deficit, priority, the specialty cells) are run-clustered (common.cluster_ci): one run gives many rows; the
 specialty cells are tested jointly by a run-clustered Wald chi2 (common.cluster_chi2), their largest |z| only described.
 """
@@ -145,7 +144,7 @@ class CardRun:
 
 @dataclass
 class Data:
-    """build()'s card-runs and pool-skill rows: arrays over rows, and per card-run (indexed by card_run)"""
+    """build()'s card-runs and pool-skill rows: arrays over rows, and per card-run (row-to-card-run index ci)"""
 
     obs: list[CardRun]
     ci: np.ndarray  # per row: its card-run
@@ -319,7 +318,7 @@ def cap_draws(hinc: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------- the draw model
 @functools.lru_cache(None)
 def miss(k: int, n: int, t: int, cap: int) -> float:
-    """P(none of k given pool skills drawn) in t draws, each uniform over the n skills still below Lv 5; a skill
+    """P(none of k given pool skills drawn) in t draws from an initial pool of n skills, each draw uniform over skills still below Lv 5; a skill
     leaves after `cap` draws (pkg/loopopt/src/deck/hints.rs miss_draws)"""
     if k == 0:
         return 1.0
@@ -365,7 +364,7 @@ def mix(tab: np.ndarray, h: np.ndarray) -> np.ndarray:
 
 
 def clip(h: np.ndarray) -> np.ndarray:
-    """h kept inside the draw tables"""
+    """h capped below TMAX for interpolation between adjacent draw-table entries"""
     return np.minimum(h, TMAX - 1e-6)
 
 
@@ -432,7 +431,7 @@ def best_base(
 
 
 # ---------------------------------------------------------------- held out (5-fold cross-validation by run)
-CV_FOLDS: list[int] | None = None  # every fold; a list of folds times a subset
+CV_FOLDS: list[int] | None = None  # None scores every fold; a list restricts the folds scored
 
 
 def cv(run_rows: np.ndarray, fold_fn: Callable[[Mask, Mask], dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
@@ -592,7 +591,8 @@ def adopted_values(A: Adopted, out: Out) -> None:
 
 
 def worked_example(A: Adopted, out: Out) -> None:
-    """a worked example: the median card in the runs' decks (SR/SSR, not pal or group), at maximum limit break"""
+    """a worked example using separate median hf and spec values across the runs' SR/SSR non-pal, non-group cards
+    at maximum limit break"""
     wc = common.cards()
     deck_cards = [
         wc[c]

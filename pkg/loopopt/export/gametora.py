@@ -4,9 +4,8 @@
   uv run gametora.py --latest   pin the newest versions from GameTora's manifest first, then download them
 
 Files are saved as <key with / as _, static/ dropped>.<hash>.json (dict/evrew -> dict_evrew.8bda1ecc.json); a cached
-file of the same key under another hash is removed, so each key has one file and readers can glob it. GameTora does
-not keep older versions online (2026-10-21: 6 of the 13 pinned files answered 404), so a pinned set rebuilds the same
-events only from a cache that already holds it; elsewhere `--latest` is the way in, and the events may then change.
+file of the same key under another hash is removed, so each key has one file and readers can glob it. If a pinned version is no longer available online, rebuilding it needs a cached copy;
+`--latest` updates the pins and may change the exported events.
 Each run also writes ../data/gametora_slugs.json (tracked): the page's links to GameTora, so the page build needs no
 download.
 
@@ -14,8 +13,7 @@ Imported, it is the one reader of those files (no other code decodes them). The 
   - load(key) reads cache/gametora/<key>.<hash>.json (key as cached: 'dict_evrew', 'training_events_ssr', ...).
   - An event is [id, choices, story id, extras...]. Its title is master.mdb's text_data category 181 by story id.
   - A choice is [label, rewards]; only `rewards` is rewards: decoding the label produces hints that don't exist.
-  - A reward code k indexes dict_evrew at k - 36 (verified: every card's bond reward decodes to its own character, and
-    King Halo / Yaeno / Gold Ship / Light Hello / Anshinzawa match the wiki). Kinds used: 'sk' [kind, level, skill id]
+  - A reward code k indexes dict_evrew at k - 36. Kinds used: 'sk' [kind, level, skill id]
     a skill hint, 'sr' [kind, _, [{d: skill id}, ...]] a random hint among skills, 'di' starts the choice's next
     outcome (outcomes equally likely), 'ee' ends the card's event chain.
   - training_events_sr / _ssr: rows [card id, events] (the chain links come from master.mdb, show_progress_1 of the

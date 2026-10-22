@@ -6,15 +6,14 @@ Each script's results are kept in research/data/out/claims/ with a fingerprint o
 scripts it imports, common.py, val/joint_check.py) and of the data inputs' sizes and times (DATA_INPUTS, val's reference
 outputs); a script whose fingerprint is unchanged is not run again. --force recomputes everything.
 
---quick skips the section 13 variant over every other skill (a solver run of several minutes the first time; its
-results are reused while nothing it reads changes). The computed values go to research/results.json, from which
+--quick skips the section 13 variant over every other skill. The computed values go to research/results.json, from which
 research/render.py renders docs/RESEARCH.md. Without the run records (research/data/runs.jsonl, not included)
-the data claims read "needs data" and the derived ones still run."""
+sections skip record-dependent calculations or return findings as "needs data"; game-backed checks still need their inputs."""
 
 import collections, concurrent.futures, glob, hashlib, importlib, inspect, json, os, pickle, re, sys, time, traceback
 
 for v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
-    os.environ.setdefault(v, "1")  # one core
+    os.environ.setdefault(v, "1")  # default numerical-library threads to one; preserve explicit overrides
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from typing import Any, NamedTuple
 import common
@@ -36,13 +35,12 @@ DATA_INPUTS: list[str] = [
     "webapp/src/data.js",
 ]
 CACHE: str = os.path.join(common.OUT, "claims")
-JOBS: int = 4  # scripts run at once, one core each (--jobs=N; 1 runs them one after another)
+JOBS: int = 4  # worker processes (--jobs=N; 1 runs scripts one after another)
 
 
 def data_stamp() -> list[tuple[str, int, int]]:
-    """(path, size, modification time in ns) of every data input (content hashing 100 MB of inputs on every run would
-    cost more than it saves); val's reference outputs included, which section 6 reads. Plain tuples: their repr is part
-    of every fingerprint"""
+    """(path, size, modification time in ns) for DATA_INPUTS and val's reference outputs, which section 6 reads.
+    Plain tuples: their repr is part of every fingerprint"""
     items: list[tuple[str, int, int]] = []
     paths = [os.path.join(common.ROOT, x) for x in DATA_INPUTS] + sorted(
         glob.glob(os.path.join(common.ROOT, "val", "ref*__*.out"))
@@ -61,7 +59,7 @@ def data_stamp() -> list[tuple[str, int, int]]:
 
 
 def code_of(name: str, seen: set[str] | None = None) -> str:
-    """the source of a script and of every research script it imports, transitively (fingerprint() adds common.py and
+    """the source of a script and its transitive imports matching `import sNN_name` (fingerprint() adds common.py and
     val/joint_check.py)"""
     seen = set() if seen is None else seen
     if name in seen:
@@ -73,7 +71,7 @@ def code_of(name: str, seen: set[str] | None = None) -> str:
 
 
 def fingerprint(name: str, kw: dict[str, Any], stamp: list[tuple[str, int, int]]) -> str:
-    """a hash of everything a script's results depend on: its code, common.py, val/joint_check.py, its arguments and the
+    """a cache key from the tracked inputs: its code, common.py, val/joint_check.py, its arguments and the
     data stamp"""
     h = hashlib.sha256()
     for part in (
@@ -137,7 +135,7 @@ def reuse_unchanged(
 
 
 def compute_pending(pending: dict[str, Pending], jobs: int, got: dict[str, Claims]) -> None:
-    """run the pending scripts in parallel, one core each, into `got`, caching each result that has no error; a script
+    """run pending scripts in worker processes into `got`; with run records present, cache results without error Values; a script
     that reads another's files (AFTER) waits for it"""
     waves = [[n for n in pending if AFTER.get(n) not in pending], [n for n in pending if AFTER.get(n) in pending]]
     with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, jobs)) as ex:

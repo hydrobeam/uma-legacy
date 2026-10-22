@@ -1,5 +1,5 @@
 """Build a career-planner job from a veteran export (umadump's trained_chara_data.json), the way the career page
-reads one: each veteran's white skill sparks (factor_id = factor group * 100 + stars, factor group -> skill group from
+reads one: each veteran's pink sparks and white skill sparks (factor_id = factor group * 100 + stars, factor group -> skill group from
 career.json), its single-race G1 wins (win saddle -> race index, career.json) and the same for its two parents
 (succession_chara_array positions 10 and 20). A veteran counts as borrowed when owner_viewer_id is set: it is 0 on the
 player's own veterans and the lender's viewer_id on the ones offered for borrowing (rental_chara_data.json).

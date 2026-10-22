@@ -1,6 +1,6 @@
 """usage: owncheck.py BIN [K] [Required Uma,Other Uma]
 Brute-force check of the character rule: every 6-card deck from a small owned set, each with its best legal
-loop (deck locked, blocked umas excluded), against the search's answer (exact odds; the character rule as a legality filter). usage: owncheck.py BIN [K]"""
+loop (deck locked, blocked umas excluded), against the search's answer (exact odds; the character rule as a legality filter)."""
 
 import tempfile, json, itertools, subprocess, sys, os, concurrent.futures as cf
 
