@@ -4,56 +4,104 @@
 // relation points, the G1 wins they share (expected: from the schedules' win chances, x3) and the affinity, and the
 // total. In a three-uma rotation the trainee is her own grandparent twice (her earlier veteran): no relation points
 // with her (a trio counts distinct umas), only the G1s it shares with its child.
-import { $ } from './dom.js';
+import { $, $dialog } from './dom.js';
 import { umaAv } from './images.js';
 import { affEl, affTable } from './afftable.js';
 import { pickOutfit } from './roster.js';
-export function openWhy(l) {
-  const D = l.detail, M = l.members, body = $('why-body'); body.textContent = '';
-  const nm = (i) => M[i].short || M[i].name;
-  const outfitOf = (i) => pickOutfit(l.members[i].id, l.outfits[i].outfits).list[0]?.id ?? null;
-  const total = (L) => L.slots.reduce((a, x) => a + x.aff, 0);
+/**
+ * One career in the solver's affinity detail (`loop.detail.lineages`); uma numbers index the loop's members.
+ * @typedef {object} Lineage
+ * @property {number} t the trainee
+ * @property {[number, number]} p her parents
+ * @property {LegacySlot[]} slots her six legacies
+ */
+/**
+ * @typedef {object} LegacySlot
+ * @property {'parent' | 'grandparent'} kind
+ * @property {number[]} who [parent] or [parent, grandparent]
+ * @property {number} rel relation points
+ * @property {number} race the G1 wins shared (expected), as points
+ * @property {number} aff affinity
+ */
+const careerTotal = (lineage) => lineage.slots.reduce((sum, slot) => sum + slot.aff, 0);
+const button = (label) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-label', label); return b; };
+const radioGroup = (className, label) => { const box = document.createElement('div'); box.className = className; box.setAttribute('role', 'radiogroup'); box.setAttribute('aria-label', label); return box; };
+// a pill row as a radio group: the arrows move along it (wrapping) and pick. `items()`: its [career, button] pairs now
+function arrowKeys(box, items, show) {
+  box.addEventListener('keydown', (e) => {
+    const list = items(), k = list.findIndex(([, b]) => b === document.activeElement);
+    if (k < 0) return;
+    const to = { ArrowRight: k + 1, ArrowDown: k + 1, ArrowLeft: k - 1, ArrowUp: k - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const [career, b] = list[(to + list.length) % list.length]; show(career); b.focus();
+  });
+}
+// pills: [career, button, key]; the one whose key `isOn` accepts is checked (and the one Tab reaches)
+const mark = (pills, isOn) => pills.forEach(([, b, key]) => {
+  const on = isOn(key); b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); b.tabIndex = on ? 0 : -1;
+});
+/** @param {import('./results.js').ResultLoop} loop */
+export function openWhy(loop) {
+  const lineages = loop.detail.lineages, members = loop.members, body = $('why-body'); body.textContent = '';
+  const shortName = (i) => members[i].short || members[i].name;
+  const outfitOf = (i) => pickOutfit(loop.members[i].id, loop.outfits[i].outfits).list[0]?.id ?? null;
+  const face = (i, size) => umaAv(members[i].id, outfitOf(i), size);
   const head = document.createElement('div'); head.className = 'row between dhead';
   head.innerHTML = '<h3 id="why-title">Affinity</h3>';
-  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $('why-dlg').close(); head.appendChild(close);
+  const close = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close'; close.onclick = () => $dialog('why-dlg').close(); head.appendChild(close);
   body.appendChild(head);
   // the careers to pick from: one pill per trainee (a rotation's three); in a four-uma loop each trainee heads three
   // careers (her parents two of the other three), so a second row picks her parents
-  const pick = document.createElement('div'); pick.className = 'afpick'; pick.setAttribute('role', 'radiogroup'); pick.setAttribute('aria-label', 'Trainee');
-  const pars = document.createElement('div'); pars.className = 'afpick afpar'; pars.setAttribute('role', 'radiogroup'); pars.setAttribute('aria-label', 'Parents');
+  const traineeRow = radioGroup('afpick', 'Trainee'), parentRow = radioGroup('afpick afpar', 'Parents');
   const view = document.createElement('div'); view.className = 'afview';
-  body.append(pick, pars, view);
-  const byT = new Map();   // trainee -> her careers, the most affinity first
-  for (const i of D.lineages.map((L, i) => i).sort((a, b) => total(D.lineages[b]) - total(D.lineages[a]))) {
-    const t = D.lineages[i].t; if (!byT.has(t)) byT.set(t, []); byT.get(t).push(i); }
-  const radios = (box, items) => box.addEventListener('keydown', (e) => { const list = items(), k = list.findIndex(([, b]) => b === document.activeElement); if (k < 0) return;
-    const to = { ArrowRight: k + 1, ArrowDown: k + 1, ArrowLeft: k - 1, ArrowUp: k - 1 }[e.key]; if (to === undefined) return; e.preventDefault();
-    const [i, b] = list[(to + list.length) % list.length]; show(i); b.focus(); });
-  const tBtns = [...byT].map(([t, ls]) => { const L = D.lineages[ls[0]], b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'radio');
-    b.setAttribute('aria-label', ls.length > 1 ? `${M[t].name} as the trainee` : `${M[t].name}, parents ${M[L.p[0]].name} and ${M[L.p[1]].name}`); b.title = b.getAttribute('aria-label');
-    b.append(umaAv(M[t].id, outfitOf(t), 28), Object.assign(document.createElement('span'), { className: 'afpn', textContent: nm(t) }));
-    const a = affEl(total(L)); if (a) b.appendChild(a);   // her best career's affinity
-    b.onclick = () => show(ls[0]); pick.appendChild(b); return [ls[0], b, t]; });
-  let pBtns = [];
-  radios(pick, () => tBtns); radios(pars, () => pBtns);
-  const mark = (list, on) => list.forEach(([, b, k]) => { const yes = on(k); b.setAttribute('aria-checked', String(yes)); b.setAttribute('aria-pressed', String(yes)); b.tabIndex = yes ? 0 : -1; });
-  function show(i) {
-    const L = D.lineages[i], ls = byT.get(L.t);
-    mark(tBtns, (t) => t === L.t);
-    // her parents, when she heads more than one career: both faces and that career's affinity
-    pars.hidden = ls.length < 2; pars.textContent = ''; if (ls.length > 1) pars.append(Object.assign(document.createElement('span'), { className: 'aflab', textContent: 'Parents' }));
-    pBtns = ls.length < 2 ? [] : ls.map(j => { const C = D.lineages[j], b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'radio');
-      b.setAttribute('aria-label', `parents ${M[C.p[0]].name} and ${M[C.p[1]].name}`); b.title = `${M[C.t].name}: ${b.getAttribute('aria-label')}`;
-      b.append(umaAv(M[C.p[0]].id, outfitOf(C.p[0]), 24), umaAv(M[C.p[1]].id, outfitOf(C.p[1]), 24));
-      const a = affEl(total(C)); if (a) b.appendChild(a);
-      b.onclick = () => show(j); pars.appendChild(b); return [j, b, j]; });
-    mark(pBtns, (j) => j === i);
-    const own = (w) => w === L.t ? 'her own earlier veteran' : null;
-    view.replaceChildren(affTable(L.p.map(p => { const x = L.slots.find(s => s.kind === 'parent' && s.who[0] === p);
-      return { face: umaAv(M[p].id, outfitOf(p), 30), name: M[p].name, rel: x.rel, race: x.race, aff: x.aff,
-        gps: L.slots.filter(s => s.kind === 'grandparent' && s.who[0] === p).map(g => ({ face: umaAv(M[g.who[1]].id, outfitOf(g.who[1]), 24), name: M[g.who[1]].name,
-          tag: own(g.who[1]), rel: g.rel, race: g.race, aff: g.aff })) }; }), `${M[L.t].name}: her six legacies`));
+  body.append(traineeRow, parentRow, view);
+  const careersOf = new Map();   // trainee -> her careers (lineage indices), the most affinity first
+  const byAffinity = lineages.map((_, i) => i).sort((a, b) => careerTotal(lineages[b]) - careerTotal(lineages[a]));
+  for (const i of byAffinity) {
+    const trainee = lineages[i].t;
+    if (!careersOf.has(trainee)) careersOf.set(trainee, []);
+    careersOf.get(trainee).push(i);
   }
-  show(tBtns[0][0]);
-  $('why-dlg').showModal();
+  const traineePills = [...careersOf].map(([trainee, careers]) => {
+    const best = lineages[careers[0]], [p0, p1] = best.p;
+    const b = button(careers.length > 1 ? `${members[trainee].name} as the trainee` : `${members[trainee].name}, parents ${members[p0].name} and ${members[p1].name}`);
+    b.title = b.getAttribute('aria-label');
+    b.append(face(trainee, 28), Object.assign(document.createElement('span'), { className: 'afpn', textContent: shortName(trainee) }));
+    const heart = affEl(careerTotal(best)); if (heart) b.appendChild(heart);   // her best career's affinity
+    b.onclick = () => show(careers[0]); traineeRow.appendChild(b);
+    return [careers[0], b, trainee];
+  });
+  let parentPills = [];
+  arrowKeys(traineeRow, () => traineePills, show); arrowKeys(parentRow, () => parentPills, show);
+  // a career's table rows (afftable.js): each parent, then her two parents, with their relation points, shared G1s and affinity
+  function legaciesOf(lineage) {
+    const own = (who) => who === lineage.t ? 'her own earlier veteran' : null;
+    return lineage.p.map(parent => {
+      const slot = lineage.slots.find(s => s.kind === 'parent' && s.who[0] === parent), parentFace = face(parent, 30);
+      const grandparents = lineage.slots.filter(s => s.kind === 'grandparent' && s.who[0] === parent).map(g => ({
+        face: face(g.who[1], 24), name: members[g.who[1]].name, tag: own(g.who[1]), rel: g.rel, race: g.race, aff: g.aff }));
+      return { face: parentFace, name: members[parent].name, rel: slot.rel, race: slot.race, aff: slot.aff, gps: grandparents };
+    });
+  }
+  function show(i) {
+    const lineage = lineages[i], careers = careersOf.get(lineage.t);
+    mark(traineePills, (trainee) => trainee === lineage.t);
+    // her parents, when she heads more than one career: both faces and that career's affinity
+    parentRow.hidden = careers.length < 2; parentRow.textContent = '';
+    if (careers.length > 1) parentRow.append(Object.assign(document.createElement('span'), { className: 'aflab', textContent: 'Parents' }));
+    parentPills = careers.length < 2 ? [] : careers.map(j => {
+      const career = lineages[j], [p0, p1] = career.p;
+      const b = button(`parents ${members[p0].name} and ${members[p1].name}`);
+      b.title = `${members[career.t].name}: ${b.getAttribute('aria-label')}`;
+      b.append(face(p0, 24), face(p1, 24));
+      const heart = affEl(careerTotal(career)); if (heart) b.appendChild(heart);
+      b.onclick = () => show(j); parentRow.appendChild(b);
+      return [j, b, j];
+    });
+    mark(parentPills, (j) => j === i);
+    view.replaceChildren(affTable(legaciesOf(lineage), `${members[lineage.t].name}: her six legacies`));
+  }
+  show(traineePills[0][0]);
+  $dialog('why-dlg').showModal();
 }

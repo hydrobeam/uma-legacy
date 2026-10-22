@@ -14,7 +14,7 @@ use crate::deck::career::Lineage;
 /// deck's corner table and the bound the same deck's exact value, the same number computed two ways (boot_mob: 48
 /// proxies one ulp below their class's proof). Before 2026-10-21 the allowance was 1e-9, looser than any rounding
 #[derive(Clone, Copy)]
-pub(in crate::deck::career) enum Bar {
+pub(crate) enum Bar {
     Below(f64),
     AtMost(f64),
 }
@@ -34,7 +34,7 @@ impl Bar {
 /// descending, a, b), unique per pair; each step past the ordered prefix `v[..upto]` selects the next chunk (everything
 /// before it orders before everything after it) and sorts only the chunk, so the sequence is the full sort's, element
 /// for element, and a caller that stops early sorts little
-pub(in crate::deck) struct Ranked {
+pub(crate) struct Ranked {
     v: Vec<(f64, usize, usize)>,
     upto: usize,
     i: usize,
@@ -67,27 +67,34 @@ impl Iterator for Ranked {
 
 /// A candidate the search solved: trainee, parents (legacy indices), value C x E, its ceiling, its best deck.
 #[derive(Clone)]
-pub(in crate::deck::career) struct Found {
-    pub(in crate::deck::career) t: usize,
-    pub(in crate::deck::career) a: usize,
-    pub(in crate::deck::career) b: usize,
-    pub(in crate::deck::career) val: f64,
-    pub(in crate::deck::career) ub: f64,
-    pub(in crate::deck::career) sel: Sel,
+pub(crate) struct Found {
+    pub(crate) t: usize,
+    pub(crate) a: usize,
+    pub(crate) b: usize,
+    pub(crate) val: f64,
+    pub(crate) ub: f64,
+    pub(crate) sel: Sel,
+}
+
+impl Found {
+    /// Her trainee and parents, in the order recorded.
+    pub(crate) const fn lineage(&self) -> Lineage {
+        Lineage { trainee: self.t, first_parent: self.a, second_parent: self.b }
+    }
 }
 
 /// A trainee's fully checked deck: the chances it was found at (job-target order), its exact value there before the
 /// spark scale (the best of every legal deck, under the EXACT_RHO certificate, or cap-free after a rerun), the deck. Its
 /// value bounds every deck at other chances through `rise`.
 #[derive(Clone)]
-pub(in crate::deck::career) struct Ref {
-    pub(in crate::deck::career) q: Vec<f64>,
-    pub(in crate::deck::career) val: f64,
-    pub(in crate::deck::career) sel: Sel,
+pub(crate) struct Ref {
+    pub(crate) q: Vec<f64>,
+    pub(crate) val: f64,
+    pub(crate) sel: Sel,
 }
 
 #[derive(Clone)]
-pub(in crate::deck::career) enum DeckRes {
+pub(crate) enum DeckRes {
     NoDeck,
     Bounded,
     Done(f64, Sel, bool),
@@ -95,26 +102,26 @@ pub(in crate::deck::career) enum DeckRes {
 
 #[derive(Clone)]
 /// (`cert`: the lowest cap a deck search of it was certified under, INFINITY when none was lowered; see `Env::cert`)
-pub(in crate::deck::career) struct Solved {
-    pub(in crate::deck::career) found: Vec<Found>,
-    pub(in crate::deck::career) refs: Vec<Vec<Ref>>,
-    pub(in crate::deck::career) work: usize,
-    pub(in crate::deck::career) cands: usize,
-    pub(in crate::deck::career) solved: usize,
-    pub(in crate::deck::career) bounded: usize,
-    pub(in crate::deck::career) scored: usize,
-    pub(in crate::deck::career) skipped: usize,
-    pub(in crate::deck::career) next_bound: f64,
-    pub(in crate::deck::career) complete: bool,
-    pub(in crate::deck::career) proven: bool,
-    pub(in crate::deck::career) cert: f64,
+pub(crate) struct Solved {
+    pub(crate) found: Vec<Found>,
+    pub(crate) refs: Vec<Vec<Ref>>,
+    pub(crate) work: usize,
+    pub(crate) cands: usize,
+    pub(crate) solved: usize,
+    pub(crate) bounded: usize,
+    pub(crate) scored: usize,
+    pub(crate) skipped: usize,
+    pub(crate) next_bound: f64,
+    pub(crate) complete: bool,
+    pub(crate) proven: bool,
+    pub(crate) cert: f64,
 }
 
 impl Env<'_> {
     /// The bound a fully checked deck search `r` (a `Ref`: chances r.q, best value r.val before the spark scale) puts on
     /// every career of trainee t's deck class at chances q with spark scale c: c r.val rise(t, q, r.q) (`Env::rise`)
     #[inline]
-    pub(in crate::deck::career) fn ref_bound(&self, t: usize, q: &[f64], c: f64, r: &Ref) -> f64 {
+    pub(crate) fn ref_bound(&self, t: usize, q: &[f64], c: f64, r: &Ref) -> f64 {
         c * r.val * self.rise(t, q, &r.q)
     }
     /// The bound a product search's proof (`ruled`: chances rq, best product value s) puts on it there: EXACT_RHO c s
@@ -125,12 +132,12 @@ impl Env<'_> {
     }
     /// Whether a career's ceiling `ub` (`gen_cands`) proves it out at `bar` (`Bar`; `solve`: ub (1 + 1e-9) < th)
     #[inline]
-    pub(in crate::deck::career) fn ceiling_out(ub: f64, bar: Bar) -> bool {
+    pub(crate) fn ceiling_out(ub: f64, bar: Bar) -> bool {
         bar.out(ub, 1e-9)
     }
     /// Whether a fully checked deck of `refs` proves career (t, q, c) out at `bar` (`solve`: some `ref_bound` (1 + 1e-9) < th)
     #[inline]
-    pub(in crate::deck::career) fn refs_out<'refs>(
+    pub(crate) fn refs_out<'refs>(
         &self,
         t: usize,
         q: &[f64],
@@ -143,21 +150,14 @@ impl Env<'_> {
     /// Whether a product proof of `ruled` does (`solve`: some `ruled_bound` (1 + 2e-9) < th; 2e-9: the rounding of the
     /// product value and of rise)
     #[inline]
-    pub(in crate::deck::career) fn ruled_out(
-        &self,
-        t: usize,
-        q: &[f64],
-        c: f64,
-        ruled: &[(Vec<f64>, f64)],
-        bar: Bar,
-    ) -> bool {
+    pub(crate) fn ruled_out(&self, t: usize, q: &[f64], c: f64, ruled: &[(Vec<f64>, f64)], bar: Bar) -> bool {
         ruled.iter().any(|(rq, s)| bar.out(self.ruled_bound(t, q, c, rq, *s), 2e-9))
     }
     /// Trainee t's legal pairs of `p` holding `fix` and kept by `keep`, with their ceilings (`gen_cands`: `ceiling` at
     /// `lineage`'s chances, to the bit), best first, ties in pair order (the stable sort by ceiling every ranked scan
     /// took). The model state after it: `ceiling` at the last pair's chances, as a loop of `ceiling` over the pairs left
     /// it (every reader of the model state sets it first)
-    pub(in crate::deck::career) fn ranked_pairs(
+    pub(crate) fn ranked_pairs(
         &mut self,
         p: &Pool,
         fix: &[usize],
@@ -168,7 +168,7 @@ impl Env<'_> {
     }
     /// The ceiling of trainee t at chances q (her inheritance folded in here) with spark scale c: EXACT_RHO x C x the
     /// product value at each target's best possible deck odds (None: no legal deck odds for her).
-    pub(in crate::deck::career) fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
+    pub(crate) fn ceiling(&mut self, t: usize, q: &[f64], c: f64) -> Option<f64> {
         self.dmax[t].as_ref()?;
         let (rho, fixed) = (self.space.rho_top(), self.model.fixed_factor());
         Some(self.ceiling_at(t, q, c, rho, fixed))
@@ -190,7 +190,7 @@ impl Env<'_> {
     /// `inherit` skips it (exact), and every model state `ceiling` leaves (`set_trainee` at each candidate's q in
     /// turn) is the same.
     /// `keep`: a filter on the pairs (a, b) beside the rules (`solve`: every pair).
-    pub(in crate::deck::career) fn gen_cands<C>(
+    pub(crate) fn gen_cands<C>(
         &mut self,
         p: &Pool,
         fix: &[usize],
@@ -418,7 +418,7 @@ impl Env<'_> {
     /// are recomputed when one is solved (the same numbers, so the same results). The search is `complete` unless a
     /// deck search was not `full` (the work budget ran out, or a band was certified below the top cap) or a deck scored
     /// during it passed its class's cap (`cap_breach`).
-    pub(in crate::deck::career) fn solve(
+    pub(crate) fn solve(
         &mut self,
         p: &Pool,
         fix: &[usize],
@@ -430,12 +430,18 @@ impl Env<'_> {
         self.work = 0; // each search has its own work budget
         let cert0 = std::mem::replace(&mut self.cert, f64::INFINITY);
         // (`tp`: the trainee's position in `trainees`; generated in (tp, a, b) order)
+        // (packed as u16, not a `Lineage`: a pool of 400 veterans has millions of candidates)
         struct Cand {
             ub: f64,
             t: u16,
             tp: u16,
             a: u16,
             b: u16,
+        }
+        impl Cand {
+            const fn lineage(&self) -> Lineage {
+                Lineage { trainee: self.t as usize, first_parent: self.a as usize, second_parent: self.b as usize }
+            }
         }
         let t_gen = now_ms();
         let nl = p.me.len();
@@ -501,44 +507,13 @@ impl Env<'_> {
         let mut refs: Vec<Vec<Ref>> = vec![vec![]; d.umas.len()];
         // per trainee, where this search's own entries in `ruled` start
         let ruled0: Vec<usize> = self.ruled.iter().map(std::vec::Vec::len).collect();
-        // dominated veterans (`dominates`): per legacy y, the legacies x at least as good in every career; and the
-        // candidates this search took and did not solve (bounded, no deck)
-        // (only veterans of one character can dominate each other: `dominates` tests the characters first, so the other
-        // pairs are skipped unasked; each list is in ascending x as before)
-        let mut by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
-        for x in 0..nl {
-            by_chara.entry(p.me[x].chara).or_default().push(x);
-        }
-        let dom: Vec<Vec<usize>> = (0..nl)
-            .map(|y| by_chara[&p.me[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
-            .collect();
+        // dominated veterans (`dominance_lists`), and the candidates this search took and did not solve (bounded, no
+        // deck)
+        let dom = dominance_lists(p);
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = crate::FxSet::default();
-        // Identical deck problems, searched once (`Twin`): a candidate whose trainee, chances q and spark scale c are
-        // bit-identical to an earlier candidate's of this search (interchangeable parents: veterans with the same stars
-        // and no relation or race points between them, as every sample pool of mob veterans has; 15 pairs of 6 such
-        // veterans are one problem per trainee) takes that candidate's outcome instead of a second `best_deck`.
-        // Derived, per outcome of the first (F, at bar th1) for the later one (R, at bar th2 >= th1: the bar only rises):
-        // - Done(v, D) fully checked: F's Ref (q, v, D) is in refs[t], so R reaches the deck search only with
-        //   th2 <= c v (1 + 1e-9) (the Ref bound above, rise = 1 at equal q). R's product search then starts below the
-        //   best product value pv (th2 / (rho c (1 + 1e-9)) <= v / rho <= pv under the cap every search assumes) and finds
-        //   F's product deck P, so the same `ruled` proof (q, pv); R's first exact pass scores P, then its starts, which
-        //   hold F's (D among them), so its best is at least v from the same decks in the same order up to D; its band
-        //   (decks with rho x product >= its best) is within F's, every deck of which F scored or ruled out against a
-        //   lower best, and the starts F did not have are decks legal at q, at most v (F's search is exact under the cap).
-        //   So R is Done(v, D) with the same floats (the same model state, `set_trainee` at the same q); a tie or lower,
-        //   it goes into `done` exactly where R's own search would have put it.
-        // - Bounded at th1: no deck above F's seed, or the best product deck below th1 / (rho c (1 + 1e-9)); a higher bar
-        //   gives a higher seed, so R is Bounded too (no `ruled` entry: R's would only repeat what F's proves).
-        // - NoDeck (no legal deck at all, at any bar): R the same.
-        // R's search would also have spent work, so a work budget can now reach further than before (the answer the
-        // unbudgeted search gives); outputs are otherwise the same, only the work counters fall.
-        enum Twin {
-            Done(f64, Sel, Option<f64>),
-            Bounded(f64),
-            NoDeck,
-        }
-        let mut twins: crate::FxMap<(u16, Vec<u64>, u64), Twin> = crate::FxMap::default();
+        // the deck problems searched so far (`Twin`)
+        let mut twins: crate::FxMap<TwinKey, Twin> = crate::FxMap::default();
         // a candidate whose ceiling is 0 cannot land every target (a target no legacy carries and nothing else gives):
         // nothing after it can either (sorted), and with every value 0 the bar would never rise, so every career would
         // be solved with unbounded deck searches (the page hung); stop there, leaving such careers out
@@ -555,7 +530,8 @@ impl Env<'_> {
             }
             let ci = next;
             next += 1;
-            let (t, a, b) = (cands[ci].t as usize, cands[ci].a as usize, cands[ci].b as usize);
+            let lineage = cands[ci].lineage();
+            let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
             let th = thr(&done, &cands, t);
             if prune {
                 unsolved.insert((cands[ci].t, cands[ci].a, cands[ci].b));
@@ -582,7 +558,7 @@ impl Env<'_> {
                     continue;
                 }
             }
-            let (q, c) = self.lineage_q(p, Lineage { trainee: t, first_parent: a, second_parent: b });
+            let (q, c) = self.lineage_q(p, lineage);
             // (the ceiling this candidate was ranked and stopped by is `ceiling` at these chances, to the bit:
             // `gen_cands`' claim, checked with the model state put back)
             debug_assert!(
@@ -622,38 +598,11 @@ impl Env<'_> {
                 continue;
             }
             self.set_trainee(t, &q);
-            let tk = (cands[ci].t, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
-            let res = match twins.get(&tk) {
-                Some(Twin::Done(v, sel, pv)) => {
-                    if let Some(s) = pv {
-                        self.ruled[ct].push((q.clone(), *s));
-                    }
-                    DeckRes::Done(*v, sel.clone(), true)
-                }
-                Some(Twin::Bounded(th1)) if th >= *th1 => DeckRes::Bounded,
-                Some(Twin::NoDeck) => DeckRes::NoDeck,
-                _ => {
-                    let starts: Vec<&Sel> = refs[t].iter().map(|r| &r.sel).collect();
-                    let res = self.best_deck(t, c, th, &starts, &mut n_scored);
-                    let pv = self.last_pv.take();
-                    if let Some(s) = pv {
-                        self.ruled[ct].push((q.clone(), s));
-                    }
-                    match &res {
-                        DeckRes::Done(v, sel, true) => {
-                            twins.insert(tk, Twin::Done(*v, sel.clone(), pv));
-                        }
-                        DeckRes::Done(..) => {}
-                        DeckRes::Bounded => {
-                            twins.insert(tk, Twin::Bounded(th));
-                        }
-                        DeckRes::NoDeck => {
-                            twins.insert(tk, Twin::NoDeck);
-                        }
-                    }
-                    res
-                }
-            };
+            let res = self.twin_deck_search(
+                &mut twins,
+                TwinSearch { trainee: t, chances: &q, spark_scale: c, bar: th, starts: &refs[t] },
+                &mut n_scored,
+            );
             let (val, sel, full) = match res {
                 DeckRes::NoDeck => continue,
                 DeckRes::Bounded => {
@@ -681,14 +630,7 @@ impl Env<'_> {
             let pos = done.iter().position(|x| x.0 < val).unwrap_or(done.len());
             done.insert(pos, (val, ci, sel));
         }
-        for (t, rs) in refs.iter().enumerate() {
-            let ct = self.cls[t];
-            for r in rs {
-                if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) {
-                    self.seen[ct].push(r.clone());
-                }
-            }
-        }
+        self.merge_seen(&refs);
         let next_bound = if next < cands.len() {
             sort_to(&mut cands, next, &mut upto);
             cands[next].ub
@@ -733,17 +675,139 @@ impl Env<'_> {
     }
 }
 
+impl Env<'_> {
+    /// `solve`'s deck search of a candidate at chances `search.chances` (folded in: `set_trainee`), or the outcome of
+    /// a bit-identical problem it already searched (`Twin`); records the product search's proof in `ruled`
+    fn twin_deck_search(
+        &mut self,
+        twins: &mut crate::FxMap<TwinKey, Twin>,
+        search: TwinSearch,
+        n_scored: &mut usize,
+    ) -> DeckRes {
+        let TwinSearch { trainee: t, chances: q, spark_scale: c, bar: th, starts } = search;
+        let ct = self.cls[t];
+        let tk = (t as u16, q.iter().map(|x| x.to_bits()).collect::<Vec<u64>>(), c.to_bits());
+        match twins.get(&tk) {
+            Some(Twin::Done(v, sel, pv)) => {
+                if let Some(s) = pv {
+                    self.ruled[ct].push((q.to_vec(), *s));
+                }
+                DeckRes::Done(*v, sel.clone(), true)
+            }
+            Some(Twin::Bounded(th1)) if th >= *th1 => DeckRes::Bounded,
+            Some(Twin::NoDeck) => DeckRes::NoDeck,
+            _ => {
+                let starts: Vec<&Sel> = starts.iter().map(|r| &r.sel).collect();
+                let res = self.best_deck(t, c, th, &starts, n_scored);
+                let pv = self.last_pv.take();
+                if let Some(s) = pv {
+                    self.ruled[ct].push((q.to_vec(), s));
+                }
+                match &res {
+                    DeckRes::Done(v, sel, true) => {
+                        twins.insert(tk, Twin::Done(*v, sel.clone(), pv));
+                    }
+                    DeckRes::Done(..) => {}
+                    DeckRes::Bounded => {
+                        twins.insert(tk, Twin::Bounded(th));
+                    }
+                    DeckRes::NoDeck => {
+                        twins.insert(tk, Twin::NoDeck);
+                    }
+                }
+                res
+            }
+        }
+    }
+    /// A search's fully checked decks (`refs`, per trainee) into `seen` (per deck class), each new one once
+    fn merge_seen(&mut self, refs: &[Vec<Ref>]) {
+        for (t, rs) in refs.iter().enumerate() {
+            let ct = self.cls[t];
+            for r in rs {
+                if !self.seen[ct].iter().any(|x| x.val == r.val && x.q == r.q) {
+                    self.seen[ct].push(r.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Per legacy y, the legacies x at least as good in every career (`dominates`), ascending. Only veterans of one
+/// character can dominate each other (`dominates` tests the characters first), so the other pairs are skipped unasked.
+fn dominance_lists(p: &Pool) -> Vec<Vec<usize>> {
+    let nl = p.me.len();
+    let mut by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
+    for x in 0..nl {
+        by_chara.entry(p.me[x].chara).or_default().push(x);
+    }
+    (0..nl)
+        .map(|y| by_chara[&p.me[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
+        .collect()
+}
+
+/// Identical deck problems, searched once (`Env::solve`): a candidate whose trainee, chances q and spark scale c are
+/// bit-identical to an earlier candidate's of this search (interchangeable parents: veterans with the same stars
+/// and no relation or race points between them, as every sample pool of mob veterans has; 15 pairs of 6 such
+/// veterans are one problem per trainee) takes that candidate's outcome instead of a second `best_deck`.
+/// Derived, per outcome of the first (F, at bar th1) for the later one (R, at bar th2 >= th1: the bar only rises):
+/// - Done(v, D) fully checked: F's Ref (q, v, D) is in refs[t], so R reaches the deck search only with
+///   th2 <= c v (1 + 1e-9) (the Ref bound above, rise = 1 at equal q). R's product search then starts below the
+///   best product value pv (th2 / (rho c (1 + 1e-9)) <= v / rho <= pv under the cap every search assumes) and finds
+///   F's product deck P, so the same `ruled` proof (q, pv); R's first exact pass scores P, then its starts, which
+///   hold F's (D among them), so its best is at least v from the same decks in the same order up to D; its band
+///   (decks with rho x product >= its best) is within F's, every deck of which F scored or ruled out against a
+///   lower best, and the starts F did not have are decks legal at q, at most v (F's search is exact under the cap).
+///   So R is Done(v, D) with the same floats (the same model state, `set_trainee` at the same q); a tie or lower,
+///   it goes into `done` exactly where R's own search would have put it.
+/// - Bounded at th1: no deck above F's seed, or the best product deck below th1 / (rho c (1 + 1e-9)); a higher bar
+///   gives a higher seed, so R is Bounded too (no `ruled` entry: R's would only repeat what F's proves).
+/// - NoDeck (no legal deck at all, at any bar): R the same.
+///
+/// R's search would also have spent work, so a work budget can now reach further than before (the answer the
+/// unbudgeted search gives); outputs are otherwise the same, only the work counters fall.
+enum Twin {
+    /// Fully checked: value, deck, the product search's proof.
+    Done(f64, Sel, Option<f64>),
+    /// Bounded at this bar.
+    Bounded(f64),
+    NoDeck,
+}
+
+/// A deck problem's identity in `solve`: trainee, chances q and spark scale c, to the bit.
+type TwinKey = (u16, Vec<u64>, u64);
+
+/// One candidate's deck problem in `solve` (`Env::twin_deck_search`).
+#[derive(Clone, Copy)]
+struct TwinSearch<'search> {
+    trainee: usize,
+    /// Her inheritance chances q, already folded into the model.
+    chances: &'search [f64],
+    /// C, the spark scale.
+    spark_scale: f64,
+    /// th, the value the career must beat.
+    bar: f64,
+    /// Her fully checked decks so far in this search: the deck search's start decks.
+    starts: &'search [Ref],
+}
+
+/// What a career search covers (`Env::solve`'s arguments, as `solve_kept` takes them).
+#[derive(Clone, Copy)]
+pub(crate) struct SearchRequest<'request> {
+    /// The legacies the parents come from.
+    pub(crate) pool: &'request Pool,
+    /// Legacy indices that must be among the two parents (the job's places).
+    pub(crate) fixed_parents: &'request [usize],
+    /// Trainees to search (uma indices).
+    pub(crate) trainees: &'request [usize],
+    /// One result per trainee (false: the best careers whoever trains).
+    pub(crate) per_trainee: bool,
+    /// How many results to keep.
+    pub(crate) top: usize,
+}
+
 /// The main search of the job keyed `key` (`LAST_SOLVE`): the kept one, with what its product searches proved
 /// (`env.ruled` as a combined job's plan finds it), else searched now and kept
-pub(in crate::deck::career) fn solve_kept(
-    env: &mut Env,
-    key: u64,
-    p: &Pool,
-    fix: &[usize],
-    trainees: &[usize],
-    per_trainee: bool,
-    top: usize,
-) -> Solved {
+pub(crate) fn solve_kept(env: &mut Env, key: u64, request: &SearchRequest) -> Solved {
     let kept = LAST_SOLVE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache.iter().position(|entry| entry.0 == key)?;
@@ -752,12 +816,13 @@ pub(in crate::deck::career) fn solve_kept(
         cache.last().map(|entry| (entry.1.clone(), entry.2.clone()))
     });
     match kept {
-        Some((solved, ruled)) if env.solved_fits(&solved, &ruled, p) => {
+        Some((solved, ruled)) if env.solved_fits(&solved, &ruled, request.pool) => {
             env.ruled = ruled;
             solved
         }
         _ => {
-            let solved = env.solve(p, fix, trainees, per_trainee, top);
+            let solved =
+                env.solve(request.pool, request.fixed_parents, request.trainees, request.per_trainee, request.top);
             LAST_SOLVE.with(|cache| {
                 let mut cache = cache.borrow_mut();
                 cache.retain(|entry| entry.0 != key);

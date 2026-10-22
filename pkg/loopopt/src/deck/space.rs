@@ -70,6 +70,24 @@ pub(super) struct Sel {
     pub(super) dw: Vec<f64>,
     pub(super) dg: Vec<f64>,
 }
+/// Entry-major miss probabilities: entry * target_count + target, white and gold respectively.
+#[derive(Clone, Copy)]
+pub(super) struct EntryMisses<'table> {
+    pub(super) white: &'table [f64],
+    pub(super) gold: &'table [f64],
+    pub(super) target_count: usize,
+}
+
+/// A key's used groups, with the cache's legal-entry-set identity.
+#[derive(Clone, Copy)]
+pub(super) struct GroupTableRequest<'group> {
+    pub(super) set_id: usize,
+    pub(super) code: u64,
+    pub(super) groups: &'group [&'group Vec<usize>],
+    pub(super) needed_groups: u64,
+    pub(super) deck_size: usize,
+}
+
 impl<'data> DeckSpace<'data> {
     /// per-entry miss chances (white given no gold, gold), entry-major, under the chain odds of key `code`
     /// per entry and target the miss chances (white, gold) under the key, and per entry the targets it touches (bit t:
@@ -209,43 +227,36 @@ impl<'data> DeckSpace<'data> {
     }
     /// (`need`: bit i set for the groups the key's configurations use; the others are left empty)
     /// (a `GTab` of rows r = 0..=size, each the white then the gold products per target: `gm_w`, `gm_g`)
-    pub(super) fn gm_cached(
-        &self,
-        u: usize,
-        code: u64,
-        groups: &[&Vec<usize>],
-        need: u64,
-        mw: &[f64],
-        mg: &[f64],
-        nu: usize,
-        size: usize,
-    ) -> std::rc::Rc<GTab> {
-        if let Some(r) = self.gmc.borrow().get(&(u, code)) {
+    pub(super) fn gm_cached(&self, request: GroupTableRequest<'_>, misses: EntryMisses<'_>) -> std::rc::Rc<GTab> {
+        if let Some(r) = self.gmc.borrow().get(&(request.set_id, request.code)) {
             return std::rc::Rc::clone(r);
         }
-        // (each target's `size` lowest, as the first `size` of the stable ascending sort: `top_asc`)
-        let (mut a, mut b) = (Vec::with_capacity(size), Vec::with_capacity(size));
-        let mut r = GTab::new(groups.len(), need, (size + 1) * 2 * nu);
-        for (gi, l) in groups.iter().enumerate() {
-            if need >> gi & 1 == 0 {
+        // (each target's `request.deck_size` lowest, as the first `request.deck_size` of the stable ascending sort: `top_asc`)
+        let (mut a, mut b) = (Vec::with_capacity(request.deck_size), Vec::with_capacity(request.deck_size));
+        let mut r =
+            GTab::new(request.groups.len(), request.needed_groups, (request.deck_size + 1) * 2 * misses.target_count);
+        for (gi, l) in request.groups.iter().enumerate() {
+            if request.needed_groups >> gi & 1 == 0 {
                 continue;
             }
             let pre = r.grp_mut(gi);
-            for t in 0..nu {
+            for t in 0..misses.target_count {
                 a.clear();
                 b.clear();
                 for &j in *l {
-                    top_asc(&mut a, size, mw[j * nu + t]);
-                    top_asc(&mut b, size, mg[j * nu + t]);
+                    top_asc(&mut a, request.deck_size, misses.white[j * misses.target_count + t]);
+                    top_asc(&mut b, request.deck_size, misses.gold[j * misses.target_count + t]);
                 }
-                for r in 1..=size {
-                    pre[r * 2 * nu + t] = pre[(r - 1) * 2 * nu + t] * a.get(r - 1).copied().unwrap_or(1.0);
-                    pre[(r * 2 + 1) * nu + t] = pre[((r - 1) * 2 + 1) * nu + t] * b.get(r - 1).copied().unwrap_or(1.0);
+                for r in 1..=request.deck_size {
+                    pre[r * 2 * misses.target_count + t] =
+                        pre[(r - 1) * 2 * misses.target_count + t] * a.get(r - 1).copied().unwrap_or(1.0);
+                    pre[(r * 2 + 1) * misses.target_count + t] =
+                        pre[((r - 1) * 2 + 1) * misses.target_count + t] * b.get(r - 1).copied().unwrap_or(1.0);
                 }
             }
         }
         let r = std::rc::Rc::new(r);
-        self.gmc.borrow_mut().insert((u, code), std::rc::Rc::clone(&r));
+        self.gmc.borrow_mut().insert((request.set_id, request.code), std::rc::Rc::clone(&r));
         r
     }
     /// `search`'s tables for one legal entry set (reduced list `legal`, its id, the trainees' ids), built on first use

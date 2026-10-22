@@ -6,41 +6,94 @@ error, not hers (the fixed fit rules out the continuation's refit; what remains 
 
 usage: mono.py BIN [JOB ...] [-j N]   (default: every job in val/plan/jobs.json; -j jobs at a time, default 2)
   writes nothing; exits 1 when a V rises by more than 1e-9 relative"""
-import json, os, subprocess, sys, tempfile
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
-V = os.path.dirname(os.path.abspath(__file__)); S = os.path.dirname(V); P = os.path.join(V, 'plan')
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PoolComparison:
+    """A pool's two plans under the same fit, or the reason they cannot be compared."""
+
+    name: str
+    without: dict | None = None
+    with_veteran: dict | None = None
+    unavailable: bool = False
+    error: str | None = None
+
+
+def route_steps(plan):
+    if not plan.get("v0_plan"):
+        return "?"
+    return " / ".join(
+        f"{plan['v0_plan'][role]} {careers:,.1f}" for role, careers in zip("abc", plan["v0_plan"]["careers"])
+    )
+
+
+VALIDATION_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(VALIDATION_DIR)
+PLAN_DIR = os.path.join(VALIDATION_DIR, "plan")
 args = sys.argv[1:]
-par = 2
-if '-j' in args: i = args.index('-j'); par = int(args[i + 1]); del args[i:i + 2]
-b = os.path.abspath(args[0]); want = set(args[1:])
-jobs = [(d, n) for d, n in json.load(open(os.path.join(P, 'jobs.json'))) if not want or n in want]
-tmp = tempfile.mkdtemp(prefix='mono_')
+parallelism = 2
+if "-j" in args:
+    i = args.index("-j")
+    parallelism = int(args[i + 1])
+    del args[i : i + 2]
+binary = os.path.abspath(args[0])
+want = set(args[1:])
+jobs = [(era, name) for era, name in json.load(open(os.path.join(PLAN_DIR, "jobs.json"))) if not want or name in want]
+temporary_dir = tempfile.mkdtemp(prefix="mono_")
 
-def plan(d, job, name):
-    path = os.path.join(tmp, name + '.json'); json.dump(job, open(path, 'w'))
-    r = subprocess.run([b, 'data.json', path], cwd=os.path.join(S, 'pkg', 'loopopt', 'data', d), capture_output=True, text=True)
-    return json.loads(r.stdout)['next']
 
-def one(dj):
-    d, n = dj
-    job = json.load(open(os.path.join(P, n + '.json')))
-    if len(job.get('legacies', [])) < 3: return n, None
-    less = dict(job, legacies=job['legacies'][:-1], next={**job.get('next', {})})
-    a = plan(d, less, n + '_less')
-    if a.get('v0') is None or not a.get('fit'): return n, ('no plan without her', a.get('error'))
-    b2 = plan(d, dict(job, next={**job.get('next', {}), 'fit': a['fit']}), n + '_with')
-    return n, (a, b2)
+def plan(era, job, name):
+    path = os.path.join(temporary_dir, name + ".json")
+    json.dump(job, open(path, "w"))
+    result = subprocess.run(
+        [binary, "data.json", path],
+        cwd=os.path.join(REPO, "pkg", "loopopt", "data", era),
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)["next"]
 
-bad = 0
-with ThreadPoolExecutor(par) as ex: res = list(ex.map(one, jobs))
-for n, r in res:
-    if r is None: print(f'{n}: under 3 veterans, skipped'); continue
-    if isinstance(r[0], str): print(f'{n}: {r[0]} {r[1] or ""}'); continue
-    a, w = r
-    va, vw = a['v0'], w['v0']
-    step = lambda P: ' / '.join(f'{P["v0_plan"][k]} {c:,.1f}' for k, c in zip('abc', P['v0_plan']['careers'])) if P.get('v0_plan') else '?'
-    rise = vw is not None and vw > va * (1 + 1e-9)
-    bad += rise
-    print(f'{n}: V {va:,.2f} -> {vw:,.2f}  ({"RISES " if rise else ""}{vw - va:+,.2f})\n    without: {step(a)}\n    with:    {step(w)}')
-print(f'{len(res)} pools, {bad} rise')
-sys.exit(1 if bad else 0)
+
+def one(job_entry):
+    era, name = job_entry
+    job = json.load(open(os.path.join(PLAN_DIR, name + ".json")))
+    if len(job.get("legacies", [])) < 3:
+        return PoolComparison(name=name)
+    less = dict(job, legacies=job["legacies"][:-1], next={**job.get("next", {})})
+    without = plan(era=era, job=less, name=name + "_less")
+    if without.get("v0") is None or not without.get("fit"):
+        return PoolComparison(name=name, unavailable=True, error=without.get("error"))
+    with_veteran = plan(
+        era=era, job=dict(job, next={**job.get("next", {}), "fit": without["fit"]}), name=name + "_with"
+    )
+    return PoolComparison(name=name, without=without, with_veteran=with_veteran)
+
+
+rises = 0
+with ThreadPoolExecutor(parallelism) as ex:
+    comparisons = list(ex.map(one, jobs))
+for comparison in comparisons:
+    name = comparison.name
+    if comparison.without is None and not comparison.unavailable:
+        print(f"{name}: under 3 veterans, skipped")
+        continue
+    if comparison.unavailable:
+        print(f"{name}: no plan without her {comparison.error or ''}")
+        continue
+    without, with_veteran = comparison.without, comparison.with_veteran
+    value_without, value_with = without["v0"], with_veteran["v0"]
+    rise = value_with is not None and value_with > value_without * (1 + 1e-9)
+    rises += rise
+    print(
+        f"{name}: V {value_without:,.2f} -> {value_with:,.2f}  ({'RISES ' if rise else ''}{value_with - value_without:+,.2f})\n    without: {route_steps(without)}\n    with:    {route_steps(with_veteran)}"
+    )
+print(f"{len(comparisons)} pools, {rises} rise")
+sys.exit(1 if rises else 0)

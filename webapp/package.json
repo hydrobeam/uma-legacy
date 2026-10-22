@@ -19,6 +19,7 @@
     "esbuild": "^0.28.2",
     "playwright": "1.63.0",
     "three": "^0.170.0",
+    "typescript": "7.0.2",
     "wrangler": "^4.147.0"
   }
 }

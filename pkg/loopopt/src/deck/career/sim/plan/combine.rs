@@ -1,7 +1,7 @@
 //! Continuation fits and candidate combinations.
 use super::{
-    CEIL_SHARE, Cont, PlanCandidates, PlanInputs, PlanRow, RowOrigin, ScoreBase, Trio, legal_pair, lift_eff,
-    loop_ceiling, val,
+    CEIL_SHARE, Cont, FullLoop, PlanCandidates, PlanContext, PlanRow, RowOrigin, ScoreBase, Trio, found_lineage,
+    legal_pair, lift_eff, loop_ceiling, val,
 };
 use crate::deck::career::Lineage;
 use crate::deck::career::sim::plan::CandidateIndex;
@@ -10,24 +10,24 @@ use crate::deck::career::sim::{Env, Legacy, Pool, Sim, Value};
 /// A and B index `PlanCandidates::trainees`; the finisher indexes `Data::umas` directly.
 /// Each side uses either an existing full veteran (a free step) or a newly built one.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct PlanCombination {
-    pub(in crate::deck::career::sim::plan) candidate_a_index: CandidateIndex,
-    pub(in crate::deck::career::sim::plan) candidate_b_index: CandidateIndex,
+pub(crate) struct PlanCombination {
+    pub(crate) candidate_a_index: CandidateIndex,
+    pub(crate) candidate_b_index: CandidateIndex,
     /// Expected careers for the finisher, after A and B are full veterans.
-    pub(in crate::deck::career::sim::plan) finisher_cost: f64,
-    pub(in crate::deck::career::sim::plan) finisher_trainee: usize,
-    pub(in crate::deck::career::sim::plan) a_uses_existing: bool,
-    pub(in crate::deck::career::sim::plan) b_uses_existing: bool,
+    pub(crate) finisher_cost: f64,
+    pub(crate) finisher_trainee: usize,
+    pub(crate) a_uses_existing: bool,
+    pub(crate) b_uses_existing: bool,
 }
 
 impl PlanCombination {
-    pub(in crate::deck::career::sim::plan) fn total_cost(&self, stage_costs: &[f64]) -> f64 {
+    pub(crate) fn total_cost(&self, stage_costs: &[f64]) -> f64 {
         let a_cost = if self.a_uses_existing { 0.0 } else { stage_costs[self.candidate_a_index.0] };
         let b_cost = if self.b_uses_existing { 0.0 } else { stage_costs[self.candidate_b_index.0] };
         a_cost + b_cost + self.finisher_cost
     }
 
-    pub(in crate::deck::career::sim::plan) const fn as_trio(&self) -> Trio {
+    pub(crate) const fn as_trio(&self) -> Trio {
         Trio {
             candidate_a: self.candidate_a_index,
             candidate_b: self.candidate_b_index,
@@ -40,25 +40,25 @@ impl PlanCombination {
 
 /// Continuation and trio values fitted together for scoring the plan's rows.
 /// Per-candidate buffers use the fixed order in `PlanCandidates::trainees`.
-pub(in crate::deck::career::sim::plan) struct PlanFit {
-    pub(in crate::deck::career::sim::plan) continuations: Vec<Cont>,
-    pub(in crate::deck::career::sim::plan) step_costs: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) trios: Vec<Trio>,
-    pub(in crate::deck::career::sim::plan) sides: Vec<Vec<(bool, Legacy)>>,
-    pub(in crate::deck::career::sim::plan) current_value: f64,
+pub(crate) struct PlanFit {
+    pub(crate) continuations: Vec<Cont>,
+    /// Each candidate's step: the expected careers to a fresh 8/8 of hers under her continuation.
+    pub(crate) step_costs: Vec<f64>,
+    pub(crate) trios: Vec<Trio>,
+    /// Per candidate, the trios' sides (`ScoreBase::sides`).
+    pub(crate) sides: Vec<Vec<(bool, Legacy)>>,
+    /// V: the cheapest trio's careers.
+    pub(crate) current_value: f64,
 }
 
 impl PlanFit {
-    pub(in crate::deck::career::sim::plan) fn score_base<'fit>(
-        &'fit self,
-        candidates: &'fit PlanCandidates,
-    ) -> ScoreBase<'fit> {
+    pub(crate) fn score_base<'fit>(&'fit self, candidates: &'fit PlanCandidates) -> ScoreBase<'fit> {
         ScoreBase {
             cands: &candidates.trainees,
             c1: &self.step_costs,
-            m23: &candidates.zeros,
+            m23: &candidates.later_stage_costs,
             v0: self.current_value,
-            pnow: &candidates.pnow,
+            pnow: &candidates.current_odds,
             cont: &self.continuations,
             combos: &self.trios,
             sides: &self.sides,
@@ -68,189 +68,214 @@ impl PlanFit {
 }
 
 /// Pass 2's completed fit and reporting results, used by the proxy check and output assembly.
-pub(in crate::deck::career::sim::plan) struct PlanScores {
-    pub(in crate::deck::career::sim::plan) fit: PlanFit,
-    pub(in crate::deck::career::sim::plan) best_combo: Option<PlanCombination>,
-    pub(in crate::deck::career::sim::plan) any_scored: bool,
-    pub(in crate::deck::career::sim::plan) combo_ms: f64,
-    pub(in crate::deck::career::sim::plan) index_ms: f64,
-    pub(in crate::deck::career::sim::plan) work: Value,
+pub(crate) struct PlanScores {
+    pub(crate) fit: PlanFit,
+    pub(crate) best_combo: Option<PlanCombination>,
+    pub(crate) any_scored: bool,
+    pub(crate) combo_ms: f64,
+    pub(crate) index_ms: f64,
+    pub(crate) work: Value,
 }
 
-pub(in crate::deck::career::sim::plan) fn plan_continuations(
-    s: &mut Sim,
-    input: &PlanInputs,
-    candidates: &PlanCandidates,
+/// A builder row's lift of one candidate.
+#[derive(Clone, Copy)]
+struct BuilderLift {
+    /// `lift_eff` at the candidate's odds now.
+    efficiency: f64,
+    /// The builder's uma (`Data::umas`).
+    builder: usize,
+    /// P(her veteran lifts the candidate): lam.
+    lift_chance: f64,
+    /// The mean odds lifted to.
+    lifted_odds: f64,
+}
+
+/// Each candidate's continuation: lam and the first step from her most efficient exactly searched base builder, pinf
+/// from her full-loop ceiling with her two most efficient builders (of different umas), phi the share of the log-odds
+/// gap the first step closes; a given fit (`PlanJob::fit`) replaces the pool's
+pub(crate) fn plan_continuations(
+    sim: &mut Sim,
+    context: &PlanContext,
     runs: &[PlanRow],
     wins_by_trainee: &[Vec<usize>],
     buf: &mut Vec<f64>,
 ) -> Vec<Cont> {
-    let PlanInputs { pool, settings: pj, .. } = *input;
-    let d = input.resources.data;
-    let n = candidates.trainees.len();
-
-    let wt = |x: usize| wins_by_trainee[x].clone();
-    let mut cont = vec![Cont::default(); n];
-    for ui in 0..n {
-        if candidates.pnow[ui] <= 0.0 || runs.is_empty() {
+    let PlanContext { input, candidates } = *context;
+    let data = context.data();
+    let candidate_count = candidates.trainees.len();
+    let wins = |x: usize| wins_by_trainee[x].clone();
+    let mut continuations = vec![Cont::default(); candidate_count];
+    for ui in 0..candidate_count {
+        if candidates.current_odds[ui] <= 0.0 || runs.is_empty() {
             continue;
         }
         let u = candidates.trainees[ui];
-        let p = candidates.pnow[ui];
-        let mut eff: Vec<(f64, usize, f64, f64)> = runs
+        let p = candidates.current_odds[ui];
+        let mut lifts: Vec<BuilderLift> = runs
             .iter()
             .filter(|r| {
                 r.origin == RowOrigin::Base
                     && r.exact
-                    && d.umas[r.trainee].id != d.umas[u].id
+                    && data.umas[r.trainee].id != data.umas[u].id
                     && r.lift_stats[ui].0 > 0.0
             })
             .map(|r| {
-                let (pl, sp) = r.lift_stats[ui];
-                (lift_eff(pl, sp, p), r.trainee, pl, sp / pl)
+                let (lift_chance, lifted_odds_sum) = r.lift_stats[ui];
+                BuilderLift {
+                    efficiency: lift_eff(lift_chance, lifted_odds_sum, p),
+                    builder: r.trainee,
+                    lift_chance,
+                    lifted_odds: lifted_odds_sum / lift_chance,
+                }
             })
             .collect();
-        eff.sort_by(|x, y| y.0.partial_cmp(&x.0).unwrap());
-        let Some(&(_, b1, lam, p1)) = eff.first() else { continue };
-        let b2 = eff.iter().skip(1).map(|e| e.1).find(|&b| d.umas[b].id != d.umas[b1].id);
-        let pinf = match b2 {
-            Some(b2) => (CEIL_SHARE * loop_ceiling(s, pool, u, b1, b2, &wt, buf)).max(p1),
+        lifts.sort_by(|x, y| y.efficiency.partial_cmp(&x.efficiency).unwrap());
+        let Some(&best) = lifts.first() else { continue };
+        let lam = best.lift_chance;
+        let p1 = best.lifted_odds;
+        let second_builder =
+            lifts.iter().skip(1).map(|lift| lift.builder).find(|&b| data.umas[b].id != data.umas[best.builder].id);
+        let pinf = match second_builder {
+            Some(second_builder) => {
+                let full_loop = FullLoop { trainee: u, first_builder: best.builder, second_builder };
+                (CEIL_SHARE * loop_ceiling(sim, input.pool, full_loop, &wins, buf)).max(p1)
+            }
             None => p1,
         };
         let phi = if pinf > p && p1 > p { ((p1 / p).ln() / (pinf / p).ln()).clamp(0.0, 1.0) } else { 0.0 };
-        cont[ui] = Cont::new(lam, phi, pinf);
+        continuations[ui] = Cont::new(lam, phi, pinf);
     }
-    // a given fit replaces the pool's (`PlanJob::fit`)
-    if let Some(f) = &pj.fit {
-        for ui in 0..n {
-            if let Some(&(_, lam, phi, pinf)) = f.iter().find(|x| d.umas[candidates.trainees[ui]].id == x.0) {
-                cont[ui] = Cont::new(lam, phi, pinf);
+    if let Some(fit) = &input.settings.fit {
+        for ui in 0..candidate_count {
+            if let Some(&(_, lam, phi, pinf)) = fit.iter().find(|x| data.umas[candidates.trainees[ui]].id == x.0) {
+                continuations[ui] = Cont::new(lam, phi, pinf);
             }
         }
     }
-    cont
+    continuations
 }
 
-/// Combinations in candidate-pair order, then fresh/existing side order.
-pub(in crate::deck::career::sim::plan) fn plan_combinations(
-    s: &mut Sim,
-    input: &PlanInputs,
-    candidates: &PlanCandidates,
-    real8: &[Vec<usize>],
-    c1: &[f64],
+/// One side of a trio: a real 8/8 veteran of the candidate's, or the fresh one her best career now would leave.
+#[derive(Clone, Copy)]
+struct TrioSide {
+    uses_existing: bool,
+    /// The veteran's index in the working pool.
+    legacy: usize,
+}
+
+/// Each side choice's best finisher: her odds and uma.
+#[derive(Clone, Copy)]
+struct Finisher {
+    odds: f64,
+    trainee: usize,
+}
+
+/// Combinations in candidate-pair order, then fresh/existing side order. `full_veterans`: per candidate her real 8/8s
+/// (legacy indices); `step_costs`: per candidate, a fresh 8/8's step (a fresh side only where it is finite).
+pub(crate) fn plan_combinations(
+    sim: &mut Sim,
+    context: &PlanContext,
+    full_veterans: &[Vec<usize>],
+    step_costs: &[f64],
     buf: &mut Vec<f64>,
 ) -> Vec<PlanCombination> {
-    let PlanInputs { legacies: legs, pool, .. } = *input;
-    let d = input.resources.data;
-    let n = candidates.trainees.len();
-
-    let hyp8: Vec<Option<Legacy>> = (0..n)
-        .map(|ui| {
-            if c1[ui].is_finite() {
-                candidates.careers[ui].as_ref().map(|f| {
-                    let wp = s.wins(
-                        pool,
-                        Lineage { trainee: candidates.trainees[ui], first_parent: f.a, second_parent: f.b },
-                    );
-                    s.env.veteran(
-                        legs,
-                        Lineage { trainee: candidates.trainees[ui], first_parent: f.a, second_parent: f.b },
-                        wp.to_vec(),
-                    )
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
+    let PlanContext { input, candidates } = *context;
+    let pool = input.pool;
+    let data = context.data();
+    let candidate_count = candidates.trainees.len();
+    let fresh_veterans: Vec<Option<Legacy>> =
+        (0..candidate_count).map(|ui| fresh_veteran(sim, context, step_costs, ui)).collect();
     let mut combos: Vec<PlanCombination> = vec![];
-    for ia in 0..n {
-        for ib in ia + 1..n {
+    for ia in 0..candidate_count {
+        for ib in ia + 1..candidate_count {
             let (ua, ub) = (candidates.trainees[ia], candidates.trainees[ib]);
-            if d.umas[ua].id == d.umas[ub].id {
+            if data.umas[ua].id == data.umas[ub].id {
                 continue;
             }
             // (`Env::pool` of the legacies and the fresh 8/8s: the working copy of `pool` with them pushed, A's first,
             // popped below)
-            let mut p8 = s.take_pool(pool);
-            // per side: (real, legacy index)
-            let side = |s: &mut Sim, p8: &mut Pool, ui: usize| -> Vec<(bool, usize)> {
-                let mut v: Vec<(bool, usize)> = real8[ui].iter().map(|&i| (true, i)).collect();
-                if let Some(h) = &hyp8[ui] {
-                    s.env.pool_push(p8, h);
-                    v.push((false, p8.me.len() - 1));
+            let mut working_pool = sim.take_pool(pool);
+            let sides = |sim: &mut Sim, working_pool: &mut Pool, ui: usize| -> Vec<TrioSide> {
+                let mut sides: Vec<TrioSide> =
+                    full_veterans[ui].iter().map(|&legacy| TrioSide { uses_existing: true, legacy }).collect();
+                if let Some(fresh) = &fresh_veterans[ui] {
+                    sim.env.pool_push(working_pool, fresh);
+                    sides.push(TrioSide { uses_existing: false, legacy: working_pool.me.len() - 1 });
                 }
-                v
+                sides
             };
-            let (xs, ys) = (side(s, &mut p8, ia), side(s, &mut p8, ib));
-            // per side choice (fresh/real for A, fresh/real for B): the best C
-            let mut bc = [(0.0f64, usize::MAX); 4];
+            let (a_sides, b_sides) = (sides(sim, &mut working_pool, ia), sides(sim, &mut working_pool, ib));
+            // per side choice ([A existing][B existing]): the best C
+            let mut finishers: [[Option<Finisher>; 2]; 2] = [[None; 2]; 2];
             for &c in &candidates.allowed_trainees {
-                if d.umas[c].id == d.umas[ua].id || d.umas[c].id == d.umas[ub].id {
+                if data.umas[c].id == data.umas[ua].id || data.umas[c].id == data.umas[ub].id {
                     continue;
                 }
-                for &(ra, x) in &xs {
-                    for &(rb, y) in &ys {
-                        if legal_pair(d, &p8, Lineage { trainee: c, first_parent: x, second_parent: y }) {
-                            let k = usize::from(ra) * 2 + usize::from(rb);
-                            let v = val(s, &p8, Lineage { trainee: c, first_parent: x, second_parent: y }, buf);
-                            if v > bc[k].0 {
-                                bc[k] = (v, c);
+                for a_side in &a_sides {
+                    for b_side in &b_sides {
+                        let lineage = Lineage { trainee: c, first_parent: a_side.legacy, second_parent: b_side.legacy };
+                        if legal_pair(data, &working_pool, lineage) {
+                            let best =
+                                &mut finishers[usize::from(a_side.uses_existing)][usize::from(b_side.uses_existing)];
+                            let odds = val(sim, &working_pool, lineage, buf);
+                            if odds > best.map_or(0.0, |finisher| finisher.odds) {
+                                *best = Some(Finisher { odds, trainee: c });
                             }
                         }
                     }
                 }
             }
-            for (k, &(v, cu)) in bc.iter().enumerate() {
-                if cu != usize::MAX {
-                    combos.push(PlanCombination {
-                        candidate_a_index: CandidateIndex(ia),
-                        candidate_b_index: CandidateIndex(ib),
-                        finisher_cost: 1.0 / v,
-                        finisher_trainee: cu,
-                        a_uses_existing: k >= 2,
-                        b_uses_existing: k % 2 == 1,
-                    });
+            for (a_uses_existing, row) in [false, true].into_iter().zip(finishers) {
+                for (b_uses_existing, finisher) in [false, true].into_iter().zip(row) {
+                    if let Some(finisher) = finisher {
+                        combos.push(PlanCombination {
+                            candidate_a_index: CandidateIndex(ia),
+                            candidate_b_index: CandidateIndex(ib),
+                            finisher_cost: 1.0 / finisher.odds,
+                            finisher_trainee: finisher.trainee,
+                            a_uses_existing,
+                            b_uses_existing,
+                        });
+                    }
                 }
             }
-            while p8.me.len() > pool.me.len() {
-                Env::pool_pop(&mut p8);
+            while working_pool.me.len() > pool.me.len() {
+                Env::pool_pop(&mut working_pool);
             }
-            s.put_pool(pool, p8);
+            sim.put_pool(pool, working_pool);
         }
     }
     combos
 }
 
-// the trios' sides per candidate (her real 8/8s, then the fresh 8/8 her best career now would leave), for `her_trios`
-pub(in crate::deck::career::sim::plan) fn plan_sides(
-    s: &mut Sim,
-    input: &PlanInputs,
-    candidates: &PlanCandidates,
-    real8: &[Vec<usize>],
-    c1: &[f64],
-) -> Vec<Vec<(bool, Legacy)>> {
-    let PlanInputs { legacies: legs, pool, .. } = *input;
-    let n = candidates.trainees.len();
+/// The fresh 8/8 candidate `ui`'s best career now would leave (`Env::veteran`), where her step is finite
+fn fresh_veteran(sim: &mut Sim, context: &PlanContext, step_costs: &[f64], ui: usize) -> Option<Legacy> {
+    if !step_costs[ui].is_finite() {
+        return None;
+    }
+    let candidates = context.candidates;
+    let career = candidates.careers[ui].as_ref()?;
+    let lineage = found_lineage(candidates.trainees[ui], career);
+    let win_chances = sim.wins(context.input.pool, lineage);
+    Some(sim.env.veteran(context.input.legacies, lineage, win_chances.to_vec()))
+}
 
-    (0..n)
+/// The trios' sides per candidate (her real 8/8s, then the fresh 8/8 her best career now would leave), for `her_trios`
+pub(crate) fn plan_sides(
+    sim: &mut Sim,
+    context: &PlanContext,
+    full_veterans: &[Vec<usize>],
+    step_costs: &[f64],
+) -> Vec<Vec<(bool, Legacy)>> {
+    let legacies = context.input.legacies;
+    (0..context.candidates.trainees.len())
         .map(|ui| {
-            let mut v: Vec<(bool, Legacy)> = real8[ui].iter().map(|&i| (true, legs[i].clone())).collect();
-            if c1[ui].is_finite()
-                && let Some(f) = candidates.careers[ui].as_ref()
-            {
-                let wp =
-                    s.wins(pool, Lineage { trainee: candidates.trainees[ui], first_parent: f.a, second_parent: f.b });
-                v.push((
-                    false,
-                    s.env.veteran(
-                        legs,
-                        Lineage { trainee: candidates.trainees[ui], first_parent: f.a, second_parent: f.b },
-                        wp.to_vec(),
-                    ),
-                ));
+            let mut sides: Vec<(bool, Legacy)> =
+                full_veterans[ui].iter().map(|&i| (true, legacies[i].clone())).collect();
+            if let Some(fresh) = fresh_veteran(sim, context, step_costs, ui) {
+                sides.push((false, fresh));
             }
-            v
+            sides
         })
         .collect()
 }

@@ -1,6 +1,6 @@
 // Legacy Loop Planner page: entry point. build.py bundles this and the modules it imports (esbuild, one IIFE) into
 // dist/index.html, next to the data, images, wasm and worker it embeds.
-import { $, backdropCloses } from './dom.js';
+import { $, $dialog, $input, backdropCloses } from './dom.js';
 import { SAVED, ERA } from './settings.js';
 import { PRESET, loadData } from './data.js';
 import { state, ui, writeSaved } from './state.js';
@@ -17,37 +17,51 @@ import { initSetup } from './setup.js';
 import './gmtip.js';   // the game-style tooltips (both planner pages)
 
 // ---------- results column (desktop): sticky by its top when it fits the window, by its bottom when it is taller ----------
-{ const rcol = document.querySelector('.rcol');
-  if (rcol) { const fit = () => rcol.style.setProperty('--rtop', Math.min(12, innerHeight - rcol.offsetHeight - 12) + 'px');
-    new ResizeObserver(fit).observe(rcol); addEventListener('resize', fit); } }
+{
+  const column = document.querySelector('.rcol');
+  if (column) {
+    const MARGIN = 12;   // px kept above it (and below it, when it is taller than the window)
+    const fit = () => column.style.setProperty('--rtop', `${Math.min(MARGIN, innerHeight - column.offsetHeight - MARGIN)}px`);
+    new ResizeObserver(fit).observe(column); addEventListener('resize', fit);
+  }
+}
 // ---------- game data ----------
 $('era-global').setAttribute('aria-pressed', String(ERA === 'global')); $('era-gm').setAttribute('aria-pressed', String(ERA === 'gm'));
-const setEra = (e) => { if (e === ERA) return; eraScenario(e); SAVED.era = e; writeSaved(); location.reload(); };
+const setEra = (era) => { if (era === ERA) return; eraScenario(era); SAVED.era = era; writeSaved(); location.reload(); };
 $('era-global').onclick = () => setEra('global'); $('era-gm').onclick = () => setEra('gm');
 // everything below needs the era's data (inline for Global, fetched for the GM era)
 if (ERA === 'gm') { ui.status = { kind: 'loading', text: 'Loading the JP Grand Masters-era data…' }; paintRunNote(); }   // fetched: about a second
 loadData().then(start, (e) => { ui.status = { kind: 'error', text: e.message }; paintRunNote(); });
 function start() {
-  $('x-auto').checked = state.auto !== false; $('x-auto').onchange = (e) => { state.auto = e.target.checked; writeSaved(); if (state.auto && ui.status.kind === 'pending') save(); };   // the switch changes no result: switching it on searches only changes made while it was off
+  $input('x-auto').checked = state.auto !== false; $input('x-auto').onchange = (/** @type {TargetedEvent<HTMLInputElement>} */ e) => { state.auto = e.target.checked; writeSaved(); if (state.auto && ui.status.kind === 'pending') save(); };   // the switch changes no result: switching it on searches only changes made while it was off
   initScenario();   // the scenario picker (sets the training-hint rate; Unity Cup's golds follow it)
 
   initRoster(); initCards(); initTargets(); initIO(); initPopover(); initSetup();
   // phone: the floating status button shows while the results are out of view, and takes you back up to them
-  if (window.IntersectionObserver) new IntersectionObserver((es) => document.documentElement.classList.toggle('rin', es[0].isIntersecting)).observe($('rcol'));
-  $('run-pill').onclick = () => { const c = $('rcol'); c.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); c.focus({ preventScroll: true }); };
+  if (window.IntersectionObserver) new IntersectionObserver((entries) => document.documentElement.classList.toggle('rin', entries[0].isIntersecting)).observe($('rcol'));
+  $('run-pill').onclick = () => {
+    const column = $('rcol');
+    column.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    column.focus({ preventScroll: true });
+  };
   // the roster and card boxes: .more while there is more to scroll to below (their bottom edge fades)
-  for (const id of ['roster', 'cards']) { const el = $(id), upd = () => el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-    el.addEventListener('scroll', upd, { passive: true }); new MutationObserver(upd).observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });   // the filter hides tiles addEventListener('resize', upd);
-    if (window.ResizeObserver) new ResizeObserver(upd).observe(el); }   // also when its dialog opens (its size goes from 0)
-  for (const id of ['why-dlg', 'sched-dlg']) backdropCloses($(id));
+  for (const id of ['roster', 'cards']) {
+    const box = $(id), update = () => box.classList.toggle('more', box.scrollTop + box.clientHeight < box.scrollHeight - 4);   // 4 px: rounding slack
+    box.addEventListener('scroll', update, { passive: true });
+    new MutationObserver(update).observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });   // the filter hides tiles
+    if (window.ResizeObserver) new ResizeObserver(update).observe(box);   // also when its dialog opens (its size goes from 0)
+  }
+  for (const id of ['why-dlg', 'sched-dlg']) backdropCloses($dialog(id));
 
   renderRoster(); renderTargets();   // renderTargets draws the card picker too (it lists the cards that give a target)
   // before the first search finishes: the remembered result of these settings, or the example for the defaults, or nothing
   // (showing the default example under other settings flashed a result that wasn't theirs)
   const first = firstResult();
-  if (first) { ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });
+  if (first) {
+    ui.lastRender = () => renderDeck(first.r, { targets: first.example ? PRESET : first.targets });
     ui.lastRender(); ui.lastResult = { kind: 'deck', r: first.r, meta: first.example ? { example: true } : {} };
-    ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : first.status; }
+    ui.status = first.example ? { kind: 'example', text: 'Showing an example: Unity Cup skills, everything owned' } : first.status;
+  }
   // the first search, with the saved settings (also warms the engine); none when the result on show is these settings'
   // finished search from before (it shows as done; the engine still warms for the next edit)
   if (first && !first.example) { warmEngine(); paintRunNote(); } else setTimeout(doSearch, 0);

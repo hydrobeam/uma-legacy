@@ -1,5 +1,5 @@
 // ---------- export / import ----------
-import { $, fmtIn } from './dom.js';
+import { $, $dialog, $input, $textarea, fmtIn } from './dom.js';
 import { paintTop } from './cards.js';
 import { PER_ERA, SETTINGS, SAVED, ERA, persist } from './settings.js';
 import { CARDS, UMAS, SK, SCENARIOS, RANKS } from './data.js';
@@ -9,25 +9,32 @@ import { noOutfit, renderRoster, pickOutfit } from './roster.js';
 import { renderTargets } from './targets.js';
 import { mergePresets } from './presets.js';
 import { paintScen, paintRank, scenarioOf } from './scenario.js';
-function exportText() {
-  const nmG = (g, lv) => { const s = SK.get(g) || { w: String(g), gd: null }; return lv === 2 ? (s.gd || s.w) : s.w; };
-  const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
-  const readable = {
-    targets: state.targets.map(t => ({ skill: nmG(t.group, 1), gold: (SK.get(t.group) || {}).gd || null, guaranteed: goldGiven(t.group) ? 'gold' : 'no' })),
+// a skill group's name at a level (2: its gold's, when it has one)
+const skillName = (group, level) => { const names = SK.get(group) || { w: String(group), gd: null }; return level === 2 ? (names.gd || names.w) : names.w; };
+// the settings in words, for a reader of the export (an import reads `settings`)
+function readableSettings() {
+  return {
+    targets: state.targets.map(t => ({ skill: skillName(t.group, 1), gold: SK.get(t.group)?.gd || null, guaranteed: goldGiven(t.group) ? 'gold' : 'no' })),
     umas_not_owned: UMAS.filter(u => state.roster[u.id] === 'out' || noOutfit(u)).map(u => u.name),
     cards_not_owned: CARDS.filter(c => state.cardsOff[c.id] === false).map(c => c.name),
     deck: state.perUma !== false ? 'find best deck per uma' : 'find best deck (one for the whole loop)',
     game_data: ERA === 'gm' ? 'JP, Grand Masters' : 'Global', scenario: scenarioOf(state.scen).name,
   };
+}
+// a loop's odds and members, each with the outfit the result names
+const loopSummary = (loop) => ({ all_land: fmtIn(loop.p_all), at_least_n_minus_1: fmtIn(loop.p_minus1),
+  umas: loop.members.map((m, k) => { const outfit = pickOutfit(m.id, loop.outfits[k].outfits).list[0]; return m.name + (outfit ? ` ${outfit.label}` : ''); }) });
+// one result: its loop, its deck (and each member's when they differ), the deck's hint odds above half a percent
+const resultSummary = (top) => ({ ...loopSummary(top.loop), deck: top.deck.cards, pals: top.deck.pals, borrowed: top.deck.borrowed,
+  ...(top.decks ? { deck_per_uma: Object.fromEntries(top.loop.members.map((m, k) => [m.name, top.decks[k].cards])) } : {}),
+  deck_odds: top.deck.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => ({ skill: skillName(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })) });
+function exportText() {
+  const settings = Object.fromEntries(SETTINGS.map(k => [k, state[k]]));
+  const readable = readableSettings();
   let results = null;
   if (ui.lastResult) {
     const { r, meta } = ui.lastResult;
-    const loopSum = (l) => ({ all_land: fmtIn(l.p_all), at_least_n_minus_1: fmtIn(l.p_minus1),
-      umas: l.members.map((m, k) => { const o = pickOutfit(m.id, l.outfits[k].outfits).list[0]; return m.name + (o ? ' ' + o.label : ''); }) });
-    results = { example: !!meta.example, decks: (r.top || []).map(t => ({ ...loopSum(t.loop), deck: t.deck.cards, pals: t.deck.pals, borrowed: t.deck.borrowed,
-      ...(t.decks ? { deck_per_uma: Object.fromEntries(t.loop.members.map((m, k) => [m.name, t.decks[k].cards])) } : {}),
-      deck_odds: t.deck.odds.filter(o => o.white > 0.005 || o.gold > 0.005).map(o => ({ skill: nmG(o.group, 1), white: +o.white.toFixed(3), gold: +o.gold.toFixed(3) })) })),
-      decks_searched: r.decks_built, proven: r.proven };
+    results = { example: !!meta.example, decks: (r.top || []).map(resultSummary), decks_searched: r.decks_built, proven: r.proven };
   }
   return JSON.stringify({ app: 'legacy-loop-planner', version: 1, readable, results, settings: { era: ERA, ...settings } }, null, 1);
 }
@@ -48,31 +55,38 @@ const VALID = {
   outfits: (v) => obj(v) && Object.values(v).every(x => x === false || x === 'req'),   // read as owned (dropRequired)
   cardsOff: (v) => obj(v) && Object.values(v).every(x => x === false),
 };
+// Load: the settings an export carries (those of a known shape; the rest are named and left as they were). Settings for
+// the other data set are stored under its keys and the page reloads into it.
+function loadSettings() {
+  const message = $('ex-msg');
+  try {
+    const parsed = JSON.parse($textarea('ex-text').value);
+    if (!parsed?.settings) throw new Error('no settings');
+    const settings = parsed.settings, era = settings.era === 'gm' ? 'gm' : 'global';
+    const keys = SETTINGS.filter(k => k in settings), use = keys.filter(k => VALID[k](settings[k], era)), bad = keys.filter(k => !use.includes(k));
+    if (!use.length) throw new Error('nothing to load');
+    const imported = (k) => k === 'presets' ? mergePresets(state.presets, settings.presets) : settings[k];   // presets join yours, never replace them
+    if (era !== ERA) {
+      for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = imported(k);
+      SAVED.era = era; persist();
+      location.reload(); return;
+    }
+    for (const k of use) state[k] = imported(k);
+    dropRequired(state); save();
+    paintRank(); paintTop(); $input('c-peruma').checked = state.perUma !== false;
+    $input('x-auto').checked = state.auto !== false; paintScen();
+    renderRoster(); renderTargets();
+    message.textContent = `Settings loaded.${bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : ''}`;
+  } catch { message.textContent = 'That text is not an export from this page.'; }
+}
 export function initIO() {
-  $('ex-open').onclick = () => { $('ex-text').value = exportText(); $('ex-msg').textContent = ''; $('ex-dlg').showModal(); };
-  $('ex-close').onclick = () => $('ex-dlg').close();
-  $('ex-dlg').addEventListener('click', (e) => { if (e.target === $('ex-dlg')) $('ex-dlg').close(); });
+  $('ex-open').onclick = () => { $textarea('ex-text').value = exportText(); $('ex-msg').textContent = ''; $dialog('ex-dlg').showModal(); };
+  $('ex-close').onclick = () => $dialog('ex-dlg').close();
+  $dialog('ex-dlg').addEventListener('click', (e) => { if (e.target === $dialog('ex-dlg')) $dialog('ex-dlg').close(); });
   $('ex-copy').onclick = () => {
-    const t = $('ex-text'); const done = () => { $('ex-msg').textContent = 'Copied.'; };
-    const fallback = () => { t.focus(); t.select(); $('ex-msg').textContent = 'Selected. Press Ctrl+C (or ⌘C) to copy.'; };
-    try { navigator.clipboard.writeText(t.value).then(done, fallback); } catch { fallback(); }
+    const text = $textarea('ex-text'); const done = () => { $('ex-msg').textContent = 'Copied.'; };
+    const fallback = () => { text.focus(); text.select(); $('ex-msg').textContent = 'Selected. Press Ctrl+C (or ⌘C) to copy.'; };
+    try { navigator.clipboard.writeText(text.value).then(done, fallback); } catch { fallback(); }
   };
-  $('ex-load').onclick = () => {
-    try { const o = JSON.parse($('ex-text').value); if (!o || !o.settings) throw new Error('no settings');
-      const era = o.settings.era === 'gm' ? 'gm' : 'global';
-      const keys = SETTINGS.filter(k => k in o.settings), use = keys.filter(k => VALID[k](o.settings[k], era)), bad = keys.filter(k => !use.includes(k));
-      if (!use.length) throw new Error('nothing to load');
-      const val = (k) => k === 'presets' ? mergePresets(state.presets, o.settings.presets) : o.settings[k];   // presets join yours, never replace them
-      if (era !== ERA) {   // settings for the other data set: store them under its keys, then switch
-        for (const k of use) (PER_ERA.includes(k) ? SAVED[era] : SAVED.common)[k] = val(k);
-        SAVED.era = era; persist();
-        location.reload(); return;
-      }
-      for (const k of use) state[k] = val(k);
-      dropRequired(state); save();
-      paintRank(); paintTop(); $('c-peruma').checked = state.perUma !== false;
-      $('x-auto').checked = state.auto !== false; paintScen();
-      renderRoster(); renderTargets(); $('ex-msg').textContent = 'Settings loaded.' + (bad.length ? ` Not understood, so left as they were: ${bad.join(', ')}.` : '');
-    } catch { $('ex-msg').textContent = 'That text is not an export from this page.'; }
-  };
+  $('ex-load').onclick = loadSettings;
 }
