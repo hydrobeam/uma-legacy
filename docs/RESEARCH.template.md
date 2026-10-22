@@ -188,90 +188,65 @@ With real legacies the model uses their actual stars, so this does not arise.
 
 ## 3. Inheritance rolls
 
-Computed by `research/s03_inheritance.py` (the roll's parts) and `research/s13_calibration.py` (the test on whole
-careers).
+Computed by `research/s03_inheritance.py` (the roll's parts) and `research/s13_calibration.py` (whole careers).
 
-The roll tested is the community formula (`docs/MODEL.md`). At each of the two inspirations, a legacy carrying the skill
-passes it with chance $r = \min\{1,\ b(s)(1 + A/100)\}$: a base $b(s)$ set by the spark's stars $s$, 3 / 6 / 9% for a
-skill white, raised in proportion to the legacy's affinity $A$. Over the career the chance of at least one inspiration
-of the skill is $q = 1 - [\prod_l (1 - r_l)]^2$ over the six legacies $l$. The odds use skill whites only.
-This assumes independent firings across legacies and inspirations conditional on the stars and affinities.
+The roll tested is the community formula (`docs/MODEL.md`). At each of the two inspirations, a legacy carrying the
+skill passes it with chance $r = \min\{1,\ b(s)(1 + A/100)\}$. Here $b(s)$ is the base set by the spark's stars $s$,
+3 / 6 / 9% for a skill white, and $A$ is the legacy's affinity (section 5). Over the career, the chance of at least one
+inspiration of the skill is $q = 1 - [\prod_l (1 - r_l)]^2$ over the six legacies $l$. This assumes firings
+independent across legacies and inspirations, given the stars and affinities. The odds use skill whites only.
 
-The parts are **fitted** on *trials*. A trial is one ancestor's white spark in one year where she is the only one of the
-six legacies carrying the skill, so that year's inspiration of it can only come from her. The trial *passes* when the
-spark fires. There are {{3.trials_parents|,.0f}} parent trials and {{3.trials_grandparents|,.0f}} grandparent trials of ordinary ancestors; the trainee's own
+The parts are **fitted** on *trials*. A trial is one ancestor's white spark in one year in which she is the only one of
+the six legacies carrying the skill, so that year's inspiration of it can only come from her. It *passes* when the
+spark fires. There are {{3.trials_parents|,.0f}} parent trials and {{3.trials_grandparents|,.0f}} grandparent trials of ordinary ancestors; a trainee's own
 character as a grandparent is section 5's.
 
 ### Findings
 
 - **Grandparents pass sparks at the full base rate, as parents do.**
-- **The affinity formula is retained.** A free slope, or a free weight on either part of affinity, has no clear
-  held-out advantage under the reported comparison.
-- **The skill-white bases lie inside the pointwise intervals by stars.**
-- **Known miss: parents at affinity 200 or more pass sparks less often than predicted.** A refitted slope does not
-  predict unseen runs better, so the model keeps the formula and this miss.
-- **One band of predicted chance lies outside its pointwise interval** on whole careers, though the joint test does
-  not reject the prediction. Whole-career totals and Tail Held High are in section 13.
+- **Affinity scales the roll as the formula says.** A free slope on affinity, or on either of its two parts, predicts
+  unseen runs no better than weight 1.
+- **Each star count's base matches its trials.**
+- **Known miss: parents at affinity 200 or more pass sparks less often than predicted.** The bands below 200 are
+  jointly consistent. A refitted slope does not predict unseen runs better, so the model keeps the formula and this
+  miss.
+- **Whole careers bear out $q$ apart from Tail Held High**, whose miss and the totals are in section 13. One band of
+  predicted $q$ lies outside its pointwise interval; the joint test does not reject the model.
 
 ### Evidence
+
+"Held out" is rule 3 of *How to read*: five folds by run, positive nats favouring the refit. Each part's weight is
+fitted with the other part at 1. The last three rows are whole careers without Tail Held High,
+{{3.inheritance_without_tail_held_high_rows|,.0f}} rows.
 
 | Claim | Estimate [95%] | Test | Verdict |
 |---|---|---|---|
 | Grandparents take the full base | weight {{3.grandparent_weight_fitted|.2f}} [{{3.grandparent_weight_95_pct_low|.2f}}, {{3.grandparent_weight_95_pct_high|.2f}}] | full base beats half by {{3.grandparents_full_over_halved_nats|,.0f}} nats | full base |
-| Affinity raises the roll at all | | beats no affinity by {{3.affinity_over_none_nats|,.0f}} nats | kept |
+| Affinity raises the roll | | beats no affinity by {{3.affinity_over_none_nats|,.0f}} nats | kept |
 | Affinity slope is 1 | {{3.affinity_slope_fitted|.2f}} [{{3.affinity_slope_95_pct_low|.2f}}, {{3.affinity_slope_95_pct_high|.2f}}] | held out {{3.affinity_slope_refitted_over_slope_1_held_out_nats|.1f}} ± {{3.affinity_slope_refitted_over_slope_1_held_out_se|.1f}} nats, $z$ = {{3.affinity_slope_refitted_over_slope_1_held_out_z|.2f}} | 1 kept |
 | Relation-point weight is 1 | {{3.relation_part_slope_fitted|.2f}} [{{3.relation_part_slope_95_pct_low|.2f}}, {{3.relation_part_slope_95_pct_high|.2f}}] | held out {{3.relation_part_slope_refitted_over_slope_1_held_out_nats|.1f}} ± {{3.relation_part_slope_refitted_over_slope_1_held_out_se|.1f}} nats, $z$ = {{3.relation_part_slope_refitted_over_slope_1_held_out_z|.2f}} | 1 kept |
 | Weight of 3 per shared G1 win is 1 | {{3.race_part_slope_fitted|.2f}} [{{3.race_part_slope_95_pct_low|.2f}}, {{3.race_part_slope_95_pct_high|.2f}}] | held out {{3.race_part_slope_refitted_over_slope_1_held_out_nats|.1f}} ± {{3.race_part_slope_refitted_over_slope_1_held_out_se|.1f}} nats, $z$ = {{3.race_part_slope_refitted_over_slope_1_held_out_z|.2f}} | 1 kept |
+| Affinity bands below 200 fit | | $\chi^2$ = {{3.affinity_bands_below_200_chi2|.1f}}, $p$ = {{3.affinity_bands_below_200_chi2_p|.2f}} over four bands | consistent |
+| All five affinity bands fit | | $\chi^2$ = {{3.affinity_bands_chi2|.1f}}, $p$ = {{3.affinity_bands_chi2_p|.3f}} | known miss at 200+ |
+| Careers with 1 to 6 carriers | {{3.by_carriers_1_6_without_tail_held_high_lowest_ratio|.3f}}-{{3.by_carriers_1_6_without_tail_held_high_highest_ratio|.3f}} of the model | every interval covers 1 | consistent |
+| Years with an inspiration of the skill | {{3.per_roll_without_tail_held_high_spark_years_obs_per_exp|.3f}} of the model | {{3.per_roll_without_tail_held_high_spark_years_sds_below_expectation|.2f}} sd below | consistent |
+| $q$ by predicted band | | $\chi^2$ = {{3.reliability_chi2|.1f}}, $p$ = {{3.reliability_chi2_p|.2f}} over the {{3.reliability_chi2_buckets|.0f}} bands above 0 | consistent |
 
-The free slope gains {{3.affinity_slope_refitted_over_slope_1_in_sample_nats|.1f}} nats in-sample, which held out does not keep. Each part's weight is fitted with the
-other fixed; {{3.trials_with_shared_wins|,.0f}} trials have shared wins.
+*By stars and by affinity.* Of these groups, only affinity {{3.affinity_bands_outside_their_own_95_pct_interval|s}} lies outside its own interval, and
+every trial there is a parent's.
 
-*Grandparents.* A halved base falls far short of the passes seen:
-
-| Grandparent passes | Count |
-|---|---|
-| observed | {{3.grandparents_passes_observed|,.0f}} |
-| predicted with the full base | {{3.grandparents_predicted_full_base|,.0f}} |
-| predicted with half | {{3.grandparents_predicted_halved_base|,.0f}} |
-
-Parents read {{3.parents_obs_per_pred|.3f}} of the model, the shortfall coming from high affinity (below).
-
-*The bases by stars* all cover 1:
-
-| Stars | Trials | Observed / predicted [95%] |
+| Group | Trials | Observed / predicted [95%] |
 |---|---|---|
 | 1★ | {{3.1_star_trials|,.0f}} | {{3.1_star_obs_per_pred|.3f}} [{{3.1_star_95_pct_low|.2f}}, {{3.1_star_95_pct_high|.2f}}] |
 | 2★ | {{3.2_star_trials|,.0f}} | {{3.2_star_obs_per_pred|.3f}} [{{3.2_star_95_pct_low|.2f}}, {{3.2_star_95_pct_high|.2f}}] |
 | 3★ | {{3.3_star_trials|,.0f}} | {{3.3_star_obs_per_pred|.3f}} [{{3.3_star_95_pct_low|.2f}}, {{3.3_star_95_pct_high|.2f}}] |
+| affinity 0-49 | {{3.affinity_0_49_trials|,.0f}} | {{3.affinity_0_49_obs_per_pred|.3f}} [{{3.affinity_0_49_95_pct_low|.3f}}, {{3.affinity_0_49_95_pct_high|.3f}}] |
+| affinity 50-99 | {{3.affinity_50_99_trials|,.0f}} | {{3.affinity_50_99_obs_per_pred|.3f}} [{{3.affinity_50_99_95_pct_low|.3f}}, {{3.affinity_50_99_95_pct_high|.3f}}] |
+| affinity 100-149 | {{3.affinity_100_149_trials|,.0f}} | {{3.affinity_100_149_obs_per_pred|.3f}} [{{3.affinity_100_149_95_pct_low|.3f}}, {{3.affinity_100_149_95_pct_high|.3f}}] |
+| affinity 150-199 | {{3.affinity_150_199_trials|,.0f}} | {{3.affinity_150_199_obs_per_pred|.3f}} [{{3.affinity_150_199_95_pct_low|.3f}}, {{3.affinity_150_199_95_pct_high|.3f}}] |
+| affinity 200+ | {{3.affinity_200_trials|,.0f}} | {{3.affinity_200_obs_per_pred|.3f}} [{{3.affinity_200_95_pct_low|.3f}}, {{3.affinity_200_95_pct_high|.3f}}] |
 
-*Every affinity?* Below 200, yes. The band outside its own 95% interval is {{3.affinity_bands_outside_their_own_95_pct_interval|s}}.
-
-| Affinity | Trials | Observed / predicted [95%] |
-|---|---|---|
-| 0-49 | {{3.affinity_0_49_trials|,.0f}} | {{3.affinity_0_49_obs_per_pred|.3f}} [{{3.affinity_0_49_95_pct_low|.3f}}, {{3.affinity_0_49_95_pct_high|.3f}}] |
-| 50-99 | {{3.affinity_50_99_trials|,.0f}} | {{3.affinity_50_99_obs_per_pred|.3f}} [{{3.affinity_50_99_95_pct_low|.3f}}, {{3.affinity_50_99_95_pct_high|.3f}}] |
-| 100-149 | {{3.affinity_100_149_trials|,.0f}} | {{3.affinity_100_149_obs_per_pred|.3f}} [{{3.affinity_100_149_95_pct_low|.3f}}, {{3.affinity_100_149_95_pct_high|.3f}}] |
-| 150-199 | {{3.affinity_150_199_trials|,.0f}} | {{3.affinity_150_199_obs_per_pred|.3f}} [{{3.affinity_150_199_95_pct_low|.3f}}, {{3.affinity_150_199_95_pct_high|.3f}}] |
-| 200+ | {{3.affinity_200_trials|,.0f}} | {{3.affinity_200_obs_per_pred|.3f}} [{{3.affinity_200_95_pct_low|.3f}}, {{3.affinity_200_95_pct_high|.3f}}] |
-| parents, below 200 | {{3.parents_at_affinity_below_200_trials|,.0f}} | {{3.parents_at_affinity_below_200_obs_per_pred|.3f}} [{{3.parents_at_affinity_below_200_95_pct_low|.3f}}, {{3.parents_at_affinity_below_200_95_pct_high|.3f}}] |
-| parents, 200+ | {{3.parents_at_affinity_200_and_above_trials|,.0f}} | {{3.parents_at_affinity_200_and_above_obs_per_pred|.3f}} [{{3.parents_at_affinity_200_and_above_95_pct_low|.3f}}, {{3.parents_at_affinity_200_and_above_95_pct_high|.3f}}] |
-
-| Joint test of the bands | $\chi^2$ | $p$ | Verdict |
-|---|---|---|---|
-| the four below 200 | {{3.affinity_bands_below_200_chi2|.1f}} | {{3.affinity_bands_below_200_chi2_p|.2f}} | consistent |
-| all five | {{3.affinity_bands_chi2|.1f}} | {{3.affinity_bands_chi2_p|.3f}} | not consistent: a known miss |
-
-*Whole careers.* Section 13 gives the totals and the Tail Held High discrepancy. Without it, the finer checks are consistent
-over {{3.inheritance_without_tail_held_high_rows|,.0f}} rows:
-
-| Check, without Tail Held High | Observed / expected | Verdict |
-|---|---|---|
-| by the number of carriers, 1 to 6 | {{3.by_carriers_1_6_without_tail_held_high_lowest_ratio|.3f}}-{{3.by_carriers_1_6_without_tail_held_high_highest_ratio|.3f}} | every interval covers 1 |
-| years in which an inspiration of the skill fired | {{3.per_roll_without_tail_held_high_spark_years_obs_per_exp|.3f}} | {{3.per_roll_without_tail_held_high_spark_years_sds_below_expectation|.2f}} sd below, inside the 95% band |
-| legacy firings, against $2\sum_l r_l$ | {{3.per_roll_without_tail_held_high_ancestor_hits_obs_per_exp|.3f}} | |
-
-*Every predicted chance?* The rows are grouped by predicted $q$ into {{3.reliability_chi2_buckets|.0f}} groups, whose joint test does not reject the prediction.
-Their joint test gives $\chi^2$ = {{3.reliability_chi2|.1f}}, $p$ = {{3.reliability_chi2_p|.2f}}. One group, {{3.reliability_buckets_outside_their_own_95_pct_interval|s}}, lies outside its own 95% interval.
+*Whole careers by predicted $q$.* Only the band {{3.reliability_buckets_outside_their_own_95_pct_interval|s}} lies outside its own 95% interval.
 
 | Predicted $q$ | Rows | Observed | Mean predicted |
 |---|---|---|---|
@@ -394,93 +369,83 @@ The test is conditional on IT having chosen each non-goal race. Stats are not mo
 
 ## 5. Affinity
 
-Computed by `research/s05_affinity.py` (the self-grandparent fit).
+Computed by `research/s05_affinity.py`.
 
-A legacy's affinity is the game's rule as community tools implement it (`docs/MODEL.md`). It adds the characters'
-relation points from the game data and 3 for each single-race G1 both umas won. Trainee $T$ has parents $P_1$ and
-$P_2$. For either parent $P$, $P'$ is the other parent and $G \in \mathrm{par}(P)$ are $P$'s own parents, the
+A legacy's affinity follows the game's rule as community tools implement it (`docs/MODEL.md`): the characters'
+relation points from the game data, plus 3 for each single-race G1 both umas won. Trainee $T$ has parents $P_1$ and
+$P_2$. For either parent $P$, $P'$ is the other parent, and $G \in \mathrm{par}(P)$ are $P$'s own parents, the
 grandparents:
 
 $$A_P = \mathrm{pair}(T,P) + \mathrm{pair}(P_1,P_2) + 3\,o(P,P') + \sum_{G \in \mathrm{par}(P)} \big[\mathrm{tri}(T,P,G) + 3\,o(P,G)\big], \qquad A_G = \mathrm{tri}(T,P,G) + 3\,o(P,G).$$
 
-Here pair and tri are the relation points of the groups holding all the characters named. $o(a,b) = \sum_r P_a(r)\,
-P_b(r)$ is the expected number of single-race G1s both $a$ and $b$ win, where $P_a(r)$ is $a$'s chance of winning race
-$r$ at least once over her schedule (section 4, base aptitudes). Schedules fixed in advance and careers independent are
-**assumed**. The 3 per shared win is tested in section 3.
-The loop model inserts expected shared wins into the nonlinear inheritance formula; it does not average inheritance
-over joint future race outcomes.
+pair and tri are the relation points of the groups holding every character named. $o(a,b) = \sum_r P_a(r)\,P_b(r)$ is
+the expected number of single-race G1s both $a$ and $b$ win, where $P_a(r)$ is $a$'s chance of winning race $r$ at
+least once over her schedule (section 4, base aptitudes). Schedules fixed in advance and independent careers are
+**assumed**. The loop model puts these expected shared wins into the nonlinear inheritance formula; it does not average
+inheritance over the joint race outcomes. Section 3 tests the 3 per shared win.
 
 ### Findings
 
-- **A trainee who is her own grandparent gets no trio points from it**: $\mathrm{tri}(T,P,T) = 0$ (**fitted**). The game
-  data do not say what a group with one character twice counts. Counting it as $\mathrm{pair}(T,P)$, as one community
-  tool does, is about {{5.ll_0_ll_pair_nats|.0f}} nats worse.
+- **A trainee who is her own grandparent gets no trio points from it**: $\mathrm{tri}(T,P,T) = 0$ (**fitted**). The
+  game data do not say how a group counts one character twice. Counting it as $\mathrm{pair}(T,P)$, as one community
+  tool does, fits {{5.ll_0_ll_pair_nats|.0f}} nats worse.
 
 ### Evidence
 
-The fit uses {{5.trials_attributable_to_one_ancestor|,.0f}} inspiration trials attributable to a single ancestor. In {{5.self_grandparent_passes_observed|.0f}} of them a self-grandparent passed her
-spark. The distance of that count from each prediction is in run-clustered standard deviations:
+The fit uses {{5.trials_attributable_to_one_ancestor|,.0f}} trials as section 3 defines them, self-grandparents included. In {{5.self_grandparent_passes_observed|,.0f}} of them a
+self-grandparent passed her spark. The distance is observed minus predicted passes, in run-clustered standard
+deviations.
 
-| $\mathrm{tri}(T,P,T)$ | Passes predicted | Distance from observed, at slope 1 | At the slope refitted on ordinary ancestors |
+| Claim | Estimate | Test | Verdict |
 |---|---|---|---|
-| 0 (adopted) | {{5.predicted_tri_t_p_t_0|.1f}} | {{5.self_grandparent_passes_z_with_0|u.2f}} | {{5.self_grandparent_passes_refitted_slope_z_with_0|u.2f}} |
-| $\mathrm{pair}(T,P)$ | {{5.predicted_tri_t_p_t_pair_t_p|.1f}} | {{5.self_grandparent_passes_z_with_pair|u.2f}} | {{5.self_grandparent_passes_refitted_slope_z_with_pair|u.2f}} |
+| $\mathrm{tri}(T,P,T) = 0$ | {{5.predicted_tri_t_p_t_0|.1f}} passes predicted | distance {{5.self_grandparent_passes_z_with_0|u.2f}} | kept |
+| $\mathrm{tri}(T,P,T) = \mathrm{pair}(T,P)$ | {{5.predicted_tri_t_p_t_pair_t_p|.1f}} passes predicted | distance {{5.self_grandparent_passes_z_with_pair|u.2f}} | rejected |
+| a fraction $\kappa$ of $\mathrm{pair}(T,P)$ | $\hat\kappa = {{5.kappa_fitted|.0f}}$, its lower bound | | 0 kept |
 
-So 0 is kept and the pair rejected. A free multiplier $\kappa$, with $\mathrm{tri}(T,P,T) = \kappa\cdot\mathrm{pair}(T,P)$,
-fits best at $\hat\kappa = {{5.kappa_fitted|.0f}}$, its lower bound.
-
-The gap is not the ordinary trials' own misfit. The last column refits the affinity slope on the ordinary ancestors, to
-{{5.affinity_slope_refitted_on_the_ordinary_trials|.2f}}, and the verdict stands. At slope 1, ordinary parents read {{5.ordinary_parents_observed_per_predicted|.3f}} of prediction and grandparents {{5.ordinary_grandparents_observed_per_predicted|.3f}}.
+The gap is not the ordinary trials' own misfit: refitting the affinity slope on them, to {{5.affinity_slope_refitted_on_the_ordinary_trials|.2f}}, leaves both verdicts
+unchanged.
 
 ## 6. Loop structures, ranking and schedules
 
-Computed by `research/s06_loops.py`.
-
-A four-uma loop has {{6.four_uma_loop_lineages|.0f}} lineages $(T, P_1, P_2, X)$: a trainee, her parents, and $X$, each parent bred from
-the other parent and $X$. A three-uma rotation has {{6.three_uma_rotation_lineages|.0f}}, with $X = T$, so the trainee is her own grandparent. A
-structure is ranked by its lineages' mean $P(\text{all})$, a definition (`docs/MODEL.md`).
+Computed by `research/s06_loops.py`. The structures, their lineages $(T, P_1, P_2, X)$ and their ranking by mean
+$P(\text{all})$ are defined in `docs/MODEL.md` and `docs/SOLVER.md`. $X$ is the uma each parent was bred from with the
+other parent; a rotation has $X = T$.
 
 ### Findings
 
 - **The rotation occurs in practice**: {{6.a_grandparent_of_her_own_character|,.0f}} of {{6.runs|,.0f}} runs have a grandparent of the trainee's own character.
-- **Every pair of umas carries the same weight in the sum of affinities.** Total expected shared wins is the chosen
-  scheduling objective; equal affinity weights do not make it equivalent to the nonlinear landing score.
-- **With each loop's reported decks fixed, scheduling for shared wins costs little on the references**: no schedule
-  could raise a reference loop's odds by more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, and no listed runner-up could overtake its winner.
+- **Every pair of umas carries the same weight in a structure's summed affinities**, so the schedules maximise the total
+  expected shared wins. That total is a surrogate: equal weights do not make it equivalent to the nonlinear landing
+  odds.
+- **With each loop's reported decks fixed, scheduling for shared wins costs little**: on the reference results, no
+  schedule could raise a loop's odds by more than {{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, and no listed runner-up could overtake its winner.
 
 ### Evidence
 
 *Race weights* (**derived** from section 5's $A_P$ and $A_G$). In one lineage, $o(P_1,P_2)$ enters the six affinities
-{{6.one_lineage_o_p1_p2_weight|.0f}} times. It counts twice in each $A_P$, since $P'$ is also one of $P$'s own parents. $o(P_1,X)$ and $o(P_2,X)$ enter
-twice each. Summed over the lineages, every pair gets the same weight:
+{{6.one_lineage_o_p1_p2_weight|.0f}} times: twice in each $A_P$, since $P'$ is also one of $P$'s own parents. $o(P_1,X)$ and $o(P_2,X)$ enter
+{{6.one_lineage_o_p1_x_weight|.0f}} times each. Summed over a loop's {{6.four_uma_loop_lineages|.0f}} lineages or a rotation's {{6.three_uma_rotation_lineages|.0f}}, every pair gets one weight:
 
 $$\text{loop: } {{6.one_lineage_o_p1_p2_weight|.0f}}\cdot 2 + {{6.one_lineage_o_p1_x_weight|.0f}}\cdot 4 = {{6.loop_weight_per_pair|.0f}}, \qquad \text{rotation: } {{6.one_lineage_o_p1_p2_weight|.0f}} + {{6.one_lineage_o_p1_x_weight|.0f}} + {{6.one_lineage_o_p1_x_weight|.0f}} = {{6.rotation_weight_per_pair|.0f}}.$$
 
-The scheduler seeks a large $\sum_{a<b} o(a,b)$, the total expected shared wins, as a symmetric surrogate.
+*The schedule bound* (**derived**). The odds are nondecreasing in every $o$: $o$ enters each affinity with weight +3,
+and every later step is nondecreasing in its inputs. So, with a loop's decks fixed, no schedule can score above the
+odds with every pair's overlap at an upper bound. The bound used is the solver's pair ceiling (`docs/SOLVER.md`,
+`pair_ceilings`), with outfits reselected and decks fixed. Each pair's ceiling holds separately, and the pairs need not
+reach theirs jointly, so the bound is conservative. The ceilings come from the search code that chose the schedules.
+The script checks only that each lies between the overlap found and a loose independent ceiling: every G1 offering at
+its best chance, with no streak penalty.
 
-*The schedule bound* (**derived**, on the reference loops: the best loops and decks found for a fixed set of reference
-setups). Schedules are chosen for shared wins, not for the score. The score is nondecreasing in every $o$: $o$ enters each
-legacy's affinity with weight +3, and every later step is nondecreasing in its inputs. So, with a loop's decks fixed, no
-schedule can score above the odds with every pair at a valid upper bound on its overlap. The best schedule value lies
-between the feasible score found and this ceiling. Outfits are reselected at the ceiling, while decks remain fixed.
-The bound is computed on {{6.schedules_result_files|.0f}} reference results, whose odds an independent implementation
-reproduces to within {{6.schedules_recomputed_odds_max_relative_error|.0e}}.
+The bound is computed on the {{6.schedules_result_files|.0f}} reference results, the best loops and decks found for the validation setups
+(`val/ref__*`, `val/refpu__*`). An independent implementation reproduces their odds to within {{6.schedules_recomputed_odds_max_relative_error|.0e}}.
 
-Two ceilings bound the best possible overlap. $o_{\max}(a,b) = \sum_r P^{\max}_a(r)\,P^{\max}_b(r)$ is an independent
-one: every offering of every G1 attempted, with no streak penalty. Each *pair ceiling* is the smaller of the bounds
-obtained by optimising either member's feasible schedule against the other's componentwise best-case win chances.
-The pair need not attain that ceiling jointly. These bounds come from the same search code that chose the schedules, so
-they are not an independent check; they sit between $o$ and $o_{\max}$ on every pair.
+| On the reference results | Value |
+|---|---|
+| winners' odds gained by the shared wins found, over none | {{6.schedules_shared_win_value_min_pct|.0f}}-{{6.schedules_shared_win_value_max_pct|.0f}}% |
+| most any other schedule could add to a winner, by the pair ceilings | {{6.schedules_pb_ceiling_gain_min_pct|.2f}}-{{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, median {{6.schedules_pb_ceiling_gain_median_pct|.2f}}% |
+| listed runner-ups whose pair-ceiling odds reach their winner | {{6.schedules_runner_ups_whose_pb_ceiling_reaches_the_winner|.0f}} of {{6.schedules_runner_up_loops_checked|.0f}} |
 
-| Quantity | Value | Runner-ups that reach their winner |
-|---|---|---|
-| shared wins found, worth over no race affinity | {{6.schedules_shared_win_value_min_pct|.0f}}-{{6.schedules_shared_win_value_max_pct|.0f}}% | |
-| gain allowed by $o_{\max}$ | up to {{6.schedules_ceiling_gain_max_pct|.1f}}% | {{6.schedules_runner_ups_whose_ceiling_reaches_the_winner|.0f}} of {{6.schedules_runner_up_loops_checked|.0f}} |
-| gain allowed by the pair ceilings | {{6.schedules_pb_ceiling_gain_min_pct|.2f}}-{{6.schedules_pb_ceiling_gain_max_pct|.2f}}%, median {{6.schedules_pb_ceiling_gain_median_pct|.2f}}% | {{6.schedules_runner_ups_whose_pb_ceiling_reaches_the_winner|.0f}} of {{6.schedules_runner_up_loops_checked|.0f}} |
-
-$o_{\max}$ is far from reachable: the schedules found reach about {{6.schedules_overlap_found_as_pct_of_o_max_median|.0f}}% of it, so it cannot settle the ranking.
-The pair ceilings settle this comparison with each loop's decks fixed: no listed runner-up reaches its winner under them.
-They do not certify the ranking after jointly changing schedules and decks.
+This bound does not certify the ranking when schedules and decks change jointly.
 
 ## 7. Training hints
 

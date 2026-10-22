@@ -13,18 +13,16 @@ every o(a, b):
   P_lambda(all) = sum_c P(c) prod_k p_k(c), over the deck's outcomes c (independent of the schedule), where p_k(c) >= 0
   is nondecreasing in q (an uncertain target's white is GW (1 - (1 - hint_k(c)) (1 - ew_k) (1 - q))), so P_lambda is
   nondecreasing in q; the max over the trainee's outfits and the mean over the lineages keep that.
-A schedule attempts race r at a subset of the turns that offer it, each at clamp(bp - pen_k, 0, 100)% <= clamp(bp, 0,
-100)% (pen_k >= 0), so P_a(r) <= Pmax_a(r) = 1 - prod over every turn offering r to a of (1 - clamp(bp, 0, 100)/100), and
-o(a, b) <= o_max(a, b) = sum_r Pmax_a(r) Pmax_b(r) for any schedule. Hence, for a solved loop with its decks fixed, the
-optimal schedule for P-bar scores between P_found and P_ceiling (every pair at o_max), and
-P_floor (every o = 0) is the loop without race affinity. Computed on every deck result of the validation reference
-outputs (val/ref__*.out, val/refpu__*.out) with val/joint_check.py's independent Python recomputation of the exact
-odds, the affinities rebuilt here from the reported pairs' o and relation parts; o itself is recomputed from the
-reported schedule chart and o_max from data.json. o_max is far from reachable (every offering of every G1, no streak
-penalty, conflicting races on one turn all run), so a tighter ceiling is also used: PB(a, b), data.json's "pb" table,
-computed by the solver's best-response search over feasible schedules (`loopopt pbtable`, docs/SOLVER.md
-`pair_ceilings`; not independent of the solver, only checked here to sit between o and o_max). P_PB is the odds with
-every pair at PB."""
+Hence, for a solved loop with its decks fixed, the optimal schedule for P-bar scores between P_found and the odds with
+every pair at an upper bound on its overlap. The bound reported is PB(a, b), data.json's "pb" table, computed by the
+solver's best-response search over feasible schedules (`loopopt pbtable`, docs/SOLVER.md `pair_ceilings`); P_PB is the
+odds with every pair at PB, and P_floor (every o = 0) the loop without race affinity. PB is not independent of the
+solver, so it is checked here against o_max(a, b) = sum_r Pmax_a(r) Pmax_b(r), an independent but loose ceiling: a
+schedule attempts race r at a subset of the turns that offer it, each at clamp(bp - pen_k, 0, 100)% <= clamp(bp, 0,
+100)% (pen_k >= 0), so P_a(r) <= Pmax_a(r) = 1 - prod over every turn offering r to a of (1 - clamp(bp, 0, 100)/100).
+Computed on every deck result of the validation reference outputs (val/ref__*.out, val/refpu__*.out) with
+val/joint_check.py's independent Python recomputation of the exact odds, the affinities rebuilt here from the reported
+pairs' o and relation parts; o itself is recomputed from the reported schedule chart, o_max from data.json."""
 
 import collections, itertools, json, math, os, statistics, struct, sys
 from dataclasses import dataclass
@@ -117,20 +115,17 @@ def claims() -> list[Value | Finding]:
 
 
 def own_character_claims() -> list[Value | Finding]:
-    """how often the trainee's own character sits among her parents or grandparents in the run records"""
+    """how often the trainee's own character sits among her grandparents in the run records"""
     R = common.runs()
     if R is None:
         return []
     gp = sum(any(g["chara"] == r["chara"] for p in r["parents"] for g in p["gps"]) for r in R)
-    par = sum(any(p["chara"] == r["chara"] for p in r["parents"]) for r in R)
     sh = collections.Counter(shape(r) for r in R)
     out: list[Value | Finding] = [
         Value(SEC, "runs", len(R)),
         Value(SEC, "a grandparent of her own character", gp),
-        Value(SEC, "a parent of her own character", par),
     ]
     lo, hi = common.wilson(gp, len(R))
-    _, phi = common.wilson(par, len(R))
     out.append(
         common.finding(
             SEC,
@@ -139,14 +134,6 @@ def own_character_claims() -> list[Value | Finding]:
             gp > 0 and sh["rotation"] > 0,
             f"own-character grandparent {gp:,}/{len(R):,} = {gp / len(R):.3f} [{lo:.3f}, {hi:.3f}]; "
             f"exact rotation lineages {sh['rotation']}, exact loop lineages {sh['loop']}",
-        )
-    )
-    out.append(
-        common.finding(
-            SEC,
-            "X = T sits only at grandparent level: no run has a parent of the trainee's own character",
-            par == 0,
-            f"{par}/{len(R):,}, 95% upper {phi:.4f}",
         )
     )
     return out
@@ -232,10 +219,7 @@ class ScheduleRow:
 
     file: str  # the validation output, tag__era__job
     top: bool  # the result's winner (else a listed runner-up with other members)
-    members: int
     rep: float  # the odds the solver reported
-    o_sum: float  # sum of the reported o(a, b)
-    omax_sum: float  # sum of o_max(a, b)
     o_le_max: bool  # every o(a, b) <= o_max(a, b)
     o_le_pb: bool  # every o(a, b) <= PB(a, b) <= o_max(a, b)
     found: float = math.nan  # P_found: the odds recomputed by val/joint_check.py at the reported o
@@ -282,10 +266,7 @@ def check_loop(
     row = ScheduleRow(
         file=name,
         top=is_top,
-        members=len(lp["members"]),
         rep=lp["p_all"],
-        o_sum=sum(o_rep.values()),
-        omax_sum=sum(om.values()),
         o_le_max=all(o_rep[k] <= om[k] + 1e-9 for k in o_rep),
         o_le_pb=all(o_rep[k] <= opb[k] + 1e-9 and opb[k] <= om[k] + 1e-9 for k in o_rep),
     )
@@ -341,26 +322,13 @@ def schedule_claims() -> list[Value | Finding]:
     rows, err, pens = schedule_bound()
     W = [r for r in rows if r.top]
     RU = [r for r in rows if not r.top]  # winners, runner-ups
-    gain = [100 * (r.ceil / r.found - 1) for r in W]
     worth = [100 * (r.found / r.floor - 1) for r in W]
-    left = [100 * (r.ceil - r.found) / (r.found - r.floor) for r in W]
-    over = [100 * r.o_sum / r.omax_sum for r in W]
     gpb = [100 * (r.pb / r.found - 1) for r in W]
     out: list[Value | Finding] = [
         Value(SEC, "schedules: result files", len(W)),
-        Value(SEC, "schedules: four-uma winners", sum(r.members == 4 for r in W)),
         Value(SEC, "schedules: recomputed odds max relative error", err.p),
-        Value(SEC, "schedules: q max error", err.q),
-        Value(SEC, "schedules: o from the chart max error", err.o),
-        Value(SEC, "schedules: ceiling gain max %", max(gain)),
-        Value(SEC, "schedules: ceiling gain median %", statistics.median(gain)),
-        Value(SEC, "schedules: ceiling gain min %", min(gain)),
         Value(SEC, "schedules: shared-win value min %", min(worth)),
-        Value(SEC, "schedules: shared-win value median %", statistics.median(worth)),
         Value(SEC, "schedules: shared-win value max %", max(worth)),
-        Value(SEC, "schedules: ceiling as % of the shared-win value, max", max(left)),
-        Value(SEC, "schedules: overlap found as % of o_max, min", min(over)),
-        Value(SEC, "schedules: overlap found as % of o_max, median", statistics.median(over)),
         Value(SEC, "schedules: runner-up loops checked", len(RU)),
         Value(SEC, "schedules: PB ceiling gain max %", max(gpb)),
         Value(SEC, "schedules: PB ceiling gain median %", statistics.median(gpb)),
@@ -403,38 +371,17 @@ def schedule_claims() -> list[Value | Finding]:
             f"the winners {min(gpb):.2f}-{max(gpb):.2f}% (median {statistics.median(gpb):.2f}%)",
         )
     )
-    out.append(
-        common.finding(
-            SEC,
-            "No schedule, including one chosen for P-bar directly, can raise a validated winner's odds by "
-            "as much as the shared wins it already has are worth (ceiling gain < shared-win value)",
-            all(r.ceil - r.found < r.found - r.floor for r in W),
-            f"ceiling gain {min(gain):.2f}-{max(gain):.2f}% (median {statistics.median(gain):.2f}%); shared wins "
-            f"worth {min(worth):.1f}-{max(worth):.1f}% (median {statistics.median(worth):.1f}%); "
-            f"ceiling at most {max(left):.1f}% of that",
-        )
-    )
     if RU:
         out += runner_up_claims(W, RU)
     return out
 
 
 def runner_up_claims(W: list[ScheduleRow], RU: list[ScheduleRow]) -> list[Value | Finding]:
-    """whether a listed runner-up loop's ceiling (o_max, or the solver's PB) reaches its winner's odds found"""
+    """whether a listed runner-up loop's ceiling at the solver's PB reaches its winner's odds found"""
     winner_found = {w.file: w.found for w in W}
-    pas = [r for r in RU if r.ceil >= winner_found[r.file]]
     ppb = [r for r in RU if r.pb >= winner_found[r.file]]
     return [
-        Value(SEC, "schedules: runner-ups whose ceiling reaches the winner", len(pas)),
         Value(SEC, "schedules: runner-ups whose PB ceiling reaches the winner", len(ppb)),
-        common.finding(
-            SEC,
-            "The o_max bound alone cannot settle the ranking: some listed runner-up loop's o_max "
-            "ceiling reaches its winner's odds found",
-            bool(pas),
-            f"{len(pas)} of {len(RU)} reach; "
-            + "; ".join(f"{r.file}: runner-up ceiling {r.ceil:.6f} vs winner {winner_found[r.file]:.6f}" for r in RU),
-        ),
         common.finding(
             SEC,
             "With the solver's pair ceilings, no schedule could reorder a listed top: no listed "

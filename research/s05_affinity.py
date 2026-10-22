@@ -287,11 +287,7 @@ def claims() -> list[Value | Finding]:
     out += [
         Value(SEC, "self-grandparent passes: z with 0", z["G_self", 0].z),
         Value(SEC, "self-grandparent passes: z with pair", z["G_self", 1].z),
-        Value(SEC, "ordinary parents: observed / predicted", z["P", 0].observed / z["P", 0].predicted),
-        Value(SEC, "ordinary grandparents: observed / predicted", z["G", 0].observed / z["G", 0].predicted),
         Value(SEC, "affinity slope refitted on the ordinary trials", s),
-        Value(SEC, "self-grandparent passes, refitted slope: z with 0", zs["G_self", 0].z),
-        Value(SEC, "self-grandparent passes, refitted slope: z with pair", zs["G_self", 1].z),
     ]
     ev: Callable[..., str] = lambda c, h, zz=z: (
         f"{c}: {zz[c, h].observed} obs, {zz[c, h].predicted:.1f} pred, z {zz[c, h].z:+.2f}"
@@ -310,7 +306,7 @@ def claims() -> list[Value | Finding]:
     out.append(
         common.finding(
             SEC,
-            "Premise of the fit (implicit in RESEARCH.md): the self-grandparent gap is not the ordinary "
+            "Premise of the fit: the self-grandparent gap is not the ordinary "
             "trials' own misfit: with the affinity slope refitted on the ordinary parents and grandparents "
             "of the same runs, the self-grandparent passes stay within 1.96 sd of the H0 sum and beyond "
             "1.96 sd of the H1 sum",
