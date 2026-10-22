@@ -6,12 +6,11 @@ an unselected veteran cannot be read from them. What is computed here:
 - the band each scenario's careers reach: the run list's rank-score estimate with every skill point spent
   (research/data/summary.jsonl, not included; Independent Training runs from uma-it), share at 17,500 or more per
   scenario, against the band the page picks for the scenario (webapp/src/data.js, `ss`);
-- the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) for each mix (the mixes read from webapp/src/data.js
-  RANKS, the solver's default from pkg/loopopt/src/skills.rs);
-- what replacing a legacy's stars by that expected base costs: per run of the records (research/data/runs.jsonl), with
-  its six real affinities (s05_affinity), q with b in each of the two rolls against the exact
-  1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both rolls), for one target carried by
-  all six legacies.
+- that the solver's default mix (pkg/loopopt/src/skills.rs) is the page's below-17,500 mix (webapp/src/data.js RANKS);
+- what replacing a legacy's stars by the expected base per roll b = 0.03 (pi_1 + 2 pi_2 + 3 pi_3) costs: per run of
+  the records (research/data/runs.jsonl), with its six real affinities (s05_affinity), q with b in each of the two
+  rolls against the exact 1 - prod_l E_s[(1 - min(1, b(s)(1 + A_l / 100)))^2] (a legacy's stars are the same in both
+  rolls), for one target carried by all six legacies.
 """
 
 import math, os, re, statistics
@@ -56,17 +55,13 @@ def expected_base(pi: Mix) -> float:
 def claims() -> list[Value | Finding]:
     m = mixes()
     out: list[Value | Finding] = [
-        Value(SEC, "base per roll, below 17,500", expected_base(m.page["below"])),
-        Value(SEC, "base per roll, 17,500 and up", expected_base(m.page["ss"])),
-    ]
-    out.append(
         common.finding(
             SEC,
             "The solver's default mix is the page's below-17,500 mix",
             m.solver_default == m.page["below"],
             f"solver {m.solver_default}, page {m.page['below']}",
         )
-    )
+    ]
     out += scenario_bands(m.scenario_ss)
     out += averaging_cost(m.page)
     return out
@@ -85,7 +80,6 @@ def scenario_bands(scenario_ss: dict[int, bool]) -> list[Value | Finding]:
         lo, hi = common.wilson(k, len(v))
         out += [
             Value(SEC, f"{name}: runs", len(v)),
-            Value(SEC, f"{name}: median rank score", statistics.median(v)),
             Value(SEC, f"{name}: share at 17,500 or more", k / len(v)),
             Value(SEC, f"{name}: share 95% low", lo),
             Value(SEC, f"{name}: share 95% high", hi),
