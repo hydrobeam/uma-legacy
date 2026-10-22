@@ -981,89 +981,45 @@ is one such event in one run, read through the marker skill on its top choice.
 
 ### Findings
 
-- **A shared random event fires in about {{10.constant_p|.2f}} of the careers it can fire in** (**fitted**). This is a lower bound.
-  The rate falls a little as more events are on offer, but a constant rate predicts unseen runs as well.
-- **Leaving them out under-predicts the targets they can hint**, which read {{10.calibration_obs_per_pred_left_out|.2f}} of the model.
-- **On rows with a positive baseline prediction, crediting them has no clear held-out advantage.** Rows predicted
-  impossible are excluded from that score, so it cannot settle the value of adding a previously missing source.
-- **The card's initial friendship gauge raises the rate.** This is a known miss of the measured rate; friendship bonus
-  and specialty priority show no effect.
+- **Leaving them out under-predicts the targets they can hint**, a known miss: on real careers those targets read
+  {{10.calibration_obs_per_pred_left_out|.2f}} of the model. Credited at the fitted rate, they read {{10.calibration_obs_per_pred_credited|.2f}}.
 - **Two default targets are affected**: Vodka's Nimble Navigator and Nice Nature's Ramp Up, the only ones that are a
   character's top-choice marker.
+- **A shared random event fires in about {{10.constant_p|.2f}} of the careers it can fire in** (**fitted**), a lower bound. The
+  rate falls slightly as more events are on offer, but a constant rate predicts unseen runs as well.
+- **Crediting them has no clear held-out advantage** on the rows the model gives a positive chance.
+- **Known miss of the measured rate: the card's initial friendship gauge raises it.** It changes no prediction, since
+  the model leaves these events out.
 
 ### Evidence
 
-*Reading the rate.* A hit is a top-choice marker credited to the character's event. An *ambiguous credit* names another
-deck card whose events can also give the marker; as in section 8, it is left out as unknown.
+*The rate.* A hit is a top-choice marker credited to the character's event. An *ambiguous credit* also names another
+deck card whose events can give the marker; as in section 8, it is left out as unknown. The {{10.readings|,.0f}} readings come
+from {{10.runs|,.0f}} runs. They give {{10.clean_hits|,.0f}} hits, with {{10.ambiguous_credits_unknown_left_out|.0f}} ambiguous credits left out.
 
-| Count | Value |
-|---|---|
-| readings | {{10.readings|,.0f}}, from {{10.runs|,.0f}} runs |
-| clean hits | {{10.clean_hits|,.0f}} |
-| ambiguous credits, left out | {{10.ambiguous_credits_unknown_left_out|.0f}} |
-| readings where the marker was already at Lv 5 from other sources | {{10.readings_where_the_event_could_not_show_marker_at_lv_5_from_other_sources|.0f}} |
+A firing goes unseen when IT takes another choice for a prioritised skill, or when the marker is already at Lv 5 from
+other sources. So the rate is a lower bound. Counting ambiguous credits as hits, over the readings where the event
+could show, gives {{10.rate_where_it_could_show_ambiguous_as_hits|.3f}}.
 
-| Way of counting | Rate |
-|---|---|
-| as fitted | {{10.constant_p|.3f}} |
-| ambiguous credits as hits | about {{10.rate_with_ambiguous_points_higher|.0f}} points higher |
-| only where the event could show | {{10.rate_where_the_event_could_show|.3f}} |
-| the same, with ambiguous credits as hits | {{10.rate_where_it_could_show_ambiguous_as_hits|.3f}} |
+The *$K$ form* lowers the rate by a fixed fraction for each extra event on offer. The card effects and scenario are
+fitted beside $K$ in a logistic model.
 
-A firing is also missed when IT takes another choice for a prioritised skill. So the rate is a lower bound.
-
-*Which form?* None beats the constant rate held out:
-
-| Form | LL in-sample | Held out, against the form named |
-|---|---|---|
-| constant {{10.constant_p|.3f}} | {{10.ll_constant|u,.1f}} | |
-| $K$ form, ${{10.fitted_form_p_at_k_4|.2f}}(1 - {{10.fitted_form_1_ratio_per_event|.3f}})^{K-4}$ | {{10.ll_fitted_form|u,.1f}} | {{10.held_out_fitted_form_against_constant_nats|u+.1f}} ± {{10.held_out_fitted_form_against_constant_se|.1f}} nats against the constant, $z$ = {{10.held_out_fitted_form_against_constant_z|u+.2f}} |
-| power law $c(K/8)^{-a}$, $a = {{10.power_law_a|.2f}}$ | {{10.ll_power_law|u,.1f}} | {{10.held_out_power_law_against_fitted_form_nats|u+.1f}} ± {{10.held_out_power_law_against_fitted_form_se|.1f}} against the $K$ form, $z$ = {{10.held_out_power_law_against_fitted_form_z|u+.2f}} |
-| strict competition $1 - (1 - 1/K)^S$, $S = {{10.strict_competition_s|.2f}}$ | {{10.ll_strict_competition|u,.1f}} | {{10.held_out_strict_competition_against_fitted_form_nats|u+.1f}} ± {{10.held_out_strict_competition_against_fitted_form_se|.1f}} against the $K$ form, $z$ = {{10.held_out_strict_competition_against_fitted_form_z|u+.2f}} |
-| slot form $c / T$, $c = {{10.every_slot_competing_c|.2f}}$ | {{10.ll_every_slot_competing|u,.1f}} | {{10.held_out_every_slot_competing_against_fitted_form_nats|u+.1f}} ± {{10.held_out_every_slot_competing_against_fitted_form_se|.1f}} against the $K$ form, $z$ = {{10.held_out_every_slot_competing_against_fitted_form_z|u+.2f}} |
-
-The $K$ form says each extra event on offer lowers the rate by a fixed fraction. It gives {{10.fitted_p_at_k_4|.2f}} at $K = 4$ and {{10.fitted_p_at_k_14|.2f}} at
-$K = 14$. Its slope is detectable, run-clustered Wald $|z|$ = {{10.slope_in_k_robust_z|u.2f}}, but does not predict unseen runs better. Uniform
-competition would make the power law's $a = 1$. Strict competition predicts unseen runs worse.
-
-The slot form lets every event slot compete: $T = K + w \cdot \text{pals}$, $w$ being what a pal weighs. Chain links
-take no weight, and pals do compete:
-
-| Slot weight | Estimate [95%, run-clustered] | Test |
-|---|---|---|
-| a chain link | {{10.every_slot_competing_chain_link_weight|.0f}} | weight 1 rejected, score test |
-| a pal, $w$ | {{10.every_slot_competing_pal_weight|.2f}} [{{10.every_slot_competing_pal_weight_robust_95_pct_low|.2f}}, {{10.every_slot_competing_pal_weight_robust_95_pct_high|.2f}}] | 0 excluded |
-
-*What else moves the rate?* The measured effects are below. The within-run check does not detect dependence;
-independent firing remains an assumption.
-
-| $K$ | 4 | 6 | 8 | 10 | 12 | 14 |
-|---|---|---|---|---|---|---|
-| Observed hit rate | {{10.hit_rate_k_4|.2f}} | {{10.hit_rate_k_6|.2f}} | {{10.hit_rate_k_8|.2f}} | {{10.hit_rate_k_10|.2f}} | {{10.hit_rate_k_12|.2f}} | {{10.hit_rate_k_14|.2f}} |
-
-A logistic slope in $K$ gives {{10.logistic_rate_at_k_8|.1%}} at 8 on offer and {{10.logistic_rate_at_k_14|.1%}} at 14. The card effects were fitted together next to $K$:
-
-| Effect, per 10 points | Logit [95%] | Holm-adjusted run-clustered $p$ | Verdict |
+| Claim | Estimate [95%] | Test | Verdict |
 |---|---|---|---|
-| initial friendship gauge | {{10.initial_friendship_gauge_logit_per_10_points|+.3f}} [{{10.initial_friendship_gauge_95_pct_low|+.3f}}, {{10.initial_friendship_gauge_95_pct_high|+.3f}}] | {{10.initial_friendship_gauge_holm_p|.4f}} | raises the rate; {{10.initial_friendship_gauge_cards_at_limit_break_4_logit_per_10_points|+.3f}} on LB4 cards alone |
-| friendship bonus | {{10.friendship_bonus_logit_per_10_points|u+.3f}} | {{10.friendship_bonus_holm_p|.2f}} | none |
-| specialty priority | {{10.specialty_priority_logit_per_10_points|+.3f}} | {{10.specialty_priority_holm_p|.2f}} | none |
+| The rate falls as more events are on offer | $K$ form: {{10.fitted_p_at_k_4|.2f}} at $K$ = 4, {{10.fitted_p_at_k_14|.2f}} at 14 | run-clustered Wald $\lvert z \rvert$ = {{10.slope_in_k_robust_z|u.2f}} | detectable |
+| The $K$ form predicts unseen runs better than a constant | constant {{10.constant_p|.3f}} | held out {{10.held_out_fitted_form_against_constant_nats|u+.1f}} ± {{10.held_out_fitted_form_against_constant_se|.1f}} nats, $z$ = {{10.held_out_fitted_form_against_constant_z|u+.2f}} | no |
+| The initial friendship gauge raises the rate | {{10.initial_friendship_gauge_logit_per_10_points|+.3f}} [{{10.initial_friendship_gauge_95_pct_low|+.3f}}, {{10.initial_friendship_gauge_95_pct_high|+.3f}}] logit per 10 points | Holm-adjusted run-clustered $p$ = {{10.initial_friendship_gauge_holm_p|.4f}} | known miss |
+| Friendship bonus moves it | {{10.friendship_bonus_logit_per_10_points|u+.3f}} logit per 10 points | Holm-adjusted $p$ = {{10.friendship_bonus_holm_p|.2f}} | no effect |
+| Specialty priority moves it | {{10.specialty_priority_logit_per_10_points|u+.3f}} logit per 10 points | Holm-adjusted $p$ = {{10.specialty_priority_holm_p|.2f}} | no effect |
+| Scenario moves it | | run-clustered $p$ = {{10.scenario_robust_p|.2f}} | not detectable |
+| Rarity moves it within a character | | run-clustered $z$ = {{10.rarity_within_a_character_robust_z|u+.2f}} | no effect: R and SR cards pooled with SSR |
 
-The model leaves these events out, so the gauge changes no prediction; it is a known miss of the measured rate. Rarity
-within a character shows no effect: pooled, SSR markers fire at {{10.pooled_ssr_marker_rate|.1%}} and SR at {{10.pooled_sr_marker_rate|.1%}}. Scenario is not detectable,
-run-clustered $p$ = {{10.scenario_robust_p|.2f}}. A rate per scenario does not predict unseen runs better, $z$ = {{10.held_out_scenario_next_to_k_z|u.2f}}.
-
-*Bottom-choice skills are rarely credited.* In the {{10.runs_showing_a_priority_list|.0f}} runs showing a priority list:
-
-| Bottom-choice candidates | Count or rate [95%] |
-|---|---|
-| prioritised | {{10.bottom_choice_markers_prioritised_there|.0f}} of {{10.bottom_choice_candidates_there|.0f}} |
-| credited, not prioritised | {{10.bottom_choice_not_prioritised_credited_rate|.3f}} [{{10.bottom_choice_not_prioritised_95_pct_low|.3f}}, {{10.bottom_choice_not_prioritised_95_pct_high|.3f}}] |
-| credited, prioritised | {{10.bottom_choice_prioritised_credited_to_her_event|.0f}} of {{10.bottom_choice_markers_prioritised_there|.0f}} |
-| top-choice markers credited, for comparison | {{10.top_choice_marker_rate|.3f}} |
+Pairs of one run's readings that both hit are as frequent as independent firing predicts. Independent firing remains
+an assumption.
 
 *What does leaving them out cost on real careers?* The test uses section 13's rows, each on the run's own deck. It
-scores whether the target was acquired from any source, so it does not depend on reading the event.
+scores whether the target was acquired from any source, so it does not depend on reading the event. Crediting uses the
+$K$ form at each run's $K$, about {{10.careers_mean_fitted_rate_there|.2f}} on these rows.
 
 | Rows where a deck card's random event could hint the target | Count |
 |---|---|
@@ -1073,35 +1029,37 @@ scores whether the target was acquired from any source, so it does not depend on
 | rows the model gives no chance | {{10.careers_rows_the_model_gives_no_chance|.0f}} |
 | of those, hinted by the event | {{10.careers_of_them_acquired_through_that_event|.0f}} |
 
-| Events | Acquisition, observed / predicted [95%] |
-|---|---|
-| left out, as modelled | {{10.calibration_obs_per_pred_left_out|.2f}} [{{10.calibration_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_ratio_95_pct_high_left_out|.2f}}] |
-| credited at the fitted rate, about {{10.careers_mean_fitted_rate_there|.2f}} there | {{10.calibration_obs_per_pred_credited|.2f}} [{{10.calibration_ratio_95_pct_low_credited|.2f}}, {{10.calibration_ratio_95_pct_high_credited|.2f}}] |
+| Claim | Estimate [95%] | Test | Verdict |
+|---|---|---|---|
+| Left out, these targets are under-predicted | {{10.calibration_obs_per_pred_left_out|.2f}} [{{10.calibration_ratio_95_pct_low_left_out|.2f}}, {{10.calibration_ratio_95_pct_high_left_out|.2f}}] | interval excludes 1 | known miss |
+| Credited at the fitted rate, they are not | {{10.calibration_obs_per_pred_credited|.2f}} [{{10.calibration_ratio_95_pct_low_credited|.2f}}, {{10.calibration_ratio_95_pct_high_credited|.2f}}] | interval covers 1 | consistent |
+| Crediting predicts unseen runs better | | held out {{10.held_out_credited_against_left_out_nats|u+.1f}} ± {{10.held_out_credited_against_left_out_se|.1f}} nats, $z$ = {{10.held_out_credited_against_left_out_z|u+.2f}} | not shown |
 
-Held out, on the {{10.calibration_rows_with_a_positive_prediction|.0f}} rows with positive baseline predictions and with the rate fitted on the other groups'
-readings, crediting gains {{10.held_out_credited_against_left_out_nats|.1f}} ± {{10.held_out_credited_against_left_out_se|.1f}} nats. That is $z$ =
-{{10.held_out_credited_against_left_out_z|.2f}}, short of 1.96. Crediting would raise an affected run's odds by a median {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_median|.0%}}, over the targets it can land.
-The largest rise is {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_max|.0%}}, over {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_runs|.0f}} affected runs. The trainee's own random event can be told apart only for Nice Nature: it
-gave the target on {{10.careers_trainee_s_own_acquired_through_her_events|.0f}} of {{10.careers_rows_of_the_trainee_s_own_event_identifiable|.0f}} rows.
+The held-out score refits the rate on the other folds' readings. It covers only the {{10.calibration_rows_with_a_positive_prediction|.0f}} rows with a positive
+baseline prediction: a row the model gives no chance has no finite likelihood when acquired. So it leaves out the rows
+where an omitted source matters most, and it cannot settle the value of adding the source.
+
+Over the targets the model gives a positive chance, crediting would raise an affected run's odds by a median
+{{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_median|.0%}}. The largest rise, over {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_runs|.0f}} affected runs, is {{10.odds_change_targets_with_a_positive_chance_runs_with_a_credited_row_max|.0%}}.
 
 ## 11. Conditional character events (not modelled)
 
 Computed by `research/s11_conditional.py`.
 
-The trainee's secret and race-result events are left out of the model. A *conditional-only row* is a run-target row
-where only such an event can give the target: none of the trainee's story, date, outfit or shared random events can,
-nor the scenario's.
+The trainee's secret and race-result events are left out of the model, except Tokai Teio's Head-On. A
+*conditional-only row* is a run-target row where only such an event can give the target: none of the trainee's story,
+date, outfit or shared random events can, nor the scenario's.
 
 ### Findings
 
-- **The conditional-only sample does not settle the cost of omission for individual trainees.** Crediting the measured
-  rates on positive-baseline rows gains {{11.calibration_conditional_only_ll_credited_minus_left_out_positive_rows|.1f}} nats.
-- **The exception is Vodka's Nimble Navigator.** Her own events give it in most of her runs, and the model
-  under-predicts it. Her random and conditional events both give it and cannot be told apart.
+- **On conditional-only rows, leaving these events out shows no detectable cost.** The {{11.careers_conditional_only_rows|.0f}} rows are too few to
+  settle the cost for any one trainee.
+- **Known miss: Vodka's own Nimble Navigator.** Her events give it in most of her runs, and the model under-predicts
+  it. Her random and conditional events both give it and cannot be told apart.
 - **Tokai Teio's Head-On is modelled as always acquired**, like Yamanin Zephyr's Slipstream. All three of its races
-  are her career goals. The goals ask only for top 5, top 5 and top 3, but IT won all three in {{11.of_them_winning_all_three|.0f}} of {{11.runs_training_tokai_teio|.0f}}
-  runs training her. Every run where her event could show credits Head-On. Certainty remains an assumption; her goals
-  require placings, while the event requires wins.
+  are her career goals. The goals ask only for top 5, top 5 and top 3, while the event needs wins, so certainty is
+  **assumed** from observed wins: IT won all three in {{11.of_them_winning_all_three|.0f}} of {{11.runs_training_tokai_teio|.0f}} runs training her. Every run where her
+  event could show credits Head-On.
 
 ### Evidence
 
@@ -1109,13 +1067,19 @@ nor the scenario's.
 |---|---|---|
 | all conditional-only rows | {{11.careers_conditional_only_from_her_events|.0f}} of {{11.careers_conditional_only_rows|.0f}} | {{11.careers_conditional_only_rate|.3f}} [{{11.careers_conditional_only_rate_95_pct_low|.3f}}, {{11.careers_conditional_only_rate_95_pct_high|.3f}}] |
 | Daiwa Scarlet, any outfit, Nimble Navigator | {{11.daiwa_scarlet_any_outfit_nimble_navigator_from_her_events|.0f}} of {{11.daiwa_scarlet_any_outfit_nimble_navigator_rows|.0f}} | [{{11.daiwa_scarlet_any_outfit_nimble_navigator_rate_95_pct_low|.2f}}, {{11.daiwa_scarlet_any_outfit_nimble_navigator_rate_95_pct_high|.2f}}] |
+| Fine Motion, any outfit, Ramp Up | {{11.fine_motion_any_outfit_ramp_up_from_her_events|.0f}} of {{11.fine_motion_any_outfit_ramp_up_rows|.0f}} | [{{11.fine_motion_any_outfit_ramp_up_rate_95_pct_low|.2f}}, {{11.fine_motion_any_outfit_ramp_up_rate_95_pct_high|.2f}}] |
 | Mejiro Ardan, any outfit, Ramp Up | {{11.mejiro_ardan_any_outfit_ramp_up_from_her_events|.0f}} of {{11.mejiro_ardan_any_outfit_ramp_up_rows|.0f}} | [{{11.mejiro_ardan_any_outfit_ramp_up_rate_95_pct_low|.2f}}, {{11.mejiro_ardan_any_outfit_ramp_up_rate_95_pct_high|.2f}}] |
-| Vodka, any outfit, Nimble Navigator | {{11.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{11.vodka_any_outfit_nimble_navigator_rows|.0f}} | [{{11.vodka_any_outfit_nimble_navigator_rate_95_pct_low|.2f}}, {{11.vodka_any_outfit_nimble_navigator_rate_95_pct_high|.2f}}] |
+| Vodka, any outfit, Nimble Navigator, not conditional-only | {{11.vodka_any_outfit_nimble_navigator_from_her_events|.0f}} of {{11.vodka_any_outfit_nimble_navigator_rows|.0f}} | [{{11.vodka_any_outfit_nimble_navigator_rate_95_pct_low|.2f}}, {{11.vodka_any_outfit_nimble_navigator_rate_95_pct_high|.2f}}] |
 
 | Rows, model as it is | Acquisition, observed / predicted [95%] | Crediting the measured rates gains |
 |---|---|---|
 | conditional-only | {{11.calibration_conditional_only_obs_per_pred_left_out|.2f}} [{{11.calibration_conditional_only_ratio_95_pct_low_left_out|.2f}}, {{11.calibration_conditional_only_ratio_95_pct_high_left_out|.2f}}] | {{11.calibration_conditional_only_ll_credited_minus_left_out_positive_rows|.1f}} nats |
 | with Vodka's rows | {{11.calibration_obs_per_pred_left_out|.2f}} [{{11.calibration_ratio_95_pct_low_left_out|.2f}}, {{11.calibration_ratio_95_pct_high_left_out|.2f}}] | {{11.calibration_ll_credited_minus_left_out_positive_rows|.1f}} nats |
+
+Each gain is in-sample and is set against half the $\chi^2$ 95% point for one degree of freedom per fitted rate: the
+first falls short, the second exceeds it. As in section 10, the gains count only rows with a positive baseline
+prediction. That leaves out {{11.careers_conditional_only_rows_the_model_gives_no_chance|.0f}} conditional-only rows the model gives no chance, and her events
+hinted the target on {{11.careers_of_them_from_her_events|.0f}} of them.
 
 ## 12. The composed career model
 
