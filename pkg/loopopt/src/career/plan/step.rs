@@ -75,13 +75,13 @@ impl StepCost for Lo {
     }
     #[inline]
     fn value_after(&mut self, score_base: &ScoreBase, costs: &mut [f64], _: &mut Vec<usize>, _: bool) -> f64 {
-        v0_after(score_base, costs)
+        score_base.v0_after(costs)
     }
 }
 
 /// The estimate's steps (`sc_loop`): a step's cost through a per-row cache of the odds costed (`probability_costs`, slot j at j, the
 /// candidates without a slot after the slots; `score_base.cost` is a pure function of them, direct-mapped by the odds' bits), V
-/// after her lazily and through its shortcuts (no step moved: `unchanged_value`; one: `single_candidate_value`), with the counters `sc_eval`
+/// after her lazily and through its shortcuts (no step moved: `unchanged_value`; one: `SingleCandidateValue::value`), with the counters `Scored::evaluate`
 /// reports.
 ///
 /// V after her found lazily (with `lazy`): a lifted candidate on Cont's plan path (`Cont::lb_ok`) is first given her
@@ -91,8 +91,8 @@ impl StepCost for Lo {
 /// costed (`cost`, as above) and its value taken. A trio passed over is at least that bound (lo <= the step she takes,
 /// and rounded sums are monotone), so at least the minimum: every trio a pending candidate left uncosted reads is at
 /// least the minimum, and with her step left at the base's (above the step she would take) still is, while every
-/// trio at the minimum reads only costed steps. So the least trio value found is the minimum `v0_after` (or `single_candidate_value`)
-/// takes over every trio, the same f64 (equal minima the same bits: `sc_outcomes`), and V after her. Her own 8/8's
+/// trio at the minimum reads only costed steps. So the least trio value found is the minimum `v0_after` (or `SingleCandidateValue::value`)
+/// takes over every trio, the same f64 (equal minima the same bits: `evaluate_outcomes`), and V after her. Her own 8/8's
 /// trios (`Scored::own_trios`) read every step: then all are costed, and V after her is taken as without the lazy pass
 #[derive(Default)]
 pub(crate) struct StepEstimate<'base> {
@@ -105,7 +105,7 @@ pub(crate) struct StepEstimate<'base> {
 struct StepInputs<'base> {
     lower_bound_continuations: Vec<Option<&'base Cont>>,
     trio_order: Vec<usize>,
-    single_candidate_costs: &'base [One],
+    single_candidate_costs: &'base [SingleCandidateValue],
     unchanged_value: f64,
 }
 
@@ -135,12 +135,12 @@ pub(crate) struct EstimateBuffers {
 }
 
 impl<'base> StepEstimate<'base> {
-    /// for `rows` lift rows; `lazy` (`sc_outcomes`: every step, stage 2-3 cost and C's step a number >= 0, not -0.0)
+    /// for `rows` lift rows; `lazy` (`evaluate_outcomes`: every step, stage 2-3 cost and C's step a number >= 0, not -0.0)
     pub(crate) fn new(
         score_base: &'base ScoreBase<'_>,
         rows: usize,
         lazy: bool,
-        single_candidate_costs: &'base [One],
+        single_candidate_costs: &'base [SingleCandidateValue],
         buffers: EstimateBuffers,
     ) -> Self {
         let n = score_base.candidates.len();
@@ -170,7 +170,7 @@ impl<'base> StepEstimate<'base> {
                 lower_bound_continuations,
                 trio_order,
                 single_candidate_costs,
-                unchanged_value: v0_after(score_base, score_base.step_costs),
+                unchanged_value: score_base.v0_after(score_base.step_costs),
             },
             workspace: StepWorkspace {
                 probability_costs,
@@ -369,74 +369,76 @@ impl StepCost for StepEstimate<'_> {
             && self.inputs.single_candidate_costs[changed_candidates[0]].valid
         {
             self.workspace.single_candidate_shortcuts += 1;
-            single_candidate_value(
-                &self.inputs.single_candidate_costs[changed_candidates[0]],
-                costs[changed_candidates[0]],
-            )
+            self.inputs.single_candidate_costs[changed_candidates[0]].value(costs[changed_candidates[0]])
         } else {
-            v0_after(score_base, costs)
+            score_base.v0_after(costs)
         }
     }
 }
 
-/// Expected careers saved at one outcome. Apply lifts in candidate order, then full-veteran
-/// credit and the minimum continuation cost. Restore every changed step to the base before returning.
-/// Both the estimate and upper bound use this sequence, with their own StepCost implementation.
-#[inline(always)]
-pub(crate) fn v_after<C: StepCost>(
-    score_base: &ScoreBase,
-    cost: &mut C,
-    scratch: &mut StepScratch,
-    lifted: &[CandidateLift],
-    landed_mask: usize,
-    own: &OwnFullLanding,
-) -> f64 {
-    // Split the mutable buffers before entering the estimator, preserving their disjoint borrows.
-    let StepScratch { costs, changed_candidates } = scratch;
-    // (the candidates whose step moved: if none, costs is the base's)
-    changed_candidates.clear();
-    for &lift in lifted {
-        cost.take(score_base, costs, changed_candidates, lift);
-    }
-    if landed_mask == own.full_mask
-        && let Some(candidate_index) = own.candidate_index
-    {
-        costs[candidate_index] = 0.0;
-        changed_candidates.push(candidate_index);
-        cost.zeroed(candidate_index);
-    }
-    let reads_all_steps = landed_mask == own.full_mask && !own.trios.is_empty();
-    let mut value_after = cost.value_after(score_base, costs, changed_candidates, reads_all_steps);
-    if reads_all_steps {
-        value_after = with_her(value_after, own.trios, costs);
-    }
-    // costs back to the base's
-    for &i in changed_candidates.iter() {
-        costs[i] = score_base.step_costs[i];
-    }
-    if own.completes_goal && landed_mask == own.full_mask {
-        score_base.current_value
-    } else {
-        (score_base.current_value - value_after).max(0.0)
+impl ScoreBase<'_> {
+    /// Expected careers saved at one outcome. Apply lifts in candidate order, then full-veteran
+    /// credit and the minimum continuation cost. Restore every changed step to the base before returning.
+    /// Both the estimate and upper bound use this sequence, with their own StepCost implementation.
+    #[inline(always)]
+    pub(crate) fn v_after<C: StepCost>(
+        &self,
+        cost: &mut C,
+        scratch: &mut StepScratch,
+        lifted: &[CandidateLift],
+        landed_mask: usize,
+        own: &OwnFullLanding,
+    ) -> f64 {
+        // Split the mutable buffers before entering the estimator, preserving their disjoint borrows.
+        let StepScratch { costs, changed_candidates } = scratch;
+        // (the candidates whose step moved: if none, costs is the base's)
+        changed_candidates.clear();
+        for &lift in lifted {
+            cost.take(self, costs, changed_candidates, lift);
+        }
+        if landed_mask == own.full_mask
+            && let Some(candidate_index) = own.candidate_index
+        {
+            costs[candidate_index] = 0.0;
+            changed_candidates.push(candidate_index);
+            cost.zeroed(candidate_index);
+        }
+        let reads_all_steps = landed_mask == own.full_mask && !own.trios.is_empty();
+        let mut value_after = cost.value_after(self, costs, changed_candidates, reads_all_steps);
+        if reads_all_steps {
+            value_after = with_her(value_after, own.trios, costs);
+        }
+        // costs back to the base's
+        for &i in changed_candidates.iter() {
+            costs[i] = self.step_costs[i];
+        }
+        if own.completes_goal && landed_mask == own.full_mask {
+            self.current_value
+        } else {
+            (self.current_value - value_after).max(0.0)
+        }
     }
 }
 
-/// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs c1 (a real partner side free)
-fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
-    her.iter()
-        .map(|&OwnTrio { candidate: CandidateIndex(ib), uses_existing: real, finisher_cost: c3 }| {
-            (if real { 0.0 } else { c1[ib] }) + c3
+/// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs (a real partner side free)
+fn with_her(value: f64, own_trios: &[OwnTrio], step_costs: &[f64]) -> f64 {
+    own_trios
+        .iter()
+        .map(|&OwnTrio { candidate: CandidateIndex(candidate), uses_existing, finisher_cost }| {
+            (if uses_existing { 0.0 } else { step_costs[candidate] }) + finisher_cost
         })
-        .fold(v, f64::min)
+        .fold(value, f64::min)
 }
 
-/// V after her before her own 8/8 and the goal, at the candidates' step costs c1: the trios' least cost (`trio_v`; with no
-/// trio, the least of each candidate's step plus her stages 2-3)
-fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
-    if bs.trios.is_empty() {
-        (0..bs.candidates.len()).map(|a| c1[a] + bs.later_stage_costs[a]).fold(f64::INFINITY, f64::min)
-    } else {
-        trio_v(c1, bs.trios)
+impl ScoreBase<'_> {
+    /// V after her before her own 8/8 and the goal, at the candidates' step costs: the trios' least cost (`trio_v`; with no
+    /// trio, the least of each candidate's step plus her stages 2-3)
+    fn v0_after(&self, step_costs: &[f64]) -> f64 {
+        if self.trios.is_empty() {
+            (0..self.candidates.len()).map(|a| step_costs[a] + self.later_stage_costs[a]).fold(f64::INFINITY, f64::min)
+        } else {
+            trio_v(step_costs, self.trios)
+        }
     }
 }
 
@@ -447,136 +449,76 @@ struct TrioRemainder {
     finisher_cost: f64,
 }
 
-/// `trio_v` with one candidate's step changed (to x, from the base's c1), per candidate i: the minimum over the trios that
+/// `trio_v` with one candidate's step changed from the base: the minimum over the trios that
 /// do not read her step (their values at the base's steps, trio_v's expression), and the trios that read it once, as
-/// (key = rest + C's step, rest, C's step), key ascending: a trio's value (x + rest) + C's step, the same float as trio_v's
+/// (key = rest + C's step, rest, C's step), key ascending: a trio's value (step_cost + rest) + C's step, the same float as trio_v's
 /// sum (addition commutes exactly). Not `valid` when a trio reads her step twice
-pub(crate) struct One {
+pub(crate) struct SingleCandidateValue {
     unaffected_value: f64,
     reading_trios: Vec<TrioRemainder>,
     valid: bool,
 }
 
-pub(crate) fn one_of(combos: &[Trio], c1: &[f64], i: usize) -> One {
-    let (mut unaffected_value, mut reading_trios, mut valid) = (f64::INFINITY, vec![], true);
-    for &Trio {
-        candidate_a: CandidateIndex(first_candidate),
-        candidate_b: CandidateIndex(second_candidate),
-        finisher_cost,
-        a_uses_existing: first_existing,
-        b_uses_existing: second_existing,
-    } in combos
-    {
-        let (first_cost, second_cost) = (
-            if first_existing { 0.0 } else { c1[first_candidate] },
-            if second_existing { 0.0 } else { c1[second_candidate] },
-        );
-        match (first_candidate == i && !first_existing, second_candidate == i && !second_existing) {
-            (false, false) => {
-                let v = first_cost + second_cost + finisher_cost;
-                if v < unaffected_value {
-                    unaffected_value = v;
+impl SingleCandidateValue {
+    pub(crate) fn new(trios: &[Trio], step_costs: &[f64], candidate: usize) -> Self {
+        let (mut unaffected_value, mut reading_trios, mut valid) = (f64::INFINITY, vec![], true);
+        for &Trio {
+            candidate_a: CandidateIndex(first_candidate),
+            candidate_b: CandidateIndex(second_candidate),
+            finisher_cost,
+            a_uses_existing: first_existing,
+            b_uses_existing: second_existing,
+        } in trios
+        {
+            let (first_cost, second_cost) = (
+                if first_existing { 0.0 } else { step_costs[first_candidate] },
+                if second_existing { 0.0 } else { step_costs[second_candidate] },
+            );
+            match (first_candidate == candidate && !first_existing, second_candidate == candidate && !second_existing) {
+                (false, false) => {
+                    let value = first_cost + second_cost + finisher_cost;
+                    if value < unaffected_value {
+                        unaffected_value = value;
+                    }
                 }
+                (true, false) => {
+                    reading_trios.push(TrioRemainder {
+                        key: second_cost + finisher_cost,
+                        rest: second_cost,
+                        finisher_cost,
+                    });
+                }
+                (false, true) => {
+                    reading_trios.push(TrioRemainder {
+                        key: first_cost + finisher_cost,
+                        rest: first_cost,
+                        finisher_cost,
+                    });
+                }
+                (true, true) => valid = false,
             }
-            (true, false) => {
-                reading_trios.push(TrioRemainder {
-                    key: second_cost + finisher_cost,
-                    rest: second_cost,
-                    finisher_cost,
-                });
+        }
+        reading_trios.sort_by(|p, q| p.key.partial_cmp(&q.key).unwrap());
+        Self { unaffected_value, reading_trios, valid }
+    }
+}
+
+impl SingleCandidateValue {
+    /// trio_v at the base's steps with one candidate's step replaced: the minimum, the reading trios scanned by key until no
+    /// later one can be below it. Derived: every term is >= 0, so a trio's value is at least fl(step_cost + key) (1 - u)^5 (u the
+    /// unit roundoff; key is rounded once, step_cost + key once, the value's two sums once each) > fl(step_cost + key) (1 - 1e-9), and keys
+    /// only rise; a trio at or above the minimum leaves it unchanged (min is order-free)
+    fn value(&self, step_cost: f64) -> f64 {
+        let mut best = self.unaffected_value;
+        for remainder in &self.reading_trios {
+            if (step_cost + remainder.key) * (1.0 - 1e-9) >= best {
+                break;
             }
-            (false, true) => {
-                reading_trios.push(TrioRemainder { key: first_cost + finisher_cost, rest: first_cost, finisher_cost });
+            let value = (step_cost + remainder.rest) + remainder.finisher_cost;
+            if value < best {
+                best = value;
             }
-            (true, true) => valid = false,
         }
-    }
-    reading_trios.sort_by(|p, q| p.key.partial_cmp(&q.key).unwrap());
-    One { unaffected_value, reading_trios, valid }
-}
-
-/// trio_v at the base's steps with candidate i's at x (`One`): the minimum, the reading trios scanned by key until no
-/// later one can be below it. Derived: every term is >= 0, so a trio's value is at least fl(x + key) (1 - u)^5 (u the
-/// unit roundoff; key is rounded once, x + key once, the value's two sums once each) > fl(x + key) (1 - 1e-9), and keys
-/// only rise; a trio at or above the minimum leaves it unchanged (min is order-free)
-fn single_candidate_value(o: &One, x: f64) -> f64 {
-    let mut best = o.unaffected_value;
-    for remainder in &o.reading_trios {
-        if (x + remainder.key) * (1.0 - 1e-9) >= best {
-            break;
-        }
-        let v = (x + remainder.rest) + remainder.finisher_cost;
-        if v < best {
-            best = v;
-        }
-    }
-    best
-}
-
-/// The leaves (her star patterns on the uncertain targets) a scoring's evaluation produces (`sc_eval`): `All`, the
-/// plan's, every leaf in order (each test below is constant and compiles away), or `OneLeaf`, a roll's: one outcome's
-/// leaf and its representative (`Scored::representative_of`). The fold goes down a prefix only where `wants` it, and
-/// writes and reads each leaf's rows at `row`; the outcome loop takes the leaves in `list`'s order (ascending, as `All`
-/// takes them). A leaf's values are computed down its own path alone (the fold's f64s at a leaf read no other leaf's),
-/// so every value at a leaf produced is the one `All` computes there
-pub(crate) trait Leaves {
-    const ALL: bool;
-    /// whether the fold goes down prefix p of k digits
-    fn wants(&self, k: usize, p: usize) -> bool;
-    /// the leaves the outcome loop takes, ascending (with `ALL`, unused: every leaf)
-    fn list(&self) -> &[usize];
-    /// a produced leaf's row (`ALL`: the leaf itself)
-    fn row(&self, l: usize) -> usize;
-    /// the rows produced, of nleaf leaves
-    fn nrows(&self, nleaf: usize) -> usize;
-}
-
-pub(crate) struct All;
-
-impl Leaves for All {
-    const ALL: bool = true;
-    #[inline(always)]
-    fn wants(&self, _: usize, _: usize) -> bool {
-        true
-    }
-    fn list(&self) -> &[usize] {
-        &[]
-    }
-    #[inline(always)]
-    fn row(&self, l: usize) -> usize {
-        l
-    }
-    #[inline(always)]
-    fn nrows(&self, nleaf: usize) -> usize {
-        nleaf
-    }
-}
-
-/// one outcome's leaf: the fold produces its representative only (row 0; a leaf that is not its own representative reads
-/// the representative's y, row 1 its own)
-pub(crate) struct OneLeaf {
-    ls: [usize; 2],
-    n: usize,
-}
-
-impl OneLeaf {
-    pub(crate) const fn new(leaf: usize, rep: usize) -> Self {
-        if rep == leaf { Self { ls: [leaf, leaf], n: 1 } } else { Self { ls: [rep, leaf], n: 2 } }
-    }
-}
-
-impl Leaves for OneLeaf {
-    const ALL: bool = false;
-    fn wants(&self, k: usize, p: usize) -> bool {
-        p == self.ls[0] & ((1usize << (2 * k)) - 1)
-    }
-    fn list(&self) -> &[usize] {
-        &self.ls[..self.n]
-    }
-    fn row(&self, l: usize) -> usize {
-        usize::from(l != self.ls[0])
-    }
-    fn nrows(&self, _: usize) -> usize {
-        self.n
+        best
     }
 }

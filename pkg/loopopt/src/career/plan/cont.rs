@@ -40,8 +40,8 @@ pub(crate) struct TrioSideVeteran {
 /// - Stats: per-candidate lift statistics; expected saving and improvement chance are returned as 0.0.
 /// - Score: expected saving and improvement chance; no per-candidate statistics.
 /// - Keep: Score plus the prepared scoring needed to evaluate later rolls (`score_career`).
-/// - Ys: Score plus a saving for each evaluated outcome (`sc_eval`).
-/// - Touch: nothing; the preparation's side effects only (her schedule, the partners' `val` searches, `sc_prep`'s
+/// - Ys: Score plus a saving for each evaluated outcome (`Scored::evaluate`).
+/// - Touch: nothing; the preparation's side effects only (her schedule, the partners' `val` searches, `prepare_scoring`'s
 ///   counters), its evaluation skipped, zeros returned (the looped rows, whose stats only `proxy_check` reads).
 ///
 /// This selects outputs, not side effects: even Stats can search and populate the deck cache during preparation.

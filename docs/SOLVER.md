@@ -507,7 +507,7 @@ next fully looped parent, any uma: a fully looped veteran you have is a real 8/8
   setup, the collapsed targets, her landed sets' chances, her own 8/8's trio sides), the base it was scored against,
   her own 8/8's trio sides as the bound reads them at the plan's end (`pick_her`) and the main search's found-career
   anchors (`found_anchors`). `y`, the pick's careers saved, V - V with her veteran (to 0.01): the plan's own fold and
-  outcome loop (`sc_eval`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
+  outcome loop (`Scored::evaluate`, generic over the leaves it produces: `All` in the plan, `OneLeaf` in a roll, which folds
   only the prefixes of the outcome's representative and runs the outcome loop at it and the outcome), so the f64 the
   plan's full table held, checked bit for bit against frozen fixtures by `tests/plan_roll.rs`. `y_hi` (rounded up to 0.01) where y < 0.5 (null elsewhere: the page
   reads it only below 0.5, and computes nothing else from it): at

@@ -83,8 +83,8 @@ pub(crate) const IDX_CANDS: usize = 8;
 pub(crate) const IDX_PARTNERS: usize = 2;
 
 /// legal parents a, b for trainee u (`Pool::pair_ok`)
-pub(crate) fn legal_pair(d: &Data, p: &Pool, lineage: Lineage) -> bool {
-    p.pair_ok(d.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
+pub(crate) fn legal_pair(data: &Data, pool: &Pool, lineage: Lineage) -> bool {
+    pool.pair_ok(data.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
 }
 
 /// Whether builder x's career f (her deck class's proxy) is provably her best, without a career search: over every legal
@@ -115,21 +115,27 @@ pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: crate::uma::UmaIn
 }
 
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
-pub(crate) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -> f64 {
+pub(crate) fn val(simulator: &mut Sim, pool: &Pool, lineage: Lineage, score_buffer: &mut Vec<f64>) -> f64 {
     let trainee = lineage.trainee;
-    let mut q = std::mem::take(&mut s.qs);
-    let c = s.env.lineage_into(p, lineage, &mut q);
-    let v = match s.env.ceiling(trainee, &q, c) {
+    let mut inheritance_chances = std::mem::take(&mut simulator.qs);
+    let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
+    let value = match simulator.env.ceiling(trainee, &inheritance_chances, spark_scale) {
         None => 0.0,
-        Some(ub) => s
+        Some(ceiling) => simulator
             .deck_for(
-                DeckRequest { trainee, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: 0.0 },
-                buf,
+                DeckRequest {
+                    trainee,
+                    inheritance_chances: &inheritance_chances,
+                    spark_scale,
+                    ceiling,
+                    threshold: 0.0,
+                },
+                score_buffer,
             )
             .map_or(0.0, |x| x.0),
     };
-    s.qs = q;
-    v
+    simulator.qs = inheritance_chances;
+    value
 }
 
 /// Trainee u's best career through the surrogate (`deck_for`, sim module notes): every legal pair (all of `fix` among
@@ -137,46 +143,46 @@ pub(crate) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -
 /// by more than `margin`; stops when the next ceiling is below the best. margin 0: P(all) at least the exact best, up
 /// to deck searches that run out of work.
 pub(crate) fn best_sur(
-    s: &mut Sim,
+    simulator: &mut Sim,
     parents: ParentPool,
-    u: crate::uma::UmaIndex,
+    trainee: crate::uma::UmaIndex,
     margin: f64,
-    buf: &mut Vec<f64>,
+    score_buffer: &mut Vec<f64>,
 ) -> Option<Found> {
     let ParentPool { pool, fixed_parents } = parents;
-    let margin_before = s.cfg.margin;
-    s.cfg.margin = margin;
+    let margin_before = simulator.cfg.margin;
+    simulator.cfg.margin = margin;
     // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
     let mut best: Option<SurrogateBest> = None;
-    for RankedPair { ceiling: ub, first_parent: a, second_parent: b } in
-        s.env.ranked_pairs(pool, fixed_parents, u, |_, _| true)
+    for RankedPair { ceiling, first_parent, second_parent } in
+        simulator.env.ranked_pairs(pool, fixed_parents, trainee, |_, _| true)
     {
         let bar = best.map_or(0.0, |found| found.value);
-        if ub <= bar {
+        if ceiling <= bar {
             break;
         }
-        let lineage = Lineage { trainee: u, first_parent: a, second_parent: b };
-        let mut q = std::mem::take(&mut s.qs);
-        let c = s.env.lineage_into(pool, lineage, &mut q);
-        let deck = s.deck_for(
-            DeckRequest { trainee: u, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: bar },
-            buf,
+        let lineage = Lineage { trainee, first_parent, second_parent };
+        let mut inheritance_chances = std::mem::take(&mut simulator.qs);
+        let spark_scale = simulator.env.lineage_into(pool, lineage, &mut inheritance_chances);
+        let deck = simulator.deck_for(
+            DeckRequest { trainee, inheritance_chances: &inheritance_chances, spark_scale, ceiling, threshold: bar },
+            score_buffer,
         );
-        s.qs = q;
+        simulator.qs = inheritance_chances;
         if let Some((value, deck_index)) = deck
             && value > bar
         {
-            best = Some(SurrogateBest { lineage, value, ceiling: ub, deck_index });
+            best = Some(SurrogateBest { lineage, value, ceiling, deck_index });
         }
     }
-    s.cfg.margin = margin_before;
+    simulator.cfg.margin = margin_before;
     best.map(|found| Found {
-        trainee: u,
+        trainee,
         first_parent: found.lineage.first_parent,
         second_parent: found.lineage.second_parent,
         value: found.value,
         ceiling: found.ceiling,
-        deck: s.cache.decks[u][found.deck_index].sel.clone(),
+        deck: simulator.cache.decks[trainee][found.deck_index].sel.clone(),
     })
 }
 
@@ -200,18 +206,18 @@ pub(crate) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
 /// `env_budget` put back after (and no hard cap)
 pub(crate) fn capped<'env, 'data, R>(
-    s: &mut Sim<'env, 'data>,
+    simulator: &mut Sim<'env, 'data>,
     work: usize,
     env_budget: usize,
     searches: impl FnOnce(&mut Sim<'env, 'data>) -> R,
 ) -> R {
     if work > 0 {
-        s.env.budget = work;
-        s.env.hard_work_cap = work;
+        simulator.env.budget = work;
+        simulator.env.hard_work_cap = work;
     }
-    let result = searches(s);
-    s.env.hard_work_cap = 0;
-    s.env.budget = env_budget;
+    let result = searches(simulator);
+    simulator.env.hard_work_cap = 0;
+    simulator.env.budget = env_budget;
     result
 }
 
@@ -239,16 +245,16 @@ pub(crate) struct FullLoop {
 /// at the rank's mix, G1 wins `wins` of each), each bred from the other and from her (grandparents every target at 2
 /// stars)
 pub(crate) fn loop_ceiling(
-    s: &mut Sim,
+    simulator: &mut Sim,
     pool: &Pool,
     full_loop: FullLoop,
     wins: &dyn Fn(crate::uma::UmaIndex) -> Vec<usize>,
     buf: &mut Vec<f64>,
 ) -> f64 {
     let FullLoop { trainee, first_builder, second_builder } = full_loop;
-    let d = s.d;
-    let sj = s.env.skill_job;
-    let star = s.env.skill_job.star_dist;
+    let d = simulator.d;
+    let sj = simulator.env.skill_job;
+    let star = simulator.env.skill_job.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
     let ancestor =
         |x: crate::uma::UmaIndex| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
@@ -263,15 +269,15 @@ pub(crate) fn loop_ceiling(
         mix: Some(star),
     };
     // (`Env::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
-    let mut p = s.take_pool(pool);
-    s.env.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
-    s.env.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
+    let mut p = simulator.take_pool(pool);
+    simulator.env.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
+    simulator.env.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
     let n = p.veterans.len();
     let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
-    let v = if legal_pair(d, &p, lineage) { val(s, &p, lineage, buf) } else { 0.0 };
+    let v = if legal_pair(d, &p, lineage) { val(simulator, &p, lineage, buf) } else { 0.0 };
     Env::pool_pop(&mut p);
     Env::pool_pop(&mut p);
-    s.put_pool(pool, p);
+    simulator.put_pool(pool, p);
     v
 }
 

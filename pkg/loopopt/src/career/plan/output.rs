@@ -6,7 +6,7 @@ use crate::career::plan::kept::{BESTS, Bests, CachedSearch, bests_key};
 use crate::career::plan::roll::{KeptBase, RollKeep, keep_roll, roll_kept, roll_key};
 use crate::career::plan::rows::{PlanPick, PlanRow, RowOrigin, has_looped_parents, near_floor, pick_of};
 use crate::career::plan::score::KeptScoring;
-use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches, unordered_parents};
+use crate::career::plan::{PlanCandidates, PlanContext, PlanProfile, PlanSearches};
 use crate::career::search::Found;
 use crate::career::sim::Sim;
 use serde_json::{Value, json};
@@ -40,7 +40,7 @@ pub(crate) fn assemble_plan_output<'data>(
         let finished = sim;
         finished.env
     };
-    let incomplete = keep_plan_searches(context, searches);
+    let incomplete = context.keep_plan_searches(searches);
     // nothing scored (no trio: fewer than two candidates of different umas): the best odds is the one option and the pick
     // (no row that can be the pick, `is_runnable`: the same, the pick's main search's)
     if !runs.iter().any(|r| is_runnable(&r.career)) {
@@ -67,7 +67,7 @@ pub(crate) fn assemble_plan_output<'data>(
             "best_odds".into(),
             json!(
                 x == candidates.pick_career.trainee
-                    && unordered_parents(f) == unordered_parents(&candidates.pick_career)
+                    && f.unordered_parents() == candidates.pick_career.unordered_parents()
             ),
         );
         option.insert("chosen".into(), json!(i == pick));
@@ -99,7 +99,7 @@ pub(crate) fn assemble_plan_output<'data>(
             .unwrap()
     });
     let choice = if runs.is_empty() { Value::Null } else { env.report(pool, &runs[pick].career, true) };
-    let (plan_json, members_json) = trio_report(context, scores);
+    let (plan_json, members_json) = context.trio_report(scores);
     // the career a roll of this plan is of (`next.roll`, `roll_kept`: its saving per outcome, computed on demand from the
     // roll state kept here): the pick, her uncertain targets (`uncv`) and the scenario's guaranteed ones (`fixed`)
     let outcomes = match runs.get(pick) {
@@ -148,7 +148,7 @@ pub(crate) fn assemble_plan_output<'data>(
 /// scoring, taken out of its row, and base, and what its bound reads beyond them, as the plan ends (`pick_her`,
 /// `found_anchors`). Only where a row can be the pick and rows were scored against a finite V
 fn pick_roll_state(
-    sim: &mut Sim,
+    simulator: &mut Sim,
     context: &PlanContext,
     runs: &mut [PlanRow],
     scores: &PlanScores,
@@ -162,7 +162,8 @@ fn pick_roll_state(
     let KeptScoring { scored, full_landing_below_threshold } =
         runs[pick].scoring.as_mut().unwrap().kept.take().expect("the pick's kept scoring was dropped");
     let row = &runs[pick];
-    let own_trios = pick_her(sim, &context.scoring(&base), row.scored_career(), full_landing_below_threshold, buf);
+    let own_trios =
+        pick_her(simulator, &context.scoring(&base), row.scored_career(), full_landing_below_threshold, buf);
     RollKeep {
         key: roll_key(input.resources.job),
         scored,
@@ -171,7 +172,7 @@ fn pick_roll_state(
         // (the roll state outlives the plan's rows)
         deck: row.career.deck.clone(),
         own_trios,
-        found_anchors: found_anchors(sim.env, input.pool, input.solved),
+        found_anchors: found_anchors(simulator.env, input.pool, input.solved),
         partner_anchors: vec![],
     }
 }
@@ -194,36 +195,38 @@ impl IncompleteSearches {
     }
 }
 
-/// This plan's searches kept for the next plans (`BESTS`, at most four), with the kept plan of the pool less its last
-/// veteran put back; what stays for the output is which searches were incomplete
-fn keep_plan_searches(context: &PlanContext, searches: PlanSearches) -> IncompleteSearches {
-    let input = context.input;
-    let key = bests_key(input.resources.job, input.fixed_parents, context.legacy_count());
-    let mut kept_best = searches.best_careers.clone();
-    // The main search's best is per job, searched again (cheap) next time.
-    kept_best[context.candidates.main_career.trainee] = CachedSearch::Unsearched;
-    BESTS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.retain(|plan| plan.key != key);
-        cache.push(Bests {
-            key,
-            best_careers: kept_best,
-            proof_refs: searches.proof_refs,
-            looped_careers: searches.looped_careers,
-            base_incomplete: searches.base_incomplete.clone(),
-            looped_incomplete: searches.looped_incomplete.clone(),
+impl PlanContext<'_, '_> {
+    /// This plan's searches kept for the next plans (`BESTS`, at most four), with the kept plan of the pool less its last
+    /// veteran put back; what stays for the output is which searches were incomplete
+    fn keep_plan_searches(&self, searches: PlanSearches) -> IncompleteSearches {
+        let input = self.input;
+        let key = bests_key(input.resources.job, input.fixed_parents, self.legacy_count());
+        let mut kept_best = searches.best_careers.clone();
+        // The main search's best is per job, searched again (cheap) next time.
+        kept_best[self.candidates.main_career.trainee] = CachedSearch::Unsearched;
+        BESTS.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            cache.retain(|plan| plan.key != key);
+            cache.push(Bests {
+                key,
+                best_careers: kept_best,
+                proof_refs: searches.proof_refs,
+                looped_careers: searches.looped_careers,
+                base_incomplete: searches.base_incomplete.clone(),
+                looped_incomplete: searches.looped_incomplete.clone(),
+            });
+            if let Some(previous) = searches.kept_previous_pool {
+                cache.push(previous);
+            }
+            while cache.len() > 4 {
+                cache.remove(0);
+            }
         });
-        if let Some(previous) = searches.kept_previous_pool {
-            cache.push(previous);
+        IncompleteSearches {
+            base: searches.base_incomplete,
+            looped: searches.looped_incomplete,
+            no_borrow: searches.no_borrow_incomplete,
         }
-        while cache.len() > 4 {
-            cache.remove(0);
-        }
-    });
-    IncompleteSearches {
-        base: searches.base_incomplete,
-        looped: searches.looped_incomplete,
-        no_borrow: searches.no_borrow_incomplete,
     }
 }
 
@@ -262,40 +265,42 @@ fn row_role(
     }
 }
 
-/// The best trio as the page shows it (`v0_plan`: A, B, C and their careers, the cheaper of A's and B's steps first)
-/// and its two members' continuations (`members`)
-fn trio_report(context: &PlanContext, scores: &PlanScores) -> (Value, Value) {
-    let candidates = context.candidates;
-    let data = context.data();
-    let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
-    let uma_name =
-        |u: crate::uma::UmaIndex| if u == crate::optimize::NONE { Value::Null } else { json!(data.umas[u].name) };
-    // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
-    let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
-    // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
-    let member = |ui: usize, uses_existing: bool| {
-        let continuation = &scores.fit.continuations[ui];
-        let build_plan = continuation.plan(candidates.current_odds[ui]);
-        json!({
-            "trainee": uma_name(candidates.trainees[ui]),
-            "p": candidates.current_odds[ui],
-            "have8": candidates.has_full_veteran[ui],
-            "real": uses_existing,
-            "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
-            "lam": continuation.lam,
-            "phi": continuation.phi,
-            "builds": build_plan.builds,
-            "p_switch": build_plan.grind_odds,
-            "careers": step(ui, uses_existing)
-        })
-    };
-    // A: the cheaper of the two steps first
-    let a = (combination.candidate_a_index, combination.a_uses_existing);
-    let b = (combination.candidate_b_index, combination.b_uses_existing);
-    let ((first_index, first_uses_existing), (second_index, second_uses_existing)) =
-        if step(a.0.0, a.1) <= step(b.0.0, b.1) { (a, b) } else { (b, a) };
-    (
-        json!({"a": uma_name(candidates[first_index]), "b": uma_name(candidates[second_index]), "c": uma_name(combination.finisher_trainee), "careers": [step(first_index.0, first_uses_existing), step(second_index.0, second_uses_existing), combination.finisher_cost]}),
-        json!([member(first_index.0, first_uses_existing), member(second_index.0, second_uses_existing)]),
-    )
+impl PlanContext<'_, '_> {
+    /// The best trio as the page shows it (`v0_plan`: A, B, C and their careers, the cheaper of A's and B's steps first)
+    /// and its two members' continuations (`members`)
+    fn trio_report(&self, scores: &PlanScores) -> (Value, Value) {
+        let candidates = self.candidates;
+        let data = self.data();
+        let Some(combination) = scores.best_combo else { return (Value::Null, json!([])) };
+        let uma_name =
+            |u: crate::uma::UmaIndex| if u == crate::optimize::NONE { Value::Null } else { json!(data.umas[u].name) };
+        // a side's step: free from a real 8/8 of hers, else her fresh 8/8's step
+        let step = |ui: usize, uses_existing: bool| if uses_existing { 0.0 } else { scores.fit.step_costs[ui] };
+        // a member: `real` when the trio uses a real 8/8 of hers (her step free), else her fresh 8/8's step
+        let member = |ui: usize, uses_existing: bool| {
+            let continuation = &scores.fit.continuations[ui];
+            let build_plan = continuation.plan(candidates.current_odds[ui]);
+            json!({
+                "trainee": uma_name(candidates.trainees[ui]),
+                "p": candidates.current_odds[ui],
+                "have8": candidates.has_full_veteran[ui],
+                "real": uses_existing,
+                "p_inf": (continuation.lam > 0.0).then_some(continuation.pinf),
+                "lam": continuation.lam,
+                "phi": continuation.phi,
+                "builds": build_plan.builds,
+                "p_switch": build_plan.grind_odds,
+                "careers": step(ui, uses_existing)
+            })
+        };
+        // A: the cheaper of the two steps first
+        let a = (combination.candidate_a_index, combination.a_uses_existing);
+        let b = (combination.candidate_b_index, combination.b_uses_existing);
+        let ((first_index, first_uses_existing), (second_index, second_uses_existing)) =
+            if step(a.0.0, a.1) <= step(b.0.0, b.1) { (a, b) } else { (b, a) };
+        (
+            json!({"a": uma_name(candidates[first_index]), "b": uma_name(candidates[second_index]), "c": uma_name(combination.finisher_trainee), "careers": [step(first_index.0, first_uses_existing), step(second_index.0, second_uses_existing), combination.finisher_cost]}),
+            json!([member(first_index.0, first_uses_existing), member(second_index.0, second_uses_existing)]),
+        )
+    }
 }
