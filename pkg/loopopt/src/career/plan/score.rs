@@ -7,7 +7,7 @@ use crate::career::plan::step::{All, Leaves, OneLeaf};
 use crate::career::plan::{CandidateIndex, OutcomeIndex, PoolProvenance, ScoringContext, TargetMask};
 use crate::career::pool::Pool;
 use crate::career::sim::{Cur, Sim};
-use crate::career::{Career, Env, Legacy, Lineage};
+use crate::career::{Career, Legacy, Lineage};
 pub(crate) mod kernel;
 
 struct FinisherCeiling {
@@ -89,7 +89,7 @@ pub(crate) fn her_trios(
                     finisher_cost: 1.0 / best,
                 });
             }
-            Env::pool_pop(extended_pool);
+            extended_pool.pop_veteran();
         }
     }
     trios
@@ -148,7 +148,7 @@ pub(crate) fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool,
 /// `her_pool`'s pool done with `of_legs`, her entry popped and the working copy kept (`Sim::put_pool`)
 pub(crate) fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
     if of_legs {
-        Env::pool_pop(&mut pv);
+        pv.pop_veteran();
         s.put_pool(pool, pv);
     }
 }

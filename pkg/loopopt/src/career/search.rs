@@ -1,7 +1,7 @@
 //! Career candidates, bounds and the best careers.
 use crate::career::clock::{now_ms, prof};
 use crate::career::inherit::{aff_factor, inherit_q, insp_miss, mix_term, part_sum, spark_scale};
-use crate::career::pool::{Pool, dominates, holds_fix, shared};
+use crate::career::pool::{Pool, holds_fix, shared};
 use crate::career::state::{KeptSolve, LAST_SOLVE, ProductProof, SOLVE_KEEP};
 use crate::career::{Env, Lineage};
 use crate::deck::space::SelectedDeck;
@@ -550,7 +550,7 @@ impl Env<'_> {
         let ruled0: UmaTable<usize> = self.ruled.iter().map(std::vec::Vec::len).collect();
         // dominated veterans (`dominance_lists`), and the candidates this search took and did not solve (bounded, no
         // deck)
-        let dom = dominance_lists(p);
+        let dom = p.dominance_lists();
         let prune = dom.iter().any(|v| !v.is_empty());
         let mut unsolved: crate::FxSet<(u16, u16, u16)> = crate::FxSet::default();
         // the deck problems searched so far (`Twin`)
@@ -771,19 +771,6 @@ impl Env<'_> {
             }
         }
     }
-}
-
-/// Per legacy y, the legacies x at least as good in every career (`dominates`), ascending. Only veterans of one
-/// character can dominate each other (`dominates` tests the characters first), so the other pairs are skipped unasked.
-fn dominance_lists(p: &Pool) -> Vec<Vec<usize>> {
-    let nl = p.veterans.len();
-    let mut by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
-    for x in 0..nl {
-        by_chara.entry(p.veterans[x].chara).or_default().push(x);
-    }
-    (0..nl)
-        .map(|y| by_chara[&p.veterans[y].chara].iter().copied().filter(|&x| x != y && dominates(p, x, y)).collect())
-        .collect()
 }
 
 /// Identical deck problems, searched once (`Env::solve`): a candidate whose trainee, chances q and spark scale c are

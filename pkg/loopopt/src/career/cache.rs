@@ -10,20 +10,25 @@ use crate::uma::{UmaIndex, UmaTable};
 /// A cached deck of one trainee and per outfit its corner table (P(all), every spark scale 1, at q_k in {0, 1} per
 /// uncertain target; index bit k set = q_k = 0, as `corners` builds them from q0 = 0)
 #[derive(Clone)]
-pub(super) struct CDeck {
+pub(super) struct CachedDeck {
     pub(super) sel: SelectedDeck,
+    /// Per outfit of the trainee, the deck's corner table.
     pub(super) tab: Vec<Vec<f64>>,
 }
 /// The deck cache of the simulator and the plan: per trainee her decks with corner tables and her fully checked decks (`Ref`, for `rise`)
 #[derive(Clone)]
 pub(super) struct Cache {
-    pub(super) decks: UmaTable<Vec<CDeck>>,
+    /// Per trainee, her cached decks in the order they were added.
+    pub(super) decks: UmaTable<Vec<CachedDeck>>,
+    /// Per trainee, the searches' fully checked decks, repeats kept (each is a `rise` anchor at its own chances).
     pub(super) refs: UmaTable<Vec<Ref>>,
+    /// How many decks (with their corner tables) have been added: a work counter.
     pub tables: usize,
 }
 
 impl Cache {
-    pub(super) fn n_decks(&self) -> usize {
+    /// Cached decks over all trainees.
+    pub(super) fn deck_count(&self) -> usize {
         self.decks.iter().map(std::vec::Vec::len).sum()
     }
 
@@ -32,17 +37,17 @@ impl Cache {
     }
 
     /// Cache a trainee's deck and corner tables, unless that selection is already present.
-    pub(super) fn add(&mut self, env: &mut Env, trainee: UmaIndex, sel: &SelectedDeck) {
-        if self.decks[trainee].iter().any(|deck| {
-            deck.sel.entries == sel.entries
-                && deck.sel.plain_pals == sel.plain_pals
-                && deck.sel.filler_cards == sel.filler_cards
+    pub(super) fn add(&mut self, env: &mut Env, trainee: UmaIndex, deck: &SelectedDeck) {
+        if self.decks[trainee].iter().any(|cached| {
+            cached.sel.entries == deck.entries
+                && cached.sel.plain_pals == deck.plain_pals
+                && cached.sel.filler_cards == deck.filler_cards
         }) {
             return;
         }
-        let tab = env.corners_kept(trainee, sel);
+        let tab = env.corners_kept(trainee, deck);
         self.tables += 1;
-        self.decks[trainee].push(CDeck { sel: sel.clone(), tab });
+        self.decks[trainee].push(CachedDeck { sel: deck.clone(), tab });
     }
 
     /// Absorb a search's fully checked decks. A repeated deck still contributes its proof at the

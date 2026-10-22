@@ -41,9 +41,9 @@ impl<'veteran> VeteranTraits<'veteran> {
 }
 
 /// What a lineage counts of one legacy: relation index, G1 wins as (race, chance) sorted by race, stars per job target,
-/// pink sparks, and the star mix when the stars are random.
+/// pink sparks, and the star mix when the stars are random (stars and pinks shared with the lineage slots made from
+/// her: `Env::slots` takes them without copying).
 #[derive(Clone)]
-/// (stars and pinks shared with the lineage slots made from her: `Env::slots` takes them without copying)
 pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
     pub(crate) uma_index: Option<UmaIndex>,
@@ -56,6 +56,19 @@ pub(crate) struct Who {
     pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
     pub(crate) star_mix: Option<[f64; 3]>,
+}
+
+impl Who {
+    /// Whether she is at least as good a parent as `other` in her own right (`Pool::dominates`): the same character,
+    /// fixed stars at least `other`'s on every job target, certain wins only, and a superset of `other`'s wins.
+    fn at_least_as_good_as(&self, other: &Self) -> bool {
+        self.chara == other.chara
+            && self.star_mix.is_none()
+            && other.star_mix.is_none()
+            && self.stars.iter().zip(other.stars.iter()).all(|(own, theirs)| own >= theirs)
+            && self.wins.iter().chain(&other.wins).all(|win| win.chance == 1.0)
+            && other.wins.iter().all(|their_win| self.wins.iter().any(|own_win| own_win.race == their_win.race))
+    }
 }
 
 /// One single-race G1 a legacy won, or may win.
@@ -87,30 +100,77 @@ pub(crate) struct Pool {
 impl Pool {
     /// whether veterans a and b hold at most `max_borrowed` borrowed ones between them
     #[inline]
-    pub(crate) fn bor_ok(&self, a: usize, b: usize) -> bool {
+    pub(crate) fn within_borrow_limit(&self, a: usize, b: usize) -> bool {
         u8::from(self.borrowed[a]) + u8::from(self.borrowed[b]) <= self.max_borrowed
     }
-    /// whether a veteran borrowed or not (`borrowed`) can be a parent at all: her share of `bor_ok`
+    /// whether a veteran borrowed or not (`borrowed`) can be a parent at all: her share of `within_borrow_limit`
     #[inline]
-    pub(crate) fn bor_one(&self, borrowed: bool) -> bool {
+    pub(crate) fn alone_within_borrow_limit(&self, borrowed: bool) -> bool {
         u8::from(borrowed) <= self.max_borrowed
     }
     /// The pair rules that hold for every trainee: two veterans, of different characters, at most
     /// `max_borrowed` borrowed
     #[inline]
     pub(crate) fn parents_ok(&self, a: usize, b: usize) -> bool {
-        a != b && self.veterans[a].chara != self.veterans[b].chara && self.bor_ok(a, b)
+        a != b && self.veterans[a].chara != self.veterans[b].chara && self.within_borrow_limit(a, b)
     }
-    /// The trainee's rule (character `tid`): neither parent is her character
+    /// The trainee's rule (character `trainee_chara`): neither parent is her character
     #[inline]
-    pub(crate) fn trainee_ok(&self, tid: u32, a: usize, b: usize) -> bool {
-        self.veterans[a].chara != tid && self.veterans[b].chara != tid
+    pub(crate) fn trainee_ok(&self, trainee_chara: u32, a: usize, b: usize) -> bool {
+        self.veterans[a].chara != trainee_chara && self.veterans[b].chara != trainee_chara
     }
-    /// Legal parents a, b for a trainee of character `tid`: `parents_ok` and `trainee_ok`. The one rule every pair loop
-    /// takes (`solve`'s candidates, the planner's and the simulator's scans), so a proof over its pairs covers `solve`'s
+    /// Legal parents a, b for a trainee of character `trainee_chara`: `parents_ok` and `trainee_ok`. The one rule every
+    /// pair loop takes (`solve`'s candidates, the planner's and the simulator's scans), so a proof over its pairs covers
+    /// `solve`'s
     #[inline]
-    pub(crate) fn pair_ok(&self, tid: u32, a: usize, b: usize) -> bool {
-        self.parents_ok(a, b) && self.trainee_ok(tid, a, b)
+    pub(crate) fn pair_ok(&self, trainee_chara: u32, a: usize, b: usize) -> bool {
+        self.parents_ok(a, b) && self.trainee_ok(trainee_chara, a, b)
+    }
+
+    /// Whether veteran `x` is at least as good a parent as veteran `y` in every career (`Env::solve`, dominated
+    /// veterans): she is at least as good in her own right (`Who::at_least_as_good_as`: the same character, stars at
+    /// least y's on every job target, G1 wins a superset of y's), and she has the same number of parents, each (in
+    /// order) at least as good as y's the same way. Only fixed stars and certain wins (a veteran before her result is
+    /// known, with random stars and win chances, never compares).
+    /// Derived: with partner z and trainee t, swapping y for x keeps every relation term (same characters,
+    /// grandparents in the same slots) and raises or keeps every shared-win count (x with z, x with her parents;
+    /// nothing else changes), so every slot's affinity and stars are at least as high: each q_k is at least as high
+    /// (1 - prod (1 - min(1, 0.03 s (1 + A/100)))^2 rises with every s and A), each carrier count n_k too (so the spark
+    /// scale C), and with them the ceiling, the `rise` bounds and every deck's product and exact value (each landing
+    /// factor rises with q_k). The same sums and products in the same order, so this holds for the floats as well
+    /// (correctly rounded operations are monotone).
+    pub(crate) fn dominates(&self, x: usize, y: usize) -> bool {
+        self.veterans[x].at_least_as_good_as(&self.veterans[y])
+            && self.parents[x].len() == self.parents[y].len()
+            && self.parents[x].iter().zip(&self.parents[y]).all(|(own, theirs)| own.at_least_as_good_as(theirs))
+    }
+
+    /// Per veteran y, the veterans x at least as good in every career (`dominates`), ascending. Only veterans of one
+    /// character can dominate each other (`dominates` tests the characters first), so the other pairs are skipped
+    /// unasked.
+    pub(crate) fn dominance_lists(&self) -> Vec<Vec<usize>> {
+        let veteran_count = self.veterans.len();
+        let mut veterans_by_chara: crate::FxMap<u32, Vec<usize>> = crate::FxMap::default();
+        for x in 0..veteran_count {
+            veterans_by_chara.entry(self.veterans[x].chara).or_default().push(x);
+        }
+        (0..veteran_count)
+            .map(|y| {
+                veterans_by_chara[&self.veterans[y].chara]
+                    .iter()
+                    .copied()
+                    .filter(|&x| x != y && self.dominates(x, y))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Undo one `Env::pool_push`, keeping all four per-veteran arrays aligned.
+    pub(crate) fn pop_veteran(&mut self) {
+        self.veterans.pop();
+        self.parents.pop();
+        self.borrowed.pop();
+        self.grandparent_race_affinity.pop();
     }
 }
 
@@ -120,113 +180,93 @@ pub(crate) fn holds_fix(fix: &[usize], a: usize, b: usize) -> bool {
     fix.iter().all(|&f| f == a || f == b)
 }
 
-/// Whether legacy `x` is at least as good a parent as legacy `y` in every career (`Env::solve`, dominated veterans):
-/// the same character, stars at least y's on every job target, G1 wins a superset of y's, and the same number of
-/// parents, each (in order) the same character as y's, with stars and wins at least as good the same way. Only fixed
-/// stars and certain wins (a veteran before her result is known, with random stars and win chances, never compares).
-/// Derived: with partner z and trainee t, swapping y for x keeps every relation term (same characters, grandparents
-/// in the same slots) and raises or keeps every shared-win count (x with z, x with her parents; nothing else changes),
-/// so every slot's affinity and stars are at least as high: each q_k is at least as high (1 - prod (1 - min(1,
-/// 0.03 s (1 + A/100)))^2 rises with every s and A), each carrier count n_k too (so the spark scale C), and with them
-/// the ceiling, the `rise` bounds and every deck's product and exact value (each landing factor rises with q_k). The
-/// same sums and products in the same order, so this holds for the floats as well (correctly rounded operations are
-/// monotone).
-pub(crate) fn dominates(p: &Pool, x: usize, y: usize) -> bool {
-    let ge = |a: &Who, b: &Who| {
-        a.chara == b.chara
-            && a.star_mix.is_none()
-            && b.star_mix.is_none()
-            && a.stars.iter().zip(b.stars.iter()).all(|(s, t)| s >= t)
-            && a.wins.iter().chain(&b.wins).all(|w| w.chance == 1.0)
-            && b.wins.iter().all(|w| a.wins.iter().any(|v| v.race == w.race))
-    };
-    ge(&p.veterans[x], &p.veterans[y])
-        && p.parents[x].len() == p.parents[y].len()
-        && p.parents[x].iter().zip(&p.parents[y]).all(|(a, b)| ge(a, b))
-}
-
 /// G1s two legacies both won (expected count when a win is a chance)
 pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
-    let (mut i, mut j, mut s) = (0, 0, 0.0f64);
+    let (mut i, mut j, mut shared_wins) = (0, 0, 0.0f64);
     while i < a.wins.len() && j < b.wins.len() {
         match a.wins[i].race.cmp(&b.wins[j].race) {
             std::cmp::Ordering::Less => i += 1,
             std::cmp::Ordering::Greater => j += 1,
             std::cmp::Ordering::Equal => {
-                s += a.wins[i].chance * b.wins[j].chance;
+                shared_wins += a.wins[i].chance * b.wins[j].chance;
                 i += 1;
                 j += 1;
             }
         }
     }
-    s
+    shared_wins
 }
 
 impl Env<'_> {
-    pub(crate) fn uix(&self, id: u32) -> Option<UmaIndex> {
-        self.data.umas.iter().position(|u| u.id == id).map(UmaIndex)
+    /// The index in Data::umas of character `chara` (None: a character the data does not list).
+    pub(crate) fn uma_index(&self, chara: u32) -> Option<UmaIndex> {
+        self.data.umas.iter().position(|uma| uma.id == chara).map(UmaIndex)
     }
-    fn stars_of(&self, sp: &[(u32, u8)]) -> Vec<u8> {
+    /// Stars (0..=3) of the best white spark of each job target among `sparks` ((skill group, stars) pairs), in
+    /// job-target order.
+    fn job_target_stars(&self, sparks: &[(u32, u8)]) -> Vec<u8> {
         self.skill_job
             .targets
             .iter()
-            .map(|t| sp.iter().filter(|s| s.0 == t.group).map(|s| s.1.min(3)).max().unwrap_or(0))
+            .map(|target| {
+                sparks
+                    .iter()
+                    .filter(|&&(group, _)| group == target.group)
+                    .map(|&(_, stars)| stars.min(3))
+                    .max()
+                    .unwrap_or(0)
+            })
             .collect()
     }
     fn who(&self, traits: &VeteranTraits) -> Who {
-        let mut w: Vec<RaceWin> = if traits.win_chances.is_empty() {
-            let mut v = traits.wins.to_vec();
-            v.sort_unstable();
-            v.dedup();
-            v.into_iter().map(|race| RaceWin { race, chance: 1.0 }).collect()
+        let mut wins: Vec<RaceWin> = if traits.win_chances.is_empty() {
+            let mut races = traits.wins.to_vec();
+            races.sort_unstable();
+            races.dedup();
+            races.into_iter().map(|race| RaceWin { race, chance: 1.0 }).collect()
         } else {
             traits
                 .win_chances
                 .iter()
                 .enumerate()
-                .filter(|x| *x.1 > 0.0)
+                .filter(|&(_, &chance)| chance > 0.0)
                 .map(|(race, &chance)| RaceWin { race, chance })
                 .collect()
         };
-        w.sort_by_key(|x| x.race);
+        wins.sort_by_key(|win| win.race);
         Who {
-            uma_index: self.uix(traits.chara),
+            uma_index: self.uma_index(traits.chara),
             chara: traits.chara,
-            wins: w,
-            stars: std::rc::Rc::new(self.stars_of(traits.sparks)),
+            wins,
+            stars: std::rc::Rc::new(self.job_target_stars(traits.sparks)),
             pinks: std::rc::Rc::new(traits.pinks.to_vec()),
             star_mix: traits.star_mix,
         }
     }
-    /// `pool` of the legacies so far plus `l` (pop with `pool_pop`)
-    pub(crate) fn pool_push(&self, p: &mut Pool, l: &Legacy) {
-        let me = self.who(&VeteranTraits::of_legacy(l));
-        let gp: Vec<Who> = l.parents.iter().map(|g| self.who(&VeteranTraits::of_ancestor(g))).collect();
-        p.grandparent_race_affinity.push(gp.iter().map(|g| 3.0 * shared(&me, g)).collect());
-        p.veterans.push(me);
-        p.parents.push(gp);
-        p.borrowed.push(l.borrowed);
+    /// `pool` of the legacies so far plus `legacy` (pop with `Pool::pop_veteran`)
+    pub(crate) fn pool_push(&self, pool: &mut Pool, legacy: &Legacy) {
+        let veteran = self.who(&VeteranTraits::of_legacy(legacy));
+        let parents: Vec<Who> =
+            legacy.parents.iter().map(|parent| self.who(&VeteranTraits::of_ancestor(parent))).collect();
+        pool.grandparent_race_affinity.push(parents.iter().map(|parent| 3.0 * shared(&veteran, parent)).collect());
+        pool.veterans.push(veteran);
+        pool.parents.push(parents);
+        pool.borrowed.push(legacy.borrowed);
     }
-    /// Undo one `pool_push`, keeping all four per-veteran arrays aligned.
-    pub(crate) fn pool_pop(p: &mut Pool) {
-        p.veterans.pop();
-        p.parents.pop();
-        p.borrowed.pop();
-        p.grandparent_race_affinity.pop();
-    }
-    /// the solver's pool of `legs`: each one's entry as `pool_push` builds it (the one construction, the simulator's too)
-    pub(crate) fn pool(&self, legs: &[Legacy]) -> Pool {
-        let n = legs.len();
-        let mut p = Pool {
-            veterans: Vec::with_capacity(n),
-            parents: Vec::with_capacity(n),
-            borrowed: Vec::with_capacity(n),
-            grandparent_race_affinity: Vec::with_capacity(n),
+    /// the solver's pool of `legacies`: each one's entry as `pool_push` builds it (the one construction, the
+    /// simulator's too)
+    pub(crate) fn pool(&self, legacies: &[Legacy]) -> Pool {
+        let veteran_count = legacies.len();
+        let mut pool = Pool {
+            veterans: Vec::with_capacity(veteran_count),
+            parents: Vec::with_capacity(veteran_count),
+            borrowed: Vec::with_capacity(veteran_count),
+            grandparent_race_affinity: Vec::with_capacity(veteran_count),
             max_borrowed: self.max_borrowed,
         };
-        for l in legs {
-            self.pool_push(&mut p, l);
+        for legacy in legacies {
+            self.pool_push(&mut pool, legacy);
         }
-        p
+        pool
     }
 }

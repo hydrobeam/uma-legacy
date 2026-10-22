@@ -105,9 +105,9 @@ pub(crate) fn setup_plan_candidates<'env, 'data>(
     let has_full_veteran: Vec<bool> = candidate_trainees
         .iter()
         .map(|&u| {
-            legacies
-                .iter()
-                .any(|l| l.chara == data.umas[u].id && is_full(sj, &l.sparks) && input.pool.bor_one(l.borrowed))
+            legacies.iter().any(|l| {
+                l.chara == data.umas[u].id && is_full(sj, &l.sparks) && input.pool.alone_within_borrow_limit(l.borrowed)
+            })
         })
         .collect();
     let later_stage_costs = vec![0.0f64; candidate_count];
@@ -181,14 +181,14 @@ fn stage_candidates(
         let lineage_charas =
             std::iter::once(legacies[parent].chara).chain(legacies[parent].parents.iter().map(|p| p.chara));
         for chara in lineage_charas {
-            if let Some(u) = env.uix(chara) {
+            if let Some(u) = env.uma_index(chara) {
                 push(u, &mut trainees);
             }
         }
     }
     for legacy in legacies.iter().rev() {
         if !legacy.borrowed
-            && let Some(u) = env.uix(legacy.chara)
+            && let Some(u) = env.uma_index(legacy.chara)
         {
             push(u, &mut trainees);
         }
@@ -199,7 +199,7 @@ fn stage_candidates(
     trainees.truncate(IDX_CANDS);
     if let Some(fit) = &settings.fit {
         trainees =
-            fit.iter().filter_map(|&(chara, ..)| env.uix(chara)).filter(|u| input.trainees.contains(u)).collect();
+            fit.iter().filter_map(|&(chara, ..)| env.uma_index(chara)).filter(|u| input.trainees.contains(u)).collect();
     }
     // a pool that gives fewer than HINT_FLOOR candidates (a loop being started: veterans of umas that won't be in it, mob
     // parents) is filled from the planner's own model: the owned umas ranked by their odds with a full loop lineage

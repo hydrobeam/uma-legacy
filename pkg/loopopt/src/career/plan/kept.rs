@@ -269,7 +269,7 @@ fn cache_version(s: &Sim, trainees: Option<&[UmaIndex]>) -> CacheVersion {
         Some(trainees) => trainees.iter().fold((0, 0), |(decks, proofs), &trainee| {
             (decks + s.cache.decks[trainee].len(), proofs + s.cache.refs[trainee].len())
         }),
-        None => (s.cache.n_decks(), s.cache.refs.iter().map(std::vec::Vec::len).sum()),
+        None => (s.cache.deck_count(), s.cache.refs.iter().map(std::vec::Vec::len).sum()),
     };
     CacheVersion { stamp: CacheStamp { decks, proofs }, deck_searches: s.n.searches }
 }

@@ -5,7 +5,7 @@ use crate::career::plan::search::{FullLoop, legal_pair, loop_ceiling, val};
 use crate::career::plan::{CandidateIndex, PlanCandidates, PlanContext, found_lineage};
 use crate::career::pool::Pool;
 use crate::career::sim::Sim;
-use crate::career::{Env, Legacy, Lineage};
+use crate::career::{Legacy, Lineage};
 use serde_json::Value;
 /// A and B index `PlanCandidates::trainees`; the finisher indexes `Data::umas` directly.
 /// Each side uses either an existing full veteran (a free step) or a newly built one.
@@ -240,7 +240,7 @@ pub(crate) fn plan_combinations(
                 }
             }
             while working_pool.veterans.len() > pool.veterans.len() {
-                Env::pool_pop(&mut working_pool);
+                working_pool.pop_veteran();
             }
             sim.put_pool(pool, working_pool);
         }

@@ -318,7 +318,7 @@ pub(in crate::career) fn simulate<'data>(
         "index" => Base::Index,
         p => return json!({"error": format!("simulate: unknown policy {p}")}),
     };
-    let members: Vec<crate::uma::UmaIndex> = cfg.loop_members.iter().filter_map(|&id| env.uix(id)).collect();
+    let members: Vec<crate::uma::UmaIndex> = cfg.loop_members.iter().filter_map(|&id| env.uma_index(id)).collect();
     if matches!(base, Base::Loop | Base::Trace)
         && (members.len() < 3
             || members.len() != cfg.loop_members.len()
@@ -393,6 +393,6 @@ pub(in crate::career) fn simulate<'data>(
     if let Some(kept) = kept_before_simulation {
         kept_swap(kept);
     }
-    json!({"simulate": sim, "policy": cfg.policy, "runs": runs, "E": stats(&es), "init_s": init_s, "decks": s.cache.n_decks(), "deck_tables": s.cache.tables,
+    json!({"simulate": sim, "policy": cfg.policy, "runs": runs, "E": stats(&es), "init_s": init_s, "decks": s.cache.deck_count(), "deck_tables": s.cache.tables,
            "refreshes": s.n.searches, "schedules": s.win_chances.len()})
 }

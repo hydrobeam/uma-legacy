@@ -249,7 +249,7 @@ impl Sim<'_, '_> {
     /// The caller checks that `pick` is an object. Its required fields supply the
     /// exact probabilities; resolving the win chances also fills the schedule cache.
     fn cur_from_solver_pick(&mut self, pool: &Pool, pick: &Value) -> Cur {
-        let trainee = self.env.uix(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
+        let trainee = self.env.uma_index(pick["trainee"]["id"].as_u64().unwrap() as u32).unwrap();
         let (parent_a, parent_b) =
             (pick["parents"][0].as_u64().unwrap() as usize, pick["parents"][1].as_u64().unwrap() as usize);
         let outcome_sets: Vec<f64> =
