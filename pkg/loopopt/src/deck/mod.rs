@@ -39,6 +39,15 @@
 //! - `tests`: the deck model's tests.
 use serde::Deserialize;
 use std::collections::HashMap;
+/// An event that names two or more skills (`DeckJob::choice_events`), read from the job's array
+/// `[card, link, choices]`.
+#[derive(Deserialize)]
+pub(crate) struct ChoiceEvent {
+    pub(crate) card: u32,
+    pub(crate) link: u8,
+    /// [choice][outcome] -> the skills that outcome names: (skill group, 1 white | 2 gold)
+    pub(crate) choices: Vec<Vec<Vec<(u32, u8)>>>,
+}
 #[derive(Deserialize, Clone)]
 pub(crate) struct Card {
     pub id: u32,
@@ -113,12 +122,11 @@ pub(crate) struct DeckJob {
     /// links where IT's default choice ends a card's chain on some outcomes: (card, link, k outcomes, of n)
     #[serde(default)]
     pub stop_risk: Vec<(u32, u8, u8, u8)>,
-    /// events that name two or more skills, in full: (card, link, [choice][outcome] -> (skill group, 1 | 2)), the
-    /// choices that keep the chain going, outcomes equally likely. At these links they replace `events` /
-    /// `events_p`, which credit every skill on its own.
+    /// events that name two or more skills, in full (`ChoiceEvent`), the choices that keep the chain going, outcomes
+    /// equally likely. At these links they replace `events` / `events_p`, which credit every skill on its own.
     #[serde(default)]
     #[serde(rename = "alts")]
-    pub choice_events: Vec<(u32, u8, Vec<Vec<Vec<(u32, u8)>>>)>,
+    pub choice_events: Vec<ChoiceEvent>,
     /// measured outcome weights for `choice_events` events: (card, link, [choice][outcome] -> share); an event not
     /// listed here keeps equally likely outcomes (event_shares.json, applied by the event builders)
     #[serde(default)]

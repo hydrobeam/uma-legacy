@@ -312,20 +312,11 @@ pub(crate) fn joint_eval_in(
     model: &Model,
     query: JointQuery,
     prepared: &JointPrep,
-    requested_target_count: usize,
-    all_but_one: bool,
-    marginals: bool,
+    options: JointOptions,
     extension: Option<&mut JointExt>,
     scratch: &mut JointScratch,
 ) -> Vec<JointChances> {
-    evaluate_prepared(
-        model,
-        query,
-        prepared,
-        JointOptions { target_count: requested_target_count, all_but_one, marginals },
-        extension,
-        scratch,
-    )
+    evaluate_prepared(model, query, prepared, options, extension, scratch)
 }
 
 fn evaluate_prepared(

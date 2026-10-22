@@ -50,13 +50,13 @@ impl<'chance> JointQuery<'chance> {
 
 /// Which exact landing probabilities the caller needs.
 #[derive(Clone, Copy)]
-struct JointOptions {
+pub(crate) struct JointOptions {
     /// Number of requested targets, including guaranteed golds.
-    target_count: usize,
+    pub(crate) target_count: usize,
     /// Also compute the chance of landing at least all but one target.
-    all_but_one: bool,
+    pub(crate) all_but_one: bool,
     /// Fill `JointExt::marginals` when an extension is supplied.
-    marginals: bool,
+    pub(crate) marginals: bool,
 }
 
 /// Exact landing probabilities and the outfit maximizing the all-target chance.

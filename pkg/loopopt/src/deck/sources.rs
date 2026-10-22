@@ -162,14 +162,26 @@ struct HintLevelOutcome {
     levels: Vec<u8>,
 }
 
+/// An outcome as `group_nuod`'s cache key: its probability's bits and its rewards.
+#[derive(PartialEq, Eq, Hash)]
+struct OutcomeBits {
+    probability_bits: u64,
+    rewards: Vec<TargetReward>,
+}
+
 /// Certify the any-hint orthant inequality by checking every target subset S:
 /// P(all of S hinted) <= product over S of P(k hinted). Exclusive single-target outcomes satisfy this;
 /// outcomes hinting several targets together need the explicit check. Results are cached by the group's bits.
 /// More than 20 targets is unproven.
 pub(super) fn group_nuod(group: &Group) -> bool {
-    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<(u64, Vec<TargetReward>)>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
-    let key: Vec<(u64, Vec<TargetReward>)> =
-        group.iter().map(|outcome| (outcome.probability.to_bits(), outcome.rewards.clone())).collect();
+    thread_local! { static GN: std::cell::RefCell<crate::FxMap<Vec<OutcomeBits>, bool>> = std::cell::RefCell::new(crate::FxMap::default()); }
+    let key: Vec<OutcomeBits> = group
+        .iter()
+        .map(|outcome| OutcomeBits {
+            probability_bits: outcome.probability.to_bits(),
+            rewards: outcome.rewards.clone(),
+        })
+        .collect();
     if let Some(cached) = GN.with(|cache| cache.borrow().get(&key).copied()) {
         return cached;
     }
@@ -669,7 +681,7 @@ impl Sources<'_> {
     /// targets: those with a target that no other choice beats on every target (P(gold) and P(any hint)); of two with
     /// the same odds, both are kept unless their outcomes are the same (then the first).
     pub(super) fn choices(&self, id: u32, link: u8) -> Option<Vec<Group>> {
-        let event = self.deck_job.choice_events.iter().find(|event| event.0 == id && event.1 == link)?;
+        let event = self.deck_job.choice_events.iter().find(|event| event.card == id && event.link == link)?;
         let weights = self
             .deck_job
             .choice_weights
@@ -678,7 +690,7 @@ impl Sources<'_> {
             .map(|weights| &weights.2);
         let uncertain_count = self.target_groups.len();
         let groups: Vec<Group> = event
-            .2
+            .choices
             .iter()
             .enumerate()
             .map(|(choice_index, choice)| {
@@ -746,10 +758,10 @@ impl Sources<'_> {
             .deck_job
             .choice_events
             .iter()
-            .filter(|event| event.0 == card.id && in_range(event.1, stop))
+            .filter(|event| event.card == card.id && in_range(event.link, stop))
             .filter_map(|event| {
-                let choice_count = self.choices(card.id, event.1).map_or(0, |choices| choices.len());
-                (choice_count >= 2).then_some(ChoiceLink { link: event.1, choices: choice_count })
+                let choice_count = self.choices(card.id, event.link).map_or(0, |choices| choices.len());
+                (choice_count >= 2).then_some(ChoiceLink { link: event.link, choices: choice_count })
             })
             .collect();
         links.sort_unstable();
@@ -773,7 +785,7 @@ impl Sources<'_> {
         self.deck_job
             .choice_events
             .iter()
-            .any(|event| event.0 == id && self.choices(id, event.1).is_some_and(|choices| !choices.is_empty()))
+            .any(|event| event.card == id && self.choices(id, event.link).is_some_and(|choices| !choices.is_empty()))
     }
     /// Sources of a card played normally (stop = None) or ending its chain at link `stop` (links before it as usual,
     /// then the ending choice's rewards at that link), taking choice variant `variant`.
@@ -796,7 +808,7 @@ impl Sources<'_> {
             sources.training_hints = training_hints;
         }
         let alt_links: Vec<u8> =
-            self.deck_job.choice_events.iter().filter(|event| event.0 == card.id).map(|event| event.1).collect();
+            self.deck_job.choice_events.iter().filter(|event| event.card == card.id).map(|event| event.link).collect();
         for ChainReward { target, level, link, probability } in self.chain_rewards(card.id) {
             if link == 0 {
                 sources.fixed_outcomes.push(one(target, level, probability));

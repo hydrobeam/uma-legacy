@@ -47,6 +47,7 @@
 //! - `tests`: career-job tests (kept-state round trips, inheritance copies, `json_without`).
 use crate::Instant;
 use crate::career::decks::{CfStats, DeckMemo, DeckSearchKey};
+use crate::career::outcomes::CornerKey;
 use crate::career::pool::Pool;
 use crate::career::run::{
     CareerRun, answer_kept_roll, keep_seen, note_job_certificates, plan_next, run_carried_roll, search_output,
@@ -328,8 +329,8 @@ struct DeckSearchAudit {
 struct DeckSearchMemo {
     /// `best_deck` calls without start decks, by what they read (`DeckSearchKey`): the outcome and what the call did besides
     decks: crate::FxMap<DeckSearchKey, DeckMemo>,
-    /// `corners_kept`'s tables by (deck class, the deck's entries, filler)
-    corners: crate::FxMap<(UmaIndex, Vec<usize>, usize), std::rc::Rc<Vec<Vec<f64>>>>,
+    /// `corners_kept`'s tables by what they read
+    corners: crate::FxMap<CornerKey, std::rc::Rc<Vec<Vec<f64>>>>,
     /// the setup the memo is kept under, and this job's number
     fingerprint: u64,
     job_number: u64,

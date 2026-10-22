@@ -4,12 +4,12 @@ use crate::checks::SPT;
 use crate::deck::chains::ChainKind;
 use crate::deck::enumerate::bounds::{OutfitBounds, RatioColumns, RatioPrefixes, prepare_outfit_bounds};
 use crate::deck::enumerate::config::{ConfigurationBounds, ConfigurationScratch, ConfigurationTables};
-use crate::deck::enumerate::traverse::{PreparedTables, SearchControl, TraversalScratch};
+use crate::deck::enumerate::traverse::{DeckSearchContext, PreparedTables, SearchControl, TraversalScratch};
 use crate::deck::enumerate::{
     BandBound, LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome, SearchSetup, SearchStop,
 };
 use crate::deck::joint::LandPre;
-use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SelectedDeck, gm_g, gm_w, top_desc};
+use crate::deck::space::{DeckSpace, GroupSlots, GroupTable, SelectedDeck, StateRows, gm_g, gm_w, top_desc};
 use crate::deck::state_bound::{CapFreeRatios, LandingBoundTables};
 use crate::skills::DeckChances;
 impl DeckSpace<'_> {
@@ -77,7 +77,7 @@ impl DeckSpace<'_> {
         } else {
             0
         };
-        let state_rows: std::rc::Rc<Vec<Option<Vec<crate::deck::joint::MissFactors>>>> = if state_bound_mode > 0
+        let state_rows: std::rc::Rc<StateRows> = if state_bound_mode > 0
             && (cap_free || !legal_entries.iter().any(|&j| self.sources[j].uncertified_association))
         {
             let hit = self.state_row_cache.borrow().get(&set_id).cloned();
@@ -481,9 +481,28 @@ impl DeckSpace<'_> {
             odds: configuration_odds,
             root: configuration_root_bound,
         };
-        let configurations = self.build_configurations(
+        let search = DeckSearchContext::new(
+            self,
+            chances,
             clauses,
             controls,
+            PreparedTables {
+                character_bits,
+                groups_all: &groups_all,
+                state_rows: &state_rows,
+                landing_factors: &landing_factors,
+                lock_bits,
+                all_lock_bits,
+                outfit_rows: &outfit_rows,
+                outfit_runs: &outfit_runs,
+                outfits: &outfits,
+                zero_masks: &zero_masks,
+                nonzero_masks: &nonzero_masks,
+                alternative_columns: &alternative_columns,
+            },
+            clause_value,
+        );
+        let configurations = search.build_configurations(
             ConfigurationTables {
                 counts: &counts,
                 by_kind,
@@ -508,7 +527,6 @@ impl DeckSpace<'_> {
                 key_gold: &mut key_gold,
             },
             best_value,
-            clause_value,
             &bounds,
         );
         SPT.with(|cell| {
@@ -518,28 +536,10 @@ impl DeckSpace<'_> {
             stats.count_vectors += counts.len();
             cell.set(stats);
         });
-        self.traverse_configurations(
+        search.traverse_configurations(
             state_bounds,
-            chances,
-            clauses,
-            controls,
-            PreparedTables {
-                character_bits,
-                groups_all: &groups_all,
-                state_rows: &state_rows,
-                landing_factors: &landing_factors,
-                lock_bits,
-                all_lock_bits,
-                outfit_rows: &outfit_rows,
-                outfit_runs: &outfit_runs,
-                outfits: &outfits,
-                zero_masks: &zero_masks,
-                nonzero_masks: &nonzero_masks,
-                alternative_columns: &alternative_columns,
-            },
             configurations,
             TraversalScratch { decks: out, best_value, white_chances, gold_chances, target_bounds, diagnostic_bounds },
-            clause_value,
             &bounds,
             ratio_at,
             &cap_free_ratios,
