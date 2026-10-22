@@ -21,7 +21,7 @@ she saves by that estimate.
 Rust (pinned in `rust-toolchain.toml`), Node with npm, and [uv](https://docs.astral.sh/uv/):
 
 ```
-./build.sh            # build everything (fetches its packages and data the first time; art from game/ if present)
+./build.sh            # the solver and its tests, the wasm and the page (fetches its packages the first time; art from game/ if present)
 ./build.sh serve      # http://localhost:8000
 ```
 
@@ -37,7 +37,7 @@ The model builds on community research and tools:
   outcome rates and the calibration (pooled aggregates only).
 - [hakuraku.moe](https://hakuraku.moe/notes/spark_generation): spark generation and the star mix by rank score.
 - [umamusustation](https://umamusustation.com/factor/red_factor_analysis.html): pink spark generation.
-- [GameTora](https://gametora.com): card event data (downloaded at build time) and its
+- [GameTora](https://gametora.com): card event data (downloaded when the card events are rebuilt) and its
   [legacies guide](https://gametora.com/umamusume/legacies).
 - [umamusu.wiki](https://umamusu.wiki/Game:Inheritance), [uma.guide](https://uma.guide/guides/sparks) and
   [umareference](https://www.umareference.com/guide/legacies/chance-of-inheriting-sparks): inheritance and pink-spark
