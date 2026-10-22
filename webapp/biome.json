@@ -1,7 +1,25 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "files": { "includes": ["src/**/*.js", "src/**/*.mjs", "*.mjs", "chibi/*.mjs", "worker.template.js"] },
-  "formatter": { "enabled": false },
-  "assist": { "enabled": false },
-  "linter": { "enabled": true, "rules": { "preset": "recommended" } }
+  "files": {
+    "includes": [
+      "src/**/*.js",
+      "src/**/*.mjs",
+      "*.mjs",
+      "chibi/*.mjs",
+      "worker.template.js",
+      "test/*.mjs"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  }
 }

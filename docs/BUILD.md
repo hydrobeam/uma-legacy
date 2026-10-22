@@ -151,7 +151,8 @@ IndexedDB.
 - **Solver:** `cargo test --release` in `pkg/loopopt` (part of `native`); `./build.sh lint` for formatting and clippy.
 - **Browser suite:** `./build.sh test` runs `webapp/nodebrowser.mjs` against `webapp/dist` (or `LLP_URL`) in Chromium
   and Firefox, test groups in parallel (`LLP_JOBS` per browser, default 4; `node webapp/nodebrowser.mjs chromium
-  roster` runs one group). `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
+  roster` runs one group; each group is a module in `webapp/test/`, shared helpers in `webapp/test/helpers.mjs`).
+  `LLP_PROF=file` logs where the time goes. `./build.sh testq` is the fast tier (Chromium,
   each page's core path, about 10 s): run it after each page change, and the full suite before a release.
 - **Validation:** `./build.sh val TAG` runs the 24 reference jobs in `val/jobs.json` (20 deck jobs, shared and per-uma
   decks, and 4 career jobs) and compares them with `val/ref__*` / `val/refpu__*` (`val/cmp2.py`); `valq TAG` skips the
