@@ -1,7 +1,6 @@
 //! Step costs and the leaves used to estimate the next career.
 use crate::career::plan::CandidateIndex;
 use crate::career::plan::cont::{Cont, CostBoundCell, LB_CELLS, OwnTrio, ScoreBase, Trio, trio_v};
-use crate::career::plan::score::{v0_after, with_her};
 /// One candidate's improvement; slot indexes the estimate's per-row cost cache.
 #[derive(Clone, Copy)]
 pub(crate) struct CandidateLift {
@@ -32,8 +31,6 @@ pub(crate) struct CachedStepCost {
     probability_bits: u64,
     cost: f64,
 }
-
-// Compatibility names for the planner module's existing imports.
 
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`StepEstimate`, `Cont::cost`,
 /// for y) or the lower bound's (`Lo`, `Cont::cost_lo`, for y_hi). Monomorphised: each path keeps its own code
@@ -421,6 +418,25 @@ pub(crate) fn v_after<C: StepCost>(
         score_base.current_value
     } else {
         (score_base.current_value - value_after).max(0.0)
+    }
+}
+
+/// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs c1 (a real partner side free)
+fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
+    her.iter()
+        .map(|&OwnTrio { candidate: CandidateIndex(ib), uses_existing: real, finisher_cost: c3 }| {
+            (if real { 0.0 } else { c1[ib] }) + c3
+        })
+        .fold(v, f64::min)
+}
+
+/// V after her before her own 8/8 and the goal, at the candidates' step costs c1: the trios' least cost (`trio_v`; with no
+/// trio, the least of each candidate's step plus her stages 2-3)
+fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
+    if bs.trios.is_empty() {
+        (0..bs.candidates.len()).map(|a| c1[a] + bs.later_stage_costs[a]).fold(f64::INFINITY, f64::min)
+    } else {
+        trio_v(c1, bs.trios)
     }
 }
 

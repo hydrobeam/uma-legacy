@@ -2,14 +2,6 @@
 use crate::career::inherit::{HerSlot, rise_factor};
 use crate::career::plan::TargetMask;
 use crate::career::plan::step::Leaves;
-/// Reusable scoring storage. Fold writes outcome_values before the outcome loop reads it.
-#[derive(Default)]
-pub(crate) struct FoldScratch {
-    pub(crate) fold: FoldWorkspace,
-    pub(crate) outcome_values: Vec<f64>,
-    pub(crate) outcomes: crate::career::plan::score::OutcomeScratch,
-}
-
 /// Mutable fold levels and the last two levels' sixteen-leaf blocks.
 #[derive(Default)]
 pub(crate) struct FoldWorkspace {
@@ -20,8 +12,6 @@ pub(crate) struct FoldWorkspace {
     /// Slot-major blocks, indexed slot * 16 + star block.
     pub(crate) block_accumulators: Vec<f64>,
 }
-
-thread_local! { pub(crate) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell::RefCell::new(FoldScratch::default()); }
 
 /// The target bits represented by a leaf's star digits and an outcome's fixed mask.
 pub(crate) struct LeafLayout<'layout> {
@@ -59,8 +49,6 @@ pub(crate) struct FoldContext<'fold, L: Leaves> {
     /// Emit setup products for sc_row, or complete candidate-slot odds.
     pub(crate) emit_setup_products: bool,
 }
-
-// Compatibility name for the planner module's existing import.
 
 /// Position in the fold; leaf digits and landed target bits use different layouts.
 #[derive(Clone, Copy)]

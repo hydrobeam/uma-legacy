@@ -6,7 +6,8 @@ use crate::career::plan::kept::{
     CachedSearch, KeptPlans, best_of, bests_key, same_career, stamp_ok, stamped, take_kept_plan,
 };
 use crate::career::plan::rows::{PlanRow, RowOrigin};
-use crate::career::plan::score::{CareerScore, LiftStats, score_career};
+use crate::career::plan::score::kernel::LiftStats;
+use crate::career::plan::score::{CareerScore, score_career};
 use crate::career::plan::search::{
     HINT_FLOOR, HintUma, IDX_CANDS, LoopRotation, PROXY_EFF, best_sur, capped, certified, hint_umas, is_full, rotation,
     sim_for,

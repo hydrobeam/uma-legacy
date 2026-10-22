@@ -197,22 +197,6 @@ pub(crate) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
     sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0))
 }
 
-/// One place a builder's new veteran may be a parent: the stage-1 candidate she may lift, her slot's miss and spark
-/// parts there (`HerSlot`), and how many of the candidate's cached decks it reads.
-pub(crate) struct Setup {
-    /// The candidate she may lift, as an index into `ScoreBase::candidates`.
-    pub(crate) candidate: usize,
-    /// x0: per uncertain target (`Env::uncertain_targets` order), the miss product without her.
-    pub(crate) misses_without_her: Vec<f64>,
-    /// pw: per job target, the spark scale without and with her spark.
-    pub(crate) target_spark_scales: Vec<[f64; 2]>,
-    /// xm: her miss factor x per star count (0: absent).
-    pub(crate) miss_by_stars: [f64; 4],
-    /// The candidate's cached decks it reads (their corner tables): a trainee's cached decks only grow, so the first
-    /// `deck_count` are the ones there when the setup was made.
-    pub(crate) deck_count: usize,
-}
-
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
 /// `env_budget` put back after (and no hard cap)
 pub(crate) fn capped<'env, 'data, R>(
