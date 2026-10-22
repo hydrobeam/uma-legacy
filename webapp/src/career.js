@@ -177,6 +177,19 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * A row of the Career choices table: a plan option, or a career of the search (without the plan's fields).
  * @typedef {CareerReport & Partial<PlanOptionFields>} OptionRow
  *
+ * A parent on the plan's route (`trio_report` in plan/output.rs): her step to an all-targets veteran.
+ * @typedef {object} RouteMember
+ * @property {string|null} trainee  her name
+ * @property {number} p  her best career's chance of landing every target today
+ * @property {boolean} have8  she already has an all-targets veteran (a poorer parent than a fresh one)
+ * @property {boolean} real  the route uses her existing all-targets veteran: her step costs no careers
+ * @property {number|null} p_inf  her effective ceiling, the odds her lifts approach (null when lam is 0: no building)
+ * @property {number} lam  the chance a building career lifts her odds, before it falls with the remaining gap
+ * @property {number} phi  the share of the remaining log-odds gap to p_inf that each lift closes
+ * @property {number} builds  the lifts (`Cont::plan`'s successes) she builds before rerunning her best career
+ * @property {number} p_switch  her odds once building stops
+ * @property {number} careers  her step's expected careers (0 when `real`)
+ *
  * The plan's report (the solver's `next`, sim/plan/output.rs), or its refusal (`error`).
  * @typedef {object} PlanReport
  * @property {string} [error]
@@ -185,6 +198,7 @@ const progText = ({ ph, k, n }) => ph === 1 ? 'searching the candidates' : ph ==
  * @property {number|null} v0  expected careers to a fully looped parent with the veterans now
  * @property {{a: string|null, b: string|null, c: string|null, careers: number[]}|null} v0_plan  today's cheapest route:
  *   its steps' trainees by name and their careers
+ * @property {RouteMember[]} [members]  the route's A and B, in its order (empty without a route)
  * @property {{trainee: number, parents: [number, number], uncv: number[], fixed: number[]}|null} outcomes  the career a
  *   roll is of (`next.roll`)
  * @property {{y: number, y_hi: number|null}} [roll]  a roll's saving and its bound (`rollReq`)
