@@ -23,7 +23,7 @@ struct LeafCache {
 
 /// Reused outcome buffers. Every representative is written before a later leaf reads it.
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct OutcomeScratch {
+pub(crate) struct OutcomeScratch {
     leaf_cache: LeafCache,
     workspace: OutcomeWorkspace,
 }
@@ -80,7 +80,7 @@ struct FinisherCeiling {
 /// (the trios' own 8/8s use the rank's mix too), so the trios with her compare like for like with the others; one per
 /// call, not per star pattern (the full set's stars vary per leaf: per leaf it would be 4^nu searches for C).
 /// (B's candidate index, partner side real, C's step)
-pub(in crate::deck::career::sim::plan) fn her_trios(
+pub(crate) fn her_trios(
     simulator: &mut Sim,
     score_base: &ScoreBase,
     extended_pool: &mut Pool,
@@ -150,7 +150,7 @@ pub(in crate::deck::career::sim::plan) fn her_trios(
 }
 
 /// V after her with her own 8/8 a trio side (`her_trios`), at the candidates' step costs c1 (a real partner side free)
-pub(in crate::deck::career::sim::plan) fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
+pub(crate) fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
     her.iter()
         .map(|&OwnTrio { candidate: CandidateIndex(ib), uses_existing: real, finisher_cost: c3 }| {
             (if real { 0.0 } else { c1[ib] }) + c3
@@ -160,19 +160,14 @@ pub(in crate::deck::career::sim::plan) fn with_her(v: f64, her: &[OwnTrio], c1: 
 
 /// Career x's place among the stage candidates (`xi`) and whether its parents a, b are both 8/8s (the goal: her own 8/8 a
 /// fully looped parent, V after her 0): what `score_career`, `outcome_hi` and `pick_her` read of her first
-pub(in crate::deck::career::sim::plan) fn her_ends(
-    s: &Sim,
-    bs: &ScoreBase,
-    legs: &[Legacy],
-    lineage: Lineage,
-) -> (Option<usize>, bool) {
+pub(crate) fn her_ends(s: &Sim, bs: &ScoreBase, legs: &[Legacy], lineage: Lineage) -> (Option<usize>, bool) {
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
     (bs.cands.iter().position(|&u| u == x), is_full(s.env.sj, &legs[a].sparks) && is_full(s.env.sj, &legs[b].sparks))
 }
 
 /// Per mask fm of the scenario-guaranteed targets landed (bit j: `fixed_t[j]`), its landed set over the job targets: an
 /// outcome's cell is (leaf << nf) | fm, its landed set the leaf's (`leaf_set`) | this (`score_career`, `outcome_hi`)
-pub(in crate::deck::career::sim::plan) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
+pub(crate) fn fm_masks(fixed_t: &[usize]) -> Vec<TargetMask> {
     (0..(1usize << fixed_t.len()))
         .map(|bits| {
             let fixed = TargetMask::from_bits(bits);
@@ -187,14 +182,7 @@ pub(in crate::deck::career::sim::plan) fn fm_masks(fixed_t: &[usize]) -> Vec<Tar
 
 /// `Env::pool` of `legs` and her veteran (career x with parents a, b, schedule `c`): with `of_legs` (`pool` is
 /// `Env::pool(legs)`) `pool` with her entry pushed, the same Pool (`Env::pool_push` builds an entry as `Env::pool` does)
-pub(in crate::deck::career::sim::plan) fn her_pool(
-    s: &mut Sim,
-    legs: &[Legacy],
-    pool: &Pool,
-    of_legs: bool,
-    lineage: Lineage,
-    c: &Cur,
-) -> Pool {
+pub(crate) fn her_pool(s: &mut Sim, legs: &[Legacy], pool: &Pool, of_legs: bool, lineage: Lineage, c: &Cur) -> Pool {
     let veteran = s.env.veteran(legs, lineage, c.wp.to_vec());
     if of_legs {
         debug_assert_eq!(pool.me.len(), legs.len(), "one legacy per pool member");
@@ -209,7 +197,7 @@ pub(in crate::deck::career::sim::plan) fn her_pool(
 }
 
 /// `her_pool`'s pool done with `of_legs`, her entry popped and the working copy kept (`Sim::put_pool`)
-pub(in crate::deck::career::sim::plan) fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
+pub(crate) fn her_pool_done(s: &mut Sim, pool: &Pool, of_legs: bool, mut pv: Pool) {
     if of_legs {
         Env::pool_pop(&mut pv);
         s.put_pool(pool, pv);
@@ -217,22 +205,22 @@ pub(in crate::deck::career::sim::plan) fn her_pool_done(s: &mut Sim, pool: &Pool
 }
 
 /// Prepared scoring retained for the chosen career's later rolls.
-pub(in crate::deck::career::sim::plan) struct KeptScoring {
-    pub(in crate::deck::career::sim::plan) scored: Scored,
+pub(crate) struct KeptScoring {
+    pub(crate) scored: Scored,
     /// At least one all-targets-landed outcome has a saving below 0.5; used when preparing the roll bound.
-    pub(in crate::deck::career::sim::plan) full_landing_below_threshold: bool,
+    pub(crate) full_landing_below_threshold: bool,
 }
 
 /// Named outputs of career scoring. `Want` determines which fields are computed; Stats leaves the two
 /// scalar fields at zero, Score leaves `lift_stats` empty, Touch returns zeros everywhere (no evaluation), and only Keep
 /// retains the scoring tables.
-pub(in crate::deck::career::sim) struct CareerScore {
+pub(crate) struct CareerScore {
     /// Expected reduction in remaining careers, before subtracting the current career's cost.
-    pub(in crate::deck::career::sim::plan) expected_saving: f64,
-    pub(in crate::deck::career::sim::plan) improvement_chance: f64,
-    pub(in crate::deck::career::sim::plan) kept: Option<KeptScoring>,
+    pub(crate) expected_saving: f64,
+    pub(crate) improvement_chance: f64,
+    pub(crate) kept: Option<KeptScoring>,
     /// Per candidate: probability of improvement and probability-weighted improved odds.
-    pub(in crate::deck::career::sim) lift_stats: Vec<(f64, f64)>,
+    pub(crate) lift_stats: Vec<(f64, f64)>,
 }
 
 /// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
@@ -242,7 +230,7 @@ pub(in crate::deck::career::sim) struct CareerScore {
 ///
 /// `pool` must be `Env::pool(legs)` (the planner's callers): the pool with her veteran is then that pool with her entry
 /// pushed (`Env::pool_push` builds an entry as `Env::pool` does). `score_career_of` takes any pool.
-pub(in crate::deck::career::sim) fn score_career(
+pub(crate) fn score_career(
     s: &mut Sim,
     context: &ScoringContext,
     career: Career,
@@ -257,7 +245,7 @@ pub(in crate::deck::career::sim) fn score_career(
 }
 
 /// `score_career` for a pool built otherwise (`sim`'s): the pool with her veteran built from `legs` and her
-pub(in crate::deck::career::sim) fn score_career_of(
+pub(crate) fn score_career_of(
     s: &mut Sim,
     context: &ScoringContext,
     career: Career,
@@ -574,11 +562,7 @@ fn sc_eval<L: Leaves>(
 /// A roll's y (`roll_answer`): the kept scoring evaluated at one outcome (her stars `leaf`, the guaranteed targets
 /// landed `fm`), `sc_eval` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
 /// plan's full table held
-pub(in crate::deck::career::sim::plan) fn sc_roll(
-    score_base: &ScoreBase,
-    scored: &Scored,
-    outcome: OutcomeIndex,
-) -> f64 {
+pub(crate) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeIndex) -> f64 {
     let leaf = outcome.leaf(scored.nf);
     let fm = outcome.fixed_mask(scored.nf).bits();
     let leaves = OneLeaf::new(leaf, scored.rep_of(leaf));
@@ -1187,7 +1171,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
 
 /// V after her before her own 8/8 and the goal, at the candidates' step costs c1: the trios' least cost (`trio_v`; with no
 /// trio, the least of each candidate's step plus her stages 2-3)
-pub(in crate::deck::career::sim::plan) fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
+pub(crate) fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
     if bs.combos.is_empty() {
         (0..bs.cands.len()).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min)
     } else {

@@ -209,7 +209,7 @@ struct Pick {
     deck: usize,
 }
 /// A career to run, with its exact numbers
-struct Cur {
+pub(crate) struct Cur {
     lineage: Lineage,
     p_all: f64,
     /// Chance of each landed set (bit i = job target i).
@@ -303,7 +303,7 @@ struct SimulationOptions {
     fill_missing_decks: bool,
 }
 
-struct Sim<'env, 'data> {
+pub(crate) struct Sim<'env, 'data> {
     env: &'env mut Env<'data>,
     d: &'data Data,
     skills: &'data SkillsRaw,

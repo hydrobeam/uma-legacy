@@ -153,9 +153,9 @@ pub(crate) struct RollKeep {
     /// Her own 8/8's trio sides at the plan's end (`pick_her`).
     pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
-    pub(in crate::deck::career::sim::plan) found_anchors: Vec<Option<FoundAnchor>>,
+    pub(crate) found_anchors: Vec<Option<FoundAnchor>>,
     /// the bound's anchors per (candidate, partner), kept by its first roll for the next (`HiAnc`; not stored by `state_out`)
-    pub(in crate::deck::career::sim::plan) partner_anchors: Vec<PartnerAnchors>,
+    pub(crate) partner_anchors: Vec<PartnerAnchors>,
 }
 
 impl RollKeep {

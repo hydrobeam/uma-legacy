@@ -579,33 +579,33 @@ struct PartnerBoundOutput<'output> {
 
 /// One (candidate, partner)'s anchors as `hi_partner` keeps them for the next call of the same pick (a roll's: none until
 /// its first roll): (candidate, partner), and per anchor (f, chances) that can lower some leaf, in their order
-pub(in crate::deck::career::sim::plan) struct PartnerAnchors {
+pub(crate) struct PartnerAnchors {
     /// Candidate whose odds these anchors bound.
-    pub(in crate::deck::career::sim::plan) candidate: CandidateIndex,
+    pub(crate) candidate: CandidateIndex,
     /// Partner's index in the extended legacy pool.
-    pub(in crate::deck::career::sim::plan) partner: usize,
+    pub(crate) partner: usize,
     /// Retained (factor, inheritance chances) anchors, in their original order.
-    pub(in crate::deck::career::sim::plan) anchors: Option<Vec<(f64, Vec<f64>)>>,
+    pub(crate) anchors: Option<Vec<(f64, Vec<f64>)>>,
 }
 
 /// A fully checked career used as an exact anchor for its deck class.
-pub(in crate::deck::career::sim::plan) struct FoundAnchor {
+pub(crate) struct FoundAnchor {
     /// Deck class shared by trainees with the same legal deck search.
-    pub(in crate::deck::career::sim::plan) deck_class: usize,
+    pub(crate) deck_class: usize,
     /// Inheritance chances at the exact check, in job target order.
-    pub(in crate::deck::career::sim::plan) inheritance_chances: Vec<f64>,
+    pub(crate) inheritance_chances: Vec<f64>,
     /// Best deck value at those chances and unit spark scale.
-    pub(in crate::deck::career::sim::plan) value: f64,
+    pub(crate) value: f64,
 }
 
 /// Extra immutable inputs to the bound on a career's outcomes.
-pub(in crate::deck::career::sim::plan) struct OutcomeBounds<'bounds> {
+pub(crate) struct OutcomeBounds<'bounds> {
     /// Parent indices required by the job.
-    pub(in crate::deck::career::sim::plan) fixed_parents: &'bounds [usize],
+    pub(crate) fixed_parents: &'bounds [usize],
     /// Fully checked main-search careers, indexed in found-career order.
-    pub(in crate::deck::career::sim::plan) found_anchors: &'bounds [Option<FoundAnchor>],
+    pub(crate) found_anchors: &'bounds [Option<FoundAnchor>],
     /// Trio sides contributed by this career's own full veteran.
-    pub(in crate::deck::career::sim::plan) own_trios: &'bounds [OwnTrio],
+    pub(crate) own_trios: &'bounds [OwnTrio],
 }
 
 /// A cell's probability and its landed job-target bits are distinct from its cell index.
@@ -616,11 +616,11 @@ struct OutcomeChance {
 
 /// One outcome and its estimated saving, before bounding that same outcome.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct OutcomeEstimate {
+pub(crate) struct OutcomeEstimate {
     /// Cell built from uncertain stars and the fixed-target landing mask.
-    pub(in crate::deck::career::sim::plan) index: OutcomeIndex,
+    pub(crate) index: OutcomeIndex,
     /// Expected careers saved at this outcome.
-    pub(in crate::deck::career::sim::plan) saving: f64,
+    pub(crate) saving: f64,
 }
 
 #[inline(never)]
@@ -925,7 +925,7 @@ fn hi_partner(
 ///     in the pool, with today's Cont and trios, her step then costs at least cost_lo(up_hi): y_hi bounds the direct-lift
 ///     saving. Not bounded (channel 2, out of scope by design): what the replan's refits do (Cont fitted
 ///     again, other careers' best careers with her as a parent, the stage candidates chosen again beyond her own 8/8).
-pub(in crate::deck::career::sim::plan) fn outcome_hi(
+pub(crate) fn outcome_hi(
     simulator: &mut Sim,
     context: &ScoringContext,
     career: Career,
@@ -1201,7 +1201,7 @@ pub(in crate::deck::career::sim::plan) fn outcome_hi(
 /// The pick's own 8/8 as a trio side (`her_trios`) for `outcome_hi`, taken as the plan ends (the deck cache then:
 /// `her_trios` reads C's cached decks), where an outcome that lands every target reads y < 0.5 (`full_lo`: only there
 /// does `saving_lo` read it; else none)
-pub(in crate::deck::career::sim::plan) fn pick_her(
+pub(crate) fn pick_her(
     s: &mut Sim,
     context: &ScoringContext,
     career: Career,
@@ -1227,11 +1227,7 @@ pub(in crate::deck::career::sim::plan) fn pick_her(
 /// `outcome_hi`'s found-career anchors: per found career of the main search `msv` (its order), (her deck class, q_f,
 /// val_f) when the search fully checked it (a Ref at the career's own chances: val_f is the best value of any deck at q_f
 /// for every trainee of the class, `Env::seen`, scale 1), else none
-pub(in crate::deck::career::sim::plan) fn found_anchors(
-    env: &Env,
-    pool: &Pool,
-    msv: &Solved,
-) -> Vec<Option<FoundAnchor>> {
+pub(crate) fn found_anchors(env: &Env, pool: &Pool, msv: &Solved) -> Vec<Option<FoundAnchor>> {
     msv.found
         .iter()
         .map(|f| {

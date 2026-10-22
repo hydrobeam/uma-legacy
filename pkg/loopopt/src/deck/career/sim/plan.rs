@@ -26,13 +26,13 @@ use rows::{
     PlanRow, RowOrigin, add_looped_rows, add_no_borrow_rows, check_plan_proxies, near_floor, pick_of,
     score_and_promote_rows,
 };
-pub(in crate::deck::career::sim) use score::{CareerScore, score_career, score_career_of};
+pub(crate) use score::{CareerScore, score_career, score_career_of};
 use score::{KeptScoring, fm_masks, her_ends, her_pool, her_pool_done, her_trios, sc_roll, v0_after, with_her};
 use search::{
     FullLoop, HINT_FLOOR, IDX_CANDS, IDX_PARTNERS, OPT_SHOW, PROXY_EFF, PROXY_SAVE, Setup, best_sur, capped, certified,
     hint_umas, is_full, legal_pair, lift_eff, loop_ceiling, p_margin, p_swork, rotation, sim_for, val,
 };
-pub(in crate::deck::career::sim) use step::{All, Leaves, OneLeaf};
+pub(crate) use step::{All, Leaves, OneLeaf};
 use step::{Est, EstBufs, Lo, One, one_of, v_after};
 mod anchors;
 mod candidates;

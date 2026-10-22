@@ -5,42 +5,42 @@ use crate::deck::career::sim::plan::cont::OwnTrio;
 
 /// One candidate's improvement; slot indexes the estimate's per-row cost cache.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct CandidateLift {
-    pub(in crate::deck::career::sim::plan) slot: usize,
-    pub(in crate::deck::career::sim::plan) candidate: usize,
-    pub(in crate::deck::career::sim::plan) probability: f64,
+pub(crate) struct CandidateLift {
+    pub(crate) slot: usize,
+    pub(crate) candidate: usize,
+    pub(crate) probability: f64,
 }
 
 /// Mutable step costs for one outcome, restored to the base after evaluation.
-pub(in crate::deck::career::sim::plan) struct StepScratch<'scratch> {
-    pub(in crate::deck::career::sim::plan) costs: &'scratch mut [f64],
-    pub(in crate::deck::career::sim::plan) changed_candidates: &'scratch mut Vec<usize>,
+pub(crate) struct StepScratch<'scratch> {
+    pub(crate) costs: &'scratch mut [f64],
+    pub(crate) changed_candidates: &'scratch mut Vec<usize>,
 }
 
 /// Credit for this career's own veteran when every target lands.
-pub(in crate::deck::career::sim::plan) struct OwnFullLanding<'landing> {
+pub(crate) struct OwnFullLanding<'landing> {
     /// Index in ScoreBase's candidates, if this trainee is already a candidate.
-    pub(in crate::deck::career::sim::plan) candidate_index: Option<usize>,
-    pub(in crate::deck::career::sim::plan) completes_goal: bool,
+    pub(crate) candidate_index: Option<usize>,
+    pub(crate) completes_goal: bool,
     /// Additional trios available with this veteran as a free side.
-    pub(in crate::deck::career::sim::plan) trios: &'landing [OwnTrio],
-    pub(in crate::deck::career::sim::plan) full_mask: usize,
+    pub(crate) trios: &'landing [OwnTrio],
+    pub(crate) full_mask: usize,
 }
 
 /// Direct-mapped probability cache entry; NaN bits mark an empty entry.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct CachedStepCost {
+pub(crate) struct CachedStepCost {
     probability_bits: u64,
     cost: f64,
 }
 
 // Compatibility names for the planner module's existing imports.
-pub(in crate::deck::career::sim::plan) use EstimateBuffers as EstBufs;
-pub(in crate::deck::career::sim::plan) use StepEstimate as Est;
+pub(crate) use EstimateBuffers as EstBufs;
+pub(crate) use StepEstimate as Est;
 
 /// How V after her (`v_after`) costs the steps of the candidates her veteran lifts: the estimate's (`StepEstimate`, `Cont::cost`,
 /// for y) or the lower bound's (`Lo`, `Cont::cost_lo`, for y_hi). Monomorphised: each path keeps its own code
-pub(in crate::deck::career::sim::plan) trait StepCost {
+pub(crate) trait StepCost {
     /// Apply a candidate's lower step cost, or defer it for lazy evaluation.
     fn take(
         &mut self,
@@ -62,7 +62,7 @@ pub(in crate::deck::career::sim::plan) trait StepCost {
 }
 
 /// The bound's steps: each lifted candidate at `Cont::cost_lo` (`saving_lo`), V after her by `v0_after`
-pub(in crate::deck::career::sim::plan) struct Lo;
+pub(crate) struct Lo;
 
 impl StepCost for Lo {
     #[inline]
@@ -101,9 +101,9 @@ impl StepCost for Lo {
 /// takes over every trio, the same f64 (equal minima the same bits: `sc_outcomes`), and V after her. Her own 8/8's
 /// trios (`her`) read every step: then all are costed, and V after her is taken as without the lazy pass
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct StepEstimate<'base> {
+pub(crate) struct StepEstimate<'base> {
     inputs: StepInputs<'base>,
-    pub(in crate::deck::career::sim::plan) workspace: StepWorkspace,
+    pub(crate) workspace: StepWorkspace,
 }
 
 /// Constructed once per scoring; costing an outcome never changes these tables.
@@ -117,32 +117,32 @@ struct StepInputs<'base> {
 
 /// Probability caches and deferred candidate costs, reused for every outcome in one scoring.
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct StepWorkspace {
-    pub(in crate::deck::career::sim::plan) probability_costs: Vec<CachedStepCost>,
+pub(crate) struct StepWorkspace {
+    pub(crate) probability_costs: Vec<CachedStepCost>,
     /// (cell key, bound) entries use Cont::cost_lb's shared cache interface.
-    pub(in crate::deck::career::sim::plan) cell_costs: Vec<(u64, f64)>,
+    pub(crate) cell_costs: Vec<(u64, f64)>,
     pending_lifts: Vec<CandidateLift>,
     lower_bounds: Vec<f64>,
     pending_candidates: Vec<bool>,
-    pub(in crate::deck::career::sim::plan) changed_outcomes: usize,
-    pub(in crate::deck::career::sim::plan) cost_evaluations: usize,
-    pub(in crate::deck::career::sim::plan) cache_hits: usize,
-    pub(in crate::deck::career::sim::plan) single_candidate_shortcuts: usize,
+    pub(crate) changed_outcomes: usize,
+    pub(crate) cost_evaluations: usize,
+    pub(crate) cache_hits: usize,
+    pub(crate) single_candidate_shortcuts: usize,
 }
 
 const COST_CACHE_CAPACITY: usize = 256;
 
 /// `StepEstimate`'s cache buffers between scorings (`FoldScratch`)
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct EstimateBuffers {
-    pub(in crate::deck::career::sim::plan) probability_costs: Vec<CachedStepCost>,
+pub(crate) struct EstimateBuffers {
+    pub(crate) probability_costs: Vec<CachedStepCost>,
     /// (cell key, bound) entries use Cont::cost_lb's shared cache interface.
-    pub(in crate::deck::career::sim::plan) cell_costs: Vec<(u64, f64)>,
+    pub(crate) cell_costs: Vec<(u64, f64)>,
 }
 
 impl<'base> StepEstimate<'base> {
     /// for `rows` lift rows; `lazy` (`sc_outcomes`: every step, stage 2-3 cost and C's step a number >= 0, not -0.0)
-    pub(in crate::deck::career::sim::plan) fn new(
+    pub(crate) fn new(
         score_base: &'base ScoreBase<'_>,
         rows: usize,
         lazy: bool,
@@ -388,7 +388,7 @@ impl StepCost for StepEstimate<'_> {
 /// credit and the minimum continuation cost. Restore every changed step to the base before returning.
 /// Both the estimate and upper bound use this sequence, with their own StepCost implementation.
 #[inline(always)]
-pub(in crate::deck::career::sim::plan) fn v_after<C: StepCost>(
+pub(crate) fn v_after<C: StepCost>(
     score_base: &ScoreBase,
     cost: &mut C,
     scratch: &mut StepScratch,
@@ -437,13 +437,13 @@ struct TrioRemainder {
 /// do not read her step (their values at the base's steps, trio_v's expression), and the trios that read it once, as
 /// (key = rest + C's step, rest, C's step), key ascending: a trio's value (x + rest) + C's step, the same float as trio_v's
 /// sum (addition commutes exactly). Not `valid` when a trio reads her step twice
-pub(in crate::deck::career::sim::plan) struct One {
+pub(crate) struct One {
     unaffected_value: f64,
     reading_trios: Vec<TrioRemainder>,
     valid: bool,
 }
 
-pub(in crate::deck::career::sim::plan) fn one_of(combos: &[Trio], c1: &[f64], i: usize) -> One {
+pub(crate) fn one_of(combos: &[Trio], c1: &[f64], i: usize) -> One {
     let (mut unaffected_value, mut reading_trios, mut valid) = (f64::INFINITY, vec![], true);
     for &Trio {
         candidate_a: CandidateIndex(first_candidate),
@@ -505,7 +505,7 @@ fn single_candidate_value(o: &One, x: f64) -> f64 {
 /// each leaf's rows at `row`; the outcome loop takes the leaves in `list`'s order (ascending, as `All` takes them). A
 /// leaf's values are computed down its own path alone (the fold's f64s at a leaf read no other leaf's), so every value
 /// at a leaf produced is the one `All` computes there
-pub(in crate::deck::career::sim) trait Leaves {
+pub(crate) trait Leaves {
     const ALL: bool;
     /// whether the fold goes down prefix p of k digits
     fn wants(&self, k: usize, p: usize) -> bool;
@@ -517,7 +517,7 @@ pub(in crate::deck::career::sim) trait Leaves {
     fn nrows(&self, nleaf: usize) -> usize;
 }
 
-pub(in crate::deck::career::sim) struct All;
+pub(crate) struct All;
 
 impl Leaves for All {
     const ALL: bool = true;
@@ -540,13 +540,13 @@ impl Leaves for All {
 
 /// one outcome's leaf: the fold produces its representative only (row 0; a leaf that is not its own representative reads
 /// the representative's y, row 1 its own)
-pub(in crate::deck::career::sim) struct OneLeaf {
+pub(crate) struct OneLeaf {
     ls: [usize; 2],
     n: usize,
 }
 
 impl OneLeaf {
-    pub(in crate::deck::career::sim::plan) const fn new(leaf: usize, rep: usize) -> Self {
+    pub(crate) const fn new(leaf: usize, rep: usize) -> Self {
         if rep == leaf { Self { ls: [leaf, leaf], n: 1 } } else { Self { ls: [rep, leaf], n: 2 } }
     }
 }

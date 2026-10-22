@@ -6,71 +6,71 @@ use crate::deck::career::sim::rise_factor;
 
 /// Reusable scoring storage. Fold writes outcome_values before the outcome loop reads it.
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct FoldScratch {
-    pub(in crate::deck::career::sim::plan) fold: FoldWorkspace,
-    pub(in crate::deck::career::sim::plan) outcome_values: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) outcomes: super::score::OutcomeScratch,
+pub(crate) struct FoldScratch {
+    pub(crate) fold: FoldWorkspace,
+    pub(crate) outcome_values: Vec<f64>,
+    pub(crate) outcomes: super::score::OutcomeScratch,
 }
 
 /// Mutable fold levels and the last two levels' sixteen-leaf blocks.
 #[derive(Default)]
-pub(in crate::deck::career::sim::plan) struct FoldWorkspace {
+pub(crate) struct FoldWorkspace {
     /// Level k holds table j at j * 2^(uncertain_target_count - k).
-    pub(in crate::deck::career::sim::plan) levels: Vec<Vec<f64>>,
+    pub(crate) levels: Vec<Vec<f64>>,
     /// Setup-major blocks, indexed setup * 16 + star block.
-    pub(in crate::deck::career::sim::plan) setup_factors: Vec<f64>,
+    pub(crate) setup_factors: Vec<f64>,
     /// Slot-major blocks, indexed slot * 16 + star block.
-    pub(in crate::deck::career::sim::plan) block_accumulators: Vec<f64>,
+    pub(crate) block_accumulators: Vec<f64>,
 }
 
-thread_local! { pub(in crate::deck::career::sim::plan) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell::RefCell::new(FoldScratch::default()); }
+thread_local! { pub(crate) static FOLD_SCRATCH: std::cell::RefCell<FoldScratch> = std::cell::RefCell::new(FoldScratch::default()); }
 
 /// The target bits represented by a leaf's star digits and an outcome's fixed mask.
-pub(in crate::deck::career::sim::plan) struct LeafLayout<'layout> {
+pub(crate) struct LeafLayout<'layout> {
     /// Job-target indices in leaf-digit order.
-    pub(in crate::deck::career::sim::plan) uncertain_targets: &'layout [usize],
+    pub(crate) uncertain_targets: &'layout [usize],
     /// Job-target masks indexed by the compact fixed-target mask.
-    pub(in crate::deck::career::sim::plan) fixed_landed_masks: &'layout [TargetMask],
-    pub(in crate::deck::career::sim::plan) fixed_target_count: usize,
+    pub(crate) fixed_landed_masks: &'layout [TargetMask],
+    pub(crate) fixed_target_count: usize,
 }
 
 /// Tables shared by folding and outcome scoring. Setup and slot indices are distinct.
-pub(in crate::deck::career::sim::plan) struct SlotTables<'tables> {
+pub(crate) struct SlotTables<'tables> {
     /// Landed-mask-major scales, one entry per setup.
-    pub(in crate::deck::career::sim::plan) spark_scales: &'tables [f64],
+    pub(crate) spark_scales: &'tables [f64],
     /// Candidate slot for each setup; setup order is slot order.
-    pub(in crate::deck::career::sim::plan) slot_by_setup: &'tables [usize],
+    pub(crate) slot_by_setup: &'tables [usize],
     /// Base odds in slot order.
-    pub(in crate::deck::career::sim::plan) current_probabilities: &'tables [f64],
-    pub(in crate::deck::career::sim::plan) setup_count: usize,
-    pub(in crate::deck::career::sim::plan) slot_count: usize,
+    pub(crate) current_probabilities: &'tables [f64],
+    pub(crate) setup_count: usize,
+    pub(crate) slot_count: usize,
 }
 
 /// Immutable interpolation inputs; the mutable levels live in FoldWorkspace.
-pub(in crate::deck::career::sim::plan) struct FoldContext<'fold, L: Leaves> {
-    pub(in crate::deck::career::sim::plan) leaf_layout: LeafLayout<'fold>,
-    pub(in crate::deck::career::sim::plan) slot_tables: SlotTables<'fold>,
-    pub(in crate::deck::career::sim::plan) initial_tables: &'fold [f64],
-    pub(in crate::deck::career::sim::plan) setup_by_table: &'fold [usize],
+pub(crate) struct FoldContext<'fold, L: Leaves> {
+    pub(crate) leaf_layout: LeafLayout<'fold>,
+    pub(crate) slot_tables: SlotTables<'fold>,
+    pub(crate) initial_tables: &'fold [f64],
+    pub(crate) setup_by_table: &'fold [usize],
     /// Per setup, uncertain target and star level: x and 1 - x.
-    pub(in crate::deck::career::sim::plan) present_factors: &'fold [Vec<[f64; 4]>],
-    pub(in crate::deck::career::sim::plan) absent_factors: &'fold [Vec<[f64; 4]>],
-    pub(in crate::deck::career::sim::plan) collapsed_targets: &'fold [bool],
-    pub(in crate::deck::career::sim::plan) collapsed_star_levels: [usize; 2],
-    pub(in crate::deck::career::sim::plan) leaves: &'fold L,
+    pub(crate) present_factors: &'fold [Vec<[f64; 4]>],
+    pub(crate) absent_factors: &'fold [Vec<[f64; 4]>],
+    pub(crate) collapsed_targets: &'fold [bool],
+    pub(crate) collapsed_star_levels: [usize; 2],
+    pub(crate) leaves: &'fold L,
     /// Emit setup products for sc_row, or complete candidate-slot odds.
-    pub(in crate::deck::career::sim::plan) emit_setup_products: bool,
+    pub(crate) emit_setup_products: bool,
 }
 
 // Compatibility name for the planner module's existing import.
-pub(in crate::deck::career::sim::plan) use FoldContext as FoldCx;
+pub(crate) use FoldContext as FoldCx;
 
 /// Position in the fold; leaf digits and landed target bits use different layouts.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct FoldCursor {
-    pub(in crate::deck::career::sim::plan) target: usize,
-    pub(in crate::deck::career::sim::plan) leaf: usize,
-    pub(in crate::deck::career::sim::plan) landed_mask: usize,
+pub(crate) struct FoldCursor {
+    pub(crate) target: usize,
+    pub(crate) leaf: usize,
+    pub(crate) landed_mask: usize,
 }
 
 impl<L: Leaves> FoldContext<'_, L> {
@@ -175,7 +175,7 @@ fn fold_emit16<L: Leaves>(
 /// Fold each table down the star digits requested by Leaves, in target order.
 /// Interpolation stays t[2i] * absent + t[2i+1] * present. The last two levels remain
 /// unrolled into sixteen leaves per setup; only strict maxima combine different tables.
-pub(in crate::deck::career::sim::plan) fn fold_rec<L: Leaves>(
+pub(crate) fn fold_rec<L: Leaves>(
     context: &FoldContext<L>,
     cursor: FoldCursor,
     scratch: &mut FoldWorkspace,
@@ -293,11 +293,7 @@ pub(in crate::deck::career::sim::plan) fn fold_rec<L: Leaves>(
 /// Leaf `leaf`'s landed set on the uncertain targets (digit k: her stars on target uncv[k], 0 absent) and her stars'
 /// chance: the product over k of w[stars - 1] where she has any, in k order from 1.0 (the f64 `sc_outcomes`' per-leaf
 /// table holds: each of its entries is a lower leaf's times its top digit's w, the same product in the same order)
-pub(in crate::deck::career::sim::plan) fn leaf_set(
-    leaf: usize,
-    uncertain_targets: &[usize],
-    star_mix: [f64; 3],
-) -> LeafOutcome {
+pub(crate) fn leaf_set(leaf: usize, uncertain_targets: &[usize], star_mix: [f64; 3]) -> LeafOutcome {
     let mut landed_mask = 0usize;
     let mut star_probability = 1.0f64;
     for (k, &target) in uncertain_targets.iter().enumerate() {
@@ -311,16 +307,16 @@ pub(in crate::deck::career::sim::plan) fn leaf_set(
 }
 
 /// A star pattern's landed job-target bits and probability conditional on those landings.
-pub(in crate::deck::career::sim::plan) struct LeafOutcome {
-    pub(in crate::deck::career::sim::plan) landed_mask: usize,
-    pub(in crate::deck::career::sim::plan) star_probability: f64,
+pub(crate) struct LeafOutcome {
+    pub(crate) landed_mask: usize,
+    pub(crate) star_probability: f64,
 }
 
 /// Per leaf (base-4 digits, digit k at bits 2k..2k+1) the product of g[k][digit k] over k, into `out`: level by level,
 /// each level's products the previous level's (at the leaf's lower digits) times g[k][digit k], from 1.0. The same
 /// operations in the same order as `let mut pr = 1.0; for k in 0..nu { pr *= g[k][digit k]; }` per leaf, so the same
 /// f64s; each prefix is computed once instead of once per leaf (4/3 4^nu products for nu 4^nu)
-pub(in crate::deck::career::sim::plan) fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
+pub(crate) fn leaf_products(g: &[[f64; 4]], out: &mut Vec<f64>, tmp: &mut Vec<f64>) {
     out.clear();
     out.push(1.0);
     for (k, gk) in g.iter().enumerate() {
@@ -334,17 +330,17 @@ pub(in crate::deck::career::sim::plan) fn leaf_products(g: &[[f64; 4]], out: &mu
 }
 
 /// Outfit and inheritance inputs to the rise bound. Outfit rows use uncertain-target order.
-pub(in crate::deck::career::sim::plan) struct RiseInputs<'rise> {
-    pub(in crate::deck::career::sim::plan) outfit_coverage: &'rise [Vec<u8>],
-    pub(in crate::deck::career::sim::plan) event_chances: &'rise [Vec<f64>],
-    pub(in crate::deck::career::sim::plan) uncertain_targets: &'rise [usize],
+pub(crate) struct RiseInputs<'rise> {
+    pub(crate) outfit_coverage: &'rise [Vec<u8>],
+    pub(crate) event_chances: &'rise [Vec<f64>],
+    pub(crate) uncertain_targets: &'rise [usize],
     /// Narrow view of HerSlot's miss factors; no owned vectors are copied.
-    pub(in crate::deck::career::sim::plan) base_misses: &'rise [f64],
-    pub(in crate::deck::career::sim::plan) star_misses: &'rise [f64; 4],
+    pub(crate) base_misses: &'rise [f64],
+    pub(crate) star_misses: &'rise [f64; 4],
 }
 
 impl<'rise> RiseInputs<'rise> {
-    pub(in crate::deck::career::sim::plan) fn for_slot(
+    pub(crate) fn for_slot(
         outfit_coverage: &'rise [Vec<u8>],
         event_chances: &'rise [Vec<f64>],
         uncertain_targets: &'rise [usize],
@@ -357,7 +353,7 @@ impl<'rise> RiseInputs<'rise> {
 /// Per leaf (as `leaf_products`) the best outfit's `Env::rise` of trainee (sts, ews: her outfits' coverage and own
 /// chances) from chances qa (job-target order) to q'(leaf), q'_k = 1 - x0[k] xms[her stars on uncertain target k]:
 /// per outfit and target the factor at each of her four star levels (1 where it can't rise), their product per leaf
-pub(in crate::deck::career::sim::plan) fn rise_leaves(
+pub(crate) fn rise_leaves(
     inputs: &RiseInputs,
     anchor_chances: &[f64],
     leaf_products_buffer: &mut Vec<f64>,
