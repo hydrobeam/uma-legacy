@@ -66,35 +66,44 @@ pub(super) fn pmf_key() -> (u32, u64) {
         (n, p.to_bits())
     })
 }
-/// Where an entry of stop risk `risk` (`ChainKind::stop_risk`) and planned stop `stop` stops: [(realised stop,
-/// probability)], the risky links in order then the planned stop with what is left. The one decoding of the risk bytes
-fn stop_alts(stop: u8, risk: u32) -> Vec<(u8, f64)> {
-    let mut alternatives = vec![];
-    let mut surviving_probability = 1.0f64;
-    for link in 1..stop.min(5) {
-        let risk_byte = (risk >> (8 * (u32::from(link) - 1))) & 0xff;
-        if risk_byte == 0 {
-            continue;
-        }
-        let stop_probability = f64::from(risk_byte >> 4) / f64::from(risk_byte & 15);
-        alternatives.push((link, surviving_probability * stop_probability));
-        surviving_probability *= 1.0 - stop_probability;
-    }
-    alternatives.push((stop, surviving_probability));
-    alternatives
+/// A realised chain stop and its probability.
+struct ChainStop {
+    link: u8,
+    probability: f64,
 }
-/// The stop-risk mixture: every realisation of where the entries stop (one alternative of `stop_alts` each, the first
-/// entry's choice varying fastest), with its probability w (the product in entry order), `visit(w, stops)` where w > 0.
+
+impl ChainKind {
+    /// Where this chain stops: risky links in order, then the planned stop with the remaining probability.
+    /// This is the single decoder of the packed risk bytes.
+    fn stop_alternatives(&self) -> Vec<ChainStop> {
+        let mut alternatives = vec![];
+        let mut surviving_probability = 1.0f64;
+        for link in 1..self.stop.min(5) {
+            let risk_byte = (self.stop_risk >> (8 * (u32::from(link) - 1))) & 0xff;
+            if risk_byte == 0 {
+                continue;
+            }
+            let stop_probability = f64::from(risk_byte >> 4) / f64::from(risk_byte & 15);
+            alternatives.push(ChainStop { link, probability: surviving_probability * stop_probability });
+            surviving_probability *= 1.0 - stop_probability;
+        }
+        alternatives.push(ChainStop { link: self.stop, probability: surviving_probability });
+        alternatives
+    }
+}
+/// The stop-risk mixture: every realisation of where the entries stop (one `ChainKind::stop_alternatives` choice
+/// each, the first entry varying fastest), with probability w (the product in entry order), `visit(w, stops)` where
+/// w > 0.
 fn for_each_realisation(kinds: &[ChainKind], mut visit: impl FnMut(f64, &[u8])) {
-    let alternatives: Vec<Vec<(u8, f64)>> = kinds.iter().map(|kind| stop_alts(kind.stop, kind.stop_risk)).collect();
+    let alternatives: Vec<Vec<ChainStop>> = kinds.iter().map(ChainKind::stop_alternatives).collect();
     let n = kinds.len();
     let mut choices = vec![0usize; n];
     let mut stops = vec![0u8; n];
     loop {
-        let probability: f64 = (0..n).map(|i| alternatives[i][choices[i]].1).product();
+        let probability: f64 = (0..n).map(|i| alternatives[i][choices[i]].probability).product();
         if probability > 0.0 {
             for i in 0..n {
-                stops[i] = alternatives[i][choices[i]].0;
+                stops[i] = alternatives[i][choices[i]].link;
             }
             visit(probability, &stops);
         }

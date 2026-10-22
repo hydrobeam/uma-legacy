@@ -353,7 +353,7 @@ impl<'data> Multi<'data> {
                             SourceEntry { sources: Cow::Borrowed(&space.sources[j]), kind: space.kind[j] }
                         }
                         _ => SourceEntry {
-                            sources: Cow::Owned(source_builder.src(c, st, v)),
+                            sources: Cow::Owned(source_builder.target_sources(c, st, v)),
                             kind: source_builder.kind(c, st),
                         },
                     }

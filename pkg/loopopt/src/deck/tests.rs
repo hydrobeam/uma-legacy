@@ -9,7 +9,7 @@ use crate::deck::joint::upper::upper_na;
 use crate::deck::joint::{JointExt, LandPre, joint, joint_fast, land_factor};
 use crate::deck::sources::{
     ChainOutcome, EventOutcome, Group, SourceEntry, Sources, TargetReward, TargetSources, TrainingHint, deck_entries,
-    group_gh, group_nuod, group_nuod_lvl, src_miss,
+    group_gh, group_nuod, group_nuod_lvl,
 };
 use crate::deck::space::{MAX_KINDS, kinds_all, top_asc, top_desc};
 use crate::deck::state_bound::state_value_cf;
@@ -151,7 +151,7 @@ fn training_draws_over_two_targets() {
     let dj = job_with(json!({}));
     let unc = [20046u32, 20161];
     let sb = Sources { dj: &dj, unc: &unc };
-    let tr = sb.train(c);
+    let tr = sb.training_hints(c);
     assert_eq!(tr.len(), 2);
     let g = sb.train_group(c, &tr);
     assert!(g.iter().map(|x| x.probability).sum::<f64>() <= 1.0 + 1e-12);
@@ -164,7 +164,7 @@ fn training_draws_over_two_targets() {
     let h = hint_base("unity") * (1.0 + c.hf / 100.0) * (1.0 + hint_spec("unity") * c.spec / 100.0);
     assert!((tr[0].probability - (1.0 - hint_miss(1, c.nskill as usize, h, c.hinc))).abs() < 1e-12); // the card's assembled sources carry the same odds (the group is not lost next to its other rewards)
     let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-    src_miss(&sb.src(c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+    sb.target_sources(c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
     for k in 0..2 {
         assert!((1.0 - mw[k] * mg[k] - tr[k].probability).abs() < 1e-9 || mg[k] < 1.0, "{mw:?} {mg:?} {tr:?}");
         assert!(mw[k] * mg[k] < 1.0);
@@ -276,7 +276,7 @@ fn choices_become_variants() {
     assert_eq!(vs.len(), 2);
     for (i, &v) in vs.iter().enumerate() {
         let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-        src_miss(&sb.src(&c, None, v), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+        sb.target_sources(&c, None, v).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
         // with every link firing, exactly one of the two whites is certain
         let got: Vec<bool> = mw.iter().map(|&x| x < 1e-12).collect();
         assert_eq!(got.iter().filter(|&&x| x).count(), 1, "variant {i}: {mw:?}");
@@ -285,7 +285,7 @@ fn choices_become_variants() {
     let sb1 = Sources { dj: &dj, unc: &one };
     assert_eq!(sb1.variants(&c, None), vec![0]);
     let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
-    src_miss(&sb1.src(&c, None, 0), &[1.0, 1.0, 1.0], &mut mw, &mut mg);
+    sb1.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 1.0], &mut mw, &mut mg);
     assert!(mw[0] < 1e-12 && mg[0] == 1.0);
 }
 /// One event's outcomes exclude each other: a gold on two of four outcomes and its white on the other two give
@@ -297,7 +297,7 @@ fn outcomes_of_one_event_are_exclusive() {
     let unc = [20203u32];
     let sb = Sources { dj: &dj, unc: &unc };
     let (mut mw, mut mg) = (vec![1.0], vec![1.0]);
-    src_miss(&sb.src(&c, None, 0), &[1.0, 1.0, 0.8], &mut mw, &mut mg);
+    sb.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut mw, &mut mg);
     assert!((mg[0] - 0.6).abs() < 1e-12, "{mg:?}"); // P(no gold) = 1 - 0.8 * 0.5
     assert!((mg[0] * mw[0] - 0.2).abs() < 1e-12, "{mw:?}"); // P(no hint) = 1 - 0.8
 }
@@ -310,7 +310,7 @@ fn outcome_shares_weight_alts() {
     let unc = [20102u32, 20159];
     let sb = Sources { dj: &dj, unc: &unc };
     let (mut mw, mut mg) = (vec![1.0; 2], vec![1.0; 2]);
-    src_miss(&sb.src(&c, None, 0), &[1.0, 1.0, 0.8], &mut mw, &mut mg);
+    sb.target_sources(&c, None, 0).src_miss(&[1.0, 1.0, 0.8], &mut mw, &mut mg);
     assert!((mw[0] - (1.0 - 0.8 * 0.75)).abs() < 1e-12 && (mw[1] - (1.0 - 0.8 * 0.25)).abs() < 1e-12, "{mw:?}");
 }
 /// The final-state distribution has the same per-link marginals as `chain_marginals`, stop risk included.
@@ -702,7 +702,7 @@ fn unchecked_inline_event_disables_orthant_bound() {
     let rewards: Vec<(u32, u8)> = unc.iter().map(|&g| (g, 1)).collect();
     let dj = job_with(json!({"alts": [[card.id, 1, [[rewards, []]]]]}));
     let sb = Sources { dj: &dj, unc: &unc };
-    let src = sb.src(&card, None, 0);
+    let src = sb.target_sources(&card, None, 0);
     assert_eq!(src.chain_outcomes.len(), 1);
     assert_eq!(src.chain_outcomes[0].outcomes[0].probability, 0.5);
     assert_eq!(src.chain_outcomes[0].outcomes[0].rewards.len(), 21);
@@ -870,7 +870,7 @@ fn joint_equals_product_without_correlation() {
     .finish();
     let (mut mw, mut mg) = (vec![1.0; nu], vec![1.0; nu]);
     for x in [&a, &b] {
-        src_miss(x, &[], &mut mw, &mut mg);
+        x.src_miss(&[], &mut mw, &mut mg);
     }
     let dw: Vec<f64> = mw.iter().map(|x| 1.0 - x).collect();
     let dg: Vec<f64> = mg.iter().map(|x| 1.0 - x).collect();
