@@ -120,15 +120,41 @@ fn dsizes() -> Vec<usize> {
     vec![3, 4]
 }
 
-/// A lineage over member positions: (trainee T, parent P1, parent P2, X), P1 bred from (P2, X), P2 from (P1, X).
-pub(crate) type Lin = (usize, usize, usize, usize);
+/// A lineage over member positions (indices into a structure's members): the trainee T, her parents P1 and P2, and X,
+/// P1 bred from (P2, X), P2 from (P1, X).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct MemberLineage {
+    /// T: the member who trains.
+    pub(crate) trainee: usize,
+    /// P1: a parent, bred from P2 and X.
+    pub(crate) first_parent: usize,
+    /// P2: the other parent, bred from P1 and X.
+    pub(crate) second_parent: usize,
+    /// X: the grandparent under both parents (in a rotation, the trainee's own earlier veteran).
+    pub(crate) shared_grandparent: usize,
+}
 /// The four-member loop's 12 lineages: every trainee T and fourth member X (checked by `rotation_lineage_tables`).
-#[rustfmt::skip] // two rows of six lineages: trainees 0 and 1, then 2 and 3
-const LIN4: [Lin; 12] = [(0, 2, 3, 1), (0, 1, 3, 2), (0, 1, 2, 3), (1, 2, 3, 0), (1, 0, 3, 2), (1, 0, 2, 3),
-                         (2, 1, 3, 0), (2, 0, 3, 1), (2, 0, 1, 3), (3, 1, 2, 0), (3, 0, 2, 1), (3, 0, 1, 2)];
+const LIN4: [MemberLineage; 12] = [
+    MemberLineage { trainee: 0, first_parent: 2, second_parent: 3, shared_grandparent: 1 },
+    MemberLineage { trainee: 0, first_parent: 1, second_parent: 3, shared_grandparent: 2 },
+    MemberLineage { trainee: 0, first_parent: 1, second_parent: 2, shared_grandparent: 3 },
+    MemberLineage { trainee: 1, first_parent: 2, second_parent: 3, shared_grandparent: 0 },
+    MemberLineage { trainee: 1, first_parent: 0, second_parent: 3, shared_grandparent: 2 },
+    MemberLineage { trainee: 1, first_parent: 0, second_parent: 2, shared_grandparent: 3 },
+    MemberLineage { trainee: 2, first_parent: 1, second_parent: 3, shared_grandparent: 0 },
+    MemberLineage { trainee: 2, first_parent: 0, second_parent: 3, shared_grandparent: 1 },
+    MemberLineage { trainee: 2, first_parent: 0, second_parent: 1, shared_grandparent: 3 },
+    MemberLineage { trainee: 3, first_parent: 1, second_parent: 2, shared_grandparent: 0 },
+    MemberLineage { trainee: 3, first_parent: 0, second_parent: 2, shared_grandparent: 1 },
+    MemberLineage { trainee: 3, first_parent: 0, second_parent: 1, shared_grandparent: 2 },
+];
 /// The three-member rotation's 3 lineages: each member trains from the other two, whose own parents are the other
 /// two of the three, so X is the trainee's own character (her own earlier veteran, with her schedule's wins).
-const LIN3: [Lin; 3] = [(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)];
+const LIN3: [MemberLineage; 3] = [
+    MemberLineage { trainee: 0, first_parent: 1, second_parent: 2, shared_grandparent: 0 },
+    MemberLineage { trainee: 1, first_parent: 0, second_parent: 2, shared_grandparent: 1 },
+    MemberLineage { trainee: 2, first_parent: 0, second_parent: 1, shared_grandparent: 2 },
+];
 /// The lineages of a structure of `n` members (3: rotation, 4: the 12-lineage loop). The metric is the mean of P(all)
 /// over them: every member trains equally often, each from the veterans the others produced.
 ///
@@ -137,7 +163,7 @@ const LIN3: [Lin; 3] = [(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)];
 /// slot under each parent) and o(P1, X), o(P2, X) twice each (parent and grandparent slot). Summed over the 12 loop
 /// lineages every pair gets 6·2 + 2·4 = 20; over the 3 rotation lineages (X = T) every pair gets 6 + 2 + 2 = 10. Both
 /// are uniform, so a structure's schedules maximise the plain sum of its pairs' shared wins either way.
-pub(crate) fn lins(n: usize) -> &'static [Lin] {
+pub(crate) fn lins(n: usize) -> &'static [MemberLineage] {
     match n {
         4 => &LIN4,
         3 => &LIN3,
@@ -145,13 +171,21 @@ pub(crate) fn lins(n: usize) -> &'static [Lin] {
     }
 }
 
+/// Outfits of one uma that are interchangeable: the same guaranteed coverage and own-event chances.
+pub(crate) struct OutfitOption {
+    /// The hint level each outfit guarantees per uncertain target (`Model::uncertain` order): 0, 1 or 2.
+    pub(crate) coverage: Vec<u8>,
+    /// (outfit card id, label) of each outfit giving it, as the skills file lists them (id 0: "any outfit").
+    pub(crate) outfits: Vec<(u32, String)>,
+}
+
 pub(crate) struct Model<'data> {
     d: &'data Data,
     pub(crate) uncertain: Vec<usize>, // indices into job.targets that are not guaranteed gold
     pub(crate) n_fixed_gold: i32,
     base: f64,
-    /// per uma index: distinct coverage tuples over `uncertain` (0/1/2) -> outfit labels giving them
-    pub(crate) opts: UmaTable<Vec<(Vec<u8>, Vec<(u32, String)>)>>,
+    /// per uma index: her distinct outfit options, in first-seen order
+    pub(crate) opts: UmaTable<Vec<OutfitOption>>,
     /// per uma index: every listed outfit is excluded
     pub(crate) no_outfit: UmaTable<bool>,
     job: &'data SkillJob,
@@ -178,7 +212,7 @@ impl<'data> Model<'data> {
             if cards.is_empty() {
                 cards.push(CardRaw(0, "any outfit".into(), vec![]));
             }
-            let mut options: Vec<(Vec<u8>, Vec<(u32, String)>)> = vec![];
+            let mut options: Vec<OutfitOption> = vec![];
             let mut event_chances: Vec<Vec<f64>> = vec![];
             for card in &cards {
                 let hint_chances: Vec<f64> = uncertain
@@ -218,18 +252,18 @@ impl<'data> Model<'data> {
                 // Outfits are interchangeable only when both guaranteed coverage and own-event chances match.
                 // Keep their first-seen option order, which decides ties in the outfit scorers.
                 if let Some(i) =
-                    (0..options.len()).find(|&i| options[i].0 == coverage && event_chances[i] == hint_chances)
+                    (0..options.len()).find(|&i| options[i].coverage == coverage && event_chances[i] == hint_chances)
                 {
-                    options[i].1.push((card.0, card.1.clone()));
+                    options[i].outfits.push((card.0, card.1.clone()));
                 } else {
-                    options.push((coverage, vec![(card.0, card.1.clone())]));
+                    options.push(OutfitOption { coverage, outfits: vec![(card.0, card.1.clone())] });
                     event_chances.push(hint_chances);
                 }
             }
             opts.push(options);
             ews.push(event_chances);
         }
-        let sts = opts.iter().map(|options| options.iter().map(|(coverage, _)| coverage.clone()).collect()).collect();
+        let sts = opts.iter().map(|options| options.iter().map(|option| option.coverage.clone()).collect()).collect();
         Model {
             d,
             uncertain,
@@ -256,7 +290,7 @@ impl<'data> Model<'data> {
     /// best outfit for trainee `u` given per-career proc q: (product over uncertain skills, option index)
     fn trainee(&self, u: UmaIndex, q: f64) -> (f64, usize) {
         let mut best = (-1.0, 0);
-        for (k, (st, _)) in self.opts[u].iter().enumerate() {
+        for (k, OutfitOption { coverage: st, .. }) in self.opts[u].iter().enumerate() {
             let v: f64 = self.skill_probs(st, &self.ews[u][k], q).iter().product();
             if v > best.0 {
                 best = (v, k);
@@ -279,7 +313,8 @@ impl<'data> Model<'data> {
     pub(crate) fn lineage_q_arr(&self, f: &[UmaIndex], o: &dyn Fn(usize, usize) -> f64) -> [f64; 12] {
         let d = self.d;
         let mut out = [0.0f64; 12];
-        for (l, &(t, p1, p2, x)) in lins(f.len()).iter().enumerate() {
+        for (l, lineage) in lins(f.len()).iter().enumerate() {
+            let MemberLineage { trainee: t, first_parent: p1, second_parent: p2, shared_grandparent: x } = *lineage;
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
                 let ap = f64::from(d.pair[f[t]][f[par]])
@@ -389,7 +424,7 @@ impl<'data> Model<'data> {
     }
     pub(crate) fn trainee_d(&self, u: UmaIndex, q: f64, dw: &[f64], dg: &[f64]) -> (f64, usize) {
         let mut best = (-1.0, 0);
-        for (k, (st, _)) in self.opts[u].iter().enumerate() {
+        for (k, OutfitOption { coverage: st, .. }) in self.opts[u].iter().enumerate() {
             let v: f64 = Self::skill_probs_d(st, &self.ews[u][k], q, dw, dg).iter().product();
             if v > best.0 {
                 best = (v, k);
@@ -419,7 +454,7 @@ impl<'data> Model<'data> {
             }
         }
         let mut lout = vec![];
-        for &(t, p1, p2, x) in lins(f.len()) {
+        for &MemberLineage { trainee: t, first_parent: p1, second_parent: p2, shared_grandparent: x } in lins(f.len()) {
             let mut slots = vec![];
             let mut miss = 1.0f64;
             for (par, other) in [(p1, p2), (p2, p1)] {
@@ -444,14 +479,14 @@ impl<'data> Model<'data> {
                 None => self.trainee(f[t], q),
             };
             let probs = match deck.map(|dk| dk[t]) {
-                Some((w, g)) => Self::skill_probs_d(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q, w, g),
-                None => self.skill_probs(&self.opts[f[t]][k].0, &self.ews[f[t]][k], q),
+                Some((w, g)) => Self::skill_probs_d(&self.opts[f[t]][k].coverage, &self.ews[f[t]][k], q, w, g),
+                None => self.skill_probs(&self.opts[f[t]][k].coverage, &self.ews[f[t]][k], q),
             };
             let skills: Vec<Value> = self
                 .uncertain
                 .iter()
                 .zip(&probs)
-                .zip(&self.opts[f[t]][k].0)
+                .zip(&self.opts[f[t]][k].coverage)
                 .map(|((&i, p), lv)| json!({"group": self.job.targets[i].group, "p": p, "outfit": lv}))
                 .collect();
             lout.push(json!({"t": t, "p": [p1, p2], "x": x, "slots": slots, "q": q, "p_all": self.fixed() * pv, "skills": skills,
@@ -704,8 +739,9 @@ mod tests {
         let d = data();
         let sk = skills();
         let ix = |id: u32| UmaIndex(d.umas.iter().position(|u| u.id == id).unwrap());
-        let outfits =
-            |m: &Model, i: UmaIndex| -> Vec<u32> { m.opts[i].iter().flat_map(|o| o.1.iter().map(|c| c.0)).collect() };
+        let outfits = |m: &Model, i: UmaIndex| -> Vec<u32> {
+            m.opts[i].iter().flat_map(|o| o.outfits.iter().map(|c| c.0)).collect()
+        };
         let job: SkillJob =
             serde_json::from_value(json!({"targets": [{"group":20159}], "exclude_outfits": [100_102]})).unwrap();
         let m = Model::new(d, &sk, &job);
@@ -731,12 +767,21 @@ mod tests {
                     continue;
                 }
                 let ps: Vec<usize> = (0..4).filter(|&i| i != t && i != x).collect();
-                lin4.push((t, ps[0], ps[1], x));
+                lin4.push(MemberLineage {
+                    trainee: t,
+                    first_parent: ps[0],
+                    second_parent: ps[1],
+                    shared_grandparent: x,
+                });
             }
         }
         assert_eq!(lins(4).to_vec(), lin4);
-        assert_eq!(lins(3).to_vec(), vec![(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)]);
-        for &(t, p1, p2, x) in lins(3) {
+        let lin3: Vec<(usize, usize, usize, usize)> = lins(3)
+            .iter()
+            .map(|lineage| (lineage.trainee, lineage.first_parent, lineage.second_parent, lineage.shared_grandparent))
+            .collect();
+        assert_eq!(lin3, vec![(0, 1, 2, 0), (1, 0, 2, 1), (2, 0, 1, 2)]);
+        for &MemberLineage { trainee: t, first_parent: p1, second_parent: p2, shared_grandparent: x } in lins(3) {
             assert_eq!(x, t);
             // B's parents are (C, A) and C's are (B, A): the other parent and the trainee
             assert!(p1 != t && p2 != t && p1 != p2);

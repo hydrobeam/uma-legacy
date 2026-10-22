@@ -56,9 +56,9 @@
 use super::cache::Cache;
 use super::inherit::{ExactOptions, Inheritance, LineageChances};
 use super::{
-    Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool, Ref,
-    RelOf, SelectedDeck, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true, holds_fix, inherit,
-    insp_miss, interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
+    Ancestor, Bar, CardsRaw, Data, DeckRes, Deserialize, Env, Found, FxMap, GEN_GOLD, HerSlot, Legacy, PROF, Pool,
+    ProductProof, Ref, RelOf, SelectedDeck, SkillJob, SkillsRaw, SlotSink, Solved, Value, Who, aff_factor, d_true,
+    holds_fix, inherit, insp_miss, interp_in, json, now_ms, prof, progress, rise_factor, run_career, spark_scale,
 };
 use crate::deck::career::sim::plan::ScoringContext;
 use crate::deck::career::{Career, JobInputs, Lineage};
@@ -151,7 +151,7 @@ const PAGE_TOP: usize = 6;
 struct KeptState {
     bests: Vec<plan::Bests>,
     seen: Vec<(u64, crate::UmaTable<Vec<Ref>>)>,
-    searches: Vec<(u64, Solved, super::Ruled)>,
+    searches: Vec<super::KeptSolve>,
     decks: Vec<(u64, super::Kept)>,
 }
 /// Replace the worker's kept state, returning the previous state (`index`: module notes).
@@ -577,7 +577,8 @@ impl<'env, 'data> Sim<'env, 'data> {
             );
             if let Some(s) = self.env.last_product_bound.take() {
                 let ct = self.env.deck_class[request.trainee];
-                self.env.ruled[ct].push((request.inheritance_chances.to_vec(), s));
+                self.env.ruled[ct]
+                    .push(ProductProof { inheritance_chances: request.inheritance_chances.to_vec(), product_bound: s });
             }
             self.n.searches += 1;
             if let DeckRes::Done(v, sel, full) = r {
@@ -717,7 +718,7 @@ impl<'env, 'data> Sim<'env, 'data> {
             .wins
             .iter()
             .chain(&pool.veterans[lineage.second_parent].wins)
-            .map(|w| w.0)
+            .map(|w| w.race)
             .collect();
         k.sort_unstable();
         // her pink sparks change her win chances: their inputs join the key (start grades, each spark's aptitude and chance)
@@ -781,15 +782,15 @@ impl<'env, 'data> Sim<'env, 'data> {
                 let one = [a];
                 let pw = [pa];
                 let base = plan::ScoreBase {
-                    cands: &one,
-                    c1: &[1.0],
-                    m23: &[0.0],
-                    v0: 0.0,
-                    pnow: &pw,
-                    cont: &[],
-                    combos: &[],
-                    sides: &[],
-                    all: &[],
+                    candidates: &one,
+                    step_costs: &[1.0],
+                    later_stage_costs: &[0.0],
+                    current_value: 0.0,
+                    current_odds: &pw,
+                    continuations: &[],
+                    trios: &[],
+                    trio_sides: &[],
+                    finisher_umas: &[],
                 };
                 let scoring = ScoringContext { score_base: &base, legacies: &st.legacies, pool: &st.pool };
                 let mut best_builder: Option<BuilderCareer> = None;
@@ -803,7 +804,7 @@ impl<'env, 'data> Sim<'env, 'data> {
                         plan::Want::Stats,
                         &mut buf,
                     );
-                    let (pl, sp) = stt[0];
+                    let plan::LiftStats { lift_chance: pl, lifted_odds_sum: sp } = stt[0];
                     let (e, p1) = if pl > 0.0 {
                         let p1 = sp / pl;
                         (pl * (1.0 / pa - 1.0 / p1), p1)

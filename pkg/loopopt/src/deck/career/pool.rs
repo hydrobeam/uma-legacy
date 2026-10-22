@@ -49,14 +49,23 @@ pub(crate) struct Who {
     /// Her index in Data::umas (None: a character the data does not list).
     pub(crate) uma_index: Option<UmaIndex>,
     pub(crate) chara: u32,
-    /// (race index, win chance), sorted by race; chance 1 for a win on record.
-    pub(crate) wins: Vec<(usize, f64)>,
+    /// Her G1 wins, sorted by race; chance 1 for a win on record.
+    pub(crate) wins: Vec<RaceWin>,
     /// Stars (0..=3) of her spark of each job target, in job-target order.
     pub(crate) stars: std::rc::Rc<Vec<u8>>,
     /// (aptitude factor group, stars) of her pink sparks.
     pub(crate) pinks: std::rc::Rc<Vec<(u32, u8)>>,
     /// The star mix her sparks are drawn from (a veteran before her result is known); None: `stars` are fixed.
     pub(crate) star_mix: Option<[f64; 3]>,
+}
+
+/// One single-race G1 a legacy won, or may win.
+#[derive(Clone, Copy)]
+pub(crate) struct RaceWin {
+    /// The race's index (data.json `races`).
+    pub(crate) race: usize,
+    /// Her chance of the win (1 for a win on record).
+    pub(crate) chance: f64,
 }
 
 /// The veterans the parents come from, each with her own parents; per veteran and parent, the race part of that
@@ -129,8 +138,8 @@ pub(crate) fn dominates(p: &Pool, x: usize, y: usize) -> bool {
             && a.star_mix.is_none()
             && b.star_mix.is_none()
             && a.stars.iter().zip(b.stars.iter()).all(|(s, t)| s >= t)
-            && a.wins.iter().chain(&b.wins).all(|w| w.1 == 1.0)
-            && b.wins.iter().all(|w| a.wins.iter().any(|v| v.0 == w.0))
+            && a.wins.iter().chain(&b.wins).all(|w| w.chance == 1.0)
+            && b.wins.iter().all(|w| a.wins.iter().any(|v| v.race == w.race))
     };
     ge(&p.veterans[x], &p.veterans[y])
         && p.parents[x].len() == p.parents[y].len()
@@ -141,11 +150,11 @@ pub(crate) fn dominates(p: &Pool, x: usize, y: usize) -> bool {
 pub(crate) fn shared(a: &Who, b: &Who) -> f64 {
     let (mut i, mut j, mut s) = (0, 0, 0.0f64);
     while i < a.wins.len() && j < b.wins.len() {
-        match a.wins[i].0.cmp(&b.wins[j].0) {
+        match a.wins[i].race.cmp(&b.wins[j].race) {
             std::cmp::Ordering::Less => i += 1,
             std::cmp::Ordering::Greater => j += 1,
             std::cmp::Ordering::Equal => {
-                s += a.wins[i].1 * b.wins[j].1;
+                s += a.wins[i].chance * b.wins[j].chance;
                 i += 1;
                 j += 1;
             }
@@ -166,15 +175,21 @@ impl Env<'_> {
             .collect()
     }
     fn who(&self, traits: &VeteranTraits) -> Who {
-        let mut w: Vec<(usize, f64)> = if traits.win_chances.is_empty() {
+        let mut w: Vec<RaceWin> = if traits.win_chances.is_empty() {
             let mut v = traits.wins.to_vec();
             v.sort_unstable();
             v.dedup();
-            v.into_iter().map(|r| (r, 1.0)).collect()
+            v.into_iter().map(|race| RaceWin { race, chance: 1.0 }).collect()
         } else {
-            traits.win_chances.iter().enumerate().filter(|x| *x.1 > 0.0).map(|(r, &p)| (r, p)).collect()
+            traits
+                .win_chances
+                .iter()
+                .enumerate()
+                .filter(|x| *x.1 > 0.0)
+                .map(|(race, &chance)| RaceWin { race, chance })
+                .collect()
         };
-        w.sort_by_key(|x| x.0);
+        w.sort_by_key(|x| x.race);
         Who {
             uma_index: self.uix(traits.chara),
             chara: traits.chara,

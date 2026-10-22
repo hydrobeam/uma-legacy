@@ -1,5 +1,5 @@
 //! Step costs and the leaves used to estimate the next career.
-use super::{Cont, LB_CELLS, ScoreBase, Trio, trio_v, v0_after, with_her};
+use super::{Cont, CostBoundCell, LB_CELLS, ScoreBase, Trio, trio_v, v0_after, with_her};
 use crate::deck::career::sim::plan::CandidateIndex;
 use crate::deck::career::sim::plan::cont::OwnTrio;
 
@@ -99,7 +99,7 @@ impl StepCost for Lo {
 /// least the minimum, and with her step left at the base's (above the step she would take) still is, while every
 /// trio at the minimum reads only costed steps. So the least trio value found is the minimum `v0_after` (or `single_candidate_value`)
 /// takes over every trio, the same f64 (equal minima the same bits: `sc_outcomes`), and V after her. Her own 8/8's
-/// trios (`her`) read every step: then all are costed, and V after her is taken as without the lazy pass
+/// trios (`Scored::own_trios`) read every step: then all are costed, and V after her is taken as without the lazy pass
 #[derive(Default)]
 pub(crate) struct StepEstimate<'base> {
     inputs: StepInputs<'base>,
@@ -119,8 +119,8 @@ struct StepInputs<'base> {
 #[derive(Default)]
 pub(crate) struct StepWorkspace {
     pub(crate) probability_costs: Vec<CachedStepCost>,
-    /// (cell key, bound) entries use Cont::cost_lb's shared cache interface.
-    pub(crate) cell_costs: Vec<(u64, f64)>,
+    /// `Cont::cost_lb`'s memo, LB_CELLS entries per candidate.
+    pub(crate) cell_costs: Vec<CostBoundCell>,
     pending_lifts: Vec<CandidateLift>,
     lower_bounds: Vec<f64>,
     pending_candidates: Vec<bool>,
@@ -136,8 +136,8 @@ const COST_CACHE_CAPACITY: usize = 256;
 #[derive(Default)]
 pub(crate) struct EstimateBuffers {
     pub(crate) probability_costs: Vec<CachedStepCost>,
-    /// (cell key, bound) entries use Cont::cost_lb's shared cache interface.
-    pub(crate) cell_costs: Vec<(u64, f64)>,
+    /// `Cont::cost_lb`'s memo, LB_CELLS entries per candidate.
+    pub(crate) cell_costs: Vec<CostBoundCell>,
 }
 
 impl<'base> StepEstimate<'base> {
@@ -149,13 +149,13 @@ impl<'base> StepEstimate<'base> {
         single_candidate_costs: &'base [One],
         buffers: EstimateBuffers,
     ) -> Self {
-        let n = score_base.cands.len();
+        let n = score_base.candidates.len();
         let lower_bound_continuations: Vec<Option<&Cont>> =
-            (0..n).map(|ui| score_base.cont.get(ui).filter(|c| lazy && c.lb_ok())).collect();
+            (0..n).map(|ui| score_base.continuations.get(ui).filter(|c| lazy && c.lb_ok())).collect();
         let trio_order: Vec<usize> = if lazy {
             let trio_values: Vec<f64> =
-                score_base.combos.iter().map(|t| trio_v(score_base.c1, std::slice::from_ref(t))).collect();
-            let mut t: Vec<usize> = (0..score_base.combos.len()).collect();
+                score_base.trios.iter().map(|t| trio_v(score_base.step_costs, std::slice::from_ref(t))).collect();
+            let mut t: Vec<usize> = (0..score_base.trios.len()).collect();
             t.sort_by(|&a, &b| trio_values[a].total_cmp(&trio_values[b]));
             t
         } else {
@@ -169,14 +169,14 @@ impl<'base> StepEstimate<'base> {
             .resize(rows * COST_CACHE_CAPACITY, CachedStepCost { probability_bits: f64::NAN.to_bits(), cost: 0.0 });
         cell_costs.clear();
         if lazy {
-            cell_costs.resize(n * LB_CELLS, (u64::MAX, 0.0));
+            cell_costs.resize(n * LB_CELLS, CostBoundCell { key: u64::MAX, bound: 0.0 });
         }
         StepEstimate {
             inputs: StepInputs {
                 lower_bound_continuations,
                 trio_order,
                 single_candidate_costs,
-                unchanged_value: v0_after(score_base, score_base.c1),
+                unchanged_value: v0_after(score_base, score_base.step_costs),
             },
             workspace: StepWorkspace {
                 probability_costs,
@@ -242,7 +242,7 @@ impl StepWorkspace {
         changed_candidates: &mut Vec<usize>,
         reads_all_steps: bool,
     ) -> Option<f64> {
-        let n = score_base.cands.len();
+        let n = score_base.candidates.len();
         // (V after her where the lazy pass found it: the minimum)
         let mut lazy_value: Option<f64> = None;
         if !self.pending_lifts.is_empty() {
@@ -251,16 +251,17 @@ impl StepWorkspace {
                     let i = self.pending_lifts[k].candidate;
                     self.settle(score_base, costs, changed_candidates, i);
                 }
-            } else if score_base.combos.is_empty() {
+            } else if score_base.trios.is_empty() {
                 let mut best = f64::INFINITY;
                 for a in 0..n {
-                    if (if self.pending_candidates[a] { self.lower_bounds[a] } else { costs[a] }) + score_base.m23[a]
+                    if (if self.pending_candidates[a] { self.lower_bounds[a] } else { costs[a] })
+                        + score_base.later_stage_costs[a]
                         >= best
                     {
                         continue;
                     }
                     self.settle(score_base, costs, changed_candidates, a);
-                    let v = costs[a] + score_base.m23[a];
+                    let v = costs[a] + score_base.later_stage_costs[a];
                     if v < best {
                         best = v;
                     }
@@ -275,7 +276,7 @@ impl StepWorkspace {
                         finisher_cost,
                         a_uses_existing: first_existing,
                         b_uses_existing: second_existing,
-                    } = score_base.combos[trio_index];
+                    } = score_base.trios[trio_index];
                     let pending_step = |estimate: &Self, candidate: usize, existing: bool| {
                         if existing {
                             0.0
@@ -417,12 +418,12 @@ pub(crate) fn v_after<C: StepCost>(
     }
     // costs back to the base's
     for &i in changed_candidates.iter() {
-        costs[i] = score_base.c1[i];
+        costs[i] = score_base.step_costs[i];
     }
     if own.completes_goal && landed_mask == own.full_mask {
-        score_base.v0
+        score_base.current_value
     } else {
-        (score_base.v0 - value_after).max(0.0)
+        (score_base.current_value - value_after).max(0.0)
     }
 }
 
@@ -500,11 +501,11 @@ fn single_candidate_value(o: &One, x: f64) -> f64 {
 }
 
 /// The leaves (her star patterns on the uncertain targets) a scoring's evaluation produces (`sc_eval`): `All`, the
-/// plan's, every leaf in order (each test below is constant and compiles away), or `OneLeaf`, a roll's: one outcome's leaf
-/// and its representative (`Scored::rep_of`). The fold goes down a prefix only where `wants` it, and writes and reads
-/// each leaf's rows at `row`; the outcome loop takes the leaves in `list`'s order (ascending, as `All` takes them). A
-/// leaf's values are computed down its own path alone (the fold's f64s at a leaf read no other leaf's), so every value
-/// at a leaf produced is the one `All` computes there
+/// plan's, every leaf in order (each test below is constant and compiles away), or `OneLeaf`, a roll's: one outcome's
+/// leaf and its representative (`Scored::representative_of`). The fold goes down a prefix only where `wants` it, and
+/// writes and reads each leaf's rows at `row`; the outcome loop takes the leaves in `list`'s order (ascending, as `All`
+/// takes them). A leaf's values are computed down its own path alone (the fold's f64s at a leaf read no other leaf's),
+/// so every value at a leaf produced is the one `All` computes there
 pub(crate) trait Leaves {
     const ALL: bool;
     /// whether the fold goes down prefix p of k digits

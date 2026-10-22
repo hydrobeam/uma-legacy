@@ -1,7 +1,7 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
 use super::{
-    AUDIT_CAP, Card, CardsRaw, DeckJob, EXACT_CAP, EXACT_CAPS, Entries, Group, HashMap, Kind, Model, Name, PDeck,
-    SbCfg, SkillsRaw, Sources, Src, cap_class, chain_marginals, cv_mask, src_miss, test_caps,
+    AUDIT_CAP, Card, CardsRaw, ChainKind, DeckJob, EXACT_CAP, EXACT_CAPS, Entries, Group, HashMap, Model, Name,
+    OutfitOption, PDeck, SbCfg, SkillsRaw, Sources, Src, cap_class, chain_marginals, cv_mask, src_miss, test_caps,
 };
 
 thread_local! { pub(super) static UCHK: std::cell::Cell<(usize, f64, usize)> = const { std::cell::Cell::new((0, 0.0, 0)) }; pub(super) static SPT: std::cell::Cell<(f64, f64, usize, usize)> = const { std::cell::Cell::new((0.0, 0.0, 0, 0)) }; }
@@ -17,7 +17,7 @@ pub(super) struct DeckSpace<'data> {
     // Parallel arrays indexed by entry, before card dominance: card index, kind, early end, variant.
     // Entry indices differ from card indices: one card can have several end-link/variant entries.
     pub(super) rel: Vec<usize>,
-    pub(super) kind: Vec<Kind>,
+    pub(super) kind: Vec<ChainKind>,
     pub(super) endk: Vec<u8>,
     pub(super) vark: Vec<u32>,
     pub(super) srcs: Vec<Src>,
@@ -29,7 +29,7 @@ pub(super) struct DeckSpace<'data> {
     pub(super) locked: Vec<usize>,
     pub(super) allowed_borrow: usize,
     // every chain kind of any entry plus fillers (2, 2): key codes are counts in base 7 over this list
-    pub(super) kinds_all: Vec<Kind>,
+    pub(super) kinds_all: Vec<ChainKind>,
     // All caches belong to this fixed job and target set. Their abbreviated keys omit only those fixed inputs.
     pub(super) keys: std::cell::RefCell<crate::FxMap<u64, std::rc::Rc<(Vec<f64>, Vec<f64>, Vec<u32>)>>>,
     pub(super) red: std::cell::RefCell<crate::FxMap<Vec<crate::UmaIndex>, (std::rc::Rc<Vec<usize>>, usize)>>,
@@ -104,7 +104,7 @@ impl<'data> DeckSpace<'data> {
         }
         let nu = self.unc.len();
         let n = self.rel.len();
-        let mut ks: Vec<Kind> = vec![];
+        let mut ks: Vec<ChainKind> = vec![];
         let mut c = code;
         for &kd in &self.kinds_all {
             for _ in 0..(c % 7) {
@@ -140,8 +140,9 @@ impl<'data> DeckSpace<'data> {
     /// rewarding entry uses first. Any deck has an equal-valued deck from these.
     pub(super) fn reduced(&self, model: &Model, us: &[crate::UmaIndex], ids: &[u32]) -> Vec<usize> {
         let nu = self.unc.len();
-        let relt: Vec<bool> =
-            (0..nu).map(|k| us.iter().any(|&u| model.opts[u].iter().any(|(st, _)| st[k] < 2))).collect();
+        let relt: Vec<bool> = (0..nu)
+            .map(|k| us.iter().any(|&u| model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] < 2)))
+            .collect();
         let pg = |g: &Group| -> Group {
             g.iter().map(|(p, o)| (*p, o.iter().copied().filter(|x| relt[x.0]).collect::<Vec<_>>())).collect()
         };
@@ -166,7 +167,7 @@ impl<'data> DeckSpace<'data> {
         let empty = proj(&Src::default());
         let is_locked = |j: usize| self.locked.contains(&self.rel[j]);
         let mut keep: Vec<usize> = vec![];
-        let mut seen: Vec<(u32, Kind, &String)> = vec![];
+        let mut seen: Vec<(u32, ChainKind, &String)> = vec![];
         let mut used_chara: Vec<u32> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] == empty && !is_locked(j) {
@@ -180,7 +181,7 @@ impl<'data> DeckSpace<'data> {
             keep.push(j);
             used_chara.push(ch);
         }
-        let mut cls: Vec<((Kind, bool, bool), Vec<usize>)> = vec![];
+        let mut cls: Vec<((ChainKind, bool, bool), Vec<usize>)> = vec![];
         for (i, &j) in legal.iter().enumerate() {
             if keys[i] != empty || is_locked(j) {
                 continue;
@@ -296,11 +297,11 @@ impl<'data> DeckSpace<'data> {
                 legal
                     .iter()
                     .copied()
-                    .filter(|&j| self.kind[j] != (0, 0, 0) && self.kind[j] == self.kinds_all[i])
+                    .filter(|&j| self.kind[j] != ChainKind::NONE && self.kind[j] == self.kinds_all[i])
                     .collect()
             })
             .collect();
-        let pal_ents: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == (0, 0, 0)).collect();
+        let pal_ents: Vec<usize> = legal.iter().copied().filter(|&j| self.kind[j] == ChainKind::NONE).collect();
         // locked cards each group (by_kind, then pal_ents) can hold
         let lb = |j: usize| self.locked.iter().position(|&l| l == self.rel[j]).map_or(0u8, |b| 1u8 << b);
         let glk: Vec<u8> =
@@ -439,11 +440,11 @@ const _: () = assert!(
     6 * 7u128.pow(MAX_KINDS as u32 - 1) <= u64::MAX as u128 && MAX_DECK < 7 && MAX_DECK <= 8,
     "kind counts are packed as base-7 digits of a u64 (a deck below 7 cards), locked cards as the bits of a u8"
 );
-/// Every chain kind of the entries `kind` (pals, kind (0, 0, 0), have none) plus the fillers' (2, 2), sorted: the digits
-/// of a key code
-pub(super) fn kinds_all(kind: &[Kind]) -> Vec<Kind> {
-    let mut kinds: Vec<Kind> = kind.iter().copied().filter(|&k| k != (0, 0, 0)).collect();
-    kinds.push((2, 2, 0));
+/// Every chain kind of the entries `kind` (pals, `ChainKind::NONE`, have none) plus the fillers' (2, 2), sorted: the
+/// digits of a key code
+pub(super) fn kinds_all(kind: &[ChainKind]) -> Vec<ChainKind> {
+    let mut kinds: Vec<ChainKind> = kind.iter().copied().filter(|&k| k != ChainKind::NONE).collect();
+    kinds.push(ChainKind::FILLER);
     kinds.sort_unstable();
     kinds.dedup();
     kinds

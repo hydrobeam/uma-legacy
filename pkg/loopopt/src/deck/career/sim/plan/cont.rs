@@ -2,22 +2,37 @@
 use crate::deck::career::sim::plan::CandidateIndex;
 use crate::deck::career::sim::{FxMap, Legacy};
 
-/// What a career is scored against: stage-1 costs per candidate (index into `cands`; 0 = her 8/8 exists), stages 2-3 per
-/// A, V0, and the stage-1 odds now
+/// What a career is scored against: per stage-1 candidate her step cost and stages 2-3, V0, the stage-1 odds now, the
+/// fitted continuations and the trios. Per-candidate slices follow `candidates`' order.
 pub(crate) struct ScoreBase<'base> {
-    pub(crate) cands: &'base [crate::UmaIndex],
-    pub(crate) c1: &'base [f64],
-    pub(crate) m23: &'base [f64],
-    pub(crate) v0: f64,
-    pub(crate) pnow: &'base [f64],
-    pub(crate) cont: &'base [Cont],
-    /// the trios (A, B as candidate indices, C's step, A and B from a real 8/8 of hers): V = min over them of A's step +
-    /// B's step + C's step, a side from a real 8/8 costing 0, else c1; empty: min over a of c1[a] + m23[a]
-    pub(crate) combos: &'base [Trio],
-    /// per candidate, the trios' sides: (a real 8/8 veteran of hers, the legacy): her real 8/8s and the 8/8 her best career
-    /// now would leave; with `all` (the umas a trio's C may be), what `her_trios` pairs a new real 8/8 with. Empty: none
-    pub(crate) sides: &'base [Vec<(bool, Legacy)>],
-    pub(crate) all: &'base [crate::UmaIndex],
+    /// The stage-1 candidates, as umas.
+    pub(crate) candidates: &'base [crate::UmaIndex],
+    /// Each candidate's stage-1 step in expected careers (c1; 0: her 8/8 exists).
+    pub(crate) step_costs: &'base [f64],
+    /// Each candidate's stages 2-3 in expected careers (m23).
+    pub(crate) later_stage_costs: &'base [f64],
+    /// V0: the plan's expected careers now.
+    pub(crate) current_value: f64,
+    /// Each candidate's stage-1 odds now.
+    pub(crate) current_odds: &'base [f64],
+    /// Each candidate's fitted continuation; a candidate past its end has none (`cost` grinds at p).
+    pub(crate) continuations: &'base [Cont],
+    /// The trios (A, B as candidate indices, C's step, A and B from a real 8/8 of hers): V = min over them of A's
+    /// step + B's step + C's step, a side from a real 8/8 costing 0, else c1; empty: min over a of c1[a] + m23[a]
+    pub(crate) trios: &'base [Trio],
+    /// Per candidate, the trios' sides: her real 8/8s and the 8/8 her best career now would leave; with
+    /// `finisher_umas`, what `her_trios` pairs a new real 8/8 with. Empty: none
+    pub(crate) trio_sides: &'base [Vec<TrioSideVeteran>],
+    /// The umas a trio's C may be.
+    pub(crate) finisher_umas: &'base [crate::UmaIndex],
+}
+
+/// A trio side's veteran as `her_trios` reads it: a real 8/8 of the candidate's, or the fresh 8/8 her best career now
+/// would leave.
+pub(crate) struct TrioSideVeteran {
+    /// A real 8/8 veteran already in the pool (a side that costs no step).
+    pub(crate) uses_existing: bool,
+    pub(crate) legacy: Legacy,
 }
 
 /// Requested scoring outputs. Unrequested numeric results are placeholders, not measured zeroes:
@@ -413,7 +428,7 @@ impl Cont {
     /// musl-derived wasm libm are; |ln(p / pinf)| < 576), and L(g) >= cost_lo(g) / (1 + eps) (the n past cost_lo's stop
     /// are each at least B_n >= its best). So for p < g: cost(p) >= cost_lo(p) >= (1 - eps) L(p) >= (1 - eps) L(g) >=
     /// cost_lo(g) (1 - eps) / (1 + eps) > the bound, rounded once more
-    pub(crate) fn cost_lb(&self, p: f64, cell: &mut [(u64, f64); LB_CELLS]) -> Option<f64> {
+    pub(crate) fn cost_lb(&self, p: f64, cell: &mut [CostBoundCell; LB_CELLS]) -> Option<f64> {
         if !(p > self.pinf * 1e-250) {
             return None;
         }
@@ -423,11 +438,20 @@ impl Cont {
             return None;
         }
         let e = &mut cell[key as usize & (LB_CELLS - 1)];
-        if e.0 != key {
-            *e = (key, self.cost_lo(g) * (1.0 - 1e-9));
+        if e.key != key {
+            *e = CostBoundCell { key, bound: self.cost_lo(g) * (1.0 - 1e-9) };
         }
-        Some(e.1)
+        Some(e.bound)
     }
+}
+
+/// One memo entry of `Cont::cost_lb`, direct-mapped by cell.
+#[derive(Clone, Copy)]
+pub(crate) struct CostBoundCell {
+    /// The cell held: p's bits >> LB_SHIFT; u64::MAX marks an empty entry.
+    pub(crate) key: u64,
+    /// The lower bound on `cost(p)` for every p in the cell.
+    pub(crate) bound: f64,
 }
 
 /// `Cont::cost_lb`'s cells: 2^(52 - LB_SHIFT) per binade of p; LB_CELLS of them memoised per candidate
@@ -438,7 +462,7 @@ pub(crate) const LB_CELLS: usize = 256;
 impl ScoreBase<'_> {
     // (no Cont: a default one's, lam = 0: grinding at p)
     pub(crate) fn cost(&self, ui: usize, p: f64) -> f64 {
-        match self.cont.get(ui) {
+        match self.continuations.get(ui) {
             Some(c) => c.cost(p),
             None => {
                 if p <= 0.0 {
@@ -450,7 +474,7 @@ impl ScoreBase<'_> {
         }
     }
     pub(crate) fn cost_lo(&self, ui: usize, p: f64) -> f64 {
-        match self.cont.get(ui) {
+        match self.continuations.get(ui) {
             Some(c) => c.cost_lo(p),
             None => {
                 if p <= 0.0 {

@@ -1,10 +1,10 @@
 //! Per-uma decks (`run_multi`): the per-uma tables of exact values by inheritance chance and the loop search over them.
 use super::enumerate::{SearchMode, SearchOutcome};
 use super::{
-    Card, CardsRaw, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO, EXACT_STEPS,
-    GEN_GOLD, Instant, JointExt, Kind, Model, NONE, NT, Name, PDeck, Res, SPT, Sched, SkillJob, Sources, Src, UCHK,
-    Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter, lins, member_json, members,
-    optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
+    Card, CardsRaw, ChainKind, Choice, Cl, Data, DeckEval, DeckId, DeckJob, DeckSpace, EXACT_BUDGET, EXACT_RHO,
+    EXACT_STEPS, GEN_GOLD, Instant, JointExt, MemberLineage, Model, NONE, NT, Name, OutfitOption, PDeck, Res, SPT,
+    Sched, SkillJob, Sources, Src, UCHK, Value, chart_rows, check_sizes, joint, joint_b, joint_fast, json, k_filter,
+    lins, member_json, members, optimize_fam, pair_ceilings, prebuilt, probs, split, src_class, upper_na, wval,
 };
 use crate::{UmaIndex, UmaTable};
 use std::borrow::Cow;
@@ -230,9 +230,9 @@ impl SharedScan {
         let fm = members(&f);
         let nm = fm.len();
         let ids: Vec<u32> = fm.iter().map(|&u| d.umas[u].id).collect();
-        let pairs: Vec<(usize, f64)> = (0..ln.len()).map(|l| (ln[l].0, qa[l])).collect();
+        let pairs: Vec<(usize, f64)> = (0..ln.len()).map(|l| (ln[l].trainee, qa[l])).collect();
         let qt: Vec<Vec<f64>> =
-            (0..nm).map(|t| (0..ln.len()).filter(|&l| ln[l].0 == t).map(|l| qa[l]).collect()).collect();
+            (0..nm).map(|t| (0..ln.len()).filter(|&l| ln[l].trainee == t).map(|l| qa[l]).collect()).collect();
         Self { f, nm, ids, pairs, qt, floor, kloops, done: crate::FxSet::default(), list: vec![] }
     }
     /// the threshold a deck must reach: the floor, or the loop's k-th best so far when that is higher
@@ -284,7 +284,7 @@ struct Pick<'pass> {
 
 // Structures: four-uma loops (12 lineages) and three-uma rotations (3 lineages; `lins`), members as [UmaIndex; 4] with
 // `NONE` last for three; a structure's value is the mean over its lineages, so both sizes rank together.
-fn lin_of(f: &[UmaIndex; 4]) -> &'static [crate::skills::Lin] {
+fn lin_of(f: &[UmaIndex; 4]) -> &'static [MemberLineage] {
     lins(members(f).len())
 }
 /// A three-member structure's sum s in four-member sum units
@@ -360,10 +360,10 @@ fn pair_table(
 fn ucoords(model: &Model, u: UmaIndex, nu: usize) -> Vec<(usize, bool)> {
     let mut c = vec![];
     for k in 0..nu {
-        if model.opts[u].iter().any(|(st, _)| st[k] == 0) {
+        if model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] == 0) {
             c.push((k, true));
             c.push((k, false));
-        } else if model.opts[u].iter().any(|(st, _)| st[k] == 1) {
+        } else if model.opts[u].iter().any(|OutfitOption { coverage: st, .. }| st[k] == 1) {
             c.push((k, true));
         }
     }
@@ -678,8 +678,9 @@ impl<'data> Multi<'data> {
     fn relaxed_shared(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let model = self.inputs.model;
         let ln = lin_of(&f);
-        let val =
-            |dw: &[f64], dg: &[f64]| (0..ln.len()).map(|l| model.trainee_fast(f[ln[l].0], qa[l], dw, dg)).sum::<f64>();
+        let val = |dw: &[f64], dg: &[f64]| {
+            (0..ln.len()).map(|l| model.trainee_fast(f[ln[l].trainee], qa[l], dw, dg)).sum::<f64>()
+        };
         self.sky_top(1, &val, &|_| true).first().map_or(0.0, |x| x.0) * self.fixed / ln.len() as f64 * (1.0 + 1e-12)
     }
 
@@ -689,7 +690,7 @@ impl<'data> Multi<'data> {
         let mut tot = 0.0;
         let ln = lin_of(&f);
         for t in 0..members(&f).len() {
-            let qs: Vec<f64> = (0..ln.len()).filter(|&l| ln[l].0 == t).map(|l| qa[l]).collect();
+            let qs: Vec<f64> = (0..ln.len()).filter(|&l| ln[l].trainee == t).map(|l| qa[l]).collect();
             let init = qs
                 .iter()
                 .map(|&q| model.trainee_fast(f[t], q, &self.no_hint_chances, &self.no_hint_chances))
@@ -719,10 +720,10 @@ impl<'data> Multi<'data> {
 
     /// A deck's sources: the deck space's entry for (card, end link, variant) where it has one of that card, borrowed;
     /// else built. With the filler count.
-    fn ents_of(&self, x: &PDeck) -> (Vec<(Cow<'data, Src>, Kind)>, usize) {
+    fn ents_of(&self, x: &PDeck) -> (Vec<(Cow<'data, Src>, ChainKind)>, usize) {
         let space = self.inputs.deck_space;
         let srcb = Sources { dj: self.inputs.deck_job, unc: &self.target_groups };
-        let e: Vec<(Cow<Src>, Kind)> = x
+        let e: Vec<(Cow<Src>, ChainKind)> = x
             .ids
             .iter()
             .enumerate()
@@ -784,7 +785,7 @@ impl<'data> Multi<'data> {
         let j = joint_b(model, u, qs, &e, fl, self.requested_target_count, false);
         tally.t_score.set(tally.t_score.get() + t0.elapsed().as_secs_f64());
         if std::env::var("UPPER_CHECK").is_ok() {
-            let er: Vec<(&Src, Kind)> = e.iter().map(|(s, k)| (&**s, *k)).collect();
+            let er: Vec<(&Src, ChainKind)> = e.iter().map(|(s, k)| (&**s, *k)).collect();
             if let Some(ub) = upper_na(model, u, qs, &er, fl) {
                 for (i, y) in j.iter().enumerate() {
                     assert!(
@@ -907,7 +908,7 @@ impl<'data> Multi<'data> {
                     continue;
                 }
                 // the proven bound first: a deck it puts below the best exact value cannot beat it
-                let e: Vec<(&Src, Kind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<(&Src, ChainKind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
                 let ubo = upper_na(model, u, qs, &e, sel.filler_cards);
                 tally.t_ub.set(tally.t_ub.get() + t1.elapsed().as_secs_f64());
@@ -979,7 +980,7 @@ impl<'data> Multi<'data> {
             let mut worst: Option<(f64, UmaIndex, usize)> = None;
             let ln = lin_of(&f);
             for l in 0..ln.len() {
-                let (u, i) = (f[ln[l].0], self.grid.idx(qa[l]));
+                let (u, i) = (f[ln[l].trainee], self.grid.idx(qa[l]));
                 let (b, ex) = self.cell(u, i, lv);
                 tot += b;
                 if !ex && worst.is_none_or(|w| b > w.0) {
@@ -1126,7 +1127,7 @@ impl<'data> Multi<'data> {
                 if !seen.insert((sel.entries.clone(), sel.plain_pals, sel.filler_cards)) {
                     continue;
                 }
-                let e: Vec<(&Src, Kind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                let e: Vec<(&Src, ChainKind)> = sel.entries.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                 let t1 = Instant::now();
                 let ub: Option<f64> = (0..sc.nm)
                     .map(|t| upper_na(model, f[t], &sc.qt[t], &e, sel.filler_cards).map(|b| b.iter().sum::<f64>()))
@@ -1189,7 +1190,8 @@ impl<'data> Multi<'data> {
                         }
                         let ln = lins(4);
                         let qs = self.inputs.model.lineage_q_arr(&f, &|x, y| self.pair_bounds[f[x]][f[y]]);
-                        let ub = self.fixed * (0..12).map(|l| self.btab(f[ln[l].0], self.grid.idx(qs[l]))).sum::<f64>()
+                        let ub = self.fixed
+                            * (0..12).map(|l| self.btab(f[ln[l].trainee], self.grid.idx(qs[l]))).sum::<f64>()
                             / 12.0
                             * (1.0 + 1e-12);
                         out.push((ub, f));
@@ -1224,7 +1226,8 @@ impl<'data> Multi<'data> {
                     }
                     let ln = lins(3);
                     let qs = self.inputs.model.lineage_q_arr(&t, &|x, y| self.pair_bounds[t[x]][t[y]]);
-                    let ub = self.fixed * (0..3).map(|l| self.btab(t[ln[l].0], self.grid.idx(qs[l]))).sum::<f64>()
+                    let ub = self.fixed
+                        * (0..3).map(|l| self.btab(t[ln[l].trainee], self.grid.idx(qs[l]))).sum::<f64>()
                         / 3.0
                         * (1.0 + 1e-12);
                     out.push((ub, f));
@@ -1346,7 +1349,7 @@ impl<'data> Multi<'data> {
         let nl = ln.len();
         let qpb = self.inputs.model.lineage_q_arr(fm, &|x, y| self.pair_bounds[fm[x]][fm[y]]);
         // cheapest first: the cell bounds as they stand, then the product ceiling with one deck per trainee
-        if !beats((0..nl).map(|l| self.cell(f[ln[l].0], self.grid.idx(qpb[l]), lv).0).sum::<f64>() / nl as f64) {
+        if !beats((0..nl).map(|l| self.cell(f[ln[l].trainee], self.grid.idx(qpb[l]), lv).0).sum::<f64>() / nl as f64) {
             return Some(());
         }
         if !beats(lv * self.relaxed(f, &qpb)) {
@@ -1404,7 +1407,7 @@ impl<'data> Multi<'data> {
         let mut tot = 0.0;
         let mut bests = vec![];
         for t in 0..nm {
-            let qt: Vec<f64> = (0..nl).filter(|&l| ln[l].0 == t).map(|l| qa[l]).collect();
+            let qt: Vec<f64> = (0..nl).filter(|&l| ln[l].trainee == t).map(|l| qa[l]).collect();
             let b = self.exact_best(f[t], &qt, lv);
             tot += b.sum;
             bests.push(b);
@@ -1542,7 +1545,7 @@ impl<'data> Multi<'data> {
                 let nm = members(f).len();
                 let mut per_l = vec![(0.0, 0.0, 0usize); ln.len()];
                 for t in 0..nm {
-                    let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].0 == t).collect();
+                    let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
                     let qt: Vec<f64> = ls.iter().map(|&l| qs[l]).collect();
                     let j = joint_b(self.inputs.model, f[t], &qt, &e, fl, self.requested_target_count, true);
                     for (i, &l) in ls.iter().enumerate() {
@@ -1569,7 +1572,7 @@ impl<'data> Multi<'data> {
                 let nm = members(&solved[si].f).len();
                 let mut per_l = vec![(0.0, 0.0, 0usize); ln.len()];
                 for t in 0..nm {
-                    let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].0 == t).collect();
+                    let ls: Vec<usize> = (0..ln.len()).filter(|&l| ln[l].trainee == t).collect();
                     for (i, &l) in ls.iter().enumerate() {
                         per_l[l] = bests[t].per[i];
                     }
@@ -1592,7 +1595,7 @@ impl<'data> Multi<'data> {
         let nl = ln.len();
         let mut per = vec![(0.0, 0usize); nm];
         let mut picks: Vec<Vec<usize>> = vec![vec![]; nm];
-        for (l, &(t, ..)) in ln.iter().enumerate() {
+        for (l, &MemberLineage { trainee: t, .. }) in ln.iter().enumerate() {
             per[t].0 += per_l[l].0;
             per[t].1 += 1;
             picks[t].push(per_l[l].2);
@@ -1604,7 +1607,7 @@ impl<'data> Multi<'data> {
         // (each member's deck's sources once, read by each of her lineages)
         let dke: Vec<_> = (0..nm).map(|t| self.ents_of(dk[t])).collect();
         for l in 0..nl {
-            let t = ln[l].0;
+            let t = ln[l].trainee;
             let (e, fl) = (&dke[t].0, dke[t].1);
             let nu = unc.len();
             let mut ext = JointExt {
@@ -1636,12 +1639,14 @@ impl<'data> Multi<'data> {
         }
         // the search's product value of this loop with these decks
         let rank_v = self.fixed
-            * (0..nl).map(|l| model.trainee_fast(f[ln[l].0], qs[l], &dk[ln[l].0].dw, &dk[ln[l].0].dg)).sum::<f64>()
+            * (0..nl)
+                .map(|l| model.trainee_fast(f[ln[l].trainee], qs[l], &dk[ln[l].trainee].dw, &dk[ln[l].trainee].dg))
+                .sum::<f64>()
             / nl as f64;
         let outfits: Vec<Value> = (0..nm)
             .map(|i| {
                 let kk = *picks[i].iter().max_by_key(|x| picks[i].iter().filter(|y| y == x).count()).unwrap();
-                let (st, cs) = &model.opts[f[i]][kk];
+                let OutfitOption { coverage: st, outfits: cs } = &model.opts[f[i]][kk];
                 let covers: Vec<Value> = st
                     .iter()
                     .enumerate()

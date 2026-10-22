@@ -1,7 +1,7 @@
 //! Continuation fits and candidate combinations.
 use super::{
-    CEIL_SHARE, Cont, FullLoop, PlanCandidates, PlanContext, PlanRow, RowOrigin, ScoreBase, Trio, found_lineage,
-    legal_pair, lift_eff, loop_ceiling, val,
+    CEIL_SHARE, Cont, FullLoop, PlanCandidates, PlanContext, PlanRow, RowOrigin, ScoreBase, Trio, TrioSideVeteran,
+    found_lineage, legal_pair, loop_ceiling, val,
 };
 use crate::deck::career::Lineage;
 use crate::deck::career::sim::plan::CandidateIndex;
@@ -45,8 +45,8 @@ pub(crate) struct PlanFit {
     /// Each candidate's step: the expected careers to a fresh 8/8 of hers under her continuation.
     pub(crate) step_costs: Vec<f64>,
     pub(crate) trios: Vec<Trio>,
-    /// Per candidate, the trios' sides (`ScoreBase::sides`).
-    pub(crate) sides: Vec<Vec<(bool, Legacy)>>,
+    /// Per candidate, the trios' sides (`ScoreBase::trio_sides`).
+    pub(crate) sides: Vec<Vec<TrioSideVeteran>>,
     /// V: the cheapest trio's careers.
     pub(crate) current_value: f64,
 }
@@ -54,15 +54,15 @@ pub(crate) struct PlanFit {
 impl PlanFit {
     pub(crate) fn score_base<'fit>(&'fit self, candidates: &'fit PlanCandidates) -> ScoreBase<'fit> {
         ScoreBase {
-            cands: &candidates.trainees,
-            c1: &self.step_costs,
-            m23: &candidates.later_stage_costs,
-            v0: self.current_value,
-            pnow: &candidates.current_odds,
-            cont: &self.continuations,
-            combos: &self.trios,
-            sides: &self.sides,
-            all: &candidates.allowed_trainees,
+            candidates: &candidates.trainees,
+            step_costs: &self.step_costs,
+            later_stage_costs: &candidates.later_stage_costs,
+            current_value: self.current_value,
+            current_odds: &candidates.current_odds,
+            continuations: &self.continuations,
+            trios: &self.trios,
+            trio_sides: &self.sides,
+            finisher_umas: &candidates.allowed_trainees,
         }
     }
 }
@@ -117,15 +117,15 @@ pub(crate) fn plan_continuations(
                 r.origin == RowOrigin::Base
                     && r.exact
                     && data.umas[r.trainee].id != data.umas[u].id
-                    && r.lift_stats[ui].0 > 0.0
+                    && r.lift_stats[ui].lift_chance > 0.0
             })
             .map(|r| {
-                let (lift_chance, lifted_odds_sum) = r.lift_stats[ui];
+                let lift = r.lift_stats[ui];
                 BuilderLift {
-                    efficiency: lift_eff(lift_chance, lifted_odds_sum, p),
+                    efficiency: lift.efficiency(p),
                     builder: r.trainee,
-                    lift_chance,
-                    lifted_odds: lifted_odds_sum / lift_chance,
+                    lift_chance: lift.lift_chance,
+                    lifted_odds: lift.lifted_odds_sum / lift.lift_chance,
                 }
             })
             .collect();
@@ -266,14 +266,16 @@ pub(crate) fn plan_sides(
     context: &PlanContext,
     full_veterans: &[Vec<usize>],
     step_costs: &[f64],
-) -> Vec<Vec<(bool, Legacy)>> {
+) -> Vec<Vec<TrioSideVeteran>> {
     let legacies = context.input.legacies;
     (0..context.candidates.trainees.len())
         .map(|ui| {
-            let mut sides: Vec<(bool, Legacy)> =
-                full_veterans[ui].iter().map(|&i| (true, legacies[i].clone())).collect();
+            let mut sides: Vec<TrioSideVeteran> = full_veterans[ui]
+                .iter()
+                .map(|&i| TrioSideVeteran { uses_existing: true, legacy: legacies[i].clone() })
+                .collect();
             if let Some(fresh) = fresh_veteran(sim, context, step_costs, ui) {
-                sides.push((false, fresh));
+                sides.push(TrioSideVeteran { uses_existing: false, legacy: fresh });
             }
             sides
         })

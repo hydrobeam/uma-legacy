@@ -2,7 +2,7 @@
 use super::{ParentPool, PlanJob};
 use crate::deck::career::sim::{Ancestor, Bar, Data, Env, Found, Legacy, Pool, Sim, SimJob, SkillJob, Value, json};
 use crate::deck::career::sim::{DeckRequest, SimulationOptions, SimulationRoster};
-use crate::deck::career::{JobInputs, Lineage};
+use crate::deck::career::{JobInputs, Lineage, RankedPair};
 
 pub(crate) const fn p_margin() -> f64 {
     1e9
@@ -145,7 +145,9 @@ pub(crate) fn best_sur(
     s.cfg.margin = margin;
     // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
     let mut best: Option<SurrogateBest> = None;
-    for (ub, a, b) in s.env.ranked_pairs(pool, fixed_parents, u, |_, _| true) {
+    for RankedPair { ceiling: ub, first_parent: a, second_parent: b } in
+        s.env.ranked_pairs(pool, fixed_parents, u, |_, _| true)
+    {
         let bar = best.map_or(0.0, |found| found.value);
         if ub <= bar {
             break;
@@ -192,23 +194,20 @@ pub(crate) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
     sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0))
 }
 
-/// One place a builder's new veteran may be a parent: the stage-1 candidate she may lift (index), per uncertain target
-/// (env.uncv order) the miss product without her, per job target the spark scale without and with her spark, her miss
-/// factor x per star count (0: absent), how many of the trainee's cached decks it reads (their corner tables; a trainee's
-/// cached decks only grow, so the first `nd` are the ones there when the setup was made)
+/// One place a builder's new veteran may be a parent: the stage-1 candidate she may lift, her slot's miss and spark
+/// parts there (`HerSlot`), and how many of the candidate's cached decks it reads.
 pub(crate) struct Setup {
-    pub(crate) ui: usize,
-    pub(crate) x0: Vec<f64>,
-    pub(crate) pw: Vec<[f64; 2]>,
-    pub(crate) xm: [f64; 4],
-    pub(crate) nd: usize,
-}
-
-/// A builder's lift efficiency for a candidate at odds p: her veteran lifts the candidate with chance pl
-/// (`lift_chance`) to odds sp / pl on average (`lifted_odds_sum` sp, `score_career`'s stats), so pl (1/p - 1/(sp/pl))
-/// careers saved per career (Cont's builders, the proxies' admission and `proxy_check`; PROXY_EFF was calibrated on it)
-pub(crate) fn lift_eff(lift_chance: f64, lifted_odds_sum: f64, p: f64) -> f64 {
-    lift_chance * (1.0 / p - 1.0 / (lifted_odds_sum / lift_chance))
+    /// The candidate she may lift, as an index into `ScoreBase::candidates`.
+    pub(crate) candidate: usize,
+    /// x0: per uncertain target (`Env::uncertain_targets` order), the miss product without her.
+    pub(crate) misses_without_her: Vec<f64>,
+    /// pw: per job target, the spark scale without and with her spark.
+    pub(crate) target_spark_scales: Vec<[f64; 2]>,
+    /// xm: her miss factor x per star count (0: absent).
+    pub(crate) miss_by_stars: [f64; 4],
+    /// The candidate's cached decks it reads (their corner tables): a trainee's cached decks only grow, so the first
+    /// `deck_count` are the ones there when the setup was made.
+    pub(crate) deck_count: usize,
 }
 
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget

@@ -346,7 +346,13 @@ impl<'rise> RiseInputs<'rise> {
         uncertain_targets: &'rise [usize],
         slot: &'rise HerSlot,
     ) -> Self {
-        Self { outfit_coverage, event_chances, uncertain_targets, base_misses: &slot.x0, star_misses: &slot.xms }
+        Self {
+            outfit_coverage,
+            event_chances,
+            uncertain_targets,
+            base_misses: &slot.misses_without_her,
+            star_misses: &slot.miss_by_stars,
+        }
     }
 }
 

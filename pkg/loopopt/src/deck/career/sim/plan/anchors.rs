@@ -2,8 +2,8 @@
 use super::fold::RiseInputs;
 use super::step::{CandidateLift, OwnFullLanding, StepScratch};
 use super::{
-    Lo, ScoreBase, fm_masks, her_ends, her_pool, her_pool_done, her_trios, leaf_products, leaf_set, legal_pair,
-    rise_leaves, v_after,
+    HerEnds, Lo, ScoreBase, fm_masks, her_ends, her_pool, her_pool_done, her_trios, leaf_products, leaf_set,
+    legal_pair, rise_leaves, v_after,
 };
 use crate::deck::career::sim::plan::cont::OwnTrio;
 use crate::deck::career::sim::plan::{CandidateIndex, OutcomeIndex, ScoringContext};
@@ -411,7 +411,7 @@ fn rise_factors(inputs: &RiseInputs, anchor_chances: &[f64], g: &mut Vec<f64>) {
 }
 
 /// `outcome_hi` at one outcome (her stars `leaf`, landed set m): each candidate's odds `up` at the most any partner's
-/// bound allows (into `up`), then `saving_lo`; `c1` scratch
+/// bound allows (into `candidate_probabilities`), then `saving_lo`; `step_costs` scratch
 fn hi_at(
     score_base: &ScoreBase,
     bounds: &[ExactPartnerBound],
@@ -421,7 +421,7 @@ fn hi_at(
     step_costs: &mut [f64],
     candidate_probabilities: &mut [f64],
 ) -> f64 {
-    candidate_probabilities.copy_from_slice(score_base.pnow);
+    candidate_probabilities.copy_from_slice(score_base.current_odds);
     for bound in bounds {
         let value = bound.spark_scales[landed_mask] * bound.leaf_bounds[leaf];
         if value > candidate_probabilities[bound.candidate] {
@@ -431,8 +431,8 @@ fn hi_at(
     saving_lo(score_base, candidate_probabilities, landed_mask, own, step_costs)
 }
 
-/// V - V_lo at candidate odds `up`: each step that rose at `Cont::cost_lo`, her own 8/8 (`xi`, `her_trios`) on the full
-/// set, the goal's V; `c1` scratch
+/// V - V_lo at candidate odds `candidate_probabilities`: each step that rose at `Cont::cost_lo`, her own 8/8
+/// (`Scored::own_candidate`, `her_trios`) on the full set, the goal's V; `step_costs` scratch
 fn saving_lo(
     score_base: &ScoreBase,
     candidate_probabilities: &[f64],
@@ -441,11 +441,11 @@ fn saving_lo(
     step_costs: &mut [f64],
 ) -> f64 {
     // (the candidates above their threshold, `score_career`'s pnow (1 + 1e-9), in candidate order)
-    let lifted: Vec<CandidateLift> = (0..score_base.cands.len())
-        .filter(|&candidate| candidate_probabilities[candidate] > score_base.pnow[candidate] * (1.0 + 1e-9))
+    let lifted: Vec<CandidateLift> = (0..score_base.candidates.len())
+        .filter(|&candidate| candidate_probabilities[candidate] > score_base.current_odds[candidate] * (1.0 + 1e-9))
         .map(|candidate| CandidateLift { slot: candidate, candidate, probability: candidate_probabilities[candidate] })
         .collect();
-    step_costs.copy_from_slice(score_base.c1);
+    step_costs.copy_from_slice(score_base.step_costs);
     let mut changed_candidates = vec![];
     let mut scratch = StepScratch { costs: step_costs, changed_candidates: &mut changed_candidates };
     v_after(score_base, &mut Lo, &mut scratch, &lifted, landed_mask, own)
@@ -522,7 +522,7 @@ impl<'inputs> CandidateBoundInputs<'inputs> {
         PartnerBoundInputs {
             candidate: self,
             lineage: Lineage {
-                trainee: score_base.cands[self.candidate_index],
+                trainee: score_base.candidates[self.candidate_index],
                 first_parent,
                 second_parent: self.extended_pool.veterans.len() - 1,
             },
@@ -647,7 +647,9 @@ fn hi_partner(
         for k in 0..context.uncertain_targets.len() {
             let (intercept, miss_coefficient) = o[k];
             for sg in 0..4 {
-                scratch.ceiling_factors.push(intercept - miss_coefficient * (slot.x0[k] * slot.xms[sg]));
+                scratch
+                    .ceiling_factors
+                    .push(intercept - miss_coefficient * (slot.misses_without_her[k] * slot.miss_by_stars[sg]));
             }
         }
     }
@@ -670,11 +672,11 @@ fn hi_partner(
     // (`AnchorBound::root_min`'s premises but the anchor's chances)
     let monotone_factors = candidate.event_chances_valid
         && !context.uncertain_targets.is_empty()
-        && slot.xms[0] >= slot.xms[1]
-        && slot.xms[1] >= slot.xms[2]
-        && slot.xms[2] >= slot.xms[3]
-        && slot.xms[3] >= 0.0
-        && slot.x0.iter().all(|v| (0.0..=1.0).contains(v));
+        && slot.miss_by_stars[0] >= slot.miss_by_stars[1]
+        && slot.miss_by_stars[1] >= slot.miss_by_stars[2]
+        && slot.miss_by_stars[2] >= slot.miss_by_stars[3]
+        && slot.miss_by_stars[3] >= 0.0
+        && slot.misses_without_her.iter().all(|v| (0.0..=1.0).contains(v));
     // The most the ceiling holds at any leaf (`AnchorBound::reset`'s bd at the leaf of each digit's largest factor: per outfit the
     // product in the leaves' order from 1.0, the most over outfits from 0.0, rf x it; with every factor >= 0 rounding is
     // monotone, so no leaf's is above it), +inf where a factor is negative or NaN. An anchor whose root test fails against
@@ -757,7 +759,7 @@ fn hi_partner(
             add(&mut scratch.anchor_bound, *f, anchor_chances, &mut batch);
         }
     } else {
-        if context.scoring.score_base.pnow[candidate.candidate_index] > 0.0 {
+        if context.scoring.score_base.current_odds[candidate.candidate_index] > 0.0 {
             let mut legal_anchors = 0usize;
             for lineage in (0..context.scoring.legacies.len())
                 .map(|second_parent| Lineage { second_parent, ..partner.lineage })
@@ -779,7 +781,7 @@ fn hi_partner(
                 legal_anchors += 1;
                 add(
                     &mut scratch.anchor_bound,
-                    context.scoring.score_base.pnow[candidate.candidate_index] / anchor_scale,
+                    context.scoring.score_base.current_odds[candidate.candidate_index] / anchor_scale,
                     &scratch.inheritance_chances,
                     &mut batch,
                 );
@@ -836,8 +838,9 @@ fn hi_partner(
     let emit_started = now_ms();
     // the spark scale per landed set m: every m's when the marked cells are as many (or the exact anchors keep them), else each
     // marked cell's own (the same product)
-    let scale_for_mask =
-        |m: usize| -> f64 { (0..context.marked_outcomes.target_count).map(|k| slot.pw[k][(m >> k) & 1]).product() };
+    let scale_for_mask = |m: usize| -> f64 {
+        (0..context.marked_outcomes.target_count).map(|k| slot.target_spark_scales[k][(m >> k) & 1]).product()
+    };
     let spark_scales: Vec<f64> =
         if HI_SEARCHES > 0 || context.marked_outcomes.marked_cell_count >= context.marked_outcomes.outcome_count {
             (0..context.marked_outcomes.outcome_count).map(&scale_for_mask).collect()
@@ -885,9 +888,9 @@ fn hi_partner(
         });
         output.exact_chances.push(ExactAnchorChances {
             lineage: partner.lineage,
-            initial_chances: slot.q0,
-            base_misses: slot.x0,
-            star_misses: slot.xms,
+            initial_chances: slot.chances_without_her,
+            base_misses: slot.misses_without_her,
+            star_misses: slot.miss_by_stars,
         });
     }
 }
@@ -937,11 +940,12 @@ pub(crate) fn outcome_hi(
     let trainee = career.lineage.trainee;
     let want = &[outcome];
 
-    let candidate_count = context.score_base.cands.len();
+    let candidate_count = context.score_base.candidates.len();
     let target_count = simulator.env.target_count;
     let uncertain_target_count = simulator.env.uncertain_targets.len();
     let star_mix = simulator.env.skill_job.star_dist;
-    let (own_candidate, completes_goal) = her_ends(simulator, context.score_base, context.legacies, career.lineage);
+    let HerEnds { own_candidate, completes_goal } =
+        her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current = simulator.make_cur(context.pool, career, false);
     let extended_pool = her_pool(simulator, context.legacies, context.pool, true, career.lineage, &current);
     let uncertain_targets = &simulator.env.uncertain_targets;
@@ -990,7 +994,7 @@ pub(crate) fn outcome_hi(
     let marked_cell_count = marked_cells.len();
     // per candidate and marked outcome her odds' bound so far: pnow, then the most of every partner's (`hi_at` without the exact-anchor tables)
     let mut candidate_bounds: Vec<f64> = (0..candidate_count)
-        .flat_map(|candidate| std::iter::repeat_n(context.score_base.pnow[candidate], marked_cell_count))
+        .flat_map(|candidate| std::iter::repeat_n(context.score_base.current_odds[candidate], marked_cell_count))
         .collect();
     // an anchor's chances (`Env::lineage_qc`: only the uncertain targets' entries, the ones the factors read)
     let mut scratch = UpperBoundScratch {
@@ -1021,9 +1025,9 @@ pub(crate) fn outcome_hi(
     // (each (candidate, partner)'s anchors as a call keeps them for the next, `acache`: in this loop's order)
     let mut partner_count = 0usize;
     for candidate in 0..candidate_count {
-        let candidate_trainee = context.score_base.cands[candidate];
+        let candidate_trainee = context.score_base.candidates[candidate];
         if data.umas[candidate_trainee].id == data.umas[trainee].id
-            || context.score_base.c1[candidate] == 0.0
+            || context.score_base.step_costs[candidate] == 0.0
             || simulator.fastc[candidate_trainee].is_empty()
         {
             continue;
@@ -1092,7 +1096,7 @@ pub(crate) fn outcome_hi(
             },
         )
         .collect();
-    let mut step_costs = context.score_base.c1.to_vec();
+    let mut step_costs = context.score_base.step_costs.to_vec();
     let mut candidate_probabilities = vec![0.0f64; candidate_count];
     let savings_started = now_ms();
     for (k, &j) in at.iter().enumerate() {
@@ -1126,11 +1130,11 @@ pub(crate) fn outcome_hi(
         let h = hi_at(context.score_base, &exact_bounds, leaf, m, &own, &mut step_costs, &mut candidate_probabilities);
         let (mut need, mut far): (Vec<usize>, bool) = (vec![], false);
         for candidate in 0..candidate_count {
-            if candidate_probabilities[candidate] <= context.score_base.pnow[candidate] * (1.0 + 1e-9) {
+            if candidate_probabilities[candidate] <= context.score_base.current_odds[candidate] * (1.0 + 1e-9) {
                 continue;
             }
             let keep = candidate_probabilities[candidate];
-            candidate_probabilities[candidate] = context.score_base.pnow[candidate];
+            candidate_probabilities[candidate] = context.score_base.current_odds[candidate];
             let h2 = saving_lo(context.score_base, &candidate_probabilities, m, &own, &mut step_costs);
             candidate_probabilities[candidate] = keep;
             if h2 >= h - 1e-9 {
@@ -1141,9 +1145,9 @@ pub(crate) fn outcome_hi(
                     continue;
                 }
                 let v = bound.spark_scales[m] * bound.leaf_bounds[leaf];
-                if v > context.score_base.pnow[candidate] * (1.0 + 1e-9) {
+                if v > context.score_base.current_odds[candidate] * (1.0 + 1e-9) {
                     need.push(partner_index);
-                    if v > HI_RISE * context.score_base.pnow[candidate] {
+                    if v > HI_RISE * context.score_base.current_odds[candidate] {
                         far = true;
                     }
                 }
@@ -1208,8 +1212,8 @@ pub(crate) fn pick_her(
     full_lo: bool,
     buf: &mut Vec<f64>,
 ) -> Vec<OwnTrio> {
-    let (xi, goal) = her_ends(s, context.score_base, context.legacies, career.lineage);
-    if !full_lo || xi.is_some() || goal || context.score_base.sides.is_empty() {
+    let ends = her_ends(s, context.score_base, context.legacies, career.lineage);
+    if !full_lo || ends.own_candidate.is_some() || ends.completes_goal || context.score_base.trio_sides.is_empty() {
         return vec![];
     }
     let c = s.make_cur(context.pool, career, false);

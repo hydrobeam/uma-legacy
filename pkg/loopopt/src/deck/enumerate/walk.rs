@@ -5,7 +5,7 @@ use super::{
     SearchControl, SearchResults,
 };
 use crate::deck::{
-    CFCHK, Kind, SBCHK, SBN, SelectedDeck, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check,
+    CFCHK, ChainKind, SBCHK, SBN, SelectedDeck, Src, StateBound, cap_class, gm_g, gm_w, joint_fast, sb_check,
 };
 
 /// Read-only tables for one configuration, borrowed separately from the node workspace.
@@ -727,7 +727,7 @@ impl<V: Fn(&(Vec<(usize, f64)>, f64), &[f64], &[f64]) -> f64> ConfigurationConte
                 path.truncate(d);
                 path.push(ub);
                 if leafd {
-                    let ents: Vec<(&Src, Kind)> = sel.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
+                    let ents: Vec<(&Src, ChainKind)> = sel.iter().map(|&j| (&space.srcs[j], space.kind[j])).collect();
                     let x = joint_fast(
                         model,
                         bound_trainee,

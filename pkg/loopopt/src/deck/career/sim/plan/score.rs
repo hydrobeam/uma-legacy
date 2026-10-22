@@ -3,8 +3,8 @@ use super::fold::{FoldCursor, LeafLayout, SlotTables};
 use super::step::{CandidateLift, OwnFullLanding, StepScratch};
 use super::{
     All, Est as StepEstimate, EstBufs as EstimateBuffers, FOLD_SCRATCH, FoldCx as FoldContext, FoldScratch,
-    IDX_PARTNERS, Leaves, One, OneLeaf, ScoreBase, Scored, Setup, Want, fold_rec, is_full, leaf_set, legal_pair,
-    one_of, trio_v, v_after, val,
+    IDX_PARTNERS, Leaves, One, OneLeaf, ScoreBase, Scored, Setup, TrioSideVeteran, Want, fold_rec, is_full, leaf_set,
+    legal_pair, one_of, trio_v, v_after, val,
 };
 use crate::deck::career::sim::plan::cont::OwnTrio;
 use crate::deck::career::sim::plan::roll::ActiveCandidate;
@@ -62,7 +62,7 @@ struct ScoringEvaluation {
     expected_saving: f64,
     improvement_chance: f64,
     outcome_savings: Vec<f64>,
-    lift_stats: Vec<(f64, f64)>,
+    lift_stats: Vec<LiftStats>,
     full_landing_below_threshold: bool,
     counters: EvaluationCounters,
 }
@@ -96,19 +96,21 @@ pub(crate) fn her_trios(
     let partner_index = extended_pool.veterans.len();
     let (mut inheritance_chances, mut finishers): (Vec<f64>, Vec<FinisherCeiling>) =
         (Vec::with_capacity(simulator.env.target_count), vec![]);
-    for candidate in 0..score_base.cands.len() {
-        let partner_trainee = score_base.cands[candidate];
+    for candidate in 0..score_base.candidates.len() {
+        let partner_trainee = score_base.candidates[candidate];
         if data.umas[partner_trainee].id == trainee_id {
             continue;
         }
-        for (uses_existing, legacy) in score_base.sides.get(candidate).map_or(&[][..], |value| &**value) {
+        for TrioSideVeteran { uses_existing, legacy } in
+            score_base.trio_sides.get(candidate).map_or(&[][..], |value| &**value)
+        {
             simulator.env.pool_push(extended_pool, legacy);
             // (C ranges over the trainees on one pair: `lineage` and `ceiling` per trainee, not `gen_cands`, whose
             // per-trainee tables cover every legacy of the pool: on p16 +4.5% instructions in all)
             finishers.clear();
             finishers.extend(
                 score_base
-                    .all
+                    .finisher_umas
                     .iter()
                     .copied()
                     .map(|trainee| Lineage { trainee, first_parent: new_veteran, second_parent: partner_index })
@@ -158,14 +160,23 @@ pub(crate) fn with_her(v: f64, her: &[OwnTrio], c1: &[f64]) -> f64 {
         .fold(v, f64::min)
 }
 
-/// Career x's place among the stage candidates (`xi`) and whether its parents a, b are both 8/8s (the goal: her own 8/8 a
-/// fully looped parent, V after her 0): what `score_career`, `outcome_hi` and `pick_her` read of her first
-pub(crate) fn her_ends(s: &Sim, bs: &ScoreBase, legs: &[Legacy], lineage: Lineage) -> (Option<usize>, bool) {
+/// How a career's own 8/8 ends her part of the plan (`her_ends`).
+#[derive(Clone, Copy)]
+pub(crate) struct HerEnds {
+    /// Her place among the stage candidates; None: her uma is not one.
+    pub(crate) own_candidate: Option<usize>,
+    /// Her parents are both 8/8s: her own 8/8 a fully looped parent, V after her 0 (the goal).
+    pub(crate) completes_goal: bool,
+}
+
+/// Career x's place among the stage candidates and whether its parents a, b are both 8/8s: what `score_career`,
+/// `outcome_hi` and `pick_her` read of her first
+pub(crate) fn her_ends(s: &Sim, bs: &ScoreBase, legs: &[Legacy], lineage: Lineage) -> HerEnds {
     let Lineage { trainee: x, first_parent: a, second_parent: b } = lineage;
-    (
-        bs.cands.iter().position(|&u| u == x),
-        is_full(s.env.skill_job, &legs[a].sparks) && is_full(s.env.skill_job, &legs[b].sparks),
-    )
+    HerEnds {
+        own_candidate: bs.candidates.iter().position(|&u| u == x),
+        completes_goal: is_full(s.env.skill_job, &legs[a].sparks) && is_full(s.env.skill_job, &legs[b].sparks),
+    }
 }
 
 /// Per mask fm of the scenario-guaranteed targets landed (bit j: `fixed_t[j]`), its landed set over the job targets: an
@@ -214,6 +225,25 @@ pub(crate) struct KeptScoring {
     pub(crate) full_landing_below_threshold: bool,
 }
 
+/// One candidate's lift statistics from a career's scoring (`score_career`'s stats): over her outcomes, the chance her
+/// veteran lifts the candidate's odds and the lifted odds summed at each outcome's chance.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct LiftStats {
+    /// pl: P(her veteran lifts the candidate).
+    pub(crate) lift_chance: f64,
+    /// sp: the candidate's odds summed over the outcomes that lift her, each at its chance (mean lifted odds sp / pl).
+    pub(crate) lifted_odds_sum: f64,
+}
+
+impl LiftStats {
+    /// A builder's lift efficiency for the candidate at odds p: her veteran lifts the candidate with chance pl to odds
+    /// sp / pl on average, so pl (1/p - 1/(sp/pl)) careers saved per career (Cont's builders, the proxies' admission
+    /// and `proxy_check`; PROXY_EFF was calibrated on it)
+    pub(crate) fn efficiency(self, p: f64) -> f64 {
+        self.lift_chance * (1.0 / p - 1.0 / (self.lifted_odds_sum / self.lift_chance))
+    }
+}
+
 /// Named outputs of career scoring. `Want` determines which fields are computed; Stats leaves the two
 /// scalar fields at zero, Score leaves `lift_stats` empty, Touch returns zeros everywhere (no evaluation), and only Keep
 /// retains the scoring tables.
@@ -222,8 +252,8 @@ pub(crate) struct CareerScore {
     pub(crate) expected_saving: f64,
     pub(crate) improvement_chance: f64,
     pub(crate) kept: Option<KeptScoring>,
-    /// Per candidate: probability of improvement and probability-weighted improved odds.
-    pub(crate) lift_stats: Vec<(f64, f64)>,
+    /// Per candidate (candidate order): her lift statistics.
+    pub(crate) lift_stats: Vec<LiftStats>,
 }
 
 /// Score of career x (parents a, b of `legs`, deck `sel`) against `bs`: E[V0 - V0 with her veteran], the chance it is
@@ -278,14 +308,14 @@ fn prepare_setups(
     score_buffer: &mut Vec<f64>,
 ) -> Vec<Setup> {
     let data = simulator.d;
-    let candidate_count = score_base.cands.len();
+    let candidate_count = score_base.candidates.len();
     let new_veteran = pool.veterans.len() - 1;
     let mut setups: Vec<Setup> = vec![];
     for candidate in 0..candidate_count {
-        let candidate_trainee = score_base.cands[candidate];
+        let candidate_trainee = score_base.candidates[candidate];
         if data.umas[candidate_trainee].id == data.umas[trainee].id
-            || score_base.c1[candidate] == 0.0
-            || !score_base.c1[candidate].is_finite()
+            || score_base.step_costs[candidate] == 0.0
+            || !score_base.step_costs[candidate].is_finite()
         {
             continue;
         }
@@ -318,7 +348,13 @@ fn prepare_setups(
             if simulator.cache.decks[candidate_trainee].iter().all(|deck| deck.tab.is_empty()) {
                 continue;
             }
-            setups.push(Setup { ui: candidate, x0: slot.x0, pw: slot.pw, xm: slot.xms, nd: deck_count });
+            setups.push(Setup {
+                candidate,
+                misses_without_her: slot.misses_without_her,
+                target_spark_scales: slot.target_spark_scales,
+                miss_by_stars: slot.miss_by_stars,
+                deck_count,
+            });
         }
     }
     setups
@@ -335,11 +371,12 @@ fn score_career_(
     let trainee = career.lineage.trainee;
     let recorded_pool = provenance == PoolProvenance::RecordedLegacies;
 
-    let candidate_count = context.score_base.cands.len();
+    let candidate_count = context.score_base.candidates.len();
     let target_count = simulator.env.target_count;
     let uncertain_target_count = simulator.env.uncertain_targets.len();
     let star_mix = simulator.env.skill_job.star_dist;
-    let (own_candidate, completes_goal) = her_ends(simulator, context.score_base, context.legacies, career.lineage);
+    let HerEnds { own_candidate, completes_goal } =
+        her_ends(simulator, context.score_base, context.legacies, career.lineage);
     let current_started = now_ms();
     let current = simulator.make_cur(context.pool, career, false);
     let pool_started = now_ms();
@@ -363,39 +400,39 @@ fn score_career_(
     let mut slot_by_candidate: Vec<Option<usize>> = vec![None; candidate_count];
     let mut current_probabilities: Vec<f64> = vec![];
     for setup in &setups {
-        if slot_by_candidate[setup.ui].is_none() {
-            slot_by_candidate[setup.ui] = Some(current_probabilities.len());
-            current_probabilities.push(context.score_base.pnow[setup.ui]);
+        if slot_by_candidate[setup.candidate].is_none() {
+            slot_by_candidate[setup.candidate] = Some(current_probabilities.len());
+            current_probabilities.push(context.score_base.current_odds[setup.candidate]);
         }
     }
     let slot_count = current_probabilities.len();
-    let slot_by_setup: Vec<usize> = setups.iter().map(|setup| slot_by_candidate[setup.ui].unwrap()).collect();
+    let slot_by_setup: Vec<usize> = setups.iter().map(|setup| slot_by_candidate[setup.candidate].unwrap()).collect();
     // what the evaluation reads (`Scored`; the spark scales per setup and landed set m: the product the loop took per
     // outcome, the same order, `Scored::derive`)
     let mut scored = Scored {
-        nu: uncertain_target_count,
-        nf: fixed_target_count,
-        ntar: target_count,
-        na: slot_count,
-        xi: own_candidate,
-        goal: completes_goal,
-        w: star_mix,
-        uncv: simulator.env.uncertain_targets.clone(),
-        fmm: fixed_landed_masks,
-        x0: setups.iter_mut().map(|setup| std::mem::take(&mut setup.x0)).collect(),
-        xm: setups.iter().map(|setup| setup.xm).collect(),
-        pw: setups.iter_mut().map(|setup| std::mem::take(&mut setup.pw)).collect(),
-        tsi: vec![],
-        t0: vec![],
-        col: vec![true; uncertain_target_count],
-        sslot: slot_by_setup,
-        p0: current_probabilities,
-        os: current.os,
-        act: vec![],
-        her: vec![],
-        xs: vec![],
-        xc: vec![],
-        scf: vec![],
+        uncertain_target_count,
+        fixed_target_count,
+        target_count,
+        slot_count,
+        own_candidate,
+        completes_goal,
+        star_mix,
+        uncertain_targets: simulator.env.uncertain_targets.clone(),
+        fixed_landed_masks,
+        misses_without_her: setups.iter_mut().map(|setup| std::mem::take(&mut setup.misses_without_her)).collect(),
+        miss_by_stars: setups.iter().map(|setup| setup.miss_by_stars).collect(),
+        target_spark_scales: setups.iter_mut().map(|setup| std::mem::take(&mut setup.target_spark_scales)).collect(),
+        setup_by_table: vec![],
+        initial_tables: vec![],
+        collapsed_targets: vec![true; uncertain_target_count],
+        slot_by_setup,
+        current_probabilities,
+        landed_set_chances: current.os,
+        active_candidates: vec![],
+        own_trios: vec![],
+        present_factors: vec![],
+        absent_factors: vec![],
+        spark_scales: vec![],
     };
     scored.derive();
     // the kept tables and, per uncertain target, collapsed (`sc_prep`; with no setup slot no outcome reads a table: every
@@ -407,19 +444,19 @@ fn score_career_(
     // the candidates the loop below can lift, in candidate order: those with setups, and (never, as the odds are not
     // negative) one whose odds now already clear her threshold pnow (1 + 1e-9); every other keeps up = pnow, below it
     let thresholds: Vec<f64> =
-        (0..candidate_count).map(|candidate| context.score_base.pnow[candidate] * (1.0 + 1e-9)).collect();
+        (0..candidate_count).map(|candidate| context.score_base.current_odds[candidate] * (1.0 + 1e-9)).collect();
     let active: Vec<usize> = (0..candidate_count)
         .filter(|&candidate| {
-            slot_by_candidate[candidate].is_some() || context.score_base.pnow[candidate] > thresholds[candidate]
+            slot_by_candidate[candidate].is_some() || context.score_base.current_odds[candidate] > thresholds[candidate]
         })
         .collect();
     // her own 8/8 as a trio side when her uma is not a stage candidate (the full set only; `her_trios`)
     let full_mask = (1usize << target_count) - 1;
     let own_trios_started = now_ms();
-    scored.her = if own_candidate.is_none()
+    scored.own_trios = if own_candidate.is_none()
         && !completes_goal
-        && !context.score_base.sides.is_empty()
-        && scored.os[full_mask] > 0.0
+        && !context.score_base.trio_sides.is_empty()
+        && scored.landed_set_chances[full_mask] > 0.0
     {
         her_trios(simulator, context.score_base, &mut extended_pool, new_veteran, trainee, score_buffer)
     } else {
@@ -427,13 +464,13 @@ fn score_career_(
     };
     prof("sc_her_ms", now_ms() - own_trios_started);
     // per active candidate: (index, her slot or none, her threshold, her odds now)
-    scored.act = active
+    scored.active_candidates = active
         .iter()
         .map(|&candidate| ActiveCandidate {
             candidate: CandidateIndex(candidate),
             slot: slot_by_candidate[candidate],
             threshold: thresholds[candidate],
-            current_chance: context.score_base.pnow[candidate],
+            current_chance: context.score_base.current_odds[candidate],
         })
         .collect();
     her_pool_done(simulator, context.pool, recorded_pool, extended_pool);
@@ -442,7 +479,7 @@ fn score_career_(
             expected_saving: 0.0,
             improvement_chance: 0.0,
             kept: None,
-            lift_stats: vec![(0.0, 0.0); candidate_count],
+            lift_stats: vec![LiftStats::default(); candidate_count],
         };
     }
     let mut scratch = FOLD_SCRATCH.with(|current| std::mem::take(&mut *current.borrow_mut()));
@@ -468,34 +505,34 @@ impl Scored {
     fn fold_context<'score, L: Leaves>(&'score self, leaves: &'score L) -> FoldContext<'score, L> {
         FoldContext {
             leaf_layout: LeafLayout {
-                uncertain_targets: &self.uncv,
-                fixed_landed_masks: &self.fmm,
-                fixed_target_count: self.nf,
+                uncertain_targets: &self.uncertain_targets,
+                fixed_landed_masks: &self.fixed_landed_masks,
+                fixed_target_count: self.fixed_target_count,
             },
             slot_tables: SlotTables {
-                spark_scales: &self.scf,
-                slot_by_setup: &self.sslot,
-                current_probabilities: &self.p0,
-                setup_count: self.ns(),
-                slot_count: self.na,
+                spark_scales: &self.spark_scales,
+                slot_by_setup: &self.slot_by_setup,
+                current_probabilities: &self.current_probabilities,
+                setup_count: self.setup_count(),
+                slot_count: self.slot_count,
             },
-            initial_tables: &self.t0,
-            setup_by_table: &self.tsi,
-            present_factors: &self.xs,
-            absent_factors: &self.xc,
-            collapsed_targets: &self.col,
+            initial_tables: &self.initial_tables,
+            setup_by_table: &self.setup_by_table,
+            present_factors: &self.present_factors,
+            absent_factors: &self.absent_factors,
+            collapsed_targets: &self.collapsed_targets,
             collapsed_star_levels: [0, 1],
             leaves,
-            emit_setup_products: self.pl(),
+            emit_setup_products: self.emits_setup_products(),
         }
     }
 
     fn own_full_landing(&self) -> OwnFullLanding<'_> {
         OwnFullLanding {
-            candidate_index: self.xi,
-            completes_goal: self.goal,
-            trios: &self.her,
-            full_mask: self.full_m().bits(),
+            candidate_index: self.own_candidate,
+            completes_goal: self.completes_goal,
+            trios: &self.own_trios,
+            full_mask: self.full_mask().bits(),
         }
     }
 }
@@ -513,8 +550,8 @@ fn sc_eval<L: Leaves>(
     scratch: &mut FoldScratch,
 ) -> ScoringEvaluation {
     let (uncertain_target_count, fixed_target_count, setup_count, slot_count) =
-        (scored.nu, scored.nf, scored.ns(), scored.na);
-    let emit_setup_products = scored.pl();
+        (scored.uncertain_target_count, scored.fixed_target_count, scored.setup_count(), scored.slot_count);
+    let emit_setup_products = scored.emits_setup_products();
     let fold_context = scored.fold_context(leaves);
     let leaf_rows = leaves.nrows(1usize << (2 * uncertain_target_count));
     let outcome_value_count =
@@ -524,7 +561,7 @@ fn sc_eval<L: Leaves>(
         scratch.outcome_values.resize(outcome_value_count, 0.0);
     }
     if slot_count > 0 {
-        let table_count = scored.tsi.len();
+        let table_count = scored.setup_by_table.len();
         if scratch.fold.levels.len() < uncertain_target_count + 1 {
             scratch.fold.levels.resize(uncertain_target_count + 1, vec![]);
         }
@@ -566,19 +603,19 @@ fn sc_eval<L: Leaves>(
 /// landed `fm`), `sc_eval` at `OneLeaf` (the leaf and its representative); 0 where the outcome can't happen, as the
 /// plan's full table held
 pub(crate) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeIndex) -> f64 {
-    let leaf = outcome.leaf(scored.nf);
-    let fm = outcome.fixed_mask(scored.nf).bits();
-    let leaves = OneLeaf::new(leaf, scored.rep_of(leaf));
+    let leaf = outcome.leaf(scored.fixed_target_count);
+    let fm = outcome.fixed_mask(scored.fixed_target_count).bits();
+    let leaves = OneLeaf::new(leaf, scored.representative_of(leaf));
     let mut scratch = FOLD_SCRATCH.with(|c| std::mem::take(&mut *c.borrow_mut()));
     let evaluation = sc_eval(score_base, scored, &leaves, Want::Ys, &mut scratch);
     FOLD_SCRATCH.with(|c| *c.borrow_mut() = scratch);
-    evaluation.outcome_savings[(leaves.row(leaf) << scored.nf) | fm]
+    evaluation.outcome_savings[(leaves.row(leaf) << scored.fixed_target_count) | fm]
 }
 
-/// `score_career_`'s tables (with na > 0 setup slots): every setup's tables, the dominated ones dropped, as level 0 of the
-/// fold (`sd.t0`, table j at j 2^nu, its setup `sd.tsi[j]`); per uncertain target whether it is collapsed (below,
-/// `sd.col`). Its own function, entered once per scoring, so V8 compiles it optimised after the first few
-/// (`docs/PERF.md`, *In the page*).
+/// `score_career_`'s tables (with na > 0 setup slots): every setup's tables, the dominated ones dropped, as level 0 of
+/// the fold (`Scored::initial_tables`, table j at j 2^nu, its setup `setup_by_table[j]`); per uncertain target whether
+/// it is collapsed (below, `collapsed_targets`). Its own function, entered once per scoring, so V8 compiles it
+/// optimised after the first few (`docs/PERF.md`, *In the page*).
 ///
 /// Collapse: target k is collapsed when, for every setup, either her x is the same f64 at 1, 2 and 3 stars (x0 = 0: then
 /// the fold takes the same f64s at those levels, so it gives the same values bit for bit), or every kept table of the
@@ -591,13 +628,13 @@ pub(crate) fn sc_roll(score_base: &ScoreBase, scored: &Scored, outcome: OutcomeI
 /// values the outcome loop reads.
 #[inline(never)]
 fn sc_prep(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], scored: &mut Scored) {
-    let uncertain_target_count = scored.nu;
-    let (present_factors, absent_factors) = (&scored.xs, &scored.xc);
+    let uncertain_target_count = scored.uncertain_target_count;
+    let (present_factors, absent_factors) = (&scored.present_factors, &scored.absent_factors);
     // every setup's tables, level 0 of the fold (table j at j 2^nu), and the setup of each
     let (mut setup_by_table, mut initial_tables): (Vec<usize>, Vec<f64>) = (vec![], vec![]);
     let mut dominated_tables = 0usize;
     for (si, setup) in setups.iter().enumerate() {
-        let tables: Vec<&Vec<f64>> = simulator.cache.decks[score_base.cands[setup.ui]][..setup.nd]
+        let tables: Vec<&Vec<f64>> = simulator.cache.decks[score_base.candidates[setup.candidate]][..setup.deck_count]
             .iter()
             .flat_map(|deck| deck.tab.iter())
             .collect();
@@ -658,22 +695,24 @@ fn sc_prep(simulator: &Sim, score_base: &ScoreBase, setups: &[Setup], scored: &m
     }
     prof("sc_col", collapsed_targets.iter().filter(|&&c| c).count() as f64);
     prof("sc_col_tab", table_collapses as f64);
-    (scored.tsi, scored.t0, scored.col) = (setup_by_table, initial_tables, collapsed_targets);
+    (scored.setup_by_table, scored.initial_tables, scored.collapsed_targets) =
+        (setup_by_table, initial_tables, collapsed_targets);
 }
 
 /// `score_career_`'s outcome loop: every outcome `lv` produces (her stars per uncertain target, the guaranteed golds
 /// present or not), its chance, V after her and y; (E[y], P(y > 1e-9), y per outcome (at its leaf's row), per candidate
 /// stats: what `want` asks for; whether an outcome landing every target reads y < 0.5; counters). Its own function,
-/// entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*).
-/// On a collapsed target (`col`, `sc_prep`: folded at 0 and 1 star only) a leaf with 2 or 3 stars there reads its
-/// representative's values (`rep_of`: those digits set to 1, so a smaller leaf, met first): y as computed there (`yb`) and
-/// each candidate's odds for the stats; every sum (E[y], the lift, the stats) still takes every outcome in the loop's order
-/// at its own chance, the same sums as without the collapse wherever the representative's values are the leaf's own.
+/// entered once per scoring, so V8 compiles it optimised after the first few (`docs/PERF.md`, *In the page*). On a
+/// collapsed target (`collapsed_targets`, `sc_prep`: folded at 0 and 1 star only) a leaf with 2 or 3 stars there reads
+/// its representative's values (`representative_of`: those digits set to 1, so a smaller leaf, met first): y as
+/// computed there (`yb`) and each candidate's odds for the stats; every sum (E[y], the lift, the stats) still takes
+/// every outcome in the loop's order at its own chance, the same sums as without the collapse wherever the
+/// representative's values are the leaf's own.
 ///
 /// What is fixed per call is decided here, once: the loop (`sc_loop`) is specialised by whether it takes the products
-/// itself (pl), whether any target is collapsed and what is wanted (y or the stats), and the candidates it can lift are
-/// split into those with a slot (slot j is the j-th of them: slots are given in candidate order) and those without one
-/// (odds fixed at their odds now)
+/// itself (`emits_setup_products`), whether any target is collapsed and what is wanted (y or the stats), and the
+/// candidates it can lift are split into those with a slot (slot j is the j-th of them: slots are given in candidate
+/// order) and those without one (odds fixed at their odds now)
 #[inline(never)]
 fn sc_outcomes<L: Leaves>(
     score_base: &ScoreBase,
@@ -684,18 +723,19 @@ fn sc_outcomes<L: Leaves>(
     scratch: &mut OutcomeScratch,
 ) -> ScoringEvaluation {
     let leaves = fold_context.leaves;
-    let n = score_base.cands.len();
-    let (uncertain_target_count, slot_count) = (scored.nu, scored.na);
+    let n = score_base.candidates.len();
+    let (uncertain_target_count, slot_count) = (scored.uncertain_target_count, scored.slot_count);
     // V after her when one candidate's step alone moved (`one_of`, `one_v`: trio_v's minimum, split by the trios that read
     // her step)
-    let single_candidate_costs: Vec<One> = if score_base.combos.is_empty() || want == Want::Stats {
+    let single_candidate_costs: Vec<One> = if score_base.trios.is_empty() || want == Want::Stats {
         vec![]
     } else {
-        (0..n).map(|i| one_of(score_base.combos, score_base.c1, i)).collect()
+        (0..n).map(|i| one_of(score_base.trios, score_base.step_costs, i)).collect()
     };
     prepare_leaf_cache(scored, leaves, &mut scratch.leaf_cache);
     // the collapsed targets' digits (cm) and their low bits: a leaf's representative has each nonzero one at 1
-    let collapse_mask: usize = (0..uncertain_target_count).filter(|&k| scored.col[k]).map(|k| 3usize << (2 * k)).sum();
+    let collapse_mask: usize =
+        (0..uncertain_target_count).filter(|&k| scored.collapsed_targets[k]).map(|k| 3usize << (2 * k)).sum();
     let low_digit_bits = collapse_mask & (usize::MAX / 3);
     // the candidates it can lift: with a slot (in slot order) and without
     let (mut candidate_indices, mut thresholds, mut unslotted_candidates) = (vec![], vec![], vec![]);
@@ -704,7 +744,7 @@ fn sc_outcomes<L: Leaves>(
         slot: sl,
         threshold,
         current_chance: current_probability,
-    } in &scored.act
+    } in &scored.active_candidates
     {
         match sl {
             Some(sl) => {
@@ -718,16 +758,16 @@ fn sc_outcomes<L: Leaves>(
     assert_eq!(candidate_indices.len(), slot_count, "one slotted candidate per slot");
     // Setups are in slot order; slot j owns setup_offsets[j]..setup_offsets[j + 1].
     let mut setup_offsets = vec![0usize; slot_count + 1];
-    for (si, &sl) in scored.sslot.iter().enumerate() {
-        assert!(si == 0 || scored.sslot[si - 1] <= sl, "setups come in slot order");
+    for (si, &sl) in scored.slot_by_setup.iter().enumerate() {
+        assert!(si == 0 || scored.slot_by_setup[si - 1] <= sl, "setups come in slot order");
         setup_offsets[sl + 1] = si + 1;
     }
     // V after her found lazily (`sc_loop`): no step, stage 2-3 cost or C's step NaN, -0.0 or below 0, so no sum of them is
     // NaN or -0.0 and equal minima are the same bits
     let ok = |c: f64| c >= 0.0 && c.to_bits() != (-0.0f64).to_bits();
-    let lazy_costs = score_base.c1.iter().all(|&c| ok(c))
-        && score_base.m23.iter().all(|&c| ok(c))
-        && score_base.combos.iter().all(|t| ok(t.finisher_cost));
+    let lazy_costs = score_base.step_costs.iter().all(|&c| ok(c))
+        && score_base.later_stage_costs.iter().all(|&c| ok(c))
+        && score_base.trios.iter().all(|t| ok(t.finisher_cost));
     let context = OutcomeContext {
         score_base,
         leaf_layout: &fold_context.leaf_layout,
@@ -741,7 +781,7 @@ fn sc_outcomes<L: Leaves>(
         },
         own_full_landing: scored.own_full_landing(),
         probabilities: OutcomeProbabilities {
-            outcome_probabilities: &scored.os,
+            outcome_probabilities: &scored.landed_set_chances,
             star_probabilities: &scratch.leaf_cache.star_probabilities,
             uncertain_landed_masks: &scratch.leaf_cache.uncertain_landed_masks,
             collapse_mask,
@@ -754,7 +794,7 @@ fn sc_outcomes<L: Leaves>(
     };
     let OutcomeWorkspace { representative_savings, lift_offsets, lift_records, estimate } = &mut scratch.workspace;
     // (Y: y and its sums, S: the stats)
-    match (scored.pl(), collapse_mask != 0, want == Want::Stats) {
+    match (scored.emits_setup_products(), collapse_mask != 0, want == Want::Stats) {
         (false, false, false) => sc_loop::<false, false, true, false, L>(
             &context,
             representative_savings,
@@ -815,7 +855,7 @@ fn sc_outcomes<L: Leaves>(
 }
 
 fn prepare_leaf_cache<L: Leaves>(scored: &Scored, leaves: &L, cache: &mut LeafCache) {
-    let (uncertain_target_count, w) = (scored.nu, scored.w);
+    let (uncertain_target_count, w) = (scored.uncertain_target_count, scored.star_mix);
     // per leaf (at its row) her landed set on the uncertain targets and her stars' chance: the product over k of w[her
     // stars on target k - 1] where she has any, in k order from 1.0 (every leaf: the leaves with digit k > 0 extend those
     // below 4^k; else per leaf, `leaf_set`, the same f64s)
@@ -823,7 +863,7 @@ fn prepare_leaf_cache<L: Leaves>(scored: &Scored, leaves: &L, cache: &mut LeafCa
     if L::ALL {
         let same = cache.key.len() == 3 + uncertain_target_count
             && cache.key[..3].iter().zip(&w).all(|(&k, x)| k == x.to_bits())
-            && cache.key[3..].iter().zip(&scored.uncv).all(|(&k, &i)| k == i as u64);
+            && cache.key[3..].iter().zip(&scored.uncertain_targets).all(|(&k, &i)| k == i as u64);
         if !same {
             cache.star_probabilities.clear();
             cache.uncertain_landed_masks.clear();
@@ -834,20 +874,22 @@ fn prepare_leaf_cache<L: Leaves>(scored: &Scored, leaves: &L, cache: &mut LeafCa
                 for dg in 1..4usize {
                     for i in 0..lo {
                         cache.star_probabilities.push(cache.star_probabilities[i] * w[dg - 1]);
-                        cache.uncertain_landed_masks.push(cache.uncertain_landed_masks[i] | (1 << scored.uncv[k]));
+                        cache
+                            .uncertain_landed_masks
+                            .push(cache.uncertain_landed_masks[i] | (1 << scored.uncertain_targets[k]));
                     }
                 }
             }
             cache.key.clear();
             cache.key.extend(w.iter().map(|x| x.to_bits()));
-            cache.key.extend(scored.uncv.iter().map(|&i| i as u64));
+            cache.key.extend(scored.uncertain_targets.iter().map(|&i| i as u64));
         }
     } else {
         cache.key.clear();
         cache.star_probabilities.clear();
         cache.uncertain_landed_masks.clear();
         for &l in leaves.list() {
-            let outcome = leaf_set(l, &scored.uncv, w);
+            let outcome = leaf_set(l, &scored.uncertain_targets, w);
             cache.star_probabilities.push(outcome.star_probability);
             cache.uncertain_landed_masks.push(outcome.landed_mask);
         }
@@ -950,7 +992,7 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
     let unslotted_candidates = context.candidates.unslotted_candidates;
     let outcome_probabilities = context.probabilities.outcome_probabilities;
     let fixed_landed_masks = context.leaf_layout.fixed_landed_masks;
-    let candidate_count = score_base.cands.len();
+    let candidate_count = score_base.candidates.len();
     let (fixed_target_count, slot_count, full_mask) =
         (context.leaf_layout.fixed_target_count, context.slot_tables.slot_count, context.own_full_landing.full_mask);
     let (leaf_count, leaves) = ((1usize << (2 * context.leaf_layout.uncertain_targets.len())), context.leaves);
@@ -962,9 +1004,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
         if context.retain_outcome_savings { vec![0.0; leaf_rows << fixed_target_count] } else { vec![] };
     // an outcome that can happen, lands every target and reads y < 0.5 (`pick_her`)
     let mut full_landing_below_threshold = false;
-    let mut step_costs = score_base.c1.to_vec();
+    let mut step_costs = score_base.step_costs.to_vec();
     // per stage-1 candidate: the chance her veteran raises that candidate's odds, and the odds raised to (summed, weighted)
-    let mut lift_stats = if S { vec![(0.0f64, 0.0f64); candidate_count] } else { vec![] };
+    let mut lift_stats = if S { vec![LiftStats::default(); candidate_count] } else { vec![] };
     let mut changed_candidates: Vec<usize> = vec![];
     let mut step_scratch = StepScratch { costs: &mut step_costs, changed_candidates: &mut changed_candidates };
     let mut outcome_count = 0usize;
@@ -1040,22 +1082,22 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                             probabilities.iter().zip(thresholds).zip(candidate_indices)
                         {
                             if lifted_probability > threshold {
-                                lift_stats[candidate].0 += outcome_probability;
-                                lift_stats[candidate].1 += outcome_probability * lifted_probability;
+                                lift_stats[candidate].lift_chance += outcome_probability;
+                                lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
                             }
                         }
                         for &UnslottedCandidate { candidate, threshold, current_probability } in unslotted_candidates {
                             if current_probability > threshold {
-                                lift_stats[candidate].0 += outcome_probability;
-                                lift_stats[candidate].1 += outcome_probability * current_probability;
+                                lift_stats[candidate].lift_chance += outcome_probability;
+                                lift_stats[candidate].lifted_odds_sum += outcome_probability * current_probability;
                             }
                         }
                     } else {
                         for &LiftRecord { candidate, probability: lifted_probability } in
                             lift_records[record_start as usize..].iter().take_while(|e| e.candidate != usize::MAX)
                         {
-                            lift_stats[candidate].0 += outcome_probability;
-                            lift_stats[candidate].1 += outcome_probability * lifted_probability;
+                            lift_stats[candidate].lift_chance += outcome_probability;
+                            lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
                         }
                     }
                 }
@@ -1091,8 +1133,8 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
                 ($ci:expr, $candidate:expr, $lifted_probability:expr) => {{
                     let (candidate, lifted_probability): (usize, f64) = ($candidate, $lifted_probability);
                     if S && possible {
-                        lift_stats[candidate].0 += outcome_probability;
-                        lift_stats[candidate].1 += outcome_probability * lifted_probability;
+                        lift_stats[candidate].lift_chance += outcome_probability;
+                        lift_stats[candidate].lifted_odds_sum += outcome_probability * lifted_probability;
                     }
                     if record_lifts {
                         lift_records.push(LiftRecord { candidate, probability: lifted_probability });
@@ -1175,9 +1217,9 @@ fn sc_loop<const PL: bool, const COL: bool, const Y: bool, const S: bool, L: Lea
 /// V after her before her own 8/8 and the goal, at the candidates' step costs c1: the trios' least cost (`trio_v`; with no
 /// trio, the least of each candidate's step plus her stages 2-3)
 pub(crate) fn v0_after(bs: &ScoreBase, c1: &[f64]) -> f64 {
-    if bs.combos.is_empty() {
-        (0..bs.cands.len()).map(|a| c1[a] + bs.m23[a]).fold(f64::INFINITY, f64::min)
+    if bs.trios.is_empty() {
+        (0..bs.candidates.len()).map(|a| c1[a] + bs.later_stage_costs[a]).fold(f64::INFINITY, f64::min)
     } else {
-        trio_v(c1, bs.combos)
+        trio_v(c1, bs.trios)
     }
 }

@@ -7,8 +7,8 @@ use super::{
 };
 use crate::deck::capfree::LandingBoundTables;
 use crate::deck::{
-    CF_LIM, CF_ON, CapFreeRatios, DeckSpace, GTab, Instant, LandPre, Model, SB_ON, SB_USED, SPT, SelectedDeck,
-    cf_check, gm_g, gm_w, sb_mode, src_levels, top_desc,
+    CF_LIM, CF_ON, CapFreeRatios, ChainKind, DeckSpace, GTab, Instant, LandPre, Model, SB_ON, SB_USED, SPT,
+    SelectedDeck, cf_check, gm_g, gm_w, sb_mode, src_levels, top_desc,
 };
 
 impl DeckSpace<'_> {
@@ -39,7 +39,7 @@ impl DeckSpace<'_> {
         }
         let nplain = lt.nplain;
         let kind_count = self.kinds_all.len();
-        let ki22 = self.kinds_all.iter().position(|&k| k == (2, 2, 0)).unwrap();
+        let ki22 = self.kinds_all.iter().position(|&k| k == ChainKind::FILLER).unwrap();
         let kpos: Vec<u64> = (0..kind_count).map(|i| 7u64.pow(i as u32)).collect();
         assert!(kind_count < 64, "{kind_count} chain kinds: the packed key holds fewer than 64");
         let fixed = model.fixed_factor();
@@ -69,7 +69,9 @@ impl DeckSpace<'_> {
             hit.unwrap_or_else(|| {
                 let r = std::rc::Rc::new(
                     (0..self.rel.len())
-                        .map(|j| legal_rc.contains(&j).then(|| src_levels(&self.srcs[j], self.kind[j].1, target_count)))
+                        .map(|j| {
+                            legal_rc.contains(&j).then(|| src_levels(&self.srcs[j], self.kind[j].stop, target_count))
+                        })
                         .collect::<Vec<_>>(),
                 );
                 self.sbrows.borrow_mut().insert(set_id, std::rc::Rc::clone(&r));
@@ -88,7 +90,7 @@ impl DeckSpace<'_> {
                 .flat_map(|o| {
                     (0..target_count).map(move |k| {
                         LandPre::new(
-                            model.opts[bound_trainee][o].0[k],
+                            model.opts[bound_trainee][o].coverage[k],
                             model.ews[bound_trainee][o][k],
                             bound_inheritance,
                         )
