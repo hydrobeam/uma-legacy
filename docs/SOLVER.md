@@ -20,7 +20,7 @@ The affinity core and loop search's modules:
 | `src/deck/frontier.rs` | Deck-job setup and nondominated frontier enumeration |
 | `src/deck/dominance.rs` | Dominance signatures, buckets, `DominanceIndex` and returned deck records |
 | `src/deck/state_bound.rs` | State-conditioned values, bounds, configuration and ratio tables |
-| `src/deck/loop_search.rs` | `Multi`, its inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
+| `src/deck/loop_search.rs` | Read-only `Multi`, mutable `LoopSearchState`, inputs and keys, setup and `run_multi`; fixed schedules (`prebuilt`) |
 | `src/deck/loop_search/tables.rs` | Per-uma exact values, `Grid`, pair ceilings, skyline classes and product ceilings |
 | `src/deck/loop_search/shared.rs` | `SharedScan`, shared-deck scoring and cached scans |
 | `src/deck/loop_search/bands.rs` | Loop bands, schedules, certification and solved passes |
@@ -178,7 +178,7 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 | `per_uma` | one deck per uma: each trainee runs her own best legal deck, the same in all the lineages she heads (three in a loop, one in a rotation) | `false` |
 | `pals` | only decks with exactly this many pals | any |
 | `schedule` | experiment: `"solo"` (each uma maximises her own race wins), `"goals"` (career objectives only) or `"none"` (shared wins ignored) instead of loop-optimised schedules | optimised |
-| `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base and specialty weight (Grand Masters uses the 1.86 / 0.26 placeholders) | `unity` |
+| `scenario` | Independent Training scenario: `unity`, `gc` (Grand Concert), `ura`, `trackblazer`, `grandmasters` (JP); sets the training-hint base and specialty weight (Grand Masters, with no runs, uses one base and one weight fitted over the other scenarios) | `unity` |
 | `chain_events` | `[n, p]`: chain events per run ~ Binomial(n, p) (experiments) | `[21, 0.35]` |
 | `cap_audit` | audit: every exact cap at 2.0 instead of `EXACT_CAPS`, and ten times the band limit `EXACT_CAP` (deck and career jobs; `val/capaudit.py`) | `false` |
 | `cap_free` | career jobs: every deck search cap-free (the search a cap breach reruns, *Cap-free rerun* below) instead of only those that saw a breach; no product-search proofs are kept (`ruled` bounds through the cap). For checks: slower | `false` |
@@ -188,8 +188,8 @@ Extra fields (on top of the shared fields above; scenario-guaranteed skills stay
 
 Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 - **Training hints**: h = base(scenario) x (1 + hint_frequency/100) x (1 + d(scenario) x specialty_priority/100)
-  draws per card per run (`hint_base`, `hint_spec`; hint
-  frequency at max limit break, unique effect included; the floor or ceiling of h, weighted by the fraction), each
+  draws per card per run (`hint_base`, `hint_spec`: `docs/RESEARCH.md` section 7's fit, which `build.rs` reads from
+  `research/results.json` and rounds to 3 decimals; hint frequency at max limit break, unique effect included; the floor or ceiling of h, weighted by the fraction), each
   uniform over the card's skill options still below Lv 5 (`nskill`; the stat option is never drawn; a skill leaves the
   pool after ceil(5 / `hinc`) draws, `hinc` = hint levels per draw at max limit break, so a +5 card never repeats a
   skill); one card's draws over several targets are joint (`miss_draws`). Non-pal cards without chain events take no
@@ -278,6 +278,12 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   checks their dependence. U = Σ_n P(n) Π E[· | n] ≥ V. The bound returns `None` when its dependence checks fail;
   callers then use another bound or score exactly. `UPPER_CHECK=1` asserts U ≥ V for covered decks scored through
   the loop search's exact-value cache.
+- **Loop-search state.** Setup builds `Multi` and `LoopSearchState` once; `run_multi` owns both across certification
+  passes. `Multi` holds the job inputs, skyline classes and clusters, fixed ceilings and ranked pool. Cache-filling
+  phases take `&Multi` and `&mut LoopSearchState`: the latter holds the two chance-grid tables, per-uma and shared
+  exact results, schedules, two cluster scratch buffers and `Tally`. Scoring takes `&mut Tally`, cluster scans take
+  their buffer by `&mut`, and reporting reads `&Tally`. The borrowed `DeckSpace` still owns its interior caches and
+  node counter, including the state-bound configuration cache shared with career searches.
 - **Per-uma tables.** X(u, i) = the best exact value of trainee u over every legal deck at grid chance i (64 points); V rises with q, so a lineage at chance q is bounded by X at the next grid point up. Cells are computed lazily: a loop's ceiling uses each cell's exact value when known, else the lowest known value at a higher grid point, else ρ times the product ceiling; while the ceiling beats the k-th best, the loosest term is refined (first at the uma's highest grid point, then halfway down).
 - **Loops.** Structures of both sizes are generated in bands of a separable bound, the mean of the members' best product values M_u at their highest chances (a member heads 3 of 12 lineages in a loop, 1 of 3 in a rotation, so the product ceiling is at most the golds' factor times that mean; bands are kept in four-member sum units, a rotation's sum s counting as 4s/3); a structure is solved (schedules, then exact values) only when its exact ceiling at the pairwise-ceiling chances, then at its own schedule's chances, can still beat the k-th best exact value; the search stops when no ceiling (times ρ for the ungenerated ones) can.
 - **Shared deck** (`per_uma` false): a loop's value is the best exact sum over its lineages (12 or 3) among decks legal for all its members, divided by their number; ceilings are the lower of the per-uma tables and ρ times the best single skyline deck's product value over its lineages. `top_decks` counts distinct decks, each with its best loop; per loop, every deck at or above the k-th best distinct deck so far is kept.

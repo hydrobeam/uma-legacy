@@ -1,6 +1,7 @@
 //! Exact shared-deck scans and their cached results, seeded from legal skyline decks.
 //! Loop enumeration and certification across structures belong to `bands`.
 use super::{ChanceKey, DeckSources, Multi, SharedQueryKey, lin_of};
+use super::{LoopSearchState, Tally};
 use crate::Instant;
 use crate::data::Data;
 use crate::deck::caps::src_class;
@@ -75,34 +76,42 @@ impl Multi<'_> {
     // deck so far, times the lineage count) or among its own best `top_decks`, under cap lv; sorted, best first.
     // Ceilings
     // stay the per-uma ones (each trainee's best deck bounds her share of any shared deck).
-    pub(super) fn exact_shared(&self, f: [UmaIndex; 4], qa: &[f64], floor: f64, lv: f64) -> SharedDecks {
+    pub(super) fn exact_shared(
+        &self,
+        state: &mut LoopSearchState,
+        f: [UmaIndex; 4],
+        qa: &[f64],
+        floor: f64,
+        lv: f64,
+    ) -> SharedDecks {
         let key = SharedQueryKey { members: f, chances: ChanceKey::new(qa) };
-        if let Some(SharedResult { certified_cap: l, floor: fl, decks: r }) = self.shared_cache.borrow().get(&key)
+        if let Some(SharedResult { certified_cap: l, floor: fl, decks: r }) = state.shared_cache.get(&key)
             && *l >= lv
             && *fl <= floor
         {
             return Rc::clone(r);
         }
         let mut sc = SharedScan::new(self.inputs.data, f, qa, floor, self.loop_limit);
-        self.seed_shared(&mut sc);
-        let complete = if lv > 1.0 && !sc.decks.is_empty() { self.band_shared(&mut sc, lv) } else { true };
+        self.seed_shared(state, &mut sc);
+        let complete =
+            if lv > 1.0 && !sc.decks.is_empty() { self.band_shared(&mut state.tally, &mut sc, lv) } else { true };
         let thr = sc.need();
         let mut list = sc.decks;
         list.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
         list.retain(|x| x.value >= thr);
         let r: SharedDecks = Rc::new(list);
         if complete {
-            self.shared_cache.borrow_mut().insert(key, SharedResult { certified_cap: lv, floor, decks: Rc::clone(&r) });
+            state.shared_cache.insert(key, SharedResult { certified_cap: lv, floor, decks: Rc::clone(&r) });
         }
         r
     }
 
     /// Scores deck x exactly over the loop's lineages (once per loop) and lists it
-    fn score_shared(&self, sc: &mut SharedScan, x: &PDeck) {
+    fn score_shared(&self, tally: &mut Tally, sc: &mut SharedScan, x: &PDeck) {
         if !sc.scored_decks.insert(x.id()) {
             return;
         }
-        let (model, tally, f) = (self.inputs.model, &self.tally, sc.members);
+        let (model, f) = (self.inputs.model, sc.members);
         let t0 = Instant::now();
         let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
         let k = src_class(e.iter().map(|y| &*y.sources));
@@ -124,15 +133,15 @@ impl Multi<'_> {
                 sv += j[i].all;
             }
         }
-        tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
-        tally.scored_decks.set(tally.scored_decks.get() + 1);
+        tally.score_seconds += t0.elapsed().as_secs_f64();
+        tally.scored_decks += 1;
         tally.spend(800);
         sc.decks.push(ScoredDeck { value: sv, deck: x.clone() });
     }
 
     /// seed: the loop's best `top_decks` + 2 skyline decks legal for every member by product value (or its best legal
     /// deck when none is on the skyline)
-    fn seed_shared(&self, sc: &mut SharedScan) {
+    fn seed_shared(&self, state: &mut LoopSearchState, sc: &mut SharedScan) {
         let (model, space, fixed, f) = (self.inputs.model, self.inputs.deck_space, self.fixed, sc.members);
         let t0 = Instant::now();
         let pairs = &sc.lineages;
@@ -144,12 +153,12 @@ impl Multi<'_> {
                     .sum::<f64>()
         };
         let ids = &sc.member_ids;
-        let seeds = self.sky_top(self.loop_limit + 2, &val, &|x| {
+        let seeds = self.sky_top(&mut state.skyline_bound_scratch, self.loop_limit + 2, &val, &|x| {
             ids.iter().all(|&id| !x.blocks(id, &self.card_of, self.inputs.deck_job.checks))
         });
-        self.tally.seed_seconds.set(self.tally.seed_seconds.get() + t0.elapsed().as_secs_f64());
+        state.tally.seed_seconds += t0.elapsed().as_secs_f64();
         for &(_, j) in &seeds {
-            self.score_shared(sc, &self.inputs.skyline[j]);
+            self.score_shared(&mut state.tally, sc, &self.inputs.skyline[j]);
         }
         if sc.decks.is_empty() {
             let SearchOutcome { decks: r, .. } = space.search(
@@ -161,17 +170,17 @@ impl Multi<'_> {
             );
             if let Some(ScoredDeck { value: _, deck: sel }) = r.first() {
                 let x = space.pdeck(sel, &sc.member_ids);
-                self.score_shared(sc, &x);
+                self.score_shared(&mut state.tally, sc, &x);
             }
         }
     }
 
     /// Every legal deck that might reach the loop's threshold under cap lv, scored (after the proven bound); false (and
     /// the pass aborted) when a deck search was cut short or the budget ran out
-    fn band_shared(&self, sc: &mut SharedScan, lv: f64) -> bool {
-        let (model, space, tally, f) = (self.inputs.model, self.inputs.deck_space, &self.tally, sc.members);
+    fn band_shared(&self, tally: &mut Tally, sc: &mut SharedScan, lv: f64) -> bool {
+        let (model, space, f) = (self.inputs.model, self.inputs.deck_space, sc.members);
         let mut complete = true;
-        tally.band_decks.set(tally.band_decks.get() + 1);
+        tally.band_decks += 1;
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
@@ -182,9 +191,9 @@ impl Multi<'_> {
             SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
-        tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
+        tally.band_seconds += t0.elapsed().as_secs_f64();
         if incomplete.is_some() {
-            tally.cap_hit.set(true);
+            tally.cap_hit = true;
             complete = false;
         }
         cands.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
@@ -195,7 +204,7 @@ impl Multi<'_> {
                 if lv * v * (1.0 + 1e-9) < thr {
                     break;
                 }
-                if tally.work.get() > tally.budget.get() {
+                if tally.work > tally.budget {
                     complete = false;
                     break;
                 }
@@ -222,20 +231,20 @@ impl Multi<'_> {
                         .map(|b| b.iter().sum::<f64>())
                     })
                     .sum();
-                tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
+                tally.bound_seconds += t1.elapsed().as_secs_f64();
                 if let Some(ub) = ub {
                     tally.spend(100);
                     if ub * (1.0 + 1e-9) < thr {
-                        tally.bound_rejections.set(tally.bound_rejections.get() + 1);
+                        tally.bound_rejections += 1;
                         continue;
                     }
                 }
                 let x = space.pdeck(sel, &sc.member_ids);
-                self.score_shared(sc, &x);
+                self.score_shared(tally, sc, &x);
             }
         }
         if !complete {
-            tally.aborted.set(true);
+            tally.aborted = true;
         }
         complete
     }

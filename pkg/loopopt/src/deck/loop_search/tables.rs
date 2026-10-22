@@ -1,6 +1,7 @@
 //! Per-uma exact values, chance-grid ceilings and skyline clusters, including shared product ceilings.
 //! These tables bound deck and loop searches; they do not enumerate loop structures or report results.
 use super::{CardEntryKey, ChanceKey, DeckSources, ExactQueryKey, Multi, SelectionKey, lin_of};
+use super::{LoopSearchState, Tally};
 use crate::Instant;
 use crate::checks::UCHK;
 use crate::data::{Data, Sched, dot};
@@ -220,13 +221,13 @@ impl<'data> Multi<'data> {
 
     /// max(init, max over u's class of val(deck)), with bound(cluster maxima) >= val of every member
     /// (the clusters' bounds in a reused buffer, popped from a heap in the stable sort's order: `ByBound`)
-    fn bb_max(&self, u: UmaIndex, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64) -> f64 {
+    fn bb_max(&self, scratch: &mut Vec<ByBound>, u: UmaIndex, init: f64, val: &dyn Fn(&[f64], &[f64]) -> f64) -> f64 {
         let cls = &self.class_clusters[self.class_by_trainee[u]];
         let sky = &self.inputs.skyline;
         if cls.is_empty() {
             return self.uview(u).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max);
         }
-        let mut bs = std::mem::take(&mut *self.cluster_bound_scratch.borrow_mut());
+        let mut bs = std::mem::take(scratch);
         bs.clear();
         bs.extend(cls.iter().enumerate().map(|(i, c)| ByBound { bound: val(&c.mdw, &c.mdg), cluster: i }));
         let mut h = std::collections::BinaryHeap::from(bs);
@@ -239,13 +240,13 @@ impl<'data> Multi<'data> {
                 best = best.max(val(&sky[j].dw, &sky[j].dg));
             }
         }
-        *self.cluster_bound_scratch.borrow_mut() = h.into_vec();
+        *scratch = h.into_vec();
         best
     }
 
     /// B[u][i], memoised in `relaxed_ceiling_cache` at first need.
-    pub(super) fn btab(&self, u: UmaIndex, i: usize) -> f64 {
-        let v = self.relaxed_ceiling_cache.borrow()[u][i];
+    pub(super) fn btab(&self, state: &mut LoopSearchState, u: UmaIndex, i: usize) -> f64 {
+        let v = state.relaxed_ceiling_cache[u][i];
         if !v.is_nan() {
             return v;
         }
@@ -253,11 +254,11 @@ impl<'data> Multi<'data> {
         let q = self.grid.chances[i];
         let init = model.trainee_fast(u, q, &self.no_hint_chances, &self.no_hint_chances);
         let v = if (0.0..=1.0).contains(&q) {
-            self.bb_max(u, init, &|dw, dg| model.trainee_fast(u, q, dw, dg))
+            self.bb_max(&mut state.cluster_bound_scratch, u, init, &|dw, dg| model.trainee_fast(u, q, dw, dg))
         } else {
             self.uview(u).iter().map(|&j| model.trainee_fast(u, q, &sky[j].dw, &sky[j].dg)).fold(init, f64::max)
         };
-        self.relaxed_ceiling_cache.borrow_mut()[u][i] = v;
+        state.relaxed_ceiling_cache[u][i] = v;
         v
     }
 
@@ -266,12 +267,13 @@ impl<'data> Multi<'data> {
     // (as `bb_max`: the clusters in the stable sort's order, equal bounds by index, from a heap over a reused buffer)
     pub(super) fn sky_top(
         &self,
+        scratch: &mut Vec<ByBound>,
         m: usize,
         val: &dyn Fn(&[f64], &[f64]) -> f64,
         ok: &dyn Fn(&PDeck) -> bool,
     ) -> Vec<(f64, usize)> {
         let (sky, full_cl, target_count) = (&self.inputs.skyline, &self.skyline_clusters, self.target_count);
-        let mut bs = std::mem::take(&mut *self.skyline_bound_scratch.borrow_mut());
+        let mut bs = std::mem::take(scratch);
         bs.clear();
         bs.extend(full_cl.iter().enumerate().map(|(i, c)| ByBound {
             bound: if target_count > 0 { val(&c.mdw, &c.mdg) } else { f64::INFINITY },
@@ -295,22 +297,24 @@ impl<'data> Multi<'data> {
                 }
             }
         }
-        *self.skyline_bound_scratch.borrow_mut() = h.into_vec();
+        *scratch = h.into_vec();
         top
     }
 
     /// Shared-deck ceiling: the best single skyline deck (legal or not) over the structure's lineages, product odds.
-    pub(super) fn relaxed_shared(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
+    pub(super) fn relaxed_shared(&self, state: &mut LoopSearchState, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let model = self.inputs.model;
         let ln = lin_of(&f);
         let val = |dw: &[f64], dg: &[f64]| {
             (0..ln.len()).map(|l| model.trainee_fast(f[ln[l].trainee], qa[l], dw, dg)).sum::<f64>()
         };
-        self.sky_top(1, &val, &|_| true).first().map_or(0.0, |x| x.0) * self.fixed / ln.len() as f64 * (1.0 + 1e-12)
+        self.sky_top(&mut state.skyline_bound_scratch, 1, &val, &|_| true).first().map_or(0.0, |x| x.0) * self.fixed
+            / ln.len() as f64
+            * (1.0 + 1e-12)
     }
 
     /// ceiling with each uma's best skyline deck (legal or not), the same deck across her lineages
-    pub(super) fn relaxed(&self, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
+    pub(super) fn relaxed(&self, state: &mut LoopSearchState, f: [UmaIndex; 4], qa: &[f64; 12]) -> f64 {
         let (model, sky) = (self.inputs.model, &self.inputs.skyline);
         let mut tot = 0.0;
         let ln = lin_of(&f);
@@ -322,7 +326,7 @@ impl<'data> Multi<'data> {
                 .sum::<f64>();
             let val = |dw: &[f64], dg: &[f64]| qs.iter().map(|&q| model.trainee_fast(f[t], q, dw, dg)).sum::<f64>();
             tot += if qs.iter().all(|q| (0.0..=1.0).contains(q)) {
-                self.bb_max(f[t], init, &val)
+                self.bb_max(&mut state.cluster_bound_scratch, f[t], init, &val)
             } else {
                 self.uview(f[t]).iter().map(|&j| val(&sky[j].dw, &sky[j].dg)).fold(init, f64::max)
             };
@@ -369,15 +373,15 @@ impl<'data> Multi<'data> {
 
     /// Exact value of trainee u at chances qs under cap lv: the best exact P(all) over her best legal skyline decks
     /// and every legal deck whose product value times lv reaches it (each first through the proven bound).
-    pub(super) fn exact_best(&self, u: UmaIndex, qs: &[f64], lv: f64) -> Rc<Best> {
+    pub(super) fn exact_best(&self, state: &mut LoopSearchState, u: UmaIndex, qs: &[f64], lv: f64) -> Rc<Best> {
         let key = ExactQueryKey { trainee: u, chances: ChanceKey::new(qs) };
-        if let Some(entry) = self.exact_cache.borrow().get(&key)
+        if let Some(entry) = state.exact_cache.get(&key)
             && entry.certified_cap >= lv
             && let Some(result) = &entry.reported_best
         {
             return Rc::clone(result);
         }
-        let mut ent = self.exact_cache.borrow_mut().remove(&key).unwrap_or(ExactCacheEntry {
+        let mut ent = state.exact_cache.remove(&key).unwrap_or(ExactCacheEntry {
             best: None,
             scored_decks: crate::FxSet::default(),
             checked_selections: crate::FxSet::default(),
@@ -385,24 +389,24 @@ impl<'data> Multi<'data> {
             reported_best: None,
         });
         if ent.certified_cap < 0.0 {
-            self.seed_exact(u, qs, &mut ent);
+            self.seed_exact(&mut state.tally, u, qs, &mut ent);
             ent.certified_cap = 1.0;
         }
         if lv > ent.certified_cap {
-            self.raise_exact(u, qs, lv, &mut ent);
+            self.raise_exact(&mut state.tally, u, qs, lv, &mut ent);
         }
         let b = Rc::new(self.best_of(u, qs, &ent));
         ent.reported_best = Some(Rc::clone(&b));
-        self.exact_cache.borrow_mut().insert(key, ent);
+        state.exact_cache.insert(key, ent);
         b
     }
 
     /// Scores deck x exactly for trainee u at chances qs (once per entry) and keeps it if it is the best
-    fn score_exact(&self, u: UmaIndex, qs: &[f64], x: &PDeck, ent: &mut ExactCacheEntry) {
+    fn score_exact(&self, tally: &mut Tally, u: UmaIndex, qs: &[f64], x: &PDeck, ent: &mut ExactCacheEntry) {
         if !ent.scored_decks.insert(x.id()) {
             return;
         }
-        let (model, tally) = (self.inputs.model, &self.tally);
+        let model = self.inputs.model;
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
         let DeckSources { entries: e, filler_count: fl } = self.ents_of(x);
@@ -414,7 +418,7 @@ impl<'data> Multi<'data> {
             self.requested_target_count,
             false,
         );
-        tally.score_seconds.set(tally.score_seconds.get() + t0.elapsed().as_secs_f64());
+        tally.score_seconds += t0.elapsed().as_secs_f64();
         if self.inputs.deck_job.checks.upper_check {
             let er: Vec<SourceEntry<&TargetSources>> =
                 e.iter().map(|entry| SourceEntry { sources: &*entry.sources, kind: entry.kind }).collect();
@@ -442,7 +446,7 @@ impl<'data> Multi<'data> {
                 });
             }
         }
-        tally.scored_decks.set(tally.scored_decks.get() + 1);
+        tally.scored_decks += 1;
         tally.spend(200);
         let k = src_class(e.iter().map(|y| &*y.sources));
         for (i, &q) in qs.iter().enumerate() {
@@ -458,7 +462,7 @@ impl<'data> Multi<'data> {
     }
 
     /// seed: her best legal skyline decks by product value (or the best legal deck when none is on the skyline)
-    fn seed_exact(&self, u: UmaIndex, qs: &[f64], ent: &mut ExactCacheEntry) {
+    fn seed_exact(&self, tally: &mut Tally, u: UmaIndex, qs: &[f64], ent: &mut ExactCacheEntry) {
         let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uid = self.inputs.data.umas[u].id;
         let t0 = Instant::now();
@@ -477,9 +481,9 @@ impl<'data> Multi<'data> {
                 seeds.truncate(3);
             }
         }
-        self.tally.seed_seconds.set(self.tally.seed_seconds.get() + t0.elapsed().as_secs_f64());
+        tally.seed_seconds += t0.elapsed().as_secs_f64();
         for (_, x) in seeds.iter().take(3) {
-            self.score_exact(u, qs, x, ent);
+            self.score_exact(tally, u, qs, x, ent);
         }
         if ent.best.is_none() {
             let SearchOutcome { decks: r, .. } = space.search(
@@ -494,22 +498,22 @@ impl<'data> Multi<'data> {
             );
             if let Some(ScoredDeck { value: _, deck: sel }) = r.first() {
                 let x = space.pdeck(sel, &[uid]);
-                self.score_exact(u, qs, &x, ent);
+                self.score_exact(tally, u, qs, &x, ent);
             }
         }
     }
 
     /// Raises an entry's certified cap to lv: every legal deck that might beat its best under the cap is scored (after
     /// the proven bound); a deck search cut short or the budget running out certifies nothing and aborts the pass
-    fn raise_exact(&self, u: UmaIndex, qs: &[f64], lv: f64, ent: &mut ExactCacheEntry) {
-        let (model, space, tally) = (self.inputs.model, self.inputs.deck_space, &self.tally);
+    fn raise_exact(&self, tally: &mut Tally, u: UmaIndex, qs: &[f64], lv: f64, ent: &mut ExactCacheEntry) {
+        let (model, space) = (self.inputs.model, self.inputs.deck_space);
         let uid = self.inputs.data.umas[u].id;
         let mut complete = true;
         let Some(thr) = ent.best.as_ref().map(|b| b.value) else {
             ent.certified_cap = lv;
             return;
         };
-        tally.band_decks.set(tally.band_decks.get() + 1);
+        tally.band_decks += 1;
         let t0 = Instant::now();
         let n0 = space.nodes.get();
         let SearchOutcome { decks: mut cands, incomplete, .. } = space.search(
@@ -523,9 +527,9 @@ impl<'data> Multi<'data> {
             SearchMode::Band { ratio_cap: lv, max_decks: space.band_cap(), bound: BandBound::Capped },
         );
         tally.spend(2 * (space.nodes.get() - n0) + 5 * cands.len() + 10_000);
-        tally.band_seconds.set(tally.band_seconds.get() + t0.elapsed().as_secs_f64());
+        tally.band_seconds += t0.elapsed().as_secs_f64();
         if incomplete.is_some() {
-            tally.cap_hit.set(true);
+            tally.cap_hit = true;
             complete = false;
         }
         cands.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap());
@@ -534,7 +538,7 @@ impl<'data> Multi<'data> {
                 if lv * v * (1.0 + 1e-9) < ent.best.as_ref().unwrap().value {
                     break;
                 }
-                if tally.work.get() > tally.budget.get() {
+                if tally.work > tally.budget {
                     complete = false;
                     break;
                 }
@@ -558,22 +562,22 @@ impl<'data> Multi<'data> {
                 let t1 = Instant::now();
                 let ubo =
                     upper_na(model, JointQuery::unfolded(model, self.inputs.deck_job, u, qs), &e, sel.filler_cards);
-                tally.bound_seconds.set(tally.bound_seconds.get() + t1.elapsed().as_secs_f64());
+                tally.bound_seconds += t1.elapsed().as_secs_f64();
                 if let Some(ub) = ubo {
                     tally.spend(25);
                     if ub.iter().sum::<f64>() * (1.0 + 1e-9) < ent.best.as_ref().unwrap().value {
-                        tally.bound_rejections.set(tally.bound_rejections.get() + 1);
+                        tally.bound_rejections += 1;
                         continue;
                     }
                 }
                 let x = space.pdeck(sel, &[uid]);
-                self.score_exact(u, qs, &x, ent);
+                self.score_exact(tally, u, qs, &x, ent);
             }
         }
         if complete {
             ent.certified_cap = lv;
         } else {
-            tally.aborted.set(true);
+            tally.aborted = true;
         }
     }
 
@@ -604,24 +608,24 @@ impl<'data> Multi<'data> {
     }
 
     /// X[u][i] under cap lv, memoised in `exact_ceiling_cache` when certified under lv or more.
-    fn xtab(&self, u: UmaIndex, i: usize, lv: f64) -> f64 {
-        let ExactCeiling { value: v, certified_cap: l } = self.exact_ceiling_cache.borrow()[u][i];
+    fn xtab(&self, state: &mut LoopSearchState, u: UmaIndex, i: usize, lv: f64) -> f64 {
+        let ExactCeiling { value: v, certified_cap: l } = state.exact_ceiling_cache[u][i];
         if !v.is_nan() && l >= lv {
             return v;
         }
-        let v = self.exact_best(u, &[self.grid.chances[i]], lv).sum;
+        let v = self.exact_best(state, u, &[self.grid.chances[i]], lv).sum;
         // a value from a deck search the budget cut short is not exact under lv: not kept
-        if !self.tally.aborted.get() {
-            self.exact_ceiling_cache.borrow_mut()[u][i] = ExactCeiling { value: v, certified_cap: lv };
+        if !state.tally.aborted {
+            state.exact_ceiling_cache[u][i] = ExactCeiling { value: v, certified_cap: lv };
         }
         v
     }
 
     /// Ceiling of a cell (uma, grid point) under cap lv: the exact value if computed under lv or more, else the lowest
     /// such value at a higher grid point, else the product-odds bound times lv; (bound, exact?)
-    pub(super) fn cell(&self, u: UmaIndex, i: usize, lv: f64) -> (f64, bool) {
-        let mut b = lv * self.fixed * self.btab(u, i) * (1.0 + 1e-12);
-        let xb = self.exact_ceiling_cache.borrow();
+    pub(super) fn cell(&self, state: &mut LoopSearchState, u: UmaIndex, i: usize, lv: f64) -> (f64, bool) {
+        let mut b = lv * self.fixed * self.btab(state, u, i) * (1.0 + 1e-12);
+        let xb = &state.exact_ceiling_cache;
         let row = &xb[u];
         for j in i..NG {
             if !row[j].value.is_nan() && row[j].certified_cap >= lv {
@@ -635,14 +639,21 @@ impl<'data> Multi<'data> {
     /// Exact ceiling of a foursome at chances `qa`, refined lazily: while it beats `kth`, the loosest inexact term is
     /// tightened (first computed at the uma's highest grid point, then halfway down towards its own) until the ceiling
     /// stops beating `kth` or every term is exact. Each step is one exact deck search for one uma.
-    pub(super) fn exact_ceiling(&self, f: [UmaIndex; 4], qa: &[f64; 12], kth: f64, lv: f64) -> f64 {
+    pub(super) fn exact_ceiling(
+        &self,
+        state: &mut LoopSearchState,
+        f: [UmaIndex; 4],
+        qa: &[f64; 12],
+        kth: f64,
+        lv: f64,
+    ) -> f64 {
         loop {
             let mut tot = 0.0;
             let mut worst: Option<(f64, UmaIndex, usize)> = None;
             let ln = lin_of(&f);
             for l in 0..ln.len() {
                 let (u, i) = (f[ln[l].trainee], self.grid.idx(qa[l]));
-                let (b, ex) = self.cell(u, i, lv);
+                let (b, ex) = self.cell(state, u, i, lv);
                 tot += b;
                 if !ex && worst.is_none_or(|w| b > w.0) {
                     worst = Some((b, u, i));
@@ -650,11 +661,11 @@ impl<'data> Multi<'data> {
             }
             let ce = tot / ln.len() as f64;
             let Some((_, u, i)) = worst else { return ce };
-            if ce <= kth * (1.0 + 4e-12) || self.tally.aborted.get() {
+            if ce <= kth * (1.0 + 4e-12) || state.tally.aborted {
                 return ce;
             }
             let j = {
-                let xb = self.exact_ceiling_cache.borrow();
+                let xb = &state.exact_ceiling_cache;
                 let row = &xb[u];
                 (i..NG).find(|&j| !row[j].value.is_nan() && row[j].certified_cap >= lv)
             };
@@ -662,7 +673,7 @@ impl<'data> Multi<'data> {
                 None => i.max(self.grid.idx(self.maximum_chances[u])),
                 Some(j) => i + (j - i) / 2,
             };
-            self.xtab(u, tgt, lv);
+            self.xtab(state, u, tgt, lv);
         }
     }
 }

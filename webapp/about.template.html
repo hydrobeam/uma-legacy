@@ -89,7 +89,7 @@ Anshinzawa SSR: prioritise Risky Business).</li>
 <li><strong>Not modelled:</strong> random character events from support cards (each fires in about one career in seven where it can; 0.3% on
 the runs' odds on average); conditional and secret events, except Tokai Teio's Head-On; hint levels and skill-point costs; Grand
 Concert's low rate for the first choice of Sasami Anshinzawa SSR's finale.</li>
-<li><strong>Placeholders:</strong> Grand Masters' hint rate (base 1.86, specialty weight 0.26: the other scenarios' pooled fit) is a guess,
+<li><strong>Placeholders:</strong> Grand Masters' hint rate (base 1.991, specialty weight 0.129: one base and weight fitted over the other scenarios' runs) is a guess,
 with no IT runs to set it. R cards are left
 out (R pals stay): their hint and event model is untested. The Grand Masters-era data is the JP game data cut at L'Arc's
 launch.</li>
@@ -129,8 +129,8 @@ sparks, not affinity.</p>
 <li><strong>Training hints:</strong> the game doesn't publish how often a card hints. These rates are inferred from what
 real shared IT runs show, not read from the game's data, so they are estimates. The rate scales
 with the card's hint frequency and specialty priority: <math><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>d</mi><mo>×</mo><mtext>specialty priority</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> hints per career, each a random pick among the card's
-skills still below hint level 5. The base and specialty weight <math><mi>d</mi></math> differ by scenario: Unity Cup 2.36 and 0.36, Grand Concert
-1.97 and 0.08, Trackblazer 1.70 and 0.11, URA Finale 1.34 and 0.39 (Grand Masters 1.86 and 0.26, a placeholder). A card
+skills still below hint level 5. The base and specialty weight <math><mi>d</mi></math> differ by scenario: Unity Cup 2.395 and 0.322, Grand Concert
+1.999 and 0.068, Trackblazer 1.702 and 0.107, URA Finale 1.380 and 0.359 (Grand Masters 1.991 and 0.129, a placeholder). A card
 with 30% hint frequency and 50 specialty priority hints about 3.6 times in Unity Cup; with five hintable skills, a given
 one comes up in about half of careers.</li>
 <li><strong>Chain events:</strong> the number of story-chain events in a career is random, also estimated from real
@@ -256,8 +256,8 @@ aptitude (pink) 1/3/5%, stat (blue) 70/80/90%.</li>
   <math display="block"><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>g</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow><mo>,</mo><mtext>   </mtext><msub><mi>w</mi><mi>k</mi></msub><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><munder><mo>∏</mo><mi>j</mi></munder><mrow><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>h</mi><mrow><mi>k</mi><mi>j</mi></mrow></msub><mo>)</mo></mrow></mrow><mrow><mn>1</mn><mo>−</mo><msub><mi>g</mi><mi>k</mi></msub></mrow></mfrac></math>
   <ul>
   <li><p><strong>Training hints.</strong> <math><mi>h</mi><mo>=</mo><mtext>base</mtext><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mtext>hint frequency</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow><mo>×</mo><mrow><mo>(</mo><mn>1</mn><mo>+</mo><mi>d</mi><mo>×</mo><mtext>specialty priority</mtext><mo>/</mo><mn>100</mn><mo>)</mo></mrow></math> draws per career, read as <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow></math> or <math><mrow><mo>⌊</mo><mi>h</mi><mo>⌋</mo></mrow><mo>+</mo><mn>1</mn></math> draws
-  with the fraction as the weight of the second. Base and <math><mi>d</mi></math>: Unity Cup 2.36 and 0.36, Grand Concert 1.97 and 0.08,
-  Trackblazer 1.70 and 0.11, URA Finale 1.34 and 0.39, Grand Masters 1.86 and 0.26 (placeholder). Each draw picks uniformly among the card's <math><mi>n</mi></math> hintable skills still below hint
+  with the fraction as the weight of the second. Base and <math><mi>d</mi></math>: Unity Cup 2.395 and 0.322, Grand Concert 1.999 and 0.068,
+  Trackblazer 1.702 and 0.107, URA Finale 1.380 and 0.359, Grand Masters 1.991 and 0.129 (placeholder). Each draw picks uniformly among the card's <math><mi>n</mi></math> hintable skills still below hint
   level 5; a skill leaves the pool after <math><mi>ν</mi><mo>=</mo><mrow><mo>⌈</mo><mn>5</mn><mo>/</mo><mtext>levels per hint</mtext><mo>⌉</mo></mrow></math> draws. With <math><mi>k</mi></math> of the <math><mi>n</mi></math> skills being targets and <math><mi>t</mi></math> draws:</p>
   <math display="block"><mi>P</mi><mrow><mo>(</mo><mtext>no target hinted</mtext><mo>)</mo></mrow><mo>=</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mfrac><mi>k</mi><mi>n</mi></mfrac><mo>)</mo></mrow><mi>t</mi></msup><mo>,</mo><mtext>  </mtext><mi>t</mi><mo>≤</mo><mi>ν</mi></math>
   <p>(beyond <math><mi>ν</mi></math> draws the shrinking pool is followed exactly: a state counts how many of the other skills have taken

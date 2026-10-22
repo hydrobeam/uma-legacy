@@ -84,7 +84,7 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `gametora` | GameTora's pinned data files into `cache/gametora/`; `GAMETORA_LATEST=1` moves the pins to the newest versions first; it also rewrites `pkg/loopopt/data/gametora_slugs.json`, the page's links to GameTora (tracked, so `page` downloads nothing). Run by `events` |
 | `events` | each era's card event file from GameTora's files plus the hand-entered entries (pal first-year dates left out, as IT never fires them) |
 | `native` | the release binary, clippy (as `lint` runs it), then `cargo test --release` |
-| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); Biome on the page's JS with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs) |
+| `lint` | `cargo fmt --check` and clippy with warnings denied, on every target and on the wasm lib (see *Rust style*); shellcheck on `build.sh` and the hook (`uvx` fetches it on first use); `ruff check` and `ruff format --check` on the Python (rules in `pyproject.toml`; ruff from the dev group, locked in `uv.lock`); Biome on the page's JS (lint and formatting: 2-space indent, single quotes, 120 columns) with warnings denied (`webapp/biome.json`; reasoned `biome-ignore` comments where a rule is wrong for a line); TypeScript's checker on the page's plain JS (`webapp/tsconfig.json`: checkJs, not yet strict; the records are JSDoc typedefs) |
 | `hooks` | `git config core.hooksPath .githooks`: the tracked pre-commit hook (see *Rust style*); once per clone |
 | `pb` | each uma pair's exact affinity ceiling (`loopopt pbtable`, via `export/add_pb.py`) stored in both `data.json` files; it only speeds searches up. The table carries a fingerprint of the umas, goals and streak penalties; on a mismatch the solver ignores it and `cargo test` warns. Rerun after data or solver changes |
 | `wasm` | the wasm32 build (`-Z build-std` through `RUSTC_BOOTSTRAP=1`), `wasm-opt -O3 -ocimfs=0` (no inlining of single-caller functions, so long loops stay in functions V8 optimises: `docs/PERF.md`, *In the page*), then `webapp/example.json` (the result shown before the first search). `wasm-opt` (about a minute) is skipped when the compiled wasm, the flags and wasm-opt's version match its last run (`webapp/.loopopt.wasm.key`); the example always runs |
@@ -97,6 +97,13 @@ missing tool or file and what it is before it stops; the `art` step instead says
 | `val TAG` / `valq TAG` | validation (see *Tests*) |
 | `deploy` | builds the page and uploads `webapp/dist` to Cloudflare Pages (see *Releases*) |
 | `research` | `research/run_all.py` into `research/results.json`, then renders `docs/RESEARCH.md` from `docs/RESEARCH.template.md` (`research/README.md`) |
+
+The solver's training-hint constants (each scenario's base and specialty weight, `src/deck/hints.rs`) are the research
+fit: `pkg/loopopt/build.rs` reads them from the tracked `research/results.json` (section 7's keys) at every build, native
+or wasm, and rounds them to 3 decimals, so a `research` run that moves one at that precision moves the solver's results
+(rerun validation, `pb`, and update `/about` and `docs/MODEL.md`, which state them by hand). The page's scenario tiles
+take the bases the same way: `webapp/build.py` (`hint_bases`) reads build.rs's keys with its rounding into the page's
+data. A missing key fails either build with its name.
 
 ## Data updates
 
@@ -221,7 +228,7 @@ uvx --from shellcheck-py shellcheck build.sh .githooks/pre-commit   # (from the 
 - **Pre-commit hook:** `./build.sh hooks` (once per clone; it sets `core.hooksPath`, so it applies in every worktree)
   turns on `.githooks/pre-commit`, which checks what the commit stages, by kind: Rust, `cargo fmt --check` and native
   clippy with warnings denied (about 5 s after a change; a minute the first time in a new worktree); Python, ruff check
-  and format on the staged files; the page's JS, Biome on the staged files and `tsc` (each under a second). It checks
+  and format on the staged files; the page's JS, Biome (lint and formatting) on the staged files and `tsc` (each under a second). It checks
   the working tree's files, not only the staged parts. The wasm clippy and the whole-repo checks are left to `lint`.
 - **Blame:** commits that only reformat are listed in `.git-blame-ignore-revs`; to have `git blame` skip them, once
   per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
@@ -293,7 +300,7 @@ minutes and can serve the previous page until then.
 build.sh             the one entry point for every build step
 .githooks/           the pre-commit formatting check (`./build.sh hooks` turns it on)
 webapp/              the page: templates, src/ (styles and modules), worker, build.py, the browser suite, chibi/
-pkg/loopopt/         the Rust solver (src/, tests/)
+pkg/loopopt/         the Rust solver (src/, tests/; build.rs takes the training-hint constants from research/results.json)
 pkg/loopopt/export/  Python exporters, one set for both eras (`global` or `jp` argument; era.py)
 pkg/loopopt/data/    the solver's data: global/ and jp/ (the Grand Masters era: the JP game database cut at L'Arc's
                      launch), each with data.json, web_skills.json, web_cards.json, career.json, card_events.json,

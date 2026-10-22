@@ -15,7 +15,8 @@ Every analysis runs on every record, on three row sets:
 - the fit: max-limit-break card-runs, rows no spark hinted, R cards out, through the Lv-5 cap, with
   h = base_s (1 + hf/100) (1 + d_s spec/100); its later-runs test fits on the earlier half of the records (by seq) and
   scores the later half;
-- tests of the current model: the adopted rate (the same h with hints.rs's constants) on the fit's card-runs, for the
+- tests of the current model: the adopted rate (the same h with the fit's values rounded to 3 decimals, the solver's
+  constants: pkg/loopopt/build.rs rounds the same results.json values the same way) on the fit's card-runs, for the
   other covariates (a free level per scenario in both fits), per-card differences, the spark deficit (every row),
   drop-out and priority;
 - the same-card test: cards whose specialty differs between limit breaks, every limit break, a base per (card,
@@ -563,20 +564,6 @@ def add(out: Out, name: str, got: float | np.number | None, **kw: str) -> None:
     out.append(V(name, got, **kw))
 
 
-def adopted() -> tuple[dict[int, float], dict[int, float]]:
-    """the solver's training-hint bases and specialty weights by scenario (hint_base, hint_spec in
-    pkg/loopopt/src/deck/hints.rs)"""
-    src = open(f"{common.ROOT}/pkg/loopopt/src/deck/hints.rs", encoding="utf-8").read()
-
-    def table(fn: str) -> dict[int, float]:
-        body = re.search(r"fn " + fn + r"[^{]*\{.*?match scenario \{(.*?)\}", src, re.S).group(1)
-        v = {k: float(x) for k, x in re.findall(r'"(\w+)" => ([\d.]+)', body)}
-        v["unity"] = float(re.search(r"_ => ([\d.]+)", body).group(1))
-        return {1: v["ura"], 2: v["unity"], 3: v["gc"], 4: v["trackblazer"], 5: v["grandmasters"]}
-
-    return table("hint_base"), table("hint_spec")
-
-
 def derived() -> list[common.Value]:
     """the h-reading example: n = 5, h = 2.74; smooth (1 - 1/n)^h against floor/ceiling draws"""
     n, h = 5, 2.74
@@ -599,11 +586,15 @@ class Adopted(NamedTuple):
     spec: dict[int, float]  # hint_spec (d)
 
 
-def adopted_values(A: Adopted, out: Out) -> None:
-    """the solver's constants (read, not fitted)"""
-    for s, nm in ((2, "Unity Cup"), (3, "Grand Concert"), (1, "URA Finale"), (4, "Trackblazer"), (5, "Grand Masters")):
-        add(out, f"adopted {nm}", A.base[s], note="the solver's hint_base (pkg/loopopt/src/deck/hints.rs)")
-        add(out, f"adopted d {nm}", A.spec[s], note="the solver's hint_spec")
+ADOPTED_DECIMALS: int = 3  # pkg/loopopt/build.rs rounds the fit in results.json to this many decimals
+
+
+def adopted(fit: PerScenarioD, pooled: PooledFit) -> Adopted:
+    """the solver's training-hint constants: the specialty fit's base and d per scenario, rounded as pkg/loopopt/build.rs
+    rounds the same values in research/results.json; Grand Masters (5, no runs) takes the pooled fit's"""
+    base = {k: round(b, ADOPTED_DECIMALS) for k, b in fit.bases.items()} | {5: round(pooled.base, ADOPTED_DECIMALS)}
+    spec = {k: round(d, ADOPTED_DECIMALS) for k, d in fit.d.items()} | {5: round(pooled.d, ADOPTED_DECIMALS)}
+    return Adopted(base, spec)
 
 
 def worked_example(A: Adopted, out: Out) -> None:
@@ -848,7 +839,7 @@ ADOPTED_NOTE: str = "the adopted rate, Lv-5 cap, max limit break, R cards out"
 
 @dataclass
 class AdoptedRate:
-    """the adopted rate (hints.rs constants, specialty term in) through the Lv-5 cap, on max-limit-break card-runs with
+    """the adopted rate (the solver's constants, specialty term in) through the Lv-5 cap, on max-limit-break card-runs with
     R cards out (the fit's card-runs; spark-hinted rows only where a test reads them)"""
 
     rows: Mask  # those rows
@@ -1105,10 +1096,11 @@ def claims() -> list[common.Value | common.Finding]:
     if not common.have_runs() or common.mdb() is None:
         return derived()
     out: Out = []
-    A = Adopted(*adopted())
-    adopted_values(A, out)
-    worked_example(A, out)
     D = build()
+    S = SpecialtyRows(D)
+    fit = per_scenario_d(S, out)
+    A = adopted(fit, pooled_fit(S, out))
+    worked_example(A, out)
     forms = rate_forms(D)
     fits = form_fits(D, forms, out)
     stat_option_cells(D, out)
@@ -1124,7 +1116,7 @@ def claims() -> list[common.Value | common.Finding]:
     covariates(D, AR, out)
     spark_deficit(D, AR, out)
     drop_out(D, AR, out)
-    out += specialty(D)
+    out += specialty(D, S, fit)
     priority(D, AR, out)
     return derived() + out + findings(out)
 
@@ -1289,9 +1281,8 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     v = sp["none"]
     fs.append(
         F(
-            "With no other source of the skill the adopted rate slightly under-predicts (the run-clustered interval lies entirely "
-            "above the prediction)",
-            v[3] > v[2],
+            "With no other source of the skill the adopted rate is calibrated (prediction inside the run-clustered interval)",
+            v[0],
             f"{v[1]:.3f} [{v[3]:.3f}, {v[4]:.3f}] vs {v[2]:.3f}; obs/pred {g['spark none obs/pred']:.3f} "
             f"[{g['spark none obs/pred 95% low']:.3f}, {g['spark none obs/pred 95% high']:.3f}]",
         )
@@ -1557,6 +1548,22 @@ def per_scenario_d(S: SpecialtyRows, out: Out) -> PerScenarioD:
     return PerScenarioD(d_s, bases, p0, p1, gain_s, l1s)
 
 
+class PooledFit(NamedTuple):
+    """one base and one d over every scenario's rows"""
+
+    base: float
+    d: float
+
+
+def pooled_fit(S: SpecialtyRows, out: Out) -> PooledFit:
+    """one base and one d over every scenario's rows: Grand Masters' constants (it has no runs)"""
+    d = S.d_of(S.every)
+    fit = PooledFit(S.fit(S.every, S.with_d(d))[1], d)
+    add(out, "one base and one d: base", fit.base, note="Grand Masters' hint_base (no runs)")
+    add(out, "one base and one d: d", fit.d, note="Grand Masters' hint_spec")
+    return fit
+
+
 def specialty_residuals(S: SpecialtyRows, fit: PerScenarioD, out: Out) -> None:
     """obs / pred by specialty band before and after the term, and the (scenario, band) cells jointly"""
     y, sp, sc = S.y, S.sp, S.sc
@@ -1593,10 +1600,10 @@ def specialty_residuals(S: SpecialtyRows, fit: PerScenarioD, out: Out) -> None:
     add(out, "specialty cells: p", pc)
 
 
-def specialty(A: Data) -> list[common.Value]:
-    """specialty priority (effect 19, at the card's level) on the fit's setup over every record: max-limit-break
-    card-runs, rows no spark hinted, Lv-5 cap, R cards out. h = base_s (1 + hf/100) (1 + d spec/100)."""
-    S = SpecialtyRows(A)
+def specialty(A: Data, S: SpecialtyRows, fit: PerScenarioD) -> list[common.Value]:
+    """specialty priority (effect 19, at the card's level) on the fit's setup over every record (S, its per-scenario fit
+    `fit`): max-limit-break card-runs, rows no spark hinted, Lv-5 cap, R cards out. h = base_s (1 + hf/100) (1 + d
+    spec/100)."""
     y, sc, sp = S.y, S.sc, S.sp
     out: Out = []
     add(out, "specialty rows", len(S.j))
@@ -1604,13 +1611,9 @@ def specialty(A: Data) -> list[common.Value]:
     for k, nm in SCENARIOS:
         add(out, f"specialty rows {nm}", (sc == k).sum())
         add(out, f"specialty runs {nm}", len(set(S.run[sc == k])))
-    fit = per_scenario_d(S, out)
     dp, gp = S.pooled_d()
     add(out, "specialty gain one d, nats", gp)
     add(out, "specialty d pooled", dp)
-    d1 = S.d_of(S.every)
-    add(out, "one base and one d: base", S.fit(S.every, S.with_d(d1))[1])
-    add(out, "one base and one d: d", d1)
     add(out, "specialty gain exp form, nats", sum(S.exp_gain(k) for k in (1, 2, 3, 4)))
     specialty_residuals(S, fit, out)
     u = (sc == 2) & (S.hfr == 0) & (sp == 0)

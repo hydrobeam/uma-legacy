@@ -110,6 +110,33 @@ def js(o):
     return json.dumps(o, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 
+# each scenario's training-hint base (hints per card per run at hint frequency 0 and specialty 0), by the page's
+# scenario key: its key in research/results.json's `values` (section 7's fit). Grand Masters has no runs: it takes the
+# fit of one base over every other scenario's. The keys are pkg/loopopt/build.rs's, so the page shows the solver's base.
+HINT_BASE_KEYS = {
+    "unity": "7.specialty_base_unity_cup",
+    "gc": "7.specialty_base_grand_concert",
+    "ura": "7.specialty_base_ura_finale",
+    "trackblazer": "7.specialty_base_trackblazer",
+    "grandmasters": "7.one_base_and_one_d_base",
+}
+
+
+def hint_bases():
+    """the scenarios' training-hint bases by scenario key, as pkg/loopopt/build.rs (the rule's source) takes them:
+    research/results.json's values rounded to 3 decimals. A missing or non-numeric key stops the build, naming it."""
+    values = json.load(open(os.path.join(HERE, "..", "research", "results.json")))["values"]
+    bases = {}
+    for scenario, key in HINT_BASE_KEYS.items():
+        value = values.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SystemExit(
+                f'research/results.json: `values."{key}"` is missing or not a number; `./build.sh research` computes it'
+            )
+        bases[scenario] = round(value, 3)
+    return bases
+
+
 # GameTora's page names for the links (support cards: url_name, e.g. 30067-the-thrones-assemblage; characters: the slug
 # of /characters/<outfit id>-<slug>), tracked (pkg/loopopt/data/gametora_slugs.json, written by gametora.py): no download
 _gts = json.load(open(os.path.join(HERE, "..", "pkg", "loopopt", "data", "gametora_slugs.json")))
@@ -474,8 +501,8 @@ MATHFACE = re.sub(
 ).strip()
 
 
-# the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids), the career page's tables
-# and each page's script: fingerprinted classic scripts at the end of the body, data first.
+# the planner pages' shared data (the Global era's lists, image keys, skill icons, race ids, the scenarios' hint bases),
+# the career page's tables and each page's script: fingerprinted classic scripts at the end of the body, data first.
 # data.js reads the data from self.__LLP_DATA ('data-cards', ...).
 def data_script(name, d):
     payload = "{" + ",".join(f'"{k}":{v}' for k, v in d.items()) + "}"
@@ -496,6 +523,7 @@ DATA_JS = data_script(
         "data-img": js({"ext": image_catalog.extensions, "keys": image_catalog.keys, "base": image_catalog.base}),
         "data-skillicon": js(skill_icons),
         "data-raceids": js(race_ids),
+        "data-hintbase": js(hint_bases()),
     },
 )
 CAREER_DATA_JS = data_script("career-data.js", {"data-career": global_era.career})
