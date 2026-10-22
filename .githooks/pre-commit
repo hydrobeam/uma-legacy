@@ -3,7 +3,7 @@
 #   Rust under pkg/loopopt: cargo fmt --check and clippy, warnings denied (native, dev profile: about 5 s after a change,
 #     a minute the first time in a new worktree); clippy on the wasm lib stays in ./build.sh lint and CI
 #   Python: ruff check and ruff format --check on the staged files (well under a second)
-#   the page's JS: Biome on the staged files, then tsc's checkJs over the page (under a second)
+#   the page's JS: Biome (lint and formatting) on the staged files, then tsc's checkJs over the page (under a second)
 # A commit staging none of these (docs, data) checks nothing. ./build.sh lint runs every check on the whole repo.
 root=$(git rev-parse --show-toplevel) || exit 1
 staged() { git diff --cached --name-only --diff-filter=ACMR -- "$@"; }
@@ -23,7 +23,7 @@ fi
 js=$(staged 'webapp/*.js' 'webapp/*.mjs' | sed 's#^webapp/##')
 if [ -n "$js" ]; then
   # shellcheck disable=SC2086 # as above
-  (cd "$root/webapp" && npx --no-install biome lint --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
-    && npx --no-install tsc -p .) || fail 'Biome or tsc (above)'
+  (cd "$root/webapp" && npx --no-install biome check --error-on-warnings --diagnostic-level=warn --no-errors-on-unmatched $js \
+    && npx --no-install tsc -p .) || fail 'Biome or tsc (above; npx biome format --write in webapp fixes formatting)'
 fi
 exit 0

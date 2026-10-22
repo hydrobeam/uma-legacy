@@ -1,17 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": [
-      "src/**/*.js",
-      "src/**/*.mjs",
-      "*.mjs",
-      "chibi/*.mjs",
-      "worker.template.js",
-      "test/*.mjs"
-    ]
+    "includes": ["src/**/*.js", "src/**/*.mjs", "*.mjs", "chibi/*.mjs", "worker.template.js", "test/*.mjs"]
   },
   "formatter": {
-    "enabled": false
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
   },
   "assist": {
     "enabled": false
@@ -24,9 +21,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "test/**"
-      ],
+      "includes": ["test/**"],
       "linter": {
         "rules": {
           "performance": {
@@ -35,5 +30,11 @@
         }
       }
     }
-  ]
+  ],
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always"
+    }
+  }
 }

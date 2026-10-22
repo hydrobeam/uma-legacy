@@ -4,7 +4,8 @@
 // (`aptitudes.pink_gen`, `Env::pink_gen`); the browser suite's `career` group pins this draw against those chances on the
 // reference outputs (val/ref__global__career_*.out). `rnd`: the random source (tests pass a seeded one).
 // Grades are the solver's aptitude codes, 1..8 = G..S, one per aptitude in data.json's `apt` order; stars are 1 to 3.
-const GRADE_A = 7, GRADE_S = 8;
+const GRADE_A = 7,
+  GRADE_S = 8;
 // April inspirations in a career: each legacy pink gets a chance to fire at each
 const INSPIRATIONS = 2;
 export function drawPink(ap, rnd = Math.random) {
@@ -15,9 +16,10 @@ export function drawPink(ap, rnd = Math.random) {
   for (let inspiration = 0; inspiration < INSPIRATIONS; inspiration++) {
     for (const fire of ap.fire) if (rnd() < fire.p) grades[fire.apt] = Math.min(GRADE_S, grades[fire.apt] + 1);
   }
-  const atLeastA = grades.map((grade, k) => grade >= GRADE_A ? k : -1).filter(k => k >= 0);
+  const atLeastA = grades.map((grade, k) => (grade >= GRADE_A ? k : -1)).filter((k) => k >= 0);
   if (!atLeastA.length) return { pinks: {}, apt: grades };
-  const k = atLeastA[Math.floor(rnd() * atLeastA.length)], u = rnd();
+  const k = atLeastA[Math.floor(rnd() * atLeastA.length)],
+    u = rnd();
   const stars = u < 0.2 ? 1 : u < 0.9 ? 2 : 3;
   return { pinks: { [ap.pink_gen[k].group]: stars }, apt: grades };
 }

@@ -12,10 +12,13 @@ export const $textarea = (id) => /** @type {HTMLTextAreaElement} */ (document.ge
 // text made safe to put in HTML markup or a double-quoted attribute
 const ENTITY = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 /** @param {unknown} text @returns {string} */
-export function esc(text) { return String(text).replace(/[&<>"]/g, ch => ENTITY[ch]); }
+export function esc(text) {
+  return String(text).replace(/[&<>"]/g, (ch) => ENTITY[ch]);
+}
 // a spinner whose turn continues across redraws (status lines are rebuilt every second; a new element would restart its
 // 0.8 s turn from zero): its animation starts in phase with the clock
-export const spinHTML = () => `<span class="spin" aria-hidden="true" style="animation-delay:-${Math.round(performance.now() % 800)}ms"></span>`;
+export const spinHTML = () =>
+  `<span class="spin" aria-hidden="true" style="animation-delay:-${Math.round(performance.now() % 800)}ms"></span>`;
 // an element with a class and its text (text null or undefined: none)
 /**
  * @template {keyof HTMLElementTagNameMap} K
@@ -39,4 +42,7 @@ export const fmtIn = (p) => {
 };
 // a click on the dialog's backdrop (the dialog element itself is the target) closes it
 /** @param {HTMLDialogElement} dialog */
-export const backdropCloses = (dialog) => dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+export const backdropCloses = (dialog) =>
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
