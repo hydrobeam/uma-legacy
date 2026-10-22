@@ -18,7 +18,7 @@ struct Scratch {
 thread_local! { static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::new(Scratch::default()); }
 
 impl Uma {
-    /// EXACT best response: maximize sum_r W[r] * P[r], with P[r] = 1 - prod(1 - p) over attempts.
+    /// EXACT best response: maximize sum_r W[r] * P[r], averaging repeated attempts over shared pink histories.
     /// Junior turns 1..24 run sequentially; then Classic turn t and Senior turn t+24 are decided together,
     /// so a race offered in both years (always exactly 24 turns apart) is scored exactly.
     /// State: (classic streak, senior streak, guessed classic streak at end of turn 48 [only if turn 49 has options], goal mask).
@@ -150,10 +150,22 @@ fn dp_exact_in(
                 }
                 let same = classic_choice.race >= 0 && classic_choice.race == senior_choice.race;
                 let shared_race_weight = if same { weights[classic_choice.race as usize] } else { 0.0 };
-                // reward for (sc, ss); bit-identical to the original formula:
-                //   same race: w * (1 - (1-pc)(1-ps)); otherwise (0.0 + w_c*pc) + w_s*ps, with absent terms dropped
+                let repeated = if same {
+                    uma.repeated_races.iter().find(|repeated| repeated.race == classic_choice.race as usize)
+                } else {
+                    None
+                };
+                // Certain aptitudes retain the original operations and order, including the leading 0.0
+                // in separate-race rewards. Pink histories supply E[pc * ps] without changing the DP state.
                 let reward = |classic_streak: usize, senior_streak: usize| -> f64 {
-                    if same {
+                    if let Some(repeated) = repeated {
+                        shared_race_weight
+                            * repeated.win_chance(
+                                uma,
+                                classic_next_streaks[classic_streak],
+                                senior_next_streaks[senior_streak],
+                            )
+                    } else if same {
                         shared_race_weight
                             * (1.0 - (1.0 - classic_chances[classic_streak]) * (1.0 - senior_chances[senior_streak]))
                     } else {

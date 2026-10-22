@@ -3,7 +3,7 @@ use crate::career::inherit::aff_factor;
 use crate::career::pool::{Pool, RaceWin};
 use crate::career::{CareerSetup, Lineage};
 use crate::chart::{chart_race_name, when};
-use crate::data::{Choice, NT, Uma, scored_position};
+use crate::data::{Choice, Data, NT, RepeatedRace, Uma, scored_position};
 use crate::loop_planner::schedules::FILL_EPS;
 use serde_json::{Value, json};
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
@@ -90,6 +90,149 @@ pub(crate) struct RaceSchedule {
     pub(crate) win_chances: Vec<f64>,
 }
 
+/// One aptitude's persistent grades after the Classic and Senior inspirations.
+struct GradeHistory {
+    classic: u8,
+    senior: u8,
+    mass: f64,
+}
+
+struct AptitudeGrades {
+    /// Before either inspiration, after Classic, after Senior.
+    marginals: [Vec<(u8, f64)>; 3],
+    histories: Vec<GradeHistory>,
+}
+
+struct PinkUma {
+    uma: Uma,
+    /// Per turn and option, the expected win-rate basis for the report.
+    expected_basis: Vec<Vec<f64>>,
+}
+
+/// Trainee t's race table with her pink sparks counted (`pink_career`): per G1 option the win chance per streak
+/// position, the expectation over her distance and surface grades at that turn (before Classic April: the start
+/// grades; then after one inspiration; from Senior April after both). None when nothing changes (no aptitude data,
+/// or her grades and the base data agree at every turn).
+/// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
+fn pink_uma(data: &Data, pink_career: &PinkCareer, trainee: crate::uma::UmaIndex) -> Option<PinkUma> {
+    if data.race_distance.len() < data.race_count || data.race_surface.len() < data.race_count {
+        return None;
+    }
+    if pink_career.start == pink_career.base && pink_career.fire.iter().all(|spark| spark.aptitude >= 6) {
+        return None;
+    }
+    let uma = &data.umas[trainee];
+    // per aptitude, the grade distribution after 0, 1 and 2 inspirations
+    let grade_distributions: Vec<AptitudeGrades> = (0..10)
+        .map(|k| {
+            let fire_chances: Vec<f64> =
+                pink_career.fire.iter().filter(|spark| spark.aptitude == k).map(|spark| spark.chance).collect();
+            let one = pbinom(&fire_chances);
+            let two = conv(&one, &one);
+            let grade_distribution = |start: u8, success_distribution: &[f64]| {
+                let mut distribution: Vec<(u8, f64)> = vec![];
+                for (i, &weight) in success_distribution.iter().enumerate() {
+                    if weight <= 0.0 {
+                        continue;
+                    }
+                    let grade = (start as usize + i).min(8) as u8;
+                    if let Some(entry) = distribution.iter_mut().find(|entry| entry.0 == grade) {
+                        entry.1 += weight;
+                    } else {
+                        distribution.push((grade, weight));
+                    }
+                }
+                distribution
+            };
+            let start = pink_career.start[k];
+            let classic_grades = grade_distribution(start, &one);
+            let mut histories = vec![];
+            for &(classic, classic_mass) in &classic_grades {
+                for (senior, senior_mass) in grade_distribution(classic, &one) {
+                    histories.push(GradeHistory { classic, senior, mass: classic_mass * senior_mass });
+                }
+            }
+            AptitudeGrades {
+                marginals: [vec![(start, 1.0)], classic_grades, grade_distribution(start, &two)],
+                histories,
+            }
+        })
+        .collect();
+    let cost = |grade: u8| -> i32 { [90, 90, 60, 40, 30, 20, 10, 0, 0][grade as usize] };
+    // The adjusted table is an owned variant; the base uma remains available to other lineages.
+    let mut adjusted_uma = uma.clone();
+    let mut expected_basis: Vec<Vec<f64>> = uma.race_options.iter().map(|options| vec![0.0; options.len()]).collect();
+    for turn in 0..NT {
+        let inspirations = INSP_TURNS.iter().filter(|&&april_turn| turn >= april_turn).count();
+        for (option_index, option) in uma.race_options[turn].iter().enumerate() {
+            if option.race < 0 {
+                continue;
+            }
+            let race = option.race as usize;
+            let (distance, surface) =
+                (data.race_distance[race] as usize, if data.race_surface[race] == 1 { 4 } else { 5 });
+            let mut win_chances = [0.0f64; 7];
+            for &(distance_grade, distance_weight) in &grade_distributions[distance].marginals[inspirations] {
+                for &(surface_grade, surface_weight) in &grade_distributions[surface].marginals[inspirations] {
+                    let win_rate_basis = (110 - cost(distance_grade) - cost(surface_grade)).max(-20);
+                    expected_basis[turn][option_index] += distance_weight * surface_weight * f64::from(win_rate_basis);
+                    for k in 1..=6 {
+                        win_chances[k] += distance_weight
+                            * surface_weight
+                            * data.attempt_chance(win_rate_basis, scored_position(option.goal, k));
+                    }
+                }
+            }
+            adjusted_uma.choices[turn][option_index + 1].win_chances = win_chances;
+        }
+    }
+    // Repeated races share the Classic inspiration. Before Classic April the first attempt is
+    // deterministic; certain grades also keep the original independent-attempt arithmetic.
+    for classic_turn in INSP_TURNS[0]..48 {
+        for (classic_option, classic) in uma.race_options[classic_turn].iter().enumerate() {
+            if classic.race < 0 {
+                continue;
+            }
+            let Some((senior_option, senior)) =
+                uma.race_options[classic_turn + 24].iter().enumerate().find(|(_, option)| option.race == classic.race)
+            else {
+                continue;
+            };
+            let race = classic.race as usize;
+            let distance = &grade_distributions[data.race_distance[race] as usize];
+            let surface = &grade_distributions[if data.race_surface[race] == 1 { 4 } else { 5 }];
+            if distance.histories.len() == 1 && surface.histories.len() == 1 {
+                continue;
+            }
+            let mut repeated = RepeatedRace {
+                race,
+                classic_turn,
+                classic_option: classic_option as u8,
+                senior_option: senior_option as u8,
+                both_wins: [[0.0; 7]; 7],
+            };
+            for distance in &distance.histories {
+                for surface in &surface.histories {
+                    let mass = distance.mass * surface.mass;
+                    let classic_basis = (110 - cost(distance.classic) - cost(surface.classic)).max(-20);
+                    let senior_basis = (110 - cost(distance.senior) - cost(surface.senior)).max(-20);
+                    for classic_streak in 1..=6 {
+                        let classic_chance =
+                            data.attempt_chance(classic_basis, scored_position(classic.goal, classic_streak));
+                        for senior_streak in 1..=6 {
+                            let senior_chance =
+                                data.attempt_chance(senior_basis, scored_position(senior.goal, senior_streak));
+                            repeated.both_wins[classic_streak][senior_streak] += mass * classic_chance * senior_chance;
+                        }
+                    }
+                }
+            }
+            adjusted_uma.repeated_races.push(repeated);
+        }
+    }
+    Some(PinkUma { uma: adjusted_uma, expected_basis })
+}
+
 impl CareerSetup<'_> {
     /// The lineage trainee's aptitudes over the career with her parents (MODEL.md, aptitude sparks): at the start, per
     /// aptitude the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to
@@ -135,76 +278,6 @@ impl CareerSetup<'_> {
         }
         Some(PinkCareer { base, start, fire })
     }
-    /// Trainee t's race table with her pink sparks counted (`pink_career`): per G1 option the win chance per streak
-    /// position, the expectation over her distance and surface grades at that turn (before Classic April: the start
-    /// grades; then after one inspiration; from Senior April after both). None when nothing changes (no aptitude data,
-    /// or her grades and the base data agree at every turn).
-    /// Also per turn and option her expected aptitude score (110 - grade costs), as the exporter's bp.
-    fn pink_uma(&self, pink_career: &PinkCareer, trainee: crate::uma::UmaIndex) -> Option<(Uma, Vec<Vec<f64>>)> {
-        let data = self.data;
-        if data.race_distance.len() < data.race_count || data.race_surface.len() < data.race_count {
-            return None;
-        }
-        let uma = &data.umas[trainee];
-        // per aptitude, the grade distribution after 0, 1 and 2 inspirations
-        let grade_distributions: Vec<[Vec<(u8, f64)>; 3]> = (0..10)
-            .map(|k| {
-                let fire_chances: Vec<f64> =
-                    pink_career.fire.iter().filter(|spark| spark.aptitude == k).map(|spark| spark.chance).collect();
-                let one = pbinom(&fire_chances);
-                let two = conv(&one, &one);
-                let grade_distribution = |success_distribution: &[f64]| {
-                    let mut distribution: Vec<(u8, f64)> = vec![];
-                    for (i, &weight) in success_distribution.iter().enumerate() {
-                        if weight <= 0.0 {
-                            continue;
-                        }
-                        let grade = (pink_career.start[k] as usize + i).min(8) as u8;
-                        if let Some(entry) = distribution.iter_mut().find(|entry| entry.0 == grade) {
-                            entry.1 += weight;
-                        } else {
-                            distribution.push((grade, weight));
-                        }
-                    }
-                    distribution
-                };
-                [vec![(pink_career.start[k], 1.0)], grade_distribution(&one), grade_distribution(&two)]
-            })
-            .collect();
-        if pink_career.start == pink_career.base && pink_career.fire.iter().all(|spark| spark.aptitude >= 6) {
-            return None;
-        }
-        let cost = |grade: u8| -> i32 { [90, 90, 60, 40, 30, 20, 10, 0, 0][grade as usize] };
-        let mut adjusted_uma = uma.clone();
-        let mut expected_basis: Vec<Vec<f64>> =
-            uma.race_options.iter().map(|options| vec![0.0; options.len()]).collect();
-        for turn in 0..NT {
-            let inspirations = INSP_TURNS.iter().filter(|&&april_turn| turn >= april_turn).count();
-            for (option_index, option) in uma.race_options[turn].iter().enumerate() {
-                if option.race < 0 {
-                    continue;
-                }
-                let race = option.race as usize;
-                let (distance, surface) =
-                    (data.race_distance[race] as usize, if data.race_surface[race] == 1 { 4 } else { 5 });
-                let mut win_chances = [0.0f64; 7];
-                for &(distance_grade, distance_weight) in &grade_distributions[distance][inspirations] {
-                    for &(surface_grade, surface_weight) in &grade_distributions[surface][inspirations] {
-                        let win_rate_basis = (110 - cost(distance_grade) - cost(surface_grade)).max(-20);
-                        expected_basis[turn][option_index] +=
-                            distance_weight * surface_weight * f64::from(win_rate_basis);
-                        for k in 1..=6 {
-                            win_chances[k] += distance_weight
-                                * surface_weight
-                                * data.attempt_chance(win_rate_basis, scored_position(option.goal, k));
-                        }
-                    }
-                }
-                adjusted_uma.choices[turn][option_index + 1].win_chances = win_chances;
-            }
-        }
-        Some((adjusted_uma, expected_basis))
-    }
     /// The chance of each pink spark of her veteran (MODEL.md): one, its aptitude uniform over those she ends at A or S
     /// (stars 20/70/10, not here): per aptitude (data.json `apt` order) P(it is the one); exact, the aptitudes'
     /// inspirations independent. The rest: no aptitude at A or S.
@@ -240,8 +313,9 @@ impl CareerSetup<'_> {
     pub(crate) fn schedule(&self, pool: &Pool, lineage: Lineage) -> RaceSchedule {
         let Lineage { trainee, first_parent, second_parent } = lineage;
         let data = self.data;
-        let adjusted_uma = self.pink_career(pool, lineage).and_then(|pink_career| self.pink_uma(&pink_career, trainee));
-        let uma = adjusted_uma.as_ref().map_or(&data.umas[trainee], |adjusted| &adjusted.0);
+        let adjusted_uma =
+            self.pink_career(pool, lineage).and_then(|pink_career| pink_uma(data, &pink_career, trainee));
+        let uma = adjusted_uma.as_ref().map_or(&data.umas[trainee], |adjusted| &adjusted.uma);
         let mut race_weights = vec![FILL_EPS; data.race_count];
         for parent in [first_parent, second_parent] {
             for &RaceWin { race, chance: parent_chance } in &pool.veterans[parent].wins {
@@ -294,7 +368,9 @@ impl CareerSetup<'_> {
                 let option_chances = uma.choices[turn][option_index + 1].win_chances;
                 let aptitude_cost = adjusted_uma
                     .as_ref()
-                    .map_or(f64::from(110 - option.win_rate_basis), |adjusted| 110.0 - adjusted.1[turn][option_index])
+                    .map_or(f64::from(110 - option.win_rate_basis), |adjusted| {
+                        110.0 - adjusted.expected_basis[turn][option_index]
+                    })
                     .round() as i64;
                 let cell = if run {
                     json!({"p": (option_chances[k] * 100.0).round(), "goal": option.goal, "apt": aptitude_cost, "row": k, "pen": data.streak_penalty(option.goal, k)})
@@ -307,5 +383,178 @@ impl CareerSetup<'_> {
             }
         }
         RaceSchedule { rows: Value::Array(rows), win_chances }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PinkCareer, PinkFire, pink_uma};
+    use crate::data::{Choice, Data, NT, Sched, load_str};
+    use crate::uma::UmaIndex;
+    use serde_json::json;
+
+    const COST: [i32; 9] = [90, 90, 60, 40, 30, 20, 10, 0, 0];
+    const PENALTY: [i32; 6] = [0, 0, 5, 20, 30, 50];
+
+    /// Forced lead-in races set each attempt's streak; a second Senior option competes with the repeat.
+    fn repeat_data(classic_turn: usize, streaks: [usize; 2], goals: [bool; 2], aptitudes: [u8; 10]) -> Data {
+        let mut turns = vec![vec![]; NT];
+        let mut forced = vec![];
+        let basis = 110 - COST[aptitudes[0] as usize] - COST[aptitudes[4] as usize];
+        for (year, turn) in [classic_turn, classic_turn + 24].into_iter().enumerate() {
+            for lead_in in turn + 1 - streaks[year]..turn {
+                turns[lead_in].push(json!({"prog": 0, "race": -1, "bp": 0}));
+                forced.push(json!([[lead_in + 1, 0]]));
+            }
+            turns[turn].push(json!({"prog": 1, "race": 0, "bp": basis, "goal": goals[year]}));
+        }
+        forced.push(json!([[classic_turn + 1, 0]]));
+        turns[classic_turn + 24].push(json!({"prog": 2, "race": 1, "bp": 110}));
+        load_str(
+            &json!({
+                "race_names": ["Repeat", "Alternative"], "race_cat": [0, 1], "race_ground": [1, 2],
+                "relations": [], "pen": PENALTY,
+                "umas": [{"id": 1, "name": "Synthetic", "apt": aptitudes, "turns": turns, "goals": forced}]
+            })
+            .to_string(),
+        )
+    }
+
+    fn repeat_schedule(classic_turn: usize, streaks: [usize; 2]) -> Sched {
+        let mut schedule = [Choice::Rest; NT];
+        for (year, turn) in [classic_turn, classic_turn + 24].into_iter().enumerate() {
+            schedule[turn + 1 - streaks[year]..=turn].fill(Choice::Opt(0));
+        }
+        schedule
+    }
+
+    /// Independent oracle: enumerate every individual spark's two Bernoulli firings, apply them in
+    /// turn order, then average the conditional miss product. No production distribution/table helpers.
+    fn enumerated_win(pink: &PinkCareer, classic_turn: usize, streaks: [usize; 2], goals: [bool; 2]) -> f64 {
+        let mut total = 0.0;
+        for firings in 0..(1usize << (2 * pink.fire.len())) {
+            let mut grades = pink.start;
+            let mut mass = 1.0;
+            let mut miss = 1.0;
+            let mut inspiration = 0;
+            for (year, turn) in [classic_turn, classic_turn + 24].into_iter().enumerate() {
+                while inspiration < 2 && turn >= [30, 54][inspiration] {
+                    for (index, spark) in pink.fire.iter().enumerate() {
+                        let fires = firings & (1 << (inspiration * pink.fire.len() + index)) != 0;
+                        if fires {
+                            mass *= spark.chance;
+                            grades[spark.aptitude] = (grades[spark.aptitude] + 1).min(8);
+                        } else {
+                            mass *= 1.0 - spark.chance;
+                        }
+                    }
+                    inspiration += 1;
+                }
+                let position = if goals[year] { streaks[year].saturating_sub(1).max(1) } else { streaks[year] };
+                let basis = 110 - COST[grades[0] as usize] - COST[grades[4] as usize];
+                let chance = f64::from((basis - PENALTY[position - 1]).clamp(0, 100)) / 100.0;
+                miss *= 1.0 - chance;
+            }
+            // Integrate any inspiration after the final attempt as well, so each bit pattern has its mass.
+            for later in inspiration..2 {
+                for (index, spark) in pink.fire.iter().enumerate() {
+                    mass *= if firings & (1 << (later * pink.fire.len() + index)) != 0 {
+                        spark.chance
+                    } else {
+                        1.0 - spark.chance
+                    };
+                }
+            }
+            total += mass * (1.0 - miss);
+        }
+        total
+    }
+
+    #[test]
+    fn pink_repeats_match_independent_enumeration() {
+        for (classic_turn, distance, surface) in [(35, 4, 6), (29, 4, 6), (35, 7, 7), (35, 8, 8)] {
+            let mut start = [7; 10];
+            start[0] = distance;
+            start[4] = surface;
+            let pink = PinkCareer {
+                base: start,
+                start,
+                fire: [(0, 0.17), (0, 0.29), (4, 0.23)]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(slot, (aptitude, chance))| PinkFire { aptitude, chance, slot, stars: 3 })
+                    .collect(),
+            };
+            for classic_streak in 1..=6 {
+                for senior_streak in 1..=6 {
+                    let streaks = [classic_streak, senior_streak];
+                    let goals = [true, false];
+                    let data = repeat_data(classic_turn, streaks, goals, start);
+                    let adjusted = pink_uma(&data, &pink, UmaIndex(0)).unwrap();
+                    let schedule = repeat_schedule(classic_turn, streaks);
+                    let expected = enumerated_win(&pink, classic_turn, streaks, goals);
+                    let actual = data.win_chances(&adjusted.uma, &schedule)[0];
+                    assert!(
+                        (actual - expected).abs() < 1e-12,
+                        "turn {classic_turn}, streaks {streaks:?}: {actual} != {expected}"
+                    );
+                    let (_, value) = data.best_response_solve(&adjusted.uma, &[1.0, 0.0], None).unwrap();
+                    assert!((value - expected).abs() < 1e-12, "DP value {value} != {expected}");
+                    // Entering just one attempt must still use its marginal chance.
+                    let mut single = schedule;
+                    single[classic_turn + 24] = Choice::Rest;
+                    let marginal = adjusted.uma.choices[classic_turn][1].win_chances[classic_streak];
+                    assert_eq!(
+                        data.win_chances(&adjusted.uma, &single)[0].to_bits(),
+                        (1.0 - (1.0 - marginal)).to_bits()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pink_correlation_changes_the_best_schedule() {
+        let mut start = [7; 10];
+        start[0] = 4;
+        let pink =
+            PinkCareer { base: start, start, fire: vec![PinkFire { aptitude: 0, chance: 0.2, slot: 0, stars: 3 }] };
+        let data = repeat_data(35, [1, 1], [false, false], start);
+        let adjusted = pink_uma(&data, &pink, UmaIndex(0)).unwrap();
+        let exact = enumerated_win(&pink, 35, [1, 1], [false, false]);
+        assert!((exact - 0.9696).abs() < 1e-12, "analytic control: {exact}");
+        // Independent marginals give .9712, above the alternative's .82 + .1504.
+        // The exact repeat is below it, so the DP must choose the alternative.
+        let (schedule, value) = data.best_response_solve(&adjusted.uma, &[1.0, 0.1504], None).unwrap();
+        assert_eq!(schedule[59], Choice::Opt(1));
+        assert!((value - 0.9704).abs() < 1e-12, "alternative value: {value}");
+    }
+
+    #[test]
+    fn no_pink_repeats_keep_the_original_bits() {
+        let mut start = [7; 10];
+        start[0] = 4;
+        let pink = PinkCareer { base: start, start, fire: vec![] };
+        for classic_streak in 1..=6 {
+            for senior_streak in 1..=6 {
+                let streaks = [classic_streak, senior_streak];
+                let data = repeat_data(35, streaks, [false, true], start);
+                assert!(pink_uma(&data, &pink, UmaIndex(0)).is_none(), "no pinks must use the base table");
+                let uma = &data.umas[UmaIndex(0)];
+                assert!(uma.repeated_races.is_empty(), "certain aptitudes need no joint table");
+                let classic = uma.choices[35][1].win_chances[classic_streak];
+                let senior = uma.choices[59][1].win_chances[senior_streak];
+                let mut original_miss = 1.0;
+                original_miss *= 1.0 - classic;
+                original_miss *= 1.0 - senior;
+                let expected = 1.0 - original_miss;
+                let schedule = repeat_schedule(35, streaks);
+                assert_eq!(data.win_chances(uma, &schedule)[0].to_bits(), expected.to_bits());
+                let (chosen, value) = data.best_response_solve(uma, &[1.0, 0.0], None).unwrap();
+                assert_eq!(chosen, schedule);
+                assert_eq!(value.to_bits(), expected.to_bits());
+                assert_eq!((1.0 - (1.0 - classic) * (1.0 - senior)).to_bits(), expected.to_bits());
+            }
+        }
     }
 }
