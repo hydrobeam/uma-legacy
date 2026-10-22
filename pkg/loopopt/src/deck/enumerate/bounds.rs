@@ -4,30 +4,30 @@ use crate::deck::{DeckSpace, Model};
 
 /// Outfit rows and their zero/low-target split columns, in clause/chance/outfit order.
 /// Bound calculations borrow the tables; traversal takes the `av` scratch buffer.
-pub(in crate::deck::enumerate) struct OutfitBounds {
-    pub(in crate::deck::enumerate) oq: Vec<(usize, usize, f64, usize)>,
-    pub(in crate::deck::enumerate) og: Vec<(usize, usize, usize)>,
+pub(crate) struct OutfitBounds {
+    pub(crate) oq: Vec<(usize, usize, f64, usize)>,
+    pub(crate) og: Vec<(usize, usize, usize)>,
     // Retain the preparation buffer until traversal ends, preserving its allocation lifetime.
-    pub(in crate::deck::enumerate) zero: Vec<f64>,
-    pub(in crate::deck::enumerate) av: Vec<f64>,
-    pub(in crate::deck::enumerate) orow: Vec<crate::skills::OutfitPre>,
-    pub(in crate::deck::enumerate) p0: Vec<f64>,
-    pub(in crate::deck::enumerate) cix: Vec<usize>,
-    pub(in crate::deck::enumerate) zm: Vec<u32>,
-    pub(in crate::deck::enumerate) nm: Vec<u32>,
-    pub(in crate::deck::enumerate) p0n: Vec<f64>,
-    pub(in crate::deck::enumerate) alt: Vec<(usize, usize)>,
-    pub(in crate::deck::enumerate) column_count: usize,
+    pub(crate) zero: Vec<f64>,
+    pub(crate) av: Vec<f64>,
+    pub(crate) orow: Vec<crate::skills::OutfitPre>,
+    pub(crate) p0: Vec<f64>,
+    pub(crate) cix: Vec<usize>,
+    pub(crate) zm: Vec<u32>,
+    pub(crate) nm: Vec<u32>,
+    pub(crate) p0n: Vec<f64>,
+    pub(crate) alt: Vec<(usize, usize)>,
+    pub(crate) column_count: usize,
 }
 
 /// Empty-card factors, ratio-column masks/divisors, and ordered factor prefixes.
-pub(in crate::deck::enumerate) struct RatioPrefixes {
-    pub(in crate::deck::enumerate) f0: Vec<f64>,
-    pub(in crate::deck::enumerate) cmk: Vec<Option<(u32, f64)>>,
-    pub(in crate::deck::enumerate) cpre: Vec<f64>,
+pub(crate) struct RatioPrefixes {
+    pub(crate) f0: Vec<f64>,
+    pub(crate) cmk: Vec<Option<(u32, f64)>>,
+    pub(crate) cpre: Vec<f64>,
 }
 
-pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
+pub(crate) fn prepare_outfit_bounds(
     model: &Model,
     us: &[usize],
     clauses: &[(Vec<(usize, f64)>, f64)],
@@ -134,18 +134,18 @@ pub(in crate::deck::enumerate) fn prepare_outfit_bounds(
 }
 
 /// Column i names an outfit row and a target split; every slice uses that column order.
-pub(in crate::deck::enumerate) struct RatioColumns<'table> {
-    pub(in crate::deck::enumerate) outfit_rows: &'table [(usize, usize, f64, usize)],
-    pub(in crate::deck::enumerate) outfits: &'table [crate::skills::OutfitPre],
-    pub(in crate::deck::enumerate) empty_values: &'table [f64],
-    pub(in crate::deck::enumerate) row_indices: &'table [usize],
-    pub(in crate::deck::enumerate) zero_masks: &'table [u32],
-    pub(in crate::deck::enumerate) nonzero_masks: &'table [u32],
-    pub(in crate::deck::enumerate) divisors: &'table [f64],
-    pub(in crate::deck::enumerate) target_count: usize,
+pub(crate) struct RatioColumns<'table> {
+    pub(crate) outfit_rows: &'table [(usize, usize, f64, usize)],
+    pub(crate) outfits: &'table [crate::skills::OutfitPre],
+    pub(crate) empty_values: &'table [f64],
+    pub(crate) row_indices: &'table [usize],
+    pub(crate) zero_masks: &'table [u32],
+    pub(crate) nonzero_masks: &'table [u32],
+    pub(crate) divisors: &'table [f64],
+    pub(crate) target_count: usize,
 }
 
-pub(in crate::deck::enumerate) fn prepare_ratio_prefixes(columns: &RatioColumns<'_>) -> RatioPrefixes {
+pub(crate) fn prepare_ratio_prefixes(columns: &RatioColumns<'_>) -> RatioPrefixes {
     let noq = columns.outfit_rows.len();
     let column_count = columns.row_indices.len();
     // A column's ratio of one card (`ratio_at`, or without the split the plain ratio: the same form, every columns.zero_masks 0) is
@@ -190,12 +190,12 @@ pub(in crate::deck::enumerate) fn prepare_ratio_prefixes(columns: &RatioColumns<
 
 /// Dominance is cached per legal entry set, chain key and group.
 #[derive(Clone, Copy)]
-pub(in crate::deck::enumerate) struct DominanceRequest<'group> {
-    pub(in crate::deck::enumerate) set_id: usize,
-    pub(in crate::deck::enumerate) code: u64,
-    pub(in crate::deck::enumerate) group: usize,
-    pub(in crate::deck::enumerate) entries: &'group [usize],
-    pub(in crate::deck::enumerate) lock_bits: &'group [u8],
+pub(crate) struct DominanceRequest<'group> {
+    pub(crate) set_id: usize,
+    pub(crate) code: u64,
+    pub(crate) group: usize,
+    pub(crate) entries: &'group [usize],
+    pub(crate) lock_bits: &'group [u8],
 }
 
 impl DeckSpace<'_> {
@@ -218,7 +218,7 @@ impl DeckSpace<'_> {
     /// never such a D: the decks through B are skipped when nothing of A's character can follow B, else those without a
     /// pick of A's character (`need`). Only which decks are visited (the rest in the same order) and how the bar rises
     /// change: the deck found, its value and odds do not.
-    pub(in crate::deck::enumerate) fn dom_table(
+    pub(crate) fn dom_table(
         &self,
         request: DominanceRequest<'_>,
         misses: EntryMisses<'_>,
@@ -279,7 +279,7 @@ impl DeckSpace<'_> {
 /// The least exact gap (parent's gold-miss product times the picks left's lowest times the misses' difference) for
 /// which a lower gold miss is sure to give a gold odd and factor above the other deck's after rounding (both are
 /// within about 2^-50 of exact)
-pub(in crate::deck::enumerate) const DOM_GAP: f64 = 1.0 / (1u64 << 28) as f64;
+pub(crate) const DOM_GAP: f64 = 1.0 / (1u64 << 28) as f64;
 
 thread_local! {
     /// RB_CHECK: (leaves checked, (leaf, clause, ancestor) tests, violations: a value above an ancestor's bound by more
@@ -287,7 +287,7 @@ thread_local! {
     pub(crate) static RBCHK: std::cell::RefCell<(usize, usize, usize, f64)> = const { std::cell::RefCell::new((0, 0, 0, 0.0)) };
 }
 
-pub(in crate::deck::enumerate) fn rb_check() -> f64 {
+pub(crate) fn rb_check() -> f64 {
     static C: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
     *C.get_or_init(|| std::env::var("RB_CHECK").ok().map_or(0.0, |v| v.parse().unwrap_or(1.0)))
 }

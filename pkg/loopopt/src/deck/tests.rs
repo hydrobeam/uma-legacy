@@ -462,8 +462,8 @@ fn upper_bound_covers_exact() {
     let decks: Vec<Vec<(Src, Kind)>> = vec![
         vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0)), (e.clone(), (0, 0, 0))],
         vec![(a.clone(), (3, 3, 0)), (c.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))],
-        vec![(a.clone(), (3, 2, 0)), (c.clone(), (3, 3, risk)), (b.clone(), (2, 2, 0))],
-        vec![(a.clone(), (3, 3, 0)), (c.clone(), (3, 1, 0)), (e.clone(), (0, 0, 0))],
+        vec![(a.clone(), (3, 2, 0)), (c.clone(), (3, 3, risk)), (b, (2, 2, 0))],
+        vec![(a, (3, 3, 0)), (c, (3, 1, 0)), (e, (0, 0, 0))],
     ];
     let mut covered = 0;
     for ents in &decks {
@@ -574,10 +574,9 @@ fn group_level_orthant_check() {
     let b = Src { fixed: vec![two(3, 0), three], chains: vec![(2, g1(3, 2, 1.0))], ..Default::default() }.finish();
     let c = Src { train: vec![(2, 0.2)], chains: vec![(3, g1(2, 2, 0.6))], ..Default::default() }.finish();
     assert!(a.cf_ok && b.cf_ok && c.cf_ok && b.multi);
-    for ents in [
-        vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))],
-        vec![(a.clone(), (3, 3, 0)), (c.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))],
-    ] {
+    for ents in
+        [vec![(a.clone(), (3, 3, 0)), (b.clone(), (2, 2, 0))], vec![(a, (3, 3, 0)), (c, (3, 3, 0)), (b, (2, 2, 0))]]
+    {
         for fill in [0usize, 2] {
             for u in [0usize, 5, 20] {
                 let qs = [0.1, 0.5, 0.9];

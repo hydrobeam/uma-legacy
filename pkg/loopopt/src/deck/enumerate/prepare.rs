@@ -13,7 +13,7 @@ use crate::deck::{
 
 impl DeckSpace<'_> {
     /// Resolve legality and proof modes before preparing configuration bounds or visiting a deck.
-    pub(in crate::deck::enumerate) fn configure_search(
+    pub(crate) fn configure_search(
         &self,
         model: &Model,
         us: &[usize],
@@ -141,7 +141,7 @@ impl DeckSpace<'_> {
 
     /// Prepare shared bounds, then build and traverse configurations. The callbacks borrow
     /// these tables and their lazy caches for both phases; none need copying or dynamic dispatch.
-    pub(in crate::deck::enumerate) fn search_with_bounds(
+    pub(crate) fn search_with_bounds(
         &self,
         model: &Model,
         us: &[usize],

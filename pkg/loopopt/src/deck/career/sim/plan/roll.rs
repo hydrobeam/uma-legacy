@@ -11,15 +11,15 @@ use crate::deck::career::{Career, JobInputs, Lineage};
 // ---------- a roll of the plan's pick, on demand (`next.roll`) ----------
 /// Candidate whose step may change at an outcome.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct ActiveCandidate {
+pub(crate) struct ActiveCandidate {
     /// Position in the fixed planner candidate table.
-    pub(in crate::deck::career::sim::plan) candidate: CandidateIndex,
+    pub(crate) candidate: CandidateIndex,
     /// Slot in the prepared outcome table, if this candidate has one.
-    pub(in crate::deck::career::sim::plan) slot: Option<usize>,
+    pub(crate) slot: Option<usize>,
     /// Odds above which this candidate's step can improve.
-    pub(in crate::deck::career::sim::plan) threshold: f64,
+    pub(crate) threshold: f64,
     /// Candidate's odds in the original pool.
-    pub(in crate::deck::career::sim::plan) current_chance: f64,
+    pub(crate) current_chance: f64,
 }
 
 /// One scoring's outcome evaluation as `sc_eval` reads it (built by `score_career_`; a plan keeps its pick's for a roll,
@@ -28,37 +28,37 @@ pub(in crate::deck::career::sim::plan) struct ActiveCandidate {
 /// and scf); the tables kept (`sc_prep`: level 0 of the fold, table j at j 2^nu) and each one's setup; the collapsed
 /// targets; per setup its candidate slot and per slot the odds now; her landed sets' chances (`os`); the candidates the
 /// loop can lift (`act`); her own 8/8's trio sides (`her`); her candidate index, the goal, the star mix
-pub(in crate::deck::career::sim) struct Scored {
-    pub(in crate::deck::career::sim::plan) nu: usize,
-    pub(in crate::deck::career::sim::plan) nf: usize,
-    pub(in crate::deck::career::sim::plan) ntar: usize,
-    pub(in crate::deck::career::sim::plan) na: usize,
-    pub(in crate::deck::career::sim::plan) xi: Option<usize>,
-    pub(in crate::deck::career::sim::plan) goal: bool,
-    pub(in crate::deck::career::sim::plan) w: [f64; 3],
-    pub(in crate::deck::career::sim::plan) uncv: Vec<usize>,
-    pub(in crate::deck::career::sim::plan) fmm: Vec<TargetMask>,
-    pub(in crate::deck::career::sim::plan) x0: Vec<Vec<f64>>,
-    pub(in crate::deck::career::sim::plan) xm: Vec<[f64; 4]>,
-    pub(in crate::deck::career::sim::plan) pw: Vec<Vec<[f64; 2]>>,
-    pub(in crate::deck::career::sim::plan) tsi: Vec<usize>,
-    pub(in crate::deck::career::sim::plan) t0: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) col: Vec<bool>,
-    pub(in crate::deck::career::sim::plan) sslot: Vec<usize>,
-    pub(in crate::deck::career::sim::plan) p0: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) os: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) act: Vec<ActiveCandidate>,
-    pub(in crate::deck::career::sim::plan) her: Vec<OwnTrio>,
-    pub(in crate::deck::career::sim::plan) xs: Vec<Vec<[f64; 4]>>,
-    pub(in crate::deck::career::sim::plan) xc: Vec<Vec<[f64; 4]>>,
-    pub(in crate::deck::career::sim::plan) scf: Vec<f64>,
+pub(crate) struct Scored {
+    pub(crate) nu: usize,
+    pub(crate) nf: usize,
+    pub(crate) ntar: usize,
+    pub(crate) na: usize,
+    pub(crate) xi: Option<usize>,
+    pub(crate) goal: bool,
+    pub(crate) w: [f64; 3],
+    pub(crate) uncv: Vec<usize>,
+    pub(crate) fmm: Vec<TargetMask>,
+    pub(crate) x0: Vec<Vec<f64>>,
+    pub(crate) xm: Vec<[f64; 4]>,
+    pub(crate) pw: Vec<Vec<[f64; 2]>>,
+    pub(crate) tsi: Vec<usize>,
+    pub(crate) t0: Vec<f64>,
+    pub(crate) col: Vec<bool>,
+    pub(crate) sslot: Vec<usize>,
+    pub(crate) p0: Vec<f64>,
+    pub(crate) os: Vec<f64>,
+    pub(crate) act: Vec<ActiveCandidate>,
+    pub(crate) her: Vec<OwnTrio>,
+    pub(crate) xs: Vec<Vec<[f64; 4]>>,
+    pub(crate) xc: Vec<Vec<[f64; 4]>>,
+    pub(crate) scf: Vec<f64>,
 }
 
 impl Scored {
     /// what the fold and the outcome loop read of the setups: per setup, target and star level x = x0 xm and 1 - x; per
     /// landed set m and setup the spark scale, the product over job targets of pw at her spark there (m-major:
     /// scf[m * ns + si])
-    pub(in crate::deck::career::sim::plan) fn derive(&mut self) {
+    pub(crate) fn derive(&mut self) {
         let nu = self.nu;
         self.xs = self
             .x0
@@ -75,19 +75,19 @@ impl Scored {
             }));
         }
     }
-    pub(in crate::deck::career::sim::plan) const fn ns(&self) -> usize {
+    pub(crate) const fn ns(&self) -> usize {
         self.x0.len()
     }
     /// the fold writes per leaf the setups' table values (fewer rows than per outcome and slot), else per outcome the
     /// slots' odds (`fold_emit`)
-    pub(in crate::deck::career::sim::plan) const fn pl(&self) -> bool {
+    pub(crate) const fn pl(&self) -> bool {
         (1usize << self.nf) * self.na > self.ns()
     }
-    pub(in crate::deck::career::sim::plan) const fn full_m(&self) -> TargetMask {
+    pub(crate) const fn full_m(&self) -> TargetMask {
         TargetMask::from_bits((1usize << self.ntar) - 1)
     }
     /// a leaf's representative: every collapsed target's nonzero digit set to 1 (`sc_outcomes`)
-    pub(in crate::deck::career::sim::plan) fn rep_of(&self, l: usize) -> usize {
+    pub(crate) fn rep_of(&self, l: usize) -> usize {
         let cm: usize = (0..self.nu).filter(|&k| self.col[k]).map(|k| 3usize << (2 * k)).sum();
         let lo_bits = cm & (usize::MAX / 3);
         let z = l & cm;
@@ -97,7 +97,7 @@ impl Scored {
 
 /// The base a kept scoring was scored against (`ScoreBase` without the sides and C's umas, which only `her_trios` reads).
 /// Per-candidate vectors follow `candidates`' order.
-pub(in crate::deck::career::sim::plan) struct KeptBase {
+pub(crate) struct KeptBase {
     /// The stage candidates (`ScoreBase::cands`).
     candidates: Vec<usize>,
     /// Each candidate's step (`ScoreBase::c1`).
@@ -113,7 +113,7 @@ pub(in crate::deck::career::sim::plan) struct KeptBase {
 }
 
 impl KeptBase {
-    pub(in crate::deck::career::sim::plan) fn of(score_base: &ScoreBase) -> Self {
+    pub(crate) fn of(score_base: &ScoreBase) -> Self {
         Self {
             candidates: score_base.cands.to_vec(),
             step_costs: score_base.c1.to_vec(),
@@ -142,16 +142,16 @@ impl KeptBase {
 /// A plan's roll state (`next.roll`), kept per plan job (`roll_key`): the pick's last scoring (`Scored`) and the base it
 /// was scored against, the pick's career, and what its bound reads beyond them (`outcome_hi`): her own 8/8's trio sides as
 /// the plan's end has them (`pick_her`) and the main search's found-career anchors (`found_anchors`)
-pub(in crate::deck::career) struct RollKeep {
+pub(crate) struct RollKeep {
     /// The plan job's roll key (`roll_key`).
-    pub(in crate::deck::career::sim::plan) key: u64,
-    pub(in crate::deck::career::sim::plan) scored: Scored,
-    pub(in crate::deck::career::sim::plan) base: KeptBase,
+    pub(crate) key: u64,
+    pub(crate) scored: Scored,
+    pub(crate) base: KeptBase,
     /// The pick's trainee and parents, and her deck.
-    pub(in crate::deck::career::sim::plan) lineage: Lineage,
-    pub(in crate::deck::career::sim::plan) deck: Sel,
+    pub(crate) lineage: Lineage,
+    pub(crate) deck: Sel,
     /// Her own 8/8's trio sides at the plan's end (`pick_her`).
-    pub(in crate::deck::career::sim::plan) own_trios: Vec<OwnTrio>,
+    pub(crate) own_trios: Vec<OwnTrio>,
     /// The main search's found-career anchors (`found_anchors`).
     pub(in crate::deck::career::sim::plan) found_anchors: Vec<Option<FoundAnchor>>,
     /// the bound's anchors per (candidate, partner), kept by its first roll for the next (`HiAnc`; not stored by `state_out`)
@@ -160,7 +160,7 @@ pub(in crate::deck::career) struct RollKeep {
 
 impl RollKeep {
     /// The state is of this trainee's career on these parents, in this order.
-    pub(in crate::deck::career::sim::plan) const fn is_of(&self, trainee: usize, career: &Found) -> bool {
+    pub(crate) const fn is_of(&self, trainee: usize, career: &Found) -> bool {
         self.lineage.trainee == trainee
             && self.lineage.first_parent == career.a
             && self.lineage.second_parent == career.b
@@ -174,11 +174,11 @@ const ROLL_KEEP: usize = 4;
 
 /// a plan job's roll key: the whole job but its roll (`next.roll`) and the page's flags that change no plan
 /// (`no_reports`, `compare`)
-pub(in crate::deck::career::sim::plan) fn roll_key(job: &Value) -> u64 {
+pub(crate) fn roll_key(job: &Value) -> u64 {
     h64(&crate::deck::career::json_without(job, &["no_reports", "compare", "roll"], &["roll"]))
 }
 
-pub(in crate::deck::career::sim::plan) fn keep_roll(roll: RollKeep) {
+pub(crate) fn keep_roll(roll: RollKeep) {
     ROLLS.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.retain(|entry| entry.key != roll.key);
@@ -194,7 +194,7 @@ pub(in crate::deck::career::sim::plan) fn keep_roll(roll: RollKeep) {
 /// y: the careers her veteran saves at that outcome, the pick's kept scoring evaluated at that one outcome (`sc_eval`,
 /// the plan's own arithmetic in its order: the f64 the plan's full table held); where y < 0.5 the bound y_hi
 /// (`outcome_hi` at that one cell). Rounded as the table was: y to 0.01, y_hi up to 0.01 (null where y >= 0.5)
-pub(in crate::deck::career) fn roll_kept<'data>(
+pub(crate) fn roll_kept<'data>(
     env: &mut Env<'data>,
     input: &JobInputs<'data>,
     legs: &[Legacy],
@@ -271,7 +271,7 @@ fn roll_answer(s: &mut Sim, roll_pool: &RollPool, kept: &mut RollKeep, stars: &[
 }
 
 /// the kept roll states for the page to store (`state_out`), every float as its bits
-pub(in crate::deck::career) fn rolls_out() -> Value {
+pub(crate) fn rolls_out() -> Value {
     use crate::deck::career::{fvec, hx, sel_out, ux};
     let trios_out = |trios: &[OwnTrio]| {
         trios
@@ -312,7 +312,7 @@ pub(in crate::deck::career) fn rolls_out() -> Value {
 
 /// Kept roll states from the page's store (`state_in`); None refuses the store whole. (Absent in a state stored before
 /// them: none.)
-pub(in crate::deck::career) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
+pub(crate) fn rolls_in(v: &Value) -> Option<Vec<RollKeep>> {
     use crate::deck::career::{fx, sel_in, usz, uxr};
     let Some(stored) = v.as_array() else { return v.is_null().then(Vec::new) };
     stored
@@ -522,6 +522,6 @@ fn scored_fits(sd: &Scored, base: &KeptBase) -> bool {
         && sd.p0.len() == sd.na
 }
 
-pub(in crate::deck::career) fn rolls_set(r: Vec<RollKeep>) {
+pub(crate) fn rolls_set(r: Vec<RollKeep>) {
     ROLLS.with(|c| *c.borrow_mut() = r);
 }

@@ -1,4 +1,6 @@
 //! Career reports, outcome sets and corner tables.
+use super::inherit::{ExactOptions, Inheritance};
+use super::schedule::RaceSchedule;
 use super::{Ancestor, Env, Found, Legacy, Pool, aff_factor, apt_pink, inherit, now_ms, pink_p, prof, set_ews};
 use crate::deck::career::Lineage;
 use crate::deck::{GEN_GOLD, JointExt, JointScratch, Kind, Sel, Src, Value, joint_eval_in, joint_prep, json};
@@ -7,7 +9,7 @@ use crate::deck::{GEN_GOLD, JointExt, JointScratch, Kind, Sel, Src, Value, joint
 /// caller keeps (the simulator and the plan evaluate tables millions of times).
 /// Folds coordinate 0 first, halving the table each step: entry i after k folds is the full sweep's entry i << k (the
 /// same multiply-adds on the same values, so the same bits), and only those reach entry 0.
-pub(in crate::deck::career) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
+pub(crate) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64>) -> f64 {
     cur.clear();
     cur.extend_from_slice(v);
     let mut n = cur.len();
@@ -22,18 +24,20 @@ pub(in crate::deck::career) fn interp_in(v: &[f64], x: &[f64], cur: &mut Vec<f64
 
 impl Env<'_> {
     /// One career's report: trainee and outfit, parents, the six legacy slots, per target odds, aptitudes, deck, schedule.
-    pub(in crate::deck::career) fn report(&mut self, p: &Pool, f: &Found, with_schedule: bool) -> Value {
+    pub(crate) fn report(&mut self, p: &Pool, f: &Found, with_schedule: bool) -> Value {
         let d = self.d;
         let ntar = self.ntar;
         let nu = self.nu;
         let name = |id: u32| d.umas.iter().find(|u| u.id == id).map_or_else(|| format!("Uma {id}"), |u| u.name.clone());
+        let lineage = f.lineage();
         let (t, a, b) = (f.t, f.a, f.b);
         let uid = d.umas[t].id;
-        let sl = self.slots(p, t, a, b);
-        let (q, nc) = inherit(&sl, ntar);
+        let sl = self.slots(p, lineage);
+        let Inheritance { chances: q, carriers: nc } = inherit(&sl, ntar);
         self.set_trainee(t, &q);
-        let (j, ext) = self.exact(t, &f.sel, &nc, true, with_schedule && ntar <= 12);
-        let o = j.2;
+        let exact =
+            self.exact(t, &f.sel, &nc, ExactOptions { all_but_one: true, landed_sets: with_schedule && ntar <= 12 });
+        let (o, ext) = (exact.outfit, &exact.ext);
         let mut pt = vec![0.0f64; ntar];
         for (pos, &i) in self.uncv.iter().enumerate() {
             pt[i] = ext.marg[o * nu + pos];
@@ -109,16 +113,20 @@ impl Env<'_> {
             .collect();
         // her aptitudes and her veteran's pink spark (MODEL.md): base and start grades (data.json `apt` order, codes 1..8 =
         // G..S), each legacy pink's chance to fire at one April inspiration, and the chance of each pink type
-        let apt = self.pink_career(p, t, a, b).map(|pc| {
+        let apt = self.pink_career(p, lineage).map(|pc| {
             let pg8 = Self::pink_gen(&pc);
             json!({"base": pc.base, "start": pc.start,
                    "fire": pc.fire.iter().map(|f| json!({"group": apt_pink(f.apt), "apt": f.apt, "p": f.p, "slot": f.slot, "stars": f.stars})).collect::<Vec<_>>(),
                    "pink_gen": (0..10).map(|k| json!({"group": apt_pink(k), "p": pg8[k]})).collect::<Vec<_>>()})
         });
-        let outcomes = if with_schedule && ntar <= 12 { json!(self.outcome_sets(j.2, &ext)) } else { Value::Null };
-        let (sched, wp) = if with_schedule { self.schedule(p, t, a, b) } else { (Value::Null, vec![]) };
+        let outcomes = if with_schedule && ntar <= 12 { json!(self.outcome_sets(o, ext)) } else { Value::Null };
+        let RaceSchedule { rows: sched, win_chances: wp } = if with_schedule {
+            self.schedule(p, lineage)
+        } else {
+            RaceSchedule { rows: Value::Null, win_chances: vec![] }
+        };
         json!({"trainee": {"id": uid, "name": d.umas[t].name, "outfits": outfits, "covers": covers},
-               "parents": [a, b], "slots": slots, "targets": targets, "p_all": j.0, "p_minus1": j.1, "expected": pt.iter().sum::<f64>(),
+               "parents": [a, b], "slots": slots, "targets": targets, "p_all": exact.p_all, "p_minus1": exact.p_all_but_one, "expected": pt.iter().sum::<f64>(),
                "bound": f.ub, "deck": pd.out(&self.unc), "pinks": pinks, "aptitudes": apt, "schedule": sched, "outcome_sets": outcomes, "g1_wins": if with_schedule { json!(wp.iter().sum::<f64>()) } else { Value::Null }})
     }
 
@@ -131,7 +139,7 @@ impl Env<'_> {
     /// her deck class holds to the bit, and the deck only through its entries and filler; the memo is kept between jobs
     /// of one setup (`DECK_KEEP`: the same model and entries). `corners` leaves her model at its last corner, q = 0 for
     /// every target (1 - (1 - 0) x 1); a hit sets the same state
-    pub(in crate::deck) fn corners_kept(&mut self, t: usize, sel: &Sel) -> Vec<Vec<f64>> {
+    pub(crate) fn corners_kept(&mut self, t: usize, sel: &Sel) -> Vec<Vec<f64>> {
         let key = (self.cls[t], sel.ents.clone(), sel.filler);
         let z = vec![0.0; self.ntar];
         if let Some(r) = self.corner_memo.get(&key) {
@@ -176,7 +184,7 @@ impl Env<'_> {
     }
 
     /// Joint distribution of full target sets, including guaranteed gold generation.
-    pub(in crate::deck::career) fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
+    pub(crate) fn outcome_sets(&self, outfit: usize, ext: &JointExt) -> Vec<f64> {
         let su = &ext.sets[(outfit << self.nu)..((outfit + 1) << self.nu)];
         let mut ps = vec![0.0f64; 1 << self.ntar];
         for (mu, &x) in su.iter().enumerate() {
@@ -203,21 +211,15 @@ impl Env<'_> {
 
     /// The veteran career (t, a, b) leaves, before her result is known: trainee t, a spark of every target with stars
     /// drawn from the rank mix (`star_dist`), her schedule's win chances `wp`, parents a and b.
-    pub(in crate::deck::career) fn veteran(&self, legs: &[Legacy], lineage: Lineage, wp: Vec<f64>) -> Legacy {
+    pub(crate) fn veteran(&self, legs: &[Legacy], lineage: Lineage, wp: Vec<f64>) -> Legacy {
         let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
-        let anc = |l: &Legacy| Ancestor {
-            chara: l.chara,
-            sparks: l.sparks.clone(),
-            wins: l.wins.clone(),
-            pinks: l.pinks.clone(),
-        };
         Legacy {
             chara: self.d.umas[t].id,
             borrowed: false,
             sparks: self.sj.targets.iter().map(|x| (x.group, 2)).collect(),
             wins: vec![],
             pinks: vec![],
-            parents: vec![anc(&legs[a]), anc(&legs[b])],
+            parents: vec![Ancestor::of_legacy(&legs[a]), Ancestor::of_legacy(&legs[b])],
             win_p: wp,
             mix: Some(self.sj.star_dist),
         }

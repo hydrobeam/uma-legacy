@@ -1,5 +1,6 @@
 //! Aptitude sparks and career race schedules.
 use super::{Env, Pool, aff_factor};
+use crate::deck::career::Lineage;
 use crate::deck::{Choice, NT, Uma, Value, best_response, chart_race_name, json, pk, probs, when};
 
 /// A pink spark's base chance to fire at one April inspiration, per star (0 to 3)
@@ -7,25 +8,25 @@ const PINK_RATE: [f64; 4] = [0.0, 0.01, 0.03, 0.05];
 
 /// that chance from a slot of affinity factor `fa`
 #[inline(always)]
-pub(in crate::deck::career) fn pink_p(st: u8, fa: f64) -> f64 {
+pub(crate) fn pink_p(st: u8, fa: f64) -> f64 {
     (PINK_RATE[st as usize] * fa).min(1.0)
 }
 
 /// A legacy's pink spark over a career: her aptitude (data.json `apt` order), the chance it fires at one April
 /// inspiration, the legacy slot, stars
 #[derive(Clone)]
-pub(in crate::deck::career) struct PinkFire {
-    pub(in crate::deck::career) apt: usize,
-    pub(in crate::deck::career) p: f64,
-    pub(in crate::deck::career) slot: usize,
-    pub(in crate::deck::career) stars: u8,
+pub(crate) struct PinkFire {
+    pub(crate) apt: usize,
+    pub(crate) p: f64,
+    pub(crate) slot: usize,
+    pub(crate) stars: u8,
 }
 
 /// The trainee's aptitude codes (base, after the career start's pinks) and her legacies' pink sparks
-pub(in crate::deck::career) struct PinkCareer {
-    pub(in crate::deck::career) base: [u8; 10],
-    pub(in crate::deck::career) start: [u8; 10],
-    pub(in crate::deck::career) fire: Vec<PinkFire>,
+pub(crate) struct PinkCareer {
+    pub(crate) base: [u8; 10],
+    pub(crate) start: [u8; 10],
+    pub(crate) fire: Vec<PinkFire>,
 }
 
 /// The April inspirations (0-based turns: Classic and Senior early April); a race on that turn already counts them
@@ -44,7 +45,7 @@ const fn pink_apt(g: u32) -> Option<usize> {
 }
 
 /// the pink factor group of aptitude k (inverse of `pink_apt`)
-pub(in crate::deck::career) const fn apt_pink(k: usize) -> u32 {
+pub(crate) const fn apt_pink(k: usize) -> u32 {
     match k {
         0..=3 => 31 + k as u32,
         4 => 11,
@@ -77,12 +78,21 @@ fn conv(a: &[f64], b: &[f64]) -> Vec<f64> {
     w
 }
 
+/// A career's race schedule (`Env::schedule`).
+pub(crate) struct RaceSchedule {
+    /// Every G1 she could enter, in turn order, as the report's rows.
+    pub(crate) rows: Value,
+    /// Her chance of at least one win, per race index.
+    pub(crate) win_chances: Vec<f64>,
+}
+
 impl Env<'_> {
-    /// Trainee t's aptitudes over the career with parents a, b (MODEL.md, aptitude sparks): at the start, per aptitude
-    /// the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to A; at each
-    /// April inspiration (Classic, Senior) every legacy's pink spark fires with base 1/3/5% by stars x (1 + that legacy's
-    /// affinity / 100), each firing +1 grade, at most S. None when data.json has no aptitudes.
-    pub(in crate::deck::career) fn pink_career(&self, p: &Pool, t: usize, a: usize, b: usize) -> Option<PinkCareer> {
+    /// The lineage trainee's aptitudes over the career with her parents (MODEL.md, aptitude sparks): at the start, per
+    /// aptitude the six legacies' pink stars summed raise her base grade 1/2/3/4 grades at 1/4/7/10 stars, at most to
+    /// A; at each April inspiration (Classic, Senior) every legacy's pink spark fires with base 1/3/5% by stars x (1 +
+    /// that legacy's affinity / 100), each firing +1 grade, at most S. None when data.json has no aptitudes.
+    pub(crate) fn pink_career(&self, p: &Pool, lineage: Lineage) -> Option<PinkCareer> {
+        let t = lineage.trainee;
         let apt = &self.d.umas[t].apt;
         if apt.len() < 10 {
             return None;
@@ -91,7 +101,7 @@ impl Env<'_> {
         base.copy_from_slice(&apt[..10]);
         let mut sum = [0u32; 10];
         let mut fire = vec![];
-        for (si, sl) in self.slots(p, t, a, b).iter().enumerate() {
+        for (si, sl) in self.slots(p, lineage).iter().enumerate() {
             for &(g, st) in sl.pinks.iter() {
                 let (Some(k), st) = (pink_apt(g), st.min(3)) else { continue };
                 if st == 0 {
@@ -183,7 +193,7 @@ impl Env<'_> {
     /// The chance of each pink spark of her veteran (MODEL.md): one, its aptitude uniform over those she ends at A or S
     /// (stars 20/70/10, not here): per aptitude (data.json `apt` order) P(it is the one); exact, the aptitudes'
     /// inspirations independent. The rest: no aptitude at A or S.
-    pub(in crate::deck::career) fn pink_gen(pc: &PinkCareer) -> [f64; 10] {
+    pub(crate) fn pink_gen(pc: &PinkCareer) -> [f64; 10] {
         let q: Vec<f64> = (0..10)
             .map(|k| {
                 let ps: Vec<f64> = pc.fire.iter().filter(|f| f.apt == k).map(|f| f.p).collect();
@@ -200,14 +210,15 @@ impl Env<'_> {
         }
         out
     }
-    /// Trainee t's race schedule with parents a and b: every G1 win counts one (a G1 on her record can be shared with a
-    /// later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to each of
-    /// them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the shared one.
-    /// Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does that turn.
-    /// Also her win chance per race index.
-    pub(in crate::deck::career) fn schedule(&self, p: &Pool, t: usize, a: usize, b: usize) -> (Value, Vec<f64>) {
+    /// The lineage trainee's race schedule with her parents: every G1 win counts one (a G1 on her record can be shared
+    /// with a later partner), plus one per parent who won that race (a win she shares with a parent adds 3 affinity to
+    /// each of them when she is a parent herself), so she runs the G1s that win the most and, where two clash, the
+    /// shared one. Rows: every G1 she could enter, in turn order; `run` false for those she skips, with what she does
+    /// that turn. Also her win chance per race index.
+    pub(crate) fn schedule(&self, p: &Pool, lineage: Lineage) -> RaceSchedule {
+        let Lineage { trainee: t, first_parent: a, second_parent: b } = lineage;
         let d = self.d;
-        let pu = self.pink_career(p, t, a, b).and_then(|pc| self.pink_uma(&pc, t));
+        let pu = self.pink_career(p, lineage).and_then(|pc| self.pink_uma(&pc, t));
         let u = pu.as_ref().map_or(&d.umas[t], |x| &x.0);
         let mut wr = vec![1.0f64; d.nr];
         for x in [a, b] {
@@ -220,7 +231,7 @@ impl Env<'_> {
         // her own race table (pinks counted): solved directly (the memo is keyed by uma id)
         let br =
             if pu.is_some() { crate::best_response_solve(d, u, &wr, None) } else { best_response(d, u, &wr, None) };
-        let Some((s, _)) = br else { return (json!([]), vec![0.0; d.nr]) };
+        let Some((s, _)) = br else { return RaceSchedule { rows: json!([]), win_chances: vec![0.0; d.nr] } };
         let wp = probs(d, u, &s);
         let won = |x: usize, r: usize| p.me[x].wins.iter().find(|w| w.0 == r).map_or(0.0, |w| w.1);
         let mut rows = vec![];
@@ -263,6 +274,6 @@ impl Env<'_> {
                                  "parents": par, "shared": par[0] || par[1], "cells": [cell], "runners": u8::from(run), "alts": []}));
             }
         }
-        (Value::Array(rows), wp)
+        RaceSchedule { rows: Value::Array(rows), win_chances: wp }
     }
 }

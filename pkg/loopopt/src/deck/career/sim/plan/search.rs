@@ -4,15 +4,15 @@ use crate::deck::career::sim::{Ancestor, Bar, Data, Env, Found, Legacy, Pool, Si
 use crate::deck::career::sim::{DeckRequest, SimulationOptions, SimulationRoster};
 use crate::deck::career::{JobInputs, Lineage};
 
-pub(in crate::deck::career::sim::plan) const fn p_margin() -> f64 {
+pub(crate) const fn p_margin() -> f64 {
     1e9
 }
 
-pub(in crate::deck::career::sim::plan) const fn p_swork() -> usize {
+pub(crate) const fn p_swork() -> usize {
     5_000_000
 }
 
-pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
+pub(crate) fn sim_for<'env, 'data>(
     env: &'env mut Env<'data>,
     input: &JobInputs<'data>,
     settings: &PlanJob,
@@ -34,18 +34,18 @@ pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
 }
 
 /// The rotation for a loop base (`PlanJob::loop_members`), or why there is none.
-pub(in crate::deck::career::sim::plan) struct LoopRotation {
+pub(crate) struct LoopRotation {
     /// Members as uma indices (`Data::umas`); empty when the base is refused.
-    pub(in crate::deck::career::sim::plan) members: Vec<usize>,
+    pub(crate) members: Vec<usize>,
     /// Each named member's {id, name}, for the page.
-    pub(in crate::deck::career::sim::plan) member_info: Vec<Value>,
+    pub(crate) member_info: Vec<Value>,
     /// Why there is no rotation.
-    pub(in crate::deck::career::sim::plan) note: Option<String>,
+    pub(crate) note: Option<String>,
 }
 
 /// The rotation for the loop base `ids` (chara ids). Members must be owned umas with a legal deck, at least three of
 /// them.
-pub(in crate::deck::career::sim::plan) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
+pub(crate) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
     let member_info: Vec<Value> = ids
         .iter()
         .map(|&id| {
@@ -73,12 +73,12 @@ pub(in crate::deck::career::sim::plan) fn rotation(env: &Env, ids: &[u32]) -> Lo
 }
 
 /// Candidates the index rule weighs at most, and partners kept per trainee where a candidate's veteran is a parent
-pub(in crate::deck::career::sim::plan) const IDX_CANDS: usize = 8;
+pub(crate) const IDX_CANDS: usize = 8;
 
-pub(in crate::deck::career::sim::plan) const IDX_PARTNERS: usize = 2;
+pub(crate) const IDX_PARTNERS: usize = 2;
 
 /// legal parents a, b for trainee u (`Pool::pair_ok`)
-pub(in crate::deck::career::sim::plan) fn legal_pair(d: &Data, p: &Pool, lineage: Lineage) -> bool {
+pub(crate) fn legal_pair(d: &Data, p: &Pool, lineage: Lineage) -> bool {
     p.pair_ok(d.umas[lineage.trainee].id, lineage.first_parent, lineage.second_parent)
 }
 
@@ -87,7 +87,7 @@ pub(in crate::deck::career::sim::plan) fn legal_pair(d: &Data, p: &Pool, lineage
 /// exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no deck and pair
 /// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
 /// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
-pub(in crate::deck::career::sim::plan) fn certified(env: &mut Env, parents: ParentPool, x: usize, f: &Found) -> bool {
+pub(crate) fn certified(env: &mut Env, parents: ParentPool, x: usize, f: &Found) -> bool {
     let ParentPool { pool, fixed_parents } = parents;
     let deck_class = env.cls[x];
     // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
@@ -110,7 +110,7 @@ pub(in crate::deck::career::sim::plan) fn certified(env: &mut Env, parents: Pare
 }
 
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
-pub(in crate::deck::career::sim::plan) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -> f64 {
+pub(crate) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -> f64 {
     let trainee = lineage.trainee;
     let mut q = std::mem::take(&mut s.qs);
     let c = s.env.lineage_into(p, lineage, &mut q);
@@ -131,13 +131,7 @@ pub(in crate::deck::career::sim::plan) fn val(s: &mut Sim, p: &Pool, lineage: Li
 /// the parents), highest ceiling first, valued by her cached decks, an exact deck search where the bound beats the table
 /// by more than `margin`; stops when the next ceiling is below the best. margin 0: P(all) at least the exact best, up
 /// to deck searches that run out of work.
-pub(in crate::deck::career::sim::plan) fn best_sur(
-    s: &mut Sim,
-    parents: ParentPool,
-    u: usize,
-    margin: f64,
-    buf: &mut Vec<f64>,
-) -> Option<Found> {
+pub(crate) fn best_sur(s: &mut Sim, parents: ParentPool, u: usize, margin: f64, buf: &mut Vec<f64>) -> Option<Found> {
     let ParentPool { pool, fixed_parents } = parents;
     let margin_before = s.cfg.margin;
     s.cfg.margin = margin;
@@ -186,7 +180,7 @@ struct SurrogateBest {
 }
 
 /// an 8/8 veteran (a spark of every job target), yours or borrowed
-pub(in crate::deck::career::sim::plan) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
+pub(crate) fn is_full(sj: &SkillJob, sparks: &[(u32, u8)]) -> bool {
     sj.targets.iter().all(|t| sparks.iter().any(|x| x.0 == t.group && x.1 > 0))
 }
 
@@ -194,24 +188,24 @@ pub(in crate::deck::career::sim::plan) fn is_full(sj: &SkillJob, sparks: &[(u32,
 /// (env.uncv order) the miss product without her, per job target the spark scale without and with her spark, her miss
 /// factor x per star count (0: absent), how many of the trainee's cached decks it reads (their corner tables; a trainee's
 /// cached decks only grow, so the first `nd` are the ones there when the setup was made)
-pub(in crate::deck::career::sim::plan) struct Setup {
-    pub(in crate::deck::career::sim::plan) ui: usize,
-    pub(in crate::deck::career::sim::plan) x0: Vec<f64>,
-    pub(in crate::deck::career::sim::plan) pw: Vec<[f64; 2]>,
-    pub(in crate::deck::career::sim::plan) xm: [f64; 4],
-    pub(in crate::deck::career::sim::plan) nd: usize,
+pub(crate) struct Setup {
+    pub(crate) ui: usize,
+    pub(crate) x0: Vec<f64>,
+    pub(crate) pw: Vec<[f64; 2]>,
+    pub(crate) xm: [f64; 4],
+    pub(crate) nd: usize,
 }
 
 /// A builder's lift efficiency for a candidate at odds p: her veteran lifts the candidate with chance pl
 /// (`lift_chance`) to odds sp / pl on average (`lifted_odds_sum` sp, `score_career`'s stats), so pl (1/p - 1/(sp/pl))
 /// careers saved per career (Cont's builders, the proxies' admission and `proxy_check`; PROXY_EFF was calibrated on it)
-pub(in crate::deck::career::sim::plan) fn lift_eff(lift_chance: f64, lifted_odds_sum: f64, p: f64) -> f64 {
+pub(crate) fn lift_eff(lift_chance: f64, lifted_odds_sum: f64, p: f64) -> f64 {
     lift_chance * (1.0 / p - 1.0 / (lifted_odds_sum / lift_chance))
 }
 
 /// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
 /// `env_budget` put back after (and no hard cap)
-pub(in crate::deck::career::sim::plan) fn capped<'env, 'data, R>(
+pub(crate) fn capped<'env, 'data, R>(
     s: &mut Sim<'env, 'data>,
     work: usize,
     env_budget: usize,
@@ -235,26 +229,26 @@ pub(in crate::deck::career::sim::plan) fn capped<'env, 'data, R>(
 /// 2.25x those. (The first measurement, on the planner as it was before the class winners and the merges since, had 11%
 /// and 9%, with 0.2.) The errors move with the model: run `proxy_check` again after a change to what builders' careers
 /// are made of
-pub(in crate::deck::career::sim::plan) const PROXY_EFF: f64 = 0.06;
+pub(crate) const PROXY_EFF: f64 = 0.06;
 
-pub(in crate::deck::career::sim::plan) const PROXY_SAVE: f64 = 0.06;
+pub(crate) const PROXY_SAVE: f64 = 0.06;
 
 /// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
-pub(in crate::deck::career::sim::plan) const OPT_SHOW: usize = 8;
+pub(crate) const OPT_SHOW: usize = 8;
 
 /// A full loop lineage for `loop_ceiling`, as uma indices (`Data::umas`): the trainee, and the two umas whose
 /// hypothetical veterans are her parents.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct FullLoop {
-    pub(in crate::deck::career::sim::plan) trainee: usize,
-    pub(in crate::deck::career::sim::plan) first_builder: usize,
-    pub(in crate::deck::career::sim::plan) second_builder: usize,
+pub(crate) struct FullLoop {
+    pub(crate) trainee: usize,
+    pub(crate) first_builder: usize,
+    pub(crate) second_builder: usize,
 }
 
 /// The trainee's odds with a full loop lineage: parents hypothetical veterans of the two builders (every target, stars
 /// at the rank's mix, G1 wins `wins` of each), each bred from the other and from her (grandparents every target at 2
 /// stars)
-pub(in crate::deck::career::sim::plan) fn loop_ceiling(
+pub(crate) fn loop_ceiling(
     s: &mut Sim,
     pool: &Pool,
     full_loop: FullLoop,
@@ -292,14 +286,14 @@ pub(in crate::deck::career::sim::plan) fn loop_ceiling(
 
 /// Below this many stage candidates the plan adds umas by `hint_umas` (the loop planner's search added up to three; a
 /// pool with veterans of its loop's umas gives four or more by the other routes: 6-8 on the val/plan pools)
-pub(in crate::deck::career::sim::plan) const HINT_FLOOR: usize = 4;
+pub(crate) const HINT_FLOOR: usize = 4;
 
 /// An uma `hint_umas` adds to the stage candidates.
-pub(in crate::deck::career::sim::plan) struct HintUma {
+pub(crate) struct HintUma {
     /// Index in `Data::umas`.
-    pub(in crate::deck::career::sim::plan) trainee: usize,
+    pub(crate) trainee: usize,
     /// Her odds under the full loop lineage (`Env::ceiling`).
-    pub(in crate::deck::career::sim::plan) ceiling: f64,
+    pub(crate) ceiling: f64,
 }
 
 /// The owned umas (a legal deck, not among `candidates`) with the highest odds under a full loop lineage, at most
@@ -309,7 +303,7 @@ pub(in crate::deck::career::sim::plan) struct HintUma {
 /// affinity is the same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by
 /// `Env::ceiling` (the per-target best deck odds: no deck search), which ranks the umas the way a full loop would before
 /// any building.
-pub(in crate::deck::career::sim::plan) fn hint_umas(
+pub(crate) fn hint_umas(
     env: &mut Env,
     pool: &Pool,
     candidates: &[usize],

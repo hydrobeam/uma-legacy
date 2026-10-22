@@ -15,14 +15,14 @@ use crate::deck::career::{Career, Lineage};
 const NEAR: f64 = 0.25;
 
 /// the lowest score tied with `top` (`NEAR`)
-pub(in crate::deck::career::sim::plan) fn near_floor(top: f64) -> f64 {
+pub(crate) fn near_floor(top: f64) -> f64 {
     top - NEAR.max(0.05 * top.abs())
 }
 
 /// Why a career was added to the planner's options. Rows retain their insertion order:
 /// base careers, looped alternatives, then alternatives without borrowed parents.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::deck::career::sim::plan) enum RowOrigin {
+pub(crate) enum RowOrigin {
     Base,
     Looped,
     NoBorrow,
@@ -32,46 +32,41 @@ pub(in crate::deck::career::sim::plan) enum RowOrigin {
 
 /// A career and its planner state. Replacing the career preserves the previous scoring
 /// until pass 2 either reuses it (same career and valid stamp) or scores it again.
-pub(in crate::deck::career::sim::plan) struct PlanRow {
+pub(crate) struct PlanRow {
     /// The career's trainee (`Data::umas`).
-    pub(in crate::deck::career::sim::plan) trainee: usize,
-    pub(in crate::deck::career::sim::plan) career: Found,
+    pub(crate) trainee: usize,
+    pub(crate) career: Found,
     /// Per candidate (`PlanCandidates::trainees` order): P(her veteran lifts the candidate's odds) and the summed
     /// lifted odds (`CareerScore::lift_stats`); zeros where only Cont and `proxy_check` would read them.
-    pub(in crate::deck::career::sim::plan) lift_stats: Vec<(f64, f64)>,
-    pub(in crate::deck::career::sim::plan) origin: RowOrigin,
+    pub(crate) lift_stats: Vec<(f64, f64)>,
+    pub(crate) origin: RowOrigin,
     /// The career was searched exactly (or certified); false: a proxy from her deck class's winning decks.
-    pub(in crate::deck::career::sim::plan) exact: bool,
+    pub(crate) exact: bool,
     /// The cache a proxy's lifts read (`stamped`), for reuse when her exact search finds the same career.
-    pub(in crate::deck::career::sim::plan) stats_stamp: Option<CacheStamp>,
-    pub(in crate::deck::career::sim::plan) scoring: Option<RowScoring>,
+    pub(crate) stats_stamp: Option<CacheStamp>,
+    pub(crate) scoring: Option<RowScoring>,
 }
 
 /// A row's pass-2 score against the fitted V.
-pub(in crate::deck::career::sim::plan) struct RowScoring {
+pub(crate) struct RowScoring {
     /// E[V - V with her veteran] - 1, in careers; -infinity for a row that cannot be the pick.
     net_saving: f64,
-    pub(in crate::deck::career::sim::plan) improvement_chance: f64,
+    pub(crate) improvement_chance: f64,
     /// Can be discarded for a row that cannot win, or taken for the pick's roll state.
     /// The row remains scored in either case.
-    pub(in crate::deck::career::sim::plan) kept: Option<KeptScoring>,
+    pub(crate) kept: Option<KeptScoring>,
     /// Covers every trainee's decks: scoring can read any trio's final trainee.
     stamp: Option<CacheStamp>,
 }
 
 impl PlanRow {
     /// A row whose career was searched exactly.
-    pub(in crate::deck::career::sim::plan) const fn exact(
-        trainee: usize,
-        career: Found,
-        lift_stats: Vec<(f64, f64)>,
-        origin: RowOrigin,
-    ) -> Self {
+    pub(crate) const fn exact(trainee: usize, career: Found, lift_stats: Vec<(f64, f64)>, origin: RowOrigin) -> Self {
         Self { trainee, career, lift_stats, origin, exact: true, stats_stamp: None, scoring: None }
     }
 
     /// A row whose career is a proxy (or, for `RowOrigin::Fallback`, the main search's), its lifts' stamp if any.
-    pub(in crate::deck::career::sim::plan) const fn proxy(
+    pub(crate) const fn proxy(
         trainee: usize,
         career: Found,
         lift_stats: Vec<(f64, f64)>,
@@ -81,55 +76,47 @@ impl PlanRow {
         Self { trainee, career, lift_stats, origin, exact: false, stats_stamp, scoring: None }
     }
 
-    pub(in crate::deck::career::sim::plan) fn net_saving(&self) -> Option<f64> {
+    pub(crate) fn net_saving(&self) -> Option<f64> {
         self.scoring.as_ref().map(|scoring| scoring.net_saving)
     }
 
-    pub(in crate::deck::career::sim::plan) fn total(&self) -> f64 {
+    pub(crate) fn total(&self) -> f64 {
         self.net_saving().unwrap_or(f64::NEG_INFINITY)
     }
 
     /// The row's trainee and her career's parents. Derived, not stored: exact searches replace the career in place.
-    pub(in crate::deck::career::sim::plan) const fn lineage(&self) -> Lineage {
+    pub(crate) const fn lineage(&self) -> Lineage {
         found_lineage(self.trainee, &self.career)
     }
 
     /// The row's career as `score_career` takes it.
-    pub(in crate::deck::career::sim::plan) const fn scored_career(&self) -> Career<'_> {
+    pub(crate) const fn scored_career(&self) -> Career<'_> {
         found_career(self.trainee, &self.career)
     }
 
     /// The same trainee on the same parents (in either order): a row repeating another.
-    pub(in crate::deck::career::sim::plan) fn repeats(&self, other: &Self) -> bool {
+    pub(crate) fn repeats(&self, other: &Self) -> bool {
         self.trainee == other.trainee && unordered_parents(&self.career) == unordered_parents(&other.career)
     }
 }
 
 /// Both parents of `career` are 8/8 veterans: her 8/8 from it is a fully looped parent
-pub(in crate::deck::career::sim::plan) fn has_looped_parents(
-    sj: &SkillJob,
-    legacies: &[Legacy],
-    career: &Found,
-) -> bool {
+pub(crate) fn has_looped_parents(sj: &SkillJob, legacies: &[Legacy], career: &Found) -> bool {
     is_full(sj, &legacies[career.a].sparks) && is_full(sj, &legacies[career.b].sparks)
 }
 
 /// The plan's pick among its rows, and the top score it was taken within `near_floor` of.
 #[derive(Clone, Copy)]
-pub(in crate::deck::career::sim::plan) struct Pick {
-    pub(in crate::deck::career::sim::plan) row: usize,
-    pub(in crate::deck::career::sim::plan) top: f64,
+pub(crate) struct Pick {
+    pub(crate) row: usize,
+    pub(crate) top: f64,
 }
 
 /// The pick among the rows `runs` (a row without scoring has score -infinity): the highest score among the rows that can
 /// be the pick (`vis`; the first such row before any is scored, by more than 1e-9), then within `near_floor` of that top
 /// the best odds (a row that can be the pick), moved to the earlier row it repeats (`undup`). The one rule for the
 /// plan's pick and the roll state kept for it
-pub(in crate::deck::career::sim::plan) fn pick_of(
-    runs: &[PlanRow],
-    vis: impl Fn(&Found) -> bool,
-    undup: &[usize],
-) -> Pick {
+pub(crate) fn pick_of(runs: &[PlanRow], vis: impl Fn(&Found) -> bool, undup: &[usize]) -> Pick {
     let total = |i: usize| runs[i].total();
     let mut pick = (0..runs.len()).find(|&i| vis(&runs[i].career)).unwrap_or(0);
     for i in 0..runs.len() {
@@ -157,7 +144,7 @@ struct FullVeterans {
 }
 
 /// The looped rows (below) of `runs`' base rows, in their order.
-pub(in crate::deck::career::sim::plan) fn add_looped_rows(
+pub(crate) fn add_looped_rows(
     sim: &mut Sim,
     context: &PlanContext,
     runs: &[PlanRow],
@@ -300,7 +287,7 @@ fn looped_career(
 }
 
 /// The no-borrow rows (below) of `runs`' base rows, in their order.
-pub(in crate::deck::career::sim::plan) fn add_no_borrow_rows(
+pub(crate) fn add_no_borrow_rows(
     sim: &mut Sim,
     context: &PlanContext,
     runs: &[PlanRow],
@@ -379,7 +366,7 @@ fn fit_trios(
 
 /// Pass 2: the continuations fitted, then every row scored against V, the proxies that can turn the shown rows or the
 /// pick searched exactly, and the fit and scores redone while that changes Cont
-pub(in crate::deck::career::sim::plan) fn score_and_promote_rows(
+pub(crate) fn score_and_promote_rows(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &mut PlanSearches,
@@ -559,7 +546,7 @@ fn make_no_borrow_row_exact(
 /// surrogate, no career search; its lifts per candidate (efficiency, as Cont takes them) and its score beside the exact
 /// ones. Runs after everything else, on `cache_before_builders` (the cache as it was before the builders' searches,
 /// swapped in and back), so the plan's own numbers are unchanged
-pub(in crate::deck::career::sim::plan) fn check_plan_proxies(
+pub(crate) fn check_plan_proxies(
     sim: &mut Sim,
     context: &PlanContext,
     searches: &PlanSearches,
