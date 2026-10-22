@@ -192,8 +192,8 @@ Model (the rates and their evidence: `docs/MODEL.md`, *Deck side*):
 
 Exact odds. Targets do not land independently: chain cards share one run's chain events (one binomial count), so their chain progress is coupled, and an event's outcomes can give one target or another. A deck's exact value for a trainee at inheritance chance q, V(u, q, D), is computed over the joint distribution of chain progress, given which every source is independent except outcome groups touching two or more targets, which are enumerated per cluster of targets they join (`joint_fast`; `joint_trainee_ref` is the full enumeration, and `JOINT_CHECK=1` compares both in the `joint_checked` wrapper; direct calls to `joint_fast` bypass it). The search ranks loops and decks by exact values. The product of per-target odds, V̂ (`rank_value` in the output), is only used to bound and order the work:
 - **Assumed caps, per deck class.** The capped search assumes V ≤ ρ·V̂, with ρ set by the deck's class
-  (`EXACT_CAPS`, `cap_class`): 1.05 when at most two targets are fed by chain links (`Src::cm`) and every outcome
-  group passes `group_assoc`, otherwise 1.25 (`EXACT_RHO`). `Src::multi` marks a group that fails that check; merely
+  (`EXACT_CAPS`, `cap_class`): 1.05 when at most two targets are fed by chain links (`TargetSources::chain_misses`) and every outcome
+  group passes `group_assoc`, otherwise 1.25 (`EXACT_RHO`). `TargetSources::uncertified_association` marks a group that fails that check; merely
   touching two targets does not fail it. These caps are assumptions, not proven bounds. A search node takes the
   class of its cards plus every candidate still to add, so its cap is at least any completion's; bounds that know no
   deck (`Env::ceiling`, the loop tables' product fallback, the reroll's `y_hi`) use 1.25. Within the work budget, decks
@@ -212,12 +212,12 @@ Exact odds. Targets do not land independently: chain cards share one run's chain
   configuration's progress vector given n is negatively upper-orthant dependent (`key_level`, exact) the expected
   product is at most the product of the slots' expected ratios; the zero-base targets ride on the slot that feeds them
   most, the others at their lowest misses; each n's term at most A with every slot at most min(n, stop) links done;
-  (2) where (1) passes, per chain state x (`SbCfg`'s projected states) the lower of the per-target bound A_x and the
+  (2) where (1) passes, per chain state x (`StateBoundConfig`'s projected states) the lower of the per-target bound A_x and the
   ratio bound B_x (log-submodularity of each target's factor, card by card, given x), summed over states, heaviest
   first with an early stop once the sum decides the test; the open slots of one group share its lowest misses and best
   ratios, so states that differ only by the order of that group's open-slot levels have one term, computed once. Both
   rest on `state_value`'s argument, which needs every group's per-target levels negatively upper-orthant dependent at
-  every white/gold threshold (`group_nuod_lvl`, `Src::cf_ok`); a deck space with an entry not covered proves nothing.
+  every white/gold threshold (`group_nuod_lvl`, `TargetSources::certified_cap_free`); a deck space with an entry not covered proves nothing.
   Proven when every legal entry is covered and the band finishes without overflow within its own budget
   (`CF_BUDGET`, default 60M work units, 15 per cap-free node; apart from the career's budget): then a best below
   th / c is `Bounded`, else the deck is a fully checked
