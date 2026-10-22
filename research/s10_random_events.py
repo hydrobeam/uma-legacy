@@ -766,8 +766,12 @@ def free(row: CalRow) -> bool:
 
 
 def credit(row: CalRow, r: float) -> tuple[float, float]:
-    """(p, acquisition) of a calibration row with m multiplied by (1 - r) (section 12; m recovered from the row's p);
-    a row on the trainee's outfit or a scenario gold does not move"""
+    """Hybrid (landing, acquisition) with the reconstructed miss multiplied by (1 - r).
+
+    The row's p is an exact landing marginal, but dg is the report's approximate gold chance. Even at r = 0,
+    recovered acquisition is p / (GEN_W * 1.1**nc) - dg, not exact acquisition. Both comparison sides use this
+    reconstruction. A row on the trainee's outfit or a scenario gold does not move.
+    """
     if not free(row):
         return row["p"], row["acq"]
     s = 1.1 ** row["nc"]
@@ -1029,7 +1033,7 @@ def career_findings(
     """the careers' conclusions: t credited at the fitted rate"""
     return [
         F(
-            "Deck cards' random events, left out: acquisition on the rows they could hint is under-predicted: obs / pred "
+            "Deck cards' random events, left out: hybrid reconstructed acquisition on the rows they could hint is under-predicted: obs / pred "
             "has a 95% interval entirely above 1",
             lambda: t.left_out.rlo > 1,
             lambda: (
@@ -1037,12 +1041,12 @@ def career_findings(
             ),
         ),
         F(
-            "Deck cards' random events, credited at the fitted rate: acquisition obs / pred has a 95% interval covering 1",
+            "Deck cards' random events, credited at the fitted rate: hybrid reconstructed acquisition obs / pred has a 95% interval covering 1",
             lambda: t.credited.rlo <= 1 <= t.credited.rhi,
             lambda: f"credited {t.ratio_text(t.credited)}",
         ),
         F(
-            "Crediting deck cards' random events at the fitted rate is not shown to predict unseen runs' acquisition better "
+            "For hybrid reconstructed acquisition on positive-baseline rows, crediting random events is not shown to predict better "
             "than leaving them out: the held-out gain is positive but z <= 1.96",
             lambda: ho.nats > 0 and ho.z <= 1.96,
             lambda: (

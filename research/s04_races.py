@@ -521,6 +521,7 @@ def calibration_claims(A: list[Attempt]) -> tuple[list[Value | Finding], Calibra
     out: list[Value | Finding] = [
         Value(SEC, "race attempts at the 34", len(A)),
         Value(SEC, "race goal attempts", sum(a["goal"] for a in A)),
+        Value(SEC, "low aptitude basis bucket", BPB[-1][1]),
     ]
     for lab, c in (("base", base), ("pink", pink)):
         out += [
@@ -665,7 +666,7 @@ def calibration_findings(cal: Calibrations, lik: LikelihoodComparison) -> list[V
             held(ho) + f" on {lik.held_out_runs:,} runs",
         ),
         F(
-            "Low chances win a little less than predicted: pink-adjusted bp <= 70 has an obs/pred 95% interval entirely "
+            "The lowest aptitude-basis bucket, before streak penalties, wins less than predicted: pink-adjusted bp <= 70 has an obs/pred 95% interval entirely "
             "below 1",
             lo70.high < 1,
             cv(lo70),

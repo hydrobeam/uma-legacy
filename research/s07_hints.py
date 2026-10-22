@@ -1172,8 +1172,9 @@ def findings(out: list[common.Value]) -> list[common.Finding]:
     o, nd, dd = g["drop-out test observed"], g["drop-out test no drop-out"], g["drop-out test drop-out"]
     fs.append(
         F(
-            "Spark-hinted skills do not drop out of the draws (observed nearer no drop-out than full drop-out)",
-            abs(o - nd) < abs(o - dd),
+            "Removing both inspired skills for the whole run predicts more redistribution than observed; "
+            "the observed rate is nearer keeping both skills (partial or time-dependent removal is untested)",
+            dd > o and abs(o - nd) < abs(o - dd),
             f"observed {o:.3f}, no drop-out {nd:.3f}, drop-out {dd:.3f}",
         )
     )

@@ -229,7 +229,7 @@ def slope_claims(ts: list[Trial]) -> list[Value | Finding]:
         common.finding(
             SEC,
             "Affinity scales the roll as (1 + A/100): the term beats no affinity by more than 1.92 nats, and a refitted "
-            "slope does not predict unseen runs better than slope 1 (5-fold held out by run, z <= 1.96)",
+            "slope has no established held-out improvement over slope 1 (5-fold held out by run, z <= 1.96)",
             d0 > CHI1 and held.z <= 1.96,
             f"over none {d0:.1f} nats; slope {s_hat:.2f} [{s_lo:.2f}, {s_hi:.2f}], in sample {d_fit:+.2f} nats over "
             f"slope 1, held out {held_text(held)}",
@@ -239,7 +239,7 @@ def slope_claims(ts: list[Trial]) -> list[Value | Finding]:
         common.finding(
             SEC,
             "Known miss: the model over-predicts parents at affinity 200 or above (observed / predicted, 95% interval "
-            "below 1), and slope 1 is kept because a refitted slope does not predict unseen runs better (z <= 1.96)",
+            "below 1), and slope 1 is kept with no established held-out improvement from refitting (z <= 1.96)",
             above.high < 1 and held.z <= 1.96,
             f"parents at 200+ {above.ratio:.3f} [{above.low:.3f}, {above.high:.3f}] ({above.trials:,} trials), "
             f"below 200 {below.ratio:.3f} [{below.low:.3f}, {below.high:.3f}] ({below.trials:,}); "

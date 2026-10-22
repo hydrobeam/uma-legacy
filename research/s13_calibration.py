@@ -1314,6 +1314,7 @@ class AcquisitionTests:
     modelled_source_assumed: Stat
     prioritised: Stat
     not_prioritised: Stat
+    unknown_priority: Stat
     unexplained: list[CalRow]  # acquired with no modelled source
     unexplained_events_only: int  # of them, credited to events only
 
@@ -1348,6 +1349,8 @@ def acquisition_tests(cal: Calibration, out: list[Value]) -> AcquisitionTests:
     out += test_values("3. acquired, prioritised", prioritised_rows, TABLE)
     not_prioritised = acquisition_test(rep, priority_is(False))
     out += test_values("3. acquired, not prioritised", not_prioritised, TABLE)
+    unknown_priority = acquisition_test(rep, priority_is(None))
+    out += test_values("3. acquired, unknown priority", unknown_priority, TABLE)
     open_rows = [r for r in cal.rows if is_open(r)]
     predicted, observed = sum(r["p_pred"] for r in open_rows), sum(r["l_obs"] for r in open_rows)
     out.append(Value(S13, "4. landing: ratio", common.div(observed, predicted)))
@@ -1364,6 +1367,7 @@ def acquisition_tests(cal: Calibration, out: list[Value]) -> AcquisitionTests:
         modelled_source_assumed,
         prioritised_rows,
         not_prioritised,
+        unknown_priority,
         unexplained,
         events_only,
     )
@@ -1452,8 +1456,9 @@ def gold_tests(cal: Calibration, out: list[Value]) -> UnityGolds:
 
 @dataclass
 class DeckReliability:
-    """the deck test by predicted chance, and where its shortfall (predicted minus observed hints) sits"""
+    """deck shortfalls by predicted chance, and acquisition reliability under the report approximation"""
 
+    acquisition: list[Bucket]
     deck_tested: list[Bucket]  # deck buckets with rows and a positive prediction
     shortfall: float  # over every deck-test row
     shortfall_events: float  # rows with an event source
@@ -1469,6 +1474,16 @@ def deck_shortfall(rows: list[CalRow], sel: RowFn) -> float:
 def reliability_tests(cal: Calibration, out: list[Value]) -> DeckReliability:
     rep, rows = cal.report, cal.rows
     deck = rep.reliability("deck hint", in_deck_test, deck_odds, deck_hinted, EDGES)
+    # Acquisition uses the report's product approximation on open targets, including its zero bucket.
+    acquisition = rep.reliability("acquired", is_open, acquisition_odds, acquired, EDGES)
+    for bucket in acquisition:
+        label = bucket_label(bucket)
+        out += [
+            Value(S13, f"reliability acquired {label}: rows", bucket.rows),
+            Value(S13, f"reliability acquired {label}: observed", bucket.observed),
+        ]
+        if bucket.high_edge > ZERO_EDGE:
+            out.append(Value(S13, f"reliability acquired {label}: mean predicted", bucket.predicted))
 
     # the deck's shortfall in its buckets predicted 0.6 and above, and how many of their rows have an event source
     def top(r: CalRow) -> bool:
@@ -1476,6 +1491,7 @@ def reliability_tests(cal: Calibration, out: list[Value]) -> DeckReliability:
 
     top_rows = [r for r in rows if in_deck_test(r) and top(r)]
     rel = DeckReliability(
+        acquisition,
         [b for b in deck if b.rows and b.high_edge > ZERO_EDGE],
         shortfall=deck_shortfall(rows, every_row),
         shortfall_events=deck_shortfall(rows, lambda r: source_kind(r) in ("events only", "pool+event")),
@@ -1938,12 +1954,18 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         # section 13
         finding(
             S13,
-            "the composed acquisition odds are calibrated where the model's priority assumption fits: acquired from any source "
-            "on the rows whose target is prioritised or whose run shows no list, 95% interval covers 1; on the rows a list "
-            "shows un-prioritised (the model assumes every target prioritised) it lies below 1",
-            lambda: covers(acq.any_source_assumed) and below(acq.not_prioritised),
+            "the acquisition product approximation assigns zero probability to some observed acquisitions",
+            lambda: any(b.rows > 0 and b.observed > 0 for b in rel.acquisition if b.high_edge <= ZERO_EDGE),
+            lambda: "; ".join(bucket_text(b) for b in rel.acquisition if b.high_edge <= ZERO_EDGE),
+        ),
+        finding(
+            S13,
+            "the acquisition product approximation has no detected pooled bias separately on known-prioritised and "
+            "unknown-priority rows (each 95% ratio interval covers 1); known-unprioritised rows lie below 1",
+            lambda: covers(acq.prioritised) and covers(acq.unknown_priority) and below(acq.not_prioritised),
             lambda: (
-                f"priority assumption fits {ratio_text(acq.any_source_assumed)}; not prioritised {ratio_text(acq.not_prioritised)}; "
+                f"prioritised {ratio_text(acq.prioritised)}; unknown priority {ratio_text(acq.unknown_priority)}; "
+                f"not prioritised {ratio_text(acq.not_prioritised)}; "
                 f"every row {ratio_text(acq.any_source)}"
             ),
         ),
@@ -1966,12 +1988,11 @@ def findings(cal: Calibration, t: Tests) -> list[Finding]:
         ),
         finding(
             S13,
-            "the deck's shortfall is almost all from the priority assumption: rows with an event source carry at least 80% of the shortfall "
-            "(predicted minus observed hints), and on runs showing a priority list event-only hints of non-prioritised targets fall "
-            "below 1 and below the prioritised interval",
-            lambda: rel.shortfall_events / rel.shortfall >= 0.8 and choice_rule_consequence(),
+            "event-source rows carry at least 80% of the positive deck shortfall (predicted minus observed hints); "
+            "this does not identify its cause",
+            lambda: rel.shortfall > 0 and rel.shortfall_events / rel.shortfall >= 0.8,
             lambda: (
-                f"event-source shortfall {rel.shortfall_events:.1f} of {rel.shortfall:.1f} hints ({rel.shortfall_events / rel.shortfall:.0%}); "
+                f"event-source shortfall {rel.shortfall_events:.1f} of {rel.shortfall:.1f} hints ({common.div(rel.shortfall_events, rel.shortfall):.0%}); "
                 f"training pool only {ratio_text(deck.pool_only)}; prioritised {ratio_text(deck.events_prioritised)}; "
                 f"not prioritised {ratio_text(deck.events_not_prioritised)}; no priority list shown {ratio_text(deck.events_no_list)}"
             ),

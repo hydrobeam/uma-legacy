@@ -14,7 +14,7 @@ uv run --group research research/s08_chains.py        # one section, with its de
 Each script, one per section that has something to compute, returns:
 
 - **Values**: every number its section uses, by name (`common.Value`). The key `section.name_as_slug` is how the
-  template refers to it (`{{7.fit_of_n_runs|,.0f}}`).
+  template refers to it (`{{8.fit_of_n_runs|,.0f}}`).
 - **Findings**: every conclusion the section draws (a form adopted, an alternative rejected, a miss acknowledged),
   tested on the computed values the way the section argues it: a likelihood-ratio test, an interval that covers or
   excludes a prediction, a comparison of fits. Each prints **holds**, **FAILS** or **needs data** with the numbers
@@ -41,7 +41,8 @@ use; `render.py` turns the template into `docs/RESEARCH.md`. `--quick` skips sec
 parameter count, compared directly; an extra parameter, by likelihood ratio (detectable or not); whether a model
 predicts better, by 5-fold cross-validation by run id (`common.fold`, `common.compare_held_out`).
 
-Every analysis runs on every run in the pool. What the runs cannot test is labelled **assumed** in the document and
+Analyses use the pooled runs subject to their stated eligibility restrictions. Most of section 9's outcome and choice
+counts use an earlier subset; its Festa calculation uses the full pool. What the runs cannot test is labelled **assumed** in the document and
 claims no evidence: §1's spark curve and §2's star mixes (community figures). The bases of the spark types the odds do
 not use are listed only in `docs/MODEL.md`.
 
@@ -55,6 +56,11 @@ every validation result (`val/ref__*`, `val/refpu__*`) through `val/joint_check.
 solver (`cd pkg/loopopt && cargo build --release`): about a minute for the default targets, several more for the
 other-skills sample, one process; results are kept in `research/data/out/` and reused while nothing they read changes.
 numpy and scipy come with the `research` dependency group.
+
+The chain link checks compare observed markers with latent completion probabilities without the marker allowance
+used to fit the count distribution. Sections 10 and 11 reconstruct acquisition from exact landing marginals and
+approximate report gold chances on both sides of their comparisons. These checks do not establish exact acquisition
+calibration. Section 13 reports acquisition reliability, including zero predictions, for the report approximation.
 
 **Rules of the analysis.** Pooled counts; intervals and tests treat a run as the unit wherever a run gives several
 rows (`common.cluster_ci`, `common.cluster_chi2`, run-clustered standard errors), Wilson intervals where it gives one;

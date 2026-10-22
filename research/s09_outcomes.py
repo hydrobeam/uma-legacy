@@ -505,6 +505,7 @@ def festa_numbers() -> dict[str, float]:
         return k / n if n else 0.0
 
     rates = {nm: alone(nm) for nm in shared}
+    # Exclusive-credit rates supply an attribution weight, not an identified conditional firing probability.
     hers = sum(c * r_f / (1 - (1 - r_f) * (1 - rates[nm])) for nm, c in shared.items())
     nv, rb, hid = t["NV"], t["RB"], t["hidden"]
     fire = (nv + rb + hers) / (nv + rb + t["shared"] + t["none"])
@@ -531,6 +532,7 @@ def festa_numbers() -> dict[str, float]:
         / (nv + rb + t["shared"] + hid * (nv + rb + t["shared"]) / (nv + rb + t["shared"] + t["none"])),
         "Festa: adopted": sh.get("shares", {}).get("Nothing Ventured", float("nan")),
     }
+    # Rounded imputed trials omit attribution uncertainty; interval coverage is unestablished.
     out["Festa: share, 90% low"], out["Festa: share, 90% high"] = wil(nv, round(split))
     return out
 
