@@ -3,7 +3,8 @@
 use super::{DeckSources, Multi, SharedQueryKey, lin_of, qkey};
 use crate::deck::caps::src_class;
 use crate::deck::enumerate::{LineageChance, ScoredDeck, SearchClause, SearchMode, SearchOutcome};
-use crate::deck::joint::{joint_b, upper_na};
+use crate::deck::joint::joint_b;
+use crate::deck::joint::upper::upper_na;
 use crate::deck::kept::{DeckId, PDeck};
 use crate::deck::sources::{SourceEntry, TargetSources};
 use crate::uma::UmaIndex;
