@@ -78,7 +78,7 @@ difference, exits nonzero. It does not ignore a field named `ms`, such as `next.
   search scored, and `CF_CHECK`'s side search puts it back (`SearchEffects`). Count a new exact scoring there, through
   `CareerSetup::score_exact`, or the counter moves.
 - `DominanceIndex` visit order matters: the remembered dominators feed the `recent` ring and `last_dominator`. Prefilters must
-  preserve descending bucket order and ascending row order within each bucket (`deck/dominance.rs`, `DominanceIndex::count`).
+  preserve descending bucket order and ascending row order within each bucket (`loop_planner/dominance.rs`, `DominanceIndex::count`).
 - Float order: preserve sums and products in order. Reordering a maximum must also preserve tied winners and the
   treatment of NaNs and signed zero where they are possible.
 - Pruning bounds need a rounding slack (1e-9 relative). The deck-odds monotonicity used by pruning assumes white <=

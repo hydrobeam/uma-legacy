@@ -3,12 +3,11 @@
 use crate::Instant;
 use crate::data::Data;
 use crate::deck::chains::{ChainEvents, ChainKind, chain_marginals};
-use crate::deck::dominance::{
-    DeckEval, DominanceIndex, Name, PDeck, dominates, k_filter, kfilter_order, sig_of, tie_rank,
-};
+use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{Entries, EventOutcome, Sources, TargetReward, TargetSources, TrainingHint, deck_entries};
 use crate::deck::space::deck_space;
 use crate::deck::{CardsRaw, DeckJob};
+use crate::loop_planner::dominance::{DeckEval, DominanceIndex, dominates, k_filter, kfilter_order, sig_of, tie_rank};
 use crate::loop_planner::search::{LoopJobInputs, run_multi};
 use crate::skills::{Model, SkillJob, SkillsRaw};
 use serde::Deserialize;

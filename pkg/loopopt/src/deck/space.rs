@@ -1,8 +1,8 @@
 //! The space of legal decks (`DeckSpace`): entries by chain-kind key, legality tables and caps.
 use crate::deck::caps::{AUDIT_CAP, EXACT_CAP, EXACT_CAPS, cap_class};
 use crate::deck::chains::{ChainKind, chain_marginals};
-use crate::deck::dominance::{Name, PDeck};
 use crate::deck::joint::MissFactors;
+use crate::deck::pdeck::{Name, PDeck};
 use crate::deck::sources::{ChainOutcome, Entries, EventOutcome, Group, Sources, TargetSources};
 use crate::deck::{Card, CardsRaw, DeckJob};
 use crate::skills::{Model, OutfitOption, SkillsRaw};

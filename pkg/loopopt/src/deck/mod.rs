@@ -35,7 +35,7 @@
 //! - `chains`: chain events: count per run, per-link marginals, final-state distributions.
 //! - `hints`: training-hint draw counts per scenario and miss chances.
 //! - `caps`: the assumed caps on exact over product odds and the exact search's budgets.
-//! - `dominance`: dominance signatures and index, and the decks a search returns.
+//! - `pdeck`: the decks a search returns (`PDeck`), their shared names and identity key.
 //! - `tests`: the deck model's tests.
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -203,10 +203,10 @@ const fn d_rar() -> u8 {
 
 pub(crate) mod caps;
 pub(crate) mod chains;
-pub(crate) mod dominance;
 pub(crate) mod enumerate;
 mod hints;
 pub(crate) mod joint;
+pub(crate) mod pdeck;
 pub(crate) mod sources;
 pub(crate) mod space;
 pub(crate) mod state_bound;
