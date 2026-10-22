@@ -1,19 +1,20 @@
 //! The page's next career (`next` on a career job, `index_rule`; docs/SOLVER.md "Next career"): the career that brings
 //! a fully looped parent closest per run, scored exactly over every result she can roll, with each candidate's
 //! continuation (`Cont`) fitted to the pool. It values careers through the simulator's deck cache (`Sim`, `Cache`).
-use crate::deck::career::JobInputs;
 use crate::deck::career::sim::{
-    Cache, Deserialize, Env, Found, Legacy, Pool, Ref, Sim, Solved, Value, now_ms, progress,
+    Cache, Data, Deserialize, Env, Found, Legacy, Pool, Ref, Sim, Solved, Value, now_ms, progress,
 };
+use crate::deck::career::{Career, JobInputs, Lineage};
 use anchors::{PartnerAnchors, found_anchors, outcome_hi, pick_her};
-use candidates::{
-    exact_no_borrow_career, exact_plan_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates,
-};
+use candidates::{exact_no_borrow_career, score_and_admit_proxies, set_plan_wins, setup_plan_candidates};
 use combine::{PlanCombination, PlanFit, PlanScores, plan_combinations, plan_continuations, plan_sides};
-use cont::{CEIL_SHARE, LB_CELLS, MemoReport, memo_stat, trio_v};
+use cont::{CEIL_SHARE, LB_CELLS, MemoReport, count_refit, trio_v};
 pub(in crate::deck::career::sim) use cont::{Cont, ScoreBase, Trio, Want};
 use fold::{FOLD_SCRATCH, FoldCx, FoldScratch, fold_rec, leaf_products, leaf_set, rise_leaves};
-use kept::{BESTS, CachedSearch, best_of, bests_key, h64, same_career, stamp_ok, stamped, take_kept_plan};
+use kept::{
+    BESTS, BestCareer, CacheStamp, CachedSearch, KeptPlans, best_of, bests_key, h64, same_career, stamp_ok, stamped,
+    take_kept_plan,
+};
 pub(in crate::deck::career) use kept::{Bests, bests_set, bests_take};
 pub(in crate::deck::career) use kept::{bests_in, bests_out};
 use output::assemble_plan_output;
@@ -28,7 +29,7 @@ use rows::{
 pub(in crate::deck::career::sim) use score::{CareerScore, score_career, score_career_of};
 use score::{KeptScoring, fm_masks, her_ends, her_pool, her_pool_done, her_trios, sc_roll, v0_after, with_her};
 use search::{
-    HINT_FLOOR, IDX_CANDS, IDX_PARTNERS, OPT_SHOW, PROXY_EFF, PROXY_SAVE, Setup, best_sur, capped, certified,
+    FullLoop, HINT_FLOOR, IDX_CANDS, IDX_PARTNERS, OPT_SHOW, PROXY_EFF, PROXY_SAVE, Setup, best_sur, capped, certified,
     hint_umas, is_full, legal_pair, lift_eff, loop_ceiling, p_margin, p_swork, rotation, sim_for, val,
 };
 pub(in crate::deck::career::sim) use step::{All, Leaves, OneLeaf};
@@ -183,7 +184,7 @@ pub(in crate::deck::career) struct PlanJob {
 
 /// Inputs shared by the phases. Under `borrowed_parent: "later"`, `pick` is the pool
 /// without borrowed parents and its main search. The candidates, builders, trios and
-/// scoring partners still use `pool` and `sv`; only runnable rows use the pick's pool.
+/// scoring partners still use `pool` and `solved`; only runnable rows use the pick's pool.
 pub(in crate::deck::career) struct PlanInputs<'plan, 'data> {
     /// Immutable data and settings for this job.
     pub(in crate::deck::career) resources: &'plan JobInputs<'data>,
@@ -206,12 +207,12 @@ pub(in crate::deck::career) struct PlanInputs<'plan, 'data> {
 impl<'plan> PlanInputs<'plan, '_> {
     /// The pool runnable rows use: the pick's, else `pool`.
     fn pick_pool(&self) -> &'plan Pool {
-        self.pick.map_or(self.pool, |p| p.0)
+        self.pick.map_or(self.pool, |(pick_pool, _)| pick_pool)
     }
 
-    /// The main search runnable rows fall back to: the pick's, else `sv`.
+    /// The main search runnable rows fall back to: the pick's, else `solved`.
     fn pick_solved(&self) -> &'plan Solved {
-        self.pick.map_or(self.solved, |p| p.1)
+        self.pick.map_or(self.solved, |(_, pick_solved)| pick_solved)
     }
 
     /// A career that may run: its parents are legal on the pick's pool (the borrowing rule). Rows repeating another
@@ -221,24 +222,45 @@ impl<'plan> PlanInputs<'plan, '_> {
     }
 }
 
-/// Candidate order and the starting odds stay fixed while later searches add decks.
+/// The veterans a career's parents come from, and the ones every career must include.
+#[derive(Clone, Copy)]
+struct ParentPool<'pool> {
+    pool: &'pool Pool,
+    /// Parent indices every career must include (`PlanInputs::fixed_parents`).
+    fixed_parents: &'pool [usize],
+}
+
+/// Candidate order and the starting odds stay fixed while later searches add decks. Per-candidate vectors follow
+/// `trainees`' order.
 struct PlanCandidates {
-    /// Main searches with borrowing allowed, and with the pick's borrowing rule.
+    /// The main search's best career (borrowing allowed).
     main_career: Found,
+    /// The best career of the search runnable rows fall back to (`PlanInputs::pick_solved`).
     pick_career: Found,
-    members: Vec<usize>,
+    /// The named loop's members (`PlanJob::loop_members`), as uma indices, with their {id, name} and why the rotation
+    /// was refused.
+    loop_members: Vec<usize>,
     loop_member_info: Vec<Value>,
     loop_member_note: Option<String>,
+    /// The candidates `hint_umas` added, as the page shows them.
     hint: Vec<Value>,
+    /// The stage candidates, as uma indices (`Data::umas`).
     trainees: Vec<usize>,
+    /// The umas a trio's finisher may be: the allowed trainees with a legal deck.
     allowed_trainees: Vec<usize>,
     /// Initial candidate careers: later builder searches do not replace these.
     careers: Vec<Option<Found>>,
-    pnow: Vec<f64>,
-    have8: Vec<bool>,
-    zeros: Vec<f64>,
-    ones: Vec<f64>,
-    proxy_on: bool,
+    /// Each candidate's odds now: her initial career's P(all), 0 without one.
+    current_odds: Vec<f64>,
+    /// Whether an 8/8 of hers exists (a free side of the trios).
+    has_full_veteran: Vec<bool>,
+    /// Zeros: the stages-2-3 costs (`ScoreBase::m23`), which the trios replace.
+    later_stage_costs: Vec<f64>,
+    /// Ones: pass 1's placeholder step costs, so that every candidate's lifts are gathered.
+    placeholder_step_costs: Vec<f64>,
+    /// Builders' careers come from their deck class's winning decks first (`sur` 0, neither `exact_all` nor
+    /// `proxy_check`).
+    proxies_enabled: bool,
 }
 
 impl PlanCandidates {
@@ -246,10 +268,10 @@ impl PlanCandidates {
     fn stats_base(&self) -> ScoreBase<'_> {
         ScoreBase {
             cands: &self.trainees,
-            c1: &self.ones,
-            m23: &self.zeros,
+            c1: &self.placeholder_step_costs,
+            m23: &self.later_stage_costs,
             v0: 0.0,
-            pnow: &self.pnow,
+            pnow: &self.current_odds,
             cont: &[],
             combos: &[],
             sides: &[],
@@ -258,41 +280,129 @@ impl PlanCandidates {
     }
 }
 
-/// Searches and their completeness, including the kept plans used to extend this pool.
+/// What every phase after setup reads and none changes, built once in `index_rule`: the job's inputs (data, legacies,
+/// pools, fixed parents, settings) and the fixed candidates. The score base is not here: a refit replaces it, so a
+/// scoring takes the current one (`scoring`).
+#[derive(Clone, Copy)]
+struct PlanContext<'context, 'data> {
+    input: &'context PlanInputs<'context, 'data>,
+    candidates: &'context PlanCandidates,
+}
+
+impl<'context, 'data> PlanContext<'context, 'data> {
+    const fn data(&self) -> &'data Data {
+        self.input.resources.data
+    }
+
+    const fn settings(&self) -> &'context PlanJob {
+        self.input.settings
+    }
+
+    const fn legacy_count(&self) -> usize {
+        self.input.legacies.len()
+    }
+
+    /// The search pool with the job's fixed parents.
+    const fn parents(&self) -> ParentPool<'context> {
+        ParentPool { pool: self.input.pool, fixed_parents: self.input.fixed_parents }
+    }
+
+    /// The pool runnable rows use (`PlanInputs::pick_pool`) with the job's fixed parents.
+    fn pick_parents(&self) -> ParentPool<'context> {
+        ParentPool { pool: self.input.pick_pool(), fixed_parents: self.input.fixed_parents }
+    }
+
+    /// A career scoring against `score_base` on the search pool.
+    const fn scoring<'score>(&'score self, score_base: &'score ScoreBase<'score>) -> ScoringContext<'score, 'score> {
+        ScoringContext { score_base, legacies: self.input.legacies, pool: self.input.pool }
+    }
+}
+
+/// A found career's trainee and parents. `trainee` is the uma the row or search is for.
+const fn found_lineage(trainee: usize, found: &Found) -> Lineage {
+    Lineage { trainee, first_parent: found.a, second_parent: found.b }
+}
+
+/// A found career as `score_career` takes it.
+const fn found_career(trainee: usize, found: &Found) -> Career<'_> {
+    Career { lineage: found_lineage(trainee, found), deck: &found.sel }
+}
+
+/// A found career's parents in either order.
+fn unordered_parents(found: &Found) -> (usize, usize) {
+    (found.a.min(found.b), found.a.max(found.b))
+}
+
+/// Searches and their completeness, including the kept plans used to extend this pool. Per-uma vectors are indexed by
+/// `Data::umas`.
 struct PlanSearches {
-    best: Vec<CachedSearch>,
+    /// Each uma's best career, searched on demand (stage-1 candidates in setup, builders when scored exactly).
+    best_careers: Vec<CachedSearch>,
+    /// The decks each uma's best-career search checked fully, kept with the plan.
     proof_refs: Vec<Vec<Vec<Ref>>>,
-    /// Per-trainee incomplete searches: base, looped and no-borrow careers.
+    /// Per uma, her searches were incomplete: her best, looped and no-borrow careers'.
     base_incomplete: Vec<bool>,
     looped_incomplete: Vec<bool>,
     no_borrow_incomplete: Vec<bool>,
+    /// Each uma's best career on two real 8/8 parents, where searched (`add_looped_rows`).
     looped_careers: Vec<CachedSearch>,
+    /// A kept plan of this very pool, and one of this pool less its last veteran (taken out of `BESTS` while this
+    /// plan runs and put back after it: every reroll of a career reuses the same one).
     kept_same_pool: Option<Bests>,
     kept_previous_pool: Option<Bests>,
-    original_budget: usize,
+    /// The env's own career-search budget, put back after each capped search (`capped`).
+    env_budget: usize,
+}
+
+impl PlanSearches {
+    const fn kept_plans(&self, legacy_count: usize) -> KeptPlans<'_> {
+        KeptPlans {
+            same_pool: self.kept_same_pool.as_ref(),
+            previous_pool: self.kept_previous_pool.as_ref(),
+            legacy_count,
+        }
+    }
+
+    /// Record `trainee`'s best-career search.
+    fn record_best_career(&mut self, trainee: usize, search: BestCareer) {
+        self.proof_refs[trainee] = search.proof_refs;
+        self.best_careers[trainee] = CachedSearch::Known(search.found);
+        self.base_incomplete[trainee] = !search.complete;
+    }
+}
+
+/// `trainee`'s best career searched now, its deck added to the cache the planner's tables read, and recorded
+fn search_best_career(sim: &mut Sim, context: &PlanContext, searches: &mut PlanSearches, trainee: usize) {
+    let search = best_of(sim.env, context.parents(), trainee, searches.kept_plans(context.legacy_count()));
+    if let Some(found) = &search.found {
+        sim.cache.add(sim.env, trainee, &found.sel);
+    }
+    searches.record_best_career(trainee, search);
 }
 
 /// The plan's timers and work counters, and the surrogate's differences (`sur` 2): recorded by the phases, reported
 /// with the output.
 struct PlanProfile {
-    /// The plan's start, and pass 1's.
-    t_all: f64,
-    t3: f64,
+    /// The plan's start, and the index's (pass 1's).
+    started_ms: f64,
+    index_started_ms: f64,
     /// Choosing the candidates, and the career searches.
     loop_ms: f64,
     search_ms: f64,
     /// The work counters at the start (deck-search nodes, exact scorings): the plan reports its own.
-    nodes0: usize,
-    joints0: usize,
-    /// Admitted proxies certified by their class's proofs, without a search.
-    n_cert: usize,
-    exact_n: usize,
-    sur_diff: Vec<Value>,
+    nodes_at_start: usize,
+    exact_scorings_at_start: usize,
+    /// Proxies certified by their class's proofs, without a search.
+    certified_proxies: usize,
+    /// Rows scored that can be the pick.
+    scored_runnable_rows: usize,
+    /// Where the surrogate's best career differs from the search's (`sur` 2).
+    surrogate_differences: Vec<Value>,
 }
 
-/// Pass 1's rows (`RowOrigin::Base`), and each one's G1 wins, read when fitting a continuation.
-struct BaseRows {
-    runs: Vec<PlanRow>,
+/// The plan's rows, in their order (`RowOrigin`), and each trainee's G1 wins, read when fitting a continuation.
+struct PlanRows {
+    rows: Vec<PlanRow>,
     /// indexed by uma (her index in `d.umas`), filled for each row's trainee: the G1 races her latest row's career
     /// wins with a chance above 0.5 (`set_plan_wins`), the continuation fit's shared-win input; empty for other umas
     wins_by_trainee: Vec<Vec<usize>>,
@@ -307,36 +417,38 @@ struct BaseRows {
 /// within NEAR, the better own odds. The goal is always the next fully looped parent, any uma: one you have already is a
 /// real 8/8 (free) with 8/8 parents, a strong side of the trios.
 pub(in crate::deck::career) fn index_rule<'data>(env: &mut Env<'data>, input: &PlanInputs<'_, 'data>) -> Value {
-    let t_all = now_ms();
-    let gp = input.pick_solved().found[0].clone();
+    let started_ms = now_ms();
+    let pick_career = input.pick_solved().found[0].clone();
     progress(1, 0, 0);
     // First in, dropped last, after every memo belonging to this plan.
     let _memo_report = MemoReport;
     // (the phases' scratch for deck values)
-    let mut buf = vec![];
-    let PlanSetup { sim: mut s, candidates, mut searches, mut profile, cache0 } =
-        match setup_plan_candidates(env, input, t_all, gp, &mut buf) {
+    let mut deck_values = vec![];
+    let PlanSetup { mut sim, candidates, mut searches, mut profile, cache_before_builders } =
+        match setup_plan_candidates(env, input, started_ms, pick_career, &mut deck_values) {
             Ok(prepared) => prepared,
             Err(error) => return error,
         };
-    let BaseRows { mut runs, mut wins_by_trainee } =
-        score_and_admit_proxies(&mut s, input, &candidates, &mut searches, &mut profile, &mut buf);
-    let looped = add_looped_rows(&mut s, input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
-    runs.extend(looped);
-    let no_borrow = add_no_borrow_rows(&mut s, input, &candidates, &runs, &mut searches, &mut profile, &mut buf);
-    runs.extend(no_borrow);
-    let scores = score_and_promote_rows(
-        &mut s,
-        input,
-        &candidates,
-        &mut searches,
-        &mut runs,
-        &mut wins_by_trainee,
-        &mut profile,
-        &mut buf,
-    );
-    let proxy_check = check_plan_proxies(&mut s, input, &candidates, &searches.best, &runs, &scores, cache0, &mut buf);
-    assemble_plan_output(s, input, &candidates, searches, runs, &scores, &profile, proxy_check, &mut buf)
+    let context = PlanContext { input, candidates: &candidates };
+    let mut rows = score_and_admit_proxies(&mut sim, &context, &mut searches, &mut profile, &mut deck_values);
+    let looped = add_looped_rows(&mut sim, &context, &rows.rows, &mut searches, &mut profile, &mut deck_values);
+    rows.rows.extend(looped);
+    let no_borrow = add_no_borrow_rows(&mut sim, &context, &rows.rows, &mut searches, &mut profile, &mut deck_values);
+    rows.rows.extend(no_borrow);
+    let scores = score_and_promote_rows(&mut sim, &context, &mut searches, &mut rows, &mut profile, &mut deck_values);
+    let rows = rows.rows;
+    // (`proxy_check` alone keeps the cache as it was before the builders' searches)
+    let proxy_check = match cache_before_builders {
+        Some(cache) if !rows.is_empty() => {
+            check_plan_proxies(&mut sim, &context, &searches, &rows, &scores, cache, &mut deck_values)
+        }
+        _ => Value::Null,
+    };
+    let mut output = assemble_plan_output(sim, &context, searches, rows, &scores, &profile, &mut deck_values);
+    if !proxy_check.is_null() {
+        output["proxy_check"] = proxy_check;
+    }
+    output
 }
 
 /// What setup hands the phases: the simulator, the fixed candidates, the search history, the profile, and (with
@@ -346,5 +458,5 @@ struct PlanSetup<'env, 'data> {
     candidates: PlanCandidates,
     searches: PlanSearches,
     profile: PlanProfile,
-    cache0: Option<super::Cache>,
+    cache_before_builders: Option<Cache>,
 }

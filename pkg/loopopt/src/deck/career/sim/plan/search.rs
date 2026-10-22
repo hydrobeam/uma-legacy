@@ -1,5 +1,5 @@
 //! Candidate searches, rotation setup and proxy limits.
-use super::PlanJob;
+use super::{ParentPool, PlanJob};
 use crate::deck::career::sim::{Ancestor, Bar, Data, Env, Found, Legacy, Pool, Sim, SimJob, SkillJob, Value, json};
 use crate::deck::career::sim::{DeckRequest, SimulationOptions, SimulationRoster};
 use crate::deck::career::{JobInputs, Lineage};
@@ -15,13 +15,12 @@ pub(in crate::deck::career::sim::plan) const fn p_swork() -> usize {
 pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
     env: &'env mut Env<'data>,
     input: &JobInputs<'data>,
-    pj: &PlanJob,
+    settings: &PlanJob,
 ) -> Result<Sim<'env, 'data>, Value> {
-    let ntar = env.ntar;
-    if ntar > 12 || env.nu > 10 {
+    if env.ntar > 12 || env.nu > 10 {
         return Err(json!({"error": "The plan takes at most 12 targets, 10 of them not guaranteed by the scenario."}));
     }
-    let cfg: SimJob = serde_json::from_value(json!({"margin": pj.margin}))
+    let cfg: SimJob = serde_json::from_value(json!({"margin": settings.margin}))
         .map_err(|e| json!({"error": format!("The plan's margin does not make a simulator setting: {e}")}))?;
     // as `simulate` builds it (the continuations are the player's later careers: every owned trainee)
     let trainees = env.owned.clone();
@@ -34,28 +33,43 @@ pub(in crate::deck::career::sim::plan) fn sim_for<'env, 'data>(
     ))
 }
 
-/// The rotation for the loop base `ids` (`PlanJob::loop_members`): (members as uma indices, their {id, name}, or why
-/// there is none). Members must be owned umas with a legal deck, at least three of them.
-pub(in crate::deck::career::sim::plan) fn rotation(
-    env: &Env,
-    d: &Data,
-    ids: &[u32],
-) -> (Vec<usize>, Vec<Value>, Option<String>) {
-    let info: Vec<Value> = ids
+/// The rotation for a loop base (`PlanJob::loop_members`), or why there is none.
+pub(in crate::deck::career::sim::plan) struct LoopRotation {
+    /// Members as uma indices (`Data::umas`); empty when the base is refused.
+    pub(in crate::deck::career::sim::plan) members: Vec<usize>,
+    /// Each named member's {id, name}, for the page.
+    pub(in crate::deck::career::sim::plan) member_info: Vec<Value>,
+    /// Why there is no rotation.
+    pub(in crate::deck::career::sim::plan) note: Option<String>,
+}
+
+/// The rotation for the loop base `ids` (chara ids). Members must be owned umas with a legal deck, at least three of
+/// them.
+pub(in crate::deck::career::sim::plan) fn rotation(env: &Env, ids: &[u32]) -> LoopRotation {
+    let member_info: Vec<Value> = ids
         .iter()
         .map(|&id| {
-            let u = d.umas.iter().find(|u| u.id == id);
-            json!({"id": id, "name": u.map_or_else(|| format!("Uma {id}"), |u| u.name.clone())})
+            let uma = env.d.umas.iter().find(|u| u.id == id);
+            json!({"id": id, "name": uma.map_or_else(|| format!("Uma {id}"), |u| u.name.clone())})
         })
         .collect();
-    if info.is_empty() {
-        return (vec![], vec![], Some("no loop base (loop_members empty)".into()));
+    if member_info.is_empty() {
+        return LoopRotation {
+            members: vec![],
+            member_info: vec![],
+            note: Some("no loop base (loop_members empty)".into()),
+        };
     }
-    let idx: Vec<Option<usize>> = info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uix(id as u32))).collect();
-    if idx.len() < 3 || idx.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.dmax[t].is_none())) {
-        return (vec![], info, Some("the loop's members must be at least three owned umas with a legal deck".into()));
+    let members: Vec<Option<usize>> =
+        member_info.iter().map(|m| m["id"].as_u64().and_then(|id| env.uix(id as u32))).collect();
+    if members.len() < 3 || members.iter().any(|x| x.is_none_or(|t| !env.owned.contains(&t) || env.dmax[t].is_none())) {
+        return LoopRotation {
+            members: vec![],
+            member_info,
+            note: Some("the loop's members must be at least three owned umas with a legal deck".into()),
+        };
     }
-    (idx.into_iter().map(|x| x.unwrap()).collect(), info, None)
+    LoopRotation { members: members.into_iter().map(|x| x.unwrap()).collect(), member_info, note: None }
 }
 
 /// Candidates the index rule weighs at most, and partners kept per trainee where a candidate's veteran is a parent
@@ -73,16 +87,11 @@ pub(in crate::deck::career::sim::plan) fn legal_pair(d: &Data, p: &Pool, lineage
 /// exact for the class; `ruled_out` over its product proofs) is at most f's value (`Bar::AtMost`), so no deck and pair
 /// beats it (a different deck or pair of equal value may exist; the value is the search's). With mob or affinity-free
 /// parents every classmate has the same chances, so one classmate's search proves the rest of her class.
-pub(in crate::deck::career::sim::plan) fn certified(
-    env: &mut Env,
-    pool: &Pool,
-    fix: &[usize],
-    x: usize,
-    f: &Found,
-) -> bool {
-    let ct = env.cls[x];
+pub(in crate::deck::career::sim::plan) fn certified(env: &mut Env, parents: ParentPool, x: usize, f: &Found) -> bool {
+    let ParentPool { pool, fixed_parents } = parents;
+    let deck_class = env.cls[x];
     // (each test computed alone, so the order the pairs are taken in changes no number; a NaN bound proves nothing)
-    let pairs = env.gen_cands(pool, fix, &[x], |_, _| true, |ub, _, _, a, b| (ub, a, b));
+    let pairs = env.gen_cands(pool, fixed_parents, &[x], |_, _| true, |ub, _, _, a, b| (ub, a, b));
     let mut q = Vec::with_capacity(env.ntar);
     for (ub, a, b) in pairs {
         let bar = Bar::AtMost(f.val);
@@ -90,7 +99,9 @@ pub(in crate::deck::career::sim::plan) fn certified(
             continue;
         }
         let c = env.lineage_into(pool, Lineage { trainee: x, first_parent: a, second_parent: b }, &mut q);
-        if env.refs_out(x, &q, c, env.seen[ct].iter(), bar) || env.ruled_out(x, &q, c, &env.ruled[ct], bar) {
+        if env.refs_out(x, &q, c, env.seen[deck_class].iter(), bar)
+            || env.ruled_out(x, &q, c, &env.ruled[deck_class], bar)
+        {
             continue;
         }
         return false;
@@ -100,14 +111,14 @@ pub(in crate::deck::career::sim::plan) fn certified(
 
 /// trainee u's P(all) with parents a, b (cached decks; a deck search where she has none)
 pub(in crate::deck::career::sim::plan) fn val(s: &mut Sim, p: &Pool, lineage: Lineage, buf: &mut Vec<f64>) -> f64 {
-    let Lineage { trainee: u, first_parent: a, second_parent: b } = lineage;
+    let trainee = lineage.trainee;
     let mut q = std::mem::take(&mut s.qs);
-    let c = s.env.lineage_into(p, Lineage { trainee: u, first_parent: a, second_parent: b }, &mut q);
-    let v = match s.env.ceiling(u, &q, c) {
+    let c = s.env.lineage_into(p, lineage, &mut q);
+    let v = match s.env.ceiling(trainee, &q, c) {
         None => 0.0,
         Some(ub) => s
             .deck_for(
-                DeckRequest { trainee: u, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: 0.0 },
+                DeckRequest { trainee, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: 0.0 },
                 buf,
             )
             .map_or(0.0, |x| x.0),
@@ -122,37 +133,56 @@ pub(in crate::deck::career::sim::plan) fn val(s: &mut Sim, p: &Pool, lineage: Li
 /// to deck searches that run out of work.
 pub(in crate::deck::career::sim::plan) fn best_sur(
     s: &mut Sim,
-    pool: &Pool,
-    fix: &[usize],
+    parents: ParentPool,
     u: usize,
     margin: f64,
     buf: &mut Vec<f64>,
 ) -> Option<Found> {
-    let m0 = s.cfg.margin;
+    let ParentPool { pool, fixed_parents } = parents;
+    let margin_before = s.cfg.margin;
     s.cfg.margin = margin;
-    // (the best so far as its pair, value, ceiling and cached deck index: her cached decks only grow, so the index stays
-    // valid, and the deck is copied once, at the end)
-    let mut best: Option<(usize, usize, f64, f64, usize)> = None;
-    for (ub, a, b) in s.env.ranked_pairs(pool, fix, u, |_, _| true) {
-        let bar = best.map_or(0.0, |f| f.2);
+    // (her cached decks only grow, so the best's deck index stays valid, and the deck is copied once, at the end)
+    let mut best: Option<SurrogateBest> = None;
+    for (ub, a, b) in s.env.ranked_pairs(pool, fixed_parents, u, |_, _| true) {
+        let bar = best.map_or(0.0, |found| found.value);
         if ub <= bar {
             break;
         }
+        let lineage = Lineage { trainee: u, first_parent: a, second_parent: b };
         let mut q = std::mem::take(&mut s.qs);
-        let c = s.env.lineage_into(pool, Lineage { trainee: u, first_parent: a, second_parent: b }, &mut q);
-        let r = s.deck_for(
+        let c = s.env.lineage_into(pool, lineage, &mut q);
+        let deck = s.deck_for(
             DeckRequest { trainee: u, inheritance_chances: &q, spark_scale: c, ceiling: ub, threshold: bar },
             buf,
         );
         s.qs = q;
-        if let Some((v, di)) = r
-            && v > bar
+        if let Some((value, deck_index)) = deck
+            && value > bar
         {
-            best = Some((a, b, v, ub, di));
+            best = Some(SurrogateBest { lineage, value, ceiling: ub, deck_index });
         }
     }
-    s.cfg.margin = m0;
-    best.map(|(a, b, val, ub, di)| Found { t: u, a, b, val, ub, sel: s.cache.decks[u][di].sel.clone() })
+    s.cfg.margin = margin_before;
+    best.map(|found| Found {
+        t: u,
+        a: found.lineage.first_parent,
+        b: found.lineage.second_parent,
+        val: found.value,
+        ub: found.ceiling,
+        sel: s.cache.decks[u][found.deck_index].sel.clone(),
+    })
+}
+
+/// `best_sur`'s best career so far.
+#[derive(Clone, Copy)]
+struct SurrogateBest {
+    lineage: Lineage,
+    /// P(all) through her cached decks.
+    value: f64,
+    /// The pair's ceiling.
+    ceiling: f64,
+    /// Position of the deck in her cached decks.
+    deck_index: usize,
 }
 
 /// an 8/8 veteran (a spark of every job target), yours or borrowed
@@ -172,28 +202,28 @@ pub(in crate::deck::career::sim::plan) struct Setup {
     pub(in crate::deck::career::sim::plan) nd: usize,
 }
 
-/// A builder's lift efficiency for a candidate at odds p: her veteran lifts the candidate with chance pl to odds sp / pl
-/// on average (`score_career`'s stats), so pl (1/p - 1/(sp/pl)) careers saved per career (Cont's builders, the proxies'
-/// admission and `proxy_check`; PROXY_EFF was calibrated on it)
-pub(in crate::deck::career::sim::plan) fn lift_eff(pl: f64, sp: f64, p: f64) -> f64 {
-    pl * (1.0 / p - 1.0 / (sp / pl))
+/// A builder's lift efficiency for a candidate at odds p: her veteran lifts the candidate with chance pl
+/// (`lift_chance`) to odds sp / pl on average (`lifted_odds_sum` sp, `score_career`'s stats), so pl (1/p - 1/(sp/pl))
+/// careers saved per career (Cont's builders, the proxies' admission and `proxy_check`; PROXY_EFF was calibrated on it)
+pub(in crate::deck::career::sim::plan) fn lift_eff(lift_chance: f64, lifted_odds_sum: f64, p: f64) -> f64 {
+    lift_chance * (1.0 / p - 1.0 / (lifted_odds_sum / lift_chance))
 }
 
-/// `f` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget `budget0`
-/// put back after (and no hard cap)
+/// `searches` under the plan's career-search work cap `work` (`PlanJob::search_work`; 0: none), the env's own budget
+/// `env_budget` put back after (and no hard cap)
 pub(in crate::deck::career::sim::plan) fn capped<'env, 'data, R>(
     s: &mut Sim<'env, 'data>,
     work: usize,
-    budget0: usize,
-    f: impl FnOnce(&mut Sim<'env, 'data>) -> R,
+    env_budget: usize,
+    searches: impl FnOnce(&mut Sim<'env, 'data>) -> R,
 ) -> R {
     if work > 0 {
         s.env.budget = work;
         s.env.hard = work;
     }
-    let result = f(s);
+    let result = searches(s);
     s.env.hard = 0;
-    s.env.budget = budget0;
+    s.env.budget = env_budget;
     result
 }
 
@@ -212,42 +242,48 @@ pub(in crate::deck::career::sim::plan) const PROXY_SAVE: f64 = 0.06;
 /// the rows the page shows (career.js `OPT_SHOW`): their careers are searched exactly
 pub(in crate::deck::career::sim::plan) const OPT_SHOW: usize = 8;
 
-/// Trainee u's odds with a full loop lineage: parents hypothetical veterans of b1 and b2 (every target, stars at the
-/// rank's mix, G1 wins `w1` / `w2`), each bred from the other and from u (grandparents every target at 2 stars)
+/// A full loop lineage for `loop_ceiling`, as uma indices (`Data::umas`): the trainee, and the two umas whose
+/// hypothetical veterans are her parents.
+#[derive(Clone, Copy)]
+pub(in crate::deck::career::sim::plan) struct FullLoop {
+    pub(in crate::deck::career::sim::plan) trainee: usize,
+    pub(in crate::deck::career::sim::plan) first_builder: usize,
+    pub(in crate::deck::career::sim::plan) second_builder: usize,
+}
+
+/// The trainee's odds with a full loop lineage: parents hypothetical veterans of the two builders (every target, stars
+/// at the rank's mix, G1 wins `wins` of each), each bred from the other and from her (grandparents every target at 2
+/// stars)
 pub(in crate::deck::career::sim::plan) fn loop_ceiling(
     s: &mut Sim,
     pool: &Pool,
-    u: usize,
-    b1: usize,
-    b2: usize,
+    full_loop: FullLoop,
     wins: &dyn Fn(usize) -> Vec<usize>,
     buf: &mut Vec<f64>,
 ) -> f64 {
+    let FullLoop { trainee, first_builder, second_builder } = full_loop;
     let d = s.d;
     let sj = s.env.sj;
     let star = s.env.sj.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
-    let anc = |x: usize| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
-    let mk = |x: usize, p1: usize, p2: usize| Legacy {
+    let ancestor = |x: usize| Ancestor { chara: d.umas[x].id, sparks: full.clone(), wins: wins(x), pinks: vec![] };
+    let veteran = |x: usize, p1: usize, p2: usize| Legacy {
         chara: d.umas[x].id,
         borrowed: false,
         sparks: full.clone(),
         wins: wins(x),
         pinks: vec![],
-        parents: vec![anc(p1), anc(p2)],
+        parents: vec![ancestor(p1), ancestor(p2)],
         win_p: vec![],
         mix: Some(star),
     };
     // (`Env::pool` of legs and the two: the working copy of `pool` with them pushed, then popped)
     let mut p = s.take_pool(pool);
-    s.env.pool_push(&mut p, &mk(b1, b2, u));
-    s.env.pool_push(&mut p, &mk(b2, b1, u));
+    s.env.pool_push(&mut p, &veteran(first_builder, second_builder, trainee));
+    s.env.pool_push(&mut p, &veteran(second_builder, first_builder, trainee));
     let n = p.me.len();
-    let v = if legal_pair(d, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }) {
-        val(s, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }, buf)
-    } else {
-        0.0
-    };
+    let lineage = Lineage { trainee, first_parent: n - 2, second_parent: n - 1 };
+    let v = if legal_pair(d, &p, lineage) { val(s, &p, lineage, buf) } else { 0.0 };
     Env::pool_pop(&mut p);
     Env::pool_pop(&mut p);
     s.put_pool(pool, p);
@@ -258,25 +294,34 @@ pub(in crate::deck::career::sim::plan) fn loop_ceiling(
 /// pool with veterans of its loop's umas gives four or more by the other routes: 6-8 on the val/plan pools)
 pub(in crate::deck::career::sim::plan) const HINT_FLOOR: usize = 4;
 
-/// The owned umas (a legal deck, not among `cands`) with the highest odds under a full loop lineage, at most `k`, best
-/// first: her parents hypothetical veterans of the first two candidates' umas (every target, stars at the rank's mix),
-/// each bred from the other and from her, as `loop_ceiling` builds p_inf's lineage (a missing candidate: an ancestor of
-/// no uma, so no relation points); no G1 wins on the hypothetical ancestors (the race part of their affinity is the
-/// same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by `Env::ceiling` (the
-/// per-target best deck odds: no deck search), which ranks the umas the way a full loop would before any building.
+/// An uma `hint_umas` adds to the stage candidates.
+pub(in crate::deck::career::sim::plan) struct HintUma {
+    /// Index in `Data::umas`.
+    pub(in crate::deck::career::sim::plan) trainee: usize,
+    /// Her odds under the full loop lineage (`Env::ceiling`).
+    pub(in crate::deck::career::sim::plan) ceiling: f64,
+}
+
+/// The owned umas (a legal deck, not among `candidates`) with the highest odds under a full loop lineage, at most
+/// `count`, best first: her parents hypothetical veterans of the first two candidates' umas (every target, stars at the
+/// rank's mix), each bred from the other and from her, as `loop_ceiling` builds p_inf's lineage (a missing candidate: an
+/// ancestor of no uma, so no relation points); no G1 wins on the hypothetical ancestors (the race part of their
+/// affinity is the same for every uma ranked, and the wins come from schedules the pool doesn't have yet). Valued by
+/// `Env::ceiling` (the per-target best deck odds: no deck search), which ranks the umas the way a full loop would before
+/// any building.
 pub(in crate::deck::career::sim::plan) fn hint_umas(
     env: &mut Env,
-    d: &Data,
     pool: &Pool,
-    cands: &[usize],
+    candidates: &[usize],
     trainees: &[usize],
-    k: usize,
-) -> Vec<(usize, f64)> {
+    count: usize,
+) -> Vec<HintUma> {
+    let d = env.d;
     let sj = env.sj;
     let star = sj.star_dist;
     let full: Vec<(u32, u8)> = sj.targets.iter().map(|t| (t.group, 2)).collect();
     let mut sides: Vec<u32> = vec![];
-    for &c in cands {
+    for &c in candidates {
         let id = d.umas[c].id;
         if !sides.contains(&id) {
             sides.push(id);
@@ -288,42 +333,43 @@ pub(in crate::deck::career::sim::plan) fn hint_umas(
     while sides.len() < 2 {
         sides.push(0);
     }
-    let (ca, cb) = (sides[0], sides[1]);
-    let anc = |chara: u32| Ancestor { chara, sparks: full.clone(), wins: vec![], pinks: vec![] };
-    let mk = |chara: u32, p1: u32, p2: u32| Legacy {
+    let (first_side, second_side) = (sides[0], sides[1]);
+    let ancestor = |chara: u32| Ancestor { chara, sparks: full.clone(), wins: vec![], pinks: vec![] };
+    let veteran = |chara: u32, p1: u32, p2: u32| Legacy {
         chara,
         borrowed: false,
         sparks: full.clone(),
         wins: vec![],
         pinks: vec![],
-        parents: vec![anc(p1), anc(p2)],
+        parents: vec![ancestor(p1), ancestor(p2)],
         win_p: vec![],
         mix: Some(star),
     };
-    let mut out: Vec<(usize, f64)> = vec![];
+    let mut out: Vec<HintUma> = vec![];
     // (`Env::pool` of the legacies and the two: one copy of `pool`, `Env::pool(legs)`, the two pushed and popped per uma)
     let mut p = pool.clone();
     for &u in trainees {
         let id = d.umas[u].id;
-        if cands.contains(&u) || env.dmax[u].is_none() || id == ca || id == cb {
+        if candidates.contains(&u) || env.dmax[u].is_none() || id == first_side || id == second_side {
             continue;
         }
-        env.pool_push(&mut p, &mk(ca, cb, id));
-        env.pool_push(&mut p, &mk(cb, ca, id));
+        env.pool_push(&mut p, &veteran(first_side, second_side, id));
+        env.pool_push(&mut p, &veteran(second_side, first_side, id));
         let n = p.me.len();
-        if legal_pair(d, &p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 }) {
-            let (q, c) = env.lineage_q(&p, Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 });
-            if let Some(v) = env.ceiling(u, &q, c)
-                && v > 0.0
+        let lineage = Lineage { trainee: u, first_parent: n - 2, second_parent: n - 1 };
+        if legal_pair(d, &p, lineage) {
+            let (q, c) = env.lineage_q(&p, lineage);
+            if let Some(ceiling) = env.ceiling(u, &q, c)
+                && ceiling > 0.0
             {
-                out.push((u, v));
+                out.push(HintUma { trainee: u, ceiling });
             }
         }
         Env::pool_pop(&mut p);
         Env::pool_pop(&mut p);
     }
     // best first; equal odds in uma order (stable)
-    out.sort_by(|x, y| y.1.partial_cmp(&x.1).unwrap());
-    out.truncate(k);
+    out.sort_by(|x, y| y.ceiling.partial_cmp(&x.ceiling).unwrap());
+    out.truncate(count);
     out
 }
